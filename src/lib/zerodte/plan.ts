@@ -10,14 +10,39 @@
 // engines. Honesty rule: a plan prints only when a real quote or real fill
 // exists; missing data → no plan, never a guess.
 
-/** Fixed risk discipline for 0DTE longs-premium plays. Rules, not predictions. */
-export const PLAN_RULES = {
+const PLAN_RULES_DEFAULT = {
   /** Cut the position when premium loses half its entry value. */
   stop_pct: -50,
   /** Take (at least a trim) when premium doubles. */
   target_pct: 100,
   /** Hard time stop — flat by 15:50 ET (10 min before cash close). */
   time_stop_et_minutes: 15 * 60 + 50,
+} as const;
+
+/** Configurable stops/scaling (2026-10-20, member audit directive: "make stops and scaling
+ *  configurable"). `ZERODTE_STOP_PCT`/`ZERODTE_TARGET_PCT` override the member-facing hard
+ *  stop/target, SAME convention as `ZERODTE_CHASE_PCT`/`ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES`
+ *  below — a validated env var overrides the default, an absent/invalid one falls back to the
+ *  exact pre-existing constant, so "keep existing hard stops and member-facing behavior
+ *  unchanged" (the standing instruction) holds for every deployment that doesn't explicitly set
+ *  one of these. Bounded to the only values that make sense for a long-premium stop/target:
+ *  stop_pct must be negative (a "stop" that isn't a loss limit is not a stop), target_pct must
+ *  be positive. `time_stop_et_minutes` is NOT made configurable here — it's a session-structure
+ *  boundary (cash-close proximity), not a risk-sizing knob, and already has its own override
+ *  path (ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES governs the adjacent NEW-COMMIT cutoff; the
+ *  EXIT time-stop staying fixed to the real close is deliberate). */
+export function envOverridePct(envVar: string, fallback: number, mustBeNegative: boolean): number {
+  const raw = process.env[envVar]?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n === 0) return fallback;
+  if (mustBeNegative ? n > 0 : n < 0) return fallback; // wrong sign — never silently flip intent
+  return n;
+}
+export const PLAN_RULES = {
+  stop_pct: envOverridePct("ZERODTE_STOP_PCT", PLAN_RULES_DEFAULT.stop_pct, true),
+  target_pct: envOverridePct("ZERODTE_TARGET_PCT", PLAN_RULES_DEFAULT.target_pct, false),
+  time_stop_et_minutes: PLAN_RULES_DEFAULT.time_stop_et_minutes,
 } as const;
 
 /** `PLAN_RULES.time_stop_et_minutes` as "H:MM" ET, for prose that quotes the hard-exit
@@ -279,6 +304,77 @@ export type EntryStatus =
   | "CHEAPER" // quoted BELOW what the flow paid — better entry than the smart money got
   | "NO_QUOTE"; // no live quote — evidence only, no plan
 
+/** A contract's real greeks at plan time (OptionSnapshot.delta/gamma/theta/vega — already
+ *  fetched for the live quote, previously discarded before reaching plan/selection). null
+ *  fields when the provider omitted them — NEVER fabricated. */
+export type ContractGreeks = {
+  delta: number | null;
+  gamma: number | null;
+  theta: number | null;
+  vega: number | null;
+};
+
+/** SHADOW-ONLY diagnostic verdict on whether a contract's own greeks look like a real
+ *  directional instrument or a "cheap because it's nearly dead" one — see
+ *  evaluateContractGreeksQuality's doc. Never a gate; additive/diagnostic only until a real
+ *  outcome sample justifies promoting it. */
+export type ContractGreeksQuality = {
+  /** true when |delta| sits below GREEKS_LOW_DELTA_FLOOR — a real directional 0DTE play
+   *  should have meaningful delta; a near-zero-delta contract moves on theta/vega noise more
+   *  than on the underlying thesis actually playing out. */
+  low_delta: boolean;
+  /** true when the contract's theta decay, expressed as a % of its own mark per day, exceeds
+   *  GREEKS_HIGH_THETA_DECAY_PCT — "don't pick cheap contracts just because they could show a
+   *  huge percentage gain" (operator instruction): a contract bleeding a large % of its own
+   *  price per day in time decay needs the underlying to move fast just to break even. */
+  high_theta_decay: boolean;
+  /** theta as a % of mark (positive = bleeding), null when either input is missing/non-positive. */
+  theta_decay_pct: number | null;
+  /** Human-readable summary of whichever concerns above are true; null when neither is. */
+  note: string | null;
+};
+
+/** STARTING, UNCALIBRATED thresholds (2026-10-20) — same discipline as RVOL's own classification
+ *  constants (relative-volume.ts): named so a future calibration pass can retune them against
+ *  real paired-outcome data without touching the formula, not derived from this codebase's own
+ *  historical data yet. A 0.15 delta floor and a 15%/day theta-decay ceiling are common retail-
+ *  options conventions, not measured here. */
+export const GREEKS_LOW_DELTA_FLOOR = 0.15;
+export const GREEKS_HIGH_THETA_DECAY_PCT = 15;
+
+/**
+ * Pure, SHADOW-ONLY diagnostic — never gates a commit. Flags a contract whose greeks suggest it
+ * is a poor instrument for the directional thesis it's being used to express: too little delta
+ * (barely moves with the underlying) or too much theta decay relative to its own price (bleeds
+ * out fast regardless of direction). `theta` is read as a per-day dollar decay (the sign
+ * convention OptionSnapshot/Massive report it in — typically negative for a long option; the
+ * absolute value is what's compared against mark). Any missing/non-finite/non-positive input
+ * degrades to "unmeasured" (both flags false, note null) — absence is never treated as a defect.
+ */
+export function evaluateContractGreeksQuality(input: {
+  delta: number | null;
+  theta: number | null;
+  mark: number | null;
+}): ContractGreeksQuality {
+  const { delta, theta, mark } = input;
+  const lowDelta =
+    delta != null && Number.isFinite(delta) ? Math.abs(delta) < GREEKS_LOW_DELTA_FLOOR : false;
+  const thetaDecayPct =
+    theta != null && Number.isFinite(theta) && mark != null && Number.isFinite(mark) && mark > 0
+      ? round2((Math.abs(theta) / mark) * 100)
+      : null;
+  const highThetaDecay = thetaDecayPct != null && thetaDecayPct > GREEKS_HIGH_THETA_DECAY_PCT;
+  const notes: string[] = [];
+  if (lowDelta) notes.push(`|delta| ${delta != null ? Math.abs(delta).toFixed(3) : "?"} < ${GREEKS_LOW_DELTA_FLOOR} floor — weak directional exposure`);
+  if (highThetaDecay) notes.push(`theta decay ${thetaDecayPct}%/day of mark exceeds ${GREEKS_HIGH_THETA_DECAY_PCT}% ceiling`);
+  return {
+    low_delta: lowDelta,
+    high_theta_decay: highThetaDecay,
+    theta_decay_pct: thetaDecayPct,
+    note: notes.length ? notes.join("; ") : null,
+  };
+}
+
 export type ContractPlan = {
   /** OCC contract this plan is for (top strike on the dominant side). */
   occ: string;
@@ -327,6 +423,16 @@ export type ContractPlan = {
    *  Optional/back-compat, same "absence is not staleness" convention as every other conditional
    *  field here: undefined when the provider supplied no quote timestamp. */
   quoteAgeMs?: number | null;
+  /** The contract's real greeks at plan time (OptionSnapshot — already fetched for the live
+   *  quote, previously discarded before reaching here). Optional/back-compat: undefined when
+   *  the caller doesn't supply them (legacy/hand-built plans). Additive, diagnostic-adjacent —
+   *  see `greeks_quality` below for the derived shadow verdict this enables. */
+  greeks?: ContractGreeks;
+  /** SHADOW-ONLY verdict from evaluateContractGreeksQuality, always computed when `greeks` was
+   *  supplied (even when neither flag fires — the caller still gets theta_decay_pct etc. for
+   *  persistence). Never gates a commit — see ContractGreeksQuality's own doc. null only when
+   *  `greeks` wasn't supplied at all (legacy/hand-built plan, nothing to evaluate). */
+  greeks_quality: ContractGreeksQuality | null;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -372,6 +478,10 @@ export function buildContractPlan(input: {
   chasePct?: number;
   /** Override G-9 illiquid spread cap (default PLAN_ILLIQUID_SPREAD_PCT). */
   illiquidSpreadPct?: number;
+  /** The contract's real greeks at plan time (OptionSnapshot.delta/gamma/theta/vega), when the
+   *  caller has them. Optional/back-compat — omitted → `greeks`/`greeks_quality` are undefined/
+   *  null on the returned plan, same discipline as every other conditional field here. */
+  greeks?: ContractGreeks;
 }): ContractPlan {
   const { occ, direction, price, flowAvgFill, bid, ask, mark } = input;
 
@@ -461,6 +571,10 @@ export function buildContractPlan(input: {
     stop_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.stop_pct / 100)) : null,
     target_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.target_pct / 100)) : null,
     time_stop_et: zerodteTimeStopEtLabel(),
+    greeks: input.greeks,
+    greeks_quality: input.greeks
+      ? evaluateContractGreeksQuality({ delta: input.greeks.delta, theta: input.greeks.theta, mark })
+      : null,
     underlying_target: target,
     underlying_invalid: invalid,
     quoteAgeMs: input.quoteAgeMs ?? null,
@@ -503,24 +617,49 @@ export function buildContractPlan(input: {
  * Ordinary CHEAPER prints (mark a few/some percent below the fill — real front-running)
  * are far inside this band and are completely unaffected.
  *
- * THE CEILING TRIGGER IS `STOP_TRIGGER_PCT` (= |PLAN_RULES.stop_pct|), NOT `CHASE_PCT`
- * (2026-09-11, live finding). The ceiling originally reused CHASE_PCT (55%) — the wrong
- * threshold borrowed from the UP/MOVED case, where 55% was tuned for a DIFFERENT question
- * ("is this much gamma-driven premium runup normal, or already-happened") and has nothing
- * to do with achievability. That left a dead zone: a stale/dislocated fill 50-54.99% above
- * the live mark stayed UNCORRECTED (pctBelow < 55), yet the live mark was ALREADY at or
- * past the play's own -50% hard stop the instant a real quote was checked — a "stopped"
- * grade fired before a member could have owned the position for even one tick, off a fill
- * nobody could ever get, exactly the failure this ceiling exists to prevent. Confirmed
- * live: a 90-day backtest found 7 near-instant (<5s) catastrophic "stopped" exits, several
- * landing in this exact 50-54.99% band (QQQ 2026-09-09 -51.42%, SPXW 2026-08-12 -52.96%,
- * NVDA 2026-08-27 -52.90%, MSFT 2026-08-28 -52.07%); reproduced mechanically with the
- * shipped function (see plan.test.ts). Triggering at the stop threshold instead closes the
- * dead zone precisely: any dislocation large enough to ALREADY be an unavoidable stop is
- * now corrected to the achievable mark before grading, while ordinary front-running
- * (well under 50%) is untouched, same as before.
+ * THE CEILING TRIGGER WAS `STOP_TRIGGER_PCT` (= |PLAN_RULES.stop_pct| = 50), NOT `CHASE_PCT`
+ * (2026-09-11, live finding; LOWERED to `ACHIEVABILITY_CEILING_PCT` below on 2026-10-19 —
+ * see that constant's own comment for why 50 itself was still a dead zone). The ceiling
+ * originally reused CHASE_PCT (55%) — the wrong threshold borrowed from the UP/MOVED case,
+ * where 55% was tuned for a DIFFERENT question ("is this much gamma-driven premium runup
+ * normal, or already-happened") and has nothing to do with achievability. That left a dead
+ * zone: a stale/dislocated fill 50-54.99% above the live mark stayed UNCORRECTED
+ * (pctBelow < 55), yet the live mark was ALREADY at or past the play's own -50% hard stop
+ * the instant a real quote was checked — a "stopped" grade fired before a member could have
+ * owned the position for even one tick, off a fill nobody could ever get, exactly the
+ * failure this ceiling exists to prevent. Confirmed live: a 90-day backtest found 7
+ * near-instant (<5s) catastrophic "stopped" exits, several landing in this exact 50-54.99%
+ * band (QQQ 2026-09-09 -51.42%, SPXW 2026-08-12 -52.96%, NVDA 2026-08-27 -52.90%, MSFT
+ * 2026-08-28 -52.07%); reproduced mechanically with the shipped function (see plan.test.ts).
+ * Triggering at the stop threshold instead of CHASE_PCT closed THAT dead zone precisely —
+ * but tying the ceiling to the stop percentage at all baked in a false premise: that a
+ * dislocation only matters once it's already large enough to independently blow through the
+ * hard stop. It doesn't. See `ACHIEVABILITY_CEILING_PCT` below for the lower, independently-
+ * measured dead zone this premise missed.
+ *
+ * ACHIEVABILITY_CEILING_PCT — LOWERED from the stop-coupled 50% (2026-10-19, live finding).
+ * A member-reported "Swift recap" benchmarking exercise traced a real TSLA 0DTE commit
+ * (2026-10-19, O:TSLA261019C00365000): ledger entry_premium 3.50, but the REAL Polygon NBBO
+ * at the exact commit instant (14:21:16.277Z) was bid 2.28 / ask 2.30 — a tight, liquid
+ * 2-cent-spread market, not stale or illiquid — a 34.6% dislocation. The contract's own
+ * minute bars confirm it never traded anywhere near 3.50 from the 9:30 ET open through the
+ * commit instant (max high 2.48); it only reached that level ~43 minutes LATER. Because
+ * 34.6% < the old 50% STOP_TRIGGER_PCT, the ceiling never fired, and the trade graded a real
+ * member-facing "thesis_break:gex-walls" exit at mark 2.71 as -22.57% — when the SAME real
+ * exit mark against the SAME real entry mark would have been +18.3%, a WIN, not a loss. This
+ * is not a one-off: a 32-row probe of every same-day-expiry (true 0DTE) commit over the
+ * trailing 14 sessions (`scripts/audit/zerodte-entry-dislocation-probe.mjs`) found 3 commits
+ * with dislocation >=30% — TSLA 2026-10-19 (34.6%), TSLA 2026-10-09 (33.5%), SPXW 2026-10-13
+ * (37.1%) — and ALL THREE graded "stopped" at the hard -50%/-49.79%/-50.45% floor computed
+ * off the inflated basis; the other 29 rows all measured <15% dislocation (real bid/ask
+ * noise), with the single worst "clean" case at 14.3% (HIMS). The real 20-points-wide gap
+ * between the worst clean case (14.3%) and the best-separated bad case (33.5%) is why 20 is
+ * chosen here rather than guessed: it sits inside that gap, so it corrects every measured bad
+ * case while leaving every measured clean case untouched. n=32 over 14 sessions is a real but
+ * limited sample — re-run the probe as more sessions accumulate, same discipline as every
+ * other threshold in this codebase that started from a live finding rather than a guess.
  */
-const STOP_TRIGGER_PCT = Math.abs(PLAN_RULES.stop_pct);
+const ACHIEVABILITY_CEILING_PCT = 20;
 
 export function resolveLedgerEntryPremium(
   planEntryMax: number | null | undefined,
@@ -532,7 +671,7 @@ export function resolveLedgerEntryPremium(
   if (markAtFlag != null && markAtFlag > 0) {
     if (markAtFlag > base) return round2(markAtFlag);
     const pctBelow = ((base - markAtFlag) / base) * 100;
-    if (pctBelow >= STOP_TRIGGER_PCT) return round2(markAtFlag);
+    if (pctBelow >= ACHIEVABILITY_CEILING_PCT) return round2(markAtFlag);
   }
   return base;
 }

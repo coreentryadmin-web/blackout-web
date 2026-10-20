@@ -4339,13 +4339,20 @@ test("watchForSection: reclaim framing omitted when the play closed for a reason
   assert.doesNotMatch(section.body, /stop level/i);
 });
 
-// FINDING (Ask Largo standing mandate, 2026-10-16, live repro SWING:GOOGL:58): "What to watch"'s
-// "Structural support node" line (a few lines above in play-brief-intel.ts) is a GEX heuristic
-// (nearest put wall/dark pool/GEX king) — it never surfaced the real, committed structural stop
-// (`play.invalidationUnderlyingPx`, pinned at commit from `thesis_invalidation_px`), even for an
-// OPEN position where that real level is the one that actually governs the trade. This fix adds a
-// distinct, clearly-labeled "Structural stop (committed)" line alongside it, never replacing it.
-test("watchForSection: OPEN bucket surfaces the real committed structural stop distinct from the GEX structural-support node (2026-10-16)", () => {
+// FINDING, THEN SUPERSEDED (Ask Largo standing mandate): on 2026-10-16 (live repro SWING:GOOGL:58)
+// this exact "Structural stop (committed)" bullet was added HERE in `watchForSection` AND,
+// independently and on the same date/repro, in `tradeManagerNarrativeSection`
+// (play-brief-narrative.ts) — two parallel fixes neither aware of the other, each only tested in
+// isolation (this file's own suite vs. play-brief-narrative.test.ts's), so nobody ever composed
+// both into one envelope to notice the live result was the IDENTICAL sentence rendered twice,
+// in two different sections, every single time (the gating on both sides is the same
+// `bucket === "open"` plus the same `invalidationUnderlyingPx`/spot inputs — never one without
+// the other). Found live 2026-10-18 re-auditing TSLA's real OPEN brief. De-duplicated 2026-10-18:
+// `tradeManagerNarrativeSection` keeps sole ownership (it already sits right next to the GEX-
+// heuristic "Break watch" bullet this fact complements) — `watchForSection` no longer renders it,
+// but keeps its own, different "Structural support/resistance node" (GEX heuristic) line
+// untouched. See the cross-section dedup test a few lines below for the regression proof.
+test("watchForSection: OPEN bucket no longer duplicates the committed structural stop — that's tradeManagerNarrativeSection's bullet now", () => {
   const section = watchForSection(
     {
       play: fixturePlay({
@@ -4365,13 +4372,13 @@ test("watchForSection: OPEN bucket surfaces the real committed structural stop d
     "open",
   );
 
-  // GEX heuristic line untouched.
+  // GEX heuristic line untouched — this section's own, distinct fact.
   assert.match(section.body, /Structural support node.*330\.00/i);
-  // New, distinct, additive line — the real committed stop, a different number.
-  assert.match(section.body, /Structural stop \(committed\).*345\.33/i);
+  // The committed-stop bullet is no longer this section's job.
+  assert.doesNotMatch(section.body, /Structural stop \(committed\)/i);
 });
 
-test("watchForSection: OPEN bucket still surfaces the committed structural stop when no GEX level is resolvable at all", () => {
+test("watchForSection: committed structural stop stays absent even when no GEX level is resolvable at all (dedup, not a regression)", () => {
   const section = watchForSection(
     {
       play: fixturePlay({
@@ -4385,7 +4392,7 @@ test("watchForSection: OPEN bucket still surfaces the committed structural stop 
       scanSessionDay: null,
       laneRows: [],
       meridian: null,
-      // No put_wall/dark pool/king at all — the GEX heuristic has nothing to cite.
+      // No put_wall/dark pool/king at all — the GEX heuristic has nothing to cite either way.
       ecosystem: { gex_positioning: { spot: 349.63 } } as EcosystemContext,
       vector: null,
     },
@@ -4393,7 +4400,33 @@ test("watchForSection: OPEN bucket still surfaces the committed structural stop 
   );
 
   assert.doesNotMatch(section.body, /Structural support node/i);
-  assert.match(section.body, /Structural stop \(committed\).*345\.33/i);
+  assert.doesNotMatch(section.body, /Structural stop \(committed\)/i);
+});
+
+// REGRESSION PROOF for the 2026-10-18 dedup fix above: compose BOTH sections from the identical
+// context a real envelope would, and assert the committed-stop sentence appears in EXACTLY ONE of
+// them (tradeManagerNarrativeSection), never both — this is the check that would have caught the
+// original duplication on 2026-10-16 had it existed then.
+test("watchForSection + tradeManagerNarrativeSection: committed structural stop renders in exactly one section, never both", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", direction: "LONG", invalidationUnderlyingPx: 345.33 }),
+    asOf: "2026-10-15 10:00 ET",
+    sessionDate: "2026-10-15",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: { gex_positioning: { spot: 349.63, put_wall: 330 } } as EcosystemContext,
+    vector: null,
+  };
+
+  const watch = watchForSection(ctx, "open");
+  const narrative = tradeManagerNarrativeSection(ctx, "open");
+
+  const inWatch = /Structural stop \(committed\)/i.test(watch.body);
+  const inNarrative = /Structural stop \(committed\)/i.test(narrative!.body);
+  assert.equal(inWatch, false, "watchForSection must not render it — that's narrative's job now");
+  assert.equal(inNarrative, true, "tradeManagerNarrativeSection must still render it");
 });
 
 test("watchForSection: committed structural stop line omitted (no regression) when the real level is absent", () => {
@@ -4582,6 +4615,11 @@ test("watchForSection: a live, still-enterable trigger keeps the unqualified cau
 // score floor. Live repro TSM, 2026-10-18: score 54.9 vs scoreFloor 60 (aboveFloor:false),
 // setupState TRIGGERED, entryStatus AT_TRIGGER, no gate tag at all. Widened to gateFramingMootReason
 // (same-day sibling fix already applied to watchEntrySection/watchGateCoaching) to match.
+//
+// BUG FIX (Ask Largo standing mandate, 2026-10-19): that same-day widening over-corrected — a
+// below-floor play is NOT dead, just not-yet-enterable (gateFramingMootReason's own doc comment:
+// "very much still live"), so claiming "this level no longer fires the setup" is itself false.
+// Assertions below updated to the corrected text (reason disclosed, no false-permanence claim).
 test("watchForSection: entry trigger claim is corrected when the play is below the lane score floor, even though TRIGGERED/AT_TRIGGER", () => {
   const section = watchForSection(
     {
@@ -4605,10 +4643,20 @@ test("watchForSection: entry trigger claim is corrected when the play is below t
   );
   assert.match(section.body, /Entry trigger: \*\*412\.61\*\*/);
   assert.doesNotMatch(section.body, /this is what actually fires the setup/);
-  assert.match(section.body, /below the lane score floor — this level no longer fires the setup/);
+  assert.match(section.body, /below the lane score floor/);
+  assert.doesNotMatch(
+    section.body,
+    /this level no longer fires the setup/,
+    `below-floor is not dead, just not-yet-enterable — must not claim the level "no longer fires", got: ${section.body}`,
+  );
 });
 
 // Sibling case: a play still FORMING (not yet at trigger at all) must get the same correction.
+//
+// BUG FIX (Ask Largo standing mandate, 2026-10-19, live repro EWY WATCH brief): FORMING is the
+// other non-dead gateFramingMootReason case, same over-correction as below-floor above — a
+// still-forming play's Entry section says the window is open with days left, so this line must
+// not simultaneously claim the trigger "no longer fires."
 test("watchForSection: entry trigger claim is corrected when the play is still FORMING", () => {
   const section = watchForSection(
     {
@@ -4629,7 +4677,12 @@ test("watchForSection: entry trigger claim is corrected when the play is still F
     "watch",
   );
   assert.doesNotMatch(section.body, /this is what actually fires the setup/);
-  assert.match(section.body, /thesis still forming — not yet at trigger — this level no longer fires the setup/);
+  assert.match(section.body, /thesis still forming — not yet at trigger/);
+  assert.doesNotMatch(
+    section.body,
+    /this level no longer fires the setup/,
+    `FORMING is not dead, just not-yet-at-trigger — must not claim the level "no longer fires", got: ${section.body}`,
+  );
 });
 
 // GAP FOUND (Ask Largo standing mandate, 2026-10-08, live repro SWING:CRI:1510 at -59.1% P&L and
@@ -4752,6 +4805,63 @@ test("watchForSection: entry trigger claim is corrected for a Legacy-promoted pl
   assert.match(
     section.body,
     /pinned at Legacy promotion, not refreshed since — this level no longer fires the setup/,
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-18, third instance): the same-day widening of
+// `entryTriggerDeadReason()` to check `gateFramingMootReason()` FIRST (see that function's own
+// doc comment above) accidentally SHADOWED this older, more specific 2026-10-06 Legacy-pinned-
+// price staleness check for the exact population it exists for — every Legacy-promoted WATCH
+// play unconditionally carries a `legacy_exempt`-only `gateBlocks` entry, which
+// `gateFramingMootReason` now matches and early-returns on before the staleness check below it is
+// ever reached. Live repro UNH, 2026-10-18: TRIGGERED/AT_TRIGGER/above-floor,
+// `discoveryOrigin: ["NIGHT HAWK"]`, `flagUnderlyingPx === entryTriggerUnderlyingPx === 399.15`
+// (firstSeenAt 3 days earlier), `commitGateBlockedBy: ["legacy:exempt"]` — both the gate-moot
+// framing and the pinned-price staleness disclosure are independently true and both matter (the
+// gate is moot AND the price is stale), but the brief rendered only the first, dropping the
+// staleness disclosure entirely for every Legacy-promoted play. Must compose both facts, not pick
+// one.
+test("watchForSection: entry trigger claim for a Legacy-promoted TRIGGERED/above-floor play composes BOTH the gate-moot framing AND the pinned-price staleness disclosure (live repro UNH)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        discoveryOrigin: ["NIGHT HAWK"],
+        flagUnderlyingPx: 399.15,
+        entryTriggerUnderlyingPx: 399.15,
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        aboveFloor: true,
+        gateBlocks: [
+          {
+            code: "legacy_exempt",
+            reason:
+              "Legacy morning-confirm promotion — Swing V2 confluence/Cortex gates were not evaluated on this path.",
+          },
+        ],
+      }),
+      asOf: "2026-10-18 10:00 ET",
+      sessionDate: "2026-10-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*399\.15\*\*/);
+  assert.doesNotMatch(section.body, /this is what actually fires the setup/);
+  assert.match(
+    section.body,
+    /Legacy-promoted — commit gates were never evaluated on this path, not a live gate to clear/,
+    `expected the gate-moot framing to still be present, got: ${section.body}`,
+  );
+  assert.match(
+    section.body,
+    /pinned at Legacy promotion, not refreshed since/,
+    `expected the pinned-price staleness disclosure to ALSO be present (not shadowed), got: ${section.body}`,
   );
 });
 

@@ -69,6 +69,13 @@ export type ZeroDteRecordPlay = {
   managed_outcome: string | null;
   managed_pnl_pct: number | null;
   managed_source: "reconstructed" | "engine" | "plan" | null;
+  /** HONEST maximum favorable excursion — how high this position's REAL mark got before it
+   *  closed, reported SEPARATELY from managed_pnl_pct (the realized/as-managed result) so the
+   *  two are never conflated in a report (member audit directive: "separate realized exits
+   *  from maximum potential gains"). null when the row never carried a live-managed exit
+   *  (still open, or a pre-exit-engine legacy row) — absence, never a fabricated zero. See
+   *  extractMaxFavorablePct's own doc for the exact source. */
+  max_favorable_pct: number | null;
   /** Underlying direction grade (close vs flag) — the separate honesty ledger. */
   direction_hit: boolean | null;
   move_pct: number | null;
@@ -302,13 +309,35 @@ type GradeView = {
  *  every field optional, malformed blobs degrade to "no engine exit". */
 export function readManagedExit(
   entryContext: Record<string, unknown> | null | undefined
-): { reason: string | null; pnl_pct: number | null } | null {
+): { reason: string | null; pnl_pct: number | null; peak_pnl_pct: number | null } | null {
   const exit = entryContext?.exit;
   if (!exit || typeof exit !== "object") return null;
   const e = exit as Record<string, unknown>;
   const pnl = typeof e.pnl_pct === "number" && Number.isFinite(e.pnl_pct) ? e.pnl_pct : null;
   const reason = typeof e.reason === "string" ? e.reason : null;
-  return { reason, pnl_pct: pnl };
+  // peak_pnl_pct (2026-10-20, member audit directive: "separate realized exits from maximum
+  // potential gains") — the live-managed MAXIMUM FAVORABLE EXCURSION this position reached
+  // before it closed, already stamped by the exit engine on every live-managed exit but never
+  // promoted past this nested blob to a labeled, top-level record field (see
+  // extractMaxFavorablePct below). Never fabricated: absent/non-finite reads null, same
+  // discipline as pnl_pct/reason above.
+  const peak = typeof e.peak_pnl_pct === "number" && Number.isFinite(e.peak_pnl_pct) ? e.peak_pnl_pct : null;
+  return { reason, pnl_pct: pnl, peak_pnl_pct: peak };
+}
+
+/**
+ * The HONEST maximum-favorable-excursion for one row — "how high did this position actually
+ * get before it closed," reported SEPARATELY from the realized/as-managed P&L so a member or
+ * Largo answer never conflates the two (member audit directive, point 6 of the original brief:
+ * "separate realized exits from maximum potential gains"). Sourced from the SAME live-managed
+ * exit stamp `managedGradeView`/`readManagedExit` already read — not a second, independently-
+ * computed peak, so this can never disagree with the engine's own tracking. Returns null (never
+ * a fabricated peak) when the row never carried a live-managed exit at all (e.g. still open, or a
+ * pre-exit-engine legacy row) — an ungraded/no-peak row is absence, not zero.
+ */
+export function extractMaxFavorablePct(entryContext: Record<string, unknown> | null | undefined): number | null {
+  const exit = readManagedExit(entryContext);
+  return exit?.peak_pnl_pct ?? null;
 }
 
 /** Map an engine EXIT reason (exit-engine.ts) to a record outcome bucket. Only EXIT
@@ -676,6 +705,7 @@ function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
     managed_outcome: managed.outcome,
     managed_pnl_pct: managed.pnl_pct,
     managed_source: managed.source,
+    max_favorable_pct: extractMaxFavorablePct(r.entry_context) != null ? round2(extractMaxFavorablePct(r.entry_context) as number) : null,
     direction_hit: r.direction_hit,
     move_pct: r.move_pct != null ? round2(r.move_pct) : null,
     entry_context: r.entry_context,

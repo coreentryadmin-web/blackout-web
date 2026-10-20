@@ -38,6 +38,2839 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] Look-ahead leak in the point-in-time gate-replay tools — fixed, numbers corrected
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED — corrected tools merged; numbers below supersede PR #6291's claims |
+|---|---|
+
+**Context.** Member directive: "keep pushing Nighthawk toward catching Swift-style setups early
+and consistently... compare alerts against timestamped examples without using future information...
+track missed trades, false alerts, win rate, average gains and losses, and drawdown after
+realistic spreads and slippage... validate improvements on unseen data... don't force daily
+trades, weaken risk controls, or overfit." Building the missed-trades/false-alerts tracker this
+directive asked for surfaced a real bug in the point-in-time replay methodology PR #6291 shipped
+hours earlier — caught by cross-checking its result against real production data before trusting
+it, not by inspection.
+
+### The bug
+
+`zerodte-gate-rejection-trace.mjs` and `zerodte-confluence-floor-real-cost-backtest.mjs` (both
+merged via #6291) both called `deriveZeroDteSetups` — which AGGREGATES every row it's given into
+one scored setup per ticker/direction for "today" — ONCE per day with that WHOLE day's flow rows,
+then only truncated the DOWNSTREAM hard-gate inputs (SPY/ticker minute bars, VIX) to a single
+"decision instant." The evidence-gate math itself (score, gross_premium, aggr_share, dominance,
+max_itm_pct) stayed contaminated by prints that had not happened yet as of that instant.
+
+**Real-world proof.** Production committed TSLA on 2026-10-19 at 10:21 ET off a real score of 91
+(`/api/admin/zerodte/tier-export?days=7` showed real committed counts 20/8/9/35/7 across
+10-13..10-19; `/api/market/zerodte/record?days=7`'s `entry_context.discovery_origin` breakdown
+listed the real FLOW-origin TSLA commit, score=91, flagged 10:21 ET). A full-day-aggregated
+replica of the same ticker/day instead **rejected TSLA outright** on `max_itm_pct` — a direct
+diagnostic script feeding `deriveZeroDteSetups` TSLA's full day of flow (28 prints, 13:31-19:21
+UTC, $11.4M gross premium) reproduced the exact rejection: `otm_pct: -2.39` vs `threshold: -2`.
+That -2.39% aggregate OTM did not exist yet at 10:21 ET — it only appeared because of prints
+through 19:21 UTC, eight hours later. This single bug was the reason an earlier run of this same
+methodology reported **0/18 setups ever clearing every gate** (the number #6291 shipped) — a
+number now known to be an artifact of the look-ahead, not a real measurement of the gate stack.
+
+### The fix
+
+For each ticker/direction, walk every one of its OWN real print instants in chronological order,
+re-deriving setups from flow rows TRUNCATED to each instant, and evaluating the gate stack there —
+never fed a single row that hadn't printed yet.
+
+- `zerodte-gate-rejection-trace.mjs` and the new `zerodte-missed-trades-tracker.mjs` keep the
+  EARLIEST instant that reaches a real `COMMIT` verdict (full `evaluateZeroDteGates`, not just the
+  evidence gates), or the LAST instant if none ever does — an earlier, shallower fix that stopped
+  at "first evidence-qualifying instant" was tried first and rejected: on the TSLA example it
+  landed at 09:31 ET score=44, a setup production's own continuous re-scanning would not have
+  committed on either, since hard gates can still legitimately block a low-score early instant.
+- `zerodte-confluence-floor-real-cost-backtest.mjs` doesn't evaluate hard gates, so it keeps the
+  EARLIEST evidence-qualifying instant instead of the day's LAST print (the pre-fix behavior) —
+  always using the last print is self-consistent (no contamination) but defeats the point of
+  measuring a realistic EARLY entry.
+- Expensive per-ticker fetches (SPY bars, ticker bars, VIX day-open) happen ONCE per ticker/day;
+  only the pure recomputation (`deriveZeroDteSetups`/`computeConfluence`/`evaluateZeroDteGates`)
+  repeats per instant — kept cheap despite walking every print.
+
+**Verified against the real TSLA example**: the fixed trace now surfaces TSLA at 10:35 ET
+(score=62) instead of the spurious 09:31 ET (score=44) the shallow fix produced — much closer to
+the real 10:21 ET commit. The remaining score gap vs. the real 91 is consistent with this
+toolkit's already-disclosed direct-UW-REST-vs-Postgres data-source difference (see
+`swing-gate-compound-funnel.mjs`'s own disclosure of the same gap), not a defect in this fix.
+
+### Corrected numbers — supersede #6291
+
+Only 3 real session days of UW flow were available in this window (2026-10-15, 10-16, 10-19) —
+disclosed the same way every sibling tool in this toolkit discloses a thin sample. TRAIN = the
+older 2 days, VALIDATION = the newer 1 day, held out and never used to shape the TRAIN read.
+
+**`zerodte-missed-trades-tracker.mjs` (new tool, real costs — real NBBO entry/exit, real spread,
+90s entry delay, real -50%/+100% stop/target, real minute-bar walk):**
+
+| | TRAIN (10-15, 10-16) | VALIDATION — held out (10-19) |
+|---|---|---|
+| COMMITTED (n) | 4 | 0 |
+| Win rate | 75.0% (3W/1L) — MU loss −18.5%, QQQ +38.6%, SPY +31.8%, NVDA +28.0% | — |
+| FALSE ALERTS (committed, real loss) | 1/4 (25.0%) | — |
+| BLOCKED (n) | 25 | 23 |
+| **MISSED TRADES (blocked, would have WON)** | **10/25 (40.0%)** | **9/23 (39.1%)** |
+| Correctly avoided (blocked, would have LOST) | 15/25 (60.0%) | 14/23 (60.9%) |
+| Avg gain on missed winners | +13.8% | +11.3% |
+| Avg loss correctly avoided | −11.5% | −14.3% |
+
+**The missed-trade rate cross-validates cleanly — 40.0% TRAIN vs 39.1% VALIDATION, within 1pp of
+each other** — this is a real, held-out-confirmed number, not a TRAIN-only artifact. The COMMITTED
+win-rate (75.0%, n=4) and false-alert rate (25.0%) are real but too thin to trust alone and have no
+VALIDATION counterpart (0 committed that day in this FLOW-only sample), so they are reported, not
+treated as settled.
+
+Gate-block frequency shows `score_floor` and `vix_elevated` are the dominant blockers of BOTH
+missed winners and correctly-avoided losers in roughly the same proportion in both halves
+(`vix_elevated`: 6/10 winners vs 10/15 losers in TRAIN, 9/9 vs 14/14 in VALIDATION — every blocked
+setup that day had VIX elevated, since real VIX day-open was genuinely 18.37, above
+`VIX_ELEVATED_THRESHOLD=17`) — consistent with the existing evidence-backed design, not a new
+over-blocking problem. `confluence_floor`'s apparent discrimination between winners/losers in
+TRAIN (2/10 vs 8/15) did **not** hold up in VALIDATION (4/9 vs 5/14) — flagged and dropped per the
+"never report a TRAIN-only pattern" discipline, exactly the failure mode this split exists to catch.
+
+**`zerodte-confluence-floor-real-cost-backtest.mjs` (corrected re-run, 10-day window, same 3
+real session days, 25 setups graded):**
+
+| Confirmations | n | Win rate | Mean P&L |
+|---|---|---|---|
+| 0 | 12 | 41.7% | +2.9% |
+| 1 | 5 | 0.0% | −8.0% |
+| 2 | 8 | 62.5% | +25.8% |
+
+**Correction to #6291's own table** (0:n=6/16.7%/−10.0%, 1:n=5/20.0%/−3.9%, 2:n=13/53.8%/+140.8%):
+the corrected methodology samples a different, earlier-instant universe of setups (by design — see
+Fix above), so exact figures differ and the ordering is **no longer cleanly monotonic**: 0-conf
+(+2.9%) now beats 1-conf (−8.0%), where #6291 described "same monotonic direction (0 < 1 < 2)". The
+part of #6291's conclusion that **does** hold up under the corrected, non-contaminated replay: the
+1-confirmation bucket is still the worst of the three, still negative, and still the bucket
+`ZERODTE_CONFLUENCE_MIN`'s 2026-09-08 loosening was justified against ("0.0% EV, not negative") —
+real spread + a realistic entry delay again turn that into measurably negative P&L, same
+conclusion as #6291, now on a methodology that isn't contaminated.
+
+### What this does NOT establish
+
+- Sample sizes remain small (n=4-25 per cut) and span only 3 real session days — a real but thin
+  base, disclosed rather than hidden, same discipline as every sibling tool in this toolkit.
+- This is FLOW-origin only. Real production commits on these same 3 days are dominated by
+  BREAKOUT-origin (29 of 37 committed plays across the 3 sample days, per a direct
+  `/api/market/zerodte/record` check), so this tooling — like its siblings
+  (`zerodte-gate-compound-funnel.mjs`, `zerodte-confluence-floor-outcome-backtest.mjs`, etc.) —
+  measures a real but partial slice of the board's actual activity, not the whole thing.
+- **No gate, threshold, or filter was changed by this fix or this re-run** — per the standing
+  "evidence-gathering only" discipline and the member's explicit "don't weaken risk controls"
+  instruction. The 1-confirmation allowance remains flagged as a re-check candidate (consistent
+  with #6291's own conclusion), not something this entry touches.
+
+### Blast radius
+
+Both affected tools (`zerodte-gate-rejection-trace.mjs`,
+`zerodte-confluence-floor-real-cost-backtest.mjs`) are fixed in place — same files, same CLI
+surface, no behavior change for any OTHER caller. No production code path was touched; this is
+audit tooling only. The new `zerodte-missed-trades-tracker.mjs` has no other consumers yet.
+
+Related: `docs/audit/findings-staging/` README's own discipline (one file per finding, this one's
+own) and the standing "validate on unseen data, don't overfit" instruction this whole investigation
+was run under — the TRAIN/VALIDATION split above is that validation step, not a formality.
+
+## KGC + AEM (gold-mining producers) were clustered into no theme at all — real, live LONG+LONG concentration went unflagged — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`src/lib/portfolio/sector-map.ts`) |
+|---|---|
+
+**Found via:** the standing Night Hawk Swings "Ask Largo" deep-dive mandate — a fresh `GET
+/api/market/swing/play-brief` audit pass across the current committed book, 2026-10-20.
+
+**Live repro.** `GET /api/market/nighthawk/horizons?view=swings`: KGC (positionId 1882) and AEM
+(positionId 1846) were both real, currently-committed `LONG` calls (Banger-origin BREAKOUT, same
+discovery batch) in the SAME book at the same time. Fetching each ticker's own
+`GET /api/market/swing/play-brief` showed neither brief rendered a "Book context" section at all —
+`bookContextSection` (`src/lib/swing/play-brief-intel.ts`) returns `null` whenever
+`checkPortfolioOverlap` finds no overlap, and it found none here because neither ticker appeared
+anywhere in `sector-map.ts`'s `SECTORS` map: both resolved to isolated `NAME:KGC` / `NAME:AEM`
+own-clusters (`theme-cluster.ts`'s `resolveTheme` own-cluster fallback), so `sameThesis("KGC",
+"AEM")` returned `false` even though both positions are driven by the same underlying commodity
+(gold) risk — the identical gap shape as every prior extension to this file (ALAB/CRDO/KLAC,
+quantum-computing, biotech, LABD/IOVA): a real, correlated pair live in the book with zero theme
+linkage between them.
+
+**Root cause.** `sector-map.ts`'s curated `SECTORS` map is a static, hand-extended list seeded
+from whichever tickers happened to be live and committed when each sector bucket was built or
+extended. It had no entry for precious-metals/gold-mining names at all — not a misclassification,
+an outright absence. Confirmed via Polygon reference (`/v3/reference/tickers/<T>`), not guessed
+from the symbol: KGC resolves to "Kinross Gold Corporation" and AEM to "Agnico Eagle Mines Ltd." —
+both large-cap gold-mining producers whose equity price is dominated by spot gold price and
+mine-level production/cost results, not by any sector already listed in the file.
+
+**Fix.** Added a new `"precious-metals": ["KGC", "AEM"]` entry to `SECTORS`. Deliberately
+conservative, same discipline as the crypto-equity/quantum-computing/biotech precedents in this
+file: only the two names actually live in the book at time of fix, not a speculative broader
+miners basket (e.g. NEM, GOLD) with no live partner to demonstrate against in this snapshot.
+
+**Regression test.** `src/lib/swing/theme-cluster.test.ts` — new test asserts
+`resolveTheme("KGC") === "precious-metals"`, `resolveTheme("AEM") === "precious-metals"`,
+`sameThesis("KGC", "AEM") === true`, and that neither falsely merges into an unrelated theme
+(`sameThesis("KGC", "NVDA") === false`, `sameThesis("AEM", "XOM") === false`). RED proven via
+`git stash` on `sector-map.ts` alone (1/27 theme-cluster tests fail — exactly the new assertions,
+`resolveTheme("KGC")` returning `"NAME:KGC"` instead of `"precious-metals"`), GREEN after
+(27/27). `play-brief-intel.test.ts` + `portfolio.test.ts` (285 tests) pass unchanged; `tsc --noEmit`
+clean; `eslint` clean on both touched files.
+
+## 2026-10-20 — [FINDING, P3 Night Hawk 0DTE] Public record now reports realized P&L and max favorable excursion SEPARATELY — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Context.** Member audit directive, point 6 of the original brief: "Prove performance
+honestly... separate realized exits from maximum potential gains." Checked the public
+`/api/market/zerodte/record` route (the multi-day track record surface `buildZeroDteRecord`
+shapes): every per-play object carries `plan_pnl_pct` (mechanical grade) and `managed_pnl_pct`
+(as-managed/realized grade) at the TOP LEVEL — but the position's own tracked peak
+(`entry_context.exit.peak_pnl_pct`, already stamped by the exit engine on every live-managed
+exit) was buried in a nested blob, never promoted to a labeled, top-level field. This is exactly
+the shape of confusion this same audit session traced on a real TSLA 2026-10-19 row: a member or
+Largo reading the headline `managed_pnl_pct: -22.57` has no easy way to also see
+`peak_pnl_pct: 0` ("this position never showed a paper gain before it closed") sitting right next
+to it — both numbers are real, but only one was visible without digging into the raw blob.
+
+### What changed
+
+- `record.ts`: `readManagedExit` now also returns `peak_pnl_pct` (additive — existing callers
+  destructuring `{reason, pnl_pct}` are unaffected). New `extractMaxFavorablePct(entryContext)`:
+  reads the real, already-stamped peak off the SAME live-managed exit object `managedGradeView`
+  reads — never a second, independently-computed peak, so it can never disagree with the engine's
+  own tracking. Returns null (never a fabricated zero) when the row never carried a live-managed
+  exit at all.
+- `ZeroDteRecordPlay` gained a new top-level `max_favorable_pct: number | null` field, populated
+  alongside `managed_pnl_pct` in the row-shaping function — now every play in the public record
+  carries BOTH numbers side by side, clearly separated, never conflated into one.
+
+### Checked for a redundant/competing field before adding this
+
+`src/lib/platform/zerodte-service.ts` (the Largo-facing live-board surface, a DIFFERENT route from
+the public multi-day record) already carries its OWN `peak_pnl_pct` field, computed from the raw
+`entry_premium`/`peak_premium` DB columns via `peakPnlPct()` (marks-math.ts) — a real, already-
+correct, already-wired computation on that surface. Confirmed this is sound and did NOT need a
+duplicate addition there; the gap was specifically on the `/record` route's per-play shape, not on
+the live-board surface.
+
+### Tests
+
+6 new tests in `record.test.ts` (`readManagedExit` carries the new field, non-finite/missing
+degrades to null, `extractMaxFavorablePct` reads the real stamp vs. returns null on absence, and
+two `buildZeroDteRecord` tests confirming the real TSLA shape — `peak_pnl_pct: 0` alongside
+`managed_pnl_pct: -22.57`, both surviving separately — and that a row with no exit stamp reads
+`null`, never a fabricated `0`). RED→GREEN proven (reverted `record.ts` to pre-change, confirmed 6
+failures; restored, confirmed 41/41 pass). `npx tsc --noEmit`: clean across the whole repo (no
+other consumer does a strict/exhaustive shape match against `ZeroDteRecordPlay` that a new
+additive field would break).
+
+### Deliberately not done here
+
+- Did not add an aggregate `avg_max_favorable_pct` alongside the existing `avg_pnl_pct` rollup —
+  a real, separately-scoped follow-up (touches the `rollup`/`rollupCounts` aggregation machinery,
+  not just the per-play shape); left for a future pass if wanted.
+- Did not touch the Largo live-board surface (`zerodte-service.ts`) — already correct, see above.
+
+## 2026-10-20 — [FINDING, P3 Night Hawk 0DTE] Contract selection: Greeks threaded through + shadow quality diagnostic — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (shadow diagnostic only — never gates a commit) |
+|---|---|
+
+**Context.** Member audit directive, point 2 of the original 6-point brief: "Choose the right
+contract. Compare available expirations and strikes using live bid/ask, spread, liquidity, delta,
+gamma, theta, and premium... don't pick cheap contracts just because they could show a huge
+percentage gain." Checked directly: `buildContractPlan` (plan.ts) already uses bid/ask/spread/
+liquidity (G-9/G-21) — but never delta/gamma/theta, even though `OptionSnapshot`
+(providers/options-snapshot.ts) already FETCHES all four for every live quote. The data existed;
+it was discarded before reaching contract selection.
+
+### What changed
+
+- `ContractGreeks` type (plan.ts): the four real greeks, additive/nullable.
+- `evaluateContractGreeksQuality(input)`: pure, SHADOW-ONLY diagnostic (never a gate). Flags
+  `low_delta` (|delta| below `GREEKS_LOW_DELTA_FLOOR=0.15` — a contract too far OTM to carry real
+  directional exposure) and `high_theta_decay` (theta, as a % of the contract's own mark per day,
+  above `GREEKS_HIGH_THETA_DECAY_PCT=15` — "don't pick cheap contracts just because they could show
+  a huge percentage gain": a contract bleeding >15%/day of its own price needs the underlying to
+  move fast just to break even). Both thresholds are STARTING, UNCALIBRATED conventions (same
+  discipline as RVOL's own classification constants) — not derived from this codebase's own
+  outcome data yet.
+- `buildContractPlan` takes an optional `greeks` input and returns `greeks`/`greeks_quality` on
+  the plan — omitted entirely (not null-filled) when the caller has no snapshot, same "absence is
+  not a measured zero" convention as every other conditional field in this file.
+- `scan.ts`: threads `snap.delta/gamma/theta/vega` into `buildContractPlan`'s call, and attaches
+  `s.plan.greeks_quality` additively onto `entry_context.shadow_signals.contract_greeks` at
+  commit — persisted, joinable against the row's own graded outcome, never gating.
+
+### Why shadow-only, not a live gate yet
+
+Per the standing instruction ("test proposed filter changes in shadow mode before changing live
+alerts") and the same discipline this session already applied to RVOL: a brand-new filter
+dimension with uncalibrated thresholds has no business blocking a real commit before real paired
+(reading, outcome) data justifies it. This PR makes that data start accumulating. The natural
+graduation path (documented in the module, same shape as RVOL's own): once a real sample shows
+`low_delta`/`high_theta_decay` setups actually underperform, a SEPARATE, explicitly-reviewed PR
+can promote this to an actual gate.
+
+### Deliberately NOT done here
+
+- Did not change `applyLiquidStrikeFallback`'s strike-selection walk to prefer higher |delta|
+  among liquid candidates — that would be a real (if soft) selection-behavior change, out of scope
+  for a shadow-first pass; a future PR can revisit once this shadow data exists.
+- Did not touch Legacy's `pickChainContract` (deterministic-edition.ts) — a different product
+  (next-day digest), not the live 0DTE board this audit targets.
+
+### Tests
+
+9 new tests in `plan.test.ts` (healthy contract flags neither concern, low-delta flags, short-put
+judged on |delta| not raw sign, high-theta-decay flags, exact-boundary strict-inequality cases,
+missing/non-finite inputs degrade to unmeasured never fabricated, `buildContractPlan` threading
+with/without greeks supplied). RED→GREEN proven (reverted to pre-change `plan.ts`, confirmed 9
+failures; restored, confirmed `plan.test.ts`+`scan.test.ts`+`board.test.ts`+`exit-sync.test.ts`
+241/241 pass). `npx tsc --noEmit`: clean. All runs on the real Node 20 binary.
+
+### CROSS-PR ORDERING NOTE (flagged in-code, per CLAUDE.md's own standing discipline)
+
+A separate, independently authored PR in this same session (RVOL shadow wiring, #6289) ALSO
+writes a `shadow_signals: {...}` spread into the SAME `entry_context` object literal in `scan.ts`.
+Plain object spreads don't deep-merge — if both PRs merge without reconciliation, whichever lands
+second silently overwrites the first's `shadow_signals` key at runtime (no git conflict guaranteed,
+since the two insertions sit at different lines). Flagged in both this finding and an in-code
+comment; whichever of the two PRs merges second must be rebased to combine both spreads into one
+before merging, not merged blind.
+
+## 2026-10-20 — [FINDING, P3 Night Hawk 0DTE] Configurable stops and scaling (env-overridable, defaults unchanged) — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Context.** Member audit directive, point 4 of the original 6-point brief: "Make stops and
+scaling configurable." `PLAN_RULES.stop_pct`/`target_pct` and `TRIM_SCALE_RULES.tranche_fraction`
+were hardcoded `as const` constants — a real engineering gap distinct from "don't change member-
+facing behavior," since the standing instruction asks for the DEFAULT to stay unchanged, not for
+the VALUE to be unconfigurable forever.
+
+### What changed
+
+- `plan.ts`: `PLAN_RULES.stop_pct`/`target_pct` resolve through a new, exported
+  `envOverridePct(envVar, fallback, mustBeNegative)` helper — `ZERODTE_STOP_PCT`/
+  `ZERODTE_TARGET_PCT` override the member-facing hard stop/target when set to a valid value of
+  the correct sign (a stop must be negative, a target must be positive — the helper refuses to
+  silently flip intent on a sign mismatch). Absent/invalid → the exact pre-existing -50/+100
+  default, byte-identical to before this change. Same established convention this file already
+  uses for `ZERODTE_CHASE_PCT`/`ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES`.
+- `strategy-version.ts`: new `resolveTrancheFraction(fallback)` — `ZERODTE_TRIM_TRANCHE_FRACTION`
+  overrides the fraction of the original position banked at each `trim_scale` tranche (default
+  1/3, the E5-measured winner). Bounded to `(0, 1)` exclusive; out-of-range or malformed falls
+  back rather than being clamped (clamping would hide a misconfiguration as if it were intended).
+  Deliberately NOT added to `exit-engine.ts` itself, which documents itself as IO-free/no-env-
+  reads (the pure decision core) — read instead in the resolution layer that already reads
+  `PLAN_RULES` the same dynamic way.
+- The extended-runner (200-400% target) 0.25/0.5 schedule is its OWN deliberate schedule and does
+  NOT read the tranche-fraction override — only the standard path does.
+
+### Why this is safe (the integrity concern checked before shipping)
+
+`buildResolvedExitPolicy`'s `config_hash` fingerprints every exit constant that can move a graded
+outcome specifically so two different strategy versions never silently blend into one calibration
+cohort. Since `PLAN_RULES.stop_pct`/`target_pct` and the resolved tranche fraction are embedded
+directly in the hashed `core` object (not the static source-code literal), an active override
+correctly produces a DIFFERENT hash — two deployments running different overrides will never
+silently share a calibration cohort. Verified directly: a new test confirms `config_hash` changes
+when `ZERODTE_TRIM_TRANCHE_FRACTION` is set and reverts to the baseline once the env var is
+removed. The existing golden-hash drift-guard test (`WS-02 DRIFT-GUARD`) still passes unmodified —
+no env var is set during the normal test run, so the resolved defaults are byte-identical to
+before this change and the committed golden hash does not move.
+
+### Tests
+
+16 new tests across `plan.test.ts` (6, `envOverridePct` behavior + a default-value guard pinning
+-50/+100) and `exit-policy-snapshot.test.ts` (4 for `resolveTrancheFraction` + 2 for
+`buildResolvedExitPolicy`'s override/hash interaction). RED→GREEN proven (reverted both source
+files to pre-change, confirmed 10 real failures; restored, confirmed 126/126 pass across
+plan/exit-policy-snapshot/strategy-version/calibration/terminal-frozen-policy/tier-export tests).
+`npx tsc --noEmit`: clean. All runs on the real Node 20 binary.
+
+### Deliberately NOT done here
+
+- `time_stop_et_minutes` is NOT made configurable — it's a session-structure boundary (cash-close
+  proximity), not a risk-sizing knob, and the adjacent NEW-COMMIT cutoff already has its own
+  override (`ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES`).
+- `TRIM_SCALE_RULES.tranches_by_regime` (the per-regime trigger thresholds: trend [40,80],
+  neutral [20,50], range [15,40]) is NOT made configurable in this pass — a 6-number structured
+  object is riskier to expose as a flat env var than a single bounded fraction; left as a
+  deliberate scoping decision for a future pass if real demand justifies it.
+- No live/production env var was actually set by this change — every default stays exactly as
+  measured (E5 for trim_scale, the long-standing -50/+100 for stop/target).
+
+## 2026-10-20 — [FINDING, P3 Night Hawk 0DTE] RVOL shadow signal wired into a real evaluation path with persisted baseline-vs-candidate records — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Context.** Direct follow-up to `2026-10-19-zerodte-relative-volume-shadow-signal.md` (PR #6287,
+merged). That PR shipped `src/lib/zerodte/relative-volume.ts` — a pure, fully-tested,
+standalone RVOL function — but deliberately left it unwired, imported by nothing in the live
+path. The operator correctly pushed back on treating that as done: *"Wire the RVOL function into
+an actual shadow evaluation path and persist timestamped baseline-versus-candidate results. An
+unused function is a tested component, not an operational shadow system."* This finding is that
+wiring.
+
+**Also addressed in the same pass, per explicit operator feedback on the original module:**
+*"Use historical volume at the same time of day as the RVOL baseline where available. Simply
+prorating daily volume evenly across the session can distort comparisons around the open and
+close."* The original module used FLAT proration only (expected volume = avgDailyVolume ×
+elapsed-fraction), which assumes a constant intraday pace — real volume is U-shaped (heavier at
+the open/close, lighter at midday), so flat proration systematically overstates RVOL at the open/
+close and understates it at midday.
+
+### What changed
+
+**1. `relative-volume.ts` — real time-of-day volume profile, additive.**
+- New `buildTimeOfDayVolumeProfile(dailyMinuteVolumes: number[][])`: pure, averages a ticker's OWN
+  real per-minute volume across >=5 trailing real trading days (`RVOL_PROFILE_MIN_DAYS`), takes the
+  cumulative sum, normalizes — a real measured pace curve, never an assumed shape. Returns null
+  (never fabricated) below the minimum real-day floor.
+- `computeRelativeVolume` gained an optional `timeOfDayProfile` param: when supplied and
+  well-formed, the expected-volume-by-now uses the real profile instead of flat proration; omitted
+  or malformed → falls back to flat proration, byte-identical to the original shipped behavior
+  (verified: the original 11 tests still pass unmodified).
+- New `expected_fraction_source: "time_of_day_profile" | "flat_proration" | null` field on the
+  result so a caller logging both reads side by side can tell which is which.
+- 7 new tests (18 total, up from 11), including a direct demonstration that a real U-shaped pace
+  front-loads more cumulative volume by midday than flat proration assumes, and that an ordinary
+  open-minute volume reads `normal` under the real profile where flat proration would misclassify
+  it `very_high`.
+
+**2. `relative-volume-source.ts` (new) — the wiring layer.** Assembles the REAL inputs
+`computeRelativeVolume` needs (today's cumulative volume, trailing avg daily volume, the
+time-of-day profile) via Polygon, and computes BOTH the baseline (flat proration) and candidate
+(real profile) reads side by side — the literal "log baseline and candidate signals side by side
+before outcomes" instruction. Cost-disciplined for a live cron path (`zerodte-warm`, ~every 5 min):
+the expensive minute-bar profile fetch is cached per ticker per session day (`sharedCacheGetWithTtl`/
+`sharedCacheSet`, ~20h TTL) so it runs via a live fetch at most once per ticker per day, not once
+per scan pass. Every fetch is try/caught; `computeRelativeVolumeShadow` never throws and degrades
+to `null` (no shadow signal that commit) rather than ever blocking or failing a real commit.
+
+A real bug was caught and fixed while building this: the cache helper initially used
+`sharedCacheGet`, whose plain-`null` return cannot be distinguished from a true cache miss — so a
+confirmed "no profile for this ticker today" verdict was silently NEVER actually cached, defeating
+the whole point of caching it. Caught by a test asserting the profile fetch only runs once per
+ticker per day; fixed by switching to `sharedCacheGetWithTtl`, whose wrapped `{value, ttl}` shape
+makes a cached `null` distinguishable from a miss.
+
+**3. `scan.ts` — the actual live wiring.** `persistZeroDteScan` now computes the shadow read for
+every FRESHLY-committed setup (never `refresh` — avoids a repeated real Polygon fetch on every
+5-minute refresh tick for an already-open position; the upsert's own COALESCE pin would discard a
+refresh-lane recomputation anyway) and attaches it additively onto
+`entry_context.shadow_signals.relative_volume`, in the exact same `...(x ? {...} : {})` idiom this
+ledger already uses for `thesis_first`/`why_now`. `Promise.allSettled` wraps the batch as a second,
+redundant safety net on top of `computeRelativeVolumeShadow`'s own try/catch, so one slow/hung
+ticker's fetch can never block or fail the whole commit batch. **Still does not gate, score, or
+alter entry/exit/stop/target in any way** — this is a diagnostic attachment only, exactly the
+"keep member-facing behavior and existing hard stops unchanged" instruction.
+
+### Evidence
+
+- `relative-volume.test.ts`: 18/18 pass. RED→GREEN proven (reverted to the pre-change file,
+  confirmed 7 new assertions fail; restored, confirmed 18/18 pass).
+- `relative-volume-source.test.ts` (new, 4 tests): real behavioral tests mocking the Polygon fetch
+  layer and shared cache per this repo's `mock.module` convention — assembles a real read end to
+  end, confirms the cache prevents a second profile fetch, confirms a daily-bars or minute-bars
+  fetch failure degrades to `null` rather than throwing or fabricating.
+- `scan.test.ts`: 46/46 pass (unchanged) — the wiring is additive-only and does not alter any
+  existing assertion about `entry_context`'s shape.
+- `npx tsc --noEmit`: clean.
+- All test runs executed on the REAL Node 20 binary (`/opt/node20/bin/node` — this sandbox's
+  default `node` silently resolves to v22, which this repo's own environment notes document as
+  producing phantom failures/missing real ones; re-verified on the correct binary after catching
+  that mismatch mid-session).
+
+### What this is NOT
+
+Still not registered as a cortex source, discovery gate input, or scoring factor of any kind — the
+module's own header (unchanged) still names that as a SEPARATE, explicitly-reviewed future PR, to
+be opened only once real paired (reading, outcome) data justifies it. This PR makes that real data
+start accumulating (`entry_context.shadow_signals.relative_volume.{baseline,candidate}`, joinable
+against the same row's own `entry_context.exit`/graded outcome via the existing `/record` API) —
+it does not act on it yet.
+
+### Remaining / explicitly not done here
+
+- The RVOL classification thresholds (`RVOL_VERY_HIGH`/`RVOL_HIGH`/`RVOL_LOW`) remain the
+  originally-shipped, uncalibrated starting points — calibrating them against real outcomes is the
+  explicit next step once enough shadow rows accumulate, not this PR's job.
+- `AVG_DAILY_VOLUME_LOOKBACK_CALENDAR_DAYS`/`PROFILE_LOOKBACK_CALENDAR_DAYS` are reasonable,
+  bounded starting windows (30 and 12 calendar days respectively) — not backtested against
+  alternatives.
+- No live CloudWatch/cron-invocation access this sandbox session to directly measure the real
+  added latency this wiring contributes to a live `zerodte-warm` pass; the design (cached profile,
+  Promise.allSettled, try/catch-everywhere, fresh-commits-only) bounds the WORST case but the
+  actual production number is unmeasured here.
+
+## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] Point-in-time gate-rejection trace + real-cost confluence backtest
+
+> **kind:** `FINDING`
+
+| **Status** | MEASURED (no gate/threshold changed — evidence only, per standing discipline) |
+|---|---|
+
+**Context.** Member audit directive: "show which filters rejected each setup and when, replay
+the session using only information available at each alert time, and compare current rules
+against proposed changes including losing setups, missed trades, spreads, and realistic entry
+delays." Two gaps in the existing toolkit made this not yet answerable directly:
+
+1. `zerodte-gate-compound-funnel.mjs` evaluates every setup against ONE shared "now" snapshot
+   (one VIX read, one SPY bias, fetched once at script start) — correct for "what would the board
+   show right now," but not a true point-in-time replay: a setup whose flow print landed 40
+   minutes before the run started would be evaluated against 40-minutes-newer data than it could
+   have seen.
+2. `zerodte-confluence-floor-outcome-backtest.mjs` grades on a favorable-first UNDERLYING-
+   continuation proxy, explicitly disclosed as "not exact option premium P&L" — no real spread,
+   no realistic entry delay.
+
+### New tool 1: `scripts/audit/zerodte-gate-rejection-trace.mjs`
+
+For each setup, re-fetches SPY + its own minute bars TRUNCATED to that setup's own decision
+instant (its last qualifying flow print's `alerted_at`), then runs the real `evaluateZeroDteGates`
+with `nowMs` pinned to that same instant — every verdict is one the board could actually have
+reached at that moment, never with foresight.
+
+**Cannot reconstruct a specific prior run's exact population** (e.g. "those 26 setups" from an
+earlier measurement) — raw historical UW flow for an arbitrary past date, replayed against the
+exact code as it existed that day, isn't reachable from this sandbox. This tool is the reusable
+replacement: re-run it whenever a fresh point-in-time trace is needed.
+
+**First live run** (2026-10-19, 3-day window, 18 setups, real data): **0/18 cleared every gate at
+their own decision instant.** Per-setup detail (ticker, direction, score, exact decision time,
+every blocking code) is in the script's own stdout — not reproduced here since the point is the
+tool, not one run's numbers. New observation this run surfaced: `vix_elevated` fired on 18/18 of
+these — checked against the real VIX day-open for that date (18.37) against `VIX_ELEVATED_
+THRESHOLD=17` and `VIX_ELEVATED_SCORE_FLOOR=75` (gates.ts): this is CORRECT, evidence-backed gate
+behavior (the code's own comment cites "17-20 regime ran 25% WR vs 69% at 15-17"), not a bug — but
+it means a VIX regime most traders would not call "elevated" (18.37, nowhere near a volatility
+spike) already imposes a 75-score floor that none of these real setups (max score 65) could clear.
+Worth flagging as the single most consequential, already-justified gate in this sample, not a new
+problem to fix.
+
+### New tool 2: `scripts/audit/zerodte-confluence-floor-real-cost-backtest.mjs`
+
+Answers the SAME confirmation-count question the existing proxy backtest asks, but with REAL
+option premium, REAL bid/ask spread paid on both entry and exit, and a REALISTIC entry delay
+(default 90s — a disclosed, fixed stand-in for real reaction time, not a measured distribution).
+Resolves each setup's real contract (ticker/strike/expiry it already carries), fetches the real
+NBBO at (decision instant + delay) for entry (paying the real ask long / real bid short), walks
+real minute bars applying the real -50%/+100% stop/target, and on a non-touch exit re-fetches the
+real NBBO and exits at the real bid/ask (paying the spread again).
+
+**First live run** (2026-10-20, 10-day window, 24/25 gradeable, real data):
+
+| Confirmations | n | Win rate | Mean P&L |
+|---|---|---|---|
+| 0 | 6 | 16.7% | -10.0% |
+| 1 | 5 | 20.0% | -3.9% |
+| 2 | 13 | 53.8% | **+140.8%** (see caveat) |
+
+**Caveat, disclosed rather than silently accepted**: the 2-confirmation mean is dominated by one
+degenerate outlier (EWY, entry $0.01 → exit $0.19, a +1800% print off a penny-priced, almost
+certainly illiquid/unreliable quote). Excluding it: 2-confirmation mean P&L is **~+2.5%** over
+n=12 — still the best of the three tiers, same monotonic DIRECTION as the original E3 proxy
+backtest (0 < 1 < 2), but the magnitude is far smaller once real costs are included.
+
+**What this changes vs. the proxy version**: E3's original (favorable-first proxy, no costs) found
+0-conf -12.5%, 1-conf 0.0% (flat), 2-conf +15.9%. This real-cost version finds 1-conf clearly
+**NEGATIVE** (-3.9%), not flat — undermining gates.ts's own stated rationale for the 2026-09-08
+loosening ("the 1-conf bucket measured 0.0% EV (not negative)... trades some expected edge for
+volume deliberately"). Real spread + a realistic entry delay turn "flat, so an acceptable volume
+trade" into "measurably negative" in this sample.
+
+**No gate changed on this evidence** — n=5-13 per tier is small, one tier's mean is outlier-
+dominated, and this is one 10-day window. This argues the 1-confirmation allowance deserves a
+larger, dedicated re-check (same discipline as every other threshold question in this toolkit:
+re-run as the population grows before touching `ZERODTE_CONFLUENCE_MIN`), not an immediate revert
+— but it is the first REAL-cost evidence that the stated "flat, not negative" justification for
+that setting may not hold once spread and delay are priced in.
+
+### Explicitly not done here
+
+- Did not build a similarly real-cost version of the `score_floor` or `vix_elevated` questions —
+  those already have dedicated evidence (score_floor: INVERTED, already argues against loosening;
+  vix_elevated: evidence-backed per the code's own cited backtest) and were not the open question
+  this pass targeted.
+- `ENTRY_DELAY_SEC=90` and `HOLD_MINUTES=90` are single fixed assumptions, not measured/calibrated
+  figures — printed every run so they're never mistaken for validated constants.
+- Stop/target touch detection is bar-close-based for the walk-forward leg (coarser than tick-by-
+  tick) — disclosed in the script header.
+
+## ZERODTE entry-premium achievability ceiling left a 20-49% dislocation dead zone — real TSLA/SPXW 0DTE "losses" were graded off an unachievable ledger basis — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P1 — corrupts realized win/loss grading and member-facing trade-management math on real 0DTE commits |
+| **Area** | `src/lib/zerodte/plan.ts` — `resolveLedgerEntryPremium` (achievability ceiling) |
+
+### Trigger
+
+Member-driven audit: the operator shared a third-party "Swift" 0DTE trade recap as a
+benchmark and asked for the BlackOut 0DTE board to be audited end-to-end against it,
+explicitly instructing: *"Before concluding TSLA was an exit failure, reconstruct our
+exact option contract's price path, spread, and drawdown... Calling the entry correctly
+timed without comparing the actual contract and entry conditions"* needs reconciling, not
+assuming. This finding is the result of doing that reconstruction with real data.
+
+### Root cause
+
+`resolveLedgerEntryPremium` (plan.ts) persists the premium every subsequent win/loss grade,
+stop/target level, and trade-management percentage is computed against. It has an
+"achievability ceiling" that caps the recorded entry basis DOWN to the live mark when a flow
+fill is dislocated far enough above the real market to be unachievable — but the ceiling only
+fired at dislocations >= 50% (originally tied to `STOP_TRIGGER_PCT = |PLAN_RULES.stop_pct|`,
+on the premise that only a dislocation large enough to *already* blow through the hard stop
+mattered). That premise is false: a dislocation well under 50% still corrupts every
+percentage-based exit/grade computed off it, because those are relative to the (possibly
+wrong) entry — the hard stop doesn't need to fire independently for the basis itself to
+already be fiction.
+
+### Evidence
+
+**TSLA, 2026-10-19, O:TSLA261019C00365000** (committed 14:21:16.277Z, 10:21 ET):
+- Ledger `entry_premium`: **3.50** (persisted, confirmed via `/api/admin/zerodte/tier-export`).
+- Real Polygon NBBO at the exact commit instant: **bid 2.28 / ask 2.30** — a tight, liquid
+  2-cent spread, not stale or thin.
+- Real contract minute bars, 9:30 ET open through the commit instant: max high **2.48** — the
+  contract never traded anywhere near 3.50 in the entire pre-commit window. It only reached
+  that level ~43 minutes later (15:04 UTC, high 3.51).
+- Dislocation: **34.6%** below the old 50% ceiling trigger — never corrected.
+- Real exit: `thesis_break:gex-walls` at mark **2.71** (14:29:23Z), graded **-22.57%** off the
+  inflated 3.50 basis. Off the REAL 2.29-ish entry, the SAME real exit mark (2.71) is
+  **+18.3%, a win**, not a loss. The exit logic itself (a real gex-walls thesis-break veto)
+  behaved exactly as designed; the only defect is the entry basis.
+- The underlying (TSLA stock) RTH-only move that session was **+2.96%** (357.50 → 368.09) —
+  a prior "+3.27%" figure mixed extended-hours bars into an RTH-only narrative and should be
+  disregarded in favor of this RTH-filtered number.
+- `peak_pnl_pct: 0` ("unrealized flat") and the `-22.57%` exit are NOT contradictory — both
+  are computed off the same inflated 3.50 basis, which was itself the highest price the
+  position's own tracking ever recorded (nothing beat an already-fictional anchor).
+
+**32-row probe** (`scripts/audit/zerodte-entry-dislocation-probe.mjs`, every real same-day-
+expiry 0DTE commit over the trailing 14 sessions, real NBBO at each exact commit instant):
+
+| Ticker | Date | Entry | Real mid | Dislocation | Outcome |
+|---|---|---|---|---|---|
+| TSLA | 2026-10-19 | 3.50 | 2.29 | **34.6%** | stopped -50% |
+| SPXW | 2026-10-13 | 11.20 | 7.05 | **37.1%** | stopped -50.45% |
+| TSLA | 2026-10-09 | 2.37 | 1.58 | **33.5%** | stopped -49.79% |
+| HIMS | 2026-10-09 | 0.14 | 0.12 | 14.3% | doubled +100% |
+| ...29 other rows | | | | all <15% | mixed (clean) |
+
+All 3 rows with dislocation >=30% graded a hard "stopped near -50%" exit computed off the
+inflated basis. All 29 other rows measured under 15% dislocation (ordinary bid/ask noise) and
+graded normally. The 20-point gap between the worst clean case (14.3%) and the best-separated
+bad case (33.5%) is real, measured separation, not a guessed cutoff.
+
+Checked for the mechanism directly: for SPXW 2026-10-13 (mark 5.55, stop 5.60, reason
+`plan_stop`) and TSLA 2026-10-09 (mark 1.19, stop 1.19, reason `plan_stop`), the stop PRICE
+LEVEL itself is computed off the inflated entry (`entry_max * (1 + stop_pct/100)`) — so these
+two didn't just grade wrong after the fact, the hard-stop trigger fired at a dollar level that
+never corresponded to a real 50% drawdown from an achievable entry.
+
+### Fix
+
+Lowered the achievability ceiling's trigger from the stop-coupled 50% to a standalone,
+measured `ACHIEVABILITY_CEILING_PCT = 20` (plan.ts). Lowering the threshold strictly expands
+coverage — every case the old 50%/55% thresholds already corrected is still corrected (50 and
+55 are both >= 20); only the newly-measured 20-49% dead zone changes behavior. The
+member-facing `entry_max`/stop/target instructions shown at flag time are unchanged (this
+function only ever touched the ledger's internal grading basis, same as the existing floor);
+the hard stop PERCENTAGE (-50%) is unchanged — only the basis it's computed from is corrected
+when demonstrably unachievable.
+
+### Blast radius
+
+`resolveLedgerEntryPremium` has one call site family in `scan.ts` (directional commit +
+CONDOR net-credit path) and is also referenced by `exit-sync.ts`'s own ratchet/trim-tranche
+documentation (same achievability boundary, not a second implementation) — no other file
+duplicates this logic.
+
+### Tests
+
+`src/lib/zerodte/board.test.ts` — extended the existing achievability-ceiling test with the
+new 20%-boundary cases (RED→GREEN proven: new assertions failed against the old 50%-threshold
+code, pass against the fix) and added a dedicated regression test reproducing the real TSLA
+34.6% shape. Full suite + `tsc --noEmit` clean.
+
+### Remaining / explicitly not done here
+
+- n=32 over 14 sessions is a real but limited sample for the exact 20% cutoff — re-run
+  `zerodte-entry-dislocation-probe.mjs` as more sessions accumulate, same discipline as every
+  other threshold in this codebase that started from a live finding.
+- SPY's 2026-10-19 short (-17.61%, thesis_break:gex-walls) was independently checked and is
+  CLEAN (-0.5% dislocation, a real loss, not an artifact of this bug).
+- The "did the system miss a subsequent bullish SPY setup" question was checked against real
+  price action: SPY drifted +0.4% to a session high ~90 minutes after the short's exit, then
+  faded back to flat/slightly negative by close — not a clear missed high-conviction move.
+- Real scan-pass cadence (distinct `first_flagged_at` clusters per session) ranges from ~20s
+  to ~160 minutes between commits across the 14-session sample — this measures time between
+  successful, gate-clearing COMMITS, not the underlying ~5-minute scan loop's own polling
+  interval (which this sandbox cannot verify directly — no CloudWatch/AWS access this
+  session). A long gap is consistent with a 5-minute scanner finding nothing gate-clearing for
+  many consecutive passes (matches the separately-documented near-zero joint gate-pass rate in
+  `docs/audit/INTENTIONAL-DESIGN.md`), not necessarily with the scanner itself stalling — this
+  distinction needs real cron-invocation logs to resolve, which is a genuine data gap.
+
+## 2026-10-19 — [FINDING, P3 Night Hawk 0DTE] No relative-volume signal in live discovery — scoped shadow-mode implementation added, not yet wired in — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (shadow module added; live wiring deliberately deferred — see below) |
+|---|---|
+
+**Context.** Operator audit request (chat session, 2026-10-19): compare the live 0DTE engine
+against a third-party Discord "daily recap" claiming a 92.9% win rate on QQQ/SPX/SPY/MU/NVDA/TSLA/
+AMZN 0DTE calls, and improve the engine's ability to catch strong setups early. Full audit covered
+six requirement areas (discovery, contract selection, trigger clarity, live management, quality-
+over-quantity, honest performance reporting); this finding covers one concrete, real gap found in
+area 1 ("find the setup early").
+
+**What's missing.** Checked directly (grep + read, not inferred): `src/lib/zerodte/intraday.ts`
+computes VWAP, opening-range break, and 5-minute trend from real minute bars; `scan.ts`/
+`breakout-source.ts` screen the whole market by gain %, $-volume, and close-strength. Nothing
+anywhere in the live discovery pipeline compares a name's OWN volume today to its OWN normal pace
+— i.e. "is THIS stock trading unusually heavy for itself right now," a distinct signal from
+BREAKOUT's absolute $-volume screen (which favors already-large-cap/high-liquidity names
+regardless of whether today is unusual for them specifically).
+
+**Fix — deliberately scoped as shadow-only, not wired into any live path.** Added
+`src/lib/zerodte/relative-volume.ts`: a pure `computeRelativeVolume()` function implementing the
+standard RVOL formula (cumulative volume-to-date ÷ (trailing average daily volume × fraction of
+RTH session elapsed), time-of-day-prorated so the same raw volume doesn't read as "quiet" at 9:35
+and "heavy" at 15:55). Classification thresholds (`RVOL_VERY_HIGH`/`RVOL_HIGH`/`RVOL_LOW`) are
+named constants, explicitly documented as **initial and uncalibrated** — starting points from
+common retail-scanner convention, not derived from this codebase's own outcome data.
+
+**Why this is NOT wired into `compose.ts`'s cortex scoring or any discovery/gate path.** The live
+0DTE board commits real capital; CLAUDE.md's own standing discipline treats any ambiguous or
+live-trading-path change as "report with evidence, hold," not "ship unilaterally." A brand-new
+signal's thresholds have zero real-outcome validation yet — wiring it into active scoring before
+that validation exists would be shipping an unvalidated change straight into the commit path. This
+module is therefore intentionally standalone: it imports nothing from, and is imported by nothing
+in, the live board/scan/cortex/commit pipeline. It is provably zero-behavior-change dead code until
+a deliberate follow-up PR wires it in — the intended path (documented in the module's own header
+comment): attach the read additively and non-gating onto `entry_context.shadow_signals` on every
+scanned setup (same idiom `thesis_first`/`why_now` already use for diagnostic-only fields), let it
+accumulate real paired (reading, eventual outcome) data across real sessions, then open a SEPARATE
+PR to register it as an actual cortex source only once a real sample justifies specific thresholds.
+
+**Evidence.** `src/lib/zerodte/relative-volume.test.ts`, 11 tests covering: pre-open/post-close/
+too-early nulls, exact-pace→ratio≈1.0, classification boundaries at each threshold, non-finite/
+negative-input guards (never fabricates a ratio), zero-volume-so-far as a real low reading (not an
+absence), and purity/determinism. **RED→GREEN proven directly**: temporarily stubbed
+`computeRelativeVolume` to always return nulls → 5/11 tests correctly failed (the ones asserting a
+real nonzero ratio/classification; the pure-null-case tests correctly still passed, proving they
+weren't false positives) → restored the real implementation → 11/11 pass.
+
+- `node --import tsx --experimental-test-module-mocks --test src/lib/zerodte/relative-volume.test.ts`
+  (Node 20, `/opt/node20/bin/node` v20.20.2): **11/11 pass**.
+- `npx tsc --noEmit`: clean, no new errors.
+- Two new files only (`relative-volume.ts`, `relative-volume.test.ts`); zero existing files touched.
+
+**Blast radius.** None on any live path — this PR cannot change any member-facing behavior, since
+nothing imports the new module. Blast radius is entirely future: whatever PR eventually wires it in
+inherits the scope/review discipline that wiring deserves, separately from this one.
+
+**Fix rationale.** Considered wiring it directly into `compose.ts` as a new cortex source (the
+established pattern — see `opening-harvest.ts`) to move faster. Rejected: that immediately changes
+real commit scoring with zero outcome validation behind the new signal, which is exactly the kind
+of live-trading-path risk this repo's own standing discipline exists to prevent. Shipping the pure,
+tested, unwired module first — then validating via shadow observation before ever gating anything
+on it — is the smaller, safer, more honest first step.
+
+## 2026-10-19 — [FINDING, P1 Night Hawk Legacy] Same-day recap-only funnel collapse never retries — confirmed recurring twice in a row, member board empty for an entire day — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Severity:** P1 — member-facing. A recap-only Legacy edition (zero plays) serves every Night Hawk
+Legacy member an empty board for the entire trading day it covers, and this is now **confirmed to
+have happened twice in a row** on consecutive build nights with the identical failure signature.
+
+**What's wrong.** `buildEveningEdition` (`src/features/nighthawk/lib/edition-builder.ts`) collapses
+to a `recap_only` publish when the dossier stage returns zero scored dossiers even though discovery
+found real candidates (`stage_dossiers zeroed` — every ticker's dossier fetch failed, almost always
+a transient UW rate-limiter queue-congestion spike during the ~5:30pm ET build window, per the
+already-documented 2026-10-16 incident in `docs/audit/MARKET-OPEN-VALIDATION.md`). Once that
+recap-only row publishes, **nothing inside the same evening's edition window ever retries it**:
+
+- `shouldRebuildStalePublishedEdition` (`edition-stale.ts`) only rebuilds a published row whose
+  `published_at` predates TODAY's window (i.e. it fixes cross-day staleness after the window rolls
+  over the next evening) — once today's own window has already produced a published row, this
+  check is false for the rest of the night.
+- The weekday cron (`src/app/api/cron/nighthawk-edition/route.ts`) re-dispatches `buildEveningEdition`
+  on every tick inside the 120-minute catch-up window, but `buildEveningEdition` itself just returns
+  the existing published result (`resumed: true`) without re-running anything once `job.status ===
+  "published"` — confirmed in code and by the prior incident write-up ("the weekday-only cron fired
+  4 more times that evening and each just confirmed the already-published empty row").
+- The next *natural* rebuild only happens for the FOLLOWING day's edition — so a transient
+  congestion spike that starves one night's dossier stage leaves that entire night's board empty,
+  with no automatic recovery path at all.
+
+**Evidence this is real and recurring, not a one-off.** `docs/audit/MARKET-OPEN-VALIDATION.md`
+already documents the first live instance: the 2026-10-16 21:30-21:42 UTC build published
+`edition_for:"2026-10-19"` recap-only with `funnel:{candidates:20,ranked:0,dossiers:0,...}` — all
+20 real candidates (CRGY, AI, SNDQ, TRV, OVV, RPGL, KMI, FANG, PR, EOG, TRGP, EQT, USO, LNG, ALL,
+NOC, COP, RTX, APA, EXE) hit the dossier fetch's 45s wall timeout, confirmed via CloudWatch. That
+edition was never remediated (the write-up explicitly held off on an ad hoc admin-API write without
+operator sign-off) and served an empty board the entire Monday 2026-10-19 session. **Fetched fresh
+during this cycle (2026-10-19 22:11 UTC):** the VERY NEXT build (2026-10-19 21:41:46 UTC, publishing
+`edition_for:"2026-10-20"`) hit the **identical shape** — `recap_only_reason:"No scored dossiers
+after staging (20 candidate(s))."`, `funnel:{candidates:20,ranked:0,dossiers:0,synthesized:0,
+critic_passed:0,published:0}`. A sibling Night Hawk Legacy audit lane independently caught the same
+recurrence the same evening (`docs/audit/nighthawk-legacy-live-journal.json`, key
+`legacyStarvedFunnelRecurrence_2026_10_19T2151Z`) via its own healthcheck (PR #6259, 2026-10-18,
+taught the healthcheck to distinguish this starved shape from an honestly-quiet market) and
+correctly reported-and-held on the ROOT CAUSE question (why dossier fetch returns null for every
+single candidate — blocked on CloudWatch/replay-harness access this cycle) since that is a
+live-picks-logic-adjacent diagnostic question, not a mechanical fix. **This finding and fix are
+scoped narrowly to the retry-gap itself** (an operational resilience fix, not a change to any
+scoring/discovery/gate decision) and are complementary to, not a substitute for, that still-open
+root-cause dig.
+
+**Fix.** Added `shouldRetryRecapOnlyEdition` (`edition-stale.ts`) and wired it into
+`buildEveningEdition`'s existing "already published" branch, right alongside the pre-existing
+`shouldRebuildStalePublishedEdition` cross-day check. It fires — reusing the exact same
+archive-staging + job-reset code path the cross-day rebuild already uses, so no new reset logic —
+only when ALL of:
+- still inside today's edition window,
+- the published row is `recap_only`,
+- it carries real candidates (`funnel.candidates > 0`),
+- `funnel.dossiers === 0` specifically (the proven total-collapse-at-staging shape — deliberately
+  narrower than "any recap-only with candidates," so a recap-only caused by publish gates correctly
+  blocking real scored plays, e.g. `publishGateBlockedRecapReason` where `dossiers`/`synthesized`/
+  `critic_passed` are non-zero, is never re-run hoping for a different gate answer), and
+- a cooldown (default 45 min, env-overridable via `NIGHTHAWK_RECAP_RETRY_COOLDOWN_MIN`) has elapsed
+  since publish — comfortably longer than the ~7.6-minute UW queue-depth spike window measured for
+  the 2026-10-16 incident, giving transient congestion time to clear before retrying.
+
+**Why this shape and not an alternative.** Considered re-triggering immediately on detection instead
+of waiting for a cooldown — rejected, because an immediate retry during the SAME congestion window
+that caused the first failure would likely fail identically and adds load to an already-saturated
+UW rate limiter. Considered firing the retry from a brand-new scheduled job (a genuinely separate
+"a few hours later" retry, closer to the enhancement sketched in `MARKET-OPEN-VALIDATION.md`) —
+rejected as unnecessary infrastructure: the existing weekday cron already re-dispatches
+`buildEveningEdition` every ~15 minutes for the full 120-minute catch-up window, so gating on a
+cooldown inside the already-existing dispatch is sufficient and adds no new moving parts. The retry
+is self-rate-limiting: if it also collapses to recap-only, `published_at` re-stamps to the retry's
+own publish time, so the next retry needs the full cooldown to elapse again — bounding this to
+roughly one extra attempt per cooldown window, never a tight retry loop hammering a congested
+upstream. Member-facing risk is near zero: `archiveAndClearNighthawkStaging` only clears the
+internal scoring-scratch table, never the already-published `nighthawk_editions` row, so members
+keep seeing the existing (even if empty) board throughout the retry; a retry that succeeds replaces
+it with real plays, and a retry that fails again leaves the member experience unchanged from today.
+
+**What this does NOT fix** (explicitly out of scope, left for the still-open root-cause dig): WHY
+every single candidate's dossier fetch fails on these nights. The leading theory (UW rate-limiter
+queue congestion during the 5:30pm ET build window, same shared-limiter contention class documented
+elsewhere in this repo) is plausible and consistent with the all-or-nothing failure shape, but is
+unconfirmed for the second (2026-10-19) instance specifically — no AWS/CloudWatch access this
+cycle. **TONIGHT's 2026-10-20 edition is still live-broken as of this writing** (not retried yet —
+the fix ships via the normal branch → PR → merge pipeline and only takes effect on a future deploy,
+plus production deploys are independently stuck — see the ongoing `ecr-push-production.yml` ECS
+capacity deadlock tracked on PR #4076). An ad hoc admin rebuild of tonight's specific edition
+(`POST /api/admin/nighthawk/run?asOfEt=2026-10-19&persist=1`) remains a live-production write this
+session is not executing unilaterally, consistent with the prior session's same call on the first
+instance — raised again on PR #4076 for visibility.
+
+**Tests.** 7 new unit tests in `edition-stale.test.ts` for `shouldRetryRecapOnlyEdition` (fires after
+cooldown on a dossier-stage collapse; withholds before cooldown; never fires on a normal full
+edition; never fires when publish gates blocked real scored plays; never fires with zero
+candidates; never fires outside the edition window; never fires with a missing/corrupt
+`published_at`). RED→GREEN proven via `git stash` on the implementation file alone (7/7 new
+assertions fail with `shouldRetryRecapOnlyEdition is not a function` before the fix, 18/18 pass
+after). Full `npm test` run clean (see PR).
+
+**Files:** `src/features/nighthawk/lib/edition-stale.ts`, `src/features/nighthawk/lib/edition-stale.test.ts`,
+`src/features/nighthawk/lib/edition-builder.ts`.
+
+## 2026-10-19 — [FINDING, P3 Largo/Swing] Swing play-brief top-level failure paths returned bare `{available:false}` with no reason — Largo C3 gap — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Severity:** P3 — never corrupts data, but confirmed live on real traffic: a caller (or Largo
+itself) reading one of these failure paths cannot tell a transient provider hiccup (retry) from a
+ticker that genuinely has no brief (don't retry) from an actual bug — the exact ambiguity
+`docs/audit/LARGO-PRODUCT-CONTRACT.md`'s C3 section calls a defect "even when every test passes."
+
+**What's wrong.** `src/lib/largo/contract/product-read.ts` already defines `Unavailable =
+{reason, what_is_missing, retryable}` for exactly this purpose, and the per-section
+`unavailableSources` mechanism inside `composeSwingPlayBrief` already uses it correctly throughout
+the brief. But every TOP-LEVEL "the whole brief is unavailable" path — in both files that can
+return one — skipped it and returned a bare shape instead:
+
+- `src/app/api/market/swing/play-brief/route.ts` (the Command Deck UI route): the 404 "play not
+  found" (line 55), the 503 when `adaptSwingBriefToLargo`'s `largoRead.ok` is false (line 72), and
+  the catch-all 503 on any uncaught exception (line 101).
+- `src/lib/largo/swing-play-brief-read.ts` (the actual Largo-chat-facing tool wrapper,
+  `swingPlayBriefForLargo`): `ticker_required`, `play_not_found`, and the thrown-error catch.
+
+**Live confirmation:** 2 of 6 sampled production fetches (`GET
+/api/market/swing/play-brief?...`, NVDA and SLV, 2026-10-19) returned HTTP 503 with body exactly
+`{"available": false, "degraded": true}` — no `reason`, no `what_is_missing`, no `retryable`.
+
+**Fix.** Each failure path now carries an additive `unavailable: {reason, what_is_missing,
+retryable}` field alongside its existing `available`/`error` fields (never replacing them, per the
+contract's own ADDITIVE principle):
+- `ticker_required` / "play not found" — `retryable: false` (an empty ticker or a genuinely
+  nonexistent position isn't fixed by asking again).
+- `play_not_found` in the Largo tool wrapper — same, `retryable: false`, reason includes the
+  ticker.
+- The route's `largoRead.ok === false` branch forwards `largoRead.unavailable` verbatim — it's
+  already a `ProductRead<T>` with the full `Unavailable` shape attached, previously discarded.
+- Every catch-all (uncaught exception in either file) — `retryable: true`, since an unhandled
+  error is exactly the ambiguous "transient or a real bug" case the type exists to flag, and
+  neither layer can distinguish the two any better than the caller.
+
+**Evidence.** `src/lib/largo/swing-play-brief-read.test.ts`'s three existing failure-path tests
+extended with `unavailable` assertions; RED proof via `git stash` on both source files (3/4 fail —
+exactly the three new assertions, the pre-existing `available:false`/`error` checks still pass
+since those fields are untouched) → GREEN (4/4) post-fix. `npx tsc --noEmit -p .` clean.
+`play-brief-adapter.test.ts` + `contract/product-read.test.ts` (15 tests total across the touched
+files' direct dependents) pass unchanged.
+
+Found via this session's standing Ask Largo deep-dive mandate, independently adversarially
+verified (3/3 verification votes confirmed) before fixing.
+
+## 2026-10-19 — [FINDING, P3 Largo/Swing] Watch-levels "Entry trigger" bullet claimed a live, still-forming play's trigger "no longer fires the setup" — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Severity:** P3 — member-facing narrative self-contradiction on the live Ask Largo swing
+play-brief, not a data-correctness or gating bug (the real entry/commit logic was never affected,
+only the prose describing it).
+
+**What's wrong.** `entryTriggerDeadReason()` (`src/lib/swing/play-brief-intel.ts`) decides whether
+the Watch-levels "Entry trigger" bullet should say a trigger level "no longer fires the setup." It
+was driven entirely by `gateFramingMootReason()` (`src/lib/swing/entry-enterability.ts`), which
+returns non-null for **seven** distinct cases: the 4 genuinely-dead ones from `deadPlayReason`
+(INVALIDATED / entry-window-expired / contract-expired / EXTENDED-chase) **plus three more** added
+in a 2026-10-18 widening — `setupState === "FORMING"`, `aboveFloor === false`, and a
+legacy-exempt-only `gateBlocks` case. That function's own doc comment is explicit that the three
+added cases mean the play "is very much still live, just not yet enterable" — the opposite of
+"no longer fires" — but `entryTriggerDeadReason` appended the same "— this level no longer fires
+the setup" tail to every non-null case alike, dead or not.
+
+**Live repro** (production, `GET /api/market/swing/play-brief`, EWY:COMMIT, 2026-10-19): the
+**Entry** section correctly states *"Entry window closes 2026-10-21 09:15 ET (2 days left) — stale
+after that, wait for a fresh setup"* — the window is open. Two sections later, **Watch levels**
+rendered, for the identical price level: *"Entry trigger: **155.32** — Break/reclaim below, but
+thesis still forming — not yet at trigger — this level no longer fires the setup."* The same brief
+asserts the window is open and that the trigger is permanently dead, about the same play, in the
+same response.
+
+**Root cause.** The 2026-10-18 widening of `gateFramingMootReason` was a real, correct fix for a
+different bug (a below-floor TRIGGERED/AT_TRIGGER play's Verdict section said the real blocker was
+the score floor while the Entry-trigger bullet claimed an unqualified "this is what actually fires
+the setup" — live repro TSM). That fix was shared across three call sites
+(`watchEntrySection`/`watchGateCoaching`/`entryTriggerDeadReason`) without noticing that the other
+two call sites only ever render the gate-moot *reason text* itself, while `entryTriggerDeadReason`
+additionally tacks on a *permanence claim* ("no longer fires") that is only true for the original
+4 dead cases, never for the 3 added "still live, not yet enterable" ones.
+
+**Fix.** `entryTriggerDeadReason` now separately computes `deadPlayReason(play) != null`
+(`isGenuinelyDead`) and only appends "— this level no longer fires the setup" when that flag is
+true (or the independent, always-genuinely-stale `legacyPinnedStale` case) — `gateFramingMootReason`
+returns `deadPlayReason(play)` verbatim when it's non-null, so the two are the same string whenever
+both fire, with no duplicated branch logic needed. For the 3 "framing-moot but alive" cases
+(FORMING / below-floor / legacy-exempt-only, when not also pinned-stale), the function now returns
+the reason text alone, with no permanence claim — preserving the 2026-10-18 TSM fix's disclosure
+while dropping the false claim it accidentally introduced.
+
+**Evidence.** `src/lib/swing/play-brief-intel.test.ts`'s two existing regression tests for this
+exact codepath (below-floor and FORMING) asserted the buggy text (`/this level no longer fires the
+setup/`); flipped to assert the corrected text instead and prove RED on the pre-fix source via
+`git stash` (2/268 fail — the below-floor and FORMING cases, nothing else) and GREEN post-fix
+(268/268). The UNH live-repro composed test (Legacy-pinned-stale + legacy-exempt-only gate-moot,
+both facts disclosed together) is unaffected — that case is still genuinely stale, so the
+permanence claim there remains correct. `npx tsc --noEmit` clean; `entry-enterability.test.ts` +
+`play-brief.test.ts` + `play-brief-narrative-coaching.test.ts` (365 tests, the other two
+`gateFramingMootReason` call sites) all still pass unchanged.
+
+Found via this session's standing Ask Largo deep-dive mandate (live play-brief envelope read
+across 6 production positions, cross-checked against `docs/audit/LARGO-PRODUCT-CONTRACT.md`),
+independently adversarially verified (5/5 verification votes confirmed) before fixing.
+
+## 2026-10-19 — [FINDING, P2 reliability] Shared Discord webhook sender had no fetch timeout — a hung Discord endpoint could consume a cron's entire `maxDuration`, including the stale-cron watchdog's own alert — FIXED (fix/discord-post-fetch-timeout)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | `src/lib/discord-post.ts` (shared by every Discord-posting caller, including `notifyOpsDiscord` in `src/features/spx/lib/spx-play-notify.ts`, which is a thin wrapper over the same `postDiscordWebhook`) |
+| **Status** | FIXED |
+
+**Root cause.** `postOnce`/`postOnceWithFiles` (the two private functions every Discord
+delivery in the app goes through) called `fetch(url, {...})` with no `AbortSignal` and no other
+deadline. Node's global `fetch` has no implicit request timeout — an unresponsive or
+slow-to-respond Discord endpoint would hold the `await` open for as long as the underlying
+socket stayed alive, with nothing in this module able to bound it.
+
+**Why this wasn't caught earlier.** The module's own header already documents a careful
+contract ("NEVER throws into callers", fallback-webhook retry, redacted logging) — it reads as
+thoroughly hardened, which is exactly why a missing timeout is easy to miss: every other failure
+mode (non-2xx status, network error, DNS failure) is handled in the existing `try/catch`, and
+those all surface quickly in practice. A genuine *hang* (the endpoint accepts the TCP connection
+but never sends a response) is the one case that single `try/catch` cannot bound on its own —
+it needs a signal.
+
+**Blast radius.** Real production callers that `await` this synchronously in their main
+execution path (not fire-and-forget):
+- `src/app/api/cron/cron-staleness-watchdog/route.ts` — `await notifyOpsDiscord(...)` (twice).
+  This is the job whose entire purpose is alerting when every OTHER cron goes stale or fails. A
+  hang here doesn't just delay one Discord message — it risks the watchdog's own run never
+  completing, at exactly the moment (an outage) when its alert matters most.
+- `src/app/api/cron/helix-discord-digest/route.ts` — `await postDiscordWebhook(...)` (×3: 15m/30m
+  digests, EOD recap).
+- `src/app/api/cron/darkpool-discord/route.ts` — `await postDiscordWebhook(...)` (×2: digest, EOD
+  recap).
+- `src/features/spx/lib/spx-play-notify.ts`'s `notifyOpsDiscord` — confirmed to be a thin wrapper
+  calling the same `postDiscordWebhook` (not a separate implementation), so this fix covers it
+  too without touching that file (which sits under the SPX Slayer owned lane and was deliberately
+  left untouched here).
+
+Each of these cron routes has its own bounded `maxDuration` (90s–300s depending on the route),
+so a hang here was never literally infinite — but it would silently burn the entire remaining
+duration budget on one webhook POST, which reads externally as "this cron is stuck/slow" rather
+than "Discord didn't respond," and for `cron-staleness-watchdog` specifically risks the alert for
+a real outage never being sent at all.
+
+**Fix.** Added `const DISCORD_FETCH_TIMEOUT_MS = 10_000` and `signal:
+AbortSignal.timeout(DISCORD_FETCH_TIMEOUT_MS)` to both `fetch()` calls in `postOnce` and
+`postOnceWithFiles`. 10s is generous for a webhook POST (Discord's own API is typically
+sub-second) while staying well inside every caller's `maxDuration`. The existing `catch` block in
+both functions already converts any thrown error — including the `AbortError`/`TimeoutError`
+`AbortSignal.timeout()` throws — into the same `{ ok: false, status: null, error }` shape every
+other failure already produces, so the "never throws, falls back to the secondary webhook, logs
+at error" contract is completely unchanged; a timeout now just fails fast instead of hanging.
+
+**Fix rationale — why this, not something larger.** Considered adding a configurable timeout
+parameter to the public `postDiscordWebhook`/`postDiscordWebhookWithFiles` signatures (matching
+the override pattern `api-tracked-fetch.ts` uses for its own `DEFAULT_FETCH_TIMEOUT_MS`), but
+every real caller wants the same bound and none currently has a reason to tune it — adding an
+unused parameter to every call site would be scope creep for a fix this module-local. If a caller
+ever genuinely needs a different deadline, add the override then.
+
+**Evidence (tests).** New `src/lib/discord-post.test.ts` (3 tests): (1) `postDiscordWebhook`
+passes a real `AbortSignal` instance to `fetch` — mocked `fetch` captures `init.signal` and
+asserts `instanceof AbortSignal`; (2) same for `postDiscordWebhookWithFiles`; (3) a timeout-style
+abort (`TimeoutError`) from `fetch` is handled exactly like any other failure — resolves to
+`false`, never throws, and still exercises the existing one-retry-to-fallback contract (2 fetch
+calls: primary then fallback). RED→GREEN proven via `git stash` on `discord-post.ts` alone:
+2/3 fail pre-fix (both `AbortSignal` assertions — pre-fix `fetch` is called with no `signal` key
+at all), 3/3 pass post-fix. Also ran the existing suites for every real caller touched by this
+change (`discord-post.test.ts`, `helix-discord-digest/route.test.ts`,
+`darkpool-discord/route.test.ts`, `cron-staleness-watchdog/route.test.ts`) together: 10/10 pass.
+`npx tsc --noEmit -p .` clean.
+
+## 2026-10-19 — [FINDING, P3 infra/monitoring] 4 of 5 live X-marketing crons are absent from `CRON_JOBS` — the pause-aware admin-health override built for them is dead code — OPEN, not implemented (operator-gated)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | `src/lib/cron-registry.ts`, `src/lib/admin-cron-health.ts`, `src/app/api/cron/cron-staleness-watchdog/route.ts`, `src/app/api/cron/x-{autopost,replies,growth,intel}/route.ts` |
+| **Status** | OPEN — deliberately **not fixed** in this PR; see "Why not fixed directly" below |
+
+**What's wrong.** `src/lib/cron-registry.ts`'s `CRON_JOBS` array registers 50 jobs. Six real,
+deployed `/api/cron/x-*` routes exist on disk (`x-analytics`, `x-autopost`, `x-replies`,
+`x-growth`, `x-intel`, `x-engage`), all using the same `isCronAuthorized` + `logCronRun` pattern
+as every other registered cron. Of those six, only **`x-analytics`** has a `CRON_JOBS` entry.
+`x-autopost`, `x-replies`, `x-growth`, and `x-intel` have **none** — confirmed by direct
+inspection of the file (`grep -c "key:" src/lib/cron-registry.ts` → 50; `grep -n "autopost"
+src/lib/cron-registry.ts` → zero matches; same for `replies`/`growth`\b/`intel` as a `key:`
+value). `x-engage` is correctly unregistered — per `docs/ops/X-MARKETING.md`: *"Not scheduled:
+`x-engage` (manual alias of growth with `?manual=1`)"* — it has no EventBridge schedule at all,
+so it is not a cron in the sense this registry tracks.
+
+**This is the exact same bug class CLAUDE.md documents as already fixed once, for different
+crons.** `cron-registry.ts` itself carries this comment immediately above the `x-analytics`
+entry:
+
+> `// THREE LIVE DISCORD-DIGEST CRONS (added 2026-09-04) — routes logged runs but`
+> `// were absent from CRON_JOBS, so cron-staleness-watchdog never watched them.`
+
+That 2026-09-04 fix added `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` to
+`CRON_JOBS` after discovering they were live/enabled in production while invisible to the
+registry. The same defect independently exists today for 4 of the 5 scheduled X-marketing
+crons — it was never swept for in that area.
+
+**Concrete, already-written consequence: dead code.** `src/lib/admin-cron-health.ts` builds its
+`jobs` array strictly from `CRON_JOBS` (`const jobs = CRON_JOBS.map((job) => { ... })`,
+line ~357), then has a dedicated block (lines ~490–504) that exists *specifically* to handle
+X-marketing crons:
+
+```ts
+// X marketing crons may have EventBridge disabled while pause env flags are set — don't page
+// STALE for an intentionally idle stack (ops still sees "Paused" in admin cron health).
+for (let i = 0; i < jobs.length; i++) {
+  const health = jobs[i];
+  if (!xMarketingCronPaused(health.key)) continue;
+  ...
+}
+```
+
+`xMarketingCronPaused(jobKey)` (`src/lib/x-marketing-env.ts`) checks `jobKey` against
+`X_MARKETING_CRON_KEYS = new Set(["x-intel", "x-autopost", "x-growth", "x-replies",
+"x-analytics"])` — i.e. the code was written expecting exactly these 5 keys to show up in
+`jobs`. Because 4 of them never appear in `CRON_JOBS` in the first place, this loop can **never**
+match `"x-autopost"`, `"x-replies"`, `"x-growth"`, or `"x-intel"` — the override is unreachable
+for them. The practical effect: the admin cron-health dashboard shows **nothing at all** for
+these 4 jobs (not "stale", not "Paused" — simply absent), and `cron-staleness-watchdog`
+(`buildCronHealthSnapshot` → filters `status === "stale" || status === "failed"`) never
+evaluates them either way. `x-analytics`, the one sibling that IS registered, correctly shows
+"Paused (X marketing env)" today — proving the override logic itself works; it's purely the
+missing registrations blocking it for the other four.
+
+**Stale/contradictory docs found as a byproduct (the "check for stale docs" angle).** Two
+existing repo docs assert the opposite of what's actually in the file:
+- `docs/agents/briefs/x-content.md:63`: *"Cron registration (`0 12,14,16,18,20,22,0 * * *`) |
+  `src/lib/cron-registry.ts` → `x-autopost`"* — states this registration exists.
+- `docs/audit/X-CONTENT-CERTIFICATION.md:34`: *"**Cron registration** | `src/lib/cron-registry.ts`
+  | `x-autopost` entry: UTC `0 12,14,16,18,20,22,0 * * *` | LIVE + **DST BROKEN**"* — same claim,
+  plus a separately-flagged DST defect in that (claimed) schedule.
+
+Neither is true against current `main`. Either the registration was reverted at some point and
+these docs never updated, or the docs described an intended state that was never actually
+implemented — either way, two docs are currently misleading about this file's contents, and
+whoever implements the fix below should not assume these docs' quoted UTC cron expression is
+still the real deployed EventBridge schedule (see next section — it may carry the DST bug
+`X-CONTENT-CERTIFICATION.md` itself flags, and may have changed since 2026-07-30 when X
+marketing was paused).
+
+**Why not fixed directly here.** The change itself is additive-only and, on inspection, carries
+no dispatch risk: `src/lib/cron-dispatch.ts`'s `CRON_DISPATCH` (the explicit allowlist
+`cron-staleness-watchdog`'s optional `CRON_WATCHDOG_SELF_HEAL` consults via `isDispatchableCron`)
+has **zero** `x-*` entries — registering these 4 jobs in `CRON_JOBS` cannot cause self-heal to
+ever re-trigger a live X-posting cron. Despite that, this repo carries an explicit, repeated,
+standing operator order specifically about this subsystem:
+
+> `docs/ops/X-MARKETING.md`: *"**STANDING OPERATOR POLICY (2026-07-30): X marketing is OFF.** Do
+> **not** re-enable EventBridge rules, do **not** clear pause flags, and do **not** open
+> ops-auto-fix issues for stale `x-*` crons unless the operator explicitly asks to turn X back
+> on."*
+> `docs/ops/OPS-AUTO-FIX.md`: *"Never re-enable EventBridge rules or 'fix' stale X crons unless
+> the operator explicitly requests it."*
+
+That gate is broad enough ("fix stale X crons") that it's safer to write this up than to
+interpret it as not covering a registry-only change, even though the practical effect of this
+specific fix is to make the dashboard show "Paused" instead of invisible — arguably more aligned
+with the pause's own intent, not less. There's also a real unknown this sandbox cannot resolve:
+the TRUE current `schedule_cron_utc` for each of the 4 routes. `docs/ops/X-MARKETING.md`
+describes cadence only in ET-relative English ("Even ET hours 8–20 (UTC-aligned)", "Hourly
+weekdays", "Hourly :20 weekdays") and explicitly says the EventBridge rules are currently
+**DISABLED** and the `railway.x-*.toml` catalog files were **removed on purpose** (2026-07-30) —
+so there is no committed-in-this-repo source of truth for the exact cron expression, and the one
+two docs DO quote for x-autopost is independently flagged elsewhere as DST-broken. Getting this
+right needs either the operator's confirmation or a session with real `blackout-infra`/AWS
+EventBridge access (this sandbox's AWS creds are consistently `InvalidClientTokenId`), not a
+guess reverse-engineered from already-contradictory docs.
+
+**Proposed fix (for whoever picks this up with operator authorization or real infra access).**
+Add 4 entries to `CRON_JOBS` in `src/lib/cron-registry.ts`, mirroring the existing `x-analytics`
+entry's shape exactly:
+
+```ts
+{
+  key: "x-autopost", // and x-replies / x-growth / x-intel, one block each
+  name: "X Autopost", // human label per job
+  kind: "http",
+  path: "/api/cron/x-autopost",
+  schedule_label: "...",          // from the real EventBridge rule, not guessed
+  stale_after_min: ...,           // sized to the real cadence, same convention as x-analytics
+  schedule_cron_utc: "...",       // confirm against AWS EventBridge / blackout-infra first
+  weekdays_only: true,            // x-growth/x-replies are weekdays-only per X-MARKETING.md; confirm x-autopost/x-intel
+  description: "...",
+  // deliberately no produces_member_alert — these aren't member-visible signals
+},
+```
+
+No `produces_member_alert: true` on any of them (consistent with `x-analytics`) — these aren't
+member-visible signals, so `bie/missed-alerts.ts`'s `ALERT_PRODUCING_CRON_KEYS` filter is
+unaffected either way. Once added, verify live: confirm the admin cron-health dashboard shows
+"Paused (X marketing env)" for all 5 X-marketing keys (not just `x-analytics`), and confirm
+`cron-staleness-watchdog` does not fire a new Discord alert for any of them (per the
+`xMarketingCronPaused` override already covering the pause case).
+
+## 2026-10-19 — [FINDING, P3 Largo/Swing] play-brief-adapter.ts reimplemented its own ticker_class classifier, disagreeing with the brief's own C4 identity field — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Severity:** P3 — not yet live (the field this adapter computes is unused by `route.ts`'s HTTP
+response today), but `ticker_class` is a **required** field on `ProductSignal` (the base Largo
+contract type every product surface must populate per C4 IDENTITY), and a second in-process
+consumer that reads `adaptSwingBriefToLargo(...).data.ticker_class` — which is clearly the field's
+intended purpose — would get a silently wrong, self-contradictory answer today.
+
+**What's wrong.** `src/lib/swing/play-brief-adapter.ts`'s `adaptSwingBriefToLargo` computed
+`ticker_class` via its own private `tickerClassFromTicker()` — a 6-name hardcoded ETF allowlist
+(XLF/GLD/SLV/XBI/XLV/XLE) plus a 4-name index allowlist — instead of reusing
+`SwingPlayBriefResult.ticker_class`, the field `composeSwingPlayBrief` (`play-brief.ts:1588`)
+already derives correctly from the shared, actively-maintained `canonicalTicker` in
+`src/lib/largo/core/entities.ts` (whose own header warns: *"This list being partial is safe for
+[labelling]. It stopped being safe the moment Night Hawk Swings started reading `kind` for
+Largo"* — exactly the situation this adapter recreated). The result: for any ticker in the real,
+maintained ETF list but NOT in the adapter's own 6-name copy — e.g. **SQQQ**, the same
+leveraged-ETF ticker `play-brief.test.ts`'s own regression test already covers for the native
+field — `brief.ticker_class === "etf"` while `adaptSwingBriefToLargo(brief).data.ticker_class
+=== "equity"` in the **same response**, the exact two-classifications-of-one-fact pattern the
+2026-10-17 fix (`play-brief.ts` commit history) was written to eliminate.
+
+**Also found in the same function, same cleanup:** an inert `if (envelope.tradeDecision?.ticker)`
+block whose body was comments only (no assignment, no side effect — a half-finished
+"populate archetype/sub_lane/entry/peak premium later" stub). `tradeDecision` is a wholly
+unrelated field (`BieAnswerEnvelope.tradeDecision` — "Integrity supplement for play questions —
+badges only," `ticker`/`actionLabel`/`signalRows`, no archetype/premium fields at all) that
+`composeSwingPlayBrief` never sets, so the condition was structurally always false — guaranteed
+dead code, not just unfinished. Removed rather than wired up: populating `archetype`/`sub_lane`/
+`entry_premium`/`peak_premium`/`bucket`/`thesis_strength_pct`/`grade`/`invalidation` correctly
+needs real plumbing from `ctx`/`play` the adapter doesn't receive today, and those fields are
+optional on `SwingPlayBriefSignal` — a genuine follow-up, not a one-line fix, logged for Cursor/
+next-session pickup via the standing #4076 collaboration thread rather than half-wired here.
+
+**Root cause.** The adapter was written fresh (introduced this week as part of the in-flight
+Largo-contract-compliance work, commit `4349848f5` and follow-ons) without reusing the one place
+ticker classification was already correct and tested — a second, independently-hardcoded guess at
+a fact one call away (`result.ticker_class`) or one import away (`canonicalTicker` from
+`largo/core/entities.ts`, which the adapter doesn't import at all — it only imports the
+differently-named, differently-shaped `canonicalTicker` from `largo/contract/product-read.ts`,
+which normalizes a ticker STRING and has nothing to do with instrument classification; two
+functions named `canonicalTicker` in two modules with unrelated return shapes is itself a latent
+trap worth flagging for whoever touches this next).
+
+**Fix.** `adaptSwingBriefToLargo` now takes `ticker_class` straight from the `SwingPlayBriefResult`
+it's given (`const { ..., ticker_class, ... } = result`) — one brief, one classification, no
+second guess. Deleted the now-dead `tickerClassFromTicker()` function (23 lines) and its
+now-unused `TickerClass` type import, and deleted the inert `tradeDecision` if-block.
+
+**Evidence.** New regression tests in `src/lib/swing/play-brief-adapter.test.ts` (the file had
+zero test coverage before this fix): SQQQ fails RED on the pre-fix code
+(`largoRead.data.ticker_class` returns `"equity"`, expected `"etf"`) and passes GREEN post-fix,
+plus a same-response cross-check (`largoRead.data.ticker_class === brief.ticker_class`) and an
+equity-ticker sanity case. `npx tsc --noEmit` clean; full `npm test` run on Node 20 green.
+
+**Note for context:** production is currently serving pre-`play-brief-adapter.ts` code (the
+standing ECS web deploy deadlock, 7+ consecutive failed deploys as of this writing — already
+tracked, not re-escalated here), so this fix has not yet been observed live — confirmed by
+diffing the live `GET /api/market/swing/play-brief` response (no `freshness`/`as_of`/`direction`/
+etc. top-level fields present) against this file's own wiring in `route.ts`. Caught via static
+review of the new, not-yet-deployed code rather than a live probe, since the live route can't yet
+exercise it.
+
+## 2026-10-19 — [ENHANCEMENT IDEAS, P2 infra] Two proposals for the recurring ECS web deploy deadlock (#6255) — OPEN, not implemented
+
+> **kind:** `FINDING`
+
+| **Status** | OPEN — write-up only, two proposals for the operator/ops lane to weigh, no code changed |
+|---|---|
+
+**Context.** As of this writing the `blackout-production-web` deploy deadlock first found in #6255
+has reproduced identically on every one of 7 consecutive deploy attempts spanning ~13+ hours
+(runs tied to PRs #6251/#6252/#6253/#6258/#6260/#6261/#6263/#6265/#6270/#6272/#6274, each burning
+the full 36-minute `.github/workflows/ecr-push-production.yml` wait budget before failing).
+Production itself has stayed healthy throughout (already-serving tasks are never touched, per
+`minimumHealthyPercent=100`'s own design) — this is purely a deploy-pipeline/capacity problem,
+not a renewed outage. Already thoroughly diagnosed and escalated (see #6255's own finding and the
+Night Hawk Swings lane's journal) — this entry adds two concrete remediation ideas that have not
+yet been proposed anywhere in that thread, rather than re-diagnosing the root cause.
+
+**Idea 1 — self-heal `desiredCount` before the roll, inside the same workflow step.**
+`ecr-push-production.yml`'s "Roll ECS production web" step calls `aws ecs update-service` without
+ever passing `--desired-count` — it assumes the service's existing desired count is already at or
+above the documented autoscaling floor of 5 (the floor the whole `minHealthy=100`/`max=120`
+arithmetic in that same step's own comment block is solved for). The step's AWS credentials are
+demonstrably working (it successfully calls `describe-services`/`update-service` every single one
+of the 7 failed runs — the failure is a capacity deadlock, not an auth failure, unlike the earlier,
+separate `ops-auto-fix` AWS-key issue from earlier in this incident). A pre-flight check — read
+`desiredCount` via `describe-services` before calling `update-service`, and if it is below 5,
+restore it first — is mechanically simple and uses credentials already proven to work in this exact
+job.
+
+*Why not implemented directly*: whether the drift from 5 to the observed 2 was Application Auto
+Scaling settling toward a deliberately-lowered target, or a real misconfiguration, is unknown from
+this sandbox (no AWS access to inspect the scalable target's current min/max or scaling-activity
+history) — the two cases call for different responses, and forcing `desiredCount` back to 5
+without knowing which one it is risks fighting an intentional change. This needs either real AWS
+access to check `describe-scalable-targets` first, or an explicit operator decision to always
+restore the floor unconditionally.
+
+**Idea 2 — fail fast on a genuinely stalled rollout instead of burning the full 36-minute budget.**
+The wait loop (`ecr-push-production.yml`, the `for i in $(seq 1 144); do sleep 15; ...` block)
+already has a well-reasoned, previously-tuned exit condition — it deliberately does NOT break on
+`running == desired` (a past version of this exact loop did, and shipped a false-"RED" static-asset
+gate result 13 minutes before the real rollout had actually converged; see that block's own
+comment). This proposal is a different, additive signal, not a repeat of that mistake: the step's
+own cost-of-a-normal-cycle estimate ("task start + image pull + Next boot + ALB health checks + the
+old task's 30s deregistration drain (~2 min)") implies `runningCount` should move at least once
+every ~2 minutes under a healthy rollout. If `runningCount` (not `rolloutState`) has been
+IDENTICAL for some generous threshold — e.g. 20 consecutive polls (5 minutes) — that is a strong,
+independent signal of exactly this deadlock shape (`running=0/1` frozen for the observed full 36
+minutes on all 7 failures), and the job could exit early with a clear diagnostic instead of
+spending the remaining ~30 minutes proving nothing new.
+
+*Why not implemented directly*: the right "stuck" threshold needs tuning against real deploy
+telemetry this sandbox cannot generate (what's the longest legitimate quiet gap during a slow but
+healthy image pull or ALB health-check grace period?) — getting the threshold wrong risks a false
+early-exit on a deploy that would have succeeded, which is a worse failure mode than the current
+"slow but eventually honest" 36-minute timeout. Low risk only if hand-tuned by someone who can
+watch it against a live healthy rollout first.
+
+**Net effect if either ships**: Idea 1 could end the deadlock outright (if the capacity-restore
+hypothesis is correct). Idea 2 does not fix the deadlock but would cut each failed attempt's cost
+from 36 minutes to ~5, meaningfully reducing the CI-minutes and wall-clock cost of continuing to
+retry while the real fix (operator AWS action, or Idea 1) is pending.
+
+**Blast radius / scope.** Neither idea was implemented this cycle. Both are confined to
+`.github/workflows/ecr-push-production.yml`'s existing "Roll ECS production web" step; neither
+touches application code or any other workflow.
+
+## 2026-10-19 — [FINDING, P2 Meridian] Two sibling Benzinga loaders still swallowed fetch failures into a generic "cache_error" string, missed by the 2026-08-18 fix — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Severity:** P2 — live, member-facing honest-absence violation (not a crash), same root-cause class as the already-fixed 2026-08-18 Meridian ESTIMATES/HISTORY-empty P1 (`docs/audit/FINDINGS.md`, re-confirmed FIXED on 2026-08-30).
+
+**What's wrong.** `src/lib/meridian/meridian-benzinga-earnings.ts`'s `loadBenzingaTickerEarnings` was fixed on 2026-08-18 to (a) explicitly `throw` when the provider returns `{error: ...}` without itself rejecting — so a soft failure is never cached as an indistinguishable empty result — and (b) carry the real thrown message through its `.catch()` instead of a generic string. Two sibling functions in the **same file**, doing the exact same `serverCache(...).catch(...)` shape, were never given the same fix:
+
+- `loadBenzingaBoardEarnings(tickers, todayYmd, daysAhead)` — called from `loadMeridianEarningsTimeline` (`meridian-timeline-server.ts`), merged directly into the market-wide earnings timeline with no error check at the call site. A real upstream failure silently produces a timeline missing those tickers' prints.
+- `loadBenzingaTickerGuidance(ticker)` — called from `loadMeridianEarningsEnrichment` (`meridian-earnings-enrich.ts`), the **exact same `Promise.all`** the 2026-08-18 fix already lives in. A fetch failure here resolved to `corporate_guidance: null`, `guidance_entitled: false`, `guidance_on_file: false` — indistinguishable from "this company has no corporate guidance on file," which is precisely the confusion the 2026-08-18 fix's own comment warns about one line above: *"An outage must be distinguishable from an empty company... measured on 8/8 mega-caps."*
+
+**Root cause.** The 2026-08-18 fix was scoped to the one function whose live reproduction (8/8 mega-caps) proved the defect, and the PR write-up policy's "every other call site/consumer touched by the same root cause" sweep did not extend to these two textually-adjacent sibling functions in the same file at the time.
+
+**Fix.**
+- `loadBenzingaBoardEarnings` and `loadBenzingaTickerGuidance` now both throw on `res.error` inside the cached loader (so a soft provider error is never cached as a real empty answer) and carry the real thrown message through their `.catch()`, mirroring `loadBenzingaTickerEarnings` exactly.
+- `loadMeridianEarningsEnrichment`'s existing `calendar_error` field (already the designated "an outage must be distinguishable from an empty company" signal) now also checks `guidanceRes.error`, closing the one sibling fetch in that `Promise.all` that wasn't feeding it.
+- `loadBenzingaBoardEarnings`'s error is not yet wired into `MeridianEarningsTimelineResult` (a new field on a shared result type, out of scope for this fix) — its caller (`loadMeridianEarningsTimeline`) still silently drops it; this remains a known gap, not claimed as closed.
+
+**Blast radius — a third instance found, deliberately not fixed here.** `loadBenzingaEarningsBundle` (same file, ~line 68) has the identical "cache_error" literal twice — its inner `hist` fetch catch (~line 104) and its outer whole-function catch (~line 149-162) — but is structurally more complex than the two functions fixed above: it interleaves two unguarded parallel `fetchBenzingaStructuredEarnings` calls, revision-diffing (`diffEstimateRevisionTimeline`), and a Redis-persistence side effect (`recordMeridianEstimateRevision`) inside the same cached block, so applying the same throw-and-carry fix correctly needs more careful scoping than a mechanical copy of the pattern (in particular, whether `windowRes.error`/`revisionRes.error` should also gain a throw guard changes caching behavior for a function with more interdependent fields than the two already fixed). Left as a follow-up rather than risking a rushed fix to a more delicate function in the same PR as the two clean ones.
+
+**Regression test.** `src/lib/meridian/meridian-benzinga-earnings.test.ts` (new file, 4 tests): proves both functions carry the real provider error — for both a hard-thrown fetch exception and a soft `{error: ...}` response — instead of the literal string `"cache_error"`, and that a genuinely empty/no-error result still returns cleanly. Proved RED (2/4 fail, `got: cache_error`) against the pre-fix source via `git stash`, GREEN (4/4) after.
+
+**Verification.** `npx tsc --noEmit` clean. `npx eslint` clean on both touched files + new test. Full Meridian suite (`src/lib/meridian/*.test.ts src/features/meridian/**/*.test.ts`): 528/528 pass, no regressions. Full `npm test` run in progress at time of writing (background, to be confirmed before merge).
+
+## Swing play-brief evidence/levels still sample the real wall clock, not `ctx.readMs` — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — PR #6272 (merged 2026-10-19). |
+|---|---|
+| **Severity** | P3 — latent in production today (no real caller pre-stamps `ctx.readMs` yet), live-risk the moment one does |
+| **Found by** | Ask Largo × Night Hawk Swings standing deep-dive mandate, round 5 (2026-10-19) |
+
+### Root cause
+
+`composeSwingPlayBrief` (`src/lib/swing/play-brief.ts`) stamps one canonical "now" onto `ctx.readMs`
+at the top of the function (`ctx = { ...ctx, readMs: ctx.readMs ?? readMs }`) specifically so every
+staleness check downstream reads the *same* instant rather than each section independently sampling
+`Date.now()` at whatever moment it happens to compose (the function does real sequential I/O between
+sections, so those instants can be seconds apart). `play-brief-types.ts`'s own doc comment on the
+`readMs` field documents the live defect this closes (2026-09-21, SNXX repro: two sections reading
+the identical cached Vector snapshot landed on opposite sides of the 120s staleness boundary and
+silently disagreed about whether a GEX wall was live or stale) — and names it as a **known, still-open
+follow-up**: *"Only `confluenceCoaching` and `watchForSection` ... are wired to this anchor so far;
+the other ~18 `Date.now()` call sites are the same class of latent risk and a natural next sweep."*
+
+A 2026-10-12 fix (same file, `composeSwingPlayBrief`'s WATCH/OPEN branches) closed two more of those
+~18 — `watchEntrySection`/`pnlSection` were being called with the bare `readMs` local (always the
+real `Date.now()` sampled at this function's top) instead of `ctx.readMs ?? readMs`. That fix's own
+blast-radius check never reached `evidenceFromContext`/`levelsFromContext` — the sole feeders of
+`envelope.evidence`/`envelope.levels` — which were calling `evidenceFromContext(ctx, readMs)` /
+`levelsFromContext(ctx, readMs, bucket)` with the same bare local, unchanged.
+
+### Why this is latent, not an active production bug today
+
+The one real caller (`GET /api/market/swing/play-brief`, via `loadSwingPlayBriefContext`) never
+pre-stamps `ctx.readMs` before calling `composeSwingPlayBrief` — so `ctx.readMs ?? readMs` and the
+bare `readMs` evaluate identically in production right now. This is not a live, member-visible defect
+today. It *is* a real, traceable deviation from this file's own established and partially-enforced
+convention, and it silently reactivates the exact already-twice-documented bug class (SNXX repro,
+2026-09-21; the 2026-10-12 watch/pnl fix) the moment any future caller or test pins `ctx.readMs` to a
+shared anchor — which `readMs`'s own doc comment explicitly anticipates ("a caller that composes
+multiple briefs off one shared anchor"). `evidence`/`levels` are core, high-visibility parts of every
+brief (every "Why this setup"/"Watch levels" freshness tag derives from them), so a regression here
+would be exactly as consequential as the original SNXX repro.
+
+### Fix
+
+`src/lib/swing/play-brief.ts` — changed the two call sites to `ctx.readMs ?? readMs`, matching the
+2026-10-12 precedent exactly:
+
+```ts
+const evidence = safeCompose("evidence", () => evidenceFromContext(ctx, ctx.readMs ?? readMs), [], trackBuildFailure);
+const levels = safeCompose("levels", () => levelsFromContext(ctx, ctx.readMs ?? readMs, bucket), [], trackBuildFailure);
+```
+
+### Regression test
+
+`src/lib/swing/play-brief.test.ts` — new test "option-mark evidence freshness honors ctx.readMs, not
+the real wall clock": pins `ctx.readMs` to a past instant (2026-09-10) and sets `play.markAsOf` 30s
+before it (must read `freshness: "live"`). RED before the fix (read `"stale"` — the mark's real age
+against today's wall clock is ~six weeks); GREEN after. `npx tsc --noEmit` clean; full
+`play-brief.test.ts` suite 156/156 pass.
+
+### What this does NOT do
+
+Does not sweep the remaining ~16 documented `Date.now()` call sites named in `readMs`'s own doc
+comment — those live inside the staleness HELPER functions themselves (`gexFreshness`,
+`vectorFreshness`, `gexMatrixStale`, etc.), which correctly use whatever `readMs` value their caller
+passes them; the defect here was specifically at the two remaining `composeSwingPlayBrief`-level call
+sites that hadn't been updated to pass the right value in. A wider sweep of every other caller of
+those helpers (outside `composeSwingPlayBrief`) is explicitly out of scope for this fix, consistent
+with the file's own "a natural next sweep" framing — this closes two more of the ~18, not all of them.
+
+### Blast radius
+
+`src/lib/swing/play-brief.ts` only (two call-site arguments changed) + its own test file. No type or
+behavioral change to any helper function; `evidenceFromContext`/`levelsFromContext` themselves are
+untouched.
+
+## Night Hawk mobile detail overlay: stale-dim opacity breaks the full-screen takeover — list bleeds through — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — PR #6270 (merged 2026-10-19). |
+
+**Where:** `src/app/globals.css` — `.nh-deck-right.nh-deck-dim{opacity:.84}` (unconditional rule) vs
+the `@media (max-width:820px)` mobile full-screen detail overlay for the same `.nh-deck-right`.
+
+**Found via:** the standing "Ask Largo × Night Hawk Swings" deep-dive mandate, a live mobile
+(~430px) screenshot of the swing play-brief panel through `proxy-browser.cjs`'s tunnel + a temp
+Clerk premium session, following up on a desktop-only live UI pass earlier the same session.
+
+**Root cause.** `.nh-deck-right` is the Night Hawk Command Deck's detail/right rail. On desktop it
+sits beside the list in a normal 3-column flex layout, and `.nh-deck-right.nh-deck-dim{opacity:.84;
+transition:opacity .3s}` (added for the "Terminal v2" staleness UX, own comment: *"the whole detail
+dims when the mark is older than the stale window"*) is a reasonable, subtle cue there — the list
+is in a visually separate panel, so a slightly-transparent detail rail reads as "this data is
+dated," nothing more.
+
+Below 820px, `.nh-deck-right` is re-purposed into something structurally different: a
+`position:fixed;inset:0;z-index:110` full-screen takeover (2026-08-29 fix, member report: tapping a
+play on a phone needs its own slide-in detail screen with the list still mounted underneath for
+scroll-position preservation). That takeover depends on being **opaque** — the whole point is that
+the list behind it is not supposed to be visible while the detail sheet is open. `.nh-deck-dim`
+never got scoped out of that breakpoint, so a STALE play's mobile detail view renders at 84%
+opacity **as a full-screen overlay**, and ~16% of the list rows behind it show through.
+
+**Evidence.** Live screenshot (iPhone-width viewport, real authenticated session, a real STALE
+swing position — CRWV 60C 12DTE, mark "● STALE · mark $5.40"): the Ask Largo panel's
+"Unavailable — HELIX flow: pipeline stale" / "Unavailable — option mark: stale…" chip text visibly
+double-exposed with list rows "#1 ● HOLD … NVDA 212.5C 3DTE", "#2 ● HOLD … CRWV 60C 12DTE", "#3
+● HOLD … TSLA 352.5C 5DTE" etc. bleeding through from behind, both largely unreadable where they
+overlap. Confirmed via `getComputedStyle` in the same live session: `.nh-deck-right` computed
+`opacity: 0.84` (class list included `nh-deck-dim`), `position: fixed`, `background: rgb(12,12,14)`
+— i.e. correctly fixed/opaque-by-declaration, undone by the inherited opacity.
+
+**Not a one-off edge case.** A STALE mark is a routine, frequently-occurring state (after-hours,
+data-provider lag), not a rare condition — this affects a real, recurring fraction of mobile detail
+views, not a contrived input.
+
+**Fix.** Added `.nh-deck-right.nh-deck-dim{opacity:1}` inside the existing
+`@media (max-width:820px)` block, immediately after the `data-mobile-view="detail"` transform rule.
+Same two-class specificity as the unconditional rule, positioned later in source, inside a matching
+media condition — wins the cascade only at ≤820px, leaving the desktop dimming behavior completely
+untouched. The textual "● STALE · mark $X" pill elsewhere in the panel already carries the
+staleness signal independent of this opacity effect, so nothing is lost.
+
+**Regression test.** `src/features/nighthawk/command-deck/nh-deck-mobile-css.test.ts` — new test
+"mobile full-screen detail overlay is never dimmed by the stale indicator," following this file's
+existing convention (string/regex assertions on `globals.css`'s raw text + relative source-order
+checks, not a live browser). RED (assertion fails: override rule absent) with `src/app/globals.css`
+reverted via `git stash`; GREEN restored. `npx tsc --noEmit` clean.
+
+**Blast radius.** CSS-only. No TSX/logic changes. Affects only the mobile (≤820px) full-screen
+detail overlay's opacity while a stale/closed play is open; the desktop side-panel dimming and the
+mobile list view are unaffected.
+
+## Ask Largo truncation probe never covered `get_swing_play_brief` — COVERAGE FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (probe coverage gap closed; no active truncation found) |
+|---|---|
+| **Severity** | P3 — tooling coverage gap, not a live product defect |
+| **Found by** | Ask Largo × Night Hawk Swings standing deep-dive mandate (2026-10-19) |
+
+### Root cause
+
+`scripts/audit/largo-truncation-probe.mjs` exists to catch exactly one class of bug: a Largo tool
+whose payload "works" (the call succeeds, the loop completes) while `anthropicToolLoop`'s
+`MAX_TOOL_RESULT_CHARS` cap (16,000 chars, head-kept/tail-dropped) silently cuts the JSON handed
+back to the model. Three real Night Hawk bugs shipped exactly this way before the probe existed
+(`get_zerodte_record` delivered 1.5% of itself, `get_nighthawk_edition` cut every play,
+`get_nighthawk_outcomes` quoted a wrong win rate from a truncated window).
+
+The probe's own `LANE_TOOLS` comment for the swing lane claimed: *"Night Hawk Swings' only real
+tool... there is no second swing tool to probe."* That was true when written (2026-08-23/
+2026-09-09 cleanup of the phantom `get_swing_discovery` entry) but went stale the moment
+`get_swing_play_brief` shipped (2026-09-12, `src/lib/largo/swing-play-brief-read.ts` — see that
+file's own header on why it was added: `composeSwingPlayBrief` was previously reachable only from
+the Command Deck UI route, never from a live Largo chat answer). Nothing re-checked the comment's
+claim against the tool registry when the new tool landed, so the probe silently stopped covering
+roughly half of Largo's swing surface area.
+
+This matters more than an ordinary coverage gap because of a second, related fact found while
+tracing it: `get_swing_play_brief`'s dispatch in `src/lib/largo/run-tool.ts` (`case
+"get_swing_play_brief"`) applies **no shaping/compaction step** before returning —
+`swingPlayBriefForLargo` hands back `composeSwingPlayBrief`'s raw object verbatim
+(`roundFloats({ available: true, ...brief })`, no reordering, no truncation-aware field ordering).
+Contrast `get_nighthawk_edition`, whose case routes through `compactNightHawkEditionForModel`
+specifically because a raw edition object put `market_recap` before `plays` and the tail-cut ate
+every play. The swing play-brief is the richest single-position Largo surface in the repo (per the
+previous round of this same mandate: 7 narrative/intel sections that can each run to several
+hundred characters of trade-manager prose, plus book context, track record, meridian catalysts,
+roll history) — exactly the shape of payload the other three bugs came from. Nobody had asked
+whether it is actually at risk, including the probe that exists to ask that question.
+
+### Evidence
+
+- `grep -c "title:" src/lib/swing/play-brief-intel.ts` → 26 titled sections across the full
+  composition surface (play-brief.ts + play-brief-intel.ts + play-brief-narrative*.ts).
+- Measured (not guessed) via a standalone script invoking `composeSwingPlayBrief` directly with a
+  maximally-populated OPEN-position context (meridian catalyst + peer lens, graduated archetype
+  track record, ticker history, 2-roll history, trade-manager narrative, 11 of ~24 possible
+  sections rendering with no errors): serialized result is **9,382 characters** against the
+  **16,000-char cap** — 59%, with real headroom even before accounting for sections this fixture
+  didn't trigger (Book context needs a real theme/direction portfolio overlap via
+  `checkPortfolioOverlap`, not just any sibling position — correctly did not fire here).
+- `src/lib/largo/run-tool.ts`'s `get_swing_play_brief` case (confirmed by reading): no
+  compaction/fit call, unlike `get_nighthawk_edition`'s case two cases above it.
+- `scripts/audit/largo-truncation-probe.test.ts`'s own guard (`every LANE_TOOLS entry... names a
+  real, currently-defined Largo tool`) passes with the new entry added — `get_swing_play_brief` is
+  confirmed present in `LARGO_TOOL_DEFS` (`src/lib/largo/tool-defs.ts`).
+
+### Fix
+
+Added `["get_swing_play_brief", "ticker NVDA"]` to `LANE_TOOLS` in
+`scripts/audit/largo-truncation-probe.mjs`, and corrected the stale "no second swing tool to
+probe" comment to describe what actually changed and why the new entry exists, including the
+by-inspection size measurement above so a future reader doesn't have to re-derive it. `npx tsc
+--noEmit` clean; `largo-truncation-probe.test.ts` (the existing phantom-tool-name guard) passes
+2/2 with the new entry in place.
+
+### What this fix does NOT do, and why
+
+Does not add a `compactSwingPlayBriefForModel`-style shaping step to `run-tool.ts`'s
+`get_swing_play_brief` case. The measured evidence (9,382/16,000 chars on a deliberately rich
+fixture) shows this is not currently an active truncation bug — adding a fitting layer for a risk
+that isn't materializing would be the same mistake this repo's own performance-mandate discipline
+explicitly warns against (`CLAUDE.md`: "do not add an overlap guard... to a cron/route that is not
+actually measured to be at risk — check its own numbers first, every time"). What this fix actually
+buys is that the probe will now ACTUALLY WATCH this tool going forward: the next live
+`node --import tsx scripts/audit/largo-truncation-probe.mjs` run exercises it, and if a future
+change to the swing play-brief (more sections, richer book-context prose, more sibling positions)
+pushes a real position over the cap, this probe — not another live-model misreport — is what
+catches it.
+
+## 2026-10-19 — [FINDING, swing] Seven top-level `composeSwingPlayBrief` section builders could fail silently with no `unavailableSources` disclosure — Largo C3 gap
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 (WATCH — requires a degraded upstream row shape to trigger; the brief never crashes, the gap is a silent disclosure miss) |
+| **Surface** | `src/lib/swing/play-brief.ts` — `composeSwingPlayBrief()` |
+
+### Context
+
+Part of the standing "Ask Largo × Night Hawk Swings" ownership mandate's non-skippable deep-dive
+sub-task: audit the swing play-brief against `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s ten points,
+specifically hunting for dead-wired data and silent-absence gaps of the same shape as the already-
+fixed `arsenal.unavailable_sources` bug (#4101) and the `entryTriggerDeadReason` shadowing bug
+(#6261). Found while re-reading `composeSwingPlayBrief` end to end rather than relying on earlier
+knowledge of the file (other lanes/sessions touch this same file routinely per the standing
+collaboration protocol).
+
+### Root cause
+
+`safeCompose(label, build, fallback, onFailure?)` is this file's own error-boundary helper (added
+2026-09-20, sibling of PR #5288's `buildIntelSections` protection): if `build()` throws, the
+section is silently replaced with `fallback` (usually `null`, dropping the section) rather than
+crashing the whole brief. The 2026-10-07 fix extended this with an `onFailure` callback
+specifically for the `evidence`/`levels` builders, so a thrown builder there gets folded into
+`envelope.unavailableSources` instead of being indistinguishable from "this product genuinely has
+nothing to show" — the exact Largo C3 absence principle ("any fallback that returns a degraded
+result the caller cannot distinguish from a real one is a defect even when every test passes").
+
+That `onFailure` wiring was never extended to the other seven `safeCompose` call sites in this same
+function: `watchEntrySection` ("Entry"), the WATCH-bucket and OPEN-bucket `siblingPositionsNote`
+calls ("Other concurrent position(s)"), `managementSection` ("Management"), `thesisHealthSection`
+("Thesis health"), `pnlSection` ("Position"), `closedSection` ("Outcome"), and
+`buildStructureLadder` (the `structureLadder` envelope field). Each was still called as
+`safeCompose(label, fn, null)` — three args, the ORIGINAL 2026-09-20 shape, pre-dating the fourth
+`onFailure` parameter added 2026-10-07 for evidence/levels only. The existing regression test for
+this exact error boundary ("composeSwingPlayBrief: a throwing top-level section (Management/
+Position) does not take down the whole brief") already proved these seven sections can throw on a
+realistic degraded row (a malformed `exitPolicy.trim_levels`) and get silently dropped — it just
+never checked whether that drop was disclosed anywhere, because until this fix it genuinely was
+not.
+
+Concretely: a member asking Largo "how should I manage this open position" on a row whose
+`exitPolicy.trim_levels` came back malformed got a brief with no Management section, no Position
+(P&L!) section, and zero trace in `unavailableSources` — indistinguishable from "nothing to
+report" for two of the brief's most load-bearing sections.
+
+### Secondary defect found while implementing: wrong ordering for `structureLadder`
+
+`structureLadder` was originally computed inline inside the envelope object literal, which is
+built *after* `unavailableSources` is already assembled from `buildFailures`. Simply adding
+`trackBuildFailure` as a fourth argument there (without moving the computation) would have pushed
+to `buildFailures` too late to ever reach the `unavailableSources` array already baked into the
+envelope — the ordering, not a missing argument, was the real defect for this one call site. Fixed
+by hoisting the `structureLadder` computation to a local `const`, before `unavailableSources` is
+assembled, and referencing that local in the envelope literal instead of calling `safeCompose`
+inline there.
+
+### Fix
+
+1. Hoisted `const buildFailures: string[] = []; const trackBuildFailure = ...` from its previous
+   position (declared only after the bucket branches, immediately before the `buildIntelSections`
+   call) to immediately after `sections` is initialized — before the `if (bucket === "watch") ...`
+   branches — so every top-level `safeCompose` call in this function can feed the same collector.
+2. Added `trackBuildFailure` as the fourth argument to all seven previously-bare `safeCompose`
+   calls: the WATCH-branch `watchEntrySection`/`siblingPositionsNote` calls, the OPEN-branch
+   `managementSection`/`thesisHealthSection`/`pnlSection`/`siblingPositionsNote` calls, and the
+   CLOSED-branch `closedSection` call.
+3. Moved the `structureLadder` computation to a local `const` before `unavailableSources` is
+   assembled (see "Secondary defect" above), keeping the same `safeCompose("structureLadder", ...,
+   null, trackBuildFailure)` call, and referenced the local in the envelope literal.
+
+No change to `safeCompose` itself, to `buildIntelSections`'s already-protected 20 sections, or to
+the evidence/levels builders — this is purely closing the SAME disclosure gap those already-fixed
+call sites close, for the seven call sites that were missed when the pattern was first introduced.
+
+### Evidence (RED → GREEN)
+
+Extended the existing regression test ("a throwing top-level section (Management/Position) does
+not take down the whole brief") with two new assertions: `unavailableSources` must contain an
+entry with `what_is_missing === "Management"` and one with `what_is_missing === "Position"` for the
+same malformed-`trim_levels` fixture the test already uses to prove the sections are dropped.
+
+- **Pre-fix (`git stash` of `play-brief.ts` only, test kept):** `not ok 7` —
+  `AssertionError: a Management build failure must be disclosed via unavailableSources, not
+  silently dropped (Largo C3)`, `expected: true, actual: false`.
+- **Post-fix (`git stash pop`):** all 155 tests in `play-brief.test.ts` pass, including both new
+  assertions.
+
+`npx tsc --noEmit` clean both before and after (the pre-fix state for this RED/GREEN check was the
+test-only stash, not a type-error state).
+
+### Blast radius
+
+Confined to `src/lib/swing/play-brief.ts`'s own `composeSwingPlayBrief` — `safeCompose` itself,
+`buildIntelSections`'s sections, and the evidence/levels builders were already correctly wired and
+are untouched. No other composer in the repo uses this specific `safeCompose` helper (it is a
+private, file-local function), so this fix does not generalize to other Largo-facing products —
+each product's own composer would need the equivalent audit if it has a similar error-boundary
+pattern.
+
+## 2026-10-19 — [FINDING, infra] `blackout-production-web` deploy deadlock STILL UNRESOLVED ~8h after it first appeared — zero deploys have actually rolled new code since before the 2026-10-18 ~17:23Z outage began
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | NEEDS OPERATOR ACTION (AWS creds required — no sandbox session has working creds; same blocker as the two prior entries on this incident) |
+| **Severity** | P1 (escalating — not a new mechanism, but confirmed still live and now spanning ~8 hours / 5+ merged PRs) |
+| **Surface** | `blackout-production-web` ECS service (AWS) / `.github/workflows/ecr-push-production.yml` "Roll ECS production web" step |
+
+### This is an escalation addendum, not a new root cause
+
+This is the same `floor(desired × 1.20) == desired` deployment-arithmetic deadlock already fully
+documented in the 2026-10-18 FINDINGS.md entry ("`blackout-production-web` deploy stuck for the
+FULL 36-min budget — service's real desiredCount appears to have drifted back below 5..."),
+itself building on the original 2026-10-18 `desiredCount=0` outage root-cause entry. This entry
+exists only to record that **the prescribed fix (`aws ecs update-service --desired-count 5`) has
+still not visibly taken effect**, and to correct the record on how long deploys have actually been
+blocked.
+
+### New evidence (run 39182118791, job 117838467408, this session's own live check 2026-10-19
+~01:33Z)
+
+The "Roll ECS production web" step ran the full 36-minute budget (00:55:25Z→01:33:21Z) and timed
+out with the identical signature as the two prior documented occurrences:
+
+```
+[46/144] PRIMARY: running=0/1, rollout=IN_PROGRESS
+... (frozen at running=0/1 for the remaining ~98 polls, ~25 more minutes) ...
+[144/144] PRIMARY: running=0/1, rollout=IN_PROGRESS
+Timed out waiting for PRIMARY deployment to stabilize.
+##[error]Process completed with exit code 1.
+```
+
+Production itself remained healthy throughout (`/api/health` → 200 at every check this session
+made across the whole window) — same as both prior occurrences, for the same reason
+(`minimumHealthyPercent=100` means ECS can only add capacity before stopping an existing healthy
+task, so a deadlocked rollout can never touch the already-serving fleet).
+
+### Corrected timeline — deploys have been blocked longer than previously recorded
+
+Checked directly against the GitHub Actions API rather than assumed: the **last `ECR push
+(production)` run with `conclusion: success` is run 39161355948 (2026-10-18 20:00:56Z–20:17:25Z,
+carrying PR #6248)**. But per that same incident's own FINDINGS.md entry, that run's own
+"successful" roll was itself trivial/vacuous — `desiredCount` was still 0 at that point, so there
+was nothing to roll and the step exited green without actually deploying anything. **No deploy has
+genuinely rolled new code to `blackout-production-web` since before the outage began at
+~17:23Z on 2026-10-18** — i.e. this has now been blocked for roughly **8+ hours**, not the shorter
+window either prior entry's title implied at the time it was written.
+
+Every run since has failed the same way: 39169030903 (22:10Z, desired≈2 observed), 39178212540
+(23:51Z→00:27Z, timed out), 39182118791 (00:55Z→01:33Z, timed out — this entry's own evidence).
+That is at least 3 independent timed-out occurrences of the identical `running=0/1` freeze,
+clearing this repo's own 3-instance noise threshold for "this is a real, persistent pattern," not
+a transient blip.
+
+### Merged PRs still not live in production as of this writing
+
+At minimum, the following merged-to-`main` fixes have never actually reached production: #6251
+(security CVE patch), #6252 (Benzinga pagination test fix), #6253 (this session's own swing
+structural-stop dedup fix), #6258 (SPX rawScore recompute fix), #6260 (closed-deck chain contract
+mid/delta fix), #6261 (swing entry-trigger dead-reason compose fix), #6263 (swing play-brief
+direction/thesis fields). None of these are implicated in the deadlock itself — this is purely an
+infra capacity-state issue, independent of what is queued behind it.
+
+### Fix — unchanged from the prior entry, still not executable from any sandbox session
+
+```
+aws ecs describe-services --cluster blackout-production-cluster \
+  --services blackout-production-web --query 'services[0].desiredCount' --region us-east-1
+
+aws application-autoscaling describe-scalable-targets \
+  --service-namespace ecs \
+  --resource-ids service/blackout-production-cluster/blackout-production-web --region us-east-1
+
+aws ecs update-service --cluster blackout-production-cluster \
+  --service blackout-production-web --desired-count 5 --region us-east-1
+```
+
+If the scalable target's min is not 5 (or it is missing/deregistered), that is very likely *why*
+the first fix attempt (inferred from the 2026-10-18 ~20:47Z recovery) did not hold — something
+keeps pulling desired back down toward 1-2 rather than settling at the documented floor of 5. This
+needs the scalable target itself checked and re-registered if necessary (per this repo's standing
+"check live state, do not blindly `terraform apply` against production" rule), not just another
+one-off `update-service` call that could drift back down again the same way.
+
+### Evidence gap
+
+Same as both prior entries on this incident: this sandbox's own AWS credentials are invalid
+placeholders (`InvalidClientTokenId`, re-confirmed 2026-10-19T01:3x Z). No session here can run
+the diagnostic/fix commands directly.
+
+## 2026-10-19 — [FINDING, swing] `composeSwingPlayBrief` never populated `envelope.direction`/`envelope.thesis` — Largo C5/C8 gap, every bucket (not just CLOSED)
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 (WATCH — fallbacks present: `bias`, `headline`; field-completeness, not correctness) |
+| **Surface** | `src/lib/swing/play-brief.ts` — `composeSwingPlayBrief()`; `src/lib/bie/answer-envelope.ts` — `BieAnswerEnvelope` type |
+
+### Builds on
+
+`docs/audit/findings-staging/2026-10-18-closed-brief-direction-thesis.md` (sibling audit lane,
+branch `audit/largo-swing-brief-contract-validator`) — that finding did the live repro (3 real
+CLOSED chains: NVDA, CRWV, TSLA, all missing `envelope.direction`/`envelope.thesis`) and the root-
+cause trace to `composeSwingPlayBrief`. This PR implements the fix it left open, plus one
+correction found while implementing it (see "Scope correction" below). That finding's own file is
+left untouched on its branch — this is an independent branch off `main`.
+
+### Symptom (per the original finding)
+
+`GET /api/market/swing/play-brief` on CLOSED swing positions returned envelopes with `bias`
+correctly set and `headline` naming the direction/recommendation in prose, but `envelope.direction`
+and `envelope.thesis` were undefined — a Largo C5 (DIRECTION) / C8 (NARRATIVE) violation. Vector,
+0DTE, and Helix briefs populate explicit `direction`/`thesis` at their own payload's top level;
+swing's `envelope` carried neither field.
+
+### Scope correction (found while implementing)
+
+The original finding scoped this to CLOSED chains (all 3 live repros tested were CLOSED). Reading
+`BieAnswerEnvelope` (`src/lib/bie/answer-envelope.ts`) before implementing showed the gap is **not**
+CLOSED-specific: the type itself never declared a `direction` or top-level `thesis` field for ANY
+producer, and `composeSwingPlayBrief`'s envelope-literal (`buildRichEnvelope({...bias: ...})` plus
+the explicit `source`/`asOf`/`session_date`/`structureLadder` fields added alongside it) never set
+either field on any of its three branches — WATCH, OPEN, or CLOSED. Confirmed with a regression
+test covering all three buckets (not just CLOSED) before writing the fix; all three failed RED
+identically. Fixed consistently across all three rather than CLOSED-only, per the task's own
+"if missing for ALL statuses, fix all of them consistently" guidance.
+
+### Root cause
+
+`BieAnswerEnvelope` (the shared envelope type every BIE-narrative composer across the app returns)
+only ever carried `bias` (normalized bullish/bearish/neutral/mixed) — no native per-product
+`direction` field, and no top-level single-sentence `thesis` claim (only per-`BieSection`/
+per-scenario text). `composeSwingPlayBrief` built its envelope via `buildRichEnvelope({ bias:
+biasFromDirection(play.direction), ... })`, which derives the *normalized* `bias` from
+`play.direction` but never forwards the *native* `play.direction` value itself, and never
+synthesized a `thesis` claim at all — there was no field defined for either to land in.
+
+### Fix
+
+1. **`src/lib/bie/answer-envelope.ts`** — added two new, additive, optional fields to
+   `BieAnswerEnvelope`:
+   - `direction?: string | null` — the native per-product directional label (Largo C5), kept as a
+     free-form string (not constrained to `product-read.ts`'s own `Direction` union) so each
+     product's own vocabulary (swing's "LONG"/"SHORT") is never force-fit into a narrower enum —
+     matching the contract's own "wrap, never flatten" rule.
+   - `thesis?: string | null` — one normalized single-sentence claim (Largo C8), distinct from the
+     full per-section prose and from the backward-compatible `markdown` string.
+
+   Both optional and additive — no existing composer or consumer is affected; `tsc --noEmit` is
+   clean repo-wide.
+
+2. **`src/lib/swing/play-brief.ts`** — `composeSwingPlayBrief` now sets:
+   - `direction: play.direction` — the exact same source `bias` already derives from
+     (`biasFromDirection(play.direction)`), carried through as the raw label instead of only the
+     normalized read. Mechanical, no design decision.
+   - `thesis: briefThesis(play, headline, action, verdictArchetypeLabel)` — a new small pure
+     helper. Design choice (of the three the task offered, in preference order): **option (a)** —
+     reuse an already-computed one-line summary rather than invent new logic. `briefThesis` builds
+     its sentence from the exact same inputs the Verdict section's own opening line
+     (`verdictLines[0]`) and the envelope `headline` already use: `play.direction`, the contract
+     headline (`playContractHeadline(play)`), and the identical
+     `action?.label ?? play.recommendation ?? play.status` fallback chain both of those already
+     apply — plus the archetype label when present. `thesis` can therefore never state a claim the
+     Verdict card or headline doesn't already make, and for a CLOSED play with a resolvable
+     `closedReason`, `swingActionDisplay` already turns that into "TARGET"/"STOPPED"/"SCRATCH" (the
+     same label the Verdict line and headline show), so the synthesized thesis is genuinely
+     data-grounded — e.g. `"SHORT NVDA 90C · 13DTE — STOPPED · Breakout."` — never a fabricated
+     claim about why a position closed.
+
+   Options (b)/(c) from the task were not needed: the Verdict line's own components already
+   satisfied option (a)'s bar for every bucket, including CLOSED.
+
+### Evidence
+
+Two regression tests added to `src/lib/swing/play-brief.test.ts`:
+- `composeSwingPlayBrief: CLOSED play envelope carries explicit direction and thesis fields (Largo
+  C5/C8)` — fixture with `direction: "SHORT"`, `closedReason: "stopped"`, asserts
+  `envelope.direction === play.direction` and `envelope.thesis` is a non-empty string containing
+  the direction, ticker, and the closedReason-driven "STOPPED" label.
+- `composeSwingPlayBrief: OPEN and WATCH briefs also carry explicit direction/thesis (not
+  CLOSED-specific)` — covers the scope correction above.
+
+Proved RED before the fix (reverted only `play-brief.ts` via a saved patch, kept the type change and
+the tests, reapplied after) and GREEN after, on Node 20 (`/opt/node20/bin`, v20.20.2):
+
+RED (fix reverted):
+```
+not ok 11 - composeSwingPlayBrief: CLOSED play envelope carries explicit direction and thesis fields (Largo C5/C8)
+    expected: 'SHORT'  actual: undefined
+not ok 12 - composeSwingPlayBrief: OPEN and WATCH briefs also carry explicit direction/thesis (not CLOSED-specific)
+    expected: 'LONG'  actual: undefined
+```
+
+GREEN (fix reapplied), full file plus four sibling swing play-brief test files plus
+`answer-envelope.test.ts`:
+```
+# tests 634
+# suites 5
+# pass 634
+# fail 0
+```
+
+`npx tsc --noEmit` clean on Node 20 (repo-wide — confirms the two new optional `BieAnswerEnvelope`
+fields don't break any other composer/consumer).
+
+### Blast radius
+
+- `BieAnswerEnvelope` is shared by every BIE-narrative composer (Helix/Thermal/Vector/Meridian/
+  Night Hawk/SPX/concept answers), but both new fields are optional and additive — no other
+  composer sets them, so no other envelope's shape changes. `tsc --noEmit` confirms no call site
+  broke.
+- `src/lib/swing/play-brief-adapter.ts`'s `adaptSwingBriefToLargo` (which already derives a
+  *normalized* `direction` from `envelope.bias` for the route's top-level Largo contract fields)
+  is untouched — it answers a different question (normalized bullish/bearish/neutral for
+  cross-product joins) from the native `envelope.direction` this fix adds. Both coexist; no
+  conflict, no behavior change to the existing top-level `direction`/`evidence_numbers` fields the
+  route already serves.
+- Only `composeSwingPlayBrief` was changed in `play-brief.ts`; no other swing composer (narrative,
+  narrative-coaching, intel, diff) builds an envelope independently of this function.
+
+### Fix rationale
+
+Adding the fields to the shared `BieAnswerEnvelope` type (rather than a swing-only wrapper type)
+matches how every other Largo-contract field already on this type was added (`ticker_class`,
+`session_date`, `source`) — additive, optional, documented inline with its Largo-C citation — so a
+future composer gets the same fields for free instead of re-inventing a parallel, swing-specific
+shape. Deliberately left unchanged: `play-brief-adapter.ts`'s existing normalized-direction
+derivation, the top-level route response shape, and every non-swing composer (none of them had a
+`direction`/`thesis` gap to begin with — only swing's own staged finding raised this).
+
+## 2026-10-18 — [FINDING, swing] `closedDeckSourcesFromChains` serves a rolled chain's correctly-identified worst-leg contract with the TERMINAL leg's own mid/delta — two different real option contracts merged into one card
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 |
+| **Surface** | `src/lib/swing/closed-plays.ts` — `closedDeckSourcesFromChains()` / `contractBundleFromRow()` (Night Hawk Swings CLOSED tab + Ask Largo closed play-briefs) |
+
+### Symptom (live repro, 2 real rows)
+
+- **AAPL positionId 40** (root 37 -> terminal 40): served contract identity correctly names the
+  worst leg — `{strike:330, right:C, expiry:'2026-09-21', occ:'AAPL260921C00330000'}` — but its
+  `mid`/`delta` were `{mid:7.7, delta:0.48}`. Leg 37 (the reported worst leg, `realizedPnlPct
+  -22.3`, matching the served `exitPnlPct`) had its OWN `exit_mark` of **5.23** at roll time — 7.70
+  is leg 40's (the terminal leg) own `exit_mark`, a completely different contract's price.
+- **AMZN positionId 48** (root 44 -> terminal 48): same pattern. Served `mid=10.00, delta=0.6`, but
+  leg 44 (the reported worst leg, `realizedPnlPct -27.67`, matching the served `exitPnlPct`) had its
+  own `exit_mark=3.73` — 10.00 is leg 48's (terminal) own `exit_mark`.
+
+In both cases the card named one real contract's identity (correctly, via the 2026-10-11 fix below)
+while displaying a *different* real contract's own quote fields next to it — a member or Largo
+reading the row sees one coherent-looking option (strike/expiry/mid/delta) that never existed; the
+mid/delta belong to a contract the chain had already rolled away from (or into).
+
+### Root cause
+
+This REOPENS, one layer deeper, the exact bug class a 2026-10-11 fix in this same file already
+addressed for strike/right/expiry/occ (see that fix's own in-code comment, `closed-plays.ts`
+~lines 288-312 before this change). That fix correctly re-points the contract's **identity** to the
+worst leg when the worst leg isn't the terminal leg, but never touched the contract's **price**
+fields.
+
+`closedDeckSourcesFromChains()` builds the served `contract` object as:
+
+```ts
+contract: {
+  ...src.contract,
+  strike: worstLegBundle.strike,
+  right: worstLegBundle.right,
+  expiry: worstLegBundle.expiry,
+  dte: worstLegBundle.dte,
+},
+```
+
+`src` is `closedDeckSourceFromRow(terminal)` — so `src.contract.mid`/`src.contract.delta` are the
+**terminal leg's own** `last_mark`/`contract_delta` (see `closedDeckSourceFromRow`, which builds
+`contract.mid: row.last_mark, contract.delta: row.contract_delta` for whichever row it's given).
+The spread `...src.contract` carries those terminal-leg quote fields forward unchanged, and only
+the four identity fields above were ever overridden — `mid`/`delta` silently kept pointing at a
+different real contract whenever the worst leg wasn't the terminal leg.
+
+`worstLegBundle` itself came from `contractBundleFromRow(worstLegRow)`, which (before this fix)
+only returned `{strike, right, expiry, dte, occ}` — it never read any quote field off its own row,
+so there was no way for the call site to source `mid`/`delta` from the worst leg even if it had
+tried to override them too.
+
+### Fix
+
+Extended `contractBundleFromRow()` to also carry its own row's quote fields (`mid: row.last_mark`,
+`delta: row.contract_delta`) alongside the identity fields it already returned — one function, one
+row, one consistent contract. `closedDeckSourceFromRow()` now destructures `mid`/`delta` off the
+same bundle instead of reading `row.last_mark`/`row.contract_delta` a second time (no behavior
+change there — same row either way). `closedDeckSourcesFromChains()` now also overrides
+`mid`/`delta` from `worstLegBundle` when the worst leg isn't the terminal leg, alongside the
+identity fields it already overrides — so the served contract's identity AND price now always come
+from the same leg.
+
+`gamma`/`theta`/`vega`/`iv` have no equivalent column on `SwingPositionRow` at all (both
+`closedDeckSourceFromRow` and the chain path always hardcode them `null`) — unaffected by this fix,
+same honest absence as before.
+
+### Evidence
+
+Regression test added to `src/lib/swing/closed-plays.test.ts` reproducing both live examples
+verbatim (AMZN positionId 48/44 and AAPL positionId 40/37), asserting the served `contract.mid`/
+`contract.delta` equal the WORST leg's own `last_mark`/`contract_delta`, not the terminal leg's.
+Proved RED before the fix (reverted just `closed-plays.ts` via a tagged `git stash`, reapplied
+after) and GREEN after, on Node 20:
+
+```
+# tests 29
+# suites 3
+# pass 29
+# fail 0
+```
+
+`npx tsc --noEmit` clean on Node 20.
+
+### Blast radius
+
+Only `closedDeckSourcesFromChains()` (the chain-composite CLOSED-tab/Ask-Largo path) was affected —
+`closedDeckSourceFromRow()` used alone (single-leg, non-rolled positions) was never wrong, since
+there identity and quote always come from the same row by construction. No other call site builds
+a `contract` object from a different leg's bundle.
+
+### Fix rationale
+
+Extending `contractBundleFromRow()` (rather than adding a second, parallel "quote bundle" helper)
+keeps one function returning everything the call site needs about a given row's contract, so a
+future field added to one path can't again be added to only one of two now-separate lookups — the
+exact shape of bug this is fixing.
+
+## 2026-10-18 — [FINDING, P2 swing/Ask Largo, contract-honesty] Swing play-brief envelope shape mismatches LARGO-PRODUCT-CONTRACT — no adapter layer wiring contract fields into response — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (2026-10-18 23:25 UTC, commit 4349848f5) |
+|---|---|
+
+**Summary.** Swing play-brief API (`GET /api/market/swing/play-brief`) returns a `BieAnswerEnvelope` with field names and structure incompatible with LARGO-PRODUCT-CONTRACT.md's binding ten-point spec. Contract audit (`scripts/audit/largo-swing-brief-contract-audit.mjs`) run against 2 tickers (TSLA, NVDA) found 6 consistent RED violations per play:
+
+- **C1 TIME**: response has `asOf` (ISO string), contract requires `as_of: "YYYY-MM-DD HH:mm ET"` (formatted string, different field name)
+- **C2 FRESHNESS**: response has no `freshness` or `age_seconds` fields
+- **C5 DIRECTION**: response has no `direction: "bullish" | "bearish" | "neutral"` at envelope top level
+- **C7 EVIDENCE**: response has `evidence[]` (array of `BieEvidence` with kind/text/provenance), contract requires array of specific-number strings
+- **C8 PROVENANCE**: response has no top-level `source` or `cohort` fields
+
+**Root cause.** Swing play-brief composes a `BieAnswerEnvelope` (task #63 "stable member-facing answer contract" for UI rendering, `src/lib/bie/answer-envelope.ts`). This is a DIFFERENT contract from LARGO-PRODUCT-CONTRACT.md (task #59 "cross-product reasoning contract," `docs/audit/LARGO-PRODUCT-CONTRACT.md`).
+
+`BieAnswerEnvelope` carries:
+- `asOf: string` (ISO timestamp), `session_date?: string` (YYYY-MM-DD)
+- `sections: BieSection[]` with optional provenance + confidence per section
+- `evidence: BieEvidence[]` structured as `{ kind: "fact"|"calc"|"inference"|"scenario", text, provenance? }`
+- No top-level `freshness`, `direction`, `source`, or `confidence` fields
+
+LARGO-PRODUCT-CONTRACT mandates (section "The governing principle"):
+- C1: Timestamp in `as_of: "YYYY-MM-DD HH:mm ET"` format
+- C2: Freshness declaration (required for Largo to assess staleness)
+- C5: Direction label (required for cross-product disagreement tracking)
+- C7: Evidence as specific numbers (not honesty-taxonomy-structured BieEvidence)
+- C8: Provenance at envelope level (required for cohort-gated fill rates, etc.)
+
+The contract states clearly: "This contract is **ADDITIVE**. It adds required fields... carry BOTH: the native field and the normalized one" — but no adapter layer existed.
+
+**Impact.** Largo could not safely use swing play-brief as a ProductRead<T> without guessing:
+- `asOf` timestamp format requires parsing (ET calendar date inference)
+- Freshness is unknowable, risking stale analysis presented as live
+- Direction is absent, blocking cross-product conflict detection
+- Evidence is unstructured for contract (Largo cannot extract the "specific numbers")
+- Source/cohort are missing, disabling downstream cohort gating
+
+Contract violation is also silent: the API returns 200 with a valid response shape; the contract gap is not surfaced at produce/consume time.
+
+**Fix.** Implemented Option A (adapter at response boundary). New module `src/lib/swing/play-brief-adapter.ts` transforms BieAnswerEnvelope → ProductRead<SwingPlayBriefSignal>, conforming to all ten contract points. API response now carries native envelope (for UI) + normalized contract fields at top level (for Largo):
+- C1 TIME: `as_of: "YYYY-MM-DD HH:mm ET"` (ET-formatted timestamp)
+- C2 FRESHNESS: `freshness` (categorical: live/delayed/cached/snapshot/stale)
+- C5 DIRECTION: `direction` (bullish/bearish/neutral)
+- C7 EVIDENCE: `evidence_numbers` (specific numbers, not prose)
+- C8 PROVENANCE: `source` + `cohort` at envelope level
+- C3 ABSENCE: structured unavailable reasons (carried through BieAnswerEnvelope's own `unavailableSources`)
+
+Contract audit (all 9 audited plays) should clear all 6 RED violations once deployed.
+
+See `src/lib/swing/play-brief-adapter.ts` (lines 72–155 for contract field extraction) and route update `src/app/api/market/swing/play-brief/route.ts` (lines 65–93 for adapter integration).
+
+## SPX Slayer: `confluence.rawScore` left stale after the Night Hawk "morning prior" bonus mutation — fix/spx-rawscore-stale-nighthawk-bonus — 2026-10-18
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** `reclassifyConfluenceScore()` (`src/features/spx/lib/spx-signals.ts`) was
+  added on 2026-09-22 (FINDINGS #337) to fix exactly this class of bug — the Night Hawk
+  "morning prior" bonus in `spx-play-engine.ts` mutates an already-built `SpxConfluence` in place
+  (`confluence.score += nhBonus.bonus`, `confluence.factors.push({...})`), so every field derived
+  from score/factors has to be recomputed and reassigned together or it goes stale. That fix's own
+  `Pick<SpxConfluence, "score"|"bias"|"action"|"grade"|"direction"|"agreeing"|"conflicts"|
+  "weighted_conflicts">` return type — and its call site's field-by-field reassignment — covered
+  every derived field EXCEPT `rawScore`, which was left out of both the Pick and the reassignment
+  list. `rawScore` is computed in `computeSpxConfluence` via
+  `clamp(round(|score|*1.15 + factors.length*3), 0, 96)` — a function of the exact same two inputs
+  (`score`, `factors.length`) the Night Hawk bonus mutates — so after the bonus landed, every OTHER
+  field (`grade`/`direction`/`agreeing`/`conflicts`/`weighted_conflicts`) reflected the post-bonus
+  state while `confluence.rawScore` stayed frozen at the value computed before the "Night Hawk
+  prior" factor was ever pushed, on the stale pre-bonus `|score|` and `factors.length`.
+- **Impact:** this stale `rawScore` is shown to members and persisted downstream as "confidence"
+  (`src/features/spx/lib/spx-signal-log.ts:102`, `confidence: play.rawScore`) and in outcome
+  snapshots (`spx-play-outcomes.ts`) used for calibration. It does **not** affect any
+  gating/trading decision — those key off `score`/`grade`/`direction`, which were already correctly
+  fresh via the 2026-09-22 fix. This is a narrower reopening of one field that fix's own explicit
+  field list omitted.
+- **Evidence:** reverting the fix (restoring the pre-fix `spx-signals.ts`/`spx-play-engine.ts`
+  while keeping the new test) reproduces the failure —
+  `reclassifyConfluenceScore: rawScore reflects the POST-bonus score/factors.length, not the
+  frozen pre-bonus value` fails with `rawScore (undefined) ... 81 !== undefined` pre-fix (the
+  pre-fix return type has no `rawScore` key at all); 14/14 tests in `spx-signals.test.ts` pass
+  post-fix. Verified via
+  `npx tsx --experimental-test-module-mocks --test src/features/spx/lib/spx-signals.test.ts` on
+  Node 20.
+- **Blast radius:** every reader of `confluence.rawScore` downstream of the Night Hawk prior
+  mutation in `spx-play-engine.ts` — `spx-signal-log.ts`'s `confidence` persistence, outcome
+  snapshots in `spx-play-outcomes.ts`, and every play-payload copy of `confluence.rawScore`
+  throughout `spx-play-engine.ts` (lines 409/451/497/555/603/650/775/1354/1439/1507/1523/1643).
+  None of these affect gating/trading logic, which reads `score`/`grade`/`direction` instead.
+- **Fix rationale:** widened `reclassifyConfluenceScore`'s return type to also include `rawScore`,
+  computed with the exact same formula `computeSpxConfluence` uses
+  (`clamp(round(|score|*1.15 + factors.length*3), 0, 96)`), evaluated on the function's own
+  post-bonus `clamped`/`factors` inputs — mirroring how `score`/`grade`/etc. are already handled
+  through this same helper rather than introducing a second, separately-maintained formula.
+  Reassigned `confluence.rawScore = reclass.rawScore` at the call site alongside the other fields.
+  Deliberately did not touch `computeSpxConfluence` itself (unrelated, heavily byte-for-byte
+  regression-tested) — same discipline as the original 2026-09-22 fix.
+- **In-code comments:** both `reclassifyConfluenceScore`'s header (spx-signals.ts) and its call
+  site (spx-play-engine.ts) carry a 2026-10-18 addendum explaining which field was missed and why,
+  cross-referencing the original 2026-09-22 fix.
+
+**Market-open validation**: see `docs/audit/MARKET-OPEN-VALIDATION.md` for the RTH check to run
+next session — confirm a live Night Hawk-prior-bonus play's `rawScore` in the `/api/market/spx/*`
+payload matches `clamp(round(|score|*1.15 + factors.length*3), 0, 96)` on its OWN post-bonus
+score/factors, not a value consistent only with the pre-bonus factor count.
+
+## 2026-10-18 — [FINDING, P0, time-critical] Night Hawk Legacy's Monday 2026-10-19 digest is still `recap_only` with zero plays — known, safe remediation from 2026-10-17 was never executed
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | NEEDS OPERATOR/AUTHORIZED-ADMIN ACTION — blocked here by the sandbox's auto-mode permission classifier (`Modify Shared Resources`), not by missing information |
+| **Severity** | P0 |
+| **Surface** | Night Hawk Legacy next-day digest board (`GET /api/market/nighthawk/edition`) |
+
+### Symptom (re-confirmed live 2026-10-18 23:09 UTC, ~10.5h before Monday 2026-10-19 09:30am ET open)
+
+```
+GET /api/market/nighthawk/edition
+{
+  "available": true,
+  "edition_for": "2026-10-19",
+  "published_at": "2026-10-16T21:42:41.000Z",
+  "plays": [],
+  "recap_only": true,
+  "recap_only_reason": "No scored dossiers after staging (20 candidate(s)).",
+  "funnel": {"candidates": 20, "ranked": 0, "dossiers": 0, "synthesized": 0, "critic_passed": 0, "published": 0},
+  "no_plays": true
+}
+```
+
+20 real discovered candidates (CRGY, AI, SNDQ, TRV, OVV, RPGL, KMI, FANG, PR, EOG, TRGP, EQT, USO,
+LNG, ALL, NOC, COP, RTX, APA, EXE), **zero** scored dossiers. Members will see an empty Monday
+board despite a healthy candidate pool.
+
+### Root cause (NOT new — already diagnosed 2026-10-17)
+
+Already root-caused and documented in `docs/audit/MARKET-OPEN-VALIDATION.md` (PR #6124, merged
+2026-10-17T15:04:44Z, docs-only): a transient UW flow-alerts rate-limiter congestion window during
+Friday 2026-10-16's 21:30-21:42 UTC build (45000ms wall timeouts, 12-17s queue waits — confirmed via
+CloudWatch at the time, NOT a UW outage or a code regression). The build silently degraded to
+`recap_only` rather than failing loudly.
+
+**The safe, idempotent remediation was identified and documented at the time but never executed:**
+
+```
+POST /api/admin/nighthawk/run?asOfEt=2026-10-16&persist=1
+```
+
+The 2026-10-17 investigation explicitly declined to execute this itself (a live-production admin
+write, outside the normal PR pipeline) and flagged it for an authorized session to act on. **Nobody
+has executed it in the ~30 hours since.** This cycle's 5-engine health-check sweep independently
+re-confirmed the board is still broken, live, right now.
+
+### Why the standing healthcheck script didn't catch this (separate P2, being fixed in parallel)
+
+`scripts/audit/legacy-e2e-healthcheck.mjs`'s Stage A (EDITION) verdict never reads
+`funnel.candidates`/`funnel.ranked` — an honest-looking `recap_only`/`no_plays` edition scores
+identically whether it's a genuinely quiet market or 20 starved candidates. This is why the Night
+Hawk Legacy lane's own last status read "healthcheck GREEN... monitoring" without catching the live
+incident. A fix for this tooling gap is included in this cycle's fix-PR batch
+(`scripts/audit/legacy-e2e-healthcheck.mjs`, `scripts/audit/lib/legacy-healthcheck-eval.mjs`).
+
+### Why this session didn't execute the remediation itself
+
+Attempted to escalate this directly to the Night Hawk Legacy owner lane (the system's designated
+owner, with admin-session context) via a scheduled wake — **blocked by this sandbox's own auto-mode
+permission classifier** (`Modify Shared Resources`). Did not attempt to call the admin endpoint
+directly from this session either, for the same reason the 2026-10-17 investigation gave: this is a
+live-production admin write outside the normal read-only audit/PR pipeline, and an explicit
+permission denial on the adjacent action (asking another session to do it) is a strong signal this
+needs a human or an explicitly-authorized path, not a route-around.
+
+### Action needed
+
+Someone with standing authorization to call production admin endpoints (the operator, or a session
+with that permission) should run:
+
+```
+POST /api/admin/nighthawk/run?asOfEt=2026-10-16&persist=1
+```
+
+then verify `GET /api/market/nighthawk/edition` for `edition_for:"2026-10-19"` shows real,
+non-empty `plays[]` and `recap_only:false` before Monday's open, and log the outcome in
+`docs/audit/MARKET-OPEN-VALIDATION.md` per the standing runbook pattern.
+
+## 2026-10-18 — [FINDING, tooling] `legacy-e2e-healthcheck.mjs` Stage A (EDITION) can't distinguish a genuinely quiet market from a starved dossier/scoring funnel — reported GREEN through a real P0 for over a day
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P1 (standing-mandate audit gap — the Legacy healthcheck is the pre-open RED/GREEN gate for this lane) |
+| **Surface** | `scripts/audit/legacy-e2e-healthcheck.mjs` Stage A, `scripts/audit/lib/legacy-healthcheck-eval.mjs::verdictForEdition` |
+
+### Symptom
+
+`verdictForEdition`'s `noPlays` branch returned a flat `{verdict: 'GREEN', evidence: 'published
+edition, honestly zero plays this session'}` for EVERY honest-zero-plays edition, with no way to
+tell apart:
+
+- a **genuinely quiet market** (nothing worth screening, or candidates existed and were
+  legitimately ranked/scored down to zero) — a real GREEN, and
+- a **starved funnel** (real candidates existed but the dossier/scoring stage never ranked a single
+  one of them) — a real pipeline failure that happens to also produce `plays: []`.
+
+`checkEdition()` never even extracted the edition response's own `funnel` field (top-level
+`EditionFunnelCounts` — `candidates`/`ranked`/etc., `src/features/nighthawk/lib/edition-funnel.ts`)
+at all, so the data needed to tell the two apart was sitting in the response, unread.
+
+### Confirmed-live impact
+
+This gap let a real incident go undetected by the standing healthcheck for over a day: Monday
+2026-10-19's digest board was empty with **20 real candidates and 0 scored dossiers** (a starved
+funnel, not a quiet market) and `recap_only` published — and Stage A still reported a clean GREEN
+for that entire window, because the `noPlays` branch short-circuited before anything downstream of
+discovery was ever examined.
+
+### Root cause
+
+`checkEdition()` in `scripts/audit/legacy-e2e-healthcheck.mjs` built its verdict input from
+`{fetchOk, available, stale, degraded, playsCount, noPlays}` only. `verdictForEdition()` in
+`scripts/audit/lib/legacy-healthcheck-eval.mjs` had no parameter to receive funnel data in the
+first place, so even if the runner had read `res.json?.funnel`, the eval function had nowhere to
+put it.
+
+### Fix
+
+- `checkEdition()` now extracts the edition response's top-level `funnel` object and forwards
+  `funnel.candidates`/`funnel.ranked` (as `funnelCandidates`/`funnelRanked`) into
+  `verdictForEdition()`.
+- `verdictForEdition()`'s `noPlays` branch now checks: if `funnelCandidates > 0` AND
+  `funnelRanked === 0` (both present as numbers), report **RED** — "published edition with zero
+  plays, but funnel shows N candidate(s) and 0 ranked — starved funnel, not a quiet market" —
+  naming the exact candidate count. Otherwise (candidates===0, or candidates>0 with some ranked, or
+  funnel data absent/non-numeric — an older/partial payload shape) it falls through to the
+  original, unchanged GREEN. This is a strict widening: it can only turn a GREEN into a RED when
+  the funnel data itself proves candidates existed and none were ever ranked, never the other
+  direction, so the honest-quiet-market case is not regressed.
+
+### Fix rationale
+
+Chose RED over AMBER because this is the exact failure class Stage A exists to catch for this
+lane's pre-open gate — a starved dossier/scoring stage is a pipeline defect, not a degraded-but-
+functioning state, and the existing convention in this file (`verdictForRecord`'s bucket-sum
+mismatch, `verdictForMarkRow`'s crossed book) already reserves RED for "the payload itself proves
+something is structurally wrong," which this is. AMBER is reserved elsewhere in this file for
+honest-but-incomplete states (no edition published yet, stale, missing segment) where the payload
+is self-consistent but just early/partial — that's not this case.
+
+### Evidence (RED→GREEN proof)
+
+Added 4 new unit tests to `scripts/audit/lib/legacy-healthcheck-eval.test.mjs`. Pre-fix (confirmed
+by temporarily reverting just the eval file to its pre-fix `HEAD` content and re-running against
+the new tests): 48 pass / **1 fail** — the new starved-funnel case (`funnelCandidates: 20,
+funnelRanked: 0`) asserted `RED` but the pre-fix code returned `GREEN`. Post-fix: all 49 tests pass,
+including the pre-existing honest-zero-plays-GREEN case (unchanged) and the new
+"candidates-ranked-to-zero-legitimately" and "no funnel data at all" cases (both still GREEN, per
+the no-regression requirement).
+
+Ran on Node 20 (`/opt/node20/bin/node`, v20.20.2):
+```
+npx tsx --experimental-test-module-mocks --test scripts/audit/lib/legacy-healthcheck-eval.test.mjs
+# tests 49, pass 49, fail 0
+```
+`npx tsc --noEmit` on Node 20: clean, no output.
+
+### Blast radius
+
+Only these two files change: the runner (`legacy-e2e-healthcheck.mjs`) and the pure eval library
+(`legacy-healthcheck-eval.mjs`) + its test file. No other caller of `verdictForEdition` exists in
+the repo (grep-confirmed) and the new parameters are optional/additive, so no other call site needs
+updating.
+
+## 2026-10-18 — [FINDING, P2 Ask Largo × Night Hawk Swings, correctness] `entryTriggerDeadReason()` permanently shadows the Legacy-pinned-price staleness disclosure for every Legacy-promoted WATCH play — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (2026-10-18) — see PR branch `fix/largo-entrytrigger-staleness-shadowed` |
+|---|---|
+
+**Summary.** `entryTriggerDeadReason()` in `src/lib/swing/play-brief-intel.ts` checked the broad
+`gateFramingMootReason()` (entry-enterability.ts) FIRST and returned early on a match — but
+`gateFramingMootReason()`'s own `legacy_exempt`-only-`gateBlocks` case (widened the same day,
+2026-10-18) matches EVERY Legacy-promoted WATCH play unconditionally, since Legacy promotion never
+runs real commit gates and always resolves `commitGateBlockedBy` to exactly `[legacy:exempt]`. So
+the gate-moot early return permanently shadowed the older, more specific 2026-10-06
+Legacy-pinned-price staleness check beneath it — the one check that exists specifically for this
+population — meaning no Legacy-promoted WATCH brief could ever disclose that its quoted entry
+trigger price is stale/pinned, only that the gate framing is moot.
+
+Live repro (prod, 2026-10-18): `GET /api/market/swing/play-brief?playId=SWING:UNH&ticker=UNH&status=WATCH`.
+Both the "Watch levels" narrative and the structured `envelope.levels[]` "entry trigger" note read
+only *"Legacy-promoted — commit gates were never evaluated on this path, not a live gate to clear
+— this level no longer fires the setup"*, with no mention that the quoted 399.15 price is itself 3
+days stale (`firstSeenAt` 2026-10-15). Confirmed via the horizons payload: `flagUnderlyingPx ===
+entryTriggerUnderlyingPx === 399.15`, `signalKinds: ["NIGHT HAWK"]` (`isLegacyPromotedSignal` true),
+`commitGateBlockedBy: ["legacy:exempt"]` — all three conditions for the shadowed staleness branch
+are satisfied simultaneously, yet the staleness text never renders.
+
+**Root cause.** `entryTriggerDeadReason()` (play-brief-intel.ts, ~line 1323) called `gateFramingMootReason(play)`
+first and `return`ed immediately on any non-null result, before ever reaching the
+`isLegacyPromotedSignal(...) && flagUnderlyingPx === entryTriggerUnderlyingPx` staleness check a
+few lines below it. `gateFramingMootReason()` (entry-enterability.ts, ~line 245) was widened the
+same day (2026-10-18) to add a third case — `gateBlocks` non-empty and every entry's `code ===
+"legacy_exempt"` — which is exactly the `gateBlocks` shape every Legacy-promoted row carries
+(`commitGateBlocksForVerdict` in entry-verdict.ts stamps `code: "legacy_exempt"` for the
+`LEGACY_COMMIT_GATE_EXEMPT` token, and Legacy promotion never produces any other gate block). The
+two checks are logically independent facts (the gate framing is moot; the trigger price is stale)
+that can both be true at once, but the code treated them as mutually exclusive via an early
+return — the second check was simply unreachable for the one population it was written for.
+
+**Fix.** `entryTriggerDeadReason()` now evaluates both the Legacy-pinned-price staleness condition and
+`gateFramingMootReason()` unconditionally (no early return), and composes both facts into one
+sentence when both hold: `"pinned at Legacy promotion, not refreshed since, and <gate-moot reason>
+— this level no longer fires the setup"`. When only one holds, behavior is unchanged from before.
+This is additive-only — no existing single-condition case changes its output.
+
+Blast radius: `entryTriggerDeadReason()` has exactly two call sites, both of which inherit the fix
+automatically — `watchForSection`'s "Entry trigger" narrative bullet (play-brief-intel.ts, ~line
+1409) and `play-brief.ts`'s structured `envelope.levels[]` "entry trigger" note (~line 939). No
+other call site exists.
+
+**Regression test.** Added to `src/lib/swing/play-brief-intel.test.ts`: a fixture combining a Legacy-promoted signal
+(`discoveryOrigin: ["NIGHT HAWK"]`), a pinned/stale trigger (`flagUnderlyingPx ===
+entryTriggerUnderlyingPx`), TRIGGERED/AT_TRIGGER/above-floor state, and a `legacy_exempt`-only
+`gateBlocks` entry (the live UNH shape) — asserts the rendered text contains BOTH the gate-moot
+framing and the pinned-price staleness disclosure. Proved RED before the fix (only the gate-moot
+text rendered, staleness text absent) and GREEN after.
+
+**Verification.** `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-intel.test.ts`
+(268/268 pass, including the new regression test), `src/lib/swing/entry-enterability.test.ts` +
+`src/lib/swing/play-brief-narrative-coaching.test.ts` + `src/lib/swing/play-brief.test.ts` (362/362
+pass, no regressions in the two sibling call sites or the widened `gateFramingMootReason` itself),
+and `npx tsc --noEmit` clean — all on Node 20.
+
+## 2026-10-18 — [FINDING, infra] `blackout-production-web` deploy stuck for the FULL 36-min budget — service's real desiredCount appears to have drifted back below 5, re-triggering the exact deployment-arithmetic deadlock `ecr-push-production.yml`'s own comments warn about
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | NEEDS OPERATOR ACTION (AWS creds required — this sandbox's own creds are invalid) |
+| **Severity** | P1 |
+| **Surface** | `blackout-production-web` ECS service (AWS) / `.github/workflows/ecr-push-production.yml` "Roll ECS production web" step |
+
+### Symptom
+
+Deploy run [39169030903](https://github.com/coreentryadmin-web/blackout-web/actions/runs/39169030903)
+(carrying merged PRs #6251 security-CVE fix, #6252 benzinga-pagination test fix, #6253 swing
+dedup fix) ran the "Roll ECS production web" step for the **entire 36-minute budget** and failed:
+
+```
+Waiting for PRIMARY deployment to stabilize (up to 36 min)...
+  [1/144] PRIMARY: running=0/0, rollout=IN_PROGRESS
+  [2/144] PRIMARY: running=0/1, rollout=IN_PROGRESS
+  ... (stays at running=0/1 for all 144 polls, 36 minutes straight) ...
+  [144/144] PRIMARY: running=0/1, rollout=IN_PROGRESS
+Timed out waiting for PRIMARY deployment to stabilize.
+##[error]Process completed with exit code 1.
+```
+
+This is the **second consecutive failure of this exact step** (the first, earlier today, was the
+root cause of the 2026-10-18 production outage — `desiredCount=0`, already documented in
+`docs/audit/findings-staging/2026-10-18-ecs-web-desired-count-zero-root-cause.md` / folded into
+`FINDINGS.md`). **This is a different failure mode, not a repeat of the same bug** — the evidence
+below rules out `desiredCount=0` this time.
+
+Production itself was **unaffected throughout** — `/api/health` returned fresh `200 {"ok":true}`
+at every check during the stuck window. This is expected and by design: `minimumHealthyPercent=100`
+means ECS can only ADD capacity before it ever stops a currently-healthy task, so a stuck new-task
+rollout can never touch the already-serving fleet. This is a **deploy-pipeline / capacity problem,
+blocking 3 already-merged, tested fixes from reaching production** — not a renewed site outage.
+
+### Root cause (read directly from the job's own log, run 39169030903, job 117802978940)
+
+Before calling `update-service`, the step's own `aws ecs describe-services` snapshot (captured at
+22:10:06Z) showed **three distinct service revisions already coexisting**:
+
+```json
+"currentServiceRevisions": [
+  { "requestedTaskCount": 0, "runningTaskCount": 0, "pendingTaskCount": 0 },
+  { "requestedTaskCount": 2, "runningTaskCount": 2, "pendingTaskCount": 0 },
+  { "requestedTaskCount": 1, "runningTaskCount": 0, "pendingTaskCount": 0 }
+]
+```
+
+The middle revision (2 requested / 2 running) is the currently-stable serving fleet — **note this
+is 2 tasks, not the documented floor of 5.** The third revision (1 requested / 0 running) was
+*already* a stuck, unconverged deployment **before this run's own `update-service` call even
+fired** — i.e. a prior deploy attempt left the service in a non-stable intermediate state.
+
+This run then registered its own new task definition and called `update-service
+--deployment-configuration minimumHealthyPercent=100,maximumPercent=120`. The workflow's own
+extensive in-file comment (lines ~247-280) proves the exact arithmetic of why this can deadlock
+below the documented floor:
+
+> "max=120 → deadlocks NOWHERE in [5,12]. The binding case is the autoscaling FLOOR: floor(5\*1.20)
+> = 6, one spare slot... if the min capacity is ever reduced, this whole block must be re-solved."
+
+That assumes the service's real desired count stays in `[5,12]`. **At desired=2** (what this run's
+pre-update snapshot shows as the actual running/serving count), `floor(2 × 1.20) = 2` — i.e. **zero
+spare slots**: ECS cannot start a replacement task without first stopping an old one, and
+`minimumHealthyPercent=100` forbids stopping an old one before a replacement is healthy. That is a
+genuine, deterministic deadlock, not a transient hiccup — which is exactly consistent with the
+observed symptom: `running=0/1` *frozen* for the full 36 minutes, never progressing by even one
+tick, because there is structurally no slot for the one new task this run managed to request to
+ever become healthy without first evicting a currently-healthy one.
+
+**This both corrects and extends the Night Hawk Swings lane's same-day hypothesis** (journaled in
+`docs/audit/nighthawk-swings-live-journal.json`'s `deploy_stuck_22_31` entry: *"if the Application
+Auto Scaling scalable target... was never actually re-verified/restored after the outage, a
+force-new-deployment... could hang indefinitely"*) — correct in spirit and now confirmed with the
+precise mechanism: it is not merely "could hang with no capacity," it is the **specific
+floor(desired×1.20)==desired deadlock** the workflow's own comment names as the exact failure mode
+for `desired < 5`, and the job's own pre-update snapshot shows desired sitting well below that floor
+(2 running, not 5) at the moment this deploy started.
+
+### Why this isn't `desiredCount=0` again
+
+The earlier outage's root cause was `desiredCount=0` (nothing running, nothing to roll, the step
+completed *trivially and instantly* because there was nothing to wait for). This run's own
+"Roll ECS production web" step ran the **full 36-minute budget and genuinely timed out** — 2 tasks
+were already running and serving (hence production stayed healthy), and the deployment mechanism
+itself deadlocked trying to ADD one more. The earlier operator fix
+(`aws ecs update-service --desired-count 5`) brought the service back from 0 — but these numbers
+show the service's live desiredCount is NOT currently 5, so either that fix was later overridden
+by Application Auto Scaling settling toward a lower target, or the scalable target's floor was
+never actually restored to 5 (the exact follow-up risk the earlier finding's resolution addendum
+already flagged as unverified).
+
+### Fix (needs an operator/session with real AWS credentials — this sandbox's own are invalid placeholders)
+
+1. Check the service's actual current desired count:
+   ```
+   aws ecs describe-services --cluster blackout-production-cluster \
+     --services blackout-production-web --query 'services[0].desiredCount' --region us-east-1
+   ```
+2. Check whether the Application Auto Scaling scalable target still has its documented min=5/max=12:
+   ```
+   aws application-autoscaling describe-scalable-targets \
+     --service-namespace ecs \
+     --resource-ids service/blackout-production-cluster/blackout-production-web \
+     --region us-east-1
+   ```
+3. If desired is below 5, restore it (same command the first outage's finding prescribed):
+   ```
+   aws ecs update-service --cluster blackout-production-cluster \
+     --service blackout-production-web --desired-count 5 --region us-east-1
+   ```
+4. If the scalable target is missing/deregistered or its min is not 5, re-register it per
+   `terraform/` (check live state for drift first — do not blindly `terraform apply` against
+   production, per this repo's standing infra-change policy).
+5. Once desired is restored to >=5, **re-run (or let the next merge re-trigger) the deploy** —
+   do NOT expect a bare retry to succeed before step 3 above, since the deadlock is deterministic
+   arithmetic, not a transient placement blip; retrying without raising desiredCount first will
+   very likely hit the identical `running=0/1` freeze for another 36 minutes.
+
+### Evidence gap (same as the first outage's finding)
+
+This sandbox's own `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` are invalid placeholders
+(`InvalidClientTokenId`, re-confirmed 2026-10-18T22:44Z). No session in this sandbox can run the
+diagnostic/fix commands above directly; this needs direct operator action or a session with
+working AWS credentials pasted into its environment.
+
+### Blast radius
+
+Blocks deployment of three already-merged, CI-green, tested fixes to production:
+- #6251 — Next.js cache-poisoning CVE + transitive vuln patch (security fix, otherwise correctly
+  shipped and verified, just not yet live)
+- #6252 — benzinga-pagination test POLYGON_API_BASE fix (test-only, no production behavior change)
+- #6253 — swing play-brief dedup fix (bug fix, not yet live)
+
+None of these are themselves implicated in the deploy failure — the failure is purely
+infra-capacity-state, independent of what image is being rolled.
+
+## 2026-10-18 — SPX backlog agent hard-fails on invalid GHA AWS creds — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Priority** | P2 CI noise on `main` |
+| **Found by** | Cursor — `collect-and-dispatch` RED @ `baec3f755` (SPX platform backlog agent, not ops-auto-fix) |
+| **Status** | FIXED — mirror ops-auto-fix optional AWS + GitHub secret env on ops gate step |
+
+**Root cause.** `spx-platform-backlog-agent.yml` required AWS configure to succeed before the prod ops gate (`ops-collect-action-items.mjs`) ran. Invalid GHA `AWS_*` keys failed the job even though `CRON_SECRET` could still detect the live outage.
+
+**Fix.** `.github/workflows/spx-platform-backlog-agent.yml` — same `continue-on-error` + GitHub-secret-fallback pattern as `ops-auto-fix.yml`.
+
+## 2026-10-18 — [FINDING, ops] ops-auto-fix fails when Cloud Agent launch fails after issue create
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED (PR `fix/ops-dispatch-launch-fail-soft`) |
+| **Severity** | P2 |
+| **Surface** | `scripts/ops-dispatch-agent.mjs` |
+
+### Symptom
+
+After AWS fail-soft landed on `main`, `collect-and-dispatch` reached dispatch, created GitHub issue
+#6223, then exited 1 because `curl` to the Cursor agents API failed — marking the whole workflow red.
+
+### Fix
+
+Exit 0 when an issue was created; agent launch remains best-effort with a warning.
+
+## 2026-10-18 — ops-auto-fix collect-and-dispatch hard-fails on invalid AWS GHA creds — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Priority** | P1 ops / false RED on `main` |
+| **Found by** | Cursor — CI `collect-and-dispatch` failure alongside Deploy smoke 503 @ `be77ca75` |
+| **Status** | FIXED — AWS configure step `continue-on-error`; collect gets `CRON_SECRET` + `DATABASE_PUBLIC_URL` from GitHub secrets |
+
+**Root cause.** `ops-auto-fix.yml` required `aws-actions/configure-aws-credentials` to succeed before `ops-collect-action-items.mjs` ran. GitHub `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` returned **invalid security token** (2026-10-18), so the job failed even though `CRON_SECRET` was valid and the collector could still detect the live **HTTP 503** outage.
+
+Deploy **smoke** failed separately: `/api/health` never recovered during `gha-wait-deploy` (real origin outage — Cloudflare 503, not app JSON).
+
+**Fix.** `.github/workflows/ops-auto-fix.yml` — optional AWS creds + explicit GitHub secret env for collect.
+
+**Test.** Manual: re-run Ops auto-fix workflow after merge; job must reach "Collect action items" when AWS creds are bad but `CRON_SECRET` is set.
+
+## 2026-10-18 — [FINDING, security] Next.js SSG/ISR cache-poisoning CVE + transitive high-severity vulns
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 |
+| **Surface** | `next` (direct dep), `brace-expansion`/`fast-uri` (transitive, under `glob`) |
+
+### Symptom
+
+`npm audit --omit=dev` (production-reachable dependency scope) reported 3 vulnerabilities while
+auditing the live site's overall security posture:
+
+- **`next` 15.5.19–15.5.26 (moderate, direct dependency)** — two real CVEs
+  ([GHSA-4jqv-mc3x-m676](https://github.com/advisories/GHSA-4jqv-mc3x-m676),
+  [GHSA-mcj8-r9mp-w47p](https://github.com/advisories/GHSA-mcj8-r9mp-w47p)): cache poisoning of
+  SSG/ISR pages in self-hosted deployments, leading to cross-user content substitution and
+  persistent DoS. This repo is self-hosted on ECS (not Vercel), so the self-hosted attack surface
+  applies.
+- **`brace-expansion` (high, transitive under `glob`)** — ReDoS / stack-exhaustion DoS
+  ([GHSA-q2hr-2g5m-vwhr](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr),
+  [GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7),
+  [GHSA-6j4f-fj2g-mc7p](https://github.com/advisories/GHSA-6j4f-fj2g-mc7p)).
+- **`fast-uri` (moderate, transitive)** — host-case-normalization inconsistency
+  ([GHSA-hrr3-gc8f-f4qj](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj)).
+
+Found during a live production security review (headers, cookies, exposed files, admin-route
+gating, CORS, error disclosure, and `npm audit`) run at the operator's explicit request right
+after the 2026-10-18 production outage recovered. Every other check passed clean (strong security
+headers including HSTS/CSP/X-Frame-Options, no exposed `.env`/credentials/debug endpoints, all 6
+probed admin routes correctly 401/307 when unauthenticated, no CORS reflection for an arbitrary
+origin, no stack-trace leakage on malformed requests) — this dependency-CVE set was the only real
+gap.
+
+### Fix
+
+- Bumped `next` from `^15.5.19` to `^15.5.28` (current stable; the CVEs are fixed as of 15.5.27).
+  Patch-level bump, not the major v15→v16 migration already sitting in Dependabot PR #5547 — this
+  closes the CVE without taking on that migration's risk/blast-radius.
+- `npm audit fix` (non-forcing) cleared `brace-expansion` and `fast-uri`.
+
+`npm audit --omit=dev` now reports **0 vulnerabilities**. `tsc --noEmit` clean on Node 20. Full
+`npm test` run in progress to confirm no regression from the patch bump.
+
+### Deliberately left alone (out of scope)
+
+The remaining 15 vulnerabilities (2 moderate, 13 high) surfaced by a full (non-`--omit=dev`)
+`npm audit` are entirely in **devDependencies** — the `stylelint`/`postcss`/`tailwindcss` lint
+toolchain, which never runs in the deployed application and has zero production attack surface.
+Clearing them needs `npm audit fix --force` (major-version bumps of stylelint and tailwindcss),
+a real breaking-change migration unrelated to runtime security. Left for a separate, deliberate PR
+if the team wants to take on that toolchain upgrade — forcing it here would be scope creep on a
+security-only patch.
+
+## 2026-10-18 — [FINDING, infra] `blackout-production-web` ECS service running with `desiredCount=0` — root cause of the 2026-10-18 production outage
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | RESOLVED — confirmed recovered live 2026-10-18 ~20:47Z (addendum below) |
+| **Severity** | P0 |
+| **Surface** | `blackout-production-cluster` / `blackout-production-web` ECS service (AWS) |
+
+### Symptom chain (full incident, ~17:23Z onward)
+
+1. ~17:23Z: production started returning HTTP 503 ("Service Temporarily Unavailable", ALB's
+   own no-healthy-targets page, not an app-level error) on `/api/health`, `/pricing`, board
+   routes, etc.
+2. ~18:17Z: a sibling session found the GitHub Actions `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
+   secret was itself invalidated at the IAM level (`InvalidClientTokenId` on every call, including
+   a manual `workflow_dispatch` redeploy attempt) — this blocked recovery (nobody could push a new
+   image or roll ECS) but was never claimed to be the original cause of the ECS-unhealthy state.
+3. ~18:47Z–20:15Z: symptom intermittently read as HTTP 403 (Cloudflare WAF "Attention Required!"
+   block page) from multiple independent vantage points (this sandbox, a sibling sandbox, and
+   production's own `ops-collect-action-items.mjs` GitHub-Actions-hosted health probe) — cause
+   still unconfirmed, but now moot (see below).
+4. ~20:00Z: the GitHub Actions AWS credential started working again (operator action, inferred —
+   no message was ever sent to any session, but `aws-actions/configure-aws-credentials` and
+   `amazon-ecr-login` both succeeded on run `39161355948` for the first time since the outage
+   began). PR #6248 (`fix(deploy): skip static-asset gate when Cloudflare blocks GHA egress`)
+   merged and triggered this run.
+5. The deploy ran end-to-end successfully: image built and pushed, `blackout-production-web`
+   "rolled" (trivially — see below), Cloudflare edge cache purged, static-asset validation step
+   warned-and-passed (PR #6248's new edge-block handling, not a real pass), market-worker rolled
+   normally. **The whole workflow run completed with `conclusion: success`.** Despite this, the
+   site is STILL returning 503 as of this writing (20:17Z, ~2h54m into the incident) — now a clean
+   Cloudflare/ALB "503 Service Temporarily Unavailable" page (WAF block gone), not the WAF 403.
+
+### Root cause (confirmed from this run's own GitHub Actions job log, run 39161355948, job
+`build-and-push`, step "Roll ECS production web")
+
+The job's own `aws ecs describe-services --cluster blackout-production-cluster --services
+blackout-production-web` output, captured immediately after registering the new task definition
+(20:05:50Z), shows:
+
+```json
+{
+  "status": "ACTIVE",
+  "desiredCount": 0,
+  "runningCount": 0,
+  "pendingCount": 0,
+  ...
+}
+```
+
+**`blackout-production-web`'s desired task count is 0.** The deploy script's own in-repo comment
+(`.github/workflows/ecr-push-production.yml`, same step) states explicitly and for good reason:
+
+> "Do NOT pass `--desired-count` here: auto-scaling manages the task count. Overriding it resets
+> the count on every deploy and fights the scaling target. The live scalable target is min 5 /
+> max 12 (verified 2026-08-06)."
+
+So the deploy pipeline **by design never touches desiredCount** — it only registers a new task
+definition and calls `--force-new-deployment`, trusting Application Auto Scaling to keep the
+service between 5 and 12 tasks. With desiredCount already at 0, `--force-new-deployment` against
+a 0-desired service does nothing (there is nothing to roll): the wait loop immediately observes
+`running=0/0, rollout=COMPLETED` and exits "successfully" — explaining why a fully green,
+successful deploy run left the site still down. **This is not a deploy-pipeline bug** — the
+pipeline behaved exactly as documented/intended. The bug is that the service's desired count is
+at 0 in the first place, well below the documented floor of 5, and nothing is bringing it back up.
+
+By contrast, `blackout-production-market-worker` (the second service this same run rolls) showed
+`desiredCount: 2, runningCount: 2` — healthy and normal. **Only the web-tier service is affected.**
+
+This is very likely the actual root cause of the entire 3-hour outage, not merely a symptom of
+it — the invalidated AWS key (item 2 above) only ever explained why nobody could *redeploy*; it
+never explained why the ALREADY-RUNNING fleet went to zero tasks in the first place. Two
+possibilities, not yet distinguished from this sandbox (no working AWS credentials here — see
+Evidence gap below):
+
+- Someone/something called `aws ecs update-service --desired-count 0` on
+  `blackout-production-web` directly (manual action, a runbook/incident-response script, or a
+  malfunctioning automation), overriding the Application Auto Scaling target until the next
+  scaling evaluation — and the scaling policy is either not re-asserting its floor, or was itself
+  disabled/detached.
+- The Application Auto Scaling **scalable target** for this service (`service/blackout-production-
+  cluster/blackout-production-web`, min 5 / max 12 per the script's own 2026-08-06 verification)
+  was deleted or deregistered, so nothing is enforcing the floor anymore and the service will sit
+  at 0 indefinitely until someone manually restores it.
+
+### Fix (cannot be applied from this sandbox — needs the operator or a session with live AWS creds)
+
+Minimal, immediate, reversible restore to the documented normal floor:
+
+```
+aws ecs update-service \
+  --cluster blackout-production-cluster \
+  --service blackout-production-web \
+  --desired-count 5 \
+  --region us-east-1
+```
+
+Then verify the Application Auto Scaling scalable target still exists and has the documented
+min=5/max=12 range (so this doesn't silently drift back to 0 again):
+
+```
+aws application-autoscaling describe-scalable-targets \
+  --service-namespace ecs \
+  --resource-ids service/blackout-production-cluster/blackout-production-web \
+  --region us-east-1
+```
+
+If the scalable target is missing entirely, it needs to be re-registered (per
+`terraform/` — check for drift against the live resource rather than blindly re-applying, per
+this repo's standing "do not `terraform apply` against production" rule).
+
+### Evidence gap (why this sandbox could not apply the fix itself)
+
+This sandbox's own `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` are a SEPARATE credential object
+from the one stored in GitHub Actions secrets. Re-tested via `boto3.client("sts").
+get_caller_identity()` twice during this incident (20:05Z and 20:11Z) — both times
+`InvalidClientTokenId`, even after the GitHub Actions secret was confirmed working (same error as
+documented in CLAUDE.md's "AWS — WORKS IN-SESSION when the operator's creds are present" note, but
+this time genuinely absent, not a stale assumption). No session in this sandbox model can run the
+fix command above; it needs direct operator action (AWS Console or CLI with real credentials) or a
+session where the operator has pasted working creds into the environment.
+
+### Why this was findable only now
+
+Nobody could see `desiredCount` on the live service without a working AWS credential anywhere in
+the loop — the sandbox's own creds were always placeholder/invalid, and the GitHub Actions secret
+was invalidated for the first ~2h40m of the incident, so this job log (the first one to actually
+run `describe-services` successfully since before the outage) is the first point any session had
+visibility into the service's real desired-count state.
+
+### Resolution confirmed (addendum, Night Hawk Swings lane, 2026-10-18 ~20:51Z)
+
+Independently confirmed from the Swings-lane audit session (this session had been tracking the
+same outage via its own `docs/audit/nighthawk-swings-live-journal.json`, escalated on #4076 at
+17:23Z, unaware at the time of this file's deeper root-cause trace): **production recovered at
+~20:47Z.** `/api/health` returned a genuine fresh `{"ok":true,...}` response (real Next.js/Clerk
+headers, not a Cloudflare error page or stale cache), `/pricing` and `/` both 200, stable across
+repeated checks over several minutes. Ran the real swing board/record endpoints end-to-end: data
+flowing normally again (3 real OPEN/HOLD native positions, consistent with pre-outage state).
+
+Timing is consistent with this file's own prescribed fix: this file was written ~20:17Z, status
+"NEEDS OPERATOR ACTION," and recovery was confirmed ~30 minutes later — the right order of
+magnitude for an operator (or a session with real AWS creds) running the exact
+`aws ecs update-service --desired-count 5` command this file recommends. No message was received
+by the Swings-lane session confirming who ran it or whether the Application Auto Scaling scalable
+target was also re-verified per this file's second recommended step — flagging that as still open
+in case nobody actually checked it: if the scalable target is still missing/deregistered, the
+service could silently drift back to `desiredCount=0` again with no new deploy to re-reveal it
+until the next time someone happens to run `describe-services` with working credentials. Posted a
+cross-reference to this finding on PR #4076's resolution comment so this root-cause trace isn't
+lost relative to the outside-view timeline posted there.
+
+## 2026-10-18 — [FINDING, deploy] ECR deploy false-fails when Cloudflare blocks GHA egress
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 |
+| **Surface** | `scripts/validate-static-assets.mjs`, `ecr-push-production.yml` |
+
+### Symptom
+
+`build-and-push` on `94d132283` failed at **Validate static assets on origin**: `/`, `/sign-in`,
+`/sign-up` returned **HTTP 403** with Cloudflare “you have been blocked” HTML during the live
+outage (WAF blocking GitHub Actions egress). ECS roll may have succeeded; CI treated it as broken
+`/_next/static` hashes.
+
+### Fix
+
+Detect Cloudflare edge-block HTML (exit code 2). After the full retry window, if every failure was
+edge-block only, warn and exit 0 so deploy pipeline does not cry-wolf. Real asset mismatches still
+exit 1.
+
+## 2026-10-18 — [FINDING, test-infra] `benzinga-earnings-pagination.test.ts` crashes in sandbox/CI on an unresolved `POLYGON_API_BASE`, silently truncating the test's own assertion to 1 row
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 |
+| **Surface** | `src/lib/providers/benzinga-earnings-pagination.test.ts` |
+
+### Symptom
+
+Found while running the full test suite (`npm test`) to validate an unrelated change (a Next.js
+security-patch PR) — `fetchBenzingaStructuredEarnings pagination` failed both of its subtests:
+
+```
+expected 7, actual 1
+expected 21, actual 1
+```
+
+Confirmed **not caused by that unrelated change**: reproduced identically in an isolated git
+worktree checked out at `origin/main` with completely fresh, independently-installed
+dependencies (`npm ci`, no trace of the security PR's `package.json`/`package-lock.json`
+changes). This is a real, pre-existing failure already on `main`.
+
+### Root cause
+
+`fetchBenzingaStructuredEarnings`'s pagination loop (`src/lib/providers/polygon.ts`, added
+2026-10-18 for the Ask Largo standing mandate's RBLX/SOFI truncation fix) builds
+`new URL(nextPath, BASE)` for every page after the first, where `BASE` is
+`process.env.POLYGON_API_BASE ?? "https://api.massive.com"`. In this sandbox (and apparently
+CI, since the test is part of `npm test`/`verify`), `POLYGON_API_BASE` is set to the **literal,
+unresolved string `"POLYGON_API_BASE"`** — the exact `${{shared.*}}`-doesn't-resolve trap
+CLAUDE.md documents for several other audit scripts in this repo (e.g. `helix-score-signal.mjs`'s
+own note: "this sandbox ships it as the literal unresolved string 'POLYGON_API_BASE'"). `new
+URL("/benzinga/v1/earnings?page=1", "POLYGON_API_BASE")` throws `Invalid URL`, which the loop's
+own `catch { break; }` swallows generically (indistinguishable from a legitimate network/
+entitlement failure) — silently stopping pagination after exactly one page, every time.
+
+The test file already worked around the sibling gotcha (`POLYGON_API_KEY` unset in CI) with an
+explicit `process.env.POLYGON_API_KEY = "test-polygon-key"` and a comment citing the established
+pattern in `polygon-short-interest-cancellation.test.ts` / `polygon-largo-cancellation.test.ts` —
+both of which ALSO explicitly pin `process.env.POLYGON_API_BASE` to a real URL before exercising
+Polygon-fetching code, for exactly this reason. This test missed that second half of the same
+established pattern.
+
+### Fix
+
+Added `process.env.POLYGON_API_BASE = "https://api.massive.com";` right after the existing
+`POLYGON_API_KEY` pin, matching the two sibling test files' precedent exactly. Verified:
+- Both subtests pass (`pass 2, fail 0`) on this branch.
+- Both subtests ALSO pass when the identical fix is applied against a clean `origin/main` worktree
+  with independently-installed dependencies — confirms the fix is correct on its own, not an
+  artifact of anything else in this session.
+
+### Deliberately out of scope
+
+The loop's blanket `catch { break; }` (which conflates a real upstream failure with a local
+bug like this one) is a separate, smaller code-quality observation, not touched here — the test-env
+fix alone restores the test to green and matches the established sibling-file pattern exactly;
+widening this into a behavior change in `polygon.ts` itself was not attempted.
+
 ## Ops auto-fix hard-fails when GitHub AWS secrets are invalid — FIXED
 
 > **kind:** `FINDING`
@@ -61705,6 +64538,7 @@ recurrence of the same ERR_INVALID_URL break (#4814)") matches this finding's ti
 
 | | |
 |---|---|
+| **Status** | FIXED — shipped in #4814 (014c4a9b), #4810 (8bdae8cb), #2073 (97c4e6a3), #2266 (34978b36), confirmed merged via the GitHub API on 2026-08-08 by `scripts/audit/findings-resolve-prs.mjs`. The entry never carried a status line; the PR it cites did the work. |
 | **Severity** | P3 — dev/CI tooling only, no production runtime risk (`tsx` is a devDependency, never shipped). But it has now broken CI three separate times via the exact same regression, each time costing a manual dependabot-group edit that never closed the loop. |
 | **Trigger** | Dependabot PR #4812 ("Bump the minor-and-patch group with 14 updates", opened right after PR #4810 excluded `svix` from #4806/#4707's group) still failed `verify` — 152 test failures, `TypeError [Error]: Invalid URL` thrown inside tsx's own ESM resolver hook. Investigated on the assumption it might be a NEW regression from one of the other 13 packages; it is not — it is `tsx` 4.23.1→4.23.13, the same bug this repo has already hit and hand-fixed twice. |
 
@@ -99668,7 +102502,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **How it was found** | Member screenshot (4-up Compare, LONG γ / SHORT γ panes) + follow-up to #2189 flex chain; E2E had canvas count but no height gate. |
 | **Root cause** | (1) Per-pane `VectorToolbar` still mounted the full desktop wrap row (indicators + replay + LIVE chip) even when linked controls were hidden — ~80px vertical tax per pane in a 2×2 grid. (2) Flex chain missed the SPX-embed `.relative` selector and `height:100%` on pane/grid items. (3) `fillHost` charts did not re-nudge autosize when the compare grid transitioned from hidden → visible. |
 | **Fix** | `VectorToolbar` `comparePane` mode: one slim row (indicators + replay). Suppress per-pane freshness chip in compare embeds. CSS: pane `height:100%`, wrap/stage overflow hidden, `.relative` flex child, canvas `min-height:200px` + flex-grow. `VectorChart` IntersectionObserver nudge for fillHost. E2E asserts compare canvas ≥200px. |
-| **Status** | FIXED — PR pending merge.
+| **Status** | FIXED — PR #2191 (merged 2026-08-14). |
 
 ## 2026-08-17 — [P2, GEX] `gex.flip` null conflated three unrelated causes; SPX pin forecaster kept a hand-copied second flip — FIXED (fix/gamma-flip-null-reason)
 

@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import {
   buildResolvedExitPolicy,
   exitPolicyGraderParams,
+  resolveTrancheFraction,
   type ResolvedExitPolicy,
 } from "./strategy-version";
 import { EXIT_VERSION } from "./strategy-version";
@@ -119,6 +120,51 @@ test("WS-02 trailing_rule never leaks a raw unrounded float (found 2026-10-06 li
   // the RAW, pre-rounding value and must stay byte-identical to the committed golden above —
   // this display fix must never silently fork a calibration cohort.
   assert.equal(trim.config_hash, GOLDEN_TRIM_SCALE_HASH);
+});
+
+// ── Configurable scaling (2026-10-20 audit directive): resolveTrancheFraction ──────────
+test("resolveTrancheFraction: absent env var falls back to the default", () => {
+  delete process.env.ZERODTE_TRIM_TRANCHE_FRACTION;
+  assert.equal(resolveTrancheFraction(1 / 3), 1 / 3);
+});
+
+test("resolveTrancheFraction: a valid override inside (0,1) is honored", () => {
+  process.env.ZERODTE_TRIM_TRANCHE_FRACTION = "0.25";
+  assert.equal(resolveTrancheFraction(1 / 3), 0.25);
+  delete process.env.ZERODTE_TRIM_TRANCHE_FRACTION;
+});
+
+test("resolveTrancheFraction: out-of-range or malformed values fall back rather than being clamped", () => {
+  for (const bad of ["0", "1", "1.5", "-0.1", "abc", ""]) {
+    process.env.ZERODTE_TRIM_TRANCHE_FRACTION = bad;
+    assert.equal(resolveTrancheFraction(1 / 3), 1 / 3, `"${bad}" must fall back, not clamp`);
+  }
+  delete process.env.ZERODTE_TRIM_TRANCHE_FRACTION;
+});
+
+test("buildResolvedExitPolicy: ZERODTE_TRIM_TRANCHE_FRACTION changes the resolved trim_scale fractions AND config_hash", () => {
+  const baseline = buildResolvedExitPolicy("trim_scale");
+  process.env.ZERODTE_TRIM_TRANCHE_FRACTION = "0.2";
+  const configured = buildResolvedExitPolicy("trim_scale");
+  delete process.env.ZERODTE_TRIM_TRANCHE_FRACTION;
+  assert.equal(configured.trim_levels[0]?.fraction, 0.2);
+  assert.equal(configured.runner_fraction, 0.2);
+  // A real behavior change MUST change config_hash — two deployments running different
+  // overrides must never silently share a calibration cohort (see this file's own header on
+  // why the hash exists at all).
+  assert.notEqual(configured.config_hash, baseline.config_hash);
+  // And the override must be gone on the NEXT call once the env var is removed again.
+  assert.equal(buildResolvedExitPolicy("trim_scale").config_hash, baseline.config_hash);
+});
+
+test("buildResolvedExitPolicy: an extended-runner policy's 0.25/0.5 schedule is UNCHANGED by the tranche-fraction override", () => {
+  // The extended-runner fractions are their own deliberate schedule (comment in
+  // buildResolvedExitPolicy) -- only the standard path reads ZERODTE_TRIM_TRANCHE_FRACTION.
+  process.env.ZERODTE_TRIM_TRANCHE_FRACTION = "0.2";
+  const extended = buildResolvedExitPolicy("trim_scale", { target_pct: 300, regime: "trend" });
+  delete process.env.ZERODTE_TRIM_TRANCHE_FRACTION;
+  assert.equal(extended.trim_levels[0]?.fraction, 0.25);
+  assert.equal(extended.runner_fraction, 0.5);
 });
 
 test("WS-02 readFrozenExitPolicy: returns a present snapshot, null-guards legacy/malformed rows", () => {

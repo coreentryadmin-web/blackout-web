@@ -34,7 +34,6 @@ import {
   tradeManagerNarrativeSection,
   collectFocalLevels,
   resolveInvalidationFocalLevel,
-  committedStructuralStopLine,
 } from "./play-brief-narrative";
 import { technicalsBias } from "./play-brief-technicals";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
@@ -52,7 +51,7 @@ import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { formatDealerDollars } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
-import { gateFramingMootReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
+import { deadPlayReason, gateFramingMootReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
@@ -1320,10 +1319,38 @@ export function catalystsSection(
  * "TRIGGERED"`, `entryStatus: "AT_TRIGGER"`, no gate tag at all). This function was the third
  * caller of the shared narrow/wide pair and was missed by that same-day fix; swapped here to match
  * its two siblings — now all three callers share one source instead of two widened and one stale.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-18, caught the same day as the widening above):
+ * the widened `gateFramingMootReason` check was wired as an unconditional early return BEFORE the
+ * older, more specific 2026-10-06 Legacy-pinned-price staleness check below it — and
+ * `gateFramingMootReason`'s own legacy_exempt-only-`gateBlocks` case (entry-enterability.ts) is
+ * EXACTLY the case every Legacy-promoted WATCH play unconditionally carries (Legacy promotion
+ * never runs real commit gates, so `commitGateBlockedBy` resolves to `[legacy:exempt]` alone on
+ * every one of these rows — see `resolveCommitGateBlockedBy`'s own comment). So the gate-moot
+ * early-return permanently shadowed the staleness check for the one population it exists for,
+ * silently dropping the pinned-price disclosure from every Legacy-promoted WATCH brief. Live
+ * repro UNH, 2026-10-18: TRIGGERED/AT_TRIGGER/above-floor, `discoveryOrigin: ["NIGHT HAWK"]`,
+ * `flagUnderlyingPx === entryTriggerUnderlyingPx === 399.15` (3 days stale),
+ * `commitGateBlockedBy: ["legacy:exempt"]` — both facts are independently true and both matter
+ * (the gate is moot AND the price is stale), so both checks are now evaluated and composed rather
+ * than the first one short-circuiting the second.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-19): the 2026-10-18 widening above over-applied the
+ * "no longer fires the setup" claim to `gateFramingMootReason`'s two NON-dead cases (FORMING,
+ * `aboveFloor===false`) — that function's own doc comment is explicit these two mean the play "is
+ * very much still live, just not yet enterable," the opposite of "no longer fires." Live repro
+ * EWY WATCH brief, 2026-10-19: Entry section correctly says the entry window is still open with
+ * 2 days left, while this Watch-levels line (pre-fix) claimed the trigger "no longer fires the
+ * setup" for the same still-FORMING play — a direct self-contradiction two sections apart in the
+ * same brief. Fix: only the genuinely-dead reasons (`deadPlayReason`'s 4 cases) or a pinned-stale
+ * price justify "no longer fires" — a framing-moot-but-alive reason (FORMING / below-floor) is
+ * still composed and disclosed (so the TSM below-floor bug this file's widening fixed stays
+ * fixed), just without the false permanence claim tacked onto it. The legacy-exempt-only gate-moot
+ * case is unaffected: it is only ever reachable un-composed-with-deadness when NOT also
+ * `legacyPinnedStale`, in which case the play is likewise still live, not dead, so the same
+ * correction applies there too.
  */
 export function entryTriggerDeadReason(play: TerminalPlay): string | null {
-  const reason = gateFramingMootReason(play);
-  if (reason) return `${reason} — this level no longer fires the setup`;
   // BUG FIX (Ask Largo standing mandate, 2026-10-06): a Legacy morning-confirm-promoted row's
   // `entryTriggerUnderlyingPx` is stamped ONCE at promotion (legacy-confirm-promote.ts's
   // `buildLegacySwingArtifacts` → `deriveSwingPlanLevels(direction, groundedSpotAtPromotion, atr)`,
@@ -1335,14 +1362,34 @@ export function entryTriggerDeadReason(play: TerminalPlay): string | null {
   // flagged, before any rebuild. Equality alone on an organic row is not evidence of staleness (it
   // would wrongly flag every freshly-flagged name), so this only fires for the Legacy-exempt
   // signature specifically, never from the numeric coincidence by itself.
-  if (
+  const legacyPinnedStale =
     isLegacyPromotedSignal(play.discoveryOrigin) &&
     play.flagUnderlyingPx != null &&
     play.entryTriggerUnderlyingPx != null &&
-    play.flagUnderlyingPx === play.entryTriggerUnderlyingPx
-  ) {
+    play.flagUnderlyingPx === play.entryTriggerUnderlyingPx;
+  const gateMootReason = gateFramingMootReason(play);
+  // `gateFramingMootReason` returns `deadPlayReason(play)` verbatim when that's non-null (it checks
+  // `deadPlayReason` first and returns it immediately) — so whenever BOTH are non-null they are the
+  // SAME string, and this flag distinguishes "genuinely dead" from "framing-moot but still live"
+  // without duplicating deadPlayReason's own branch logic.
+  const isGenuinelyDead = deadPlayReason(play) != null;
+  if (legacyPinnedStale && gateMootReason) {
+    // Both facts are true at once for a Legacy-promoted WATCH play — compose them rather than let
+    // either shadow the other (see the BUG FIX doc comment above, live repro UNH). The pinned-stale
+    // price independently justifies "no longer fires" regardless of which gateMootReason fired.
+    return `pinned at Legacy promotion, not refreshed since, and ${gateMootReason} — this level no longer fires the setup`;
+  }
+  if (gateMootReason && isGenuinelyDead) {
+    return `${gateMootReason} — this level no longer fires the setup`;
+  }
+  if (legacyPinnedStale) {
     return "pinned at Legacy promotion, not refreshed since — this level no longer fires the setup";
   }
+  // Framing-moot but NOT dead (FORMING / below-floor / legacy-exempt-only gate, none composed with
+  // a pinned-stale price): the trigger level itself is still live and will fire the setup once
+  // reached — disclose the reason entry isn't open yet, but never claim the level "no longer
+  // fires," which is reserved for the genuinely-dead and pinned-stale cases above.
+  if (gateMootReason) return gateMootReason;
   return null;
 }
 
@@ -1511,19 +1558,17 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     lines.push(`Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
   }
 
-  // Ask Largo standing mandate (2026-10-16, live repro SWING:GOOGL:58): the "Structural
-  // support/resistance node" line above is the GEX heuristic (put wall/dark pool/GEX king) —
-  // ADD the REAL, committed structural stop (`thesis_invalidation_px`, pinned at commit — see
-  // committedStructuralStopLine's own doc comment in play-brief-narrative.ts for the full
-  // root-cause/contract rationale) as its own distinct line, independent of whether a GEX level
-  // was even resolvable above. OPEN-bucket only — a WATCH candidate has no committed position
-  // yet (its `invalidationUnderlyingPx`, if a dossier pinned one, describes a hypothetical plan,
-  // not an enforced exit); a CLOSED play's own "since it closed" reclaim framing a few lines
-  // below already answers a different, retrospective question off the same field.
-  if (bucket === "open") {
-    const committedStopLine = committedStructuralStopLine(play, spot);
-    if (committedStopLine) lines.push(committedStopLine);
-  }
+  // DEDUP FIX (Ask Largo standing mandate, 2026-10-18, live repro SWING:TSLA:60): this block used
+  // to ALSO render the committed-structural-stop bullet here — added 2026-10-16 (live repro
+  // SWING:GOOGL:58) in parallel with an independent, same-date fix to the identical effect in
+  // `tradeManagerNarrativeSection` (play-brief-narrative.ts), neither fix aware of the other.
+  // Both gate on the same `bucket === "open"` plus the same `invalidationUnderlyingPx`/spot
+  // inputs, so whenever one rendered the bullet, the other did too — a byte-identical sentence
+  // in two different sections of the same envelope, every time, confirmed live on TSLA's real
+  // OPEN brief. `tradeManagerNarrativeSection` keeps sole ownership (it already sits next to the
+  // GEX-heuristic "Break watch" bullet this fact complements); this section keeps only its own,
+  // distinct "Structural support/resistance node" (GEX heuristic) line above. See
+  // play-brief-intel.test.ts's cross-section dedup test for the regression proof.
 
   // GAP FOUND (Ask Largo standing mandate, 2026-10-13): this section told a member where spot
   // sits vs the gamma flip and vs a live structural level for a closed play, but never answered

@@ -294,3 +294,17 @@ test("ABVX (clinical-stage biotech, Phase 3 single-asset bet) joins the same bio
   assert.equal(sameThesis("ABVX", "NTLA"), true);
   assert.equal(sameThesis("ABVX", "IOVA"), true);
 });
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-10-20 live finding): KGC and
+// AEM were concurrently LONG (both Banger-origin BREAKOUT calls) in the same committed book, but
+// neither ticker was mapped anywhere in sector-map.ts, so checkPortfolioOverlap resolved them to
+// isolated `NAME:KGC`/`NAME:AEM` own-clusters and neither play-brief rendered a "Book context"
+// section at all — the real same-commodity (gold) concentration was invisible to both members.
+test("KGC and AEM (large-cap gold-mining producers) cluster together as a precious-metals theme, not each in its own isolated cluster", () => {
+  assert.equal(resolveTheme("KGC"), "precious-metals");
+  assert.equal(resolveTheme("AEM"), "precious-metals");
+  assert.equal(sameThesis("KGC", "AEM"), true);
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("KGC", "NVDA"), false);
+  assert.equal(sameThesis("AEM", "XOM"), false);
+});

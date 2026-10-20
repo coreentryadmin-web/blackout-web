@@ -388,6 +388,24 @@ test("composeSwingPlayBrief: a throwing top-level section (Management/Position) 
     brief!.envelope.sections.some((s) => s.title === "Why this setup"),
     "buildIntelSections's own sections (unaffected by this malformed field) still render",
   );
+  // BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-19): the omission above is
+  // correct (don't fabricate a broken section), but until this fix it was also UNDISCLOSED — the
+  // seven top-level safeCompose calls in composeSwingPlayBrief (Management/Thesis health/Position/
+  // Entry/Outcome/sibling-position disclosure/structureLadder) were never passed `trackBuildFailure`,
+  // unlike evidence/levels and buildIntelSections's own sections (fixed 2026-10-07/2026-10-10 — see
+  // the two tests directly below this one, "a levels-build failure is disclosed..." and "an
+  // intel-section build failure is disclosed..."). A member reading this exact brief could not tell
+  // "Management/Position genuinely have nothing to say" from "Management/Position crashed this
+  // cycle" — the Largo C3 violation ("any fallback that returns a degraded result the caller cannot
+  // distinguish from a real one is a defect even when every test passes") this fix closes.
+  assert.ok(
+    brief!.envelope.unavailableSources?.some((u) => u.what_is_missing === "Management"),
+    "a Management build failure must be disclosed via unavailableSources, not silently dropped (Largo C3)",
+  );
+  assert.ok(
+    brief!.envelope.unavailableSources?.some((u) => u.what_is_missing === "Position"),
+    "a Position build failure must be disclosed via unavailableSources, not silently dropped (Largo C3)",
+  );
 });
 
 test("composeSwingPlayBrief: Book context concentration carries a matching evidence entry (Largo C7)", () => {
@@ -454,6 +472,80 @@ test("composeSwingPlayBrief: CLOSED play never surfaces a Book overlap evidence 
   };
   const brief = composeSwingPlayBrief(ctx);
   assert.ok(!brief.envelope.evidence.some((e) => e.text.startsWith("Book overlap:")));
+});
+
+// Largo C5/C8 fix (2026-10-19), built on the 2026-10-18 staged finding
+// docs/audit/findings-staging/2026-10-18-closed-brief-direction-thesis.md: a CLOSED swing brief's
+// `envelope.bias` and `headline` both correctly named the direction/recommendation in prose, but
+// the envelope carried no explicit `direction`/`thesis` field a programmatic reader (Largo, an
+// audit script) could bind to structurally. Live repro in the finding: NVDA/CRWV/TSLA CLOSED
+// chains all returned `envelope.direction`/`envelope.thesis` as undefined.
+test("composeSwingPlayBrief: CLOSED play envelope carries explicit direction and thesis fields (Largo C5/C8)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      ticker: "NVDA",
+      direction: "SHORT",
+      status: "CLOSED",
+      closedReason: "stopped",
+      exitPnlPct: -48.2,
+      archetype: "BREAKOUT",
+    }),
+    asOf: "2026-10-18T22:46:00.000Z",
+    sessionDate: "2026-10-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+
+  // C5 DIRECTION — the explicit field, sourced from the same play.direction `bias` derives from.
+  assert.equal(brief.envelope.direction, "SHORT");
+  assert.equal(brief.envelope.direction, ctx.play.direction);
+
+  // C8 NARRATIVE — a non-empty, data-grounded thesis string, never null/missing.
+  assert.ok(brief.envelope.thesis, "thesis must be populated, not null/missing");
+  assert.equal(typeof brief.envelope.thesis, "string");
+  assert.ok(brief.envelope.thesis!.length > 0);
+  // Grounded in the real play data (direction + ticker/contract + the closedReason-driven
+  // action label `swingActionDisplay` resolves "stopped" to) — never a fabricated claim.
+  assert.match(brief.envelope.thesis!, /SHORT/);
+  assert.match(brief.envelope.thesis!, /NVDA/);
+  assert.match(brief.envelope.thesis!, /STOPPED/);
+});
+
+test("composeSwingPlayBrief: OPEN and WATCH briefs also carry explicit direction/thesis (not CLOSED-specific)", () => {
+  const openCtx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "AAPL", direction: "LONG", status: "OPEN", recommendation: "HOLD" }),
+    asOf: "2026-10-18T15:00:00.000Z",
+    sessionDate: "2026-10-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const openBrief = composeSwingPlayBrief(openCtx);
+  assert.equal(openBrief.envelope.direction, "LONG");
+  assert.ok(openBrief.envelope.thesis);
+
+  const watchCtx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "MU", direction: "SHORT", status: "WATCH" }),
+    asOf: "2026-10-18T15:00:00.000Z",
+    sessionDate: "2026-10-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const watchBrief = composeSwingPlayBrief(watchCtx);
+  assert.equal(watchBrief.envelope.direction, "SHORT");
+  assert.ok(watchBrief.envelope.thesis);
 });
 
 test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope headline, not raw status (2026-09-10 gap fix)", () => {
@@ -2800,6 +2892,46 @@ test("composeSwingPlayBrief: future-skewed option mark freshness is stale, not u
     markEvidence!.provenance?.freshness,
     "stale",
     "future-skewed markAsOf must fail-closed to stale, not unknown",
+  );
+});
+
+// BUG FIX (2026-10-19, Ask Largo x Night Hawk Swings standing mandate — round 5): the 2026-10-12 fix
+// (see watchEntrySection/pnlSection's own call-site comments a few hundred lines up) wired those two
+// call sites to `ctx.readMs ?? readMs` instead of the bare `readMs` local, closing two of the
+// "~18 Date.now() call sites" play-brief-types.ts's own `readMs` doc comment names as a documented,
+// still-open follow-up. `evidenceFromContext`/`levelsFromContext` — the sole feeders of
+// `envelope.evidence`/`envelope.levels` — were never part of that fix's blast radius and still pass
+// the bare `readMs` local at their composeSwingPlayBrief call sites. Currently latent in production
+// (the one real caller, the API route, never pre-stamps `ctx.readMs`, so `ctx.readMs ?? readMs`
+// would equal the real `readMs` anyway today) — but it silently reverts to the exact already-fixed
+// bug class (2026-09-21 SNXX repro, play-brief-types.ts's `readMs` header) the moment any caller or
+// test pins `ctx.readMs` to a shared anchor, which that same header explicitly anticipates ("a
+// caller that composes multiple briefs off one shared anchor"). This test is exactly that case: a
+// fixture with `ctx.readMs` pinned to the PAST and a mark 30s before it (which must read "live")
+// — if the fix regresses and the call site falls back to the real wall clock, the mark reads from
+// roughly six weeks ago and fails closed to "stale" instead.
+test("composeSwingPlayBrief: option-mark evidence freshness honors ctx.readMs, not the real wall clock (2026-10-19 bug fix, evidenceFromContext/levelsFromContext call sites missed the 2026-10-12 readMs fix)", () => {
+  const pinnedReadMs = Date.parse("2026-09-10T09:00:00.000Z");
+  const markAsOf = new Date(pinnedReadMs - 30_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", recommendation: "HOLD", markAsOf, markIsSync: false }),
+    asOf: "2026-09-10 05:00 ET",
+    readMs: pinnedReadMs,
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const markEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Option mark as of"));
+  assert.ok(markEvidence, "expected an option-mark evidence entry");
+  assert.equal(
+    markEvidence!.provenance?.freshness,
+    "live",
+    "a mark 30s before the pinned ctx.readMs must read live — falling through to the real wall clock would read this 2026-09-10 mark as stale instead",
   );
 });
 

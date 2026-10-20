@@ -54,6 +54,37 @@ function biasFromDirection(dir: string): BieBias {
   return dir === "SHORT" ? "bearish" : dir === "LONG" ? "bullish" : "neutral";
 }
 
+/**
+ * Largo C5/C8 fix (2026-10-19, built on the 2026-10-18 staged finding
+ * `docs/audit/findings-staging/2026-10-18-closed-brief-direction-thesis.md`): `BieAnswerEnvelope`
+ * carried `bias` (normalized) and a `headline` that NAMES the direction/recommendation in prose,
+ * but never an explicit `direction`/`thesis` field a programmatic reader could bind to — for ANY
+ * bucket, not just CLOSED (the finding tested CLOSED chains specifically, but the root cause —
+ * `buildRichEnvelope` only ever sets `bias`, never `direction`/`thesis` — was never bucket-scoped;
+ * confirmed by reading `composeSwingPlayBrief` itself before this fix, no WATCH/OPEN branch set
+ * either field either).
+ *
+ * `thesis` is synthesized here rather than invented: it reuses the EXACT same fields the Verdict
+ * section's own opening line (`verdictLines[0]`, just below) and the envelope `headline` already
+ * compute — direction, the contract headline, and the identical
+ * action-label -> recommendation -> status fallback chain used in both other places — so `thesis`
+ * can never state a claim the Verdict card or headline doesn't already make, just as one flat
+ * sentence instead of markdown. For a CLOSED play this naturally resolves `verb` to
+ * `swingActionDisplay`'s own closedReason-driven label (TARGET/STOPPED/SCRATCH) when known, same
+ * as the Verdict line and headline — genuinely data-grounded, never a fabricated claim about why
+ * the position closed. Archetype is appended only when the play actually carries one.
+ */
+function briefThesis(
+  play: TerminalPlay,
+  contractHeadline: string,
+  action: { label: string } | null,
+  archetypeLabel: string | null,
+): string {
+  const verb = action?.label ?? play.recommendation ?? play.status;
+  const archetypeSuffix = archetypeLabel ? ` · ${archetypeLabel}` : "";
+  return `${play.direction} ${contractHeadline} — ${verb}${archetypeSuffix}.`;
+}
+
 function statusBucket(play: TerminalPlay): "watch" | "open" | "closed" {
   if (play.status === "CLOSED") return "closed";
   if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") return "open";
@@ -1577,6 +1608,32 @@ export function composeSwingPlayBrief(
 
   const sections: RichSection[] = [{ title: "Verdict", body: verdictLines.join("\n\n") }];
 
+  // BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-19): hoisted above the bucket
+  // branches below (was previously declared only after them, at the point buildIntelSections was
+  // called) so every top-level safeCompose call in THIS function — not just evidence/levels and
+  // buildIntelSections's own 20 sections — can feed the same collector. The 2026-10-07 fix's own
+  // comment on `safeCompose` above already names the exact defect this closes: a `[]` fallback (or,
+  // here, a silently-omitted section) "is byte-identical to 'this product genuinely has no
+  // evidence/levels to show'... a build failure here is silently indistinguishable from 'we checked
+  // and there's nothing' to any downstream Largo reader" — and explicitly notes "the caller can fold
+  // that into unavailableSources instead." That fold was wired for evidence/levels and for
+  // buildIntelSections's sections, but never extended to Management/Thesis health/Position/Entry/
+  // Outcome/the sibling-position disclosure/structureLadder — the seven other safeCompose calls in
+  // this function, all still passed no `onFailure` (confirmed by reading every call site below: each
+  // one was still `safeCompose(label, fn, null)`, three args, matching the ORIGINAL 2026-09-20
+  // #5288-sibling fix's shape, before the 2026-10-07 fix added the fourth `onFailure` parameter at
+  // all). The existing regression test below this function (`a throwing top-level section
+  // (Management/Position) does not take down the whole brief`) already proves these sections can
+  // throw on a realistic degraded row and get silently omitted — it just never checked whether that
+  // omission was disclosed anywhere, because until this fix it genuinely was not: a member asking
+  // Largo "how should I manage this open position" on a row whose `exitPolicy.trim_levels` came back
+  // malformed got a brief with no Management section, no Position section, and no
+  // `unavailableSources` entry naming either one — indistinguishable from "nothing to report" (Largo
+  // C3: "any fallback that returns a degraded result the caller cannot distinguish from a real one is
+  // a defect even when every test passes").
+  const buildFailures: string[] = [];
+  const trackBuildFailure = (label: string) => buildFailures.push(label);
+
   if (bucket === "watch") {
     // BUG FIX (Ask Largo standing mandate, 2026-10-12): used the outer `readMs` local (always the
     // real `Date.now()` from this function's top) instead of `ctx.readMs`, which line ~1354 above
@@ -1586,37 +1643,29 @@ export function composeSwingPlayBrief(
     // deferred sweep. Surfaced while adding a determinism-pinned regression test for the sub-24h
     // entry-window fix below: a test that injects `ctx.readMs` to pin "now" silently had no effect
     // on this section, which kept reading the real wall clock regardless.
-    const watchSection = safeCompose("Entry", () => watchEntrySection(play, ctx.readMs ?? readMs), null);
+    const watchSection = safeCompose("Entry", () => watchEntrySection(play, ctx.readMs ?? readMs), null, trackBuildFailure);
     if (watchSection) sections.push(watchSection);
     // BUG FOUND (Ask Largo standing mandate, 2026-10-15): `siblingPositionsNote` was never even
     // CALLED from this branch — the function-level `play.entry == null` guard fixed just above is
     // necessary but not sufficient, because the call site itself only invoked this section for
     // `bucket === "open"`. Added here so a WATCH candidate on a ticker that already carries a real
     // committed sibling position gets the same disclosure an open position would.
-    const watchSiblings = safeCompose("Other concurrent position(s)", () => siblingPositionsNote(ctx), null);
+    const watchSiblings = safeCompose("Other concurrent position(s)", () => siblingPositionsNote(ctx), null, trackBuildFailure);
     if (watchSiblings) sections.push(watchSiblings);
   } else if (bucket === "open") {
-    const mgmt = safeCompose("Management", () => managementSection(play), null);
+    const mgmt = safeCompose("Management", () => managementSection(play), null, trackBuildFailure);
     if (mgmt) sections.push(mgmt);
-    const th = safeCompose("Thesis health", () => thesisHealthSection(play), null);
+    const th = safeCompose("Thesis health", () => thesisHealthSection(play), null, trackBuildFailure);
     if (th) sections.push(th);
-    const pnl = safeCompose("Position", () => pnlSection(play, ctx.readMs ?? readMs), null);
+    const pnl = safeCompose("Position", () => pnlSection(play, ctx.readMs ?? readMs), null, trackBuildFailure);
     if (pnl) sections.push(pnl);
-    const siblings = safeCompose("Other concurrent position(s)", () => siblingPositionsNote(ctx), null);
+    const siblings = safeCompose("Other concurrent position(s)", () => siblingPositionsNote(ctx), null, trackBuildFailure);
     if (siblings) sections.push(siblings);
   } else {
-    const closed = safeCompose("Outcome", () => closedSection(play), null);
+    const closed = safeCompose("Outcome", () => closedSection(play), null, trackBuildFailure);
     if (closed) sections.push(closed);
   }
 
-  // BUG FIX (Ask Largo standing mandate, 2026-10-10): declared here, BEFORE buildIntelSections,
-  // rather than down at the evidence/levels composition below (where this pair originated for the
-  // 2026-10-07 fix) — buildIntelSections' own 20 safeSection calls needed the identical `onFailure`
-  // hook (see its own doc comment, play-brief-intel.ts), and declaring one shared collector that
-  // every composer call feeds is what lets `unavailableSources` below see ALL of them, not just
-  // evidence/levels'.
-  const buildFailures: string[] = [];
-  const trackBuildFailure = (label: string) => buildFailures.push(label);
   sections.push(
     ...buildIntelSections(ctx, bucket, { collapseIntel: !opts?.expandIntel, onFailure: trackBuildFailure }),
   );
@@ -1702,13 +1751,35 @@ export function composeSwingPlayBrief(
   // 2026-10-10 comment on that call) can be folded into the SAME `unavailableSources` list the
   // envelope field and `confidence` both read — otherwise a build failure would have nowhere
   // honest to surface (the pre-existing `[]` fallback alone looks identical to a real empty read).
-  const evidence = safeCompose("evidence", () => evidenceFromContext(ctx, readMs), [], trackBuildFailure);
-  const levels = safeCompose("levels", () => levelsFromContext(ctx, readMs, bucket), [], trackBuildFailure);
+  // BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-19 — round 5 of the deep-dive):
+  // same gap the 2026-10-12 fix closed for watchEntrySection/pnlSection above (bare `readMs` local —
+  // always the real `Date.now()` sampled at this function's top — instead of `ctx.readMs ?? readMs`,
+  // which respects an already-injected shared anchor). evidenceFromContext/levelsFromContext are the
+  // sole feeders of envelope.evidence/envelope.levels and were never part of that fix's blast-radius
+  // check, so two more of play-brief-types.ts's own documented "~18 Date.now() call sites" follow-up
+  // were still open. Currently latent in production (the one real caller never pre-stamps
+  // ctx.readMs), but reverts to the exact already-fixed bug class (2026-09-21 SNXX repro) the moment
+  // any caller or test pins a shared anchor — see this file's own regression test for the live proof.
+  const evidence = safeCompose("evidence", () => evidenceFromContext(ctx, ctx.readMs ?? readMs), [], trackBuildFailure);
+  const levels = safeCompose("levels", () => levelsFromContext(ctx, ctx.readMs ?? readMs, bucket), [], trackBuildFailure);
+
+  // BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-19): moved up from inside the
+  // envelope literal below, to BEFORE `unavailableSources` is assembled. It was previously computed
+  // inline as the envelope's `structureLadder` field — after `unavailableSources` had already been
+  // built and baked into `buildRichEnvelope({ unavailableSources, ... })` a few lines down — so a
+  // `trackBuildFailure("structureLadder")` call from inside it could never reach the array it was
+  // supposed to feed; the ordering, not a missing `onFailure` argument, was the actual defect once
+  // one was added. Same real-row risk as every other safeCompose call in this function:
+  // `buildStructureLadder` reads live spot/GEX/structural-node data off `ctx`/`play` with no
+  // guarantee every field is present.
+  const structureLadder = safeCompose("structureLadder", () => buildStructureLadder(ctx, play, bucket), null, trackBuildFailure);
 
   // Computed once and shared by the envelope's own `unavailableSources` chips AND `confidence`
   // below, so the two can never drift apart (the same class of narrative-vs-chip disagreement
   // this file has already fixed elsewhere for readMs — see collectBriefUnavailableSources's header).
-  // A build failure above is folded in here as its own honest entry — distinct from a real data
+  // A build failure above (now including `structureLadder`, Management, Thesis health, Position,
+  // Entry, Outcome, and the sibling-position disclosure — see this function's own `buildFailures`
+  // doc comment near the top) is folded in here as its own honest entry — distinct from a real data
   // absence (`collectBriefUnavailableSources`'s own checks), but equally something the model must
   // not read as "zero evidence/levels exist," per Largo C3.
   const unavailableSources: BieUnavailableSource[] = [
@@ -1750,9 +1821,17 @@ export function composeSwingPlayBrief(
     source: "computed",
     asOf: ctx.asOf,
     session_date: ctx.sessionDate,
+    // Largo C5 (DIRECTION) / C8 (NARRATIVE) fix — see `briefThesis`'s own doc comment above for
+    // the full account (built on the 2026-10-18 staged finding). `direction` is the same native
+    // source `bias` above already derives from (`biasFromDirection(play.direction)`), kept here
+    // as the raw "LONG"/"SHORT" label rather than flattened into bias's normalized read.
+    direction: play.direction,
+    thesis: briefThesis(play, headline, action, verdictArchetypeLabel),
     // Structure Ladder widget (Ask Largo standing mandate, 2026-09-12) — null on CLOSED plays and
-    // on any read with no live spot/structural nodes to build from; never fabricated.
-    structureLadder: safeCompose("structureLadder", () => buildStructureLadder(ctx, play, bucket), null),
+    // on any read with no live spot/structural nodes to build from; never fabricated. Computed
+    // above, before `unavailableSources`, so a build failure here reaches that list — see this
+    // local's own doc comment for why the ordering matters.
+    structureLadder,
   };
 
   const flow = trustedHelixFlow(ctx.ecosystem);

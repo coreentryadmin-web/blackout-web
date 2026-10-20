@@ -30,6 +30,7 @@ jobs:
 
       - run: npm ci
 
+      # Optional — ops:collect gate uses GitHub secret fallbacks when SM is unavailable.
       - name: Configure AWS credentials
         id: aws_creds
         continue-on-error: true
@@ -61,6 +62,7 @@ jobs:
           CRON_TARGET_BASE_URL: https://blackouttrades.com
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           set +e

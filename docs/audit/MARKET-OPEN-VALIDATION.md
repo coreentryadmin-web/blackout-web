@@ -68,6 +68,60 @@ plays), and scoped to this one edition only.**
   "0 candidates found, market was quiet." A future enhancement should flag `recap_only &&
   funnel.candidates>0` as AMBER/RED specifically.
 
+**UPDATE 2026-10-19 21:51Z — CONFIRMED RECURRING, not a one-off (a sibling Night Hawk Legacy audit
+lane's own healthcheck caught it independently the same evening — see `docs/audit/
+nighthawk-legacy-live-journal.json`, key `legacyStarvedFunnelRecurrence_2026_10_19T2151Z`, and the
+second Stage-A-eval enhancement bullet directly above was already SHIPPED 2026-10-18 as PR #6259,
+which is exactly what flagged this recurrence as RED instead of a silent GREEN this time).** The
+VERY NEXT nighthawk-playbook build (2026-10-19 21:41:46 UTC, publishing `edition_for:"2026-10-20"`)
+hit the **identical shape**: `recap_only_reason:"No scored dossiers after staging (20
+candidate(s))."`, `funnel:{candidates:20,ranked:0,dossiers:0,synthesized:0,critic_passed:0,
+published:0}` — same candidate count, same total collapse, one day later. Two consecutive build
+nights with the identical signature changes the risk read from "transient blip, unlikely to recur"
+to "needs a safety net regardless of root cause." **The first secondary bullet above — "detect
+`recap_only && funnel.candidates>0` and auto-trigger one retry" — is now BUILT**: PR #6286 added
+`shouldRetryRecapOnlyEdition` (`edition-stale.ts`), gated on `dossiers===0` specifically (not any
+recap-only) and a 45-minute cooldown, wired into `buildEveningEdition`'s existing same-day
+"already published" branch. Full write-up: `docs/audit/findings-staging/
+2026-10-19-nighthawk-legacy-recap-only-same-day-no-retry.md`. **This does NOT replace the
+remediation call above** — it is a go-forward safety net for FUTURE collapses, not a fix for
+TONIGHT's specific 2026-10-20 edition (still live-broken as of this writing, and production deploys
+are independently stuck on the ongoing ECS capacity deadlock tracked on PR #4076, so even once
+merged this fix won't reach prod until that unblocks). The admin-rebuild-of-one-specific-edition
+question above is unchanged and still needs operator/admin go-ahead, same reasoning as before.
+**Root cause is still unconfirmed for this second instance** (no AWS/CloudWatch access either
+session had this evening) — next session with CloudWatch/replay access should still trace which
+exact failure (timeout vs. a thrown exception vs. something else) is zeroing every dossier, per the
+sibling lane's journal note.
+
+---
+
+## WATCH LIST — 2026-10-18 SPX Slayer `confluence.rawScore` stale after Night Hawk morning-prior bonus — fixed, deploy pending validation
+
+**What was fixed:** `reclassifyConfluenceScore()` (`src/features/spx/lib/spx-signals.ts`) — added
+2026-09-22 specifically to keep every field derived from `score`/`factors` in sync after the Night
+Hawk morning-prior bonus mutates an already-built `SpxConfluence` — covered
+`score`/`bias`/`action`/`grade`/`direction`/`agreeing`/`conflicts`/`weighted_conflicts` but omitted
+`rawScore` from both its return type and the call site's reassignment list. `rawScore`
+(`clamp(round(|score|*1.15 + factors.length*3), 0, 96)`) is a function of the exact same two
+mutated inputs, so it stayed frozen at the pre-bonus value — the one shown to members and
+persisted as "confidence" (`spx-signal-log.ts`) and in outcome snapshots (`spx-play-outcomes.ts`).
+Does NOT affect any gating/trading decision (those key off `score`/`grade`/`direction`, already
+correctly fresh). Fixed by widening `reclassifyConfluenceScore`'s return type to also recompute
+`rawScore` with the same formula on the post-bonus inputs, and reassigning
+`confluence.rawScore` at the call site in `spx-play-engine.ts`. Full write-up:
+`docs/audit/findings-staging/2026-10-18-spx-rawscore-stale-nighthawk-bonus.md`.
+
+**Specific thing to check at next RTH open (needs real intraday conditions to confirm — market
+was closed when this was found/fixed):** on a session where `getNhConfluenceBonus()` actually
+returns a non-zero bonus (requires a fresh (<20h old) Night Hawk edition showing a clear
+directional A-grade cluster), pull the live SPX Slayer play payload (`/api/market/spx/*` or the
+admin SPX dashboard) and confirm `rawScore` equals
+`clamp(round(|score|*1.15 + factors.length*3), 0, 96)` evaluated on that SAME play's own
+post-bonus `score` and `factors.length` (factors array should include the pushed "Night Hawk
+prior" entry) — not a value consistent only with one fewer factor / the pre-bonus score, which
+would mean the frozen-stale bug reappeared.
+
 ---
 
 ## WATCH LIST — 2026-10-18 Swing WATCH play-brief below-floor/still-forming gate framing — fixed, deployed, and live-confirmed same cycle

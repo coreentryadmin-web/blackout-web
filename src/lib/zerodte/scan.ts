@@ -236,6 +236,7 @@ import {
 // grade to the record's AS-MANAGED number on the SAME row (both read from record.ts, the single
 // source of truth), so a reconciliation regression surfaces as a non-zero telemetry percentile.
 import { asManagedPnlPct, officialPlanPnlPct } from "./record";
+import { computeRelativeVolumeShadow, type RelativeVolumeShadowRead } from "./relative-volume-source";
 
 /** Leveraged/inverse wrappers and vol ETPs stay out (not directional single plays);
  *  index products (SPY/SPX/NDX/QQQ…) are eligible per product direction. Night Hawk
@@ -1508,6 +1509,15 @@ async function attachContractPlans(
       vwap: s.vwap,
       chasePct,
       illiquidSpreadPct,
+      // Contract selection using Greeks alongside liquidity (2026-10-20, member audit
+      // directive) — OptionSnapshot already fetches delta/gamma/theta/vega for the live
+      // quote; threaded through here (previously discarded) so buildContractPlan can compute
+      // the SHADOW-ONLY evaluateContractGreeksQuality diagnostic. Omitted entirely (not just
+      // null-filled) when there's no live snapshot at all, matching every other conditional
+      // field's "absence is not a measured zero" discipline.
+      ...(snap
+        ? { greeks: { delta: snap.delta ?? null, gamma: snap.gamma ?? null, theta: snap.theta ?? null, vega: snap.vega ?? null } }
+        : {}),
     });
     s.plan_chase_exempt = planChaseExempt(chaseCtx);
   }
@@ -1792,6 +1802,24 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   // never writes a ledger row, so it never receives an entry_context either.
   const sessionCtx = await fetchZeroDteSessionContext().catch(() => null);
   const committedAtMs = Date.now();
+  // RVOL SHADOW SIGNAL (2026-10-19 member audit, standalone/unwired module relative-volume.ts) —
+  // computed here, ADDITIVELY, ONLY for freshly-committed setups (never `refresh`, to avoid a real
+  // Polygon fetch on every 5-min refresh tick for an already-open position — the upsert's own
+  // COALESCE pin would discard a refresh-lane recomputation anyway). NEVER gates, scores, or alters
+  // entry/exit/stop/target in any way — see relative-volume.ts's own header for the full rationale
+  // and the intended graduation path before this is ever registered as a real cortex source.
+  // `computeRelativeVolumeShadow` never throws; Promise.allSettled is still used as a second,
+  // redundant safety net so a single hung/slow ticker can never block the whole commit batch.
+  const rvolShadowByTicker = new Map<string, RelativeVolumeShadowRead>();
+  if (committedFresh.length > 0) {
+    const rvolResults = await Promise.allSettled(
+      committedFresh.map((s) => computeRelativeVolumeShadow(s.ticker, committedAtMs))
+    );
+    committedFresh.forEach((s, i) => {
+      const r = rvolResults[i];
+      if (r.status === "fulfilled" && r.value != null) rvolShadowByTicker.set(s.ticker, r.value);
+    });
+  }
   // Strategy version manifest + config hash (design Q12, strategy-version.ts) — computed ONCE per
   // scan (it's a pure snapshot of the current strategy constants, identical for every row this cycle)
   // and FROZEN onto every committed row below. This is the integrity spine for calibration: a
@@ -1983,6 +2011,24 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       ...(s.origin_direction_conflict ? { origin_direction_conflict: s.origin_direction_conflict } : {}),
       ...(s.thesis_first
         ? { thesis_first: thesisFirstEntryContext(s.thesis_first) }
+        : {}),
+      // SHADOW SIGNALS — additive, non-gating diagnostics only. Combined into ONE spread
+      // (not two independent ones) specifically because a plain object spread doesn't deep-
+      // merge: two separate `...(cond ? {shadow_signals: {...}} : {})` entries in this same
+      // literal would silently let the later one clobber the earlier one's `shadow_signals`
+      // key at runtime. This was caught at merge time reconciling two independently authored
+      // PRs (RVOL shadow wiring + contract-greeks shadow diagnostic) that each originally wrote
+      // their own spread — see CLAUDE.md's "CROSS-PR ORDERING DEPENDENCIES" section for why
+      // this class of bug is dangerous to merge blind. Each sub-key is present only when that
+      // signal actually computed a real read for this setup; the whole `shadow_signals` key is
+      // omitted when neither did, so the blob stays honest (never a fabricated placeholder).
+      ...(rvolShadowByTicker.has(s.ticker) || s.plan?.greeks_quality
+        ? {
+            shadow_signals: {
+              ...(rvolShadowByTicker.has(s.ticker) ? { relative_volume: rvolShadowByTicker.get(s.ticker) } : {}),
+              ...(s.plan?.greeks_quality ? { contract_greeks: s.plan.greeks_quality } : {}),
+            },
+          }
         : {}),
       // Play STRUCTURE (Phase 4) pinned at first flag: play_type routes the CONDOR grade path in
       // gradeZeroDteLedger (a condor is graded WIN/breach, never on the −50/+100 directional grader)

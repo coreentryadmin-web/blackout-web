@@ -7,10 +7,12 @@ import type { ZeroDteSetupLogRow } from "@/lib/db";
 import {
   asManagedPnlPct,
   buildZeroDteRecord,
+  extractMaxFavorablePct,
   isGradedZeroDteRow,
   isZeroDteWin,
   LOW_N_THRESHOLD,
   officialPlanPnlPct,
+  readManagedExit,
   scoreBand,
   scoreForBanding,
   todBucket,
@@ -834,3 +836,62 @@ test("buildZeroDteRecord: an all-directional window reports an empty condor lane
     assert.equal(rec.condor.committed, 0);
     assert.equal(rec.condor.no_live_record, true);
   });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// max_favorable_pct / extractMaxFavorablePct — reporting that separates REALIZED exits
+// from MAXIMUM FAVORABLE EXCURSION (member audit directive, point 6 of the original brief:
+// "separate realized exits from maximum potential gains").
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("readManagedExit: carries peak_pnl_pct alongside pnl_pct/reason when the row has a real exit stamp", () => {
+  const exit = readManagedExit({ exit: { reason: "thesis_break:gex-walls", pnl_pct: -22.57, peak_pnl_pct: 0 } });
+  assert.deepEqual(exit, { reason: "thesis_break:gex-walls", pnl_pct: -22.57, peak_pnl_pct: 0 });
+});
+
+test("readManagedExit: a non-finite/missing peak_pnl_pct reads null, never fabricated", () => {
+  assert.equal(readManagedExit({ exit: { reason: "plan_stop", pnl_pct: -50 } })?.peak_pnl_pct, null);
+  assert.equal(readManagedExit({ exit: { reason: "plan_stop", pnl_pct: -50, peak_pnl_pct: "NaN" } })?.peak_pnl_pct, null);
+});
+
+test("extractMaxFavorablePct: reads the real peak off a live-managed exit stamp", () => {
+  assert.equal(extractMaxFavorablePct({ exit: { reason: "ratchet_profit_floor", pnl_pct: 34.54, peak_pnl_pct: 86.27 } }), 86.27);
+});
+
+test("extractMaxFavorablePct: null when the row never carried a live-managed exit at all (absence, not zero)", () => {
+  assert.equal(extractMaxFavorablePct(null), null);
+  assert.equal(extractMaxFavorablePct({}), null);
+  assert.equal(extractMaxFavorablePct({ exit: "not-an-object" }), null);
+});
+
+test("buildZeroDteRecord: a play's max_favorable_pct is reported SEPARATELY from managed_pnl_pct, never conflated", () => {
+  // The real TSLA 2026-10-19 shape investigated this session: peak_pnl_pct=0 ("never moved
+  // favorably") alongside a -22.57% realized exit -- both numbers are real and must both survive
+  // to the public record, not be collapsed into one.
+  const rec = buildZeroDteRecord(
+    [
+      row({
+        ticker: "TSLA",
+        plan_outcome: "stopped",
+        plan_pnl_pct: -22.57,
+        entry_context: {
+          exit: { reason: "thesis_break:gex-walls", pnl_pct: -22.57, peak_pnl_pct: 0 },
+        } as unknown as ZeroDteSetupLogRow["entry_context"],
+      }),
+    ],
+    { since: "2026-10-19", through: "2026-10-19", days: 1 },
+  );
+  const play = rec.plays.find((p) => p.ticker === "TSLA");
+  assert.ok(play);
+  assert.equal(play!.max_favorable_pct, 0);
+  assert.equal(play!.managed_pnl_pct, -22.57);
+});
+
+test("buildZeroDteRecord: max_favorable_pct is null (not 0) for a row with no live-managed exit stamp", () => {
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "NVDA", plan_outcome: "stopped", plan_pnl_pct: -50, entry_context: null })],
+    { since: "2026-07-13", through: "2026-07-13", days: 1 },
+  );
+  const play = rec.plays.find((p) => p.ticker === "NVDA");
+  assert.ok(play);
+  assert.equal(play!.max_favorable_pct, null);
+});
