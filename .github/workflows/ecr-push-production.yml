@@ -266,6 +266,50 @@ jobs:
           # desired=4 would need max >= 125 to avoid deadlocking, and that same max permits 15
           # tasks (32 vCPU) at desired=12. If the min capacity is ever reduced, this whole block
           # must be re-solved (the test will fail loudly first).
+          #
+          # Pre-flight: if Application Auto Scaling (or a manual scale-in) left desiredCount below
+          # the documented floor, minHealthy=100 / max=120 deadlocks the roll (no spare task slot;
+          # measured 2026-10-18..19 as running=0/1 frozen for the full 36min timeout on every
+          # deploy while prod kept serving on the old tasks). Restore the floor BEFORE
+          # --force-new-deployment so unattended merges can ship again. Keep WEB_AUTOSCALE_FLOOR
+          # in sync with ecs-deploy-config.test.ts WEB_MIN_TASKS and the live scalable target.
+          WEB_AUTOSCALE_FLOOR=5
+          CURRENT_DESIRED=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].desiredCount' \
+            --output text)
+          echo "Web desiredCount before roll: ${CURRENT_DESIRED} (floor ${WEB_AUTOSCALE_FLOOR})"
+          if [ "${CURRENT_DESIRED}" -lt "${WEB_AUTOSCALE_FLOOR}" ]; then
+            echo "::warning::desiredCount=${CURRENT_DESIRED} < floor ${WEB_AUTOSCALE_FLOOR} — restoring capacity before deploy roll."
+            aws ecs update-service \
+              --cluster "${ECS_CLUSTER}" \
+              --service "${ECS_SERVICE}" \
+              --desired-count "${WEB_AUTOSCALE_FLOOR}"
+            echo "Waiting up to 10 min for restored web capacity..."
+            for j in $(seq 1 40); do
+              sleep 15
+              RUNNING=$(aws ecs describe-services \
+                --cluster "${ECS_CLUSTER}" \
+                --services "${ECS_SERVICE}" \
+                --query 'services[0].runningCount' \
+                --output text)
+              DESIRED_NOW=$(aws ecs describe-services \
+                --cluster "${ECS_CLUSTER}" \
+                --services "${ECS_SERVICE}" \
+                --query 'services[0].desiredCount' \
+                --output text)
+              echo "  [restore ${j}/40] running=${RUNNING}/${DESIRED_NOW}"
+              if [ "${RUNNING}" -ge "${WEB_AUTOSCALE_FLOOR}" ]; then
+                echo "Capacity restore reached running>=floor."
+                break
+              fi
+              if [ "${j}" = "40" ]; then
+                echo "Timed out waiting for web capacity restore before roll."
+                exit 1
+              fi
+            done
+          fi
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \

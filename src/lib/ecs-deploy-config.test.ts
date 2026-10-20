@@ -242,6 +242,19 @@ test("the web stability poller budgets enough time for a one-task-at-a-time roll
 //
 // Queueing keeps the original non-overlap intent (one job per group at a time, so the static-asset
 // check is still never raced) while letting each rollout finish.
+test("web roll restores sub-floor desiredCount before force-new-deployment", () => {
+  assert.match(
+    workflow,
+    /WEB_AUTOSCALE_FLOOR=5/,
+    "expected WEB_AUTOSCALE_FLOOR=5 pre-flight guard before the web update-service roll",
+  );
+  assert.match(
+    workflow,
+    /desiredCount=\$\{CURRENT_DESIRED\} < floor/,
+    "expected a warning when desiredCount is below the autoscale floor",
+  );
+});
+
 test("production deploys QUEUE rather than cancel a rollout already in flight", () => {
   const block = workflow.match(/concurrency:\s*\n(?:\s+\S.*\n)+/);
   assert.ok(block, "expected a concurrency block in the production deploy workflow");
