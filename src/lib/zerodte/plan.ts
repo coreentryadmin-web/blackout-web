@@ -503,24 +503,49 @@ export function buildContractPlan(input: {
  * Ordinary CHEAPER prints (mark a few/some percent below the fill — real front-running)
  * are far inside this band and are completely unaffected.
  *
- * THE CEILING TRIGGER IS `STOP_TRIGGER_PCT` (= |PLAN_RULES.stop_pct|), NOT `CHASE_PCT`
- * (2026-09-11, live finding). The ceiling originally reused CHASE_PCT (55%) — the wrong
- * threshold borrowed from the UP/MOVED case, where 55% was tuned for a DIFFERENT question
- * ("is this much gamma-driven premium runup normal, or already-happened") and has nothing
- * to do with achievability. That left a dead zone: a stale/dislocated fill 50-54.99% above
- * the live mark stayed UNCORRECTED (pctBelow < 55), yet the live mark was ALREADY at or
- * past the play's own -50% hard stop the instant a real quote was checked — a "stopped"
- * grade fired before a member could have owned the position for even one tick, off a fill
- * nobody could ever get, exactly the failure this ceiling exists to prevent. Confirmed
- * live: a 90-day backtest found 7 near-instant (<5s) catastrophic "stopped" exits, several
- * landing in this exact 50-54.99% band (QQQ 2026-09-09 -51.42%, SPXW 2026-08-12 -52.96%,
- * NVDA 2026-08-27 -52.90%, MSFT 2026-08-28 -52.07%); reproduced mechanically with the
- * shipped function (see plan.test.ts). Triggering at the stop threshold instead closes the
- * dead zone precisely: any dislocation large enough to ALREADY be an unavoidable stop is
- * now corrected to the achievable mark before grading, while ordinary front-running
- * (well under 50%) is untouched, same as before.
+ * THE CEILING TRIGGER WAS `STOP_TRIGGER_PCT` (= |PLAN_RULES.stop_pct| = 50), NOT `CHASE_PCT`
+ * (2026-09-11, live finding; LOWERED to `ACHIEVABILITY_CEILING_PCT` below on 2026-10-19 —
+ * see that constant's own comment for why 50 itself was still a dead zone). The ceiling
+ * originally reused CHASE_PCT (55%) — the wrong threshold borrowed from the UP/MOVED case,
+ * where 55% was tuned for a DIFFERENT question ("is this much gamma-driven premium runup
+ * normal, or already-happened") and has nothing to do with achievability. That left a dead
+ * zone: a stale/dislocated fill 50-54.99% above the live mark stayed UNCORRECTED
+ * (pctBelow < 55), yet the live mark was ALREADY at or past the play's own -50% hard stop
+ * the instant a real quote was checked — a "stopped" grade fired before a member could have
+ * owned the position for even one tick, off a fill nobody could ever get, exactly the
+ * failure this ceiling exists to prevent. Confirmed live: a 90-day backtest found 7
+ * near-instant (<5s) catastrophic "stopped" exits, several landing in this exact 50-54.99%
+ * band (QQQ 2026-09-09 -51.42%, SPXW 2026-08-12 -52.96%, NVDA 2026-08-27 -52.90%, MSFT
+ * 2026-08-28 -52.07%); reproduced mechanically with the shipped function (see plan.test.ts).
+ * Triggering at the stop threshold instead of CHASE_PCT closed THAT dead zone precisely —
+ * but tying the ceiling to the stop percentage at all baked in a false premise: that a
+ * dislocation only matters once it's already large enough to independently blow through the
+ * hard stop. It doesn't. See `ACHIEVABILITY_CEILING_PCT` below for the lower, independently-
+ * measured dead zone this premise missed.
+ *
+ * ACHIEVABILITY_CEILING_PCT — LOWERED from the stop-coupled 50% (2026-10-19, live finding).
+ * A member-reported "Swift recap" benchmarking exercise traced a real TSLA 0DTE commit
+ * (2026-10-19, O:TSLA261019C00365000): ledger entry_premium 3.50, but the REAL Polygon NBBO
+ * at the exact commit instant (14:21:16.277Z) was bid 2.28 / ask 2.30 — a tight, liquid
+ * 2-cent-spread market, not stale or illiquid — a 34.6% dislocation. The contract's own
+ * minute bars confirm it never traded anywhere near 3.50 from the 9:30 ET open through the
+ * commit instant (max high 2.48); it only reached that level ~43 minutes LATER. Because
+ * 34.6% < the old 50% STOP_TRIGGER_PCT, the ceiling never fired, and the trade graded a real
+ * member-facing "thesis_break:gex-walls" exit at mark 2.71 as -22.57% — when the SAME real
+ * exit mark against the SAME real entry mark would have been +18.3%, a WIN, not a loss. This
+ * is not a one-off: a 32-row probe of every same-day-expiry (true 0DTE) commit over the
+ * trailing 14 sessions (`scripts/audit/zerodte-entry-dislocation-probe.mjs`) found 3 commits
+ * with dislocation >=30% — TSLA 2026-10-19 (34.6%), TSLA 2026-10-09 (33.5%), SPXW 2026-10-13
+ * (37.1%) — and ALL THREE graded "stopped" at the hard -50%/-49.79%/-50.45% floor computed
+ * off the inflated basis; the other 29 rows all measured <15% dislocation (real bid/ask
+ * noise), with the single worst "clean" case at 14.3% (HIMS). The real 20-points-wide gap
+ * between the worst clean case (14.3%) and the best-separated bad case (33.5%) is why 20 is
+ * chosen here rather than guessed: it sits inside that gap, so it corrects every measured bad
+ * case while leaving every measured clean case untouched. n=32 over 14 sessions is a real but
+ * limited sample — re-run the probe as more sessions accumulate, same discipline as every
+ * other threshold in this codebase that started from a live finding rather than a guess.
  */
-const STOP_TRIGGER_PCT = Math.abs(PLAN_RULES.stop_pct);
+const ACHIEVABILITY_CEILING_PCT = 20;
 
 export function resolveLedgerEntryPremium(
   planEntryMax: number | null | undefined,
@@ -532,7 +557,7 @@ export function resolveLedgerEntryPremium(
   if (markAtFlag != null && markAtFlag > 0) {
     if (markAtFlag > base) return round2(markAtFlag);
     const pctBelow = ((base - markAtFlag) / base) * 100;
-    if (pctBelow >= STOP_TRIGGER_PCT) return round2(markAtFlag);
+    if (pctBelow >= ACHIEVABILITY_CEILING_PCT) return round2(markAtFlag);
   }
   return base;
 }
