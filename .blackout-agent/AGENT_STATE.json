@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T00:30:50.986Z",
+  "updated_at": "2026-10-20T05:09:32.684Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "5bb925064a2b389aa4087a379bf05814ebc41b52",
+    "last_main_sha": "7fad3b232cb03bb2120013e090fc36362eda2442",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-09-29T00:58:49.736Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-29T00:58:50.136Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-29T13:30:27.916Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-29T13:30:28.579Z",
       "type": "context_sync",
@@ -1271,28 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-20T05:09:23.036Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T05:09:27.816Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T05:09:32.684Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6291,
-      "title": "feat(audit): point-in-time gate-rejection trace + real-cost confluence-floor backtest",
-      "branch": "feat/zerodte-gate-replay-and-real-cost-backtest",
+      "number": 6313,
+      "title": "docs(audit): fold staged findings for #6301/#6311 into FINDINGS.md",
+      "branch": "docs/fold-findings-2026-10-20b",
       "author": "coreentryadmin-web",
-      "agent": "human",
+      "agent": "agent",
       "draft": true,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T00:30:18Z"
-    },
-    {
-      "number": 6289,
-      "title": "feat(zerodte): wire RVOL into a real shadow evaluation path with persisted baseline/candidate reads",
-      "branch": "feat/zerodte-relative-volume-shadow-wiring",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "completed/success",
-      "updated_at": "2026-10-20T00:15:51Z"
+      "updated_at": "2026-10-20T05:02:04Z"
     },
     {
       "number": 5547,
