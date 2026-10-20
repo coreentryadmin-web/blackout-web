@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T11:46:19.926Z",
+  "updated_at": "2026-10-20T12:35:09.291Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7cf1f1b1c6366fc0c8087bfd49a77dbdab54bd33",
+    "last_main_sha": "9df6d4193c371c7b111a8276033b56aea88fb422",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-09T17:07:50.694Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-09T17:07:55.170Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-09T17:23:01.695Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-09T17:23:07.039Z",
       "type": "context_sync",
@@ -1271,18 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T12:34:59.817Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T12:35:04.755Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T12:35:09.291Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6335,
-      "title": "fix(auth): rate-limit + bound native-oauth/complete, the one public route missing both",
-      "branch": "fix/native-oauth-complete-rate-limit-size-bounds-20261020-112258",
+      "number": 6338,
+      "title": "docs(findings): fold native-oauth rate-limit/size-bound finding into FINDINGS.md",
+      "branch": "docs/fold-findings-native-oauth-20261020-122407",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-10-20T11:38:11Z"
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-20T12:24:40Z"
     },
     {
       "number": 5547,
