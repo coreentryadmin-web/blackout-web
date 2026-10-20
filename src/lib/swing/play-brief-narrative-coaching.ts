@@ -1500,8 +1500,19 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
     warnings.push(`Vector **${label}** stale`);
   }
   const gex = ctx.ecosystem?.gex_positioning;
-  if (!dead && gexMatrixStale(gex)) {
-    const label = ageSecondsLabel(gexMatrixAgeMs(gex)) ?? "clock-skewed";
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20, static-code sweep): these two calls omitted
+  // readMs, defaulting both gexMatrixStale/gexMatrixAgeMs to a FRESH Date.now() sample instead of
+  // the request-wide ctx.readMs anchor this same function already threads through every other
+  // staleness check (vectorAgeStale above, and gexMatrixStale again 46 lines below for
+  // closedMarketNote) — exactly the #5351/#5353/#5355/#5356-class gap play-brief-types.ts's own
+  // `readMs` field doc comment names as "the same class of latent risk and a natural next sweep."
+  // A request whose compose takes several real seconds (Meridian/ecosystem/vector/book reads, all
+  // sequential I/O per that same comment) could have this line's live Date.now() and a sibling
+  // section's ctx.readMs land on opposite sides of GEX_MATRIX_STALE_MS for the identical gex
+  // snapshot, silently disagreeing within the same brief about whether dealer posture may be
+  // stale.
+  if (!dead && gexMatrixStale(gex, readMs)) {
+    const label = ageSecondsLabel(gexMatrixAgeMs(gex, readMs)) ?? "clock-skewed";
     warnings.push(`GEX matrix **${label}** stale — dealer posture may lag spot`);
   }
   if (!dead && ctx.ecosystem?.flow_feed_fresh === false) {
