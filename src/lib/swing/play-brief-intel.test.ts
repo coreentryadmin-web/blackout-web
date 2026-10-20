@@ -82,6 +82,38 @@ test("bookContextSection: flags INTERNAL CONFLICT when an existing same-theme op
   assert.match(section?.body ?? "", /AMD SHORT/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro TSLA 385P SHORT candidate against a
+// real TSLA 352.5C LONG already held): a literal same-ticker opposed position used to flatten into
+// the same generic "theme X has an opposed position" sentence as a genuinely different name in the
+// same theme — distinguishable only by a parenthetical among several names. Now gets its own
+// sharper "same underlying" sentence.
+test("bookContextSection: a same-TICKER opposed position gets a sharper 'same underlying' sentence, distinct from a same-theme/different-ticker one", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "TSLA", direction: "LONG", positionId: 60 },
+    { ticker: "TSLL", direction: "LONG" },
+  ];
+  const section = bookContextSection(fixturePlay({ ticker: "TSLA", direction: "SHORT" }), book);
+  assert.ok(section);
+  assert.match(
+    section?.body ?? "",
+    /Internal conflict — same underlying.*already holding TSLA LONG \(separate position #60\) on TSLA itself/,
+    `expected a distinct same-underlying sentence, got: ${section?.body}`,
+  );
+  assert.match(
+    section?.body ?? "",
+    /Internal conflict\*\* — theme "ev-auto" already has an OPPOSED position: TSLL LONG/,
+    `expected the different-ticker (TSLL) conflict to keep the generic theme sentence, got: ${section?.body}`,
+  );
+});
+
+test("bookContextSection: a same-theme but DIFFERENT-ticker opposed position keeps the generic theme sentence (no same-underlying framing)", () => {
+  const book: PortfolioPosition[] = [{ ticker: "TSLL", direction: "LONG" }];
+  const section = bookContextSection(fixturePlay({ ticker: "TSLA", direction: "SHORT" }), book);
+  assert.ok(section);
+  assert.doesNotMatch(section?.body ?? "", /same underlying/);
+  assert.match(section?.body ?? "", /Internal conflict\*\* — theme "ev-auto" already has an OPPOSED position: TSLL LONG/);
+});
+
 // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro ALAB): a LONG inverse-leverage ETF
 // (SQQQ, economically SHORT semis) classified correctly as an OPPOSED position against a LONG NVDA
 // — but rendered as bare "SQQQ LONG", so the "Internal conflict" sentence read as self-contradictory
@@ -4842,6 +4874,48 @@ test("watchForSection: entry trigger level is shown distinctly from the flag anc
   assert.match(section.body, /Flag anchor: \*\*175\.87\*\*/);
   assert.match(section.body, /Entry trigger: \*\*182\.50\*\*/);
   assert.match(section.body, /Break\/reclaim above/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): `trackPct` (the board card's "Since flag" %,
+// only ever populated for WATCH/SKIP status) used to be rendered ONLY by `pnlSection`
+// (play-brief.ts), which `composeSwingPlayBrief` only calls for `bucket === "open"` — a bucket
+// where `trackPct` is always null. So the number was dead on arrival for the bucket that had it.
+// Pins the fix: a WATCH play with a real `trackPct` must show it here, beside the flag anchor.
+test("watchForSection: 'Since flag' underlying move is shown for a WATCH play (was dead-wired to the open-only Position section)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "SHORT", flagUnderlyingPx: 374.5, trackPct: -1.42 }),
+      asOf: "2026-10-20 17:14 ET",
+      sessionDate: "2026-10-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Flag anchor: \*\*374\.50\*\*/);
+  assert.match(section.body, /Since flag: \*\*-1\.4%\*\*/);
+});
+
+test("watchForSection: 'Since flag' is omitted when trackPct is null (e.g. an open play, where it is never populated)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG", flagUnderlyingPx: 175.87, trackPct: null }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(section.body, /Since flag/);
 });
 
 // BUG FIX (Ask Largo standing mandate, 2026-09-12): the "Entry trigger" bullet used to claim,

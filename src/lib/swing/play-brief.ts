@@ -1433,13 +1433,30 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   // Fixed in lockstep: gate on non-closed (matching book overlap) and only require an entry premium
   // for the self-test, not as a precondition to look at all — a pre-entry WATCH row can never
   // appear in laneRows with liveStatus set, so there is no self to accidentally exclude.
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): this block's own comment above claims it was
+  // "Fixed in lockstep" with `siblingPositionsNote` and that the two "can never disagree" — but it
+  // only ported THAT function's `!== "closed"` bucket gate and dropped-entry-precondition fix
+  // (both from the 2026-10-15 pass), never the earlier (2026-10-11) `positionId` exact-match
+  // branch `siblingPositionsNote` uses as its PRIMARY self-test (see that function, a few lines
+  // above). Falling straight to the premium-proximity fallback here means two real, independently
+  // committed same-ticker positions (legitimately distinct per commit.ts's per-archetype
+  // `swingThesisKey`) whose entry premiums happen to land within $0.005 of each other (a realistic
+  // fill collision) get silently excluded as "self" here — `siblingPositionsNote` correctly
+  // resolves them via positionId and renders "Other concurrent position(s)", while this function
+  // emits zero evidence[] entries backing that exact claim, violating the Largo C7 doctrine this
+  // same function states two paragraphs up.
   if (statusBucket(ctx.play) !== "closed") {
     const ticker = ctx.play.ticker.toUpperCase();
     const hasOwnEntry = ctx.play.entry != null && Number.isFinite(ctx.play.entry);
+    const { positionId: selfPositionId } = parseSwingPlayId(ctx.play.id);
     const siblingCount = ctx.laneRows.filter((r) => {
       if (r.ticker.toUpperCase() !== ticker) return false;
       if (!r.liveStatus) return false;
       if (r.entryPremium == null || !Number.isFinite(r.entryPremium)) return false;
+      if (selfPositionId != null && r.positionId != null) {
+        return r.positionId !== selfPositionId;
+      }
       if (!hasOwnEntry) return true;
       return Math.abs(r.entryPremium - ctx.play.entry!) > 0.005;
     }).length;

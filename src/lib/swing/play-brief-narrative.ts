@@ -818,7 +818,17 @@ export function resolveInvalidationFocalLevel(play: TerminalPlay, focal: FocalLe
     );
   }
   if (play.direction === "SHORT") {
-    return focal.find((l) => (l.kind === "call_wall" || l.kind === "king") && l.distancePct > 0);
+    // BUG FIX (Ask Largo standing mandate, 2026-10-20): the LONG branch above treats put_wall,
+    // dark_pool, AND king as candidate invalidation levels; this SHORT branch omitted dark_pool —
+    // not a deliberate asymmetry (narrateDarkPool explicitly supports a dark-pool print acting as
+    // resistance for a SHORT thesis, and play-brief-ladder.ts's `riskTheOtherSide` treats dark_pool
+    // fully symmetrically for both directions when picking the Structure Ladder's own focal level).
+    // This function's own doc comment above states its whole purpose is that every section quoting
+    // "the one structural level that matters" routes through here so they can never disagree — an
+    // omitted kind on one side only is exactly the asymmetry that guarantee exists to prevent.
+    return focal.find(
+      (l) => (l.kind === "call_wall" || l.kind === "dark_pool" || l.kind === "king") && l.distancePct > 0,
+    );
   }
   return undefined;
 }
@@ -1545,7 +1555,16 @@ export function tradeManagerNarrativeSection(
   } else if (!breakLine && play.direction === "LONG" && execStop != null) {
     breakLine = `**Break watch** — lose premium stop **${fmtOptionUsd(execStop)}** → cut size or exit.`;
   } else if (!breakLine && play.direction === "SHORT" && execStop != null) {
-    breakLine = `**Break watch** — reclaim **${fmtOptionUsd(execStop)}** → cover shorts.`;
+    // BUG FIX (Ask Largo standing mandate, 2026-10-20): this used to say "reclaim $X -> cover
+    // shorts", implying the trigger is the premium RISING back up to X. But a swing play is always
+    // LONG PREMIUM regardless of direction (see the 2026-09-15 comment above this block) — execStop
+    // is a premium FLOOR, and execBreached (a few lines up) fires when the premium falls TO OR
+    // BELOW it, for BOTH directions alike. "Reclaim" is the right word for a structural resistance
+    // level a SHORT thesis invalidates by reclaiming from below (narrateFlip/narrateWall use it
+    // correctly for exactly that) — it is backwards for a premium floor, which can only be breached
+    // by a fall. The LONG branch above already says "lose" for the identical kind of value; this
+    // branch must match it.
+    breakLine = `**Break watch** — lose premium stop **${fmtOptionUsd(execStop)}** → cover shorts.`;
   }
   if (breakLine) add(breakLine, { reserved: true });
 
