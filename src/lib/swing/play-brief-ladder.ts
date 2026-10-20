@@ -395,7 +395,19 @@ export function buildStructureLadder(
   // put wall -21.4% actual). Prefer a genuine support/resistance rung; only fall back to the
   // nearest neutral pivot when no real wall exists on the unfavorable side at all (unchanged for
   // that case — GLXY's real "no wall, just the magnet" read still resolves the same way today).
-  const unfavorableRungs = rungs.filter((r) => !r.target);
+  //
+  // BUG FIX (2026-10-20, Ask Largo standing mandate, adversarially verified): the filter above used
+  // to admit ANY non-neutral kind on the unfavorable side, with no check that the KIND actually
+  // matches the trade DIRECTION — a call wall can sit below spot (price already ran through it) and
+  // would win here for a LONG thesis even though `resolveInvalidationFocalLevel` (play-brief-
+  // narrative.ts), the sibling this widget's own header claims it "can never disagree with", never
+  // treats call_wall as a candidate invalidation level for a LONG (only put_wall/dark_pool/king —
+  // symmetric: only call_wall/dark_pool/king for a SHORT, never put_wall). Excluding the
+  // cross-direction wall kind up front — before either tier below sees it — keeps this reduce from
+  // ever naming a level resolveInvalidationFocalLevel would refuse to name, in BOTH the real-wall
+  // tier and the neutral-pivot fallback tier.
+  const crossDirectionWallKind: StructureLadderRungKind = play.direction === "LONG" ? "call_wall" : "put_wall";
+  const unfavorableRungs = rungs.filter((r) => !r.target && r.kind !== crossDirectionWallKind);
   const unfavorableRealWalls = unfavorableRungs.filter((r) => r.role !== "neutral");
   const riskTheOtherSide = (unfavorableRealWalls.length > 0 ? unfavorableRealWalls : unfavorableRungs).reduce<
     StructureLadderRung | null
