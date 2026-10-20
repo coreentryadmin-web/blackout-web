@@ -43,7 +43,8 @@ export async function GET(req: NextRequest) {
       gexBias: b.gex_bias,
       publishedAt: b.published_at,
     }), { headers: NO_STORE_HEADERS });
-  } catch {
+  } catch (err) {
+    console.error("[brief/premarket] GET failed:", err);
     return NextResponse.json({ available: false }, { headers: NO_STORE_HEADERS });
   }
 }
