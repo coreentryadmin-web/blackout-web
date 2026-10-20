@@ -1131,19 +1131,32 @@ export function macroTapeCoaching(ctx: SwingPlayBriefContext): string | null {
   const arsenal = ctx.ecosystem?.arsenal;
   if (!arsenal) return null;
   const parts: string[] = [];
-  if (arsenal.macro) {
-    const m = arsenal.macro;
+  const m = arsenal.macro;
+  // Same "< 0 → inverted" convention already used for this field in verdict-core.ts and
+  // ecosystem-narrative.ts — reused here rather than inventing a second threshold.
+  const curveInverted = m?.curve_10y_1y_spread != null && m.curve_10y_1y_spread < 0;
+  if (m) {
     if (m.yield_10_year != null) parts.push(`10Y **${m.yield_10_year.toFixed(2)}%**`);
-    if (m.curve_10y_1y_spread != null) parts.push(`curve **${m.curve_10y_1y_spread.toFixed(2)}**`);
+    if (m.curve_10y_1y_spread != null) {
+      parts.push(`curve **${m.curve_10y_1y_spread.toFixed(2)}${curveInverted ? " (inverted)" : ""}**`);
+    }
   }
   if (arsenal.breadth?.tone) {
     parts.push(`breadth **${arsenal.breadth.tone}**`);
   }
   if (!parts.length) return null;
-  const riskOff = arsenal.breadth?.tone?.toLowerCase().includes("risk-off");
-  const riskOn = arsenal.breadth?.tone?.toLowerCase().includes("risk-on");
-  const hint =
-    ctx.play.direction === "LONG" && riskOff
+  const riskOff = arsenal.breadth?.tone?.toLowerCase().includes("risk-off") ?? false;
+  const riskOn = arsenal.breadth?.tone?.toLowerCase().includes("risk-on") ?? false;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): the hint used to key ONLY off breadth tone,
+  // so an inverted curve (its own distinct risk-off signal) was silently dropped whenever breadth
+  // read risk-on — the narrative would read as an unqualified "risk-on, no issue" even though a
+  // second macro fact in the SAME bullet was flashing the opposite read. Name the tension instead
+  // of letting one signal quietly override the other, same discipline as crossDeskCoaching/
+  // counterThesisLine elsewhere in this file: disagreement is surfaced, never flattened.
+  const curveBreadthDisagree = curveInverted && riskOn;
+  const hint = curveBreadthDisagree
+    ? "Curve inverted (risk-off) while breadth reads risk-on — the two macro reads disagree; treat this as genuine tension, not a clean risk-on signal."
+    : ctx.play.direction === "LONG" && riskOff
       ? "Risk-off tape — long swings need tighter stops."
       : ctx.play.direction === "SHORT" && riskOn
         ? "Risk-on tape — shorts face headwind; respect call walls."

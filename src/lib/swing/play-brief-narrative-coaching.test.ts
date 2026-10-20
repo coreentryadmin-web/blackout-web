@@ -16,6 +16,7 @@ import {
   ivLeverageDivergenceCoaching,
   ivRankCoaching,
   laneRankCoaching,
+  macroTapeCoaching,
   magnetCoaching,
   manageLifecycleCoaching,
   rangeBiasEntryCollisionCoaching,
@@ -873,6 +874,75 @@ test("shortInterestCoaching: uses ctx.readMs, not the real wall clock, to judge 
     play({ direction: "LONG" }),
   );
   assert.match(line!, /Short interest/i, "ctx.readMs-fresh DTC read must render, not be withheld as ancient");
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): macroTapeCoaching's hint used to key ONLY off
+// breadth tone, so a genuinely inverted yield curve (its own distinct risk-off signal, same
+// "spread < 0" convention as verdict-core.ts/ecosystem-narrative.ts) was silently dropped whenever
+// breadth read risk-on. These four tests pin: the new disagreement framing fires when the two
+// signals conflict, the curve bullet itself now marks "(inverted)" (previously a bare number), and
+// the pre-existing single-signal branches are untouched when the two signals don't conflict.
+test("macroTapeCoaching: inverted curve + risk-on breadth surfaces the disagreement, not a clean risk-on read", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          macro: { yield_10_year: 4.1, curve_10y_1y_spread: -0.25, cpi: null, as_of: "2026-10-19" },
+          breadth: { tone: "risk-on", summary: null, as_of: "2026-10-19" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "SHORT" }),
+    }),
+  );
+  assert.match(line!, /curve \*\*-0\.25 \(inverted\)\*\*/);
+  assert.match(line!, /disagree/i);
+  assert.doesNotMatch(line!, /shorts face headwind/i, "the conflict framing must replace the single-signal SHORT hint, not append to it");
+});
+
+test("macroTapeCoaching: non-inverted curve + risk-on breadth keeps the existing SHORT headwind framing", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          macro: { yield_10_year: 4.1, curve_10y_1y_spread: 0.3, cpi: null, as_of: "2026-10-19" },
+          breadth: { tone: "risk-on", summary: null, as_of: "2026-10-19" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "SHORT" }),
+    }),
+  );
+  assert.match(line!, /curve \*\*0\.30\*\*/);
+  assert.doesNotMatch(line!, /\(inverted\)/);
+  assert.match(line!, /shorts face headwind/i);
+});
+
+test("macroTapeCoaching: inverted curve + risk-off breadth (agreeing signals) keeps the existing LONG tighter-stops framing", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          macro: { yield_10_year: 4.1, curve_10y_1y_spread: -0.1, cpi: null, as_of: "2026-10-19" },
+          breadth: { tone: "risk-off", summary: null, as_of: "2026-10-19" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG" }),
+    }),
+  );
+  assert.match(line!, /curve \*\*-0\.10 \(inverted\)\*\*/);
+  assert.match(line!, /tighter stops/i);
+  assert.doesNotMatch(line!, /disagree/i);
+});
+
+test("macroTapeCoaching: no macro/breadth data at all returns null", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: { ticker: "NRG", arsenal: { macro: null, breadth: null } } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.equal(line, null);
 });
 
 test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led friction", () => {
