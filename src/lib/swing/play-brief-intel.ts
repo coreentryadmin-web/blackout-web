@@ -398,6 +398,7 @@ function formatOverlapPosition(
   p: PortfolioPosition,
   reviewedTicker: string,
   dupTickers: ReadonlySet<string>,
+  reviewedIsBangerOrigin: boolean,
 ): string {
   // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro ALAB: "Internal conflict — SQQQ
   // LONG, SOXS LONG" rendered right next to a "Concentration — NVDA LONG, CRWV LONG" sentence, with
@@ -415,6 +416,24 @@ function formatOverlapPosition(
   const isDuplicateOtherTicker = !isReviewedTicker && dupTickers.has(p.ticker.toUpperCase());
   if (!isReviewedTicker && !isDuplicateOtherTicker) return base;
   if (p.positionId != null) return `${base} (separate position #${p.positionId})`;
+  // BUG FIX (2026-10-20, Ask Largo standing mandate, live repro LABD #1955/#1761 and RNG #1966/
+  // #1902): a null `p.positionId` means THIS sibling is Banger-origin (per loadOpenBook's own
+  // convention, play-brief-context.ts) — but that alone doesn't make the relationship "cross-
+  // engine". It's cross-engine only when the REVIEWED play is a DIFFERENT engine from this
+  // sibling. When the reviewed play is ALSO Banger-origin, both sides are the same engine
+  // committing to the same ticker twice, and "cross-engine" is simply false — live-reproduced:
+  // LABD positionId 1955's Book Context cited "#1761" as "cross-engine" and 1761's own brief
+  // symmetrically cited "#1955" the same way, yet both are confirmed BANGER_LEDGER_REGIME_LABEL
+  // rows (same engine). This matters because "cross-engine" reads as a stronger, more
+  // independently-corroborated signal (two separate systems both like this ticker) than "same
+  // engine, same ticker, twice" (a narrower, single-source signal) — and 21 of 26 live committed
+  // Swing positions the day this was found were Banger-origin, so same-ticker Banger/Banger pairs
+  // are common, not an edge case.
+  if (reviewedIsBangerOrigin) {
+    return p.bangerId != null
+      ? `${base} (separate position #${p.bangerId})`
+      : `${base} (separate position)`;
+  }
   return p.bangerId != null
     ? `${base} (separate, cross-engine position #${p.bangerId})`
     : `${base} (separate, cross-engine position)`;
@@ -497,11 +516,14 @@ export function bookContextSection(
   );
   if (!overlap.hasOverlap) return null;
 
+  const reviewedIsBangerOrigin = play.regime === BANGER_LEDGER_REGIME_LABEL;
   const lines: string[] = [];
   if (overlap.sameThemeSameDirection.length) {
     const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeSameDirection);
     const names = joinOverlapNames(
-      overlap.sameThemeSameDirection.map((p) => formatOverlapPosition(p, play.ticker, dupTickers)),
+      overlap.sameThemeSameDirection.map((p) =>
+        formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin),
+      ),
     );
     const closer = isPendingEntryDecision
       ? `Adding ${play.ticker} stacks the same wager rather than diversifying risk.`
@@ -515,7 +537,9 @@ export function bookContextSection(
   if (overlap.sameThemeOpposedDirection.length) {
     const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeOpposedDirection);
     const names = joinOverlapNames(
-      overlap.sameThemeOpposedDirection.map((p) => formatOverlapPosition(p, play.ticker, dupTickers)),
+      overlap.sameThemeOpposedDirection.map((p) =>
+        formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin),
+      ),
     );
     lines.push(
       `**Internal conflict** — ${describeThemeOverlap(overlap.theme)} already has an OPPOSED position: ${names}. ` +
