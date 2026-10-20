@@ -874,5 +874,11 @@
     "ts": "2026-10-20T03:02:00Z",
     "what": "Run 39356798942 (carrying my own merged PR #6298) completed: conclusion failure at 02:47:38Z, same pattern as every other attempt this session.",
     "status": "5th consecutive deploy failure directly observed. My KGC/AEM fix is correct and on main but not live. Confirms the deadlock is purely capacity-based, not tied to any specific PR's content -- it blocks every push equally regardless of what changed. No further action possible from this session. Legacy digest/health unchanged."
+  },
+  "root_cause_fix_for_deploy_deadlock_merged_2026_10_20": {
+    "ts": "2026-10-20T04:17:00Z",
+    "what": "PR #6302 merged (co-authored by Cursor Agent): 'fix(deploy): pre-scale ECS web to floor 5 when desiredCount deadlocks roll.'",
+    "finding": "Directly names the root cause this journal has tracked across 6 consecutive deploy failures: 'At desiredCount=2, minHealthy=100 and maxPercent=120 allow no spare task slot, so rolling deploys hang until the stability poller times out (observed 2026-10-20). Scale to autoscaling MinCapacity before force-new-deployment; pin with test.' This matches exactly -- every failed run this session showed running=0/1 the entire 36min window, consistent with desiredCount being stuck below the floor the earlier (prior-session) P0 also named.",
+    "status": "Run 39368522632 (carrying this fix) is in_progress, currently in the image build step -- has not yet reached the ECS rollout step where the fix's pre-scale logic would actually run. This is the critical test: if the pre-scale step works, THIS deploy (and every subsequent one, including the still-blocked #6298) should finally succeed. Watching very closely."
   }
 }
