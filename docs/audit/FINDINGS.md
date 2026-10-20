@@ -38,6 +38,88 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Root layout's default OG image alt text hand-typed a stale product count — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, DISCOVERY-lane SEO/GEO sweep (`docs/audit/FULL-LIFECYCLE SCOPE EXPANSION`
+mandate), via a background Explore-agent audit of structured data / meta-tag completeness on
+marketing surfaces.
+
+**Root cause:** `src/app/layout.tsx`'s root `metadata.openGraph.images[0].alt` was the literal
+string `"BlackOut — 6 live engines, institutional-grade trading desk"`. The product catalog grew
+to 7 live products (`manifestProductCount()` in `src/lib/marketing/product-manifest.ts`, confirmed
+`7` by the existing `product-manifest-consistency.test.ts` assertion) a full product-launch cycle
+ago — every other public surface (homepage, pricing, FAQ, `/vs/others`, welcome-sequence emails)
+already derives its product count from `manifestProductCount()`/`manifestProductCountWord()`
+specifically so this class of drift can't happen, but this one literal in the root layout was never
+migrated and wasn't covered by `product-manifest-consistency.test.ts`'s `PUBLIC_SURFACES` scan
+(which doesn't include `src/app/layout.tsx`). This is the exact same bug class `FINDINGS.md` already
+documents for the Pricing page's SEO description (fixed 2026-09-04, driven off
+`manifestProductCountWord()`) — that fix did not reach this second, independent hardcoded literal.
+
+**Live impact:** any route that doesn't override `openGraph.images` (noindex/app pages, raw link
+shares, and the root metadata's own fallback) serves an OG image whose alt text claims "6 live
+engines" while the site's own manifest, homepage, pricing page, FAQ, and welcome emails all say 7 —
+a product-count contradiction visible to any crawler, social-preview renderer, or AI answer engine
+reading the page's metadata. Low severity (alt text, not visible UI copy) but a genuine, user-facing
+drift bug, not a cosmetic nit.
+
+**Fix:** `src/app/layout.tsx` now imports `manifestProductCount` and builds the alt text as a
+template literal (`` `BlackOut — ${manifestProductCount()} live engines, institutional-grade
+trading desk` ``), matching the Pricing-page fix's pattern exactly.
+
+**Blast radius:** single call site — `layout.tsx`'s OG image metadata is root-level and not
+duplicated elsewhere; no other file carried this same literal (confirmed by grep for "6 live
+engines" repo-wide, zero other hits).
+
+**Test:** `src/lib/marketing/product-manifest-consistency.test.ts` — new regression test asserting
+the root layout's OG alt text derives from `manifestProductCount()` and carries no hardcoded
+stale-count digit. RED→GREEN proven via `git stash` on `layout.tsx` alone (fails without the fix,
+1/17 failing; passes with it, 17/17). Full-file test run and repo-wide `npx tsc --noEmit` both
+clean.
+
+## `/learn/[slug]` article branch rendered `FAQPageJsonLd` with no empty-list guard — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, DISCOVERY-lane SEO/GEO sweep (`docs/audit/FULL-LIFECYCLE SCOPE EXPANSION`
+mandate), via a background Explore-agent audit of structured-data completeness on marketing pages.
+
+**Root cause:** `src/app/(marketing)/learn/[slug]/page.tsx`'s article branch rendered
+`<FAQPageJsonLd items={getArticleFaqs(article.slug)} />` unconditionally. The sibling guide branch
+36 lines above it correctly guards the identical pattern: `{faqs.length > 0 && <FAQPageJsonLd
+items={faqs} />}`. `getArticleFaqs()` (`src/lib/learn/article-faqs.ts`) falls through to `[]` for
+any slug not present in `ARTICLE_FAQS` — today all 52 current article slugs have an entry (verified
+by diffing `LEARN_ARTICLES` slugs against `ARTICLE_FAQS` keys, and independently guarded by
+`article-faqs.test.ts`'s own "every learn article has an FAQ set" assertion), so the bug wasn't
+live yet. The next article added without a matching `ARTICLE_FAQS` entry would have silently
+emitted `"mainEntity": []` on its FAQPage JSON-LD, which is invalid per Google's structured-data
+guidelines (a FAQPage requires at least one Question) — likely a Rich Results validation error on
+that page.
+
+**Fix:** added the identical `articleFaqs.length > 0 &&` guard the guide branch already uses,
+hoisting `const articleFaqs = getArticleFaqs(article.slug);` above the JSX the same way the guide
+branch hoists `const faqs = guideFaqs(guide.sections);`.
+
+**Blast radius:** single call site — the article branch is the only other place
+`getArticleFaqs`/`FAQPageJsonLd` are paired; the guide branch's own pairing was already correctly
+guarded and untouched.
+
+**Test:** `src/app/learn-slug-404.test.ts` — new regression test asserting the article branch's
+source carries the `articleFaqs.length > 0 && <FAQPageJsonLd` guard (same source-inspection style
+this file's own existing `dynamicParams`/`generateStaticParams` tests use, since the route is an
+async server component with heavy content-view dependencies that make a full render-based test
+disproportionate to the fix). RED→GREEN proven via `git stash` on the page file alone (fails
+without the guard, 1/3 failing in this file; passes with it, full file + `article-faqs.test.ts`
+green, 6/6). Repo-wide `npx tsc --noEmit` clean.
+
 ## Swing play-brief — `watchForSection` "Thesis intact" contradicted a dead WATCH play's own neighboring line — FIXED
 
 > **kind:** `FINDING`
