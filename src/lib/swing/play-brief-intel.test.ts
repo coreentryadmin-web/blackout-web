@@ -3013,6 +3013,92 @@ test("vectorDeskSection: omits 'Watch now' entirely when starred has only the he
   assert.doesNotMatch(section!.body, /Watch now/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, fresh-angle technicals audit): a genuinely
+// dead WATCH play (EXTENDED_CHASE etc., per deadPlayReason) still reached this section's live
+// directive block, directly contradicting the brief's own Verdict ("Extended past the valid
+// entry window — do not chase; wait for a reset."). Mirrors watchForSection's own
+// deadPlayReason guard (fixed the same day, PR #6337).
+test("vectorDeskSection: suppresses entry/targets/invalidation/watch-now directives for a genuinely dead (extended-chase) WATCH play", () => {
+  const vec = fixtureVec({
+    freshness: "live",
+    play: {
+      bias: "long",
+      headline: "POSITION · pivot at the 119.71 gamma flip",
+      grade: "B",
+      conviction: 60,
+      thesis: "Pullback continuation into the flip.",
+      entryZone: "118-120",
+      targets: ["125", "130"],
+      invalidation: "below 115",
+      starred: ["POSITION · pivot at the 119.71 gamma flip", "Flip cross imminent — watch 119.71"],
+    },
+  } as Partial<VectorFullState>);
+  const ctx = {
+    play: fixturePlay({ status: "WATCH", entryStatus: "EXTENDED_CHASE" }),
+  } as SwingPlayBriefContext;
+
+  const section = vectorDeskSection(vec, null, "watch", ctx);
+  assert.ok(section);
+  assert.match(section!.body, /POSITION · pivot at the 119\.71 gamma flip/, "headline/grade/conviction stay — informational, not a live call");
+  assert.match(section!.body, /Pullback continuation into the flip\./, "thesis stays — informational");
+  assert.doesNotMatch(section!.body, /Entry zone/, "a dead play must not render a live entry-zone directive");
+  assert.doesNotMatch(section!.body, /Targets:/, "a dead play must not render live targets");
+  assert.doesNotMatch(section!.body, /Invalidation:/, "a dead play must not render a live invalidation level");
+  assert.doesNotMatch(section!.body, /Watch now/, "a dead play must not render actionable 'Watch now' bullets");
+  assert.equal(section!.bias, "neutral", "a dead play's directive must not badge bullish/bearish");
+});
+
+test("vectorDeskSection: a live (not dead) WATCH play keeps the full directive block — no regression", () => {
+  const vec = fixtureVec({
+    freshness: "live",
+    play: {
+      bias: "long",
+      headline: "POSITION · pivot at the 119.71 gamma flip",
+      grade: "B",
+      conviction: 60,
+      thesis: "Pullback continuation into the flip.",
+      entryZone: "118-120",
+      targets: ["125", "130"],
+      invalidation: "below 115",
+      starred: ["POSITION · pivot at the 119.71 gamma flip", "Flip cross imminent — watch 119.71"],
+    },
+  } as Partial<VectorFullState>);
+  const ctx = {
+    play: fixturePlay({ status: "WATCH", entryStatus: "VALID" }),
+  } as SwingPlayBriefContext;
+
+  const section = vectorDeskSection(vec, null, "watch", ctx);
+  assert.ok(section);
+  assert.match(section!.body, /Entry zone: \*\*118-120\*\*/);
+  assert.match(section!.body, /Targets: \*\*125\*\* · \*\*130\*\*/);
+  assert.match(section!.body, /Invalidation: \*\*below 115\*\*/);
+  assert.match(section!.body, /\*\*Watch now:\*\*/);
+  assert.equal(section!.bias, "bullish");
+});
+
+test("vectorDeskSection: no ctx.play supplied (caller omitted it) keeps the full directive block — safe default, no regression for existing no-ctx callers", () => {
+  const section = vectorDeskSection(
+    fixtureVec({
+      freshness: "live",
+      play: {
+        bias: "long",
+        headline: "Ride momentum",
+        grade: "A",
+        conviction: "high",
+        thesis: "",
+        entryZone: "100-102",
+        targets: ["110"],
+        invalidation: "below 98",
+        starred: ["Ride momentum", "watch 105"],
+      },
+    } as Partial<VectorFullState>),
+    null,
+    "watch",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Entry zone: \*\*100-102\*\*/);
+});
+
 test("vectorDeskSection: CLOSED bucket suppresses the live entry/targets/invalidation/watch-now directive block (bucket-blind Vector desk, 2026-09-07)", () => {
   // Live production repro (CCI/AMZN/GLW/NOW closed positions, 2026-09-07): vectorDeskSection had
   // no bucket parameter at all and rendered the FULL live, current-moment Vector recommendation
