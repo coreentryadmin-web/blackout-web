@@ -266,12 +266,29 @@ jobs:
           # desired=4 would need max >= 125 to avoid deadlocking, and that same max permits 15
           # tasks (32 vCPU) at desired=12. If the min capacity is ever reduced, this whole block
           # must be re-solved (the test will fail loudly first).
+          #
+          # EXCEPTION (2026-10-20 outage recovery): manual scale-down left desiredCount=2 while
+          # minHealthy=100/max=120 still applies — ECS cannot start a replacement (no spare slot)
+          # and the roll hangs until this job times out. Restore the autoscaling floor ONLY when
+          # below it; otherwise never pass --desired-count (auto-scaling owns the count).
+          WEB_AUTOSCALE_FLOOR=5
+          LIVE_DESIRED=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].desiredCount' --output text)
+          echo "Live desiredCount=${LIVE_DESIRED} (floor ${WEB_AUTOSCALE_FLOOR})"
+          DESIRED_COUNT_ARG=()
+          if [ "${LIVE_DESIRED}" -lt "${WEB_AUTOSCALE_FLOOR}" ]; then
+            echo "Restoring desiredCount to ${WEB_AUTOSCALE_FLOOR} before roll — deploy is deadlocked below the floor."
+            DESIRED_COUNT_ARG=(--desired-count "${WEB_AUTOSCALE_FLOOR}")
+          fi
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
             --task-definition "${NEW_ARN}" \
             --deployment-configuration "minimumHealthyPercent=100,maximumPercent=120,deploymentCircuitBreaker={enable=true,rollback=true}" \
-            --force-new-deployment
+            --force-new-deployment \
+            "${DESIRED_COUNT_ARG[@]}"
 
           # Custom stability check: poll the PRIMARY deployment only.
           # The built-in `services-stable` waiter blocks on ALL deployments
