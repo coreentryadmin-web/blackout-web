@@ -80,7 +80,8 @@ export async function GET() {
       stale,
       marketOpen: isEtCashRth(now),
     }, { status: 200, headers: CDN_CACHE });
-  } catch {
+  } catch (err) {
+    console.error("[market/regime] GET failed:", err);
     return NextResponse.json({ available: false }, { status: 200, headers: NO_STORE });
   }
 }

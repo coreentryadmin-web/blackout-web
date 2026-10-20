@@ -41,7 +41,8 @@ export async function GET(req: NextRequest) {
         };
       })
     }), { status: 200, headers: NO_STORE_HEADERS });
-  } catch {
+  } catch (err) {
+    console.error("[coaching/alerts] GET failed:", err);
     return NextResponse.json({ alerts: [] }, { status: 200, headers: NO_STORE_HEADERS });
   }
 }
