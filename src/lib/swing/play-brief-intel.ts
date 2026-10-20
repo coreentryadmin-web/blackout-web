@@ -4,6 +4,7 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { parseOccSymbol } from "@/lib/largo/core/entities";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
@@ -225,10 +226,23 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   // strike than where the accumulation flow was concentrated), not something to silently drop.
   if (play.topFlowProvenance) {
     const { topFlowStrike, matchedPick } = play.topFlowProvenance;
+    // GAP FOUND (Ask Largo standing mandate, 2026-10-20): the mismatch branch named the flow's
+    // magnet strike but never the pick's OWN strike, forcing a reader to cross-reference the
+    // Verdict section's `play.contract` label to see how far apart the two actually are — the
+    // exact kind of "trust me, they're different" prose this file's own header otherwise avoids.
+    // `play.occ` (parsed via the shared `parseOccSymbol`, already the established pattern for this
+    // exact need — see play-brief-narrative-coaching.ts) carries the pick's strike as a real
+    // number; using it only when it parses keeps the corroboration case (which already names its
+    // one shared strike) and the never-fabricate discipline this section already follows for its
+    // sibling absence cases — a play with no resolvable OCC still gets the honest, pre-existing
+    // generic line rather than a guessed number.
+    const ownStrike = parseOccSymbol(play.occ ?? null)?.strike;
     lines.push(
       matchedPick
         ? `**Strike vs flow:** this contract's strike (**$${topFlowStrike}**) matches the accumulation flow's own magnet strike — corroborating.`
-        : `**Strike vs flow:** the accumulation flow's magnet strike was **$${topFlowStrike}**; this pick landed at a different strike (chosen independently on tradability/fit).`,
+        : ownStrike != null
+          ? `**Strike vs flow:** the accumulation flow's magnet strike was **$${topFlowStrike}**; this pick used **$${ownStrike}** instead (chosen independently on tradability/fit).`
+          : `**Strike vs flow:** the accumulation flow's magnet strike was **$${topFlowStrike}**; this pick landed at a different strike (chosen independently on tradability/fit).`,
     );
   }
   // "Today's regime read" (not the old bare "Discovery read") — `play.regime` is re-derived FRESH on
