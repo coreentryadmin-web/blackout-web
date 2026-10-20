@@ -904,5 +904,11 @@
     "what": "PR #6319 (strike-vs-flow own-strike enhancement) went green on all checks (CI, CodeQL, PR webhook, Autopilot dispatch all success; dependabot/automerge correctly skipped, not a cursor/* branch) within ~12min of opening. Undrafted and merged via GitHub MCP (merge_pull_request, squash, expectedHeadSha guard) as c274b993518fadceec9fcb383ff16b03880583c8.",
     "finding": "N/A -- routine merge of an already-audited, already-journaled enhancement.",
     "status": "Verified landed on origin/main (git show confirms the 'this pick used $${ownStrike}' line is live in the merged file). No follow-up needed."
+  },
+  "swing_5truth_retrace_verified_clean_2026_10_20": {
+    "ts": "2026-10-20T07:25:00Z",
+    "what": "First run this session of the mandate's own 'CLOSED plays: retrace vs the 5-truth grader' item. Pulled GET /api/admin/swing/multi-truth-grade?days=90 (30 real swing_positions-backed closed rows, positionId 1-30) and compared PATH/THESIS/EXECUTION/FINANCIAL truths against the markfreeze realizedPnlPct members actually see.",
+    "finding": "PATH and THESIS are populated and internally sensible across all 30 rows (e.g. IBIT:8 thesis CONFIRMED despite a -98.58% markfreeze loss is expected -- thesis-correctness and P&L-realization are deliberately separate truths per OUTCOME-GRADING-SPEC.md \u00a76). EXECUTION ('no_fill') and FINANCIAL ('no_forward_bars') are ungradeable on ALL 30/30 rows with zero exceptions -- looked uniform enough to suspect a wiring bug, but traced to grade-retrace.ts's own header comment: deliberately scoped this way (no real fill price is ever recorded on the ledger; historical OPTION-bar fetching per position is explicitly flagged there as 'a materially larger, higher-risk lift... a real follow-up, not silently skipped'). Confirmed NOT a new bug -- the retrace tool is working exactly as documented.",
+    "status": "Clean verification, no code change. The EXECUTION/FINANCIAL scope gap is a known, already-documented follow-up (option-bar fetching) -- explicitly a bigger lift per its own source comment, not a small/unambiguous CARVE-OUT fix, so not taken on unprompted this cycle. Re-check PATH/THESIS correctness again as the closed population grows; no need to re-verify the EXECUTION/FINANCIAL scope note itself unless the source comment changes."
   }
 }
