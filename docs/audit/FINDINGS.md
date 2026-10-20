@@ -38,6 +38,200 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-20 — [FINDING, P3 Night Hawk 0DTE] Public record now reports realized P&L and max favorable excursion SEPARATELY — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Context.** Member audit directive, point 6 of the original brief: "Prove performance
+honestly... separate realized exits from maximum potential gains." Checked the public
+`/api/market/zerodte/record` route (the multi-day track record surface `buildZeroDteRecord`
+shapes): every per-play object carries `plan_pnl_pct` (mechanical grade) and `managed_pnl_pct`
+(as-managed/realized grade) at the TOP LEVEL — but the position's own tracked peak
+(`entry_context.exit.peak_pnl_pct`, already stamped by the exit engine on every live-managed
+exit) was buried in a nested blob, never promoted to a labeled, top-level field. This is exactly
+the shape of confusion this same audit session traced on a real TSLA 2026-10-19 row: a member or
+Largo reading the headline `managed_pnl_pct: -22.57` has no easy way to also see
+`peak_pnl_pct: 0` ("this position never showed a paper gain before it closed") sitting right next
+to it — both numbers are real, but only one was visible without digging into the raw blob.
+
+### What changed
+
+- `record.ts`: `readManagedExit` now also returns `peak_pnl_pct` (additive — existing callers
+  destructuring `{reason, pnl_pct}` are unaffected). New `extractMaxFavorablePct(entryContext)`:
+  reads the real, already-stamped peak off the SAME live-managed exit object `managedGradeView`
+  reads — never a second, independently-computed peak, so it can never disagree with the engine's
+  own tracking. Returns null (never a fabricated zero) when the row never carried a live-managed
+  exit at all.
+- `ZeroDteRecordPlay` gained a new top-level `max_favorable_pct: number | null` field, populated
+  alongside `managed_pnl_pct` in the row-shaping function — now every play in the public record
+  carries BOTH numbers side by side, clearly separated, never conflated into one.
+
+### Checked for a redundant/competing field before adding this
+
+`src/lib/platform/zerodte-service.ts` (the Largo-facing live-board surface, a DIFFERENT route from
+the public multi-day record) already carries its OWN `peak_pnl_pct` field, computed from the raw
+`entry_premium`/`peak_premium` DB columns via `peakPnlPct()` (marks-math.ts) — a real, already-
+correct, already-wired computation on that surface. Confirmed this is sound and did NOT need a
+duplicate addition there; the gap was specifically on the `/record` route's per-play shape, not on
+the live-board surface.
+
+### Tests
+
+6 new tests in `record.test.ts` (`readManagedExit` carries the new field, non-finite/missing
+degrades to null, `extractMaxFavorablePct` reads the real stamp vs. returns null on absence, and
+two `buildZeroDteRecord` tests confirming the real TSLA shape — `peak_pnl_pct: 0` alongside
+`managed_pnl_pct: -22.57`, both surviving separately — and that a row with no exit stamp reads
+`null`, never a fabricated `0`). RED→GREEN proven (reverted `record.ts` to pre-change, confirmed 6
+failures; restored, confirmed 41/41 pass). `npx tsc --noEmit`: clean across the whole repo (no
+other consumer does a strict/exhaustive shape match against `ZeroDteRecordPlay` that a new
+additive field would break).
+
+### Deliberately not done here
+
+- Did not add an aggregate `avg_max_favorable_pct` alongside the existing `avg_pnl_pct` rollup —
+  a real, separately-scoped follow-up (touches the `rollup`/`rollupCounts` aggregation machinery,
+  not just the per-play shape); left for a future pass if wanted.
+- Did not touch the Largo live-board surface (`zerodte-service.ts`) — already correct, see above.
+
+## 2026-10-20 — [FINDING, P3 Night Hawk 0DTE] Contract selection: Greeks threaded through + shadow quality diagnostic — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (shadow diagnostic only — never gates a commit) |
+|---|---|
+
+**Context.** Member audit directive, point 2 of the original 6-point brief: "Choose the right
+contract. Compare available expirations and strikes using live bid/ask, spread, liquidity, delta,
+gamma, theta, and premium... don't pick cheap contracts just because they could show a huge
+percentage gain." Checked directly: `buildContractPlan` (plan.ts) already uses bid/ask/spread/
+liquidity (G-9/G-21) — but never delta/gamma/theta, even though `OptionSnapshot`
+(providers/options-snapshot.ts) already FETCHES all four for every live quote. The data existed;
+it was discarded before reaching contract selection.
+
+### What changed
+
+- `ContractGreeks` type (plan.ts): the four real greeks, additive/nullable.
+- `evaluateContractGreeksQuality(input)`: pure, SHADOW-ONLY diagnostic (never a gate). Flags
+  `low_delta` (|delta| below `GREEKS_LOW_DELTA_FLOOR=0.15` — a contract too far OTM to carry real
+  directional exposure) and `high_theta_decay` (theta, as a % of the contract's own mark per day,
+  above `GREEKS_HIGH_THETA_DECAY_PCT=15` — "don't pick cheap contracts just because they could show
+  a huge percentage gain": a contract bleeding >15%/day of its own price needs the underlying to
+  move fast just to break even). Both thresholds are STARTING, UNCALIBRATED conventions (same
+  discipline as RVOL's own classification constants) — not derived from this codebase's own
+  outcome data yet.
+- `buildContractPlan` takes an optional `greeks` input and returns `greeks`/`greeks_quality` on
+  the plan — omitted entirely (not null-filled) when the caller has no snapshot, same "absence is
+  not a measured zero" convention as every other conditional field in this file.
+- `scan.ts`: threads `snap.delta/gamma/theta/vega` into `buildContractPlan`'s call, and attaches
+  `s.plan.greeks_quality` additively onto `entry_context.shadow_signals.contract_greeks` at
+  commit — persisted, joinable against the row's own graded outcome, never gating.
+
+### Why shadow-only, not a live gate yet
+
+Per the standing instruction ("test proposed filter changes in shadow mode before changing live
+alerts") and the same discipline this session already applied to RVOL: a brand-new filter
+dimension with uncalibrated thresholds has no business blocking a real commit before real paired
+(reading, outcome) data justifies it. This PR makes that data start accumulating. The natural
+graduation path (documented in the module, same shape as RVOL's own): once a real sample shows
+`low_delta`/`high_theta_decay` setups actually underperform, a SEPARATE, explicitly-reviewed PR
+can promote this to an actual gate.
+
+### Deliberately NOT done here
+
+- Did not change `applyLiquidStrikeFallback`'s strike-selection walk to prefer higher |delta|
+  among liquid candidates — that would be a real (if soft) selection-behavior change, out of scope
+  for a shadow-first pass; a future PR can revisit once this shadow data exists.
+- Did not touch Legacy's `pickChainContract` (deterministic-edition.ts) — a different product
+  (next-day digest), not the live 0DTE board this audit targets.
+
+### Tests
+
+9 new tests in `plan.test.ts` (healthy contract flags neither concern, low-delta flags, short-put
+judged on |delta| not raw sign, high-theta-decay flags, exact-boundary strict-inequality cases,
+missing/non-finite inputs degrade to unmeasured never fabricated, `buildContractPlan` threading
+with/without greeks supplied). RED→GREEN proven (reverted to pre-change `plan.ts`, confirmed 9
+failures; restored, confirmed `plan.test.ts`+`scan.test.ts`+`board.test.ts`+`exit-sync.test.ts`
+241/241 pass). `npx tsc --noEmit`: clean. All runs on the real Node 20 binary.
+
+### CROSS-PR ORDERING NOTE (flagged in-code, per CLAUDE.md's own standing discipline)
+
+A separate, independently authored PR in this same session (RVOL shadow wiring, #6289) ALSO
+writes a `shadow_signals: {...}` spread into the SAME `entry_context` object literal in `scan.ts`.
+Plain object spreads don't deep-merge — if both PRs merge without reconciliation, whichever lands
+second silently overwrites the first's `shadow_signals` key at runtime (no git conflict guaranteed,
+since the two insertions sit at different lines). Flagged in both this finding and an in-code
+comment; whichever of the two PRs merges second must be rebased to combine both spreads into one
+before merging, not merged blind.
+
+## 2026-10-20 — [FINDING, P3 Night Hawk 0DTE] Configurable stops and scaling (env-overridable, defaults unchanged) — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Context.** Member audit directive, point 4 of the original 6-point brief: "Make stops and
+scaling configurable." `PLAN_RULES.stop_pct`/`target_pct` and `TRIM_SCALE_RULES.tranche_fraction`
+were hardcoded `as const` constants — a real engineering gap distinct from "don't change member-
+facing behavior," since the standing instruction asks for the DEFAULT to stay unchanged, not for
+the VALUE to be unconfigurable forever.
+
+### What changed
+
+- `plan.ts`: `PLAN_RULES.stop_pct`/`target_pct` resolve through a new, exported
+  `envOverridePct(envVar, fallback, mustBeNegative)` helper — `ZERODTE_STOP_PCT`/
+  `ZERODTE_TARGET_PCT` override the member-facing hard stop/target when set to a valid value of
+  the correct sign (a stop must be negative, a target must be positive — the helper refuses to
+  silently flip intent on a sign mismatch). Absent/invalid → the exact pre-existing -50/+100
+  default, byte-identical to before this change. Same established convention this file already
+  uses for `ZERODTE_CHASE_PCT`/`ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES`.
+- `strategy-version.ts`: new `resolveTrancheFraction(fallback)` — `ZERODTE_TRIM_TRANCHE_FRACTION`
+  overrides the fraction of the original position banked at each `trim_scale` tranche (default
+  1/3, the E5-measured winner). Bounded to `(0, 1)` exclusive; out-of-range or malformed falls
+  back rather than being clamped (clamping would hide a misconfiguration as if it were intended).
+  Deliberately NOT added to `exit-engine.ts` itself, which documents itself as IO-free/no-env-
+  reads (the pure decision core) — read instead in the resolution layer that already reads
+  `PLAN_RULES` the same dynamic way.
+- The extended-runner (200-400% target) 0.25/0.5 schedule is its OWN deliberate schedule and does
+  NOT read the tranche-fraction override — only the standard path does.
+
+### Why this is safe (the integrity concern checked before shipping)
+
+`buildResolvedExitPolicy`'s `config_hash` fingerprints every exit constant that can move a graded
+outcome specifically so two different strategy versions never silently blend into one calibration
+cohort. Since `PLAN_RULES.stop_pct`/`target_pct` and the resolved tranche fraction are embedded
+directly in the hashed `core` object (not the static source-code literal), an active override
+correctly produces a DIFFERENT hash — two deployments running different overrides will never
+silently share a calibration cohort. Verified directly: a new test confirms `config_hash` changes
+when `ZERODTE_TRIM_TRANCHE_FRACTION` is set and reverts to the baseline once the env var is
+removed. The existing golden-hash drift-guard test (`WS-02 DRIFT-GUARD`) still passes unmodified —
+no env var is set during the normal test run, so the resolved defaults are byte-identical to
+before this change and the committed golden hash does not move.
+
+### Tests
+
+16 new tests across `plan.test.ts` (6, `envOverridePct` behavior + a default-value guard pinning
+-50/+100) and `exit-policy-snapshot.test.ts` (4 for `resolveTrancheFraction` + 2 for
+`buildResolvedExitPolicy`'s override/hash interaction). RED→GREEN proven (reverted both source
+files to pre-change, confirmed 10 real failures; restored, confirmed 126/126 pass across
+plan/exit-policy-snapshot/strategy-version/calibration/terminal-frozen-policy/tier-export tests).
+`npx tsc --noEmit`: clean. All runs on the real Node 20 binary.
+
+### Deliberately NOT done here
+
+- `time_stop_et_minutes` is NOT made configurable — it's a session-structure boundary (cash-close
+  proximity), not a risk-sizing knob, and the adjacent NEW-COMMIT cutoff already has its own
+  override (`ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES`).
+- `TRIM_SCALE_RULES.tranches_by_regime` (the per-regime trigger thresholds: trend [40,80],
+  neutral [20,50], range [15,40]) is NOT made configurable in this pass — a 6-number structured
+  object is riskier to expose as a flat env var than a single bounded fraction; left as a
+  deliberate scoping decision for a future pass if real demand justifies it.
+- No live/production env var was actually set by this change — every default stays exactly as
+  measured (E5 for trim_scale, the long-standing -50/+100 for stop/target).
+
 ## 2026-10-20 — [FINDING, P3 Night Hawk 0DTE] RVOL shadow signal wired into a real evaluation path with persisted baseline-vs-candidate records — FIXED
 
 > **kind:** `FINDING`
