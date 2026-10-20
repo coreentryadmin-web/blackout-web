@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T15:07:51.743Z",
+  "updated_at": "2026-10-20T15:34:44.997Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1a277ed93833dfe4eb1e54b0e0465a0a8832f912",
+    "last_main_sha": "07513b65e3f13b644a443db9888feeae501e2358",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-10T21:06:41.117Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-10T21:06:45.256Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-10T21:42:28.934Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-10T21:42:33.647Z",
       "type": "context_sync",
@@ -1271,18 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T15:34:35.971Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T15:34:40.667Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T15:34:44.997Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6358,
-      "title": "docs(findings): fold accessibility + error-handling + swing findings into FINDINGS.md",
-      "branch": "docs/fold-findings-batch-20261020-1500",
+      "number": 6359,
+      "title": "fix(vector): stop re-querying vector_alert_rules per (user, ticker) pair",
+      "branch": "fix/vector-alerts-rule-rows-n-plus-1",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T15:04:56Z"
+      "updated_at": "2026-10-20T15:24:13Z"
     },
     {
       "number": 5547,
