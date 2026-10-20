@@ -38,6 +38,193 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] Look-ahead leak in the point-in-time gate-replay tools — fixed, numbers corrected
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED — corrected tools merged; numbers below supersede PR #6291's claims |
+|---|---|
+
+**Context.** Member directive: "keep pushing Nighthawk toward catching Swift-style setups early
+and consistently... compare alerts against timestamped examples without using future information...
+track missed trades, false alerts, win rate, average gains and losses, and drawdown after
+realistic spreads and slippage... validate improvements on unseen data... don't force daily
+trades, weaken risk controls, or overfit." Building the missed-trades/false-alerts tracker this
+directive asked for surfaced a real bug in the point-in-time replay methodology PR #6291 shipped
+hours earlier — caught by cross-checking its result against real production data before trusting
+it, not by inspection.
+
+### The bug
+
+`zerodte-gate-rejection-trace.mjs` and `zerodte-confluence-floor-real-cost-backtest.mjs` (both
+merged via #6291) both called `deriveZeroDteSetups` — which AGGREGATES every row it's given into
+one scored setup per ticker/direction for "today" — ONCE per day with that WHOLE day's flow rows,
+then only truncated the DOWNSTREAM hard-gate inputs (SPY/ticker minute bars, VIX) to a single
+"decision instant." The evidence-gate math itself (score, gross_premium, aggr_share, dominance,
+max_itm_pct) stayed contaminated by prints that had not happened yet as of that instant.
+
+**Real-world proof.** Production committed TSLA on 2026-10-19 at 10:21 ET off a real score of 91
+(`/api/admin/zerodte/tier-export?days=7` showed real committed counts 20/8/9/35/7 across
+10-13..10-19; `/api/market/zerodte/record?days=7`'s `entry_context.discovery_origin` breakdown
+listed the real FLOW-origin TSLA commit, score=91, flagged 10:21 ET). A full-day-aggregated
+replica of the same ticker/day instead **rejected TSLA outright** on `max_itm_pct` — a direct
+diagnostic script feeding `deriveZeroDteSetups` TSLA's full day of flow (28 prints, 13:31-19:21
+UTC, $11.4M gross premium) reproduced the exact rejection: `otm_pct: -2.39` vs `threshold: -2`.
+That -2.39% aggregate OTM did not exist yet at 10:21 ET — it only appeared because of prints
+through 19:21 UTC, eight hours later. This single bug was the reason an earlier run of this same
+methodology reported **0/18 setups ever clearing every gate** (the number #6291 shipped) — a
+number now known to be an artifact of the look-ahead, not a real measurement of the gate stack.
+
+### The fix
+
+For each ticker/direction, walk every one of its OWN real print instants in chronological order,
+re-deriving setups from flow rows TRUNCATED to each instant, and evaluating the gate stack there —
+never fed a single row that hadn't printed yet.
+
+- `zerodte-gate-rejection-trace.mjs` and the new `zerodte-missed-trades-tracker.mjs` keep the
+  EARLIEST instant that reaches a real `COMMIT` verdict (full `evaluateZeroDteGates`, not just the
+  evidence gates), or the LAST instant if none ever does — an earlier, shallower fix that stopped
+  at "first evidence-qualifying instant" was tried first and rejected: on the TSLA example it
+  landed at 09:31 ET score=44, a setup production's own continuous re-scanning would not have
+  committed on either, since hard gates can still legitimately block a low-score early instant.
+- `zerodte-confluence-floor-real-cost-backtest.mjs` doesn't evaluate hard gates, so it keeps the
+  EARLIEST evidence-qualifying instant instead of the day's LAST print (the pre-fix behavior) —
+  always using the last print is self-consistent (no contamination) but defeats the point of
+  measuring a realistic EARLY entry.
+- Expensive per-ticker fetches (SPY bars, ticker bars, VIX day-open) happen ONCE per ticker/day;
+  only the pure recomputation (`deriveZeroDteSetups`/`computeConfluence`/`evaluateZeroDteGates`)
+  repeats per instant — kept cheap despite walking every print.
+
+**Verified against the real TSLA example**: the fixed trace now surfaces TSLA at 10:35 ET
+(score=62) instead of the spurious 09:31 ET (score=44) the shallow fix produced — much closer to
+the real 10:21 ET commit. The remaining score gap vs. the real 91 is consistent with this
+toolkit's already-disclosed direct-UW-REST-vs-Postgres data-source difference (see
+`swing-gate-compound-funnel.mjs`'s own disclosure of the same gap), not a defect in this fix.
+
+### Corrected numbers — supersede #6291
+
+Only 3 real session days of UW flow were available in this window (2026-10-15, 10-16, 10-19) —
+disclosed the same way every sibling tool in this toolkit discloses a thin sample. TRAIN = the
+older 2 days, VALIDATION = the newer 1 day, held out and never used to shape the TRAIN read.
+
+**`zerodte-missed-trades-tracker.mjs` (new tool, real costs — real NBBO entry/exit, real spread,
+90s entry delay, real -50%/+100% stop/target, real minute-bar walk):**
+
+| | TRAIN (10-15, 10-16) | VALIDATION — held out (10-19) |
+|---|---|---|
+| COMMITTED (n) | 4 | 0 |
+| Win rate | 75.0% (3W/1L) — MU loss −18.5%, QQQ +38.6%, SPY +31.8%, NVDA +28.0% | — |
+| FALSE ALERTS (committed, real loss) | 1/4 (25.0%) | — |
+| BLOCKED (n) | 25 | 23 |
+| **MISSED TRADES (blocked, would have WON)** | **10/25 (40.0%)** | **9/23 (39.1%)** |
+| Correctly avoided (blocked, would have LOST) | 15/25 (60.0%) | 14/23 (60.9%) |
+| Avg gain on missed winners | +13.8% | +11.3% |
+| Avg loss correctly avoided | −11.5% | −14.3% |
+
+**The missed-trade rate cross-validates cleanly — 40.0% TRAIN vs 39.1% VALIDATION, within 1pp of
+each other** — this is a real, held-out-confirmed number, not a TRAIN-only artifact. The COMMITTED
+win-rate (75.0%, n=4) and false-alert rate (25.0%) are real but too thin to trust alone and have no
+VALIDATION counterpart (0 committed that day in this FLOW-only sample), so they are reported, not
+treated as settled.
+
+Gate-block frequency shows `score_floor` and `vix_elevated` are the dominant blockers of BOTH
+missed winners and correctly-avoided losers in roughly the same proportion in both halves
+(`vix_elevated`: 6/10 winners vs 10/15 losers in TRAIN, 9/9 vs 14/14 in VALIDATION — every blocked
+setup that day had VIX elevated, since real VIX day-open was genuinely 18.37, above
+`VIX_ELEVATED_THRESHOLD=17`) — consistent with the existing evidence-backed design, not a new
+over-blocking problem. `confluence_floor`'s apparent discrimination between winners/losers in
+TRAIN (2/10 vs 8/15) did **not** hold up in VALIDATION (4/9 vs 5/14) — flagged and dropped per the
+"never report a TRAIN-only pattern" discipline, exactly the failure mode this split exists to catch.
+
+**`zerodte-confluence-floor-real-cost-backtest.mjs` (corrected re-run, 10-day window, same 3
+real session days, 25 setups graded):**
+
+| Confirmations | n | Win rate | Mean P&L |
+|---|---|---|---|
+| 0 | 12 | 41.7% | +2.9% |
+| 1 | 5 | 0.0% | −8.0% |
+| 2 | 8 | 62.5% | +25.8% |
+
+**Correction to #6291's own table** (0:n=6/16.7%/−10.0%, 1:n=5/20.0%/−3.9%, 2:n=13/53.8%/+140.8%):
+the corrected methodology samples a different, earlier-instant universe of setups (by design — see
+Fix above), so exact figures differ and the ordering is **no longer cleanly monotonic**: 0-conf
+(+2.9%) now beats 1-conf (−8.0%), where #6291 described "same monotonic direction (0 < 1 < 2)". The
+part of #6291's conclusion that **does** hold up under the corrected, non-contaminated replay: the
+1-confirmation bucket is still the worst of the three, still negative, and still the bucket
+`ZERODTE_CONFLUENCE_MIN`'s 2026-09-08 loosening was justified against ("0.0% EV, not negative") —
+real spread + a realistic entry delay again turn that into measurably negative P&L, same
+conclusion as #6291, now on a methodology that isn't contaminated.
+
+### What this does NOT establish
+
+- Sample sizes remain small (n=4-25 per cut) and span only 3 real session days — a real but thin
+  base, disclosed rather than hidden, same discipline as every sibling tool in this toolkit.
+- This is FLOW-origin only. Real production commits on these same 3 days are dominated by
+  BREAKOUT-origin (29 of 37 committed plays across the 3 sample days, per a direct
+  `/api/market/zerodte/record` check), so this tooling — like its siblings
+  (`zerodte-gate-compound-funnel.mjs`, `zerodte-confluence-floor-outcome-backtest.mjs`, etc.) —
+  measures a real but partial slice of the board's actual activity, not the whole thing.
+- **No gate, threshold, or filter was changed by this fix or this re-run** — per the standing
+  "evidence-gathering only" discipline and the member's explicit "don't weaken risk controls"
+  instruction. The 1-confirmation allowance remains flagged as a re-check candidate (consistent
+  with #6291's own conclusion), not something this entry touches.
+
+### Blast radius
+
+Both affected tools (`zerodte-gate-rejection-trace.mjs`,
+`zerodte-confluence-floor-real-cost-backtest.mjs`) are fixed in place — same files, same CLI
+surface, no behavior change for any OTHER caller. No production code path was touched; this is
+audit tooling only. The new `zerodte-missed-trades-tracker.mjs` has no other consumers yet.
+
+Related: `docs/audit/findings-staging/` README's own discipline (one file per finding, this one's
+own) and the standing "validate on unseen data, don't overfit" instruction this whole investigation
+was run under — the TRAIN/VALIDATION split above is that validation step, not a formality.
+
+## KGC + AEM (gold-mining producers) were clustered into no theme at all — real, live LONG+LONG concentration went unflagged — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`src/lib/portfolio/sector-map.ts`) |
+|---|---|
+
+**Found via:** the standing Night Hawk Swings "Ask Largo" deep-dive mandate — a fresh `GET
+/api/market/swing/play-brief` audit pass across the current committed book, 2026-10-20.
+
+**Live repro.** `GET /api/market/nighthawk/horizons?view=swings`: KGC (positionId 1882) and AEM
+(positionId 1846) were both real, currently-committed `LONG` calls (Banger-origin BREAKOUT, same
+discovery batch) in the SAME book at the same time. Fetching each ticker's own
+`GET /api/market/swing/play-brief` showed neither brief rendered a "Book context" section at all —
+`bookContextSection` (`src/lib/swing/play-brief-intel.ts`) returns `null` whenever
+`checkPortfolioOverlap` finds no overlap, and it found none here because neither ticker appeared
+anywhere in `sector-map.ts`'s `SECTORS` map: both resolved to isolated `NAME:KGC` / `NAME:AEM`
+own-clusters (`theme-cluster.ts`'s `resolveTheme` own-cluster fallback), so `sameThesis("KGC",
+"AEM")` returned `false` even though both positions are driven by the same underlying commodity
+(gold) risk — the identical gap shape as every prior extension to this file (ALAB/CRDO/KLAC,
+quantum-computing, biotech, LABD/IOVA): a real, correlated pair live in the book with zero theme
+linkage between them.
+
+**Root cause.** `sector-map.ts`'s curated `SECTORS` map is a static, hand-extended list seeded
+from whichever tickers happened to be live and committed when each sector bucket was built or
+extended. It had no entry for precious-metals/gold-mining names at all — not a misclassification,
+an outright absence. Confirmed via Polygon reference (`/v3/reference/tickers/<T>`), not guessed
+from the symbol: KGC resolves to "Kinross Gold Corporation" and AEM to "Agnico Eagle Mines Ltd." —
+both large-cap gold-mining producers whose equity price is dominated by spot gold price and
+mine-level production/cost results, not by any sector already listed in the file.
+
+**Fix.** Added a new `"precious-metals": ["KGC", "AEM"]` entry to `SECTORS`. Deliberately
+conservative, same discipline as the crypto-equity/quantum-computing/biotech precedents in this
+file: only the two names actually live in the book at time of fix, not a speculative broader
+miners basket (e.g. NEM, GOLD) with no live partner to demonstrate against in this snapshot.
+
+**Regression test.** `src/lib/swing/theme-cluster.test.ts` — new test asserts
+`resolveTheme("KGC") === "precious-metals"`, `resolveTheme("AEM") === "precious-metals"`,
+`sameThesis("KGC", "AEM") === true`, and that neither falsely merges into an unrelated theme
+(`sameThesis("KGC", "NVDA") === false`, `sameThesis("AEM", "XOM") === false`). RED proven via
+`git stash` on `sector-map.ts` alone (1/27 theme-cluster tests fail — exactly the new assertions,
+`resolveTheme("KGC")` returning `"NAME:KGC"` instead of `"precious-metals"`), GREEN after
+(27/27). `play-brief-intel.test.ts` + `portfolio.test.ts` (285 tests) pass unchanged; `tsc --noEmit`
+clean; `eslint` clean on both touched files.
+
 ## 2026-10-20 — [FINDING, P3 Night Hawk 0DTE] Public record now reports realized P&L and max favorable excursion SEPARATELY — FIXED
 
 > **kind:** `FINDING`
