@@ -918,27 +918,41 @@ export async function buildEveningEdition(opts?: {
     // removed: it's still the one deterministic, idempotent, checkpoint-resume-safe re-score
     // this path has always relied on, and removing it is an unrelated optimization, not part of
     // this data-completeness fix.
-    for (const d of Object.values(dossiers)) {
-      try {
-        rescoreDossier(d, regime, 1, {
-          today: ctx.today,
-          tomorrow: ctx.tomorrow,
-          tomorrow_earnings: ctx.tomorrow_earnings ?? [],
-        });
-      } catch (err) {
-        console.warn(`[nighthawk/edition] session rescore failed for ${d.ticker} — keeping base score:`, err);
+    let scoredList: ScoredCandidate[] = [];
+    let rescoreAttempt = 0;
+    const MAX_RESCORE_ATTEMPTS = 2; // initial + one bounded retry
+
+    while (rescoreAttempt < MAX_RESCORE_ATTEMPTS && scoredList.length === 0) {
+      if (rescoreAttempt > 0) {
+        console.warn(`[nighthawk/edition] stage_dossiers rescore retry ${rescoreAttempt} of ${MAX_RESCORE_ATTEMPTS - 1} — retrying after 2s delay`);
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
+
+      for (const d of Object.values(dossiers)) {
+        try {
+          rescoreDossier(d, regime, 1, {
+            today: ctx.today,
+            tomorrow: ctx.tomorrow,
+            tomorrow_earnings: ctx.tomorrow_earnings ?? [],
+          });
+        } catch (err) {
+          console.warn(`[nighthawk/edition] session rescore failed for ${d.ticker} — keeping base score:`, err);
+        }
+      }
+
+      scoredList = Object.values(dossiers)
+        .filter((d) => d.scored != null)
+        .map((d) => d.scored!);
+
+      rescoreAttempt += 1;
     }
 
-    const scoredList = Object.values(dossiers)
-      .filter((d) => d.scored != null)
-      .map((d) => d.scored!);
     recordScoringStageSnapshots(editionFor, "scored", scoredList, dossiers);
 
     if (!scoredList.length) {
-      // Funnel collapsed at stage_dossiers — candidates existed but none produced a scored dossier
-      // (dossier fetch/scoring failures). Publish a recap-only edition rather than failing dark.
-      const reason = `No scored dossiers after staging (${candidates.length} candidate(s)).`;
+      // Funnel collapsed at stage_dossiers — all rescore attempts failed (candidates existed but none produced a scored dossier).
+      // Publish a recap-only edition rather than failing dark. Bounded retry exhausted.
+      const reason = `No scored dossiers after ${rescoreAttempt} rescore attempt(s) (${candidates.length} candidate(s)).`;
       console.warn(`[nighthawk/edition] stage_dossiers zeroed — recap-only fallback: ${reason}`);
       funnel.ranked = 0;
       funnel.dossiers = 0;
