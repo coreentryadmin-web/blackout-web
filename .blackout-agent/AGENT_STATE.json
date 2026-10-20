@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T08:09:07.128Z",
+  "updated_at": "2026-10-20T11:38:01.734Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a1eb97f311b3cce8bd71c5491f410a7871ecc8dc",
+    "last_main_sha": "5625b303acd6849c78127d0ebe28f5a4b3fc28bc",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-07T19:09:36.139Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-07T19:09:40.759Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-09T13:43:47.139Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-09T13:43:53.732Z",
       "type": "context_sync",
@@ -1271,28 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-20T11:37:51.360Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T11:37:57.370Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T11:38:01.734Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6326,
-      "title": "feat(audit): RVOL universe shadow scan across the full eligible scan universe",
-      "branch": "feat/zerodte-rvol-universe-shadow-scan",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-10-20T08:07:22Z"
-    },
-    {
-      "number": 6325,
-      "title": "feat(audit): thesis_rank_reject real-cost A/B with held-out split",
-      "branch": "fix/zerodte-thesis-rank-reject-real-cost-ab",
+      "number": 6335,
+      "title": "fix(auth): rate-limit + bound native-oauth/complete, the one public route missing both",
+      "branch": "fix/native-oauth-complete-rate-limit-size-bounds-20261020-112258",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "completed/success",
-      "updated_at": "2026-10-20T08:07:20Z"
+      "updated_at": "2026-10-20T11:35:22Z"
     },
     {
       "number": 5547,
