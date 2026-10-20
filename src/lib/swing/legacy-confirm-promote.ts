@@ -487,8 +487,16 @@ export function refreshCarriedLegacyPlay(
         dte,
         // A carried blob with a stale DTE label almost certainly has a stale quote too — drop it
         // honestly until live marks or the next scan repopulates it.
+        //
+        // BUG FIX (2026-10-20, Ask Largo standing mandate — live EWY/SHOP/UNH repro): this used to
+        // null mid/bid/ask ONLY, leaving delta/gamma/theta/vega/iv served untouched from the exact
+        // same stale options-chain read — all computed at the same instant as the quote this code
+        // already judges too stale to show. The reasoning above ("a stale quote too — drop it
+        // honestly") applies identically to every field that read; serving confidently-formatted
+        // greeks with zero staleness indication right next to a sibling field the system itself
+        // flagged as untrustworthy was the exact inconsistency this comment already argues against.
         ...(staleDte
-          ? { mid: null, bid: null, ask: null, delta: play.contract.delta ?? null }
+          ? { mid: null, bid: null, ask: null, delta: null, gamma: null, theta: null, vega: null, iv: null }
           : {}),
       };
 
