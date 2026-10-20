@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T21:08:39.048Z",
+  "updated_at": "2026-10-20T21:29:58.004Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "35fbb26e32fe72247300e7d41c612bdf6df14a2b",
+    "last_main_sha": "88ad86957a489beb6f2901a709299daa2ced5a84",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-11T03:50:09.706Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-11T03:50:13.938Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-11T05:36:48.318Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-11T05:36:52.672Z",
       "type": "context_sync",
@@ -1271,18 +1253,56 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T21:29:46.147Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-20T21:29:52.073Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-20T21:29:58.004Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 6409,
-      "title": "docs(findings): fold batch-12 findings into FINDINGS.md",
-      "branch": "docs/fold-findings-20261020-batch12",
+      "number": 6413,
+      "title": "docs(findings): stage report-only finding — ticker-history MAX_ROOTS cap discards chains its own ordering filter needs",
+      "branch": "docs/findings-ticker-history-maxroots-ordering",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": false,
+      "draft": true,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T21:07:49Z"
+      "updated_at": "2026-10-20T21:27:04Z"
+    },
+    {
+      "number": 6412,
+      "title": "docs(findings): stage report-only finding — lane-rank fabricated rank when own row not found",
+      "branch": "docs/findings-lanerank-own-row-not-found",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-20T21:24:35Z"
+    },
+    {
+      "number": 6411,
+      "title": "fix(swing): lane-rank named-leader exclusion now covers STOP_OUT",
+      "branch": "fix/swing-lanerank-stopout-leader-exclusion",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-20T21:22:20Z"
     },
     {
       "number": 5547,
