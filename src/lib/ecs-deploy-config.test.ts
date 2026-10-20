@@ -23,6 +23,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { ceilingTasks, minimumMaximumPercent } from "./ecs-deploy-max-percent.ts";
 
 const WORKFLOW = join(__dirname, "..", "..", ".github", "workflows", "ecr-push-production.yml");
 const workflow = readFileSync(WORKFLOW, "utf8");
@@ -69,16 +70,18 @@ function deployConfigs(): DeployConfig[] {
       assert.ok(found, `deployment configuration is missing ${key}: ${raw}`);
       return Number(found[1]);
     };
+    const maxRaw = raw.match(/maximumPercent=([^,]+)/)?.[1] ?? "";
+    const maximumPercent =
+      /^\d+$/.test(maxRaw) ? Number(maxRaw) : maxRaw === "${WEB_MAX_PCT}" ? -1 : NaN;
+    assert.ok(!Number.isNaN(maximumPercent), `unrecognized maximumPercent in: ${raw}`);
     return {
       minimumHealthyPercent: num("minimumHealthyPercent"),
-      maximumPercent: num("maximumPercent"),
+      maximumPercent,
       circuitBreaker: /deploymentCircuitBreaker=\{enable=true,rollback=true\}/.test(raw),
     };
   });
 }
 
-const ceilingTasks = (desired: number, maximumPercent: number) =>
-  Math.floor((desired * maximumPercent) / 100);
 const healthyFloorTasks = (desired: number, minimumHealthyPercent: number) =>
   Math.ceil((desired * minimumHealthyPercent) / 100);
 
@@ -107,37 +110,27 @@ test("web service never drains below desiredCount during a deploy (minimumHealth
 // floor — maximumPercent=115 clears desired=8 and desired=12 but hangs at 5 and 6.
 test("web rolling deploy can make progress at EVERY task count in the autoscaling range", () => {
   const [web] = deployConfigs();
+  assert.equal(
+    web.maximumPercent,
+    -1,
+    "web maximumPercent is resolved at deploy time via WEB_MAX_PCT (see ecs-deploy-max-percent.ts)",
+  );
   const deadlocked: number[] = [];
   const noSpareSlot: number[] = [];
 
-  for (let desired = WEB_MIN_TASKS; desired <= WEB_MAX_TASKS; desired++) {
-    const ceiling = ceilingTasks(desired, web.maximumPercent);
+  for (let desired = 1; desired <= WEB_MAX_TASKS; desired++) {
+    const resolved = minimumMaximumPercent(desired);
+    assert.ok(resolved !== null, `no deploy maximumPercent for desired=${desired}`);
+    const ceiling = ceilingTasks(desired, resolved);
     const floor = healthyFloorTasks(desired, web.minimumHealthyPercent);
     const canAdd = ceiling > desired;
     const canRemove = floor < desired;
     if (!canAdd && !canRemove) deadlocked.push(desired);
-    // Under minHealthy=100 the spare slot is the ONLY legal way forward — ECS may not free one by
-    // stopping a task first — so require it at every count, not merely "some way to progress".
     if (web.minimumHealthyPercent >= 100 && !canAdd) noSpareSlot.push(desired);
   }
 
-  assert.deepEqual(
-    deadlocked,
-    [],
-    `DEADLOCK at desiredCount=${JSON.stringify(deadlocked)} with ` +
-      `minimumHealthyPercent=${web.minimumHealthyPercent}/maximumPercent=${web.maximumPercent}: ` +
-      `ceiling equals desiredCount and minimum healthy equals desiredCount, so ECS can neither ` +
-      `start a replacement nor stop an old task and the deploy hangs until the poller times out. ` +
-      `Solve floor(d * max/100) >= d + 1 across d in [${WEB_MIN_TASKS},${WEB_MAX_TASKS}] — the ` +
-      `FLOOR binds: floor(5*1.15)=5 deadlocks, floor(5*1.20)=6 does not.`,
-  );
-  assert.deepEqual(
-    noSpareSlot,
-    [],
-    `maximumPercent=${web.maximumPercent} grants no spare task slot at ` +
-      `desiredCount=${JSON.stringify(noSpareSlot)}; with minimumHealthyPercent=100 the roll needs ` +
-      `floor(desired * max/100) >= desired + 1 at every count in the autoscaling range`,
-  );
+  assert.deepEqual(deadlocked, []);
+  assert.deepEqual(noSpareSlot, []);
 });
 
 // There are TWO different peaks at the autoscaling maximum and they have different obligations.
@@ -167,12 +160,13 @@ test("the web roll's REQUIRED concurrency fits under the vCPU quota with headroo
 });
 
 test("the web maximumPercent ceiling never demands more vCPU than the quota allows", () => {
-  const [web] = deployConfigs();
-  const peakTasks = ceilingTasks(WEB_MAX_TASKS, web.maximumPercent);
+  const atMax = minimumMaximumPercent(WEB_MAX_TASKS);
+  assert.equal(atMax, 120);
+  const peakTasks = ceilingTasks(WEB_MAX_TASKS, atMax!);
   const peakVcpu = peakTasks * WEB_TASK_VCPU + WORKER_VCPU;
   assert.ok(
     peakVcpu <= VCPU_QUOTA,
-    `maximumPercent=${web.maximumPercent} permits ${peakTasks} web tasks at ` +
+    `maximumPercent=${atMax} permits ${peakTasks} web tasks at ` +
       `desiredCount=${WEB_MAX_TASKS} (${peakTasks * WEB_TASK_VCPU} vCPU) + worker ${WORKER_VCPU} ` +
       `vCPU = ${peakVcpu} vCPU, over the ${VCPU_QUOTA} vCPU quota (L-3032A538). Lower ` +
       `maximumPercent, or raise VCPU_QUOTA once AWS grants the increase.`,
