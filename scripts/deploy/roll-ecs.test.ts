@@ -12,9 +12,12 @@ import {
   deriveSecretArn,
   dropReadOnlyTaskDefFields,
   evaluateStability,
+  minimumMaximumPercentForSpareSlot,
   resolveImageTag,
+  resolveWebRollDeploymentConfiguration,
   rewriteImage,
   stripStaleSecretRefs,
+  WEB_AUTOSCALE_MIN_TASKS,
   // @ts-expect-error — untyped .mjs sibling
 } from "./lib/taskdef-rewrite.mjs";
 
@@ -386,6 +389,22 @@ test("assertDeploymentConfigSane: 100/120 clears the whole 5..12 autoscaling ran
   for (let desired = 5; desired <= 12; desired += 1) {
     assert.equal(assertDeploymentConfigSane(svc({ desiredCount: desired })).ok, true, `desired=${desired}`);
   }
+});
+
+test("minimumMaximumPercentForSpareSlot: floor binds at desired=5 (120, not 119)", () => {
+  assert.equal(minimumMaximumPercentForSpareSlot(5), 120);
+  assert.equal(minimumMaximumPercentForSpareSlot(4), 125);
+});
+
+test("resolveWebRollDeploymentConfiguration: fails fast below autoscaling floor", () => {
+  for (const d of [1, 2, 3, 4]) {
+    const r = resolveWebRollDeploymentConfiguration(d);
+    assert.equal(r.ok, false, `desired=${d}`);
+    assert.match(r.failures.join(" "), /below autoscaling floor/);
+  }
+  const ok = resolveWebRollDeploymentConfiguration(WEB_AUTOSCALE_MIN_TASKS);
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.config, { minimumHealthyPercent: 100, maximumPercent: 120 });
 });
 
 test("assertDeploymentConfigSane: a 1-task service with minHealthy>0 deadlocks", () => {

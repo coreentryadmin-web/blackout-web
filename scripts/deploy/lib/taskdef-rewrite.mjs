@@ -310,6 +310,91 @@ export function assertDeploymentConfigSane(service) {
   return { ok: failures.length === 0, failures, notes, config: dc };
 }
 
+/** Autoscaling floor on blackout-production-web (must match Application Auto Scaling). */
+export const WEB_AUTOSCALE_MIN_TASKS = 5;
+/** Autoscaling ceiling on blackout-production-web. */
+export const WEB_AUTOSCALE_MAX_TASKS = 12;
+export const WEB_DEPLOY_MIN_HEALTHY = 100;
+export const WEB_DEPLOY_MAX_PERCENT_DEFAULT = 120;
+/** Hard cap from Fargate vCPU quota — see ecs-deploy-config.test.ts. */
+export const WEB_DEPLOY_MAX_PERCENT_CAP = 124;
+
+/**
+ * Smallest maximumPercent so floor(desired × max/100) >= desired + 1 (zero-drain roll).
+ * @param {number} desired
+ * @param {number} [minHealthy=100]
+ * @returns {number|null}
+ */
+export function minimumMaximumPercentForSpareSlot(desired, minHealthy = 100) {
+  const d = Number(desired);
+  if (!Number.isFinite(d) || d < 1) return null;
+  if (minHealthy < 100) return WEB_DEPLOY_MAX_PERCENT_DEFAULT;
+  for (let max = 100; max <= 200; max += 1) {
+    if (Math.floor((d * max) / 100) >= d + 1) return max;
+  }
+  return null;
+}
+
+/**
+ * Deployment configuration for ecr-push-production's web roll at the LIVE desiredCount.
+ * Fails closed when the service is scaled below the autoscaling floor (common after incidents).
+ *
+ * @returns {{ ok: true, config: { minimumHealthyPercent: number, maximumPercent: number } } | { ok: false, failures: string[] }}
+ */
+export function resolveWebRollDeploymentConfiguration(desiredCount) {
+  const failures = [];
+  const d = Number(desiredCount);
+  if (!Number.isFinite(d)) {
+    return { ok: false, failures: ["desiredCount is not numeric"] };
+  }
+  if (d === 0) {
+    return { ok: false, failures: ["desiredCount=0 — scale blackout-production-web before deploying"] };
+  }
+  if (d < WEB_AUTOSCALE_MIN_TASKS) {
+    const ceiling = Math.floor((d * WEB_DEPLOY_MAX_PERCENT_DEFAULT) / 100);
+    failures.push(
+      `desiredCount=${d} is below autoscaling floor ${WEB_AUTOSCALE_MIN_TASKS}. ` +
+        `With minimumHealthyPercent=${WEB_DEPLOY_MIN_HEALTHY} and maximumPercent=${WEB_DEPLOY_MAX_PERCENT_DEFAULT}, ` +
+        `floor(${d}×${WEB_DEPLOY_MAX_PERCENT_DEFAULT}/100)=${ceiling} grants no spare task slot — ECS will emit ` +
+        `"unable to stop or start tasks during a deployment because of the service deployment configuration" ` +
+        `until the workflow times out (~36 min). Scale the web service to at least ${WEB_AUTOSCALE_MIN_TASKS} tasks, then re-run deploy.`,
+    );
+    return { ok: false, failures };
+  }
+
+  let maxPct = WEB_DEPLOY_MAX_PERCENT_DEFAULT;
+  if (d > WEB_AUTOSCALE_MAX_TASKS) {
+    const need = minimumMaximumPercentForSpareSlot(d, WEB_DEPLOY_MIN_HEALTHY);
+    if (need === null || need > WEB_DEPLOY_MAX_PERCENT_CAP) {
+      failures.push(
+        `desiredCount=${d} exceeds autoscaling max ${WEB_AUTOSCALE_MAX_TASKS} and needs maximumPercent=${need ?? "?"} ` +
+          `(cap ${WEB_DEPLOY_MAX_PERCENT_CAP}) for a zero-drain roll — scale in or raise the vCPU quota cap before deploying.`,
+      );
+      return { ok: false, failures };
+    }
+    maxPct = need;
+  } else {
+    const sanity = assertDeploymentConfigSane({
+      serviceName: "blackout-production-web",
+      desiredCount: d,
+      deploymentConfiguration: {
+        deploymentCircuitBreaker: { enable: true, rollback: true },
+        minimumHealthyPercent: WEB_DEPLOY_MIN_HEALTHY,
+        maximumPercent: WEB_DEPLOY_MAX_PERCENT_DEFAULT,
+      },
+    });
+    if (!sanity.ok) {
+      failures.push(...sanity.failures);
+      return { ok: false, failures };
+    }
+  }
+
+  return {
+    ok: true,
+    config: { minimumHealthyPercent: WEB_DEPLOY_MIN_HEALTHY, maximumPercent: maxPct },
+  };
+}
+
 /**
  * Verdict for one poll of the PRIMARY deployment. Ported VERBATIM from the workflow's poll loop:
  * `rolloutState == COMPLETED` → done; `FAILED` → fail; `running == desired && desired != 0` → done.
