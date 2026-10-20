@@ -741,12 +741,19 @@ test("collectBriefUnavailableSources: cold GEX matrix surfaces in envelope", () 
 // GAP FOUND (Ask Largo standing mandate, 2026-10-08 cycle): `flip` null is indistinguishable from
 // "no gamma flip data" even though `gex-positioning.ts`'s own `flip_reason` already names WHY —
 // live repro was a FRESH INTC GEX read (call wall/put wall/GEX king all present, posture "short")
-// with no gamma-flip level and nothing in `unavailableSources` explaining the gap. These four
-// cases lock in the fix: a real structural "net short/long everywhere" reason is surfaced as a
-// non-retryable finding (it IS the answer, not a missing fetch); a genuine data gap
-// (`insufficient_data`/`crossings_far`) is surfaced as retryable; an unrecognized reason code is
-// never fabricated into prose; and a matrix that is ALREADY stale does not get a second,
-// flip-specific chip piled on top of the existing GEX-staleness one.
+// with no gamma-flip level and nothing in `unavailableSources` explaining the gap. These cases
+// lock in the fix: a real structural "net short everywhere" reason is surfaced as a non-retryable
+// finding (it IS the answer, not a missing fetch); a genuine data gap (`insufficient_strikes`/
+// `crossings_far_from_spot`) is surfaced as retryable; an unrecognized reason code is never
+// fabricated into prose; and a matrix that is ALREADY stale does not get a second, flip-specific
+// chip piled on top of the existing GEX-staleness one.
+//
+// BUG FIX (2026-10-20): the two `insufficient_*`/`crossings_*` fixtures below used to spell the
+// real GammaFlipReason values wrong (`insufficient_data`, `crossings_far`) — the SAME wrong
+// strings the lookup table itself used, so this test passed against the bug instead of catching
+// it. Corrected to the real values (`insufficient_strikes`, `crossings_far_from_spot` —
+// gex-cross-validation-core.ts's own GammaFlipReason type) and added a dedicated case for
+// `crossings_far_from_spot`, which previously had no test coverage under either spelling.
 test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY (net_short_everywhere, non-retryable)", () => {
   const ctx = {
     ecosystem: {
@@ -763,10 +770,10 @@ test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY
   assert.equal(chip!.retryable, false);
 });
 
-test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY (insufficient_data, retryable)", () => {
+test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY (insufficient_strikes, retryable)", () => {
   const ctx = {
     ecosystem: {
-      gex_positioning: { spot: 100, flip: null, flip_reason: "insufficient_data", gamma_posture: null },
+      gex_positioning: { spot: 100, flip: null, flip_reason: "insufficient_strikes", gamma_posture: null },
       vector_full_state: { spot: 100 },
     },
     vector: { spot: 100 },
@@ -775,6 +782,22 @@ test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY
   const sources = collectBriefUnavailableSources(ctx);
   const chip = sources.find((s) => s.source === "GEX gamma flip");
   assert.ok(chip, "expected a GEX gamma flip absence chip");
+  assert.equal(chip!.retryable, true);
+});
+
+test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY (crossings_far_from_spot, retryable)", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: { spot: 100, flip: null, flip_reason: "crossings_far_from_spot", gamma_posture: null },
+      vector_full_state: { spot: 100 },
+    },
+    vector: { spot: 100 },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const chip = sources.find((s) => s.source === "GEX gamma flip");
+  assert.ok(chip, "expected a GEX gamma flip absence chip");
+  assert.match(chip!.reason, /outside the plausible range near spot/);
   assert.equal(chip!.retryable, true);
 });
 
