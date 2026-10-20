@@ -192,12 +192,36 @@ export function gradeSkippedPlay(input: {
 
 // ── Data layer ───────────────────────────────────────────────────────────────────
 
-/** Bounded run window — the grader is admin-invoked and per-row does a Polygon
- *  minute-bar fetch, so the range is capped hard. */
-export const MAX_SKIP_GRADE_DAYS = 14;
+/** Bounded run window — per-row this does a Polygon minute-bar fetch (cached per
+ *  ticker/session, see below), so the range is capped hard regardless of caller.
+ *
+ *  RAISED 14→35 (2026-10-20, member audit directive: "preserve recoverable records
+ *  before they expire"). `zerodte_scan_rejections` rows are NEVER deleted — nothing
+ *  purges them — so the old 14-day ceiling did not destroy data, it just meant the
+ *  cron's own `WHERE session_date >= since` query would never look back far enough
+ *  to grade anything older, permanently, as `since` moves forward every day. Measured
+ *  live 2026-10-20: FOUR real session days 9-23 days old (2026-10-16/-15/-14/-09) each
+ *  showed 2000/2000 rows with `counterfactual: null` — not a backlog the cron was still
+ *  working through, a population it had already structurally given up on. 35 days keeps
+ *  real Polygon minute-bar coverage comfortably in range (far more history is routinely
+ *  available) while giving MAX_ROWS_PER_RUN (below) enough runway to actually clear a
+ *  real backlog across several daily runs instead of only ever seeing the newest slice. */
+export const MAX_SKIP_GRADE_DAYS = 35;
 /** Row cap per run — with the per-(ticker,session) bar cache below, distinct
- *  fetches are far fewer, but the UPDATE loop stays bounded regardless. */
-const MAX_ROWS_PER_RUN = 200;
+ *  fetches are far fewer, but the UPDATE loop stays bounded regardless.
+ *
+ *  RAISED 200→500 (2026-10-20, same directive). Measured live: a real 200-row run
+ *  (`zerodte-skip-grade` cron, 2026-10-19 17:00 ET) took 32.4s end-to-end against the
+ *  route's own 120s `maxDuration` — ~2.5x headroom. Real daily rejection volume runs
+ *  ~2,000+ distinct-state rows/day (measured same date), so the OLD 200/run cap cleared
+ *  under 10% of a single day's own volume even before touching the backlog — raising
+ *  to 500 (comfortably within the 120s budget even at a conservative linear scaling:
+ *  ~81s) lifts that to ~25%. Full backlog drainage additionally needs the CRON itself to
+ *  run more than once/day — that is an infra/EventBridge schedule change
+ *  (`railway.zerodte-skip-grade.toml`'s `cronSchedule`) outside what a code change alone
+ *  can deliver from here; flagged as a follow-up requiring AWS access this sandbox does
+ *  not have this session, not silently left unfixed. */
+const MAX_ROWS_PER_RUN = 500;
 
 function etYmd(ms: number): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(ms));
