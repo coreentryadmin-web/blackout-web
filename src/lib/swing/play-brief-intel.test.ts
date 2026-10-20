@@ -4791,6 +4791,42 @@ test("watchForSection: a NATIVE position's thesis line still renders (suppressio
   assert.match(section.body, /Thesis \*\*intact\*\* — structure holding/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro UNH and MU WATCH briefs, same
+// cycle): the thesis-intact line above had no `deadPlayReason(play)` guard, so it rendered
+// unconditionally for a genuinely dead (EXTENDED/EXTENDED_CHASE) WATCH play — directly
+// contradicting this SAME section's own `entryTriggerDeadReason`-driven "this level no longer
+// fires the setup" line (which DOES gate on deadPlayReason, a few lines above) and the Verdict
+// section's "Extended past the valid entry window — do not chase; wait for a reset."
+test("watchForSection: thesis-intact line suppressed for a genuinely dead (extended-chase) WATCH play — must not contradict the entry-trigger line's own 'no longer fires the setup' (Largo, live repro UNH/MU)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        status: "WATCH",
+        entryStatus: "EXTENDED_CHASE",
+        regime: "Pullback continuation · regime 1.00",
+        entryTriggerUnderlyingPx: 399.15,
+        thesisBreak: { level: "intact", note: "structure holding" },
+      }),
+      asOf: "2026-10-20 07:51 ET",
+      sessionDate: "2026-10-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(
+    section.body,
+    /Thesis \*\*/,
+    `a dead (EXTENDED_CHASE) WATCH play must not claim "Thesis intact" beside its own "no longer fires the setup" line, got: ${section.body}`,
+  );
+  assert.match(section.body, /this level no longer fires the setup/);
+});
+
 test("watchForSection: entry trigger phrasing mirrors below for SHORT direction", () => {
   const section = watchForSection(
     {
