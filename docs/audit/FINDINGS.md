@@ -38,6 +38,245 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## WATCH plays' already-computed "Since flag" underlying move never reached the Largo play-brief — dead-wired to the one bucket that never has it — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate live deep-dive (5-engine live-check workflow),
+TSLA WATCH brief (`SWING:TSLA`, 385P short candidate, flagged 2026-10-20 17:14 ET). The brief gave
+`Flag anchor: **374.50** — track move from here` and the live spot (`379.80`, a few lines later in
+"Trade manager read") but never stated the actual move itself — the underlying had run ~1.4% in the
+adverse direction for this SHORT since it was flagged. The identical row's live board card already
+shows this exact number as a "Since flag" badge.
+
+**Root cause:** `trackPct` (`TerminalPlay.trackPct`, command-deck/types.ts) is the direction-signed
+underlying % move since the flag anchor — computed by `watchUnderlyingTrackPct`
+(`src/lib/zerodte/watch-track.ts`) and stamped by command-deck/adapters.ts. Per
+`adapters.test.ts`'s own pin (`assert.equal(open.trackPct, null)`), it is populated **only** for
+WATCH/SKIP status — never for `open`. The one place that ever rendered it, `pnlSection`'s "Since
+flag" line (`play-brief.ts:701`, `if (play.trackPct != null) lines.push(...)`), is only called from
+`composeSwingPlayBrief`'s `bucket === "open"` branch (`play-brief.ts:1696`). So the rendering branch
+and the populating branch never overlap: an open play's `trackPct` is always null (nothing to
+render), and a watch play's real, non-null `trackPct` is never passed through a code path that
+renders it. The line has been dead on arrival since it was written — confirmed via a repo-wide grep
+(`grep -rn "trackPct"`): the ONLY consumer of `play.trackPct` anywhere in `src/lib/swing/` was this
+one unreachable line.
+
+**Fix:** Render `play.trackPct` in `watchForSection`'s `bucket === "watch"` branch
+(`play-brief-intel.ts`), right beside the `Flag anchor` line it measures from — same wording as the
+(unreachable) `pnlSection` copy (`Since flag: **${fmtPct(play.trackPct)}**`), so nothing new to
+recognize.
+
+**Fix rationale:** Minimal, additive: no new field, no new computation — `trackPct` was already
+computed and already threaded onto `TerminalPlay`, it just never reached a bucket that calls a
+section rendering it. Placed in `watchForSection` (not `watchEntrySection`) because that is where
+`Flag anchor` already lives, and the two facts (anchor + move since anchor) belong together.
+
+**Blast radius:** Single function (`watchForSection`), one new conditional line. No other call site
+of `play.trackPct` exists to duplicate or contradict.
+
+**Tests:** 2 new regression tests in `play-brief-intel.test.ts` — (1) a WATCH play with a real
+`trackPct` renders `Since flag: **-1.4%**` beside the flag anchor; (2) a null `trackPct` (e.g. the
+`open` bucket, where it is never populated) renders nothing. RED→GREEN proven via `git stash` on
+just the source file (test (1) failed pre-fix with the line entirely absent; both pass post-fix).
+Full `play-brief-intel.test.ts` (288 tests) green on Node 20. `tsc --noEmit` clean.
+
+## SHORT-side premium-stop "Break watch" fallback said "reclaim", inverting the actual trigger direction — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate static-code sweep (Workflow correctness audit of
+`play-brief.ts`/`play-brief-narrative.ts`/`play-brief-intel.ts`).
+
+**Root cause:** When `breakTrigger` finds no structural GEX level and a premium stop
+(`play.exitPolicy?.stop_premium`) is known, the LONG fallback correctly says "lose premium stop $X →
+cut size or exit" (premium falling to/through X is the trigger). The SHORT fallback instead said
+"reclaim $X → cover shorts", implying the trigger is the premium RISING back up to X. But this
+file's own established mechanic (`execBreached = execStop != null && play.execMark != null &&
+play.execMark <= execStop`, a few lines above) makes clear the premium-stop floor concept is
+direction-agnostic: a swing play is always LONG PREMIUM (a bought call for LONG, a bought put for
+SHORT), so it is always sold into the bid to exit, and the floor is breached only by a FALL, for
+both directions alike. "Reclaim" is the correct word for a structural resistance level a SHORT
+thesis invalidates by reclaiming from below (`narrateFlip`/`narrateWall` correctly use it for
+structural levels) — it is backwards for a premium floor.
+
+**Live impact:** a SHORT swing position with a known premium stop not yet breached, and no
+structural GEX level to cite instead, rendered "**Break watch** — reclaim **$0.50** → cover
+shorts." A member reads this as needing the premium to rise back to $0.50 before covering, when the
+actual risk — confirmed by this same file's `execBreached` logic a few lines above — is the premium
+falling to or through $0.50, which should prompt covering, not waiting for a "reclaim."
+
+**Fix:** Change the SHORT fallback's wording from "reclaim ... cover shorts" to "lose premium stop
+... cover shorts", matching the LONG branch's verb for the identical kind of value.
+
+**Fix rationale:** Minimal, wording-only change — no logic/trigger-condition change, since
+`execBreached` (the actual breach detection) was already correct; only the forward-looking
+fallback's prose was backwards.
+
+**Blast radius:** Single branch inside `tradeManagerNarrativeSection`'s premium-stop fallback. One
+pre-existing test (`play-brief-narrative.test.ts`, "SHORT break watch uses stop_premium not
+target") had pinned the old, buggy "reclaim" wording as its expected output — updated to assert the
+corrected wording (the test's real purpose, precise stop_premium rendering, is unaffected).
+
+**Tests:** 1 new regression test exercising the not-yet-breached SHORT fallback directly (bid above
+stop, no structural level present) — asserts "lose premium stop **$X**" and NOT "reclaim". Updated
+the one pre-existing test that pinned the old wording. RED→GREEN proven via `git stash` on just the
+source file (new test failed pre-fix — rendered "reclaim" — passes post-fix). Full
+`play-brief-narrative.test.ts` (138 tests) green on Node 20. `tsc --noEmit` clean.
+
+## resolveInvalidationFocalLevel's SHORT predicate omitted dark_pool, breaking the Structure Ladder's documented no-disagreement guarantee — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate static-code sweep (Workflow correctness audit of
+`play-brief.ts`/`play-brief-narrative.ts`/`play-brief-intel.ts`).
+
+**Root cause:** `resolveInvalidationFocalLevel`'s LONG branch treats `put_wall`, `dark_pool`, AND
+`king` as candidate invalidation levels; the SHORT branch only treated `call_wall` and `king` —
+`dark_pool` was missing. `narrateDarkPool` explicitly supports dark-pool prints acting as resistance
+for SHORT theses, and `play-brief-ladder.ts`'s `riskTheOtherSide` treats `dark_pool` fully
+symmetrically for both directions when picking the Structure Ladder's own focal level. This
+function's own doc comment states its whole purpose is that every section quoting "the one
+structural level that matters" (breakTrigger's "Break watch" bullet, `watchForSection`'s
+"Structural resistance node" line, and the Structure Ladder widget) routes through here so they can
+never disagree about where a wall sits — an omitted kind on only one side is exactly the asymmetry
+that guarantee exists to prevent.
+
+**Live impact:** a SHORT swing play whose nearest real structural level above spot is a dark-pool
+print (not a call wall or GEX king) would have the Structure Ladder correctly name the dark-pool
+print as "the nearest real structure on the wrong side of this thesis," while `breakTrigger`'s
+"Break watch" bullet and `watchForSection`'s "Structural resistance node" line both skip it — either
+citing a much farther call wall/king, or showing no invalidation level at all — giving a member two
+different, contradicting "the one structural level that matters" claims within the same brief.
+
+**Fix:** Add `dark_pool` to the SHORT branch's candidate kinds, matching the LONG branch.
+
+**Fix rationale:** Minimal, single-line addition — no new mechanism, just closing the asymmetry
+against the LONG branch's already-correct set.
+
+**Blast radius:** Single function (`resolveInvalidationFocalLevel`). All three call sites
+(`breakTrigger`, `watchForSection`, the Structure Ladder) automatically benefit since they all route
+through this one shared selection, per its own doc comment's stated purpose.
+
+**Tests:** 2 new regression tests directly exercising the exported function — (1) a SHORT candidate
+now selects a resistance-side (above-spot) `dark_pool` level over a farther `call_wall`; (2) a SHORT
+candidate still correctly ignores a support-side (below-spot) `dark_pool` level, confirming the
+existing side-filter (`distancePct > 0`) still applies to the newly-added kind. RED→GREEN proven via
+`git stash` on just the source file (test 1 failed pre-fix — selected `call_wall` instead — passes
+post-fix). Full `play-brief-narrative.test.ts` (139 tests) green on Node 20. `tsc --noEmit` clean.
+
+## evidenceFromContext's sibling-count feeder lacked the positionId exact-match branch, letting envelope.evidence silently disagree with "Other concurrent position(s)" — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate static-code sweep (Workflow correctness audit of
+`play-brief.ts`/`play-brief-narrative.ts`/`play-brief-intel.ts`).
+
+**Root cause:** `siblingPositionsNote` (`play-brief.ts`, the function that renders the "Other
+concurrent position(s)" section) tests sibling identity two ways: an exact `r.positionId !==
+selfPositionId` match when both sides carry a positionId (added 2026-10-11 specifically because the
+premium-proximity heuristic is known-wrong), falling back to `Math.abs(r.entryPremium -
+play.entry!) > 0.005` only when no positionId is available.
+
+`evidenceFromContext`'s sibling-count block — whose sole job, per this file's own Largo C7 doctrine
+("the sibling-positions section makes a concrete, checkable claim — it must have a matching
+envelope.evidence entry"), is to back that exact section — reimplements the same filter but omitted
+the positionId branch entirely, falling straight to the premium-proximity test. The governing
+comment directly above it explicitly claimed the two functions were "Fixed in lockstep" and "can
+never disagree" — but it only ported the 2026-10-15 bucket-gating (`!== "closed"`) and
+entry-premium-precondition fixes, never the earlier (2026-10-11) positionId branch added to
+`siblingPositionsNote` for exactly this scenario.
+
+**Live impact:** Two real, independently-committed native swing positions on the same ticker with
+distinct positionIds (legitimately separate per `commit.ts`'s per-archetype `swingThesisKey`
+idempotency) whose entry premiums happen to land within $0.005 of each other (a realistic fill
+collision) — `siblingPositionsNote` correctly resolves the positionId mismatch and renders the
+section, while `evidenceFromContext`'s premium-proximity fallback incorrectly treats the sibling as
+"self" and emits zero evidence entries. The test suite's own AMD regression test for this exact
+scenario (entries $17.73 vs $17.7301, distinct positionIds) only asserted `envelope.sections`, never
+`envelope.evidence` — unlike its sibling tests immediately before/after, which both assert the
+evidence entry — because adding that assertion would have failed.
+
+**Fix:** Port the identical positionId exact-match branch into `evidenceFromContext`'s sibling-count
+filter, matching `siblingPositionsNote` line for line.
+
+**Fix rationale:** Minimal — the exact same logic already exists and is proven correct one function
+away; this duplicates it rather than refactoring both call sites to share one helper, matching the
+file's existing style (the premium-proximity fallback is already duplicated the same way).
+
+**Blast radius:** Single block inside `evidenceFromContext` (`play-brief.ts`). No other caller of
+this filter.
+
+**Tests:** Extended the existing AMD regression test (`play-brief.test.ts`, "a same-ticker sibling
+with a near-identical entry premium is still disclosed") with the missing `envelope.evidence`
+assertion, matching its sibling tests. RED→GREEN proven via `git stash` on just the source file
+(new assertion failed pre-fix — no evidence entry emitted — passes post-fix). Full
+`play-brief.test.ts` (158 tests) green on Node 20. `tsc --noEmit` clean.
+
+## bookContextSection flattened a literal same-ticker opposed position into the same generic "same theme" framing as a genuinely different name — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate live deep-dive (5-engine live-check workflow),
+TSLA WATCH brief (385P SHORT candidate). Book context read: `**Internal conflict** — theme
+"ev-auto" already has an OPPOSED position: TSLA LONG (separate position #60), TSLL LONG. One leg
+is structurally betting against the other; this is not a hedge unless intentional.` This flattens
+two very different situations into identical prose: TSLL is a different name in the same sector (a
+judgment-call diversification/theme bet), while the TSLA LONG is the literal **same underlying**
+the candidate is being evaluated against, in the opposite direction — holding TSLA LONG and TSLA
+SHORT simultaneously is mechanically self-defeating regardless of thesis, a categorically stronger
+signal than a cross-name sector divergence.
+
+**Root cause:** `describeThemeOverlap` (`theme-cluster.ts`) only sharpens its framing to "the same
+name" when the candidate's resolved THEME ITSELF is an own-cluster sentinel (`isOwnClusterTheme`)
+— i.e. the candidate ticker has no real sector theme at all, so the only way two rows can share
+that sentinel is being the same ticker (per `resolveTheme`'s own derivation). TSLA resolves to a
+real, multi-name theme (`"ev-auto"`, `src/lib/portfolio/sector-map.ts`), so a same-ticker opposed
+row sitting inside that real theme never gets the sharper framing — it reads exactly like the
+cross-name (TSLL) case. `formatOverlapPosition` already annotates the same-ticker row with
+`(separate position #N)`, but that is one parenthetical among potentially several names inside a
+generic theme sentence — easy to read past, and the lead clause ("theme X has an OPPOSED position")
+is identical either way.
+
+**Fix:** In `bookContextSection`'s opposed-direction branch, split `overlap.sameThemeOpposedDirection`
+into rows that are literally the candidate's own ticker vs. rows that are a different name in the
+same theme. Same-ticker rows get a new, distinct "Internal conflict — same underlying" sentence
+naming the mechanical self-conflict explicitly; different-ticker rows keep the existing generic
+theme sentence unchanged.
+
+**Fix rationale:** Additive, not a rewrite — the existing per-name annotation
+(`formatOverlapPosition`) and the generic theme sentence are both kept exactly as they were for the
+(common) all-different-ticker case; only a same-ticker row gets a second, sharper sentence. No
+change to `theme-cluster.ts`/`portfolio.ts` — `checkPortfolioOverlap` already returns each opposed
+row with its own `ticker` field, so the split is a pure filter at the render call site.
+
+**Blast radius:** Single function (`bookContextSection`). Existing tests covering the
+different-ticker case (AMD/NVDA, SQQQ/NVDA) are unaffected — confirmed by the full suite staying
+green.
+
+**Tests:** 2 new regression tests in `play-brief-intel.test.ts` — (1) a book holding both a
+same-ticker opposed position AND a different-ticker same-theme opposed position renders both the
+new "same underlying" sentence (for the same-ticker row) and the unchanged generic theme sentence
+(for the different-ticker row); (2) a same-theme-but-different-ticker-only book keeps the generic
+sentence with no "same underlying" framing. RED→GREEN proven via `git stash` on just the source
+file (test (1) failed pre-fix with the generic sentence instead; both pass post-fix). Full
+`play-brief-intel.test.ts` (288 tests) green on Node 20. `tsc --noEmit` clean.
+
 ## `dataHonestyCoaching`'s GEX-staleness check used the real wall clock instead of the shared `ctx.readMs` anchor — the exact documented "natural next sweep" gap, found and closed — FIXED
 
 > **kind:** `FINDING`
