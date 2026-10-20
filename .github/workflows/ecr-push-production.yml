@@ -266,6 +266,41 @@ jobs:
           # desired=4 would need max >= 125 to avoid deadlocking, and that same max permits 15
           # tasks (32 vCPU) at desired=12. If the min capacity is ever reduced, this whole block
           # must be re-solved (the test will fail loudly first).
+          #
+          # Pre-scale when desiredCount drifted below the autoscaling floor. Measured 2026-10-20:
+          # service sat at desired=2 (manual scale-down / scaling glitch) while minHealthy=100 and
+          # max=120 permit only floor(2*1.20)=2 tasks — no spare slot — so ECS logged "unable to
+          # stop or start tasks during a deployment" and the PRIMARY deployment hung at 0/1 until
+          # the stability poller timed out. Autoscaling min is 5; bump before the roll so the
+          # deadlock math in ecs-deploy-config.test.ts applies.
+          WEB_AUTOSCALE_MIN=5
+          SERVICE_DESIRED=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].desiredCount' --output text)
+          if [ "${SERVICE_DESIRED}" -lt "${WEB_AUTOSCALE_MIN}" ]; then
+            echo "desiredCount=${SERVICE_DESIRED} < floor ${WEB_AUTOSCALE_MIN} — scaling up before deploy (avoids minHealthy=100 deadlock at low counts)"
+            aws ecs update-service \
+              --cluster "${ECS_CLUSTER}" \
+              --service "${ECS_SERVICE}" \
+              --desired-count "${WEB_AUTOSCALE_MIN}"
+            echo "Waiting for runningCount to reach ${WEB_AUTOSCALE_MIN}..."
+            for j in $(seq 1 40); do
+              sleep 15
+              RUNNING=$(aws ecs describe-services \
+                --cluster "${ECS_CLUSTER}" \
+                --services "${ECS_SERVICE}" \
+                --query 'services[0].runningCount' --output text)
+              echo "  [${j}/40] running=${RUNNING}/${WEB_AUTOSCALE_MIN}"
+              if [ "${RUNNING}" -ge "${WEB_AUTOSCALE_MIN}" ]; then
+                break
+              fi
+              if [ "${j}" = "40" ]; then
+                echo "Timed out waiting for scale-up before deploy."
+                exit 1
+              fi
+            done
+          fi
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
