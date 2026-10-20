@@ -38,6 +38,339 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-20 — [FINDING, P1 Night Hawk 0DTE] trim_scale's live tranche-banking never fires — every A/B-tier play exits via the shared floor, not its own ladder
+
+> **kind:** `FINDING`
+
+**Context.** Member live-book audit directive: "Verify whether Night Hawk's intended trim
+ladder is +25%, +50%, and +100%... Explain which rules closed today's winners before the
+first trim, especially the ratchet exits. Check whether those rules conflict with the
+intended ladder, and test any correction before changing production."
+
+**The intended ladder (verified against the real shipped constants, `exit-engine.ts`).** Not
+literally +25/+50/+100 as three independent trim points. The real shape: `tranche_fraction =
+1/3` (not half) banked at TWO regime-conditioned peak thresholds — `neutral: [20%, 50%]`,
+`trend: [40%, 80%]`, `range: [15%, 40%]` (the module's own doc comment describes the
+E5-measured recommendation as "⅓@+25%/⅓@+50%" — the shipped neutral constant is actually
++20%, a minor separate discrepancy, flagged but not the main finding) — then the last third
+runs to the **+100%** target (`PLAN_RULES.target_pct`) or the plan stop/time-stop. Between
+tranches the remainder is protected by the SAME peak-scaled shared floor the ratchet mode uses
+(`0.4 x peak`); once both thirds bank (or peak clears target) a flat **+50%** runner floor
+protects the last third.
+
+**What's actually closing every trim_scale-committed winner: the shared floor, never a trim.**
+Checked all 19 of today's closed trades: 13 were frozen `exit_policy_at_commit: "trim_scale"`
+(A/B-tier — should get the ⅓/⅓/run ladder). **All 13 exited via a `categorizeExitReason`
+"ratchet" bucket**, `timeline_tranches: null` (no partial bank ever recorded),
+`mfe_capture_pct` consistently ~35-46% of peak — the exact signature of a pure `peak*0.4`
+floor dump, not a banked-then-run ladder. Cross-checked against the AUTHORITATIVE (not
+display-only) `GET /api/market/zerodte/record` fields across a real 14-day window (109
+trim_scale rows carrying a WS-11 reconstruction): **every single one** shows `managed_source:
+"engine"` with a single, whole-position exit as the real, as-managed outcome — never a
+genuine partial scale-out — while several of those same rows' own WS-11 bar-walk
+reconstruction (`entry_context.executable.tranches`) independently shows a real, achievable
+first-tranche price the underlying genuinely reached (e.g. MSTR 2026-10-16: reconstruction
+shows a real tranche at 12:35 ET banking 1/3 at +16.13%, a second at 13:06 ET at +45.16% — real
+price levels that really occurred — yet the row's real, live-managed outcome was a single
+"ratchet" exit at +5%, zero tranches ever banked). `managedGradeView` (record.ts) correctly
+does NOT substitute the reconstruction for the real outcome here — its own documented
+precedence rule treats a bar-walk continuation past an already-closed, ratchet-floor-exited
+position as fictitious, not a correction. **This is not a case of members seeing a wrong
+number — it is a case of the real, live position management never doing what its own frozen
+policy promises.**
+
+**The mechanism this is consistent with** (`exit-sync.ts`): `resolveTrimBankLive()`/
+`resolveTrimRegimeLive()` gate whether the live engine reads a real persisted `trims_taken`
+count, or recomputes it fresh every tick via `trimTranchesArmed(peak, regime)` — the SAME
+function `decideTrimScale` uses for its own `armed` variable, on the same inputs. When
+effectively off, `trimsTaken === armed` by construction, so `trimAvailable = armed > taken`
+can never be true — the trim-ladder's TRIM action is structurally unreachable. This exact
+failure mode is independently documented in `FINDINGS.md`'s own history (`ZERODTE_TRIM_BANK_LIVE`
+"merged disarmed... flipping it live is a deliberate operator follow-up"; `ZERODTE_TRIM_REGIME_LIVE`
+"stays off") as the KNOWN bug this flag exists to fix. Separately, directly observed (not
+inferred): EVERY `exit_policy_snapshot.trailing_rule` checked today shows
+`active_regime=neutral` regardless of the row's own `session_regime` column (`range` in
+several cases) — confirming `resolveTrimRegimeLive` is not honoring the stamped regime live.
+**Could not verify the live `ZERODTE_TRIM_BANK_LIVE`/`ZERODTE_TRIM_REGIME_LIVE` env values
+directly (no AWS creds this sandbox session)** — the code's own inline comments claim "ON by
+default," contradicting both FINDINGS.md's account and 14+ real days of observed production
+behavior; whether that is a stale comment or an explicit deployed override is NOT resolved
+here. Only the observed, empirical production behavior (zero genuine tranche banks across the
+entire sample) is a confirmed fact.
+
+**Test run before any change** (member directive: "test any correction before changing
+production"). `scripts/audit/zerodte-trim-bank-live-ab.mjs`: real historical trim_scale
+population, real Polygon minute bars, real NBBO costs, through the REAL imported
+`exit-engine.ts` functions. v1: `broken_live` (today's real mechanics) vs `fixed` (both flags
+on). 45-day window, cap 100/half: n=96/90 graded, mean_delta TRAIN -0.39% (CI [-1.31, +0.53]),
+VALIDATION -0.61% (CI [-1.55, +0.34]) — INCONCLUSIVE, consistently slightly negative.
+
+**v2 (member follow-up: verify the effective flags directly, test each flag separately and
+together, use realistic fills).** Verified the flags' EFFECTIVE production state via two
+independent, directly-observed (not inferred) signatures: every real `exit_policy_snapshot`
+shows `active_regime=neutral` even for rows whose own `session_regime` says `range`
+(REGIME_LIVE off, observed not guessed); zero genuine partial-tranche banks across 122 real
+rows despite ~18% clearing a high-enough peak (BANK_LIVE off — statistically implausible
+otherwise). **Both flags confirmed off in production.** Rewrote the backtest to test all four
+combinations (`neither`/`bank_only`/`regime_only`/`both`) plus a literal +25%-first-trigger
+variant, switched fills from a bar-derived mechanical price to a real point-in-time NBBO quote
+at each fill's own timestamp, filled at the bid (the same conservative convention
+`executableFill` already uses). 45-day window, n=57/55 graded per half (cap 60): every cell
+INCONCLUSIVE, and — unlike v1 — the point estimate now flips sign between TRAIN (+0.74% to
++0.77%) and VALIDATION (-0.09% to -0.21%) for BANK_LIVE/BOTH, a weaker "no evidence of benefit
+either way" result once realistic bid-side fills replace v1's frictionless assumption.
+REGIME_LIVE alone never banks anything and its own delta is ~0 in both halves (its effect only
+runs through the trend-regime dead-zone branch, rare in this sample). The literal +25%-trigger
+cell produced byte-identical results to the shipped +20% cell in both halves — the 5-point gap
+between stated intent and the shipped constant did not change which bar a tranche armed on, in
+this sample.
+
+| **Status** | CONFIRMED (the mechanism does not fire live; both flags verified off via two independent observed production signatures) — no gate/exit rule/env flag changed across either round. Fixing this is a config decision, not a code change, explicitly reserved for operator review by this codebase's own calibration-first discipline — and two rounds of real-cost, held-out testing (different fill models) have NOT found a reliable edge either way; v2's more realistic fill model is a coin flip with the sign depending on which half of the data is examined. **Recommendation: do not flip the flags on the evidence gathered so far.** **Protective and time exits (hard stop, thesis-break, flat-timeout, the shared floor itself) are independently verified intact and firing correctly, checked on every bar in every cell before any trim/floor logic — a position is never forced to wait for a profit target.** This finding is specifically about the missing partial-profit-taking step, not any capital-protection rule. |
+
+Full write-up: `docs/audit/0DTE-RESEARCH.md`, "Live trim_scale tranche-banking never fires in
+production" section.
+
+## A swing play-brief's macro-tape coaching line silently dropped an inverted yield curve whenever breadth read risk-on, instead of naming the disagreement — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate — a narrative-quality pass over
+`play-brief-narrative-coaching.ts` against `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s "disagreement is
+represented, never reconciled by the lanes themselves" principle.
+
+**Root cause:** `macroTapeCoaching` (`src/lib/swing/play-brief-narrative-coaching.ts`) renders both
+the 10Y yield/curve spread and market-breadth tone as sibling facts in one bullet
+(`**Macro tape** — 10Y X% · curve Y · breadth Z.`), but its synthesized "hint" sentence keyed
+**only** off `arsenal.breadth?.tone`, never the curve value. A curve inversion
+(`curve_10y_1y_spread < 0` — the exact convention already used for this same field in
+`verdict-core.ts` and `ecosystem-narrative.ts`, where it's rendered with an explicit `"(inverted)"`
+marker) is itself a distinct, well-known risk-off macro signal. When breadth read "risk-on" alongside
+an inverted curve, the hint fell through to the generic "shorts face headwind" framing (or, for a
+LONG play with neither direction match, the bare "not a trigger" filler) — silently discarding the
+curve's own risk-off read rather than naming that the two macro facts, presented in the SAME bullet,
+actually disagreed. Separately, the curve figure itself was never marked `"(inverted)"` in this
+bullet at all (unlike the two sibling call sites for the identical field), so a reader could not even
+tell from the bullet text alone that the curve was inverted.
+
+**Live impact:** reachable on any swing play-brief for a ticker carrying both a macro read and a
+breadth read with an inverted curve — not an edge case; yield-curve inversions are a recurring macro
+regime, not a rare one-off.
+
+**Fix:**
+- `macroTapeCoaching`'s curve bullet now appends `"(inverted)"` when `curve_10y_1y_spread < 0`,
+  reusing the exact convention already established elsewhere rather than inventing a new threshold.
+- Added a `curveBreadthDisagree` check (`curveInverted && riskOn`) that fires **before** the existing
+  direction-based branches and replaces the hint with an explicit tension sentence ("the two macro
+  reads disagree; treat this as genuine tension, not a clean risk-on signal") instead of silently
+  picking breadth's side. The pre-existing branches (LONG+risk-off, SHORT+risk-on without inversion,
+  generic fallback) are untouched — this is additive, not a rewrite of the function's heuristics.
+
+**Fix rationale:** Followed the same "surface disagreement, don't flatten it" discipline this file's
+own `crossDeskCoaching` (cross-desk friction) and `counterThesisLine` already apply to conflicting
+signals — scoped narrowly to the one case this function was actually dropping a real signal (inverted
+curve + risk-on breadth), rather than redesigning every branch of the hint logic. Did not touch
+`arsenal.macro`/`arsenal.breadth` themselves or any other reader of these fields.
+
+**Blast radius:** single call site (`macroTapeCoaching`, one `push(macroTapeCoaching(ctx))` caller in
+`collectCoachingBullets`). No other function reads `arsenal.macro`/`arsenal.breadth` through this
+same hint logic.
+
+**Tests:** 4 new regression tests — inverted curve + risk-on breadth now surfaces the disagreement
+(and no longer emits the single-signal SHORT hint); non-inverted curve + risk-on breadth keeps the
+existing SHORT headwind framing unchanged; inverted curve + risk-off breadth (agreeing signals) keeps
+the existing LONG tighter-stops framing unchanged; no macro/breadth data returns `null`. RED→GREEN
+proven via `git stash` (2/4 fail pre-fix — the two behavior-preserving regression guards correctly
+pass both before and after). `tsc --noEmit` clean. Full suite green on Node 20.
+
+## A swing play-brief's notable flow prints rendered raw, unreadable per-contract-price dollar amounts for hundreds-of-thousands-dollar premiums, one line below a correctly K/M-scaled aggregate in the same section — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate — a fresh-angle Workflow audit live-testing
+`GET /api/market/swing/play-brief` across OPEN/WATCH/CLOSED buckets for real positions (CRWV #63
+OPEN, CRWV #61 CLOSED).
+
+**Root cause:** `flowIntelSection`'s notable-prints loop (`src/lib/swing/play-brief-intel.ts`,
+inside the "Flow & positioning" section) formatted each print's premium with `fmtUsd` (aliased from
+`fmtOptionUsd` in `fmt-money.ts`, documented "Absolute per-contract option-premium PRICE at 2dp" —
+built for $0.01-$999.99 contract prices like stop/target/mark rails). Applied to raw HELIX flow-print
+premiums — hundreds of thousands of dollars — it produced unreadable output with no thousands
+separator and a spurious 2dp suffix: live-confirmed on CRWV-OPEN (`PUT 43.00 $715000.00`,
+`CALL 59.00 $577700.00`, `CALL 59.00 $473820.00`) and independently reproduced on CRWV-CLOSED
+(`PUT 65.00 $873200.00`, `PUT 55.00 $824770.00`, `CALL 90.00 $781120.00`). The HELIX tape aggregate
+rendered one line above in the SAME section correctly uses the K/M-scaled `fmtPremium` formatter
+(`"HELIX tape (6h): balanced — calls $204K · puts $252K"`) — two incompatible dollar-magnitude
+styles for the same kind of fact (flow premium) in one section.
+
+**Live impact:** reachable on every swing play-brief whose ticker has HELIX flow prints in the last
+48h — not an edge case; this is the normal, expected case for an actively-flowing ticker.
+
+**Fix:** Swapped `fmtUsd` → `fmtPremium` at the one call site
+(`play-brief-intel.ts`'s notable-prints loop). `fmtPremium` is already imported and used in this same
+file for the identical "flow premium" quantity at two sibling call sites (the HELIX tape aggregate,
+and the GEX-wall premium annotation) — this was the one omission.
+
+**Fix rationale:** `fmtPremium` self-guards null/non-finite (returns `"—"`), so the existing
+`p.premium != null ? fmtUsd(...) : "—"` ternary needed no restructuring, just the formatter swap —
+minimal diff, matching exactly what the sibling call sites already do. Did not touch `fmtUsd`/
+`fmtOptionUsd` itself (correctly used elsewhere in this same file for genuine per-contract prices —
+stop/target rails) or the two sibling call sites that already use `fmtPremium` correctly.
+
+**Blast radius:** single call site. Two existing tests asserted the buggy raw-format output
+(`$3430000.00`, `$500000.00`) and were updated to assert the corrected `fmtPremium` output
+(`$3.4M`, `$500K`) — confirmed these were genuinely asserting the pre-fix bug, not an unrelated
+format, before changing them.
+
+**Tests:** 1 new regression test (live-repro values: HELIX tape aggregate `$204K` alongside a
+notable print `$715K`, explicitly asserting the raw `$715000.00` format never appears) + 2 existing
+tests updated to the corrected format. RED→GREEN proven via `git stash` (3/3 new/updated assertions
+fail pre-fix, pass post-fix — confirmed together with the sibling `play-brief-diff.ts` fix in the
+same stash cycle). `tsc --noEmit` clean. Full suite green on Node 20.
+
+## A swing play-brief's live "what changed" diff silently dropped changes beyond the 8th with no disclosure to the member — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate — a fresh-angle Workflow audit reading
+`src/lib/swing/play-brief-diff.ts` source directly against
+`docs/audit/LARGO-PRODUCT-CONTRACT.md`'s "absence" point (C3): a missing datapoint must be honestly
+disclosed, never silently dropped.
+
+**Root cause:** `diffBriefSnapshots` (`src/lib/swing/play-brief-diff.ts`) can push up to ~17
+independent change facts into its `lines` array in one pulse (direction flip, thesis/P&L synthesis,
+recommendation, mark, spot, gamma flip, call/put wall, HELIX flow, trims fired, roll-watch
+triggered/cleared, entry-gates shifted, headline, section add/remove) but returned a bare
+`lines.slice(0, 8)` with no comment justifying the cap and no disclosure anywhere downstream. A
+refresh after a long gap (overnight, a multi-hour stall) can legitimately produce more than 8 real
+changes, and the lowest-priority ones (e.g. "Entry gates shifted," "No longer showing: X") were
+dropped with zero indication to the member that anything was cut — the member reads a
+complete-looking "Since last read"/"What changed" pulse that is actually partial.
+
+This is the exact silent-truncation shape `scripts/audit/largo-truncation-probe.mjs` was built to
+catch on other Largo surfaces (three real shipped bugs: #2433, #2436, #2480) — just unguarded on
+this particular surface. `envelopeWithNarrativePulse`'s own overflow logic (fans the array out across
+"Since last read" + "What changed" sections) correctly handles everything it's handed — the loss
+happens one layer earlier, inside `diffBriefSnapshots` itself, before that overflow handling ever
+sees the extra lines.
+
+**Live impact:** reachable on any swing play-brief refresh where more than 8 independently-diffed
+facts change in one tick — not a constant occurrence, but a realistic one after any multi-hour gap
+(overnight, a stalled refresh, a member re-opening the brief after a while away).
+
+**Fix:** When `lines.length` exceeds the existing 8-line cap, append one disclosure line —
+`"+N more change(s) this refresh (not shown — see the live board for full detail)."` — naming the
+exact count of changes that didn't make the cut, instead of silently dropping them. When the cap
+isn't hit, behavior is unchanged (returns `lines` as-is).
+
+**Fix rationale:** Kept the existing 8-line cap itself (a reasonable readability bound for a single
+pulse) — the defect was the silence, not the cap. Named the overflow count rather than a vague "more
+changes happened" so a member can judge for themselves whether to go check the full board. Did not
+touch `envelopeWithNarrativePulse`'s own overflow-fanning logic, which already correctly distributes
+whatever array it's handed (the disclosure line itself flows through that same logic like any other
+change line, landing in whichever section the overflow-fan places it).
+
+**Blast radius:** single function, one return statement. The one consumer
+(`envelopeWithNarrativePulse` → `useSwingPlayBrief.ts`'s SSE "Since last read" pulse) benefits
+automatically with no call-site changes needed.
+
+**Tests:** 1 new regression test constructing a prev/next snapshot pair that triggers 12 real
+independent facts at once (recommendation, thesis, P&L, mark, gamma flip, call wall, put wall, HELIX
+flow, trims fired, roll watch, gate blocks, headline — deliberately avoiding spot movement so the
+cross-field synthesis rules don't consume/merge any of these into fewer lines) — asserts the
+returned array is exactly 8 real lines + 1 disclosure line reading `"+4 more changes this refresh..."`.
+RED→GREEN proven via `git stash` (1/1 new test fails pre-fix — the pre-fix array truncates to exactly
+8 with no 9th disclosure line — passes post-fix). `tsc --noEmit` clean. Full suite green on Node 20.
+
+## Night Hawk Legacy's starved-dossier-funnel incident (2026-10-18/19, `candidates=20 ranked=0`) recurred on a FRESH build the very next night — escalated to the Night Hawk lane, not yet remediated
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | Escalated to Night Hawk lane (`session_01Urd7n4TkQUjnsmhb3PPq9U`) via scheduled trigger — not yet remediated as of this entry |
+| **Severity** | P1 (standing 5-engine monitor + coordinator-cycle finding) |
+| **Surface** | `src/features/nighthawk/lib/edition-builder.ts` stage_dossiers, `GET /api/market/nighthawk/edition` |
+
+### Symptom (re-confirmed live, 2026-10-20 ~17:35 UTC)
+
+`scripts/audit/legacy-e2e-healthcheck.mjs` Stage A reports **RED**:
+```
+A EDITION  RED  published edition with zero plays, but funnel shows 20 candidate(s) and 0 ranked — starved funnel, not a quiet market
+```
+Live `GET /api/market/nighthawk/edition` confirms a **FRESH** build, not the previously-stuck one:
+```json
+{
+  "edition_for": "2026-10-20",
+  "published_at": "2026-10-19T21:41:46.000Z",
+  "recap_only": true,
+  "recap_only_reason": "No scored dossiers after staging (20 candidate(s)).",
+  "funnel": {"candidates": 20, "ranked": 0, "dossiers": 0, "synthesized": 0, "critic_passed": 0, "published": 0},
+  "no_plays": true
+}
+```
+
+### Why this is a NEW entry, not a duplicate of the 2026-10-18 finding
+
+The prior documented incident (`FINDINGS.md`, "2026-10-18/19 — starved funnel") was a **stuck** edition:
+`edition_for: "2026-10-19"`, `published_at: "2026-10-16T21:42:41Z"` — one bad build from Friday night
+that was never remediated and kept being served stale for days. **This is a different build**:
+`edition_for: "2026-10-20"`, `published_at: "2026-10-19T21:41:46Z"` — last night's (Monday→Tuesday)
+build, freshly run, and it **starved in exactly the same shape** (`candidates: 20, ranked: 0,
+dossiers: 0`). Two consecutive nightly builds producing the identical zero-dossier signature argues
+the 2026-10-17 root-cause diagnosis ("a transient UW flow-alerts rate-limiter congestion window,
+confirmed via CloudWatch at the time, not a UW outage or a code regression") may not fully explain a
+now-*recurring* pattern — or the same transient condition is itself recurring nightly, which would
+also be worth knowing. Neither has been re-confirmed for last night's specific build (this session has
+no CloudWatch access — AWS creds are placeholder this session, confirmed via `sts get-caller-identity`
+→ `InvalidClientTokenId`).
+
+### Root cause (as traced in source, `edition-builder.ts` lines ~899-946)
+
+`stage_dossiers` fetches a dossier (incl. `scored`) for every discovered candidate
+(`fetchAllDossiers`). `scoredList = Object.values(dossiers).filter(d => d.scored != null)` — when
+**every single one** of the 20 candidates comes back with `d.scored == null` (dossier fetch/scoring
+failed for 100% of candidates, not a partial degradation), `scoredList.length === 0`, and the builder
+takes the `if (!scoredList.length)` branch: logs a warning, fires `alertRecapOnlyIfAnomalous` (a
+Discord ops alert via `notifyOpsDiscord` — **this already fires automatically**, so ops was very
+likely notified via `#🌩️website-logs` at build time, both last night and two nights before), and
+publishes a `recap_only` edition rather than failing dark. The fallback-to-recap behavior itself is
+working as designed (publish *something* rather than nothing); the open question is why dossier
+scoring fails for ALL candidates, two nights running, rather than a partial degradation.
+
+### Why this session did not execute remediation or deep-dive CloudWatch itself
+
+Same reasoning the 2026-10-17/18 investigation already gave, still applicable: the documented
+remediation (`POST /api/admin/nighthawk/run?asOfEt=<date>&persist=1`) is a live-production admin
+write outside the normal read-only audit/PR pipeline, not something to route around from an
+audit-sweep context without explicit authorization. CloudWatch access (to confirm whether last
+night's failure was UW-rate-limiter congestion again, or something else) requires AWS credentials
+this sandbox does not have this session.
+
+### Action taken this cycle
+
+Escalated directly to the Night Hawk lane's permanent-lane session (`session_01Urd7n4TkQUjnsmhb3PPq9U`)
+via `create_trigger`/`fire_trigger` with this exact evidence, asking it to: (1) confirm via CloudWatch
+whether last night's build hit the same UW rate-limiter congestion signature as 2026-10-16, or a
+different cause; (2) decide whether the admin remediation POST should be run for `2026-10-19` (today's
+session date); (3) consider whether two consecutive starved nights argues for a retry/backoff inside
+`stage_dossiers` itself (e.g., one bounded retry on a 100%-failure dossier batch before falling to
+recap-only) rather than relying on a human to notice and re-run — that would be a genuine code fix,
+scoped and tested like any other, if the lane confirms it's the right shape.
+
+### Blast radius
+
+Member-facing: tonight's "Evening Playbook" Legacy digest board is empty (recap-only, zero plays) for
+the second night running, despite a non-trivial discovered candidate pool both nights.
+
 ## A swing play-brief's confluence-zone level price was the one `ConfluenceZone.center` call site that never rounded a weighted-average float — FIXED (defense-in-depth)
 
 > **kind:** `FINDING`
