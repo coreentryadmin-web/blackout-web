@@ -38,6 +38,250 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] First real Swift-vs-Night-Hawk comparison — 11/13 real winners were gate-rejected, not missed by discovery or timing
+
+> **kind:** `FINDING`
+
+| **Status** | MEASURED (no gate/filter/exit rule changed — evidence only, per standing discipline) |
+|---|---|
+
+**Context.** Member directive: "Compare timestamped Swift examples against Night Hawk's decisions
+and identify exactly where each was missed: discovery, timing, scoring, entry, or exit." Prior
+sessions reported Swift's trade data as unavailable (checked `/mnt/user-data/uploads`/
+`/root/.claude/uploads` directly, found nothing). This round that check found real data: a Discord
+"#swift-swiftx SWIFT DAILY RECAP" screenshot for 2026-10-19, transcribed (never fabricated) into
+`docs/audit/history/swift-trades/2026-10-19.json` — 14 real trades, 13 of them same-day (0DTE)
+expiry, ticker/strike/entry premium/exit premium/% but NO exact alert timestamps (a real,
+disclosed limitation of this data source).
+
+### Method
+
+New script `zerodte-swift-comparison.mjs`: for each 0DTE Swift trade, resolves the REAL Polygon
+OCC for the exact ticker/strike/side/expiry, walks REAL historical minute bars for that contract
+to find price-match windows (not an exact timestamp — a price-level proxy for roughly when Swift
+likely entered), then cross-references the SAME ticker/direction/date against REAL production
+decisions via two admin-gated exports: `tier-export` (real committed plays, `entry_premium`/
+`first_flagged_at`/`discovery_origin`) and `rejection-export` (real hard-gate rejections,
+`gate_failed`/`observed_at`/`blocks`).
+
+**Two real bugs were caught and fixed before trusting any classification:**
+1. The first pass paginated raw NBBO quotes with a fixed page cap — silently under-covered any
+   heavily-liquid contract (QQQ 261019C00720000 alone produced 300,000 quotes in the first 78
+   minutes of the session, so the cap stopped there and a later-day price match was invisibly
+   never checked). Fixed by switching to minute AGGREGATE bars (one call for the whole day,
+   immune to quote-volume-driven truncation).
+2. **The first pass classified all 3 of Swift's real SPX trades as DISCOVERY_MISS** (Night Hawk
+   "never generated a candidate") — a FALSE result. Night Hawk's own internal tables key every
+   SPX 0DTE row under the ticker string `"SPXW"`, never bare `"SPX"` (confirmed live: a 90-day
+   `tier-export` pull showed 33 real SPXW commits and zero under `"SPX"`). The first pass queried
+   with the bare `"SPX"` from the Swift transcript and got zero matches. Fixed with an explicit,
+   commented `TICKER_FOR_PRODUCTION_QUERY` mapping (deliberately separate from the Polygon
+   contract-resolution mapping, which uses the opposite convention — `underlying_ticker=SPX`
+   resolves the real `O:SPXW...` OCC — documented in the script so a future reader doesn't
+   re-confuse the two). A direction filter was added at the same time (Swift's calls map to
+   Night Hawk's "long" direction; a ticker like SPXW that gets evaluated on BOTH biases the same
+   day must be filtered to the SAME bias Swift actually traded).
+
+### Result (corrected, 13 real 0DTE Swift trades classified)
+
+| Classification | n |
+|---|---|
+| COMMITTED (Night Hawk actually committed a real play) | 2 |
+| GATE_REJECT (Night Hawk generated a real candidate, rejected by a named gate) | 11 |
+| DISCOVERY_MISS | 0 |
+
+**11/13 (84.6%) of Swift's real winning 0DTE trades that day were real Night Hawk candidates —
+not discovery misses.** For every one of the 11 gate-rejected trades, the TIMING check showed
+Night Hawk's earliest real action on that ticker/direction came BEFORE or comparable to Swift's
+own price-matched entry window — **not a timing miss either.** This is a scoring/gate question,
+not a discovery or speed question.
+
+**Gate-code prevalence across the 5 unique rejected tickers (QQQ, SPX, SPY, MU, AMZN):**
+`thesis_rank_reject` appeared in all 5; `score_floor` in 4/5; `min_dominance` in 3/5 (QQQ 16x,
+SPX 3x, SPY 3x — the single highest RAW COUNT of any individual gate code that day, and a gate
+this round's work had not yet quantitatively tested, unlike `score_floor`/`thesis_rank_reject`).
+
+### Caveats, named not glossed over
+
+- No exact Swift alert timestamps exist in this data source — "price-match window" is a proxy
+  (minute bars whose traded range brackets Swift's stated entry price), not a confirmed entry
+  instant. A price level can recur more than once in a session; every window is reported.
+- One Swift row (SPX 7695C, nominal +4.35% gain) was marked a LOSS in Swift's own recap despite
+  the positive %; Swift's win/loss classification basis for that row is unknown and not resolved
+  here — reported as a disclosed discrepancy, not silently corrected.
+- This is ONE real session day. The gate-prevalence pattern above is a lead for a dedicated
+  follow-up test, not itself a statistically powered finding — see the companion `min_dominance`
+  real-cost A/B this round for that follow-up.
+
+### Blast radius
+
+No gate, filter, exit rule, or live trading-path behavior changed. One new script
+(`zerodte-swift-comparison.mjs`) plus one transcribed data file
+(`docs/audit/history/swift-trades/2026-10-19.json`) for future Swift-recap comparisons.
+
+## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] min_dominance real-cost A/B — INCONCLUSIVE, halves disagree on direction
+
+> **kind:** `FINDING`
+
+| **Status** | MEASURED (no gate/filter/exit rule changed — evidence only; INCONCLUSIVE, not acted on) |
+|---|---|
+
+**Context.** Follow-up from the real Swift-vs-Night-Hawk comparison (companion finding,
+`2026-10-20-swift-comparison-2026-10-19.md`): `min_dominance` (the FLOW-origin call/put
+aggression-dominance evidence gate, `SETUP_MIN_DOMINANCE=0.55`, board.ts) was the single
+highest-raw-count individual gate code across Swift's real gate-rejected winners that day (QQQ
+16x, SPX 3x, SPY 3x) and had not been quantitatively tested this round, unlike `score_floor`/
+`thesis_rank_reject`. Member directive: "Test the strongest remaining explanation and implement a
+candidate improvement if the evidence supports it. Validate on unseen sessions with realistic
+option spreads, slippage, fees, and losses included."
+
+### Method
+
+New script `zerodte-min-dominance-real-cost-ab.mjs`: walks every real ticker/direction pair's own
+print instants chronologically (no look-ahead — re-derives real `deriveZeroDteSetups` on rows
+truncated to each instant), classifies PASS (cleared all 4 evidence gates at any point that day)
+vs REJECT_MIN_DOMINANCE (never cleared, final rejection reason specifically `min_dominance`),
+grades both under real point-in-time NBBO entry/exit, the unchanged mechanical `PLAN_RULES`
+stop/target exit (held fixed — isolates the evidence-gate decision as the only variable),
+realistic entry delay, and the same $100-multiplier-correct fee model this round's other real-cost
+scripts already fee-bug-fixed. TRAIN/VALIDATION: chronological session-day split.
+
+**A critical, separate bug was caught and fixed while building this** (full writeup in the
+companion finding `2026-10-20-flow-history-stale-dte-bug.md`): the shared `loadHistoricalFlowDays`
+loader's persisted `dte` field was computed at collection time, not alert time, which silently
+restricted the real candidate population to a tiny, spurious subset on any day other than the
+collector's own run date. Fixed at the loader; the REJECT_MIN_DOMINANCE population grew from
+2→23 (TRAIN) and 7→19 (VALIDATION) once corrected — a first, discarded run on the corrupted
+population is not reported here.
+
+### Result (40 real session days, 2026-09-09…2026-10-19, post-fix)
+
+| | TRAIN (n=59 PASS / 23 REJECT) | VALIDATION — held out (n=60 PASS / 19 REJECT) |
+|---|---|---|
+| PASS: win rate / net expectancy / avg loss | 32.2% / -3.75% / -24.40% | 45.0% / -2.82% / -29.63% |
+| REJECT_MIN_DOMINANCE: win rate / net expectancy / avg loss | 17.4% / -4.98% / -8.03% | 26.3% / **+2.33%** / -12.07% |
+| Verdict | gate correctly separating (REJECT worse) | INSUFFICIENT DATA (n=19, 1 short of the n=20 bar) |
+
+### Why this is reported INCONCLUSIVE, not as a finding either way
+
+**TRAIN and VALIDATION disagree on direction.** TRAIN confirms the gate (REJECT grades worse than
+PASS: -4.98% vs -3.75% net expectancy). VALIDATION — one real candidate short of the standing
+n=20 trust bar — points the OTHER way: REJECT grades BETTER than PASS, and is the only one of the
+four population/half cells with a positive net expectancy at all (+2.33%). Per this
+investigation's own standing discipline ("never trust a TRAIN-only or inconsistent-across-halves
+pattern as a finding"), this is reported as genuinely inconclusive — the disagreement itself,
+this close to the trust threshold, could resolve either way with a small amount more data, which
+is the natural next step rather than a conclusion drawn now.
+
+**No candidate improvement implemented.** The evidence does not clear the bar for a gate change in
+either direction. This directly answers the member's "test the strongest remaining explanation and
+implement a candidate improvement if the evidence supports it" — the honest answer this round is
+that it does not yet support one.
+
+**Side observation, not this test's main question:** PASS itself (cleared evidence gates — NOT a
+claim production would have committed it; many PASS rows would still be blocked downstream by
+`score_floor`/`thesis_rank_reject`/VIX/etc.) shows negative net expectancy in 3 of the 4
+population/half cells, consistent with this round's other findings (§C backfill, §D-corrected
+missed-trade rate) that the downstream hard-gate stack is doing real, if imperfect, separating
+work even where a single evidence gate's own contribution is ambiguous.
+
+### Blast radius
+
+No gate, filter, exit rule, or live trading-path behavior changed. One new script
+(`zerodte-min-dominance-real-cost-ab.mjs`). Depends on the `zerodte-flow-history.mjs` loader fix
+from the companion dte-bug finding (same PR).
+
+## 2026-10-20 — [FINDING, P1 Night Hawk 0DTE, tooling] Local flow-history store's persisted `dte` was computed at COLLECTION time, not alert time — corrupted every multi-day replay backtest that used it — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (root cause in shared loader, both consuming scripts now correct) |
+|---|---|
+
+**Context.** Caught live while building `zerodte-min-dominance-real-cost-ab.mjs` (this round's
+follow-up to the real Swift comparison, see the companion finding). A sanity check on the real
+candidate population for 2026-09-09 showed every graded candidate carrying an implausible expiry
+(`2026-10-23`, constant across multiple different session days) — the kind of "too consistent to
+be real" signal this toolkit's own standing discipline says to check before trusting a result.
+
+### Root cause
+
+`zerodte-history-collect.mjs` persists each flow alert's `dte` via `dteFromExpiry(f.expiry)` —
+which defaults its `nowMs` parameter to `Date.now()`, i.e. the COLLECTOR'S OWN run-time "today",
+not the alert's own `alerted_at` date. Every consuming replay script then reads that **stale**
+`dte` field directly and passes it straight into the REAL, unmodified `deriveZeroDteSetups`
+(board.ts), whose own evidence-gate filter is `dte == null || dte > SETUP_MAX_DTE(4) || dte < 0`
+→ skip. For any session day other than the exact day the collector last ran, that filter was
+therefore evaluating the WRONG number.
+
+**Measured on a real file** (`docs/audit/history/zerodte-flow/2026-09-09.json`, 1296 real rows):
+stored `dte` ranged from **-40 to +11** (correct only for a "today" near the collector's actual
+run date, weeks later than 2026-09-09). Only 13 rows had a stored `dte` of exactly 4 (the only
+value `<= SETUP_MAX_DTE` and `>= 0` in the whole file) — and those 13 were THEMSELVES wrong: they
+passed the filter purely because their REAL expiry happened to land ~4 calendar days after
+collection time, by coincidence, not because they were anywhere near 0DTE on 2026-09-09. Every
+alert whose REAL expiry WAS 2026-09-09 (true dte=0 that day) carried a stored dte around -40 and
+was silently excluded.
+
+### Fix
+
+`zerodte-flow-history.mjs`'s shared `loadHistoricalFlowDays()` now recomputes `dte` fresh on
+every load, anchored to EACH ROW'S OWN `alerted_at` (`dteFromExpiry`'s existing, already-exposed
+`nowMs` parameter — no new math, just supplying the right anchor). Fixed at the loader, the single
+shared choke point, so both consuming scripts (`zerodte-missed-trades-tracker.mjs`,
+`zerodte-min-dominance-real-cost-ab.mjs`) get the fix automatically with no call-site change.
+**Verified on the same file**: recomputed `dte` distribution is now 0/1/2/5/6/7/8/9/12/13/14/16/...
+— 80 real rows at dte=0, 18 at dte=1, 155 at dte=2 (a materially larger and categorically
+different 0DTE-eligible population than the previous 13 spurious matches).
+
+### Blast radius — what this invalidates and what it doesn't
+
+Only scripts that call `loadHistoricalFlowDays` for a MULTI-DAY point-in-time replay are affected
+— confirmed via `grep -rl loadHistoricalFlowDays scripts/audit/*.mjs`, exactly two:
+- `zerodte-min-dominance-real-cost-ab.mjs` (this round, new): its first 40-day run (never
+  reported as a finding — caught before trusting it) is DISCARDED, not reported. Re-run with the
+  fix — see the companion finding for the result.
+- `zerodte-missed-trades-tracker.mjs`: this script's own prior-round result (§D of this round's
+  main report / `docs/audit/FINDINGS.md`'s "Corrected FLOW missed-trade rate, larger sample"
+  section, 15-session-day window 2026-09-29…2026-10-19) IS materially affected — re-run with the
+  exact same window and the fix in place.
+
+### CONFIRMED CORRECTION — the previously-reported missed-trade rate understated the real number
+
+| | TRAIN (8 days) — before → after fix | VALIDATION (7 days) — before → after fix |
+|---|---|---|
+| COMMITTED n / win rate | 2 / 0.0% → **3 / 33.3%** | 2 / 50.0% → **4 / 25.0%** |
+| BLOCKED n | 55 → 57 | 55 → 55 |
+| **MISSED TRADES (blocked, would have WON)** | **25.5% (14/55) → 43.9% (25/57)** | **29.1% (16/55) → 49.1% (27/55)** |
+| FALSE ALERTS (committed, real loss) | — → 66.7% (2/3) | — → 75.0% (3/4) |
+
+**The real missed-trade rate is roughly DOUBLE what the stale-dte bug reported** — both halves
+moved in the same direction by a similar magnitude (TRAIN +18.4pp, VALIDATION +20.0pp), so this is
+not a TRAIN-only artifact. `score_floor` remains the dominant, broadly-indiscriminate blocker in
+BOTH halves under the fix too (TRAIN: 20/25 missed winners, 31/32 correctly-avoided losers;
+VALIDATION: 26/27 missed winners, 28/28 correctly-avoided losers) — the qualitative conclusion
+("score_floor blocks almost everything near the margin, not selectively") is UNCHANGED, but the
+quantitative missed-trade rate this round's main report quoted (~26-29%) was understated and
+should be read as ~44-49% going forward. COMMITTED win rate also moved (both halves now show a
+real majority of committed plays as false alerts: 66.7%/75.0%), though that population remains
+thin (n=3/4) and was already flagged as too thin to trust in the original report.
+
+**No gate changed on this corrected evidence either** — the correction makes the case for a
+real-cost review of `score_floor` specifically stronger, not weaker, but still does not by itself
+justify loosening it (same standing discipline as every other finding this round).
+
+**NOT affected**: `zerodte-swift-comparison.mjs` (uses `tier-export`/`rejection-export`/Polygon
+only, no flow-history store), `zerodte-thesis-rank-reject-real-cost-ab.mjs` and
+`thesis-rank-reject-outcome-ab.mjs` (BREAKOUT/BREAKDOWN screen via grouped-daily bars, not UW
+flow alerts), `zerodte-gate-compound-funnel.mjs` and `zerodte-rvol-*` scripts (live-only UW
+fetch, no local-history consumption), and every score_floor/RVOL-universe/other finding from this
+round that didn't touch this loader.
+
+### Blast radius (code)
+
+One shared loader fixed (`scripts/audit/lib/zerodte-flow-history.mjs`), zero production code
+touched — this is audit-tooling-only, no gate/filter/exit rule in the live trading path changed.
+
 ## A CLOSED swing play-brief showed two disagreeing "current" underlying spot prices in the same envelope, neither flagging the other — FIXED
 
 > **kind:** `FINDING`
