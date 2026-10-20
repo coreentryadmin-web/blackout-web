@@ -2202,7 +2202,10 @@ test("composeSwingPlayBrief: GEX dealer posture grounds in envelope evidence (La
         as_of_et: "2026-09-05 16:00 ET",
         session_date: "2026-09-05",
         market_session: "CLOSED",
-        flip: 24,
+        // Flip set far from spot (not 24, which at 0.5pts away would itself be nearer than the
+        // 1.5pt-away call wall this test asserts on) — this test's own subject is wall precedence
+        // (GEX-matrix vs Vector), not the wall-vs-flip comparison nearestLevelWithFlip now adds.
+        flip: 20,
         call_wall: 26,
         put_wall: 22,
         max_pain: null,
@@ -2324,7 +2327,11 @@ test("composeSwingPlayBrief: Dealer posture nearest-wall evidence prefers the li
         as_of_et: "2026-09-05 16:00 ET",
         session_date: "2026-09-05",
         market_session: "CLOSED",
-        flip: 14.72,
+        // Flip set far from spot (not 14.72, which at 0.46pts away would itself be nearer than the
+        // live Vector put wall's 1.18pts this test asserts on) — this test's own subject is wall
+        // precedence (GEX-matrix vs Vector), not the wall-vs-flip comparison nearestLevelWithFlip
+        // now adds.
+        flip: 10,
         call_wall: 18,
         put_wall: 13, // GEX-matrix-native put wall — must NOT win when Vector has a fresher one
         max_pain: null,
@@ -2367,6 +2374,64 @@ test("composeSwingPlayBrief: Dealer posture nearest-wall evidence prefers the li
     /nearest wall 14\.00/,
     "Dealer posture must cite the SAME wall the envelope levels show, not the raw GEX-matrix one",
   );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, fresh-angle technicals audit, adversarially
+// verified): this evidence line picked the gamma flip ONLY when no wall existed at all (`else if`),
+// never comparing the two — so a wall farther from spot than the flip still won, naming a "nearest
+// wall" that wasn't actually nearest. Same bug shape fixed the same day in
+// gexPostureSection/chartLevelsSection.
+test("composeSwingPlayBrief: Dealer posture cites the gamma flip, not a farther-away wall, when the flip is genuinely nearest", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "SPX",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      gex_positioning: {
+        ticker: "SPX",
+        spot: 7550,
+        change_pct: 1.2,
+        asof: "2026-09-05T20:00:00Z",
+        as_of_et: "2026-09-05 16:00 ET",
+        session_date: "2026-09-05",
+        market_session: "CLOSED",
+        flip: 7560, // 10pts away — nearer than either wall below
+        call_wall: 7650,
+        put_wall: 7400,
+        max_pain: null,
+        gex_king_strike: 7650,
+        net_gex: 12_300_000,
+        gamma_posture: "long",
+        gamma_regime_read: "long gamma",
+        net_vex: 0,
+        vanna_posture: null,
+        vanna_regime_read: "",
+        net_dex: null,
+        dex_posture: null,
+        dex_regime_read: null,
+        net_charm: null,
+        charm_posture: null,
+        charm_regime_read: null,
+        nearest_wall: { strike: 7650, kind: "resistance", distance_pts: 100 },
+        freshness: "cached",
+        matrix_age_sec: 30,
+      },
+      arsenal: null,
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(postureEvidence, "expected dealer posture evidence");
+  assert.match(postureEvidence!.text, /γ-flip 7560\.00 \(10\.0 pts\)/);
+  assert.doesNotMatch(postureEvidence!.text, /nearest wall/, "must not cite the farther-away wall as nearest");
 });
 
 test("composeSwingPlayBrief: wall/flip/king level provenance (asOf/freshness) matches the live Vector price actually shown, not GEX's (Largo C8)", () => {

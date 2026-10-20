@@ -40,7 +40,7 @@ import { technicalsBias } from "./play-brief-technicals";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
-import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
+import { nearestWallFromLevels, type NearestWall } from "@/lib/providers/gex-nearest-wall";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
 import { describeThemeOverlap, effectiveDirection, isInverseLeverageEtf } from "./theme-cluster";
 import { NO_SECTOR_BENCHMARK_THEMES } from "./industry-group-rs";
@@ -936,6 +936,8 @@ export function preferredGexWalls(ctx: SwingPlayBriefContext): {
   putWall: number | null;
   callWallFromStaleGex: boolean;
   putWallFromStaleGex: boolean;
+  flip: number | null;
+  flipFromStaleGex: boolean;
 } {
   const vec = vectorOf(ctx);
   const gex = ctx.ecosystem?.gex_positioning;
@@ -954,7 +956,57 @@ export function preferredGexWalls(ctx: SwingPlayBriefContext): {
   const putWall = vecPutWall ?? gex?.put_wall ?? null;
   const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStaleForLevels;
   const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStaleForLevels;
-  return { spot, callWall, putWall, callWallFromStaleGex, putWallFromStaleGex };
+  // Ask Largo standing mandate, 2026-10-20 (fresh-angle technicals audit): the same Vector-first/
+  // GEX-matrix-fallback precedence chartLevelsSection already establishes inline for its own
+  // "Gamma flip" line — centralized here for the same reason the walls above already are (this
+  // function's own header): so every "nearest level" consumer (gexPostureSection, the Dealer
+  // posture evidence line in play-brief.ts) reads the identical flip value chartLevelsSection
+  // shows, instead of each re-deriving "the flip" a different way and risking disagreement.
+  const vecFlip = vectorStaleForLevels ? undefined : vec?.gammaFlip;
+  const flip = vecFlip ?? gex?.flip ?? null;
+  const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStaleForLevels;
+  return { spot, callWall, putWall, callWallFromStaleGex, putWallFromStaleGex, flip, flipFromStaleGex };
+}
+
+/**
+ * Extends a wall-only "nearest level" answer (`nearestWallFromLevels`) with the gamma flip as a
+ * third, equally-eligible candidate.
+ *
+ * BUG FOUND (Ask Largo standing mandate, 2026-10-20, fresh-angle technicals audit, adversarially
+ * verified): `nearestWallFromLevels` (gex-nearest-wall.ts) only ever compares the call/put wall —
+ * it has no flip parameter at all — so gexPostureSection's "Nearest wall" line and play-brief.ts's
+ * "Dealer posture" evidence line could both name a wall as "nearest" while the gamma flip sat
+ * genuinely closer to spot in the SAME brief. chartLevelsSection's own "Nearest wall" line (via
+ * vec.proximity/deriveWallProximity) already considers the flip, so this is the third of three
+ * sections with inconsistent precedence on the identical conceptual question — same bug shape this
+ * file has already fixed twice before (GEX king strike 2026-09-09, GEX walls+spot 2026-09-11).
+ * Deliberately NOT fixed inside the shared `nearestWallFromLevels` itself: that helper also backs
+ * `gex-positioning.ts`'s general-purpose `nearest_wall` field, read by other desks (e.g. Thermal)
+ * that have no flip concept wired into this call shape — widening it there risks an unreviewed
+ * behavior change outside swing. This wraps the wall-only answer at the swing call sites instead.
+ */
+export type NearestLevel = {
+  strike: number;
+  kind: "resistance" | "support" | "flip";
+  distance_pts: number;
+} | null;
+
+export function nearestLevelWithFlip(
+  wall: NearestWall,
+  flip: number | null | undefined,
+  flipFromStaleGex: boolean,
+  spot: number,
+): NearestLevel {
+  const candidates: Array<{ strike: number; kind: "resistance" | "support" | "flip"; distance_pts: number }> = [];
+  if (wall) candidates.push(wall);
+  if (flip != null && Number.isFinite(flip) && !flipFromStaleGex) {
+    candidates.push({ strike: flip, kind: "flip", distance_pts: Number((flip - spot).toFixed(2)) });
+  }
+  let nearest: NearestLevel = null;
+  for (const c of candidates) {
+    if (nearest == null || Math.abs(c.distance_pts) < Math.abs(nearest.distance_pts)) nearest = c;
+  }
+  return nearest;
 }
 
 /**
@@ -1016,7 +1068,18 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
       .join(" · ");
     lines.push(`Expected move: **${bandStr}**`);
   }
-  if (vec?.proximity?.strike != null && !vectorStaleForLevels) {
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20, fresh-angle technicals audit): when
+  // `deriveWallProximity` resolves to the gamma flip (side === "flip"), its callout restates the
+  // EXACT value the "Gamma flip:" line just above already rendered — a same-section self-duplicate
+  // (live repro: spot 7550, flip 7560 at 0.13% away vs. both walls farther out — "Gamma flip:
+  // 7560.00 — +0.1% ($10.00 from spot)" immediately followed by "Nearest wall: 7560.00 gamma flip
+  // overhead (0.13% away) — a cross flips the regime..."). Only suppress the flip case — a
+  // genuine call/put wall callout here is independent information from the bare "Call/Put wall
+  // (GEX)" line above (different source: Vector's own proximity/band logic, not just the raw
+  // strike) and must keep rendering unchanged.
+  const proximityDuplicatesFlipLine =
+    vec?.proximity?.side === "flip" && flip != null && !flipFromStaleGex;
+  if (vec?.proximity?.strike != null && !vectorStaleForLevels && !proximityDuplicatesFlipLine) {
     // BUG FIX (2026-09-12): this used to PREPEND "{strike} ({side}, {pct}% away) —" ahead of
     // `vec.proximity.callout` — but `deriveWallProximity` (vector-wall-proximity.ts) already builds
     // callout as a complete sentence that independently states the same strike/side/"wall" itself
@@ -2385,7 +2448,7 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
   // "Levels on chart" renders, instead of the raw `gex.nearest_wall` (GEX-matrix-only call_wall/
   // put_wall) — see preferredGexWalls' header for the live MSTR:33 evidence this fixes.
   const preferred = preferredGexWalls(ctx);
-  const nearest =
+  const wallOnly =
     preferred.spot != null
       ? nearestWallFromLevels(
           preferred.callWallFromStaleGex ? null : preferred.callWall,
@@ -2393,9 +2456,18 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
           preferred.spot,
         )
       : null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): see nearestLevelWithFlip's own header —
+  // the wall-only answer above never considered the gamma flip, so this line could name a wall
+  // "nearest" while chartLevelsSection's own "Nearest wall" line (which DOES consider the flip)
+  // named the flip for the SAME spot in the SAME envelope.
+  const nearest =
+    preferred.spot != null
+      ? nearestLevelWithFlip(wallOnly, preferred.flip, preferred.flipFromStaleGex, preferred.spot)
+      : null;
   if (!stale && nearest != null) {
+    const kindLabel = nearest.kind === "flip" ? "gamma flip" : nearest.kind;
     lines.push(
-      `Nearest wall: **${fmtPriceLevel(nearest.strike)}** (${nearest.kind}, ${nearest.distance_pts.toFixed(1)} pts from spot **${fmtPriceLevel(preferred.spot!)}**)`,
+      `Nearest wall: **${fmtPriceLevel(nearest.strike)}** (${kindLabel}, ${nearest.distance_pts.toFixed(1)} pts from spot **${fmtPriceLevel(preferred.spot!)}**)`,
     );
   }
   if (!stale && gex.change_pct != null) lines.push(`Underlying session: **${fmtPct(gex.change_pct)}**`);
