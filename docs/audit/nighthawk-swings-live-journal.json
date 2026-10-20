@@ -869,5 +869,10 @@
     "ts": "2026-10-20T02:03:00Z",
     "what": "PR #6298 (precious-metals theme-cluster gap, KGC+AEM) merged to main (commit 7d0dac026) after verify/CodeQL/triage all green.",
     "status": "Verified fix landed on origin/main (sector-map.ts carries the precious-metals entry). Like all merges this session, this fix is correct and tested but NOT yet live in production -- still blocked by the ongoing ECS capacity deadlock. No merge conflict, no review comments. Subscription closed (PR done)."
+  },
+  "own_pr6298_deploy_also_failed_2026_10_20": {
+    "ts": "2026-10-20T03:02:00Z",
+    "what": "Run 39356798942 (carrying my own merged PR #6298) completed: conclusion failure at 02:47:38Z, same pattern as every other attempt this session.",
+    "status": "5th consecutive deploy failure directly observed. My KGC/AEM fix is correct and on main but not live. Confirms the deadlock is purely capacity-based, not tied to any specific PR's content -- it blocks every push equally regardless of what changed. No further action possible from this session. Legacy digest/health unchanged."
   }
 }
