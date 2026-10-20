@@ -903,8 +903,24 @@ export function chartTechnicalsSection(
   if (displaySpot != null) lines.push(`Spot: **${fmtPriceLevel(displaySpot)}**`);
   if (t?.emaStack) lines.push(`EMA 9/21/50 stack: **${t.emaStack}**`);
   if (t?.vwap != null) {
-    const side = displaySpot != null && displaySpot >= t.vwap ? "above" : "below";
-    lines.push(`VWAP **${fmtPriceLevel(t.vwap)}** — price ${side} session VWAP`);
+    // BUG FIX (Ask Largo standing mandate, 2026-10-20): this function's own entry guard above
+    // (`if (!vec?.technicals && vec?.spot == null) return null;`) deliberately continues when
+    // `technicals` exists even though `vec.spot` is null — otherwise it would just be `if
+    // (!vec?.technicals) return null;`. `displaySpot` can likewise be null here (the CLOSED,
+    // stale-Vector GEX-fallback path above can itself resolve to no spot). The old `&&`
+    // short-circuit folded "spot unknown" into the FALSE branch of the ternary, silently rendering
+    // "price below session VWAP" whenever displaySpot was null — not just when spot was genuinely
+    // below VWAP. This is inconsistent with the file's own established convention a few functions
+    // away (`chartLevelsSection`'s wall/flip lines only append a spot-relative clause when spot is
+    // known, never asserting a side otherwise) and the Largo C3 absence principle this file cites
+    // repeatedly: omit when undeterminable, never fabricate. Omit the side clause entirely rather
+    // than defaulting it.
+    const side = displaySpot != null ? (displaySpot >= t.vwap ? "above" : "below") : null;
+    lines.push(
+      side != null
+        ? `VWAP **${fmtPriceLevel(t.vwap)}** — price ${side} session VWAP`
+        : `VWAP **${fmtPriceLevel(t.vwap)}**`,
+    );
   }
   if (t?.rsi != null) lines.push(`RSI: **${t.rsi.toFixed(0)}**`);
   if (t?.macd) lines.push(`MACD: **${t.macd}**`);
