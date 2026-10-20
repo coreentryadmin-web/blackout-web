@@ -28,14 +28,27 @@
  * `chartTechnicalsSection`/`gexPostureSection`/`wallDynamicsSection` already apply in
  * play-brief-intel.ts for the same "today's read vs the trade's own conditions" reason.
  *
- * CORRECTNESS NOTE on `stop`/point 2 above for an already-OPEN position: `stop` is always computed
- * LIVE from today's spot (see `StructureLadderTarget`'s own comment) — it is never the real,
- * frozen `thesis_invalidation_px` a committed position's actual entry pinned, because that value
- * is not threaded onto `TerminalPlay` today. For a WATCH candidate this is exactly right (there is
- * no real position yet to disagree with). For an OPEN/HOLD/TRIM position it is an honest estimate
- * that can diverge from the real, system-governing stop once the underlying has moved since entry
- * — `StructureLadder.positionState` exists so the UI can caveat this specifically for that case
- * rather than silently presenting a recompute as the trade's actual risk level.
+ * CORRECTNESS NOTE on `stop`/point 2 above: for a WATCH candidate, `stop`/the R:R entry leg are
+ * always the LIVE `deriveSwingPlanLevels(direction, spot, null)` recompute — exactly right, since
+ * there is no real position yet to disagree with. For an already-OPEN/HOLD/TRIM position, this
+ * widget now prefers the REAL, frozen per-position values — `play.invalidationUnderlyingPx` (the
+ * actual `thesis_invalidation_px` pinned at commit, also read by `manage-sync.ts` to decide exits)
+ * and `play.entryTriggerUnderlyingPx` (pinned alongside it) — over the live recompute, WHEN BOTH
+ * are present and finite (never a mixed real-stop/live-entry frame).
+ *
+ * BUG FIX (2026-10-20, Ask Largo standing mandate, adversarially verified): this file used to
+ * ALWAYS recompute `stop` live from today's spot even for an already-committed OPEN position, on
+ * the premise that `thesis_invalidation_px` "is not threaded onto `TerminalPlay` today" — that
+ * premise went stale on 2026-09-28 when `invalidationUnderlyingPx` WAS threaded onto `TerminalPlay`
+ * (`play-brief-narrative.ts`'s `committedStructuralStopLine` has read it directly since
+ * 2026-10-16), but this file was never revisited. The result: for the SAME open position, the same
+ * JSON envelope named two different "the level that stops this thesis" numbers — the narrative's
+ * "Structural stop (committed)" line (the real, frozen value) and this ladder's `stop` (a fresh
+ * generic-ATR recompute off today's spot) — which could diverge by double digits of percent once
+ * the underlying had moved since entry, and every favorable rung's reward:risk was computed against
+ * the fabricated stop, understating real risk. Falls back to the live recompute when either real
+ * field is absent/non-finite (an honest estimate, same as before) — `StructureLadder.positionState`
+ * still exists so the UI can distinguish a WATCH plan from an OPEN position's real risk level.
  */
 import type { DeckDirection, TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { PlayDirection } from "../horizon-fanout";
@@ -63,11 +76,14 @@ export type StructureLadderRungRole = "support" | "resistance" | "neutral";
  */
 export type StructureLadderTarget = {
   /**
-   * |rung.price − entry| / |entry − stop|, where entry/stop come from `deriveSwingPlanLevels`
-   * (structure-levels.ts) evaluated at the CURRENT spot — the same real ATR-based formula every
-   * committed swing position's real `thesis_invalidation_px` is derived from at commit (dossier.ts/
-   * commit.ts), not a fixed 1:2/1:3 multiple to a made-up target. See `buildStructureLadder`'s own
-   * comment for why this is evaluated live rather than reading back the frozen per-position value.
+   * |rung.price − entry| / |entry − stop|. For an OPEN position with both real per-position
+   * values present, entry/stop are the REAL `entryTriggerUnderlyingPx`/`invalidationUnderlyingPx`
+   * pinned at commit; otherwise (a WATCH candidate, or missing real data) entry/stop come from
+   * `deriveSwingPlanLevels` (structure-levels.ts) evaluated at the CURRENT spot — the same real
+   * ATR-based formula every committed swing position's stop is originally derived FROM at commit
+   * (dossier.ts/commit.ts) — never a fixed 1:2/1:3 multiple to a made-up target. See
+   * `buildStructureLadder`'s own comment for the full precedence and why a WATCH candidate always
+   * uses the live recompute.
    */
   rewardRisk: number;
   /**
@@ -150,31 +166,35 @@ export type StructureLadder = {
   spot: number;
   direction: DeckDirection;
   /**
-   * The real ATR-derived structural stop every rung's R:R is measured against (see
-   * `StructureLadderTarget`) — ALWAYS computed live from TODAY's spot via `deriveSwingPlanLevels`,
-   * never read back from a frozen per-position value (see that type's own comment and
-   * `positionState` immediately below for why this matters on an already-OPEN position).
+   * The structural stop every rung's R:R is measured against (see `StructureLadderTarget`). For
+   * an OPEN position with both real per-position values present, this is the REAL, frozen
+   * `invalidationUnderlyingPx` pinned at commit — the same value `manage-sync.ts` reads to decide
+   * whether to recommend an exit. Otherwise (a WATCH candidate, or an OPEN position missing real
+   * data) this is a live ATR-based recompute off TODAY's spot via `deriveSwingPlanLevels` — see
+   * `positionState` immediately below and `buildStructureLadder`'s own comment for the full
+   * precedence and history.
    */
   stop: number;
-  /** The ATR value the stop/horizon classification were derived from. */
+  /** True when `stop` (and every rung's R:R) is the REAL, frozen per-position
+   *  `invalidationUnderlyingPx`/`entryTriggerUnderlyingPx` pair pinned at commit; false when it is
+   *  the live ATR-based recompute (always false for `positionState === "watch"`, since there is no
+   *  real position yet). The UI reads this to caveat `stop` correctly — rendering "recomputed from
+   *  today's spot, may differ from your real stop" when it's actually the real stop would be the
+   *  exact "two mechanisms disagree about the same field" failure this field exists to prevent. */
+  stopIsCommitted: boolean;
+  /** The ATR value the horizon classification is derived from — always the LIVE value, even when
+   *  `stop` itself is the real per-position number (ATR here is a volatility-bucket input, not a
+   *  claim about this trade's actual risk level). */
   atr: number;
   /**
    * "watch" for a pre-entry candidate, "open" for an already-committed OPEN/HOLD/TRIM position.
    *
-   * This does NOT mean `stop` reflects the real per-position value — it never does; `stop` above
-   * is always a fresh live recompute from TODAY's spot (see its own comment), never the frozen
-   * per-position one. It exists so the UI can render the honest caveat only where it is needed:
-   * for a WATCH candidate, "if you enter here, this is the plan" is exactly the right claim, since
-   * no position exists yet to disagree with it. For an OPEN/HOLD/TRIM position, a REAL committed
-   * stop already exists — `thesis_invalidation_px`, frozen at the position's actual entry price
-   * and actually read by `manage-sync.ts` to decide whether to recommend an exit — and it can be
-   * materially different from this live recompute once the underlying has moved since entry.
-   * `thesis_invalidation_px` is not threaded onto `TerminalPlay` today (see `buildStructureLadder`'s
-   * own comment — real, separate plumbing, out of scope here), so this widget cannot show the real
-   * number; the honest fix available NOW is telling the member it's showing an estimate rather than
-   * silently labeling a recomputed number as if it were their trade's actual, frozen risk level —
-   * exactly the "plausible wrong number is worse than an obvious one" trap the Largo product
-   * contract's C4 identity section warns about.
+   * For "watch", `stop` above is always a fresh live recompute from TODAY's spot — exactly right,
+   * since there is no real position yet to disagree with it. For "open", `stop` prefers the REAL
+   * committed `invalidationUnderlyingPx`/`entryTriggerUnderlyingPx` pair (see `buildStructureLadder`
+   * for the exact precedence and the 2026-10-20 fix history) and only falls back to the live
+   * recompute when the real pair is incomplete — so this field alone no longer tells you which one
+   * `stop` is; read `stop` against the real ledger value to know for certain if that matters to you.
    */
   positionState: "watch" | "open";
   /** Sorted high price → low price (the convention every price ladder in this codebase already uses —
@@ -299,10 +319,25 @@ export function buildStructureLadder(
   const focal: FocalLevel[] = collectFocalLevels(ctx, spot);
   if (!focal.length) return null;
 
-  // Real per-level R:R (not a fixed multiple) — see `StructureLadderTarget`'s own header for why
-  // this is evaluated live at spot rather than reading back a frozen per-position value.
+  // Real per-level R:R (not a fixed multiple) — live recompute by default; see below for when an
+  // OPEN position's real per-position entry/stop take precedence (2026-10-20 fix).
   const plan = deriveSwingPlanLevels(play.direction as PlayDirection, spot, null);
   if (!plan) return null; // unreachable given the spot>0 guard above, kept for type-safety/defense
+
+  // For an already-committed OPEN/HOLD/TRIM position, prefer the REAL frozen entry/stop pinned at
+  // commit over the live spot-anchored recompute above — see this file's header comment for the
+  // full bug history. Requires BOTH real values finite: a real stop paired with a live-spot "entry"
+  // (or vice versa) would be a mixed frame, worse than an honest, fully-live estimate.
+  const realEntry = play.entryTriggerUnderlyingPx;
+  const realStop = play.invalidationUnderlyingPx;
+  const useRealPlan =
+    bucket === "open" &&
+    realEntry != null &&
+    Number.isFinite(realEntry) &&
+    realStop != null &&
+    Number.isFinite(realStop);
+  const entryUnderlyingPx = useRealPlan ? realEntry : plan.entryUnderlyingPx;
+  const thesisInvalidationPx = useRealPlan ? realStop : plan.thesisInvalidationPx;
 
   // Distance a favorable rung sits from spot, on the SAME |price - spot| basis distancePct is
   // signed from — used only to order favorable rungs near->far for the gatekeeper pass below.
@@ -325,8 +360,7 @@ export function buildStructureLadder(
       const favorable = play.direction === "LONG" ? f.price > spot : f.price < spot;
       const target: StructureLadderTarget | undefined = favorable
         ? {
-            rewardRisk:
-              Math.abs(f.price - plan.entryUnderlyingPx) / Math.abs(plan.entryUnderlyingPx - plan.thesisInvalidationPx),
+            rewardRisk: Math.abs(f.price - entryUnderlyingPx) / Math.abs(entryUnderlyingPx - thesisInvalidationPx),
             horizon: Math.abs(f.price - spot) <= 2 * plan.atr ? "short_term" : "swing",
             gatekeeper: farthestFavorablePrice != null && f.price !== farthestFavorablePrice.price,
           }
@@ -375,7 +409,8 @@ export function buildStructureLadder(
   return {
     spot,
     direction: play.direction,
-    stop: plan.thesisInvalidationPx,
+    stop: thesisInvalidationPx,
+    stopIsCommitted: useRealPlan,
     atr: plan.atr,
     // "closed" already returned above; only "watch"/"open" reach here.
     positionState: bucket,

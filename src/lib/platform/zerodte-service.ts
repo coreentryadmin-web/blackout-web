@@ -11,6 +11,7 @@ import { ironCondorProductForLargo, liveCondorForLargo } from "@/lib/largo/zerod
 import { fetchNighthawkEchoForTickers, type EcosystemNightHawkTake } from "@/lib/bie/ecosystem-context";
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
+import { etMinutes } from "@/features/spx/lib/spx-play-session-time";
 import { fetchBenzingaNews } from "@/lib/providers/polygon";
 import { zerodteBoardMaxBlockMs } from "@/lib/providers/config";
 import { readGridEarnings } from "@/lib/zerodte/earnings";
@@ -518,13 +519,40 @@ function mapLedgerRow(
         ratchetTargetReached(pinnedLivePnlPct(r.entry_premium, r.peak_premium), rails.targetPct)
       );
   // The terminal close label, now distinguishing the exit type: a pinned stop pins (and
-  // wins); else an engine exit is categorized; else a plain 15:50 close is "time_stop";
+  // wins); else an engine exit is categorized; else a GENUINE 15:50 ET close is "time_stop";
   // else the row is still live (null).
+  //
+  // BUG FIX (2026-10-20, member audit directive — "verify stop execution, thesis
+  // invalidation, time stops... don't dismiss this"): `engineExitCategory` reads null in TWO
+  // completely different situations that this used to conflate under one fallback label:
+  // (1) a GENUINE 15:50 ET hard time-stop (PLAN_RULES.time_stop_et_minutes) — plan.ts's own
+  // close, which never stamps an exit-engine context at all, so "time_stop" is the correct,
+  // only available label; and (2) a row the EXIT ENGINE already closed (ratchet/thesis/flat/
+  // plan_stop/trim_scale) whose `stampZeroDteExitContext` write simply hasn't landed yet —
+  // exit-sync.ts stamps entry_context.exit and the caller flips `status` to CLOSED in two
+  // SEPARATE, unsynchronized DB writes (live-marks.ts / scan.ts), so a board read in that
+  // window sees status=CLOSED with no stamp yet, which is indistinguishable from (1) under
+  // the old blind `?? "time_stop"` fallback. Live evidence (SNXX, 2026-10-20): committed
+  // ~10:11 ET, nowhere near the 15:50 boundary; a board read at 15:23 UTC showed
+  // closed_reason:"time_stop" / exit_pnl_pct:null; a read six minutes later (once the real
+  // stamp landed) showed closed_reason:"ratchet" / exit_pnl_pct:14.04 — proving the
+  // "time_stop" label shown in between was never true, just the fallback's only available
+  // string. Gated now on the row's OWN frozen `last_mark_at` (CASE-guarded to the close
+  // instant — see updateZeroDteLiveState) genuinely falling at/after the time-stop boundary,
+  // with a few minutes of slack for the ~1s/~2min sync lanes' own tick latency; otherwise
+  // report null ("exit reason not yet persisted") rather than a specific reason the row
+  // cannot yet support. `exit_pnl_pct`/`exit_reason` already read null honestly in this
+  // window (unchanged) — this fix makes `closed_reason` consistent with them instead of
+  // contradicting them with a wrong, meaningful-sounding label.
+  const lastMarkEtMinutes =
+    typeof r.last_mark_at === "string" ? etMinutes(new Date(r.last_mark_at)) : null;
+  const isGenuineTimeStop =
+    lastMarkEtMinutes != null && lastMarkEtMinutes >= PLAN_RULES.time_stop_et_minutes - 2;
   const boardClosedReason: ZeroDteBoardLedgerRow["closed_reason"] =
     closedReason === "stopped"
       ? "stopped"
       : r.status === "CLOSED"
-        ? (engineExitCategory ?? "time_stop")
+        ? (engineExitCategory ?? (isGenuineTimeStop ? "time_stop" : null))
         : null;
 
   return {

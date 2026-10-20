@@ -141,6 +141,57 @@ test("buildStructureLadder: R:R is the REAL deriveSwingPlanLevels ratio, not a f
   assert.equal(flipRung!.target!.horizon, "swing", "10pts is beyond 2x the 1.5 ATR proxy (3pts)");
 });
 
+test("buildStructureLadder: an OPEN position with real committed entry/stop uses THOSE, not the live ATR recompute (2026-10-20 fix)", () => {
+  // Real position: committed LONG at underlying 220, real structural stop 205 (6.8% below entry).
+  // Spot has since risen to 240 — before the fix, `stop` would be a fresh ATR recompute off 240
+  // (234.60), disagreeing with the narrative's "Structural stop (committed): 205.00" line in the
+  // SAME envelope.
+  const play = fixturePlay({
+    direction: "LONG",
+    entryTriggerUnderlyingPx: 220,
+    invalidationUnderlyingPx: 205,
+  });
+  const vec = fixtureVec({ spot: 240, gammaFlip: 260 });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.equal(ladder!.stop, 205, "stop must be the REAL committed invalidation, not a live recompute");
+
+  const flipRung = ladder!.rungs.find((r) => r.kind === "gamma_flip");
+  assert.ok(flipRung?.target);
+  // |260-220| / |220-205| = 40/15, using the REAL entry/stop pair, not live spot/ATR-recompute.
+  assert.ok(Math.abs(flipRung!.target!.rewardRisk - 40 / 15) < 1e-9);
+});
+
+test("buildStructureLadder: a WATCH candidate ALWAYS uses the live recompute, even if the play somehow carries real committed fields", () => {
+  const play = fixturePlay({
+    direction: "LONG",
+    entryTriggerUnderlyingPx: 220,
+    invalidationUnderlyingPx: 205,
+  });
+  const vec = fixtureVec({ spot: 240, gammaFlip: 260 });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "watch");
+  assert.ok(ladder);
+  // atr proxy = 240*0.015=3.6, stopDist=1.5*3.6=5.4, stop=240-5.4=234.6 — the live recompute, not 205.
+  assert.ok(Math.abs(ladder!.stop - 234.6) < 1e-9, "a WATCH candidate has no real position to disagree with");
+});
+
+test("buildStructureLadder: an OPEN position with only ONE real field present falls back fully to the live recompute (no mixed real/live frame)", () => {
+  const playStopOnly = fixturePlay({ direction: "LONG", invalidationUnderlyingPx: 205 });
+  const vec = fixtureVec({ spot: 240, gammaFlip: 260 });
+  const ctxStopOnly = fixtureCtx({ play: playStopOnly, vector: vec, ecosystem: null });
+  const ladderStopOnly = buildStructureLadder(ctxStopOnly, playStopOnly, "open");
+  assert.ok(ladderStopOnly);
+  assert.ok(Math.abs(ladderStopOnly!.stop - 234.6) < 1e-9, "missing real entry must not mix with the real stop alone");
+
+  const playEntryOnly = fixturePlay({ direction: "LONG", entryTriggerUnderlyingPx: 220 });
+  const ctxEntryOnly = fixtureCtx({ play: playEntryOnly, vector: vec, ecosystem: null });
+  const ladderEntryOnly = buildStructureLadder(ctxEntryOnly, playEntryOnly, "open");
+  assert.ok(ladderEntryOnly);
+  assert.ok(Math.abs(ladderEntryOnly!.stop - 234.6) < 1e-9, "missing real stop must not mix with the real entry alone");
+});
+
 test("buildStructureLadder: horizon classifies short_term within ~2x ATR, swing beyond it", () => {
   const play = fixturePlay({ direction: "LONG" });
   // Two favorable-side rungs straddling the 2xATR=3pt boundary at spot=100, atr=1.5.

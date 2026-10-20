@@ -545,9 +545,54 @@ test("REGRESSION: a legacy stopped runner with NO committed policy pins to the s
   assert.equal(board.ledger[0]!.live_pnl_pct, -50, "understating a stopped play is the safe error");
 });
 
-test("exit visibility: a plain 15:30 close with no engine exit reads closed_reason 'time_stop'", async () => {
+// BUG FIX (2026-10-20, member audit directive): `engineExitCategory` reads null both for a
+// GENUINE 15:50 ET time-stop AND for a row the exit engine already closed whose
+// `stampZeroDteExitContext` write simply hasn't landed yet (status/exit-context are two
+// separate, unsynchronized DB writes — see mapLedgerRow's own comment). This test used to
+// assert the OLD blind fallback ("no engine stamp => time_stop", regardless of when the row
+// actually closed) as correct; it wasn't — live evidence (SNXX, 2026-10-20) showed a row
+// closed at ~10:11 ET reading closed_reason:"time_stop" for several minutes before its real
+// stamp (a ratchet floor exit) landed. The fix gates the "time_stop" label on the row's own
+// last_mark_at genuinely falling at/after the time-stop boundary.
+test("exit visibility: a CLOSED row with no engine exit and no evidence of a real time-stop reads closed_reason null, not a guess", async () => {
   state.ledgerRead = {
-    rows: [ledgerRow({ entry_premium: 4.0, last_mark: 4.1, peak_premium: 4.5, trough_premium: 3.5, status: "CLOSED" })],
+    rows: [
+      ledgerRow({
+        entry_premium: 4.0,
+        last_mark: 4.1,
+        peak_premium: 4.5,
+        trough_premium: 3.5,
+        status: "CLOSED",
+        // 10:30 ET on the row's own session_date — nowhere near the 15:50 time-stop boundary.
+        last_mark_at: "2026-07-07T14:30:00.000Z",
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(
+    board.ledger[0]!.closed_reason,
+    null,
+    "no engine stamp AND no evidence of a real 15:50 close — honest null, not a fabricated 'time_stop'"
+  );
+  assert.equal(board.ledger[0]!.exit_reason, null);
+});
+
+test("exit visibility: a CLOSED row with no engine exit but last_mark_at at/after 15:50 ET genuinely reads closed_reason 'time_stop'", async () => {
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        entry_premium: 4.0,
+        last_mark: 4.1,
+        peak_premium: 4.5,
+        trough_premium: 3.5,
+        status: "CLOSED",
+        // 15:50 ET on the row's own session_date — the real plan.ts hard time-stop boundary.
+        last_mark_at: "2026-07-07T19:50:00.000Z",
+      }),
+    ],
     committed_known: true,
   };
   state.setups = [];
