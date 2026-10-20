@@ -512,3 +512,70 @@ test("buildStructureLadder: riskTheOtherSide falls back to a neutral pivot when 
   assert.equal(ladder!.riskTheOtherSide!.kind, "magnet");
   assert.equal(ladder!.riskTheOtherSide!.role, "neutral");
 });
+
+// BUG FIX (2026-10-20, Ask Largo standing mandate, adversarially verified): a call wall CAN sit
+// below spot (price already ran through it) and used to win riskTheOtherSide's "nearest unfavorable
+// rung" reduce for a LONG thesis purely on distance, with no check that call_wall is even an
+// eligible kind for a LONG's "wrong side". `resolveInvalidationFocalLevel` (play-brief-narrative.ts)
+// — the sibling this widget's own header claims it can never disagree with — never treats call_wall
+// as a candidate invalidation level for a LONG (only put_wall/dark_pool/king), so the two could name
+// different "the level that matters on the downside" prices for the identical position.
+test("buildStructureLadder: riskTheOtherSide never names a call wall as the unfavorable side for a LONG, even when it is nearer than an eligible wall (live kind-mismatch repro)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    gexWalls: {
+      callWalls: [{ strike: 98 }], // below spot (ran through it), NEARER — ineligible for a LONG's wrong side
+      putWalls: [{ strike: 80 }], // below spot, farther, but the only kind-eligible real wall
+    },
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide);
+  assert.equal(
+    ladder!.riskTheOtherSide!.kind,
+    "put_wall",
+    "a call wall is never eligible as a LONG's unfavorable-side level, regardless of distance",
+  );
+  assert.equal(ladder!.riskTheOtherSide!.price, 80);
+});
+
+test("buildStructureLadder: riskTheOtherSide never names a put wall as the unfavorable side for a SHORT, even when it is nearer than an eligible wall (symmetric kind-mismatch repro)", () => {
+  const play = fixturePlay({ direction: "SHORT" });
+  const vec = fixtureVec({
+    spot: 100,
+    gexWalls: {
+      putWalls: [{ strike: 102 }], // above spot (ran through it), NEARER — ineligible for a SHORT's wrong side
+      callWalls: [{ strike: 120 }], // above spot, farther, but the only kind-eligible real wall
+    },
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide);
+  assert.equal(
+    ladder!.riskTheOtherSide!.kind,
+    "call_wall",
+    "a put wall is never eligible as a SHORT's unfavorable-side level, regardless of distance",
+  );
+  assert.equal(ladder!.riskTheOtherSide!.price, 120);
+});
+
+// Fallback tier must ALSO exclude the cross-direction wall kind — otherwise it would resurface the
+// same bug whenever no kind-eligible real wall exists at all (the call wall must be treated as if
+// it weren't there, falling through to a neutral pivot, never as a last-resort "real wall").
+test("buildStructureLadder: riskTheOtherSide falls through an ineligible-kind wall to a neutral pivot, never to the ineligible wall itself", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    gexWalls: { callWalls: [{ strike: 98 }] }, // the ONLY unfavorable-side rung, but ineligible for LONG
+    magnet: { strike: 90 }, // neutral, farther, but the only eligible fallback
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide, "must fall through to the neutral pivot, never omit entirely");
+  assert.equal(ladder!.riskTheOtherSide!.kind, "magnet");
+  assert.equal(ladder!.riskTheOtherSide!.role, "neutral");
+});
