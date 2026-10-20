@@ -1636,6 +1636,39 @@ test("composeSwingPlayBrief: archetype track record also surfaces as a citable e
     false,
     "an ungraduated bucket must not be cited as evidence",
   );
+
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): the archetype track-record evidence entry's
+  // `freshness` used the generic 10-minute cross-product bucket directly, mislabeling an
+  // on-schedule read (written by the 15-minute swing-active-refresh cron) as "stale" roughly a
+  // third of every refresh cycle — the exact defect class already fixed for the sibling `markAsOf`
+  // fact elsewhere in this file.
+  const onScheduleReadMs = Date.parse("2026-09-10T15:11:00.000Z"); // 11 minutes after graduatedSnap.asOf
+  const onScheduleBrief = composeSwingPlayBrief({
+    ...baseCtx,
+    archetypeTrackRecord: graduatedSnap,
+    readMs: onScheduleReadMs,
+  });
+  const onScheduleEvidence = onScheduleBrief.envelope.evidence.find((e) =>
+    e.text.startsWith("Archetype track record:"),
+  );
+  assert.notEqual(
+    onScheduleEvidence?.provenance?.freshness,
+    "stale",
+    "an 11-minute-old on-schedule snapshot must not be mislabeled stale",
+  );
+
+  const genuinelyStaleReadMs = Date.parse("2026-09-20T15:00:00.000Z"); // 10 days later, past the 120h TTL
+  const staleBrief = composeSwingPlayBrief({
+    ...baseCtx,
+    archetypeTrackRecord: graduatedSnap,
+    readMs: genuinelyStaleReadMs,
+  });
+  const staleEvidence = staleBrief.envelope.evidence.find((e) => e.text.startsWith("Archetype track record:"));
+  assert.equal(
+    staleEvidence?.provenance?.freshness,
+    "stale",
+    "a snapshot genuinely past the documented TTL must still read stale — this fix narrows false",
+  );
 });
 
 test("composeSwingPlayBrief: ticker track record also surfaces as a citable evidence[] entry, not just prose (Largo C10)", () => {

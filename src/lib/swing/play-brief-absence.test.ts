@@ -7,6 +7,7 @@ import {
   darkPoolStale,
   gexMarketSessionNote,
   gexMatrixStale,
+  archetypeTrackRecordIsStale,
   meridianCatalystAgeMs,
   meridianCatalystStale,
   newsCatalystAgeMs,
@@ -1035,6 +1036,47 @@ test("optionMarkIsStale: a mark that has missed its next scheduled refresh IS st
     true,
     "a mark past 18 minutes old has missed a scheduled refresh and should read stale",
   );
+});
+
+// Sibling bug (Ask Largo standing mandate, 2026-10-20, same defect class as optionMarkIsStale's
+// own history above, never swept to this fact): the archetype/sub-lane calibration-cache
+// snapshot's ONLY writer is the IDENTICAL 15-minute swing-active-refresh cron, so a snapshot
+// 10-15 minutes old is on-schedule, not stale — but unlike the option mark, this data's correct
+// staleness horizon is calibration-cache.ts's own documented SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC
+// (120h), not an 18-minute cadence window, since which archetypes have graduated moves far slower
+// than every tick.
+test("archetypeTrackRecordIsStale: an on-schedule snapshot (11 minutes old) is NOT stale", () => {
+  const readMs = Date.parse("2026-09-15T19:11:00.000Z");
+  assert.equal(
+    archetypeTrackRecordIsStale("2026-09-15T19:00:00.000Z", readMs),
+    false,
+    "an 11-minute-old snapshot is well within one healthy swing-active-refresh cycle",
+  );
+});
+
+test("archetypeTrackRecordIsStale: a snapshot many hours old (within the documented TTL) is still NOT stale", () => {
+  const readMs = Date.parse("2026-09-16T10:00:00.000Z"); // ~15h after a Friday-evening-shaped write
+  assert.equal(
+    archetypeTrackRecordIsStale("2026-09-15T19:00:00.000Z", readMs),
+    false,
+    "calibration-cache.ts's own TTL rationale: a many-hours-stale graduation verdict is still honest",
+  );
+});
+
+test("archetypeTrackRecordIsStale: a snapshot past the documented TTL (120h) IS stale", () => {
+  const readMs = Date.parse("2026-09-21T20:00:00.000Z"); // 121h after the write below
+  assert.equal(archetypeTrackRecordIsStale("2026-09-16T19:00:00.000Z", readMs), true);
+});
+
+test("archetypeTrackRecordIsStale: future skew fails closed (Largo C2), same as optionMarkIsStale", () => {
+  const readMs = Date.parse("2026-09-15T19:00:00.000Z");
+  assert.equal(archetypeTrackRecordIsStale("2026-09-15T19:20:00.000Z", readMs), true);
+});
+
+test("archetypeTrackRecordIsStale: absent/malformed asOf never throws, reads as not-stale", () => {
+  assert.equal(archetypeTrackRecordIsStale(null, Date.now()), false);
+  assert.equal(archetypeTrackRecordIsStale(undefined, Date.now()), false);
+  assert.equal(archetypeTrackRecordIsStale("not a date", Date.now()), false);
 });
 
 test("collectBriefUnavailableSources: unsynced option mark surfaces in envelope (FINDINGS 2026-09-06 #22)", () => {
