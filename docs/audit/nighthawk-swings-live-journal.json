@@ -916,5 +916,11 @@
     "what": "AGGRESSIVE MODE finding: live sweep of the current committed book (same 26-ticker set static all session) found TSLA LONG and TSLL LONG held concurrently -- TSLL is 'Direxion Daily TSLA Bull 2X ETF' (confirmed via Polygon reference), i.e. the literal same underlying, just a 2x-leveraged wrapper. Same gap shape as every prior single-stock leveraged-ETF fix in sector-map.ts (SMCX/MULL/AVGX, AMZU, PLTU, GLW/GLWG, and this session's own earlier KGC/AEM fix #6298) -- TSLL had no entry anywhere resolveTheme checks, so it resolved to an isolated NAME:TSLL own-cluster and the real ~3x effective TSLA exposure went unflagged.",
     "finding": "Fixed by adding TSLL to the existing 'ev-auto' sector-map.ts bucket alongside TSLA (joins directly, no new bucket needed since TSLA already has a peer bucket). Opened PR #6324 with a regression test, RED->GREEN proven via git stash, sibling suites (theme-cluster/portfolio/play-brief-intel) unaffected, full suite 16386/16386 pass on Node 20, tsc clean.",
     "status": "PR #6324 open, draft, CI pending. Subscribed to activity."
+  },
+  "pr6324_merged_tsla_tsll_fix_2026_10_20": {
+    "ts": "2026-10-20T08:03:00Z",
+    "what": "PR #6324 (TSLA/TSLL theme-cluster gap) went green (mergeable_state:clean) ~18min after opening. Undrafted and merged via GitHub MCP (squash, expectedHeadSha guard) as b00de822511fad0545650314d13eb5217f8281bc.",
+    "finding": "N/A -- routine merge of an already-audited, already-journaled fix.",
+    "status": "Verified landed on origin/main (git show confirms TSLL in the ev-auto bucket). No follow-up needed."
   }
 }
