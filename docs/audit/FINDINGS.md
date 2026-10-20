@@ -38,6 +38,201 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## `loadTickerTrackRecord`'s `MAX_ROOTS` cap slices in most-recent-first order BEFORE the chronological `asOfMs` filter runs, discarding exactly the chains the filter needs — can silently collapse a real ticker track record to no citation at all
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | REPORTED, NOT FIXED — flagged for the swing-engine owner to decide the right shape (cheap pre-filter, disclosure of a clipped pool, raising the cap, or something else); not unilaterally touched, since the clean fix either widens scope into the shared `selectSwingRecordRootIds` (also used by the member-facing `/record` route) or risks a THIRD subtly-wrong ordering change in a function already fixed twice for ordering bugs (2026-09-18, 2026-09-21) |
+| **Severity** | P3 (a real Largo C3/historical-context gap, bounded to tickers with a genuinely large trade history — the common case, per the file's own sizing note, has well under `MAX_ROOTS=20` roots and never triggers this) |
+| **Surface** | `src/lib/swing/play-brief-ticker-history.ts` (`loadTickerTrackRecord`) |
+
+### What it is
+
+`loadTickerTrackRecord` builds the "desk has traded TICKER N times before" citation for the swing
+play-brief. `MAX_ROOTS = 20` bounds how many chains it fetches per request (its own doc comment:
+"keeps a pathological ticker (hundreds of historical rows) from fanning out into hundreds of DB
+round trips"). The candidate order comes from `selectSwingRecordRootIds(rows)`
+(`src/lib/swing/record.ts`), where `rows = await fetchSwingPositionsByTicker(ticker, 200)` is
+`ORDER BY session_date DESC, id DESC` (most-recent-first, confirmed at `db.ts:8515-8521`) —
+`selectSwingRecordRootIds` builds a `Set<number>` by scanning those rows in that same order, so
+`[...roots]` preserves most-recent-activity-first ordering.
+
+`rootIds.slice(0, MAX_ROOTS)` (line 111) keeps the 20 MOST RECENTLY ACTIVE roots — BEFORE the
+temporal-ordering filter at lines 122-125 (`resolved.filter(({resolvedAtMs}) => resolvedAtMs ==
+null || resolvedAtMs < asOfMs)`, added 2026-09-21 specifically to require a cited chain to have
+resolved strictly BEFORE the reviewed play's own exit) ever runs. For a reviewed play that is
+itself not recent (an older closed play, or any play where the ticker has accumulated meaningful
+activity since), the kept 20 are exactly the chains MOST LIKELY to resolve AFTER `asOfMs` and
+therefore get filtered out by the very next step — while the OLDER chains that filter needs (the
+ones that genuinely resolved before the reviewed play) were already discarded by the slice and
+never even fetched.
+
+Compounding it: still-OPEN roots (added to `selectSwingRecordRootIds`'s set via
+`OPEN_SWING_STATUSES.has(row.status)`, not just `graded_at`) also consume a slot in the same
+slice, and an open root can structurally never satisfy `chainResolved` later — a slot spent
+fetching a chain that was never going to count.
+
+### Live impact
+
+No field on `SwingTickerTrackRecord` or the function's return discloses that the cap (or the
+open-root slot waste) ever clipped the candidate pool, so a caller reviewing an older play on a
+ticker that has since accumulated significant newer activity cannot distinguish "genuinely no
+prior history" from "prior history existed but was discarded by the recency-first cap before the
+ordering filter ever ran." Downstream, `play-brief-intel.ts` renders `priorClosedTrades` as an
+unqualified fact: *"The desk has traded **{ticker}** **{N}** times before this play: **{W}W /
+{L}L**."* In the worst case (every one of the 20 kept roots resolves at/after `asOfMs`), `ordered`
+is empty and the WHOLE section silently omits (line 126: `if (!ordered.length) return null`) —
+degrading gracefully to no wrong number, but still erasing a real, citable track record with zero
+disclosure that the erasure was a cap artifact rather than a genuine absence of history.
+
+### Why reported, not fixed
+
+The clean fix for the ordering half needs real design judgment this file's own history argues
+should not be a drive-by call: `loadTickerTrackRecord` has already been fixed twice for temporal-
+ordering bugs (2026-09-18 original chain-aware rewrite, 2026-09-21 the `asOfMs` cutoff itself), and
+the natural fix — reorder candidates by proximity to `asOfMs` rather than by wall-clock recency, or
+pre-filter out structurally-doomed open roots before slicing — either requires fetching more than
+`MAX_ROOTS` candidates' chains to know their true resolution time cheaply (defeating the cap's own
+purpose) or means touching `selectSwingRecordRootIds` in `record.ts`, which this file's own header
+explicitly reuses rather than reimplementing BECAUSE the member-facing `/record` route depends on
+the exact same function — widening that function's behavior for this file's benefit risks a
+blast radius well beyond a single-issue PR.
+
+### Suggested next step
+
+Whoever owns the swing play-brief ticker-history citation should decide: (a) disclose when the cap
+was hit (expose a `poolClipped: boolean`/similar on `SwingTickerTrackRecord` so
+`tickerHistoryCoaching` can caveat "showing recent N of likely-more prior trades" instead of
+presenting N as the complete count), (b) cheaply exclude already-known-open roots before the slice
+(a local re-derivation in this file, not a change to the shared `selectSwingRecordRootIds`), (c)
+raise `MAX_ROOTS` since the stated justification ("hundreds of historical rows") is itself
+hypothetical — the file's own sizing note says the real closed population is ~30-40 chains
+platform-wide, so a materially higher cap may cost little in practice, or (d) some combination.
+Not landed here without that sign-off, given the file's own history of requiring more than one pass
+to get temporal ordering right.
+
+## Lane-rank's "exiting peer" exclusion set omitted STOP_OUT — a position that just hit its hard stop could still be named "Desk leader" — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo × Night Hawk Swings standing mandate, Workflow static-code sweep
+of not-yet-audited `play-brief-*.ts` files.
+
+**Root cause:** `computeLaneRank` (`src/lib/swing/play-brief-lane-rank.ts`) picks a "Desk leader"
+peer to name in the brief's lane-rank narrative, explicitly excluding any peer whose own manage
+engine already says "get out" — the whole point being that a member reading "Leader: TICKER @
+score" should never be pointed at a position the desk is actively telling members to exit (this
+exact bug shipped and was fixed once already, 2026-09-12, for a CRWD EXIT_RUNNER live repro, per
+the function's own comment). The exclusion set, `EXITING_MANAGE_ACTIONS`, was `new Set(["EXIT",
+"EXIT_RUNNER"])` — it never included `STOP_OUT`, even though `STOP_OUT` is defined elsewhere
+(`src/lib/zerodte/scale-out.ts`) as exactly the same severity of "get out" verdict: "not yet
+scaled and the mark hit the −60% hard stop → exit everything." The sibling set two lines below,
+`REDUCE_MANAGE_ACTIONS`, already includes `STOP_OUT` for its own (related but distinct) purpose —
+`EXITING_MANAGE_ACTIONS` simply never got the same addition.
+
+**Live impact:** a peer whose own `manageAction` is `STOP_OUT` — i.e. it just hit its hard
+capital-preservation stop — passed the `leaderCandidates` filter unfiltered and could be named
+"Desk leader: TICKER @ score — confirm before adding size" in a DIFFERENT play's brief, reading as
+"put money here" about a position the desk is simultaneously telling members it just stopped out
+of. Identical failure shape to the already-fixed CRWD/EXIT_RUNNER case, just for the one
+"get out" manageAction value that set didn't cover.
+
+**Fix:** Added `"STOP_OUT"` to `EXITING_MANAGE_ACTIONS`.
+
+**Fix rationale:** One-line addition matching the sibling `REDUCE_MANAGE_ACTIONS` set's existing
+treatment of `STOP_OUT` — no new mechanism, the exclusion logic itself was already correct and
+just missing this one value in its set.
+
+**Blast radius:** Single set, single consumer (`leaderCandidates` filter inside `computeLaneRank`).
+`EXITING_MANAGE_ACTIONS` has no other reader (repo-wide grep).
+
+**Tests:** 1 new regression test mirroring the existing EXIT_RUNNER test exactly, substituting
+`STOP_OUT` as the raw #1 peer's `manageAction`. RED→GREEN proven via `git stash` (fails against
+the pre-fix source — CRWD still named leader despite STOP_OUT — passes post-fix). `tsc --noEmit`
+clean. Full `play-brief-lane-rank.test.ts` (36 tests) green, run on Node 20.
+
+## `computeLaneRank` can still render a confidently-fabricated "#N of N" rank when the play's own row genuinely isn't found among its peers — real gap, but fixing it conflicts with an existing test's deliberate design intent
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | REPORTED, NOT FIXED — flagged for the swing/Largo-contract owner to decide the right shape (nullable rank vs. an explicit "own row not found" flag vs. leaving as-is); not unilaterally touched, since an existing test explicitly defends part of the current behavior as deliberate |
+| **Severity** | P3 (a real absence-disclosure gap per Largo C3, but the one KNOWN production trigger was already fixed 2026-09-17; residual exposure is narrower than the symptom alone suggests) |
+| **Surface** | `src/lib/swing/play-brief-lane-rank.ts` (`computeLaneRank`) |
+
+### What it is
+
+`computeLaneRank` locates the reviewed play's own row among its sorted peers at `idx =
+contractMatches.length === 1 ? sorted.findIndex(...) : sorted.findIndex((r) =>
+r.ticker.toUpperCase() === play.ticker.toUpperCase())`. When the play's own row is not present in
+`sorted` at all (`idx === -1`), `rank = idx >= 0 ? idx + 1 : sorted.length + 1` evaluates to
+`sorted.length + 1`, which the return statement then clamps: `rank: Math.min(rank, sorted.length)`
+— producing exactly `sorted.length`, i.e. the brief renders `"**#{total} of {total}**"` (confidently
+dead-last) for a case that is actually "we couldn't locate this play's own row in its peer set at
+all," not a real last-place measurement.
+
+### Why this is narrower than it looks
+
+A near-identical shape (`idx === -1` from a bucketing MISCLASSIFICATION, not a genuinely-missing
+row) was already found and fixed 2026-09-17 (live LITE repro) — `rowInBucket` was rewritten to key
+off `liveStatus` instead of the floor-gate `status` field specifically so a real, present row is
+correctly bucketed and therefore correctly located (`idx >= 0`) in production. That fix is still in
+place and unchanged by this finding.
+
+What remains is the residual, structurally-still-possible case where the play's own row is not in
+`laneRows` AT ALL (not merely misbucketed) — e.g. a caller supplying an incomplete peer list, or a
+genuine data-sync gap between the play object and the lane snapshot it's being ranked against. The
+function's own existing comment at the `playScore` fallback (line ~164) already acknowledges this:
+*"Falls back to play.score only when the play's own row isn't present in laneRows (shouldn't happen
+in production — laneRows is expected to include every open/WATCH row — but keeps the function total
+for a caller that passes a partial list, e.g. tests)."* So the author already anticipated this path
+existing, at least for defensive/test purposes — the gap is that `rank`/`total` don't get the same
+honest treatment `playScore` does.
+
+### Why this wasn't a drive-by fix
+
+A naive fix (return `null` when `idx === -1`, mirroring the existing `ownRowWithheld` early-return a
+few lines above) directly conflicts with an EXISTING, deliberately-written test:
+
+```
+test("computeLaneRank: playScore falls back to TerminalPlay.score when the play's own row is
+absent from laneRows", () => {
+  // Defensive fallback only — production laneRows is expected to always include the play's own
+  // row, but a caller passing a partial list (or a test) must still get a sane playScore rather
+  // than undefined/NaN.
+  const snap = computeLaneRank(play({ ticker: "AAPL", score: 26, status: "WATCH" }), [
+    row("XOM", 52.7, "WATCH"),
+    row("TSM", 49.6, "WATCH"),
+  ]);
+  assert.ok(snap);
+  assert.equal(snap!.playScore, 26, "no matching laneRows row for AAPL — falls back to play.score");
+});
+```
+
+This test explicitly expects a NON-NULL snapshot for exactly the `idx === -1` scenario — returning
+`null` here would break it and contradict its own stated design intent ("must still get a sane
+playScore"). The test does not itself assert anything about `rank`/`total` in this fixture, so there
+IS room to fix just those two fields without breaking it — but the two plausible shapes (make `rank`
+nullable and update `laneRankSection`'s template + every other consumer to handle it, or add a new
+`ownRowFound: boolean` field the renderer checks before building the `#N of N` line) are both a real,
+if small, API-shape decision on a type (`LaneRankSnapshot`) with more than one consumer — not a
+same-pattern one-line correction like the `STOP_OUT` exclusion fix shipped alongside this finding
+(`2026-10-20-swing-lanerank-stopout-leader-exclusion.md`).
+
+### Suggested next step
+
+Whoever owns the swing play-brief / lane-rank narrative should decide the shape: widen
+`LaneRankSnapshot.rank`/`total` to `number | null` (and gate the `laneRankSection` template line on
+non-null), or add an explicit `ownRowFound: boolean` the renderer can check before asserting a
+specific rank, then land it alongside an update to the existing `playScore`-fallback test so both
+fields' honesty-on-absence are locked in together, not drive-by patched here.
+
 ## 2026-10-20 — [FINDING, P1 Night Hawk 0DTE] Governor SEV-3 loss-halt read the naive mechanical grade instead of the real as-managed outcome — FIXED
 
 > **kind:** `FINDING`
