@@ -2934,6 +2934,39 @@ test("dataHonestyCoaching: stale GEX matrix warns dealer posture may lag (Largo 
   assert.match(line!, /dealer posture may lag spot/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, static-code sweep): this GEX-staleness check
+// (and its sibling age-label call) used to omit ctx.readMs entirely, defaulting
+// gexMatrixStale/gexMatrixAgeMs to a FRESH Date.now() sample instead of the request-wide anchor
+// every other staleness check in this same function already uses (vectorAgeStale above it,
+// gexMatrixStale again below it for closedMarketNote) — the same #5351/#5353/#5355/#5356-class
+// gap play-brief-types.ts's own `readMs` field doc comment names as a documented, not-yet-done
+// follow-up sweep. `asof` is set FRESH relative to `readMs` (age 0, well under
+// GEX_MATRIX_STALE_MS) but `readMs` itself is a fixed historical instant far from the real
+// wall-clock "now" this test actually runs at — proving the verdict follows `ctx.readMs`, not the
+// real clock (same proof shape as the file's existing "an explicit readMs anchor" tests for
+// confluenceCoaching/magnetCoaching/vexCoaching etc.).
+test("dataHonestyCoaching: GEX-staleness check uses ctx.readMs, not the real wall clock (2026-10-20 fix)", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z");
+  const line = dataHonestyCoaching(
+    ctx({
+      readMs,
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          asof: new Date(readMs).toISOString(),
+          gamma_posture: "long",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.doesNotMatch(
+    line!,
+    /GEX matrix \*\*\d/,
+    `a gex read fresh relative to ctx.readMs must not warn stale just because the real wall clock has moved on, got: ${line}`,
+  );
+});
+
 // GAP FOUND 2026-10-08 (Ask Largo standing mandate): neither staleness check above fires for the
 // orthogonal "compute is fresh but the MARKET is CLOSED" case `market_session_note` exists to
 // catch (vector-state-freshness.ts, PR #5306) — live repro INTC SWING:INTC:50 HOLD brief,
