@@ -858,5 +858,11 @@
     "ts": "2026-10-20T00:32:00Z",
     "what": "Run 39343114418 (PR #6287, 0DTE lane) also failed, same shape, at 00:24:33Z.",
     "status": "4th consecutive failure directly observed. Pattern fully established -- no longer deep-diving each occurrence (logs are identical: running=0/1 throughout, 36min timeout). Will note only material changes (success, or a materially different failure mode) going forward rather than re-confirming the same shape each time. Legacy digest unchanged, health 200."
+  },
+  "pr6298_opened_precious_metals_theme_gap_2026_10_20": {
+    "ts": "2026-10-20T01:50:00Z",
+    "what": "Fresh Ask Largo book-context audit: NVDA's brief correctly flagged NVDA/SOXS semis concentration earlier this session, so checked whether KGC+AEM (both live, committed LONG gold-mining calls) got the same treatment. They did not -- neither brief rendered a 'Book context' section at all.",
+    "finding": "Traced root cause: neither KGC (Kinross Gold) nor AEM (Agnico Eagle Mines) appeared anywhere in sector-map.ts's SECTORS map, so both resolved to isolated own-clusters and sameThesis('KGC','AEM') was false -- the identical gap shape as prior documented extensions to this file (ALAB/CRDO/KLAC, biotech, LABD/IOVA). Fixed via CARVE-OUT: added a 'precious-metals' sector with both tickers (verified via Polygon reference), new regression test (RED 1/27 fail -> GREEN 27/27 proven via git stash), play-brief-intel.test.ts + portfolio.test.ts (285 tests) unchanged, tsc/eslint clean.",
+    "status": "PR #6298 opened as draft (coreentryadmin-web/blackout-web), subscribed to PR activity. Will watch CI and merge once green per the standing merge-authorization policy -- deploys are still blocked by the ongoing ECS capacity deadlock, so this won't reach production immediately even once merged, but the fix is correct and ready to ship the moment deploys recover."
   }
 }
