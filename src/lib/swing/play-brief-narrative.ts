@@ -1545,7 +1545,16 @@ export function tradeManagerNarrativeSection(
   } else if (!breakLine && play.direction === "LONG" && execStop != null) {
     breakLine = `**Break watch** — lose premium stop **${fmtOptionUsd(execStop)}** → cut size or exit.`;
   } else if (!breakLine && play.direction === "SHORT" && execStop != null) {
-    breakLine = `**Break watch** — reclaim **${fmtOptionUsd(execStop)}** → cover shorts.`;
+    // BUG FIX (Ask Largo standing mandate, 2026-10-20): this used to say "reclaim $X -> cover
+    // shorts", implying the trigger is the premium RISING back up to X. But a swing play is always
+    // LONG PREMIUM regardless of direction (see the 2026-09-15 comment above this block) — execStop
+    // is a premium FLOOR, and execBreached (a few lines up) fires when the premium falls TO OR
+    // BELOW it, for BOTH directions alike. "Reclaim" is the right word for a structural resistance
+    // level a SHORT thesis invalidates by reclaiming from below (narrateFlip/narrateWall use it
+    // correctly for exactly that) — it is backwards for a premium floor, which can only be breached
+    // by a fall. The LONG branch above already says "lose" for the identical kind of value; this
+    // branch must match it.
+    breakLine = `**Break watch** — lose premium stop **${fmtOptionUsd(execStop)}** → cover shorts.`;
   }
   if (breakLine) add(breakLine, { reserved: true });
 
