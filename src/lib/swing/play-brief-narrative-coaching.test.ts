@@ -1809,6 +1809,83 @@ test("closedCoaching: stopped SHORT with entry/invalidation levels reports the r
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro CRWV:61/MSFT:49): the cushion
+// line used to unconditionally conclude "not that the stop was wrong" — a verdict watchForSection's
+// own "Since it closed" section (play-brief-intel.ts) directly contradicts whenever spot has since
+// reclaimed the exact same invalidation level ("the exit may have been early"). Both sections render
+// in the same envelope for every closed+stopped play, so a member reading a reclaimed position saw
+// the stop both cleared and implicated for the identical event. closedCoaching now defers to
+// "Since it closed" instead of asserting a verdict that section can contradict.
+test("closedCoaching: stopped LONG whose spot has since reclaimed invalidation defers to 'Since it closed' instead of asserting the stop wasn't wrong", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "LONG",
+      peak: 0,
+      exitPnlPct: -55.1,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 90,
+    }),
+    95, // spot back above the 90 invalidation level — reclaimed
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line!, /not that the stop was wrong/i);
+  assert.match(line!, /see "Since it closed" below/i);
+});
+
+test("closedCoaching: stopped SHORT whose spot has since reclaimed invalidation (dropped back below it) defers to 'Since it closed'", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "SHORT",
+      peak: 0,
+      exitPnlPct: -40,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 110,
+    }),
+    105, // spot back below the 110 invalidation level — reclaimed for a SHORT
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line!, /not that the stop was wrong/i);
+  assert.match(line!, /see "Since it closed" below/i);
+});
+
+test("closedCoaching: stopped LONG whose spot remains through invalidation keeps the original 'not that the stop was wrong' framing (no regression)", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "LONG",
+      peak: 0,
+      exitPnlPct: -55.1,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 90,
+    }),
+    85, // spot still below the 90 invalidation level — not reclaimed
+  );
+  assert.ok(line);
+  assert.match(line!, /not that the stop was wrong/i);
+  assert.doesNotMatch(line!, /Since it closed/i);
+});
+
+test("closedCoaching: stopped play with no spot argument (caller omitted it) keeps the original framing (safe default)", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "LONG",
+      peak: 0,
+      exitPnlPct: -55.1,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 90,
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /not that the stop was wrong/i);
+});
+
 test("closedCoaching: stopped play missing either level falls back to the generic prompt", () => {
   const line = closedCoaching(
     play({
