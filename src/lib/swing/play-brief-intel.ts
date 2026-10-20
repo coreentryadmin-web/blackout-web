@@ -541,15 +541,45 @@ export function bookContextSection(
   }
   if (overlap.sameThemeOpposedDirection.length) {
     const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeOpposedDirection);
-    const names = joinOverlapNames(
-      overlap.sameThemeOpposedDirection.map((p) =>
-        formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin),
-      ),
+    // GAP FOUND (Ask Largo standing mandate, 2026-10-20, live repro: TSLA 385P SHORT candidate,
+    // book already holding a real TSLA 352.5C LONG). `describeThemeOverlap` only sharpens to "the
+    // same name" when the candidate's THEME ITSELF is an own-cluster sentinel (theme-cluster.ts) —
+    // i.e. the candidate ticker has no resolved sector theme at all. TSLA resolves to a real,
+    // multi-name theme ("ev-auto"), so an opposed row that happens to be the LITERAL SAME TICKER
+    // as the candidate (not just the same sector) rendered with identical framing to a genuinely
+    // different name in the same theme (TSLL) — "theme 'ev-auto' already has an OPPOSED position:
+    // TSLA LONG (separate position #60), TSLL LONG." `formatOverlapPosition` already annotates the
+    // same-ticker row with "(separate position #N)", but that is one parenthetical among several
+    // names in a generic theme sentence — a trader can read past it. A same-ticker opposed
+    // position is a sharper signal than a same-sector one (holding TSLA both LONG and SHORT is
+    // mechanically self-defeating regardless of thesis; holding TSLA LONG and TSLL SHORT is a real,
+    // if aggressive, sector-divergence bet) — split it into its own louder sentence.
+    const reviewedTickerUpper = play.ticker.trim().toUpperCase();
+    const sameTickerOpposed = overlap.sameThemeOpposedDirection.filter(
+      (p) => p.ticker.trim().toUpperCase() === reviewedTickerUpper,
     );
-    lines.push(
-      `**Internal conflict** — ${describeThemeOverlap(overlap.theme)} already has an OPPOSED position: ${names}. ` +
-        `One leg is structurally betting against the other; this is not a hedge unless intentional.`,
+    const otherOpposed = overlap.sameThemeOpposedDirection.filter(
+      (p) => p.ticker.trim().toUpperCase() !== reviewedTickerUpper,
     );
+    if (sameTickerOpposed.length) {
+      const sameTickerNames = joinOverlapNames(
+        sameTickerOpposed.map((p) => formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin)),
+      );
+      lines.push(
+        `**Internal conflict — same underlying** — already holding ${sameTickerNames} on ${play.ticker} itself, ` +
+          `the opposite side of this ${play.direction} candidate. This is the identical name, not just the same ` +
+          `sector — one of these two positions is mechanically wrong.`,
+      );
+    }
+    if (otherOpposed.length) {
+      const names = joinOverlapNames(
+        otherOpposed.map((p) => formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin)),
+      );
+      lines.push(
+        `**Internal conflict** — ${describeThemeOverlap(overlap.theme)} already has an OPPOSED position: ${names}. ` +
+          `One leg is structurally betting against the other; this is not a hedge unless intentional.`,
+      );
+    }
   }
 
   return { title: "Book context", body: lines.join("\n\n"), bias: "neutral" };
