@@ -38,6 +38,81 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-20 — [FINDING, P3 Accessibility] Admin UserManagement modals had ~10 visible labels never associated with their inputs/selects — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** Same DISCOVERY-lane accessibility sweep batch as `#6370`/`#6371`
+(placeholder-only inputs). A background sweep agent also found this related — but
+distinct — defect class in `src/components/admin/UserManagement.tsx`: here a visible
+`<label>` element exists for every field, but it's a plain sibling of its control with no
+`htmlFor`/`id` link, so a screen reader still gets no accessible name on focus despite the
+label text being right there visually.
+
+**Root cause.** `EditUserModal` (First name, Last name, Tier, Role) and `CreateUserModal`
+(Email, Phone, First name, Last name, Tier, Role) each render the pattern:
+```tsx
+<div>
+  <label className="admin-filter-label block mb-1">Tier</label>
+  <select className="admin-filter-select w-full" value={tier} onChange={...}>...</select>
+</div>
+```
+with no `htmlFor` on the label and no matching `id` on the control. Additionally,
+`EditUserModal`'s read-only "one-time sign-in link" input had no `<label>` element at all —
+only a preceding `<p>` — and no `aria-label`/`aria-labelledby`.
+
+**Fix.** Added a unique `id` to each control (`edit-user-*` / `create-user-*` prefixes to
+keep the two modals' ids distinct) and `htmlFor` on its corresponding `<label>`; added
+`aria-label="One-time sign-in link"` to the read-only sign-in-link input, which has no
+dedicated label element to attach to.
+
+**Blast radius.** Two modal components (`EditUserModal`, `CreateUserModal`), both
+admin-only, both in the same file — no other consumer renders this markup.
+
+**Evidence of fix.** Extended the existing `src/components/admin/UserManagement.test.ts`
+(which already had a `componentBody()` source-inspection helper for this file) with 3 new
+tests covering all 10 field/label pairs plus the sign-in-link input. RED→GREEN proven via
+`git stash` on just `UserManagement.tsx`: the 3 new tests fail on the pre-fix source
+(3 pass / 3 fail), all 6 pass once the fix is restored. `tsc --noEmit` clean.
+
+**What was deliberately left unchanged.** The other two instances of the placeholder-only
+labeling defect class found by the same sweep (`x-intel/[id]/page.tsx`'s tweet-ID input,
+`ThermalSavedDesksMenu.tsx`'s save-desk-name input) are each fixed in their own separate
+PR (`#6370`, `#6371`) per the one-issue-per-PR policy — this finding covers only the
+unassociated-label pattern specific to `UserManagement.tsx`.
+
+## 2026-10-20 — [FINDING, P3 Accessibility] Thermal saved-desk-name input relied on a dynamic placeholder for its accessible name — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** DISCOVERY-lane accessibility sweep, same batch as the X-intel tweet-ID input
+fix (`#6370`) — a background sweep agent looked for other instances of the "placeholder-only
+labeling" defect class first found in `ExitIntentCapture.tsx` (`#6352`).
+
+**Root cause.** `src/features/thermal/components/ThermalSavedDesksMenu.tsx`'s "save current
+view" menu renders an `<input>` for the saved-desk name with
+`placeholder={defaultSavedDeskName(snapshot.ticker, snapshot.lens)}` and no `aria-label`, no
+`<label>`, no `aria-labelledby`. This is worse than a static placeholder: the placeholder
+text itself is dynamic (changes per ticker/lens), so there is no stable accessible name at
+all, and the preceding `<p>Save current view</p>` is plain text, not a `<label>` — not
+programmatically associated with the input either way.
+
+**Fix.** Added `aria-label="Saved desk name"` to the input, keeping the dynamic placeholder
+as a sighted-user hint.
+
+**Blast radius.** Single input, one dropdown menu component (`ThermalSavedDesksMenu`), one
+consumer surface (the Thermal desk).
+
+**Evidence of fix.** New test `src/features/thermal/components/ThermalSavedDesksMenu.test.ts`
+asserts the input's surrounding source carries `aria-label="Saved desk name"`. RED→GREEN
+proven via `git stash` on just the component file: fails on the pre-fix source (`not ok 1`),
+passes once the fix is restored. `tsc --noEmit` clean.
+
+**What was deliberately left unchanged.** Two other instances of the same defect class found
+by the same sweep (`x-intel/[id]/page.tsx`'s tweet-ID input — fixed separately in `#6370` —
+and `UserManagement.tsx`'s ~10 unassociated-label inputs/selects) are each handled in their
+own branch/PR per the one-issue-per-PR policy.
+
 ## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] Loss-side early de-risk A/B — MEASURED, candidate does NOT clearly improve outcomes, no gate changed
 
 > **kind:** `FINDING`
