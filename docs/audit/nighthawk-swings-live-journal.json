@@ -898,5 +898,11 @@
     "what": "AGGRESSIVE MODE enhancement, not a bug: a live NVDA play-brief deep audit against the contract found the 'Why this setup' section's 'Strike vs flow' mismatch line named only the accumulation flow's magnet strike ('magnet strike was $225; this pick landed at a different strike') without the pick's own strike, forcing a reader to cross-reference the separate Verdict section (play.contract) to see how far apart they actually are -- the matched-pick/corroboration branch right above it already names its one shared strike, so this was the one place the comparison stayed one-sided.",
     "finding": "Fixed by parsing play.occ via the already-shared parseOccSymbol helper (same pattern play-brief-narrative-coaching.ts already uses) so the sentence now reads '...magnet strike was $225; this pick used $212.5 instead...' when occ resolves, falling back to the old generic wording (never fabricating a number) when it doesn't. Opened PR #6319 with 2 regression tests, RED->GREEN proven via git stash, full suite 16383/16383 pass on Node 20, tsc clean.",
     "status": "PR #6319 open, draft, CI pending. Subscribed to activity. No conflict with any other open swing PR -- single call site, narrow change."
+  },
+  "pr6319_merged_strike_vs_flow_enhancement_2026_10_20": {
+    "ts": "2026-10-20T06:48:00Z",
+    "what": "PR #6319 (strike-vs-flow own-strike enhancement) went green on all checks (CI, CodeQL, PR webhook, Autopilot dispatch all success; dependabot/automerge correctly skipped, not a cursor/* branch) within ~12min of opening. Undrafted and merged via GitHub MCP (merge_pull_request, squash, expectedHeadSha guard) as c274b993518fadceec9fcb383ff16b03880583c8.",
+    "finding": "N/A -- routine merge of an already-audited, already-journaled enhancement.",
+    "status": "Verified landed on origin/main (git show confirms the 'this pick used $${ownStrike}' line is live in the merged file). No follow-up needed."
   }
 }
