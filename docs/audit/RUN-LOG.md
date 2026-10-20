@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-20 (00:16 UTC / Mon 20:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, flagged other-lane draft jam
+
+Monday evening, market closed. Resynced to `origin/main` (`8c7a9eb4` → `9627f849`, other-lane
+agent-state bump). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS —
+**0.0002, GOOD** (66/66 routed, 0 fail). Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:** 3 open
+agent PRs fleet-wide, all other-lane (0DTE/RVOL): #6290 and #6289 CI-RUNNING, and **#6288
+(READY-BUT-DRAFT — `verify: pass`, still draft)**, a green-draft jam per the standing discipline.
+Flagged here, not acted on — undrafting another lane's PR is the coordinator's job, not this
+lane's. **Step 3:** no new SEO-lane gap found. No PR opened.
+
 ## 2026-10-19 (18:16 UTC / Mon 14:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Resynced to `origin/main` (`1dcb5c16` → `bfd640dc`). `git log` showed another lane journaling a
