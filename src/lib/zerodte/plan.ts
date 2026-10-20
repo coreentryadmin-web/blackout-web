@@ -279,6 +279,77 @@ export type EntryStatus =
   | "CHEAPER" // quoted BELOW what the flow paid — better entry than the smart money got
   | "NO_QUOTE"; // no live quote — evidence only, no plan
 
+/** A contract's real greeks at plan time (OptionSnapshot.delta/gamma/theta/vega — already
+ *  fetched for the live quote, previously discarded before reaching plan/selection). null
+ *  fields when the provider omitted them — NEVER fabricated. */
+export type ContractGreeks = {
+  delta: number | null;
+  gamma: number | null;
+  theta: number | null;
+  vega: number | null;
+};
+
+/** SHADOW-ONLY diagnostic verdict on whether a contract's own greeks look like a real
+ *  directional instrument or a "cheap because it's nearly dead" one — see
+ *  evaluateContractGreeksQuality's doc. Never a gate; additive/diagnostic only until a real
+ *  outcome sample justifies promoting it. */
+export type ContractGreeksQuality = {
+  /** true when |delta| sits below GREEKS_LOW_DELTA_FLOOR — a real directional 0DTE play
+   *  should have meaningful delta; a near-zero-delta contract moves on theta/vega noise more
+   *  than on the underlying thesis actually playing out. */
+  low_delta: boolean;
+  /** true when the contract's theta decay, expressed as a % of its own mark per day, exceeds
+   *  GREEKS_HIGH_THETA_DECAY_PCT — "don't pick cheap contracts just because they could show a
+   *  huge percentage gain" (operator instruction): a contract bleeding a large % of its own
+   *  price per day in time decay needs the underlying to move fast just to break even. */
+  high_theta_decay: boolean;
+  /** theta as a % of mark (positive = bleeding), null when either input is missing/non-positive. */
+  theta_decay_pct: number | null;
+  /** Human-readable summary of whichever concerns above are true; null when neither is. */
+  note: string | null;
+};
+
+/** STARTING, UNCALIBRATED thresholds (2026-10-20) — same discipline as RVOL's own classification
+ *  constants (relative-volume.ts): named so a future calibration pass can retune them against
+ *  real paired-outcome data without touching the formula, not derived from this codebase's own
+ *  historical data yet. A 0.15 delta floor and a 15%/day theta-decay ceiling are common retail-
+ *  options conventions, not measured here. */
+export const GREEKS_LOW_DELTA_FLOOR = 0.15;
+export const GREEKS_HIGH_THETA_DECAY_PCT = 15;
+
+/**
+ * Pure, SHADOW-ONLY diagnostic — never gates a commit. Flags a contract whose greeks suggest it
+ * is a poor instrument for the directional thesis it's being used to express: too little delta
+ * (barely moves with the underlying) or too much theta decay relative to its own price (bleeds
+ * out fast regardless of direction). `theta` is read as a per-day dollar decay (the sign
+ * convention OptionSnapshot/Massive report it in — typically negative for a long option; the
+ * absolute value is what's compared against mark). Any missing/non-finite/non-positive input
+ * degrades to "unmeasured" (both flags false, note null) — absence is never treated as a defect.
+ */
+export function evaluateContractGreeksQuality(input: {
+  delta: number | null;
+  theta: number | null;
+  mark: number | null;
+}): ContractGreeksQuality {
+  const { delta, theta, mark } = input;
+  const lowDelta =
+    delta != null && Number.isFinite(delta) ? Math.abs(delta) < GREEKS_LOW_DELTA_FLOOR : false;
+  const thetaDecayPct =
+    theta != null && Number.isFinite(theta) && mark != null && Number.isFinite(mark) && mark > 0
+      ? round2((Math.abs(theta) / mark) * 100)
+      : null;
+  const highThetaDecay = thetaDecayPct != null && thetaDecayPct > GREEKS_HIGH_THETA_DECAY_PCT;
+  const notes: string[] = [];
+  if (lowDelta) notes.push(`|delta| ${delta != null ? Math.abs(delta).toFixed(3) : "?"} < ${GREEKS_LOW_DELTA_FLOOR} floor — weak directional exposure`);
+  if (highThetaDecay) notes.push(`theta decay ${thetaDecayPct}%/day of mark exceeds ${GREEKS_HIGH_THETA_DECAY_PCT}% ceiling`);
+  return {
+    low_delta: lowDelta,
+    high_theta_decay: highThetaDecay,
+    theta_decay_pct: thetaDecayPct,
+    note: notes.length ? notes.join("; ") : null,
+  };
+}
+
 export type ContractPlan = {
   /** OCC contract this plan is for (top strike on the dominant side). */
   occ: string;
@@ -327,6 +398,16 @@ export type ContractPlan = {
    *  Optional/back-compat, same "absence is not staleness" convention as every other conditional
    *  field here: undefined when the provider supplied no quote timestamp. */
   quoteAgeMs?: number | null;
+  /** The contract's real greeks at plan time (OptionSnapshot — already fetched for the live
+   *  quote, previously discarded before reaching here). Optional/back-compat: undefined when
+   *  the caller doesn't supply them (legacy/hand-built plans). Additive, diagnostic-adjacent —
+   *  see `greeks_quality` below for the derived shadow verdict this enables. */
+  greeks?: ContractGreeks;
+  /** SHADOW-ONLY verdict from evaluateContractGreeksQuality, always computed when `greeks` was
+   *  supplied (even when neither flag fires — the caller still gets theta_decay_pct etc. for
+   *  persistence). Never gates a commit — see ContractGreeksQuality's own doc. null only when
+   *  `greeks` wasn't supplied at all (legacy/hand-built plan, nothing to evaluate). */
+  greeks_quality: ContractGreeksQuality | null;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -372,6 +453,10 @@ export function buildContractPlan(input: {
   chasePct?: number;
   /** Override G-9 illiquid spread cap (default PLAN_ILLIQUID_SPREAD_PCT). */
   illiquidSpreadPct?: number;
+  /** The contract's real greeks at plan time (OptionSnapshot.delta/gamma/theta/vega), when the
+   *  caller has them. Optional/back-compat — omitted → `greeks`/`greeks_quality` are undefined/
+   *  null on the returned plan, same discipline as every other conditional field here. */
+  greeks?: ContractGreeks;
 }): ContractPlan {
   const { occ, direction, price, flowAvgFill, bid, ask, mark } = input;
 
@@ -461,6 +546,10 @@ export function buildContractPlan(input: {
     stop_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.stop_pct / 100)) : null,
     target_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.target_pct / 100)) : null,
     time_stop_et: zerodteTimeStopEtLabel(),
+    greeks: input.greeks,
+    greeks_quality: input.greeks
+      ? evaluateContractGreeksQuality({ delta: input.greeks.delta, theta: input.greeks.theta, mark })
+      : null,
     underlying_target: target,
     underlying_invalid: invalid,
     quoteAgeMs: input.quoteAgeMs ?? null,
