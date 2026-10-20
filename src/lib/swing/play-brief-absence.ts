@@ -14,6 +14,7 @@ import type { VectorAbsenceReport, VectorSection } from "@/lib/bie/vector-absent
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
+import type { GammaFlipReason } from "@/lib/providers/gex-cross-validation-core";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
@@ -686,13 +687,13 @@ function collectGexStalenessAbsence(
 /**
  * GAP FOUND (Ask Largo standing mandate, 2026-10-08 cycle): `gex-positioning.ts`'s own
  * `flip_reason` field exists specifically so a caller can tell a genuine computation gap
- * (`insufficient_data`, `crossings_far` — a refetch/rebuild might resolve it) apart from an
- * honest, real market-structure fact (`net_short_everywhere`/`net_long_everywhere` — the book
- * never crosses zero gamma because dealers sit on one side at EVERY strike; that file's own doc
- * comment calls this out: "no gamma flip, dealers net short at EVERY strike" is itself a finding,
- * not an absence of one). `play-brief.ts`'s `levelsFromContext` reads only `gex?.flip` when
- * building the "gamma flip" level and silently drops the entry whenever it is null — collapsing
- * both cases to the exact same silence `flip_reason` was built to distinguish, and leaving
+ * (`insufficient_strikes`, `crossings_far_from_spot` — a refetch/rebuild might resolve it) apart
+ * from an honest, real market-structure fact (`net_short_everywhere` — the book never crosses
+ * zero gamma because dealers are net-short at EVERY strike; that file's own doc comment calls
+ * this out: "no gamma flip, dealers net short at EVERY strike" is itself a finding, not an
+ * absence of one). `play-brief.ts`'s `levelsFromContext` reads only `gex?.flip` when building the
+ * "gamma flip" level and silently drops the entry whenever it is null — collapsing both cases to
+ * the exact same silence `flip_reason` was built to distinguish, and leaving
  * `envelope.levels`/`unavailableSources` with NOTHING that tells a reader (or the model) whether
  * "no gamma flip shown" means "we don't have it yet" or "there genuinely isn't one, which is
  * itself worth knowing." Live-reproduced 2026-10-08: INTC's GEX read had a FRESH, non-stale
@@ -708,21 +709,35 @@ function collectGexStalenessAbsence(
  * surfaced — an unrecognized future code is left un-reported rather than guessed at, per C6
  * ("if a product cannot produce a calibrated read, omit the field — fabrication is worse than
  * nothing").
+ *
+ * BUG FIX (2026-10-20, Ask Largo standing mandate, static-code sweep): this table's keys were
+ * drifted vocabulary, not the real `GammaFlipReason` string literals
+ * (`gex-cross-validation-core.ts`) that `polygon-options-gex.ts` actually assigns to
+ * `gex.flip_reason` at the two real producer call sites. The real enum is `"resolved" |
+ * "insufficient_strikes" | "net_short_everywhere" | "crossings_far_from_spot"` — this table used
+ * `insufficient_data` (real: `insufficient_strikes`) and `crossings_far` (real:
+ * `crossings_far_from_spot`), so a real `flip_reason` of either of those two genuine data-gap
+ * codes silently matched NOTHING below and the whole disclosure this function exists to produce
+ * never fired — reproducing, for 2 of the 3 real reason codes, the exact C3 silence this function
+ * was built to fix. `net_long_everywhere` was never a real value at all: `cumulativeGammaFlipDetail`
+ * (gex-cross-validation-core.ts)'s own doc comment confirms the cumulative-gamma definition can
+ * only go null on the "never turns positive" (net-short-everywhere) side — there is no symmetric
+ * "net-long-everywhere" null case to report. The existing regression test for the
+ * `insufficient_data` case used the identical wrong fixture string, so it passed against the bug
+ * instead of catching it. Typed as `Partial<Record<GammaFlipReason, ...>>` (rather than the
+ * previous bare `Record<string, ...>`) so a future rename/removal of a `GammaFlipReason` value
+ * fails this table at compile time instead of silently drifting out of sync again.
  */
-const GEX_FLIP_REASON_DISCLOSURE: Record<string, { reason: string; retryable: boolean }> = {
+const GEX_FLIP_REASON_DISCLOSURE: Partial<Record<GammaFlipReason, { reason: string; retryable: boolean }>> = {
   net_short_everywhere: {
     reason: "no gamma flip in range — dealers are net short gamma at every strike (a real structural read, not a missing fetch)",
     retryable: false,
   },
-  net_long_everywhere: {
-    reason: "no gamma flip in range — dealers are net long gamma at every strike (a real structural read, not a missing fetch)",
-    retryable: false,
-  },
-  insufficient_data: {
+  insufficient_strikes: {
     reason: "not enough strikes in the chain to compute a gamma flip",
     retryable: true,
   },
-  crossings_far: {
+  crossings_far_from_spot: {
     reason: "the book does cross zero gamma, but every crossing sits outside the plausible range near spot",
     retryable: true,
   },
@@ -734,7 +749,12 @@ function collectGexFlipAbsence(
 ): BieUnavailableSource | null {
   if (!gex || gex.flip != null) return null;
   if (gexMatrixStale(gex, readMs)) return null; // already covered by collectGexStalenessAbsence
-  const disclosure = gex.flip_reason ? GEX_FLIP_REASON_DISCLOSURE[gex.flip_reason] : null;
+  // gex.flip_reason is loosely typed `string | null` on GexPositioning, but both real producer
+  // call sites (polygon-options-gex.ts) assign it directly from a GammaFlipDetail.reason
+  // (GammaFlipReason) — the cast documents that real invariant rather than widening the lookup
+  // table's key type back to a bare string.
+  const flipReason = gex.flip_reason as GammaFlipReason | undefined;
+  const disclosure = flipReason ? GEX_FLIP_REASON_DISCLOSURE[flipReason] : null;
   if (!disclosure) return null;
   return {
     source: "GEX gamma flip",
