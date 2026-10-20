@@ -6546,7 +6546,10 @@ test("flowIntelSection: the print list is labeled honestly (48h/premium-sorted) 
   assert.ok(section);
   assert.doesNotMatch(section!.body, /\*\*Recent prints:\*\*/, "must not claim these are 'recent' — they are premium-sorted over 48h");
   assert.match(section!.body, /\*\*Notable prints \(48h, largest premium first\):\*\*/);
-  assert.match(section!.body, /CALL 350\.00 \$3430000\.00 \[40h ago\]/, "each print must disclose its own age so a reader can see it falls outside the 6h aggregate window");
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): premium now renders via the K/M-scaled
+  // fmtPremium formatter (matching the HELIX tape aggregate one line above), not the raw
+  // per-contract-price fmtUsd formatter this used to carry ("$3430000.00").
+  assert.match(section!.body, /CALL 350\.00 \$3\.4M \[40h ago\]/, "each print must disclose its own age so a reader can see it falls outside the 6h aggregate window");
 });
 
 test("flowIntelSection: notable-print strikes render to 2dp like every other strike in the brief (C9 precision)", () => {
@@ -6575,7 +6578,41 @@ test("flowIntelSection: notable-print strikes render to 2dp like every other str
 
   const section = flowIntelSection(eco, fixturePlay());
   assert.ok(section);
-  assert.match(section!.body, /PUT 232\.50 \$500000\.00/, "strike must round to 2dp, not render the raw float");
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): premium now renders via fmtPremium ("$500K"),
+  // not the raw per-contract-price fmtUsd formatter this used to carry ("$500000.00").
+  assert.match(section!.body, /PUT 232\.50 \$500K/, "strike must round to 2dp, not render the raw float");
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro CRWV #63/#61): notable prints used
+// `fmtUsd` (fmtOptionUsd, documented for per-contract PRICES in the $0.01-$999.99 range) on raw
+// HELIX flow-print premiums — hundreds of thousands of dollars — producing unreadable output
+// ("$715000.00") one line below this same section's HELIX tape aggregate, which correctly renders
+// "$204K" via the K/M-scaled `fmtPremium`. Two incompatible dollar-magnitude styles for the same
+// kind of fact (flow premium) in one section.
+test("flowIntelSection: notable-print premium renders K/M-scaled like the HELIX tape aggregate, not a raw per-contract price", () => {
+  const recentIso = new Date(Date.now() - 1_800_000).toISOString();
+  const eco = {
+    ticker: "CRWV",
+    flow_feed_fresh: true,
+    recent_flow: { window_hours: 6, print_count: 2, call_premium: 204_000, put_premium: 0, unknown_premium: 0 },
+    recent_anomalies: [],
+    flow_full_state: {
+      count: 1,
+      total_premium: 715_000,
+      top_tickers: [],
+      recent: [{ option_type: "PUT", strike: 43, premium: 715_000, alerted_at: recentIso }],
+    },
+    zerodte_today: null,
+    gex_positioning: null,
+    arsenal: null,
+    vector_full_state: null,
+  } as unknown as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay());
+  assert.ok(section);
+  assert.match(section!.body, /calls \$204K/, "HELIX tape aggregate uses the K/M-scaled formatter");
+  assert.match(section!.body, /PUT 43\.00 \$715K/, "notable print must use the same K/M-scaled formatter, not fmtUsd's raw $715000.00");
+  assert.doesNotMatch(section!.body, /\$715000\.00/, "must never render the raw per-contract-price format for a flow premium");
 });
 
 // FINDING (Ask Largo standing mandate, 2026-09-22, live repro MSTR:33): chartTechnicalsSection,

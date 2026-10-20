@@ -1242,7 +1242,14 @@ export function flowIntelSection(
     const prints = recent
       .slice(0, 5)
       .map((p) => {
-        const prem = p.premium != null ? fmtUsd(p.premium) : "—";
+        // BUG FIX (Ask Largo standing mandate, 2026-10-20): this line used `fmtUsd` (fmtOptionUsd,
+        // documented for per-contract PRICES in the $0.01-$999.99 range) on raw HELIX flow-print
+        // premiums (hundreds of thousands of dollars), producing unreadable "$715000.00" one line
+        // below this same section's HELIX tape aggregate, which correctly renders "$204K" via the
+        // K/M-scaled `fmtPremium` — two incompatible dollar-magnitude styles for the same kind of
+        // fact in one section. `fmtPremium` is already imported/used elsewhere in this file for the
+        // identical "flow premium" quantity (line ~1181, ~1132).
+        const prem = p.premium != null ? fmtPremium(p.premium) : "—";
         const gex = p.gex_proximity ? ` @ ${p.gex_proximity.replace(/_/g, " ")}` : "";
         const ageLabel = relativeAgeLabel(p.alerted_at || p.event_at || null);
         const agePart = ageLabel ? ` [${ageLabel}]` : "";
