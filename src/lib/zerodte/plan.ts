@@ -10,14 +10,39 @@
 // engines. Honesty rule: a plan prints only when a real quote or real fill
 // exists; missing data → no plan, never a guess.
 
-/** Fixed risk discipline for 0DTE longs-premium plays. Rules, not predictions. */
-export const PLAN_RULES = {
+const PLAN_RULES_DEFAULT = {
   /** Cut the position when premium loses half its entry value. */
   stop_pct: -50,
   /** Take (at least a trim) when premium doubles. */
   target_pct: 100,
   /** Hard time stop — flat by 15:50 ET (10 min before cash close). */
   time_stop_et_minutes: 15 * 60 + 50,
+} as const;
+
+/** Configurable stops/scaling (2026-10-20, member audit directive: "make stops and scaling
+ *  configurable"). `ZERODTE_STOP_PCT`/`ZERODTE_TARGET_PCT` override the member-facing hard
+ *  stop/target, SAME convention as `ZERODTE_CHASE_PCT`/`ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES`
+ *  below — a validated env var overrides the default, an absent/invalid one falls back to the
+ *  exact pre-existing constant, so "keep existing hard stops and member-facing behavior
+ *  unchanged" (the standing instruction) holds for every deployment that doesn't explicitly set
+ *  one of these. Bounded to the only values that make sense for a long-premium stop/target:
+ *  stop_pct must be negative (a "stop" that isn't a loss limit is not a stop), target_pct must
+ *  be positive. `time_stop_et_minutes` is NOT made configurable here — it's a session-structure
+ *  boundary (cash-close proximity), not a risk-sizing knob, and already has its own override
+ *  path (ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES governs the adjacent NEW-COMMIT cutoff; the
+ *  EXIT time-stop staying fixed to the real close is deliberate). */
+export function envOverridePct(envVar: string, fallback: number, mustBeNegative: boolean): number {
+  const raw = process.env[envVar]?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n === 0) return fallback;
+  if (mustBeNegative ? n > 0 : n < 0) return fallback; // wrong sign — never silently flip intent
+  return n;
+}
+export const PLAN_RULES = {
+  stop_pct: envOverridePct("ZERODTE_STOP_PCT", PLAN_RULES_DEFAULT.stop_pct, true),
+  target_pct: envOverridePct("ZERODTE_TARGET_PCT", PLAN_RULES_DEFAULT.target_pct, false),
+  time_stop_et_minutes: PLAN_RULES_DEFAULT.time_stop_et_minutes,
 } as const;
 
 /** `PLAN_RULES.time_stop_et_minutes` as "H:MM" ET, for prose that quotes the hard-exit
