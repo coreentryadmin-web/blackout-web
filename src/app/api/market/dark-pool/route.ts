@@ -12,7 +12,10 @@ export async function GET(req: NextRequest) {
   if (auth instanceof Response) return auth;
 
   const sp = req.nextUrl.searchParams;
-  const limit = Math.min(Number(sp.get("limit") ?? 50), 100);
+  // `?? 50` only guards an absent param — a non-numeric one (e.g. `limit=xyz`) survives it as
+  // NaN (neither null nor undefined) and silently empties every downstream `.slice(0, limit)`
+  // call despite real cached data existing. `|| 50` catches it (NaN is falsy).
+  const limit = Math.min(Number(sp.get("limit") ?? 50) || 50, 100);
   const min_premium = Number(sp.get("min_premium") ?? 0) || 0;
 
   try {
