@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T21:29:58.004Z",
+  "updated_at": "2026-10-20T22:53:41.297Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ad86957a489beb6f2901a709299daa2ced5a84",
+    "last_main_sha": "8c0f2ee4393490a085ec78b35b6c95bba4dcb1cd",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-11T05:36:52.672Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-11T05:36:56.913Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-11T07:36:31.950Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-11T07:36:36.416Z",
       "type": "context_sync",
@@ -1271,38 +1253,76 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-20T22:53:27.887Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 9
+    },
+    {
+      "at": "2026-10-20T22:53:34.831Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 9
+    },
+    {
+      "at": "2026-10-20T22:53:41.297Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 9
     }
   ],
   "open_prs": [
     {
-      "number": 6413,
-      "title": "docs(findings): stage report-only finding — ticker-history MAX_ROOTS cap discards chains its own ordering filter needs",
-      "branch": "docs/findings-ticker-history-maxroots-ordering",
+      "number": 6426,
+      "title": "fix(swing): wallDynamicsSection now shows the 5 most recent wall events, not the oldest",
+      "branch": "fix/swing-walldynamics-oldest-events",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T21:27:04Z"
+      "updated_at": "2026-10-20T22:50:25Z"
     },
     {
-      "number": 6412,
-      "title": "docs(findings): stage report-only finding — lane-rank fabricated rank when own row not found",
-      "branch": "docs/findings-lanerank-own-row-not-found",
+      "number": 6425,
+      "title": "fix(swing): VWAP side omitted instead of fabricated 'below' when spot is unknown",
+      "branch": "fix/swing-vwap-side-unknown-spot",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T21:24:35Z"
+      "updated_at": "2026-10-20T22:48:37Z"
     },
     {
-      "number": 6411,
-      "title": "fix(swing): lane-rank named-leader exclusion now covers STOP_OUT",
-      "branch": "fix/swing-lanerank-stopout-leader-exclusion",
+      "number": 6424,
+      "title": "fix(swing): duplicate-OTHER-ticker cross-engine label now checks the duplicate's own origins",
+      "branch": "fix/swing-bookcontext-duplicate-ticker-wrong-engine-ref",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T21:22:20Z"
+      "updated_at": "2026-10-20T22:47:02Z"
+    },
+    {
+      "number": 6423,
+      "title": "fix(swing): SHORT premium-stop Break watch fallback now says 'lose', not 'reclaim'",
+      "branch": "fix/swing-short-premium-stop-reclaim-wording",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "completed/success",
+      "updated_at": "2026-10-20T22:42:46Z"
+    },
+    {
+      "number": 6422,
+      "title": "fix(swing): SHORT invalidation-level selection now includes dark_pool, matching LONG",
+      "branch": "fix/swing-short-invalidation-darkpool",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "completed/success",
+      "updated_at": "2026-10-20T22:40:28Z"
     },
     {
       "number": 5547,
