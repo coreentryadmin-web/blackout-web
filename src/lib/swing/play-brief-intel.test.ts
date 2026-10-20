@@ -393,6 +393,54 @@ test("bookContextSection: a different ticker (not the reviewed one) appearing tw
   assert.match(section!.body, /MARA LONG(?!\s*\()/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): the test above happens to have the reviewed
+// play (RIOT) be swing-native while the MSTX duplicate group is genuinely mixed-origin, so the old
+// `reviewedIsBangerOrigin`-based check got the right answer there BY COINCIDENCE. It answers the
+// wrong question in general: whether a duplicate-OTHER-ticker pair is cross-engine depends on
+// whether THOSE rows mix origins with EACH OTHER, not on the REVIEWED ticker's own origin. Two
+// Banger-origin MSTX rows, reviewed from a swing-native RIOT play, used to be falsely labeled
+// "cross-engine" solely because RIOT itself is swing-native.
+test("bookContextSection: two Banger-origin rows of a duplicate OTHER ticker are same-engine, not falsely cross-engine, regardless of the reviewed play's own origin", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "MSTX", direction: "LONG", bangerId: 501 },
+    { ticker: "MSTX", direction: "LONG", bangerId: 502 },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:RIOT:1203", ticker: "RIOT", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /MSTX LONG \(separate position #501\)/);
+  assert.match(section!.body, /MSTX LONG \(separate position #502\)/);
+  assert.doesNotMatch(
+    section!.body,
+    /cross-engine/,
+    `two same-engine (Banger) MSTX rows must not be labeled cross-engine just because RIOT is swing-native, got: ${section!.body}`,
+  );
+});
+
+// Inverse of the test above: the REVIEWED play is ITSELF Banger-origin, while the duplicate OTHER
+// ticker's group genuinely mixes a native swing row with a Banger row — the old code would have
+// silently dropped the real cross-engine distinction here solely because the reviewed play happens
+// to be Banger-origin.
+test("bookContextSection: a genuinely mixed-origin duplicate OTHER ticker is still labeled cross-engine even when the reviewed play is itself Banger-origin", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "MSTX", direction: "LONG", positionId: 1209 },
+    { ticker: "MSTX", direction: "LONG", bangerId: 4471 },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:RIOT:1203", ticker: "RIOT", direction: "LONG", status: "OPEN", regime: BANGER_LEDGER_REGIME_LABEL }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /MSTX LONG \(separate position #1209\)/);
+  assert.match(
+    section!.body,
+    /MSTX LONG \(separate, cross-engine position #4471\)/,
+    `a genuinely mixed-origin MSTX duplicate must stay cross-engine even when RIOT itself is Banger-origin, got: ${section!.body}`,
+  );
+});
+
 // ── archetypeTrackRecordSection (Largo C10 historical context; Ask Largo mandate) ─────────────────
 function trackRecordEntry(over: Partial<SwingTrackRecordEntry> = {}): SwingTrackRecordEntry {
   return {
