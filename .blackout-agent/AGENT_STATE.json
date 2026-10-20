@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T12:35:09.291Z",
+  "updated_at": "2026-10-20T13:23:45.826Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "9df6d4193c371c7b111a8276033b56aea88fb422",
+    "last_main_sha": "f96a33da53f521b17eb264e02329fd802c1a3ec9",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-09T17:23:07.039Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-09T17:23:12.097Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-09T18:08:00.574Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-09T18:08:06.230Z",
       "type": "context_sync",
@@ -1271,18 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T13:23:36.925Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T13:23:41.441Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T13:23:45.826Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6338,
-      "title": "docs(findings): fold native-oauth rate-limit/size-bound finding into FINDINGS.md",
-      "branch": "docs/fold-findings-native-oauth-20261020-122407",
+      "number": 6345,
+      "title": "docs(findings): fold API_INTEGRATION_MAP.md Clerk webhook stale-doc finding into FINDINGS.md",
+      "branch": "docs/fold-findings-api-map-20261020",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T12:24:40Z"
+      "updated_at": "2026-10-20T13:17:32Z"
     },
     {
       "number": 5547,
