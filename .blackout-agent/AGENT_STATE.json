@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T13:23:45.826Z",
+  "updated_at": "2026-10-20T13:39:13.544Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f96a33da53f521b17eb264e02329fd802c1a3ec9",
+    "last_main_sha": "ef236d41eed71a0a1f32956cf505c868693ccbab",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-09T18:08:06.230Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-09T18:08:12.739Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-10T11:08:13.736Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-10T11:08:19.437Z",
       "type": "context_sync",
@@ -1271,18 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T13:39:01.970Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-20T13:39:07.872Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-20T13:39:13.544Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 6345,
-      "title": "docs(findings): fold API_INTEGRATION_MAP.md Clerk webhook stale-doc finding into FINDINGS.md",
-      "branch": "docs/fold-findings-api-map-20261020",
+      "number": 6347,
+      "title": "docs(findings): correct stale \"Meridian still missing from catalog\" claim",
+      "branch": "docs/correct-meridian-catalog-finding-20261020",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T13:17:32Z"
+      "updated_at": "2026-10-20T13:29:15Z"
+    },
+    {
+      "number": 6346,
+      "title": "fix(cron): restore vector-pick-sweep overlap-lock TTL silently reverted 1500s→900s",
+      "branch": "fix/vector-pick-sweep-ttl-regression",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-20T13:27:03Z"
     },
     {
       "number": 5547,
