@@ -741,6 +741,20 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
   variant of this section's other "don't trust prior-turn git state" traps, but the cause here is
   live concurrency, not a container restart — `git status`/`git branch --show-current` can look
   correct at the start of a turn and still be invalidated by another agent before that turn ends.
+  **A SELF-INFLICTED variant of the same trap (hit live 2026-10-20): launching a `npm test` full-suite
+  run in the background, then switching branches (`git checkout`/`git reset --hard`/`git stash`)
+  on the SAME working directory while it's still executing, silently feeds the running test process
+  a moving target — files change under it mid-run, and its pass/fail counts become meaningless.**
+  Caught mid-incident: a background full-suite run (16450 tests, ~7min) was killed partway through
+  (only ~7000 subtests had run) after branch-switching commands landed on top of it; its partial
+  output was discarded and the suite was re-run cleanly, untouched, to get a trustworthy result.
+  The fix that actually found the real CI failure (two length-limit test failures caused by a copy
+  edit) only worked because the SECOND run was left alone from launch to completion — no `git`
+  commands of any kind, by this agent or a background task, touching the working directory while a
+  test process reads from it. **Rule: once a background test/build is launched on the shared tree,
+  treat the tree as locked until that task notifies completion** — do read-only investigation (API
+  calls, `cat`/`grep` on files outside the repo, reading already-saved logs) in the meantime, never
+  `git checkout`/`reset`/`stash`/`pull` on the repo itself.
 - **Direct Postgres (raw TCP) is blocked**, same as WebSockets — only HTTP(S) egress through the agent proxy works. So `pg_stat_activity`/lock/row-count probes against prod are **not possible from this sandbox** — root-causing a live DB-side issue (lock contention, slow query, table bloat) needs either an AWS ECS exec session or a temporary HTTP-exposed debug endpoint in the app itself. Don't spend time retrying a raw `pg.Client` connection here.
 - **`${{shared.*}}` env refs do NOT resolve here** — set literals: `UW_API_KEY` (UUID), `DATABASE_URL`, `REDIS_URL`, `POLYGON_API_BASE`. Working: `POLYGON_API_KEY`, `CLERK_SECRET_KEY`, Clerk publishable key. **Benzinga rides the Polygon key** — the Benzinga news/catalysts feed is served under the same Polygon subscription at `{POLYGON_API_BASE}/benzinga/v2/news?...&apiKey={POLYGON_API_KEY}` (re-verified live 2026-07-13: 200 for `channels=fda|guidance|m&a` and `ticker=NVDA&channels=earnings`). There is **no separate `BENZINGA_API_KEY`**; news fetches live via the Polygon key. (Earlier note claiming the key was missing was stale.)
 - Clerk instance requires a **phone number** on user creation; rapid sign-in/token cycles get **FAPI-rate-limited** — authenticate once per run.
