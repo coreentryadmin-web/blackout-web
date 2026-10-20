@@ -35,40 +35,6 @@ export type SwingPlayBriefSignal = ProductSignal & {
 };
 
 /**
- * Convert ET time to "YYYY-MM-DD HH:mm ET" format required by Largo C1.
- *
- * @param isoString ISO 8601 timestamp (e.g., "2026-10-18T15:30:45.123Z")
- * @returns "YYYY-MM-DD HH:mm ET"
- */
-function formatAsOfET(isoString: string): string {
-  const date = new Date(isoString);
-  // Convert to ET (UTC-4 in summer, UTC-5 in winter)
-  const etFormatter = new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: undefined,
-    timeZone: "America/New_York",
-    hour12: false,
-  });
-
-  const parts = etFormatter.formatToParts(date);
-  const year = parts.find((p) => p.type === "year")?.value;
-  const month = parts.find((p) => p.type === "month")?.value;
-  const day = parts.find((p) => p.type === "day")?.value;
-  const hour = parts.find((p) => p.type === "hour")?.value;
-  const minute = parts.find((p) => p.type === "minute")?.value;
-
-  if (!year || !month || !day || !hour || !minute) {
-    throw new Error(`Failed to format date: ${isoString}`);
-  }
-
-  return `${year}-${month}-${day} ${hour}:${minute} ET`;
-}
-
-/**
  * Extract direction from envelope bias field (Largo C5).
  */
 function extractDirection(bias: BieBias): Direction {
@@ -165,7 +131,17 @@ export function adaptSwingBriefToLargo(result: SwingPlayBriefResult): ProductRea
   return productRead(
     {
       product: "swing",
-      as_of: formatAsOfET(asOf),
+      // BUG FIX (production 2026-10-20, every swing play-brief 503ing with "Invalid time
+      // value"): `asOf` here is `SwingPlayBriefResult.asOf`, which is always
+      // `SwingPlayBriefContext.asOf` (play-brief.ts), which is always `etStamp(nowMs)`
+      // (play-brief-context.ts) — ALREADY the exact "YYYY-MM-DD HH:mm ET" shape Largo C1
+      // requires. A prior version of this adapter re-parsed it with `new Date(asOf)` as if it
+      // were a raw ISO instant; `new Date("2026-10-20 00:41 ET")` is an Invalid Date, and
+      // `Intl.DateTimeFormat.formatToParts()` on an Invalid Date throws `RangeError: Invalid
+      // time value` — uncaught by every caller, every ticker, every status, since `asOf` is
+      // computed once per request and is never a raw ISO string in practice. Pass it through
+      // verbatim instead of re-formatting an already-formatted stamp.
+      as_of: asOf,
       freshness: "cached", // Deterministic service, no live upstream
       age_seconds: null, // Freshness is session-anchored, not wall-clock-age
       source: "computed", // No external provider — pure deterministic logic
