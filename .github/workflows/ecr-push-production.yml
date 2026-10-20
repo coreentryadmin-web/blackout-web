@@ -211,6 +211,13 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "Registered new task definition: ${NEW_ARN}"
 
+          # Scale up when autoscaling has scaled below MinCapacity (5). At desired<5 the 100/120
+          # roll deadlocks (measured 2026-10-20: PRIMARY stuck at running=0/1 for 36 min).
+          node scripts/deploy/ensure-web-deploy-capacity.mjs \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --floor 5
+
           # Do NOT pass --desired-count here: auto-scaling manages the task count. Overriding it
           # resets the count on every deploy and fights the scaling target. The live scalable
           # target is min 5 / max 12 (verified 2026-08-06 via
