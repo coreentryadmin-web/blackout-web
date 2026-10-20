@@ -55,7 +55,7 @@ function toYmd(ms: number): string {
  *  is a real trading-day grouping, not an assumption). Days with fewer than a usable number of
  *  bars (holiday/weekend noise, or a half session) are left as whatever real bars exist — the
  *  profile builder itself treats missing minutes as real zero-volume, never as absence. */
-function groupMinuteBarsByDate(bars: Array<{ t: number; v: number }>): Map<string, number[]> {
+export function groupMinuteBarsByDate(bars: Array<{ t: number; v: number }>): Map<string, number[]> {
   const byDate = new Map<string, number[]>();
   for (const b of bars) {
     const date = toYmd(b.t);
