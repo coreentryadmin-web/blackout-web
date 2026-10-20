@@ -895,18 +895,42 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   // what gradePlanFromBars will stamp after the session). Same single derivation as mapLedgerRow.
   return {
     ...payload,
-    ledger: payload.ledger.map((row) => ({
-      ...row,
-      live_pnl_pct: reconcileLedgerLivePnlPct(row),
-      // Re-price the executable P&L off the member-visible ROUNDED bid/entry (same reason the
-      // mid live_pnl_pct is recomputed here) so the two exit lanes stay directly comparable.
-      live_pnl_pct_exec: executableFill(row.bid, row.ask, row.entry_premium).pnl_pct,
-      // Re-derive the ladder fired-state off the rounded entry/peak so a tranche's rendered
-      // premium level and its FIRED flag agree with the numbers shown elsewhere on the row.
-      exit_policy: row.exit_policy
-        ? buildTerminalExitLadder(row.exit_policy, row.entry_premium, row.peak_premium)
-        : null,
-    })),
+    ledger: payload.ledger.map((row) => {
+      // BUG FIX (2026-10-20, Ask Largo/5-engine standing mandate, live repro): peak_pnl_pct/
+      // mfe_capture_pct/floor_pnl_pct were computed in mapLedgerRow from the RAW pre-roundFloats
+      // entry_premium/peak_premium, but roundFloats() below rounds entry_premium/peak_premium
+      // independently of each other — so a row with a half-cent peak (e.g. a real 0.695 rounding
+      // to a displayed 0.70) ends up with a peak_pnl_pct that no longer matches the simple
+      // (peak−entry)/entry arithmetic a member would do from the row's OWN displayed
+      // peak_premium/entry_premium fields. live_pnl_pct/live_pnl_pct_exec/exit_policy already get
+      // this exact re-derivation treatment below for the identical reason — these three fields
+      // never did. Re-derived here from the same member-visible rounded premiums, same functions
+      // mapLedgerRow itself uses (peakPnlPct/mfeCapturePct/ratchetFloorPct+ratchetTargetReached).
+      const peakPnl = peakPnlPct(row.entry_premium, row.peak_premium);
+      return {
+        ...row,
+        live_pnl_pct: reconcileLedgerLivePnlPct(row),
+        // Re-price the executable P&L off the member-visible ROUNDED bid/entry (same reason the
+        // mid live_pnl_pct is recomputed here) so the two exit lanes stay directly comparable.
+        live_pnl_pct_exec: executableFill(row.bid, row.ask, row.entry_premium).pnl_pct,
+        // Re-derive the ladder fired-state off the rounded entry/peak so a tranche's rendered
+        // premium level and its FIRED flag agree with the numbers shown elsewhere on the row.
+        exit_policy: row.exit_policy
+          ? buildTerminalExitLadder(row.exit_policy, row.entry_premium, row.peak_premium)
+          : null,
+        peak_pnl_pct: peakPnl,
+        mfe_capture_pct: mfeCapturePct(row.exit_pnl_pct, peakPnl),
+        floor_pnl_pct: row.is_condor
+          ? null
+          : ratchetFloorPct(
+              pinnedLivePnlPct(row.entry_premium, row.peak_premium),
+              ratchetTargetReached(
+                pinnedLivePnlPct(row.entry_premium, row.peak_premium),
+                row.target_pct ?? PLAN_RULES.target_pct,
+              )
+            ),
+      };
+    }),
   };
 }
 
