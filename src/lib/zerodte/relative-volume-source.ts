@@ -34,6 +34,23 @@ const AVG_DAILY_VOLUME_LOOKBACK_CALENDAR_DAYS = 30; // ~20 real trading days aft
 const PROFILE_LOOKBACK_CALENDAR_DAYS = 12; // ~8-9 real trading days — see the file header's cap note
 const PROFILE_CACHE_TTL_SEC = 20 * 60 * 60; // one profile fetch per ticker per session day, not per scan pass
 
+/** Hard ceiling per commit-time RVOL shadow assembly — Polygon minute/daily fetches have no native
+ *  timeout; one hung ticker must not block `scanZeroDteBoard` (and therefore
+ *  `recordZeroDteScanTick`) indefinitely. Measured prod 2026-10-21: scan heartbeat
+ *  `critical_stale` with cron handshakes still "accepted" — Promise.allSettled does NOT help when
+ *  a child promise never settles. Override in tests via `RVOL_SHADOW_TIMEOUT_MS`. */
+export function rvolShadowFetchTimeoutMs(): number {
+  const n = Number(process.env.RVOL_SHADOW_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 12_000;
+}
+
+async function withRvolShadowTimeout<T>(work: Promise<T>): Promise<T | null> {
+  return Promise.race([
+    work,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), rvolShadowFetchTimeoutMs())),
+  ]);
+}
+
 export type RelativeVolumeShadowRead = {
   /** Flat-proration read — the ORIGINAL (2026-10-19 PR #6287) method, kept as the baseline. */
   baseline: RelativeVolumeRead;
@@ -140,31 +157,38 @@ async function avgDailyVolume(ticker: string, nowMs: number): Promise<number | n
  * a caller should treat null as "no shadow signal this commit," identical to how `why_now`'s own
  * absence is handled elsewhere in this ledger.
  */
+async function computeRelativeVolumeShadowInner(
+  ticker: string,
+  nowMs: number
+): Promise<RelativeVolumeShadowRead | null> {
+  const [cumVol, avgVol, profile] = await Promise.all([
+    cumulativeVolumeToday(ticker, nowMs),
+    avgDailyVolume(ticker, nowMs),
+    buildProfileForTicker(ticker, nowMs),
+  ]);
+  if (cumVol == null || avgVol == null) return null;
+
+  const baseline = computeRelativeVolume({ cumulativeVolumeToday: cumVol, avgDailyVolume: avgVol, nowMs });
+  const candidate = computeRelativeVolume({
+    cumulativeVolumeToday: cumVol,
+    avgDailyVolume: avgVol,
+    nowMs,
+    timeOfDayProfile: profile,
+  });
+  return {
+    baseline,
+    candidate,
+    avg_daily_volume: Math.round(avgVol),
+    profile_days_used: profile?.days_used ?? null,
+  };
+}
+
 export async function computeRelativeVolumeShadow(
   ticker: string,
   nowMs: number
 ): Promise<RelativeVolumeShadowRead | null> {
   try {
-    const [cumVol, avgVol, profile] = await Promise.all([
-      cumulativeVolumeToday(ticker, nowMs),
-      avgDailyVolume(ticker, nowMs),
-      buildProfileForTicker(ticker, nowMs),
-    ]);
-    if (cumVol == null || avgVol == null) return null;
-
-    const baseline = computeRelativeVolume({ cumulativeVolumeToday: cumVol, avgDailyVolume: avgVol, nowMs });
-    const candidate = computeRelativeVolume({
-      cumulativeVolumeToday: cumVol,
-      avgDailyVolume: avgVol,
-      nowMs,
-      timeOfDayProfile: profile,
-    });
-    return {
-      baseline,
-      candidate,
-      avg_daily_volume: Math.round(avgVol),
-      profile_days_used: profile?.days_used ?? null,
-    };
+    return await withRvolShadowTimeout(computeRelativeVolumeShadowInner(ticker, nowMs));
   } catch {
     return null;
   }

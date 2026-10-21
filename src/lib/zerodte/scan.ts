@@ -1808,8 +1808,8 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   // COALESCE pin would discard a refresh-lane recomputation anyway). NEVER gates, scores, or alters
   // entry/exit/stop/target in any way — see relative-volume.ts's own header for the full rationale
   // and the intended graduation path before this is ever registered as a real cortex source.
-  // `computeRelativeVolumeShadow` never throws; Promise.allSettled is still used as a second,
-  // redundant safety net so a single hung/slow ticker can never block the whole commit batch.
+  // `computeRelativeVolumeShadow` never throws and enforces its own per-ticker fetch timeout
+  // (relative-volume-source.ts); Promise.allSettled is still used as a second safety net.
   const rvolShadowByTicker = new Map<string, RelativeVolumeShadowRead>();
   if (committedFresh.length > 0) {
     const rvolResults = await Promise.allSettled(
