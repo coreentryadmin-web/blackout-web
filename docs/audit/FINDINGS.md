@@ -38,6 +38,359 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-21 — [FINDING, swing] `watchForSection`'s "Before entry, clear: N gates" bullet implied clearing the gates reopens entry even when the same envelope's own narrative says it's moot
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 (direct self-contradiction within one envelope — a section-local read leads to the opposite conclusion of the brief's own narrative) |
+| **Surface** | `src/lib/swing/play-brief-intel.ts` — `watchForSection()` |
+
+### Root cause
+
+`watchForSection`'s "Watch levels" section renders `**Before entry, clear:** ${n} gate${...} — see
+Trade manager read above.` keyed purely on `play.gateBlocks.length`, with no check against
+`gateFramingMootReason()` (`entry-enterability.ts`). That helper is already consulted by THREE
+sibling renderers of the identical `play.gateBlocks` list — `watchEntrySection` (play-brief.ts),
+`watchGateCoaching` (play-brief-narrative-coaching.ts), and `entryTriggerDeadReason` (a few lines
+above in this same file) — all of which correctly prefix the gate list with "(moot — ...)" whenever
+clearing the named gates would NOT actually reopen entry (score below the lane floor, thesis still
+FORMING, or a legacy-exempt-only marker). The "Before entry, clear: N gates" line is a 4th renderer
+of the same data, phrased as an imperative instruction, that never applied the same check.
+
+A 2026-09-14 FINDINGS.md fix reasoned this 4th site was safe because it "already only renders a
+count with a pointer to one of the two homes" that got fixed — but `watchEntrySection`'s own
+non-moot branch (`**Gates blocking entry:** ${gateCount} gate${...} — see Trade manager read
+below.`) is the IDENTICAL "count + pointer" shape and still applies the moot check, disproving
+that rationale.
+
+### Evidence
+
+Live reproduction, both real WATCH candidates in the same fetch:
+- **TSLA**: "Watch levels" → `**Before entry, clear:** 4 gates — see Trade manager read above.`
+  while "Trade manager read" (same envelope) → `**Also gate-blocked** (moot — below the lane score
+  floor) — g_s3_earnings: ... · g_s12_halt_feed_stale: ... · g_s4_regime: ... · g_s14_cortex: ...`
+  and "Lane rank" → `#5 of 7 on WATCH lane · score **31.1** (-20 vs median)`.
+- **SHOP**: identical pattern — `**Before entry, clear:** 1 gate ...` vs `**Also gate-blocked**
+  (moot — thesis still forming — not yet at trigger) — legacy_exempt: ...`.
+
+A reader relying on just the "Watch levels" section (a plausible read path, since sections are
+titled and often consumed individually) would conclude clearing the named gate(s) is sufficient to
+enter — the opposite of what the same envelope's own "Trade manager read" section says two
+sections earlier.
+
+Added two tests to `play-brief-intel.test.ts` (one for the moot case, matching the live TSLA
+repro's `aboveFloor: false`; one control confirming a genuinely live gate list still renders the
+imperative count + pointer, unchanged). RED→GREEN, git-stash-verified on the source file alone:
+309/310 (1 fail) before the fix, 310/310 after. Broader regression sweep: `play-brief.test.ts` +
+`play-brief-narrative-coaching.test.ts` + `entry-enterability.test.ts` — 690/690 total.
+`tsc --noEmit` clean.
+
+### Blast radius
+
+Single bullet in a single function. No other call site renders `play.gateBlocks.length` without
+the moot check — confirmed by the same 3-sibling-renderer inventory this finding's own root-cause
+section names, all of which already handle it correctly.
+
+### Fix
+
+`watchForSection` now computes `gateFramingMootReason(play)` the same way its siblings do and
+branches: when moot, render `**Also gate-blocked** (moot — ${reason}) — see Trade manager read
+above.` (mirroring `watchEntrySection`'s own moot-branch wording); when genuinely live, keep the
+existing imperative "Before entry, clear: N gates" text unchanged.
+
+### Why not a bigger fix
+
+Did not touch `gateFramingMootReason`/`deadPlayReason`/`entry-enterability.ts` — those are already
+correct and already used by 3 other call sites; only this 4th renderer needed the same check
+applied. Did not change the full-reason-text duplication discipline this bullet already observes
+(pointing to "Trade manager read" rather than re-rendering each gate's reason) — that's a separate,
+already-fixed concern (2026-09-12/2026-10-08) this finding doesn't touch.
+
+## 2026-10-21 — [FINDING, swing] Premium stop rail rendered as a live thesis-break trigger after it has gone structurally inert post-scale — real governing floor never disclosed
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 (direct, false management claim — a member could hold past a point the brief itself says is a hard stop, when the engine can no longer act on it) |
+| **Surface** | `src/lib/swing/play-brief.ts` — `managementSection()`; `src/lib/swing/play-brief-intel.ts` — `watchForSection()`; new helpers in `src/lib/zerodte/terminal-ladder.ts` |
+
+### Root cause
+
+Swing's exit policy (`SWING_SCALE_OUT_POLICY`, `exit-policy.ts`) is sourced directly from
+`SCALE_OUT_RULES` (`zerodte/scale-out.ts`): bank 50% at +100% premium, hard-stop at -60% pre-scale,
+trail the runner at 50% of its peak post-scale. The live engine (`deriveScaleOutAction`/
+`computeScaleOutTriggerInfo`) gates the hard stop `if (!scaledAlready)` — once any trim tranche
+fires, `computeScaleOutTriggerInfo` returns `hard_stop_price: null` because "the hard stop no
+longer applies (the partial is already locked in)", and `manage.ts`'s `premium_stop` GATE comment
+says the same thing explicitly: "only fires pre-scale, by design."
+
+`buildTerminalExitLadder` (`terminal-ladder.ts`) computes `stop_premium` unconditionally with no
+equivalent awareness of trim state. Two render sites then show it as if it were still live:
+- `play-brief.ts`'s `managementSection()` — the "Rails: stop X · target Y" line.
+- `play-brief-intel.ts`'s `watchForSection()` — the "Premium stop rail: $X — thesis breaks if mark
+  closes below" line, with a fully-gated cushion-percentage computation built on top of it.
+
+Both files already have the equivalent fix on the **target** side (2026-09-22/2026-10-08 — once a
+trim tranche at/above `target_premium` has fired, the target line is suppressed/annotated rather
+than read as a fresh unmet objective) — the stop side was never given the symmetric treatment.
+
+### Evidence
+
+Live `GET /api/market/swing/play-brief?playId=SWING:MRNA&positionId=1958&status=TRIM`: Entry
+**$6.49**, Peak **+103.4%**, "Trim ladder: +100% ✓", "Banked: 50% @ +100% ($12.98)". Management
+section rendered "Rails: stop $2.60 · target $12.98 ✓ (reached)" and "What to watch" rendered
+"Premium stop rail: **$2.60** — 79% cushion from current bid — thesis breaks if mark closes below"
+with no caveat anywhere. Recomputing: $6.49 × 0.4 = $2.596 → $2.60 (matches the stop shown) — but
+per the engine's own code, this level is structurally dead now that the position has scaled. The
+real governing floor is the runner's trailing stop: peak premium (~$6.49 × 2.034 ≈ $13.21) × 0.5 ≈
+**$6.60** — never mentioned anywhere in the brief.
+
+Added `hasScaledOut`/`runnerTrailingStopPremium` pure helpers to `terminal-ladder.ts` (2 new unit
+tests), and regression tests in both `play-brief.test.ts` and `play-brief-intel.test.ts` using the
+exact live MRNA numbers (entry $6.49, peak +103.4%, fired trim at $12.98, stop $2.60 → expected
+runner-trail floor $6.60). RED→GREEN, git-stash-verified on the source files alone:
+- `terminal-ladder.test.ts`: 11/13 (the 2 new tests failed) → 13/13.
+- `play-brief.test.ts`: 160/163 (3 fail, including 2 pre-existing fixtures whose assertions
+  encoded the old buggy "stop always bare" behavior and needed correcting) → 163/163.
+- `play-brief-intel.test.ts`: 308/309 (1 fail) → 309/309.
+
+Broader regression sweep: `play-brief-narrative-coaching.test.ts` + `play-brief-narrative.test.ts`
++ `exit-policy-snapshot.test.ts` + `play-timeline.test.ts` + `strategy-version.test.ts` +
+`scale-out.test.ts` — 395/395. `tsc --noEmit` clean.
+
+### Blast radius
+
+Two pre-existing tests (`play-brief.test.ts`, the NN "+sign" repro and the EXTR "target already
+reached" repro) had fixtures where a trim had already fired, so their stop-side assertions
+implicitly encoded the bug (stop always renders bare). Both were corrected to assert the new,
+correct annotated text rather than loosened or deleted — their original point (no "+" sign on
+absolute prices; target-reached annotation) is preserved and still verified.
+
+### Fix
+
+Two new pure helpers on `TerminalExitLadder` (`terminal-ladder.ts`): `hasScaledOut()` (any trim
+tranche fired) and `runnerTrailingStopPremium(peakPremium)` (peakPremium × `SCALE_OUT_RULES.
+trail_from_peak`, mirroring exactly what `computeScaleOutTriggerInfo` returns post-scale). Both
+render sites now check `hasScaledOut` and, when true, annotate the dead stop_premium as "no longer
+applies — already scaled" and surface the real runner-trail floor (derived from `play.entry` and
+`play.peak`, the same fields the Position section already displays) instead of silently keeping
+the "thesis breaks if mark closes below" framing.
+
+### Why not a bigger fix
+
+Did not change `buildTerminalExitLadder` itself to null out `stop_premium` post-scale (mirroring
+the target side would suggest this) — `stop_premium` is also consumed elsewhere (e.g. as a
+reference level in the ladder/structure render) where nulling it could lose information; the fix
+is scoped to the two narrative render sites that make the false "still live" claim, per this
+finding's own repro. Did not touch `premium_stop`/`deriveScaleOutAction`/`manage.ts` — those are
+already correct; only the two display-layer render sites needed the equivalent awareness.
+
+## 2026-10-21 — [FINDING, swing] Live gate-blocking reason "Trading-halt feed unavailable" never surfaced by the swing envelope's own absence/freshness disclosure
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 (Largo contract absence-principle violation — a real, gate-evaluated outage is invisible on the exact surfaces built to disclose outages) |
+| **Surface** | `src/lib/swing/play-brief-absence.ts` — `collectBriefUnavailableSources()`; `src/lib/swing/play-brief-intel.ts` — `dataFreshnessSection()` |
+
+### Root cause
+
+`collectBriefUnavailableSources` (`play-brief-absence.ts`) is the single function that feeds both
+`envelope.unavailableSources` (the array the UI's `UnavailableChip` renders) and `confidence.why`'s
+source list. It independently checks HELIX flow, option mark, GEX positioning/matrix staleness,
+lane-rank fetch failure, Vector desk state, Meridian peer cohort, Night Hawk Legacy, and
+thesis-health availability — but never references halt/LULD data at all (a case-insensitive grep
+for "halt" in the file returns nothing). G-S12 (`v2/halt-read.ts`'s `readSwingHaltStateForTickers`)
+is a real, live-computed system state evaluated at discovery/commit time; `entry-verdict.ts` turns
+a stale halt feed into the gate-block reason "Trading-halt feed unavailable — desk will not open
+until halt/LULD data recovers." `dataFreshnessSection` (`play-brief-intel.ts`) — the section
+literally titled "Data freshness" — has the identical blind spot: it only checks option-mark
+staleness, swing-scan staleness, Vector/GEX age, and HELIX flow.
+
+### Evidence
+
+Live TSLA WATCH envelope's "Trade manager read" section states, as one of the (moot, but real and
+gate-evaluated) blocking reasons: "**g_s12_halt_feed_stale**: Trading-halt feed unavailable — desk
+will not open until halt/LULD data recovers." The SAME envelope's `confidence.why` read "6 sources
+unavailable this cycle (HELIX flow, Vector heatmap, Vector dark pool, Meridian peer cohort, swing
+discovery scan, Night Hawk Legacy) — see below" — halt feed is not among the 6, and the enumerated
+`unavailableSources` array likewise has no halt/LULD entry. The "Data freshness" section ("Swing
+scan: ..." / "HELIX flow: pipeline stale ...") also said nothing about it. A reader relying on the
+brief's dedicated, purpose-built staleness disclosure — the exact surface the Largo product
+contract's absence principle exists to guarantee — had no way to learn the halt feed is currently
+unavailable, even though every other upstream dependency this brief uses is already wired into it.
+
+Added 3 tests to `play-brief-absence.test.ts` (surfaces when `g_s12_halt_feed_stale` is present;
+does NOT surface for a genuine halt `g_s12_halted` — a real market-state fact, not a missing read;
+does not fabricate the source when no halt gate is present) and 2 to `play-brief-intel.test.ts`
+(disclosed / not fabricated). RED→GREEN, git-stash-verified on both source files together: 403/405
+(2 fail) before the fix, 405/405 after. Broader regression sweep: `play-brief.test.ts` +
+`entry-verdict.test.ts` + `entry-enterability.test.ts` — 620/620 total. `tsc --noEmit` clean.
+
+### Blast radius
+
+Two call sites, both named in the root cause. Halt-feed staleness is structurally a WATCH-only
+signal (the gate is only ever evaluated pre-commit by `v2/gates.ts`/discovery.ts), so both checks
+are naturally no-ops for OPEN/HOLD/TRIM/CLOSED buckets — consistent with the `!isNotLive` gating
+every other live-desk-state check in `collectBriefUnavailableSources` already uses.
+
+### Fix
+
+Both functions now check `play.gateBlocks?.some((g) => g.code === "g_s12_halt_feed_stale")` (the
+exact code `entry-verdict.ts` already stamps) and, when present, add a "Trading-halt feed"
+unavailable-source entry / "Data freshness" line respectively. Deliberately scoped to the
+feed-staleness code only — a genuine halt (`g_s12_halted`) is a real market-state fact, not a
+missing read, so it does not belong in an "unavailable sources" disclosure built for data gaps.
+
+### Why not a bigger fix
+
+Did not add a general halt-state display elsewhere in the brief (e.g. a dedicated "Trading halted"
+callout) — out of scope; this finding is specifically about the absence/freshness disclosure
+surfaces already built for exactly this kind of gap, matching every other source already wired in.
+
+## 2026-10-21 — [FINDING, swing] Confidence "moderate" tier collapsed the entire realistic 1-8 unavailable-source range into one undifferentiated label
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED (partially — see "Why not a bigger fix") |
+| **Severity** | P3 (calibration nuance, Largo C6/C7 — no field was wrong, a real distinction was unrepresented) |
+| **Surface** | `src/lib/swing/play-brief-confidence.ts` — `swingPlayBriefConfidence()` |
+
+### Root cause
+
+For non-closed, non-thin-entry plays, the only threshold was zero vs non-zero `unavailableSources`
+— any count >=1 read "moderate" with no further graduation. Live data confirmed the full realistic
+range in production: MRNA (8 unavailable — every live feed this file tracks for a committed
+position down at once, essentially total live-source outage) and RNG×2 (8 each) read the IDENTICAL
+"moderate" as DKNG (7) and TSLA/SHOP (6 each, WATCH bucket). The function's own unit tests already
+showed the bottom of the range (1 and 2) also reads "moderate", so 1-of-N and 8-of-8 were
+presentationally identical. The `"insufficient"` `BieConfidenceLevel` the type declares valid (and
+that the precedent this function's own header comment cites, `cortex-read.ts`, actually reaches for
+"every source absent") was structurally unreachable from `swingPlayBriefConfidence` — no code path
+ever returned it, even at the measured live worst case of 8/8 feeds down.
+
+### Evidence
+
+MRNA (positionId 1958, TRIM): `confidence.level='moderate'`, `unavailableSources` length 8
+(`['HELIX flow','option mark','Vector heatmap','Vector dark pool','Meridian catalysts','swing
+discovery scan','Night Hawk Legacy','thesis health']`). RNG (positionId 1966, OPEN):
+`confidence.level='moderate'`, length 8 (identical 8 names). DKNG (positionId 1963, OPEN):
+`confidence.level='moderate'`, length 7. TSLA/SHOP (WATCH): `confidence.level='moderate'`, length 6
+each. All four distinct real counts (6, 7, 8, 8) rendered the same single label with no
+intermediate tier used in production.
+
+Added 4 tests to `play-brief-confidence.test.ts` (5 still reads "moderate" — no regression at the
+old boundary; 6 and 8 now read "low"; the thin-entry-evidence gate still dominates over the new
+tier). RED→GREEN, git-stash-verified on the source file alone: 11/13 (2 fail) before the fix,
+13/13 after. Broader regression sweep: `play-brief.test.ts` + `cortex-read.test.ts` — 206/206
+total. `tsc --noEmit` clean.
+
+### Blast radius
+
+Single function, one new branch. No other call site reads `swingPlayBriefConfidence`'s output
+beyond the envelope's `confidence` field it already populated.
+
+### Fix
+
+Added a `low` tier at `unavailableSources.length >= 6` (between the existing zero-count `high`
+branch and the `moderate` fallback), citing the real counts this audit cycle observed in its own
+code comment. Existing tests pinning 1 and 2 at "moderate" are untouched; 5 still reads "moderate"
+(verified by a new test at the old boundary); 6 and 8 now read "low".
+
+### Why not a bigger fix
+
+This is explicitly a partial fix. `collectBriefUnavailableSources` (`play-brief-absence.ts`) has no
+fixed roster size — its ~19 distinct possible `source` labels are mutually exclusive by gating
+condition (e.g. "Vector desk state" vs "fetch failed" are alternate branches of the same check) and
+bucket/context-dependent (Meridian peer cohort, 0DTE Command, Night Hawk Legacy, etc. only ever
+fire under specific conditions), so there is no honest, non-arbitrary "N of M" denominator to
+compute from inside this function without restructuring `collectBriefUnavailableSources` itself to
+also report how many checks it attempted (not just which failed) — a materially bigger change than
+this single-issue PR's scope. Because of that, this fix deliberately stops at a count-based `low`
+tier grounded in the real distribution this audit cycle measured (6/7/8 all occurring live), rather
+than fabricating a false `insufficient`/"every source absent" claim without a true denominator to
+back it — doing so would be exactly the kind of invented certainty the Largo contract's own C6
+principle warns against. Reaching a genuine `insufficient` tier is a real, distinct follow-up that
+needs that denominator fix first, not a threshold tune of this PR's own count.
+
+## 2026-10-21 — [FINDING, spx-slayer] `mergePulseIntoDesk` silently drops the scored "VIX curve" factor on `GET /api/market/spx/play` via a `??` that keeps a defined-but-empty placeholder
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 (scoring input silently dropped — sibling endpoints disagree on the same underlying data at the same instant) |
+| **Surface** | `src/features/spx/lib/spx-desk-merge.ts` — `mergePulseIntoDesk()` |
+
+### Root cause
+
+`mergePulseIntoDesk` merges the fast ~1s pulse lane onto the slower ~10s base desk build with
+`vix_term: pulse.vix_term ?? base.vix_term`. The off-hours "serve today's own settled close"
+branch of `buildSpxDeskPulse` (`spx-desk.ts`, ~lines 2155-2196) returns `{...empty, available:
+true, price: prior.pdc, ...}` without ever reassigning `vix_term`, so it stays at the empty-shell
+placeholder defined at line ~2046: `{vix9d: null, vix3m: null, structure: "unknown", detail: ""}`.
+That placeholder is a **defined object**, not `null`/`undefined`, so `??` keeps it and discards
+the real `base.vix_term` the slower desk build actually computed. `GET /api/market/spx/desk` is
+built via `loadSpxDesk()`/`buildSpxDesk` directly and never goes through this merge, which is why
+the two sibling endpoints can disagree on the identical underlying VIX data at the identical
+timestamp.
+
+This is the same class of bug the file's own `leader_stocks` field two lines below the fix
+already guards against — `pulse.leader_stocks.length ? pulse.leader_stocks : base.leader_stocks`
+checks for real content instead of a bare `??`, specifically because an empty-but-defined array/
+object can legitimately arrive from the pulse lane.
+
+### Evidence
+
+Live `GET /api/market/spx/desk` (as_of `2026-10-21T06:36:09.090Z`): `vix_term = {vix9d: 16.27,
+vix3m: 18.99, structure: "contango", detail: "Contango — 9d 16.27 < 3M 18.99 (+2.72)"}` —
+`|termDiff| = 2.72 > 1`, the threshold `spx-signals.ts` (lines 764-789) uses to push a `+4` "VIX
+curve" factor. Live `GET /api/market/spx/play` fetched the same instant (`as_of
+2026-10-21T06:36:09.105Z`) returned 11 factors summing exactly to the reported score
+(`-18+14-10+6-6+5-5+4+4+0+0 = -6`, matches `score: -6`) with **no "VIX curve" factor anywhere**.
+
+Added two tests in `spx-desk-merge.test.ts`'s existing "off-hours derived-field fallback" describe
+block (the established home for this exact pulse/base-fallback bug class). RED→GREEN, git-stash-
+verified on the source file alone: 12/13 (1 fail) before the fix, 13/13 after. Broader regression
+sweep: `spx-desk-merge.test.ts` + `spx-signals.test.ts` + `spx-desk-offhours-spot.test.ts` —
+41/41. `tsc --noEmit` clean.
+
+### Blast radius
+
+Single field in a single merge function — `GET /api/market/spx/play`'s confluence score and the
+`desk.vix_term` object it exposes. The sibling `data_quality` field one line below (`pulse.
+data_quality ?? base.data_quality`) has the identical structural shape (the off-hours branch also
+leaves it at its own empty placeholder, `{vix_term_partial: false, missing: []}`), but a repo-wide
+grep confirms `desk.data_quality` has **zero consumers** anywhere outside this merge function
+itself — no UI, no scoring, no other route reads it — so it was deliberately left unchanged here;
+fixing dead code with no observable behavior change would be scope creep, not a fix.
+
+### Fix
+
+Changed the coalesce to check for real content first, mirroring `leader_stocks`'s existing
+pattern in the same function: `pulse.vix_term && (pulse.vix_term.vix9d != null ||
+pulse.vix_term.vix3m != null) ? pulse.vix_term : base.vix_term`. Falls back to `base.vix_term`
+only when pulse's own value is the empty off-hours placeholder; still prefers pulse's real data
+(including a legitimately partial read where only one of `vix9d`/`vix3m` resolved) when it has
+any.
+
+### Why not a bigger fix
+
+Did not touch `data_quality` (same shape, same root cause) — it has no consumers, so changing it
+changes nothing observable; noted above as the acknowledged, deliberately-untouched sibling. Did
+not change `buildSpxDeskPulse`'s off-hours branch itself (leaving the real `vix_term` unset there
+is fine now that the merge layer correctly treats an empty placeholder as absent).
+
 ## 2026-10-21 — [FINDING, swing] counterThesisLine() counted a mechanical, DTE-driven Theta budget fade as an "independent read" — Ask Largo round-3 deep-dive
 
 > **kind:** `FINDING`
