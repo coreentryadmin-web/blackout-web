@@ -38,6 +38,120 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Unconditional closedFallback silently substituted an UNRELATED closed position when a positionId couldn't resolve — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate static-code sweep (Workflow correctness audit of
+`play-brief-ladder.ts`/`play-brief-diff.ts`/`play-brief-resolve.ts`, batch 17).
+
+**Root cause:** `resolveSwingPlayForBrief`'s final fallback in `src/lib/swing/play-brief-resolve.ts`
+— `const closedFallback = await loadClosedPlay(ticker, null); if (closedFallback) return {...};` —
+ran unconditionally, with no check on whether the caller actually supplied a specific `positionId`
+that simply failed to resolve through every earlier, more targeted lookup (the direct
+positionId-based closed check, its duplicate, and the chain-root retry). `loadClosedPlay(ticker,
+null)` ignores positionId entirely and returns whichever graded row for the ticker has the most
+recent `graded_at` — a completely different trade than the one asked about. This directly
+contradicted the function's own doc comment ("Resolve the exact TerminalPlay the member selected")
+and is explicitly named as a known wrong-play failure mode by this file's own `resolveChainRootId`
+header comment: "...or a `closedFallback` for an UNRELATED chain on the same ticker — the exact
+'silently returns the wrong play' failure mode." The 2026-09-11 fix that comment describes
+(`resolveChainRootId`) only narrows how often this path is reached for the multi-roll-chain case —
+it does not remove the unconditional fallback for any OTHER resolution failure, e.g. a positionId
+outside `fetchSwingPositionsRange`'s shared 90-day fetch window. Elsewhere in this codebase
+(`play-brief-context.ts`), `null` from this function is already the recognized, correctly-handled
+"honestly not found" signal — there was a working honest-absence path this fallback bypassed.
+
+**Evidence:** ticker ABC has two separate closed swing chains: position #501 (closed outside the
+90-day window — every positionId-based lookup correctly returns no match) and position #777
+(closed 2 days ago, the only graded row the fetch window covers). A caller requests
+`?playId=SWING:ABC&ticker=ABC&positionId=501`. Every targeted lookup fails to find #501 (correctly
+— it's genuinely outside the fetch window), control falls through to the unconditional
+`closedFallback`, which finds #777 and returns it as the answer. The caller is told about #777's
+direction/contract/P&L while believing it answered the question about #501 — a silent Largo
+identity-contract violation with no absence/error signal. Confirmed via a 2-vote adversarial verify
+pass that independently traced the exact control flow (open-ledger miss → chain-root retry
+no-op → both positionId-based closed checks miss → unconditional fallback hit) against the real,
+current source and its real callers (the Largo tool wrapper and the HTTP route).
+
+**Fix:** guarded the final ticker-wide fallback to only run when `positionId == null` — i.e. the
+caller never asked about a specific position in the first place. An explicit, unresolvable
+positionId now surfaces as honest absence (`null`), which the existing caller
+(`loadSwingPlayBriefContext`) already handles correctly, rather than a silent substitute for an
+unrelated chain on the same ticker.
+
+**Tests:** `src/lib/swing/play-brief-resolve.test.ts` — added 2 regression tests: a positionId
+that fails to resolve anywhere must return `null` (not the only other closed row for the ticker),
+and (unchanged-behavior guard) no positionId supplied at all must still hit the ticker-wide
+fallback. Both fail/pass appropriately against pre-fix source (RED, confirmed via `git stash` on
+the source file alone) vs post-fix (GREEN); full `play-brief-resolve.test.ts` suite 25/25 pass;
+`play-brief-context.test.ts` (the consumer of this function's `null` absence signal) 14/14 pass
+unaffected; `tsc --noEmit` clean.
+
+**Blast radius:** `play-brief-resolve.ts` only. The existing "ticker-only + status=CLOSED (no
+positionId)" and "chain rolled TWICE" behaviors are unchanged (verified by the existing, still-green
+tests covering both) since this guard only narrows the ONE path where a positionId was supplied and
+failed everywhere else.
+
+## riskTheOtherSide could name a kind-mismatched wall, disagreeing with resolveInvalidationFocalLevel — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate static-code sweep (Workflow correctness audit of
+`play-brief-ladder.ts`/`play-brief-diff.ts`/`play-brief-resolve.ts`, batch 17).
+
+**Root cause:** `buildStructureLadder`'s `riskTheOtherSide` (`play-brief-ladder.ts`) picked the
+nearest unfavorable-side rung whose `role !== "neutral"` — i.e. ANY of `call_wall`/`put_wall`/
+`dark_pool`/`king` that happened to sit on the wrong side of spot for the thesis, with no check
+tying the chosen KIND to the trade DIRECTION. `resolveInvalidationFocalLevel`
+(`play-brief-narrative.ts`) — the function the brief's "Break watch" bullet and invalidation
+headline route through, and which this very file's own 2026-10-20 comment on that function
+explicitly cross-references as the sibling this widget must stay consistent with — is stricter:
+only `put_wall`/`dark_pool`/`king` are candidates for a LONG's invalidation level (never
+`call_wall`), and only `call_wall`/`dark_pool`/`king` for a SHORT's (never `put_wall`).
+`collectFocalLevels` applies no side validation when building call_wall/put_wall entries, so a call
+wall CAN sit below spot (e.g. after a sharp rally through it) and a put wall CAN sit above spot
+(after a sharp selloff) — a reachable real data shape, not one the type system excludes. When that
+happens, `riskTheOtherSide` named the nearer, kind-mismatched wall as "the nearest real structure
+on the wrong side of this thesis" (the member-facing `BieStructureLadder.tsx` label) while the
+narrative's Break-watch/invalidation line — built from the SAME `focal` array — named a different,
+farther level as the one that actually invalidates the position. This directly contradicted this
+file's own top-of-file claim that the widget "can never disagree with 'Trade manager read' about
+where a wall... sits."
+
+**Evidence:** LONG thesis, spot = 100, `call_wall = 98` (below spot), `put_wall = 80`.
+`riskTheOtherSide`'s reduce picked the smaller `|distancePct|`, i.e. `call_wall@98`, while
+`resolveInvalidationFocalLevel({direction:"LONG"})` only matches `put_wall`/`dark_pool`/`king`
+below spot and returns `put_wall@80` — the narrative's "Break watch" bullet would read "lose
+$80.00" while the Structure Ladder's `riskTheOtherSide` named $98.00 as the level that matters, in
+the identical envelope. Confirmed via a 2-vote adversarial verify pass that independently re-read
+both files and traced the exact triggering scenario before confirming.
+
+**Fix:** excluded the cross-direction wall kind (`call_wall` for LONG, `put_wall` for SHORT) from
+the unfavorable-side rung pool BEFORE either tier of `riskTheOtherSide`'s selection logic sees it —
+both the real-wall tier and the neutral-pivot fallback tier — so a kind-mismatched wall can never
+win, matching `resolveInvalidationFocalLevel`'s own kind restriction exactly. `dark_pool`/`king`
+remain eligible on both sides (unchanged, matching the sibling function), and the existing
+neutral-pivot fallback behavior (gamma_flip/max_pain/magnet, a deliberate design choice from the
+2026-09-15 fix, unrelated to this bug) is unchanged.
+
+**Tests:** `src/lib/swing/play-brief-ladder.test.ts` — added 3 regression tests: a LONG-direction
+kind-mismatch repro (call wall nearer but ineligible, put wall farther but eligible — must pick the
+put wall), the symmetric SHORT-direction repro, and a fall-through test (only an ineligible-kind
+wall exists on the unfavorable side — must fall through to a neutral pivot, never pick the
+ineligible wall as a last resort). All 3 fail against the pre-fix source (RED, confirmed via
+`git stash` on the source file alone) and pass post-fix (GREEN); full
+`play-brief-ladder.test.ts` suite 27/27 pass; `tsc --noEmit` clean.
+
+**Blast radius:** `play-brief-ladder.ts` only — `resolveInvalidationFocalLevel` itself (the
+reference sibling) was not touched, nor was any other consumer of `collectFocalLevels`/`focal`.
+
 ## wallDynamicsSection showed the OLDEST wall events, not the most recent ones — FIXED
 
 > **kind:** `FINDING`
