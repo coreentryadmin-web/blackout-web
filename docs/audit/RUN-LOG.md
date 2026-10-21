@@ -4,6 +4,15 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-21 (12:21 UTC / Wed 08:21 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Wednesday pre-market (market opens 09:30 ET). Resynced to `origin/main` (`2a64702bd` →
+`2e700f703`, other-lane agent-state sync). **Step 1:** purged Cloudflare edge HTML, re-measured
+live homepage CLS — **0.0001, GOOD** (66/66 routed, 0 fail). Fetched `/api/og` with a Googlebot
+UA: `200`, `content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:**
+1 open agent PR fleet-wide, other-lane and CI-RUNNING (#6476, docs findings-fold). Nothing for
+this lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
 ## 2026-10-21 (06:16 UTC / Tue 02:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Wednesday overnight, market closed. Resynced to `origin/main` (`c307dba5c` → `d7f8c9d21`,
