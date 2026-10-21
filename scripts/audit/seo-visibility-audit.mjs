@@ -113,8 +113,9 @@ async function fetchPublic(path) {
 }
 
 async function fetchAuthed(path, sessionCookie, clientUat) {
+  const bust = path.includes("?") ? "&" : "?";
   const r = await curlRetry({
-    url: `${APP}${path}`,
+    url: `${APP}${path}${bust}_=${Date.now()}`,
     headers: { Cookie: `__session=${sessionCookie}; __client_uat=${clientUat}` },
   });
   return { status: r.s, html: r.b };
