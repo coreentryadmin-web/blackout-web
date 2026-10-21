@@ -5,6 +5,7 @@
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import { hasScaledOut, runnerTrailingStopPremium } from "@/lib/zerodte/terminal-ladder";
 import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { parseOccSymbol } from "@/lib/largo/core/entities";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
@@ -1828,8 +1829,20 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     // read) but never the computed answer, even though the member-facing board card for the
     // identical row already displays it. Surfaced here instead, right beside the anchor it measures
     // from — same wording as the (unreachable) `pnlSection` copy, so nothing new to recognize.
-    if (play.trackPct != null) {
-      lines.push(`Since flag: **${fmtPct(play.trackPct)}**`);
+    // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SHOP WATCH brief): `play.trackPct`
+    // is computed upstream (adapters.ts) off `play.liveSpot`, which traces to the cron-cached
+    // `SwingServingSnapshot.spotsByTicker` map (one pre-market scan from `swing-discovery`,
+    // refreshed intraday only by RTH-only `swing-active-refresh`) — a different, often-staler spot
+    // than the `spot` this section resolves a few lines above (vector-then-GEX fallback) and
+    // already prints elsewhere in this same section (e.g. "Now trades X vs gamma flip"). Recompute
+    // against that fresh spot whenever one is actually available, so "Since flag" always reconciles
+    // with the flag anchor + spot this exact brief shows; fall back to the cron-cached value only
+    // when no fresh spot exists (e.g. both Vector and GEX are stale/absent).
+    const freshTrackPct =
+      spot != null ? watchUnderlyingTrackPct(play.direction, play.flagUnderlyingPx ?? null, spot) : null;
+    const trackPctForDisplay = freshTrackPct ?? play.trackPct;
+    if (trackPctForDisplay != null) {
+      lines.push(`Since flag: **${fmtPct(trackPctForDisplay)}**`);
     }
     // Distinct from the flag anchor above (pinned, historical): this is the CURRENT level a
     // break/reclaim of actually flips entry geometry from PRE_TRIGGER/FORMING to AT_TRIGGER/

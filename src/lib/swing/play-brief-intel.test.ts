@@ -5164,6 +5164,59 @@ test("watchForSection: 'Since flag' underlying move is shown for a WATCH play (w
   assert.match(section.body, /Since flag: \*\*-1\.4%\*\*/);
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SHOP WATCH brief): `play.trackPct`
+// (adapters.ts's `watchUnderlyingTrackPct`) is computed off `src.liveSpot`, which traces to the
+// cron-cached `SwingServingSnapshot.spotsByTicker` map — written by `swing-discovery`'s one
+// pre-market scan and refreshed intraday only by `swing-active-refresh` (RTH-only). This section
+// independently resolves a FRESH current spot (`spot`, a few lines above, vector-then-GEX
+// fallback, the SAME value this section already prints elsewhere, e.g. "Now trades X vs gamma
+// flip") — so before the RTH refresh has run, "Since flag" and the rest of the brief can disagree
+// about what spot even is. Live repro: SHOP's brief printed "Flag anchor 177.70" and "Spot 173.72"
+// (both Watch levels and Chart technicals sections) but "Since flag -2.4%" — recomputing
+// (173.72-177.70)/177.70 gives -2.2%, not -2.4%; the stale cron-cached liveSpot was ~0.28 off the
+// fresh one. Fixed by recomputing "Since flag" from this section's own fresh `spot` + the pinned
+// flag anchor whenever a fresh spot is actually available, falling back to the cron-cached
+// `play.trackPct` only when it is not (preserves the prior dead-code fix's behavior off-hours).
+test("watchForSection: 'Since flag' reconciles with THIS section's own fresh spot, not the cron-cached liveSpot play.trackPct was computed from", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG", flagUnderlyingPx: 177.7, trackPct: -2.4 }),
+      asOf: "2026-10-21 07:15 ET",
+      sessionDate: "2026-10-21",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: { spot: 173.72 },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Flag anchor: \*\*177\.70\*\*/);
+  assert.match(section.body, /Since flag: \*\*-2\.2%\*\*/);
+  assert.doesNotMatch(section.body, /Since flag: \*\*-2\.4%\*\*/);
+});
+
+test("watchForSection: 'Since flag' falls back to the cron-cached play.trackPct when no fresh spot is available at all", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "SHORT", flagUnderlyingPx: 374.5, trackPct: -1.42 }),
+      asOf: "2026-10-20 17:14 ET",
+      sessionDate: "2026-10-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Since flag: \*\*-1\.4%\*\*/);
+});
+
 test("watchForSection: 'Since flag' is omitted when trackPct is null (e.g. an open play, where it is never populated)", () => {
   const section = watchForSection(
     {
