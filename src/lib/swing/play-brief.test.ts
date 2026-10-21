@@ -543,6 +543,43 @@ test("composeSwingPlayBrief: Book overlap evidence for an own-cluster (unmapped-
   assert.doesNotMatch(overlapEvidence!.text, /NAME:/, "must never leak the internal own-cluster sentinel");
 });
 
+// BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA WATCH short): the
+// sameThemeSameDirection bucket got the same-ticker/other-ticker split above, but its mirror-image
+// sibling (sameThemeOpposedDirection) never did — a same-underlying opposed conflict (long AND
+// short the same ticker) collapsed into the generic "N opposed position(s) in the same theme",
+// understating severity relative to bookContextSection's own sharper "Internal conflict — same
+// underlying... one of these two positions is mechanically wrong" framing for the identical fact.
+test("composeSwingPlayBrief: Book overlap evidence distinguishes a same-underlying opposed conflict from a cross-ticker theme-level one", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ id: "SWING:TSLA:400P", ticker: "TSLA", direction: "SHORT", status: "WATCH" }),
+    asOf: "2026-10-21T15:00:00.000Z",
+    sessionDate: "2026-10-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    openBook: [
+      { ticker: "TSLA", direction: "LONG", positionId: 60 },
+      { ticker: "TSLL", direction: "LONG", positionId: 61 },
+    ],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const overlapEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Book overlap:"));
+  assert.ok(overlapEvidence, "sanity: the opposed overlap must fire evidence");
+  assert.match(
+    overlapEvidence!.text,
+    /1 same-ticker \+ 1 other opposed position in/,
+    `expected the same-ticker/cross-ticker split, got: ${overlapEvidence!.text}`,
+  );
+  assert.doesNotMatch(
+    overlapEvidence!.text,
+    /^Book overlap: 2 opposed position\(s\) in the same theme\.$/,
+    "must not collapse the literal same-underlying conflict into a generic cross-ticker count",
+  );
+});
+
 test("composeSwingPlayBrief: CLOSED play never surfaces a Book overlap evidence entry (matches the section's own gating)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ ticker: "NVDA", direction: "LONG", status: "CLOSED" }),
