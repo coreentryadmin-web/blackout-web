@@ -81,3 +81,52 @@ test("computeLitDarkRatio: accepts a caller-resolved dark-pool snapshot when the
     Object.assign(litTradesStore, savedLit);
   }
 });
+
+test("computeLitDarkRatio: updated_at reflects the resolved snapshot's own age, not the dead raw store (2026-10-21)", () => {
+  // Live repro, GET /api/market/spx/desk production: dark_premium/lit_share were computed from a
+  // genuinely fresh resolved snapshot (prints ~47s old) while updated_at still reported 0 (Unix
+  // epoch — "never"), because updated_at was sourced unconditionally from the raw darkPoolStore/
+  // litTradesStore timestamps, which stay dead at 0 whenever freshness comes from the caller's
+  // resolved snapshot instead (the exact gap the 2026-10-06 fix above left for premium/share).
+  const savedDark = { ...darkPoolStore };
+  const savedLit = { ...litTradesStore };
+  try {
+    // Raw WS lane dead on both sides -- mirrors the live repro exactly.
+    darkPoolStore.data = null;
+    darkPoolStore.updatedAt = 0;
+    litTradesStore.rows = [];
+    litTradesStore.updatedAt = 0;
+
+    const now = Date.now();
+    const printAgeMs = 47_000;
+    const resolved: DarkPoolSnapshot = {
+      prints: [
+        {
+          strike: 255,
+          premium: 2_862_377.88,
+          side: "unknown",
+          executed_at: new Date(now - printAgeMs).toISOString(),
+        },
+      ],
+      total_premium: 2_862_377.88,
+      call_premium: 0,
+      put_premium: 0,
+      bias: "neutral",
+      pcr: null,
+      detail: "1 print(s) | $2.86M",
+    };
+
+    const ratio = computeLitDarkRatio(resolved);
+    assert.notEqual(ratio, null, "a genuinely fresh resolved snapshot must not read as unavailable");
+    assert.notEqual(ratio?.updated_at, 0, "updated_at must not be the dead store's epoch-0 sentinel");
+    // updated_at should land within a small tolerance of (now - printAgeMs), not at 0.
+    const expected = Date.now() - printAgeMs;
+    assert.ok(
+      Math.abs((ratio?.updated_at ?? 0) - expected) < 5_000,
+      `updated_at (${ratio?.updated_at}) should track the resolved snapshot's own print age (~${expected})`
+    );
+  } finally {
+    Object.assign(darkPoolStore, savedDark);
+    Object.assign(litTradesStore, savedLit);
+  }
+});
