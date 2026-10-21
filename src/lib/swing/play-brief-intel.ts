@@ -3,6 +3,7 @@
  * Surfaces chart technicals, flow, GEX nodes, catalysts, watch levels, and hold plan.
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
+import { hasScaledOut, runnerTrailingStopPremium } from "@/lib/zerodte/terminal-ladder";
 import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { parseOccSymbol } from "@/lib/largo/core/entities";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
@@ -1980,6 +1981,16 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
 
   if (bucket === "open" && play.exitPolicy?.stop_premium != null) {
     const stop = play.exitPolicy.stop_premium;
+    // BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro MRNA 237.5C 2DTE/positionId 1958):
+    // once a trim tranche has fired, the exit engine's own live state machine
+    // (deriveScaleOutAction/computeScaleOutTriggerInfo, scale-out.ts) permanently disables this
+    // pre-scale hard stop — gated `if (!scaledAlready)`, and post-scale the engine itself returns
+    // `hard_stop_price: null` ("the hard stop no longer applies"). Every cushion computation below
+    // was unconditional, so a scaled position still got "thesis breaks if mark closes below" — a
+    // false claim about a trigger that structurally cannot fire anymore — with the real governing
+    // floor (the runner's trailing stop off its peak) never disclosed anywhere. Short-circuit to a
+    // distinct render in that case rather than threading a flag through every line below.
+    const scaledAlready = hasScaledOut(play.exitPolicy);
     // Cushion = how far (%) the current mark could still fall before hitting the stop — the
     // dollar level alone forces a member to do that subtraction themselves. Only shown when the
     // mark is actually above the stop (the normal case for an OPEN row); omitted rather than
@@ -2021,26 +2032,39 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     // Executable P&L bullet a few lines up in "Trade manager read" — same field, same trust level),
     // falling back to the mid only when execMark itself is unavailable — never silently prefer the
     // more optimistic number when the safer one is sitting right there.
-    const execMark = play.execMark;
-    const executableCushionGone = execMark != null && execMark <= stop;
-    const cushionBasis = execMark != null && execMark > 0 ? execMark : play.mark;
-    const cushionBasisIsExec = execMark != null && execMark > 0;
-    const cushionPct =
-      cushionBasis != null &&
-      cushionBasis > 0 &&
-      cushionBasis > stop &&
-      !optionMarkGenuinelyUnknown(play) &&
-      !executableCushionGone
-        ? ((cushionBasis - stop) / cushionBasis) * 100
-        : null;
-    const cushionNote = executableCushionGone
-      ? ` — **no real cushion on the executable side** (bid already at/through this level)`
-      : cushionPct != null
-        ? ` — ${cushionPct.toFixed(0)}% cushion from current ${cushionBasisIsExec ? "bid" : "mark"}`
-        : "";
-    lines.push(
-      `Premium stop rail: **${fmtUsd(stop)}**${cushionNote} — thesis breaks if mark closes below${railStaleCaveat}`,
-    );
+    if (scaledAlready) {
+      const peakPremiumDollar =
+        play.entry != null && play.entry > 0 && play.peak != null && Number.isFinite(play.peak)
+          ? play.entry * (1 + play.peak / 100)
+          : null;
+      const runnerTrail = runnerTrailingStopPremium(peakPremiumDollar);
+      lines.push(
+        runnerTrail != null
+          ? `Premium stop rail: **${fmtUsd(stop)}** _(no longer applies — already scaled)_ — the runner's real floor now is **${fmtUsd(runnerTrail)}** (trailing stop off peak)${railStaleCaveat}`
+          : `Premium stop rail: **${fmtUsd(stop)}** _(no longer applies — already scaled)_${railStaleCaveat}`,
+      );
+    } else {
+      const execMark = play.execMark;
+      const executableCushionGone = execMark != null && execMark <= stop;
+      const cushionBasis = execMark != null && execMark > 0 ? execMark : play.mark;
+      const cushionBasisIsExec = execMark != null && execMark > 0;
+      const cushionPct =
+        cushionBasis != null &&
+        cushionBasis > 0 &&
+        cushionBasis > stop &&
+        !optionMarkGenuinelyUnknown(play) &&
+        !executableCushionGone
+          ? ((cushionBasis - stop) / cushionBasis) * 100
+          : null;
+      const cushionNote = executableCushionGone
+        ? ` — **no real cushion on the executable side** (bid already at/through this level)`
+        : cushionPct != null
+          ? ` — ${cushionPct.toFixed(0)}% cushion from current ${cushionBasisIsExec ? "bid" : "mark"}`
+          : "";
+      lines.push(
+        `Premium stop rail: **${fmtUsd(stop)}**${cushionNote} — thesis breaks if mark closes below${railStaleCaveat}`,
+      );
+    }
   }
 
   // Symmetric to the stop-cushion block above (Ask Largo standing mandate, 2026-09-18, live repro

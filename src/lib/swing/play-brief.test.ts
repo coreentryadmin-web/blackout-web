@@ -4483,7 +4483,10 @@ test("composeSwingPlayBrief: absolute premium prices (entry/mark/stop/target) ne
   assert.match(position!.body, /Mark: \*\*\$9\.70\*\*/, `got: ${position!.body}`);
   assert.doesNotMatch(position!.body, /\$\+|\+\$/, `Position must never sign an absolute price, got: ${position!.body}`);
 
-  assert.match(management!.body, /Rails: stop \$1\.96 · target \$9\.80/, `got: ${management!.body}`);
+  // This fixture's trim rung already fired (premium 7.35 >= its own trigger), so the stop side
+  // now carries the 2026-10-21 "already scaled" caveat (a separate, later fix) in between the
+  // stop and target figures — still no '+' sign anywhere, which is this test's actual point.
+  assert.match(management!.body, /Rails: stop \$1\.96 .* · target \$9\.80/, `got: ${management!.body}`);
   assert.doesNotMatch(
     management!.body,
     /\$\+|\+\$/,
@@ -4499,7 +4502,7 @@ test("composeSwingPlayBrief: absolute premium prices (entry/mark/stop/target) ne
 // self-contradiction play-brief-intel.ts's "What to watch" section already fixed on 2026-09-22 for
 // its own "Premium target rail" line, but this earlier, more prominent summary line never got the
 // same treatment.
-test("composeSwingPlayBrief: Rails target already reached by a fired trim is annotated, not shown as a bare unmet figure (live EXTR repro)", () => {
+test("composeSwingPlayBrief: Rails target already reached by a fired trim is annotated, not shown as a bare unmet figure (live EXTR repro); stop side also annotated once scaled (2026-10-21 MRNA fix)", () => {
   const brief = composeSwingPlayBrief({
     play: fixturePlay({
       status: "HOLD",
@@ -4533,8 +4536,8 @@ test("composeSwingPlayBrief: Rails target already reached by a fired trim is ann
   assert.ok(management, "expected Management section");
   assert.match(
     management!.body,
-    /Rails: stop \$0\.06 · target \$0\.30 ✓ \(reached\)/,
-    `target already hit by the fired trim must say so, not read as a fresh unmet objective, got: ${management!.body}`,
+    /Rails: stop \$0\.06 _\(no longer applies — already scaled; runner trail now \$0\.19\)_ · target \$0\.30 ✓ \(reached\)/,
+    `target already hit by the fired trim must say so, not read as a fresh unmet objective, AND the stop (dead post-scale per scale-out.ts) must surface the real governing runner-trail floor instead of reading as a live trigger, got: ${management!.body}`,
   );
 });
 
@@ -4574,6 +4577,53 @@ test("composeSwingPlayBrief: Rails target not yet reached renders as a bare figu
   assert.ok(management, "expected Management section");
   assert.match(management!.body, /Rails: stop \$0\.06 · target \$0\.30$/m, `got: ${management!.body}`);
   assert.doesNotMatch(management!.body, /reached/, `got: ${management!.body}`);
+});
+
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro MRNA 237.5C 2DTE/positionId 1958):
+// once a trim tranche has fired, the exit engine's own live state machine (deriveScaleOutAction/
+// computeScaleOutTriggerInfo, scale-out.ts) permanently disables the pre-scale hard stop — it is
+// gated `if (!scaledAlready)`, and post-scale the engine returns `hard_stop_price: null` because
+// "the hard stop no longer applies (the partial is already locked in)". This line used to render
+// `ep.stop_premium` unconditionally, stating a dead thesis-break trigger as live and never
+// surfacing the real governing floor (the runner's trailing stop off its peak,
+// peakPremium × SCALE_OUT_RULES.trail_from_peak). Live repro numbers: entry $6.49, peak +103.4%.
+test("composeSwingPlayBrief: Rails stop rail is annotated (not a bare live trigger) once a trim has fired, surfacing the real runner-trail floor (live MRNA repro)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "TRIM",
+      recommendation: "HOLD",
+      entry: 6.49,
+      mark: 10,
+      pnlPct: 54.1,
+      peak: 103.4,
+      manageAction: "HOLD",
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 12.98, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: 2.6,
+        target_premium: 12.98,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-10-20T20:00:00.000Z",
+    sessionDate: "2026-10-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.match(
+    management!.body,
+    /Rails: stop \$2\.60 _\(no longer applies — already scaled; runner trail now \$6\.60\)_ · target \$12\.98 ✓ \(reached\)/,
+    `the dead pre-scale stop must be annotated and the real runner-trail floor (entry $6.49 × (1+103.4%) × 0.5 ≈ $6.60) surfaced, not rendered as a bare live trigger, got: ${management!.body}`,
+  );
 });
 
 // ─── Roll-candidate advisory (Ask Largo standing mandate, 2026-09-18): manage.ts's dte_migration/

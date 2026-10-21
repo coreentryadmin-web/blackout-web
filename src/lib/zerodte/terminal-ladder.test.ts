@@ -7,6 +7,8 @@ import {
   buildTerminalExitLadder,
   executableFill,
   timeStopClock,
+  hasScaledOut,
+  runnerTrailingStopPremium,
   RTH_OPEN_ET_MINUTES,
   type TerminalPolicyInput,
 } from "./terminal-ladder.ts";
@@ -70,6 +72,26 @@ test("ladder: ratchet policy stays a single-trim policy (legacy render unchanged
   const l = buildTerminalExitLadder(policy, 2.0, 2.0);
   assert.equal(l.policy, "ratchet");
   assert.equal(l.trim_levels.length, 1); // the single +100% half-trim
+});
+
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro MRNA TRIM/positionId 1958): a brief
+// rendering `stop_premium` post-scale was stating a dead trigger as live — deriveScaleOutAction/
+// computeScaleOutTriggerInfo (scale-out.ts) permanently disable the pre-scale hard stop once any
+// trim has fired. hasScaledOut/runnerTrailingStopPremium let a renderer ask whether the ladder's
+// own stop_premium is still live and, if not, what the real governing floor is now.
+test("hasScaledOut: false before any trim fires, true once one has", () => {
+  const cold = buildTerminalExitLadder(TRIM_SCALE, 2.0, 1.9);
+  assert.equal(hasScaledOut(cold), false);
+  const scaled = buildTerminalExitLadder(TRIM_SCALE, 2.0, 2.6); // first trim (+25%=2.5) fired
+  assert.equal(hasScaledOut(scaled), true);
+});
+
+test("runnerTrailingStopPremium: peakPremium × SCALE_OUT_RULES.trail_from_peak (0.5)", () => {
+  // Live MRNA repro: entry $6.49, peak +103.4% → peak premium ≈ $13.21 → real floor ≈ $6.605.
+  assert.equal(runnerTrailingStopPremium(13.21), 6.61); // round2(13.21 * 0.5)
+  assert.equal(runnerTrailingStopPremium(null), null);
+  assert.equal(runnerTrailingStopPremium(0), null);
+  assert.equal(runnerTrailingStopPremium(Number.NaN), null);
 });
 
 test("clock: minutes remaining + label + elapsed fraction to 15:50", () => {

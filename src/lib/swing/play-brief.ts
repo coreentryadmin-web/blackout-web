@@ -44,6 +44,7 @@ import { describeThemeOverlap } from "./theme-cluster";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
 import { deadPlayReason, gateFramingMootReason } from "./entry-enterability";
 import { buildStructureLadder } from "./play-brief-ladder";
+import { hasScaledOut, runnerTrailingStopPremium } from "@/lib/zerodte/terminal-ladder";
 import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
 import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
@@ -242,7 +243,25 @@ function managementSection(play: TerminalPlay): RichSection {
       const targetLabel = targetAlreadyFired
         ? `${fmtUsd(ep.target_premium)} ✓ (reached)`
         : fmtUsd(ep.target_premium);
-      lines.push(`Rails: stop ${fmtUsd(ep.stop_premium)} · target ${targetLabel}`);
+      // BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro MRNA TRIM/positionId 1958):
+      // once a trim tranche has fired, the exit engine's own live state machine
+      // (deriveScaleOutAction/computeScaleOutTriggerInfo, scale-out.ts) permanently disables the
+      // pre-scale hard stop ("only fires pre-scale, by design" — manage.ts's own premium_stop
+      // GATE comment); post-scale, computeScaleOutTriggerInfo returns hard_stop_price: null and
+      // the real governing floor becomes the runner's trailing stop off its peak instead. This
+      // line unconditionally rendered `ep.stop_premium` with no such caveat — a dead trigger
+      // presented as live, with the real governing floor never surfaced. Mirrors the target
+      // side's own already-fired treatment immediately above.
+      const scaledAlready = hasScaledOut(ep);
+      const peakPremiumDollar =
+        play.entry != null && play.entry > 0 && play.peak != null && Number.isFinite(play.peak)
+          ? play.entry * (1 + play.peak / 100)
+          : null;
+      const runnerTrail = scaledAlready ? runnerTrailingStopPremium(peakPremiumDollar) : null;
+      const stopLabel = scaledAlready
+        ? `${fmtUsd(ep.stop_premium)} _(no longer applies — already scaled${runnerTrail != null ? `; runner trail now ${fmtUsd(runnerTrail)}` : ""})_`
+        : fmtUsd(ep.stop_premium);
+      lines.push(`Rails: stop ${stopLabel} · target ${targetLabel}`);
     }
   }
   if (play.progress != null && Number.isFinite(play.progress)) {
