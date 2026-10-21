@@ -54,7 +54,8 @@ import {
 } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
-import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import { etSessionDate, etStampFromIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
+import { printAlreadyLandedThresholdMs } from "./play-brief-narrative-coaching";
 import { formatDealerDollars } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason, gateFramingMootReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
@@ -1424,8 +1425,27 @@ export function catalystsSection(
   if (arsenal.earnings?.earnings_date) {
     const d = arsenal.earnings.days_until;
     earningsDaysUntil = d ?? null;
-    const when =
-      d != null && d <= 0
+    // BUG FIX (2026-10-21, Ask Largo standing mandate): d<=0 used to collapse unconditionally to
+    // a bare "today" with no disclosure of whether the print has already LANDED or is still
+    // ahead — the same BMO/AMC-anchoring ambiguity this repo's own CLAUDE.md documents for
+    // Meridian reactions. `catalystCoaching` (play-brief-narrative-coaching.ts) already solves
+    // this exact ambiguity for the SAME `arsenal.earnings` field (aggregated into this same
+    // brief's "Trade manager read"), via a bell-relative threshold against the report-time bucket
+    // (16:00 ET for afterhours, 09:30 ET for premarket). Reusing that exported helper here
+    // (rather than reimplementing it) so this bullet and "Trade manager read" can't independently
+    // drift on whether the identical print has landed — without this, a member could read
+    // "Earnings already printed today" in one section and a bare, forward-looking "today
+    // (afterhours)" in this one, for the same print.
+    const printThresholdMs =
+      d === 0 && arsenal.earnings.earnings_date != null
+        ? printAlreadyLandedThresholdMs(arsenal.earnings.earnings_date, arsenal.earnings.report_time)
+        : null;
+    const nowMs = ctx?.asOf != null ? (parseEtStamp(ctx.asOf) ?? Date.parse(ctx.asOf)) : null;
+    const alreadyPrinted =
+      printThresholdMs != null && nowMs != null && Number.isFinite(nowMs) && nowMs >= printThresholdMs;
+    const when = alreadyPrinted
+      ? "**already printed**"
+      : d != null && d <= 0
         ? "**today**"
         : d != null && d === 1
           ? "**tomorrow**"

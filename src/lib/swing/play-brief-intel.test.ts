@@ -2484,6 +2484,88 @@ test("catalystsSection: NO connecting sentence when there is no earnings date at
   assert.match(section!.body, /CrowdStrike stock moves higher/);
 });
 
+function ecosystemWithEarnings(
+  earnings: { earnings_date: string; days_until: number; report_time: string },
+): import("@/lib/bie/ecosystem-context").EcosystemContext {
+  return {
+    ticker: "PLAY",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings,
+      fundamentals: null,
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext;
+}
+
+// Live gap (2026-10-21, Ask Largo standing mandate): days_until<=0 collapsed to a bare "today"
+// with no landed-vs-pending disclosure, the same ambiguity catalystCoaching
+// (play-brief-narrative-coaching.ts) already solves for the identical arsenal.earnings field via
+// printAlreadyLandedThresholdMs -- mirrors that function's own regression fixtures (real
+// production asOf shape, "YYYY-MM-DD HH:mm ET", not an ISO literal -- Date.parse returns NaN on
+// that shape, so a fixture using ISO would pass without proving the real parse path works).
+test("catalystsSection: same-day AFTERHOURS print already landed (past 16:00 ET) reads as already printed, not a bare 'today'", () => {
+  const section = catalystsSection(
+    ecosystemWithEarnings({ earnings_date: "2026-09-14", days_until: 0, report_time: "afterhours" }),
+    { asOf: "2026-09-14 19:07 ET" } as SwingPlayBriefContext,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Earnings: \*\*2026-09-14\*\* \*\*already printed\*\* \(afterhours\)/);
+});
+
+test("catalystsSection: same-day AFTERHOURS print NOT yet landed (before 16:00 ET) still reads as 'today', not already printed", () => {
+  const section = catalystsSection(
+    ecosystemWithEarnings({ earnings_date: "2026-09-14", days_until: 0, report_time: "afterhours" }),
+    { asOf: "2026-09-14 14:00 ET" } as SwingPlayBriefContext,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Earnings: \*\*2026-09-14\*\* \*\*today\*\* \(afterhours\)/);
+  assert.doesNotMatch(section!.body, /already printed/i);
+});
+
+test("catalystsSection: same-day PREMARKET print already landed (past 09:30 ET) reads as already printed", () => {
+  const section = catalystsSection(
+    ecosystemWithEarnings({ earnings_date: "2026-09-14", days_until: 0, report_time: "premarket" }),
+    { asOf: "2026-09-14 11:00 ET" } as SwingPlayBriefContext,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Earnings: \*\*2026-09-14\*\* \*\*already printed\*\* \(premarket\)/);
+});
+
+test("catalystsSection: no ctx at all keeps the pre-existing bare 'today' behavior (never fabricates a landed/pending verdict without a real clock)", () => {
+  const section = catalystsSection(
+    ecosystemWithEarnings({ earnings_date: "2026-09-14", days_until: 0, report_time: "afterhours" }),
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Earnings: \*\*2026-09-14\*\* \*\*today\*\* \(afterhours\)/);
+  assert.doesNotMatch(section!.body, /already printed/i);
+});
+
+test("catalystsSection: a future earnings date (days_until > 0) is unaffected by the landed check", () => {
+  const section = catalystsSection(
+    ecosystemWithEarnings({ earnings_date: "2026-09-18", days_until: 4, report_time: "afterhours" }),
+    { asOf: "2026-09-14 19:07 ET" } as SwingPlayBriefContext,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Earnings: \*\*2026-09-18\*\* in \*\*4 days\*\* \(afterhours\)/);
+  assert.doesNotMatch(section!.body, /already printed/i);
+});
+
 // GAP FOUND (2026-09-28, Ask Largo standing mandate): live repro U/WATCH — arsenal.news.headlines
 // carried the SAME headline text twice ("10 Information Technology Stocks Whale Activity In
 // Today's Session" at both index 0 and 2), burning one of only 4 shown slots on a repeat.
