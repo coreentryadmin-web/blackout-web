@@ -18,6 +18,7 @@ import {
   type BuildTradePayloadOpts,
   type ChiefTradePayload,
 } from "@/lib/zerodte/discord-trade-notify";
+import { postDiscordWebhook } from "@/lib/discord-post";
 
 export type SwingTradeDiscordInput = {
   session_date: string;
@@ -39,6 +40,16 @@ export function swingDiscordAlertsEnabled(): boolean {
 /** Swing desk channel — separate from 0DTE Command and Legacy. */
 export function swingChiefTradeChannelId(): string | null {
   const raw = process.env.SWING_CHIEF_TRADE_CHANNEL_ID?.trim();
+  return raw || null;
+}
+
+/** Separate webhook for non-trade, mid-trade alerts (e.g. thesis-break) — distinct from the Chief
+ *  Trade Bot's BTO/STC channel (`SWING_CHIEF_TRADE_CHANNEL_ID`/`CHIEF_TRADE_BOT_URL`), which only
+ *  understands BTO/STC and feeds a FIFO PnL ledger. A still-open position has nothing to post
+ *  there without fabricating a phantom close, so this posts a plain embed via the same raw-webhook
+ *  path `spx-play-notify.ts`'s `DISCORD_PLAY_WEBHOOK_URL` already uses for non-FIFO desk alerts. */
+export function swingAlertWebhookUrl(): string | null {
+  const raw = process.env.SWING_ALERT_WEBHOOK_URL?.trim();
   return raw || null;
 }
 
@@ -147,6 +158,58 @@ export async function notifySwingTradeClose(
   });
   if (!payload) return false;
   return postChiefTrade(payload);
+}
+
+/**
+ * One-shot, non-trade alert: a capital-preservation THESIS rung (`structural_stop`/`thesis_stop`,
+ * see `manage.ts`'s `THESIS_BREAK_RUNGS`) fired for a position that is STILL OPEN this tick — the
+ * roll executor either hasn't run yet or couldn't build a plan (no forward bars, chain fetch
+ * failed, budget/cap gate, etc.). Without this, a member only learns the thesis broke once the
+ * position actually closes (which can lag the detection by one or more ticks) or if they happen to
+ * check the board/play-brief in between — exactly the "alerting only bookends the trade" gap
+ * raised on PR #4076 (comment 6303734681). Deliberately NOT routed through `postChiefTrade`/BTO-STC
+ * (see `swingAlertWebhookUrl`'s own doc) since the position hasn't closed.
+ *
+ * Caller is responsible for de-duplication (fire once per position — see swing-active-refresh's
+ * `sharedCacheSetNx` guard) and for only calling this when the close/roll did NOT execute this
+ * tick (a position that DID close/roll already gets the existing STC alert from
+ * `notifySwingTerminalFromOutcome` below, which is the stronger, more specific signal).
+ */
+export async function notifySwingThesisBreak(
+  input: SwingTradeDiscordInput,
+  reason: string | null | undefined
+): Promise<boolean> {
+  const url = swingAlertWebhookUrl();
+  if (!url) return false;
+
+  const strike = formatZeroDteStrike(input.contract_strike, input.direction);
+  const expiry = formatZeroDteExpiry(input.contract_expiry);
+  const dir = input.direction === "long" ? "LONG" : "SHORT";
+
+  const fields: Array<{ name: string; value: string; inline?: boolean }> = [];
+  if (strike && expiry) fields.push({ name: "Contract", value: `${strike} ${expiry}`, inline: true });
+  if (input.entry_premium != null && Number.isFinite(input.entry_premium)) {
+    fields.push({ name: "Entry", value: `$${input.entry_premium.toFixed(2)}`, inline: true });
+  }
+  if (input.last_mark != null && Number.isFinite(input.last_mark)) {
+    fields.push({ name: "Last mark", value: `$${input.last_mark.toFixed(2)}`, inline: true });
+  }
+
+  return postDiscordWebhook(
+    url,
+    {
+      embeds: [
+        {
+          title: `⚠️ Thesis Break — ${input.ticker} ${dir}`,
+          description: (reason?.trim() || "Structural/thesis stop triggered — management will close or roll on the next pass.").slice(0, 1000),
+          color: 0xed4243,
+          fields: fields.length ? fields : undefined,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    },
+    "swing-thesis-break"
+  );
 }
 
 /** Gating roll/close outcome from active-refresh — STC parent; on ROLL also BTO child. */

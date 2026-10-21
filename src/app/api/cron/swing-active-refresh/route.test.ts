@@ -94,6 +94,35 @@ test("the slot is released both on the early self-overlap-claim-lost return and 
   );
 });
 
+// Ask Largo standing mandate — PR #4076 comment 6303734681's "alerting only bookends the trade"
+// gap: a THESIS_BREAK_RUNGS gate firing is only member-visible once the position actually closes
+// (notifySwingTerminalFromOutcome above). This adds a one-shot, deduped, non-trade alert the first
+// tick the thesis gate is DETECTED, independent of whether the roll executor closed it that same
+// tick. Regex-asserted against raw source (not behaviorally mocked) to match this file's own
+// convention above for route.ts's DB/provider-heavy side-effect wiring.
+test("swing-active-refresh fires a one-shot, deduped thesis-break alert for positions a THESIS_BREAK_RUNGS gate detected but did NOT close this tick", () => {
+  assert.match(
+    routeSrc,
+    /import \{ THESIS_BREAK_RUNGS, type SwingManageRung \} from "@\/lib\/swing\/manage"/,
+    "must import the thesis-break rung subset from manage.ts rather than re-deriving rung literals"
+  );
+  assert.match(
+    routeSrc,
+    /THESIS_BREAK_RUNGS\.has\(o\.verdict\.rung\)\s*&&\s*!o\.roll\?\.parentGraded/,
+    "must only alert when a thesis gate fired AND the roll/close did not execute this tick — a position that DID close already gets the stronger STC alert above"
+  );
+  assert.match(
+    routeSrc,
+    /sharedCacheSetNx\(\s*dedupeKey/,
+    "must dedupe via the shared cross-replica NX claim so the alert fires at most once per position"
+  );
+  assert.match(
+    routeSrc,
+    /notifySwingThesisBreak/,
+    "must call the dedicated non-trade thesis-break notifier, not the BTO\\/STC chief-trade path"
+  );
+});
+
 test("swing-active-refresh gates on isEtCashRth before dispatching Polygon/UW refresh", () => {
   assert.match(
     routeSrc,
