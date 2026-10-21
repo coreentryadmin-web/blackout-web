@@ -64,6 +64,17 @@ export type SwingPlayBriefContext = {
    */
   archetypeTrackRecord?: SwingArchetypeTrackRecordSnapshot | null;
   /**
+   * BUG FIX (2026-10-21, Ask Largo standing mandate, live repro EWY): the read above used to
+   * collapse a genuine `withBriefSourceTimeout` rejection (a reachable timeout, not a cold cache)
+   * into the identical `null` a legitimately-ungraduated archetype produces — unlike every sibling
+   * best-effort source (`ecosystemFetchFailed`/`vectorFetchFailed`/`laneRowsFetchFailed` above),
+   * leaving a real outage on this source invisible to both `collectBriefUnavailableSources` and
+   * `swingPlayBriefConfidence`. `true` only when the fetch itself rejected (a reachable timeout);
+   * a resolved `null` (cold cache / genuinely ungraduated bucket) still correctly reports `false`,
+   * preserving the Largo C6 "omission, not fabrication" contract for the honest-absence case.
+   */
+  archetypeTrackRecordFetchFailed?: boolean;
+  /**
    * Roll history for the chain backing this play (record.ts's `roll_seq` thread) — feeds the
    * narrative's "rolled N times" disclosure. `null` when the position has never been rolled, the
    * ledger read failed, or the play carries no `positionId` (a WATCH/lane-only candidate has no

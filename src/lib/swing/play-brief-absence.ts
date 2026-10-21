@@ -837,6 +837,22 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       retryable: true,
     });
   }
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro EWY): the archetype track-record
+  // read (play-brief-context.ts) is the one C10 source in this file that was exempted from the
+  // same fetch-failure-disclosure discipline every sibling best-effort source above already gets —
+  // a genuine `withBriefSourceTimeout` rejection collapsed into the same silent `null` a legitimate
+  // cold-cache/ungraduated-bucket absence produces, with no entry here and therefore no effect on
+  // swingPlayBriefConfidence either. Disclosed regardless of play status, same rationale as the
+  // ecosystemFetchFailed block above — a fetch failure is a fact about the read, true regardless of
+  // play status.
+  if (ctx.archetypeTrackRecordFetchFailed) {
+    out.push({
+      source: "Archetype track record",
+      reason: "fetch failed",
+      what_is_missing: "a graduated archetype/sub-lane win-rate snapshot for this ticker",
+      retryable: true,
+    });
+  }
   // FINDINGS 2026-09-06 (#22) + live probe 2026-09-07: sync-without-timestamp AND aged markAsOf
   // must both reach unavailableSources — prose in dataHonestyCoaching alone is not enough (C3).
   const markAbsence = collectOptionMarkStalenessAbsence(ctx.play, readMs);
