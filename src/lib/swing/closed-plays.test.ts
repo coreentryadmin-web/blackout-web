@@ -55,6 +55,23 @@ function row(overrides: Partial<SwingPositionRow> = {}): SwingPositionRow {
 }
 
 describe("closedDeckSourceFromRow", () => {
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro BE): entryPremium/peakPremium/
+  // troughPremium used to pass through as raw, unrounded DB floats. `terminalPlayFromClosedSwing`'s
+  // `peakDisplay` (adapters.ts) derives a percentage directly from these raw values, while the
+  // SEPARATE `GET /api/market/swing/record` HTTP route independently 2dp-rounds the SAME columns
+  // via `roundFloats()` for the Command Deck UI's CLOSED tab (containers.tsx), which feeds the
+  // identical `terminalPlayFromClosedSwing` function a different precision basis for the same
+  // position. Live repro: brief said "Peak was +150.8%" off raw entry≈17.952/peak≈45.025, while
+  // (45.03/17.95-1)*100 = 150.9% using the rounded dollar figures the record route/UI actually show.
+  it("rounds entry/peak/trough premium to 2dp at the shared source (live repro BE rounding boundary)", () => {
+    const src = closedDeckSourceFromRow(
+      row({ entry_premium: 17.952, peak_premium: 45.025, trough_premium: 15.449 }),
+    );
+    assert.equal(src?.entryPremium, 17.95);
+    assert.equal(src?.peakPremium, 45.03);
+    assert.equal(src?.troughPremium, 15.45);
+  });
+
   it("maps graded CLOSED row to CLOSED deck source", () => {
     const src = closedDeckSourceFromRow(row());
     assert.equal(src?.status, "CLOSED");
