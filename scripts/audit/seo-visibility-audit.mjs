@@ -113,7 +113,8 @@ async function fetchPublic(path) {
 }
 
 async function fetchAuthed(path, sessionCookie, clientUat) {
-  const r = curl({
+  // Same transient TLS/edge resets as fetchPublic — deploy-smoke RED 2026-10-21 on first /dashboard.
+  const r = await curlRetry({
     url: `${APP}${path}`,
     headers: { Cookie: `__session=${sessionCookie}; __client_uat=${clientUat}` },
   });
