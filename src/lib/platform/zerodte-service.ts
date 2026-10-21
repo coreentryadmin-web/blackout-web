@@ -895,7 +895,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   // what gradePlanFromBars will stamp after the session). Same single derivation as mapLedgerRow.
   return {
     ...payload,
-    ledger: payload.ledger.map((row) => {
+    ledger: payload.ledger.map((row, i) => {
       // BUG FIX (2026-10-20, Ask Largo/5-engine standing mandate, live repro): peak_pnl_pct/
       // mfe_capture_pct/floor_pnl_pct were computed in mapLedgerRow from the RAW pre-roundFloats
       // entry_premium/peak_premium, but roundFloats() below rounds entry_premium/peak_premium
@@ -906,7 +906,31 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
       // this exact re-derivation treatment below for the identical reason — these three fields
       // never did. Re-derived here from the same member-visible rounded premiums, same functions
       // mapLedgerRow itself uses (peakPnlPct/mfeCapturePct/ratchetFloorPct+ratchetTargetReached).
-      const peakPnl = peakPnlPct(row.entry_premium, row.peak_premium);
+      //
+      // BUG FIX (2026-10-21, live repro — QQQ/SPCX/NVDA/AAPL): the recompute above was applied
+      // UNCONDITIONALLY, including to CLOSED rows. floor_pnl_pct's own doc comment (above, on the
+      // ZeroDteBoardLedgerRow type) frames it as LIVE-ONLY guidance ("your stop is now at...") —
+      // but a CLOSED row's `peak_premium` is the row's FINAL/latched value, which is not
+      // guaranteed to equal the peak that was actually armed at the moment the exit engine made
+      // its decision (entry_context.exit is stamped FIRST-WRITE-WINS off the peak seen at THAT
+      // tick; peak_premium can still widen on the very same transition before the row's lanes
+      // fully quiesce). Live evidence: a CLOSED QQQ row served peak_pnl_pct 11.11 / floor_pnl_pct
+      // 4.44 (= round2(11.11×0.4)) while its OWN pinned exit_detail read "...+4.24% floor armed by
+      // a +10.61% peak" — the served numbers were self-consistent with each other but NOT with the
+      // frozen narrative the member actually traded under; SPCX/NVDA/AAPL showed the identical
+      // peak-pnl_pct×0.4-floor pattern against their own disagreeing exit_detail text. A CLOSED
+      // row's exit-time peak is ALREADY on the payload, honestly, via the pinned
+      // entry_context.exit blob (readExitStampFromEntryContext's peak_pnl_pct — the exact value
+      // buildExitContext stamped when the engine decided, same input exit_detail's prose was built
+      // from) — so a CLOSED row with an engine-exit stamp now reports THAT frozen value instead of
+      // re-deriving from peak_premium. A CLOSED row with NO engine-exit stamp (a mechanical stop or
+      // a genuine 15:50 time-stop, neither of which stamps entry_context.exit) has no better frozen
+      // source and keeps the existing rounded-premium recompute, unchanged. OPEN/HOLD/TRIM rows are
+      // completely unaffected — this guards on row.status === "CLOSED" only.
+      const r = ledgerRows[i];
+      const frozenPeakPnl =
+        row.status === "CLOSED" ? readExitStampFromEntryContext(r?.entry_context ?? null).peak_pnl_pct : null;
+      const peakPnl = frozenPeakPnl != null ? frozenPeakPnl : peakPnlPct(row.entry_premium, row.peak_premium);
       return {
         ...row,
         live_pnl_pct: reconcileLedgerLivePnlPct(row),
@@ -920,15 +944,14 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
           : null,
         peak_pnl_pct: peakPnl,
         mfe_capture_pct: mfeCapturePct(row.exit_pnl_pct, peakPnl),
+        // floor_pnl_pct is a pure function of the SAME peak (frozen-or-live, resolved above) and
+        // the row's frozen target_pct — reusing `peakPnl` (rather than re-deriving
+        // pinnedLivePnlPct(row.entry_premium, row.peak_premium) twice, as this used to) keeps a
+        // CLOSED row's floor consistent with its own served peak_pnl_pct/exit_detail by
+        // construction, never re-introducing the live peak through a second code path.
         floor_pnl_pct: row.is_condor
           ? null
-          : ratchetFloorPct(
-              pinnedLivePnlPct(row.entry_premium, row.peak_premium),
-              ratchetTargetReached(
-                pinnedLivePnlPct(row.entry_premium, row.peak_premium),
-                row.target_pct ?? PLAN_RULES.target_pct,
-              )
-            ),
+          : ratchetFloorPct(peakPnl, ratchetTargetReached(peakPnl, row.target_pct ?? PLAN_RULES.target_pct)),
       };
     }),
   };
