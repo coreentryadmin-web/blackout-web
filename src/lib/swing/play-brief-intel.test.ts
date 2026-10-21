@@ -2951,6 +2951,35 @@ test("chartTechnicalsSection: CLOSED bucket renders technicals even when Vector 
   assert.equal(chartTechnicalsSection(vec), null, "default bucket (open) behavior unchanged");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro NVDA:62/CRWV:61 CLOSED briefs): the
+// 2026-10-17 fix above restored this section for CLOSED briefs, but the "Vector desk grade: X"
+// push a few lines later was never re-gated alongside it, so the grade fact rendered here AND in
+// vectorDeskSection's own CLOSED branch ("Current Vector read: grade X · conviction Y (since this
+// play closed)") — the exact duplicate the 2026-10-13 test below (and fix) eliminated for
+// OPEN/WATCH, reopened for CLOSED only. This is the CLOSED-bucket counterpart of that test.
+test("chartTechnicalsSection + vectorDeskSection: CLOSED bucket never renders the same grade fact under both titles (Largo C2, live repro NVDA:62/CRWV:61)", () => {
+  const vec = fixtureVec({
+    spot: 95,
+    play: { grade: "C", conviction: 42 },
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  } as Partial<VectorFullState>);
+
+  const chart = chartTechnicalsSection(vec, null, "closed");
+  const desk = vectorDeskSection(vec, null, "closed");
+
+  assert.ok(chart, "chart technicals still shows EMA/RSI/structure for CLOSED");
+  assert.doesNotMatch(chart!.body, /Vector desk grade/, "grade belongs to vectorDeskSection alone for CLOSED briefs");
+  assert.ok(desk, "Vector desk remains the one place that reports the CLOSED-bucket grade");
+  assert.match(desk!.body, /Current Vector read: grade \*\*C\*\*/);
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro SWING:TSLA:57 CLOSED brief): with a
 // stale Vector snapshot, this section still rendered the raw, stale `vec.spot` unconditionally,
 // while `gexPostureSection`'s "Nearest wall ... from spot" line (same envelope, via
