@@ -7506,6 +7506,94 @@ test("watchForSection: Premium target rail still shows the room% for a target no
   );
 });
 
+// Live repro (2026-10-21, Ask Largo standing mandate): MRNA (TRIM) and CRWV (HOLD) both showed
+// the Position section flag Mark/Greeks/Spread "stale" (same mark, ~5h16m past
+// SWING_OPTION_MARK_STALE_MS=18min) while the SAME envelope's "What to watch" rendered confident,
+// unqualified "Premium stop rail: 79% cushion from current bid" / "Premium target rail: 133% move
+// still needed" two sections later off that identical stale quote — directly contradicting
+// "Trade manager read"'s own "Data caveat ... Treat levels as indicative until refresh" line.
+// play-brief.ts's pnlSection already attaches this exact caveat to Greeks/Spread for the identical
+// field; watchForSection's rails never did.
+test("watchForSection: Premium stop/target rails carry the same 'stale — same quote Mark flagged above' caveat as the Position section's Greeks/Spread, for the identical stale mark (2026-10-21)", () => {
+  const stalePlay = fixturePlay({
+    status: "HOLD",
+    direction: "LONG",
+    mark: 12.53,
+    execMark: 12.25,
+    markAsOf: "2026-10-20T20:00:00.000Z", // ~5h16m before readMs below -- well past the 18-min window
+    exitPolicy: {
+      policy: "trim_scale",
+      hard_stop_pct: -60,
+      target_pct: 100,
+      trim_levels: [],
+      runner_fraction: 0.5,
+      stop_premium: 2.6,
+      target_premium: 25.0,
+    },
+  });
+  const staleSection = watchForSection(
+    {
+      play: stalePlay,
+      asOf: "2026-10-21T01:16:00.000Z",
+      sessionDate: "2026-10-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+      readMs: Date.parse("2026-10-21T01:16:00.000Z"),
+    } as SwingPlayBriefContext,
+    "open",
+  );
+  assert.match(
+    staleSection.body,
+    /Premium stop rail:.*stale — same quote Mark flagged above/,
+    `got: ${staleSection.body}`,
+  );
+  assert.match(
+    staleSection.body,
+    /Premium target rail:.*stale — same quote Mark flagged above/,
+    `got: ${staleSection.body}`,
+  );
+
+  // Fresh mark (well within the staleness window) must carry no caveat at all -- no false disclosure.
+  const freshPlay = fixturePlay({
+    status: "HOLD",
+    direction: "LONG",
+    mark: 12.53,
+    execMark: 12.25,
+    markAsOf: "2026-10-21T01:10:00.000Z", // 6 minutes before readMs -- well inside the window
+    exitPolicy: {
+      policy: "trim_scale",
+      hard_stop_pct: -60,
+      target_pct: 100,
+      trim_levels: [],
+      runner_fraction: 0.5,
+      stop_premium: 2.6,
+      target_premium: 25.0,
+    },
+  });
+  const freshSection = watchForSection(
+    {
+      play: freshPlay,
+      asOf: "2026-10-21T01:16:00.000Z",
+      sessionDate: "2026-10-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+      readMs: Date.parse("2026-10-21T01:16:00.000Z"),
+    } as SwingPlayBriefContext,
+    "open",
+  );
+  assert.doesNotMatch(freshSection.body, /stale — same quote Mark flagged above/, `got: ${freshSection.body}`);
+  assert.match(freshSection.body, /Premium stop rail/);
+  assert.match(freshSection.body, /Premium target rail/);
+});
+
 // Found during the 2026-09-11 Ask Largo catalysts-timing/cross-bucket-consistency pass. Same
 // duplication class as #4261 (recNote/rails) and the thesis-health advisory fix above:
 // catalystCoaching (play-brief-narrative-coaching.ts) already renders "Earnings in Nd (DATE) —
