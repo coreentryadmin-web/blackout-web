@@ -87,7 +87,27 @@ test("applyEditionOutcomeOverlay does not undo the gate-promote conviction cap o
   ]);
 
   const merged = applyEditionOutcomeOverlay(gatePromotedEdition, overlays);
-  const play = merged.plays[0] as { conviction?: string; gate_promoted?: boolean };
+  const play = merged.plays[0] as {
+    conviction?: string;
+    gate_promoted?: boolean;
+    tier?: { tier: string; factors: Array<{ label: string }> };
+  };
   assert.equal(play.gate_promoted, true);
   assert.equal(play.conviction, "B", "gate-promoted play must stay capped at B, not re-inflate to the raw tier pin's A");
+  // BUG FOUND (Ask Largo standing mandate, 2026-10-21, live repro MSTR): capGatePromotedConviction
+  // only ever touched `conviction`/`key_signal` -- it never capped the full `tier` ASSIGNMENT object
+  // this overlay also re-derives from the raw pin on every read. So a gate-promoted play correctly
+  // showed `conviction: "B"` right next to `tier: { tier: "A", ... }` -- the exact self-contradiction
+  // PR #6483's capGatePromotedTierAssignment() was built to prevent, reopened here because #6483
+  // only wired that helper into publish-context.ts's BUILD-time pin, never into this READ-time
+  // overlay, which independently sets `next.tier = overlay.tier` from whatever was pinned.
+  assert.equal(
+    play.tier?.tier,
+    "B",
+    "gate-promoted play's tier object must also stay capped at B, not re-inflate to the raw pin's A"
+  );
+  assert.ok(
+    play.tier?.factors.some((f) => f.label === "Gate-promoted cap"),
+    "capped tier must carry the honest gate-promoted disclosure factor, not silently truncate the raw factors"
+  );
 });
