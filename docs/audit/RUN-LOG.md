@@ -4,6 +4,25 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-21 (18:16 UTC / Wed 14:17 ET) — [SEO] Lane heartbeat: elevated-CLS blip investigated and resolved to timing variance, GOOD confirmed
+
+Resynced to `origin/main` (`c1a033687` → `f86f0a42a`, other-lane findings-fold). **Step 1:**
+purged Cloudflare edge HTML, then measured live homepage CLS 4× with `cls-measure.cjs` (desktop
+1440×900) — first 3 at default wait came back elevated and WORSENING (0.0662 → 0.0414 → 0.1255,
+the last one a real recorded shift crossing into `NEEDS-IMPROVEMENT`), not the usual
+near-zero/empty-shifts reading. Did not assume regression or transient blip without checking:
+`git log` on the live-data homepage components (`HomeGammaPromo.tsx`, `HomeLiveDeskStrip.tsx`)
+showed no recent changes — ruled out a just-shipped regression. Re-ran with `--wait 6000` (vs the
+default) — **CLS dropped to 0.0023, GOOD, empty shifts** — and a follow-up default-wait run came
+back clean too (0.0011, GOOD). **Conclusion: the elevated readings were the scroll-triggered
+measurement catching a live market-data component (gamma promo / live desk strip) still mid
+warming→real-data transition under RTH-hours fetch latency, not a reproducible CLS regression** —
+the #2453 fix holds; this is a measurement-timing artifact of auditing during active market hours,
+not a product defect. Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png` —
+crawlable, confirmed on production. **Step 2 — PR sweep:** 3 open agent PRs fleet-wide, all
+other-lane (spx/swing). Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap
+found. No PR opened.
+
 ## 2026-10-21 (16:33 UTC / Wed 12:33 ET) — [SEO] RTH wake: public live surface validated GOOD
 
 Last RTH window before 13:00 ET close. Resynced to `origin/main` (`a63598002` → `82264f0a2`,
