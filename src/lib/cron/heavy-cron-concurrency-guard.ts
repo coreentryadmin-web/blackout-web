@@ -61,7 +61,19 @@ export const MAX_CONCURRENT_HEAVY_CRONS = 2;
  * SET NX primitive) — this does not change how many swing-active-refresh runs can be in flight at
  * once, only who it has to wait on.
  */
-const RESERVED_SLOT_CRONS = new Set<string>(["swing-active-refresh"]);
+/**
+ * Market-hours correctness crons that must not be starved behind multi-minute vector/bie jobs.
+ * `swing-active-refresh` — live swing marks (2026-10-14). `zerodte-warm` — 0DTE scanner heartbeat
+ * (2026-10-21): chronic `heavy-cron concurrency slot unavailable` skips left
+ * `zerodte_scan_heartbeat` critical_stale during RTH while cron-audit query failed.
+ */
+const RESERVED_SLOT_CRONS = new Set<string>(["swing-active-refresh", "zerodte-warm"]);
+
+/** Clear a wedged reserved slot during watchdog-driven recovery (see zerodte-warm steal path). */
+export async function releaseHeavyCronReservedSlot(cronName: string): Promise<void> {
+  if (!RESERVED_SLOT_CRONS.has(cronName)) return;
+  await sharedCacheDel(`${RESERVED_SLOT_KEY_PREFIX}${cronName}`).catch(() => undefined);
+}
 
 export type HeavyCronSlot = { readonly cronName: string; release(): Promise<void> };
 
