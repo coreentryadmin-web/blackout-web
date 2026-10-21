@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-21T05:38:06.696Z",
+  "updated_at": "2026-10-21T05:48:24.378Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a30ada0ab567422ac5b8b6c10fe5653430ad3786",
+    "last_main_sha": "3990201a860b2fef0b5350e31445b4fc070677eb",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-11T21:37:11.186Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-11T21:37:16.956Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-12T02:36:25.250Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-12T02:36:29.771Z",
       "type": "context_sync",
@@ -1271,18 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-21T05:48:16.009Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-21T05:48:20.246Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-21T05:48:24.378Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6458,
-      "title": "fix(swing): counterThesisLine no longer counts a mechanical Theta-budget fade as an independent read",
-      "branch": "fix/counter-thesis-theta-budget-weight",
+      "number": 6459,
+      "title": "docs(findings): fold batch-27 findings into FINDINGS.md",
+      "branch": "docs/fold-batch-27",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-21T05:26:46Z"
+      "updated_at": "2026-10-21T05:41:41Z"
     },
     {
       "number": 5547,
