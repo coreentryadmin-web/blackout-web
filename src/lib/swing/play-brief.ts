@@ -1432,6 +1432,16 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       provenance: { source: "Earnings calendar", asOf: ctx.asOf, freshness: "recent" },
     });
   }
+  // Ask Largo standing mandate (evidence[] completeness, 2026-10-21): catalystsSection already
+  // renders this exact peer list ("Peers: ...") but evidenceFromContext() never mirrored it, so a
+  // structured/JSON reader of the envelope saw fewer peer names than the rendered markdown did.
+  if (eco?.arsenal?.related?.length) {
+    out.push({
+      kind: "fact",
+      text: `Peers: ${eco.arsenal.related.slice(0, 6).join(", ")}.`,
+      provenance: { source: "Polygon (related companies)", asOf: ctx.asOf, freshness: "recent" },
+    });
+  }
   const fund = eco?.arsenal?.fundamentals;
   if (fund && (fund.days_to_cover != null || fund.short_volume_ratio != null)) {
     // See FUNDAMENTALS_ANCIENT_CEILING_MS's comment (play-brief-absence.ts) — an ancient

@@ -3383,6 +3383,70 @@ test("composeSwingPlayBrief: earnings evidence carries brief asOf for Largo C1 j
   assert.equal(earningsEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
 });
 
+test("composeSwingPlayBrief: peers evidence mirrors catalystsSection's 'Peers:' line (evidence[] completeness)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "SRPT",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: null,
+        related: ["EDIT", "CTMX", "BMRN", "RARE", "FOLD", "QURE", "ARWR"],
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const peersEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Peers:"));
+  assert.ok(peersEvidence, "expected peers evidence to mirror catalystsSection's rendered peer list");
+  assert.equal(peersEvidence?.text, "Peers: EDIT, CTMX, BMRN, RARE, FOLD, QURE.");
+  assert.equal(peersEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
+});
+
+test("composeSwingPlayBrief: no peers evidence fabricated when arsenal.related is empty/null", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: null,
+        related: [],
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const peersEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Peers:"));
+  assert.equal(peersEvidence, undefined, "must not fabricate peers evidence from an empty related[] list");
+});
+
 test("composeSwingPlayBrief: short interest evidence grounds Catalysts claims for Largo C7", () => {
   const recentAsOf = new Date(Date.now() - 5 * 60_000).toISOString();
   const ctx: SwingPlayBriefContext = {
