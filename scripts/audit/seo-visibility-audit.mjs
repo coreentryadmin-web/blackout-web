@@ -113,7 +113,9 @@ async function fetchPublic(path) {
 }
 
 async function fetchAuthed(path, sessionCookie, clientUat) {
-  const r = curl({
+  // Same transient reset/edge blip class as fetchPublic — deploy-smoke RED on admin /dashboard
+  // with HTTP 0 while the very next authed fetch succeeded (2026-10-21).
+  const r = await curlRetry({
     url: `${APP}${path}`,
     headers: { Cookie: `__session=${sessionCookie}; __client_uat=${clientUat}` },
   });

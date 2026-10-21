@@ -36,3 +36,11 @@ test("seo-visibility-audit's fetchPublic retries through curlRetry, not a bare c
   assert.match(fn, /await curlRetry\(/);
   assert.doesNotMatch(fn, /(?<!curlRetry)\bcurl\(\{/);
 });
+
+test("seo-visibility-audit's fetchAuthed retries through curlRetry, not a bare curl", () => {
+  const src = readFileSync(join(process.cwd(), "scripts/audit/seo-visibility-audit.mjs"), "utf8");
+  const fn = src.match(/async function fetchAuthed\([\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, "fetchAuthed() not found");
+  assert.match(fn, /await curlRetry\(/);
+  assert.doesNotMatch(fn, /(?<!curlRetry)\bcurl\(\{/);
+});
