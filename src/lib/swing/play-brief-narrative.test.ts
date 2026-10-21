@@ -3930,3 +3930,98 @@ test("resolveInvalidationFocalLevel: a SHORT candidate still ignores a dark_pool
   const level = resolveInvalidationFocalLevel(play({ direction: "SHORT" }), focal);
   assert.equal(level?.kind, "call_wall", "a below-spot dark_pool print is not a SHORT's invalidation risk");
 });
+
+// BUG FIX (2026-10-21, Ask Largo x Night Hawk Swings standing mandate — deferred follow-up to
+// #6532, named explicitly in that PR's own staged finding
+// docs/audit/findings-staging/2026-10-21-swing-skip-hold-headline-leak.md). #6532 fixed the
+// IDENTICAL root cause in play-brief.ts's headline/Verdict copy via the new, exported
+// `swingVerdictVerb(play, action)` helper: a RESEARCH/SKIP candidate's `swingActionDisplay`
+// deliberately returns null (play-card-lifecycle.ts's own "SKIP deliberately returns null so the
+// honest PASSED lifecycle pill shows" comment) and `swingEntryAction` is always null too (never
+// enterable), so any fallback chain shaped `action?.label ?? play.recommendation ?? ...` falls
+// through to `play.recommendation` — the literal string "HOLD" entry-verdict.ts's RESEARCH branch
+// always stamps for a SKIP row, even though nothing was ever entered. This file's own
+// `actionNarrative` ("Entry stance" bullet, bucket==="watch") carries the exact same chain shape
+// and was never touched by #6532 — confirmed by reading it before writing this test (it still
+// read `swingActionDisplay(play)?.label ?? play.swingEntryAction?.toUpperCase() ?? rec`, `rec`
+// being `play.recommendation ?? "HOLD"`).
+test("tradeManagerNarrativeSection: SKIP/RESEARCH candidate's 'Entry stance' line reads PASSED, not the overloaded HOLD recommendation (2026-10-21, follow-up to #6532)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "SKIP",
+        recommendation: "HOLD",
+        swingEntryAction: undefined,
+        recNote: "Desk is passing this setup — no entry recommended.",
+      }),
+    }),
+    "watch",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Entry stance\*\* — PASSED\./,
+    `expected "Entry stance — PASSED.", got: ${section!.body}`,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /Entry stance\*\* — HOLD/,
+    "a declined RESEARCH/SKIP candidate must never read HOLD in the Entry stance bullet — nothing was ever entered, so nothing is being held",
+  );
+});
+
+// Second call site named by the same #6532 follow-up: `degradedReadLine` ("Live read" bullet),
+// which only fires when Vector/GEX spot isn't wired this tick (`tradeManagerNarrativeSection`'s
+// `spot == null` branch — the ctx below supplies no vector/ecosystem, so spot stays null and this
+// fallback fires in place of dealerPostureLine). Confirmed before writing this test: the function
+// read `swingActionDisplay(play)?.label ?? play.recommendation ?? play.swingEntryAction?.toUpperCase()
+// ?? "HOLD"` — the identical shape, same bug.
+test("tradeManagerNarrativeSection: SKIP/RESEARCH candidate's degraded 'Live read' line reads PASSED, not HOLD (2026-10-21, follow-up to #6532)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "SKIP",
+        recommendation: "HOLD",
+        swingEntryAction: undefined,
+      }),
+      vector: null,
+      ecosystem: null,
+    }),
+    "watch",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Live read\*\* — Vector spot not wired on this tick; desk still says \*\*PASSED\*\*/,
+    `expected the Live read bullet to say PASSED, got: ${section!.body}`,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /desk still says \*\*HOLD\*\*/,
+    "a declined RESEARCH/SKIP candidate must never read HOLD in the Live read bullet",
+  );
+});
+
+// Scoping proof for BOTH call sites above: a genuine OPEN/HOLD position (an existing live
+// position the desk is actively telling a member to hold — not a declined candidate) must keep
+// reading HOLD verbatim, completely unaffected by the SKIP-only special case.
+test("tradeManagerNarrativeSection: a genuine OPEN/HOLD position's 'Live read' line still reads HOLD, unaffected by the SKIP fix (2026-10-21)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        swingEntryAction: undefined,
+      }),
+      vector: null,
+      ecosystem: null,
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Live read\*\* — Vector spot not wired on this tick; desk still says \*\*HOLD\*\*/,
+    `expected the Live read bullet to still say HOLD for a real open position, got: ${section!.body}`,
+  );
+});

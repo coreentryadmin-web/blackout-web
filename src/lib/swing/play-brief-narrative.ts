@@ -31,6 +31,7 @@ import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { isSwingPlayStaleCheckExempt } from "./entry-enterability";
+import { swingVerdictVerb } from "./play-brief";
 
 const MAX_BULLETS = 14;
 
@@ -658,8 +659,24 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
 
   if (bucket === "watch") {
     const gateCount = play.gateBlocks?.length ?? 0;
+    const action = swingActionDisplay(play);
+    // BUG FIX (2026-10-21, Ask Largo x Night Hawk Swings standing mandate, deferred follow-up to
+    // #6532 named in that PR's own staged finding): a RESEARCH/SKIP candidate's `swingActionDisplay`
+    // deliberately returns null (play-card-lifecycle.ts's own "SKIP deliberately returns null so
+    // the honest PASSED lifecycle pill shows" comment) and `swingEntryAction` is always null too
+    // (never enterable), so this chain fell straight through to `rec` — `play.recommendation`,
+    // which `entry-verdict.ts`'s RESEARCH branch stamps the literal string "HOLD" even though
+    // nothing was ever entered (same root cause #6532 fixed for the headline/Verdict line in
+    // play-brief.ts, via `swingVerdictVerb`). Reuses that same shared helper rather than
+    // re-deriving the SKIP special case a second time — `play.status === "SKIP"` is checked
+    // FIRST (not appended as one more `??` fallback step) because `play.recommendation` is
+    // non-null ("HOLD") for every SKIP row, so an appended fallback would never be reached; every
+    // other `deckStatus` (WATCH here always resolves a real `action` label, so this ternary is a
+    // no-op for it) keeps the exact prior chain, untouched.
     const actionLabel =
-      swingActionDisplay(play)?.label ?? play.swingEntryAction?.toUpperCase() ?? rec;
+      play.status === "SKIP"
+        ? swingVerdictVerb(play, action)
+        : action?.label ?? play.swingEntryAction?.toUpperCase() ?? rec;
     lines.push(
       `**Entry stance** — ${actionLabel}. ` +
         (gateCount > 0
@@ -1342,11 +1359,22 @@ function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed
   // still meaningfully running, which #5620's own rationale says is false for this bucket. Gate on
   // the shared predicate rather than reinventing a third local check.
   if (bucket === "watch" && isSwingPlayStaleCheckExempt(play)) return null;
+  const degradedAction = swingActionDisplay(play);
+  // BUG FIX (2026-10-21, Ask Largo x Night Hawk Swings standing mandate, deferred follow-up to
+  // #6532, same root cause as `actionNarrative`'s own "Entry stance" fix above in this file): a
+  // RESEARCH/SKIP candidate reaches this line whenever Vector/GEX spot isn't wired this tick (the
+  // ONLY path that calls this function, per `tradeManagerNarrativeSection`'s `spot == null`
+  // branch) — `swingActionDisplay` returns null for SKIP, so this chain fell straight through to
+  // `play.recommendation`, the literal "HOLD" string `entry-verdict.ts`'s RESEARCH branch always
+  // stamps (never null/undefined for SKIP, so appending a SKIP check as one more `??` fallback
+  // step here would never be reached — same reason the fix below checks `play.status` FIRST
+  // rather than appending). Reuses the shared `swingVerdictVerb` helper (play-brief.ts) rather
+  // than re-deriving the SKIP special case a third time; every other `deckStatus` keeps the exact
+  // prior chain, untouched.
   const rec =
-    swingActionDisplay(play)?.label ??
-    play.recommendation ??
-    play.swingEntryAction?.toUpperCase() ??
-    "HOLD";
+    play.status === "SKIP"
+      ? swingVerdictVerb(play, degradedAction)
+      : degradedAction?.label ?? play.recommendation ?? play.swingEntryAction?.toUpperCase() ?? "HOLD";
   const health = thesisHealthUncalibrated(play.thesisHealth) ? null : play.thesisHealth?.health;
   // Honest relative retracement (mfe-capture.ts), not point-difference — a 4TH call site with the
   // identical bug, found while fixing the other three (blast radius, FINDINGS 2026-09-10): this
