@@ -107,3 +107,61 @@ test("adaptSwingBriefToLargo: does not throw on the real ET-stamp asOf shape, an
   assert.equal(largoRead.as_of, "2026-10-20 00:41 ET");
   assert.deepEqual(contractViolations(largoRead), [], "must be a fully C1-compliant as_of, not just non-throwing");
 });
+
+// BUG FIX (Largo C2, 2026-10-21, Ask Largo standing mandate — live 6-brief repro CRWV:61/CRWV:63/
+// GOOG:59/NVDA:62/TSLA:60/AMZN:48): `freshness`/`age_seconds` used to be hardcoded ("cached"/null)
+// on EVERY response, even when a per-source age was already known and already disclosed in the
+// SAME response's own "Data freshness" prose (e.g. real TSLA:60 brief: "Vector data **8642s** old
+// — levels may lag live spot"). This pins the live repro's exact number: a HOLD play (today's live
+// desk state IS load-bearing — `isSwingPlayStaleCheckExempt` is false for HOLD) whose only known
+// source is a Vector snapshot stamped `dataAgeMs: 8_642_000` must surface that same age through the
+// structured contract field, not silently drop it.
+test("adaptSwingBriefToLargo: surfaces a known stale Vector age as age_seconds/freshness instead of the hardcoded cached/null constant (Largo C2)", () => {
+  const ctx = fixtureCtx({
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    sessionDate: "2026-10-21",
+    ecosystem: null,
+    vector: {
+      asOf: "2026-10-21T16:30:00.000Z",
+      asOfEt: "2026-10-21 12:30 ET",
+      sessionDate: "2026-10-21",
+      spot: 24.5,
+      // The exact age the live TSLA:60 repro's own "Data freshness" prose disclosed.
+      dataAgeMs: 8_642_000,
+      freshness: "stale",
+      regime: { posture: "long" },
+      gexWalls: { callWalls: [{ strike: 26, pct: 8 }], putWalls: [{ strike: 22, pct: 7 }] },
+      gammaFlip: 24,
+      maxPain: 23.5,
+      confluenceZones: [],
+      magnet: null,
+    } as SwingPlayBriefContext["vector"],
+  });
+  const brief = composeSwingPlayBrief(ctx);
+  // Sanity: the brief's own prose must have actually flagged this as stale — otherwise this test
+  // would pass for the wrong reason (no genuine known-stale source in play at all).
+  const freshnessSection = brief.envelope.sections.find((s) => s.title === "Data freshness");
+  assert.ok(freshnessSection, "expected a Data freshness section disclosing the stale Vector read");
+  assert.match(freshnessSection!.body, /Vector data \*\*8642s\*\* old/);
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.equal(largoRead.age_seconds, 8642, "age_seconds must reflect the real known Vector age, not null");
+  assert.equal(largoRead.freshness, "stale", "freshness must be derived from the real age, not hardcoded cached");
+});
+
+// Sibling case: the pre-existing honest-omission behavior must survive this fix — a brief with
+// genuinely NO knowable per-source age (a fresh WATCH candidate, no Vector/GEX/option-mark read at
+// all this cycle) must still fall back to "cached"/null rather than fabricating an age of 0.
+test("adaptSwingBriefToLargo: falls back to cached/null when no per-source age is genuinely knowable this cycle (Largo C6 applied to C2)", () => {
+  const ctx = fixtureCtx(); // default fixture: vector/ecosystem both null, no markAsOf on the play
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.dataAgeMs, null, "sanity: nothing knowable this cycle in the default fixture");
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.equal(largoRead.age_seconds, null);
+  assert.equal(largoRead.freshness, "cached");
+});

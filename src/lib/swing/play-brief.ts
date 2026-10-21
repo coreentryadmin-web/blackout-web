@@ -38,7 +38,12 @@ import {
   trustedHelixFlow,
   vectorSnapshotStale,
 } from "./play-brief-absence";
-import { buildIntelSections, entryTriggerDeadReason, nearestLevelWithFlip } from "./play-brief-intel";
+import {
+  buildIntelSections,
+  entryTriggerDeadReason,
+  nearestLevelWithFlip,
+  worstKnownSwingDataAgeMs,
+} from "./play-brief-intel";
 import { checkPortfolioOverlap } from "./portfolio";
 import { describeThemeOverlap } from "./theme-cluster";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
@@ -2067,6 +2072,11 @@ export function composeSwingPlayBrief(
     : null;
 
   const trimsFired = play.exitPolicy?.trim_levels?.filter((t) => t.fired).length ?? null;
+  // Largo C2 — see worstKnownSwingDataAgeMs's own header (play-brief-intel.ts) for why this reuses
+  // the exact ages the "Data freshness" prose section above already computed rather than a second,
+  // independent read. ctx carries readMs (stamped at this function's own top) so this agrees with
+  // every other staleness check in this compose, not a fresh wall-clock sample of its own.
+  const dataAgeMs = worstKnownSwingDataAgeMs(ctx);
   // Diff snapshots must read spot/walls/flip from envelope.levels (already stale-gated in
   // levelsFromContext) — not a parallel vec/gex fallback that bypasses freshness gates.
   const snap = snapshotFromBrief(
@@ -2086,5 +2096,6 @@ export function composeSwingPlayBrief(
     flowSnapshot,
     briefContentKey: briefContentKey(snap),
     trimsFired,
+    dataAgeMs,
   };
 }
