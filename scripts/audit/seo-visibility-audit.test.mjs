@@ -36,3 +36,13 @@ test("seo-visibility-audit's fetchPublic retries through curlRetry, not a bare c
   assert.match(fn, /await curlRetry\(/);
   assert.doesNotMatch(fn, /(?<!curlRetry)\bcurl\(\{/);
 });
+
+// Live 2026-10-21: Deploy smoke RED on admin /dashboard HTTP 0 — "Recv failure: Connection reset
+// by peer" mid-rollout. fetchPublic already used curlRetry; fetchAuthed did not.
+test("seo-visibility-audit's fetchAuthed retries through curlRetry, not a bare curl", () => {
+  const src = readFileSync(join(process.cwd(), "scripts/audit/seo-visibility-audit.mjs"), "utf8");
+  const fn = src.match(/async function fetchAuthed\([\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, "fetchAuthed() not found");
+  assert.match(fn, /await curlRetry\(/);
+  assert.doesNotMatch(fn, /(?<!curlRetry)\bcurl\(\{/);
+});
