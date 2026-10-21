@@ -233,11 +233,12 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
     "the steal attempt itself must be an atomic NX claim, not a read-then-write race"
   );
 
-  // Only the winner clears both keys — RERUN_COOLDOWN_KEY and OVERLAP_LOCK_KEY.
+  // Winner clears cooldown, self-overlap, and the reserved heavy slot (wedged after deploy).
   const wonStealIdx = routeSrc.indexOf("if (wonSteal) {");
-  const clearBlock = routeSrc.slice(wonStealIdx, wonStealIdx + 300);
+  const clearBlock = routeSrc.slice(wonStealIdx, wonStealIdx + 420);
   assert.match(clearBlock, /sharedCacheDel\(RERUN_COOLDOWN_KEY\)/);
   assert.match(clearBlock, /sharedCacheDel\(OVERLAP_LOCK_KEY\)/);
+  assert.match(clearBlock, /heavyCronReservedSlotRedisKey\("zerodte-warm"\)/);
 
   // The steal-and-clear must happen BEFORE the normal cooldown claim, not after — otherwise a
   // wedged cooldown would already have rejected the run before the steal ever ran.

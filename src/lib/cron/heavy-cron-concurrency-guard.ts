@@ -70,6 +70,11 @@ export const MAX_CONCURRENT_HEAVY_CRONS = 2;
  */
 const RESERVED_SLOT_CRONS = new Set<string>(["swing-active-refresh", "zerodte-warm"]);
 
+/** Redis key for a cron's dedicated reserved heavy slot (used by steal/wedge recovery). */
+export function heavyCronReservedSlotRedisKey(cronName: string): string {
+  return `${RESERVED_SLOT_KEY_PREFIX}${cronName}`;
+}
+
 export type HeavyCronSlot = { readonly cronName: string; release(): Promise<void> };
 
 function slotHandle(cronName: string, key: string): HeavyCronSlot {
@@ -100,7 +105,7 @@ export async function acquireHeavyCronSlot(
   ttlSec: number
 ): Promise<HeavyCronSlot | null> {
   if (RESERVED_SLOT_CRONS.has(cronName)) {
-    const key = `${RESERVED_SLOT_KEY_PREFIX}${cronName}`;
+    const key = heavyCronReservedSlotRedisKey(cronName);
     const acquired = await sharedCacheSetNx(key, { cronName, startedAt: Date.now() }, ttlSec).catch(
       () => true
     );

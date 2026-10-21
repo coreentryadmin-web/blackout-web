@@ -26,6 +26,14 @@ mock.module("../shared-cache", {
   },
 });
 
+test("heavyCronReservedSlotRedisKey matches the key used by reserved crons", async () => {
+  const { heavyCronReservedSlotRedisKey } = await import("./heavy-cron-concurrency-guard");
+  assert.equal(
+    heavyCronReservedSlotRedisKey("zerodte-warm"),
+    "cron:heavy-slot:reserved:zerodte-warm"
+  );
+});
+
 test("acquires slot 1 when every slot is free", async () => {
   store = new Map();
   setNxCalls = [];
