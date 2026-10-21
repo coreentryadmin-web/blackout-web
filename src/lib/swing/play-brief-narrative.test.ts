@@ -704,12 +704,19 @@ test("tradeManagerNarrativeSection: stale Vector with live GEX fallback uses Las
 
   assert.ok(section);
   assert.match(section!.body, /Last snapshot/i);
-  assert.match(section!.body, /180s old/i);
+  // BUG FIX (2026-10-21, Ask Largo standing mandate): this used to assert /180s old/ — Vector's
+  // OWN dataAgeMs — even though every field this bullet actually renders (posture, flip, "short
+  // gamma") is GEX-sourced here (Vector is stale, so resolveGammaPosture/flip both fell through to
+  // the GEX fallback). That assertion encoded the exact bug a live TSLA repro caught: the caption
+  // ages itself off a source (Vector) that contributed nothing to the content on screen. The
+  // correct age is GEX's own `matrix_age_sec` (30s), not Vector's 180s.
+  assert.match(section!.body, /30s old/i);
+  assert.doesNotMatch(section!.body, /180s old/i);
   assert.match(section!.body, /short gamma/i);
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 
-test("tradeManagerNarrativeSection: future-skewed Vector dataAgeMs (Infinity) renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+test("tradeManagerNarrativeSection: future-skewed GEX matrix age renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16; re-scoped 2026-10-21 to GEX's own age, the field this caption now sources from)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
       vector: {
@@ -725,7 +732,11 @@ test("tradeManagerNarrativeSection: future-skewed Vector dataAgeMs (Infinity) re
           spot: 100,
           flip: 98,
           gamma_posture: "short",
-          matrix_age_sec: 30,
+          // A small future-skew (within WS_TIMESTAMP_FUTURE_TOLERANCE_MS=5s) keeps gexMatrixStale
+          // false (so the GEX fallback content this bullet renders is unaffected) while still
+          // producing a negative ageMs for ageSecondsLabel's own "clock-skewed" guard — the shape
+          // this test exists to cover, now exercised through the field the caption actually reads.
+          matrix_age_sec: -2,
           freshness: "cached",
         },
       } as SwingPlayBriefContext["ecosystem"],
@@ -737,6 +748,45 @@ test("tradeManagerNarrativeSection: future-skewed Vector dataAgeMs (Infinity) re
   assert.match(section!.body, /Last snapshot/i);
   assert.match(section!.body, /\(~clock-skewed old\)/i);
   assert.doesNotMatch(section!.body, /Infinitys/i);
+  assert.match(section!.body, /short gamma/i, "a slightly future-skewed-but-in-tolerance GEX read must still be usable content, not suppressed as stale");
+});
+
+// Live repro (2026-10-21, Ask Largo standing mandate): TSLA WATCH showed "Last snapshot
+// (~10659s old) ... net GEX 422.1M · session +1.8%" while the SAME envelope's evidence[] array
+// attributed that identical GEX reading to an 80s-old read -- dealerPostureLine captioned
+// GEX-sourced content (regime/net-GEX/session bits, all gated on `!gexStale`) with Vector's own,
+// much older, unrelated age. Vector and GEX ages are deliberately ~133x apart here so any
+// regression (falling back to Vector's age) fails loudly rather than by a rounding coincidence.
+test("tradeManagerNarrativeSection: dealer-posture caption ages itself off GEX, not Vector, when the rendered content is GEX-sourced (2026-10-21, live TSLA repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 380.45,
+        dataAgeMs: 10_659_000,
+        freshness: "stale",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "TSLA",
+        gex_positioning: {
+          spot: 380.45,
+          flip: 379.17,
+          gamma_posture: "long",
+          net_gex: 422_100_000,
+          change_pct: 0.018,
+          matrix_age_sec: 80,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "watch",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /\(~80s old\)/i, "must caption with GEX's own age (80s), the actual source of the content");
+  assert.doesNotMatch(section!.body, /10659s old/i, "must never caption GEX-sourced content with Vector's unrelated, far-older age");
+  assert.match(section!.body, /long gamma/i);
+  assert.match(section!.body, /net GEX/i);
 });
 
 test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now (Largo C2)", () => {
