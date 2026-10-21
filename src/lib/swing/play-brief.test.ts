@@ -513,6 +513,16 @@ test("composeSwingPlayBrief: Book context concentration carries a matching evide
 // (resolveTheme's own-cluster "NAME:<TICKER>" sentinel — theme-cluster.ts) leaked into this
 // evidence entry too. Confirmed live: GET /api/market/swing/play-brief for BYND returned
 // envelope.evidence text `Book overlap: 1 same-direction position in theme "NAME:BYND".`.
+//
+// BUG FIX (2026-10-21, Ask Largo standing mandate): this assertion originally expected
+// `describeThemeOverlap`'s own-cluster-sentinel resolution ("the same name (BYND)") because, at
+// the time, that was the only mechanism translating a same-ticker overlap into readable text. The
+// 2026-10-21 same-ticker/other-ticker split fix (mirroring bookContextSection's own fix) now
+// detects the same-ticker case BEFORE ever calling `describeThemeOverlap`, so this exact fixture
+// (a same-ticker, same-direction overlap) now renders the sharper, more specific phrasing directly
+// — the NAME: leak this test exists to guard is now structurally impossible via this path (the
+// same-ticker branch never touches `overlap.theme` at all), which is a stronger guarantee than
+// the original fix, not a regression of it.
 test("composeSwingPlayBrief: Book overlap evidence for an own-cluster (unmapped-ticker) overlap never leaks the NAME: sentinel", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ id: "SWING:BYND:9999", ticker: "BYND", direction: "LONG", status: "OPEN", recommendation: "HOLD" }),
@@ -529,7 +539,7 @@ test("composeSwingPlayBrief: Book overlap evidence for an own-cluster (unmapped-
   const brief = composeSwingPlayBrief(ctx);
   const overlapEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Book overlap:"));
   assert.ok(overlapEvidence, "sanity: the same-ticker overlap must still fire evidence");
-  assert.match(overlapEvidence!.text, /the same name \(BYND\)/);
+  assert.match(overlapEvidence!.text, /same-ticker same-direction position on BYND itself/);
   assert.doesNotMatch(overlapEvidence!.text, /NAME:/, "must never leak the internal own-cluster sentinel");
 });
 

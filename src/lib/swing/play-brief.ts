@@ -1417,9 +1417,31 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     if (overlap.hasOverlap) {
       const parts: string[] = [];
       if (overlap.sameThemeSameDirection.length) {
-        parts.push(
-          `${overlap.sameThemeSameDirection.length} same-direction position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}`,
-        );
+        // BUG FIX (2026-10-21, Ask Largo standing mandate): mirrors the same-ticker/other-ticker
+        // split just shipped in bookContextSection (play-brief-intel.ts) for the identical root
+        // cause — this evidence fact hand-builds the SAME generic "theme X" framing off the SAME
+        // overlap.sameThemeSameDirection array, so it carried the identical mislabeling: a literal
+        // same-ticker duplicate (the sharpest concentration case) read as ordinary cross-ticker
+        // sector overlap, disagreeing with the section body's own (now-fixed) sharper framing for
+        // the identical fact.
+        const reviewedTickerUpper = ctx.play.ticker.trim().toUpperCase();
+        const sameTickerCount = overlap.sameThemeSameDirection.filter(
+          (p) => p.ticker.trim().toUpperCase() === reviewedTickerUpper,
+        ).length;
+        const otherCount = overlap.sameThemeSameDirection.length - sameTickerCount;
+        if (sameTickerCount && otherCount) {
+          parts.push(
+            `${sameTickerCount} same-ticker + ${otherCount} other same-direction position${otherCount > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}`,
+          );
+        } else if (sameTickerCount) {
+          parts.push(
+            `${sameTickerCount} same-ticker same-direction position${sameTickerCount > 1 ? "s" : ""} on ${ctx.play.ticker} itself`,
+          );
+        } else {
+          parts.push(
+            `${overlap.sameThemeSameDirection.length} same-direction position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}`,
+          );
+        }
       }
       if (overlap.sameThemeOpposedDirection.length) {
         parts.push(`${overlap.sameThemeOpposedDirection.length} opposed position(s) in the same theme`);
