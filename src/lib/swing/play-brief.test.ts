@@ -1972,6 +1972,63 @@ test("composeSwingPlayBrief: Dealer posture evidence falls through to fresh GEX 
   );
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro GOOGL-closed): provenance.source
+// here was tagged purely off `postureFromVec` (whether the DIRECTIONAL WORD resolved from Vector's
+// regime.posture) — but the net-GEX dollar figure in the SAME line is unconditionally read from
+// `gex.net_gex` whenever gex is present and fresh (there is no Vector equivalent for it anywhere in
+// this file). So a genuinely-resolved Vector posture ("short") that happens to agree with a fresh
+// GEX matrix's own posture got the WHOLE line tagged "(Vector · ...)" even though the printed net
+// GEX figure (and, in the live repro, the wall too) was verbatim GEX-matrix content — confirmed
+// live: GOOGL's "## Vector desk" section carried only grade/conviction, no GEX data at all, while
+// every number in the "Dealer posture" evidence line matched its "## GEX posture" section exactly.
+test("composeSwingPlayBrief: Dealer posture tags GEX, not Vector, when the net-GEX figure shown is GEX-sourced (live repro GOOGL)", () => {
+  const nowIso = new Date().toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-10-21 04:47 ET",
+    sessionDate: "2026-10-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "GOOGL",
+      gex_positioning: {
+        ticker: "GOOGL",
+        spot: 339.85,
+        flip: 345,
+        call_wall: 345,
+        put_wall: 337.5,
+        gamma_posture: "short",
+        net_gex: 157_700_000,
+        asof: nowIso,
+        as_of_et: "2026-10-21 04:47 ET",
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: {
+      asOf: nowIso,
+      asOfEt: "2026-10-21 04:47 ET",
+      spot: 339.85,
+      dataAgeMs: 5_000,
+      freshness: "live",
+      // Vector's own regime genuinely resolved (not "unknown") — but carries NO gexWalls of its
+      // own, same shape as the live GOOGL repro's "Vector desk" section (grade/conviction only).
+      regime: { posture: "short", label: "SHORT" },
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(postureEvidence, "expected dealer posture evidence");
+  assert.match(postureEvidence!.text, /net GEX \+157\.7M/);
+  assert.equal(
+    postureEvidence!.provenance?.source,
+    "GEX",
+    "the printed net-GEX figure is GEX-only content — tagging the whole line 'Vector' misattributes it",
+  );
+});
+
 // Fast-follow to PR #5306 (Ask Largo standing mandate, 2026-09-20): #5306 shipped
 // `market_session_note` on the shared VectorFreshnessBlock (describeVectorFreshness) — the
 // weekend/holiday self-warm disclosure ("computed moments ago, but the market is CLOSED") — but
