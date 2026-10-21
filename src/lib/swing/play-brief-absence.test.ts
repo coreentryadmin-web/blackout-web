@@ -1007,6 +1007,63 @@ test("collectBriefUnavailableSources: Meridian peer cohort failure surfaces in e
   );
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA-closed): when the implied-move
+// RANKING cohort is thin (insufficient_reason set) but the cohort's own beat-rate members still
+// qualify (beat_rate_n >= 3 — the SAME floor meridianPeerEarningsCoaching uses to render them),
+// the absence entry's generic "enough peer names in the cohort to be directional" wording directly
+// contradicted the brief's own in-body "Earnings peer lens" section, which renders those peers'
+// beat rates AND explicitly calls them "directional only" two clauses away from this exact claim.
+test("collectBriefUnavailableSources: Meridian peer cohort insufficient-reason does not claim 'not directional' when qualifying beat-rate peers exist (live repro TSLA-closed)", () => {
+  const ctx = {
+    meridianPeer: {
+      available: true,
+      id: "earnings:TSLA",
+      subject_ticker: "TSLA",
+      position_summary: null,
+      members: [
+        { ticker: "WGO", report_date: "2026-09-05", expected_move_pct: null, avg_reaction_pct: null, reaction_sample_n: 0, beat_rate: 0.75, beat_rate_n: 4, is_subject: false },
+        { ticker: "WAB", report_date: "2026-09-05", expected_move_pct: null, avg_reaction_pct: null, reaction_sample_n: 0, beat_rate: 1, beat_rate_n: 4, is_subject: false },
+      ],
+      interpretation: "",
+      sector_label: "Transportation Equipment",
+      major_group: "37",
+      distribution: null,
+      insufficient_reason: "no peers reporting with a comparable number — too few to rank against",
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const entry = sources.find((s) => s.source === "Meridian peer cohort" || s.source === "Meridian implied-move ranking");
+  assert.ok(entry, "expected a Meridian peer-cohort-related absence entry");
+  assert.doesNotMatch(
+    entry!.what_is_missing,
+    /directional/i,
+    `must not claim peer data isn't directional when qualifying beat-rate peers exist: ${entry!.what_is_missing}`,
+  );
+});
+
+test("collectBriefUnavailableSources: Meridian peer cohort insufficient-reason still claims absence as before when NO qualifying beat-rate peers exist (no regression)", () => {
+  const ctx = {
+    meridianPeer: {
+      available: true,
+      id: "earnings:XYZ",
+      subject_ticker: "XYZ",
+      position_summary: null,
+      members: [],
+      interpretation: "",
+      sector_label: "Unclassified",
+      major_group: null,
+      distribution: null,
+      insufficient_reason: "no peers found in this sector",
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => (s.source === "Meridian peer cohort" || s.source === "Meridian implied-move ranking") && s.reason === "no peers found in this sector"),
+  );
+});
+
 test("collectBriefUnavailableSources: aged markAsOf surfaces in envelope (live probe 2026-09-07)", () => {
   const ctx = {
     play: {

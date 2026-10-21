@@ -994,10 +994,23 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       retryable: true,
     });
   } else if (ctx.meridianPeer?.available === true && ctx.meridianPeer.insufficient_reason?.trim()) {
+    // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA-closed): `insufficient_reason`
+    // is scoped to the IMPLIED-MOVE RANKING cohort specifically (MIN_COHORT_PEERS peers with a
+    // comparable expected-move number) — a DIFFERENT, independently-gated cohort from the
+    // beat-rate peers `meridianPeerEarningsCoaching` (play-brief-meridian-peer-core.ts) renders at
+    // `beat_rate_n >= 3`. The two can diverge: TSLA's ranking cohort was thin while its beat-rate
+    // cohort produced real data (WGO 75% n=4, WAB 100% n=4), rendered in-body as "peer history" and
+    // explicitly called "directional only" — yet this entry's old generic wording ("not enough peer
+    // names... to be directional") flatly contradicted that, two clauses away in the same document.
+    const hasQualifyingBeatRatePeers = (ctx.meridianPeer.members ?? []).some(
+      (m) => !m.is_subject && m.beat_rate_n >= 3,
+    );
     out.push({
-      source: "Meridian peer cohort",
+      source: hasQualifyingBeatRatePeers ? "Meridian implied-move ranking" : "Meridian peer cohort",
       reason: ctx.meridianPeer.insufficient_reason.trim(),
-      what_is_missing: "enough peer names in the cohort to be directional",
+      what_is_missing: hasQualifyingBeatRatePeers
+        ? "enough peers reporting a comparable implied-move number to rank this ticker's expected move against — beat-rate peer history is still shown separately"
+        : "enough peer names in the cohort to be directional",
       // Insufficiency here is a population-size fact (too few names printed this window), not a
       // transient read failure — asking again a moment later will not add peers to the cohort.
       retryable: false,
