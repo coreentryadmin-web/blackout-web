@@ -580,6 +580,110 @@ test("0DTE adapter: rehydrates thesisFirst from compact entry_context blob on le
   assert.equal(p.thesisFirst?.thesis.rail_scores.FLOW, 72);
 });
 
+test("0DTE adapter: committed row strips a thesisFirst.expression that names a DIFFERENT contract than the real trade", () => {
+  // Live repro 2026-10-21 (NVDA): the real committed contract was 217.5C expiring today
+  // (0DTE), but the thesis/contract-engine's generic cross-DTE "optimal expression" layer
+  // (contract-engine.ts's pickBestExpression, which deliberately considers 2-5 DTE when
+  // 0DTE IV is rich) had frozen a DIFFERENT contract — 222.5C expiring 2 days out — into
+  // entry_context.thesis_first at commit time. The Command Deck's "Why we picked it" panel
+  // rendered that frozen, never-traded 222.5C/2DTE line directly under the real 217.5C/0DTE
+  // position, telling the member the wrong contract was the rationale for their actual trade.
+  const p = terminalPlayFromZeroDte({
+    ticker: "nvda",
+    status: "OPEN",
+    strike: 217.5,
+    setup: { direction: "long", dte: 0, actual_dte_at_commit: 0, top_strike: 217.5 },
+    thesis_first_blob: {
+      rail_scores: { FLOW: 59 },
+      rails_fired: ["FLOW"],
+      summaries: {},
+      systems_aligned: 1,
+      trade_archetype: "MOMENTUM_CONTINUATION",
+      archetype_score: 62,
+      structural_state: null,
+      trigger_price: null,
+      rank_tier: "WATCH",
+      archetype_gate: "PASS",
+      archetype_blocks: [],
+      disagreeing_rails: [],
+      expression_horizon: "ZERO_DTE",
+      expression_dte: 2,
+      expression_strike: 222.5,
+      expression_expiry: "2026-10-23",
+      expression_score: 100,
+      expression_rationale: "2026-10-23 222.5C · score 100",
+    },
+  });
+  // The real trade is unaffected (strike label still reads the actual 217.5C/0DTE contract)...
+  assert.equal(p.contract, "217.5C · 0DTE");
+  // ...and the mismatched expression is stripped so "Why we picked it" can't show a contract
+  // the member was never actually in. The rest of the thesis (archetype/tier/evidence) survives.
+  assert.equal(p.thesisFirst?.expression, null);
+  assert.equal(p.thesisFirst?.rank_tier, "WATCH");
+});
+
+test("0DTE adapter: a pre-commit WATCH row keeps its forward-looking expression even if it names a different DTE", () => {
+  // No trade has happened yet for a WATCH row, so the contract-engine's cross-DTE
+  // recommendation is a legitimate forward-looking idea, not a mismatch to hide.
+  const p = terminalPlayFromZeroDte({
+    ticker: "nvda",
+    status: "WATCH",
+    strike: 217.5,
+    setup: { direction: "long", dte: 0, top_strike: 217.5 },
+    thesis_first_blob: {
+      rail_scores: { FLOW: 59 },
+      rails_fired: ["FLOW"],
+      summaries: {},
+      systems_aligned: 1,
+      trade_archetype: "MOMENTUM_CONTINUATION",
+      archetype_score: 62,
+      structural_state: null,
+      trigger_price: null,
+      rank_tier: "WATCH",
+      archetype_gate: "PASS",
+      archetype_blocks: [],
+      disagreeing_rails: [],
+      expression_horizon: "ZERO_DTE",
+      expression_dte: 2,
+      expression_strike: 222.5,
+      expression_expiry: "2026-10-23",
+      expression_score: 100,
+      expression_rationale: "2026-10-23 222.5C · score 100",
+    },
+  });
+  assert.equal(p.thesisFirst?.expression?.contract?.strike, 222.5);
+});
+
+test("0DTE adapter: committed row with a MATCHING expression contract is left untouched", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "qqq",
+    status: "OPEN",
+    strike: 725,
+    setup: { direction: "long", dte: 0, actual_dte_at_commit: 0, top_strike: 725 },
+    thesis_first_blob: {
+      rail_scores: { FLOW: 63 },
+      rails_fired: ["FLOW"],
+      summaries: {},
+      systems_aligned: 1,
+      trade_archetype: "CATALYST_CONTINUATION",
+      archetype_score: 60,
+      structural_state: null,
+      trigger_price: null,
+      rank_tier: "WATCH",
+      archetype_gate: "PASS",
+      archetype_blocks: [],
+      disagreeing_rails: [],
+      expression_horizon: "ZERO_DTE",
+      expression_dte: 0,
+      expression_strike: 725,
+      expression_expiry: "2026-10-21",
+      expression_score: 100,
+      expression_rationale: "2026-10-21 725C · score 100",
+    },
+  });
+  assert.equal(p.thesisFirst?.expression?.contract?.strike, 725);
+});
+
 // ── missing setup entirely ─────────────────────────────────────────────────────────────
 test("0DTE adapter: NO setup at all — defaults to LONG, empty factors, unknown thesis, gate driven by status", () => {
   const working = terminalPlayFromZeroDte({ ticker: "nvda", status: "HOLD", live_pnl_pct: 10, entry_premium: 4, last_mark: 4.4 });
