@@ -494,6 +494,72 @@ describe("resolveSwingPlayForBrief: a separately-supplied positionId must resolv
   });
 });
 
+// BUG FIX (2026-10-20, Ask Largo standing mandate, adversarially verified, Workflow static sweep
+// batch 17). A caller that supplies a specific positionId which fails to resolve through EVERY
+// targeted lookup (open ledger, both positionId-based closed checks, the chain-root retry) used to
+// fall through to the unconditional `loadClosedPlay(ticker, null)` fallback, which ignores
+// positionId entirely and returns whichever graded row for the ticker is most recently closed — a
+// completely different trade than the one asked about, with no absence/error signal at all.
+describe("resolveSwingPlayForBrief: a positionId that fails to resolve anywhere must return absence, never an UNRELATED closed position for the same ticker", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("positionId outside every lookup's fetch window resolves to null, not the only other closed row for this ticker", async () => {
+    mockOpenRows = [];
+    // The requested positionId (501) is NOT present anywhere the fetch covers — simulating it
+    // falling outside loadClosedPlay/resolveChainRootId's shared 90-day window. A DIFFERENT,
+    // more-recently-closed position for the SAME ticker is the only row returned — exactly the
+    // shape that silently won before this fix, because the final fallback never checked positionId.
+    mockClosedRows = [
+      {
+        ...openRow("ABC", 777),
+        status: "CLOSED",
+        graded_at: "2026-10-18T20:00:00.000Z",
+        closed_at: "2026-10-18T20:00:00.000Z",
+        realized_pnl_pct: 41.2,
+      },
+    ];
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:ABC",
+      ticker: "ABC",
+      positionId: 501, // not id 777, not root_position_id 777 — genuinely unresolvable here
+    });
+
+    assert.equal(
+      resolved,
+      null,
+      "an unresolvable positionId must surface as honest absence, never silently substitute the " +
+        "unrelated closed position (id 777) that happens to exist for this ticker",
+    );
+  });
+
+  test("with NO positionId supplied at all, the ticker-wide closed fallback is unchanged (still resolves the most recent closed row)", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      {
+        ...openRow("ABC", 777),
+        status: "CLOSED",
+        graded_at: "2026-10-18T20:00:00.000Z",
+        closed_at: "2026-10-18T20:00:00.000Z",
+        realized_pnl_pct: 41.2,
+      },
+    ];
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({ playId: "SWING:ABC", ticker: "ABC" });
+
+    assert.ok(resolved, "with no specific position asked about, the ticker-wide fallback must still fire");
+    assert.equal(resolved!.play.status, "CLOSED");
+  });
+});
+
 // BUG FOUND 2026-09-27 (Ask Largo standing mandate, live 5-engine monitor cycle). Unlike the
 // INTC case above (positionId supplied separately), a caller with ONLY a ticker + an explicit
 // `status=CLOSED` hint — no positionId at all — had NO guard: `pickLanePlayForBrief` never reads

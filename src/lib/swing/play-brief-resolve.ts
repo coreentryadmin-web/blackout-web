@@ -444,8 +444,25 @@ export async function resolveSwingPlayForBrief(
     if (closed) return { play: closed, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
   }
 
-  const closedFallback = await loadClosedPlay(ticker, null);
-  if (closedFallback) return { play: closedFallback, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
+  // BUG FIX (2026-10-20, Ask Largo standing mandate, adversarially verified). This fallback used to
+  // run UNCONDITIONALLY — reached whenever every earlier, positionId-targeted lookup above (the
+  // open ledger, both positionId-based closed checks, the chain-root retry) came back empty, with
+  // no check on whether the caller had actually supplied a specific positionId that simply failed
+  // to resolve (e.g. one outside loadClosedPlay/fetchSwingPositionsRange's own 90-day fetch window).
+  // `loadClosedPlay(ticker, null)` ignores positionId entirely and returns whichever graded row for
+  // the ticker has the most recent `graded_at` — a completely different trade than the one asked
+  // about. That is exactly the "silently returns the wrong play" failure mode this file's own
+  // `resolveChainRootId` doc comment above already names, just via a different trigger (a stale
+  // positionId rather than a multi-roll chain) — and `loadSwingPlayBriefContext` (play-brief-
+  // context.ts) already treats a `null` return here as the correct, honestly-handled "not found"
+  // signal, so there is a working absence path this fallback was bypassing. Only take the
+  // ticker-wide "whichever is most recent" guess when the caller never asked about a specific
+  // position in the first place — an explicit, unresolvable positionId must surface as absence,
+  // never as an unrelated substitute.
+  if (positionId == null) {
+    const closedFallback = await loadClosedPlay(ticker, null);
+    if (closedFallback) return { play: closedFallback, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
+  }
 
   return null;
 }
