@@ -6696,6 +6696,77 @@ test("flowIntelSection: omits the conviction clause entirely when conviction is 
   assert.doesNotMatch(section!.body, /conviction/);
 });
 
+// Live gap (2026-10-21, Ask Largo standing mandate): the 0DTE desk line was the one sibling in
+// "Flow & positioning" with zero freshness/status disclosure — the HELIX tape line states its own
+// window and Flow anomalies/Notable prints attach a per-item relativeAgeLabel bracket, but this
+// line never surfaced z.first_flagged_at (a real provenance timestamp) or z.status (a real
+// lifecycle column, same OPEN/HOLD/TRIM/CLOSED idiom as swing_positions) even though both are
+// fetched in the same query. A setup flagged minutes ago and one that already stopped out hours
+// earlier in the same session rendered identically.
+test("flowIntelSection: 0DTE desk line discloses the setup's own age and a closed/resolved status", () => {
+  const eco = {
+    ticker: "NRG",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    zerodte_today: {
+      session_date: "2026-09-11",
+      direction: "long",
+      score: 78,
+      conviction: "high",
+      status: "CLOSED",
+      first_flagged_at: new Date(Date.now() - 3 * 60 * 60_000).toISOString(), // 3h ago
+      is_condor: false,
+    },
+  } as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-11");
+  assert.ok(section);
+  assert.match(section!.body, /0DTE desk: \*\*long\*\*.*\[3h ago\].*already closed/, `got: ${section!.body}`);
+});
+
+test("flowIntelSection: 0DTE desk line carries no closed-status caveat for a still-live (non-CLOSED) setup", () => {
+  const eco = {
+    ticker: "NRG",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    zerodte_today: {
+      session_date: "2026-09-11",
+      direction: "short",
+      score: 78,
+      conviction: "high",
+      status: "committed",
+      first_flagged_at: new Date(Date.now() - 5 * 60_000).toISOString(), // 5m ago
+      is_condor: false,
+    },
+  } as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-11");
+  assert.ok(section);
+  assert.match(section!.body, /0DTE desk: \*\*short\*\*.*\[5m ago\]/, `got: ${section!.body}`);
+  assert.doesNotMatch(section!.body, /already closed/);
+});
+
+test("flowIntelSection: a closed CONDOR row also carries the closed-status caveat", () => {
+  const eco = {
+    ticker: "SPY",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    zerodte_today: {
+      session_date: "2026-09-11",
+      direction: "long",
+      score: 78,
+      conviction: "high",
+      status: "CLOSED",
+      first_flagged_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(), // 2h ago
+      is_condor: true,
+    },
+  } as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-11");
+  assert.ok(section);
+  assert.match(section!.body, /sold iron condor.*\[2h ago\].*already closed/, `got: ${section!.body}`);
+});
+
 test("flowIntelSection: a persisting anomaly re-written across two 30min cron cycles must render once, not twice", () => {
   // Live reproduction (NRG 2026-09-11): the market-regime-detector cron writes flow_anomalies
   // every 30min but only dedups (anomaly_type, ticker) within a 15-minute window at WRITE time,
