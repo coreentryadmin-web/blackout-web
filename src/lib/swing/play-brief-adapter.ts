@@ -8,6 +8,7 @@ import {
   productRead,
   type Confidence,
   type Direction,
+  type Freshness,
   type ProductRead,
   type ProductSignal,
 } from "@/lib/largo/contract/product-read";
@@ -100,12 +101,44 @@ function extractEvidence(envelope: BieAnswerEnvelope): string[] {
 }
 
 /**
+ * Largo C2 freshness bucket from the worst known per-source age (`SwingPlayBriefResult.dataAgeMs`
+ * — see `worstKnownSwingDataAgeMs`'s header in play-brief-intel.ts for where that number comes
+ * from). Thresholds reuse this desk's own EXISTING staleness bounds rather than inventing new
+ * ones: 120s is Vector/GEX's own stale cutoff (`GEX_MATRIX_STALE_MS`, play-brief-absence.ts —
+ * Vector shares the identical bound), 1080s is the option mark's own cadence-aware stale cutoff
+ * (`SWING_OPTION_MARK_STALE_MS`, entry-enterability.ts, sized for its 15-minute refresh cycle).
+ * Below the tighter bound reads "live"; at/past the looser bound reads "stale"; the band between
+ * (a source that has outlived Vector/GEX's tighter cutoff but is still within the option mark's
+ * normal on-schedule window) reads "delayed" — the same three-bucket shape `helix-contract.ts`'s
+ * sibling `tapeFreshness` already uses for an analogous "age -> Freshness" mapping elsewhere in the
+ * Largo-contract surface.
+ */
+function freshnessFromAgeSeconds(ageSeconds: number): Freshness {
+  if (ageSeconds < 120) return "live";
+  if (ageSeconds < 1080) return "delayed";
+  return "stale";
+}
+
+/**
  * Adapt a SwingPlayBriefResult (composed BieAnswerEnvelope) into a ProductRead<SwingPlayBriefSignal>
  * conforming to Largo contract requirements.
  */
 export function adaptSwingBriefToLargo(result: SwingPlayBriefResult): ProductRead<SwingPlayBriefSignal> {
-  const { envelope, asOf, ticker, ticker_class, playId } = result;
+  const { envelope, asOf, ticker, ticker_class, playId, dataAgeMs } = result;
   const canonicalTick = canonicalTicker(ticker);
+  // BUG FIX (Largo C2, 2026-10-21, Ask Largo standing mandate — live 6-brief repro CRWV:61/
+  // CRWV:63/GOOG:59/NVDA:62/TSLA:60/AMZN:48, spanning OPEN/CLOSED/ROLLED): `freshness`/`age_seconds`
+  // below used to be hardcoded ("cached"/null) on every response, regardless of the real,
+  // already-known per-source staleness this same compose path computes elsewhere (Vector/GEX/
+  // option-mark ages — the SAME numbers the brief's own "Data freshness" prose section discloses,
+  // e.g. "Vector data **8642s** old"). A model reading the structured contract field saw no age at
+  // all for an answer whose own prose, a few sections below it in the SAME response, discloses a
+  // multi-hour-stale read. `age_seconds` now surfaces the worst (oldest / most load-bearing) known
+  // age; `freshness` is DERIVED from it, never asserted independently of it. Falls back to the
+  // original honest-omission "cached"/null ONLY when no per-source age is genuinely knowable this
+  // cycle (e.g. a CLOSED play with no markAsOf) — never fabricated (Largo C6 applied to C2).
+  const age_seconds = dataAgeMs != null ? Math.max(0, Math.round(dataAgeMs / 1000)) : null;
+  const freshness: Freshness = age_seconds != null ? freshnessFromAgeSeconds(age_seconds) : "cached";
 
   const signal: SwingPlayBriefSignal = {
     ticker: canonicalTick,
@@ -142,8 +175,11 @@ export function adaptSwingBriefToLargo(result: SwingPlayBriefResult): ProductRea
       // computed once per request and is never a raw ISO string in practice. Pass it through
       // verbatim instead of re-formatting an already-formatted stamp.
       as_of: asOf,
-      freshness: "cached", // Deterministic service, no live upstream
-      age_seconds: null, // Freshness is session-anchored, not wall-clock-age
+      // Largo C2 — see the BUG FIX comment above (and worstKnownSwingDataAgeMs's header,
+      // play-brief-intel.ts) for why these are computed from the brief's own known per-source
+      // ages rather than hardcoded. Falls back to "cached"/null only when none is knowable.
+      freshness,
+      age_seconds,
       source: "computed", // No external provider — pure deterministic logic
       cohort: "all_swing_plays", // Swing plays are one cohort for this product
     },

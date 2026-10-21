@@ -178,4 +178,14 @@ export type SwingPlayBriefResult = {
   briefContentKey: string;
   /** Count of fired trim rails at compose time. */
   trimsFired: number | null;
+  /**
+   * Largo C2 (freshness) — the worst (oldest / most load-bearing for this answer) of the known
+   * per-source data ages this cycle (Vector / GEX / the option mark), computed once by
+   * `worstKnownSwingDataAgeMs` (play-brief-intel.ts) from the EXACT same values that already feed
+   * the "Data freshness" prose section, so the two can never disagree about what's known. Null —
+   * never 0 — when no per-source age is genuinely knowable this cycle (e.g. a CLOSED play with no
+   * `markAsOf` at all); `adaptSwingBriefToLargo` (play-brief-adapter.ts) is the sole consumer and
+   * falls back to its pre-existing honest "cached"/null output for exactly that null case.
+   */
+  dataAgeMs: number | null;
 };

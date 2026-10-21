@@ -3096,6 +3096,68 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
 }
 
 /**
+ * The worst (oldest / most load-bearing for this answer) of the known per-source data ages this
+ * cycle — Largo C2 (`age_seconds`, `play-brief-adapter.ts`'s `adaptSwingBriefToLargo`). Reuses the
+ * EXACT same values `dataFreshnessSection` above reads to build its "Data freshness" prose
+ * (`vec.dataAgeMs`, `gexMatrixAgeMs`, the option mark's own `markAsOf` age) and the same relevance
+ * gates (`isSwingPlayStaleCheckExempt` for Vector/GEX — a CLOSED or dead-WATCH play's "is today's
+ * live desk state current" question is permanently moot, same reason that section suppresses those
+ * lines for it; `playExpectsLiveOptionMark` for the option mark — a WATCH candidate's static chain
+ * mid has no live-sync age to report) rather than inventing a second, independent notion of "how
+ * stale is this answer." Unlike that section, an age is included here whether or not it has
+ * crossed its OWN staleness bound — a genuinely fresh Vector read is still a genuinely KNOWN age,
+ * just not one worth a caveat line in the prose.
+ *
+ * Returns null — never 0 — when no per-source age is genuinely knowable this cycle (e.g. a CLOSED
+ * play with no `markAsOf` at all): the honest-omission case `adaptSwingBriefToLargo` falls back to
+ * its pre-existing "cached"/null behavior for (Largo C6 applied to C2 — omit, never fabricate).
+ *
+ * BUG FOUND (Ask Largo standing mandate, 2026-10-21, live repro — 6 real briefs sampled across
+ * OPEN/CLOSED/ROLLED, CRWV:61/CRWV:63/GOOG:59/NVDA:62/TSLA:60/AMZN:48): every one of these ages was
+ * ALREADY computed, right here in this file, to build "Data freshness"'s own lines (e.g. "Vector
+ * data **8642s** old — levels may lag live spot") — but the Largo-contract top-level `age_seconds`
+ * field was a hardcoded `null` on all six responses regardless, so a model reading the structured
+ * field saw no age at all for an answer whose own prose, a few lines below it in the SAME response,
+ * discloses a multi-hour-stale Vector read.
+ */
+export function worstKnownSwingDataAgeMs(ctx: SwingPlayBriefContext): number | null {
+  const { play } = ctx;
+  const readMs = ctx.readMs ?? Date.now();
+  const ages: number[] = [];
+
+  // Option mark — only meaningful for a live committed row with a real synced timestamp, mirroring
+  // optionMarkIsStale's own relevance gate (a WATCH candidate's static chain mid has no sync age).
+  if (playExpectsLiveOptionMark(play.status) && play.markIsSync !== true && play.markAsOf) {
+    const markMs = Date.parse(play.markAsOf);
+    if (Number.isFinite(markMs)) {
+      const ageMs = readMs - markMs;
+      if (ageMs >= 0) ages.push(ageMs);
+    }
+  }
+
+  // Vector / GEX — only meaningful while today's live desk state is still load-bearing for this
+  // answer (same gate dataFreshnessSection's own Vector/GEX/HELIX lines use above).
+  if (!isSwingPlayStaleCheckExempt(play)) {
+    const vec = vectorOf(ctx);
+    if (vec) {
+      // Mirrors vectorAgeStale's own value chain: prefer the stamped dataAgeMs (NaN/Infinity on
+      // clock skew — excluded, never reported as a real age), else derive from vec.asOf.
+      const vecAgeMs =
+        typeof vec.dataAgeMs === "number" && Number.isFinite(vec.dataAgeMs)
+          ? vec.dataAgeMs
+          : vec.asOf && Number.isFinite(Date.parse(vec.asOf))
+            ? readMs - Date.parse(vec.asOf)
+            : null;
+      if (vecAgeMs != null && vecAgeMs >= 0) ages.push(vecAgeMs);
+    }
+    const gexAgeMs = gexMatrixAgeMs(ctx.ecosystem?.gex_positioning, readMs);
+    if (gexAgeMs != null && gexAgeMs >= 0) ages.push(gexAgeMs);
+  }
+
+  return ages.length ? Math.max(...ages) : null;
+}
+
+/**
  * BUG FOUND (Ask Largo standing mandate, 2026-09-20): every section builder below is called bare —
  * no try/catch anywhere in this function or in `composeSwingPlayBrief` (play-brief.ts). Each builder
  * chases nontrivial `??`/`.reduce()`/`.toFixed()`/`.slice()` reads off live ecosystem/vector/GEX/
