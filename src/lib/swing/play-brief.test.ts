@@ -171,6 +171,67 @@ test("composeSwingPlayBrief: OPEN play with no same-ticker siblings omits the di
   );
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA WATCH SHORT candidate). A
+// WATCH-bucket subject is never itself committed (fixturePlay defaults to status "WATCH" with no
+// entry premium), so it can never appear in laneRows and must NOT be counted as a "live position"
+// itself — only the real, committed sibling(s) are live. Before the fix, this rendered "2
+// concurrent live position(s)" for exactly 1 real committed sibling.
+test("composeSwingPlayBrief: WATCH candidate with ONE real committed sibling discloses exactly 1 live position, not 2", () => {
+  const siblingRow: HorizonPlay = {
+    ticker: "INTC",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 64,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:INTC260918C00090000",
+      strike: 90,
+      expiry: "2026-09-18",
+      right: "C",
+      dte: 8,
+      mid: 0.2,
+      bid: null,
+      ask: null,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: 0,
+    },
+    scoreFloor: 60,
+    reason: "Banger breakout +8.7% · 90C 2026-09-18",
+    entryPremium: 0.2,
+    livePnlPct: -12.5,
+    liveStatus: "OPEN",
+    committedAt: "2026-09-10T20:15:25.368Z",
+  };
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "INTC", status: "WATCH" }),
+    asOf: "2026-09-11T15:00:00.000Z",
+    sessionDate: "2026-09-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [siblingRow],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(sib, "must disclose the real committed sibling");
+  assert.match(
+    sib!.body,
+    /1 concurrent live position/,
+    `a non-committed WATCH subject must not count itself as a live position — got "${sib!.body}"`,
+  );
+  assert.doesNotMatch(sib!.body, /2 concurrent live position/);
+  const sibEvidence = brief.envelope.evidence.find((e) => e.text.includes("concurrent live position"));
+  assert.ok(sibEvidence, "sibling-position claim must carry a matching evidence entry (Largo C7)");
+  assert.match(sibEvidence!.text, /1 concurrent live position/);
+  assert.doesNotMatch(sibEvidence!.text, /2 concurrent live position/);
+});
+
 // Live repro 2026-10-11 (Ask Largo standing mandate — AMD positionId 51 vs 52). Two
 // independently-committed positions on the same ticker, different archetypes/theses
 // (`commit.ts`'s own idempotency key correctly treats them as separate — see `swingThesisKey`),
@@ -329,9 +390,15 @@ test("composeSwingPlayBrief: a WATCH candidate (no entry premium yet) with a sam
       "deciding whether to open a new position needs to know they already hold one",
   );
   assert.match(sib!.body, /300C 2026-10-16/);
-  assert.match(sib!.body, /2 concurrent live position/);
+  // BUG FIX (2026-10-21, Ask Largo standing mandate): this used to assert "2 concurrent live
+  // position(s)" — but this WATCH-bucket subject is itself never committed (no positionId, no
+  // entry premium), so only the ONE real sibling is actually "live". The old assertion encoded
+  // the exact overcounting bug fixed this cycle; see play-brief.ts's siblingPositionsNote.
+  assert.match(sib!.body, /1 concurrent live position/);
+  assert.doesNotMatch(sib!.body, /2 concurrent live position/);
   const sibEvidence = brief.envelope.evidence.find((e) => e.text.includes("concurrent live position"));
   assert.ok(sibEvidence, "the WATCH-row sibling claim must carry a matching evidence entry too (Largo C7)");
+  assert.match(sibEvidence!.text, /1 concurrent live position/);
 });
 
 // BUG FOUND (Ask Largo standing mandate, 2026-09-20): sibling of PR #5288's buildIntelSections
