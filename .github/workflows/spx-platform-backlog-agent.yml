@@ -43,7 +43,7 @@ jobs:
       - name: AWS credentials warning
         if: steps.aws_creds.outcome == 'failure'
         run: |
-          echo "::warning::AWS credentials rejected — continuing with GitHub secret fallbacks"
+          echo "::warning::AWS credentials rejected — continuing with GitHub secret fallbacks for ops:collect deferral probe"
           echo "Rotate AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in repo secrets when convenient."
 
       - name: Ensure spx-platform-backlog label exists

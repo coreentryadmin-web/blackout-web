@@ -129,6 +129,41 @@ jobs:
             --query 'services[0].taskDefinition' --output text)
           echo "Current task definition: ${TASK_DEF_ARN}"
 
+          # minHealthy=100 / max=120 deadlocks when desiredCount < 5 (floor(d*1.20) < d+1).
+          # Measured 2026-10-20: web sat at desired=2 after failed rolls; every ECR push then
+          # hung 36 min at PRIMARY running=0/1 until timeout. Autoscaling floor is 5 — restore
+          # it before forcing a new deployment so the roll has a spare task slot.
+          WEB_MIN_DESIRED=5
+          CURRENT_DESIRED=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].desiredCount' --output text)
+          echo "Service desiredCount before roll: ${CURRENT_DESIRED}"
+          if [ "${CURRENT_DESIRED}" -lt "${WEB_MIN_DESIRED}" ]; then
+            echo "::warning::desiredCount=${CURRENT_DESIRED} < ${WEB_MIN_DESIRED} — rolling deploy would deadlock. Restoring autoscaling floor."
+            aws ecs update-service \
+              --cluster "${ECS_CLUSTER}" \
+              --service "${ECS_SERVICE}" \
+              --desired-count "${WEB_MIN_DESIRED}" \
+              --no-cli-pager
+            echo "Waiting for runningCount >= ${WEB_MIN_DESIRED} before deploy..."
+            for _i in $(seq 1 40); do
+              RUNNING_NOW=$(aws ecs describe-services \
+                --cluster "${ECS_CLUSTER}" \
+                --services "${ECS_SERVICE}" \
+                --query 'services[0].runningCount' --output text)
+              if [ "${RUNNING_NOW}" -ge "${WEB_MIN_DESIRED}" ]; then
+                echo "Fleet at ${RUNNING_NOW}/${WEB_MIN_DESIRED} running — proceeding."
+                break
+              fi
+              sleep 15
+              if [ "${_i}" = "40" ]; then
+                echo "Timed out waiting for fleet to reach ${WEB_MIN_DESIRED} tasks."
+                exit 1
+              fi
+            done
+          fi
+
           # Fetch task def, rewrite image tags to the SHA-pinned build,
           # and strip any secrets refs for keys missing from Secrets Manager.
           # The immutable SHA tag avoids stale :latest resolution after failed
