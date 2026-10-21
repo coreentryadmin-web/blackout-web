@@ -4186,6 +4186,13 @@ test("composeSwingPlayBrief: Greeks line carries the same 'no live tick yet' cav
 // (18 minutes) — the brief's own separate "Data freshness" section independently flags this mark
 // stale, but Greeks/Spread in the SAME Position section carried zero mention it's the identical
 // quote. Live repro: TSLA/CRWV (both markAsOf-stamped, optionMarkIsStale true).
+//
+// BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro CRWV:63): Greeks/Spread's caveat
+// text reads "_(stale — same quote Mark flagged above)_" — but until the fix this test now also
+// covers, the Mark line a few lines above never actually said "stale" (it fell through to the
+// plain fallback branch, which carried zero confidence wording, unlike the other two Mark
+// branches). So the caveat's own premise was false in exactly the case it fires. The Mark line
+// now appends its own "(stale)" tag when `optionMarkIsStale` is true, making "flagged above" true.
 test("composeSwingPlayBrief: Greeks and Spread both carry a 'stale' caveat when the mark is timestamped but past the staleness window, and neither caveat fires on a fresh mark", () => {
   const stalePlay = fixturePlay({
     status: "HOLD",
@@ -4213,6 +4220,7 @@ test("composeSwingPlayBrief: Greeks and Spread both carry a 'stale' caveat when 
   });
   const stalePosition = staleBrief.envelope.sections.find((s) => s.title === "Position");
   assert.ok(stalePosition, "Position section expected");
+  assert.match(stalePosition!.body, /Mark:.*2026-10-18 09:00 ET.*\(stale\)/, `Mark line itself must flag stale, making "flagged above" true: got ${stalePosition!.body}`);
   assert.match(stalePosition!.body, /Greeks:.*Δ \+0\.62.*stale — same quote Mark flagged above/, `got: ${stalePosition!.body}`);
   assert.match(stalePosition!.body, /Spread:.*stale — same quote Mark flagged above/, `got: ${stalePosition!.body}`);
 
