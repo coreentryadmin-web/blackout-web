@@ -285,6 +285,31 @@ test("meridianPeerEarningsCoaching: thin cohort does not state the insufficient 
   assert.match(line!, /Implied-move cohort thin/i);
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SHOP — 13 days to print, peer cohort
+// unavailable, no expected_move_pct quoted). The function's own entry gate (line 57) accepts any
+// earnings item with days_until in [0,14], but the baseline "reports in Nd" line that's otherwise
+// the ONLY thing standing between an empty `parts` array and a rendered section was gated at
+// `days_until <= 7` — a narrower sub-window left over from before the entry gate was widened to 14
+// days. TDOC/GOOGL (days_until === 7) got the thin fallback section; SHOP (days_until === 13) got
+// no section at all, with the identical "peer cohort unavailable" condition. Live cross-ticker
+// comparison in the same audit cycle caught this as the one structurally different ticker in the
+// 8-14-day sub-range.
+test("meridianPeerEarningsCoaching: 8-14 days out with no implied move and no peer cohort still renders the thin fallback, not a silent omission (live repro SHOP)", () => {
+  const line = meridianPeerEarningsCoaching(
+    { available: false, error: "unclassified_sector" },
+    earningsItem({ ticker: "SHOP", days_until: 13, expected_move_pct: null }),
+  );
+  assert.ok(line, "an earnings item 13 days out must still render a thin fallback, not return null");
+  assert.match(line!, /Earnings peer lens/i);
+  assert.match(line!, /reports in \*\*13d\*\*/i);
+});
+
+test("meridianPeerEarningsCoaching: within 3 days still gets the 'print imminent' emphasis alongside the baseline line (no regression)", () => {
+  const line = meridianPeerEarningsCoaching(null, earningsItem({ days_until: 2, expected_move_pct: null }));
+  assert.match(line!, /reports in \*\*2d\*\*/i);
+  assert.match(line!, /print imminent/i);
+});
+
 test("pickEarningsForSwingPeer: skips index tickers (market-wide catalyst slice)", () => {
   const items = [earningsItem({ ticker: "AAPL", days_until: 3 })];
   assert.equal(pickEarningsForSwingPeer(items, "SPY"), null);
