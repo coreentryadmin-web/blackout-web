@@ -60,8 +60,15 @@ export const MAX_CONCURRENT_HEAVY_CRONS = 2;
  * semantics (the shared logic below already serializes a cron against itself via the same atomic
  * SET NX primitive) — this does not change how many swing-active-refresh runs can be in flight at
  * once, only who it has to wait on.
+ *
+ * `zerodte-warm` joined the reserved set 2026-10-21 after weeks of recurring P0 ops-auto-fix
+ * alerts (`RTH stale cron: zerodte-warm`) while the shared pool was routinely occupied by
+ * multi-minute vector-pick-sweep / vector-full-state-snapshot runs — cron_job_runs kept logging
+ * fast "accepted"/"skipped" handshakes but `zerodte_scan_heartbeat` went critical_stale because
+ * the background scan never acquired a slot. Same member-facing correctness class as swing marks:
+ * Night Hawk 0DTE discovery/commit stalls when this cron cannot run.
  */
-const RESERVED_SLOT_CRONS = new Set<string>(["swing-active-refresh"]);
+const RESERVED_SLOT_CRONS = new Set<string>(["swing-active-refresh", "zerodte-warm"]);
 
 export type HeavyCronSlot = { readonly cronName: string; release(): Promise<void> };
 
