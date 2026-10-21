@@ -38,6 +38,280 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-21 — [FINDING, swing] WATCH-bucket brief states setup maturity/serving section three times, two of them in the same section — Ask Largo round-3 deep-dive
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P3 (narrative-quality/consistency — the exact defect class this codebase has repeatedly found and fixed in these two files) |
+| **Surface** | `src/lib/swing/play-brief-intel.ts` — `whyThisSetupSection()` |
+
+### Root cause
+
+`whyThisSetupSection()` unconditionally re-rendered `play.servingSection`/`play.setupState` as
+"Desk section"/"Setup maturity" at the end of the section — the identical two fields
+`watchEntrySection()` (`play-brief.ts`) already renders as "Serving section"/"Setup" in the Entry
+section `composeSwingPlayBrief` always places immediately before "Why this setup" for a WATCH play.
+Worse, `synthesizedSetupLede()` also folds `play.setupState` into the lede sentence that opens the
+very same "Why this setup" section, so a single fact (`setupState`) could be stated three separate
+times in one brief — twice in one section.
+
+The "lede subsumes, never duplicates" discipline this exact function already applies to the
+Signals/Archetype/Sub-lane flat lines (its own existing test:
+`whyThisSetupSection: synthesizes a lede sentence for the common case, replacing (not duplicating)
+Signals/Archetype/Sub-lane`) was never extended to the trailing "Setup maturity" line, and no bucket
+gating existed to suppress the cross-section duplicate with `watchEntrySection` either.
+
+### Evidence
+
+Live TSLA WATCH envelope: Entry section reads "Serving section: **WATCH**" / "Setup:
+**TRIGGERED**". The very next section, "Why this setup", opens with a lede folding in `setupState`
+("...flagged this as a triggered event-driven directional setup...") and then closes with "Desk
+section: **WATCH**" / "Setup maturity: **TRIGGERED**" — the same two facts restated under different
+labels, one restatement inside the same section as the lede that already said it.
+
+Ran `whyThisSetupSection` directly against a scratch fixture to confirm before touching source:
+`setupState: "FORMING"`, `servingSection: "WATCH"` produced a lede plus an unconditional trailer
+restating both facts.
+
+Added two new tests to `play-brief-intel.test.ts` — RED (306/308, git-stash-verified on the source
+file alone) before the fix, GREEN (308/308) after:
+- the lede-subsumes case (non-WATCH call, setupState must appear exactly once in the section)
+- the WATCH-bucket case (`whyThisSetupSection(play, "watch")` must omit "Desk section"/"Setup
+  maturity" entirely)
+
+Broader regression sweep: `play-brief.test.ts` 161/161. `tsc --noEmit` clean.
+
+### Blast radius
+
+`buildIntelSections` calls `whyThisSetupSection(play)` unconditionally (no bucket gating on this
+specific call previously) and `collapseRedundantIntelSections` (`play-brief-intel-collapse.ts`)
+does not include "Why this setup" in its `NARRATIVE_COVERED_TITLES` dedup set — nothing downstream
+removed this duplication before the fix. `git log -S` shows the Entry-section lines (`play-brief.ts`)
+and the `whyThisSetupSection` lines (`play-brief-intel.ts`) were both written in the same initial
+Sept 2026 PRs with no coordination between the two files.
+
+### Fix
+
+Added an optional `bucket?: "watch" | "open" | "closed"` parameter to `whyThisSetupSection`
+(backward-compatible — every existing one-argument test call site is unaffected, since `bucket`
+defaults to `undefined` and behaves as "not watch"). Threaded `bucket` through from
+`buildIntelSections`'s existing parameter (it already has one, used by sibling sections). Two
+guards:
+1. Suppress the trailing "Setup maturity" line when `lede` already fired (`play.setupState && !lede`).
+2. Omit both "Desk section"/"Setup maturity" entirely when `bucket === "watch"`.
+
+Left in place for open/closed buckets, where no sibling section restates these facts.
+
+### Why not a bigger fix
+
+A narrow, additive change — two guard conditions, one new optional parameter threaded through one
+call site in `buildIntelSections` — no rewrite of the section, no change to non-WATCH behavior, no
+change to the lede logic itself.
+
+## 2026-10-21 — [FINDING, swing] "Since flag" (trackPct) in Watch levels is dead code for every real WATCH/SKIP candidate — Ask Largo round-3 deep-dive
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 (a 2026-10-20 fix was functionally inert for its target population) |
+| **Surface** | `src/lib/swing/serving-lane.ts` — `enrichPlay()`; `src/lib/swing/legacy-confirm-promote.ts` — `buildLegacySwingArtifacts()`'s `enrichedPlay` |
+
+### Root cause
+
+`watchForSection`'s "Since flag" bullet (`play-brief-intel.ts`, added 2026-10-20 citing a live TSLA
+WATCH repro) renders `trackPct`, computed in `adapters.ts`'s `terminalPlayFromHorizon`:
+
+```ts
+const watchTrack = status === "WATCH" || status === "SKIP";
+const trackPct = watchTrack ? watchUnderlyingTrackPct(src.direction, flagPx, src.liveSpot ?? null) : null;
+```
+
+`src.liveSpot` (`HorizonPlay.liveSpot`) had exactly one real writer anywhere in the repo:
+`live-plays.ts`'s `livePlaysFromOpenPositions`, which only ever runs for **committed** ledger rows
+(status OPEN/HOLD/TRIM). That status set is mutually exclusive with WATCH/SKIP, so `trackPct` was
+structurally always `null` for every genuine pre-entry WATCH/SKIP candidate — the entire population
+the 2026-10-20 fix was built for. The fix shipped a correct render branch pointed at a field nothing
+upstream of it had ever populated for that bucket.
+
+Two distinct pre-entry origins both had the gap: `serving-lane.ts`'s `enrichPlay()` (organic
+discovery) and `legacy-confirm-promote.ts`'s `buildLegacySwingArtifacts()` (Legacy-morning-confirm
+promotion) — neither ever set `.liveSpot` on the play it returns.
+
+### Evidence
+
+Live TSLA WATCH envelope (SHORT 400P, no positionId): "Watch levels" showed "Flag anchor:
+**374.61**" immediately followed by "Entry trigger: **373.71**" with no "Since flag" line between
+them, even though the same envelope's GEX/trade-manager-read section reported a fresh live spot of
+380.45 — a real, computable (380.45-374.61)/374.61 ≈ +1.56% raw move (-1.56% signed for a SHORT),
+exactly the figure the feature was built to surface, silently absent.
+
+Confirmed via exhaustive repo-wide grep: the only `liveSpot:` assignment to a
+`HorizonPlay`/`HorizonDeckSource` anywhere in `src/` was `live-plays.ts:675`
+(`livePlaysFromOpenPositions`, status OPEN/HOLD/TRIM only). The feature's own regression test
+(`play-brief-intel.test.ts`) and `adapters.test.ts`'s WATCH fixture both proved the render logic
+correct only by injecting `trackPct`/`liveSpot` directly on a hand-built fixture — a shape that
+never occurs via real production wiring — so neither test exercised the real `enrichPlay`/
+`buildLegacySwingArtifacts` path that was actually broken.
+
+Added two new tests exercising the REAL production wiring (not hand-built fixtures):
+- `serving-lane.test.ts` — `getSwingServingLane` end-to-end with a real `readsByTicker` map, asserting
+  the rendered WATCH play carries a non-null `liveSpot` equal to the live scan spot.
+- `legacy-confirm-promote.test.ts` — `buildLegacySwingArtifacts`, asserting `liveSpot` equals the
+  `groundedSpot` the play's plan levels were built from.
+
+RED→GREEN: 22/23 pass (serving-lane.test.ts) and 27/28 pass (legacy-confirm-promote.test.ts) before
+the fix (the new assertions failing on `liveSpot: undefined`); 51/51 combined, plus 621/621 on the
+broader `adapters.test.ts`/`play-brief-intel.test.ts`/`play-brief.test.ts` regression sweep, after.
+
+### Blast radius
+
+Confirmed `liveSpot` has exactly one OTHER consumer in `adapters.ts` (`liveSetupState`/
+`liveEntryStatus`, the committed-row persistence/entry-geometry pillar derivation) — both gated on
+`working` (`status === "OPEN" || "HOLD" || "TRIM"`), mutually exclusive with the WATCH/SKIP status
+this fix populates `liveSpot` for. So setting `liveSpot` for the WATCH/SKIP population cannot affect
+those derivations; the only reachable consumer for the newly-populated rows is `trackPct` itself.
+
+### Fix
+
+- `serving-lane.ts`'s `enrichPlay()`: add `liveSpot: reads?.setup?.price ?? play.liveSpot ?? null` —
+  `reads.setup.price` is already the live-or-last-known spot this same function uses to derive
+  `setupState`/`entryStatus` for the identical row, so this is purely forwarding data already in
+  hand, no new fetch.
+- `legacy-confirm-promote.ts`'s `enrichedPlay`: add `liveSpot: groundedSpot` — `groundedSpot` is
+  already computed a few lines above to build this play's plan levels.
+
+### Why not a bigger fix
+
+Deliberately left `flagUnderlyingPx` (the pinned flag ANCHOR) untouched — its own comment
+("WATCH track anchor: pinned first-flag price only — never the live scan spot") is a different,
+correct invariant for a different field; `liveSpot` is the separate, current-price field "Since
+flag" measures movement FROM that anchor, and the two must not be conflated.
+
+## 2026-10-21 — [FINDING, swing] `meridianPeerEarningsCoaching` renders the identical thin-cohort reason twice in one bullet — Ask Largo round-3 deep-dive
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P3 (narrative-quality — reads as a disconnected bullet-dump, not a correctness/data error) |
+| **Surface** | `src/lib/swing/play-brief-meridian-peer-core.ts` — `meridianPeerEarningsCoaching()` |
+
+### Root cause
+
+`meridianPeerEarningsCoaching()` unconditionally pushed both `peer.position_summary` and, when
+non-empty, a second caveat built from `peer.insufficient_reason` into the same `parts` array that
+is joined into one "Earnings peer lens" sentence. But `position_summary` is
+`describeCohortPosition()` (`src/lib/meridian/meridian-sector-core.ts`), which — whenever the
+cohort has no distribution (fewer than `MIN_COHORT_PEERS` same-SIC-major-group peers) — returns
+literally `${cohort.label} — ${cohort.insufficientReason}`: the SAME string that lands on
+`insufficient_reason` one field over, via `shapeMeridianPeerCohortForLargo`
+(`src/lib/largo/meridian-peer-cohort-for-largo-core.ts`), which sets both fields off the same
+`cohort`. `distribution === null` implies both are populated with the identical reason text — there
+is no code path where one is set without the other in the thin-cohort case — so the rendered
+bullet stated the identical clause twice: once bare (`<Sector> — <reason>`) and again inside the
+trailing `_Implied-move cohort thin: <reason> — peer beat rates are directional only._` caveat.
+
+### Evidence
+
+Live-reproduced in all three TSLA envelopes fetched during the round-3 deep-dive (COMMIT #60, a
+WATCH short brief, and CLOSED #57) — every one rendered the clause "no peers reporting with a
+comparable number — too few to rank against" twice, four clauses apart, inside the single
+"Earnings peer lens" paragraph. The existing test file (`play-brief-meridian-peer.test.ts`) never
+exercised this coupling: its one thin-cohort test hand-sets `position_summary: null` alongside
+`insufficient_reason`, which is not how production populates the two fields (they come from the
+same cohort object). Added a new test with the real coupled shape (`position_summary` carrying the
+full `"${label} — ${reason}"` string, `insufficient_reason` carrying the bare reason, matching
+`shapeMeridianPeerCohortForLargo`'s real output) — RED (1 fail, 9 pass — 2 occurrences of the
+reason instead of 1) before the fix, GREEN (10/10) after.
+
+### Blast radius
+
+Single call site (`play-brief-intel.ts`'s `meridianCatalystsSection`) — no other section/route
+consumes `meridianPeerEarningsCoaching()` or `position_summary` directly, so the fix is fully
+contained to this one pure function.
+
+### Fix
+
+Guard the `position_summary` push with `peer.distribution` (only state it when the cohort actually
+has a real ranking to report): `if (peer.position_summary && peer.distribution) parts.push(...)`.
+The thin-cohort case still states the reason exactly once, via the existing `insufficient_reason`
+caveat block a few lines below — nothing is silently dropped, the redundant copy is removed.
+
+### Why not a bigger fix
+
+`describeCohortPosition()`/`meridian-sector-core.ts` is a shared helper used by other, non-swing
+callers where the combined `"${label} — ${reason}"` fallback string may be the only place that
+reason is ever surfaced — left untouched. The fix is localized to this one swing-specific coaching
+function, which already has an independent, more detailed thin-cohort caveat of its own.
+
+## 2026-10-21 — [FINDING, swing] evidence[] book-overlap fact never got the same-ticker split on the OPPOSED-direction side — Ask Largo round-3 deep-dive
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 (evidence[] disagrees with the section body it's meant to corroborate — Largo C7 violation) |
+| **Surface** | `src/lib/swing/play-brief.ts` — `composeSwingPlayBrief`'s evidence feeder |
+
+### Root cause
+
+`composeSwingPlayBrief`'s evidence[] feeder (the "Book overlap: ..." fact) mirrors
+`bookContextSection`'s same-ticker/other-ticker split for `overlap.sameThemeSameDirection`
+(concentration) — but never applied the identical split to `overlap.sameThemeOpposedDirection`
+(internal conflict). The `sameThemeSameDirection` block got its split fixed earlier the same day
+(2026-10-21), mirroring a fix `bookContextSection` itself shipped the day before (2026-10-20,
+distinguishing a same-underlying opposed position from a same-theme/different-ticker one) — but the
+mirror-image `sameThemeOpposedDirection` block was left exactly as it was: a generic
+`${count} opposed position(s) in the same theme`, with no same-ticker branch at all.
+
+The evidence feeder's own adjacent comment states the explicit invariant this violated: "Same
+gating as the sections themselves... so this can never disagree with what the member reads in the
+section body" — for the opposed bucket it did disagree.
+
+### Evidence
+
+Live-reproduced on the TSLA WATCH short brief fetched during the round-3 deep-dive (book already
+holding TSLA 352.5C LONG #60 and TSLL LONG): the "Book context" section body correctly separated the
+two conflicts ("Internal conflict — same underlying — ... one of these two positions is mechanically
+wrong" vs "Internal conflict — theme 'ev-auto' already has an OPPOSED position: TSLL LONG"), but the
+same envelope's `evidence[]` carried only `"Book overlap: 2 opposed position(s) in the same theme."`
+— collapsing the literal same-underlying TSLA-vs-TSLA conflict and the sector-level TSLA-vs-TSLL
+conflict into one generic count.
+
+Added a new test (`play-brief.test.ts`) with the real coupled shape (a SHORT candidate while already
+LONG the same ticker, plus a second cross-ticker same-theme opposed position) — RED (161/162,
+collapsing to the generic framing) before the fix, GREEN (162/162, "1 same-ticker + 1 other opposed
+position in ...") after. Also ran `portfolio.test.ts` + `play-brief-intel.test.ts` (323/323) as a
+broader regression sweep — no other consumer of `sameThemeOpposedDirection` was touched.
+
+### Blast radius
+
+`checkPortfolioOverlap`'s `sameThemeOpposedDirection` field is the identical `PortfolioPosition[]`
+shape as `sameThemeSameDirection`, so the same split logic was mechanically applicable — no type or
+structural change needed. Confined to the one missed branch in the evidence feeder; `portfolio.ts`
+and `bookContextSection` (which already has its own correct split) are untouched.
+
+### Fix
+
+Mirror the same-ticker/other-ticker split already used in the preceding `sameThemeSameDirection`
+block: filter `overlap.sameThemeOpposedDirection` on ticker match, and push one of three phrasings
+("N same-ticker + M other opposed position(s) in {theme}" / "N same-ticker opposed position(s) on
+{ticker} itself (opposite side)" / the existing generic fallback) depending on which buckets are
+non-empty.
+
+### Why not a bigger fix
+
+No change needed to `bookContextSection`, `checkPortfolioOverlap`, or any other call site — this is
+localized to the single missed branch in the evidence feeder, the exact shape of fix already applied
+to its sibling block earlier the same day.
+
 ## 2026-10-21 — [FINDING, stale-OPEN correction] "No CHARM depth validator sibling" finding — fixed, a separate FIXED entry already exists, original OPEN status never updated
 
 > **kind:** `FINDING`
