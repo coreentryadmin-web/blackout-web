@@ -1179,14 +1179,32 @@ export function counterThesisLine(
   const faded = thesisHealthUncalibrated(play.thesisHealth)
     ? undefined
     : play.thesisHealth?.pillars?.find((p) => p.status === "lost" || p.status === "faded");
+  // BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA): a faded pillar used to be
+  // pushed straight into `reasons[]`, counted identically to a genuine directional read (HELIX
+  // flow, Night Hawk, Vector bias, a wall, EMA/MACD/structure, dealer posture) for the "corroborated
+  // across N independent reads" weight label below. But Theta budget (thesis-health.ts's
+  // thetaBudgetScore — "time decay is the whole point of the pillar") transitions PURELY off DTE vs
+  // a fixed cliff/migration threshold, with zero dependence on price, flow, or any other market
+  // signal — it fades on the calendar alone, whether the position is winning or losing. Counting it
+  // toward "independent reads" let a position with exactly one real opposing signal (e.g. dealer
+  // gamma) plus a mechanically-expiring Theta pillar read as "corroborated across 2 independent
+  // reads," overstating conviction right when members are most likely weighing whether to
+  // hold/add/exit (near expiry). This is the same "time-based ≠ directional corroboration"
+  // distinction `sellReasonClause()` already applies a few hundred lines up in this same file
+  // (fixed 2026-09-10: `expiry_risk`/`time_stop` render as "time-based: ... thesis still intact",
+  // never a thesis break) — applied here to the evidence-WEIGHT label instead of the exit-reason
+  // label. The fading-pillar fact is still shown in the bullet (a real, calendar-driven risk worth
+  // surfacing) — it just no longer inflates the count the weight label is based on.
+  let fadedPillarReason: string | null = null;
   if (faded && (!play.thesisBreak?.level || play.thesisBreak.level === "intact")) {
-    reasons.push(`fading pillar **${faded.label}**`);
+    fadedPillarReason = `fading pillar **${faded.label}**`;
   }
 
-  if (!reasons.length) return null;
+  if (!reasons.length && !fadedPillarReason) return null;
 
   const side = play.direction === "LONG" ? "bear" : "bull";
-  const shown = reasons.slice(0, 3);
+  const allClauses = fadedPillarReason ? [...reasons, fadedPillarReason] : reasons;
+  const shown = allClauses.slice(0, 3);
   // A single-reason counter-thesis and one where 3 independent desks/reads agree were rendering
   // with identical prose weight — "Counter-thesis (bear case) — <reason(s)>" either way — so a
   // member had no way to tell an isolated signal from a corroborated one without counting clauses
