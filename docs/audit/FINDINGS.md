@@ -38,6 +38,346 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-21 — [FINDING, P2 0DTE panel data-correctness] 0DTE `key_supports`/`key_resistances` show a duplicated level, silently dropping the real second-best one — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+### Symptom
+
+Live `GET /api/market/zerodte/board` (production, 2026-10-21): `QQQ key_supports=[707.23, 707.23]`,
+`AMD key_supports=[524.6, 524.6]` — both names show the SAME level twice instead of two distinct
+supports, even though each name has real chart structure that should have surfaced a genuine
+second level.
+
+### Root cause
+
+`src/features/nighthawk/lib/technicals.ts` (~line 185) builds `support_levels`/`resistance_levels`
+as a concatenation of THREE independently-sourced levels:
+
+```ts
+support_levels: [...swings.support, mtf.weekly?.support, mtf.monthly?.support]
+```
+
+These three sources (a recent swing low, the weekly low, the monthly low) can legitimately
+resolve to the same rounded price — e.g. the nearest swing support and the weekly support both
+sitting on the same round number. `src/lib/zerodte/board.ts`'s `enrichSetup` (~lines 1858-1867)
+then picked the "2 highest supports below price / 2 lowest resistances above price" with:
+
+```ts
+(tech?.support_levels ?? []).filter((l) => l > 0 && l < price).sort((a, b) => b - a).slice(0, 2)
+```
+
+— filter, sort, slice(0,2), with **no deduplication**. When two of the three sources collide,
+the duplicate survives the sort as two adjacent, identical entries, and `slice(0,2)` returns
+`[X, X]` instead of `[X, <real second-best level>]` — the actual second-best support/resistance is
+silently dropped from the panel, not merely mis-ordered. This wasn't caught earlier because the
+existing `board.test.ts` fixture (`fakeDossier()`) used three support levels and three resistance
+levels that were all mutually distinct, so the no-dedup path was never exercised by a collision.
+
+### Evidence
+
+Live repro (production, 2026-10-21, `GET /api/market/zerodte/board`): `QQQ key_supports=[707.23,
+707.23]`; `AMD key_supports=[524.6, 524.6]`.
+
+Reproduced the same shape locally and proved RED→GREEN with `git stash` isolating only
+`src/lib/zerodte/board.ts` (test file never touched):
+- **RED** (pre-fix `board.ts`, fixture: `support_levels: [186.5, 186.5, 184.1, 179.9]`,
+  `resistance_levels: [190.2, 190.2, 193.5, 175.0]`): `key_supports` came back `[186.5, 186.5]`
+  (expected `[186.5, 184.1]`) — `AssertionError` on `deepStrictEqual`.
+- **GREEN** (fix restored): `key_supports = [186.5, 184.1]`, `key_resistances = [190.2, 193.5]` —
+  full suite 138/138 pass on `src/lib/zerodte/board.test.ts` (Node 20,
+  `npx tsx --experimental-test-module-mocks --test src/lib/zerodte/board.test.ts`).
+
+### Fix
+
+Added a `dedupeLevels()` helper in `board.ts` (relative-tolerance dedup, 0.5% with a 0.01 floor —
+the same convention already used by `swingLevels`'s own internal `dedup` in `technicals.ts`,
+since every source already rounds to 2dp but isn't guaranteed to collide byte-for-byte) and ran
+both `key_supports` and `key_resistances` through it BEFORE the sort+slice(0,2). Both fields had
+the identical undeduplicated pattern, so both were fixed in the same change.
+
+### Blast radius
+
+`keySupports`/`keyResistances` are also read later in the same function to derive
+`condorCallWall`/`condorPutWall` (the iron-condor short-strike wall inputs) — a duplicated level
+there would not itself break the condor geometry (it already takes the first entry,
+`keyResistances[0]`/`keySupports[0]`, which is unaffected by a duplicate at the tail), but a
+dropped second-best level means the panel itself under-informs the trader looking for the next
+level out. No other call site in the repo reads `support_levels`/`resistance_levels` through this
+same top-2 slice pattern (checked via grep for `support_levels` / `resistance_levels` outside
+`technicals.ts` and `board.ts`), so no other fix site was needed.
+
+### Deliberately left unchanged
+
+`technicals.ts`'s own concatenation (`support_levels`/`resistance_levels`) was left as-is — it is
+reasonable for the raw, undeduplicated list to carry every source (a future consumer may want to
+know a level was corroborated by two independent timeframes), so the dedup belongs at the
+presentation-consuming call site (`enrichSetup`'s top-2 slice), not the raw technicals builder.
+
+## zerodte-warm RTH stale — RVOL shadow Polygon fetch could hang entire scan — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6519 ("fix(zerodte): timeout RVOL shadow fetches so scan heartbeat cannot hang"); `RVOL_SHADOW_TIMEOUT_MS` confirmed present in `src/lib/zerodte/relative-volume-source.ts` with its test in `relative-volume-source.test.ts`. Restamped from a stale mid-flight status line that was never revisited after the merge. |
+| --- | --- |
+
+**Symptom:** `Cron audit query` failed on `main` (`66691d75`) — watchdog reported `zerodte-warm` stale during RTH (listed twice: `problem_keys` + `rth_stale_keys`).
+
+**Root cause:** `admin-cron-health.ts` overrides `zerodte-warm` to **stale** when `zerodte_scan_heartbeat` is `critical_stale` (>10m since `recordZeroDteScanTick`), even if `cron_job_runs` handshakes look fresh. `recordZeroDteScanTick` runs only after `scanZeroDteBoard()` returns. New RVOL shadow wiring (`computeRelativeVolumeShadow` in `relative-volume-source.ts`) uses Polygon minute/daily fetches with **no timeout**; `Promise.allSettled` in `scan.ts` still waits forever if a child promise never settles — one hung ticker blocks the whole scan → heartbeat stalls → cron audit RED.
+
+**Fix:** Wrap `computeRelativeVolumeShadow` in a 12s per-ticker `Promise.race` timeout (env `RVOL_SHADOW_TIMEOUT_MS` for tests). Dedupe watchdog problem keys in `cron-audit-query.mjs` log output.
+
+**Verify:** After deploy, `npm run validate:cron` / Cron audit query GREEN during RTH; `zerodte_scan_heartbeat` age <10m; CloudWatch `[cron/zerodte-warm] background done` resumes ~5m cadence.
+
+## 2026-10-21 — [FINDING, P2 Night Hawk Swings / Ask Largo closed-deck] closedDeckSourcesFromChains nulls entry/peak/trough premium for a non-terminal worst leg instead of borrowing the real per-leg value — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+### Symptom
+
+Live `GET /api/market/swing/record` (production, 2026-10-21): for a multi-leg roll chain where the
+"worst" (most-negative) leg is an EARLIER leg rather than the terminal leg, the served `closedDeck`
+row correctly re-points `contract`/`occ`/`mid`/`delta`/`exitPnlPct` at the worst leg's own data — but
+`entryPremium` is always served as `null`, even when the worst leg's own row carries a real value.
+
+Two live chains reproduced it:
+- AMZN positionId 48 (root chain 44): worst leg = leg 44 (ROLLED, strike 605, expiry 2026-10-16,
+  `realized_pnl_pct` −27.67%, `entry_premium` 5.15, `exit_mark`/`last_mark` 3.73). The served row
+  correctly shows `exitPnlPct: -27.67`, the correct strike/expiry/occ, and the correct mid 3.73 — but
+  `entryPremium: null` despite 5.15 sitting on the exact same row object already read for the other
+  fields.
+- AAPL positionId 40 (root chain 37): worst leg = leg 37 (`entry_premium` 6.73, `exit_mark` 5.23,
+  `realized_pnl_pct` −22.3%). Same pattern — `exitPnlPct: -22.3` correct, `entryPremium: null`.
+
+Aggregate win/loss grading math on this route was independently re-verified correct in the same
+audit (`resolved_chains=21=wins(3)+losses(18)+breakevens(0)`) — this was a display/completeness gap
+only, never a grading-math defect, and no grading/aggregation logic was touched by this fix.
+
+### Root cause
+
+`src/lib/swing/closed-plays.ts`, `closedDeckSourcesFromChains` (~lines 367-373, pre-fix). When the
+worst leg isn't the terminal leg, the function already resolves `worstLegRow` (the worst leg's own
+`SwingPositionRow`) and correctly borrows its `contract_strike`/`contract_expiry`/`contract_occ`/
+`last_mark`/`contract_delta` via `contractBundleFromRow(worstLegRow)` (the 2026-10-11 and 2026-10-18
+fixes, same file). But the three sibling fields were built as:
+
+```ts
+entryPremium: worstLegIsTerminal ? src.entryPremium : null,
+peakPremium: worstLegIsTerminal ? src.peakPremium : null,
+troughPremium: worstLegIsTerminal ? src.troughPremium : null,
+```
+
+— unconditionally `null` in the non-terminal case, never borrowed from `worstLegRow`. The adjacent
+code comment (2026-09-15 fix, since corrected) asserted these fields have "no per-leg equivalent to
+borrow" — that assertion is false. `entry_premium`/`peak_premium`/`trough_premium` are real per-row
+(per-leg) columns on `swing_positions` (`SwingPositionRow` in `src/lib/db.ts`), the exact same class
+as `contract_strike`/`last_mark`/`contract_delta`, which this same function already correctly borrows
+from `worstLegRow` two lines away. The 2026-09-15 fix was right to stop pairing the TERMINAL leg's
+bounds with the worst leg's P&L (that was a genuine, different bug — see that fix's own comment) —
+but it reached for "omit" when "borrow the worst leg's own real value" was available and just as
+cheap, the same fix shape the 2026-10-11/2026-10-18 fixes already applied one field over. Not caught
+earlier because every existing regression test for this path asserted the (wrong) `null` outcome
+directly, so the suite was self-consistent with the bug rather than catching it.
+
+### Fix
+
+Resolve `worstLegRow.entry_premium`/`peak_premium`/`trough_premium` (rounded via the file's existing
+`round2`) and use them in the non-terminal branch instead of `null`, falling back to `null` only when
+the worst leg's own column is genuinely absent (a real data gap, not a leg-mismatch one):
+
+```ts
+const worstLegEntryPremium =
+  worstLegRow?.entry_premium != null ? round2(worstLegRow.entry_premium) : null;
+const worstLegPeakPremium =
+  worstLegRow?.peak_premium != null ? round2(worstLegRow.peak_premium) : null;
+const worstLegTroughPremium =
+  worstLegRow?.trough_premium != null ? round2(worstLegRow.trough_premium) : null;
+...
+entryPremium: worstLegIsTerminal ? src.entryPremium : worstLegEntryPremium,
+peakPremium: worstLegIsTerminal ? src.peakPremium : worstLegPeakPremium,
+troughPremium: worstLegIsTerminal ? src.troughPremium : worstLegTroughPremium,
+```
+
+Also corrected the two stale code comments (2026-09-15 and 2026-10-11 fix write-ups) that asserted
+or implied these fields have no per-leg equivalent — they do, and the misconception was the root
+cause, not a formatting nit.
+
+### Blast radius
+
+Single call site: `closedDeckSourcesFromChains` is the only place in the codebase that builds a
+chain-composite closed-deck row, and `entryPremium`/`peakPremium`/`troughPremium` are plain fields on
+`SwingClosedDeckSource` with no other producer to touch. No other consumer of `SwingPositionRow`'s
+`entry_premium`/`peak_premium`/`trough_premium` columns was changed — `closedDeckSourceFromRow` (the
+single-leg/terminal-leg path) already read them directly and was already correct; this fix only
+changes the non-terminal-worst-leg branch of the chain-composite path.
+
+### Deliberately left unchanged
+
+- Grading/aggregation math (`buildSwingRecord`, win/loss/breakeven composite outcome) — untouched,
+  independently re-verified correct before this fix.
+- `closedReason`/`contract`/`occ` re-pointing logic (2026-09-13/2026-09-15/2026-10-11/2026-10-18
+  fixes) — unchanged; this fix only extends the same "borrow from `worstLegRow`" pattern those fixes
+  already established to the three premium fields that had been left out of it.
+- The genuine-absence fallback (`worstLegRow`'s own column is `null`) still serves `null` — honest
+  omission is still correct when the worst leg's own row truly lacks the value, per this codebase's
+  absence principle; only the leg-mismatch case (the real value existing but never being read) was
+  the bug.
+
+### Evidence
+
+Regression test added to `src/lib/swing/closed-plays.test.ts` (`closedDeckSourcesFromChains` describe
+block): a 2-leg chain fixture with the worst leg non-terminal, asserting `entryPremium`/
+`peakPremium`/`troughPremium` in the result equal the worst leg's own real values (not `null`, not
+the terminal leg's values) — reproducing the live AMZN positionId 48/44 shape with the exact values
+from the production repro above. RED→GREEN proven via `git stash` on the source file only (never the
+test file): with the pre-fix source, 2 tests fail (`null !== 5.15` on the new AMZN-repro test, plus
+the updated existing test asserting the worst leg's own bounds); with the fix restored, all 32 tests
+in the file pass. Full `src/lib/swing/*.test.ts` suite: 1992/1992 pass. `npx tsc --noEmit`: clean.
+
+## 2026-10-21 — [FINDING, Night Hawk / Legacy] Edition-outcome overlay overwrote `conviction` to
+the already-capped letter *before* calling `capGatePromotedConviction`, so its own stale-detection
+guard never fired and a gate-promoted play's `key_signal` kept citing the pre-cap grade — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Night Hawk Legacy — `applyEditionOutcomeOverlay` (read-time outcome overlay, every `GET /api/market/nighthawk/edition`) |
+| **Severity** | P2 — member-visible self-contradiction between the (correctly capped) conviction/tier badges and the (stale) key-signal sentence, on every gate-promoted play, on every edition read |
+| **File** | `src/features/nighthawk/lib/edition-outcome-overlay.ts` (`applyEditionOutcomeOverlay`, ~lines 72-77) |
+| **4th site** | Same gate-promoted-conviction-cap-leak bug *class* fixed 3 times earlier this session (PR #6483's three call sites, and PR #6487's `tier`-object leak at this same function) — this is a 4th, distinct ordering bug at this same call site, not a duplicate of either prior PR. |
+
+### Symptom (live repro, production, 2026-10-21)
+
+`GET /api/market/nighthawk/edition`, MSTR play:
+
+```json
+{
+  "ticker": "MSTR",
+  "conviction": "B",
+  "tier": { "tier": "B", "factors": [{ "label": "Gate-promoted cap", "direction": "down",
+    "detail": "Promoted past a failed quality gate — conviction capped at B regardless of the measured score band." }, ...] },
+  "key_signal": "BULLISH — flow + positioning · score 52 (A)",
+  "gate_promoted": true
+}
+```
+
+`conviction` and `tier.tier` both correctly read "B" (both prior fixes, #6483/#6487, hold) — but
+`key_signal`'s trailing grade token still reads "(A)", directly contradicting the two badges sitting
+right next to it in the same payload. IBM and MMM (same edition, not `gate_promoted`) correctly show
+matching score/conviction letters, confirming this is specific to the gate-promoted overlay path, not
+a general key_signal bug.
+
+### Root cause
+
+`capGatePromotedConviction` (`src/features/nighthawk/lib/publish-gates.ts:424-440`) only rewrites
+`key_signal`'s trailing `"(A)"`/`"(A+)"` grade token when its OWN stale-detection guard reads the
+play's `conviction` as still `"A"`/`"A+"` — that read is how it decides a cap (and the matching
+key_signal rewrite) is actually due:
+
+```ts
+export function capGatePromotedConviction(play: PlaybookPlay): PlaybookPlay {
+  if (!play.gate_promoted) return play;
+  const conv = String(play.conviction ?? "").trim().toUpperCase();
+  if (conv === "A+" || conv === "A") {
+    const key_signal = ... .replace(/\(A\+?\)$/, "(B)") ...;
+    return { ...play, conviction: "B", key_signal };
+  }
+  return play;
+}
+```
+
+`applyEditionOutcomeOverlay` called this function AFTER already overwriting `conviction` to the
+already-capped letter:
+
+```ts
+// BUGGY ORDER
+next.tier = cappedTier;
+next.conviction = cappedTier.tier;              // e.g. "B" — overwritten FIRST
+next = capGatePromotedConviction(next);         // guard reads conviction === "B" → "A"/"A+" check
+                                                 // is false → rewrite branch never fires
+```
+
+By the time `capGatePromotedConviction` ran, `next.conviction` already read `"B"`, so its
+`conv === "A"/"A+"` guard was always false and the rewrite branch could never execute — `key_signal`
+kept citing whatever grade token was built into it at publish time (`buildDeterministicThesis`,
+`deterministic-edition.ts`, which stamps the trailing grade from the raw/uncapped merit-tier letter,
+unaware of `gate_promoted`), forever, on every live read.
+
+### Why this wasn't caught by the 2 prior fixes at this same function
+
+PR #6487's own written account of this exact code (`docs/audit/FINDINGS.md`, quoted here verbatim)
+claimed:
+
+> `capGatePromotedConviction(next); // still runs — no-op once conviction is already capped, but
+> still rewrites key_signal's trailing grade token`
+
+That claim is false — "no-op once conviction is already capped" and "but still rewrites key_signal"
+cannot both be true, because the rewrite branch is gated on the SAME `conviction === "A"/"A+"` check
+that "already capped" falsifies. This is the exact kind of stale, unverified claim
+`CLAUDE.md`'s Ask Largo mandate warns about ("verify against `main`/the live function, never trust a
+prior write-up at face value") — the earlier PR fixed the `tier`-object leak it was built for, but
+its own description of the `conviction`/`key_signal` interaction it left untouched was wrong, and
+nothing caught it because the existing regression test (`edition-outcome-overlay.test.ts`) asserted
+`conviction`/`tier.tier` but never asserted on `key_signal` for a gate-promoted play.
+
+### Fix
+
+Reordered so `capGatePromotedConviction` sees the RAW, pre-cap tier letter (not the already-capped
+one) when its guard runs, then re-derives the final `conviction` from the capped tier assignment
+afterward (needed for every play this block touches — not just the gate-promoted-and-capped case,
+since `capGatePromotedConviction` is a no-op whenever `gate_promoted` is false or the raw tier wasn't
+A/A+, and something still has to sync `conviction` to the tier pin in those cases):
+
+```ts
+const cappedTier = capGatePromotedTierAssignment(overlay.tier, p.gate_promoted === true);
+next.tier = cappedTier;
+next.conviction = overlay.tier.tier;            // RAW, pre-cap letter — lets the guard fire
+next = capGatePromotedConviction(next);         // now correctly caps + rewrites key_signal
+next.conviction = cappedTier.tier;              // re-sync for the non-firing cases too
+```
+
+**Fix rationale:** feeding the raw pin letter (`overlay.tier.tier`) rather than relying on
+`p.conviction` (whatever the play happened to already carry) makes the fix correct regardless of
+what was persisted before this read — the raw tier pin is the one value that actually determines
+whether a cap-and-rewrite is due, independent of any prior overlay pass's output. Deliberately left
+unchanged: `capGatePromotedTierAssignment`'s own tier-capping logic (correct, from #6487) and
+`capGatePromotedConviction`'s own cap/rewrite logic (correct, from #6483) — only the call order
+feeding one into the other was wrong.
+
+### Evidence (RED → GREEN, per repo policy)
+
+- **RED:** `git stash push -u -- src/features/nighthawk/lib/edition-outcome-overlay.ts` (source
+  only, test file untouched) reverted to the pre-fix call order; the new regression test
+  (`applyEditionOutcomeOverlay rewrites a stale (A) key_signal grade trailer for a gate-promoted
+  play`) failed exactly as expected:
+  ```
+  gate-promoted play's key_signal grade trailer must track the capped letter, not the stale pre-cap (A)
+  + actual:   'BULLISH — flow + positioning · score 52 (A)'
+  - expected: 'BULLISH — flow + positioning · score 52 (B)'
+  ```
+  The two pre-existing tests in the same file still passed (no behavior regression in the cases they
+  cover — this is a strictly narrower gap than those tests check for).
+- **GREEN:** `git stash apply` restored the fix; all 3 tests in
+  `edition-outcome-overlay.test.ts` pass (`node --experimental-test-module-mocks --test`, Node 20.20.2).
+- `npx tsc --noEmit` — clean, no new type errors.
+
+### Blast radius
+
+Only `applyEditionOutcomeOverlay` constructs its `next.conviction` this way before delegating to
+`capGatePromotedConviction` — it is the single read-time call site for this overlay (invoked from
+`edition/route.ts`'s `withOutcomeOverlay` on every `/api/market/nighthawk/edition` read).
+`promoteTopBlocked` (`publish-gates.ts`), the build-time call site, already calls
+`capGatePromotedConviction` on a play whose `conviction` has not yet been touched by any cap, so it
+was never exposed to this ordering bug. No other caller of `capGatePromotedConviction` or
+`capGatePromotedTierAssignment` was found (repo-wide grep).
+
 ## 2026-10-21 — [FINDING, P2 SPX Slayer data-correctness] `lit_dark_ratio.updated_at` sourced from dead raw WS stores instead of the resolved snapshot — FIXED
 
 > **kind:** `FINDING`
