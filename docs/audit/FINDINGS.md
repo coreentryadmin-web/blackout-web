@@ -38,6 +38,230 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Position section's "stale" caveat on Greeks/Spread/premium rails falsely claims the Mark line already flagged it — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-21, Ask Largo standing mandate — a Workflow-based deep-dive, round 2 (live-
+fetched real swing play-brief envelopes across WATCH/OPEN/CLOSED buckets, adversarially verified
+before acting), focused on sections not yet audited that day.
+
+**Root cause:** `pnlSection` (`src/lib/swing/play-brief.ts`) renders the `Mark:` line via three
+branches: `markGenuinelyUnknown` → `"Mark: unknown (...)"`, `markUnsynced` → `"Mark: $X (live
+quote, no freshness timestamp)"`, and a fallback (neither flag set) → `"Mark: $X (ET timestamp)"`
+with **no confidence wording at all**. Separately, `staleCaveat` is computed and appended to the
+Greeks line and the Spread/Quote line whenever `optionMarkIsStale(play, readMs)` is true (which can
+only be true in exactly the fallback-Mark case — the other two branches gate it out), using the
+literal text `" _(stale — same quote Mark flagged above)_"`. That text asserts the Mark line
+directly above already disclosed the staleness — but the fallback branch that renders in exactly
+this case carries zero staleness wording, so the premise was false every time the caveat fired.
+
+**Blast radius:** this file's own 2026-10-21 fix for `watchForSection` (play-brief-intel.ts,
+`railStaleCaveat`, folded into FINDINGS the same day) copied the identical `" _(stale — same quote
+Mark flagged above)_"` wording for the Premium stop/target rail lines, reasoning the two call
+sites should "read as one consistent disclosure." Traced `composeSwingPlayBrief`'s own section
+order: for the `bucket === "open"` branch (the only bucket either premium rail line can render,
+confirmed by their own `if (bucket === "open" && ...)` gates), `pnlSection` ("Position") is always
+pushed before `buildIntelSections` (which includes `watchForSection`/"Watch for") — so the "above"
+claim was spatially correct in every case, and the single shared defect was simply that the Mark
+line itself never said "stale." Fixing the Mark line alone makes all four render sites (Greeks,
+Spread, Premium stop rail, Premium target rail) truthful without touching `watchForSection` at all.
+
+**Evidence:** CRWV (COMMIT/OPEN, positionId 63) Position section: `Mark: **$4.40** (2026-10-20
+16:00 ET)` — no staleness wording — followed by `Greeks: ... _(stale — same quote Mark flagged
+above)_` and `Spread: ... _(stale — same quote Mark flagged above)_`. The existing regression test
+for this exact caveat (`play-brief.test.ts`, "Greeks and Spread both carry a 'stale' caveat...",
+live repro TSLA/CRWV, markAsOf 4.5h stale) only ever asserted the Greeks/Spread lines' text and
+never asserted anything about the Mark line, confirming the gap was never checked.
+
+**Fix:** `src/lib/swing/play-brief.ts` — the Mark line's fallback branch now appends `" _(stale)_"`
+when `optionMarkIsStale(play, readMs)` is true, consistent with the other two branches' own
+in-line confidence caveats (`markGenuinelyUnknown`/`markUnsynced` already carry one each).
+
+**Tests:** `src/lib/swing/play-brief.test.ts` — extended the existing stale-caveat test with a new
+assertion that the Mark line itself now carries `(stale)`. RED→GREEN proven via `git stash` on the
+source file alone (1 fail / 158 pass without the fix, 159/159 with it). `tsc --noEmit` clean. Full
+`play-brief-intel.test.ts` (305/305) re-run unaffected, confirming `watchForSection` needed no
+direct change.
+
+**Why not a bigger fix:** considered rewording the caveat itself (e.g. referencing "Data freshness"
+instead of "above") but rejected it — that section renders much later in the document and isn't
+adjacent to Position, so it would trade one spatial claim for a worse one. Making the Mark line
+itself honest is the minimal fix that makes every existing downstream reference true, including the
+one this same mandate shipped earlier the same day.
+
+## 2026-10-21 — [FINDING, performance mandate, follow-up] heavy-cron-concurrency-guard shared-pool skip rate CAN be measured without AWS creds, but not off-hours — correction + partial live pull
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 — tooling/methodology correction, no product defect |
+| **Status** | OPEN — overnight pull taken, genuinely inconclusive; needs an RTH re-run to actually answer the question |
+
+**Context.** A standing-mandate sweep this session (background agent, "CloudWatch performance/
+latency sweep") re-checked `src/lib/cron/heavy-cron-concurrency-guard.ts` after `swing-active-
+refresh` got its own `RESERVED_SLOT_CRONS` entry on 2026-10-14 (fixing its starvation behind the
+shared 2-slot pool — see that file's own header comment for the full incident). It correctly
+identified a genuinely open question: now that the shared pool only has to seat 5 crons instead
+of 6 (`vector-pick-sweep`, `vector-dark-pool-warm`, `vector-full-state-snapshot`,
+`bie-full-state-snapshot`, `zerodte-warm`), nobody has re-measured whether `bie-full-state-
+snapshot` — the shortest-runtime of the remaining five, in exactly the shape that got
+`swing-active-refresh` starved — is now itself starved behind the other four. It reported this
+as blocked on **AWS CloudWatch access**, unavailable in its sandbox run (`boto3
+sts.get_caller_identity()` → `InvalidClientTokenId`).
+
+**Correction.** That conflates two different things this repo's own CLAUDE.md environment notes
+already distinguish (§"Access reality", item 3 vs item 1): CloudWatch Logs/metrics genuinely do
+need AWS creds, but the live **skip-rate signal itself is already served over plain authenticated
+HTTP** — `GET /api/admin/cron-health` (`requireAdminApi()` gate only, no AWS dependency at all —
+see `src/app/api/admin/cron-health/route.ts`), which every existing audit script reaches via the
+standard Clerk temp-admin-session pattern (`scripts/audit/lib/audit-auth-fetch.mjs`'s
+`fetchAuditJson`). No AWS credentials were ever required to check this.
+
+**What was actually pulled live (2026-10-21, ~03:25 UTC — overnight, cash RTH closed):**
+
+| cron | last_message | runs_24h (ok/failed/skipped) | skip% |
+|---|---|---|---|
+| `zerodte-warm` | ok, dispatched | 193/0/188 | 49.3% |
+| `swing-active-refresh` | skipped — outside RTH | 27/0/17 | 38.6% |
+| `vector-full-state-snapshot` | skipped — Outside cash RTH | 32/0/100 | 75.8% |
+| `vector-pick-sweep` | skipped — Outside cash RTH | 98/0/336 | 77.4% |
+| `bie-full-state-snapshot` | skipped — Outside cash RTH | 10/0/122 | 92.4% |
+| `vector-dark-pool-warm` | skipped — Outside cash RTH | 6/0/60 | 90.9% |
+
+**Why this does NOT answer the question (and is not being presented as if it does).** Every one
+of these jobs is `market_hours_only` — most of each 24h window is legitimately outside cash RTH,
+and the aggregate `runs_24h.skipped` counter does not distinguish an off-hours self-skip (healthy,
+by design) from a `heavy-cron concurrency slot unavailable (idempotent skip)` skip (the thing
+actually in question — see the guard file's own `last_message` string for that exact phrase,
+quoted in its 2026-10-14 header comment). `bie-full-state-snapshot`'s 92.4% looks alarming next to
+`zerodte-warm`'s 49.3%, but `zerodte-warm` is not gated on cash RTH at all (it ran at `age_min:
+201`, i.e. recently, overnight) while the other four are — so the comparison is apples-to-oranges
+on its face, before even getting to the slot-contention question. This is the same overnight-vs-
+RTH trap this file's own environment notes already document for `gex-force-rebuild-timing.mjs`
+("overnight is a floor... the cap was NOT changed on this evidence") — recorded here rather than
+repeated from scratch.
+
+**What would actually answer it:** either (a) a per-run breakdown of `last_message` across the
+24h window (not just the single latest run `admin-cron-health` currently surfaces per job — would
+need a DB query or a route change to expose `COUNT(*) WHERE message LIKE '%concurrency slot
+unavailable%'` per cron), or (b) a live RTH-window poll of `/api/admin/cron-health` at a few-minute
+cadence during tomorrow's cash session, diffing `bie-full-state-snapshot`'s own skip reasons
+against the shared pool's occupancy. Neither was built this cycle — this entry exists so the next
+RTH-hours session doesn't restart from "we need AWS creds" (we don't) or re-derive the off-hours
+trap from scratch.
+
+**No code changed, no gate touched.** This is a methodology correction + a live, honestly-labeled
+partial pull, not a fix.
+
+## closedSection's "MFE capture" line is permanently dead in production for swing CLOSED plays — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-21, Ask Largo standing mandate — a Workflow-based deep-dive, round 2 (live-
+fetched real swing play-brief envelopes across WATCH/OPEN/CLOSED buckets, adversarially verified
+before acting), focused on "Data freshness"/"Position"/"Outcome" — sections not yet audited that
+day.
+
+**Root cause:** `closedSection` (`src/lib/swing/play-brief.ts`) gated its "MFE capture: X%" line
+on the raw field check `play.mfeCapturePct != null`, instead of calling the shared
+`mfeCaptureOutcome(play.exitPnlPct, play.peak, play.mfeCapturePct)` helper every other MFE-related
+call site in this lane uses (`lessonsSection` in play-brief-intel.ts, plus the trade-manager
+narrative sections). `mfe-capture.ts`'s own header comment states explicitly that `mfeCapturePct`
+is "currently never populated... so the ratio fallback is what production actually serves today."
+Tracing the data path confirms this for swing specifically: the real swing closed-play adapter
+(`terminalPlayFromHorizon`, `adapters.ts`) never sets `mfeCapturePct` anywhere in its returned
+object — not a null placeholder, simply absent — so `play.mfeCapturePct` is `undefined` for every
+real swing CLOSED play. Since `undefined != null` is `false`, the MFE line in `closedSection` never
+rendered live, even though `play.peak` and `play.exitPnlPct` (the two inputs the shared ratio-
+fallback helper needs) were both already present on the same `play` object.
+
+**Evidence:** NVDA (CLOSED, positionId 62): "## Outcome" rendered only `Exit P&L: **+7.2%**`,
+`Reason: **target**`, `Closed: **2026-10-20 09:30 ET**` — no MFE-capture line. The SAME envelope's
+"## Lessons" section (built via the shared `mfeCaptureOutcome` ratio-fallback off the identical
+`play.peak`/`play.exitPnlPct` pair that `closedSection` also had in hand) stated `Peak was
+**+66.1%** · exited **+7.2%**` followed by `MFE capture: **+10.9%** of peak move` (7.2/66.1≈10.9%,
+confirming it's the ratio fallback, not a populated field). The existing regression test
+("composeSwingPlayBrief: CLOSED play emits outcome section") only proved the dead `!= null` branch
+works when a fixture directly injects `mfeCapturePct: 68` — a shape that never occurs in real
+production data — so it never caught that the line never fires live.
+
+**Fix:** `src/lib/swing/play-brief.ts` — `closedSection` now computes
+`mfeCaptureOutcome(play.exitPnlPct, play.peak, play.mfeCapturePct)` and renders the MFE line only
+when `outcome?.kind === "capture"`, matching the pattern already used in `lessonsSection`. A
+round-trip-to-loss outcome (`kind === "round_trip"`) has no "capture" to report — that's a
+different event per `mfe-capture.ts`'s own header comment — so the line is correctly omitted there
+too, same as every other call site of this helper.
+
+**Tests:** `src/lib/swing/play-brief.test.ts` — two new tests: (1) the real production shape (no
+`mfeCapturePct`, `peak`/`exitPnlPct` present) now renders `MFE capture: **+10.9%**` via the ratio
+fallback; (2) a round-trip-to-loss case (negative `exitPnlPct`, `peak`/`exitPnlPct` present, no
+`mfeCapturePct`) correctly omits the MFE line rather than rendering a nonsensical negative
+"capture." RED→GREEN proven via `git stash` on the source file alone (1 fail / 160 pass without
+the fix, 161/161 with it). `tsc --noEmit` clean.
+
+**Blast radius:** `closedSection`'s MFE-capture line only — every other line in the section
+(Exit P&L, Reason, Closed) and every other section are untouched. The pre-existing test injecting
+the unrealistic `mfeCapturePct: 68` fixture still passes unchanged (it never asserted on the MFE
+line directly).
+
+## chartTechnicalsSection re-duplicates the Vector grade fact vectorDeskSection already owns, on CLOSED briefs — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-21, Ask Largo standing mandate — a Workflow-based deep-dive, round 2 (live-
+fetched real swing play-brief envelopes across WATCH/OPEN/CLOSED buckets, adversarially verified
+before acting), focused on "Chart technicals"/"Chart levels" — sections not yet audited that day.
+
+**Root cause:** `chartTechnicalsSection` (`src/lib/swing/play-brief-intel.ts`) pushes
+`Vector desk grade: **${vec.play.grade}**` unconditionally for any bucket once past its stale-return
+guard. The 2026-10-13 fix (and its own test) correctly eliminated this exact duplicate for
+OPEN/WATCH by returning `null` whenever Vector was stale, reasoning that grade "is not chart-
+technicals data... whose canonical home is vectorDeskSection." The 2026-10-17 follow-up narrowed
+that stale-return to `if (vectorStale && bucket !== "closed") return null;` specifically so CLOSED
+briefs would still show EMA/RSI/structure instead of silently vanishing — but it never re-gated the
+downstream grade push alongside it, so the grade line reappeared for every CLOSED brief regardless
+of staleness. Meanwhile `vectorDeskSection`'s own `bucket === "closed"` branch unconditionally
+renders `Current Vector read: grade **${p.grade}** · conviction **${p.conviction}** (since this
+play closed)` for the identical data — so the same grade fact now prints twice under two section
+titles on every real CLOSED brief, with no dedup flag between the two call sites (unlike the several
+`...AlreadyNoted` guards this file uses for other duplicate-fact pairs).
+
+**Evidence:** Two live CLOSED positions reproduce it directly. NVDA (positionId 62): "## Chart
+technicals" renders "Vector desk grade: **C**", and later in the SAME envelope "## Vector desk"
+renders "Current Vector read: grade **C** · conviction **42** (since this play closed)". CRWV
+(positionId 61): identical shape, "Vector desk grade: **C**" then "Current Vector read: grade **C**
+· conviction **8** (since this play closed)". The 2026-10-17 fix's own CLOSED-bucket regression
+test used a fixture with `play: { grade: "A" }` (so the grade line fired) but never asserted on the
+grade line's presence/absence or cross-referenced `vectorDeskSection` the way the 2026-10-13 test
+did — so the reopened duplicate had no test coverage.
+
+**Fix:** `src/lib/swing/play-brief-intel.ts` — gated the grade push with `&& bucket !== "closed"`,
+mirroring the stale-return's own bucket-gating a few lines above. `vectorDeskSection` already owns
+this fact for CLOSED briefs per its own doc comment ("Closed briefs keep only the informational
+grade/conviction snapshot").
+
+**Tests:** `src/lib/swing/play-brief-intel.test.ts` — new test mirroring the existing 2026-10-13
+cross-check (`chartTechnicalsSection + vectorDeskSection: stale Vector never renders the same grade
+fact under both titles`) for the CLOSED bucket specifically: asserts `chartTechnicalsSection`'s
+CLOSED output still carries EMA/RSI/structure but never "Vector desk grade", while
+`vectorDeskSection`'s CLOSED output remains the one place that reports it. RED→GREEN proven via
+`git stash` on the source file alone (1 fail / 305 pass without the fix, 306/306 with it). `tsc
+--noEmit` clean.
+
+**Blast radius:** `chartTechnicalsSection`'s CLOSED-bucket grade line only — OPEN/WATCH behavior
+(already correctly gated since 2026-10-13) and every other line in both sections are untouched.
+
 ## flowIntelSection's "0DTE desk" cross-reference line was the one sibling line in "Flow & positioning" with zero freshness/status disclosure — FIXED
 
 > **kind:** `FINDING`
