@@ -4798,6 +4798,65 @@ test("composeSwingPlayBrief: CLOSED play emits outcome section", () => {
   assert.doesNotMatch(outcome!.body, /16:05:00\.000Z/, "Outcome must not print a raw ISO exit timestamp");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro NVDA:62): the test above injects
+// `mfeCapturePct: 68` directly, a shape that never occurs in real production data —
+// mfe-capture.ts's own doc comment says this field is "currently never populated," and the real
+// swing closed-play adapter (`terminalPlayFromHorizon`) confirms it never sets `mfeCapturePct`.
+// closedSection used to gate its "MFE capture" line on that raw field alone, so it was
+// permanently dead for every real swing CLOSED play even though `peak`/`exitPnlPct` (the inputs
+// the shared `mfeCaptureOutcome()` ratio-fallback needs) were already present — the SAME envelope's
+// "Lessons" section computes and shows the identical ratio from the same two fields. This test
+// uses the REAL production shape (no `mfeCapturePct`) to prove the fallback now fires.
+test("composeSwingPlayBrief: CLOSED play's Outcome section shows MFE capture via the ratio fallback when mfeCapturePct is absent (real production shape, live repro NVDA:62)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "CLOSED",
+      exitPnlPct: 7.2,
+      peak: 66.1,
+      closedReason: "target",
+      mfeCapturePct: null,
+      exitAt: "2026-10-20T13:30:00.000Z",
+    }),
+    asOf: "2026-10-20 16:00 ET",
+    sessionDate: "2026-10-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const outcome = brief.envelope.sections.find((s) => s.title === "Outcome");
+  assert.ok(outcome, "Outcome section must render");
+  assert.match(outcome!.body, /MFE capture: \*\*\+10\.9%\*\*/, "ratio fallback (7.2/66.1) must render, not vanish because mfeCapturePct is absent");
+});
+
+test("composeSwingPlayBrief: CLOSED play's Outcome section omits MFE capture (not a negative 'capture') on a round-trip-to-loss, even with peak/exitPnlPct present", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "CLOSED",
+      exitPnlPct: -26.9,
+      peak: 40.2,
+      closedReason: "stopped",
+      mfeCapturePct: null,
+      exitAt: "2026-10-20T13:30:00.000Z",
+    }),
+    asOf: "2026-10-20 16:00 ET",
+    sessionDate: "2026-10-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const outcome = brief.envelope.sections.find((s) => s.title === "Outcome");
+  assert.ok(outcome, "Outcome section must still render (Exit P&L/Reason/Closed)");
+  assert.doesNotMatch(outcome!.body, /MFE capture/, "a round-trip-to-loss has nothing captured — mfeCaptureOutcome returns round_trip, not capture");
+});
+
 test("composeSwingPlayBrief: envelope levels use measured Vector/GEX freshness, not hardcoded live", () => {
   const staleAsOf = new Date(Date.now() - 20 * 60_000).toISOString();
   const ctx: SwingPlayBriefContext = {

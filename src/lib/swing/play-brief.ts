@@ -49,6 +49,7 @@ import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./p
 import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { calibratedThesisPillars, thesisHealthUncalibrated } from "./thesis-health";
+import { mfeCaptureOutcome } from "./mfe-capture";
 import { canonicalTicker } from "@/lib/largo/core/entities";
 
 function biasFromDirection(dir: string): BieBias {
@@ -863,10 +864,23 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
 }
 
 function closedSection(play: TerminalPlay): RichSection {
+  // BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro NVDA:62): this used to gate the
+  // "MFE capture" line on the raw `play.mfeCapturePct != null` check — but mfe-capture.ts's own
+  // doc comment states that field is "currently never populated... so the ratio fallback is what
+  // production actually serves today," and the real swing closed-play adapter
+  // (`terminalPlayFromHorizon`) confirms it: `mfeCapturePct` is never set for a real swing CLOSED
+  // play, so this line never rendered live. The shared `mfeCaptureOutcome()` helper (used by this
+  // same brief's own "Lessons" section, lessonsSection in play-brief-intel.ts) falls back to the
+  // peak/exitPnlPct ratio when the raw field is absent — switching to it here makes "Outcome"
+  // show the same number "Lessons" already computes from the same play object, instead of nothing.
+  // A round-trip-to-loss outcome (`kind === "round_trip"`) has no "capture" to report (that's a
+  // different event, see mfe-capture.ts's own header comment), so the line is omitted there too,
+  // same as every other call site of this helper.
+  const outcome = mfeCaptureOutcome(play.exitPnlPct, play.peak, play.mfeCapturePct);
   const lines = [
     `Exit P&L: **${fmtPct(play.exitPnlPct)}**`,
     play.closedReason ? `Reason: **${play.closedReason}**` : null,
-    play.mfeCapturePct != null ? `MFE capture: **${fmtPct(play.mfeCapturePct)}**` : null,
+    outcome?.kind === "capture" ? `MFE capture: **${fmtPct(outcome.capturePct)}**` : null,
     play.exitAt ? `Closed: **${etStampFromIso(play.exitAt)}**` : null,
   ].filter(Boolean);
   return { title: "Outcome", body: lines.join("\n") };
