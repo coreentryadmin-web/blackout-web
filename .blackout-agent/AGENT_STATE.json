@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-21T05:38:01.718Z",
+  "updated_at": "2026-10-21T05:38:06.696Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -72,12 +72,6 @@
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-11T21:37:05.253Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-11T21:37:11.186Z",
       "type": "context_sync",
@@ -1268,6 +1262,12 @@
     },
     {
       "at": "2026-10-21T05:38:01.718Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-21T05:38:06.696Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
