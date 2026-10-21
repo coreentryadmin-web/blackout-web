@@ -163,7 +163,10 @@ function synthesizedSetupLede(
   return `${signals} flagged this as ${article} ${archetypePhrase} setup${contextStr}${scoreStr}.`;
 }
 
-export function whyThisSetupSection(play: TerminalPlay): RichSection {
+export function whyThisSetupSection(
+  play: TerminalPlay,
+  bucket?: "watch" | "open" | "closed",
+): RichSection {
   const lines: string[] = [];
   const whyArchetypeLabel = archetypeLabelFromRaw(play.archetype);
   const subLaneLabel = subLaneLabelFromRaw(play.subLane);
@@ -319,10 +322,21 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
     lines.push("No pillar breakdown on this row — grade is from lane score only.");
   }
 
-  if (play.servingSection) {
-    lines.push(`Desk section: **${play.servingSection.replace(/_/g, " ")}**`);
+  // BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA WATCH): for the WATCH bucket,
+  // watchEntrySection (play-brief.ts) already renders these identical two TerminalPlay fields —
+  // servingSection/setupState — as "Serving section"/"Setup" in the Entry section composeSwingPlayBrief
+  // always places immediately before this one, so restating them here is a pure duplicate (not merely
+  // a different label, the SAME section pair always appears together for a WATCH play). For every
+  // bucket, `setupState` could ALSO already be folded into the lede sentence above (synthesizedSetupLede)
+  // — restating it a second time in the SAME section is the "lede subsumes, never duplicates" bug this
+  // function's own existing tests (ledeFoldsNotDuplicates) already require for the Signals/Archetype
+  // lines, just missed here.
+  if (bucket !== "watch") {
+    if (play.servingSection) {
+      lines.push(`Desk section: **${play.servingSection.replace(/_/g, " ")}**`);
+    }
+    if (play.setupState && !lede) lines.push(`Setup maturity: **${play.setupState}**`);
   }
-  if (play.setupState) lines.push(`Setup maturity: **${play.setupState}**`);
 
   return { title: "Why this setup", body: lines.join("\n\n") };
 }
@@ -3052,7 +3066,7 @@ export function buildIntelSections(
   const narrative = safeSection("Trade manager read", () => tradeManagerNarrativeSection(ctx, bucket), onFailure);
   if (narrative) out.push(narrative);
 
-  const whySetup = safeSection("Why this setup", () => whyThisSetupSection(play), onFailure);
+  const whySetup = safeSection("Why this setup", () => whyThisSetupSection(play, bucket), onFailure);
   if (whySetup) out.push(whySetup);
 
   const book = safeSection("Book context", () => bookContextSection(play, ctx.openBook), onFailure);
