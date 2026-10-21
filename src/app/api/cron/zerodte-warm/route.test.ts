@@ -91,11 +91,11 @@ test("a cross-cron concurrency slot is acquired after the overlap lock and relea
   // correlated with sustained ALB tail latency — see heavy-cron-concurrency-guard.ts's header.
   assert.match(
     routeSrc,
-    /const slot = await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\);/,
+    /let slot = await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\);/,
     "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL"
   );
   const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
-  const slotIdx = routeSrc.indexOf("const slot = await acquireHeavyCronSlot(");
+  const slotIdx = routeSrc.indexOf("let slot = await acquireHeavyCronSlot(");
   const dispatchIdx = routeSrc.indexOf("const dispatchWarm = () => {");
   assert.ok(
     overlapClaimIdx > 0 && slotIdx > overlapClaimIdx && slotIdx < dispatchIdx,
@@ -103,8 +103,8 @@ test("a cross-cron concurrency slot is acquired after the overlap lock and relea
   );
   assert.match(
     routeSrc,
-    /if \(!slot\) \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);/,
-    "a lost cross-cron race must release the self-overlap lock immediately so the NEXT fire gets a clean shot"
+    /if \(!slot\) \{[\s\S]*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);/,
+    "a lost cross-cron race (non-bypass) must release the self-overlap lock immediately so the NEXT fire gets a clean shot"
   );
 });
 
@@ -211,6 +211,18 @@ test("a force=1 call OUTSIDE the extended warm window is throttled at a much wid
 // attempt is silently blocked for up to the lock's 900s TTL regardless of how stale the scan
 // heartbeat gets. Measured live: zerodte_scan_heartbeat stuck 50+ minutes while cron_job_runs
 // kept logging ok/skipped every cycle.
+test("a critical_stale scan heartbeat bypasses the heavy-cron concurrency cap when no slot is free", () => {
+  assert.match(
+    routeSrc,
+    /bypassing heavy-cron concurrency cap — scanner heartbeat critical stale/,
+    "must not starve the scanner behind two other heavy crons when discovery is critical-stale"
+  );
+  const heavyIdx = routeSrc.indexOf("acquireHeavyCronSlot");
+  const bypassIdx = routeSrc.indexOf("bypassing heavy-cron concurrency cap");
+  assert.ok(heavyIdx > 0 && bypassIdx > heavyIdx, "bypass must live on the heavy-slot miss path");
+  assert.match(routeSrc, /scanHeartbeat\?\.critical_stale/);
+});
+
 test("a critical_stale scan heartbeat during cash RTH steals and clears both wedged locks before the normal claim", () => {
   assert.match(
     routeSrc,
@@ -222,7 +234,7 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
     /import \{ loadZeroDteScanHeartbeat \} from "@\/lib\/play-engine-heartbeat"/
   );
   assert.match(routeSrc, /if \(isEtCashRth\(\)\) \{/);
-  assert.match(routeSrc, /heartbeat\?\.critical_stale/);
+  assert.match(routeSrc, /scanHeartbeat\?\.critical_stale/);
 
   // The steal attempt must itself be NX-atomic (STEAL_ATTEMPT_KEY) so exactly one concurrent
   // invocation performs the clear, even if many replicas observe critical_stale at once.
