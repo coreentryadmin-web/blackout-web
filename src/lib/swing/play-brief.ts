@@ -121,8 +121,17 @@ function briefThesis(
  * is untouched: `play.status` is never `"SKIP"` for WATCH/OPEN/HOLD/TRIM/CLOSED, so they fall
  * through to the identical, unchanged `action?.label ?? play.recommendation ?? play.status` chain
  * as before — a real OPEN/HOLD position still reads "HOLD" exactly as it must.
+ *
+ * EXPORTED (2026-10-21, deferred follow-up to this same fix, staged finding
+ * `docs/audit/findings-staging/2026-10-21-swing-skip-hold-headline-leak.md`): the identical
+ * `action?.label ?? play.recommendation ?? play.status`-shaped fallback chain also lives in
+ * `play-brief-narrative.ts`'s `actionNarrative` ("Entry stance" bullet) and `degradedReadLine`
+ * ("Live read" bullet) — both independently fall through to the SAME literal "HOLD" for a SKIP
+ * play, in the SAME brief this fix already corrects the headline/Verdict copy of. Exported so
+ * those two call sites can reuse this exact function rather than re-deriving (and risking
+ * re-diverging from) the SKIP special case a second and third time.
  */
-function swingVerdictVerb(play: TerminalPlay, action: { label: string } | null): string {
+export function swingVerdictVerb(play: TerminalPlay, action: { label: string } | null): string {
   if (play.status === "SKIP") return "PASSED";
   return action?.label ?? play.recommendation ?? play.status;
 }
