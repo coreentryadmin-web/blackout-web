@@ -887,6 +887,48 @@ test("whyThisSetupSection: synthesizes a lede sentence for the common case, repl
   assert.doesNotMatch(section.body, /\*\*Sub-lane:\*\*/);
 });
 
+// BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA WATCH): the lede above already
+// subsumes Signals/Archetype/Sub-lane, but setupState ALSO got restated a second time via the
+// trailing "Setup maturity" flat line in the SAME section — the identical "lede subsumes, never
+// duplicates" bug the test above already guards for the other three fields, just missed for this one.
+test("whyThisSetupSection: lede subsumes 'Setup maturity' too — setupState must not restate a second time in the same section", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["NIGHT HAWK"],
+    archetype: "PULLBACK_CONTINUATION",
+    subLane: "STANDARD",
+    setupState: "FORMING",
+    servingSection: "WATCH",
+    score: 51,
+  });
+  const section = whyThisSetupSection(play);
+  assert.match(section.body, /flagged this as a forming pullback continuation setup/);
+  const occurrences = (section.body.match(/forming/gi) ?? []).length;
+  assert.equal(occurrences, 1, `expected setupState to appear exactly once, got ${occurrences} in: ${section.body}`);
+  // Desk section (servingSection) is a DIFFERENT fact from setupState and the lede never folds it
+  // in — it must still render here for a non-WATCH bucket (no bucket passed = legacy/non-watch call).
+  assert.match(section.body, /Desk section: \*\*WATCH\*\*/);
+});
+
+// BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA WATCH): for the WATCH bucket,
+// watchEntrySection (play-brief.ts, the Entry section composeSwingPlayBrief always places
+// immediately before this one for a WATCH play) already renders the identical servingSection/
+// setupState facts as "Serving section"/"Setup" — so this section must omit both entirely for
+// bucket==="watch", not just dedupe within itself.
+test("whyThisSetupSection: omits Desk section/Setup maturity entirely for the WATCH bucket — watchEntrySection already states both", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["CATALYST", "FLOW"],
+    archetype: "BREAKOUT",
+    subLane: "TACTICAL",
+    setupState: "TRIGGERED",
+    servingSection: "WATCH",
+    score: 31,
+  });
+  const section = whyThisSetupSection(play, "watch");
+  assert.match(section.body, /flagged this as a triggered/);
+  assert.doesNotMatch(section.body, /Desk section:/);
+  assert.doesNotMatch(section.body, /Setup maturity:/);
+});
+
 // FIX (Ask Largo standing mandate, 2026-10-14, live AMD repro): setupState EXTENDED (a vowel-
 // starting enum member) used to render "flagged this as a extended pullback continuation setup" --
 // a grammar bug in otherwise-polished trade-manager prose.
