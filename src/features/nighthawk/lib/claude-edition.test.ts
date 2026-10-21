@@ -52,3 +52,26 @@ test("mainLoopRejectionCaptureEnabled is imported from edition-quality, the same
   const src = readSource();
   assert.match(src, /import \{ rescuePlaysEnabled, mainLoopRejectionCaptureEnabled \} from "\.\/edition-quality";/);
 });
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro MSTR score 52): buildRescuePlays sets
+// gate_promoted:true on every play it returns (the whole point of the rescue path is bypassing
+// normal geometry/premium/grounding gates), but its output used to be assigned to detPlays bare --
+// never run through capGatePromotedConviction, the ONE gate_promoted construction site in the whole
+// pipeline that skipped it (edition-builder.ts's critic-rescue and publish-gates.ts's
+// promoteTopBlocked both cap). A rescue play could therefore surface an uncapped A/A+ conviction
+// badge on a play that skipped every quality gate -- the exact over-trust risk the cap exists to
+// prevent. Source-inspection per this file's established pattern (see the header comment above --
+// generateEditionPlays can't be driven end-to-end here without live network/DB access).
+test("generateEditionPlays: rescue plays are run through capGatePromotedConviction before replacing detPlays", () => {
+  const src = readSource();
+  assert.match(
+    src,
+    /detPlays = rescue\.map\(capGatePromotedConviction\)/,
+    "rescue's output must be capped the same way every other gate_promoted construction site is -- a bare `detPlays = rescue` lets an uncapped A/A+ conviction leak through the one path that skips every quality gate"
+  );
+  assert.match(
+    src,
+    /import \{ capGatePromotedConviction \} from "\.\/publish-gates";/,
+    "capGatePromotedConviction must come from publish-gates.ts, the one place this cap is defined"
+  );
+});

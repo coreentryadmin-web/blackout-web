@@ -425,7 +425,16 @@ export function capGatePromotedConviction(play: PlaybookPlay): PlaybookPlay {
   if (!play.gate_promoted) return play;
   const conv = String(play.conviction ?? "").trim().toUpperCase();
   if (conv === "A+" || conv === "A") {
-    return { ...play, conviction: "B" };
+    // BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro MSTR score 52): this only ever
+    // capped the `conviction` field. `key_signal`'s own "score N (LETTER)" trailer is built in
+    // buildDeterministicThesis (deterministic-edition.ts) from the SAME uncapped merit-tier
+    // letter, before gate_promoted is even known — so a capped A->B play kept citing its own
+    // pre-cap "(A)"/"(A+)" grade in the member-facing summary sentence, a direct, visible
+    // self-contradiction right next to the correctly-capped badge. Only the trailing grade token
+    // is rewritten (anchored at the string's end) so the rest of the sentence is untouched.
+    const key_signal =
+      typeof play.key_signal === "string" ? play.key_signal.replace(/\(A\+?\)$/, "(B)") : play.key_signal;
+    return { ...play, conviction: "B", key_signal };
   }
   return play;
 }

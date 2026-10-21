@@ -37,6 +37,7 @@ import { rescuePlaysEnabled, mainLoopRejectionCaptureEnabled } from "./edition-q
 import type { GroundingSummary } from "./grounding";
 import type { ScoredCandidate } from "./scorer";
 import { assignNighthawkTier, nhTierInputFromScored, nhConvictionRank } from "./nighthawk-tiers";
+import { capGatePromotedConviction } from "./publish-gates";
 import type { PlaybookPlay } from "./types";
 import type { HuntMode } from "./types";
 import type { NighthawkRejectionDetail } from "./play-outcomes";
@@ -148,7 +149,14 @@ export async function generateEditionPlays(params: {
       edition_for: params.edition_for,
     });
     if (rescue.length) {
-      detPlays = rescue;
+      // BUG FIX (Ask Largo standing mandate, 2026-10-21): buildRescuePlays sets gate_promoted:true
+      // on every play it returns (the whole point of the rescue path is bypassing normal geometry/
+      // premium/grounding gates), but never ran its output through capGatePromotedConviction — the
+      // ONE gate_promoted construction site in the whole pipeline that didn't. Every other site
+      // (edition-builder.ts's critic-rescue, publish-gates.ts's promoteTopBlocked) caps the member-
+      // facing conviction badge at B; this path alone could surface an uncapped A/A+ on a play that
+      // skipped every quality gate — the exact over-trust risk the cap exists to prevent.
+      detPlays = rescue.map(capGatePromotedConviction);
       console.info(
         `[nighthawk/edition] normal synthesis zeroed — rescue produced ${rescue.length} best-available plays`
       );
