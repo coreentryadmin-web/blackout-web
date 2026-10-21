@@ -84,6 +84,15 @@ test("the lock is released once the background dispatch settles, on both success
   assert.ok(catchIdx > 0 && finallyIdx > 0 && catchIdx < finallyIdx, ".finally() must chain after .catch()");
 });
 
+test("critical_stale scan heartbeat bypasses heavy-cron slot contention during RTH", () => {
+  assert.match(routeSrc, /scanHeartbeatCritical/);
+  assert.match(
+    routeSrc,
+    /if \(!slot && scanHeartbeatCritical\) \{/,
+    "when discovery is critical_stale, must not skip solely because shared heavy-cron slots are full"
+  );
+});
+
 test("a cross-cron concurrency slot is acquired after the overlap lock and released in the same .finally()", () => {
   // Regression for the cross-CRON overlap neither OVERLAP_LOCK_KEY (self-overlap) nor the
   // cooldown/steal machinery above ever covered — live CloudWatch (2026-10-13 13:35-13:56 UTC)
@@ -91,11 +100,11 @@ test("a cross-cron concurrency slot is acquired after the overlap lock and relea
   // correlated with sustained ALB tail latency — see heavy-cron-concurrency-guard.ts's header.
   assert.match(
     routeSrc,
-    /const slot = await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\);/,
+    /let slot = await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\);/,
     "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL"
   );
   const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
-  const slotIdx = routeSrc.indexOf("const slot = await acquireHeavyCronSlot(");
+  const slotIdx = routeSrc.indexOf("let slot = await acquireHeavyCronSlot(");
   const dispatchIdx = routeSrc.indexOf("const dispatchWarm = () => {");
   assert.ok(
     overlapClaimIdx > 0 && slotIdx > overlapClaimIdx && slotIdx < dispatchIdx,
