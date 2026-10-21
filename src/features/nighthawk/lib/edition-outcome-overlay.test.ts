@@ -111,3 +111,54 @@ test("applyEditionOutcomeOverlay does not undo the gate-promote conviction cap o
     "capped tier must carry the honest gate-promoted disclosure factor, not silently truncate the raw factors"
   );
 });
+
+// BUG (found 2026-10-21, Ask Largo standing mandate, 4th gate-promoted-cap-leak site, live repro
+// MSTR score 52): this block used to overwrite `conviction` to the ALREADY-CAPPED tier letter
+// before calling capGatePromotedConviction -- so by the time that function's own stale-detection
+// guard ran (`conviction === "A"/"A+"`), conviction already read "B" and the guard never fired,
+// leaving key_signal's trailing "(A)" grade token stale forever even though conviction and tier
+// both correctly read "B". Live: conviction:"B", tier.tier:"B", gate_promoted:true, yet
+// key_signal:"BULLISH — flow + positioning · score 52 (A)" kept citing the uncapped grade.
+test("applyEditionOutcomeOverlay rewrites a stale (A) key_signal grade trailer for a gate-promoted play", () => {
+  const gatePromotedEdition: NightHawkEdition = {
+    ...edition,
+    plays: [
+      {
+        ...edition.plays[0]!,
+        // Raw, pre-cap conviction as persisted before any cap ran at this call site -- matches
+        // the raw tier pin below, same as a play that never passed through promoteTopBlocked's
+        // own build-time capGatePromotedConviction call.
+        conviction: "A",
+        gate_promoted: true,
+        key_signal: "BULLISH — flow + positioning · score 52 (A)",
+      },
+    ],
+  };
+
+  const overlays = buildOutcomeOverlayMap([
+    {
+      ticker: "NVDA",
+      publish_context: {
+        context_version: 2,
+        tier: { tier: "a", factors: [{ label: "Prime band", direction: "up", detail: "40-55 score band" }] },
+      },
+      morning_verdict: null,
+    },
+  ]);
+
+  const merged = applyEditionOutcomeOverlay(gatePromotedEdition, overlays);
+  const play = merged.plays[0] as {
+    conviction?: string;
+    key_signal?: string;
+    tier?: { tier: string };
+    gate_promoted?: boolean;
+  };
+  assert.equal(play.gate_promoted, true);
+  assert.equal(play.conviction, "B");
+  assert.equal(play.tier?.tier, "B");
+  assert.equal(
+    play.key_signal,
+    "BULLISH — flow + positioning · score 52 (B)",
+    "gate-promoted play's key_signal grade trailer must track the capped letter, not the stale pre-cap (A)"
+  );
+});
