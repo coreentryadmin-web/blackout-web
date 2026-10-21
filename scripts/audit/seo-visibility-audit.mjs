@@ -113,7 +113,9 @@ async function fetchPublic(path) {
 }
 
 async function fetchAuthed(path, sessionCookie, clientUat) {
-  const r = curl({
+  // Deploy smoke 2026-10-21: admin /dashboard failed HTTP 0 on "Connection reset by peer" mid-rollout
+  // while fetchPublic already retried — authed desk probe must use the same harness.
+  const r = await curlRetry({
     url: `${APP}${path}`,
     headers: { Cookie: `__session=${sessionCookie}; __client_uat=${clientUat}` },
   });
