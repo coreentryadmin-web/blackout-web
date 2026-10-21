@@ -88,9 +88,43 @@ function briefThesis(
   action: { label: string } | null,
   archetypeLabel: string | null,
 ): string {
-  const verb = action?.label ?? play.recommendation ?? play.status;
+  const verb = swingVerdictVerb(play, action);
   const archetypeSuffix = archetypeLabel ? ` · ${archetypeLabel}` : "";
   return `${play.direction} ${contractHeadline} — ${verb}${archetypeSuffix}.`;
+}
+
+/**
+ * Resolve the member-facing VERB shared by the headline, `thesis` (`briefThesis` above), and the
+ * Verdict section's opening line — one function so all three can never disagree, same discipline
+ * `briefThesis`'s own doc comment already states for why `thesis` reuses this exact chain.
+ *
+ * BUG FIX (2026-10-21, Ask Largo x Night Hawk Swings standing mandate, live repro META/ORCL): a
+ * RESEARCH/SKIP candidate (`play.status === "SKIP"` — the desk declining a setup, nothing was ever
+ * entered — see `swingActionDisplay`'s own "SKIP deliberately returns null so the honest PASSED
+ * lifecycle pill shows" doc comment, play-card-lifecycle.ts) leaves `action` null here, and
+ * `SwingEntryVerdict.recommendation` (entry-verdict.ts) — a two-value BUY/HOLD field with no
+ * distinct "pass" value of its own — is stamped the literal string "HOLD" by `swingEntryVerdict`'s
+ * RESEARCH branch, NOT because anything is being held. Before this fix the shared fallback chain
+ * (`action?.label ?? play.recommendation ?? play.status`) fell straight through the null `action`
+ * to that literal "HOLD", so the headline, `thesis`, and the Verdict section's own opening line all
+ * read "HOLD — META 705P 5DTE" one sentence away, in the SAME brief, from "Desk is passing this
+ * setup — no entry recommended." (`play.recNote`, rendered two lines down in Verdict) — a genuine
+ * Largo-contract identity/precision violation: a trader skimming only the headline has no way to
+ * tell a never-entered, desk-is-passing candidate apart from an existing open position being told
+ * to keep holding. Confirmed systemic (not a single-ticker fluke) on 2 independently-reproduced
+ * live tickers (META, ORCL) — every RESEARCH-bucket row shares this exact code path.
+ *
+ * Fixed by special-casing SKIP to the engine's own already-shipped "PASSED" vocabulary
+ * (`playStatusDisplay`'s SKIP case, play-card-lifecycle.ts — "PASSED is the engine's own vocabulary
+ * for the decision, and a discipline the desk should look good for exercising rather than be
+ * punished for") instead of leaking the overloaded `recommendation` field. Every other `deckStatus`
+ * is untouched: `play.status` is never `"SKIP"` for WATCH/OPEN/HOLD/TRIM/CLOSED, so they fall
+ * through to the identical, unchanged `action?.label ?? play.recommendation ?? play.status` chain
+ * as before — a real OPEN/HOLD position still reads "HOLD" exactly as it must.
+ */
+function swingVerdictVerb(play: TerminalPlay, action: { label: string } | null): string {
+  if (play.status === "SKIP") return "PASSED";
+  return action?.label ?? play.recommendation ?? play.status;
 }
 
 function statusBucket(play: TerminalPlay): "watch" | "open" | "closed" {
@@ -1826,10 +1860,13 @@ export function composeSwingPlayBrief(
 
   const verdictLines: string[] = [];
   const action = swingActionDisplay(play);
-  // Fallback chain must match the envelope headline's below (action -> recommendation -> status)
-  // — a SKIP-deckStatus RESEARCH row otherwise showed "HOLD" in the headline and raw "· SKIP"
-  // here in the very same brief (live repro: SLV, 2026-09-10, FINDINGS 2026-09-10).
-  verdictLines.push(`**${headline}** · ${play.direction} · ${action?.label ?? play.recommendation ?? play.status}`);
+  // Fallback chain must match the envelope headline's below (`swingVerdictVerb`, shared) — a
+  // SKIP-deckStatus RESEARCH row otherwise showed "HOLD" in the headline and raw "· SKIP" here in
+  // the very same brief (live repro: SLV, 2026-09-10, FINDINGS 2026-09-10). `swingVerdictVerb`'s
+  // own doc comment covers the SECOND gap this chain had: SKIP fell through to the literal string
+  // "HOLD" (not raw "· SKIP") once the 2026-09-10 fix below made the two agree — see that comment
+  // for the live META/ORCL repro and why "PASSED" is now used instead (2026-10-21).
+  verdictLines.push(`**${headline}** · ${play.direction} · ${swingVerdictVerb(play, action)}`);
   if (grade) verdictLines.push(`Grade **${grade}**${quality != null ? ` · score ${quality}` : ""}`);
   if (strength != null) verdictLines.push(`Thesis strength **${strength}%**`);
   // Dossier regime (discovery-pillar read, e.g. "Breakout · regime 0.82") belongs in "Why this setup"
@@ -2026,7 +2063,7 @@ export function composeSwingPlayBrief(
 
   const envelope: BieAnswerEnvelope = {
     ...buildRichEnvelope({
-      headline: `${action?.label ?? play.recommendation ?? play.status} — ${headline}`,
+      headline: `${swingVerdictVerb(play, action)} — ${headline}`,
       bias: biasFromDirection(play.direction),
       intent: "swing_play_brief",
       sections,

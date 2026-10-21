@@ -681,6 +681,16 @@ test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope h
   // `play.status`, so the SAME brief response showed "· SKIP" plus "Desk is passing this
   // setup — no entry recommended." directly under a headline that says HOLD — a real,
   // member-visible contradiction inside one answer, not two different reads.
+  //
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro META/ORCL): this test's own
+  // assertions used to require the headline/Verdict line read "HOLD" — which is exactly the SECOND
+  // gap this chain had, confirmed live in production: "HOLD" is `SwingEntryVerdict.recommendation`'s
+  // literal value for a RESEARCH/SKIP row (entry-verdict.ts), not a statement that anything is being
+  // held, and it sat one sentence away from "Desk is passing this setup — no entry recommended." —
+  // indistinguishable, to a skimming trader, from an existing open position told to keep holding.
+  // `swingVerdictVerb` (play-brief.ts) now special-cases SKIP to "PASSED" — the engine's own
+  // already-shipped vocabulary for this exact decision (`playStatusDisplay`'s SKIP case) — so this
+  // test now asserts the CORRECTED output instead of the bug it used to encode.
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({
       status: "SKIP",
@@ -698,11 +708,51 @@ test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope h
     vector: null,
   };
   const brief = composeSwingPlayBrief(ctx);
-  assert.match(brief.envelope.headline, /^HOLD — /);
+  assert.match(brief.envelope.headline, /^PASSED — /);
+  assert.doesNotMatch(
+    brief.envelope.headline,
+    /^HOLD — /,
+    "a declined RESEARCH/SKIP candidate must never read HOLD in the headline — nothing was entered, so nothing is being held",
+  );
+  assert.match(
+    brief.envelope.thesis ?? "",
+    /— PASSED/,
+    `thesis must agree with the headline, got: ${brief.envelope.thesis}`,
+  );
   const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
   assert.ok(verdict, "expected Verdict section");
-  assert.match(verdict!.body, /· HOLD$/m, `Verdict must agree with the headline, got: ${verdict!.body}`);
+  assert.match(verdict!.body, /· PASSED$/m, `Verdict must agree with the headline, got: ${verdict!.body}`);
+  assert.doesNotMatch(verdict!.body, /· HOLD$/m, "Verdict must not leak the overloaded recommendation:HOLD value for a declined SKIP candidate");
   assert.doesNotMatch(verdict!.body, /· SKIP/, "Verdict must not show the raw internal SKIP deckStatus");
+});
+
+// BUG FIX regression (2026-10-21, Ask Largo standing mandate): the SKIP->"PASSED" special case
+// above must be scoped to SKIP only — a genuine OPEN position the desk is actively telling a
+// member to hold (recommendation:"HOLD", no trim fired, no still-forming entry action) must keep
+// reading "HOLD" verbatim in the headline/thesis/Verdict line, exactly as before this fix.
+test("composeSwingPlayBrief: a genuine OPEN/HOLD position still reads HOLD, unaffected by the SKIP fix", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      swingEntryAction: undefined,
+      recNote: "Thesis intact — hold the existing position.",
+    }),
+    asOf: "2026-09-10T13:47:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.match(brief.envelope.headline, /^HOLD — /, `a real open position must still read HOLD, got: ${brief.envelope.headline}`);
+  assert.match(brief.envelope.thesis ?? "", /— HOLD/, `thesis must still read HOLD, got: ${brief.envelope.thesis}`);
+  const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
+  assert.ok(verdict, "expected Verdict section");
+  assert.match(verdict!.body, /· HOLD$/m, `Verdict must still read HOLD for a real open position, got: ${verdict!.body}`);
 });
 
 // Live repro 2026-09-13 (COIN, WATCH, real production play-brief): the same PULLBACK_CONTINUATION
