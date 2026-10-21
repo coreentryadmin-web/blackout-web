@@ -113,7 +113,10 @@ async function fetchPublic(path) {
 }
 
 async function fetchAuthed(path, sessionCookie, clientUat) {
-  const r = curl({
+  // Deploy smoke 2026-10-21: RED on `admin /dashboard` HTTP 0 (curl 56 reset) while the very
+  // next authed fetch of the same path passed — mid-ECS-rollout flake. fetchPublic already uses
+  // curlRetry; this path must too.
+  const r = await curlRetry({
     url: `${APP}${path}`,
     headers: { Cookie: `__session=${sessionCookie}; __client_uat=${clientUat}` },
   });
