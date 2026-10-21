@@ -1371,6 +1371,19 @@ export function flowIntelSection(
     // null, instead of omitting the clause entirely — the flat-placeholder shape C3's absence
     // principle and the narrative-quality bar both discourage. Omit the whole clause when unknown.
     const convictionBit = z.conviction != null ? ` · ${z.conviction} conviction` : "";
+    // BUG FIX (2026-10-21, Ask Largo standing mandate): this line was the one sibling in this
+    // section with zero freshness/status disclosure — the HELIX tape line states its own window
+    // and both Flow anomalies/Notable prints attach a per-item `relativeAgeLabel` bracket (see
+    // those blocks' own comments a few lines up), but this one never surfaced `z.first_flagged_at`
+    // (a real provenance timestamp) or `z.status` (a real lifecycle column — the SAME OPEN/HOLD/
+    // TRIM/CLOSED idiom `zerodte_setup_log`/`swing_positions` both use), even though both are
+    // fetched in the same query (ecosystem-context.ts). `zerodteLiveForSession`'s own gate is
+    // whole-session-date granularity only — a setup flagged minutes ago and one that already
+    // stopped out hours earlier in the SAME session both rendered identically, with no way for a
+    // reader to tell them apart.
+    const ageLabel = relativeAgeLabel(z.first_flagged_at);
+    const agePart = ageLabel ? ` [${ageLabel}]` : "";
+    const statusBit = z.status === "CLOSED" ? " _(already closed)_" : "";
     if (z.is_condor === true) {
       // A committed CONDOR's `direction` column is NOMINAL provenance only (the fade side of
       // the pin it came from) — the structure is delta-neutral, so comparing it against swing's
@@ -1378,14 +1391,14 @@ export function flowIntelSection(
       // signal the 0DTE desk never actually took (board.ts's own ZeroDteSetup.direction comment:
       // "the directional gates ... do NOT apply to it"). Report the desk's real posture instead.
       lines.push(
-        `0DTE desk: **sold iron condor** (structure-neutral, not a directional call)${convictionBit}`,
+        `0DTE desk: **sold iron condor** (structure-neutral, not a directional call)${convictionBit}${agePart}${statusBit}`,
       );
     } else {
       const aligned =
         (play.direction === "LONG" && z.direction === "long") ||
         (play.direction === "SHORT" && z.direction === "short");
       lines.push(
-        `0DTE desk: **${z.direction}**${convictionBit}${aligned ? " · **aligned**" : " · **conflict** with swing direction"}`,
+        `0DTE desk: **${z.direction}**${convictionBit}${aligned ? " · **aligned**" : " · **conflict** with swing direction"}${agePart}${statusBit}`,
       );
     }
   }
