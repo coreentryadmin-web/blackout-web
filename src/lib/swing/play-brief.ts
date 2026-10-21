@@ -1469,7 +1469,28 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
         }
       }
       if (overlap.sameThemeOpposedDirection.length) {
-        parts.push(`${overlap.sameThemeOpposedDirection.length} opposed position(s) in the same theme`);
+        // BUG FIX (2026-10-21, Ask Largo round-3 deep-dive): same root cause as the
+        // sameThemeSameDirection block above, left unfixed on this mirror-image bucket when that
+        // fix shipped — a same-UNDERLYING opposed position (e.g. long and short the same ticker,
+        // bookContextSection's "Internal conflict — same underlying... one of these two positions
+        // is mechanically wrong") collapsed into the identical generic "N opposed position(s) in
+        // the same theme" framing as an ordinary cross-ticker sector hedge, disagreeing with the
+        // sharper distinction bookContextSection itself already draws for the same fact.
+        const sameTickerOpposedCount = overlap.sameThemeOpposedDirection.filter(
+          (p) => p.ticker.trim().toUpperCase() === ctx.play.ticker.trim().toUpperCase(),
+        ).length;
+        const otherOpposedCount = overlap.sameThemeOpposedDirection.length - sameTickerOpposedCount;
+        if (sameTickerOpposedCount && otherOpposedCount) {
+          parts.push(
+            `${sameTickerOpposedCount} same-ticker + ${otherOpposedCount} other opposed position${otherOpposedCount > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}`,
+          );
+        } else if (sameTickerOpposedCount) {
+          parts.push(
+            `${sameTickerOpposedCount} same-ticker opposed position${sameTickerOpposedCount > 1 ? "s" : ""} on ${ctx.play.ticker} itself (opposite side)`,
+          );
+        } else {
+          parts.push(`${overlap.sameThemeOpposedDirection.length} opposed position(s) in the same theme`);
+        }
       }
       out.push({
         kind: "fact",
