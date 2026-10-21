@@ -237,9 +237,20 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     topFlowProvenance,
     firstSeenAt: row.first_seen_at,
     committedAt: row.committed_at,
-    entryPremium: row.entry_premium,
-    peakPremium: row.peak_premium,
-    troughPremium: row.trough_premium,
+    // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro BE): these three raw DB floats
+    // used to pass straight through, unrounded — but `terminalPlayFromClosedSwing`'s `peakDisplay`/
+    // `troughDisplay` (adapters.ts) derive a percentage directly from them, while the SEPARATE
+    // `GET /api/market/swing/record` HTTP route (the Command Deck UI's own CLOSED-tab source,
+    // containers.tsx) independently wraps the SAME raw columns in `roundFloats(..., dp=2)` before
+    // feeding the identical `terminalPlayFromClosedSwing` function. Two real consumers of one pure
+    // function, fed two different precision bases for the same closed position — exactly the
+    // raw-vs-rounded shape already found and fixed for 0DTE (FINDINGS.md, peak_pnl_pct/
+    // mfe_capture_pct). Rounding once, here, at the single shared source, makes both callers
+    // (the direct-DB Ask Largo brief path AND the HTTP /record route) agree, and makes /record's
+    // own roundFloats() a no-op on these three fields rather than a second, uncoordinated rounding.
+    entryPremium: row.entry_premium != null ? round2(row.entry_premium) : null,
+    peakPremium: row.peak_premium != null ? round2(row.peak_premium) : null,
+    troughPremium: row.trough_premium != null ? round2(row.trough_premium) : null,
     occ: bundle.occ,
     exitAt,
     exitPnlPct: exitPnl,
