@@ -1,7 +1,10 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-10-21T15:22:00Z",
+  "updated_at": "2026-10-21T15:33:00Z",
   "watch_stage_tracking": {
+    "2026-10-21T15:33:00Z_PR_6489_MERGED_GREEN": {
+      "note": "PR #6489 (thesis-expression contract mismatch fix) merged (squash sha 5fbdecfad). Verified before merging, not assumed: verify + CodeQL check runs both completed/success, mergeable_state=clean, not draft -- automerge.yml's enable-automerge/auto-merge jobs both skipped (the known, already-documented broken-automerge-for-agent-branches gap in this file), so merged directly via GitHub MCP per standing merge authorization. Cancelled the earlier 50-min safety-net check-in (trig_01MzgMo68eMMSYJD3jqpcF3c) since the PR is done. Staged finding docs/audit/findings-staging/2026-10-21-zerodte-thesisfirst-expression-contract-mismatch.md is on main now -- not yet folded into FINDINGS.md (fold happens in a batch via findings-fold-staging.mjs, not required per-merge)."
+    },
     "2026-10-21T15:22:00Z_NVDA_ALSO_CLOSED_WINNER_2_FOR_2_PR_6489_CI_PENDING": {
       "note": "NVDA also CLOSED via the same ratchet mechanism: +2.41% (floor armed off a +5.67% peak, mfe_capture_pct=41%, exit_mark_honored=true) -- correct, same protective-floor pattern as QQQ this session (2 instances, below the 3-instance bar, and both are the mechanism working as designed, not a defect to watch for a 3rd). Session now 2W/0L, +6.45% session_pnl_pct, 0 open positions, governor clean. One new commit_ready=1 candidate present this scan tick (not yet inspected -- will check next cycle if it actually commits). PR #6489 (thesis-expression contract mismatch fix) status: open, undrafted, CI still pending (just undrafted/pushed) -- subscribed to PR activity, no action needed yet, watching for CI result."
     },
