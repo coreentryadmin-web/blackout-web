@@ -221,7 +221,17 @@ function signalScore(kinds: string[] | null | undefined): { commit: number; curr
   if (hasBanger) score += 0.15;
   if (count >= 3) score += 0.05;
   score = clamp01(score);
-  const label = count === 0 ? "no signals" : [...set].slice(0, 3).join("+");
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro CRWV:63): this used to render
+  // `[...set].slice(0, 3).join("+")` with no disclosure when count > 3, so a FLOW+STRUCTURE+
+  // CATALYST+BANGER setup silently dropped CATALYST from the "Signal stack" bullet while the SAME
+  // envelope's "Why this setup" section (which reads the frozen score-pillar factors) correctly
+  // listed all four kinds — a same-envelope disagreement about which signals corroborate the
+  // setup. The blended score above already accounts for every kind (hasFlow/hasVector/hasBanger/
+  // count>=3), so only the LABEL was lossy. Appending "+N more" keeps the label compact while
+  // disclosing the truncation instead of hiding it.
+  const shown = [...set].slice(0, 3);
+  const hiddenCount = count - shown.length;
+  const label = count === 0 ? "no signals" : shown.join("+") + (hiddenCount > 0 ? ` +${hiddenCount} more` : "");
   return { commit: score, current: score, label };
 }
 
