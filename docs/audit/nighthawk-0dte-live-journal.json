@@ -1,7 +1,10 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-10-21T17:42:00Z",
+  "updated_at": "2026-10-21T17:48:00Z",
   "watch_stage_tracking": {
+    "2026-10-21T17:48:00Z_NET_SMALL_LOSER_CORRECTLY_CUT": {
+      "note": "NET committed and closed this cycle via thesis-break at -2.9% (never moved favorably, peak +0.05%) -- same correct early-cut pattern as DDOG/PLTR today, no mismanagement. Session now 15 closed (12W/3L), 0 open, session_pnl_pct +79.8%. All 3 losers today were thesis-break-cut early (PLTR -10.07%, DDOG -1.4%, NET -2.9%) -- none rode to the -50% hard stop, consistent, correct risk behavior across the board. 'last directional commit window' time label holding. No new defects."
+    },
     "2026-10-21T17:42:00Z_OKTA_UAL_CLOSED_THIRD_CONFIRMATION_SESSION_STRONG": {
       "note": "OKTA and UAL both closed, both correct: OKTA thesis-break banked +26.09% (peak 34.78%, range [15,40] -> 1/2 tranche, THIRD independent formula confirmation of the 16:49 report-and-hold finding -- not re-explaining it again, still holding, not fixing); UAL ratchet-floor +5.14% (peak 12.65%, trend [40,80] -> 0 tranches, correctly no banked clause). Session now fully flat: 14 closed (12W/2L), 0 open, session_pnl_pct +82.7%, governor clean. time_of_day_label now 'last directional commit window' -- nearing end of new-commit eligibility for today. No new defects. Will stop re-confirming the trim-regime-live pattern every cycle now that it's solidly established (3 independent instances, all internally consistent) -- only logging it again if something about it actually changes (e.g. a count that DOESN'T match the formula, which would be the real smoking gun for a different bug)."
     },
