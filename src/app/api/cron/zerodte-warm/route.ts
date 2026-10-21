@@ -29,7 +29,10 @@ import { isEtCashRth, isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { loadZeroDteScanHeartbeat } from "@/lib/play-engine-heartbeat";
-import { acquireHeavyCronSlot } from "@/lib/cron/heavy-cron-concurrency-guard";
+import {
+  acquireHeavyCronSlot,
+  type HeavyCronSlot,
+} from "@/lib/cron/heavy-cron-concurrency-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,9 +117,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  let scanHeartbeatCriticalStale = false;
   if (isEtCashRth()) {
     const heartbeat = await loadZeroDteScanHeartbeat().catch(() => null);
-    if (heartbeat?.critical_stale) {
+    scanHeartbeatCriticalStale = Boolean(heartbeat?.critical_stale);
+    if (scanHeartbeatCriticalStale) {
       const wonSteal = await sharedCacheSetNx(
         STEAL_ATTEMPT_KEY,
         { startedAt: started },
@@ -168,7 +173,24 @@ export async function GET(req: NextRequest) {
   // cron from overlapping with itself. Live CloudWatch (2026-10-13 13:35-13:56 UTC) showed this
   // cron and 5 OTHER heavy crons in flight at once on the shared web tier, 1:1 correlated with
   // sustained ALB tail latency — see heavy-cron-concurrency-guard.ts's header for the evidence.
-  const slot = await acquireHeavyCronSlot("zerodte-warm", OVERLAP_LOCK_TTL_SEC);
+  let slot: HeavyCronSlot | null = await acquireHeavyCronSlot(
+    "zerodte-warm",
+    OVERLAP_LOCK_TTL_SEC
+  );
+  // The wedge breaker above clears overlap/cooldown locks but cannot help when the shared pool
+  // is exhausted — measured 2026-10-21 RTH: repeated "heavy-cron concurrency slot unavailable"
+  // skips left `zerodte_scan_heartbeat` critical_stale while cron_job_runs still looked healthy.
+  // #6494's reserved slot prevents routine starvation; this fail-open breaks the death spiral when
+  // discovery is already broken (only during cash RTH, only on critical_stale).
+  if (!slot && scanHeartbeatCriticalStale && isEtCashRth()) {
+    console.warn(
+      "[cron/zerodte-warm] critical_stale scan heartbeat during RTH — bypassing heavy-cron slot cap"
+    );
+    slot = {
+      cronName: "zerodte-warm",
+      release: async () => undefined,
+    };
+  }
   if (!slot) {
     await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
     const payload = {

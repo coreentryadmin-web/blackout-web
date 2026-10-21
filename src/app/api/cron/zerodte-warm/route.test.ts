@@ -91,11 +91,11 @@ test("a cross-cron concurrency slot is acquired after the overlap lock and relea
   // correlated with sustained ALB tail latency — see heavy-cron-concurrency-guard.ts's header.
   assert.match(
     routeSrc,
-    /const slot = await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\);/,
+    /let slot: HeavyCronSlot \| null = await acquireHeavyCronSlot\(\s*"zerodte-warm",\s*OVERLAP_LOCK_TTL_SEC\s*\);/,
     "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL"
   );
   const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
-  const slotIdx = routeSrc.indexOf("const slot = await acquireHeavyCronSlot(");
+  const slotIdx = routeSrc.indexOf("let slot: HeavyCronSlot | null = await acquireHeavyCronSlot(");
   const dispatchIdx = routeSrc.indexOf("const dispatchWarm = () => {");
   assert.ok(
     overlapClaimIdx > 0 && slotIdx > overlapClaimIdx && slotIdx < dispatchIdx,
@@ -105,6 +105,19 @@ test("a cross-cron concurrency slot is acquired after the overlap lock and relea
     routeSrc,
     /if \(!slot\) \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);/,
     "a lost cross-cron race must release the self-overlap lock immediately so the NEXT fire gets a clean shot"
+  );
+});
+
+test("critical_stale during cash RTH bypasses an exhausted heavy-cron slot cap (recovery fail-open)", () => {
+  assert.match(
+    routeSrc,
+    /scanHeartbeatCriticalStale/,
+    "must track whether the 0DTE scan heartbeat is already critical_stale before the heavy-slot claim"
+  );
+  assert.match(
+    routeSrc,
+    /if \(!slot && scanHeartbeatCriticalStale && isEtCashRth\(\)\)/,
+    "when discovery is already broken, must not keep idempotent-skipping solely because the shared pool is full"
   );
 });
 
