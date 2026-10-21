@@ -11,6 +11,7 @@ import {
   trustedHelixFlow,
   ageSecondsLabel,
   relativeAgeLabel,
+  gexMatrixAgeMs,
   gexMatrixStale,
   vectorSnapshotStale,
   darkPoolStale,
@@ -326,7 +327,23 @@ function dealerPostureLine(
   // a fourth local check.
   const staleCheckExempt = bucket === "watch" && isSwingPlayStaleCheckExempt(ctx.play);
   const snapshotStale = vectorStale && !staleCheckExempt;
-  const snapshotAgeLabel = snapshotStale ? ageSecondsLabel(vec?.dataAgeMs) : null;
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live TSLA WATCH repro): this caption used to
+  // always age itself off `vec?.dataAgeMs` whenever Vector was stale — but every other value this
+  // bullet renders (posture via resolveGammaPosture, flip, fragileBit/regimeBits/netGexBit/
+  // sessionChangeBit above, even `spot` itself per tradeManagerNarrativeSection's own vector-then-
+  // GEX fallback) ALREADY requires its own source to be non-stale before it's allowed to render —
+  // vector when `!vectorStale`, GEX otherwise (resolveGammaPosture falls through to
+  // `gex.gamma_posture` only when `!gexMatrixStale`; the regime/net/session bits above are
+  // explicitly gated on `!gexStale`). So whenever `vectorStale` is true and we reach this line at
+  // all, EVERY field just rendered is GEX-sourced and GEX-fresh by construction — captioning it
+  // with Vector's (much older) age reports an age that has nothing to do with the data on screen.
+  // Live repro: TSLA WATCH showed "Last snapshot (~10659s old) ... net GEX 422.1M · session
+  // +1.8%" while the SAME envelope's evidence[] attributed that identical GEX reading to an 80s-
+  // old read. Caption with GEX's own age instead (matching the sibling `gexPostureSection`'s
+  // established "Last snapshot" pattern, play-brief-intel.ts) whenever the content is GEX-sourced.
+  // `snapshotStale` is `vectorStale && !staleCheckExempt`, so whenever it's true, `vectorStale` is
+  // already true too — content is GEX-sourced (never Vector's own age) by the proof above.
+  const snapshotAgeLabel = snapshotStale ? ageSecondsLabel(gexMatrixAgeMs(gex, readMs)) : null;
   const lead = snapshotStale
     ? `**Last snapshot**${snapshotAgeLabel != null ? ` (~${snapshotAgeLabel} old)` : ""}`
     : "**Right now**";
