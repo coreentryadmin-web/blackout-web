@@ -60,8 +60,8 @@ import { preferredGexWalls } from "./play-brief-intel";
 import { collectFocalLevels, type FocalLevel, type LevelKind } from "./play-brief-narrative";
 import { gexMatrixStale, vectorSnapshotStale } from "./play-brief-absence";
 import { deriveSwingPlanLevels } from "./structure-levels";
-import { graduatedArchetypeEntry, type SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
-import { ARCHETYPE_META, SWING_ARCHETYPES } from "./taxonomy";
+import { graduatedArchetypeEntry, graduatedSubLaneEntry, type SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
+import { ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, SWING_SUB_LANES_ORDER } from "./taxonomy";
 import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 /** Same kind vocabulary `collectFocalLevels` already uses — see that function's header on why this
@@ -148,6 +148,20 @@ export type StructureLadderArchetypeTrackRecord = {
 };
 
 /**
+ * Same shape as {@link StructureLadderArchetypeTrackRecord}, for the SUB-LANE dimension
+ * (TACTICAL/STANDARD — `graduatedSubLaneEntry`'s own gate, independent from the archetype gate
+ * above). A separate type rather than a union/overload of the archetype one so each field's own
+ * dimension is unambiguous to a consumer reading the envelope — see `StructureLadder.subLaneTrackRecord`.
+ */
+export type StructureLadderSubLaneTrackRecord = {
+  subLaneLabel: string;
+  /** Null only when the graduated bucket's own n=0 edge case (graduatedSubLaneEntry's own contract). */
+  winRatePct: number | null;
+  wilsonLbPct: number;
+  n: number;
+};
+
+/**
  * The single nearest rung on the unfavorable side of spot (`StructureLadder.riskTheOtherSide`) —
  * always a REFERENCE into the same `rungs` array (kind/label/price/distancePct copied verbatim),
  * never an independently-derived level. `role` is carried through so the UI can phrase it
@@ -207,6 +221,10 @@ export type StructureLadder = {
    *  `graduatedArchetypeEntry`, the exact same gate `archetypeTrackRecordSection` uses elsewhere in
    *  this brief; never a second, independently-computed confidence number). */
   archetypeTrackRecord?: StructureLadderArchetypeTrackRecord;
+  /** Same gate/shape as `archetypeTrackRecord` above, for the independently-graduated SUB-LANE
+   *  dimension (`graduatedSubLaneEntry` — see `StructureLadderSubLaneTrackRecord`'s own header for
+   *  why this is a separate field rather than folded into `archetypeTrackRecord`). */
+  subLaneTrackRecord?: StructureLadderSubLaneTrackRecord;
   /**
    * The nearest real rung on the UNFAVORABLE side of spot — i.e. a level the thesis has to work
    * against, not toward. Omitted (not present) when every rung on this ladder happens to sit on
@@ -281,6 +299,24 @@ function trackRecordFor(
   if (!entry || !archetype) return undefined;
   return {
     archetypeLabel: ARCHETYPE_META[archetype].label,
+    winRatePct: entry.winRatePct,
+    wilsonLbPct: entry.wilsonLbPct,
+    n: entry.n,
+  };
+}
+
+/** Sub-lane sibling of {@link trackRecordFor} — see `StructureLadderSubLaneTrackRecord`'s header. */
+function subLaneTrackRecordFor(
+  play: TerminalPlay,
+  snapshot: SwingArchetypeTrackRecordSnapshot | null | undefined,
+): StructureLadderSubLaneTrackRecord | undefined {
+  const subLane = (SWING_SUB_LANES_ORDER as readonly string[]).includes(play.subLane ?? "")
+    ? (play.subLane as (typeof SWING_SUB_LANES_ORDER)[number])
+    : null;
+  const entry = graduatedSubLaneEntry(snapshot, subLane);
+  if (!entry || !subLane) return undefined;
+  return {
+    subLaneLabel: SWING_SUB_LANES[subLane].label,
     winRatePct: entry.winRatePct,
     wilsonLbPct: entry.wilsonLbPct,
     n: entry.n,
@@ -417,6 +453,7 @@ export function buildStructureLadder(
   const gexStale = gexMatrixStale(gex, readMs);
   const crossDeskAgreement = crossDeskAgreementFor(vec, gex, spot, vectorStale, gexStale);
   const archetypeTrackRecord = trackRecordFor(play, ctx.archetypeTrackRecord);
+  const subLaneTrackRecord = subLaneTrackRecordFor(play, ctx.archetypeTrackRecord);
 
   return {
     spot,
@@ -429,6 +466,7 @@ export function buildStructureLadder(
     rungs,
     ...(crossDeskAgreement ? { crossDeskAgreement } : {}),
     ...(archetypeTrackRecord ? { archetypeTrackRecord } : {}),
+    ...(subLaneTrackRecord ? { subLaneTrackRecord } : {}),
     ...(riskTheOtherSide
       ? {
           riskTheOtherSide: {

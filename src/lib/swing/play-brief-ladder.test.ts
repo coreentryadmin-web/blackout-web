@@ -370,6 +370,54 @@ test("buildStructureLadder: cites the archetype track record ONLY when the bucke
   );
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SEDG): archetypeTrackRecord above
+// only ever covered the ARCHETYPE dimension — but archetypeTrackRecordSection (play-brief-intel.ts)
+// independently gates and renders the SUB-LANE dimension too, and a ticker whose sub-lane bucket
+// graduated while its archetype bucket didn't is a real, supported state (that section's own tests
+// prove it). The Structure Ladder had no field at all for that case.
+test("buildStructureLadder: cites the sub-lane track record ONLY when that bucket has graduated — independent of the archetype dimension", () => {
+  const play = fixturePlay({ direction: "LONG", archetype: "BREAKOUT", subLane: "TACTICAL" });
+  const vec = fixtureVec({ spot: 100, gammaFlip: 110 });
+
+  const subLaneGraduatedCtx = fixtureCtx({
+    play,
+    vector: vec,
+    archetypeTrackRecord: {
+      asOf: "2026-09-10T15:00:00.000Z",
+      gradedPlays: 40,
+      archetypes: {},
+      subLanes: { TACTICAL: trackRecordEntry({ graduated: true, winRatePct: 62.9, wilsonLbPct: 58.1, n: 35 }) },
+    },
+  });
+  const ladder = buildStructureLadder(subLaneGraduatedCtx, play, "open")!;
+  assert.equal(ladder.archetypeTrackRecord, undefined, "archetype bucket ungraduated here — must not fabricate");
+  assert.deepEqual(ladder.subLaneTrackRecord, {
+    subLaneLabel: "Tactical (5–7d)",
+    winRatePct: 62.9,
+    wilsonLbPct: 58.1,
+    n: 35,
+  });
+
+  const ungraduatedCtx = fixtureCtx({
+    play,
+    vector: vec,
+    archetypeTrackRecord: {
+      asOf: "2026-09-10T15:00:00.000Z",
+      gradedPlays: 40,
+      archetypes: {},
+      subLanes: { TACTICAL: trackRecordEntry({ graduated: false }) },
+    },
+  });
+  assert.equal(
+    buildStructureLadder(ungraduatedCtx, play, "open")!.subLaneTrackRecord,
+    undefined,
+    "never cite an ungraduated sub-lane bucket — Largo C6 omission, not a discounted number",
+  );
+
+  const coldCacheCtx = fixtureCtx({ play, vector: vec, archetypeTrackRecord: null });
+  assert.equal(buildStructureLadder(coldCacheCtx, play, "open")!.subLaneTrackRecord, undefined);
+});
+
 // ── WATCH bucket (still builds — the ladder is useful pre-entry too) ────────
 
 test("buildStructureLadder: builds for a WATCH candidate too (forward risk/reward is exactly the pre-entry question)", () => {

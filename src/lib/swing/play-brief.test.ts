@@ -1794,6 +1794,73 @@ test("composeSwingPlayBrief: archetype track record also surfaces as a citable e
   );
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SEDG): the archetype evidence[]
+// citation above never had a sub-lane sibling, even though archetypeTrackRecordSection
+// (play-brief-intel.ts) independently gates and renders the sub-lane dimension in prose, and its
+// own tests prove a sub-lane-alone graduation (archetype ungraduated/absent) is a real, supported
+// state. A ticker in that state would have real sub-lane evidence in the rendered prose with no
+// matching evidence[] fact.
+test("composeSwingPlayBrief: sub-lane track record ALSO surfaces as its own citable evidence[] entry, independent of the archetype dimension (Largo C10, live repro SEDG)", () => {
+  const subLaneGraduatedSnap: SwingArchetypeTrackRecordSnapshot = {
+    asOf: "2026-09-10T15:00:00.000Z",
+    gradedPlays: 40,
+    archetypes: {},
+    subLanes: {
+      TACTICAL: {
+        tier: "LIMITED",
+        graduated: true,
+        wilsonLbPct: 58.1,
+        pointDeltaPts: 14.2,
+        n: 35,
+        wins: 22,
+        losses: 13,
+        winRatePct: 62.9,
+      },
+    },
+  };
+  const baseCtx: SwingPlayBriefContext = {
+    // archetype left at the fixture default (BREAKOUT) but the snapshot's archetypes map is empty,
+    // so graduatedArchetypeEntry returns null — exactly the "sub-lane graduated alone" state.
+    play: fixturePlay({ archetype: "BREAKOUT", subLane: "TACTICAL" }),
+    asOf: "2026-09-10 16:00 ET",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const withSubLane = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: subLaneGraduatedSnap });
+  const archetypeEvidence = withSubLane.envelope.evidence.find((e) => e.text.startsWith("Archetype track record:"));
+  assert.equal(archetypeEvidence, undefined, "archetype dimension ungraduated here — must not fabricate a citation");
+  const subLaneEvidence = withSubLane.envelope.evidence.find((e) => e.text.startsWith("Sub-lane track record:"));
+  assert.ok(subLaneEvidence, "expected a citable sub-lane track-record evidence entry");
+  assert.match(subLaneEvidence!.text, /22W \/ 13L/);
+  assert.match(subLaneEvidence!.text, /35 graded plays/);
+  assert.equal(subLaneEvidence!.provenance?.source, "Swing ledger");
+
+  const withoutTrackRecord = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: undefined });
+  assert.equal(
+    withoutTrackRecord.envelope.evidence.some((e) => e.text.startsWith("Sub-lane track record:")),
+    false,
+    "no evidence citation when the track-record read is absent",
+  );
+
+  // An ungraduated sub-lane bucket must be omitted here too, never cited as though trustworthy.
+  const ungraduatedSnap: SwingArchetypeTrackRecordSnapshot = {
+    ...subLaneGraduatedSnap,
+    subLanes: { TACTICAL: { ...subLaneGraduatedSnap.subLanes.TACTICAL!, graduated: false, tier: "RESEARCH" } },
+  };
+  const withUngraduated = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: ungraduatedSnap });
+  assert.equal(
+    withUngraduated.envelope.evidence.some((e) => e.text.startsWith("Sub-lane track record:")),
+    false,
+    "an ungraduated sub-lane bucket must not be cited as evidence",
+  );
+});
+
 test("composeSwingPlayBrief: ticker track record also surfaces as a citable evidence[] entry, not just prose (Largo C10)", () => {
   const baseCtx: SwingPlayBriefContext = {
     play: fixturePlay({ ticker: "CRWD" }),
