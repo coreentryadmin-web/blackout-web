@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-21T16:39:35.845Z",
+  "updated_at": "2026-10-21T17:37:04.889Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c1a033687f88a03a7e3ce2cf49e427b282f650b6",
+    "last_main_sha": "04cb4d05d26f371d3f0b1218a40254c4b40b1090",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-12T12:37:38.990Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-12T12:37:44.030Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-12T12:47:56.705Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-12T12:48:01.703Z",
       "type": "context_sync",
@@ -1271,18 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-21T17:36:54.739Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-21T17:36:59.979Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-21T17:37:04.889Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 6516,
-      "title": "docs(findings): fold batch-41 findings into FINDINGS.md",
-      "branch": "docs/fold-batch-41",
+      "number": 6527,
+      "title": "fix(largo-swing): surface known per-source data age as Largo C2 freshness/age_seconds",
+      "branch": "fix/largo-swing-freshness-age-seconds",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-21T16:36:57Z"
+      "updated_at": "2026-10-21T17:29:11Z"
+    },
+    {
+      "number": 6526,
+      "title": "docs(findings): fold batch-43 findings into FINDINGS.md",
+      "branch": "docs/fold-batch-43",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-21T17:27:56Z"
     },
     {
       "number": 5547,
