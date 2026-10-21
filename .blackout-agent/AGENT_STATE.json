@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-21T00:49:25.311Z",
+  "updated_at": "2026-10-21T02:08:05.116Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "e08b2ec84069e3a4322e3da2a4e795068614e01d",
+    "last_main_sha": "5e621b08e64ff94ffa60d4bbfccad4773019f80a",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-11T10:41:29.166Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-11T10:41:34.168Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-11T11:51:18.163Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-11T11:51:23.640Z",
       "type": "context_sync",
@@ -1271,18 +1253,56 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-21T02:07:52.726Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-21T02:07:59.862Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-21T02:08:05.116Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 6434,
-      "title": "docs(findings): fold batch-19 findings into FINDINGS.md",
-      "branch": "docs/fold-findings-20261021-batch19",
+      "number": 6443,
+      "title": "docs(findings): fold batch-22 findings into FINDINGS.md",
+      "branch": "docs/fold-findings-20261021-batch22",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-21T02:07:42Z"
+    },
+    {
+      "number": 6442,
+      "title": "fix(swing): bookContextSection sharpens a same-ticker/same-direction duplicate",
+      "branch": "fix/bookcontext-same-ticker-same-direction",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-21T02:01:32Z"
+    },
+    {
+      "number": 6441,
+      "title": "fix(swing): flowIntelSection's 0DTE desk line discloses age + closed status",
+      "branch": "fix/flowintel-0dte-desk-freshness",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "completed/success",
-      "updated_at": "2026-10-21T00:35:06Z"
+      "updated_at": "2026-10-21T01:53:04Z"
     },
     {
       "number": 5547,
