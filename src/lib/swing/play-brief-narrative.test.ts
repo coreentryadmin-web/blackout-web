@@ -2734,6 +2734,50 @@ test("counterThesisLine: calibrated thesisHealth with a genuinely faded pillar s
   assert.match(line!, /fading pillar \*\*Persistence\*\*/);
 });
 
+// BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA): Theta budget transitions
+// PURELY off DTE vs a fixed cliff/migration threshold (thetaBudgetScore, thesis-health.ts — "time
+// decay is the whole point of the pillar"), with zero dependence on price, flow, or any other market
+// signal. counterThesisLine used to push its fade into the SAME reasons[] array the "corroborated
+// across N independent reads" weight label counts, so a position with exactly ONE real opposing
+// signal (dealer long-gamma) plus a mechanically-expiring Theta pillar read as "corroborated across
+// 2 independent reads" — inflating conviction with a fact that fires on the calendar alone, whether
+// the position is winning or losing.
+test("counterThesisLine: a mechanical, DTE-driven Theta budget fade no longer inflates 'corroborated across N independent reads'", () => {
+  const thesisHealth = computeSwingThesisHealth({
+    direction: "LONG",
+    status: "HOLD",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    signalKinds: ["FLOW", "VECTOR"],
+    regime: "momentum long",
+    dte: 2,
+    subLane: "TACTICAL",
+    computedAtEt: "10:00:00",
+  });
+  assert.ok(thesisHealth);
+  assert.equal(thesisHealthUncalibrated(thesisHealth), false, "sanity: real commit inputs wired means this IS calibrated");
+  const thetaPillar = thesisHealth!.pillars.find((p) => p.label === "Theta budget");
+  assert.equal(thetaPillar?.status, "faded", "sanity: dte=2 on TACTICAL genuinely fades the theta pillar");
+
+  // ONE genuine market-side push (dealer long-gamma) alongside the mechanical theta fade above.
+  const line = counterThesisLine(
+    ctx({
+      vector: { spot: 100, regime: { posture: "long", label: "LONG GAMMA" } } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", thesisHealth }),
+    100,
+  );
+  assert.ok(line);
+  assert.match(line!, /fading pillar \*\*Theta budget\*\*/, "the mechanical fact must still be shown");
+  assert.match(line!, /dealer long-gamma pins rallies/, "the one genuine market read must still be shown");
+  assert.match(
+    line!,
+    /a single, uncorroborated signal/i,
+    `theta-budget fade must not count toward corroboration weight — got: ${line}`,
+  );
+  assert.doesNotMatch(line!, /corroborated across/i);
+});
+
 // A single-reason counter-thesis and a 3-reason one rendered with identical prose weight —
 // "Counter-thesis (bear case) — <reason(s)>" either way — live-confirmed both shapes exist today
 // (AAPL: 3 corroborating reasons; NRG/NN/META: exactly 1 each), so a member had no way to tell an
