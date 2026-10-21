@@ -91,11 +91,11 @@ test("a cross-cron concurrency slot is acquired after the overlap lock and relea
   // correlated with sustained ALB tail latency — see heavy-cron-concurrency-guard.ts's header.
   assert.match(
     routeSrc,
-    /const slot = await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\);/,
-    "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL"
+    /await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\)/,
+    "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL (unless critical_stale bypass)"
   );
   const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
-  const slotIdx = routeSrc.indexOf("const slot = await acquireHeavyCronSlot(");
+  const slotIdx = routeSrc.indexOf('await acquireHeavyCronSlot("zerodte-warm"');
   const dispatchIdx = routeSrc.indexOf("const dispatchWarm = () => {");
   assert.ok(
     overlapClaimIdx > 0 && slotIdx > overlapClaimIdx && slotIdx < dispatchIdx,
@@ -222,7 +222,7 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
     /import \{ loadZeroDteScanHeartbeat \} from "@\/lib\/play-engine-heartbeat"/
   );
   assert.match(routeSrc, /if \(isEtCashRth\(\)\) \{/);
-  assert.match(routeSrc, /heartbeat\?\.critical_stale/);
+  assert.match(routeSrc, /scanHeartbeat\?\.critical_stale/);
 
   // The steal attempt must itself be NX-atomic (STEAL_ATTEMPT_KEY) so exactly one concurrent
   // invocation performs the clear, even if many replicas observe critical_stale at once.
@@ -244,6 +244,18 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
   const stealBlockIdx = routeSrc.indexOf("if (isEtCashRth()) {");
   const cooldownClaimIdx = routeSrc.indexOf("const withinCooldown = !(await sharedCacheSetNx(");
   assert.ok(stealBlockIdx > 0 && cooldownClaimIdx > 0 && stealBlockIdx < cooldownClaimIdx);
+});
+
+test("critical_stale during cash RTH bypasses the shared heavy-cron slot so recovery cannot starve behind vector-pick-sweep", () => {
+  assert.match(routeSrc, /bypassHeavySlot/);
+  assert.match(
+    routeSrc,
+    /scanHeartbeat\?\.critical_stale === true/,
+    "bypass must be tied to the authoritative scan heartbeat, not cron_job_runs age"
+  );
+  const bypassIdx = routeSrc.indexOf("const bypassHeavySlot");
+  const acquireIdx = routeSrc.indexOf('await acquireHeavyCronSlot("zerodte-warm"');
+  assert.ok(bypassIdx > 0 && acquireIdx > 0 && bypassIdx < acquireIdx);
 });
 
 test("the cooldown primitive genuinely refuses a second claim of the same key inside its TTL", async () => {

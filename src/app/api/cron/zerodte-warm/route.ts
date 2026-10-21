@@ -114,9 +114,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  let scanHeartbeat: Awaited<ReturnType<typeof loadZeroDteScanHeartbeat>> | null = null;
   if (isEtCashRth()) {
-    const heartbeat = await loadZeroDteScanHeartbeat().catch(() => null);
-    if (heartbeat?.critical_stale) {
+    scanHeartbeat = await loadZeroDteScanHeartbeat().catch(() => null);
+    if (scanHeartbeat?.critical_stale) {
       const wonSteal = await sharedCacheSetNx(
         STEAL_ATTEMPT_KEY,
         { startedAt: started },
@@ -168,7 +169,15 @@ export async function GET(req: NextRequest) {
   // cron from overlapping with itself. Live CloudWatch (2026-10-13 13:35-13:56 UTC) showed this
   // cron and 5 OTHER heavy crons in flight at once on the shared web tier, 1:1 correlated with
   // sustained ALB tail latency — see heavy-cron-concurrency-guard.ts's header for the evidence.
-  const slot = await acquireHeavyCronSlot("zerodte-warm", OVERLAP_LOCK_TTL_SEC);
+  // When the scan heartbeat is critically stale, the wedge-breaker above only clears THIS cron's
+  // own locks — it cannot free a shared heavy-cron slot held by vector-pick-sweep. Without this
+  // bypass, every post-steal attempt can still return "heavy-cron concurrency slot unavailable",
+  // leaving discovery dark while cron_job_runs looks healthy — the failure mode behind cron-audit
+  // query's zerodte-warm alert (2026-10-21).
+  const bypassHeavySlot = isEtCashRth() && scanHeartbeat?.critical_stale === true;
+  const slot = bypassHeavySlot
+    ? { cronName: "zerodte-warm", release: async () => {} }
+    : await acquireHeavyCronSlot("zerodte-warm", OVERLAP_LOCK_TTL_SEC);
   if (!slot) {
     await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
     const payload = {
