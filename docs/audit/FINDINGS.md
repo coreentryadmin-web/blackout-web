@@ -38,6 +38,322 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-21 — [FINDING, P3 SPX Slayer UX] cold-BUY gate block message hardcodes "B setups" for every sub-A grade — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+### Symptom
+
+Live production repro, `GET /api/market/spx/play`, 2026-10-21: `confluence.grade` was `"C"`
+(score 40), and `gates.blocks` contained the literal string:
+
+```
+Cold BUY requires grade A or better — B setups need WATCH→ENTRY
+```
+
+A reader sees a rule described as being about "B setups" when the play's actual, reported grade
+is C — the message names a grade the play doesn't have.
+
+### Root cause
+
+`src/features/spx/lib/spx-play-gates.ts` (lines 351-352, pre-fix):
+
+```ts
+if (buyIntent && opts?.cold_buy_path && !stagingLab && gradeRank(confluence.grade) < gradeRank("A")) {
+  blocks.push("Cold BUY requires grade A or better — B setups need WATCH→ENTRY");
+}
+```
+
+The gate *condition* (`gradeRank(confluence.grade) < gradeRank("A")`) is true for ANY grade below
+A — B, C, D, or F alike — but the *message* is a static string that only ever names "B setups".
+The text was presumably written against the common case (a near-miss B-grade cold BUY) and never
+updated to reflect that the same branch fires for every other sub-A grade too, so a C/D/F play
+gets a message describing a grade it doesn't carry.
+
+### Evidence
+
+Live repro (production, 2026-10-21): `confluence.grade: "C"`, score 40, cold-BUY path attempted,
+`gates.blocks` included the exact string quoted above — confirmed the hardcoded "B" ships to real
+users regardless of actual grade.
+
+Reproduced locally and proved RED → GREEN with `git stash` isolating only the source file
+(`spx-play-gates.ts`; the test file, which already carried the new regression test, was never
+touched by the stash):
+
+- **RED** (pre-fix `spx-play-gates.ts`, new test's fixture: `grade: "C"`, `score: 40`,
+  `cold_buy_path: true`): `gates.blocks` joined to
+  `"... Cold BUY requires grade A or better — B setups need WATCH→ENTRY"` — assertion
+  `/C setups need WATCH→ENTRY/` failed with `AssertionError` (actual message still said "B
+  setups" on a grade-C play).
+- **GREEN** (fix restored): same fixture now produces
+  `"Cold BUY requires grade A or better — C setups need WATCH→ENTRY"` — full suite
+  `src/features/spx/lib/spx-play-gates.test.ts` 26/26 pass (Node 20,
+  `npx tsx --experimental-test-module-mocks --test src/features/spx/lib/spx-play-gates.test.ts`).
+- `npx tsc --noEmit` clean on the whole project after the fix.
+
+### Fix
+
+Interpolate the play's real `confluence.grade` into the message instead of the hardcoded `"B"`:
+
+```ts
+blocks.push(`Cold BUY requires grade A or better — ${confluence.grade} setups need WATCH→ENTRY`);
+```
+
+#### Deliberately left unchanged
+
+- The gate *condition* itself (`gradeRank(confluence.grade) < gradeRank("A")`) is untouched — it
+  was already correct; only the message text was wrong.
+- The sibling score-floor message two lines above
+  (`` `Cold BUY needs score ≥${playColdBuyMinScore()} (have ${abs})...` ``) already interpolates
+  its own real values and needed no change — it's the pattern this fix brings the grade message
+  in line with.
+- The pre-existing test ("cold BUY path requires A-grade and min score", grade `"B"`) still
+  passes unchanged, since "B setups" is simply the correct substitution when the real grade
+  happens to be B.
+
+### Blast radius
+
+Grepped the repo for other hardcoded occurrences of this message (`"B setups"` /
+`"Cold BUY requires"`) — the only other hits are: a test fixture string in
+`spx-play-intel.test.ts` (a raw input array exercising `humanizeGateBlocks`'s dedup/passthrough
+logic, unaffected either way since it only checks the message is passed through, not its exact
+content) and `src/lib/largo/gate-rules.ts`'s doc comment (documents an unrelated gate — mixed-tape
+threshold scaling — and does not reference this message). No other call site constructs this
+specific block message, so this is the only fix site needed.
+
+## 2026-10-21 — [FINDING, P1 Ask Largo x Night Hawk Swings / Largo product contract] RESEARCH/SKIP swing candidates (desk is passing, no entry) render "HOLD" as the headline/thesis/Verdict verb, one sentence from text saying the setup was never entered — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+### Symptom
+
+Live `GET /api/market/swing/play-brief` (production, 2026-10-21): a RESEARCH/SKIP-status swing
+candidate — the desk has decided NOT to enter it, no trade exists — has its `envelope.headline`,
+`envelope.thesis`, and Verdict-section body all show the literal word **"HOLD"** as the single most
+prominent word in the brief, one sentence away, in the SAME section, from text saying the desk is
+passing on it entirely with no entry.
+
+Reproduced on 2 independent tickers, both RESEARCH-bucket:
+
+- **META**: `envelope.headline = "HOLD — META 705P 5DTE"`; `envelope.thesis = "SHORT META 705P 5DTE
+  — HOLD · Event-driven directional."`; Verdict body:
+  ```
+  **META 705P 5DTE** · SHORT · HOLD
+
+  Archetype: Event-driven directional
+
+  Desk is passing this setup — no entry recommended.
+  ```
+- **ORCL**: `envelope.headline = "HOLD — ORCL 131C 9DTE"`; `envelope.thesis = "LONG ORCL 131C 9DTE
+  — HOLD."`; Verdict body:
+  ```
+  **ORCL 131C 9DTE** · LONG · HOLD
+
+  Desk is passing this setup — no entry recommended.
+  ```
+
+A trader skimming only the headline reasonably reads "HOLD — META 705P 5DTE" as an existing
+position to keep holding, not a never-entered candidate being skipped — a genuine Largo-contract
+identity/precision violation (`docs/audit/LARGO-PRODUCT-CONTRACT.md`), not cosmetic. Systemic to
+every ticker currently sitting in the RESEARCH section of the swing board, not a single-ticker
+fluke — confirmed on 2 independently-reproduced tickers hitting the exact same code path.
+
+### Root cause
+
+`swingEntryVerdict()`'s RESEARCH-section branch (`src/lib/swing/entry-verdict.ts`, around lines
+260-291) returns:
+
+```ts
+return {
+  deckStatus: "SKIP",
+  recommendation: "HOLD",
+  recNote: "Desk is passing this setup — no entry recommended.",
+  gateBlocks: [...],
+  actionLabel: null,
+  entryAction: "dont_buy",
+};
+```
+
+`recNote` is the correct, honest, member-facing sentence. But `SwingEntryVerdict.recommendation` is
+typed `"BUY" | "HOLD"` — a two-value field with no distinct "pass"/"skip" value of its own — so the
+RESEARCH branch reuses the literal string `"HOLD"` to mean "no BUY signal," not "hold an existing
+position." Nothing about that field distinguishes the two meanings downstream.
+
+`swingActionDisplay()` (`src/features/nighthawk/command-deck/play-card-lifecycle.ts`, line 312)
+deliberately returns `null` for `play.status === "SKIP"`, specifically so the honest "PASSED"
+lifecycle pill shows on the Command Deck instead of a fabricated action label (see that function's
+own doc comment, lines 217-236: "SKIP RENDERS 'PASSED', NOT 'FAILED'... nothing was ever bought, so
+nothing could fail").
+
+`src/lib/swing/play-brief.ts` built the headline, `thesis`, and Verdict-section opening line off the
+identical fallback chain in three places (`briefThesis`'s `verb`, line ~91; the Verdict line, ~1866;
+the envelope headline, ~2066): `action?.label ?? play.recommendation ?? play.status`. For a SKIP
+row, `action` is `null` (per the above), so the chain falls straight through to the literal
+`"HOLD"` string on `play.recommendation` — never reaching `play.status` ("SKIP") and never reading
+`recNote` at all for this purpose. An earlier fix (2026-09-10, SLV repro) made the Verdict line
+agree with the headline — both correctly fell back through the SAME chain — but that fix never
+questioned whether "HOLD" was the right word for this case to begin with; it just made the
+contradiction consistent instead of removing it.
+
+### Fix
+
+Added `swingVerdictVerb(play, action)` (`src/lib/swing/play-brief.ts`, next to `briefThesis`), the
+single shared resolver for all three render sites:
+
+```ts
+function swingVerdictVerb(play: TerminalPlay, action: { label: string } | null): string {
+  if (play.status === "SKIP") return "PASSED";
+  return action?.label ?? play.recommendation ?? play.status;
+}
+```
+
+`"PASSED"` is not an invented label — it is the engine's own already-shipped vocabulary for this
+exact decision (`playStatusDisplay`'s SKIP case, `play-card-lifecycle.ts`: "PASSED is the engine's
+own vocabulary for the decision, and a discipline the desk should look good for exercising rather
+than be punished for"). Reusing it keeps the Command Deck pill and the Ask Largo brief in agreement
+instead of inventing a second, competing word for the same state.
+
+All three call sites that used to inline the raw fallback chain now call `swingVerdictVerb`:
+`briefThesis`'s `verb` (feeds `envelope.thesis`), the Verdict section's opening line
+(`**{headline}** · {direction} · {verb}`), and the envelope `headline` (`{verb} — {headline}`) — the
+task's root-cause trace explicitly named both the headline and Verdict-section construction as
+needing the identical fix, and `thesis` shares the exact same chain (`briefThesis`'s own pre-existing
+doc comment already states this), so fixing the one shared function fixes all three together and
+they can never drift apart again.
+
+**Deliberately left unchanged:** every other `deckStatus`. `play.status` is never `"SKIP"` for
+WATCH/OPEN/HOLD/TRIM/CLOSED, so those branches fall through to the identical, untouched
+`action?.label ?? play.recommendation ?? play.status` chain — a genuine OPEN/HOLD position (desk
+actively telling a member to hold a real, live trade) still reads "HOLD" exactly as before. Proven
+by a dedicated regression test (below) rather than asserted.
+
+### Evidence
+
+New regression tests in `src/lib/swing/play-brief.test.ts`:
+
+1. Rewrote the existing `"composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope
+   headline, not raw status (2026-09-10 gap fix)"` test — it previously *asserted* the buggy
+   `"HOLD"` output as correct (it only checked headline/Verdict *agreed*, not that the word itself
+   was honest). It now asserts the corrected `"PASSED"` output and explicitly asserts the headline
+   must NOT start with `"HOLD — "`.
+2. New test `"composeSwingPlayBrief: a genuine OPEN/HOLD position still reads HOLD, unaffected by
+   the SKIP fix"` — an `OPEN` + `recommendation: "HOLD"` fixture still renders `"HOLD — ..."` in the
+   headline/thesis/Verdict line, proving the fix is scoped to SKIP only.
+
+RED → GREEN proof: isolated the SOURCE change only via `git stash push -u -- src/lib/swing/play-brief.ts`
+(test file untouched), re-ran the suite — the rewritten SKIP test failed exactly as expected
+(`The input did not match /^PASSED — /. Input: 'HOLD — INTC 90C 13DTE'`), while the new OPEN/HOLD
+test and all 167 other tests in the file still passed. Restored the fix via `git stash apply`
+(then dropped the stash entry) — full suite GREEN again, 169/169.
+
+### Blast radius
+
+The identical fallback-chain pattern (`swingActionDisplay(play)?.label ?? play.swingEntryAction?.toUpperCase()
+?? play.recommendation` / `?? "HOLD"`) also appears in `src/lib/swing/play-brief-narrative.ts`
+(`actionNarrative`'s "Entry stance" line, ~line 655/662, feeding the "Trade manager read" section;
+and a second "Live read" call site, ~line 1347) and would leak the same literal "HOLD" for a SKIP
+row for the same reason (`swingActionDisplay` null, `swingEntryAction` always null for SKIP per
+`adapters.ts` line 908's `"buy" | "still_buy"` narrowing). **Deliberately NOT fixed in this PR** —
+not reproduced in the live evidence this finding is based on (only headline/thesis/Verdict were
+confirmed live), and fixing it is a separate, clearly-scoped follow-up rather than widening this
+PR's blast radius beyond the three root-caused, live-confirmed render sites. Flagged here so a
+follow-up PR can pick it up without re-discovering it.
+
+### Verify
+
+`npx tsc --noEmit` clean. `src/lib/swing/play-brief.test.ts` 169/169 GREEN (Node 20,
+`--experimental-test-module-mocks`). Sibling files sharing the touched call paths also GREEN:
+`src/lib/swing/entry-verdict.test.ts`, `src/features/nighthawk/command-deck/play-card-lifecycle.test.ts`,
+`src/lib/swing/play-brief-narrative.test.ts` (222 tests combined, 0 failures).
+
+## 2026-10-21 — [FINDING, P3 SPX Slayer] "News catalyst" confirmation always cited `news_headlines[0]` instead of the headline that actually matched the bull/bear verdict — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **Area** | SPX Slayer — `spx-play-confirmations.ts` |
+| **PR** | (pending) |
+
+### Symptom
+
+`evaluatePlayConfirmations()`'s "News catalyst" check computes its bullish/bearish verdict with
+`newsSentiment()`, which regex-tests each headline against `BULL_NEWS`/`BEAR_NEWS`
+(`spx-play-conflicts.ts`). The verdict is correct, but the human-readable `detail` string quoted
+to justify it was built from `desk.news_headlines?.[0]?.title` unconditionally — the raw feed's
+first item, regardless of which headline(s), if any, actually tripped the regex. `news_headlines`
+is not sorted by relevance to SPX, so the cited "evidence" is frequently a completely unrelated
+single-stock note.
+
+### Live repro (production `GET /api/market/spx/play`, 2026-10-21)
+
+`confirmations.checks` included:
+
+```json
+{"label":"News catalyst","required":false,"passed":true,
+ "detail":"News bullish · Oppenheimer Maintains Outperform on SPX Technologies, Lowers Price Target to $26"}
+```
+
+That headline is an SPXC (SPX Technologies — an unrelated single-stock ticker whose name merely
+contains the literal substring "SPX") analyst note. It matches neither `BULL_NEWS` nor
+`BEAR_NEWS` and has nothing to do with the S&P 500 index SPX Slayer trades. The headline that
+actually matched (via the word "Soar" → `BULL_NEWS`) was `news_headlines[2]`, "Airline Stocks
+Soar After United Airlines' Strong Guidance" — never shown to the trader reading the
+confirmation.
+
+### Root cause
+
+`src/features/spx/lib/spx-play-confirmations.ts` (pre-fix, ~line 274):
+
+```ts
+const topHeadline = desk.news_headlines?.[0]?.title?.slice(0, 80) ?? "none";
+```
+
+`newsSentiment()` (same file) only ever returned the bare `"bullish" | "bearish" | "neutral"`
+verdict — it computed which headlines matched internally but discarded that information, so the
+caller had nothing to cite except the unconditional first array element.
+
+### Fix
+
+`newsSentiment()` now returns `{ sentiment, matched }`, where `matched` is the list of headline
+objects that actually tripped `BULL_NEWS`/`BEAR_NEWS` on the winning side (both sides' matches in
+a genuine bull==bear>0 tie, which still resolves to `"neutral"`). The "News catalyst" check now
+builds its `topHeadline` from `news.matched[0]`, falling back to the literal string `"none"` only
+when nothing matched at all — never silently substituting an unrelated headline as if it were
+evidence. `newsSentiment()` is a local, unexported function used only at this one call site in
+this file (the file's own leading comment notes the regex constants, not the sentiment function
+itself, are shared with `spx-play-conflicts.ts`, which has its own separate `newsSentiment()` that
+only ever consumed the bare verdict — not the detail-text, so it was not affected by this bug and
+was left unchanged).
+
+### Blast radius
+
+Checked `spx-play-conflicts.ts`'s own `newsSentiment()`/`newsOpposed()` — it only reads the
+sentiment verdict, never a headline-text quote, so it was never exposed to this bug and needed no
+change. No other call site in the repo builds a "top headline" detail string from
+`news_headlines[0]`.
+
+### Evidence
+
+Regression tests added to `src/features/spx/lib/spx-play-confirmations.test.ts` (`News catalyst:
+...`, 3 new cases): the exact live repro (SPXC note first, matching "Soar" headline third) now
+cites the matched headline and never the unrelated one; an opposing-direction (bearish) repro
+cites the matched bearish headline, not headlines[0]; a no-match repro reports `"none"` instead of
+an unrelated headline. RED→GREEN proven by isolating the fix to the source file only (test file
+restored from fix, source file temporarily reverted to the pre-fix `origin/main` version): 3/6
+tests failed pre-fix with the exact live-bug detail strings as the assertion failures, all 6 pass
+post-fix. Full file run (Node 20, `npx tsx --experimental-test-module-mocks --test
+src/features/spx/lib/spx-play-confirmations.test.ts`): 6/6 pass. Sibling files
+(`spx-play-conflicts.test.ts`, `useStablePlayConfirmations.test.ts`, `spx-play-payload.test.ts`):
+13/13 pass. `npx tsc --noEmit` on the whole project: clean, 0 errors.
+
 ## 2026-10-21 — [FINDING, P2 0DTE board data-correctness] CLOSED-row floor_pnl_pct/peak_pnl_pct recomputed from live peak_premium instead of the frozen exit-time value — FIXED
 
 > **kind:** `FINDING`
