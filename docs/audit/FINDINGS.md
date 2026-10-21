@@ -38,6 +38,90 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Thesis Health 'Signal stack' pillar silently truncated to 3 signal kinds, disagreeing with the same envelope's own score-pillar breakdown — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-21, Ask Largo standing mandate live health-check cycle (Workflow deep-dive of
+`GET /api/market/swing/play-brief` against real production OPEN positions).
+
+**Root cause:** `signalScore()` in `src/lib/swing/thesis-health.ts` computes the aggregate "Signal
+stack" pillar score correctly from ALL signal kinds (`hasFlow`/`hasVector`/`hasBanger`/`count>=3`),
+but its displayed `label` was `[...set].slice(0, 3).join("+")` — an arbitrary cap at 3 kinds with
+no "+N more" indicator. Any OPEN position with 4+ discovery-origin signal kinds (FLOW/STRUCTURE/
+CATALYST/BANGER/VECTOR/POSITIONING) silently dropped one or more from the "Thesis health" section's
+"Signal stack" bullet, while the same envelope's "Why this setup" section (which reads the frozen
+score-pillar factors) correctly listed all of them — a direct, same-envelope disagreement about
+which signals corroborate the setup.
+
+**Evidence:** Live repro on CRWV:63 (a real OPEN position): the envelope's own `signalKinds`/
+score-pillar data and "Why this setup" section both showed FLOW + STRUCTURE + CATALYST(+2.9pts) +
+BANGER (4 kinds), but the SAME envelope's "Thesis health" section rendered "Signal stack —
+FLOW+STRUCTURE+BANGER (Δ +0.0 pts)" — CATALYST silently dropped. Confirmed by directly reading the
+source: `signalScore`'s label slice has no bound check against `count`, so any 4th-and-beyond kind
+in Set iteration order never appears anywhere in the displayed label.
+
+**Fix:** append "+N more" when the kind set exceeds 3, disclosing the truncation instead of hiding
+it — the underlying score calculation is unchanged (it never depended on the label), so no scoring
+behavior changes, only what's shown.
+
+**Tests:** `src/lib/swing/thesis-health.test.ts` — added 2 tests: a 4-kind setup must show "+1 more"
+in the signal-stack label (not silently drop CATALYST), and a 2-kind setup's label is unchanged
+(no "+N more" when nothing was truncated). Full `thesis-health.test.ts` suite: 28/28 pass; `tsc
+--noEmit` clean.
+
+**Blast radius:** `thesis-health.ts` only — the score computation and every other pillar are
+untouched.
+
+## 'Other concurrent position(s)' count labeled a non-committed WATCH candidate as a 'live position', overstating real exposure — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-21, Ask Largo standing mandate live health-check cycle (Workflow deep-dive of
+`GET /api/market/swing/play-brief` against real production WATCH/OPEN positions).
+
+**Root cause:** `siblingPositionsNote()` (`src/lib/swing/play-brief.ts`, rendered section body)
+and its evidence[]-fact mirror in `evidenceFromContext` both rendered
+`${siblings.length + 1} concurrent live position(s)` unconditionally for both the WATCH and OPEN
+buckets. `siblings` is correctly filtered to rows with a real `liveStatus` (actually committed),
+but the unconditional `+1` always counted the brief's OWN subject play as one more "live position"
+— true for an OPEN/HOLD subject, but false for a WATCH-bucket subject, which per this same
+function's own 2026-10-15 fix comment "is never itself committed" and can never appear in
+`laneRows`. Both call sites already compute `hasOwnEntry` (whether the subject itself has a real
+entry premium) for an unrelated self-exclusion test a few lines above, but never used it to gate
+the `+1`.
+
+**Evidence:** Live repro: reviewing a real TSLA WATCH SHORT candidate (no positionId, no entry
+premium, not committed) produced "TSLA carries 2 concurrent live position(s)" in both the rendered
+"Other concurrent position(s)" section AND a structured `evidence[]` fact tagged
+`kind:"fact"`/`freshness:"recent"`, when there was exactly ONE real committed TSLA position (the
+open LONG #60). A member reading only this line could believe they have two live TSLA positions
+open when they have one open position and one watch-listed idea — overstating real capital-at-risk
+exposure.
+
+**Fix:** only add the "+1" for the subject itself when `hasOwnEntry` is true (the subject is itself
+live/committed) at both call sites (the rendered section body and the evidence-fact mirror),
+matching the existing `hasOwnEntry` signal already computed in each function.
+
+**Tests:** `src/lib/swing/play-brief.test.ts` — added a new test (WATCH candidate with exactly one
+real committed sibling must disclose "1 concurrent live position", not "2") and corrected a
+pre-existing test ("a WATCH candidate ... with a same-ticker live sibling still discloses it")
+whose assertion had encoded the exact bug being fixed here (it asserted "2 concurrent live
+position(s)" for a WATCH subject with one real sibling — the correct count is 1). Full
+`play-brief.test.ts` suite: 159/159 pass; `tsc --noEmit` clean. The sibling OPEN-bucket test (AMD
+positionId 51/52, both real committed positions) is unaffected — that subject has a real entry
+premium, so `hasOwnEntry` is true and the count correctly stays 2.
+
+**Blast radius:** `play-brief.ts` only, both the `siblingPositionsNote()` section body and the
+`evidenceFromContext` evidence-fact mirror (the two call sites this file's own comments document as
+needing to "never disagree").
+
 ## Unconditional closedFallback silently substituted an UNRELATED closed position when a positionId couldn't resolve — FIXED
 
 > **kind:** `FINDING`
