@@ -5669,6 +5669,72 @@ test("watchForSection: gate-block bullet is a count + pointer, not a second full
   assert.doesNotMatch(section.body, /Cortex preflight vetoed/);
 });
 
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro TSLA WATCH brief): the "Before entry,
+// clear: N gates" bullet above is a 4th renderer of `play.gateBlocks`, phrased as an imperative
+// instruction, with no `gateFramingMootReason` check — unlike three sibling renderers of the
+// identical gate list (`watchEntrySection` play-brief.ts, `watchGateCoaching`
+// play-brief-narrative-coaching.ts, `entryTriggerDeadReason` a few lines above in this file), all
+// of which correctly prefix the list with "(moot — ...)" whenever clearing the named gates would
+// NOT actually reopen entry. Live repro: TSLA WATCH read "Before entry, clear: 4 gates" while the
+// SAME envelope's Trade manager read said clearing them is moot (score below the lane floor) — a
+// reader following just this section would wrongly conclude clearing the gates suffices.
+test("watchForSection: gate-block bullet is framed as moot (not an imperative 'clear N gates') when clearing them would not actually reopen entry (live TSLA repro, score below lane floor)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "SHORT",
+        aboveFloor: false,
+        gateBlocks: [
+          { code: "g_s3_earnings", reason: "Earnings print imminent — desk will not open new swings." },
+          { code: "g_s12_halt_feed_stale", reason: "Trading-halt feed unavailable — desk will not open until halt/LULD data recovers." },
+          { code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." },
+          { code: "g_s14_cortex", reason: "Cortex preflight vetoed this setup — desk will not open." },
+        ],
+      }),
+      asOf: "2026-10-21 02:30 ET",
+      sessionDate: "2026-10-21",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(
+    section.body,
+    /\*\*Also gate-blocked\*\* \(moot — below the lane score floor\) — see Trade manager read above\./,
+  );
+  assert.doesNotMatch(section.body, /\*\*Before entry, clear:\*\*/);
+});
+
+// A genuinely live, not-yet-cleared gate list (nothing moot) must still render the imperative
+// count + pointer — the fix above must not suppress or reframe a real "clear these to enter" case.
+test("watchForSection: gate-block bullet stays an imperative 'clear N gates' when the gates are genuinely live (no regression)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        gateBlocks: [
+          { code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." },
+        ],
+      }),
+      asOf: "2026-10-21 02:30 ET",
+      sessionDate: "2026-10-21",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /\*\*Before entry, clear:\*\* 1 gate — see Trade manager read above\./);
+  assert.doesNotMatch(section.body, /\*\*Also gate-blocked\*\*/);
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-09-17): `watchForSection`'s "Watch levels" section
 // re-rendered `play.entryStatus` as its own "Entry geometry" bullet — but `watchEntrySection`
 // (play-brief.ts, "Entry" section, which composeSwingPlayBrief always places BEFORE this section

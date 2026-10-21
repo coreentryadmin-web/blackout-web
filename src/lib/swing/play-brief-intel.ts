@@ -1779,8 +1779,28 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
       // is now "Trade manager read" (`watchGateCoaching`, play-brief-narrative-coaching.ts), which
       // renders unconditionally for every watch-bucket play and sits earlier in section order than
       // this "Watch levels" section — repointing here, not re-introducing a second full copy.
+      // BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro TSLA/SHOP WATCH briefs): this
+      // line renders an imperative instruction ("clear N gates [before entry]") keyed purely on
+      // `play.gateBlocks.length`, with no check against `gateFramingMootReason()` — unlike THREE
+      // sibling renderers of the identical `play.gateBlocks` (`watchEntrySection` play-brief.ts
+      // ~864-870, `watchGateCoaching` play-brief-narrative-coaching.ts ~309-312, and
+      // `entryTriggerDeadReason` a few lines above in this same file) which all correctly prefix
+      // the gate list with "(moot — ...)" whenever clearing the named gates would NOT actually
+      // reopen entry (score below the lane floor, thesis still FORMING, or a legacy-exempt-only
+      // marker). A 2026-09-14 FINDINGS.md fix reasoned this 4th site was safe because it "already
+      // only renders a count with a pointer" — but `watchEntrySection`'s own non-moot branch is
+      // the IDENTICAL "count + pointer" shape and still applies the check, disproving that
+      // rationale. Live repro: TSLA WATCH read "Before entry, clear: 4 gates" while the SAME
+      // envelope's Trade manager read said clearing those same 4 gates is moot (score 31.1, below
+      // the lane floor) — a reader following just this section would conclude clearing the gates
+      // suffices, the opposite of what the brief's own narrative says two sections earlier.
       const n = play.gateBlocks.length;
-      lines.push(`**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Trade manager read above.`);
+      const watchGateMoot = gateFramingMootReason(play);
+      lines.push(
+        watchGateMoot
+          ? `**Also gate-blocked** (moot — ${watchGateMoot}) — see Trade manager read above.`
+          : `**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Trade manager read above.`,
+      );
     }
     // BUG FIX (Ask Largo standing mandate, 2026-09-17): this used to re-render `play.entryStatus`
     // as its own "Entry geometry" bullet — but `watchEntrySection` (play-brief.ts, "Entry" section,
