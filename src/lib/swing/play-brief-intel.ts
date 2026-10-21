@@ -1033,7 +1033,17 @@ export function chartTechnicalsSection(
   } else if (posture === "transition") {
     lines.push(`Dealer gamma regime: **transition** (near flip)`);
   }
-  if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}**`);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro NVDA:62/CRWV:61 CLOSED briefs):
+  // the 2026-10-17 fix above (bucket-gating the stale early return) restored this section for
+  // CLOSED briefs, but this grade push was never re-gated alongside it — so on every CLOSED brief
+  // the identical "Vector desk grade: X" fact now renders here AND in vectorDeskSection's own
+  // `bucket === "closed"` branch ("Current Vector read: grade X · conviction Y (since this play
+  // closed)"), the exact duplicate the 2026-10-13 fix (see comment above) eliminated for
+  // OPEN/WATCH but which the 2026-10-17 bucket-gating silently reopened for CLOSED specifically.
+  // vectorDeskSection owns this fact for CLOSED (its own comment: "Closed briefs keep only the
+  // informational grade/conviction snapshot") — suppress it here for that bucket, same as the
+  // stale-return above.
+  if (vec.play?.grade && bucket !== "closed") lines.push(`Vector desk grade: **${vec.play.grade}**`);
   if (!lines.length) return null;
   if (bucket === "closed") {
     lines.unshift(closedDisclosure);
