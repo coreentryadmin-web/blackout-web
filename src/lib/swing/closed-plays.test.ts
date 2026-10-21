@@ -262,8 +262,18 @@ describe("closedDeckSourcesFromChains", () => {
   // regardless, pairing leg 1's price bounds with leg 0's realized loss. Live: leg 1's own bounds
   // (entry 2.26 -> peak 2.84, "+25.7%") were shown beside leg 0's -40.83% realized loss — a
   // positive peak next to a reported loss, for a peak that chronologically postdates the loss it's
-  // paired with. Must omit (null) rather than fabricate a pairing.
-  it("omits entry/peak/trough premium when the worst leg is NOT the terminal leg (mismatched-leg pairing)", () => {
+  // paired with.
+  //
+  // SUPERSEDED (2026-10-21, Ask Largo standing mandate, live repro AMZN positionId 48/AAPL
+  // positionId 40): this test originally asserted the three fields come back `null` in this case —
+  // that was itself a bug, not the fix. `entry_premium`/`peak_premium`/`trough_premium` are real
+  // PER-LEG columns on `SwingPositionRow` (same class as `contract_strike`/`last_mark`, which the
+  // sibling contract-identity fix below already correctly borrows from the worst leg's own row) —
+  // the worst leg's own bounds (the PARENT's real 3.6/3.6/2.13 here) were sitting right there to
+  // borrow instead of nulling. Updated to assert the worst leg's OWN bounds are served, not the
+  // terminal leg's (still never paired with the wrong leg) and not null (never omitted when a real
+  // per-leg value exists).
+  it("borrows entry/peak/trough premium from the WORST leg's own row when it is NOT the terminal leg (mismatched-leg pairing)", () => {
     const parent = row({
       id: 30,
       roll_seq: 0,
@@ -288,9 +298,9 @@ describe("closedDeckSourcesFromChains", () => {
     const out = closedDeckSourcesFromChains([[parent, child]]);
     assert.equal(out.length, 1);
     assert.equal(out[0]!.exitPnlPct, -40.83, "worst leg (parent) drives the reported exit P&L");
-    assert.equal(out[0]!.entryPremium, null, "terminal leg's own entry doesn't describe the worst leg's journey");
-    assert.equal(out[0]!.peakPremium, null, "terminal leg's own peak (+25.7%) must not pair with the worse loss");
-    assert.equal(out[0]!.troughPremium, null);
+    assert.equal(out[0]!.entryPremium, 3.6, "must be the WORST leg's own entry, not the terminal's 2.26 and not null");
+    assert.equal(out[0]!.peakPremium, 3.6, "must be the WORST leg's own peak, not the terminal's +25.7%-implying 2.84");
+    assert.equal(out[0]!.troughPremium, 2.13, "must be the WORST leg's own trough, not the terminal's 1.29");
   });
 
   // BUG FIX (Ask Largo standing mandate, 2026-10-11, live repro AMZN root 44/terminal 48): the
@@ -439,6 +449,86 @@ describe("closedDeckSourcesFromChains", () => {
       "mid must be leg 37's own exit_mark (5.23), not leg 40's own exit_mark (7.70)",
     );
     assert.equal(out[0]!.contract.delta, 0.3, "delta must be leg 37's own delta, not leg 40's (0.48)");
+  });
+
+  // BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro AMZN positionId 48 (root 44) + AAPL
+  // positionId 40 (root 37) — the exact GET /api/market/swing/record rows from 2026-10-21): the
+  // 2026-10-18 fix above correctly borrows the worst leg's own mid/delta/identity, but
+  // entryPremium/peakPremium/troughPremium were STILL unconditionally nulled — the code comment at
+  // the time claimed these three fields have "no per-leg equivalent to borrow", which is false:
+  // `entry_premium`/`peak_premium`/`trough_premium` are real per-row columns on `SwingPositionRow`,
+  // the exact same class as `contract_strike`/`last_mark`/`contract_delta` already borrowed above.
+  // Live: AMZN leg 44 (worst leg, -27.67%) has real entry_premium 5.15; the served row showed
+  // entryPremium null despite that value sitting on the very same `worstLegRow` object already read
+  // for contract/mid/delta two lines above. Same for AAPL leg 37 (entry_premium 6.73, -22.3%).
+  it("borrows the WORST leg's own entryPremium/peakPremium/troughPremium, not null — live repro AMZN positionId 48/44", () => {
+    const parent = row({
+      id: 44,
+      roll_seq: 0,
+      realized_pnl_pct: -27.67,
+      contract_strike: 605,
+      contract_expiry: "2026-10-16",
+      contract_type: "call",
+      contract_occ: "O:AMZN261016C00605000",
+      entry_premium: 5.15, // leg 44's REAL own entry — must be served, not nulled
+      peak_premium: 5.15,
+      trough_premium: 3.73,
+      last_mark: 3.73,
+      graded_at: "2026-09-30T13:31:19.000Z",
+      closed_at: "2026-09-30T13:31:19.000Z",
+    });
+    const terminal = row({
+      id: 48,
+      roll_seq: 1,
+      parent_position_id: 44,
+      root_position_id: 44,
+      realized_pnl_pct: 72.41,
+      contract_strike: 245,
+      contract_expiry: "2026-10-09",
+      contract_type: "call",
+      contract_occ: "AMZN261009C00245000",
+      entry_premium: 5.8, // terminal leg's own entry — must NOT leak onto the worst leg's card
+      peak_premium: 10.0,
+      trough_premium: 5.8,
+      last_mark: 10.0,
+      closed_at: "2026-10-07T13:30:39.000Z",
+      graded_at: "2026-10-07T13:30:39.000Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, terminal]]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.exitPnlPct, -27.67);
+    assert.equal(out[0]!.entryPremium, 5.15, "must be leg 44's own entry_premium, not null and not leg 48's 5.8");
+    assert.equal(out[0]!.peakPremium, 5.15, "must be leg 44's own peak_premium, not null and not leg 48's 10.0");
+    assert.equal(out[0]!.troughPremium, 3.73, "must be leg 44's own trough_premium, not null and not leg 48's 5.8");
+  });
+
+  it("falls back to null (genuine absence, not a leg mismatch) when the worst leg's own premium columns are themselves null", () => {
+    const parent = row({
+      id: 50,
+      roll_seq: 0,
+      realized_pnl_pct: -30,
+      entry_premium: null,
+      peak_premium: null,
+      trough_premium: null,
+      graded_at: "2026-08-05T12:00:00Z",
+    });
+    const child = row({
+      id: 51,
+      roll_seq: 1,
+      parent_position_id: 50,
+      root_position_id: 50,
+      realized_pnl_pct: 10,
+      entry_premium: 4.0,
+      peak_premium: 4.5,
+      trough_premium: 3.5,
+      closed_at: "2026-08-12T12:00:00Z",
+      graded_at: "2026-08-12T12:05:00Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, child]]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.entryPremium, null, "a real absence on the worst leg's own row must stay null, never borrowed from the terminal leg");
+    assert.equal(out[0]!.peakPremium, null);
+    assert.equal(out[0]!.troughPremium, null);
   });
 
   // BUG FIX (Ask Largo standing mandate, live repro 2026-10-16, same AMZN root-44/terminal-48 chain
