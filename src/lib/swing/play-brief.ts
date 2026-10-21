@@ -550,7 +550,18 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
       ? `Mark: **unknown** _(sync quote, no live price yet — do not read as flat)_`
       : markUnsynced
         ? `Mark: **${fmtUsd(play.mark)}** _(live quote, no freshness timestamp)_`
-        : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
+        : // BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro CRWV:63 OPEN brief): the
+          // Greeks/Spread caveat a few lines below (`staleCaveat`) reads "_(stale — same quote
+          // Mark flagged above)_" whenever `optionMarkIsStale` is true — a premise this branch
+          // never actually satisfied. This is the only one of the three Mark branches with no
+          // confidence caveat of its own (markGenuinelyUnknown/markUnsynced both already carry
+          // one), so a stale-but-timestamped mark rendered a bare "Mark: $4.40 (2026-10-20 16:00
+          // ET)" with nothing "above" for Greeks/Spread (and, for an OPEN play, watchForSection's
+          // premium stop/target rails a few sections later — same claim, same bug) to truthfully
+          // point back to. Appending the stale tag here, consistent with the other two branches'
+          // own in-line caveats, makes every downstream "flagged above" reference accurate instead
+          // of rewording each one around a cross-section reference that can drift again later.
+          `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}${optionMarkIsStale(play, readMs) ? " _(stale)_" : ""}`,
     `P&L: **${fmtPct(pnlForDisplay)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
     // BUG FIX (2026-10-17, Ask Largo x Night Hawk Swings standing mandate — live NVDA:62 repro,
     // board-wide sweep found 9/63 committed positions affected). Before this fix, Peak/Trough
