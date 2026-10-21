@@ -196,10 +196,18 @@ function collectLevels(input: VectorPlayInput): LevelCand[] {
   push("VWAP", input.technicals?.vwap);
   if (input.magnet) push("magnet", input.magnet.strike);
   push("max pain", input.maxPain);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-21, round-11 deep-dive, live repro XE): gex-wall-
+  // levels.ts sorts callWalls/putWalls by `.pct` (gamma-share STRENGTH) descending, not by distance
+  // to spot -- so index [1] (the second-strongest wall) can legitimately sit CLOSER to spot than
+  // index [0] (the strongest). Both used to push under the identical "call wall"/"put wall" label,
+  // so pickTargets (below) could silently select and bare-label the weaker, secondary wall as if it
+  // were the dominant dealer gamma wall, with no way for a reader to tell the two apart in the
+  // rendered target list. Labeling the second push distinctly preserves both facts honestly without
+  // touching the (intentional) strength-based sort order or any other consumer of gexWalls.
   push("call wall", input.gexWalls?.callWalls?.[0]?.strike);
-  push("call wall", input.gexWalls?.callWalls?.[1]?.strike);
+  push("2nd call wall", input.gexWalls?.callWalls?.[1]?.strike);
   push("put wall", input.gexWalls?.putWalls?.[0]?.strike);
-  push("put wall", input.gexWalls?.putWalls?.[1]?.strike);
+  push("2nd put wall", input.gexWalls?.putWalls?.[1]?.strike);
   // Guard the shape, not just the presence. A truthy expectedMove whose `bands` is absent or not
   // an array threw here and took the ENTIRE play down — the member sees a blank panel, not a
   // degraded one. Every other input on this snapshot is optional and degrades gracefully; this one

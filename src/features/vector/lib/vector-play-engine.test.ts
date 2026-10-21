@@ -641,6 +641,17 @@ test("a breakout targets levels BEYOND the trigger, never the trigger itself", (
   for (const t of play.targets) {
     assert.doesNotMatch(t, /7,600/, `target "${t}" is the break level itself`);
   }
+  // BUG FIX (Ask Largo standing mandate, 2026-10-21, round-11 deep-dive, live repro XE):
+  // gex-wall-levels.ts sorts callWalls by `.pct` (gamma-share strength) descending, not by
+  // distance to spot, so the second-strongest wall (7,650, pct 4) can legitimately sit BEYOND
+  // the strongest one (7,600, pct 8) here. Both used to push into collectLevels under the
+  // identical "call wall" label, so a reader of this target list could not tell this 7,650
+  // entry apart from a second, independent "call wall" reading at that price — it must be
+  // labeled distinctly as the secondary wall.
+  assert.ok(
+    play.targets.some((t) => t === "2nd call wall 7,650"),
+    `expected the secondary call wall to be distinctly labeled; got ${JSON.stringify(play.targets)}`
+  );
 });
 
 // ── Flip-fallback invalidation must sit on the correct side of spot ─────────
