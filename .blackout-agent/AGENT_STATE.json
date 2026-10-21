@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-21T03:31:13.171Z",
+  "updated_at": "2026-10-21T03:39:59.604Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "2a335f8babc49d49956c4361ac12f4ec79ce431d",
+    "last_main_sha": "cecc18ce84965789198e0b6cd87947764aaf283e",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-11T13:32:25.508Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-11T13:32:30.827Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-11T15:38:07.746Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
     {
       "at": "2026-10-11T15:38:12.850Z",
       "type": "context_sync",
@@ -1271,39 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-21T03:39:52.384Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-21T03:39:56.066Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-21T03:39:59.604Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 6448,
-      "title": "docs(findings): correct AWS-creds claim on heavy-cron-pool skip-rate follow-up",
-      "branch": "docs/stage-heavy-cron-pool-skip-rate-correction",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-21T03:24:36Z"
-    },
-    {
-      "number": 6447,
-      "title": "fix(swing): pnlSection's Mark line now flags staleness, making Greeks/Spread's caveat true",
-      "branch": "fix/pnlsection-stale-caveat-false-premise",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-21T03:23:36Z"
-    },
-    {
-      "number": 6446,
-      "title": "fix(swing): closedSection's MFE capture line uses the shared ratio-fallback helper",
-      "branch": "fix/closedsection-mfe-capture-dead-field",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-21T03:19:24Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
