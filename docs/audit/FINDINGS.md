@@ -38,6 +38,147 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-21 — [FINDING, P1 0DTE discovery / cron audit CI] zerodte-warm starved by heavy-cron shared pool → RTH scan heartbeat stale — FIXED
+> **kind:** `FINDING`
+> **kind:** `FINDING`
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6494 ("fix(cron): reserve heavy slot for zerodte-warm to avoid scan starvation"). Restamped from a stale mid-flight status line that was never revisited after the merge. |
+|------------|-------------------|
+| **Severity** | P1 — 0DTE discovery / cron audit CI |
+| **Discovered** | 2026-10-21 Cron audit query run 39629958987 |
+
+### Symptom
+
+Scheduled `Cron audit query` failed on `main` with `problems: zerodte-warm, zerodte-warm` (duplicate keys from `problem_keys` + `rth_stale_keys`).
+
+### Root cause
+
+During RTH, `zerodte-warm` could not acquire a **shared** heavy-cron slot while two vector-family crons held both slots for multi-minute runs. The route logged `skipped: heavy-cron concurrency slot unavailable` while the fast `cron_job_runs` handshake still looked fresh; `admin-cron-health` correctly elevated **`zerodte_scan_heartbeat` `critical_stale`** (>10m without scan tick) to `market_hours_stale`.
+
+### Fix
+
+Reserve a dedicated heavy-cron slot for `zerodte-warm` (same pattern as `swing-active-refresh`). Dedupe watchdog problem keys in `cron-audit-query.mjs` for clearer logs.
+
+### Evidence
+
+GH Actions `39629958987` at 15:55 UTC; prior day intermittent failures at 15:37 and 16:44 UTC on `main`.
+
+## 2026-10-20 — [FINDING, P1 deploy/infra] ECR deploy timeout — web desiredCount below autoscaling floor deadlocks roll — FIXED
+> **kind:** `FINDING`
+> **kind:** `FINDING`
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6302 ("fix(deploy): pre-scale ECS web to floor 5 when desiredCount deadlocks roll"); `minDesiredCountForZeroLossRoll` confirmed present in `scripts/deploy/lib/taskdef-rewrite.mjs` with its test in `scripts/deploy/roll-ecs.test.ts`. Restamped from a stale mid-flight status line that was never revisited after the merge. |
+|------------|-------------------|
+
+### Symptom
+
+`main@4e7f2eb22` (and several prior merges 2026-10-20): **build-and-push** failed after 36 min with `PRIMARY: running=0/1, rollout=IN_PROGRESS` → `Timed out waiting for PRIMARY deployment to stabilize.` Prod `/api/health` stayed 200 on old tasks; new SHA never completed roll.
+
+### Root cause
+
+`blackout-production-web` was at **desiredCount=2** while the workflow applies `minimumHealthyPercent=100,maximumPercent=120`. For desired&lt;5, `floor(desired × 120/100) < desired + 1` — no spare slot for a replacement task, so the PRIMARY deployment never progresses (same arithmetic documented in `ecr-push-production.yml` and `assertDeploymentConfigSane`).
+
+### Fix
+
+Before `update-service --force-new-deployment`, if `desiredCount < 5`, restore the autoscaling floor (`update-service --desired-count 5`) and wait for `runningCount >= 5`. Pure helper `minDesiredCountForZeroLossRoll` + tests in `roll-ecs.test.ts`.
+
+### Verify
+
+Next ECR push on main after merge should complete roll when fleet had been scaled down; if new tasks still fail ALB health, circuit breaker should flip (separate incident).
+
+## 2026-10-18 — [FINDING, P2 CI/ops] SPX platform backlog agent — AWS configure hard-fail paints main red — FIXED
+> **kind:** `FINDING`
+> **kind:** `FINDING`
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6496 ("fix(ops): soft-fail AWS configure on SPX backlog agent workflow"). Restamped from a stale mid-flight status line that was never revisited after the merge. |
+|------------|-------------------|
+
+### Symptom
+
+On `main@baec3f755`, branch CI reported **2 failures**: `smoke` (origin `/api/health` down) and **`collect-and-dispatch`** from workflow **SPX platform backlog agent** (not Ops auto-fix). Run `39155017489`: step **Configure AWS credentials** failed with invalid security token; job exited before the ops deferral probe could run.
+
+### Root cause
+
+`ops-auto-fix.yml` already uses `continue-on-error` on AWS configure (#6214) plus GitHub secret fallbacks for `ops:collect`. `spx-platform-backlog-agent.yml` still hard-failed the homonymous job when IAM-invalidated GHA AWS keys rejected configure — a duplicate check name on `main` made the outage look like a second automation regression.
+
+### Fix
+
+Mirror ops-auto-fix: `continue-on-error` + warning step; pass `CRON_SECRET` / `DATABASE_PUBLIC_URL` / `AWS_REGION` into the deferral `ops-collect` step so prod P0 items are detected without Secrets Manager.
+
+### Verify
+
+- After merge: next **SPX platform backlog agent** run should stay **green** (or defer with exit 0) when AWS configure fails but GitHub fallbacks work.
+- `smoke` remains red until origin health recovers — intentional.
+
+## Night Hawk Swings: `catalystsSection` was the one "live read" section that never disclosed a CLOSED-bucket read as current, not as-traded — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — member-facing time/identity ambiguity on a CLOSED swing play-brief |
+| **Found** | 2026-10-21, 5-engine live-monitor cycle, Ask Largo standing mandate, full-narrative review of a live CLOSED swing play-brief |
+| **Fixed in** | `src/lib/swing/play-brief-intel.ts` |
+
+### Root cause
+
+Every "live read" section in `play-brief-intel.ts` that renders the CURRENT state of something
+(not what a now-closed trade actually traded under) unshifts a disclosure line when the brief's
+bucket is CLOSED:
+
+- `chartLevelsSection` → `"_Current levels — not what this trade traded under._"`
+- `gexPostureSection` → `"_Current dealer posture — not what this trade traded under._"`
+- `flowIntelSection` → `"_Current flow — not what this trade traded under._"`
+- `wallDynamicsSection` → `"_Current wall activity — not what this trade traded under._"`
+
+`catalystsSection` ("Catalysts & news" — earnings date, headlines, short interest, peers) renders
+the exact same kind of READ-TIME-current data (`eco.arsenal`, fetched fresh at read time
+regardless of bucket) but never carried the matching disclosure — the one sibling section this
+pattern missed.
+
+### Live repro
+
+A CLOSED `SWING:TSLA:57` play-brief (position exited 2026-10-16, re-checked live 2026-10-21 — 5
+days later):
+
+```
+=== Catalysts & news ===
+Earnings: **2026-10-21** **today** (afterhours)
+...
+```
+
+Every sibling section on the SAME brief correctly prefixed its current-state disclosure
+(`"_Current levels — not what this trade traded under._"`, etc.), but this one read as plain,
+unqualified fact — a member could easily misread "Earnings: today" as context relevant to why
+the trade closed 5 days earlier, when it is actually today's unrelated earnings calendar.
+
+### Fix
+
+`catalystsSection` now unshifts `"_Current catalysts — not what this trade traded under._"` when
+`statusBucket(ctx.play) === "closed"`, mirroring the exact pattern (and exact `ctx.play` /
+`statusBucket` check) every sibling section already uses. `ctx` is optional/nullable on this
+function (unlike the sibling functions, which take a bare `play`), so the check is written as
+`ctx?.play && statusBucket(ctx.play) === "closed"` to stay a no-op for the pre-existing callers
+that don't pass a full context.
+
+### Evidence
+
+- RED: extended `play-brief-intel.test.ts` with a new test asserting the CLOSED-bucket disclosure
+  appears (and an OPEN-bucket sibling case asserting it does NOT) — failed before the fix
+  (`'Earnings: **2026-10-21** **today** (afterhours)'` with no disclosure line).
+- GREEN: same test passes after the fix; full `play-brief-intel.test.ts` (318 tests) passes.
+- `npx tsc --noEmit -p .` clean.
+
+### Blast radius
+
+Scoped entirely to `catalystsSection`'s own CLOSED-bucket output — no other section reads from
+this function, and the `ctx?.play` guard means every existing bare-`ctx` test/caller (pre-existing
+coverage for earnings landed/pending framing, headline dedup, staleness disclosures) is unaffected.
+
 ## SPX Slayer: degraded-fallback path hardcoded `session_phase: "closed"`, misreporting the member-facing CLOSED badge during live RTH — FIXED
 
 > **kind:** `FINDING`
