@@ -789,6 +789,64 @@ test("tradeManagerNarrativeSection: dealer-posture caption ages itself off GEX, 
   assert.match(section!.body, /net GEX/i);
 });
 
+// Live repro (2026-10-21, Ask Largo standing mandate): TSLA:60 and CRWV:63 "Trade manager read"
+// briefs each showed a "Data caveat — Vector Ns stale..." bullet immediately followed by a
+// "Last snapshot (~Ns old) — spot ... dealers ... gamma ..." bullet with no label telling the
+// reader the second bullet's content comes from a DIFFERENT feed (GEX, not Vector) -- reading as
+// a contradiction ("Vector mysteriously refreshed from 8642s to 72s between two adjacent
+// bullets"). The prior fix (#6437) corrected the AGE NUMBER the GEX-substitution branch captions
+// itself with but never named GEX as the source. Assert the disambiguating clause is present on
+// the GEX-substitution (Vector-stale) branch and ABSENT on the normal Vector-fresh branch, proving
+// the fix is scoped to exactly the branch that needed it.
+test("tradeManagerNarrativeSection: dealer-posture bullet names GEX as the source when substituting for stale Vector (2026-10-21, live TSLA/CRWV repro)", () => {
+  const staleVectorSection = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 387.18,
+        dataAgeMs: 8_642_000,
+        freshness: "stale",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "TSLA",
+        gex_positioning: {
+          spot: 387.18,
+          gamma_posture: "long",
+          matrix_age_sec: 72,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(staleVectorSection);
+  assert.match(staleVectorSection!.body, /Last snapshot/i);
+  assert.match(
+    staleVectorSection!.body,
+    /dealer posture may lag spot/i,
+    "the GEX-substitution branch must name GEX as the source, matching play-brief-intel.ts's established clause",
+  );
+
+  const freshVectorSection = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 387.18,
+        gammaFlip: 380,
+        dataAgeMs: 5_000,
+        freshness: "live",
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(freshVectorSection);
+  assert.match(freshVectorSection!.body, /Right now/i);
+  assert.doesNotMatch(
+    freshVectorSection!.body,
+    /dealer posture may lag spot/i,
+    "the normal Vector-fresh branch must not gain the GEX-substitution clause",
+  );
+});
+
 test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now (Largo C2)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

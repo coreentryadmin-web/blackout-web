@@ -348,7 +348,25 @@ function dealerPostureLine(
     ? `**Last snapshot**${snapshotAgeLabel != null ? ` (~${snapshotAgeLabel} old)` : ""}`
     : "**Right now**";
 
-  return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}${fragileBit}${regimeBit}${netGexBit}${sessionChangeBit}`;
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live TSLA/CRWV WATCH repros): the age fix just
+  // above (PR #6437) corrected the NUMBER this bullet captions itself with once Vector is stale and
+  // its content is substituted from GEX, but never named GEX as the source of that content. Every
+  // sibling "Last snapshot" usage elsewhere in the brief family (play-brief-intel.ts's
+  // `gexPostureSection`/`vectorDeskSection`/etc.) appends an explicit disambiguating clause —
+  // "— dealer posture may lag spot" when the content is GEX-sourced, "— Vector desk read may lag
+  // spot" when it's Vector's own stale read — precisely so a reader can tell which feed a given
+  // bullet comes from. This bullet always sits directly below `dataHonestyCoaching`'s own
+  // "Data caveat — Vector Ns stale" bullet in the same "Trade manager read" section, and without a
+  // source label of its own it reads as a contradiction: "Vector 8642s stale" immediately followed
+  // by "Last snapshot (~72s old)" in the SAME list, as if Vector mysteriously refreshed between two
+  // adjacent bullets. Each number was individually correct (confirmed against the GEX matrix's own
+  // age) — the defect was purely the missing source label. Reusing `gexPostureSection`'s own exact
+  // phrase (this bullet's content is, after all, the same dealer-posture read that section narrates
+  // from GEX) rather than inventing new wording. Scoped to the `snapshotStale` branch only — the
+  // non-substituted Vector-fresh ("Right now") branch's wording is unchanged.
+  const sourceClauseBit = snapshotStale ? " — dealer posture may lag spot" : "";
+
+  return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}${fragileBit}${regimeBit}${netGexBit}${sessionChangeBit}${sourceClauseBit}`;
 }
 
 function narrateDarkPool(level: FocalLevel, play: TerminalPlay, spot: number): string {
