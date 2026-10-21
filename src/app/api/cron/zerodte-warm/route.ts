@@ -29,7 +29,10 @@ import { isEtCashRth, isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { loadZeroDteScanHeartbeat } from "@/lib/play-engine-heartbeat";
-import { acquireHeavyCronSlot } from "@/lib/cron/heavy-cron-concurrency-guard";
+import {
+  acquireHeavyCronSlot,
+  forceReleaseReservedHeavyCronSlot,
+} from "@/lib/cron/heavy-cron-concurrency-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -126,6 +129,7 @@ export async function GET(req: NextRequest) {
         await Promise.all([
           sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined),
           sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined),
+          forceReleaseReservedHeavyCronSlot("zerodte-warm"),
         ]);
       }
     }

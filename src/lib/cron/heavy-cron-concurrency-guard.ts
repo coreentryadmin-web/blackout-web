@@ -70,6 +70,16 @@ export const MAX_CONCURRENT_HEAVY_CRONS = 2;
  */
 const RESERVED_SLOT_CRONS = new Set<string>(["swing-active-refresh", "zerodte-warm"]);
 
+export function reservedHeavyCronSlotKey(cronName: string): string {
+  return `${RESERVED_SLOT_KEY_PREFIX}${cronName}`;
+}
+
+/** Break a wedged reserved slot (e.g. deploy recycled the task before slot.release()). */
+export async function forceReleaseReservedHeavyCronSlot(cronName: string): Promise<void> {
+  if (!RESERVED_SLOT_CRONS.has(cronName)) return;
+  await sharedCacheDel(reservedHeavyCronSlotKey(cronName)).catch(() => undefined);
+}
+
 export type HeavyCronSlot = { readonly cronName: string; release(): Promise<void> };
 
 function slotHandle(cronName: string, key: string): HeavyCronSlot {

@@ -175,6 +175,24 @@ test("zerodte-warm gets a slot even when the shared pool is fully held by two ot
   assert.equal(store.get("cron:heavy-slot:reserved:zerodte-warm")?.cronName, "zerodte-warm");
 });
 
+test("forceReleaseReservedHeavyCronSlot clears a wedged reserved key", async () => {
+  store = new Map();
+  setNxCalls = [];
+  forceRedisError = false;
+  const { acquireHeavyCronSlot, forceReleaseReservedHeavyCronSlot, reservedHeavyCronSlotKey } =
+    await import("./heavy-cron-concurrency-guard");
+
+  const held = await acquireHeavyCronSlot("zerodte-warm", 900);
+  assert.ok(held);
+  assert.ok(store.has(reservedHeavyCronSlotKey("zerodte-warm")));
+
+  await forceReleaseReservedHeavyCronSlot("zerodte-warm");
+  assert.equal(store.has(reservedHeavyCronSlotKey("zerodte-warm")), false);
+
+  const again = await acquireHeavyCronSlot("zerodte-warm", 900);
+  assert.ok(again, "after force release, reserved slot must be claimable");
+});
+
 test("releasing swing-active-refresh's reserved slot frees it for the next run", async () => {
   store = new Map();
   setNxCalls = [];

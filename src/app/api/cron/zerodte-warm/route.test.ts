@@ -238,6 +238,7 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
   const clearBlock = routeSrc.slice(wonStealIdx, wonStealIdx + 300);
   assert.match(clearBlock, /sharedCacheDel\(RERUN_COOLDOWN_KEY\)/);
   assert.match(clearBlock, /sharedCacheDel\(OVERLAP_LOCK_KEY\)/);
+  assert.match(clearBlock, /forceReleaseReservedHeavyCronSlot\("zerodte-warm"\)/);
 
   // The steal-and-clear must happen BEFORE the normal cooldown claim, not after — otherwise a
   // wedged cooldown would already have rejected the run before the steal ever ran.
