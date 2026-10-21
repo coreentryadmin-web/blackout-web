@@ -36,3 +36,12 @@ test("seo-visibility-audit's fetchPublic retries through curlRetry, not a bare c
   assert.match(fn, /await curlRetry\(/);
   assert.doesNotMatch(fn, /(?<!curlRetry)\bcurl\(\{/);
 });
+
+// Deploy smoke 2026-10-21: admin /dashboard failed HTTP 0 (connection reset mid-ECS roll) while
+// public SEO checks passed — same wiring gap fetchPublic had before 2026-09.
+test("seo-visibility-audit's fetchAuthed retries through curlRetry", () => {
+  const src = readFileSync(join(process.cwd(), "scripts/audit/seo-visibility-audit.mjs"), "utf8");
+  const fn = src.match(/async function fetchAuthed\([\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, "fetchAuthed() not found");
+  assert.match(fn, /await curlRetry\(/);
+});
