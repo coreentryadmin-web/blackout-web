@@ -18,8 +18,8 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
-import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, type SwingSubLane } from "./taxonomy";
-import { graduatedArchetypeEntry } from "./calibration-cache";
+import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, SWING_SUB_LANES_ORDER, type SwingSubLane } from "./taxonomy";
+import { graduatedArchetypeEntry, graduatedSubLaneEntry } from "./calibration-cache";
 import { swingPlayBriefConfidence } from "./play-brief-confidence";
 import {
   collectBriefUnavailableSources,
@@ -1617,6 +1617,38 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
         source: "Swing ledger",
         asOf: etStampFromIso(ctx.archetypeTrackRecord.asOf) ?? ctx.asOf,
         freshness: archetypeFreshness,
+      },
+    });
+  }
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SEDG): the archetype block above
+  // only ever cited the ARCHETYPE dimension — but archetypeTrackRecordSection (play-brief-intel.ts)
+  // independently gates and renders the SUB-LANE dimension too (TACTICAL/STANDARD), and its own
+  // tests prove a sub-lane-alone graduation (archetype ungraduated/absent) is a real, supported
+  // state. A ticker in that state would have a real "Track record" prose section with no matching
+  // evidence[] fact — splitting what the prose says from what this structured consumer can see.
+  // Reuses the SAME already-fetched ctx.archetypeTrackRecord snapshot — no new data source, no new
+  // async read. Independently gated/pushed, same as the archetype fact above (never blended into
+  // one stat — that would double-count the same graded rows across two overlapping cuts).
+  const swingSubLane = (SWING_SUB_LANES_ORDER as readonly string[]).includes(ctx.play.subLane ?? "")
+    ? (ctx.play.subLane as (typeof SWING_SUB_LANES_ORDER)[number])
+    : null;
+  const graduatedSubLane = graduatedSubLaneEntry(ctx.archetypeTrackRecord, swingSubLane);
+  if (graduatedSubLane && swingSubLane && ctx.archetypeTrackRecord) {
+    const snapshotMs = Date.parse(ctx.archetypeTrackRecord.asOf);
+    const genericSubLaneFreshness = Number.isFinite(snapshotMs)
+      ? freshnessFromObservedMs(snapshotMs, readMs)
+      : "unknown";
+    const subLaneFreshness =
+      genericSubLaneFreshness === "stale" && !archetypeTrackRecordIsStale(ctx.archetypeTrackRecord.asOf, readMs)
+        ? "recent"
+        : genericSubLaneFreshness;
+    out.push({
+      kind: "fact",
+      text: `Sub-lane track record: ${SWING_SUB_LANES[swingSubLane].label} ${graduatedSubLane.wins}W / ${graduatedSubLane.losses}L across ${graduatedSubLane.n} graded plays (Wilson 95% floor ${graduatedSubLane.wilsonLbPct.toFixed(0)}%).`,
+      provenance: {
+        source: "Swing ledger",
+        asOf: etStampFromIso(ctx.archetypeTrackRecord.asOf) ?? ctx.asOf,
+        freshness: subLaneFreshness,
       },
     });
   }
