@@ -3032,6 +3032,16 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
         "HELIX flow: **pipeline stale** — tape read may lag; not evidence of quiet flow",
       );
     }
+    // BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro TSLA WATCH brief): this section
+    // (the one literally titled "Data freshness") checks option-mark/scan/Vector/GEX/HELIX
+    // staleness but never halt/LULD feed staleness, even though a stale halt feed is a live,
+    // gate-evaluated reason entry is blocked ("Trading-halt feed unavailable..." — entry-
+    // verdict.ts/v2/halt-read.ts) that the SAME envelope's "Trade manager read" section already
+    // cites. Mirrors the identical check added to collectBriefUnavailableSources
+    // (play-brief-absence.ts) in the same fix — both surfaces now agree.
+    if (play.gateBlocks?.some((g) => g.code === "g_s12_halt_feed_stale")) {
+      lines.push("Trading-halt feed: **unavailable** — halt/LULD data has not refreshed");
+    }
   }
   if (!lines.length) return null;
   // `bias` is a DIRECTIONAL read (bullish/bearish/neutral/mixed) — the UI renders it as a

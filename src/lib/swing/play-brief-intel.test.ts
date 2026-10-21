@@ -3653,6 +3653,47 @@ test("dataFreshnessSection: prior-session scan warns when scanSessionDay lags se
   assert.match(section!.body, /today's discovery not yet run/);
 });
 
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro TSLA WATCH brief): this section (the
+// one literally titled "Data freshness") checked option-mark/scan/Vector/GEX/HELIX staleness but
+// never halt/LULD feed staleness, even though a stale halt feed is a live, gate-evaluated reason
+// entry is blocked that the SAME envelope's "Trade manager read" section already cites.
+test("dataFreshnessSection: stale halt/LULD feed (g_s12_halt_feed_stale gate) is disclosed", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      gateBlocks: [
+        { code: "g_s12_halt_feed_stale", reason: "Trading-halt feed unavailable — desk will not open until halt/LULD data recovers." },
+      ],
+    }),
+    asOf: "2026-10-21 02:30 ET",
+    sessionDate: "2026-10-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /Trading-halt feed: \*\*unavailable\*\* — halt\/LULD data has not refreshed/);
+});
+
+test("dataFreshnessSection: no halt gate present does not fabricate the halt-feed line", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "WATCH", markAsOf: "2026-10-21T02:00:00.000Z" }),
+    asOf: "2026-10-21 02:30 ET",
+    sessionDate: "2026-10-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.ok(!section || !/Trading-halt feed/.test(section.body));
+});
+
 test("dataFreshnessSection: closed play with markIsSync does not warn mark age unknown", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ status: "CLOSED", markIsSync: true, markAsOf: null }),
