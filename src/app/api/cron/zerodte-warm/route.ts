@@ -114,9 +114,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  let scanHeartbeat: Awaited<ReturnType<typeof loadZeroDteScanHeartbeat>> | null = null;
   if (isEtCashRth()) {
-    const heartbeat = await loadZeroDteScanHeartbeat().catch(() => null);
-    if (heartbeat?.critical_stale) {
+    scanHeartbeat = await loadZeroDteScanHeartbeat().catch(() => null);
+    if (scanHeartbeat?.critical_stale) {
       const wonSteal = await sharedCacheSetNx(
         STEAL_ATTEMPT_KEY,
         { startedAt: started },
@@ -168,16 +169,31 @@ export async function GET(req: NextRequest) {
   // cron from overlapping with itself. Live CloudWatch (2026-10-13 13:35-13:56 UTC) showed this
   // cron and 5 OTHER heavy crons in flight at once on the shared web tier, 1:1 correlated with
   // sustained ALB tail latency — see heavy-cron-concurrency-guard.ts's header for the evidence.
-  const slot = await acquireHeavyCronSlot("zerodte-warm", OVERLAP_LOCK_TTL_SEC);
+  let slot = await acquireHeavyCronSlot("zerodte-warm", OVERLAP_LOCK_TTL_SEC);
   if (!slot) {
-    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
-    const payload = {
-      ok: true,
-      skipped: true,
-      reason: "heavy-cron concurrency slot unavailable (idempotent skip)",
-    };
-    await logCronRun("zerodte-warm", started, payload);
-    return NextResponse.json(payload);
+    // Measured live 2026-10-21: wedged-lock steal (#5213) cleared cooldown/overlap, but the
+    // shared 2-slot heavy-cron pool stayed occupied by multi-minute Vector crons — every
+    // zerodte-warm fire logged this skip while zerodte_scan_heartbeat stayed critical_stale for
+    // 30+ minutes and Cron audit query failed on main. Escalate only when the scanner heartbeat
+    // is already in the watchdog's critical band; routine contention still idempotent-skips.
+    if (scanHeartbeat?.critical_stale) {
+      console.warn(
+        "[cron/zerodte-warm] heavy-cron pool full but scan heartbeat critical_stale — escalating past shared slot cap"
+      );
+      slot = {
+        cronName: "zerodte-warm",
+        release: async () => undefined,
+      };
+    } else {
+      await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+      const payload = {
+        ok: true,
+        skipped: true,
+        reason: "heavy-cron concurrency slot unavailable (idempotent skip)",
+      };
+      await logCronRun("zerodte-warm", started, payload);
+      return NextResponse.json(payload);
+    }
   }
 
   // Earnings cache is fast — keep it in the handshake so the cron log proves the tick fired.
