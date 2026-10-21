@@ -21,7 +21,7 @@ import type { ScoredCandidate, NightHawkRegimeContext } from "./scorer";
 import type { TickerDossier } from "./dossier";
 import { parsePlayLevels } from "./play-levels";
 import { confluenceSnapshot } from "./play-outcomes";
-import { assignNighthawkTier, nhTierInputFromScored } from "./nighthawk-tiers";
+import { assignNighthawkTier, capGatePromotedTierAssignment, nhTierInputFromScored } from "./nighthawk-tiers";
 // Type-only (erased at runtime): the gate module imports this file's geometry helper, so a
 // value import back the other way would be a cycle. The pinned gate result is opaque here.
 import type { NighthawkPublishGateResult } from "./publish-gates";
@@ -264,9 +264,18 @@ export function buildNighthawkPublishContext(opts: {
     },
 
     // ── PR-N7: tier engine assignment pinned at publish ─────────────────────────
+    // BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro MSTR): this used to recompute
+    // the tier straight from `scored`, ignoring `capGatePromotedConviction`'s cap on the play's
+    // own `conviction` field entirely — a gate-promoted play could carry `conviction: "B"`
+    // (correctly capped) right next to `tier: { tier: "A", ... }` (uncapped), a direct
+    // self-contradiction on the same pinned record. See capGatePromotedTierAssignment's own
+    // doc comment (nighthawk-tiers.ts) for the full trace.
     tier: scored
       ? (() => {
-          const t = assignNighthawkTier(nhTierInputFromScored(scored));
+          const t = capGatePromotedTierAssignment(
+            assignNighthawkTier(nhTierInputFromScored(scored)),
+            play.gate_promoted === true
+          );
           return { tier: t.tier, factors: t.factors };
         })()
       : null,
