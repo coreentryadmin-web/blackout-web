@@ -32,6 +32,51 @@ describe("computeSwingThesisHealth", () => {
     assert.equal(h!.thesisBreakLevel, "intact");
   });
 
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro CRWV:63): signalScore()'s label
+  // used to silently drop any signal kind past the first 3, with no "+N more" disclosure, so a
+  // 4-kind setup's "Signal stack" pillar disagreed with the same envelope's "Why this setup"
+  // section (which lists every kind). Only the LABEL was lossy — the blended score already
+  // accounts for every kind via hasFlow/hasVector/hasBanger/count>=3.
+  test("signal stack label discloses truncation past 3 kinds instead of silently dropping one", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: ["FLOW", "STRUCTURE", "CATALYST", "BANGER"],
+      regime: "momentum long",
+      dte: 12,
+      subLane: "STANDARD",
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    const flow = h!.pillars.find((p) => p.id === "flow");
+    assert.ok(flow, "flow_corroboration pillar must be present");
+    assert.match(
+      flow!.currentLabel,
+      /\+1 more$/,
+      `label must disclose the 1 hidden kind instead of silently dropping it — got "${flow!.currentLabel}"`,
+    );
+  });
+
+  test("signal stack label is unchanged (no '+N more') when 3 or fewer kinds are present", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: ["FLOW", "VECTOR"],
+      regime: "momentum long",
+      dte: 12,
+      subLane: "STANDARD",
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    const flow = h!.pillars.find((p) => p.id === "flow");
+    assert.ok(flow);
+    assert.equal(flow!.currentLabel, "FLOW+VECTOR");
+  });
+
   test("EXIT manage action degrades persistence pillar", () => {
     const h = computeSwingThesisHealth({
       direction: "LONG",
