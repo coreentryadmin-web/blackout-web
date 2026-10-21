@@ -260,6 +260,13 @@ test("bookContextSection: cross-engine label still fires for a swing-native revi
 // overlap.theme raw into the narrative, so a member holding two concurrent BYND positions saw
 // literal internal-key text: `theme "NAME:BYND"`. Confirmed live via GET /api/market/swing/play-brief
 // (envelope.evidence carried the identical leak) before this test was written.
+// BUG FIX (2026-10-21, Ask Largo standing mandate): this assertion originally expected
+// `describeThemeOverlap`'s own-cluster-sentinel resolution ("the same name (BYND)") since that was
+// the only mechanism translating a same-ticker overlap into readable text at the time. The
+// 2026-10-21 same-ticker/other-ticker split fix now detects the same-ticker case BEFORE ever
+// calling `describeThemeOverlap`, rendering the sharper "Concentration — same underlying" sentence
+// directly — the NAME: leak this test guards against is now structurally impossible via this path
+// (the same-ticker branch never touches `overlap.theme` at all), a stronger guarantee than before.
 test("bookContextSection: an own-cluster (unmapped-ticker) overlap reads as a name, never the raw NAME: sentinel", () => {
   const book: PortfolioPosition[] = [{ ticker: "BYND", direction: "LONG", positionId: 1148 }];
   const section = bookContextSection(
@@ -267,10 +274,17 @@ test("bookContextSection: an own-cluster (unmapped-ticker) overlap reads as a na
     book,
   );
   assert.ok(section);
-  assert.match(section!.body, /the same name \(BYND\)/);
+  assert.match(section!.body, /already holding BYND LONG \(separate position #1148\) on BYND itself/);
   assert.doesNotMatch(section!.body, /NAME:/, "must never leak the internal own-cluster sentinel into narrative copy");
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate): the reviewed play (CRWD LONG) and its sole
+// book overlap (CRWD LONG, no positionId) are the identical ticker+direction, so the 2026-10-21
+// same-ticker split fix now routes this through the sharper "Concentration — same underlying"
+// sentence rather than the old generic one — the trailing period this assertion used to require
+// immediately after the label no longer applies (the label is now mid-sentence, not sentence-
+// final). The thing this test actually guards — the bare cross-engine fallback label itself, with
+// no fabricated bangerId — is unaffected; only the surrounding sentence changed.
 test("bookContextSection: a cross-engine sibling with no bangerId still falls back to the bare label (never fabricated)", () => {
   const book: PortfolioPosition[] = [{ ticker: "CRWD", direction: "LONG" }];
   const section = bookContextSection(
@@ -278,7 +292,7 @@ test("bookContextSection: a cross-engine sibling with no bangerId still falls ba
     book,
   );
   assert.ok(section);
-  assert.match(section!.body, /CRWD LONG \(separate, cross-engine position\)\./);
+  assert.match(section!.body, /CRWD LONG \(separate, cross-engine position\)/);
 });
 
 // FINDINGS 2026-09-12 (live repro, closed AAPL positionId 36): this section's copy is written for a
@@ -7860,6 +7874,57 @@ test("bookContextSection: a large same-theme overlap caps the rendered name list
   const renderedNames = crypto.filter((t) => section!.body.includes(`${t} LONG`));
   assert.equal(renderedNames.length, 8, "must cap the rendered names, not list every overlap");
   assert.match(section!.body, /\+ 2 more/, "the remainder must be folded into an honest count");
+});
+
+// Live repro (2026-10-21, Ask Largo standing mandate): MRNA TRIM (positionId 1958) — the ENTIRE
+// same-direction "theme overlap" was a second, independently-committed MRNA position (not a
+// different healthcare name) but rendered as generic sector concentration. Mirrors the
+// same-ticker/other-ticker split already shipped for the OPPOSED-direction branch (2026-10-20).
+test("bookContextSection: a same-ticker/same-direction duplicate renders the sharper 'same underlying' sentence, not generic sector-theme framing (2026-10-21, live MRNA repro)", () => {
+  const book: PortfolioPosition[] = [{ ticker: "MRNA", direction: "LONG", positionId: 1969 }];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:MRNA:1958", ticker: "MRNA", direction: "LONG", status: "TRIM" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /\*\*Concentration — same underlying\*\* — already holding MRNA LONG \(separate position #1969\) on MRNA itself/,
+    `got: ${section!.body}`,
+  );
+  assert.match(section!.body, /This is the identical name, not just the same sector/);
+  assert.doesNotMatch(section!.body, /theme "/i, "must not fall back to generic theme framing for a pure same-ticker duplicate");
+});
+
+// Live repro (2026-10-21, Ask Largo standing mandate): CRWV HOLD (positionId 63) — a SAME-TICKER
+// row (another CRWV position) sat alongside two genuinely DIFFERENT names (ON, NBIS) in the same
+// theme. Both the sharper same-ticker sentence AND the generic cross-ticker sentence must render,
+// each carrying only its own rows — the same-ticker sentence must never also claim the other,
+// genuinely different names, and the generic sentence's count must drop to just the others.
+test("bookContextSection: a mixed same-ticker + different-ticker same-direction overlap renders BOTH sentences, each scoped to its own rows (2026-10-21, live CRWV repro)", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "ON", direction: "LONG" },
+    { ticker: "NBIS", direction: "LONG" },
+    { ticker: "CRWV", direction: "LONG", positionId: 1968 },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:CRWV:63", ticker: "CRWV", direction: "LONG", status: "HOLD" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /\*\*Concentration — same underlying\*\* — already holding CRWV LONG \(separate position #1968\) on CRWV itself/,
+    `got: ${section!.body}`,
+  );
+  assert.match(
+    section!.body,
+    /\*\*Concentration\*\* — already holding 2 same-direction positions? in .* ON LONG, NBIS LONG/,
+    `got: ${section!.body}`,
+  );
+  // The same-ticker sentence must not also fold in the other, genuinely different names.
+  const sameUnderlyingSentence = section!.body.split("**Concentration — same underlying**")[1]?.split("**Concentration**")[0] ?? "";
+  assert.doesNotMatch(sameUnderlyingSentence, /ON LONG|NBIS LONG/);
 });
 
 // BUG FOUND (Ask Largo standing mandate, 2026-10-08 :40 cycle, live repro SWING:TNGX:1611):

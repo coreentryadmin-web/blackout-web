@@ -565,19 +565,61 @@ export function bookContextSection(
   if (overlap.sameThemeSameDirection.length) {
     const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeSameDirection);
     const crossEngineDupTickers = tickersWithMixedOriginDuplicates(overlap.sameThemeSameDirection);
-    const names = joinOverlapNames(
-      overlap.sameThemeSameDirection.map((p) =>
-        formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin, crossEngineDupTickers),
-      ),
+    // BUG FIX (2026-10-21, Ask Largo standing mandate): this branch never sharpened the case where
+    // one of the overlapping rows is the LITERAL SAME TICKER as the reviewed play — it rendered
+    // with generic "theme X" framing identical to a genuinely different name in that theme.
+    // `describeThemeOverlap` only produces "the same name" framing when the candidate's theme
+    // ITSELF is an own-cluster sentinel (no other ticker shares it) — it does not detect a
+    // same-ticker row sitting INSIDE a real, multi-name theme (e.g. "healthcare", "semis"). The
+    // OPPOSED-direction branch a few lines below already special-cases this exact shape (dated
+    // 2026-10-20, live TSLA repro) via an identical same-ticker/other-ticker split — this mirrors
+    // it for the same-direction side. portfolio.ts's own design-intent comment calls two
+    // independent same-ticker/same-direction positions "the most extreme concentration case this
+    // function exists to catch," yet the rendering treated it identically to ordinary cross-ticker
+    // sector concentration. Live repro: MRNA TRIM (positionId 1958) read "already holding 1
+    // same-direction position in theme 'healthcare': MRNA LONG (separate position #1969)" — the
+    // ENTIRE "theme overlap" was a second, independently-committed MRNA position, not a different
+    // healthcare name, yet framed as sector-level diversification failure.
+    const reviewedTickerUpper = play.ticker.trim().toUpperCase();
+    const sameTickerSameDir = overlap.sameThemeSameDirection.filter(
+      (p) => p.ticker.trim().toUpperCase() === reviewedTickerUpper,
     );
-    const closer = isPendingEntryDecision
-      ? `Adding ${play.ticker} stacks the same wager rather than diversifying risk.`
-      : `${play.ticker} stacks the same wager rather than diversifying risk.`;
-    lines.push(
-      `**Concentration** — already holding ${overlap.sameThemeSameDirection.length} same-direction ` +
-        `position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}: ${names}. ` +
-        closer,
+    const otherSameDir = overlap.sameThemeSameDirection.filter(
+      (p) => p.ticker.trim().toUpperCase() !== reviewedTickerUpper,
     );
+    if (sameTickerSameDir.length) {
+      const sameTickerNames = joinOverlapNames(
+        sameTickerSameDir.map((p) =>
+          formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin, crossEngineDupTickers),
+        ),
+      );
+      // Same pending-entry-vs-already-committed tense distinction the generic branch below
+      // (and siblingPositionsNote) already carry — a WATCH candidate hasn't entered yet ("Adding"),
+      // an already-open/HOLD/TRIM position already has (no "Adding").
+      const closer = isPendingEntryDecision
+        ? `Adding ${play.ticker} stacks the identical wager twice, not diversifying across names.`
+        : `${play.ticker} stacks the identical wager twice, not diversifying across names.`;
+      lines.push(
+        `**Concentration — same underlying** — already holding ${sameTickerNames} on ${play.ticker} itself, ` +
+          `the same side as this ${play.direction} candidate. This is the identical name, not just the same ` +
+          `sector. ${closer}`,
+      );
+    }
+    if (otherSameDir.length) {
+      const names = joinOverlapNames(
+        otherSameDir.map((p) =>
+          formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin, crossEngineDupTickers),
+        ),
+      );
+      const closer = isPendingEntryDecision
+        ? `Adding ${play.ticker} stacks the same wager rather than diversifying risk.`
+        : `${play.ticker} stacks the same wager rather than diversifying risk.`;
+      lines.push(
+        `**Concentration** — already holding ${otherSameDir.length} same-direction ` +
+          `position${otherSameDir.length > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}: ${names}. ` +
+          closer,
+      );
+    }
   }
   if (overlap.sameThemeOpposedDirection.length) {
     const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeOpposedDirection);
