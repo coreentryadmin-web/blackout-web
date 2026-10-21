@@ -248,6 +248,37 @@ describe("mergePulseIntoDesk off-hours derived-field fallback", () => {
     assert.equal(merged.gap_pct, 1.9);
     assert.equal(merged.gap_source, "SPY");
   });
+
+  // BUG FOUND (Ask Largo 5-engine live monitor, 2026-10-21, live repro): off-hours
+  // buildSpxDeskPulse spreads the empty-shell's vix_term placeholder
+  // ({vix9d:null,vix3m:null,structure:"unknown",detail:""}) unchanged, which is a DEFINED
+  // object — a bare `pulse.vix_term ?? base.vix_term` therefore keeps the placeholder and
+  // discards the real base desk's vix_term, silently dropping the "VIX curve" scoring factor.
+  it("falls back to the desk's own vix_term when pulse's own is the empty off-hours placeholder", () => {
+    const base = deskStub({
+      vix_term: { vix9d: 16.27, vix3m: 18.99, structure: "contango", detail: "Contango — 9d 16.27 < 3M 18.99 (+2.72)" },
+    });
+    const pulse = pulseStub({
+      vix_term: { vix9d: null, vix3m: null, structure: "unknown", detail: "" },
+    });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.vix_term.vix9d, 16.27);
+    assert.equal(merged.vix_term.vix3m, 18.99);
+    assert.equal(merged.vix_term.structure, "contango");
+  });
+
+  it("keeps pulse's own live vix_term when pulse DID compute real data (no regression)", () => {
+    const base = deskStub({
+      vix_term: { vix9d: 16.27, vix3m: 18.99, structure: "contango", detail: "stale base reading" },
+    });
+    const pulse = pulseStub({
+      vix_term: { vix9d: 17.5, vix3m: 18.2, structure: "contango", detail: "fresh pulse reading" },
+    });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.vix_term.vix9d, 17.5);
+    assert.equal(merged.vix_term.vix3m, 18.2);
+    assert.equal(merged.vix_term.detail, "fresh pulse reading");
+  });
 });
 
 describe("mergeFlowIntoDesk gamma flip truth", () => {
