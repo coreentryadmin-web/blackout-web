@@ -108,6 +108,24 @@ test("buildLegacySwingArtifacts stamps NIGHT HAWK provenance and serve-only grad
   );
 });
 
+// BUG FIX (2026-10-21, Ask Largo round-3 deep-dive): a Legacy-morning-confirm-promoted play's
+// enrichedPlay never set `liveSpot`, so adapters.ts's "Since flag" track field was structurally
+// dead for this origin the same way it was for organic discovery plays (serving-lane.ts's
+// enrichPlay) — the only real liveSpot writer anywhere in the repo is live-plays.ts's committed-
+// ledger path (status OPEN/HOLD/TRIM), mutually exclusive with WATCH/SKIP on status.
+test("buildLegacySwingArtifacts: liveSpot carries the grounded live spot, so the Since-flag track field is no longer dead for Legacy-promoted WATCH plays", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 99.5,
+    chainRows,
+    chainSpot: 99.5,
+  });
+  assert.ok(artifact);
+  assert.equal(artifact!.play.liveSpot, 99.5, "liveSpot must carry the grounded spot used to build this play's plan");
+});
+
 // ─── score/factors reconciliation (FINDINGS 2026-09-12) ───────────────────────────────────────
 // Live commits showed the SHOWN score (Legacy's edition conviction score) diverge sharply from
 // `factors`' sum (the dossier's own independently-computed synthetic pillar score) — e.g. real
