@@ -140,8 +140,10 @@ Full verification (Node 20, `--experimental-test-module-mocks`):
 - `src/lib/swing/play-brief.test.ts`: 169/169 GREEN (confirms the new circular import — see Fix —
   does not break the file that already imports FROM `play-brief-narrative.ts`).
 - `npx tsc --noEmit` (whole project): clean.
-- Full suite (`npm test`, every `*.test.ts` under `src/` + `scripts/`): GREEN, 0 failures (see PR
-  for the exact count at merge time).
+- Additionally kicked off a full local `npm test` run (every `*.test.ts` under `src/` + `scripts/`)
+  as extra diligence beyond the two files above; it was still in progress at PR-open time (7000+
+  tests observed passing, 0 failures) rather than a completed, confirmed result — not claimed as
+  finished evidence here. CI's `verify` gate runs the authoritative full suite before merge.
 
 ### Blast radius
 
@@ -155,4 +157,6 @@ change beyond the two bullets themselves, verified safe per the Fix section abov
 ### Verify
 
 `npx tsc --noEmit` clean. `play-brief-narrative.test.ts` 146/146 GREEN, `play-brief.test.ts`
-169/169 GREEN, both Node 20 with `--experimental-test-module-mocks`. Full `npm test` GREEN.
+169/169 GREEN, both Node 20 with `--experimental-test-module-mocks`. A full local `npm test` run
+was also kicked off as extra diligence; CI's `verify` gate provides the authoritative full-suite
+confirmation before merge.
