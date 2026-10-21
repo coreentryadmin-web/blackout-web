@@ -2974,7 +2974,21 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
         : `Option mark as of **${etStampFromIso(play.markAsOf)}**`,
     );
   } else if (play.markIsSync && playExpectsLiveOptionMark(play.status)) {
-    lines.push("**Mark age unknown** — sync quote without timestamp; treat P&L as indicative");
+    // BUG FIX (2026-10-21, Ask Largo standing mandate, live repros PONY/TDOC/SBET): this line fired
+    // on the coarse `markIsSync && playExpectsLiveOptionMark` pair alone, without checking whether
+    // a real P&L even exists yet — the same `optionMarkGenuinelyUnknown` predicate (play-brief-
+    // absence.ts, already imported here and already used above at the stop/target-rail guards)
+    // distinguishes "a real mark/P&L exists, just untimestamped" from "no live tick has landed at
+    // all, pnlPct is null". The Position section (pnlSection, play-brief.ts) already branches on
+    // this exact predicate and renders `P&L: —` / `Peak: —` / `Trough: —` for the genuinely-unknown
+    // case — but this section still said "treat P&L as indicative" regardless, telling the reader
+    // to qualify a number the SAME envelope's Position section says doesn't exist. Live repro: PONY/
+    // TDOC/SBET all showed `P&L: **—**` in Position next to "treat P&L as indicative" here.
+    lines.push(
+      optionMarkGenuinelyUnknown(play)
+        ? "**Mark age unknown** — sync quote with no live price yet; P&L is not yet known (see Position)"
+        : "**Mark age unknown** — sync quote without timestamp; treat P&L as indicative",
+    );
   }
   // FINDINGS 2026-09-12: scan/Vector/GEX/HELIX staleness all measure whether TODAY's live desk
   // state is current — a fact that stops being meaningful the moment a play is CLOSED (a

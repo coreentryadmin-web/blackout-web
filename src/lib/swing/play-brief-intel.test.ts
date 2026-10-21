@@ -3752,6 +3752,49 @@ test("dataFreshnessSection: bias is never directional — a sync-quote-without-t
   );
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repros PONY/TDOC/SBET): the test above
+// ("bias is never directional") happens to use a fixture with no `pnlPct` override (undefined,
+// `== null`) — the genuinely-unknown-P&L case — but only ever asserted on `bias`, never on the
+// wording itself. These two tests pin the wording distinction directly.
+test("dataFreshnessSection: when P&L is genuinely unknown (no live tick yet, pnlPct null), does NOT tell the reader to 'treat P&L as indicative' (live repro PONY/TDOC/SBET)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", direction: "LONG", markIsSync: true, markAsOf: null, pnlPct: null }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.ok(section);
+  assert.match(section!.body, /Mark age unknown/);
+  assert.doesNotMatch(
+    section!.body,
+    /treat P&L as indicative/,
+    `no P&L figure exists to be "indicative" of anything when pnlPct is null, got: ${section!.body}`,
+  );
+});
+
+test("dataFreshnessSection: when a real (if untimestamped) P&L exists, keeps the existing 'treat P&L as indicative' wording (no regression)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", direction: "LONG", markIsSync: true, markAsOf: null, pnlPct: 12.3 }),
+    asOf: "2026-09-06 09:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.ok(section);
+  assert.match(section!.body, /treat P&L as indicative/);
+});
+
 test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is false", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
