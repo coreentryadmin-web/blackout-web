@@ -1645,6 +1645,17 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     (vectorStale ? undefined : vec?.spot) ??
     (gexStaleForSpot ? undefined : gexForSpot?.spot) ??
     null;
+  // BUG FIX (2026-10-21, Ask Largo standing mandate): the premium stop/target rail cushion
+  // percentages below are computed from play.mark/play.execMark — the identical quote
+  // play-brief.ts's pnlSection (Position section, same envelope) already flags via this exact
+  // staleCaveat string when optionMarkIsStale, applying it to Greeks/Spread. This section never
+  // carried the equivalent disclosure, so a member could read "Option mark stale" in the Position
+  // section and a confident, unqualified "53% cushion"/"79% cushion" two sections later in the
+  // SAME brief, built off that identical stale quote. Mirrors play-brief.ts's own wording so the
+  // two call sites read as one consistent disclosure, not two independently-phrased ones.
+  const railStaleCaveat = optionMarkIsStale(play, readMs)
+    ? " _(stale — same quote Mark flagged above)_"
+    : "";
   const lines: string[] = [];
 
   if (bucket === "watch") {
@@ -1929,7 +1940,7 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
         ? ` — ${cushionPct.toFixed(0)}% cushion from current ${cushionBasisIsExec ? "bid" : "mark"}`
         : "";
     lines.push(
-      `Premium stop rail: **${fmtUsd(stop)}**${cushionNote} — thesis breaks if mark closes below`,
+      `Premium stop rail: **${fmtUsd(stop)}**${cushionNote} — thesis breaks if mark closes below${railStaleCaveat}`,
     );
   }
 
@@ -1978,7 +1989,7 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
         : null;
     if (targetRoomPct != null) {
       lines.push(
-        `Premium target rail: **${fmtUsd(target)}** — **${targetRoomPct.toFixed(0)}%** move still needed from current ${targetBasisIsExec ? "bid" : "mark"} to reach target`,
+        `Premium target rail: **${fmtUsd(target)}** — **${targetRoomPct.toFixed(0)}%** move still needed from current ${targetBasisIsExec ? "bid" : "mark"} to reach target${railStaleCaveat}`,
       );
     }
   }
