@@ -1621,6 +1621,20 @@ export function catalystsSection(
   }
 
   if (!lines.length) return null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-21): every sibling "live read" section this
+  // bucket feeds (Levels on chart, GEX posture, Flow & positioning, wall dynamics) unshifts a
+  // "_Current ... — not what this trade traded under._" disclaimer when statusBucket(ctx.play)
+  // is "closed" — this section was the one sibling that never did, despite rendering the exact
+  // same kind of READ-TIME-current data (today's earnings date, current headlines, current short
+  // interest) off the same `eco`/`arsenal` read as the others. Live repro: a CLOSED TSLA play
+  // (exited 2026-10-16) rendered "Earnings: 2026-10-21 today" with no hint that date is TODAY's
+  // calendar, not anything live when the trade closed — a member could easily misread it as
+  // context for why the trade exited days ago. Scoped exactly like the sibling sections: only
+  // CLOSED, and only when ctx.play is actually available (ctx is optional/nullable here, unlike
+  // the sibling functions that take a bare `play`).
+  if (ctx?.play && statusBucket(ctx.play) === "closed") {
+    lines.unshift("_Current catalysts — not what this trade traded under._");
+  }
   return { title: "Catalysts & news", body: lines.join("\n\n") };
 }
 
