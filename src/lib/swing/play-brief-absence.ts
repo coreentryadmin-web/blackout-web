@@ -1003,6 +1003,29 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       retryable: false,
     });
   }
+  // BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro TSLA WATCH brief): G-S12
+  // (v2/halt-read.ts's readSwingHaltStateForTickers, evaluated by v2/gates.ts at discovery/commit
+  // time) is a real, live-computed system state — entry-verdict.ts turns a stale halt feed into
+  // the gate reason "Trading-halt feed unavailable — desk will not open until halt/LULD data
+  // recovers," which this same envelope's own "Trade manager read" section already cites as one
+  // of the gates blocking entry. But this function (the single source of both
+  // envelope.unavailableSources and confidence.why's source list) never checked for it — a
+  // case-insensitive grep for "halt" across this file returns nothing. dataFreshnessSection
+  // (play-brief-intel.ts) has the identical blind spot. A reader relying on the brief's dedicated,
+  // purpose-built staleness disclosure — the exact surface the Largo product contract's absence
+  // principle exists to guarantee — had no way to learn the halt feed is unavailable right now,
+  // even though every other upstream dependency this brief uses (HELIX, Vector, GEX, Meridian,
+  // Legacy, lane rank, thesis health, option mark) is already wired into it. Scoped the same way
+  // as every other live-desk-state check in this function (`!isNotLive` — the gate is only ever
+  // evaluated pre-commit, so it is structurally absent once a play is CLOSED or dead).
+  if (!isNotLive && ctx.play?.gateBlocks?.some((g) => g.code === "g_s12_halt_feed_stale")) {
+    out.push({
+      source: "Trading-halt feed",
+      reason: "unavailable — halt/LULD data has not refreshed",
+      what_is_missing: "a current halt/LULD read for this ticker",
+      retryable: true,
+    });
+  }
   // Prior-session discovery scan: WATCH rows can still carry yesterday's lane snapshot while the
   // brief stamps today's sessionDate — without this, scanAsOf prose looks current (C3 gap).
   // Not applicable once the play is CLOSED — there is no "today's scan" a historical record awaits.

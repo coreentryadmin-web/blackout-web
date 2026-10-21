@@ -1169,6 +1169,56 @@ test("collectBriefUnavailableSources: prior-session discovery scan surfaces in e
   );
 });
 
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro TSLA WATCH brief): G-S12
+// (v2/halt-read.ts) is a real, live-computed gate — entry-verdict.ts turns a stale halt feed into
+// the gate reason "Trading-halt feed unavailable...", which the SAME envelope's "Trade manager
+// read" section already cites, but this function (the source of both unavailableSources and
+// confidence.why) never checked for it at all.
+test("collectBriefUnavailableSources: stale halt/LULD feed (g_s12_halt_feed_stale gate) surfaces in envelope", () => {
+  const ctx = {
+    sessionDate: "2026-10-21",
+    play: {
+      status: "WATCH",
+      gateBlocks: [
+        { code: "g_s12_halt_feed_stale", reason: "Trading-halt feed unavailable — desk will not open until halt/LULD data recovers." },
+      ],
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some(
+      (s) =>
+        s.source === "Trading-halt feed" &&
+        s.reason === "unavailable — halt/LULD data has not refreshed",
+    ),
+    `expected a halt-feed unavailable source, got: ${JSON.stringify(sources)}`,
+  );
+});
+
+test("collectBriefUnavailableSources: a genuine trading halt (g_s12_halted, not a feed-staleness gap) does not surface as an unavailable SOURCE — it's a real market-state fact, not a missing read", () => {
+  const ctx = {
+    sessionDate: "2026-10-21",
+    play: {
+      status: "WATCH",
+      gateBlocks: [
+        { code: "g_s12_halted", reason: "Underlying is halted or in LULD band — desk will not open until trading resumes." },
+      ],
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "Trading-halt feed"));
+});
+
+test("collectBriefUnavailableSources: no halt gate present does not fabricate the halt-feed source", () => {
+  const ctx = {
+    sessionDate: "2026-10-21",
+    play: { status: "WATCH", gateBlocks: [{ code: "g_s4_regime", reason: "regime degraded" }] },
+  } as unknown as SwingPlayBriefContext;
+
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "Trading-halt feed"));
+});
+
 test("collectBriefUnavailableSources: same-day scan does not surface stale discovery", () => {
   const ctx = {
     sessionDate: "2026-09-06",
