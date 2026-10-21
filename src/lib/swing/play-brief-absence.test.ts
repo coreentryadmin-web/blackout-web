@@ -969,6 +969,28 @@ test("collectBriefUnavailableSources: ecosystem null WITHOUT a fetch failure doe
   assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "ecosystem context"));
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro EWY): archetypeTrackRecordFetchFailed
+// was the one C10 source never checked by this function — a genuine withBriefSourceTimeout
+// rejection was indistinguishable from a legitimate cold-cache/ungraduated absence.
+test("collectBriefUnavailableSources: a genuine archetype track-record fetch failure (timeout) surfaces in envelope, distinct from a legitimate cold-cache absence (live repro EWY)", () => {
+  const ctx = {
+    archetypeTrackRecord: null,
+    archetypeTrackRecordFetchFailed: true,
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "Archetype track record" && s.reason === "fetch failed"),
+  );
+});
+
+test("collectBriefUnavailableSources: archetypeTrackRecord null WITHOUT a fetch failure does not fabricate an absence entry (Largo C6 omission, not fabrication, preserved)", () => {
+  const ctx = { archetypeTrackRecord: null } as SwingPlayBriefContext;
+  assert.ok(
+    !collectBriefUnavailableSources(ctx).some((s) => s.source === "Archetype track record"),
+  );
+});
+
 test("collectBriefUnavailableSources: a total Vector fetch failure surfaces in envelope (FINDINGS 2026-09-06 #11)", () => {
   const ctx = {
     vector: null,
