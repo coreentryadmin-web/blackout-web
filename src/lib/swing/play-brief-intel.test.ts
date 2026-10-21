@@ -2622,6 +2622,29 @@ test("catalystsSection: a future earnings date (days_until > 0) is unaffected by
   assert.doesNotMatch(section!.body, /already printed/i);
 });
 
+// FINDING (Ask Largo standing mandate, 2026-10-21): same defect class as chartLevelsSection/
+// gexPostureSection/flowIntelSection's own CLOSED-bucket fixes above -- this section rendered
+// READ-TIME-current earnings/headlines for a CLOSED play with no framing, unlike every sibling
+// "live read" section, which all unshift a "not what this trade traded under" disclaimer. Live
+// repro: a CLOSED TSLA play (exited 5 days earlier) rendered "Earnings: 2026-10-21 today" with
+// nothing distinguishing that from the live market context the trade actually traded under.
+test("catalystsSection: CLOSED bucket prefixes a current-not-as-traded disclosure", () => {
+  const eco = ecosystemWithEarnings({ earnings_date: "2026-10-21", days_until: 0, report_time: "afterhours" });
+  const closedSection = catalystsSection(eco, {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-10-21 11:00 ET",
+  } as SwingPlayBriefContext);
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current catalysts — not what this trade traded under/);
+
+  const openSection = catalystsSection(eco, {
+    play: fixturePlay({ status: "OPEN" }),
+    asOf: "2026-10-21 11:00 ET",
+  } as SwingPlayBriefContext);
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /not what this trade traded under/);
+});
+
 // GAP FOUND (2026-09-28, Ask Largo standing mandate): live repro U/WATCH — arsenal.news.headlines
 // carried the SAME headline text twice ("10 Information Technology Stocks Whale Activity In
 // Today's Session" at both index 0 and 2), burning one of only 4 shown slots on a repeat.
