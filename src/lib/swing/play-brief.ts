@@ -1296,6 +1296,12 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       : null;
   if (gammaPosture) {
     const parts: string[] = [`γ ${gammaPosture}`];
+    // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro GOOGL-closed): the net-GEX dollar
+    // figure pushed just below has no Vector equivalent anywhere in this file — it is ALWAYS read
+    // from `gex.net_gex`. Tracked here so the provenance tag below can't say "Vector" for a line
+    // that actually carries GEX-matrix-only content just because the directional word happened to
+    // also resolve from Vector's own regime.
+    let netGexFromGex = false;
     if (gex && !gexStale && Number.isFinite(gex.net_gex)) {
       // BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro ABTC $10.15 brief): a real,
       // signed net GEX under ~$50k (common on lower-priced/small-cap tickers) rounded to "0.0M" via
@@ -1307,6 +1313,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       // SPY/SPX-scale tickers) rendered as e.g. "-17545.3M" under a fixed /1e6-then-"M" format —
       // formatDealerDollars picks M/B/T by magnitude instead, so this reads "-17.5B".
       parts.push(`net GEX ${gex.net_gex >= 0 ? "+" : ""}${formatDealerDollars(gex.net_gex)}`);
+      netGexFromGex = true;
     }
     if (gex && !gexStale) {
       // Recompute against the SAME Vector-preferred call/put walls the levels array and narrative
@@ -1344,18 +1351,22 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
         parts.push(`${levelLabel} ${fmtPriceLevel(nearestLevel.strike)} (${nearestLevel.distance_pts.toFixed(1)} pts)`);
       }
     }
+    // Vector only actually SUPPLIES this line's content when the posture word resolved from it
+    // AND no GEX-only figure (net GEX, which has no Vector equivalent) got appended above — else
+    // the line is genuinely GEX-matrix content even when the posture word happens to agree.
+    const sourceIsVector = postureFromVec && !netGexFromGex;
     out.push({
       kind: "calc",
       text: `Dealer posture: ${parts.join(" · ")}`,
       provenance: {
-        source: postureFromVec ? "Vector" : "GEX",
+        source: sourceIsVector ? "Vector" : "GEX",
         asOf:
-          (postureFromVec ? vec?.asOfEt ?? etStampFromIso(vec?.asOf) : null) ??
+          (sourceIsVector ? vec?.asOfEt ?? etStampFromIso(vec?.asOf) : null) ??
           gex?.as_of_et ??
           etStampFromIso(gex?.asof) ??
           ctx.asOf,
-        freshness: postureFromVec ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
-        market_session_note: postureFromVec ? vecSessionNote : gexSessionNote,
+        freshness: sourceIsVector ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
+        market_session_note: sourceIsVector ? vecSessionNote : gexSessionNote,
       },
     });
   }
