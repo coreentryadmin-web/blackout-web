@@ -48,10 +48,10 @@ test("a second concurrent cron falls through to slot 2 when slot 1 is held", asy
 
   const first = await acquireHeavyCronSlot("vector-pick-sweep", 900);
   assert.ok(first);
-  const second = await acquireHeavyCronSlot("zerodte-warm", 900);
+  const second = await acquireHeavyCronSlot("vector-dark-pool-warm", 900);
   assert.ok(second, "a second, different cron must still get a slot");
-  assert.equal(second!.cronName, "zerodte-warm");
-  assert.equal(store.get("cron:heavy-slot:2")?.cronName, "zerodte-warm");
+  assert.equal(second!.cronName, "vector-dark-pool-warm");
+  assert.equal(store.get("cron:heavy-slot:2")?.cronName, "vector-dark-pool-warm");
 });
 
 test("a third concurrent cron is refused — the whole point of the cap — null means caller must skip", async () => {
@@ -62,8 +62,8 @@ test("a third concurrent cron is refused — the whole point of the cap — null
 
   assert.equal(MAX_CONCURRENT_HEAVY_CRONS, 2, "cap documented in this test must match the module's real cap");
   await acquireHeavyCronSlot("vector-pick-sweep", 900);
-  await acquireHeavyCronSlot("zerodte-warm", 900);
-  const third = await acquireHeavyCronSlot("vector-dark-pool-warm", 900);
+  await acquireHeavyCronSlot("vector-dark-pool-warm", 900);
+  const third = await acquireHeavyCronSlot("bie-full-state-snapshot", 900);
   assert.equal(third, null, "every slot held -> null, never a third concurrent heavy cron");
 });
 
@@ -92,9 +92,9 @@ test("release() is idempotent — calling it twice does not throw or double-free
   const first = await acquireHeavyCronSlot("vector-pick-sweep", 900);
   await first!.release();
   // A different cron now legitimately holds slot 1 — a stale double-release must not evict it.
-  const second = await acquireHeavyCronSlot("zerodte-warm", 900);
+  const second = await acquireHeavyCronSlot("bie-full-state-snapshot", 900);
   await first!.release();
-  assert.equal(store.get("cron:heavy-slot:1")?.cronName, "zerodte-warm", "double release must not clobber a later holder");
+  assert.equal(store.get("cron:heavy-slot:1")?.cronName, "bie-full-state-snapshot", "double release must not clobber a later holder");
   assert.ok(second);
 });
 
@@ -120,7 +120,7 @@ test("swing-active-refresh gets a slot even when the shared pool is fully held b
   const { acquireHeavyCronSlot } = await import("./heavy-cron-concurrency-guard");
 
   const first = await acquireHeavyCronSlot("vector-pick-sweep", 900);
-  const second = await acquireHeavyCronSlot("zerodte-warm", 900);
+  const second = await acquireHeavyCronSlot("vector-dark-pool-warm", 900);
   assert.ok(first && second, "setup: both shared slots must be held");
 
   const reserved = await acquireHeavyCronSlot("swing-active-refresh", 900);
@@ -143,9 +143,29 @@ test("swing-active-refresh holding its reserved slot does not consume a shared-p
   assert.ok(reserved);
 
   const first = await acquireHeavyCronSlot("vector-pick-sweep", 900);
-  const second = await acquireHeavyCronSlot("zerodte-warm", 900);
+  const second = await acquireHeavyCronSlot("vector-dark-pool-warm", 900);
   assert.ok(first, "the shared pool must still have both its own slots free");
   assert.ok(second, "the shared pool must still have both its own slots free");
+});
+
+test("zerodte-warm gets a slot even when the shared pool is fully held by two other crons", async () => {
+  store = new Map();
+  setNxCalls = [];
+  forceRedisError = false;
+  const { acquireHeavyCronSlot } = await import("./heavy-cron-concurrency-guard");
+
+  const first = await acquireHeavyCronSlot("vector-pick-sweep", 900);
+  const second = await acquireHeavyCronSlot("vector-dark-pool-warm", 900);
+  assert.ok(first && second, "setup: both shared slots must be held");
+
+  const reserved = await acquireHeavyCronSlot("zerodte-warm", 900);
+  assert.ok(reserved, "zerodte-warm must not be starved by an exhausted shared pool");
+  assert.equal(reserved!.cronName, "zerodte-warm");
+  assert.equal(
+    store.get("cron:heavy-slot:reserved:zerodte-warm")?.cronName,
+    "zerodte-warm",
+    "must use its own dedicated key, not one of the numbered shared-pool keys"
+  );
 });
 
 test("swing-active-refresh still cannot overlap with itself — its reserved slot is single-occupancy", async () => {
