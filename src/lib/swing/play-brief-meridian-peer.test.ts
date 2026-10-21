@@ -248,6 +248,43 @@ test("meridianPeerEarningsCoaching: thin cohort caveat when insufficient_reason 
   assert.match(line!, /directional only/i);
 });
 
+test("meridianPeerEarningsCoaching: thin cohort does not state the insufficient reason twice (Largo C8 narrative quality, live repro TSLA:60)", () => {
+  // Real production shape: shapeMeridianPeerCohortForLargo sets BOTH position_summary (via
+  // describeCohortPosition, which returns "${label} — ${insufficientReason}" when distribution is
+  // null) and insufficient_reason from the SAME cohort.insufficientReason — they are coupled 1:1,
+  // unlike the hand-built fixture above which sets position_summary: null by hand.
+  const reason = "no peers reporting with a comparable number — too few to rank against";
+  const line = meridianPeerEarningsCoaching(
+    {
+      available: true,
+      id: "earnings:TSLA:2026-10-21",
+      subject_ticker: "TSLA",
+      position_summary: `Transportation Equipment — ${reason}`,
+      members: [
+        {
+          ticker: "WGO",
+          report_date: "2026-09-05",
+          expected_move_pct: 6,
+          avg_reaction_pct: -2,
+          reaction_sample_n: 4,
+          beat_rate: 0.75,
+          beat_rate_n: 4,
+          is_subject: false,
+        },
+      ],
+      interpretation: "",
+      sector_label: "Transportation Equipment",
+      major_group: "37",
+      distribution: null,
+      insufficient_reason: reason,
+    },
+    earningsItem({ ticker: "TSLA" }),
+  );
+  const occurrences = line!.split(reason).length - 1;
+  assert.equal(occurrences, 1, `expected the insufficient-cohort reason to appear exactly once, got ${occurrences} in: ${line}`);
+  assert.match(line!, /Implied-move cohort thin/i);
+});
+
 test("pickEarningsForSwingPeer: skips index tickers (market-wide catalyst slice)", () => {
   const items = [earningsItem({ ticker: "AAPL", days_until: 3 })];
   assert.equal(pickEarningsForSwingPeer(items, "SPY"), null);

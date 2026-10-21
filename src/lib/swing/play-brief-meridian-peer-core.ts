@@ -72,7 +72,14 @@ export function meridianPeerEarningsCoaching(
   if (peer && peer.available) {
     if (peer.sector_label) parts.push(`sector **${peer.sector_label}**`);
     if (peer.interpretation?.trim()) parts.push(peer.interpretation.trim());
-    if (peer.position_summary) parts.push(peer.position_summary);
+    // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA): whenever the cohort is
+    // thin (distribution === null), describeCohortPosition() (meridian-sector-core.ts) returns
+    // `${label} — ${insufficientReason}` for position_summary — the SAME reason string that also
+    // lands on insufficient_reason below, verbatim. Pushing both unconditionally stated the
+    // identical "no peers reporting..." clause twice in one rendered bullet. position_summary is
+    // only worth stating here when it carries a real ranking (distribution present); the thin-
+    // cohort case is already covered once, by the insufficient_reason caveat below.
+    if (peer.position_summary && peer.distribution) parts.push(peer.position_summary);
     // GAP FOUND (2026-09-21, Ask Largo standing mandate): `shapeMeridianPeerCohortForLargo`
     // (meridian-peer-cohort-for-largo-core.ts) tags the subject ticker's OWN historical print
     // record onto `peer.members` as `is_subject: true` — carrying its own `beat_rate`/
