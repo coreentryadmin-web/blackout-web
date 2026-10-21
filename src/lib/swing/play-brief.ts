@@ -1598,6 +1598,27 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   // rule — the prose sections are untouched; these are new evidence[] lines carrying the SAME
   // numbers with real provenance, closing the gap those two sections' own comments already named
   // without solving (a full dedicated Largo tool, C10's stated ideal, is a larger, separate call).
+  // Ask Largo standing mandate (evidence[] completeness, 2026-10-21): whyThisSetupSection
+  // (play-brief-intel.ts) renders `play.score` via `synthesizedSetupLede` ("...scoring 72.") and
+  // the full per-pillar breakdown via its own "Score pillars" bullet list (`play.factors`), but
+  // this function never mirrored either into the typed evidence[] array — the same evidence[]
+  // completeness gap as the archetype/sub-lane/peers fixes elsewhere in this file. Gated on
+  // `!play.scoreWithheld`, the SAME gate `synthesizedSetupLede` uses for `play.score` — a withheld
+  // score is a `0` FALLBACK, never a real measured value (see `TerminalPlay.scoreWithheld`'s own
+  // doc comment), so this never fabricates a score fact the lede itself would refuse to state.
+  if (!ctx.play.scoreWithheld && Number.isFinite(ctx.play.score)) {
+    const factorStr = ctx.play.factors?.length
+      ? ` (${ctx.play.factors
+          .slice(0, 10)
+          .map((f) => `${f.label} ${f.points >= 0 ? "+" : ""}${f.points}`)
+          .join(", ")})`
+      : "";
+    out.push({
+      kind: "fact",
+      text: `Setup score: ${Math.round(ctx.play.score)}${factorStr}.`,
+      provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
+    });
+  }
   const swingArchetype = (SWING_ARCHETYPES as readonly string[]).includes(ctx.play.archetype ?? "")
     ? (ctx.play.archetype as (typeof SWING_ARCHETYPES)[number])
     : null;
