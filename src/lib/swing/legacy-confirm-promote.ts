@@ -323,6 +323,11 @@ export function buildLegacySwingArtifacts(params: {
     thesisNote: meta.thesisNote ?? undefined,
     sectorLeadershipFacts: meta.sectorLeadershipFacts,
     reason: `${swingPlay.reason} · Legacy morning confirm (${editionFor})`,
+    // BUG FIX (2026-10-21, Ask Largo round-3 deep-dive): same gap as serving-lane.ts's enrichPlay —
+    // liveSpot was never set on this origin either, leaving adapters.ts's "Since flag" track field
+    // dead for Legacy-promoted WATCH plays too. groundedSpot is already computed above (the real
+    // spot this play's plan levels were derived from).
+    liveSpot: groundedSpot,
   };
 
   const archetype = scoredDossier.archetype.archetype ?? "UNCLASSIFIED";
