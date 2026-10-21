@@ -7528,6 +7528,52 @@ test("watchForSection: Premium stop rail falls back to the mid-based cushion whe
   assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\* — 29% cushion from current mark/);
 });
 
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro MRNA 237.5C 2DTE/positionId 1958):
+// once a trim tranche has fired, the exit engine's own live state machine
+// (deriveScaleOutAction/computeScaleOutTriggerInfo, scale-out.ts) permanently disables this
+// pre-scale hard stop — gated `if (!scaledAlready)`, and post-scale the engine returns
+// `hard_stop_price: null` ("the hard stop no longer applies"). This line used to render the
+// cushion unconditionally, stating "thesis breaks if mark closes below" for a trigger that can
+// no longer fire, with the real governing floor (the runner's trailing stop off its peak) never
+// disclosed. Live repro numbers: entry $6.49, peak +103.4%.
+test("watchForSection: Premium stop rail is annotated (not a live cushion claim) once a trim has fired, surfacing the real runner-trail floor (live MRNA repro)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "TRIM",
+        direction: "LONG",
+        entry: 6.49,
+        mark: 10,
+        peak: 103.4,
+        execMark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 12.98, fired: true }],
+          runner_fraction: 0.5,
+          stop_premium: 2.6,
+          target_premium: 12.98,
+        },
+      }),
+      asOf: "2026-10-20 20:00 ET",
+      sessionDate: "2026-10-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.match(
+    section.body,
+    /Premium stop rail: \*\*\$2\.60\*\* _\(no longer applies — already scaled\)_ — the runner's real floor now is \*\*\$6\.60\*\* \(trailing stop off peak\)/,
+  );
+  assert.doesNotMatch(section.body, /thesis breaks if mark closes below/);
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-09-18, live repro CRWD:39 OPEN brief): the stop rail
 // above gets a fully-gated room% (mark/execMark-preferring, staleness-aware, never fabricated) —
 // `exitPolicy.target_premium` never got the symmetric treatment anywhere in the narrative layer,
