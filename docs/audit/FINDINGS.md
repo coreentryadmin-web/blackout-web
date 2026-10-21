@@ -38,6 +38,139 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-21 — [FINDING, swing] `meridianPeerEarningsCoaching` silently omitted the "Earnings peer lens" section for earnings 8-14 days out, inconsistent with its own 7-day-out siblings
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P3 (silent absence — a real, in-window catalyst produces no coaching for some tickers but a thin fallback for others carrying the identical unavailable-cohort reason) |
+| **Surface** | `src/lib/swing/play-brief-meridian-peer-core.ts` — `meridianPeerEarningsCoaching()` |
+
+### Root cause
+
+The function's own entry gate (`item.days_until > 14` → `null`) accepts any earnings item within a
+14-day window, but the baseline "reports in Nd" line — the one piece of content guaranteed not to
+depend on `expected_move_pct` or peer-cohort availability — was gated at `item.days_until <= 7`, a
+narrower sub-window left over from before the entry gate was widened to 14 days. When an item has no
+`expected_move_pct` quoted and an unavailable peer cohort (`peer.available === false`, contributing
+nothing from the `if (peer && peer.available)` block), the ONLY source of content for `parts` is that
+baseline line. For `days_until` in 8-14, the baseline line never fires, `parts` stays empty, and the
+function returns `null` — silently dropping the whole "## Earnings peer lens" section — while a
+sibling ticker at `days_until === 7` with the IDENTICAL unavailable-cohort reason gets the thin
+fallback rendered.
+
+### Evidence
+
+Live cross-ticker comparison in the same Ask Largo audit cycle (broader multi-ticker Workflow sweep,
+2026-10-21): SHOP (earnings 13 days out, peer cohort unavailable — `unclassified_sector`) omitted the
+section entirely, while TDOC and GOOGL (earnings 7 days out, same `unclassified_sector` unavailable
+reason) both rendered `**Earnings peer lens** — reports in **7d**. Peers that beat often gap through
+implied — size down or hedge vol unless thesis is the print.` SHOP's own `unavailableSources` list
+still names `Meridian peer cohort (unclassified_sector)`, confirming the condition was identical to
+its siblings' — only the days-until threshold differed.
+
+Added a RED repro (`days_until: 13`, `expected_move_pct: null`, peer unavailable) asserting the
+section still renders, plus a control test for the existing `days_until <= 3` "print imminent"
+emphasis. RED→GREEN, git-stash-verified on the source file alone: 11/12 (1 fail) before the fix,
+12/12 after. `tsc --noEmit` clean.
+
+### Blast radius
+
+Single call site (`meridianPeerSection()` in `play-brief-intel.ts`, called unconditionally for every
+bucket — WATCH/OPEN/CLOSED alike). All 10 pre-existing tests in `play-brief-meridian-peer.test.ts`
+use `days_until` values `<= 7`, so the baseline line already fired for every one of them before this
+fix — no behavior change for any previously-tested case, confirmed by the full suite staying green.
+
+### Fix
+
+Removed the `item.days_until <= 7` gate on the baseline "reports in Nd"/"reports today" line — it
+now always pushes for any item the function is already entered for (`days_until` 0-14). The
+`days_until <= 3` "print imminent" emphasis is unchanged and still additive.
+
+### Why not a bigger fix
+
+Did not add an explicit "peer cohort unavailable" bullet to this function — that information is
+already surfaced separately via `collectBriefUnavailableSources`'s "Meridian peer cohort" entry in
+the envelope's own `unavailableSources`/"_Unavailable this turn:_" disclosure; this fix only ensures
+the coaching section itself doesn't vanish for a 8-14-day-out item the way it would for anything
+reachable at all by this function.
+
+## 2026-10-21 — [FINDING, swing] "Dealer posture" evidence tagged provenance `"Vector"` even when every printed figure was GEX-matrix content
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P3 (Largo C8 provenance violation — a member tracing "where did this number come from" is pointed at the wrong engine) |
+| **Surface** | `src/lib/swing/play-brief.ts` — `evidenceFromContext()`'s "Dealer posture" `calc` entry |
+
+### Root cause
+
+The "Dealer posture" evidence entry's `provenance.source` was tagged purely off `postureFromVec` —
+whether the DIRECTIONAL WORD (`γ short`/`γ long`) resolved from Vector's own `regime.posture`. But
+the net-GEX dollar figure pushed into the same line (`net GEX ${...}`) has no Vector equivalent
+anywhere in this function — it is unconditionally read from `gex.net_gex` whenever `gex` is present
+and fresh. So a genuinely-resolved Vector posture that happens to agree with a fresh GEX matrix's
+own posture got the WHOLE line tagged `(Vector · ...)`, even when the printed net-GEX figure (and, in
+the live repro, the nearest-wall figure too) was verbatim GEX-matrix content.
+
+### Evidence
+
+Live repro (closed GOOGL play-brief, Ask Largo broader multi-ticker audit, 2026-10-21):
+
+```
+[CALC] Dealer posture: γ short · net GEX +157.7M · nearest wall 337.50 (-2.4 pts) _(Vector · 2026-10-21 04:47 ET)_
+```
+
+vs. the SAME document's own sections:
+
+```
+## GEX posture
+Gamma posture: dealers short gamma ... Net GEX: 157.7M ... Nearest wall: 337.50 (support, -2.4 pts from spot 339.85)
+
+## Vector desk
+Current Vector read: grade A · conviction 76
+```
+
+Every figure in the tagged-"Vector" evidence line matches the "## GEX posture" section verbatim; the
+"## Vector desk" section carries only grade/conviction, no GEX data at all for this read. The sibling
+TSLA-closed document in the same sweep correctly tagged the identical fact type `(GEX · ...)`,
+confirming this was a mislabel rather than an intentional alternate-source design.
+
+Added a RED repro mirroring the live shape (Vector regime genuinely resolved to "short", no
+`gexWalls` on the vector fixture, a fresh GEX matrix supplying `net_gex`) asserting
+`provenance.source === "GEX"`. RED→GREEN, git-stash-verified on the source file alone: 163/164 (1
+fail) before the fix, 164/164 after. `tsc --noEmit` clean.
+
+### Blast radius
+
+Single evidence entry in a single function (`evidenceFromContext`). No other provenance tag in this
+function shares the same `postureFromVec`-only logic — confirmed by reading every other
+`provenance.source` assignment in the surrounding ~150 lines, each keyed to its own, unrelated
+condition (Swing ledger, HELIX, Earnings calendar, GEX/Vector session notes).
+
+### Fix
+
+Hoisted a `netGexFromGex` boolean, set `true` only inside the branch that actually appends the
+net-GEX figure (`gex && !gexStale && Number.isFinite(gex.net_gex)`). The provenance tag now uses
+`sourceIsVector = postureFromVec && !netGexFromGex` in place of the bare `postureFromVec` for all
+four provenance fields (`source`, `asOf`, `freshness`, `market_session_note`) — "Vector" only applies
+when the posture word resolved from Vector AND no GEX-only figure got appended; any line carrying the
+net-GEX figure is now correctly attributed to GEX regardless of where the directional word came from.
+
+### Why not a bigger fix
+
+Did not attempt to also track whether the nearest-wall figure specifically came from Vector's
+`gexWalls` vs. the GEX-matrix fallback (`vecCallWallPosture ?? gex.call_wall`) — that sub-case isn't
+demonstrated broken by any live evidence (the repro's wall figure happened to match GEX only because
+Vector had no wall data at all for that read), and a precise per-figure provenance split for the wall
+specifically would need plumbing a second flag out of a nested scope for no evidenced defect. The
+net-GEX figure is the one unconditionally-GEX-only signal in this function, and fixing on that signal
+directly resolves the live repro without speculative over-correction.
+
 ## 2026-10-21 — [FINDING, swing] `watchForSection`'s "Before entry, clear: N gates" bullet implied clearing the gates reopens entry even when the same envelope's own narrative says it's moot
 
 > **kind:** `FINDING`
