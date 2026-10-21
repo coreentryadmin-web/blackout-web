@@ -38,6 +38,177 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-21 — [FINDING, swing] Sub-lane track-record evidence never reached `evidence[]` or the Structure Ladder — archetype-only, while the prose section already covers both
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P3 (Largo C10 historical-context completeness — the brief's own prose/table says something two structured consumers of the same envelope can't see) |
+| **Surface** | `src/lib/swing/play-brief.ts` (evidence[] feeder), `src/lib/swing/play-brief-ladder.ts` (Structure Ladder widget) |
+
+### Root cause
+
+`archetypeTrackRecordSection` (`play-brief-intel.ts`) independently resolves and gates BOTH the
+ARCHETYPE dimension (`graduatedArchetypeEntry`) and the SUB-LANE dimension (`graduatedSubLaneEntry`,
+TACTICAL/STANDARD) from the same `calibration-cache.ts` snapshot, rendering either/both as separate
+paragraphs — its own tests prove a sub-lane-alone graduation (archetype ungraduated or unclassified)
+is a real, deliberately-supported state.
+
+Two other consumers of the identical snapshot were never extended past the archetype-only citation
+shipped on 2026-09-20/2026-10-15:
+
+1. `play-brief.ts`'s Largo-C10 `evidence[]` feeder imports only `graduatedArchetypeEntry` and pushes
+   one `"Archetype track record: ..."` fact — no parallel `graduatedSubLaneEntry` call.
+2. `play-brief-ladder.ts`'s Structure Ladder `trackRecordFor` likewise only ever calls
+   `graduatedArchetypeEntry`.
+
+A 2026-10-15 FINDINGS entry that added a structured `table` field to the prose section's own
+`RichSection` explicitly noted it was NOT propagating to other consumers ("No other caller of
+`graduatedArchetypeEntry` or the snapshot shape changed") — a deliberate scoping choice at the time,
+never adjudicated as a permanent design decision, and never closed afterward.
+
+### Evidence
+
+Live repro (SEDG WAIT-bucket play-brief, Ask Largo deep-dive, 2026-10-21): the archetype bucket was
+ungraduated/unclassified, but the brief's own prose rendered a real sub-lane citation — for which
+neither `envelope.evidence[]` nor the Structure Ladder's `archetypeTrackRecord` field carried
+anything.
+
+Verified directly: `play-brief.ts:22` imports only `graduatedArchetypeEntry` (confirmed
+`graduatedSubLaneEntry` exists in `calibration-cache.ts` with the identical `(snapshot, dimension) ->
+SwingTrackRecordEntry | null` shape and `graduated===true` gating); `play-brief-ladder.ts`'s
+`trackRecordFor` likewise never calls it. `play-brief-intel.test.ts:605-627` confirms the
+sub-lane-alone case is real and tested there.
+
+Added regression tests:
+- `play-brief.test.ts`: a sub-lane-graduated/archetype-ungraduated fixture asserting a
+  `"Sub-lane track record: ..."` fact now appears in `evidence[]` (and that no archetype fact is
+  fabricated for the ungraduated dimension), plus the sibling absence/ungraduated-omission cases.
+- `play-brief-ladder.test.ts`: the identical fixture shape asserting the Structure Ladder's new
+  `subLaneTrackRecord` field is now populated (`archetypeTrackRecord` correctly absent), plus
+  ungraduated/cold-cache omission cases.
+
+RED→GREEN confirmed via `git stash` on the two source files: `play-brief.test.ts` +
+`play-brief-ladder.test.ts` — 2 failures before, 193/193 pass after. Broader sweep
+`play-brief*.test.ts`: 1129/1129 pass. `tsc --noEmit` clean.
+
+### Blast radius
+
+Two files, both purely additive — a new evidence fact and a new optional ladder field, both reusing
+the already-fetched `ctx.archetypeTrackRecord` snapshot (no new async read, no latency cost). No
+existing field, test, or rendering path was changed.
+
+### Fix
+
+Mirror the existing archetype pattern for the sub-lane dimension in both files:
+- `play-brief.ts`: resolve `swingSubLane` from `ctx.play.subLane` against `SWING_SUB_LANES_ORDER`
+  (the same narrowing `archetypeTrackRecordSection` uses), call `graduatedSubLaneEntry`, and push a
+  parallel `"Sub-lane track record: ..."` evidence fact with the same freshness/provenance
+  derivation already used for the archetype fact.
+- `play-brief-ladder.ts`: add `StructureLadderSubLaneTrackRecord` (same shape as the existing
+  archetype type, kept separate so each field's dimension is unambiguous to a consumer) and a
+  sibling `subLaneTrackRecordFor` helper, wired into `buildStructureLadder`'s return alongside the
+  existing `archetypeTrackRecord` field.
+
+### Why not a bigger fix
+
+Did not touch `archetypeTrackRecordSection`'s own prose/table rendering (already correct — it
+already independently gates and cites both dimensions) or `calibration-cache.ts`'s gating functions
+(already correct, already shared). Deliberately did NOT blend the two dimensions into one combined
+stat in either new code path — that would double-count the same graded rows across two overlapping
+cuts of the same population, exactly the thing the prose section's own header warns against.
+
+## 2026-10-21 — [FINDING, swing] Archetype track-record fetch TIMEOUT was indistinguishable from an honest cold-cache absence — not disclosed, not counted in confidence
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P3 (Largo C3 absence principle — a genuine outage reads as an honest "nothing to show" gap) |
+| **Surface** | `src/lib/swing/play-brief-context.ts` (fetch), `src/lib/swing/play-brief-absence.ts`'s `collectBriefUnavailableSources`, `src/lib/swing/play-brief-types.ts` |
+
+### Root cause
+
+Every other best-effort source in `play-brief-context.ts`'s fan-out (`ecosystem`, `vector`) threads a
+dedicated `*FetchFailed` flag through its `.catch()`, which `collectBriefUnavailableSources`
+(`play-brief-absence.ts`) checks to disclose a genuine fetch failure distinctly from a legitimately
+empty read — and `swingPlayBriefConfidence` derives its tier purely from
+`unavailableSources.length`, so a disclosed failure correctly downgrades confidence.
+
+The archetype track-record read (Largo C10 historical context) was the one source exempted from
+this discipline:
+
+```js
+// unlike ecosystem/vector above this has no dedicated *FetchFailed flag because a miss here is
+// never surfaced as an absence/error to the member — an ungraduated or unavailable track record
+// simply omits the "Track record" section (Largo C6: omission, not fabrication)
+withBriefSourceTimeout(readSwingArchetypeTrackRecord()).catch(() => null),
+```
+
+That reasoning conflates two distinct contract points: **C6** (never fabricate a calibrated number
+from too little data — which the rendering section already does correctly) and **C3** (always
+disclose a genuine data *absence*, which the sibling sources' fetch-failure flags exist for).
+`withBriefSourceTimeout` genuinely **rejects** on timeout (per its own 2026-10-15 fix elsewhere in
+this file), so a reachable timeout and a legitimate cold-cache/ungraduated-bucket `null` were
+collapsing into the identical value, with zero disclosure either way — and because
+`collectBriefUnavailableSources` never referenced `ctx.archetypeTrackRecord` at all, this gap was
+also invisible to `swingPlayBriefConfidence`.
+
+### Evidence
+
+Live repro (EWY WAIT-bucket play-brief, Ask Largo deep-dive, 2026-10-21): the brief disclosed 8
+other unavailable sources and its own text asserted "No archetype track-record section... this is
+expected absence, not a gap" — a claim the system had no way to actually verify, since a genuine
+timeout on that read would have produced byte-identical output.
+
+Verified directly against source (not the auditing workflow's citations alone):
+`play-brief-context.ts`'s `archetypeTrackRecord` fetch had the bare `.catch(() => null)` shown
+above, while its `ecosystem`/`vector` siblings in the same `Promise.all` both logged the error and
+set a dedicated flag; `collectBriefUnavailableSources` (grepped in full) never referenced
+`ctx.archetypeTrackRecord`; `swingPlayBriefConfidence` derives its tier purely from
+`unavailableSources.length` (grepped, zero references to `archetypeTrackRecord`).
+
+Added two tests to `play-brief-absence.test.ts`: one confirming a genuine fetch failure
+(`archetypeTrackRecordFetchFailed: true`) now surfaces as `{ source: "Archetype track record",
+reason: "fetch failed" }`; one confirming a legitimate `archetypeTrackRecord: null` WITHOUT a fetch
+failure still produces no entry (preserving the Largo C6 "omission, not fabrication" contract for
+the honest-absence case). GREEN confirmed: `play-brief-absence.test.ts` 99/99 pass. A literal
+`git stash`-based RED repro hit an unrelated environment hang (an isolated `tsx`/esbuild stall,
+reproduced twice, that cleared once the stash was restored and never recurred on the fixed state) —
+RED is instead established by direct source inspection: the pre-fix `.catch(() => null)` line and
+the confirmed absence of any `ctx.archetypeTrackRecord` reference in `collectBriefUnavailableSources`
+together prove the new tests could not have passed against that code. Broader sweep
+`play-brief*.test.ts`: 1127/1127 pass. `tsc --noEmit` clean.
+
+### Blast radius
+
+Three files, each touched minimally and additively: a new optional flag on
+`SwingPlayBriefContext`, one new `.catch()` branch at the single fetch site, one new disclosure
+block in `collectBriefUnavailableSources` (placed without the `!isNotLive` guard, matching the
+`ecosystemFetchFailed` precedent — a fetch failure is a fact about the read, true regardless of play
+status). `swingPlayBriefConfidence` needed no change — it already derives its tier purely from
+`unavailableSources.length`, so once the new entry is pushed, a track-record timeout correctly
+downgrades confidence the same way every other fetch failure already does.
+
+### Fix
+
+Give `archetypeTrackRecord`'s fetch the identical `*FetchFailed` pattern already used for
+`ecosystem`/`vector`: log the error, set `archetypeTrackRecordFetchFailed = true`, thread the flag
+through the returned context, and disclose it via `collectBriefUnavailableSources`.
+
+### Why not a bigger fix
+
+Explicitly out of scope: a genuine Redis-layer outage (as opposed to the timeout race this fix
+closes) is already converted to a cold-cache-equivalent `null` by `sharedCacheGet`'s own documented
+fail-soft "never throws" contract, shared by many unrelated callers across the codebase — changing
+that is a separate, much larger architectural change, not a one-file fix, and isn't needed for the
+reachable, demonstrable half of this bug (the timeout path). Did not touch
+`archetypeTrackRecordSection`'s own rendering logic (already correct — it already implements the C6
+omission-not-fabrication discipline for the honest-absence case).
+
 ## 2026-10-21 — [FINDING, swing] "Data freshness" told the reader to "treat P&L as indicative" when the Position section in the SAME brief showed P&L as entirely unknown
 
 > **kind:** `FINDING`
