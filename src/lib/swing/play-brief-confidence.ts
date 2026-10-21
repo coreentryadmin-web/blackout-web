@@ -69,6 +69,29 @@ export function swingPlayBriefConfidence(
     };
   }
 
+  // BUG FIX (2026-10-21, Ask Largo 5-engine cycle): below this point, EVERY non-zero count used
+  // to read "moderate" with no further graduation — live data confirmed the full realistic range
+  // in production: MRNA (8 unavailable, every live feed this file tracks for a committed position
+  // down at once) and RNG×2 (8 each) read the IDENTICAL "moderate" as DKNG (7) and TSLA/SHOP (6
+  // each). This file's own unit tests already show the bottom of the range (1, 2) also reads
+  // "moderate", so 1-of-N and 8-of-8 were presentationally identical — a member reading "moderate"
+  // had no way to tell, from the label alone, whether the brief is running on nearly all live
+  // evidence or almost none. `collectBriefUnavailableSources` (play-brief-absence.ts) has no fixed
+  // roster size (many of its checks are mutually exclusive or bucket/context-gated, so there is no
+  // honest "N of M" denominator to compute without a larger restructure of that function) — so
+  // this threshold is a count, not a fraction, chosen from the real distribution this very audit
+  // cycle observed (6/7/8 all occurring live) rather than an arbitrary round number. Deliberately
+  // stops at "low", not "insufficient" — reaching that fourth tier (BieConfidenceLevel's own
+  // declared "every source absent" case, already reachable in cortex-read.ts's sibling module
+  // against ITS fixed 8-source roster) would need the same true-denominator fix; fabricating one
+  // here would be exactly the kind of invented certainty the Largo contract warns against.
+  if (unavailableSources.length >= 6) {
+    return {
+      level: "low",
+      why: `${unavailableSources.length} sources unavailable this cycle (${unavailableSources.map((s) => s.source).join(", ")}) — evidence base is thin, treat with extra caution.`,
+    };
+  }
+
   // BUG FIX (2026-09-28, Ask Largo standing mandate, live repro NVDA/MSTR WATCH+CLOSED briefs):
   // this used to say "see Data freshness" — but the actual detail behind these unavailableSources
   // entries (ecosystem-context/Vector-state fetch failures, etc.) is never rendered inside the
