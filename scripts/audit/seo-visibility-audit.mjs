@@ -113,7 +113,9 @@ async function fetchPublic(path) {
 }
 
 async function fetchAuthed(path, sessionCookie, clientUat) {
-  const r = curl({
+  // Same transient edge reset class as fetchPublic (deploy-smoke RED 2026-10-21: admin /dashboard
+  // HTTP 0 while the immediate retry for desk-shell HTML on the same path succeeded).
+  const r = await curlRetry({
     url: `${APP}${path}`,
     headers: { Cookie: `__session=${sessionCookie}; __client_uat=${clientUat}` },
   });
