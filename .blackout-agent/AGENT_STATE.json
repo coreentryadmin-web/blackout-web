@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-21T07:46:09.890Z",
+  "updated_at": "2026-10-21T09:36:28.060Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,19 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "ac5bf18b1d76d43d0c1022776f7b6f89eea23b1f",
+    "last_main_sha": "a64a1f497e6fa71e674f144a4e6dba68f6fa4e67",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-12T07:38:24.661Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
     {
       "at": "2026-10-12T07:38:30.688Z",
       "type": "context_sync",
@@ -1271,38 +1265,24 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-21T09:36:28.060Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6465,
-      "title": "fix(swing): confidence 'moderate' tier now graduates instead of collapsing the whole 1-8 range",
-      "branch": "fix/swing-confidence-moderate-graduation",
+      "number": 6469,
+      "title": "docs(findings): fold batch-30 findings into FINDINGS.md",
+      "branch": "docs/fold-batch-30",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-21T07:43:00Z"
-    },
-    {
-      "number": 6464,
-      "title": "fix(swing): halt/LULD feed staleness now surfaces in the absence/freshness disclosure",
-      "branch": "fix/swing-halt-feed-absence-disclosure",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-21T07:37:07Z"
-    },
-    {
-      "number": 6463,
-      "title": "fix(swing): watchForSection gate-block bullet now frames moot gates, not a false 'clear N' instruction",
-      "branch": "fix/watch-levels-gate-moot-framing",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-10-21T07:33:01Z"
+      "updated_at": "2026-10-21T09:33:59Z"
     },
     {
       "number": 5547,
