@@ -60,11 +60,14 @@ export function meridianPeerEarningsCoaching(
   if (item.expected_move_pct != null) {
     parts.push(`implied move **${item.expected_move_pct.toFixed(1)}%**`);
   }
-  if (item.days_until <= 7) {
-    parts.push(
-      item.days_until <= 0 ? "reports **today**" : `reports in **${item.days_until}d**`,
-    );
-  }
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SHOP): this baseline line used to
+  // gate on `days_until <= 7` — a narrower sub-window left over from before this function's own
+  // entry gate (above) was widened to 14 days. For an item 8-14 days out with no expected_move_pct
+  // quoted and an unavailable peer cohort, that left `parts` empty and the WHOLE section silently
+  // omitted — while a sibling ticker 7 days out, with the identical unavailable-cohort reason, got
+  // the thin "reports in Nd" fallback. Always push the baseline line for any item the function was
+  // already entered for (days_until 0-14); `days_until <= 3` still adds the extra urgency bullet.
+  parts.push(item.days_until <= 0 ? "reports **today**" : `reports in **${item.days_until}d**`);
   if (item.days_until <= 3) {
     parts.push("**print imminent** — vol crush risk elevated");
   }
