@@ -105,6 +105,20 @@ test("GET /api/market/spx/play's catch block distinguishes a cache-timing race f
   assert.match(route, /instanceof ServerCacheTimeoutError/);
 });
 
+test("GET /api/market/spx/play's catch block derives a real session_phase from a desk peek instead of hardcoding 'closed' (2026-10-21 fix)", () => {
+  // BUG (live repro 2026-10-21 ~11:34 ET): the 2026-10-16 fix above corrected the catch block's
+  // HEADLINE text for a ServerCacheTimeoutError but left degradedPlayPayload()'s hardcoded
+  // session_phase: "closed" default untouched — the same false "desk is closed" claim, on a
+  // different field. spx-play-verdict-bar.ts's resolveMode() reads session_phase === "closed"
+  // directly to pick the member-facing verdict badge, so a member hitting this exact timeout
+  // mid-RTH saw a CLOSED badge while GET /api/market/spx/desk reported market_open:true at the
+  // identical instant. The catch block must now peek the desk (proven cheap/non-blocking even
+  // when the play-eval pipeline itself times out) and pass a real session_phase through extras.
+  const route = readFileSync(join(ROOT, "src/app/api/market/spx/play/route.ts"), "utf8");
+  assert.match(route, /peekMergedSpxDesk/);
+  assert.match(route, /currentSessionPhase\(deskPeek\.merged\)/);
+});
+
 test("evaluateSpxPlayState skips buildPlayTechnicals/refreshOrBreakMemory/resolveGuardedPlaybookMatch when the market is closed and no play is open (2026-10-17 fix, updated 2026-10-18)", () => {
   // MEASURED LIVE: buildPlayTechnicals makes real Polygon network calls on a cold per-process
   // cache, which alone can exceed playMemberReadMaxBlockMs()'s 800ms budget — 5/5 live
@@ -195,4 +209,19 @@ test("peekSpxPlayState checks isSpxPlaySnapshotFreshEnough on BOTH the in-proces
   assert.equal(guardCalls.length, 2, "expected exactly two freshness-guarded peek paths (mem + hit.value)");
   assert.match(body, /if \(mem && isSpxPlaySnapshotFreshEnough\(mem\.as_of/);
   assert.match(body, /if \(hit\?\.value && isSpxPlaySnapshotFreshEnough\(hit\.value\.as_of/);
+});
+
+test("spxPlayReadDegraded derives a real session_phase from a desk peek instead of hardcoding 'closed' (2026-10-21 fix)", () => {
+  // Sibling fix to the route.ts catch-block fix above, same root cause: this function is ALSO
+  // reached on genuine lock-contention/stale-cache-miss paths (evaluateSpxPlayStateCrossReplica
+  // losing the cross-replica lock with no stale/peer snapshot, spxPlayReadFallback finding
+  // neither) — not only on the ServerCacheTimeoutError the route.ts fix targets. Every one of
+  // those paths can fire during a genuinely open RTH session, so the same false
+  // session_phase: "closed" default was reachable here too, independent of the route-level fix.
+  const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
+  const fn = service.match(/async function spxPlayReadDegraded\(\)[\s\S]*?\n\}/);
+  assert.ok(fn, "spxPlayReadDegraded function present");
+  const body = fn![0];
+  assert.match(body, /peekMergedSpxDesk\(\)/);
+  assert.match(body, /currentSessionPhase\(peeked\.merged\)/);
 });
