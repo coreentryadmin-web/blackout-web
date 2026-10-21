@@ -30,6 +30,11 @@ import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 const SLOT_KEY_PREFIX = "cron:heavy-slot:";
 const RESERVED_SLOT_KEY_PREFIX = "cron:heavy-slot:reserved:";
 
+/** Redis key for a cron's dedicated heavy-slot lock (used by wedge-breaker clears). */
+export function heavyCronReservedSlotRedisKey(cronName: string): string {
+  return `${RESERVED_SLOT_KEY_PREFIX}${cronName}`;
+}
+
 /** How many heavy crons may run at once, cluster-wide. Six crons contending for 1-2 ECS web
  *  tasks is the measured problem; capping concurrent heavy work at 2 leaves one slot for a
  *  shorter job to still make progress while a long one (vector-pick-sweep) is mid-run, rather
