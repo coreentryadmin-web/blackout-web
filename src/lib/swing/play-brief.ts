@@ -404,9 +404,18 @@ function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
     const pnl = r.livePnlPct != null ? fmtPct(r.livePnlPct) : "—";
     return `• **${strike ?? "?"}${right} ${expiry}** — entered ${entered ?? "unknown date"}, entry ${fmtUsd(r.entryPremium ?? null)}, P&L ${pnl}`;
   });
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA WATCH SHORT): the count below
+  // used to be `siblings.length + 1` unconditionally, counting THIS brief's own subject play as a
+  // "live position" even for a WATCH candidate — which, per this function's own 2026-10-15 fix
+  // comment above, is never itself committed and can never appear in laneRows. That overstated real
+  // capital-at-risk exposure: a WATCH-bucket brief with exactly 1 real committed sibling rendered
+  // "2 concurrent live positions" when there was only the 1 real one. Only count the subject itself
+  // when it actually has an entry premium (i.e. is itself live/committed) — `hasOwnEntry` already
+  // distinguishes this a few lines up.
+  const total = siblings.length + (hasOwnEntry ? 1 : 0);
   return {
     title: "Other concurrent position(s)",
-    body: `${ticker} carries ${siblings.length + 1} concurrent live position(s) — this brief covers one. Other(s):\n\n${lines.join("\n")}\n\nPass a specific strike/expiry to review a different one.`,
+    body: `${ticker} carries ${total} concurrent live position(s) — this brief covers one. Other(s):\n\n${lines.join("\n")}\n\nPass a specific strike/expiry to review a different one.`,
     bias: "neutral",
   };
 }
@@ -1461,9 +1470,13 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       return Math.abs(r.entryPremium - ctx.play.entry!) > 0.005;
     }).length;
     if (siblingCount > 0) {
+      // BUG FIX (2026-10-21, Ask Largo standing mandate): same unconditional "+1" overcounting fix
+      // as `siblingPositionsNote` above (this block's own stated purpose is to never disagree with
+      // that section) — only count the subject play itself when it actually has an entry premium.
+      const total = siblingCount + (hasOwnEntry ? 1 : 0);
       out.push({
         kind: "fact",
-        text: `${ticker} carries ${siblingCount + 1} concurrent live position(s) — this brief covers one.`,
+        text: `${ticker} carries ${total} concurrent live position(s) — this brief covers one.`,
         provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
       });
     }
