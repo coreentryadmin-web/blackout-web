@@ -936,7 +936,10 @@ function ownContractExpiry(ctx: SwingPlayBriefContext): string | null {
 // earnings date itself — "unknown" timing never claims already-landed, matching this file's
 // existing honest-absence discipline (the sibling `noGapExposure` comment right below makes the
 // same call for the identical reason).
-function printAlreadyLandedThresholdMs(ymd: string, reportTime: string | null): number | null {
+// Exported (2026-10-21, Ask Largo standing mandate) so catalystsSection (play-brief-intel.ts,
+// a second renderer of the identical arsenal.earnings field) can reuse this exact bell-relative
+// threshold instead of reimplementing it — see that call site's own comment for why.
+export function printAlreadyLandedThresholdMs(ymd: string, reportTime: string | null): number | null {
   if (reportTime === "afterhours") return parseEtStamp(etStampFromDateOrIso(ymd));
   if (reportTime === "premarket") return parseEtStamp(`${ymd} 09:30 ET`);
   return null;
