@@ -1699,6 +1699,51 @@ test("composeSwingPlayBrief: 'Track record' section appears ONLY when ctx.archet
   );
 });
 
+// Ask Largo standing mandate (evidence[] completeness, 2026-10-21): whyThisSetupSection's
+// synthesizedSetupLede renders play.score ("...scoring 72.") and its own "Score pillars" bullet
+// list renders play.factors, but neither ever reached evidence[] -- the same bug class as the
+// archetype/sub-lane/peers fixes in this file. This proves the score (plus its pillar breakdown)
+// is now a citable, typed evidence[] fact, gated on the same scoreWithheld check the lede uses.
+test("composeSwingPlayBrief: setup score and pillar breakdown surface as a citable evidence[] entry", () => {
+  const baseCtx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      score: 72,
+      factors: [
+        { label: "Rel. strength", points: 18 },
+        { label: "Regime", points: 12 },
+      ],
+    }),
+    asOf: "2026-09-10 16:00 ET",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(baseCtx);
+  const evidence = brief.envelope.evidence.find((e) => e.text.startsWith("Setup score:"));
+  assert.ok(evidence, "expected a citable setup-score evidence entry");
+  assert.equal(evidence!.text, "Setup score: 72 (Rel. strength +18, Regime +12).");
+  assert.equal(evidence!.provenance?.source, "Swing ledger");
+  assert.equal(evidence!.provenance?.asOf, "2026-09-10 16:00 ET");
+
+  // A withheld score is a 0 FALLBACK, never a real measured value -- must never be cited as
+  // evidence, the same discipline synthesizedSetupLede already applies to the prose lede.
+  const withheldCtx: SwingPlayBriefContext = {
+    ...baseCtx,
+    play: fixturePlay({ score: 0, scoreWithheld: true, factors: [{ label: "Rel. strength", points: 18 }] }),
+  };
+  const withheldBrief = composeSwingPlayBrief(withheldCtx);
+  assert.equal(
+    withheldBrief.envelope.evidence.some((e) => e.text.startsWith("Setup score:")),
+    false,
+    "a withheld score must not be fabricated as evidence",
+  );
+});
+
 // Largo C10 enhancement (2026-09-20, Ask Largo standing mandate): the "Track record"/"Ticker
 // track record" sections above already cite the same wins/losses/n numbers in prose, but prose
 // cannot be joined/cited the way a typed evidence[] entry with its own provenance can — this
