@@ -38,6 +38,204 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Vector play engine: secondary gamma wall rendered under the identical "call wall"/"put wall" label as the primary — FIXED
+
+> **kind:** `FINDING`
+
+**Root cause.** `collectLevels()` in `src/features/vector/lib/vector-play-engine.ts` pushed BOTH
+`gexWalls.callWalls[0]` (the strongest call wall by gamma-share) and `gexWalls.callWalls[1]` (the
+second-strongest) under the identical `"call wall"` label (same for `putWalls`). `gex-wall-levels.ts`
+sorts `callWalls`/`putWalls` by `.pct` (gamma-share STRENGTH) descending — NOT by distance to spot
+(confirmed via `grep -n "callWalls.sort\|putWalls.sort" src/lib/providers/gex-wall-levels.ts`:
+`callWalls.sort((a, b) => b.pct - a.pct)`) — so the second-strongest wall can legitimately sit
+CLOSER to spot than the strongest one. `pickTargets()` (same file) then groups/selects candidates by
+distance to spot, so it could silently select and bare-label the weaker, secondary wall as a target
+with no way for a reader of the rendered target list to tell it apart from an independent reading of
+the primary wall at a different price.
+
+Confirmed live via direct source inspection + a probe script: with `callWalls: [{strike:7600,pct:8},
+{strike:7650,pct:4}]` and a breakout scenario whose entry trigger is the 7,600 wall (filtering it out
+of the target list via the `beyond` parameter), the SECOND wall (7,650, the weaker one) surfaced as a
+target — before this fix, bare-labeled `"call wall 7,650"`, indistinguishable from a reading of the
+primary (7,600) wall at a different price.
+
+**Evidence.** RED→GREEN proof via `git stash` on `vector-play-engine.ts` alone (never the test
+file): stashed, the extended "a breakout targets levels BEYOND the trigger" test failed (`not ok
+42`), 45/46 pass; restored, 46/46 pass. `tsc --noEmit` clean. Checked blast radius: every existing
+test in `vector-play-engine.test.ts` that touches a 2-element `callWalls`/`putWalls` array asserts
+only on the PRICE substring (via regex extracting the trailing number, or `doesNotMatch`/`match` on
+a price), never on the exact label text — none needed updating. `play-brief-intel.ts`'s
+`Targets:` line (line 2931) renders `p.targets` verbatim with no label matching, so the rename is
+purely additive disclosure there too — no other consumer in the repo matches on the literal
+`"call wall"`/`"put wall"` strings from this array.
+
+**Fix rationale.** Relabeled the second push in `collectLevels()` to `"2nd call wall"`/`"2nd put
+wall"`, leaving the (intentional) strength-based sort order in `gex-wall-levels.ts` untouched, and
+leaving `play-brief-narrative.ts`'s `narrateWall`/`collectFocalLevels` untouched (already correct —
+they read only index `[0]`, the primary wall, and were never part of this bug). Minimal, label-only
+change; no other logic in `pickTargets()` or `buildVectorPlay()` was touched.
+
+| **Status** | FIXED |
+|---|---|
+
+**Fix**: PR (branch `fix/vector-wall-label-ambiguity`).
+
+## Swing play-brief: setup score / pillar breakdown never reached `envelope.evidence[]` — FIXED
+
+> **kind:** `FINDING`
+
+**Root cause.** `whyThisSetupSection()` in `src/lib/swing/play-brief-intel.ts` renders `play.score`
+via `synthesizedSetupLede()` (line 164: `", scoring ${Math.round(play.score)}"`, when not withheld)
+and separately renders the full per-pillar breakdown via its own "Score pillars" bullet list
+(line 317-322, straight from `play.factors`). Neither ever reached `evidenceFromContext()` in
+`src/lib/swing/play-brief.ts` — the sole feeder of the typed, provenance-bearing
+`envelope.evidence[]` array. A structured/JSON reader of the swing play-brief envelope therefore
+saw no citable fact for the one number ("scoring 72") that grounds why a setup is graded a
+particular way — the same "evidence[] completeness" bug class this lane has fixed four times this
+week already (archetype track record, sub-lane track record, peers).
+
+Confirmed live via direct source inspection: `grep -n "arsenal\.\|play\.score\b" src/lib/swing/play-brief.ts`
+before this fix showed zero reference to `play.score` or `play.factors` in `evidenceFromContext()`.
+
+**Evidence.** RED→GREEN proof via `git stash` on `play-brief.ts` alone (never the test file):
+stashed, the new test failed (`not ok 43`, "expected a citable setup-score evidence entry"),
+165/166 pass; restored, 166/166 pass. `tsc --noEmit` clean.
+
+**Blast radius.** Single call site — `evidenceFromContext()` was the only consumer missing this
+mirror; `whyThisSetupSection()`'s own rendering (the lede and the "Score pillars" bullet list) is
+untouched and correct.
+
+**Fix rationale.** Added a new, additive evidence push in `evidenceFromContext()`, inserted right
+before the archetype-track-record block it's thematically closest to (score/archetype both ground
+"why this setup"). Gated on `!play.scoreWithheld` — the identical gate `synthesizedSetupLede` uses
+for `play.score` itself: a withheld score is a `0` FALLBACK (the pinned `feature_vector.evidence_score`
+was missing at read time), never a real measured value (see `TerminalPlay.scoreWithheld`'s own doc
+comment), so the fix never fabricates a score fact the lede itself would refuse to state — covered
+by a dedicated negative-case regression test. The pillar breakdown is folded into the same fact as
+a parenthetical (`Setup score: 72 (Rel. strength +18, Regime +12).`), capped at the same first-10
+slice `whyThisSetupSection`'s own bullet list already uses, so the two surfaces can never disagree.
+Provenance source `"Swing ledger"` (matching every other pinned-at-commit position fact in this
+function — archetype/sub-lane track record, ticker track record, book overlap), `freshness:
+"recent"` with `ctx.asOf` (score is pinned at commit, same reasoning as those sibling facts).
+Nothing else was changed — this is a distinct root cause from the peers-evidence fix shipped
+alongside it (PR #6480), even though both live in the same file, per the "one issue per branch/PR"
+policy.
+
+| **Status** | FIXED |
+|---|---|
+
+**Fix**: PR (branch `fix/swing-score-evidence-gap`).
+
+## Swing play-brief: `arsenal.related` ("Peers") never reached `envelope.evidence[]` — FIXED
+
+> **kind:** `FINDING`
+
+**Root cause.** `catalystsSection()` in `src/lib/swing/play-brief-intel.ts` (lines 1619-1621) renders
+a real, live "Peers: ..." line straight from `arsenal.related` (Polygon's related-companies read).
+`evidenceFromContext()` in `src/lib/swing/play-brief.ts` is the SOLE feeder of the typed,
+provenance-bearing `envelope.evidence[]` array (confirmed repeatedly elsewhere in this file's own
+history — see the archetype/sub-lane track-record fixes a few entries up in `FINDINGS.md`), and it
+had exactly one reference to `arsenal.*` in the whole file (the "Next earnings" block) — zero
+reference to `arsenal.related`. So a structured/JSON reader of the envelope saw fewer peer names
+than the rendered markdown prose showed: the same "evidence[] completeness" bug class this lane has
+now fixed four times this week (archetype track record, sub-lane track record, and now this).
+
+Confirmed live via direct source inspection (not taken on faith from the auditing workflow):
+`grep -n "arsenal.related\|Peers:" src/lib/swing/play-brief-intel.ts` hits only the prose-rendering
+site; `grep -n "arsenal\." src/lib/swing/play-brief.ts` showed only the "Next earnings" block before
+this fix — zero reference to `.related`.
+
+**Evidence.** RED→GREEN proof via `git stash` on `play-brief.ts` alone (never the test file):
+stashed, the new positive-case test failed (`not ok 80`, "expected peers evidence to mirror
+catalystsSection's rendered peer list") while the full suite otherwise passed 166/167; restored,
+167/167 pass. `tsc --noEmit` clean.
+
+**Blast radius.** Single call site — `evidenceFromContext()` in `play-brief.ts` is the only consumer
+of `arsenal.related` that needed to change; `catalystsSection()`'s own rendering is untouched and
+correct, it was always the evidence mirror that was missing.
+
+**Fix rationale.** Inserted a new, additive evidence push right after the existing "Next earnings"
+block in `evidenceFromContext()`, gated on `eco?.arsenal?.related?.length` (never fabricates
+evidence from an empty/null `related[]` — covered by a dedicated negative-case regression test),
+truncated to the same first-6 slice `catalystsSection()` already uses so the two surfaces can never
+disagree on which peers are shown. Provenance source is `"Polygon (related companies)"` (the actual
+upstream), `freshness: "recent"` (matches the sibling "Next earnings" block's own freshness choice
+— this data has no staleness clock of its own, same reasoning). Nothing else was changed.
+
+| **Status** | FIXED |
+|---|---|
+
+**Fix**: PR (branch `fix/swing-peers-evidence-gap`).
+
+## Night Hawk Legacy: gate-promoted conviction cap did not propagate to `key_signal`, `tier`, or the rescue-play path — FIXED
+
+> **kind:** `FINDING`
+
+**Root cause.** `capGatePromotedConviction()` (`src/features/nighthawk/lib/publish-gates.ts`) exists
+specifically to prevent a gate-promoted (rescued-past-a-failed-quality-gate) play from displaying an
+unearned "A"/"A+" conviction — it caps the member-facing `conviction` field at "B". Live health-check
+spot-check (2026-10-21, 5-engine monitor cycle, `GET /api/market/nighthawk/edition`) found a real
+MSTR play where this cap was visibly bypassed by TWO other surfaces reading the same uncapped
+merit-tier computation, plus a THIRD construction path that never applied the cap at all:
+
+1. **`key_signal` (prose summary).** `buildDeterministicThesis()` (`deterministic-edition.ts:633`)
+   builds `key_signal` as `` `${dir} — ${drivers} · score ${scored.score} (${scored.conviction})` ``
+   — embedding `scored.conviction` (the UNCAPPED merit-tier letter) as a literal substring, BEFORE
+   `gate_promoted` is even known (promotion happens later, in `edition-builder.ts`/`claude-edition.ts`).
+   `capGatePromotedConviction` never touched this string. Live repro: `conviction: "B"` (correctly
+   capped) next to `key_signal: "...score 52 (A)"` on the SAME play record.
+2. **`tier` field (provenance object).** `publish-context.ts`'s `buildNighthawkPublishContext()`
+   independently recomputes `assignNighthawkTier(nhTierInputFromScored(scored))` for its own `tier`
+   field, never reading or capping against `play.conviction`. Live repro: `conviction: "B"` next to
+   `tier: { tier: "A", factors: [{label: "Prime score band", detail: "...the overnight sweet spot"},
+   ...] }` — the SAME record carrying both the correctly-capped badge and an uncapped rationale
+   object whose own factors read as an A-grade case.
+3. **`buildRescuePlays()`'s path (`claude-edition.ts`).** Every OTHER `gate_promoted: true`
+   construction site (`edition-builder.ts`'s critic-rescue, `publish-gates.ts`'s `promoteTopBlocked`)
+   wraps its output in `capGatePromotedConviction`. The `buildRescuePlays` → `claude-edition.ts`
+   rescue fallback (fires when normal synthesis produces zero plays) assigned `detPlays = rescue`
+   bare — the member-facing `conviction` field ITSELF could leak an uncapped A/A+ on a play that
+   bypassed every geometry/premium/grounding check, the exact over-trust risk the cap exists to
+   prevent, on what is arguably the LOWEST-trust population of plays in the whole pipeline.
+
+Confirmed via direct source trace (not taken on faith from the health-check script): grep for every
+`gate_promoted: true` assignment site and its paired `capGatePromotedConviction` call, and read
+`capGatePromotedConviction`'s own (unchanged-until-now) definition to confirm it only ever touched
+`conviction`.
+
+**Evidence.** RED→GREEN proof via `git stash` on the four source files alone (never the test files):
+stashed, 7 new assertions failed across 4 test files (`nighthawk-tiers.test.ts`,
+`publish-gates.test.ts`, `publish-context.test.ts`, `claude-edition.test.ts`) — 79/86 pass; restored,
+86/86 pass. `tsc --noEmit` clean. Ran the FULL `src/features/nighthawk/lib/*.test.ts` suite
+(1529 tests) post-fix to check for ripple effects from the shared helper: 1529/1529 pass.
+
+**Blast radius.** One root cause (the gate-promotion safety cap not consistently propagated to every
+surface that re-derives a tier/conviction letter from the same uncapped merit-tier computation),
+three independent call sites, fixed together per this repo's standing policy ("duplicated logic in a
+second file counts — fix and note all of them").
+
+**Fix rationale.**
+- Added `capGatePromotedTierAssignment()` (`nighthawk-tiers.ts`) — caps a full
+  `NighthawkTierAssignment` (not just a bare conviction string) for a gate-promoted "A" result,
+  APPENDING an honest disclosure factor rather than silently truncating the measured-evidence
+  factors (same "disclose, don't flatten" discipline this file's honesty spine already follows for
+  the A+ promotion rule) — so the capped tier's own rationale explains itself instead of just
+  reading as an unexplained downgrade, or worse, still reading as an uncontested A-grade case.
+- `publish-context.ts`'s `tier` field now runs through this same helper, gated on `play.gate_promoted`.
+- `capGatePromotedConviction()` now ALSO rewrites `key_signal`'s trailing `(A)`/`(A+)` token to
+  `(B)` (anchored at the string's end via regex, so only the grade token is touched — the rest of
+  the sentence is untouched) when it caps `conviction`.
+- `claude-edition.ts`'s rescue-play assignment now reads `detPlays = rescue.map(capGatePromotedConviction)`,
+  matching every other gate_promoted construction site in the pipeline.
+
+Nothing else was changed — `assignNighthawkTier`'s own band logic, the A+ promotion honesty spine,
+and every other call site of these functions are untouched.
+
+| **Status** | FIXED |
+|---|---|
+
+**Fix**: PR (branch `fix/legacy-gate-promoted-conviction-leak`).
+
 ## 2026-10-21 — [FINDING, swing] Sub-lane track-record evidence never reached `evidence[]` or the Structure Ladder — archetype-only, while the prose section already covers both
 
 > **kind:** `FINDING`
