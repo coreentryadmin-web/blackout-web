@@ -38,6 +38,318 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-21 — [FINDING, P2 0DTE board data-correctness] CLOSED-row floor_pnl_pct/peak_pnl_pct recomputed from live peak_premium instead of the frozen exit-time value — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+### Symptom
+
+Live `GET /api/market/zerodte/board` ledger (production, 2026-10-21), 4/4 sampled CLOSED committed
+rows showed served `floor_pnl_pct`/`peak_pnl_pct` disagreeing with the SAME row's own pinned
+`exit_detail` narrative:
+
+- QQQ: served `floor_pnl_pct=4.44` (`peak_pnl_pct=11.11`) vs `exit_detail` text "...+4.24% floor
+  armed by a +10.61% peak"
+- SPCX: served 4.59 vs text 4.52/11.3
+- NVDA: served 2.34 vs text 2.27/5.67
+- AAPL: served 2.08 vs text 2.0/5.0
+
+In every case `floor_pnl_pct == round2(peak_pnl_pct * 0.4)` (the ratchet lock floor fraction)
+computed from the row's FINAL/current `peak_premium` — not the peak that was actually armed at the
+real exit decision, which `entry_context.exit.detail`'s prose was built from and still carries
+honestly in `entry_context.exit.peak_pnl_pct`.
+
+The member-facing board UI already gates the floor chip off for CLOSED rows
+(`ZeroDteBoard.tsx`: `row.floor_pnl_pct != null && row.status !== 'CLOSED'`), so this was not
+currently member-visible on the primary UI — but the raw API field was still wrong for any other
+consumer (audit tooling, Largo, a future UI).
+
+### Root cause
+
+`src/lib/platform/zerodte-service.ts`'s post-`roundFloats()` recompute pass (the block added
+2026-10-20 to reconcile `peak_pnl_pct`/`mfe_capture_pct`/`floor_pnl_pct` with the member-visible
+ROUNDED `entry_premium`/`peak_premium`) ran **unconditionally for every ledger row, including
+CLOSED ones** — always deriving `peak_pnl_pct` from `peakPnlPct(row.entry_premium,
+row.peak_premium)`, i.e. the row's current/final latched peak.
+
+`floor_pnl_pct`'s own doc comment on `ZeroDteBoardLedgerRow` explicitly frames it as **live-only
+guidance** ("your stop is now at breakeven/+20%/+50%" — guidance for a still-open position). A
+CLOSED row has no "your stop is now at" to give; what it owes the reader instead is the value that
+was actually true **at the moment the exit decision fired**, which is already honestly recorded on
+the row: `entry_context.exit` is stamped first-write-wins (`stampZeroDteExitContext`) by
+`buildExitContext` (`exit-engine.ts`) off the exact `peakPremium` the engine used for that decision
+— the identical input `exit.detail`'s prose was generated from (`exit-engine.ts` lines ~891-926).
+`peak_premium` on the row, by contrast, is a continuously-latched field
+(`advancePlayLatch`/`updateZeroDteLiveState`) that is not contractually pinned to equal the peak the
+engine actually armed its floor against at that tick — so recomputing from it for a CLOSED row can
+silently disagree with the row's own frozen narrative, which is exactly what the live QQQ/SPCX/NVDA/
+AAPL samples show (peak/floor drifted ~0.3-0.5pp above the frozen decision-time value in every
+sampled case).
+
+This was not caught earlier because the 2026-10-20 rounding-reconciliation fix was scoped to a
+different bug (display-rounding self-consistency between a row's OWN `peak_premium`/`entry_premium`
+fields and its `peak_pnl_pct`) and never distinguished CLOSED rows with a pinned exit stamp — the
+UI-level gate (`row.status !== 'CLOSED'`) hid the member-facing symptom, so nothing surfaced it
+until a direct API/field audit compared `floor_pnl_pct`/`peak_pnl_pct` against `exit_detail`'s own
+embedded numbers.
+
+### Fix
+
+`src/lib/platform/zerodte-service.ts`'s recompute pass now reads the row's own frozen exit stamp
+(`readExitStampFromEntryContext(r.entry_context).peak_pnl_pct` — already on the payload honestly,
+previously unused for this purpose) and, **only for a CLOSED row that carries one**, uses that
+frozen peak for `peak_pnl_pct`/`mfe_capture_pct`/`floor_pnl_pct` instead of recomputing from
+`peak_premium`. A CLOSED row with NO exit stamp (a mechanical plan-stop or a genuine 15:50 ET
+time-stop — neither stamps `entry_context.exit`) has no better frozen source and keeps the existing
+rounded-premium recompute unchanged. OPEN/HOLD/TRIM rows are completely unaffected — the guard is
+`row.status === "CLOSED"` only.
+
+`floor_pnl_pct` is now derived from the SAME resolved `peakPnl` (frozen-or-live) rather than
+re-deriving `pinnedLivePnlPct(row.entry_premium, row.peak_premium)` a second time, which also
+removes a redundant duplicate computation and guarantees `floor_pnl_pct` can never disagree with
+the `peak_pnl_pct` served on the same row.
+
+Deliberately left unchanged: the UI gate that already hides `floor_pnl_pct` for CLOSED rows (kept
+as defense in depth, not removed just because the underlying field is now correct); `exit_policy`
+(the trim ladder) and `live_pnl_pct`, which were not shown to disagree with the frozen narrative and
+are out of this fix's scope.
+
+### Evidence
+
+Regression test added to `src/lib/platform/zerodte-service.test.ts`
+("exit visibility (CLOSED, frozen floor): a CLOSED row's peak_pnl_pct/floor_pnl_pct/mfe_capture_pct
+match the FROZEN exit-time peak, not the row's current peak_premium (QQQ-class live repro)"), which
+pins a CLOSED row with `entry_context.exit.peak_pnl_pct = 10` (the frozen decision-time peak) but a
+drifted current `peak_premium` implying +15%. RED→GREEN proven via `git stash` on the source file
+only:
+
+- **Pre-fix (RED):** `peak_pnl_pct` served `15` (recomputed from the drifted `peak_premium`),
+  `floor_pnl_pct` served `6` (`15×0.4`), `mfe_capture_pct` served `27` — test failed:
+  `peak_pnl_pct must match the FROZEN exit-time peak ... 15 !== 10`.
+- **Post-fix (GREEN):** `peak_pnl_pct=10`, `floor_pnl_pct=4` (`10×0.4`), `mfe_capture_pct=40` — all
+  27 tests in the file pass, matching the frozen `exit_detail`-implied narrative exactly.
+
+The pre-existing "rounding reconcile" test (2026-10-20 fix) was retargeted from a CLOSED row to a
+HOLD row — with a CLOSED row and a pinned exit stamp, the frozen value now wins outright (by
+design), which would make that test's raw-vs-rounded-peak scenario unreachable through a CLOSED
+row; the rounding-reconciliation behavior itself is unchanged and still applies to every OPEN/HOLD/
+TRIM row and to a CLOSED row with no exit stamp (verified by the existing "a stopped play with no
+trim tranches armed" test, which has no `entry_context.exit` and is untouched by this fix).
+
+Full suite: `src/lib/platform/zerodte-service.test.ts` (27/27), plus the sibling
+`zerodte-ledger-pnl.test.ts`/`zerodte-board-convergence.test.ts`/`zerodte-service-marks.test.ts`/
+`exit-sync.test.ts`/`exit-engine.test.ts`/`play-timeline.test.ts`/`marks-math.test.ts` (216/216
+combined) — all GREEN on Node 20. `npx tsc --noEmit` clean (full project).
+
+### Blast radius
+
+Single call site: the post-`roundFloats()` recompute pass in `buildZeroDteBoardPayload`
+(`zerodte-service.ts`) is the ONLY place that serves `peak_pnl_pct`/`floor_pnl_pct`/
+`mfe_capture_pct` on the public `/api/market/zerodte/board` ledger and the Largo
+`zeroDtePlaysForLargo` payload (both built from the same `payload.ledger`) — no second
+implementation of this computation exists elsewhere. `mapLedgerRow`'s own earlier, pre-`roundFloats`
+computation of these same three fields is unconditionally overwritten by this pass regardless of
+status, so it needed no parallel fix. The member-facing UI (`ZeroDteBoard.tsx`) already suppresses
+`floor_pnl_pct` for CLOSED rows, so no visual change there; `peak_pnl_pct`/`mfe_capture_pct` ARE
+shown on closed cards and now read the correct frozen value for any row with a pinned engine exit.
+
+## 2026-10-21 — [FINDING, P2 Ask Largo x Night Hawk Swings / Largo product contract] swing play-brief Largo-contract `freshness`/`age_seconds` hardcoded on every response, ignoring known per-source staleness computed in the same code path — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+### Symptom
+
+`GET /api/market/swing/play-brief`'s top-level Largo-contract fields `"freshness"` and
+`"age_seconds"` were a hardcoded `"cached"` / `null` on **every** response, regardless of whether a
+genuine per-source age was actually known for that cycle.
+
+Live repro (production, 2026-10-21): 6 real briefs sampled across OPEN/CLOSED/ROLLED buckets
+(CRWV:61, CRWV:63, GOOG:59, NVDA:62, TSLA:60, AMZN:48) all returned byte-identical
+`"freshness":"cached","age_seconds":null` — even though the SAME responses' own "Data freshness"
+prose section disclosed genuinely different, real, already-computed ages per brief: TSLA:60 said
+"Vector data **8642s** old — levels may lag live spot"; CRWV:63 said "Vector data **9209s** old";
+both also carried a separately-fresh "Option mark as of 2026-10-21 12:30 ET" (~9 minutes old at
+response `as_of` time). A model reading the structured Largo contract field saw no age at all for
+an answer whose own prose, a few sections below it in the same response, discloses a multi-hour
+stale read.
+
+### Root cause
+
+`adaptSwingBriefToLargo` (`src/lib/swing/play-brief-adapter.ts`, lines 145-146) hardcoded:
+
+```ts
+freshness: "cached", // Deterministic service, no live upstream
+age_seconds: null, // Freshness is session-anchored, not wall-clock-age
+```
+
+on every call, regardless of input. The comment's premise was itself the bug: the swing play-brief
+**compute** is deterministic, but the **data it reads** (Vector snapshot, GEX matrix, the option
+mark) is not always fresh — and those per-source ages were already being computed, in the same
+`composeSwingPlayBrief` call path, to build the brief's own "Data freshness" prose section
+(`dataFreshnessSection`, `src/lib/swing/play-brief-intel.ts`: `vec?.dataAgeMs`,
+`gexMatrixAgeMs(ctx.ecosystem?.gex_positioning, readMs)`, the option mark's own `markAsOf` age).
+`adaptSwingBriefToLargo` only ever received `SwingPlayBriefResult` — a type that carried the
+rendered `envelope` but never threaded any of those raw per-source ages through — so there was
+nothing left for the adapter to use even if it had wanted to. This is why the hardcoded constant
+went uncaught for so long: it was not a careless literal so much as a genuine plumbing gap between
+where the ages are computed and where the Largo contract fields are assembled.
+
+Per `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s C2 (freshness), the honest behavior is to surface a
+known age, and fall back to omission (`null`/"cached") only when no age is genuinely knowable —
+not to omit unconditionally.
+
+### Fix
+
+- Added `worstKnownSwingDataAgeMs(ctx)` (`src/lib/swing/play-brief-intel.ts`, next to
+  `dataFreshnessSection`), which computes the worst (oldest / most load-bearing) of the EXACT same
+  per-source ages the prose section already reads — the option mark's sync age (gated the same way
+  `optionMarkIsStale` is: only for a live committed OPEN/HOLD/TRIM row with a real synced
+  timestamp) and Vector/GEX ages (gated the same way the prose section is: `!isSwingPlayStaleCheckExempt(play)`,
+  since a CLOSED or dead-WATCH play's "is today's live desk state current" question is permanently
+  moot). Unlike the prose section, an age is included here whether or not it has crossed its own
+  staleness bound, since a fresh age is still a genuinely KNOWN one. Returns `null` — never `0` —
+  when nothing is knowable this cycle.
+- Threaded the result through as a new `SwingPlayBriefResult.dataAgeMs: number | null` field
+  (`src/lib/swing/play-brief-types.ts`), computed once in `composeSwingPlayBrief`
+  (`src/lib/swing/play-brief.ts`) off the same `ctx`/`readMs` every other staleness check in that
+  compose already uses — not a fresh, independent wall-clock sample.
+- `adaptSwingBriefToLargo` now derives `age_seconds` (`Math.round(dataAgeMs / 1000)`, clamped
+  non-negative) and `freshness` from that number via a new `freshnessFromAgeSeconds` helper
+  (`src/lib/swing/play-brief-adapter.ts`), which reuses this desk's own EXISTING staleness bounds
+  rather than inventing new ones: `<120s` → `"live"` (Vector/GEX's own stale cutoff,
+  `GEX_MATRIX_STALE_MS`), `<1080s` → `"delayed"` (the option mark's own cadence-aware stale cutoff,
+  `SWING_OPTION_MARK_STALE_MS`, sized for its 15-minute refresh cycle), else `"stale"` — the same
+  three-bucket shape `helix-contract.ts`'s sibling `tapeFreshness` already uses for an analogous
+  age -> `Freshness` mapping elsewhere in the Largo-contract surface. Falls back to the original
+  honest `"cached"`/`null` ONLY when `dataAgeMs` is `null` (nothing knowable this cycle) — never
+  fabricated.
+- `src/app/api/market/swing/play-brief/route.ts` needed NO change — it already forwards
+  `largoRead.freshness`/`largoRead.age_seconds` verbatim from the adapter's output, so fixing the
+  adapter (and the plumbing feeding it) fixes the wire response too.
+
+### Evidence
+
+Live GET `/api/market/swing/play-brief` (production, 2026-10-21), 6 real briefs (CRWV:61, CRWV:63,
+GOOG:59, NVDA:62, TSLA:60, AMZN:48) — all six returned `"freshness":"cached","age_seconds":null`
+while their own "Data freshness" prose disclosed real ages (TSLA:60: "Vector data **8642s** old";
+CRWV:63: "Vector data **9209s** old"). New regression test
+`src/lib/swing/play-brief-adapter.test.ts` ("surfaces a known stale Vector age as
+age_seconds/freshness instead of the hardcoded cached/null constant") pins the TSLA:60 number
+exactly: a HOLD play with a Vector snapshot stamped `dataAgeMs: 8_642_000` now yields
+`age_seconds: 8642`, `freshness: "stale"` — RED (fails: `null !== 8642`) before the fix (confirmed
+via `git stash` isolating the source-file changes), GREEN after. A sibling test confirms the
+honest-omission fallback (`age_seconds: null`, `freshness: "cached"`) survives unchanged for a
+brief with genuinely no knowable per-source age.
+
+### Blast radius
+
+Single call path: `adaptSwingBriefToLargo` is the sole consumer of the new `dataAgeMs` field, and
+`GET /api/market/swing/play-brief` is its sole caller. No other product adapter reads
+`SwingPlayBriefResult`. `worstKnownSwingDataAgeMs` is additive (a new exported function) and does
+not change `dataFreshnessSection`'s own prose output or any other existing section. `dataAgeMs` is
+computed AFTER `briefContentKey`'s own snapshot is built, so it does not perturb the client refresh
+dedupe key (which deliberately excludes time-only fields).
+
+### Verify
+
+`npx tsc --noEmit` clean; `src/lib/swing/play-brief-adapter.test.ts` (5/5),
+`src/lib/swing/play-brief.test.ts` (168/168), `src/lib/swing/play-brief-intel.test.ts` (318/318)
+all GREEN. Full suite run as part of this PR's CI.
+
+## 2026-10-21 — [FINDING, Night Hawk Swings / Ask Largo] `dealerPostureLine`'s GEX-substitution
+"Last snapshot" bullet never named GEX as its data source, reading as a contradiction next to the
+adjacent "Data caveat — Vector Ns stale" bullet in the same list — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Night Hawk Swings — Ask Largo swing play-brief, "Trade manager read" section |
+| **File** | `src/lib/swing/play-brief-narrative.ts` (`dealerPostureLine`, return statement — was ~line 351 pre-fix) |
+| **Severity** | P3 — every number rendered was individually correct; the defect was purely a missing source label that made the bullet read as internally contradictory |
+| **Follow-up to** | PR #6437 (2026-10-21, same session, same function) — that PR fixed the AGE NUMBER this caption uses once Vector is stale and content is substituted from GEX; this PR fixes the remaining gap its own write-up named: the return value still never disclosed GEX as the source of that substituted content |
+
+### Symptom (live repro, production `GET /api/market/swing/play-brief`, 2026-10-21)
+
+"Trade manager read" section, two adjacent bullets with no source label distinguishing them:
+
+- **TSLA:60** (positionId 60):
+  `"• Data caveat — Vector 8642s stale. Treat levels as indicative until refresh."` immediately
+  followed by
+  `"• Last snapshot (~72s old) — spot 387.18 · dealers long gamma ..."`.
+- **CRWV:63** (positionId 63):
+  `"• Data caveat — Vector 9209s stale..."` followed by
+  `"• Last snapshot (~23s old) — spot 61.20 · dealers short gamma ..."`.
+
+Each number is individually correct (confirmed against the GEX matrix's own age directly) — the
+defect is purely that nothing tells the reader these two bullets come from two different feeds, so
+it reads as "Vector mysteriously refreshed from 8642s to 72s between two bullets in the same list."
+
+### Root cause
+
+`dealerPostureLine`'s `snapshotStale` branch (`vectorStale && !staleCheckExempt`) substitutes
+Vector's stale read with GEX-matrix-sourced content — the prior same-session fix (PR #6437)
+established, with a full proof in its own comment block, that whenever this branch is taken every
+field the bullet renders (`posture`/`flip`/`fragileBit`/`regimeBit`/`netGexBit`/`sessionChangeBit`,
+even `spot` itself) is GEX-sourced and GEX-fresh by construction, and captioned the bullet's AGE
+with the GEX matrix's own age rather than Vector's. But the function's return statement still never
+named GEX as the source of that content — unlike every sibling "Last snapshot" usage elsewhere in
+the codebase (`src/lib/swing/play-brief-intel.ts`'s `gexPostureSection` at line 2734:
+`` `**Last snapshot**${...} — dealer posture may lag spot.` ``, and `vectorDeskSection` at line 2916:
+`` `**Last snapshot**${...} — Vector desk read may lag spot.` ``), which all append an explicit
+disambiguating clause naming which feed the bullet's content came from. `dealerPostureLine` was the
+one "Last snapshot" call site in the swing brief family missing this clause.
+
+### Fix
+
+Appended the same sibling-pattern disambiguating clause, reusing `gexPostureSection`'s own exact
+wording (`" — dealer posture may lag spot"`, no new wording invented — this bullet's content is,
+after all, the identical dealer-posture read `gexPostureSection` narrates from the same GEX matrix),
+scoped to the `snapshotStale` branch only:
+
+```ts
+const sourceClauseBit = snapshotStale ? " — dealer posture may lag spot" : "";
+
+return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}${fragileBit}${regimeBit}${netGexBit}${sessionChangeBit}${sourceClauseBit}`;
+```
+
+The non-substituted (Vector-fresh, `"**Right now**"`) branch's wording is unchanged — `sourceClauseBit`
+is only non-empty when `snapshotStale` is true, which is exactly the branch PR #6437 already proved
+is GEX-sourced.
+
+### Evidence (RED → GREEN, per repo policy)
+
+- **RED:** `git stash push -u -m "<tag>" -- src/lib/swing/play-brief-narrative.ts` (source file
+  only, test file untouched) reverted to the pre-fix return statement. The new regression test
+  (`tradeManagerNarrativeSection: dealer-posture bullet names GEX as the source when substituting
+  for stale Vector`) failed exactly as expected, reproducing the live TSLA shape verbatim:
+  ```
+  • Data caveat — Vector 8642s stale. Treat levels as indicative until refresh.
+  • Last snapshot (~72s old) — spot 387.18 · dealers long gamma — dips tend to get bought, range/pin behavior
+  AssertionError: the GEX-substitution branch must name GEX as the source, matching
+  play-brief-intel.ts's established clause
+  ```
+- **GREEN:** `git stash apply <sha>` (not `pop`, per the shared-stash-stack convention) restored the
+  fix; `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-narrative.test.ts`
+  — 143/143 pass, Node 20.20.2.
+- `npx tsc --noEmit` (full project) — clean, no new type errors.
+
+### Blast radius
+
+`dealerPostureLine` has exactly one call site (`tradeManagerNarrativeSection`, same file, line
+~1458) and is not duplicated elsewhere in the codebase (confirmed by repo-wide grep for
+`dealerPostureLine` — every other hit is a comment referencing this same function). No other call
+site needed the same fix. The non-substituted (`"**Right now**"`) branch, and every other sibling
+"Last snapshot" usage in `play-brief-intel.ts` (which already carried their own disambiguating
+clauses), were deliberately left unchanged.
+
 ## 2026-10-21 — [FINDING, P2 0DTE panel data-correctness] 0DTE `key_supports`/`key_resistances` show a duplicated level, silently dropping the real second-best one — FIXED
 
 > **kind:** `FINDING`
