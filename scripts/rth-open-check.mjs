@@ -11,7 +11,13 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
-import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
+import {
+  createAuditClient,
+  resolveAuditDbUrl,
+  isPrivateDbUnreachableError,
+  isPrivateVpcDbUrl,
+  describeConnectError,
+} from "./pg-audit.mjs";
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
@@ -96,7 +102,9 @@ async function main() {
       failures.push(m);
       console.log(`  ✗ ${m}`);
     };
-    if (dbUrl) {
+    if (dbUrl && isPrivateVpcDbUrl(dbUrl)) {
+      console.log("  ⚠ Postgres URL is a private VPC endpoint — skipping RTH writer checks");
+    } else if (dbUrl) {
       try {
         const c = createAuditClient(dbUrl);
         await c.connect();
@@ -148,10 +156,11 @@ async function main() {
 
         await c.end();
       } catch (e) {
-        if (isPrivateDbUnreachableError(e.message)) {
-          console.log(`  ⚠ Postgres unreachable from this host — skipping RTH writer checks: ${e.message}`);
+        const detail = describeConnectError(e);
+        if (isPrivateDbUnreachableError(detail)) {
+          console.log(`  ⚠ Postgres unreachable from this host — skipping RTH writer checks: ${detail}`);
         } else {
-          fail(`Postgres RTH checks: ${e.message}`);
+          fail(`Postgres RTH checks: ${detail}`);
         }
       }
     } else {
