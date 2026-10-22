@@ -99,6 +99,13 @@ const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
 const STEAL_ATTEMPT_KEY = "zerodte-warm:steal-attempt";
 const STEAL_ATTEMPT_TTL_SEC = 30;
 
+/** Cash-RTH recovery when the scan heartbeat is past the 5m stale band (or 10m critical). */
+function scanHeartbeatNeedsWedgedRecovery(
+  hb: Awaited<ReturnType<typeof loadZeroDteScanHeartbeat>> | null
+): boolean {
+  return Boolean(hb?.stale || hb?.critical_stale);
+}
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -120,7 +127,7 @@ export async function GET(req: NextRequest) {
   let scanHeartbeat: Awaited<ReturnType<typeof loadZeroDteScanHeartbeat>> | null = null;
   if (isEtCashRth()) {
     scanHeartbeat = await loadZeroDteScanHeartbeat().catch(() => null);
-    if (scanHeartbeat?.critical_stale) {
+    if (scanHeartbeatNeedsWedgedRecovery(scanHeartbeat)) {
       const wonSteal = await sharedCacheSetNx(
         STEAL_ATTEMPT_KEY,
         { startedAt: started },
@@ -180,9 +187,9 @@ export async function GET(req: NextRequest) {
     // zerodte-warm fire logged this skip while zerodte_scan_heartbeat stayed critical_stale for
     // 30+ minutes and Cron audit query failed on main. Escalate only when the scanner heartbeat
     // is already in the watchdog's critical band; routine contention still idempotent-skips.
-    if (scanHeartbeat?.critical_stale) {
+    if (scanHeartbeatNeedsWedgedRecovery(scanHeartbeat)) {
       console.warn(
-        "[cron/zerodte-warm] heavy-cron pool full but scan heartbeat critical_stale — escalating past shared slot cap"
+        "[cron/zerodte-warm] heavy-cron pool full but scan heartbeat stale/critical — escalating past shared slot cap"
       );
       slot = {
         cronName: "zerodte-warm",
