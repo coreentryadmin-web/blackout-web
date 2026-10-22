@@ -163,20 +163,10 @@ export async function probeWriterTargetFresh(jobKey: string): Promise<WriterTarg
     }
     case "swing-discovery": {
       const { readSwingServingSnapshot } = await import("@/lib/swing/serving-lane");
-      const { todayEt } = await import("@/lib/et-date");
+      const { probeSwingDiscoveryServingSnapshot } = await import("@/lib/swing/discovery-cron-health");
       const snap = await readSwingServingSnapshot();
-      if (!snap?.asOf) return { fresh: false, detail: "swing serving snapshot missing" };
-      const ageMin = ageMinFromIso(snap.asOf);
-      if (ageMin == null) return { fresh: false, detail: "swing serving snapshot asOf invalid" };
-      const today = todayEt();
-      // Phase-anchored cron may log a transient failed handshake while the persisted snapshot
-      // from an earlier successful phase (or a still-valid carry) remains member-facing truth.
-      const maxAgeMin = snap.sessionDay === today ? 12 * 60 : 90 * 60;
-      const fresh = ageMin <= maxAgeMin;
-      return {
-        fresh,
-        detail: `swing:serving session ${snap.sessionDay} asOf ${ageMin.toFixed(1)}m ago`,
-      };
+      const probe = probeSwingDiscoveryServingSnapshot(snap);
+      return { fresh: probe.fresh, detail: probe.detail };
     }
     case "vector-bead-record": {
       const { formatEtDate } = await import("@/features/nighthawk/lib/session");
