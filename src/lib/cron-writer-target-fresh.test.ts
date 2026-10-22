@@ -48,6 +48,15 @@ test("probePgFlowAlertsFresh and the vector-bead-record probe route through the 
   assert.match(src, /signalWindowAgeMs\(tail\.time \* 1000, Date\.now\(\)\)/);
 });
 
+test("REGRESSION: swing-discovery writer-target probe reads the serving snapshot, not cron_job_runs age", () => {
+  const src = readFileSync(join(__dirname, "cron-writer-target-fresh.ts"), "utf8");
+  const caseStart = src.indexOf('case "swing-discovery": {');
+  assert.notEqual(caseStart, -1);
+  const nextCaseStart = src.indexOf('case "vector-bead-record"', caseStart);
+  const caseBody = src.slice(caseStart, nextCaseStart === -1 ? undefined : nextCaseStart);
+  assert.match(caseBody, /readSwingServingSnapshot/);
+});
+
 test("REGRESSION: the zerodte-warm writer-target probe reads the scanner heartbeat, not the earnings cache", () => {
   // 2026-09-16: this probe used to check ZERODTE_EARNINGS_KEY -- the cron route's FAST
   // synchronous sub-task, warmed on every invocation regardless of whether the HEAVY
