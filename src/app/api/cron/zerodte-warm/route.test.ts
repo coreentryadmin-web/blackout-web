@@ -24,7 +24,7 @@ test("zerodte-warm acquires a cross-replica overlap lock before dispatching", ()
   assert.match(routeSrc, /sharedCacheSetNx/, "must use the shared NX lock, not a read-then-write race");
   assert.match(
     routeSrc,
-    /const acquired = await sharedCacheSetNx\(/,
+    /let acquired = await sharedCacheSetNx\(/,
     "the acquire call must happen before dispatch, not after"
   );
   assert.match(routeSrc, /if \(!acquired\)/, "a lost race must be handled, not ignored");
@@ -94,7 +94,7 @@ test("a cross-cron concurrency slot is acquired after the overlap lock and relea
     /let slot = await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\);/,
     "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL"
   );
-  const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const overlapClaimIdx = routeSrc.indexOf("let acquired = await sharedCacheSetNx(");
   const slotIdx = routeSrc.indexOf("let slot = await acquireHeavyCronSlot(");
   const dispatchIdx = routeSrc.indexOf("const dispatchWarm = () => {");
   assert.ok(
@@ -148,12 +148,12 @@ test("force=1 is rate-limited by a minimum re-run cooldown, independent of the h
 
   assert.match(
     routeSrc,
-    /const withinCooldown = !\(await sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY,/,
-    "the cooldown claim must be atomic, not a separate read-then-write"
+    /withinCooldown = !\(await sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY,/,
+    "the routine cooldown claim must be atomic, not a separate read-then-write"
   );
 
   const cooldownIdx = routeSrc.indexOf("RERUN_COOLDOWN_KEY,");
-  const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const overlapClaimIdx = routeSrc.indexOf("let acquired = await sharedCacheSetNx(");
   const dispatchIdx = routeSrc.indexOf("void dispatchWarm();");
   assert.ok(cooldownIdx > 0 && overlapClaimIdx > 0 && dispatchIdx > 0);
   assert.ok(cooldownIdx < overlapClaimIdx, "cooldown must be checked before the overlap lock");
@@ -172,12 +172,21 @@ test("force=1 is rate-limited by a minimum re-run cooldown, independent of the h
   // inside the STEAL_ATTEMPT_KEY-guarded wedged-lock breaker below — never from the routine
   // cooldown-check path itself. Assert the del call exists only within that guarded block.
   const dels = [...routeSrc.matchAll(/sharedCacheDel\(RERUN_COOLDOWN_KEY\)/g)];
-  assert.equal(dels.length, 1, "exactly one early-release site — the wedged-lock steal, not a routine path");
-  const delIdx = dels[0].index!;
-  const wonStealIdx = routeSrc.indexOf("if (wonSteal) {");
   assert.ok(
-    wonStealIdx > 0 && delIdx > wonStealIdx && delIdx < wonStealIdx + 300,
-    "the cooldown may only be released early from inside the guarded steal block"
+    dels.length >= 2,
+    "cooldown early-release must exist in both the steal winner block and the critical_stale heal bypass"
+  );
+  const wonStealIdx = routeSrc.indexOf("if (wonSteal) {");
+  const stealDelIdx = routeSrc.indexOf("sharedCacheDel(RERUN_COOLDOWN_KEY)", wonStealIdx);
+  assert.ok(
+    wonStealIdx > 0 && stealDelIdx > wonStealIdx && stealDelIdx < wonStealIdx + 300,
+    "the steal winner must still clear a wedged cooldown key"
+  );
+  const criticalBypassIdx = routeSrc.indexOf("if (scanHeartbeatCritical)");
+  const healDelIdx = routeSrc.indexOf("sharedCacheDel(RERUN_COOLDOWN_KEY)", criticalBypassIdx);
+  assert.ok(
+    criticalBypassIdx > 0 && healDelIdx > criticalBypassIdx,
+    "critical_stale heal must bypass the 60s floor without waiting for a steal winner"
   );
 });
 
@@ -199,8 +208,8 @@ test("a force=1 call OUTSIDE the extended warm window is throttled at a much wid
   );
   assert.match(
     routeSrc,
-    /const withinCooldown = !\(await sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY,\s*\{ startedAt: started \},\s*effectiveCooldownSec\s*\)/,
-    "the cooldown claim must use effectiveCooldownSec, not the flat RERUN_COOLDOWN_SEC"
+    /withinCooldown = !\(await sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY,\s*\{ startedAt: started \},\s*effectiveCooldownSec\s*\)/,
+    "the routine cooldown claim must use effectiveCooldownSec, not the flat RERUN_COOLDOWN_SEC"
   );
 });
 
@@ -243,7 +252,7 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
   // The steal-and-clear must happen BEFORE the normal cooldown claim, not after — otherwise a
   // wedged cooldown would already have rejected the run before the steal ever ran.
   const stealBlockIdx = routeSrc.indexOf("if (isEtCashRth()) {");
-  const cooldownClaimIdx = routeSrc.indexOf("const withinCooldown = !(await sharedCacheSetNx(");
+  const cooldownClaimIdx = routeSrc.indexOf("if (scanHeartbeatCritical)");
   assert.ok(stealBlockIdx > 0 && cooldownClaimIdx > 0 && stealBlockIdx < cooldownClaimIdx);
 });
 
@@ -252,6 +261,20 @@ test("critical_stale scan heartbeat escalates past the shared heavy-cron slot ca
     routeSrc,
     /scanHeartbeat\?\.critical_stale[\s\S]*escalating past shared slot cap/,
     "must not idempotent-skip forever behind vector crons while the scanner heartbeat is critical_stale"
+  );
+});
+
+test("critical_stale scan heartbeat bypasses the rerun cooldown and retries the overlap lock once", () => {
+  assert.match(routeSrc, /const scanHeartbeatCritical = scanHeartbeat\?\.critical_stale === true/);
+  assert.match(
+    routeSrc,
+    /if \(scanHeartbeatCritical\) \{[\s\S]*sharedCacheDel\(RERUN_COOLDOWN_KEY\)/,
+    "critical band must not be rate-limited by the 60s floor"
+  );
+  assert.match(
+    routeSrc,
+    /if \(!acquired && scanHeartbeatCritical\) \{[\s\S]*sharedCacheDel\(OVERLAP_LOCK_KEY\)/,
+    "wedged or overstale overlap must be broken when the scanner heartbeat is critical"
   );
 });
 

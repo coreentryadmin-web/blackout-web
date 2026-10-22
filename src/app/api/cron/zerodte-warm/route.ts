@@ -136,14 +136,25 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const scanHeartbeatCritical = scanHeartbeat?.critical_stale === true;
+
   const effectiveCooldownSec = isEtExtendedWarmHours()
     ? RERUN_COOLDOWN_SEC
     : OFF_WINDOW_FORCE_COOLDOWN_SEC;
-  const withinCooldown = !(await sharedCacheSetNx(
-    RERUN_COOLDOWN_KEY,
-    { startedAt: started },
-    effectiveCooldownSec
-  ).catch(() => true));
+  // When the scanner heartbeat is already in the watchdog's critical band, the 60s rerun floor
+  // must not block recovery — measured live 2026-10-22: accepted handshakes every 60s still left
+  // zerodte_scan_heartbeat >10m stale because overlap/heavy-slot skips stacked with cooldown
+  // between steal-attempt winners (STEAL_ATTEMPT_KEY only clears locks once per 30s cluster-wide).
+  let withinCooldown = false;
+  if (scanHeartbeatCritical) {
+    await sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined);
+  } else {
+    withinCooldown = !(await sharedCacheSetNx(
+      RERUN_COOLDOWN_KEY,
+      { startedAt: started },
+      effectiveCooldownSec
+    ).catch(() => true));
+  }
   if (withinCooldown) {
     const payload = {
       ok: true,
@@ -154,11 +165,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const acquired = await sharedCacheSetNx(
+  let acquired = await sharedCacheSetNx(
     OVERLAP_LOCK_KEY,
     { startedAt: started },
     OVERLAP_LOCK_TTL_SEC
   ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired && scanHeartbeatCritical) {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    acquired = await sharedCacheSetNx(
+      OVERLAP_LOCK_KEY,
+      { startedAt: started },
+      OVERLAP_LOCK_TTL_SEC
+    ).catch(() => true);
+  }
   if (!acquired) {
     const payload = {
       ok: true,
