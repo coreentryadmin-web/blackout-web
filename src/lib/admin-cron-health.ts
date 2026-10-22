@@ -390,7 +390,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
         ) {
           return {
             ...health,
-            status: "warning",
+            status: "warning" as const,
             market_hours_stale: false,
             status_label: `Scanner in flight · last scan tick ${hbAgeMin}m ago (overlap lock held)`,
             meta: {
