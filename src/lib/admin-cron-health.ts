@@ -22,7 +22,12 @@ import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
-import { sharedCacheGet } from "@/lib/shared-cache";
+import { todayEt } from "@/lib/et-date";
+import { sharedCacheGet, sharedCacheGetWithTtl } from "@/lib/shared-cache";
+import { phaseRunKey, resolveScanPhase } from "@/lib/swing/scan-cadence";
+import { applySwingDiscoveryCronHealth } from "@/lib/swing/swing-discovery-cron-health";
+import { readSwingServingSnapshot } from "@/lib/swing/serving-lane";
+import type { SwingDiscoveryPhaseClaim } from "@/lib/swing/discovery-claim";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
@@ -361,6 +366,17 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   const zerodteWarmInFlight = Boolean(
     await sharedCacheGet("zerodte-warm:running").catch(() => null)
   );
+  const healthNow = new Date();
+  const swingSessionDay = todayEt(healthNow);
+  const swingPhaseWindow = resolveScanPhase(healthNow.getTime());
+  let swingPhaseClaim: SwingDiscoveryPhaseClaim | null = null;
+  if (swingPhaseWindow && isTradingDayEt(swingSessionDay)) {
+    const claim = await sharedCacheGetWithTtl<SwingDiscoveryPhaseClaim>(
+      phaseRunKey(swingSessionDay, swingPhaseWindow.phase)
+    ).catch(() => null);
+    swingPhaseClaim = claim?.value ?? null;
+  }
+  const swingServingSnapshot = await readSwingServingSnapshot().catch(() => null);
   const jobs = CRON_JOBS.map((job) => {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
 
@@ -442,6 +458,15 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
           },
         };
       }
+    }
+
+    if (job.key === "swing-discovery") {
+      return applySwingDiscoveryCronHealth(health, healthNow, {
+        sessionDay: swingSessionDay,
+        phaseWindow: swingPhaseWindow,
+        phaseClaim: swingPhaseClaim,
+        servingSnapshot: swingServingSnapshot,
+      });
     }
 
     if (job.key === "nighthawk-playbook" && latestNhJob) {
