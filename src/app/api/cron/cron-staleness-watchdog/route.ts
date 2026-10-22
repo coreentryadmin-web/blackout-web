@@ -102,8 +102,11 @@ export async function GET(req: NextRequest) {
       isInEditionWindow() ?
         snapshot.jobs.filter((j) => j.key === "nighthawk-playbook" && j.status === "stale")
       : [];
+    const swingDiscoveryStale = snapshot.jobs.filter(
+      (j) => j.key === "swing-discovery" && j.status === "stale"
+    );
     const healTargetKeys = new Set<string>();
-    const healTargets = [...rthStale, ...nhEveningStale].filter((j) => {
+    const healTargets = [...rthStale, ...nhEveningStale, ...swingDiscoveryStale].filter((j) => {
       if (!isDispatchableCron(j.key)) return false;
       if (healTargetKeys.has(j.key)) return false;
       healTargetKeys.add(j.key);
