@@ -268,3 +268,13 @@ test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan hea
     "long in-flight scans must not trip market_hours_stale before the overlap lock TTL"
   );
 });
+
+test("swing-discovery cron health can override failed handshake when serving snapshot is fresh", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(src, /"swing-discovery"/, "swing-discovery must participate in target-fresh overrides");
+  assert.match(
+    src,
+    /swing-discovery.*failed/s,
+    "failed swing-discovery handshake must be eligible for serving-snapshot override"
+  );
+});

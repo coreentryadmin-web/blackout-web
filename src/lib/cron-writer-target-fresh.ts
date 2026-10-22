@@ -181,6 +181,24 @@ export async function probeWriterTargetFresh(jobKey: string): Promise<WriterTarg
         detail: `SPY wall-history tail ${ageSec != null ? `${Math.round(ageSec)}s` : "?"} ago (${history.length} samples)`,
       };
     }
+    case "swing-discovery": {
+      const { readSwingServingSnapshot } = await import("@/lib/swing/serving-lane");
+      const { formatEtDate } = await import("@/features/nighthawk/lib/session");
+      const { swingServingSnapshotProvesDiscoveryHealthy } = await import(
+        "@/lib/swing/swing-discovery-cron-health"
+      );
+      const { CRON_JOBS } = await import("@/lib/cron-registry");
+      const job = CRON_JOBS.find((j) => j.key === "swing-discovery");
+      const maxAgeMin = job?.stale_after_min ?? 36 * 60;
+      const snap = await readSwingServingSnapshot();
+      const sessionDay = formatEtDate(new Date());
+      const probe = swingServingSnapshotProvesDiscoveryHealthy({
+        snap,
+        sessionDay,
+        maxAgeMin,
+      });
+      return { fresh: probe.fresh, detail: probe.detail };
+    }
   }
   return null;
 }
