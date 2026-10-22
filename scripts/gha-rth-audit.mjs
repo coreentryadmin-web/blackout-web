@@ -16,7 +16,12 @@
  */
 import { spawnSync } from "node:child_process";
 import { etParts, inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
-import { auditPgSsl, resolveAuditDbUrl } from "./pg-audit.mjs";
+import {
+  createAuditClient,
+  describeConnectError,
+  isTransientAuditPgError,
+  resolveAuditDbUrl,
+} from "./pg-audit.mjs";
 import { isCronRunHealthyStatus } from "./lib/rth-socket-probe.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
@@ -33,6 +38,17 @@ const failures = [];
 const { label: etLabel } = etParts();
 const rthOpen = inRthOpenWindow();
 
+const PG_RTH_MAX_ATTEMPTS = Math.max(1, Number(process.env.RTH_PG_CHECK_ATTEMPTS ?? 3) || 3);
+const CRON_HTTP_MAX_ATTEMPTS = Math.max(1, Number(process.env.RTH_CRON_HTTP_ATTEMPTS ?? 3) || 3);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableCronHttpStatus(status) {
+  return status === 408 || status === 425 || status === 429 || status === 502 || status === 503 || status === 504;
+}
+
 function run(label, cmd, args, extraEnv = {}) {
   console.log(`\n── ${label} ──`);
   const r = spawnSync(cmd, args, {
@@ -41,6 +57,52 @@ function run(label, cmd, args, extraEnv = {}) {
   });
   if (r.status !== 0) failures.push(label);
   return r.status === 0;
+}
+
+async function runPostgresRthWriterQueries(c, tradingDay) {
+  const q = async (sql) => (await c.query(sql)).rows;
+  const lines = [];
+  const errs = [];
+
+  if (tradingDay) {
+    const eval20 = (await q(
+      `SELECT COUNT(*)::int AS n FROM cron_job_runs
+       WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+    ))[0].n;
+    if (eval20 > 0) lines.push(`spx-evaluate ok in last 20m (${eval20})`);
+    else errs.push("spx-evaluate: no ok run in last 20m");
+
+    const regime20 = (await q(
+      `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
+    ))[0].n;
+    if (regime20 > 0) lines.push(`market_regime writes last 20m: ${regime20}`);
+    else errs.push("market_regime: no writes in last 20m");
+
+    const stale = await q(
+      `SELECT job_key, status, started_at FROM cron_job_runs
+       WHERE job_key IN ('heatmap-warm','flow-ingest')
+       AND started_at > NOW() - INTERVAL '30 minutes'
+       AND status = 'ok'`
+    );
+    if (stale.length >= 1) {
+      lines.push(`Writer crons active (${stale.map((r) => r.job_key).join(", ")})`);
+    } else {
+      errs.push(`Writer crons thin in last 30m — only ${stale.length} ok runs`);
+    }
+  }
+
+  const dc = await q(
+    `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
+  );
+  const latest = dc[0];
+  if (isCronRunHealthyStatus(latest?.status)) {
+    lines.push(`data-correctness latest run ${latest.status}`);
+  } else {
+    errs.push(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
+  }
+
+  if (errs.length) throw new Error(errs.join("; "));
+  return lines;
 }
 
 async function postgresRthChecks() {
@@ -64,79 +126,46 @@ async function postgresRthChecks() {
     );
   }
 
-  try {
-    const pg = await import("pg");
-    const c = new pg.default.Client({
-      connectionString: dbUrl,
-      ssl: auditPgSsl(dbUrl),
-    });
-    await c.connect();
+  for (let attempt = 1; attempt <= PG_RTH_MAX_ATTEMPTS; attempt++) {
+    const c = createAuditClient(dbUrl);
+    try {
+      await c.connect();
+      const lines = await runPostgresRthWriterQueries(c, tradingDay);
+      for (const line of lines) console.log(`  ✓ ${line}`);
+      await c.end();
+      return;
+    } catch (e) {
+      try {
+        await c.end();
+      } catch {
+        /* ignore */
+      }
+      const detail = describeConnectError(e);
+      const transient = isTransientAuditPgError(e);
+      const isConfig =
+        /password authentication failed|no pg_hba\.conf entry|SASL|ENOTFOUND|ECONNREFUSED|self.signed certificate|does not exist/i.test(
+          detail
+        ) || transient;
 
-    const q = async (sql) => (await c.query(sql)).rows;
-    const ok = (m) => console.log(`  ✓ ${m}`);
-    const fail = (m) => {
-      failures.push(`postgres: ${m}`);
-      console.log(`  ✗ ${m}`);
-    };
+      if (transient && attempt < PG_RTH_MAX_ATTEMPTS) {
+        console.log(
+          `  ⚠ Postgres transient error (attempt ${attempt}/${PG_RTH_MAX_ATTEMPTS}): ${detail} — retrying…`
+        );
+        await sleep(1500 * attempt);
+        continue;
+      }
 
-    if (tradingDay) {
-      const eval20 = (await q(
-        `SELECT COUNT(*)::int AS n FROM cron_job_runs
-         WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-      ))[0].n;
-      if (eval20 > 0) ok(`spx-evaluate ok in last 20m (${eval20})`);
-      else fail("spx-evaluate: no ok run in last 20m");
+      if (isConfig) {
+        console.log(`  ⚠ Postgres UNAVAILABLE — checks SKIPPED, not failed: ${detail}`);
+        console.log(
+          "     This is the audit's own DATABASE_PUBLIC_URL/DATABASE_URL secret or a proxy blip, not a production data fault."
+        );
+        return;
+      }
 
-      const regime20 = (await q(
-        `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
-      ))[0].n;
-      if (regime20 > 0) ok(`market_regime writes last 20m: ${regime20}`);
-      else fail("market_regime: no writes in last 20m");
-
-      const stale = await q(
-        `SELECT job_key, status, started_at FROM cron_job_runs
-         WHERE job_key IN ('heatmap-warm','flow-ingest')
-         AND started_at > NOW() - INTERVAL '30 minutes'
-         AND status = 'ok'`
-      );
-      if (stale.length >= 1) ok(`Writer crons active (${stale.map((r) => r.job_key).join(", ")})`);
-      else fail(`Writer crons thin in last 30m — only ${stale.length} ok runs`);
-    }
-
-    const dc = await q(
-      `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
-    );
-    const latest = dc[0];
-    if (isCronRunHealthyStatus(latest?.status)) {
-      ok(`data-correctness latest run ${latest.status}`);
-    } else {
-      fail(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
-    }
-
-    await c.end();
-  } catch (e) {
-    // CONNECT/AUTH failures are a CONFIG problem with this workflow's own credential, not evidence
-    // about production data — so they are reported loudly but do not turn the audit RED.
-    //
-    // The 2026-08-12 run died on `password authentication failed for user "postgres"`, i.e. the
-    // DATABASE_PUBLIC_URL secret is stale. Nothing in the repo can fix that, so leaving it as a
-    // failure pins the monitor red forever for a reason no code change can clear — the same trap
-    // the INFRA section of zerodte-e2e-suite already avoids by SKIPPING (never RED) when its AWS
-    // creds are absent or placeholder. Every check INSIDE the try still fails normally; only the
-    // inability to run them at all is downgraded.
-    const msg = e?.message ?? String(e);
-    const isConfig =
-      /password authentication failed|no pg_hba\.conf entry|SASL|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|self.signed certificate|does not exist/i.test(
-        msg
-      );
-    if (isConfig) {
-      console.log(`  ⚠ Postgres UNAVAILABLE — checks SKIPPED, not failed: ${msg}`);
-      console.log(
-        "     This is the audit's own DATABASE_PUBLIC_URL/DATABASE_URL secret, not a production data fault."
-      );
-    } else {
-      failures.push(`postgres: ${msg}`);
-      console.log(`  ✗ Postgres: ${msg}`);
+      failures.push(`postgres: ${detail}`);
+      console.log(`  ✗ Postgres: ${detail}`);
+      return;
     }
   }
 }
@@ -154,8 +183,22 @@ async function cronHttpChecks() {
 
   for (const { path, label } of routes) {
     try {
-      const res = await fetch(`${BASE}${path}`, { headers: H });
-      const json = await res.json().catch(() => ({}));
+      let res = null;
+      let json = {};
+      for (let attempt = 1; attempt <= CRON_HTTP_MAX_ATTEMPTS; attempt++) {
+        res = await fetch(`${BASE}${path}`, { headers: H });
+        json = await res.json().catch(() => ({}));
+        if (res.status !== 200 && res.status !== 202 && isRetryableCronHttpStatus(res.status)) {
+          if (attempt < CRON_HTTP_MAX_ATTEMPTS) {
+            console.log(
+              `  ⚠ ${label} → HTTP ${res.status} (attempt ${attempt}/${CRON_HTTP_MAX_ATTEMPTS}) — retrying…`
+            );
+            await sleep(2000 * attempt);
+            continue;
+          }
+        }
+        break;
+      }
       // 202 is a SUCCESS, and specifically a "dispatched, no verdict yet" success.
       //
       // /api/cron/data-correctness returns `202 {ok:true, status:"accepted"}` when it fires the
