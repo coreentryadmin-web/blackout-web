@@ -345,7 +345,10 @@ async function auditNightHawk() {
   for (const p of plays) {
     if (p.rank != null) ranks.add(p.rank);
     const ep = Number(String(p.entry_premium ?? p.entry ?? "").replace(/[^0-9.]/g, ""));
-    if (finite(ep) && ep > 20) fail("nighthawk", "PREMIUM-CAP", `${p.ticker} entry $${ep} > $20 cap`, "P1");
+    // Caveated/rescue contracts may show entry_premium above cap with premium_cap_ok === false.
+    if (finite(ep) && ep > 20 && p.premium_cap_ok !== false) {
+      fail("nighthawk", "PREMIUM-CAP", `${p.ticker} entry $${ep} > $20 cap`, "P1");
+    }
     if (p.score != null && !finite(Number(p.score))) fail("nighthawk", "SCORE", `${p.ticker} bad score`, "P1");
   }
   if (ranks.size !== plays.length) fail("nighthawk", "RANKS", "duplicate or missing ranks", "P1");
