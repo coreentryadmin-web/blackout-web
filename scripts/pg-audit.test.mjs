@@ -5,6 +5,7 @@ import {
   isStaleAuditDbAuthError,
   describeConnectError,
   isPrivateVpcDbUrl,
+  isTransientAuditPgError,
 } from "./pg-audit.mjs";
 
 describe("pg-audit helpers", () => {
@@ -13,6 +14,12 @@ describe("pg-audit helpers", () => {
     assert.equal(isPrivateDbUnreachableError("connect ETIMEDOUT"), true);
     assert.equal(isPrivateDbUnreachableError("Connection terminated unexpectedly"), true);
     assert.equal(isPrivateDbUnreachableError("password authentication failed"), false);
+  });
+
+  it("detects transient audit PG session errors (proxy blips)", () => {
+    assert.equal(isTransientAuditPgError(new Error("Connection terminated unexpectedly")), true);
+    assert.equal(isTransientAuditPgError(new Error("read ECONNRESET")), true);
+    assert.equal(isTransientAuditPgError(new Error("spx-evaluate: no ok run in last 20m during RTH")), false);
   });
 
   it("detects stale audit DB auth errors", () => {
