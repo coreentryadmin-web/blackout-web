@@ -211,7 +211,7 @@ test("a force=1 call OUTSIDE the extended warm window is throttled at a much wid
 // attempt is silently blocked for up to the lock's 900s TTL regardless of how stale the scan
 // heartbeat gets. Measured live: zerodte_scan_heartbeat stuck 50+ minutes while cron_job_runs
 // kept logging ok/skipped every cycle.
-test("a critical_stale scan heartbeat during cash RTH steals and clears both wedged locks before the normal claim", () => {
+test("a stale or critical_stale scan heartbeat during cash RTH steals and clears both wedged locks before the normal claim", () => {
   assert.match(
     routeSrc,
     /import \{ isEtCashRth, isEtExtendedWarmHours \} from "@\/lib\/et-market-hours"/,
@@ -222,10 +222,11 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
     /import \{ loadZeroDteScanHeartbeat \} from "@\/lib\/play-engine-heartbeat"/
   );
   assert.match(routeSrc, /if \(isEtCashRth\(\)\) \{/);
-  assert.match(routeSrc, /scanHeartbeat\?\.critical_stale/);
+  assert.match(routeSrc, /function scanHeartbeatNeedsWedgedRecovery/);
+  assert.match(routeSrc, /hb\?\.stale \|\| hb\?\.critical_stale/);
 
   // The steal attempt must itself be NX-atomic (STEAL_ATTEMPT_KEY) so exactly one concurrent
-  // invocation performs the clear, even if many replicas observe critical_stale at once.
+  // invocation performs the clear, even if many replicas observe stale/critical at once.
   assert.match(routeSrc, /STEAL_ATTEMPT_KEY = "zerodte-warm:steal-attempt"/);
   assert.match(
     routeSrc,
@@ -247,11 +248,11 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
   assert.ok(stealBlockIdx > 0 && cooldownClaimIdx > 0 && stealBlockIdx < cooldownClaimIdx);
 });
 
-test("critical_stale scan heartbeat escalates past the shared heavy-cron slot cap when both pool slots are held", () => {
+test("stale scan heartbeat escalates past the shared heavy-cron slot cap when both pool slots are held", () => {
   assert.match(
     routeSrc,
-    /scanHeartbeat\?\.critical_stale[\s\S]*escalating past shared slot cap/,
-    "must not idempotent-skip forever behind vector crons while the scanner heartbeat is critical_stale"
+    /scanHeartbeatNeedsWedgedRecovery\(scanHeartbeat\)[\s\S]*escalating past shared slot cap/,
+    "must not idempotent-skip forever behind vector crons while the scanner heartbeat is stale or critical_stale"
   );
 });
 
