@@ -16,7 +16,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { etParts, inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
-import { auditPgSsl, resolveAuditDbUrl } from "./pg-audit.mjs";
+import { auditPgSsl, isPrivateDbUnreachableError, resolveAuditDbUrl } from "./pg-audit.mjs";
 import { isCronRunHealthyStatus } from "./lib/rth-socket-probe.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
@@ -126,7 +126,8 @@ async function postgresRthChecks() {
     // inability to run them at all is downgraded.
     const msg = e?.message ?? String(e);
     const isConfig =
-      /password authentication failed|no pg_hba\.conf entry|SASL|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|self.signed certificate|does not exist/i.test(
+      isPrivateDbUnreachableError(msg) ||
+      /password authentication failed|no pg_hba\.conf entry|SASL|self.signed certificate|does not exist/i.test(
         msg
       );
     if (isConfig) {
@@ -139,6 +140,17 @@ async function postgresRthChecks() {
       console.log(`  ✗ Postgres: ${msg}`);
     }
   }
+}
+
+/** One retry on origin 502/503 (ECS rollouts often return a single blip). */
+async function fetchCronRoute(path, headers) {
+  const url = `${BASE}${path}`;
+  let res = await fetch(url, { headers });
+  if ((res.status === 502 || res.status === 503) && !process.env.GHA_RTH_AUDIT_NO_CRON_RETRY) {
+    await new Promise((r) => setTimeout(r, 2500));
+    res = await fetch(url, { headers });
+  }
+  return res;
 }
 
 async function cronHttpChecks() {
@@ -154,7 +166,7 @@ async function cronHttpChecks() {
 
   for (const { path, label } of routes) {
     try {
-      const res = await fetch(`${BASE}${path}`, { headers: H });
+      const res = await fetchCronRoute(path, H);
       const json = await res.json().catch(() => ({}));
       // 202 is a SUCCESS, and specifically a "dispatched, no verdict yet" success.
       //

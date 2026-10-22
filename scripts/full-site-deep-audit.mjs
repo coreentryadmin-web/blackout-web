@@ -8,6 +8,9 @@
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
+/** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
+const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
+
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET ?? "";
@@ -345,7 +348,14 @@ async function auditNightHawk() {
   for (const p of plays) {
     if (p.rank != null) ranks.add(p.rank);
     const ep = Number(String(p.entry_premium ?? p.entry ?? "").replace(/[^0-9.]/g, ""));
-    if (finite(ep) && ep > 20) fail("nighthawk", "PREMIUM-CAP", `${p.ticker} entry $${ep} > $20 cap`, "P1");
+    if (finite(ep) && ep > NIGHTHAWK_PREMIUM_CAP_PER_SHARE) {
+      fail(
+        "nighthawk",
+        "PREMIUM-CAP",
+        `${p.ticker} entry $${ep} > $${NIGHTHAWK_PREMIUM_CAP_PER_SHARE}/share cap`,
+        "P1"
+      );
+    }
     if (p.score != null && !finite(Number(p.score))) fail("nighthawk", "SCORE", `${p.ticker} bad score`, "P1");
   }
   if (ranks.size !== plays.length) fail("nighthawk", "RANKS", "duplicate or missing ranks", "P1");
