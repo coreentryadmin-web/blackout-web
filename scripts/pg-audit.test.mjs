@@ -11,6 +11,7 @@ describe("pg-audit helpers", () => {
   it("detects private RDS unreachable errors", () => {
     assert.equal(isPrivateDbUnreachableError("read ECONNRESET"), true);
     assert.equal(isPrivateDbUnreachableError("connect ETIMEDOUT"), true);
+    assert.equal(isPrivateDbUnreachableError("Connection terminated unexpectedly"), true);
     assert.equal(isPrivateDbUnreachableError("password authentication failed"), false);
   });
 
