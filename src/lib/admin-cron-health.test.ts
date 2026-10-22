@@ -246,6 +246,16 @@ test("buildCronHealthSnapshot sources its runs_24h aggregate from the time-bound
 // nothing read it until this fix. Unlike spx-evaluate's heartbeat cross-check (which only
 // escalates when the cron_job_runs handshake ALSO looks stale), zerodte-warm's must not gate on
 // that handshake first, since that signal is the known-unreliable one here.
+test("buildCronHealthSnapshot writer-target override includes swing-discovery and failed handshakes", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(src, /"swing-discovery",/, "phase-anchored swing writer must be target-fresh probed");
+  assert.match(
+    src,
+    /health\.status !== "failed"/,
+    "a failed cron_job_runs row must still be eligible for writer-target freshness override"
+  );
+});
+
 test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan heartbeat, not just cron_job_runs", () => {
   const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
   assert.match(

@@ -535,13 +535,20 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     "heatmap-warm",
     "desk-warm",
     "zerodte-warm",
+    "swing-discovery",
     "uw-cache-refresh",
     "vector-bead-record",
     "vector-walls-warm",
   ]);
   await Promise.all(
     jobs.map(async (health, index) => {
-      if (!health.market_hours_stale && health.status !== "stale") return;
+      if (
+        !health.market_hours_stale &&
+        health.status !== "stale" &&
+        health.status !== "failed"
+      ) {
+        return;
+      }
       if (!TARGET_FRESH_OVERRIDE_KEYS.has(health.key)) return;
       const { probeWriterTargetFresh } = await import("@/lib/cron-writer-target-fresh");
       const probe = await probeWriterTargetFresh(health.key);

@@ -161,6 +161,27 @@ export async function probeWriterTargetFresh(jobKey: string): Promise<WriterTarg
         detail: `gex-positioning:SPY asof ${ageMin != null ? `${ageMin.toFixed(1)}m` : "?"} ago`,
       };
     }
+    case "swing-discovery": {
+      const { readSwingServingSnapshot } = await import("@/lib/swing/serving-lane");
+      const { todayEt } = await import("@/lib/et-date");
+      const snap = await readSwingServingSnapshot();
+      if (!snap?.asOf || !snap.sessionDay) {
+        return { fresh: false, detail: "swing:serving snapshot missing" };
+      }
+      const today = todayEt();
+      const ageMin = ageMinFromIso(snap.asOf);
+      // Phase-anchored cron: handshake rows can read failed/skipped between windows while the
+      // member horizons lane still serves this Redis snapshot (cache-reader rule).
+      const sameSession = snap.sessionDay === today;
+      const maxAgeMin = 8 * 60;
+      const fresh = sameSession && ageMin != null && ageMin <= maxAgeMin;
+      return {
+        fresh,
+        detail: sameSession
+          ? `swing:serving ${snap.sessionDay} asof ${ageMin != null ? `${ageMin.toFixed(1)}m` : "?"} ago`
+          : `swing:serving session ${snap.sessionDay} (today ${today})`,
+      };
+    }
     case "vector-bead-record": {
       const { formatEtDate } = await import("@/features/nighthawk/lib/session");
       const { loadSessionWallHistory } = await import("@/features/vector/lib/vector-wall-persist");
