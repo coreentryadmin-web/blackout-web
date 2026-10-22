@@ -76,6 +76,15 @@ export function isPrivateDbUnreachableError(message) {
   );
 }
 
+/** Abrupt proxy/RDS drops mid-session — common on GHA → public DATABASE_PUBLIC_URL (RTH open check 2026-10-22). */
+export function isTransientPostgresAuditError(message) {
+  const s = String(message ?? "");
+  return (
+    isPrivateDbUnreachableError(s) ||
+    /terminated unexpectedly|connection terminated|server closed the connection unexpectedly/i.test(s)
+  );
+}
+
 /** Stale GitHub/env DATABASE_PUBLIC_URL (wrong user/password) — not a prod outage. */
 export function isStaleAuditDbAuthError(message) {
   return /password authentication failed/i.test(String(message ?? ""));
