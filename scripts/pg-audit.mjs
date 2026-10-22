@@ -87,7 +87,7 @@ export function isTransientAuditPgError(err) {
 
 /** Stale GitHub/env DATABASE_PUBLIC_URL (wrong user/password) — not a prod outage. */
 export function isStaleAuditDbAuthError(message) {
-  return /password authentication failed/i.test(String(message ?? ""));
+  return /password authentication failed|no pg_hba\.conf entry|SASL/i.test(String(message ?? ""));
 }
 
 /** True when the URL targets the private ECS/RDS proxy (not reachable from GHA / cloud agents). */

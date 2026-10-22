@@ -27,6 +27,7 @@ describe("pg-audit helpers", () => {
       isStaleAuditDbAuthError('password authentication failed for user "postgres"'),
       true
     );
+    assert.equal(isStaleAuditDbAuthError("no pg_hba.conf entry for host"), true);
     assert.equal(isStaleAuditDbAuthError("read ECONNRESET"), false);
   });
 

@@ -16,8 +16,14 @@
  */
 import { spawnSync } from "node:child_process";
 import { etParts, inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
-import { auditPgSsl, resolveAuditDbUrl } from "./pg-audit.mjs";
-import { isCronRunHealthyStatus } from "./lib/rth-socket-probe.mjs";
+import {
+  auditPgSsl,
+  describeConnectError,
+  isStaleAuditDbAuthError,
+  isTransientAuditPgError,
+  resolveAuditDbUrl,
+} from "./pg-audit.mjs";
+import { isCronRunHealthyStatus, probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
 const force = process.argv.includes("--force");
@@ -124,15 +130,11 @@ async function postgresRthChecks() {
     // the INFRA section of zerodte-e2e-suite already avoids by SKIPPING (never RED) when its AWS
     // creds are absent or placeholder. Every check INSIDE the try still fails normally; only the
     // inability to run them at all is downgraded.
-    const msg = e?.message ?? String(e);
-    const isConfig =
-      /password authentication failed|no pg_hba\.conf entry|SASL|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|self.signed certificate|does not exist/i.test(
-        msg
-      );
-    if (isConfig) {
+    const msg = describeConnectError(e);
+    if (isTransientAuditPgError(e) || isStaleAuditDbAuthError(msg)) {
       console.log(`  ⚠ Postgres UNAVAILABLE — checks SKIPPED, not failed: ${msg}`);
       console.log(
-        "     This is the audit's own DATABASE_PUBLIC_URL/DATABASE_URL secret, not a production data fault."
+        "     Transient proxy/connect blip or stale audit DATABASE_PUBLIC_URL — not treated as a prod data fault."
       );
     } else {
       failures.push(`postgres: ${msg}`);
@@ -152,7 +154,34 @@ async function cronHttpChecks() {
     { path: "/api/cron/socket-health", label: "socket-health" },
   ];
 
+  const { mins: etMins } = etParts();
+  const afterOpen930 = etMins >= 9 * 60 + 30;
+
   for (const { path, label } of routes) {
+    if (label === "socket-health") {
+      const socketResult = await probeOptionsSocketWithRetries({
+        afterOpen930,
+        fetchSocketHealth: async () => {
+          const res = await fetch(`${BASE}${path}`, { headers: H });
+          const body = await res.json().catch(() => ({}));
+          return { status: res.status, body };
+        },
+        onRetry: (attempt, detail) => {
+          console.log(`  ⚠ ${label} (attempt ${attempt}/3): ${detail} — retrying…`);
+        },
+      });
+      if (socketResult.preOpenWarn) {
+        console.log(`  ⚠ ${label}: ${socketResult.preOpenWarn}`);
+      } else if (socketResult.failure) {
+        failures.push(`${label}: ${socketResult.failure.replace(/^options-socket:\s*/, "")}`);
+        console.log(`  ✗ ${label} → ${socketResult.failure}`);
+      } else {
+        const detail = socketResult.successDetail ? ` (${socketResult.successDetail})` : "";
+        console.log(`  ✓ ${label} → ok${detail}`);
+      }
+      continue;
+    }
+
     try {
       const res = await fetch(`${BASE}${path}`, { headers: H });
       const json = await res.json().catch(() => ({}));
@@ -186,11 +215,6 @@ async function cronHttpChecks() {
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
         failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
         console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
-      } else if (label === "socket-health" && json.ok === false) {
-        const opt = json.websockets?.options?.detail ?? "options unhealthy";
-        const luld = json.websockets?.stocks_luld?.detail ?? "";
-        failures.push(`${label}: ${opt}${luld ? `; LULD: ${luld}` : ""}`);
-        console.log(`  ✗ ${label} → ${opt}`);
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
