@@ -22,6 +22,7 @@ import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
+import { sharedCacheGet } from "@/lib/shared-cache";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
@@ -354,6 +355,12 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
 
   const playHb = await loadPlayEngineHeartbeat();
   const zeroDteScanHb = await loadZeroDteScanHeartbeat();
+  // Must match OVERLAP_LOCK_KEY in src/app/api/cron/zerodte-warm/route.ts — held for the whole
+  // background scan+snapshot chain. Heartbeat ticks only after scanZeroDteBoard() returns, so a
+  // legitimately long in-flight scan can exceed the 10m critical_stale window without being a stall.
+  const zerodteWarmInFlight = Boolean(
+    await sharedCacheGet("zerodte-warm:running").catch(() => null)
+  );
   const jobs = CRON_JOBS.map((job) => {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
 
@@ -375,6 +382,24 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       const hbAgeMin = zeroDteScanHb.age_ms != null ? Math.round(zeroDteScanHb.age_ms / 60_000) : null;
       const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
       if (!offWindow && hbAgeMin != null && (zeroDteScanHb.stale || zeroDteScanHb.critical_stale)) {
+        const IN_FLIGHT_GRACE_MIN = 18;
+        if (
+          zerodteWarmInFlight &&
+          zeroDteScanHb.critical_stale &&
+          hbAgeMin < IN_FLIGHT_GRACE_MIN
+        ) {
+          return {
+            ...health,
+            status: "warning",
+            market_hours_stale: false,
+            status_label: `Scanner in flight · last scan tick ${hbAgeMin}m ago (overlap lock held)`,
+            meta: {
+              ...(health.meta ?? {}),
+              zerodte_scan_heartbeat: zeroDteScanHb,
+              zerodte_warm_in_flight: true,
+            },
+          };
+        }
         const overrideStatus = zeroDteScanHb.critical_stale ? ("stale" as const) : ("warning" as const);
         return {
           ...health,

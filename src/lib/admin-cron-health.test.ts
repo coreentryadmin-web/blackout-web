@@ -262,4 +262,9 @@ test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan hea
   // cron_job_runs age (that would never fire for this specific blind spot).
   assert.match(block, /zeroDteScanHb\.stale \|\| zeroDteScanHb\.critical_stale/);
   assert.doesNotMatch(block, /cronStale/);
+  assert.match(
+    block,
+    /zerodteWarmInFlight/,
+    "long in-flight scans must not trip market_hours_stale before the overlap lock TTL"
+  );
 });
