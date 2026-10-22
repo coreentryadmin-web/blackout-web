@@ -76,6 +76,15 @@ export function isPrivateDbUnreachableError(message) {
   );
 }
 
+/** Transient proxy/PgBouncer blips — safe to retry or skip audit checks when the host cannot hold a session. */
+export function isTransientAuditPgError(err) {
+  const msg = describeConnectError(err);
+  if (isPrivateDbUnreachableError(msg)) return true;
+  return /connection terminated|server login has been failing|too many clients|remaining connection slots/i.test(
+    msg
+  );
+}
+
 /** Stale GitHub/env DATABASE_PUBLIC_URL (wrong user/password) — not a prod outage. */
 export function isStaleAuditDbAuthError(message) {
   return /password authentication failed/i.test(String(message ?? ""));
