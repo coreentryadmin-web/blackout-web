@@ -71,7 +71,7 @@ export function describeConnectError(e) {
 
 /** True when Postgres is unreachable from this host (private RDS / cloud agent sandbox). */
 export function isPrivateDbUnreachableError(message) {
-  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|self.signed|certificate/i.test(
+  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|self.signed|certificate|Connection terminated unexpectedly/i.test(
     String(message ?? "")
   );
 }
