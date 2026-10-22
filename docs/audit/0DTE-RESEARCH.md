@@ -1090,6 +1090,103 @@ on the specific cohort that matters is not enough to act on unilaterally. Flaggi
 grows (`--since=2026-08-25 --json`, no flags needed — it re-derives the window from live data
 every run) before treating either number as settled.
 
+## E7 — "catch bangers like Swift" — operator mandate 2026-10-22, continuing/in-progress
+
+**Context.** Operator directive after seeing a Discord #-swiftx recap (2026-10-21, 22-0 claimed,
+`$XSP 776P +2140%`, `$SPY 771C +414.81%`, `$NVDA 220C +361.54%`, etc.): "Make catching setups
+like these a priority... investigate, implement, test, and keep improving... Do not manufacture
+bangers by loosening risk controls, cherry-picking winners, or using hindsight." This continues
+the 2026-10-20 Swift-comparison work (`zerodte-swift-comparison.mjs`,
+`docs/audit/history/swift-trades/`) on a SECOND, independent real session day — not a restart.
+
+### Step 1 — transcribed + classified a second real session (2026-10-21)
+
+`docs/audit/history/swift-trades/2026-10-21.json` — 21 of the stated 22 trades (the screenshot
+shows a horizontal rule directly above its header suggesting one row was cropped off top; the
+missing 22nd trade is NOT fabricated/guessed, flagged in the file's own `note`). No exact
+alert/exit timestamps exist in this data source (same disclosed limitation as 2026-10-19) — the
+existing script's price-match-window proxy is used instead of a guess.
+
+Ran the existing `zerodte-swift-comparison.mjs` (no changes needed — same tool, second real day):
+
+| Classification | n (18 0DTE trades, 3 out-of-scope non-0DTE excluded) |
+|---|---|
+| COMMITTED (NH traded the same ticker/direction, real timing at/before Swift's window) | 7 |
+| GATE_REJECT (real candidate, rejected by a named gate) | 9 |
+| DISCOVERY_MISS | 2 (both XSP) |
+
+Matches the 2026-10-19 session's core conclusion on a second, independent day: **discovery and
+timing are essentially never the problem** (DISCOVERY_MISS 0/13 then 2/18, and the 2 here are a
+single root cause, see below). The mix of COMMITTED vs GATE_REJECT shifted (39%/50% here vs
+15%/85% on 10-19) — both real, both legitimate, different days.
+
+### Step 2 — XSP DISCOVERY_MISS run to ground: a real data absence, not a code gap
+
+Checked (not guessed) whether XSP is excluded from Night Hawk's scan universe: it is NOT — no
+ticker allowlist gates FLOW discovery, and XSP appears in the local flow-history archive on 3 of
+5 recently-sampled days (10-14, 10-15, 10-16). Collected the previously-missing 2026-10-19/20/21
+flow-history archives (`zerodte-history-collect.mjs --restart`, 71 real UW pages, 5180 new rows)
+and checked 2026-10-21 directly: **UW emitted exactly ONE XSP alert all session — a 29-DTE,
+$800-strike call, nothing resembling the 0DTE 776-strike Swift traded.** No 0DTE XSP flow signal
+existed that day for any discovery pipeline to find. Closed, not actionable from this side.
+
+### Step 3 — gate-rejection pattern: `min_dominance` and `score_floor`/`thesis_rank_reject` recur
+
+Gate codes across the 9 GATE_REJECT trades (SPX ×6, AMD ×3): `min_dominance` appears on both
+tickers (SPX 5-8x per cluster, AMD 2x); AMD's dominant codes are actually `score_floor`×9 and
+`thesis_rank_reject`×9 (plus `max_itm_pct`×5), a different profile than SPX's min_dominance-heavy
+one. `min_dominance` was already identified as the single highest-raw-count gate on 2026-10-19
+(QQQ/SPX/SPY) and real-cost A/B tested then as **INCONCLUSIVE** (TRAIN confirmed the gate,
+VALIDATION n=19 — one short of the n=20 trust bar — pointed the opposite direction;
+`zerodte-min-dominance-real-cost-ab.mjs`, FINDINGS.md 2026-10-20). Re-ran that same script
+(unmodified) with the newly-collected 10-20/10-21 archives in the window, `--days=24`:
+
+| | TRAIN (n=40 PASS / 13 REJECT) | VALIDATION — held out (n=40 PASS / 13 REJECT) |
+|---|---|---|
+| PASS: win rate / net expectancy | 50.0% / +6.13% | 35.0% / -0.75% |
+| REJECT_MIN_DOMINANCE: win rate / net expectancy | 23.1% / +0.97% | 15.4% / **-12.10%** |
+| Verdict | INSUFFICIENT DATA (REJECT n=13 < 20) | INSUFFICIENT DATA (REJECT n=13 < 20) |
+
+**This is a real shift from the 2026-10-20 result, not a repeat.** The TRAIN/VALIDATION
+*disagreement* that made the prior run inconclusive is GONE — REJECT now grades worse than PASS
+in BOTH halves (lower win rate, lower/negative net expectancy both times), the gate-confirming
+direction. Still formally INSUFFICIENT DATA because REJECT's own population (n=13/half) is below
+the standing n=20 trust bar in this day window — PASS hit the `--max-per-half` cap (its true
+population is larger), REJECT did not. Relaunched with `--days=40 --max-per-half=60` to try to
+clear REJECT past n=20 on real additional history — **result pending, check the next checkpoint
+entry below before trusting a verdict off this one.** No gate changed either way yet.
+
+### Step 4 — contract-selection on COMMITTED trades: NOT a tunable "be more aggressive" knob
+
+On the 7 COMMITTED trades (SPY×5, NVDA, AAPL), Night Hawk traded the SAME ticker/direction but a
+materially different, less-leveraged strike (e.g. SPY 775C vs Swift's 771/772/773C; NVDA 217.5C
+vs Swift's 220C) and closed for single-digit/teens % via the ratchet/trim_scale floor instead of
+riding to 200-400%+. Traced WHY: `board.ts`'s FLOW-origin `top_strike` is the strike with the
+MAXIMUM aggression-weighted real premium among the dominant side's own options-flow prints
+(`board.ts` ~line 1264-1277) — it is literally "trade where the real institutional flow money
+concentrated," not a deliberate conservative/ITM preference. Swift's strikes landed at DIFFERENT
+levels than where the flow concentrated that day. This means "pick a cheaper/more-OTM strike" is
+not a parameter to tune on the existing FLOW engine — it would require a genuinely separate
+strategy (e.g. an always-ATM 0DTE lane independent of flow concentration), a materially bigger
+build than a threshold change, and — per the operator's own "do not manufacture bangers" rule —
+one that must be proven across many real days (most 0DTE ATM lottos expire near worthless) before
+shipping, not inferred from these 7 winning examples. Logged as a candidate NEXT EXPERIMENT
+(a dedicated, real-cost, out-of-sample ATM-vs-flow-strike A/B), not attempted today. Also note:
+`SETUP_MAX_ITM_PCT=2`/`RUNNER_SETUP_MAX_OTM_PCT` already bound the FLOW strike pick on BOTH sides
+(reject too-deep-ITM AND too-far-OTM) — the engine already avoids the most boring, lowest-leverage
+contracts; it is not unconstrained toward conservatism.
+
+### Status / next checkpoint
+
+Not solved. Checkpoints continue in `docs/audit/nighthawk-0dte-live-journal.json` as this
+continues across the standing Night Hawk 0DTE trigger cadence. Open threads: (a) the re-run
+`min_dominance` A/B result (in progress), (b) AMD's `score_floor`/`thesis_rank_reject`/
+`max_itm_pct` cluster — `score_floor` already has a SEPARATE, orthogonal finding worth
+connecting (E6 below: an *INVERTED* score-vs-win-rate relationship on 28 real sessions, re-run
+2026-09-17) — worth checking whether that inversion explains any of AMD's rejections, (c) the
+ATM-vs-flow-strike contract-selection experiment (not yet started, real-cost/out-of-sample
+required before any code change).
+
 ## Edge cases / scenarios still to simulate
 VIX-regime buckets; trend-day vs range-day; fade-the-open vs follow; gamma-regime (trade toward the
 flip / avoid pinned-to-wall); exit-engine replication vs hold-to-close; SPX/NDX index 0DTE; whole-market
