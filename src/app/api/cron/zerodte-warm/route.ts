@@ -156,6 +156,9 @@ export async function GET(req: NextRequest) {
     // cooldown every 60s without scanZeroDteBoard finishing) must still recover during
     // critical_stale — measured 2026-10-22: cron-audit query RED while scan heartbeat >10m stale.
     if (scanHeartbeat?.critical_stale) {
+      console.warn(
+        "[cron/zerodte-warm] cooldown active but scan heartbeat critical_stale — bypassing rerun floor"
+      );
       await sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined);
     } else {
       const payload = {
@@ -168,23 +171,30 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  let acquired = await sharedCacheSetNx(
+  let overlapAcquired = await sharedCacheSetNx(
     OVERLAP_LOCK_KEY,
     { startedAt: started },
     OVERLAP_LOCK_TTL_SEC
   ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
-  if (!acquired && scanHeartbeat?.critical_stale) {
+  if (!overlapAcquired && scanHeartbeat?.critical_stale) {
     console.warn(
       "[cron/zerodte-warm] overlap lock held but scan heartbeat critical_stale — clearing wedged overlap lock"
     );
     await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
-    acquired = await sharedCacheSetNx(
+    overlapAcquired = await sharedCacheSetNx(
       OVERLAP_LOCK_KEY,
       { startedAt: started },
       OVERLAP_LOCK_TTL_SEC
     ).catch(() => true);
   }
-  if (!acquired) {
+  let forceDispatchWithoutOverlap = false;
+  if (!overlapAcquired && scanHeartbeat?.critical_stale) {
+    console.warn(
+      "[cron/zerodte-warm] overlap lock busy but scan heartbeat critical_stale — forcing dispatch without overlap claim"
+    );
+    forceDispatchWithoutOverlap = true;
+  }
+  if (!overlapAcquired && !forceDispatchWithoutOverlap) {
     const payload = {
       ok: true,
       skipped: true,
@@ -269,7 +279,9 @@ export async function GET(req: NextRequest) {
         console.error("[cron/zerodte-warm] background warm REJECTED:", err);
       })
       .finally(() => {
-        void sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+        if (overlapAcquired) {
+          void sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+        }
         void slot.release();
       });
   };
