@@ -158,7 +158,19 @@ type EngineHeartbeatSnapshot<Source extends string> = {
   critical_stale: boolean;
 };
 
-function createEngineHeartbeat<Source extends string>(metaKey: string) {
+type EngineHeartbeatThresholds = {
+  /** Default 5m — warning band for admin health. */
+  staleMs?: number;
+  /** Default 10m — RTH stale / cron-audit-query problem band. */
+  criticalStaleMs?: number;
+};
+
+function createEngineHeartbeat<Source extends string>(
+  metaKey: string,
+  thresholds?: EngineHeartbeatThresholds
+) {
+  const staleMs = thresholds?.staleMs ?? 5 * 60_000;
+  const criticalStaleMs = thresholds?.criticalStaleMs ?? 10 * 60_000;
   let tickAt: string | null = null;
   let source: Source | null = null;
   let count = 0;
@@ -174,8 +186,8 @@ function createEngineHeartbeat<Source extends string>(metaKey: string) {
       tick_count: count,
       last_restart_at: startedAt,
       age_ms: ageMs,
-      stale: ageMs != null && ageMs > 5 * 60_000,
-      critical_stale: ageMs != null && ageMs > 10 * 60_000,
+      stale: ageMs != null && ageMs > staleMs,
+      critical_stale: ageMs != null && ageMs > criticalStaleMs,
     };
   }
 
@@ -249,8 +261,12 @@ export type ZeroDteScanTickSource = "cron" | "member_poll";
 
 const ZERO_DTE_SCAN_HEARTBEAT_META_KEY = "zerodte_scan_heartbeat";
 
+// Measured prod 2026-09-02/10-21: a single warmZeroDteBoard scan can run 10–11+ minutes while the
+// overlap lock is legitimately held. The default 10m critical band then trips cron-audit-query
+// even though work is in flight — align with zerodte-warm's 15m registry stale_after_min.
 const zeroDteScanHeartbeat = createEngineHeartbeat<ZeroDteScanTickSource>(
-  ZERO_DTE_SCAN_HEARTBEAT_META_KEY
+  ZERO_DTE_SCAN_HEARTBEAT_META_KEY,
+  { criticalStaleMs: 18 * 60_000 }
 );
 
 /** Record one Night Hawk 0DTE scan cycle tick (call from warmZeroDteBoard's

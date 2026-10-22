@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 // NH-R10: these tests run with no DATABASE_URL set, so dbConfigured() is false
@@ -72,6 +74,15 @@ test("recordPlayEngineTick (SPX) still behaves exactly as before — unaffected 
   assert.equal(after.last_source, "evaluate");
   assert.equal(after.stale, false);
   assert.equal(after.critical_stale, false);
+});
+
+test("zerodte scan heartbeat uses 18m critical_stale (long scanZeroDteBoard runs)", () => {
+  const src = readFileSync(fileURLToPath(new URL("./play-engine-heartbeat.ts", import.meta.url)), "utf8");
+  assert.match(
+    src,
+    /ZERO_DTE_SCAN_HEARTBEAT_META_KEY[\s\S]*criticalStaleMs: 18 \* 60_000/,
+    "must not use the default 10m critical band — prod scans can exceed it while overlap-locked"
+  );
 });
 
 test("a heartbeat with no ticks yet reports null age and is not stale", () => {

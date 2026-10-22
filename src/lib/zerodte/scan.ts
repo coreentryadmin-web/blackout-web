@@ -2572,15 +2572,16 @@ export async function gradeZeroDteLedger(force = false, gradeThroughToday = fals
  * small summary object (grid-warm counts a non-null result as a successful warm).
  */
 export async function warmZeroDteBoard(): Promise<{ found: number; logged: number } | null> {
-  const { setups, rejections, market_state } = await scanZeroDteBoard();
-  // NH-R10: record this scan cycle's tick as soon as scanZeroDteBoard() has actually
-  // returned — this is the always-on cron cadence tick (distinct from the member-poll
-  // board route), so a silent stall here is the same class of blind spot the SPX play
-  // engine heartbeat was built to catch. Heartbeat persistence must never break the
-  // real board pipeline, so failures are swallowed exactly like the other best-effort
-  // side-tasks in this function (near-miss log, discovery events, ledger sync below).
+  // Liveness at scan START so long in-flight scanZeroDteBoard runs (10+ min measured prod) do
+  // not trip zerodte_scan_heartbeat critical_stale while the overlap lock is legitimately held.
   void recordZeroDteScanTick("cron").catch((err) => {
-    console.warn("[zerodte-scan-heartbeat] tick record failed:", err);
+    console.warn("[zerodte-scan-heartbeat] start tick record failed:", err);
+  });
+  const { setups, rejections, market_state } = await scanZeroDteBoard();
+  // NH-R10: record again when scanZeroDteBoard() returns — completion tick (distinct from the
+  // member-poll board route). Heartbeat persistence must never break the real board pipeline.
+  void recordZeroDteScanTick("cron").catch((err) => {
+    console.warn("[zerodte-scan-heartbeat] completion tick record failed:", err);
   });
   const logged = await persistZeroDteScan(setups).catch(() => 0);
   // Near-miss log (task #147) — same cron cadence persistZeroDteScan uses above,
