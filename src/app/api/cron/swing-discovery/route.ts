@@ -24,7 +24,7 @@ import { logCronRun } from "@/lib/cron-run";
 import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { todayEt } from "@/lib/et-date";
 import { isTradingDayEt } from "@/features/nighthawk/lib/session";
-import { decideSwingScan, phaseRunKey } from "@/lib/swing/scan-cadence";
+import { decideSwingScan, phaseRunKey, type SwingScanDecision } from "@/lib/swing/scan-cadence";
 import {
   runSwingDiscoveryScan,
   DEFAULT_SWING_DISCOVERY_CONFIG,
@@ -300,6 +300,156 @@ function buildDiscoveryDeps(
   };
 }
 
+type SwingDiscoveryPhaseJob = {
+  started: number;
+  nowMs: number;
+  sessionDay: string;
+  force: boolean;
+  decision: SwingScanDecision & { run: true; phase: NonNullable<SwingScanDecision["phase"]> };
+};
+
+/** Whole-market scan + persist — runs off the HTTP response path so client abort cannot kill it. */
+async function runSwingDiscoveryPhaseJob(job: SwingDiscoveryPhaseJob): Promise<void> {
+  const { started, nowMs, sessionDay, force, decision } = job;
+  try {
+    // Read the PRIOR serving snapshot BEFORE the scan (not after, the pre-fix order) so any
+    // Legacy-promoted theses it carries can be offered to THIS scan's own commit loop — see
+    // `legacyTriples`'s doc comment on SwingDiscoveryDeps for why the prior "after" order left the
+    // graduation bridge (#5577) permanently unwired. Reused below (never re-read) for the
+    // carry-forward persist, so this is a pure hoist, not an extra read.
+    const existing = await readSwingServingSnapshot();
+    const legacyTriples =
+      isSwingLegacyCommitBridgeEnabled() && existing ? legacyPromotedTriplesFromSnapshot(existing) : [];
+
+    const deps = buildDiscoveryDeps(nowMs, sessionDay, decision.phase, legacyTriples);
+    const result = await runSwingDiscoveryScan(deps);
+
+    if (result.engineV2 && result.recall.cappedOut.length > 0) {
+      await persistSwingCapRejections({
+        sessionDay,
+        scanPhase: decision.phase ?? null,
+        cappedOut: result.recall.cappedOut,
+        tier0PoolSize: result.mergedCount,
+        tier1Cap: result.tier1CapApplied,
+      }).catch((err) => {
+        console.warn("[swing-discovery] cap rejection persist failed:", err);
+      });
+    }
+
+    const spotsByTicker: Record<string, number> = {};
+    for (const d of result.dossiers) {
+      const px = d.plan?.entryUnderlyingPx;
+      if (px != null && Number.isFinite(px) && px > 0) spotsByTicker[d.ticker.toUpperCase()] = px;
+    }
+    const watchTickers = [...new Set(result.watchCandidates.map((w) => w.ticker.toUpperCase()))].slice(0, 40);
+    await Promise.all(
+      watchTickers.map(async (ticker) => {
+        try {
+          const trade = await fetchStockLastTrade(ticker);
+          const p = spotFromLastTradeResult(trade);
+          if (p != null) spotsByTicker[ticker] = p;
+        } catch {
+          // fail-soft: keep the plan-entry fallback
+        }
+      }),
+    );
+
+    const flagAnchorsByThesisKey: Record<string, number> = {
+      ...(existing?.flagAnchorsByThesisKey ?? {}),
+    };
+    for (const cand of [...result.watchCandidates, ...result.observedCandidates]) {
+      const key = swingThesisKey(cand.ticker, cand.direction, cand.archetype);
+      if (flagAnchorsByThesisKey[key] != null) continue;
+      const px = spotsByTicker[cand.ticker.toUpperCase()];
+      if (px != null && Number.isFinite(px) && px > 0) flagAnchorsByThesisKey[key] = px;
+    }
+
+    const legacyTickerSet = new Set(legacyTriples.map((t) => t.watch.ticker.toUpperCase()));
+    const committedLegacyTickers = new Set(
+      (result.commit?.committed ?? [])
+        .map((c) => c.ticker.toUpperCase())
+        .filter((t) => legacyTickerSet.has(t)),
+    );
+    const existingForCarry =
+      existing && committedLegacyTickers.size > 0
+        ? removeCommittedLegacyFromSnapshot(existing, committedLegacyTickers)
+        : existing;
+
+    const persisted = await persistSwingServingSnapshot(
+      carryLegacyPromotedIntoSnapshot(
+        {
+          asOf: result.asOf,
+          sessionDay,
+          dossiers: result.dossiers,
+          plays: result.playSet.SWING,
+          watch: result.watchCandidates,
+          observed: result.observedCandidates,
+          spotsByTicker,
+          flagAnchorsByThesisKey,
+        },
+        existingForCarry,
+      ),
+    );
+    if (!persisted) {
+      if (decision.key) {
+        await sharedCacheDel(decision.key).catch(() => undefined);
+      }
+      await logCronRun("swing-discovery", started, {
+        ok: false,
+        phase: decision.phase,
+        sessionDay,
+        error: "serving snapshot persist failed — phase claim released for retry",
+        claim_released: true,
+        fadedStale: result.fadedStale ?? 0,
+      });
+      return;
+    }
+
+    if (decision.key) {
+      await sharedCacheSet(
+        decision.key,
+        { status: "done", at: Date.now() },
+        PHASE_DONE_TTL_SEC,
+      ).catch(() => undefined);
+    }
+
+    await logCronRun("swing-discovery", started, {
+      ok: true,
+      phase: decision.phase,
+      sessionDay,
+      forced: force || undefined,
+      tier0Flow: result.tier0FlowCount,
+      tier0Structure: result.tier0StructureCount,
+      merged: result.mergedCount,
+      enriched: result.enrichedCount,
+      dossiers: result.dossiers.length,
+      watch: result.watchCount,
+      observed: result.observedCount,
+      commitEligible: result.commitEligibleCount,
+      committed: result.commit?.committed.filter((c) => c.positionId != null).length ?? 0,
+      commitErrors: result.commit?.errors ?? 0,
+      commitSkipped: result.commit?.skipped.length ?? 0,
+      fadedStale: result.fadedStale ?? 0,
+      duration_ms: Date.now() - started,
+      background: true,
+    });
+  } catch (error) {
+    if (decision.key) {
+      await sharedCacheDel(decision.key).catch(() => undefined);
+    }
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("[cron/swing-discovery]", error);
+    await logCronRun("swing-discovery", started, {
+      ok: false,
+      phase: decision.phase,
+      error: detail,
+      claim_released: true,
+      duration_ms: Date.now() - started,
+      background: true,
+    });
+  }
+}
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -395,164 +545,50 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  try {
-    // Read the PRIOR serving snapshot BEFORE the scan (not after, the pre-fix order) so any
-    // Legacy-promoted theses it carries can be offered to THIS scan's own commit loop — see
-    // `legacyTriples`'s doc comment on SwingDiscoveryDeps for why the prior "after" order left the
-    // graduation bridge (#5577) permanently unwired. Reused below (never re-read) for the
-    // carry-forward persist, so this is a pure hoist, not an extra read.
-    const existing = await readSwingServingSnapshot();
-    const legacyTriples =
-      isSwingLegacyCommitBridgeEnabled() && existing ? legacyPromotedTriplesFromSnapshot(existing) : [];
-
-    const deps = buildDiscoveryDeps(nowMs, sessionDay, decision.phase!, legacyTriples);
-    // Runs inline (not after()) so phase-claim release on failure is synchronous — an ALB abort
-    // that never reaches catch must not leave a DONE marker without a snapshot (prod 2026-07-29).
-    // UW REST (IV rank / earnings history) is tagged as a background sweep so live traffic keeps
-    // a reserved slot while the once-per-phase whole-market scan fans out.
-    const result = await runWithBackgroundUwSweep(() => runSwingDiscoveryScan(deps));
-
-    if (result.engineV2 && result.recall.cappedOut.length > 0) {
-      await persistSwingCapRejections({
-        sessionDay,
-        scanPhase: decision.phase ?? null,
-        cappedOut: result.recall.cappedOut,
-        tier0PoolSize: result.mergedCount,
-        tier1Cap: result.tier1CapApplied,
-      }).catch((err) => {
-        console.warn("[swing-discovery] cap rejection persist failed:", err);
-      });
-    }
-
-    // Persist the scored output so the member horizons route can serve it. If the write fails, RELEASE the
-    // phase claim so the next EventBridge fire can retry — upgrading to DONE without a snapshot locks the
-    // member board on a stale/empty state for 22h.
-    // Ground setup-maturity spots for the member serve path (cache-reader): start from each dossier's
-    // plan entry (last close at ingest), then refresh live last-trade for persistence-cleared WATCH
-    // names so FORMING/TRIGGERED/EXTENDED can diverge from the pinned trigger during RTH.
-    const spotsByTicker: Record<string, number> = {};
-    for (const d of result.dossiers) {
-      const px = d.plan?.entryUnderlyingPx;
-      if (px != null && Number.isFinite(px) && px > 0) spotsByTicker[d.ticker.toUpperCase()] = px;
-    }
-    const watchTickers = [...new Set(result.watchCandidates.map((w) => w.ticker.toUpperCase()))].slice(0, 40);
-    await Promise.all(
-      watchTickers.map(async (ticker) => {
-        try {
-          const trade = await fetchStockLastTrade(ticker);
-          const p = spotFromLastTradeResult(trade);
-          if (p != null) spotsByTicker[ticker] = p;
-        } catch {
-          // fail-soft: keep the plan-entry fallback
-        }
-      }),
-    );
-
-    const flagAnchorsByThesisKey: Record<string, number> = {
-      ...(existing?.flagAnchorsByThesisKey ?? {}),
-    };
-    for (const cand of [...result.watchCandidates, ...result.observedCandidates]) {
-      const key = swingThesisKey(cand.ticker, cand.direction, cand.archetype);
-      if (flagAnchorsByThesisKey[key] != null) continue;
-      const px = spotsByTicker[cand.ticker.toUpperCase()];
-      if (px != null && Number.isFinite(px) && px > 0) flagAnchorsByThesisKey[key] = px;
-    }
-
-    // A Legacy triple this scan just bridged into a REAL committed position must not also keep
-    // carrying forward as a WATCH row — `removeCommittedLegacyFromSnapshot` is #5577's own named
-    // counterpart to `reconcileDiscoveryAfterCommit`'s organic-candidate cleanup below it, applied
-    // the same way: strip it from `existing` BEFORE `carryLegacyPromotedIntoSnapshot` re-derives the
-    // carried set from `existing`, or the same thesis shows twice (a live position AND a stale WATCH
-    // duplicate of itself).
-    const legacyTickerSet = new Set(legacyTriples.map((t) => t.watch.ticker.toUpperCase()));
-    const committedLegacyTickers = new Set(
-      (result.commit?.committed ?? [])
-        .map((c) => c.ticker.toUpperCase())
-        .filter((t) => legacyTickerSet.has(t)),
-    );
-    const existingForCarry =
-      existing && committedLegacyTickers.size > 0
-        ? removeCommittedLegacyFromSnapshot(existing, committedLegacyTickers)
-        : existing;
-
-    const persisted = await persistSwingServingSnapshot(
-      carryLegacyPromotedIntoSnapshot(
-        {
-          asOf: result.asOf,
-          sessionDay,
-          dossiers: result.dossiers,
-          plays: result.playSet.SWING,
-          watch: result.watchCandidates,
-          observed: result.observedCandidates,
-          spotsByTicker,
-          flagAnchorsByThesisKey,
-        },
-        existingForCarry,
-      ),
-    );
-    if (!persisted) {
-      if (decision.key) {
-        await sharedCacheDel(decision.key).catch(() => undefined);
-      }
-      const payload = {
+  // Whole-market scan routinely exceeds ~20s when UW admission queues during RTH (measured live
+  // 2026-10-22: MIDDAY phase logged failed + claim_released with "aborted due to timeout" at ~20.6s
+  // while cron-audit query failed on `swing-discovery`). Mirror zerodte-warm/bie-full-state-snapshot:
+  // return 202 in seconds; phase-claim release still runs in the background task's catch/finally.
+  const phaseJob: SwingDiscoveryPhaseJob = {
+    started,
+    nowMs,
+    sessionDay,
+    force,
+    decision: {
+      ...decision,
+      run: true,
+      phase: decision.phase!,
+    },
+  };
+  const dispatchPhaseScan = () => {
+    void runWithBackgroundUwSweep(() => runSwingDiscoveryPhaseJob(phaseJob)).catch((error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error("[cron/swing-discovery] background dispatch REJECTED:", error);
+      if (decision.key) void sharedCacheDel(decision.key).catch(() => undefined);
+      void logCronRun("swing-discovery", started, {
         ok: false,
         phase: decision.phase,
-        sessionDay,
-        error: "serving snapshot persist failed — phase claim released for retry",
+        error: detail,
         claim_released: true,
-        fadedStale: result.fadedStale ?? 0,
-      };
-      await logCronRun("swing-discovery", started, payload);
-      return NextResponse.json(payload, { status: 500 });
-    }
-
-    // Upgrade running → done (full-day lock). Only after persist so a crash mid-scan does not lock the day.
-    if (decision.key) {
-      await sharedCacheSet(
-        decision.key,
-        { status: "done", at: Date.now() },
-        PHASE_DONE_TTL_SEC,
-      ).catch(() => undefined);
-    }
-
-    const payload = {
-      ok: true,
-      phase: decision.phase,
-      sessionDay,
-      forced: force || undefined,
-      tier0Flow: result.tier0FlowCount,
-      tier0Structure: result.tier0StructureCount,
-      merged: result.mergedCount,
-      enriched: result.enrichedCount,
-      dossiers: result.dossiers.length,
-      watch: result.watchCount,
-      observed: result.observedCount,
-      // LIVE (go-live 2026-07-24): the REAL count of WATCH candidates whose archetype×sub-lane bucket GRADUATED,
-      // and how many actually opened after the armed budget + book-percent caps + idempotency gates.
-      commitEligible: result.commitEligibleCount,
-      committed: result.commit?.committed.filter((c) => c.positionId != null).length ?? 0,
-      commitErrors: result.commit?.errors ?? 0,
-      commitSkipped: result.commit?.skipped.length ?? 0,
-      fadedStale: result.fadedStale ?? 0,
-      duration_ms: Date.now() - started,
-    };
-    await logCronRun("swing-discovery", started, payload);
-    return NextResponse.json(payload);
-  } catch (error) {
-    // RELEASE the phase claim so the next EventBridge fire (or ?force=1) can retry. Leaving the NX key
-    // after a timeout/throw is what kept Swing dark all day: claim stuck, every re-fire skipped.
-    if (decision.key) {
-      await sharedCacheDel(decision.key).catch(() => undefined);
-    }
-    const detail = error instanceof Error ? error.message : String(error);
-    console.error("[cron/swing-discovery]", error);
-    await logCronRun("swing-discovery", started, {
-      ok: false,
-      phase: decision.phase,
-      error: detail,
-      claim_released: true,
-      duration_ms: Date.now() - started,
+        background: true,
+      });
     });
-    return NextResponse.json({ ok: false, error: "Swing discovery failed", claim_released: true }, { status: 500 });
-  }
+  };
+  void dispatchPhaseScan();
+
+  const accepted = {
+    ok: true,
+    status: "accepted",
+    phase: decision.phase,
+    sessionDay,
+    reason: "swing discovery scan dispatched in background (fire-and-forget)",
+  };
+  await logCronRun("swing-discovery", started, accepted);
+  return NextResponse.json(
+    {
+      ...accepted,
+      note: "Heavy scan runs in background — serving snapshot + phase claim finalize on the ECS worker.",
+    },
+    { status: 202 },
+  );
 }

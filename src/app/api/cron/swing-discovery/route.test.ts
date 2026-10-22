@@ -9,17 +9,21 @@ const routeSrc = readFileSync(
   "utf8"
 );
 
-test("swing-discovery wraps the scan in runWithBackgroundUwSweep (UW IV/earnings deps)", () => {
+test("swing-discovery wraps the phase job in runWithBackgroundUwSweep (UW IV/earnings deps)", () => {
   assert.match(
     routeSrc,
     /import \{[^}]*\brunWithBackgroundUwSweep\b[^}]*\} from "@\/lib\/providers\/uw-rate-limiter"/
   );
-  assert.match(routeSrc, /runWithBackgroundUwSweep\(\(\) => runSwingDiscoveryScan\(deps\)\)/);
+  assert.match(routeSrc, /runWithBackgroundUwSweep\(\(\) => runSwingDiscoveryPhaseJob/);
 });
 
-test("swing-discovery runs inline so phase-claim release stays synchronous on failure", () => {
-  assert.match(routeSrc, /Runs inline \(not after\(\)\) so phase-claim release on failure is synchronous/);
-  assert.doesNotMatch(routeSrc, /after\(dispatch/);
+test("swing-discovery dispatches the heavy scan in background and returns 202 (client abort safe)", () => {
+  assert.match(
+    routeSrc,
+    /status: "accepted"[\s\S]*swing discovery scan dispatched in background/
+  );
+  assert.match(routeSrc, /status: 202/);
+  assert.match(routeSrc, /void dispatchPhaseScan\(\)/);
 });
 
 test("force=1 refuses to delete a LIVE running claim (deep-dive Q1)", () => {
