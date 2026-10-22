@@ -28,6 +28,10 @@ test("force=1 refuses to delete a LIVE running claim (deep-dive Q1)", () => {
   assert.match(routeSrc, /force=1 refused —/);
 });
 
+test("swing-discovery allows up to 300s for whole-market scan (hit-cron timeout parity)", () => {
+  assert.match(routeSrc, /export const maxDuration = 300;/);
+});
+
 test("swing-discovery gates on isTradingDayEt before Polygon/UW whole-market scan", () => {
   assert.match(
     routeSrc,

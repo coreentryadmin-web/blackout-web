@@ -96,7 +96,10 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+// Whole-market scan routinely exceeds 120s (railway.swing-discovery.toml allows 300s on hit-cron).
+// A platform kill at 120s left MIDDAY/PRE_OPEN phases as `failed` with claim_released while the
+// watchdog flagged swing-discovery — measured live 2026-10-22 cron-audit `query`.
+export const maxDuration = 300;
 
 /** In-progress claim — short TTL so an ALB/Lambda abort that never reaches `catch` still expires and the
  *  next EventBridge fire (every 30m) can retry. Success upgrades to PHASE_DONE_TTL_SEC via sharedCacheSet. */

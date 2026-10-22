@@ -238,6 +238,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     // (POST_CLOSE 4:15–8PM ET first, plus PRE_OPEN/MIDDAY/POWER_HOUR/OVERNIGHT) and runs ONCE per (day, phase).
     // Stale ceiling spans a full day since only one phase fires per window and off-phase firings self-skip.
     schedule_label: "Phase-anchored (post-close first; wide-band fire, route decides)",
+    schedule_cron_utc: "*/30 * * * 1-5",
     stale_after_min: 36 * 60,
     weekdays_only: true,
     description:

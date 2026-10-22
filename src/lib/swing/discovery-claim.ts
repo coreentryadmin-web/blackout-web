@@ -4,7 +4,7 @@
  */
 
 /** Matches swing-discovery route maxDuration (seconds) — upper bound on a healthy scan. */
-export const SWING_DISCOVERY_SCAN_MAX_MS = 120_000;
+export const SWING_DISCOVERY_SCAN_MAX_MS = 300_000;
 
 /** Small buffer past max scan time before force=1 may clear a still-`running` claim. */
 export const SWING_FORCE_CLEAR_RUNNING_BUFFER_MS = 10_000;

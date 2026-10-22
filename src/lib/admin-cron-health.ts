@@ -23,6 +23,8 @@ import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
 import { sharedCacheGet } from "@/lib/shared-cache";
+import { resolveScanPhase, phaseRunKey } from "@/lib/swing/scan-cadence";
+import type { SwingDiscoveryPhaseClaim } from "@/lib/swing/discovery-claim";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
@@ -361,6 +363,14 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   const zerodteWarmInFlight = Boolean(
     await sharedCacheGet("zerodte-warm:running").catch(() => null)
   );
+  const sessionDayEt = formatEtDate();
+  const swingPhaseWindow = resolveScanPhase(Date.now());
+  let swingDiscoveryInFlight = false;
+  if (swingPhaseWindow) {
+    const claimKey = phaseRunKey(sessionDayEt, swingPhaseWindow.phase);
+    const claim = await sharedCacheGet<SwingDiscoveryPhaseClaim>(claimKey).catch(() => null);
+    swingDiscoveryInFlight = claim?.status === "running";
+  }
   const jobs = CRON_JOBS.map((job) => {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
 
@@ -411,6 +421,49 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
           meta: {
             ...(health.meta ?? {}),
             zerodte_scan_heartbeat: zeroDteScanHb,
+          },
+        };
+      }
+    }
+
+    if (job.key === "swing-discovery") {
+      const last = lastByKey[job.key];
+      const lastMeta = (health.meta ?? last?.meta_json) as Record<string, unknown> | undefined;
+      const claimReleased = lastMeta?.claim_released === true;
+      const inActivePhase = Boolean(swingPhaseWindow);
+
+      if (
+        swingDiscoveryInFlight &&
+        (health.status === "stale" || health.status === "failed")
+      ) {
+        return {
+          ...health,
+          status: "warning" as const,
+          market_hours_stale: false,
+          status_label: `Phase scan in flight · ${swingPhaseWindow!.phase} (${sessionDayEt})`,
+          meta: {
+            ...(health.meta ?? {}),
+            swing_discovery_in_flight: true,
+            swing_discovery_phase: swingPhaseWindow!.phase,
+          },
+        };
+      }
+
+      if (
+        health.status === "failed" &&
+        claimReleased &&
+        inActivePhase &&
+        health.age_min != null &&
+        health.age_min < 45
+      ) {
+        return {
+          ...health,
+          status: "warning" as const,
+          market_hours_stale: false,
+          status_label: `Last ${swingPhaseWindow!.phase} attempt failed (claim released; retry on next fire)`,
+          meta: {
+            ...(health.meta ?? {}),
+            swing_discovery_claim_released: true,
           },
         };
       }

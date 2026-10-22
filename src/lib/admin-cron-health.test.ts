@@ -268,3 +268,10 @@ test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan hea
     "long in-flight scans must not trip market_hours_stale before the overlap lock TTL"
   );
 });
+
+test("buildCronHealthSnapshot applies in-flight grace for swing-discovery phase scans", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(src, /swingDiscoveryInFlight/);
+  assert.match(src, /job\.key === "swing-discovery"/);
+  assert.match(src, /swing_discovery_in_flight/);
+});
