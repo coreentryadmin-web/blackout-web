@@ -121,17 +121,23 @@ export async function GET(req: NextRequest) {
   if (isEtCashRth()) {
     scanHeartbeat = await loadZeroDteScanHeartbeat().catch(() => null);
     if (scanHeartbeat?.critical_stale) {
+      // Every replica clears wedged keys — DEL is idempotent and overlap/cooldown claims still
+      // serialize who actually runs. Gating clears on STEAL_ATTEMPT_KEY's NX winner left losers
+      // on ok/skipped handshakes while heartbeat stayed critical_stale (measured 2026-10-22).
+      await Promise.all([
+        sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined),
+        sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined),
+        sharedCacheDel(heavyCronReservedSlotRedisKey("zerodte-warm")).catch(() => undefined),
+      ]);
       const wonSteal = await sharedCacheSetNx(
         STEAL_ATTEMPT_KEY,
         { startedAt: started },
         STEAL_ATTEMPT_TTL_SEC
       ).catch(() => false);
       if (wonSteal) {
-        await Promise.all([
-          sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined),
-          sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined),
-          sharedCacheDel(heavyCronReservedSlotRedisKey("zerodte-warm")).catch(() => undefined),
-        ]);
+        console.warn(
+          "[cron/zerodte-warm] scan heartbeat critical_stale — cleared wedged cooldown/overlap/reserved heavy slot"
+        );
       }
     }
   }
@@ -139,11 +145,19 @@ export async function GET(req: NextRequest) {
   const effectiveCooldownSec = isEtExtendedWarmHours()
     ? RERUN_COOLDOWN_SEC
     : OFF_WINDOW_FORCE_COOLDOWN_SEC;
-  const withinCooldown = !(await sharedCacheSetNx(
+  let withinCooldown = !(await sharedCacheSetNx(
     RERUN_COOLDOWN_KEY,
     { startedAt: started },
     effectiveCooldownSec
   ).catch(() => true));
+  if (withinCooldown && scanHeartbeat?.critical_stale) {
+    await sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined);
+    withinCooldown = !(await sharedCacheSetNx(
+      RERUN_COOLDOWN_KEY,
+      { startedAt: started },
+      effectiveCooldownSec
+    ).catch(() => true));
+  }
   if (withinCooldown) {
     const payload = {
       ok: true,
@@ -154,11 +168,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const acquired = await sharedCacheSetNx(
+  let acquired = await sharedCacheSetNx(
     OVERLAP_LOCK_KEY,
     { startedAt: started },
     OVERLAP_LOCK_TTL_SEC
   ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired && scanHeartbeat?.critical_stale) {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    acquired = await sharedCacheSetNx(
+      OVERLAP_LOCK_KEY,
+      { startedAt: started },
+      OVERLAP_LOCK_TTL_SEC
+    ).catch(() => true);
+  }
   if (!acquired) {
     const payload = {
       ok: true,
