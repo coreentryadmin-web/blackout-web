@@ -24,7 +24,7 @@ test("zerodte-warm acquires a cross-replica overlap lock before dispatching", ()
   assert.match(routeSrc, /sharedCacheSetNx/, "must use the shared NX lock, not a read-then-write race");
   assert.match(
     routeSrc,
-    /const acquired = await sharedCacheSetNx\(/,
+    /let acquired = await sharedCacheSetNx\(/,
     "the acquire call must happen before dispatch, not after"
   );
   assert.match(routeSrc, /if \(!acquired\)/, "a lost race must be handled, not ignored");
@@ -94,7 +94,7 @@ test("a cross-cron concurrency slot is acquired after the overlap lock and relea
     /let slot = await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\);/,
     "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL"
   );
-  const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const overlapClaimIdx = routeSrc.indexOf("let acquired = await sharedCacheSetNx(");
   const slotIdx = routeSrc.indexOf("let slot = await acquireHeavyCronSlot(");
   const dispatchIdx = routeSrc.indexOf("const dispatchWarm = () => {");
   assert.ok(
@@ -126,8 +126,13 @@ test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 9
 test("zerodte-warm wraps its board-scan dispatch in the shared background UW sweep helper", () => {
   assert.match(
     routeSrc,
-    /runWithBackgroundUwSweep\(\(\) =>\s*\n\s*Promise\.allSettled\(\[warmZeroDteBoard\(\), refreshZeroDteBoardSnapshot\(\)\]\)/,
+    /void runWithBackgroundUwSweep\(\(\) => warmWork\)/,
     "the cron's OWN dispatch must be tagged so it reserves a slot for live traffic, matching the four existing Vector-family crons"
+  );
+  assert.match(
+    routeSrc,
+    /Promise\.allSettled\(\[warmZeroDteBoard\(\), refreshZeroDteBoardSnapshot\(\)\]\)/,
+    "healthy cadence must still warm scanner + board snapshot together"
   );
   // The wrap must be around the CRON's dispatch only — the shared read path
   // (getZeroDteBoardPayload, used by /api/market/zerodte/board and
@@ -153,7 +158,7 @@ test("force=1 is rate-limited by a minimum re-run cooldown, independent of the h
   );
 
   const cooldownIdx = routeSrc.indexOf("RERUN_COOLDOWN_KEY,");
-  const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const overlapClaimIdx = routeSrc.indexOf("let acquired = await sharedCacheSetNx(");
   const dispatchIdx = routeSrc.indexOf("void dispatchWarm();");
   assert.ok(cooldownIdx > 0 && overlapClaimIdx > 0 && dispatchIdx > 0);
   assert.ok(cooldownIdx < overlapClaimIdx, "cooldown must be checked before the overlap lock");
@@ -245,6 +250,20 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
   const stealBlockIdx = routeSrc.indexOf("if (isEtCashRth()) {");
   const cooldownClaimIdx = routeSrc.indexOf("const withinCooldown = !(await sharedCacheSetNx(");
   assert.ok(stealBlockIdx > 0 && cooldownClaimIdx > 0 && stealBlockIdx < cooldownClaimIdx);
+});
+
+test("critical_stale bypasses rerun cooldown and retries overlap during cash RTH recovery", () => {
+  assert.match(routeSrc, /const recoveryBypass =/);
+  assert.match(routeSrc, /if \(!recoveryBypass\) \{/);
+  assert.match(routeSrc, /if \(!acquired && recoveryBypass\)/);
+});
+
+test("critical_stale recovery dispatches scanner-only warm (defer board snapshot rebuild)", () => {
+  assert.match(
+    routeSrc,
+    /recoveryBypass[\s\S]*Promise\.allSettled\(\[warmZeroDteBoard\(\)\]\)/,
+    "must not run the heavier snapshot rebuild while the scan heartbeat is critical_stale"
+  );
 });
 
 test("critical_stale scan heartbeat escalates past the shared heavy-cron slot cap when both pool slots are held", () => {

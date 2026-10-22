@@ -136,29 +136,42 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const recoveryBypass =
+    isEtCashRth() && Boolean(scanHeartbeat?.critical_stale);
+
   const effectiveCooldownSec = isEtExtendedWarmHours()
     ? RERUN_COOLDOWN_SEC
     : OFF_WINDOW_FORCE_COOLDOWN_SEC;
-  const withinCooldown = !(await sharedCacheSetNx(
-    RERUN_COOLDOWN_KEY,
-    { startedAt: started },
-    effectiveCooldownSec
-  ).catch(() => true));
-  if (withinCooldown) {
-    const payload = {
-      ok: true,
-      skipped: true,
-      reason: `rate-limited — zerodte-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
-    };
-    await logCronRun("zerodte-warm", started, payload);
-    return NextResponse.json(payload);
+  if (!recoveryBypass) {
+    const withinCooldown = !(await sharedCacheSetNx(
+      RERUN_COOLDOWN_KEY,
+      { startedAt: started },
+      effectiveCooldownSec
+    ).catch(() => true));
+    if (withinCooldown) {
+      const payload = {
+        ok: true,
+        skipped: true,
+        reason: `rate-limited — zerodte-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
+      };
+      await logCronRun("zerodte-warm", started, payload);
+      return NextResponse.json(payload);
+    }
   }
 
-  const acquired = await sharedCacheSetNx(
+  let acquired = await sharedCacheSetNx(
     OVERLAP_LOCK_KEY,
     { startedAt: started },
     OVERLAP_LOCK_TTL_SEC
   ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired && recoveryBypass) {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    acquired = await sharedCacheSetNx(
+      OVERLAP_LOCK_KEY,
+      { startedAt: started },
+      OVERLAP_LOCK_TTL_SEC
+    ).catch(() => true);
+  }
   if (!acquired) {
     const payload = {
       ok: true,
@@ -224,9 +237,13 @@ export async function GET(req: NextRequest) {
   // `/api/market/nighthawk/horizons`) is a SEPARATE call site and stays untagged, exactly like
   // the existing four crons: only the CRON'S OWN dispatch is wrapped, never the shared function.
   const dispatchWarm = () => {
-    void runWithBackgroundUwSweep(() =>
-      Promise.allSettled([warmZeroDteBoard(), refreshZeroDteBoardSnapshot()])
-    )
+    // When the scan heartbeat is already critical_stale, prioritize the scanner tick that
+    // advances recordZeroDteScanTick — defer the heavier board-snapshot rebuild to the next
+    // healthy cadence so recovery is not blocked behind a second full payload build.
+    const warmWork = recoveryBypass
+      ? Promise.allSettled([warmZeroDteBoard()])
+      : Promise.allSettled([warmZeroDteBoard(), refreshZeroDteBoardSnapshot()]);
+    void runWithBackgroundUwSweep(() => warmWork)
       .then((results) => {
         let warmed = earningsWarmed;
         for (const r of results) {
