@@ -278,6 +278,9 @@ export function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
   });
 }
 
+import { zerodteScanWallMs } from "./scan-wall-ms";
+export { zerodteScanWallMs };
+
 export type ZeroDteScanResult = {
   setups: EnrichedZeroDteSetup[];
   /** Tickers withheld because Night Hawk already published them (latest edition). */
@@ -2572,7 +2575,17 @@ export async function gradeZeroDteLedger(force = false, gradeThroughToday = fals
  * small summary object (grid-warm counts a non-null result as a successful warm).
  */
 export async function warmZeroDteBoard(): Promise<{ found: number; logged: number } | null> {
-  const { setups, rejections, market_state } = await scanZeroDteBoard();
+  const scanned = await within(scanZeroDteBoard(), zerodteScanWallMs());
+  if (!scanned) {
+    console.error(
+      `[zerodte-scan] warm scan exceeded ${zerodteScanWallMs()}ms wall — recording heartbeat without persist (scan may still finish in background)`
+    );
+    void recordZeroDteScanTick("cron").catch((err) => {
+      console.warn("[zerodte-scan-heartbeat] tick record failed:", err);
+    });
+    return { found: 0, logged: 0 };
+  }
+  const { setups, rejections, market_state } = scanned;
   // NH-R10: record this scan cycle's tick as soon as scanZeroDteBoard() has actually
   // returned — this is the always-on cron cadence tick (distinct from the member-poll
   // board route), so a silent stall here is the same class of blind spot the SPX play
