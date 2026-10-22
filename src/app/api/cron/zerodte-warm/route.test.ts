@@ -91,11 +91,11 @@ test("a cross-cron concurrency slot is acquired after the overlap lock and relea
   // correlated with sustained ALB tail latency — see heavy-cron-concurrency-guard.ts's header.
   assert.match(
     routeSrc,
-    /const slot = await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\);/,
+    /let slot = await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\);/,
     "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL"
   );
   const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
-  const slotIdx = routeSrc.indexOf("const slot = await acquireHeavyCronSlot(");
+  const slotIdx = routeSrc.indexOf("let slot = await acquireHeavyCronSlot(");
   const dispatchIdx = routeSrc.indexOf("const dispatchWarm = () => {");
   assert.ok(
     overlapClaimIdx > 0 && slotIdx > overlapClaimIdx && slotIdx < dispatchIdx,
@@ -103,7 +103,7 @@ test("a cross-cron concurrency slot is acquired after the overlap lock and relea
   );
   assert.match(
     routeSrc,
-    /if \(!slot\) \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);/,
+    /if \(!slot\) \{[\s\S]*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);/,
     "a lost cross-cron race must release the self-overlap lock immediately so the NEXT fire gets a clean shot"
   );
 });
@@ -222,7 +222,7 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
     /import \{ loadZeroDteScanHeartbeat \} from "@\/lib\/play-engine-heartbeat"/
   );
   assert.match(routeSrc, /if \(isEtCashRth\(\)\) \{/);
-  assert.match(routeSrc, /heartbeat\?\.critical_stale/);
+  assert.match(routeSrc, /scanHeartbeat\?\.critical_stale/);
 
   // The steal attempt must itself be NX-atomic (STEAL_ATTEMPT_KEY) so exactly one concurrent
   // invocation performs the clear, even if many replicas observe critical_stale at once.
@@ -245,6 +245,14 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
   const stealBlockIdx = routeSrc.indexOf("if (isEtCashRth()) {");
   const cooldownClaimIdx = routeSrc.indexOf("const withinCooldown = !(await sharedCacheSetNx(");
   assert.ok(stealBlockIdx > 0 && cooldownClaimIdx > 0 && stealBlockIdx < cooldownClaimIdx);
+});
+
+test("critical_stale scan heartbeat escalates past the shared heavy-cron slot cap when both pool slots are held", () => {
+  assert.match(
+    routeSrc,
+    /scanHeartbeat\?\.critical_stale[\s\S]*escalating past shared slot cap/,
+    "must not idempotent-skip forever behind vector crons while the scanner heartbeat is critical_stale"
+  );
 });
 
 test("the cooldown primitive genuinely refuses a second claim of the same key inside its TTL", async () => {
