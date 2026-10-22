@@ -154,11 +154,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const acquired = await sharedCacheSetNx(
+  let acquired = await sharedCacheSetNx(
     OVERLAP_LOCK_KEY,
     { startedAt: started },
     OVERLAP_LOCK_TTL_SEC
   ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired && scanHeartbeat?.critical_stale) {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    acquired = await sharedCacheSetNx(
+      OVERLAP_LOCK_KEY,
+      { startedAt: started },
+      OVERLAP_LOCK_TTL_SEC
+    ).catch(() => true);
+  }
   if (!acquired) {
     const payload = {
       ok: true,

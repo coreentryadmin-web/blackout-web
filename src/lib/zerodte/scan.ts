@@ -2579,7 +2579,7 @@ export async function warmZeroDteBoard(): Promise<{ found: number; logged: numbe
   // engine heartbeat was built to catch. Heartbeat persistence must never break the
   // real board pipeline, so failures are swallowed exactly like the other best-effort
   // side-tasks in this function (near-miss log, discovery events, ledger sync below).
-  void recordZeroDteScanTick("cron").catch((err) => {
+  await recordZeroDteScanTick("cron").catch((err) => {
     console.warn("[zerodte-scan-heartbeat] tick record failed:", err);
   });
   const logged = await persistZeroDteScan(setups).catch(() => 0);

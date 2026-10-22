@@ -255,6 +255,14 @@ test("critical_stale scan heartbeat escalates past the shared heavy-cron slot ca
   );
 });
 
+test("critical_stale retries overlap lock claim after clearing a wedged OVERLAP_LOCK_KEY", () => {
+  const overlapIdx = routeSrc.indexOf("let acquired = await sharedCacheSetNx(");
+  assert.ok(overlapIdx > 0);
+  const block = routeSrc.slice(overlapIdx, overlapIdx + 450);
+  assert.match(block, /scanHeartbeat\?\.critical_stale/);
+  assert.match(block, /sharedCacheDel\(OVERLAP_LOCK_KEY\)/);
+});
+
 test("the cooldown primitive genuinely refuses a second claim of the same key inside its TTL", async () => {
   const { sharedCacheSetNx, sharedCacheDel } = await import("@/lib/shared-cache");
   const key = `zerodte-warm:cooldown:test:${Date.now()}:${Math.random()}`;
