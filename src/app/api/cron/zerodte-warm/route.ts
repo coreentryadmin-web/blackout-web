@@ -154,11 +154,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const acquired = await sharedCacheSetNx(
+  let acquired = await sharedCacheSetNx(
     OVERLAP_LOCK_KEY,
     { startedAt: started },
     OVERLAP_LOCK_TTL_SEC
   ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired && scanHeartbeat?.critical_stale) {
+    // #6546 escalates past the heavy-cron cap, but a hung multi-minute background warm can still
+    // hold OVERLAP_LOCK_KEY while zerodte_scan_heartbeat stays critical_stale — measured 2026-10-22
+    // Cron audit query again flagged zerodte-warm with every fire idempotent-skipping here.
+    console.warn(
+      "[cron/zerodte-warm] overlap lock held but scan heartbeat critical_stale — clearing and retrying once"
+    );
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    acquired = await sharedCacheSetNx(
+      OVERLAP_LOCK_KEY,
+      { startedAt: started },
+      OVERLAP_LOCK_TTL_SEC
+    ).catch(() => true);
+  }
   if (!acquired) {
     const payload = {
       ok: true,

@@ -24,7 +24,7 @@ test("zerodte-warm acquires a cross-replica overlap lock before dispatching", ()
   assert.match(routeSrc, /sharedCacheSetNx/, "must use the shared NX lock, not a read-then-write race");
   assert.match(
     routeSrc,
-    /const acquired = await sharedCacheSetNx\(/,
+    /let acquired = await sharedCacheSetNx\(/,
     "the acquire call must happen before dispatch, not after"
   );
   assert.match(routeSrc, /if \(!acquired\)/, "a lost race must be handled, not ignored");
@@ -94,7 +94,7 @@ test("a cross-cron concurrency slot is acquired after the overlap lock and relea
     /let slot = await acquireHeavyCronSlot\("zerodte-warm", OVERLAP_LOCK_TTL_SEC\);/,
     "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL"
   );
-  const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const overlapClaimIdx = routeSrc.indexOf("let acquired = await sharedCacheSetNx(");
   const slotIdx = routeSrc.indexOf("let slot = await acquireHeavyCronSlot(");
   const dispatchIdx = routeSrc.indexOf("const dispatchWarm = () => {");
   assert.ok(
@@ -153,7 +153,7 @@ test("force=1 is rate-limited by a minimum re-run cooldown, independent of the h
   );
 
   const cooldownIdx = routeSrc.indexOf("RERUN_COOLDOWN_KEY,");
-  const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const overlapClaimIdx = routeSrc.indexOf("let acquired = await sharedCacheSetNx(");
   const dispatchIdx = routeSrc.indexOf("void dispatchWarm();");
   assert.ok(cooldownIdx > 0 && overlapClaimIdx > 0 && dispatchIdx > 0);
   assert.ok(cooldownIdx < overlapClaimIdx, "cooldown must be checked before the overlap lock");
@@ -252,6 +252,14 @@ test("critical_stale scan heartbeat escalates past the shared heavy-cron slot ca
     routeSrc,
     /scanHeartbeat\?\.critical_stale[\s\S]*escalating past shared slot cap/,
     "must not idempotent-skip forever behind vector crons while the scanner heartbeat is critical_stale"
+  );
+});
+
+test("critical_stale scan heartbeat clears a wedged overlap lock and retries once before idempotent skip", () => {
+  assert.match(
+    routeSrc,
+    /scanHeartbeat\?\.critical_stale[\s\S]*overlap lock held but scan heartbeat critical_stale/,
+    "must not idempotent-skip forever behind a hung overlap lock while the scanner heartbeat is critical_stale"
   );
 });
 
