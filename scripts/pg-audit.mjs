@@ -71,8 +71,11 @@ export function describeConnectError(e) {
 
 /** True when Postgres is unreachable from this host (private RDS / cloud agent sandbox). */
 export function isPrivateDbUnreachableError(message) {
+  const msg = String(message ?? "");
+  // RDS Proxy / public TCP proxy can accept connect then drop mid-query (GHA open-check).
+  if (/connect failed|connection terminated/i.test(msg)) return true;
   return /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|self.signed|certificate/i.test(
-    String(message ?? "")
+    msg
   );
 }
 
