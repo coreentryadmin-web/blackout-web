@@ -11,7 +11,12 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
-import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
+import {
+  createAuditClient,
+  resolveAuditDbUrl,
+  isPrivateDbUnreachableError,
+  describeConnectError,
+} from "./pg-audit.mjs";
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
@@ -148,10 +153,11 @@ async function main() {
 
         await c.end();
       } catch (e) {
-        if (isPrivateDbUnreachableError(e.message)) {
-          console.log(`  ⚠ Postgres unreachable from this host — skipping RTH writer checks: ${e.message}`);
+        const detail = describeConnectError(e);
+        if (isPrivateDbUnreachableError(detail)) {
+          console.log(`  ⚠ Postgres unreachable from this host — skipping RTH writer checks: ${detail}`);
         } else {
-          fail(`Postgres RTH checks: ${e.message}`);
+          fail(`Postgres RTH checks: ${detail}`);
         }
       }
     } else {
@@ -195,8 +201,11 @@ async function main() {
     }
 
     try {
+      if (process.env.GITHUB_ACTIONS === "true") {
+        throw new Error("skip uw-socket log grep in GitHub Actions");
+      }
       const logs = execSync(
-        "railway logs --service blackout-web 2>/dev/null | rg 'uw-socket' | tail -20",
+        "railway logs --service blackout-web 2>/dev/null | grep -E 'uw-socket' | tail -20",
         { encoding: "utf8" }
       );
       if (/uw-socket.*stall watchdog/i.test(logs)) fail("uw-socket stall reconnects in recent logs");
