@@ -16,7 +16,12 @@
  */
 import { spawnSync } from "node:child_process";
 import { etParts, inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
-import { auditPgSsl, resolveAuditDbUrl } from "./pg-audit.mjs";
+import {
+  auditPgSsl,
+  resolveAuditDbUrl,
+  isPrivateDbUnreachableError,
+  isStaleAuditDbAuthError,
+} from "./pg-audit.mjs";
 import { isCronRunHealthyStatus } from "./lib/rth-socket-probe.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
@@ -126,9 +131,9 @@ async function postgresRthChecks() {
     // inability to run them at all is downgraded.
     const msg = e?.message ?? String(e);
     const isConfig =
-      /password authentication failed|no pg_hba\.conf entry|SASL|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|self.signed certificate|does not exist/i.test(
-        msg
-      );
+      isStaleAuditDbAuthError(msg) ||
+      isPrivateDbUnreachableError(msg) ||
+      /no pg_hba\.conf entry|SASL|does not exist/i.test(msg);
     if (isConfig) {
       console.log(`  ⚠ Postgres UNAVAILABLE — checks SKIPPED, not failed: ${msg}`);
       console.log(
@@ -154,7 +159,11 @@ async function cronHttpChecks() {
 
   for (const { path, label } of routes) {
     try {
-      const res = await fetch(`${BASE}${path}`, { headers: H });
+      let res = await fetch(`${BASE}${path}`, { headers: H });
+      if ([502, 503, 504].includes(res.status)) {
+        await new Promise((r) => setTimeout(r, 3000));
+        res = await fetch(`${BASE}${path}`, { headers: H });
+      }
       const json = await res.json().catch(() => ({}));
       // 202 is a SUCCESS, and specifically a "dispatched, no verdict yet" success.
       //
