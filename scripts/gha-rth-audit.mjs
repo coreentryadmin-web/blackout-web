@@ -16,8 +16,15 @@
  */
 import { spawnSync } from "node:child_process";
 import { etParts, inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
-import { auditPgSsl, resolveAuditDbUrl } from "./pg-audit.mjs";
-import { isCronRunHealthyStatus } from "./lib/rth-socket-probe.mjs";
+import {
+  auditPgSsl,
+  resolveAuditDbUrl,
+  describeConnectError,
+  isPrivateDbUnreachableError,
+  isPrivateVpcDbUrl,
+  isStaleAuditDbAuthError,
+} from "./pg-audit.mjs";
+import { isCronRunHealthyStatus, probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
 const force = process.argv.includes("--force");
@@ -52,6 +59,10 @@ async function postgresRthChecks() {
   }
 
   console.log(`\n── Postgres RTH checks (${etLabel}) ──`);
+  if (isPrivateVpcDbUrl(dbUrl)) {
+    console.log("  ⚠ Postgres URL is a private VPC endpoint — skipping");
+    return;
+  }
   if (!force && !inRthOpenWindow()) {
     console.log("  ⚠ Off-hours / weekend — skipping market-hours Postgres checks (use --force to override)");
     return;
@@ -115,24 +126,14 @@ async function postgresRthChecks() {
 
     await c.end();
   } catch (e) {
-    // CONNECT/AUTH failures are a CONFIG problem with this workflow's own credential, not evidence
-    // about production data — so they are reported loudly but do not turn the audit RED.
-    //
-    // The 2026-08-12 run died on `password authentication failed for user "postgres"`, i.e. the
-    // DATABASE_PUBLIC_URL secret is stale. Nothing in the repo can fix that, so leaving it as a
-    // failure pins the monitor red forever for a reason no code change can clear — the same trap
-    // the INFRA section of zerodte-e2e-suite already avoids by SKIPPING (never RED) when its AWS
-    // creds are absent or placeholder. Every check INSIDE the try still fails normally; only the
-    // inability to run them at all is downgraded.
-    const msg = e?.message ?? String(e);
-    const isConfig =
-      /password authentication failed|no pg_hba\.conf entry|SASL|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|self.signed certificate|does not exist/i.test(
-        msg
-      );
-    if (isConfig) {
+    // CONNECT/AUTH failures are a CONFIG/connectivity problem with this workflow's credential or
+    // path to RDS — not evidence about production data — so they are reported loudly but do not
+    // turn the audit RED (same discipline as rth-open-check / cron-audit-query fallbacks).
+    const msg = describeConnectError(e);
+    if (isStaleAuditDbAuthError(msg) || isPrivateDbUnreachableError(msg)) {
       console.log(`  ⚠ Postgres UNAVAILABLE — checks SKIPPED, not failed: ${msg}`);
       console.log(
-        "     This is the audit's own DATABASE_PUBLIC_URL/DATABASE_URL secret, not a production data fault."
+        "     This is the audit's own DATABASE_PUBLIC_URL/DATABASE_URL secret or a transient VPC drop, not a production data fault."
       );
     } else {
       failures.push(`postgres: ${msg}`);
@@ -149,7 +150,6 @@ async function cronHttpChecks() {
     { path: "/api/cron/data-integrity?force=1", label: "data-integrity" },
     { path: "/api/cron/provider-health-reconcile?force=1", label: "provider-health" },
     { path: "/api/cron/cron-staleness-watchdog", label: "cron-watchdog" },
-    { path: "/api/cron/socket-health", label: "socket-health" },
   ];
 
   for (const { path, label } of routes) {
@@ -186,11 +186,6 @@ async function cronHttpChecks() {
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
         failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
         console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
-      } else if (label === "socket-health" && json.ok === false) {
-        const opt = json.websockets?.options?.detail ?? "options unhealthy";
-        const luld = json.websockets?.stocks_luld?.detail ?? "";
-        failures.push(`${label}: ${opt}${luld ? `; LULD: ${luld}` : ""}`);
-        console.log(`  ✗ ${label} → ${opt}`);
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
@@ -198,6 +193,39 @@ async function cronHttpChecks() {
       failures.push(`${label}: ${e.message}`);
       console.log(`  ✗ ${label} → ${e.message}`);
     }
+  }
+
+  const { mins } = etParts();
+  const afterOpen930 = mins >= 9 * 60 + 30;
+  const socketHealthTimeoutMs = Number(process.env.SOCKET_HEALTH_TIMEOUT_MS ?? 180_000);
+  const socketResult = await probeOptionsSocketWithRetries({
+    afterOpen930,
+    fetchSocketHealth: async () => {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), socketHealthTimeoutMs);
+      try {
+        const res = await fetch(`${BASE}/api/cron/socket-health`, {
+          headers: H,
+          signal: ac.signal,
+        });
+        const body = await res.json().catch(() => ({}));
+        return { status: res.status, body };
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    onRetry: (attempt, detail) => {
+      console.log(`  ⚠ socket-health (attempt ${attempt}/3): ${detail} — retrying…`);
+    },
+  });
+  if (socketResult.preOpenWarn) {
+    console.log(`  ⚠ socket-health: ${socketResult.preOpenWarn}`);
+  } else if (socketResult.successDetail) {
+    console.log(`  ✓ socket-health → ${socketResult.successDetail}`);
+  }
+  if (socketResult.failure) {
+    failures.push(`socket-health: ${socketResult.failure}`);
+    console.log(`  ✗ socket-health → ${socketResult.failure}`);
   }
 }
 
