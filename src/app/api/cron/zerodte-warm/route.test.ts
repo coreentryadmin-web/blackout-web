@@ -126,8 +126,16 @@ test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 9
 test("zerodte-warm wraps its board-scan dispatch in the shared background UW sweep helper", () => {
   assert.match(
     routeSrc,
-    /runWithBackgroundUwSweep\(\(\) =>\s*\n\s*Promise\.allSettled\(\[warmZeroDteBoard\(\), refreshZeroDteBoardSnapshot\(\)\]\)/,
+    /runWithBackgroundUwSweep\(async \(\) =>/,
     "the cron's OWN dispatch must be tagged so it reserves a slot for live traffic, matching the four existing Vector-family crons"
+  );
+  const dispatchBlock = routeSrc.match(/const dispatchWarm = \(\) => \{[\s\S]*?void dispatchWarm\(\)/)?.[0] ?? "";
+  assert.match(dispatchBlock, /await warmZeroDteBoard\(\)/, "ledger warm must run first so recordZeroDteScanTick advances");
+  assert.match(dispatchBlock, /await refreshZeroDteBoardSnapshot\(\)/, "snapshot publish must still run after the warm scan");
+  assert.doesNotMatch(
+    dispatchBlock,
+    /Promise\.allSettled\(\[warmZeroDteBoard\(\), refreshZeroDteBoardSnapshot\(\)\]\)/,
+    "parallel double-scan fan-out must not return — it starved the scan heartbeat (2026-10-22 cron-audit)"
   );
   // The wrap must be around the CRON's dispatch only — the shared read path
   // (getZeroDteBoardPayload, used by /api/market/zerodte/board and

@@ -224,9 +224,27 @@ export async function GET(req: NextRequest) {
   // `/api/market/nighthawk/horizons`) is a SEPARATE call site and stays untagged, exactly like
   // the existing four crons: only the CRON'S OWN dispatch is wrapped, never the shared function.
   const dispatchWarm = () => {
-    void runWithBackgroundUwSweep(() =>
-      Promise.allSettled([warmZeroDteBoard(), refreshZeroDteBoardSnapshot()])
-    )
+    // SERIALIZE the two scan paths — they each call scanZeroDteBoard() (warm persists ledger +
+    // recordZeroDteScanTick; refresh publishes the shared board snapshot). Running them in
+    // parallel doubled UW fan-out and delayed the heartbeat until max(both) finished; measured
+    // 2026-10-22 RTH cron-audit RED on zerodte-warm with scan heartbeat critical_stale while
+    // cron_job_runs handshakes still looked healthy.
+    void runWithBackgroundUwSweep(async () => {
+      const results: PromiseSettledResult<unknown>[] = [];
+      results.push(
+        await warmZeroDteBoard().then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason) => ({ status: "rejected" as const, reason })
+        )
+      );
+      results.push(
+        await refreshZeroDteBoardSnapshot().then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason) => ({ status: "rejected" as const, reason })
+        )
+      );
+      return results;
+    })
       .then((results) => {
         let warmed = earningsWarmed;
         for (const r of results) {
