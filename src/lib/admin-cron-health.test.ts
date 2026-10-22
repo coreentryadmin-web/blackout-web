@@ -246,6 +246,15 @@ test("buildCronHealthSnapshot sources its runs_24h aggregate from the time-bound
 // nothing read it until this fix. Unlike spx-evaluate's heartbeat cross-check (which only
 // escalates when the cron_job_runs handshake ALSO looks stale), zerodte-warm's must not gate on
 // that handshake first, since that signal is the known-unreliable one here.
+test("buildCronHealthSnapshot applies swing-discovery phase retry grace (in-flight + claim_released)", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(src, /job\.key === "swing-discovery"/);
+  assert.match(src, /resolveScanPhase/);
+  assert.match(src, /phaseRunKey/);
+  assert.match(src, /claim_released/);
+  assert.match(src, /swingPhaseClaim\?\.status === "running"/);
+});
+
 test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan heartbeat, not just cron_job_runs", () => {
   const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
   assert.match(

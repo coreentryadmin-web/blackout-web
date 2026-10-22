@@ -23,6 +23,10 @@ import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
 import { sharedCacheGet } from "@/lib/shared-cache";
+import { todayEt } from "@/lib/et-date";
+import { phaseRunKey, resolveScanPhase } from "@/lib/swing/scan-cadence";
+import type { SwingDiscoveryPhaseClaim } from "@/lib/swing/discovery-claim";
+import { SWING_DISCOVERY_SCAN_MAX_MS } from "@/lib/swing/discovery-claim";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
@@ -361,6 +365,13 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   const zerodteWarmInFlight = Boolean(
     await sharedCacheGet("zerodte-warm:running").catch(() => null)
   );
+  const nowMs = Date.now();
+  const swingPhaseWindow = resolveScanPhase(nowMs);
+  const swingPhaseClaim: SwingDiscoveryPhaseClaim | null = swingPhaseWindow
+    ? await sharedCacheGet<SwingDiscoveryPhaseClaim>(
+        phaseRunKey(todayEt(new Date(nowMs)), swingPhaseWindow.phase)
+      ).catch(() => null)
+    : null;
   const jobs = CRON_JOBS.map((job) => {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
 
@@ -412,6 +423,54 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
             ...(health.meta ?? {}),
             zerodte_scan_heartbeat: zeroDteScanHb,
           },
+        };
+      }
+    }
+
+    // swing-discovery is phase-anchored (scan-cadence.ts): EventBridge fires often, but only one
+    // whole-market scan per (session day, phase). A failed attempt releases its claim for retry
+    // inside the same phase window — treating that as a hard `failed` for cron-audit-query produced
+    // false RED while MIDDAY/POWER_HOUR scans were still retrying (2026-10-22).
+    if (job.key === "swing-discovery") {
+      const last = lastByKey[job.key];
+      const lastMeta = (health.meta ?? last?.meta_json) as Record<string, unknown> | undefined;
+      const claimReleased = lastMeta?.claim_released === true;
+      const failedPhase =
+        typeof lastMeta?.phase === "string" ? lastMeta.phase : null;
+
+      if (swingPhaseWindow && swingPhaseClaim?.status === "running") {
+        const runningAgeMs = nowMs - (Number.isFinite(swingPhaseClaim.at) ? swingPhaseClaim.at : 0);
+        const plausiblyInFlight =
+          runningAgeMs >= 0 &&
+          runningAgeMs < SWING_DISCOVERY_SCAN_MAX_MS + 60_000;
+        if (plausiblyInFlight && (health.status === "failed" || health.status === "stale")) {
+          return {
+            ...health,
+            status: "warning" as const,
+            market_hours_stale: false,
+            status_label: `Discovery scan in flight · ${swingPhaseWindow.phase} phase`,
+            meta: {
+              ...(health.meta ?? {}),
+              swing_discovery_phase_claim: swingPhaseClaim,
+            },
+          };
+        }
+      }
+
+      if (
+        swingPhaseWindow &&
+        health.status === "failed" &&
+        claimReleased &&
+        failedPhase === swingPhaseWindow.phase &&
+        health.age_min != null &&
+        health.age_min <= 50
+      ) {
+        return {
+          ...health,
+          status: "warning" as const,
+          market_hours_stale: false,
+          status_label: `Last ${swingPhaseWindow.phase} attempt failed — claim released, retry expected this phase`,
+          meta: health.meta,
         };
       }
     }
