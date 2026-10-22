@@ -11,7 +11,12 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
-import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
+import {
+  resolveAuditDbUrl,
+  isPrivateDbUnreachableError,
+  describeConnectError,
+  withAuditPgClient,
+} from "./pg-audit.mjs";
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
@@ -98,60 +103,58 @@ async function main() {
     };
     if (dbUrl) {
       try {
-        const c = createAuditClient(dbUrl);
-        await c.connect();
+        await withAuditPgClient(dbUrl, async (c) => {
+          const eval15 = (
+            await c.query(
+              `SELECT COUNT(*)::int AS n FROM cron_job_runs
+               WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+            )
+          ).rows[0].n;
+          if (eval15 > 0) ok(`spx-evaluate ran in last 20m (${eval15} ok run(s))`);
+          else fail("spx-evaluate: no ok run in last 20m during RTH");
 
-        const eval15 = (
-          await c.query(
-            `SELECT COUNT(*)::int AS n FROM cron_job_runs
-             WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-          )
-        ).rows[0].n;
-        if (eval15 > 0) ok(`spx-evaluate ran in last 20m (${eval15} ok run(s))`);
-        else fail("spx-evaluate: no ok run in last 20m during RTH");
+          const regime15 = (
+            await c.query(
+              `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
+            )
+          ).rows[0].n;
+          if (regime15 > 0) ok(`market_regime fresh (writes last 20m: ${regime15})`);
+          else fail("market_regime: no writes in last 20m during RTH");
 
-        const regime15 = (
-          await c.query(
-            `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
-          )
-        ).rows[0].n;
-        if (regime15 > 0) ok(`market_regime fresh (writes last 20m: ${regime15})`);
-        else fail("market_regime: no writes in last 20m during RTH");
+          const dc = await c.query(
+            `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
+          );
+          const latest = dc.rows[0];
+          if (latest?.status === "ok") ok("data-correctness latest run ok");
+          else fail(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
 
-        const dc = await c.query(
-          `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
-        );
-        const latest = dc.rows[0];
-        if (latest?.status === "ok") ok("data-correctness latest run ok");
-        else fail(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
+          const ph = await c.query(
+            `SELECT status, started_at FROM cron_job_runs
+             WHERE job_key = 'provider-health-reconcile'
+             ORDER BY started_at DESC LIMIT 1`
+          );
+          const phRow = ph.rows[0];
+          if (phRow?.status === "ok" || phRow?.status === "skipped") {
+            ok(`provider-health-reconcile latest ${phRow.status}`);
+          } else {
+            fail(`provider-health-reconcile latest: ${phRow?.status ?? "never"}`);
+          }
 
-        const ph = await c.query(
-          `SELECT status, started_at FROM cron_job_runs
-           WHERE job_key = 'provider-health-reconcile'
-           ORDER BY started_at DESC LIMIT 1`
-        );
-        const phRow = ph.rows[0];
-        if (phRow?.status === "ok" || phRow?.status === "skipped") {
-          ok(`provider-health-reconcile latest ${phRow.status}`);
-        } else {
-          fail(`provider-health-reconcile latest: ${phRow?.status ?? "never"}`);
-        }
-
-        const grid15 = (
-          await c.query(
-            `SELECT COUNT(*)::int AS n FROM cron_job_runs
-             WHERE job_key = 'zerodte-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-          )
-        ).rows[0].n;
-        if (grid15 > 0) ok(`zerodte-warm ran in last 20m (${grid15} ok run(s))`);
-        else fail("zerodte-warm: no ok run in last 20m during RTH");
-
-        await c.end();
+          const grid15 = (
+            await c.query(
+              `SELECT COUNT(*)::int AS n FROM cron_job_runs
+               WHERE job_key = 'zerodte-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+            )
+          ).rows[0].n;
+          if (grid15 > 0) ok(`zerodte-warm ran in last 20m (${grid15} ok run(s))`);
+          else fail("zerodte-warm: no ok run in last 20m during RTH");
+        });
       } catch (e) {
-        if (isPrivateDbUnreachableError(e.message)) {
-          console.log(`  ⚠ Postgres unreachable from this host — skipping RTH writer checks: ${e.message}`);
+        const detail = describeConnectError(e);
+        if (isPrivateDbUnreachableError(detail)) {
+          console.log(`  ⚠ Postgres unreachable from this host — skipping RTH writer checks: ${detail}`);
         } else {
-          fail(`Postgres RTH checks: ${e.message}`);
+          fail(`Postgres RTH checks: ${detail}`);
         }
       }
     } else {
@@ -194,17 +197,17 @@ async function main() {
       console.log("  ⚠ CRON_SECRET unset — skipping options-socket HTTP probe");
     }
 
-    try {
-      const logs = execSync(
-        "railway logs --service blackout-web 2>/dev/null | rg 'uw-socket' | tail -20",
-        { encoding: "utf8" }
-      );
-      if (/uw-socket.*stall watchdog/i.test(logs)) fail("uw-socket stall reconnects in recent logs");
-      else ok("No uw-socket stall storms");
-    } catch {
-      if (process.env.GITHUB_ACTIONS === "true") {
-        console.log("  ⚠ production uw-socket log check skipped in GitHub Actions");
-      } else {
+    if (process.env.GITHUB_ACTIONS === "true") {
+      console.log("  ⚠ production uw-socket log check skipped in GitHub Actions");
+    } else {
+      try {
+        const logs = execSync(
+          "railway logs --service blackout-web 2>/dev/null | rg 'uw-socket' | tail -20",
+          { encoding: "utf8" }
+        );
+        if (/uw-socket.*stall watchdog/i.test(logs)) fail("uw-socket stall reconnects in recent logs");
+        else ok("No uw-socket stall storms");
+      } catch {
         console.log("  ⚠ Could not read production logs for uw-socket");
       }
     }

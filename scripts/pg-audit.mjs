@@ -76,6 +76,41 @@ export function isPrivateDbUnreachableError(message) {
   );
 }
 
+/** Transient PG blips (GHA → public RDS proxy drops mid-session). Retry before failing RTH audit. */
+export function isTransientPostgresAuditError(message) {
+  const s = String(message ?? "");
+  if (isStaleAuditDbAuthError(s)) return false;
+  return (
+    isPrivateDbUnreachableError(s) ||
+    /terminated unexpectedly|connection terminated|server closed the connection unexpectedly|ECONNABORTED|57P01|57P02|57P03|08006|08003|08P01/i.test(
+      s
+    )
+  );
+}
+
+/**
+ * Connect, run `fn(client)`, and end — retrying transient disconnects (measured on GHA rth-open-check).
+ */
+export async function withAuditPgClient(dbUrl, fn, { attempts = 3, delayMs = 2000 } = {}) {
+  let lastErr;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const c = createAuditClient(dbUrl);
+    try {
+      await c.connect();
+      const result = await fn(c);
+      await c.end().catch(() => undefined);
+      return result;
+    } catch (e) {
+      lastErr = e;
+      await c.end().catch(() => undefined);
+      const detail = describeConnectError(e);
+      if (!isTransientPostgresAuditError(detail) || attempt === attempts) throw e;
+      await new Promise((r) => setTimeout(r, delayMs * attempt));
+    }
+  }
+  throw lastErr;
+}
+
 /** Stale GitHub/env DATABASE_PUBLIC_URL (wrong user/password) — not a prod outage. */
 export function isStaleAuditDbAuthError(message) {
   return /password authentication failed/i.test(String(message ?? ""));

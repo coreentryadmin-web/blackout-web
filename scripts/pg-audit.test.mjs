@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   isPrivateDbUnreachableError,
   isStaleAuditDbAuthError,
+  isTransientPostgresAuditError,
   describeConnectError,
   isPrivateVpcDbUrl,
 } from "./pg-audit.mjs";
@@ -12,6 +13,11 @@ describe("pg-audit helpers", () => {
     assert.equal(isPrivateDbUnreachableError("read ECONNRESET"), true);
     assert.equal(isPrivateDbUnreachableError("connect ETIMEDOUT"), true);
     assert.equal(isPrivateDbUnreachableError("password authentication failed"), false);
+  });
+
+  it("detects transient mid-session Postgres drops for audit retry", () => {
+    assert.equal(isTransientPostgresAuditError("Connection terminated unexpectedly"), true);
+    assert.equal(isTransientPostgresAuditError("password authentication failed"), false);
   });
 
   it("detects stale audit DB auth errors", () => {
