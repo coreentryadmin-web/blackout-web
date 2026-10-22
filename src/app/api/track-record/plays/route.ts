@@ -72,7 +72,8 @@ export async function GET(req: NextRequest) {
       };
     });
     return NextResponse.json(roundFloats(payload), { headers: { ...NO_STORE_HEADERS, ...rlHeaders } });
-  } catch {
+  } catch (err) {
+    console.error("[track-record/plays] GET failed:", err);
     return NextResponse.json({ available: false }, { status: 503, headers: { ...NO_STORE_HEADERS, ...rlHeaders } });
   }
 }

@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   assignNighthawkTier,
+  capGatePromotedTierAssignment,
   nhTierInputFromScored,
   nhConvictionRank,
   nhDisplayTierFor,
@@ -242,5 +243,43 @@ describe("overnight inversion guard", () => {
       earningsRisk: false,
     });
     assert.equal(result.tier, "A");
+  });
+});
+
+// ── capGatePromotedTierAssignment (the publish-context.ts `tier` field's own cap) ───────────────
+// BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro MSTR score 52): capGatePromotedConviction
+// (publish-gates.ts) only ever capped the play's bare `conviction` string -- the separate `tier`
+// object publish-context.ts attaches (tier + rationale factors) recomputed assignNighthawkTier
+// independently and was never capped, so a gate-promoted play could show conviction:"B" right next
+// to tier:{tier:"A", factors:[...A-grade rationale...]}.
+describe("capGatePromotedTierAssignment", () => {
+  test("organic (non-promoted) A assignment is untouched", () => {
+    const assignment = assignNighthawkTier({ score: 48, confirmingSignals: 4, earningsRisk: false });
+    assert.equal(assignment.tier, "A");
+    const capped = capGatePromotedTierAssignment(assignment, false);
+    assert.equal(capped.tier, "A");
+    assert.deepEqual(capped.factors, assignment.factors);
+  });
+
+  test("gate-promoted A assignment is capped to B with an honest disclosure factor appended", () => {
+    const assignment = assignNighthawkTier({ score: 52, confirmingSignals: 5, earningsRisk: false });
+    assert.equal(assignment.tier, "A");
+    const capped = capGatePromotedTierAssignment(assignment, true);
+    assert.equal(capped.tier, "B");
+    // The original A-grade rationale is preserved (never silently dropped) -- only an additional
+    // factor discloses WHY the tier was capped, so the capped tier's own factors never read as an
+    // unexplained downgrade or still read as an uncontested A-grade case.
+    assert.equal(capped.factors.length, assignment.factors.length + 1);
+    assert.deepEqual(capped.factors.slice(0, assignment.factors.length), assignment.factors);
+    const disclosure = capped.factors[capped.factors.length - 1];
+    assert.equal(disclosure.direction, "down");
+    assert.match(disclosure.detail, /gate|promoted|capped/i);
+  });
+
+  test("gate-promoted B/C assignments are left untouched -- the cap only fires on A", () => {
+    const bAssignment = assignNighthawkTier({ score: 20, confirmingSignals: 1, earningsRisk: false });
+    assert.notEqual(bAssignment.tier, "A");
+    const capped = capGatePromotedTierAssignment(bAssignment, true);
+    assert.deepEqual(capped, bAssignment);
   });
 });

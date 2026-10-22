@@ -84,6 +84,58 @@ test("swingPlayBriefConfidence: moderate 'why' names the actual unavailable sour
   assert.match(c.why, /GEX matrix/);
 });
 
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro MRNA/RNG/DKNG/TSLA/SHOP): any count
+// >=1 used to read "moderate" with no further graduation — live data showed 6, 7, and 8
+// unavailable sources all rendering identically to the 1-2 cases pinned above. Grounded in that
+// real distribution: 6+ now reads "low" (thin evidence), distinguishing a near-total outage from
+// a single isolated gap.
+const sixUnavailable: BieUnavailableSource[] = Array.from({ length: 6 }, (_, i) => ({
+  source: `source-${i}`,
+  reason: "unavailable",
+  what_is_missing: "a fresh read",
+  retryable: true,
+}));
+const eightUnavailable: BieUnavailableSource[] = Array.from({ length: 8 }, (_, i) => ({
+  source: `source-${i}`,
+  reason: "unavailable",
+  what_is_missing: "a fresh read",
+  retryable: true,
+}));
+
+test("swingPlayBriefConfidence: 5 unavailable sources still reads moderate (just below the low-tier threshold, no regression)", () => {
+  const fiveUnavailable: BieUnavailableSource[] = Array.from({ length: 5 }, (_, i) => ({
+    source: `source-${i}`,
+    reason: "unavailable",
+    what_is_missing: "a fresh read",
+    retryable: true,
+  }));
+  const play = fixturePlay({ status: "OPEN", entryPresentPillars: null });
+  const c = swingPlayBriefConfidence(play, "open", fiveUnavailable);
+  assert.equal(c.level, "moderate");
+});
+
+test("swingPlayBriefConfidence: 6 unavailable sources reads low, not moderate (live TSLA/SHOP repro — thin evidence must be distinguishable from a single gap)", () => {
+  const play = fixturePlay({ status: "WATCH", entryPresentPillars: null });
+  const c = swingPlayBriefConfidence(play, "watch", sixUnavailable);
+  assert.equal(c.level, "low");
+  assert.match(c.why, /thin/i);
+  assert.match(c.why, /^6 sources /);
+});
+
+test("swingPlayBriefConfidence: 8 unavailable sources (live MRNA/RNG repro — near-total outage) reads low, same as 6, not a false 'high'/'moderate' read", () => {
+  const play = fixturePlay({ status: "OPEN", entryPresentPillars: null });
+  const c = swingPlayBriefConfidence(play, "open", eightUnavailable);
+  assert.equal(c.level, "low");
+  assert.match(c.why, /^8 sources /);
+});
+
+test("swingPlayBriefConfidence: the low-tier threshold does not override the thin-entry-evidence gate (entryPresentPillars still dominates)", () => {
+  const play = fixturePlay({ status: "OPEN", entryPresentPillars: 2 });
+  const c = swingPlayBriefConfidence(play, "open", eightUnavailable);
+  assert.equal(c.level, "low");
+  assert.match(c.why, /2\/7 pillars grounded/, "must still cite the thin-entry reason, not the source count");
+});
+
 test("swingPlayBriefConfidence: WATCH bucket (never committed, entryPresentPillars null) follows the same live-coverage rule as OPEN", () => {
   const play = fixturePlay({ status: "WATCH", entryPresentPillars: null });
   assert.equal(swingPlayBriefConfidence(play, "watch", []).level, "high");

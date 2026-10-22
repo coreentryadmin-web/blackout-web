@@ -102,13 +102,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, inert: true, reason: "database not configured" });
   }
 
+  // One query for every enabled rule row, grouped by (user_id, ticker) below — NOT one query per
+  // pair. This used to re-query `vector_alert_rules` inside the per-pair loop below (same WHERE
+  // user_id/ticker shape, just narrowed), firing N sequential round-trips for N pairs even though
+  // every column the loop needs was already available from a single bulk SELECT.
   let pairs: UserTickerPair[] = [];
+  let rulesByPair: Map<string, VectorAlertRuleRow[]> = new Map();
   try {
     await ensureVectorAlertRulesTable();
-    const { rows } = await dbQuery<UserTickerPair>(
-      `SELECT DISTINCT user_id, ticker FROM vector_alert_rules WHERE enabled = true`
+    const { rows } = await dbQuery<VectorAlertRuleRow & { user_id: string }>(
+      `SELECT user_id, id, ticker, kind, tolerance_pct, enabled FROM vector_alert_rules WHERE enabled = true`
     );
-    pairs = rows;
+    const seenPairs = new Set<string>();
+    for (const row of rows) {
+      const key = `${row.user_id}:${row.ticker}`;
+      if (!seenPairs.has(key)) {
+        seenPairs.add(key);
+        pairs.push({ user_id: row.user_id, ticker: row.ticker });
+      }
+      const existing = rulesByPair.get(key);
+      if (existing) existing.push(row);
+      else rulesByPair.set(key, [row]);
+    }
   } catch (error) {
     console.error("[cron vector-alerts] failed to read vector_alert_rules", error);
     await logCronRun("vector-alerts", started, { ok: false, error: "failed to read rule table" });
@@ -149,12 +164,7 @@ export async function GET(req: NextRequest) {
       const ctx0 = contextByTicker.get(ticker);
       if (!ctx0) continue; // this ticker's live data was unavailable this tick
 
-      const { rows } = await dbQuery<VectorAlertRuleRow>(
-        `SELECT id, ticker, kind, tolerance_pct, enabled
-           FROM vector_alert_rules
-          WHERE user_id = $1 AND ticker = $2 AND enabled = true`,
-        [userId, ticker]
-      );
+      const rows = rulesByPair.get(`${userId}:${ticker}`) ?? [];
       const rules = rows.map(rowToAlertRule);
       if (!rules.length) continue;
 

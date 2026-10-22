@@ -936,7 +936,10 @@ function ownContractExpiry(ctx: SwingPlayBriefContext): string | null {
 // earnings date itself — "unknown" timing never claims already-landed, matching this file's
 // existing honest-absence discipline (the sibling `noGapExposure` comment right below makes the
 // same call for the identical reason).
-function printAlreadyLandedThresholdMs(ymd: string, reportTime: string | null): number | null {
+// Exported (2026-10-21, Ask Largo standing mandate) so catalystsSection (play-brief-intel.ts,
+// a second renderer of the identical arsenal.earnings field) can reuse this exact bell-relative
+// threshold instead of reimplementing it — see that call site's own comment for why.
+export function printAlreadyLandedThresholdMs(ymd: string, reportTime: string | null): number | null {
   if (reportTime === "afterhours") return parseEtStamp(etStampFromDateOrIso(ymd));
   if (reportTime === "premarket") return parseEtStamp(`${ymd} 09:30 ET`);
   return null;
@@ -1131,19 +1134,32 @@ export function macroTapeCoaching(ctx: SwingPlayBriefContext): string | null {
   const arsenal = ctx.ecosystem?.arsenal;
   if (!arsenal) return null;
   const parts: string[] = [];
-  if (arsenal.macro) {
-    const m = arsenal.macro;
+  const m = arsenal.macro;
+  // Same "< 0 → inverted" convention already used for this field in verdict-core.ts and
+  // ecosystem-narrative.ts — reused here rather than inventing a second threshold.
+  const curveInverted = m?.curve_10y_1y_spread != null && m.curve_10y_1y_spread < 0;
+  if (m) {
     if (m.yield_10_year != null) parts.push(`10Y **${m.yield_10_year.toFixed(2)}%**`);
-    if (m.curve_10y_1y_spread != null) parts.push(`curve **${m.curve_10y_1y_spread.toFixed(2)}**`);
+    if (m.curve_10y_1y_spread != null) {
+      parts.push(`curve **${m.curve_10y_1y_spread.toFixed(2)}${curveInverted ? " (inverted)" : ""}**`);
+    }
   }
   if (arsenal.breadth?.tone) {
     parts.push(`breadth **${arsenal.breadth.tone}**`);
   }
   if (!parts.length) return null;
-  const riskOff = arsenal.breadth?.tone?.toLowerCase().includes("risk-off");
-  const riskOn = arsenal.breadth?.tone?.toLowerCase().includes("risk-on");
-  const hint =
-    ctx.play.direction === "LONG" && riskOff
+  const riskOff = arsenal.breadth?.tone?.toLowerCase().includes("risk-off") ?? false;
+  const riskOn = arsenal.breadth?.tone?.toLowerCase().includes("risk-on") ?? false;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): the hint used to key ONLY off breadth tone,
+  // so an inverted curve (its own distinct risk-off signal) was silently dropped whenever breadth
+  // read risk-on — the narrative would read as an unqualified "risk-on, no issue" even though a
+  // second macro fact in the SAME bullet was flashing the opposite read. Name the tension instead
+  // of letting one signal quietly override the other, same discipline as crossDeskCoaching/
+  // counterThesisLine elsewhere in this file: disagreement is surfaced, never flattened.
+  const curveBreadthDisagree = curveInverted && riskOn;
+  const hint = curveBreadthDisagree
+    ? "Curve inverted (risk-off) while breadth reads risk-on — the two macro reads disagree; treat this as genuine tension, not a clean risk-on signal."
+    : ctx.play.direction === "LONG" && riskOff
       ? "Risk-off tape — long swings need tighter stops."
       : ctx.play.direction === "SHORT" && riskOn
         ? "Risk-on tape — shorts face headwind; respect call walls."
@@ -1487,8 +1503,19 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
     warnings.push(`Vector **${label}** stale`);
   }
   const gex = ctx.ecosystem?.gex_positioning;
-  if (!dead && gexMatrixStale(gex)) {
-    const label = ageSecondsLabel(gexMatrixAgeMs(gex)) ?? "clock-skewed";
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20, static-code sweep): these two calls omitted
+  // readMs, defaulting both gexMatrixStale/gexMatrixAgeMs to a FRESH Date.now() sample instead of
+  // the request-wide ctx.readMs anchor this same function already threads through every other
+  // staleness check (vectorAgeStale above, and gexMatrixStale again 46 lines below for
+  // closedMarketNote) — exactly the #5351/#5353/#5355/#5356-class gap play-brief-types.ts's own
+  // `readMs` field doc comment names as "the same class of latent risk and a natural next sweep."
+  // A request whose compose takes several real seconds (Meridian/ecosystem/vector/book reads, all
+  // sequential I/O per that same comment) could have this line's live Date.now() and a sibling
+  // section's ctx.readMs land on opposite sides of GEX_MATRIX_STALE_MS for the identical gex
+  // snapshot, silently disagreeing within the same brief about whether dealer posture may be
+  // stale.
+  if (!dead && gexMatrixStale(gex, readMs)) {
+    const label = ageSecondsLabel(gexMatrixAgeMs(gex, readMs)) ?? "clock-skewed";
     warnings.push(`GEX matrix **${label}** stale — dealer posture may lag spot`);
   }
   if (!dead && ctx.ecosystem?.flow_feed_fresh === false) {
@@ -1569,7 +1596,7 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
 }
 
 /** Closed play post-mortem coaching. */
-export function closedCoaching(play: TerminalPlay): string | null {
+export function closedCoaching(play: TerminalPlay, spot?: number | null): string | null {
   if (play.status !== "CLOSED") return null;
   const lines: string[] = [];
 
@@ -1614,8 +1641,25 @@ export function closedCoaching(play: TerminalPlay): string | null {
           typeof inval === "number" && Number.isFinite(inval)) {
         const cushionPct =
           (play.direction === "SHORT" ? (inval - trig) / trig : (trig - inval) / trig) * 100;
+        // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro CRWV:61/MSFT:49): this
+        // clause used to unconditionally conclude "not that the stop was wrong" — a verdict on
+        // whether the STOP ITSELF was premature. watchForSection's own "Since it closed" section
+        // (play-brief-intel.ts, same envelope, rendered later) independently checks whether spot
+        // has since moved back through this exact `invalidationUnderlyingPx` level and, when it
+        // has, says the opposite: "the exit may have been early." Neither section knew about the
+        // other, so a member reading a closed+stopped brief whose underlying had since reclaimed
+        // the stop level saw both verdicts in the same document — this line clearing the stop,
+        // "Since it closed" implicating it, for the identical event. Since "Since it closed"
+        // already carries the real post-close reclaim evidence (how far back through, as of
+        // today), this line defers to it instead of asserting a verdict a later section can
+        // contradict — using the SAME reclaim test (direction-aware spot-vs-invalidation compare)
+        // "Since it closed" uses, so the two can't independently drift into disagreement again.
+        const reclaimed = spot != null && (play.direction === "SHORT" ? spot < inval : spot > inval);
+        const verdict = reclaimed
+          ? `spot has since moved back through this level — see "Since it closed" below for how far.`
+          : `a thin cushion here means the entry was already extended, not that the stop was wrong.`;
         lines.push(
-          `**Stop fired** (${r}) — entry **${fmtPriceLevel(trig)}** vs invalidation **${fmtPriceLevel(inval)}**, a **${fmtPct(cushionPct)}** cushion at commit; a thin cushion here means the entry was already extended, not that the stop was wrong.`,
+          `**Stop fired** (${r}) — entry **${fmtPriceLevel(trig)}** vs invalidation **${fmtPriceLevel(inval)}**, a **${fmtPct(cushionPct)}** cushion at commit; ${verdict}`,
         );
       } else {
         lines.push(`**Stop fired** (${r}) — check if entry was extended past invalidation.`);
@@ -1693,7 +1737,7 @@ export function collectCoachingBullets(
   };
 
   if (bucket === "closed") {
-    push(closedCoaching(play));
+    push(closedCoaching(play, spot));
     return out;
   }
 

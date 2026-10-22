@@ -196,6 +196,16 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
     flagUnderlyingPx:
       typeof flagPx === "number" && Number.isFinite(flagPx) && flagPx > 0 ? flagPx : play.flagUnderlyingPx,
     entryTriggerUnderlyingPx: meta.entryTriggerUnderlyingPx ?? play.entryTriggerUnderlyingPx ?? null,
+    // BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA WATCH short): the only real
+    // `liveSpot` writer anywhere in the repo was live-plays.ts's committed-ledger path (status
+    // OPEN/HOLD/TRIM) — mutually exclusive with WATCH/SKIP on status — so adapters.ts's "Since flag"
+    // track field (gated on WATCH/SKIP + non-null liveSpot) was structurally dead for every real
+    // pre-entry candidate. Unlike flagUnderlyingPx above (the pinned ANCHOR, deliberately never
+    // overwritten by a fresh scan spot — see the comment on `flagPx`), liveSpot is the separate,
+    // CURRENT-price field "Since flag" measures movement FROM that anchor, and must track the live
+    // scan read every time. reads.setup.price is exactly that live-or-last-known spot
+    // (swingServingReadsFromPlan, serving-ingest.ts).
+    liveSpot: reads?.setup?.price ?? play.liveSpot ?? null,
   };
 }
 

@@ -16,6 +16,7 @@ import {
   ivLeverageDivergenceCoaching,
   ivRankCoaching,
   laneRankCoaching,
+  macroTapeCoaching,
   magnetCoaching,
   manageLifecycleCoaching,
   rangeBiasEntryCollisionCoaching,
@@ -873,6 +874,75 @@ test("shortInterestCoaching: uses ctx.readMs, not the real wall clock, to judge 
     play({ direction: "LONG" }),
   );
   assert.match(line!, /Short interest/i, "ctx.readMs-fresh DTC read must render, not be withheld as ancient");
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): macroTapeCoaching's hint used to key ONLY off
+// breadth tone, so a genuinely inverted yield curve (its own distinct risk-off signal, same
+// "spread < 0" convention as verdict-core.ts/ecosystem-narrative.ts) was silently dropped whenever
+// breadth read risk-on. These four tests pin: the new disagreement framing fires when the two
+// signals conflict, the curve bullet itself now marks "(inverted)" (previously a bare number), and
+// the pre-existing single-signal branches are untouched when the two signals don't conflict.
+test("macroTapeCoaching: inverted curve + risk-on breadth surfaces the disagreement, not a clean risk-on read", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          macro: { yield_10_year: 4.1, curve_10y_1y_spread: -0.25, cpi: null, as_of: "2026-10-19" },
+          breadth: { tone: "risk-on", summary: null, as_of: "2026-10-19" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "SHORT" }),
+    }),
+  );
+  assert.match(line!, /curve \*\*-0\.25 \(inverted\)\*\*/);
+  assert.match(line!, /disagree/i);
+  assert.doesNotMatch(line!, /shorts face headwind/i, "the conflict framing must replace the single-signal SHORT hint, not append to it");
+});
+
+test("macroTapeCoaching: non-inverted curve + risk-on breadth keeps the existing SHORT headwind framing", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          macro: { yield_10_year: 4.1, curve_10y_1y_spread: 0.3, cpi: null, as_of: "2026-10-19" },
+          breadth: { tone: "risk-on", summary: null, as_of: "2026-10-19" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "SHORT" }),
+    }),
+  );
+  assert.match(line!, /curve \*\*0\.30\*\*/);
+  assert.doesNotMatch(line!, /\(inverted\)/);
+  assert.match(line!, /shorts face headwind/i);
+});
+
+test("macroTapeCoaching: inverted curve + risk-off breadth (agreeing signals) keeps the existing LONG tighter-stops framing", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          macro: { yield_10_year: 4.1, curve_10y_1y_spread: -0.1, cpi: null, as_of: "2026-10-19" },
+          breadth: { tone: "risk-off", summary: null, as_of: "2026-10-19" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG" }),
+    }),
+  );
+  assert.match(line!, /curve \*\*-0\.10 \(inverted\)\*\*/);
+  assert.match(line!, /tighter stops/i);
+  assert.doesNotMatch(line!, /disagree/i);
+});
+
+test("macroTapeCoaching: no macro/breadth data at all returns null", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: { ticker: "NRG", arsenal: { macro: null, breadth: null } } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.equal(line, null);
 });
 
 test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led friction", () => {
@@ -1807,6 +1877,83 @@ test("closedCoaching: stopped SHORT with entry/invalidation levels reports the r
     line!,
     /\*\*Stop fired\*\* \(stopped\) — entry \*\*100\.00\*\* vs invalidation \*\*110\.00\*\*, a \*\*\+10\.0%\*\* cushion at commit/,
   );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro CRWV:61/MSFT:49): the cushion
+// line used to unconditionally conclude "not that the stop was wrong" — a verdict watchForSection's
+// own "Since it closed" section (play-brief-intel.ts) directly contradicts whenever spot has since
+// reclaimed the exact same invalidation level ("the exit may have been early"). Both sections render
+// in the same envelope for every closed+stopped play, so a member reading a reclaimed position saw
+// the stop both cleared and implicated for the identical event. closedCoaching now defers to
+// "Since it closed" instead of asserting a verdict that section can contradict.
+test("closedCoaching: stopped LONG whose spot has since reclaimed invalidation defers to 'Since it closed' instead of asserting the stop wasn't wrong", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "LONG",
+      peak: 0,
+      exitPnlPct: -55.1,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 90,
+    }),
+    95, // spot back above the 90 invalidation level — reclaimed
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line!, /not that the stop was wrong/i);
+  assert.match(line!, /see "Since it closed" below/i);
+});
+
+test("closedCoaching: stopped SHORT whose spot has since reclaimed invalidation (dropped back below it) defers to 'Since it closed'", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "SHORT",
+      peak: 0,
+      exitPnlPct: -40,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 110,
+    }),
+    105, // spot back below the 110 invalidation level — reclaimed for a SHORT
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line!, /not that the stop was wrong/i);
+  assert.match(line!, /see "Since it closed" below/i);
+});
+
+test("closedCoaching: stopped LONG whose spot remains through invalidation keeps the original 'not that the stop was wrong' framing (no regression)", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "LONG",
+      peak: 0,
+      exitPnlPct: -55.1,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 90,
+    }),
+    85, // spot still below the 90 invalidation level — not reclaimed
+  );
+  assert.ok(line);
+  assert.match(line!, /not that the stop was wrong/i);
+  assert.doesNotMatch(line!, /Since it closed/i);
+});
+
+test("closedCoaching: stopped play with no spot argument (caller omitted it) keeps the original framing (safe default)", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "LONG",
+      peak: 0,
+      exitPnlPct: -55.1,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 90,
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /not that the stop was wrong/i);
 });
 
 test("closedCoaching: stopped play missing either level falls back to the generic prompt", () => {
@@ -2785,6 +2932,39 @@ test("dataHonestyCoaching: stale GEX matrix warns dealer posture may lag (Largo 
   );
   assert.match(line!, /GEX matrix \*\*180s\*\* stale/);
   assert.match(line!, /dealer posture may lag spot/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, static-code sweep): this GEX-staleness check
+// (and its sibling age-label call) used to omit ctx.readMs entirely, defaulting
+// gexMatrixStale/gexMatrixAgeMs to a FRESH Date.now() sample instead of the request-wide anchor
+// every other staleness check in this same function already uses (vectorAgeStale above it,
+// gexMatrixStale again below it for closedMarketNote) — the same #5351/#5353/#5355/#5356-class
+// gap play-brief-types.ts's own `readMs` field doc comment names as a documented, not-yet-done
+// follow-up sweep. `asof` is set FRESH relative to `readMs` (age 0, well under
+// GEX_MATRIX_STALE_MS) but `readMs` itself is a fixed historical instant far from the real
+// wall-clock "now" this test actually runs at — proving the verdict follows `ctx.readMs`, not the
+// real clock (same proof shape as the file's existing "an explicit readMs anchor" tests for
+// confluenceCoaching/magnetCoaching/vexCoaching etc.).
+test("dataHonestyCoaching: GEX-staleness check uses ctx.readMs, not the real wall clock (2026-10-20 fix)", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z");
+  const line = dataHonestyCoaching(
+    ctx({
+      readMs,
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          asof: new Date(readMs).toISOString(),
+          gamma_posture: "long",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.doesNotMatch(
+    line!,
+    /GEX matrix \*\*\d/,
+    `a gex read fresh relative to ctx.readMs must not warn stale just because the real wall clock has moved on, got: ${line}`,
+  );
 });
 
 // GAP FOUND 2026-10-08 (Ask Largo standing mandate): neither staleness check above fires for the

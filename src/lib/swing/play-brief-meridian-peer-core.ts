@@ -60,11 +60,14 @@ export function meridianPeerEarningsCoaching(
   if (item.expected_move_pct != null) {
     parts.push(`implied move **${item.expected_move_pct.toFixed(1)}%**`);
   }
-  if (item.days_until <= 7) {
-    parts.push(
-      item.days_until <= 0 ? "reports **today**" : `reports in **${item.days_until}d**`,
-    );
-  }
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SHOP): this baseline line used to
+  // gate on `days_until <= 7` — a narrower sub-window left over from before this function's own
+  // entry gate (above) was widened to 14 days. For an item 8-14 days out with no expected_move_pct
+  // quoted and an unavailable peer cohort, that left `parts` empty and the WHOLE section silently
+  // omitted — while a sibling ticker 7 days out, with the identical unavailable-cohort reason, got
+  // the thin "reports in Nd" fallback. Always push the baseline line for any item the function was
+  // already entered for (days_until 0-14); `days_until <= 3` still adds the extra urgency bullet.
+  parts.push(item.days_until <= 0 ? "reports **today**" : `reports in **${item.days_until}d**`);
   if (item.days_until <= 3) {
     parts.push("**print imminent** — vol crush risk elevated");
   }
@@ -72,7 +75,14 @@ export function meridianPeerEarningsCoaching(
   if (peer && peer.available) {
     if (peer.sector_label) parts.push(`sector **${peer.sector_label}**`);
     if (peer.interpretation?.trim()) parts.push(peer.interpretation.trim());
-    if (peer.position_summary) parts.push(peer.position_summary);
+    // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA): whenever the cohort is
+    // thin (distribution === null), describeCohortPosition() (meridian-sector-core.ts) returns
+    // `${label} — ${insufficientReason}` for position_summary — the SAME reason string that also
+    // lands on insufficient_reason below, verbatim. Pushing both unconditionally stated the
+    // identical "no peers reporting..." clause twice in one rendered bullet. position_summary is
+    // only worth stating here when it carries a real ranking (distribution present); the thin-
+    // cohort case is already covered once, by the insufficient_reason caveat below.
+    if (peer.position_summary && peer.distribution) parts.push(peer.position_summary);
     // GAP FOUND (2026-09-21, Ask Largo standing mandate): `shapeMeridianPeerCohortForLargo`
     // (meridian-peer-cohort-for-largo-core.ts) tags the subject ticker's OWN historical print
     // record onto `peer.members` as `is_subject: true` — carrying its own `beat_rate`/
@@ -99,15 +109,27 @@ export function meridianPeerEarningsCoaching(
     }
     const peers = (peer.members ?? []).filter((m) => !m.is_subject && m.beat_rate_n >= 3);
     if (peers.length) {
-      const snippets = peers
-        .slice(0, 3)
+      // BUG FIX (2026-10-20, Ask Largo standing mandate — same Largo C3 absence-disclosure shape
+      // already fixed today in play-brief-diff.ts/envelopeWithDiffSection and already correctly
+      // handled by the sibling meridianCatalystsSection, play-brief-intel.ts). Up to
+      // MAX_PEER_REACTION_TICKERS=6 non-subject peers can qualify with beat_rate_n>=3, but only
+      // the first 3 were ever shown — silently, with no "+N more" note, so a trader had no way to
+      // know the real cohort was larger than the 3 names rendered.
+      const PEER_SNIPPET_LIMIT = 3;
+      const shown = peers.slice(0, PEER_SNIPPET_LIMIT);
+      const snippets = shown
         .map((m) => {
           const beat =
             m.beat_rate != null ? `${Math.round(m.beat_rate * 100)}% beat` : "beat n/a";
           return `**${m.ticker}** ${beat} (n=${m.beat_rate_n})`;
         })
         .join(" · ");
-      parts.push(`peer history: ${snippets}`);
+      const overflow = peers.length - shown.length;
+      parts.push(
+        overflow > 0
+          ? `peer history: ${snippets} (+${overflow} more peer${overflow === 1 ? "" : "s"} not shown)`
+          : `peer history: ${snippets}`,
+      );
     }
     if (peer.insufficient_reason?.trim()) {
       parts.push(

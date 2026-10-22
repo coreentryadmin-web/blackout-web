@@ -55,7 +55,7 @@ import {
   distillSwingCalibrationReport,
   persistSwingArchetypeTrackRecord,
 } from "@/lib/swing/calibration-cache";
-import type { SwingManageRung } from "@/lib/swing/manage";
+import { THESIS_BREAK_RUNGS, type SwingManageRung } from "@/lib/swing/manage";
 import type { ParentGradeFreeze } from "@/lib/swing/roll";
 import type { SwingArchetype } from "@/lib/swing/taxonomy";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
@@ -409,6 +409,42 @@ async function runSwingActiveRefreshCron(started: number, slot: HeavyCronSlot): 
         .catch((err) => {
           console.warn(
             `[swing-discord] terminal notify failed for position ${o.positionId} (${parentRow.ticker}):`,
+            err
+          );
+        });
+    }
+
+    // Ask Largo standing mandate — scoped slice of PR #4076's "alerting only bookends the trade"
+    // gap (comment 6303734681): a THESIS_BREAK_RUNGS gate can fire while the position is STILL
+    // OPEN (roll executor didn't run this tick, or buildRollPlan couldn't produce a plan — no
+    // forward bars, chain fetch failed, budget/cap gate). Those positions already got the STC
+    // alert above via the roll-executed path; this covers the rest: fire a ONE-SHOT, non-trade
+    // "thesis broke" alert the first tick a thesis gate is detected, independent of execution.
+    // Fail-open on the dedup claim (`.catch(() => true)`) — a Redis hiccup should cost at most a
+    // duplicate alert, never a silently dropped one, matching notifySwingThesisBreak's own
+    // fire-and-forget contract.
+    const freshThesisBreaks = result.outcomes.filter(
+      (o) => o.verdict && THESIS_BREAK_RUNGS.has(o.verdict.rung) && !o.roll?.parentGraded
+    );
+    for (const o of freshThesisBreaks) {
+      const parentRow = openRows.find((r) => r.id === o.positionId);
+      if (!parentRow) continue;
+      const dedupeKey = `swing:thesis-break-alerted:v1:${o.positionId}`;
+      void sharedCacheSetNx(dedupeKey, { at: nowMs }, 90 * 86_400)
+        .catch(() => true)
+        .then((claimed) => {
+          if (!claimed) return;
+          return import("@/lib/swing/discord-trade-notify").then(
+            ({ notifySwingThesisBreak, swingInputFromRow }) => {
+              const input = swingInputFromRow(parentRow);
+              if (!input) return;
+              return notifySwingThesisBreak(input, o.verdict.reason);
+            }
+          );
+        })
+        .catch((err) => {
+          console.warn(
+            `[swing-discord] thesis-break notify failed for position ${o.positionId} (${parentRow.ticker}):`,
             err
           );
         });

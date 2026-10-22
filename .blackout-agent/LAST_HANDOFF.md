@@ -1,24 +1,20 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-07T20:00:43.450Z
-**Run:** 4f682668-61cb-4609-b979-5920b46266ef
+**At:** 2026-09-07T05:59:10.448Z
+**Run:** 035371de-8d1d-44c7-978b-4e557744bd4d
 
 ## Summary
 
-Cycle complete: #4563 merged, #4566 verify pending (11/11 local tests), handoff #4568 opened, closed stale #4564/#4565. validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Awaiting Claude on #4566.
+PR wake cycle: #4464 peer-reviewed APPROVED (14/14 occ-symbol tests). Undraft #4464 blocked (GitHub API rate limit). #4465 verify GREEN — 105/105 vector tests locally; Claude peer review requested (Cursor cannot self-approve). Lifecycle GREEN (22 checks), validate:deploy GREEN, ops:collect 0. Labor Day — RTH skipped.
 
 ## Deploy
 
-- main: `18ba5c386c7221c48223e873ebec379a10431f4c`
-- status: 
+- main: `48d0bbbc81661f91db1efd377a48ddb099939369`
+- status: success
 
 ## Open PRs
 
-- #4568 [cursor] chore(state): autopilot handoff after #4563 merge + #4566 review queue
-- #4567 [agent] fix(spx): clamp WATCH age to zero for modest future timestamp skew
-- #4566 [agent] fix(perf): widen vector-walls-warm off-window force=1 cooldown
-- #4480 [human] chore(deps): bump next from 15.5.23 to 16.3.4
-- #4479 [human] chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4
-- #4478 [human] chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2
-- #4477 [human] chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0
-- #4476 [human] chore(deps): bump the minor-and-patch group with 11 updates
+- #4467 [cursor] chore(autopilot): Labor Day wake handoff — lifecycle GREEN, #4464 approved
+- #4466 [human] chore(state): cursor handoff after 48d0bbbc merge wake
+- #4465 [cursor] fix(vector): align bead rail x-domain with session viewport (Sep-3 restore v2)
+- #4464 [human] test(occ-symbol): add missing direct unit coverage for buildOcc

@@ -30,6 +30,11 @@ import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 const SLOT_KEY_PREFIX = "cron:heavy-slot:";
 const RESERVED_SLOT_KEY_PREFIX = "cron:heavy-slot:reserved:";
 
+/** Redis key for a cron's dedicated heavy-slot lock (used by wedge-breaker clears). */
+export function heavyCronReservedSlotRedisKey(cronName: string): string {
+  return `${RESERVED_SLOT_KEY_PREFIX}${cronName}`;
+}
+
 /** How many heavy crons may run at once, cluster-wide. Six crons contending for 1-2 ECS web
  *  tasks is the measured problem; capping concurrent heavy work at 2 leaves one slot for a
  *  shorter job to still make progress while a long one (vector-pick-sweep) is mid-run, rather
@@ -60,8 +65,15 @@ export const MAX_CONCURRENT_HEAVY_CRONS = 2;
  * semantics (the shared logic below already serializes a cron against itself via the same atomic
  * SET NX primitive) — this does not change how many swing-active-refresh runs can be in flight at
  * once, only who it has to wait on.
+ *
+ * `zerodte-warm` joined the reserved set 2026-10-21: when both shared slots were held by
+ * vector-family crons (multi-minute runs), zerodte-warm logged
+ * "heavy-cron concurrency slot unavailable" while its fast handshake still looked healthy —
+ * `zerodte_scan_heartbeat` went `critical_stale` (>10m without `recordZeroDteScanTick`) and
+ * `cron-audit-query` / `cron-staleness-watchdog` correctly failed CI with `problems: zerodte-warm`.
+ * Same starvation shape as swing-active-refresh, different member surface (0DTE board / discovery).
  */
-const RESERVED_SLOT_CRONS = new Set<string>(["swing-active-refresh"]);
+const RESERVED_SLOT_CRONS = new Set<string>(["swing-active-refresh", "zerodte-warm"]);
 
 export type HeavyCronSlot = { readonly cronName: string; release(): Promise<void> };
 

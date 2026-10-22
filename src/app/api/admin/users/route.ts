@@ -71,8 +71,15 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const query = url.searchParams.get("q")?.trim() || "";
-  const page = Math.max(1, Number(url.searchParams.get("page") || "1"));
-  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || "50")));
+  // The `|| "1"`/`|| "50"` only guards an EMPTY string — a non-numeric one (e.g. `page=abc`)
+  // is still truthy, so it skips that fallback, then `Number("abc")` = NaN survives
+  // Math.max/Math.min (NaN is neither < nor > anything) and reaches `offset = (NaN-1)*limit`
+  // = NaN with no try/catch anywhere in this handler, throwing uncaught inside either the raw
+  // Postgres OFFSET bind or the Clerk Backend API call. The second `|| 1`/`|| 50` after
+  // Number(...) catches it (NaN is falsy), so a malformed page/limit degrades to the default
+  // instead of a framework-level 500.
+  const page = Math.max(1, Number(url.searchParams.get("page") || "1") || 1);
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || "50") || 50));
   const tierFilter = url.searchParams.get("tier") || "";
   const roleFilter = url.searchParams.get("role") || "";
   const accessFilter = url.searchParams.get("access") || "";

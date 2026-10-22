@@ -18,8 +18,8 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
-import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, type SwingSubLane } from "./taxonomy";
-import { graduatedArchetypeEntry } from "./calibration-cache";
+import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, SWING_SUB_LANES_ORDER, type SwingSubLane } from "./taxonomy";
+import { graduatedArchetypeEntry, graduatedSubLaneEntry } from "./calibration-cache";
 import { swingPlayBriefConfidence } from "./play-brief-confidence";
 import {
   collectBriefUnavailableSources,
@@ -29,6 +29,7 @@ import {
   gexMarketSessionNote,
   gexMatrixAgeMs,
   gexMatrixStale,
+  archetypeTrackRecordIsStale,
   optionMarkGenuinelyUnknown,
   optionMarkIsStale,
   playExpectsLiveOptionMark,
@@ -37,17 +38,24 @@ import {
   trustedHelixFlow,
   vectorSnapshotStale,
 } from "./play-brief-absence";
-import { buildIntelSections, entryTriggerDeadReason } from "./play-brief-intel";
+import {
+  buildIntelSections,
+  entryTriggerDeadReason,
+  nearestLevelWithFlip,
+  worstKnownSwingDataAgeMs,
+} from "./play-brief-intel";
 import { checkPortfolioOverlap } from "./portfolio";
 import { describeThemeOverlap } from "./theme-cluster";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
 import { deadPlayReason, gateFramingMootReason } from "./entry-enterability";
 import { buildStructureLadder } from "./play-brief-ladder";
+import { hasScaledOut, runnerTrailingStopPremium } from "@/lib/zerodte/terminal-ladder";
 import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
 import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { calibratedThesisPillars, thesisHealthUncalibrated } from "./thesis-health";
+import { mfeCaptureOutcome } from "./mfe-capture";
 import { canonicalTicker } from "@/lib/largo/core/entities";
 
 function biasFromDirection(dir: string): BieBias {
@@ -80,9 +88,52 @@ function briefThesis(
   action: { label: string } | null,
   archetypeLabel: string | null,
 ): string {
-  const verb = action?.label ?? play.recommendation ?? play.status;
+  const verb = swingVerdictVerb(play, action);
   const archetypeSuffix = archetypeLabel ? ` · ${archetypeLabel}` : "";
   return `${play.direction} ${contractHeadline} — ${verb}${archetypeSuffix}.`;
+}
+
+/**
+ * Resolve the member-facing VERB shared by the headline, `thesis` (`briefThesis` above), and the
+ * Verdict section's opening line — one function so all three can never disagree, same discipline
+ * `briefThesis`'s own doc comment already states for why `thesis` reuses this exact chain.
+ *
+ * BUG FIX (2026-10-21, Ask Largo x Night Hawk Swings standing mandate, live repro META/ORCL): a
+ * RESEARCH/SKIP candidate (`play.status === "SKIP"` — the desk declining a setup, nothing was ever
+ * entered — see `swingActionDisplay`'s own "SKIP deliberately returns null so the honest PASSED
+ * lifecycle pill shows" doc comment, play-card-lifecycle.ts) leaves `action` null here, and
+ * `SwingEntryVerdict.recommendation` (entry-verdict.ts) — a two-value BUY/HOLD field with no
+ * distinct "pass" value of its own — is stamped the literal string "HOLD" by `swingEntryVerdict`'s
+ * RESEARCH branch, NOT because anything is being held. Before this fix the shared fallback chain
+ * (`action?.label ?? play.recommendation ?? play.status`) fell straight through the null `action`
+ * to that literal "HOLD", so the headline, `thesis`, and the Verdict section's own opening line all
+ * read "HOLD — META 705P 5DTE" one sentence away, in the SAME brief, from "Desk is passing this
+ * setup — no entry recommended." (`play.recNote`, rendered two lines down in Verdict) — a genuine
+ * Largo-contract identity/precision violation: a trader skimming only the headline has no way to
+ * tell a never-entered, desk-is-passing candidate apart from an existing open position being told
+ * to keep holding. Confirmed systemic (not a single-ticker fluke) on 2 independently-reproduced
+ * live tickers (META, ORCL) — every RESEARCH-bucket row shares this exact code path.
+ *
+ * Fixed by special-casing SKIP to the engine's own already-shipped "PASSED" vocabulary
+ * (`playStatusDisplay`'s SKIP case, play-card-lifecycle.ts — "PASSED is the engine's own vocabulary
+ * for the decision, and a discipline the desk should look good for exercising rather than be
+ * punished for") instead of leaking the overloaded `recommendation` field. Every other `deckStatus`
+ * is untouched: `play.status` is never `"SKIP"` for WATCH/OPEN/HOLD/TRIM/CLOSED, so they fall
+ * through to the identical, unchanged `action?.label ?? play.recommendation ?? play.status` chain
+ * as before — a real OPEN/HOLD position still reads "HOLD" exactly as it must.
+ *
+ * EXPORTED (2026-10-21, deferred follow-up to this same fix, staged finding
+ * `docs/audit/findings-staging/2026-10-21-swing-skip-hold-headline-leak.md`): the identical
+ * `action?.label ?? play.recommendation ?? play.status`-shaped fallback chain also lives in
+ * `play-brief-narrative.ts`'s `actionNarrative` ("Entry stance" bullet) and `degradedReadLine`
+ * ("Live read" bullet) — both independently fall through to the SAME literal "HOLD" for a SKIP
+ * play, in the SAME brief this fix already corrects the headline/Verdict copy of. Exported so
+ * those two call sites can reuse this exact function rather than re-deriving (and risking
+ * re-diverging from) the SKIP special case a second and third time.
+ */
+export function swingVerdictVerb(play: TerminalPlay, action: { label: string } | null): string {
+  if (play.status === "SKIP") return "PASSED";
+  return action?.label ?? play.recommendation ?? play.status;
 }
 
 function statusBucket(play: TerminalPlay): "watch" | "open" | "closed" {
@@ -240,7 +291,25 @@ function managementSection(play: TerminalPlay): RichSection {
       const targetLabel = targetAlreadyFired
         ? `${fmtUsd(ep.target_premium)} ✓ (reached)`
         : fmtUsd(ep.target_premium);
-      lines.push(`Rails: stop ${fmtUsd(ep.stop_premium)} · target ${targetLabel}`);
+      // BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro MRNA TRIM/positionId 1958):
+      // once a trim tranche has fired, the exit engine's own live state machine
+      // (deriveScaleOutAction/computeScaleOutTriggerInfo, scale-out.ts) permanently disables the
+      // pre-scale hard stop ("only fires pre-scale, by design" — manage.ts's own premium_stop
+      // GATE comment); post-scale, computeScaleOutTriggerInfo returns hard_stop_price: null and
+      // the real governing floor becomes the runner's trailing stop off its peak instead. This
+      // line unconditionally rendered `ep.stop_premium` with no such caveat — a dead trigger
+      // presented as live, with the real governing floor never surfaced. Mirrors the target
+      // side's own already-fired treatment immediately above.
+      const scaledAlready = hasScaledOut(ep);
+      const peakPremiumDollar =
+        play.entry != null && play.entry > 0 && play.peak != null && Number.isFinite(play.peak)
+          ? play.entry * (1 + play.peak / 100)
+          : null;
+      const runnerTrail = scaledAlready ? runnerTrailingStopPremium(peakPremiumDollar) : null;
+      const stopLabel = scaledAlready
+        ? `${fmtUsd(ep.stop_premium)} _(no longer applies — already scaled${runnerTrail != null ? `; runner trail now ${fmtUsd(runnerTrail)}` : ""})_`
+        : fmtUsd(ep.stop_premium);
+      lines.push(`Rails: stop ${stopLabel} · target ${targetLabel}`);
     }
   }
   if (play.progress != null && Number.isFinite(play.progress)) {
@@ -403,9 +472,18 @@ function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
     const pnl = r.livePnlPct != null ? fmtPct(r.livePnlPct) : "—";
     return `• **${strike ?? "?"}${right} ${expiry}** — entered ${entered ?? "unknown date"}, entry ${fmtUsd(r.entryPremium ?? null)}, P&L ${pnl}`;
   });
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA WATCH SHORT): the count below
+  // used to be `siblings.length + 1` unconditionally, counting THIS brief's own subject play as a
+  // "live position" even for a WATCH candidate — which, per this function's own 2026-10-15 fix
+  // comment above, is never itself committed and can never appear in laneRows. That overstated real
+  // capital-at-risk exposure: a WATCH-bucket brief with exactly 1 real committed sibling rendered
+  // "2 concurrent live positions" when there was only the 1 real one. Only count the subject itself
+  // when it actually has an entry premium (i.e. is itself live/committed) — `hasOwnEntry` already
+  // distinguishes this a few lines up.
+  const total = siblings.length + (hasOwnEntry ? 1 : 0);
   return {
     title: "Other concurrent position(s)",
-    body: `${ticker} carries ${siblings.length + 1} concurrent live position(s) — this brief covers one. Other(s):\n\n${lines.join("\n")}\n\nPass a specific strike/expiry to review a different one.`,
+    body: `${ticker} carries ${total} concurrent live position(s) — this brief covers one. Other(s):\n\n${lines.join("\n")}\n\nPass a specific strike/expiry to review a different one.`,
     bias: "neutral",
   };
 }
@@ -540,7 +618,18 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
       ? `Mark: **unknown** _(sync quote, no live price yet — do not read as flat)_`
       : markUnsynced
         ? `Mark: **${fmtUsd(play.mark)}** _(live quote, no freshness timestamp)_`
-        : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
+        : // BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro CRWV:63 OPEN brief): the
+          // Greeks/Spread caveat a few lines below (`staleCaveat`) reads "_(stale — same quote
+          // Mark flagged above)_" whenever `optionMarkIsStale` is true — a premise this branch
+          // never actually satisfied. This is the only one of the three Mark branches with no
+          // confidence caveat of its own (markGenuinelyUnknown/markUnsynced both already carry
+          // one), so a stale-but-timestamped mark rendered a bare "Mark: $4.40 (2026-10-20 16:00
+          // ET)" with nothing "above" for Greeks/Spread (and, for an OPEN play, watchForSection's
+          // premium stop/target rails a few sections later — same claim, same bug) to truthfully
+          // point back to. Appending the stale tag here, consistent with the other two branches'
+          // own in-line caveats, makes every downstream "flagged above" reference accurate instead
+          // of rewording each one around a cross-section reference that can drift again later.
+          `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}${optionMarkIsStale(play, readMs) ? " _(stale)_" : ""}`,
     `P&L: **${fmtPct(pnlForDisplay)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
     // BUG FIX (2026-10-17, Ask Largo x Night Hawk Swings standing mandate — live NVDA:62 repro,
     // board-wide sweep found 9/63 committed positions affected). Before this fix, Peak/Trough
@@ -853,10 +942,23 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
 }
 
 function closedSection(play: TerminalPlay): RichSection {
+  // BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro NVDA:62): this used to gate the
+  // "MFE capture" line on the raw `play.mfeCapturePct != null` check — but mfe-capture.ts's own
+  // doc comment states that field is "currently never populated... so the ratio fallback is what
+  // production actually serves today," and the real swing closed-play adapter
+  // (`terminalPlayFromHorizon`) confirms it: `mfeCapturePct` is never set for a real swing CLOSED
+  // play, so this line never rendered live. The shared `mfeCaptureOutcome()` helper (used by this
+  // same brief's own "Lessons" section, lessonsSection in play-brief-intel.ts) falls back to the
+  // peak/exitPnlPct ratio when the raw field is absent — switching to it here makes "Outcome"
+  // show the same number "Lessons" already computes from the same play object, instead of nothing.
+  // A round-trip-to-loss outcome (`kind === "round_trip"`) has no "capture" to report (that's a
+  // different event, see mfe-capture.ts's own header comment), so the line is omitted there too,
+  // same as every other call site of this helper.
+  const outcome = mfeCaptureOutcome(play.exitPnlPct, play.peak, play.mfeCapturePct);
   const lines = [
     `Exit P&L: **${fmtPct(play.exitPnlPct)}**`,
     play.closedReason ? `Reason: **${play.closedReason}**` : null,
-    play.mfeCapturePct != null ? `MFE capture: **${fmtPct(play.mfeCapturePct)}**` : null,
+    outcome?.kind === "capture" ? `MFE capture: **${fmtPct(outcome.capturePct)}**` : null,
     play.exitAt ? `Closed: **${etStampFromIso(play.exitAt)}**` : null,
   ].filter(Boolean);
   return { title: "Outcome", body: lines.join("\n") };
@@ -1073,9 +1175,17 @@ function levelsFromContext(
   }
   if (!vectorStale) {
     for (const z of vec?.confluenceZones ?? []) {
+      // BUG FIX (Ask Largo standing mandate, 2026-10-20): `z.center` is a weighted average
+      // (vector-confluence.ts's `weightedPrice / centerWeightSum`) and routinely carries a long
+      // floating-point tail (e.g. 7499.390909090909) — the exact "round at the data layer"
+      // systemic issue this file's own CLAUDE.md names. Every other sibling read of this same
+      // `ConfluenceZone.center` field rounds it (play-brief-intel.ts's `fmtPriceLevel(z.center)`,
+      // play-brief-narrative-coaching.ts's `fmtPriceLevel(top.center)`) — this was the one
+      // omission. Rounding here, at the source, means this level is correct on its own rather
+      // than depending on route.ts's external roundFloats() wrapper two layers away.
       levels.push({
         label: confluenceZoneLabel(z, { callWall, putWall }),
-        price: z.center,
+        price: Math.round(z.center * 100) / 100,
         provenance: {
           source: "Vector",
           asOf: levelProvenanceAsOf(gex, vec, "vector"),
@@ -1234,6 +1344,12 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       : null;
   if (gammaPosture) {
     const parts: string[] = [`γ ${gammaPosture}`];
+    // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro GOOGL-closed): the net-GEX dollar
+    // figure pushed just below has no Vector equivalent anywhere in this file — it is ALWAYS read
+    // from `gex.net_gex`. Tracked here so the provenance tag below can't say "Vector" for a line
+    // that actually carries GEX-matrix-only content just because the directional word happened to
+    // also resolve from Vector's own regime.
+    let netGexFromGex = false;
     if (gex && !gexStale && Number.isFinite(gex.net_gex)) {
       // BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro ABTC $10.15 brief): a real,
       // signed net GEX under ~$50k (common on lower-priced/small-cap tickers) rounded to "0.0M" via
@@ -1245,6 +1361,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       // SPY/SPX-scale tickers) rendered as e.g. "-17545.3M" under a fixed /1e6-then-"M" format —
       // formatDealerDollars picks M/B/T by magnitude instead, so this reads "-17.5B".
       parts.push(`net GEX ${gex.net_gex >= 0 ? "+" : ""}${formatDealerDollars(gex.net_gex)}`);
+      netGexFromGex = true;
     }
     if (gex && !gexStale) {
       // Recompute against the SAME Vector-preferred call/put walls the levels array and narrative
@@ -1265,24 +1382,39 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
               spotForWall
             )
           : null;
-      if (wall) {
-        parts.push(`nearest wall ${fmtPriceLevel(wall.strike)} (${wall.distance_pts.toFixed(1)} pts)`);
-      } else if (gex.flip != null) {
-        parts.push(`γ-flip ${fmtPriceLevel(gex.flip)}`);
+      // BUG FIX (Ask Largo standing mandate, 2026-10-20, fresh-angle technicals audit, adversarially
+      // verified): this used to pick the flip ONLY when no wall existed at all (`else if`), never
+      // comparing the two — so a wall farther from spot than the flip still won here, naming a
+      // "nearest wall" that wasn't actually nearest, the same bug shape fixed the same day in
+      // gexPostureSection/chartLevelsSection (see nearestLevelWithFlip's own header). Also
+      // previously read raw `gex.flip` with no Vector-preferred precedence at all; this call site
+      // is already inside `gex && !gexStale`, so the Vector-preferred value is safe to read
+      // unconditionally (flipFromStaleGex can never be true here — gex itself is confirmed fresh).
+      const vecFlipPosture = vectorStale ? undefined : vec?.gammaFlip;
+      const flipForWall = vecFlipPosture ?? gex.flip ?? null;
+      const nearestLevel =
+        spotForWall != null ? nearestLevelWithFlip(wall, flipForWall, false, spotForWall) : null;
+      if (nearestLevel) {
+        const levelLabel = nearestLevel.kind === "flip" ? "γ-flip" : "nearest wall";
+        parts.push(`${levelLabel} ${fmtPriceLevel(nearestLevel.strike)} (${nearestLevel.distance_pts.toFixed(1)} pts)`);
       }
     }
+    // Vector only actually SUPPLIES this line's content when the posture word resolved from it
+    // AND no GEX-only figure (net GEX, which has no Vector equivalent) got appended above — else
+    // the line is genuinely GEX-matrix content even when the posture word happens to agree.
+    const sourceIsVector = postureFromVec && !netGexFromGex;
     out.push({
       kind: "calc",
       text: `Dealer posture: ${parts.join(" · ")}`,
       provenance: {
-        source: postureFromVec ? "Vector" : "GEX",
+        source: sourceIsVector ? "Vector" : "GEX",
         asOf:
-          (postureFromVec ? vec?.asOfEt ?? etStampFromIso(vec?.asOf) : null) ??
+          (sourceIsVector ? vec?.asOfEt ?? etStampFromIso(vec?.asOf) : null) ??
           gex?.as_of_et ??
           etStampFromIso(gex?.asof) ??
           ctx.asOf,
-        freshness: postureFromVec ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
-        market_session_note: postureFromVec ? vecSessionNote : gexSessionNote,
+        freshness: sourceIsVector ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
+        market_session_note: sourceIsVector ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -1348,6 +1480,16 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       provenance: { source: "Earnings calendar", asOf: ctx.asOf, freshness: "recent" },
     });
   }
+  // Ask Largo standing mandate (evidence[] completeness, 2026-10-21): catalystsSection already
+  // renders this exact peer list ("Peers: ...") but evidenceFromContext() never mirrored it, so a
+  // structured/JSON reader of the envelope saw fewer peer names than the rendered markdown did.
+  if (eco?.arsenal?.related?.length) {
+    out.push({
+      kind: "fact",
+      text: `Peers: ${eco.arsenal.related.slice(0, 6).join(", ")}.`,
+      provenance: { source: "Polygon (related companies)", asOf: ctx.asOf, freshness: "recent" },
+    });
+  }
   const fund = eco?.arsenal?.fundamentals;
   if (fund && (fund.days_to_cover != null || fund.short_volume_ratio != null)) {
     // See FUNDAMENTALS_ANCIENT_CEILING_MS's comment (play-brief-absence.ts) — an ancient
@@ -1388,12 +1530,55 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     if (overlap.hasOverlap) {
       const parts: string[] = [];
       if (overlap.sameThemeSameDirection.length) {
-        parts.push(
-          `${overlap.sameThemeSameDirection.length} same-direction position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}`,
-        );
+        // BUG FIX (2026-10-21, Ask Largo standing mandate): mirrors the same-ticker/other-ticker
+        // split just shipped in bookContextSection (play-brief-intel.ts) for the identical root
+        // cause — this evidence fact hand-builds the SAME generic "theme X" framing off the SAME
+        // overlap.sameThemeSameDirection array, so it carried the identical mislabeling: a literal
+        // same-ticker duplicate (the sharpest concentration case) read as ordinary cross-ticker
+        // sector overlap, disagreeing with the section body's own (now-fixed) sharper framing for
+        // the identical fact.
+        const reviewedTickerUpper = ctx.play.ticker.trim().toUpperCase();
+        const sameTickerCount = overlap.sameThemeSameDirection.filter(
+          (p) => p.ticker.trim().toUpperCase() === reviewedTickerUpper,
+        ).length;
+        const otherCount = overlap.sameThemeSameDirection.length - sameTickerCount;
+        if (sameTickerCount && otherCount) {
+          parts.push(
+            `${sameTickerCount} same-ticker + ${otherCount} other same-direction position${otherCount > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}`,
+          );
+        } else if (sameTickerCount) {
+          parts.push(
+            `${sameTickerCount} same-ticker same-direction position${sameTickerCount > 1 ? "s" : ""} on ${ctx.play.ticker} itself`,
+          );
+        } else {
+          parts.push(
+            `${overlap.sameThemeSameDirection.length} same-direction position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}`,
+          );
+        }
       }
       if (overlap.sameThemeOpposedDirection.length) {
-        parts.push(`${overlap.sameThemeOpposedDirection.length} opposed position(s) in the same theme`);
+        // BUG FIX (2026-10-21, Ask Largo round-3 deep-dive): same root cause as the
+        // sameThemeSameDirection block above, left unfixed on this mirror-image bucket when that
+        // fix shipped — a same-UNDERLYING opposed position (e.g. long and short the same ticker,
+        // bookContextSection's "Internal conflict — same underlying... one of these two positions
+        // is mechanically wrong") collapsed into the identical generic "N opposed position(s) in
+        // the same theme" framing as an ordinary cross-ticker sector hedge, disagreeing with the
+        // sharper distinction bookContextSection itself already draws for the same fact.
+        const sameTickerOpposedCount = overlap.sameThemeOpposedDirection.filter(
+          (p) => p.ticker.trim().toUpperCase() === ctx.play.ticker.trim().toUpperCase(),
+        ).length;
+        const otherOpposedCount = overlap.sameThemeOpposedDirection.length - sameTickerOpposedCount;
+        if (sameTickerOpposedCount && otherOpposedCount) {
+          parts.push(
+            `${sameTickerOpposedCount} same-ticker + ${otherOpposedCount} other opposed position${otherOpposedCount > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}`,
+          );
+        } else if (sameTickerOpposedCount) {
+          parts.push(
+            `${sameTickerOpposedCount} same-ticker opposed position${sameTickerOpposedCount > 1 ? "s" : ""} on ${ctx.play.ticker} itself (opposite side)`,
+          );
+        } else {
+          parts.push(`${overlap.sameThemeOpposedDirection.length} opposed position(s) in the same theme`);
+        }
       }
       out.push({
         kind: "fact",
@@ -1413,20 +1598,41 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   // Fixed in lockstep: gate on non-closed (matching book overlap) and only require an entry premium
   // for the self-test, not as a precondition to look at all — a pre-entry WATCH row can never
   // appear in laneRows with liveStatus set, so there is no self to accidentally exclude.
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): this block's own comment above claims it was
+  // "Fixed in lockstep" with `siblingPositionsNote` and that the two "can never disagree" — but it
+  // only ported THAT function's `!== "closed"` bucket gate and dropped-entry-precondition fix
+  // (both from the 2026-10-15 pass), never the earlier (2026-10-11) `positionId` exact-match
+  // branch `siblingPositionsNote` uses as its PRIMARY self-test (see that function, a few lines
+  // above). Falling straight to the premium-proximity fallback here means two real, independently
+  // committed same-ticker positions (legitimately distinct per commit.ts's per-archetype
+  // `swingThesisKey`) whose entry premiums happen to land within $0.005 of each other (a realistic
+  // fill collision) get silently excluded as "self" here — `siblingPositionsNote` correctly
+  // resolves them via positionId and renders "Other concurrent position(s)", while this function
+  // emits zero evidence[] entries backing that exact claim, violating the Largo C7 doctrine this
+  // same function states two paragraphs up.
   if (statusBucket(ctx.play) !== "closed") {
     const ticker = ctx.play.ticker.toUpperCase();
     const hasOwnEntry = ctx.play.entry != null && Number.isFinite(ctx.play.entry);
+    const { positionId: selfPositionId } = parseSwingPlayId(ctx.play.id);
     const siblingCount = ctx.laneRows.filter((r) => {
       if (r.ticker.toUpperCase() !== ticker) return false;
       if (!r.liveStatus) return false;
       if (r.entryPremium == null || !Number.isFinite(r.entryPremium)) return false;
+      if (selfPositionId != null && r.positionId != null) {
+        return r.positionId !== selfPositionId;
+      }
       if (!hasOwnEntry) return true;
       return Math.abs(r.entryPremium - ctx.play.entry!) > 0.005;
     }).length;
     if (siblingCount > 0) {
+      // BUG FIX (2026-10-21, Ask Largo standing mandate): same unconditional "+1" overcounting fix
+      // as `siblingPositionsNote` above (this block's own stated purpose is to never disagree with
+      // that section) — only count the subject play itself when it actually has an entry premium.
+      const total = siblingCount + (hasOwnEntry ? 1 : 0);
       out.push({
         kind: "fact",
-        text: `${ticker} carries ${siblingCount + 1} concurrent live position(s) — this brief covers one.`,
+        text: `${ticker} carries ${total} concurrent live position(s) — this brief covers one.`,
         provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
       });
     }
@@ -1440,19 +1646,88 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   // rule — the prose sections are untouched; these are new evidence[] lines carrying the SAME
   // numbers with real provenance, closing the gap those two sections' own comments already named
   // without solving (a full dedicated Largo tool, C10's stated ideal, is a larger, separate call).
+  // Ask Largo standing mandate (evidence[] completeness, 2026-10-21): whyThisSetupSection
+  // (play-brief-intel.ts) renders `play.score` via `synthesizedSetupLede` ("...scoring 72.") and
+  // the full per-pillar breakdown via its own "Score pillars" bullet list (`play.factors`), but
+  // this function never mirrored either into the typed evidence[] array — the same evidence[]
+  // completeness gap as the archetype/sub-lane/peers fixes elsewhere in this file. Gated on
+  // `!play.scoreWithheld`, the SAME gate `synthesizedSetupLede` uses for `play.score` — a withheld
+  // score is a `0` FALLBACK, never a real measured value (see `TerminalPlay.scoreWithheld`'s own
+  // doc comment), so this never fabricates a score fact the lede itself would refuse to state.
+  if (!ctx.play.scoreWithheld && Number.isFinite(ctx.play.score)) {
+    const factorStr = ctx.play.factors?.length
+      ? ` (${ctx.play.factors
+          .slice(0, 10)
+          .map((f) => `${f.label} ${f.points >= 0 ? "+" : ""}${f.points}`)
+          .join(", ")})`
+      : "";
+    out.push({
+      kind: "fact",
+      text: `Setup score: ${Math.round(ctx.play.score)}${factorStr}.`,
+      provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
+    });
+  }
   const swingArchetype = (SWING_ARCHETYPES as readonly string[]).includes(ctx.play.archetype ?? "")
     ? (ctx.play.archetype as (typeof SWING_ARCHETYPES)[number])
     : null;
   const graduatedEntry = graduatedArchetypeEntry(ctx.archetypeTrackRecord, swingArchetype);
   if (graduatedEntry && swingArchetype && ctx.archetypeTrackRecord) {
     const snapshotMs = Date.parse(ctx.archetypeTrackRecord.asOf);
+    // BUG FIX (2026-10-20, Ask Largo standing mandate): this used the generic 10-minute
+    // `freshnessFromObservedMs` bucket directly, the same false-positive this file already found
+    // and fixed for the sibling `markAsOf` fact below (`optionMarkIsStale`) — a snapshot written by
+    // the identical 15-minute-cadence cron landing 10-15 minutes after its last tick (a normal
+    // ~1/3 of every cycle, not a missed tick) was mislabeled "stale". `archetypeTrackRecordIsStale`
+    // uses this data's own documented staleness horizon (calibration-cache.ts's
+    // SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC) instead — looser than the option mark's 18 minutes,
+    // since this data legitimately moves far slower. Only downgrades a generic "stale" verdict
+    // (never "live"/"recent"), same fail-closed-on-future-skew discipline as the option mark fix.
+    const genericArchetypeFreshness = Number.isFinite(snapshotMs)
+      ? freshnessFromObservedMs(snapshotMs, readMs)
+      : "unknown";
+    const archetypeFreshness =
+      genericArchetypeFreshness === "stale" && !archetypeTrackRecordIsStale(ctx.archetypeTrackRecord.asOf, readMs)
+        ? "recent"
+        : genericArchetypeFreshness;
     out.push({
       kind: "fact",
       text: `Archetype track record: ${ARCHETYPE_META[swingArchetype].label} ${graduatedEntry.wins}W / ${graduatedEntry.losses}L across ${graduatedEntry.n} graded plays (Wilson 95% floor ${graduatedEntry.wilsonLbPct.toFixed(0)}%).`,
       provenance: {
         source: "Swing ledger",
         asOf: etStampFromIso(ctx.archetypeTrackRecord.asOf) ?? ctx.asOf,
-        freshness: Number.isFinite(snapshotMs) ? freshnessFromObservedMs(snapshotMs, readMs) : "unknown",
+        freshness: archetypeFreshness,
+      },
+    });
+  }
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SEDG): the archetype block above
+  // only ever cited the ARCHETYPE dimension — but archetypeTrackRecordSection (play-brief-intel.ts)
+  // independently gates and renders the SUB-LANE dimension too (TACTICAL/STANDARD), and its own
+  // tests prove a sub-lane-alone graduation (archetype ungraduated/absent) is a real, supported
+  // state. A ticker in that state would have a real "Track record" prose section with no matching
+  // evidence[] fact — splitting what the prose says from what this structured consumer can see.
+  // Reuses the SAME already-fetched ctx.archetypeTrackRecord snapshot — no new data source, no new
+  // async read. Independently gated/pushed, same as the archetype fact above (never blended into
+  // one stat — that would double-count the same graded rows across two overlapping cuts).
+  const swingSubLane = (SWING_SUB_LANES_ORDER as readonly string[]).includes(ctx.play.subLane ?? "")
+    ? (ctx.play.subLane as (typeof SWING_SUB_LANES_ORDER)[number])
+    : null;
+  const graduatedSubLane = graduatedSubLaneEntry(ctx.archetypeTrackRecord, swingSubLane);
+  if (graduatedSubLane && swingSubLane && ctx.archetypeTrackRecord) {
+    const snapshotMs = Date.parse(ctx.archetypeTrackRecord.asOf);
+    const genericSubLaneFreshness = Number.isFinite(snapshotMs)
+      ? freshnessFromObservedMs(snapshotMs, readMs)
+      : "unknown";
+    const subLaneFreshness =
+      genericSubLaneFreshness === "stale" && !archetypeTrackRecordIsStale(ctx.archetypeTrackRecord.asOf, readMs)
+        ? "recent"
+        : genericSubLaneFreshness;
+    out.push({
+      kind: "fact",
+      text: `Sub-lane track record: ${SWING_SUB_LANES[swingSubLane].label} ${graduatedSubLane.wins}W / ${graduatedSubLane.losses}L across ${graduatedSubLane.n} graded plays (Wilson 95% floor ${graduatedSubLane.wilsonLbPct.toFixed(0)}%).`,
+      provenance: {
+        source: "Swing ledger",
+        asOf: etStampFromIso(ctx.archetypeTrackRecord.asOf) ?? ctx.asOf,
+        freshness: subLaneFreshness,
       },
     });
   }
@@ -1594,10 +1869,13 @@ export function composeSwingPlayBrief(
 
   const verdictLines: string[] = [];
   const action = swingActionDisplay(play);
-  // Fallback chain must match the envelope headline's below (action -> recommendation -> status)
-  // — a SKIP-deckStatus RESEARCH row otherwise showed "HOLD" in the headline and raw "· SKIP"
-  // here in the very same brief (live repro: SLV, 2026-09-10, FINDINGS 2026-09-10).
-  verdictLines.push(`**${headline}** · ${play.direction} · ${action?.label ?? play.recommendation ?? play.status}`);
+  // Fallback chain must match the envelope headline's below (`swingVerdictVerb`, shared) — a
+  // SKIP-deckStatus RESEARCH row otherwise showed "HOLD" in the headline and raw "· SKIP" here in
+  // the very same brief (live repro: SLV, 2026-09-10, FINDINGS 2026-09-10). `swingVerdictVerb`'s
+  // own doc comment covers the SECOND gap this chain had: SKIP fell through to the literal string
+  // "HOLD" (not raw "· SKIP") once the 2026-09-10 fix below made the two agree — see that comment
+  // for the live META/ORCL repro and why "PASSED" is now used instead (2026-10-21).
+  verdictLines.push(`**${headline}** · ${play.direction} · ${swingVerdictVerb(play, action)}`);
   if (grade) verdictLines.push(`Grade **${grade}**${quality != null ? ` · score ${quality}` : ""}`);
   if (strength != null) verdictLines.push(`Thesis strength **${strength}%**`);
   // Dossier regime (discovery-pillar read, e.g. "Breakout · regime 0.82") belongs in "Why this setup"
@@ -1794,7 +2072,7 @@ export function composeSwingPlayBrief(
 
   const envelope: BieAnswerEnvelope = {
     ...buildRichEnvelope({
-      headline: `${action?.label ?? play.recommendation ?? play.status} — ${headline}`,
+      headline: `${swingVerdictVerb(play, action)} — ${headline}`,
       bias: biasFromDirection(play.direction),
       intent: "swing_play_brief",
       sections,
@@ -1840,6 +2118,11 @@ export function composeSwingPlayBrief(
     : null;
 
   const trimsFired = play.exitPolicy?.trim_levels?.filter((t) => t.fired).length ?? null;
+  // Largo C2 — see worstKnownSwingDataAgeMs's own header (play-brief-intel.ts) for why this reuses
+  // the exact ages the "Data freshness" prose section above already computed rather than a second,
+  // independent read. ctx carries readMs (stamped at this function's own top) so this agrees with
+  // every other staleness check in this compose, not a fresh wall-clock sample of its own.
+  const dataAgeMs = worstKnownSwingDataAgeMs(ctx);
   // Diff snapshots must read spot/walls/flip from envelope.levels (already stale-gated in
   // levelsFromContext) — not a parallel vec/gex fallback that bypasses freshness gates.
   const snap = snapshotFromBrief(
@@ -1859,5 +2142,6 @@ export function composeSwingPlayBrief(
     flowSnapshot,
     briefContentKey: briefContentKey(snap),
     trimsFired,
+    dataAgeMs,
   };
 }

@@ -53,3 +53,24 @@ test("every reachable learn slug is statically enumerated, so dynamicParams=fals
   );
   assert.ok(emitted.size > 40, `expected the full learn catalogue, got ${emitted.size} slugs`);
 });
+
+/**
+ * Regression (2026-10-20, DISCOVERY-lane SEO sweep): the article branch rendered
+ * `<FAQPageJsonLd items={getArticleFaqs(article.slug)} />` unconditionally, while the sibling
+ * guide branch 36 lines above correctly guards with `{faqs.length > 0 && <FAQPageJsonLd .../>}`.
+ * `getArticleFaqs()` falls through to `[]` for any slug not in `ARTICLE_FAQS` — today every one of
+ * the 52 article slugs has an entry (guarded separately by `article-faqs.test.ts`'s own "every
+ * learn article has an FAQ set" assertion), so this wasn't firing yet, but the next article added
+ * without a matching `ARTICLE_FAQS` entry would have silently emitted an invalid FAQPage
+ * (`"mainEntity": []`) — Google's structured-data guidelines require >=1 Question. This pins the
+ * guard itself, independent of whether today's data happens to make it unreachable.
+ */
+test("the learn slug route's article branch guards FAQPageJsonLd against an empty FAQ list, same as the guide branch", () => {
+  const src = readFileSync(ROUTE, "utf8");
+  const articleBranch = src.slice(src.indexOf("const article = getArticle(slug);\n  if (!article) notFound();"));
+  assert.match(
+    articleBranch,
+    /articleFaqs\.length > 0 && <FAQPageJsonLd/,
+    "the article branch must not render FAQPageJsonLd with a possibly-empty FAQ list unguarded"
+  );
+});

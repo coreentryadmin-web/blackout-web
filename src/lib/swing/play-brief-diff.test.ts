@@ -766,6 +766,58 @@ test("diffBriefSnapshots: detects a section disappearing (was silently unnarrate
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, Largo C3 absence violation): diffBriefSnapshots
+// used to be a bare `lines.slice(0, 8)` with no disclosure when more than 8 real changes fired in
+// one pulse. A refresh after a long gap (overnight, multi-hour stall) can legitimately produce more
+// than 8 independent facts at once, and the lowest-priority ones were silently dropped with zero
+// indication to the member — the exact silent-truncation shape `largo-truncation-probe.mjs` exists
+// to catch on other Largo surfaces (three real shipped bugs: #2433, #2436, #2480).
+test("diffBriefSnapshots: more than 8 simultaneous changes discloses the overflow instead of silently dropping it", () => {
+  const calibratedThesis = (health: number) => ({
+    health,
+    rungLabel: "ok",
+    pillars: [],
+    moves: [],
+    advisory: "",
+    entryIndex: health,
+    currentIndex: health,
+    delta: 0,
+    rung: "OK" as const,
+    committedAtEt: "",
+    computedAtEt: "",
+  });
+  const prev = snapshotFromBrief(
+    env("HOLD — TEST"),
+    play({
+      recommendation: "HOLD",
+      thesisHealth: calibratedThesis(60),
+      pnlPct: 10,
+      mark: 1.0,
+      gateBlocks: [{ code: "gate_a", reason: "x" }],
+      rollCandidate: null,
+    }),
+    { gammaFlip: 100, callWall: 110, putWall: 90, flowCallPremium: 100_000, flowPutPremium: 50_000, trimsFired: 0 },
+  );
+  const next = snapshotFromBrief(
+    env("TRIM — TEST"),
+    play({
+      recommendation: "TRIM",
+      thesisHealth: calibratedThesis(50),
+      pnlPct: 5,
+      mark: 1.3,
+      gateBlocks: [{ code: "gate_b", reason: "y" }],
+      rollCandidate: { reason: "theta outpacing thesis" },
+    }),
+    { gammaFlip: 105, callWall: 120, putWall: 80, flowCallPremium: 200_000, flowPutPremium: 50_000, trimsFired: 1 },
+  );
+
+  const lines = diffBriefSnapshots(prev, next);
+  assert.equal(lines.length, 9, "capped array must be exactly 8 real lines + 1 disclosure line");
+  const disclosure = lines[8]!;
+  assert.match(disclosure, /^\+\d+ more changes? this refresh/, `last line must disclose the overflow count, got: ${disclosure}`);
+  assert.doesNotMatch(disclosure, /^\+0 /, "disclosure must never claim zero overflow");
+});
+
 test("loadPersistedBriefSnapshot: still accepts a well-formed stored snapshot", () => {
   const store = new Map<string, string>();
   const originalWindow = globalThis.window;

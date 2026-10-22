@@ -18,6 +18,7 @@
 // trim_scale IS the frozen policy) matches the strategy the engine ran.
 
 import { PLAN_RULES } from "./plan";
+import { SCALE_OUT_RULES } from "./scale-out";
 
 /** One profit-taking rung of the resolved trim ladder for the terminal. `premium` is the
  *  ABSOLUTE per-contract level (entry × (1 + trigger_pct/100)) the tranche banks at; `fired`
@@ -105,6 +106,31 @@ export function buildTerminalExitLadder(
     target_premium: levelFor(policy.target_pct),
     time_stop_et: policy.time_stop_et,
   };
+}
+
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro MRNA TRIM/positionId 1958): once a
+// trim tranche has fired, the exit engine's own live state machine (`deriveScaleOutAction`/
+// `computeScaleOutTriggerInfo`, scale-out.ts) permanently disables the pre-scale hard stop — it is
+// gated `if (!scaledAlready)` and post-scale `computeScaleOutTriggerInfo` literally returns
+// `hard_stop_price: null` ("the hard stop no longer applies"). `stop_premium` above is computed
+// unconditionally with no equivalent awareness, so a brief rendering it post-scale states a dead
+// trigger as live. These two helpers let a renderer ask "has this ladder's hard stop already gone
+// inert" and, if so, what the REAL governing floor is now (the runner's trailing stop off its
+// peak) — mirroring the exact rule `computeScaleOutTriggerInfo` already encodes, so a renderer
+// can't independently drift from the engine that actually manages the position.
+
+/** True once any trim tranche has fired — the ladder's `stop_premium` (pre-scale hard stop) is
+ *  structurally dead from this point on; see the engine citations above. */
+export function hasScaledOut(ladder: Pick<TerminalExitLadder, "trim_levels">): boolean {
+  return ladder.trim_levels.some((t) => t.fired === true);
+}
+
+/** The runner's real governing floor once scaled out: peakPremium × SCALE_OUT_RULES.trail_from_peak
+ *  — the same level `computeScaleOutTriggerInfo` returns as `next_trigger_price` post-scale. Null
+ *  without a usable peak premium — never a guess. */
+export function runnerTrailingStopPremium(peakPremium: number | null | undefined): number | null {
+  if (peakPremium == null || !Number.isFinite(peakPremium) || peakPremium <= 0) return null;
+  return round2(peakPremium * SCALE_OUT_RULES.trail_from_peak);
 }
 
 // ── Time-stop clock (item 4) ────────────────────────────────────────────────────────────

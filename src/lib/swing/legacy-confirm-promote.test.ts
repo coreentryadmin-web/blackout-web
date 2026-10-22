@@ -108,6 +108,24 @@ test("buildLegacySwingArtifacts stamps NIGHT HAWK provenance and serve-only grad
   );
 });
 
+// BUG FIX (2026-10-21, Ask Largo round-3 deep-dive): a Legacy-morning-confirm-promoted play's
+// enrichedPlay never set `liveSpot`, so adapters.ts's "Since flag" track field was structurally
+// dead for this origin the same way it was for organic discovery plays (serving-lane.ts's
+// enrichPlay) — the only real liveSpot writer anywhere in the repo is live-plays.ts's committed-
+// ledger path (status OPEN/HOLD/TRIM), mutually exclusive with WATCH/SKIP on status.
+test("buildLegacySwingArtifacts: liveSpot carries the grounded live spot, so the Since-flag track field is no longer dead for Legacy-promoted WATCH plays", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 99.5,
+    chainRows,
+    chainSpot: 99.5,
+  });
+  assert.ok(artifact);
+  assert.equal(artifact!.play.liveSpot, 99.5, "liveSpot must carry the grounded spot used to build this play's plan");
+});
+
 // ─── score/factors reconciliation (FINDINGS 2026-09-12) ───────────────────────────────────────
 // Live commits showed the SHOWN score (Legacy's edition conviction score) diverge sharply from
 // `factors`' sum (the dossier's own independently-computed synthetic pillar score) — e.g. real
@@ -447,6 +465,92 @@ test("refreshCarriedLegacyPlay recomputes DTE and merges a fresher organic quote
   assert.equal(refreshed!.contract.dte, 7);
   assert.equal(refreshed!.contract.mid, 0.22);
   assert.match(refreshed!.reason ?? "", /7DTE/);
+});
+
+// BUG FIX (2026-10-20, Ask Largo standing mandate — live EWY/SHOP/UNH repro). When no fresher
+// same-contract quote is available, a drifted DTE label makes mid/bid/ask drop to null (the
+// pre-existing "a stale quote too — drop it honestly" fix above) — but the greeks from that exact
+// same stale chain read used to survive untouched, served with full confidence right next to the
+// sibling fields the system itself judged too stale to show.
+test("refreshCarriedLegacyPlay: with NO fresh match, a drifted DTE label nulls the greeks too, not just mid/bid/ask", () => {
+  const carried = {
+    ticker: "EWY",
+    direction: "LONG" as const,
+    horizon: "SWING" as const,
+    score: 70,
+    status: "WATCH" as const,
+    scoreFloor: 60,
+    reason: "NIGHT HAWK · 10DTE",
+    contract: {
+      strike: 60,
+      expiry: "2026-08-14",
+      right: "C" as const,
+      dte: 10,
+      mid: 1.2,
+      bid: 1.1,
+      ask: 1.3,
+      openInterest: 0,
+      delta: 0.59,
+      gamma: 0.0252,
+      theta: -0.2065,
+      vega: 0.1241,
+      iv: 0.5066,
+    },
+  };
+  // No entry for EWY in freshPlayByTicker at all — the exact shape of the real incident (no
+  // same-day organic scan match), so sameContract is false and the staleDte branch fires.
+  // sessionDay picked so the recomputed DTE (5) lands inside the SWING window [5,15] while still
+  // differing from the carried contract's frozen dte (10), so staleDte is true.
+  const refreshed = refreshCarriedLegacyPlay(carried, "2026-08-09", new Map());
+  assert.ok(refreshed, "a live, un-expired contract must still resolve");
+  assert.equal(refreshed!.contract.mid, null);
+  assert.equal(refreshed!.contract.bid, null);
+  assert.equal(refreshed!.contract.ask, null);
+  assert.equal(refreshed!.contract.delta, null, "delta must not survive from the stale read");
+  assert.equal(refreshed!.contract.gamma, null, "gamma must not survive from the stale read");
+  assert.equal(refreshed!.contract.theta, null, "theta must not survive from the stale read");
+  assert.equal(refreshed!.contract.vega, null, "vega must not survive from the stale read");
+  assert.equal(refreshed!.contract.iv, null, "iv must not survive from the stale read");
+});
+
+test("refreshCarriedLegacyPlay: a MATCHING fresh contract still carries its own live greeks through untouched", () => {
+  const carried = {
+    ticker: "NVDA",
+    direction: "LONG" as const,
+    horizon: "SWING" as const,
+    score: 70,
+    status: "WATCH" as const,
+    scoreFloor: 60,
+    reason: "NIGHT HAWK · 10DTE",
+    contract: {
+      strike: 100,
+      expiry: "2026-08-14",
+      right: "C" as const,
+      dte: 10,
+      mid: 6.44,
+      bid: 6.2,
+      ask: 6.6,
+      openInterest: 0,
+      delta: 0.6,
+      gamma: 0.02,
+      theta: -0.3,
+      vega: 0.2,
+      iv: 0.5,
+    },
+  };
+  const fresh = {
+    ...carried,
+    contract: { ...carried.contract, dte: 7, mid: 0.22, bid: 0.2, ask: 0.24, delta: 0.08, gamma: 0.01, theta: -0.1, vega: 0.05, iv: 0.9 },
+  };
+  const refreshed = refreshCarriedLegacyPlay(carried, "2026-08-07", new Map([["NVDA", fresh]]));
+  assert.ok(refreshed);
+  // sameContract path (strike/expiry/right agree) merges the FRESH contract through — greeks must
+  // reflect the live read, not be nulled by the unrelated no-fresh-match branch.
+  assert.equal(refreshed!.contract.delta, 0.08);
+  assert.equal(refreshed!.contract.gamma, 0.01);
+  assert.equal(refreshed!.contract.theta, -0.1);
+  assert.equal(refreshed!.contract.vega, 0.05);
+  assert.equal(refreshed!.contract.iv, 0.9);
 });
 
 // ─── GRADUATION BRIDGE (PR #5577) ──────────────────────────────────────────────────────────────

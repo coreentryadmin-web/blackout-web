@@ -45,6 +45,7 @@ import type {
 import { readCortexView } from "@/lib/zerodte/pane";
 import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
+import type { ThesisPipelineResult } from "@/lib/zerodte/thesis/types";
 import { projectRunnerProfileForCandidate } from "@/lib/zerodte/runner-profile";
 import type { ZeroDteVectorPulse } from "@/lib/zerodte/vector-crosslink";
 import { vectorSideToDirection } from "@/lib/zerodte/vector-commit-boost";
@@ -391,6 +392,33 @@ export function firstSeenIso(
   return null;
 }
 
+/**
+ * The thesis/contract-engine's `expression` is a generic cross-DTE "best way to express this
+ * idea" recommendation (contract-engine.ts's `pickBestExpression`) — it can legitimately name a
+ * 2-5 DTE contract instead of the front (0DTE) expiry when 0DTE IV is rich. That's a fair
+ * forward-looking idea on a pre-commit WATCH/SKIP row, but once a row has actually traded, 0DTE's
+ * own entry logic always commits the same-day contract regardless of what `expression`
+ * recommended — so a committed row can carry a frozen `expression` naming a DIFFERENT, never-
+ * traded contract. Rendering that under "Why we picked it" (ZeroDteCommandPanel.tsx) told a
+ * member the wrong strike/DTE was the rationale for their actual position (live repro
+ * 2026-10-21: NVDA committed 217.5C/0DTE, frozen expression said 222.5C/2DTE). Strip it rather
+ * than show a contract the member was never actually in; the rest of the thesis (archetype,
+ * tier, desk evidence) is still accurate and stays.
+ */
+function stripMismatchedExpression(
+  thesisFirst: ThesisPipelineResult | null,
+  isCommitted: boolean,
+  realStrike: number | null,
+  realDte: number | null
+): ThesisPipelineResult | null {
+  const contract = thesisFirst?.expression?.contract;
+  if (!thesisFirst || !contract || !isCommitted) return thesisFirst;
+  const strikeMismatch = realStrike != null && contract.strike !== realStrike;
+  const dteMismatch = realDte != null && contract.dte !== realDte;
+  if (!strikeMismatch && !dteMismatch) return thesisFirst;
+  return { ...thesisFirst, expression: null };
+}
+
 export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const setup = src.setup ?? null;
   const direction = asDir(setup?.direction);
@@ -559,10 +587,14 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const trackReference = watchTrack ? watchReferencePremium(setup?.plan ?? null) : null;
   const trackPct = watchTrack ? watchTrackPct(trackReference, markNum) : null;
 
-  const thesisFirstResolved =
+  const thesisFirstResolved = stripMismatchedExpression(
     setup?.thesis_first ??
-    src.thesis_first ??
-    thesisFirstFromEntryContext(src.thesis_first_blob, src.ticker, setupDir);
+      src.thesis_first ??
+      thesisFirstFromEntryContext(src.thesis_first_blob, src.ticker, setupDir),
+    status === "OPEN" || status === "HOLD" || status === "TRIM" || status === "CLOSED",
+    strike,
+    dte
+  );
 
   return {
     id: `0DTE:${src.ticker}`,

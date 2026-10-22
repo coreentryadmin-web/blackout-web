@@ -199,7 +199,28 @@ export async function resolveNighthawkEdition(
       }
     }
 
-    if (edition.edition_for && edition.edition_for !== editionFor) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro: 4 consecutive recap-only
+    // session days, Oct 17-20): `editionFor` (the requested date) is always
+    // `nextTradingDayEt(todayEt())` — tomorrow's trading day — so this date comparison is true on
+    // every single day this branch is reached. On a normal (has-plays) day that's harmless: the
+    // `activePlayable` carry-forward branch above already catches "today's own edition, still
+    // before its close" and returns before reaching here. But that branch reads
+    // `fetchLatestPlayableNighthawkEdition()` (WHERE plays.length > 0), so a recap-only (zero-play)
+    // edition published for TODAY never qualifies there, falls through to here, and got stamped
+    // `stale: true` for the entirety of its own valid day — a correctly-published, current edition
+    // read by both UI surfaces (`containers.tsx`'s bannerText and `PlaybookBoard.tsx`'s
+    // resolveEditionStatus, which both check `isStale` before their own `isRecapOnly` case) as
+    // "tonight's not published yet". recap-only editions don't need a `carry_until_close` flag
+    // either (there are no plays to carry; the existing `recap_only` flag already drives the
+    // correct, honest banner) — they just need to not be marked stale while still within their own
+    // trading day. Scoped tightly to `recap_only && isBeforeOrAtMarketCloseEt` so every other case
+    // (a genuinely older edition, or any non-recap edition reaching this branch) keeps stamping
+    // `stale` exactly as before.
+    if (
+      edition.edition_for &&
+      edition.edition_for !== editionFor &&
+      !(edition.recap_only === true && isBeforeOrAtMarketCloseEt(edition.edition_for))
+    ) {
       edition.stale = true;
       edition.served_for = edition.edition_for;
     }

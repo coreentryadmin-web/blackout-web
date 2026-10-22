@@ -7,6 +7,7 @@ import {
   darkPoolStale,
   gexMarketSessionNote,
   gexMatrixStale,
+  archetypeTrackRecordIsStale,
   meridianCatalystAgeMs,
   meridianCatalystStale,
   newsCatalystAgeMs,
@@ -740,12 +741,19 @@ test("collectBriefUnavailableSources: cold GEX matrix surfaces in envelope", () 
 // GAP FOUND (Ask Largo standing mandate, 2026-10-08 cycle): `flip` null is indistinguishable from
 // "no gamma flip data" even though `gex-positioning.ts`'s own `flip_reason` already names WHY —
 // live repro was a FRESH INTC GEX read (call wall/put wall/GEX king all present, posture "short")
-// with no gamma-flip level and nothing in `unavailableSources` explaining the gap. These four
-// cases lock in the fix: a real structural "net short/long everywhere" reason is surfaced as a
-// non-retryable finding (it IS the answer, not a missing fetch); a genuine data gap
-// (`insufficient_data`/`crossings_far`) is surfaced as retryable; an unrecognized reason code is
-// never fabricated into prose; and a matrix that is ALREADY stale does not get a second,
-// flip-specific chip piled on top of the existing GEX-staleness one.
+// with no gamma-flip level and nothing in `unavailableSources` explaining the gap. These cases
+// lock in the fix: a real structural "net short everywhere" reason is surfaced as a non-retryable
+// finding (it IS the answer, not a missing fetch); a genuine data gap (`insufficient_strikes`/
+// `crossings_far_from_spot`) is surfaced as retryable; an unrecognized reason code is never
+// fabricated into prose; and a matrix that is ALREADY stale does not get a second, flip-specific
+// chip piled on top of the existing GEX-staleness one.
+//
+// BUG FIX (2026-10-20): the two `insufficient_*`/`crossings_*` fixtures below used to spell the
+// real GammaFlipReason values wrong (`insufficient_data`, `crossings_far`) — the SAME wrong
+// strings the lookup table itself used, so this test passed against the bug instead of catching
+// it. Corrected to the real values (`insufficient_strikes`, `crossings_far_from_spot` —
+// gex-cross-validation-core.ts's own GammaFlipReason type) and added a dedicated case for
+// `crossings_far_from_spot`, which previously had no test coverage under either spelling.
 test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY (net_short_everywhere, non-retryable)", () => {
   const ctx = {
     ecosystem: {
@@ -762,10 +770,10 @@ test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY
   assert.equal(chip!.retryable, false);
 });
 
-test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY (insufficient_data, retryable)", () => {
+test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY (insufficient_strikes, retryable)", () => {
   const ctx = {
     ecosystem: {
-      gex_positioning: { spot: 100, flip: null, flip_reason: "insufficient_data", gamma_posture: null },
+      gex_positioning: { spot: 100, flip: null, flip_reason: "insufficient_strikes", gamma_posture: null },
       vector_full_state: { spot: 100 },
     },
     vector: { spot: 100 },
@@ -774,6 +782,22 @@ test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY
   const sources = collectBriefUnavailableSources(ctx);
   const chip = sources.find((s) => s.source === "GEX gamma flip");
   assert.ok(chip, "expected a GEX gamma flip absence chip");
+  assert.equal(chip!.retryable, true);
+});
+
+test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY (crossings_far_from_spot, retryable)", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: { spot: 100, flip: null, flip_reason: "crossings_far_from_spot", gamma_posture: null },
+      vector_full_state: { spot: 100 },
+    },
+    vector: { spot: 100 },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const chip = sources.find((s) => s.source === "GEX gamma flip");
+  assert.ok(chip, "expected a GEX gamma flip absence chip");
+  assert.match(chip!.reason, /outside the plausible range near spot/);
   assert.equal(chip!.retryable, true);
 });
 
@@ -945,6 +969,28 @@ test("collectBriefUnavailableSources: ecosystem null WITHOUT a fetch failure doe
   assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "ecosystem context"));
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro EWY): archetypeTrackRecordFetchFailed
+// was the one C10 source never checked by this function — a genuine withBriefSourceTimeout
+// rejection was indistinguishable from a legitimate cold-cache/ungraduated absence.
+test("collectBriefUnavailableSources: a genuine archetype track-record fetch failure (timeout) surfaces in envelope, distinct from a legitimate cold-cache absence (live repro EWY)", () => {
+  const ctx = {
+    archetypeTrackRecord: null,
+    archetypeTrackRecordFetchFailed: true,
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "Archetype track record" && s.reason === "fetch failed"),
+  );
+});
+
+test("collectBriefUnavailableSources: archetypeTrackRecord null WITHOUT a fetch failure does not fabricate an absence entry (Largo C6 omission, not fabrication, preserved)", () => {
+  const ctx = { archetypeTrackRecord: null } as SwingPlayBriefContext;
+  assert.ok(
+    !collectBriefUnavailableSources(ctx).some((s) => s.source === "Archetype track record"),
+  );
+});
+
 test("collectBriefUnavailableSources: a total Vector fetch failure surfaces in envelope (FINDINGS 2026-09-06 #11)", () => {
   const ctx = {
     vector: null,
@@ -980,6 +1026,63 @@ test("collectBriefUnavailableSources: Meridian peer cohort failure surfaces in e
   const sources = collectBriefUnavailableSources(ctx);
   assert.ok(
     sources.some((s) => s.source === "Meridian peer cohort" && s.reason === "timeline_lookup_failed"),
+  );
+});
+
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA-closed): when the implied-move
+// RANKING cohort is thin (insufficient_reason set) but the cohort's own beat-rate members still
+// qualify (beat_rate_n >= 3 — the SAME floor meridianPeerEarningsCoaching uses to render them),
+// the absence entry's generic "enough peer names in the cohort to be directional" wording directly
+// contradicted the brief's own in-body "Earnings peer lens" section, which renders those peers'
+// beat rates AND explicitly calls them "directional only" two clauses away from this exact claim.
+test("collectBriefUnavailableSources: Meridian peer cohort insufficient-reason does not claim 'not directional' when qualifying beat-rate peers exist (live repro TSLA-closed)", () => {
+  const ctx = {
+    meridianPeer: {
+      available: true,
+      id: "earnings:TSLA",
+      subject_ticker: "TSLA",
+      position_summary: null,
+      members: [
+        { ticker: "WGO", report_date: "2026-09-05", expected_move_pct: null, avg_reaction_pct: null, reaction_sample_n: 0, beat_rate: 0.75, beat_rate_n: 4, is_subject: false },
+        { ticker: "WAB", report_date: "2026-09-05", expected_move_pct: null, avg_reaction_pct: null, reaction_sample_n: 0, beat_rate: 1, beat_rate_n: 4, is_subject: false },
+      ],
+      interpretation: "",
+      sector_label: "Transportation Equipment",
+      major_group: "37",
+      distribution: null,
+      insufficient_reason: "no peers reporting with a comparable number — too few to rank against",
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const entry = sources.find((s) => s.source === "Meridian peer cohort" || s.source === "Meridian implied-move ranking");
+  assert.ok(entry, "expected a Meridian peer-cohort-related absence entry");
+  assert.doesNotMatch(
+    entry!.what_is_missing,
+    /directional/i,
+    `must not claim peer data isn't directional when qualifying beat-rate peers exist: ${entry!.what_is_missing}`,
+  );
+});
+
+test("collectBriefUnavailableSources: Meridian peer cohort insufficient-reason still claims absence as before when NO qualifying beat-rate peers exist (no regression)", () => {
+  const ctx = {
+    meridianPeer: {
+      available: true,
+      id: "earnings:XYZ",
+      subject_ticker: "XYZ",
+      position_summary: null,
+      members: [],
+      interpretation: "",
+      sector_label: "Unclassified",
+      major_group: null,
+      distribution: null,
+      insufficient_reason: "no peers found in this sector",
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => (s.source === "Meridian peer cohort" || s.source === "Meridian implied-move ranking") && s.reason === "no peers found in this sector"),
   );
 });
 
@@ -1035,6 +1138,47 @@ test("optionMarkIsStale: a mark that has missed its next scheduled refresh IS st
     true,
     "a mark past 18 minutes old has missed a scheduled refresh and should read stale",
   );
+});
+
+// Sibling bug (Ask Largo standing mandate, 2026-10-20, same defect class as optionMarkIsStale's
+// own history above, never swept to this fact): the archetype/sub-lane calibration-cache
+// snapshot's ONLY writer is the IDENTICAL 15-minute swing-active-refresh cron, so a snapshot
+// 10-15 minutes old is on-schedule, not stale — but unlike the option mark, this data's correct
+// staleness horizon is calibration-cache.ts's own documented SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC
+// (120h), not an 18-minute cadence window, since which archetypes have graduated moves far slower
+// than every tick.
+test("archetypeTrackRecordIsStale: an on-schedule snapshot (11 minutes old) is NOT stale", () => {
+  const readMs = Date.parse("2026-09-15T19:11:00.000Z");
+  assert.equal(
+    archetypeTrackRecordIsStale("2026-09-15T19:00:00.000Z", readMs),
+    false,
+    "an 11-minute-old snapshot is well within one healthy swing-active-refresh cycle",
+  );
+});
+
+test("archetypeTrackRecordIsStale: a snapshot many hours old (within the documented TTL) is still NOT stale", () => {
+  const readMs = Date.parse("2026-09-16T10:00:00.000Z"); // ~15h after a Friday-evening-shaped write
+  assert.equal(
+    archetypeTrackRecordIsStale("2026-09-15T19:00:00.000Z", readMs),
+    false,
+    "calibration-cache.ts's own TTL rationale: a many-hours-stale graduation verdict is still honest",
+  );
+});
+
+test("archetypeTrackRecordIsStale: a snapshot past the documented TTL (120h) IS stale", () => {
+  const readMs = Date.parse("2026-09-21T20:00:00.000Z"); // 121h after the write below
+  assert.equal(archetypeTrackRecordIsStale("2026-09-16T19:00:00.000Z", readMs), true);
+});
+
+test("archetypeTrackRecordIsStale: future skew fails closed (Largo C2), same as optionMarkIsStale", () => {
+  const readMs = Date.parse("2026-09-15T19:00:00.000Z");
+  assert.equal(archetypeTrackRecordIsStale("2026-09-15T19:20:00.000Z", readMs), true);
+});
+
+test("archetypeTrackRecordIsStale: absent/malformed asOf never throws, reads as not-stale", () => {
+  assert.equal(archetypeTrackRecordIsStale(null, Date.now()), false);
+  assert.equal(archetypeTrackRecordIsStale(undefined, Date.now()), false);
+  assert.equal(archetypeTrackRecordIsStale("not a date", Date.now()), false);
 });
 
 test("collectBriefUnavailableSources: unsynced option mark surfaces in envelope (FINDINGS 2026-09-06 #22)", () => {
@@ -1102,6 +1246,56 @@ test("collectBriefUnavailableSources: prior-session discovery scan surfaces in e
         s.reason === "prior session (2026-09-05) — today's scan not yet run",
     ),
   );
+});
+
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro TSLA WATCH brief): G-S12
+// (v2/halt-read.ts) is a real, live-computed gate — entry-verdict.ts turns a stale halt feed into
+// the gate reason "Trading-halt feed unavailable...", which the SAME envelope's "Trade manager
+// read" section already cites, but this function (the source of both unavailableSources and
+// confidence.why) never checked for it at all.
+test("collectBriefUnavailableSources: stale halt/LULD feed (g_s12_halt_feed_stale gate) surfaces in envelope", () => {
+  const ctx = {
+    sessionDate: "2026-10-21",
+    play: {
+      status: "WATCH",
+      gateBlocks: [
+        { code: "g_s12_halt_feed_stale", reason: "Trading-halt feed unavailable — desk will not open until halt/LULD data recovers." },
+      ],
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some(
+      (s) =>
+        s.source === "Trading-halt feed" &&
+        s.reason === "unavailable — halt/LULD data has not refreshed",
+    ),
+    `expected a halt-feed unavailable source, got: ${JSON.stringify(sources)}`,
+  );
+});
+
+test("collectBriefUnavailableSources: a genuine trading halt (g_s12_halted, not a feed-staleness gap) does not surface as an unavailable SOURCE — it's a real market-state fact, not a missing read", () => {
+  const ctx = {
+    sessionDate: "2026-10-21",
+    play: {
+      status: "WATCH",
+      gateBlocks: [
+        { code: "g_s12_halted", reason: "Underlying is halted or in LULD band — desk will not open until trading resumes." },
+      ],
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "Trading-halt feed"));
+});
+
+test("collectBriefUnavailableSources: no halt gate present does not fabricate the halt-feed source", () => {
+  const ctx = {
+    sessionDate: "2026-10-21",
+    play: { status: "WATCH", gateBlocks: [{ code: "g_s4_regime", reason: "regime degraded" }] },
+  } as unknown as SwingPlayBriefContext;
+
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "Trading-halt feed"));
 });
 
 test("collectBriefUnavailableSources: same-day scan does not surface stale discovery", () => {

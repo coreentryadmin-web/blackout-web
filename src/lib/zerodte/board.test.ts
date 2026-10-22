@@ -669,6 +669,26 @@ test("enrich: full dossier merges score, factors, technicals, streak, dark pool"
   assert.equal(e.news_hot, null);
 });
 
+// Live repro 2026-10-21: QQQ key_supports=[707.23, 707.23], AMD key_supports=[524.6, 524.6] —
+// technicals.ts's support_levels/resistance_levels concatenate THREE independent sources
+// (swing/weekly/monthly) that can legitimately coincide at the same round-number price, and
+// enrichSetup's top-2 slice had no dedup before it, so a coincidence showed one real level
+// twice and silently dropped the actual second-best level. Fixture: weekly support resolves
+// to the SAME price as the nearest swing support (both 186.5); a real, distinct second-best
+// support (184.1) must still surface instead of a duplicated 186.5.
+test("enrich: duplicate support/resistance levels from coincident sources are deduped before top-2", () => {
+  const dossier = fakeDossier({
+    tech: {
+      ...fakeDossier().tech!,
+      support_levels: [186.5, 186.5, 184.1, 179.9],
+      resistance_levels: [190.2, 190.2, 193.5, 175.0],
+    },
+  });
+  const e = enrichSetup(baseSetup(), dossier);
+  assert.deepEqual(e.key_supports, [186.5, 184.1]);
+  assert.deepEqual(e.key_resistances, [190.2, 193.5]);
+});
+
 // 9-8: scoreCandidate (scorer.ts) always folds fundamental/catalyst/short_interest/
 // wall_proximity/vex_alignment/skew into `score` alongside the original five — enrichSetup
 // dropped all six when building factor_breakdown, so the "Why this play was picked" panel

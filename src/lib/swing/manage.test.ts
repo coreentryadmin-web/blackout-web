@@ -6,6 +6,7 @@ import {
   detectRollCandidate,
   SWING_SUBLANE_MANAGE,
   GATING_RUNGS,
+  THESIS_BREAK_RUNGS,
   type SwingManageInput,
 } from "./manage.ts";
 import { buildSwingDossier, type SwingDossier } from "./dossier.ts";
@@ -428,6 +429,15 @@ test("hold reason still asserts every dimension when all three ARE evaluable (un
   assert.match(v.reason, /thesis intact/);
   assert.match(v.reason, /premium above the/);
   assert.match(v.reason, /ample time/);
+});
+
+test("THESIS_BREAK_RUNGS is the structural/thesis-stop subset of GATING_RUNGS, excluding expiry_risk/premium_stop", () => {
+  assert.deepEqual([...THESIS_BREAK_RUNGS].sort(), ["structural_stop", "thesis_stop"]);
+  for (const rung of THESIS_BREAK_RUNGS) {
+    assert.ok(GATING_RUNGS.has(rung), `${rung} must also be a GATING_RUNGS member`);
+  }
+  assert.ok(!THESIS_BREAK_RUNGS.has("expiry_risk"), "expiry_risk is a time gate, not a thesis verdict");
+  assert.ok(!THESIS_BREAK_RUNGS.has("premium_stop"), "premium_stop is a capital backstop, not a thesis verdict");
 });
 
 test("enforce split: all four capital-preservation rungs enforce; every edge rung is advisory until graduated", () => {

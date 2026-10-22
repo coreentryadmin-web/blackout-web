@@ -78,6 +78,19 @@ export const GATING_RUNGS: ReadonlySet<SwingManageRung> = new Set<SwingManageRun
   "premium_stop",
 ]);
 
+/** The two rungs that specifically mean "the THESIS broke" (as opposed to expiry_risk's time
+ *  pressure or premium_stop's capital backstop on an otherwise-intact thesis) — the subset a
+ *  member-facing "thesis broke" alert should fire on. Named here (not re-derived at each call
+ *  site as string literals) because this exact distinction is already load-bearing in
+ *  `decideRollAction` (roll.ts: "THESIS-BROKEN = CLOSE-NOT-ROLL") and in this file's own
+ *  precedence doc above — a caller that wants "did the thesis break" should ask this, not
+ *  GATING_RUNGS (which also includes expiry_risk/premium_stop, neither of which is a thesis
+ *  verdict). */
+export const THESIS_BREAK_RUNGS: ReadonlySet<SwingManageRung> = new Set<SwingManageRung>([
+  "structural_stop",
+  "thesis_stop",
+]);
+
 // ─── Per-sub-lane management params (fast lanes carry tighter time discipline) ──────────────────
 // A Tactical (2–7d) contract sits on a theta cliff — its expiry-risk floor + roll horizon are tight
 // and its time-stop short; an Extended (22–30d) contract has room, so its floors are looser. These
