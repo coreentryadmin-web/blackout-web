@@ -16,8 +16,14 @@
  */
 import { spawnSync } from "node:child_process";
 import { etParts, inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
-import { auditPgSsl, resolveAuditDbUrl } from "./pg-audit.mjs";
-import { isCronRunHealthyStatus } from "./lib/rth-socket-probe.mjs";
+import {
+  auditPgSsl,
+  resolveAuditDbUrl,
+  describeConnectError,
+  isPrivateDbUnreachableError,
+  isStaleAuditDbAuthError,
+} from "./pg-audit.mjs";
+import { isCronRunHealthyStatus, probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
 const force = process.argv.includes("--force");
@@ -124,11 +130,11 @@ async function postgresRthChecks() {
     // the INFRA section of zerodte-e2e-suite already avoids by SKIPPING (never RED) when its AWS
     // creds are absent or placeholder. Every check INSIDE the try still fails normally; only the
     // inability to run them at all is downgraded.
-    const msg = e?.message ?? String(e);
+    const msg = describeConnectError(e);
     const isConfig =
-      /password authentication failed|no pg_hba\.conf entry|SASL|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|self.signed certificate|does not exist/i.test(
-        msg
-      );
+      isStaleAuditDbAuthError(msg) ||
+      isPrivateDbUnreachableError(msg) ||
+      /no pg_hba\.conf entry|SASL|does not exist/i.test(msg);
     if (isConfig) {
       console.log(`  ⚠ Postgres UNAVAILABLE — checks SKIPPED, not failed: ${msg}`);
       console.log(
@@ -141,6 +147,50 @@ async function postgresRthChecks() {
   }
 }
 
+/** @returns {Promise<boolean>} true when socket-health passed */
+async function cronSocketHealthCheck(headers) {
+  const { mins } = etParts();
+  const afterOpen930 = mins >= 9 * 60 + 30;
+  const socketHealthTimeoutMs = Number(process.env.SOCKET_HEALTH_TIMEOUT_MS ?? 180_000);
+
+  const socketResult = await probeOptionsSocketWithRetries({
+    afterOpen930,
+    fetchSocketHealth: async () => {
+      const ac = new AbortController();
+      const socketTimer = setTimeout(() => ac.abort(), socketHealthTimeoutMs);
+      try {
+        const res = await fetch(`${BASE}/api/cron/socket-health`, {
+          headers,
+          signal: ac.signal,
+        });
+        const body = await res.json().catch(() => ({}));
+        return { status: res.status, body };
+      } finally {
+        clearTimeout(socketTimer);
+      }
+    },
+    onRetry: (attempt, detail) => {
+      console.log(`  ⚠ socket-health (attempt ${attempt}/3): ${detail} — retrying…`);
+    },
+  });
+
+  if (socketResult.preOpenWarn) {
+    console.log(`  ⚠ socket-health → ${socketResult.preOpenWarn}`);
+    return true;
+  }
+  if (socketResult.failure) {
+    failures.push(`socket-health: ${socketResult.failure}`);
+    console.log(`  ✗ socket-health → ${socketResult.failure}`);
+    return false;
+  }
+  if (socketResult.successDetail) {
+    console.log(`  ✓ socket-health → ${socketResult.successDetail}`);
+  } else {
+    console.log(`  ✓ socket-health → ok`);
+  }
+  return true;
+}
+
 async function cronHttpChecks() {
   console.log("\n── Cron HTTP checks ──");
   const H = { Authorization: `Bearer ${CRON}` };
@@ -149,7 +199,6 @@ async function cronHttpChecks() {
     { path: "/api/cron/data-integrity?force=1", label: "data-integrity" },
     { path: "/api/cron/provider-health-reconcile?force=1", label: "provider-health" },
     { path: "/api/cron/cron-staleness-watchdog", label: "cron-watchdog" },
-    { path: "/api/cron/socket-health", label: "socket-health" },
   ];
 
   for (const { path, label } of routes) {
@@ -186,11 +235,6 @@ async function cronHttpChecks() {
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
         failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
         console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
-      } else if (label === "socket-health" && json.ok === false) {
-        const opt = json.websockets?.options?.detail ?? "options unhealthy";
-        const luld = json.websockets?.stocks_luld?.detail ?? "";
-        failures.push(`${label}: ${opt}${luld ? `; LULD: ${luld}` : ""}`);
-        console.log(`  ✗ ${label} → ${opt}`);
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
@@ -199,6 +243,8 @@ async function cronHttpChecks() {
       console.log(`  ✗ ${label} → ${e.message}`);
     }
   }
+
+  await cronSocketHealthCheck(H);
 }
 
 console.log(`\n=== GitHub Actions RTH audit ===`);
