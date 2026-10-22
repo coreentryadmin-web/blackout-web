@@ -1,4 +1,4 @@
-// Phase-anchored swing-discovery cron health — the member-facing artifact is the serving snapshot,
+// Phase-anchored swing-discovery cron health — member-facing artifact is the serving snapshot,
 // not the cron_job_runs handshake. EventBridge fires every 30m but only phase windows run scans;
 // a long gap without logged rows (401 before logCronRun, deploy blip) must not page when
 // `swing:serving:latest:v1` still reflects today's session.
