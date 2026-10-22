@@ -152,20 +152,38 @@ export async function GET(req: NextRequest) {
     effectiveCooldownSec
   ).catch(() => true));
   if (withinCooldown) {
-    const payload = {
-      ok: true,
-      skipped: true,
-      reason: `rate-limited — zerodte-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
-    };
-    await logCronRun("zerodte-warm", started, payload);
-    return NextResponse.json(payload);
+    // Steal clears cooldown only for the NX winner; other replicas (or a handshake that re-set
+    // cooldown every 60s without scanZeroDteBoard finishing) must still recover during
+    // critical_stale — measured 2026-10-22: cron-audit query RED while scan heartbeat >10m stale.
+    if (scanHeartbeat?.critical_stale) {
+      await sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined);
+    } else {
+      const payload = {
+        ok: true,
+        skipped: true,
+        reason: `rate-limited — zerodte-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
+      };
+      await logCronRun("zerodte-warm", started, payload);
+      return NextResponse.json(payload);
+    }
   }
 
-  const acquired = await sharedCacheSetNx(
+  let acquired = await sharedCacheSetNx(
     OVERLAP_LOCK_KEY,
     { startedAt: started },
     OVERLAP_LOCK_TTL_SEC
   ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired && scanHeartbeat?.critical_stale) {
+    console.warn(
+      "[cron/zerodte-warm] overlap lock held but scan heartbeat critical_stale — clearing wedged overlap lock"
+    );
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    acquired = await sharedCacheSetNx(
+      OVERLAP_LOCK_KEY,
+      { startedAt: started },
+      OVERLAP_LOCK_TTL_SEC
+    ).catch(() => true);
+  }
   if (!acquired) {
     const payload = {
       ok: true,
