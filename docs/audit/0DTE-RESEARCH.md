@@ -1147,14 +1147,31 @@ VALIDATION n=19 — one short of the n=20 trust bar — pointed the opposite dir
 | REJECT_MIN_DOMINANCE: win rate / net expectancy | 23.1% / +0.97% | 15.4% / **-12.10%** |
 | Verdict | INSUFFICIENT DATA (REJECT n=13 < 20) | INSUFFICIENT DATA (REJECT n=13 < 20) |
 
-**This is a real shift from the 2026-10-20 result, not a repeat.** The TRAIN/VALIDATION
-*disagreement* that made the prior run inconclusive is GONE — REJECT now grades worse than PASS
-in BOTH halves (lower win rate, lower/negative net expectancy both times), the gate-confirming
-direction. Still formally INSUFFICIENT DATA because REJECT's own population (n=13/half) is below
-the standing n=20 trust bar in this day window — PASS hit the `--max-per-half` cap (its true
-population is larger), REJECT did not. Relaunched with `--days=40 --max-per-half=60` to try to
-clear REJECT past n=20 on real additional history — **result pending, check the next checkpoint
-entry below before trusting a verdict off this one.** No gate changed either way yet.
+This was a real shift from the 2026-10-20 result (the TRAIN/VALIDATION *disagreement* that made
+that run inconclusive was gone — REJECT graded worse than PASS in both halves) but REJECT's own
+population (n=13/half) was still below the n=20 trust bar. Relaunched with
+`--days=40 --max-per-half=60` to try to clear it on real additional history:
+
+| | TRAIN (n=60 PASS / **23** REJECT) | VALIDATION — held out (n=60 PASS / **23** REJECT) |
+|---|---|---|
+| PASS: win rate / net expectancy | 33.3% / -7.30% | 38.3% / -2.19% |
+| REJECT_MIN_DOMINANCE: win rate / net expectancy | 17.4% / **-4.98%** | 21.7% / -5.58% |
+| Verdict | ⚠ REJECT graded BETTER than PASS net of real costs | gate correctly separating (REJECT worse) |
+
+**Now properly powered (REJECT n=23 clears the n=20 bar in both halves) — and the two halves
+DISAGREE again, this time with real statistical weight behind each side, not a thin-sample
+artifact.** TRAIN says the gate is backwards (it rejected setups that would have graded better).
+VALIDATION says the gate is correctly separating. Combined with the smaller `--days=24` run
+above (which showed REJECT beating PASS in BOTH halves), the full picture across three
+independent re-cuts of overlapping-but-different day windows is: **unstable, not just
+"inconclusive for lack of data."** The verdict flips with which days are in the window, and the
+`max_dd` figures are extreme in every cell (-576.67% to -125.72%) — a small number of outlier
+trades plausibly dominate the net-expectancy averages. **Per the operator's own standing
+instruction ("do not manufacture bangers by loosening risk controls... using hindsight"), this
+does NOT clear the bar for touching `min_dominance` either direction.** No gate changed. The
+honest next step on this specific gate is isolating and naming the outlier-driven trades before
+trusting any aggregate number from this population, not re-running the same test a fourth time
+with yet another day-window.
 
 ### Step 4 — contract-selection on COMMITTED trades: NOT a tunable "be more aggressive" knob
 
@@ -1170,22 +1187,56 @@ not a parameter to tune on the existing FLOW engine — it would require a genui
 strategy (e.g. an always-ATM 0DTE lane independent of flow concentration), a materially bigger
 build than a threshold change, and — per the operator's own "do not manufacture bangers" rule —
 one that must be proven across many real days (most 0DTE ATM lottos expire near worthless) before
-shipping, not inferred from these 7 winning examples. Logged as a candidate NEXT EXPERIMENT
-(a dedicated, real-cost, out-of-sample ATM-vs-flow-strike A/B), not attempted today. Also note:
-`SETUP_MAX_ITM_PCT=2`/`RUNNER_SETUP_MAX_OTM_PCT` already bound the FLOW strike pick on BOTH sides
-(reject too-deep-ITM AND too-far-OTM) — the engine already avoids the most boring, lowest-leverage
-contracts; it is not unconstrained toward conservatism.
+shipping, not inferred from these 7 winning examples. Also note: `SETUP_MAX_ITM_PCT=2`/
+`RUNNER_SETUP_MAX_OTM_PCT` already bound the FLOW strike pick on BOTH sides (reject too-deep-ITM
+AND too-far-OTM) — the engine already avoids the most boring, lowest-leverage contracts; it is
+not unconstrained toward conservatism.
+
+**CORRECTION / sharper finding (same investigation, a few hours later): an ATM selector for 0DTE
+already EXISTS and already ships — this is not a build-from-scratch question.**
+`pickAtmZeroDteContract` (`breakout-source.ts` ~line 234) is the REAL, live contract-selector for
+BREAKOUT-origin setups: nearest expiry first, then strike CLOSEST TO SPOT net of a small
+liquidity tie-break — genuinely ATM-seeking, unlike FLOW's "wherever the real premium
+concentrated" pick. The open question is narrower than "build an ATM lane": **when a ticker
+qualifies through BOTH FLOW and BREAKOUT on the SAME direction the same day, which origin's
+contract wins?** Read `mergeSameTickerDiscovery`/`stampFlowEvidenceFromIncoming` (`board.ts`
+~line 448-543) directly — confirmed in the code's OWN doc comments, not inferred: on a
+same-direction merge, "**contract geometry stays with the kept setup**" and "seating order wins
+ties (kept was seated first...)" — i.e. whichever origin seats first (FLOW, per the existing,
+separately-documented FLOW-first-precedence design) keeps its OWN strike pick, and the other
+origin's candidate contract (BREAKOUT's ATM pick, when BREAKOUT also flagged the same
+ticker/direction) is discarded outright — only its score contributes a corroboration boost.
+**This is the single most concrete, already-partially-built lead from this round.** Two real
+unknowns, not yet answered: (1) did BREAKOUT actually ALSO flag SPY/NVDA/AAPL that day (unknown —
+not checked this round; the committed rows show `origin=["FLOW"]` only, meaning either BREAKOUT
+never flagged them, or it did and its origin label was never unioned in because of a timing/order
+detail — needs a real historical check), and (2) if it did, would BREAKOUT's ATM pick have graded
+better across many real days (not just these cherry-picked Swift winners) once real costs are
+applied — NOT the already-existing `merge-precedence-ab.mjs` (that tool tests OPPOSING-direction
+disagreement rows specifically, a different code branch than the same-direction case found here)
+— a genuinely new, not-yet-built real-cost A/B is needed.
 
 ### Status / next checkpoint
 
-Not solved. Checkpoints continue in `docs/audit/nighthawk-0dte-live-journal.json` as this
-continues across the standing Night Hawk 0DTE trigger cadence. Open threads: (a) the re-run
-`min_dominance` A/B result (in progress), (b) AMD's `score_floor`/`thesis_rank_reject`/
-`max_itm_pct` cluster — `score_floor` already has a SEPARATE, orthogonal finding worth
-connecting (E6 below: an *INVERTED* score-vs-win-rate relationship on 28 real sessions, re-run
-2026-09-17) — worth checking whether that inversion explains any of AMD's rejections, (c) the
-ATM-vs-flow-strike contract-selection experiment (not yet started, real-cost/out-of-sample
-required before any code change).
+**Not solved — three real results this round, none of them a ship:**
+1. `min_dominance` real-cost A/B, run THREE times now at increasing statistical power
+   (n=19/13/23 REJECT per half across the runs) — genuinely **UNSTABLE across day-windows**, not
+   just under-powered. Per the operator's own "do not manufacture bangers... using hindsight"
+   rule, this does not clear the bar to touch the gate. Next step on this thread specifically:
+   isolate the outlier trades driving the extreme `max_dd` figures before trusting any more
+   aggregate runs of the same test.
+2. AMD's `score_floor`/`thesis_rank_reject`/`max_itm_pct` cluster not yet investigated this
+   round — connects to the SEPARATE, already-documented `score_floor` INVERTED finding (E6
+   below, 28 real sessions, 2026-09-17) and is a candidate for the SAME kind of real-cost re-test
+   just run on `min_dominance`.
+3. **The FLOW-vs-BREAKOUT same-direction contract-geometry mechanism (Step 4 correction above)
+   is the strongest, most concrete lead found this round** — a real, code-confirmed mechanism
+   (not a guess), narrowly scoped (one merge branch, one existing ATM selector already in
+   production), with a precise next step: check whether BREAKOUT actually co-flagged Swift's
+   tickers that day, then build the real-cost A/B if it did.
+
+Checkpoints continue in `docs/audit/nighthawk-0dte-live-journal.json` across the standing Night
+Hawk 0DTE trigger cadence — this is a multi-session research program, not a single-turn task.
 
 ## Edge cases / scenarios still to simulate
 VIX-regime buckets; trend-day vs range-day; fade-the-open vs follow; gamma-regime (trade toward the
