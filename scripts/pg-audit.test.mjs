@@ -78,7 +78,13 @@ describe("describeConnectError", () => {
   });
 
   it("isPrivateDbUnreachableError covers the unreachable-network codes", () => {
-  for (const m of ["EHOSTUNREACH", "ENETUNREACH", "EAI_AGAIN", "certificate has expired"]) {
+  for (const m of [
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "EAI_AGAIN",
+    "certificate has expired",
+    "Connection terminated unexpectedly",
+  ]) {
     assert.equal(isPrivateDbUnreachableError(m), true, m);
   }
   assert.equal(isPrivateDbUnreachableError("relation does not exist"), false);
