@@ -1236,12 +1236,93 @@ The dataset's own `dataset_bias_disclosure` field says this plainly: the loss si
 has to come from Night Hawk's OWN real historical losing 0DTE commits, not from manufacturing or
 assuming a loss shape out of Swift's winners. That cross-reference (pulling our own real closed
 0DTE losers via `GET /api/market/zerodte/record` and reconstructing the same pre-entry signals for
-them) is the natural next step before any pre-entry-signal reconstruction (Step 6 below) can honestly
+them) is the natural next step before any pre-entry-signal reconstruction (Step 7 below) can honestly
 claim to cover "including losses," not just winners.
+
+### Step 6 — the BREAKOUT co-flag question (Step 4's open item) — answered: NO, and it's decisive
+
+Ran the REAL `screenBreakoutMovers` (`src/features/nighthawk/lib/candidates.ts`) against REAL
+Polygon grouped-daily bars for 2026-10-21 — the session the 7 COMMITTED trades (SPY×5, NVDA, AAPL)
+came from — at a generous `maxKeep=5000` (not production's `top-40`) so a near-miss would still
+show up as "qualifies but ranked low," not just "absent."
+
+| Ticker | real o→c gain | real close_strength | BREAKOUT_MIN_GAIN (2%) | BREAKOUT_MIN_CLOSE_STRENGTH (0.5) | Cleared screen? |
+|---|---|---|---|---|---|
+| SPY | +0.25% | 0.776 | **FAIL** | pass | NO |
+| NVDA | +0.46% | 0.951 | **FAIL** | pass | NO |
+| AAPL | +1.36% | 0.804 | **FAIL** | pass | NO |
+| AMD | +1.25% | 0.791 | **FAIL** | pass | NO |
+
+**None of the four cleared the screen, and all four failed on the SAME single variable** — the
+2% intraday gain floor — while comfortably passing close-strength (0.78–0.95, well above the 0.5
+floor). This is not a close call: AAPL's 1.36% is the nearest of the four and still under half the
+threshold. **This closes Step 4's open question as a real, decisive NO**: BREAKOUT never had a
+candidate for SPY/NVDA/AAPL/AMD on 2026-10-21 to merge with FLOW's, so the
+`mergeSameTickerDiscovery`/"contract geometry stays with the kept setup" mechanism never had an
+opportunity to act on these specific trades — it is a dead end for THIS session's contract-pick
+gap, not the explanation. (It may still matter on a different day where BREAKOUT *does* clear 2%
+gain on a flow-corroborated ticker — that general question stays open; only this session's
+specific trades are resolved.)
+
+**This sharpens the diagnosis back to Step 4's ORIGINAL finding, not its correction**: Swift's own
+strikes that day were within 0.01%–1.9% of the session's close (SPY 771/772/773 vs close 773.09;
+NVDA 220 vs close 221.97; AAPL 337.5 vs close 343.99) — i.e. genuinely near-ATM/slightly-ITM picks
+on underlyings that barely moved (sub-1.5% gain in 3 of 4 cases). The outsized option returns
+(+193% to +415% on the SPY/NVDA calls) are 0DTE leverage/convexity doing the work on a small real
+move, not a big underlying breakout — which is exactly why BREAKOUT (calibrated to find *big*
+moves) was silent. Night Hawk's own committed contract on this cluster (SPY 775C, further from the
+close than any of Swift's three SPY strikes) being less leveraged is therefore, as Step 4
+originally found before the merge-mechanism correction, a direct consequence of FLOW's
+`top_strike` picking "where the real premium concentrated" rather than "nearest to spot" — not a
+contract-geometry-merge issue. No gate/selector changed by this step; it is a negative result on
+the specific lead, reported honestly per the operator's own "report honestly if the evidence
+doesn't support an improvement" instruction, not a reason to keep re-testing the same mechanism.
+
+### Step 7 — reconstructed pre-entry signals on the COMMITTED cluster with the new shadow modules — a real, disclosed limitation, not a win
+
+Task #7 of the mandate: "Reconstruct what was observable before each entry" using the new
+shadow-only `momentum-acceleration.ts`/`relative-volume.ts`/`strike-reachability.ts` modules
+(PR #6614). Ran this on the 7 COMMITTED-cluster trades (SPY×5, NVDA, AAPL, 2026-10-21) using ONLY
+real Polygon minute bars strictly BEFORE each trade's option price-match window (no lookahead), a
+30-minute opening-range as the key level, and a flat-proration RVOL read against each ticker's
+real trailing-20-day average volume.
+
+**First, an honest methodology check that mattered**: of the 7 trades, only 2 (SPY 771C, NVDA
+220C) have exactly ONE price-match window for the session — the other 5 have 3–6 candidate
+windows spanning most of the trading day (e.g. SPY 773C @ $0.56 matches 6 separate times, from
+09:32 to 16:14 ET). A cheap 0DTE option's premium revisits the same price repeatedly across a
+session, so "the first (or last) window" is NOT a reliable single-point entry-time proxy for
+those 5 — reporting a pre-entry signal reconstruction from an arbitrarily-chosen window among 3–6
+real candidates would be false precision, not evidence. Only the 2 unambiguous trades are reported
+below; the other 5 are a genuine data-availability ceiling (exact timestamps don't exist in the
+source, as already disclosed in `consolidated-verified.json`), not something this step can resolve.
+
+| Trade | Pre-entry momentum read | RVOL | What really happened (real bars) |
+|---|---|---|---|
+| SPY 771C @ $0.68 (window 10:09 ET) | `accelerating:false, confirmed:false` (flat/no signal) | 1.09 (normal) | momentum-discovery would NOT have detected a setup here — consistent with a quiet moment, not a miss. |
+| NVDA 220C @ $0.46 (window 10:11–10:30 ET) | `direction:"down", accelerating:true, confirmed:true` | 1.84 (high) | Real minute bars show NVDA genuinely bottomed near $218.0–218.3 in this exact window (strike was $220, so OTM) after opening at $220.96 — a real intraday DIP, not a continuation. NVDA went on to rally hard later that session (Swift's exit premium $2.10, +361.54%, per the Swift recap). |
+
+**The NVDA read is the important, honestly-reported result, not a success.** The new
+`momentum-acceleration.ts` module is deliberately built to detect CONTINUATION (an accelerating
+move confirmed by a same-direction key-level break) — by design it is structurally incapable of
+flagging a contrarian dip-buy as a long setup, and it didn't: it correctly read the real, genuine
+down-move in progress at that moment and reported `direction:"down"`. If `momentum-discovery.ts`'s
+`detected`/`direction` output were (hypothetically) used as a hard long/short signal at that exact
+timestamp, it would have pointed to a PUT, the opposite of Swift's profitable call. **This is not
+a bug in the new modules — it is a real, now-evidenced boundary on what a continuation-style
+momentum signal can ever explain**: at least one of Swift's two cleanly-reconstructable winners was
+a contrarian/mean-reversion entry, a different trade shape entirely from "catch the breakout
+early." Per the operator's own "report honestly if the evidence doesn't support an improvement"
+instruction, this is logged as exactly that — a real limitation, not downplayed or explained away.
+No code changed by this step. The implication for Task #3/#4: any real-cost validation of the new
+discovery path should expect it to catch continuation-shaped setups (if any exist in Swift's
+population) and should NOT be judged a failure for missing contrarian/dip-buy setups like this
+NVDA trade — those need a structurally different signal (e.g. a mean-reversion/exhaustion read),
+which is out of scope for what was built this round and not fabricated here to cover this gap.
 
 ### Status / next checkpoint
 
-**Not solved — three real results this round, none of them a ship:**
+**Not solved — five real results this round, none of them a ship:**
 1. `min_dominance` real-cost A/B, run THREE times now at increasing statistical power
    (n=19/13/23 REJECT per half across the runs) — genuinely **UNSTABLE across day-windows**, not
    just under-powered. Per the operator's own "do not manufacture bangers... using hindsight"
@@ -1252,11 +1333,23 @@ claim to cover "including losses," not just winners.
    round — connects to the SEPARATE, already-documented `score_floor` INVERTED finding (E6
    below, 28 real sessions, 2026-09-17) and is a candidate for the SAME kind of real-cost re-test
    just run on `min_dominance`.
-3. **The FLOW-vs-BREAKOUT same-direction contract-geometry mechanism (Step 4 correction above)
-   is the strongest, most concrete lead found this round** — a real, code-confirmed mechanism
-   (not a guess), narrowly scoped (one merge branch, one existing ATM selector already in
-   production), with a precise next step: check whether BREAKOUT actually co-flagged Swift's
-   tickers that day, then build the real-cost A/B if it did.
+3. **CLOSED, negative result (Step 6 above): the FLOW-vs-BREAKOUT same-direction contract-geometry
+   merge mechanism is a dead end for the 2026-10-21 COMMITTED trades** — BREAKOUT never co-flagged
+   SPY/NVDA/AAPL/AMD that day (all four failed the 2% gain floor cleanly; close-strength was never
+   the limiting factor). The real locus of the contract-leverage gap on this cluster is FLOW's own
+   `top_strike` premium-concentration pick (Step 4's original finding), not a merge-precedence
+   question. A genuinely ATM-biased FLOW-origin selector (not borrowed from BREAKOUT's merge path,
+   since BREAKOUT structurally won't be present on these small-underlying-move/high-leverage days)
+   is the next real candidate — scoped as a new, separately-validated selector variant, not a
+   threshold tune, and subject to the same real-cost/out-of-sample discipline as every other
+   candidate in this file before it ships.
+4. **Step 7 above — the new shadow momentum-discovery modules cannot, by design, catch a
+   contrarian/dip-buy entry** (the NVDA 220C reconstruction). Only 2 of the 7 COMMITTED-cluster
+   trades had an unambiguous price-match window at all; of those, one showed a flat/no-signal
+   read (SPY 771C) and the other showed the module correctly reading a real down-move that was
+   actually a dip Swift bought before a later reversal (NVDA 220C). A real, disclosed boundary on
+   what this signal family can explain — not fixed this round, and not something to paper over
+   when Task #3/#4's real-cost validation runs.
 
 Checkpoints continue in `docs/audit/nighthawk-0dte-live-journal.json` across the standing Night
 Hawk 0DTE trigger cadence — this is a multi-session research program, not a single-turn task.
