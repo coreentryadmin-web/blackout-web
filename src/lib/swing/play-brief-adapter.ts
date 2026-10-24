@@ -49,50 +49,56 @@ function extractDirection(bias: BieBias): Direction {
 }
 
 /**
- * Extract specific numbers from the envelope as evidence strings (Largo C7).
- * Pulls from sections, confidence reasoning, and levels (not just prose interpretation).
+ * Extract specific numbers from the envelope as evidence strings (Largo C7 — "the specific
+ * numbers behind the claim, not a restatement of it", `ProductSignal.evidence`'s own doc comment).
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-22): this used to never read `envelope.evidence`
+ * at all — the REAL, honesty-taxonomy-tagged evidence array `evidenceFromContext` (play-brief.ts)
+ * builds for exactly this purpose (dealer-posture strike distances, HELIX flow $ premium/print
+ * counts, earnings dates, peer lists — literal numbers, per that function's own C7 header) — and
+ * instead manufactured its OWN list out of restatements the C7 doc comment explicitly disclaims:
+ * the headline+bias repeated verbatim, each section's bare bias word, and confidence prose. A
+ * model reading the structured `evidence` field saw zero of the brief's actual sourced numbers and
+ * only a paraphrase of the claim the evidence is supposed to back up.
+ *
+ * Fix: lead with the real `envelope.evidence[]` text (every kind — fact/calc entries carry the
+ * numbers C7 wants; inference/scenario entries are still genuine sourced evidence, not invented
+ * padding). Levels/scenarios/invalidation stay — they carry real price numbers too — but the pure
+ * restatement bits (headline+bias, section bias words, confidence prose) are dropped; they were
+ * never numbers, and headline+bias in particular is the literal claim C7 says evidence must not
+ * just restate. The final bare fallback is kept only for the honest-emptiness case (an envelope
+ * with no evidence at all) so the contract's non-empty-array requirement is never violated by
+ * fabricating a number that was never computed.
  */
 function extractEvidence(envelope: BieAnswerEnvelope): string[] {
   const evidence: string[] = [];
 
-  // Headline + bias
-  evidence.push(`${envelope.headline} (${envelope.bias})`);
-
-  // Confidence reason if present
-  if (envelope.confidence?.why) {
-    evidence.push(`Confidence: ${envelope.confidence.why}`);
+  // The real, sourced evidence this envelope was actually built from — the specific numbers.
+  for (const item of envelope.evidence) {
+    evidence.push(item.text);
   }
 
-  // Section titles (avoid full body prose — just the structured parts)
-  for (const section of envelope.sections) {
-    if (section.bias) {
-      evidence.push(`${section.title}: ${section.bias}`);
-    }
-    if (section.confidence?.why) {
-      evidence.push(`${section.title} confidence: ${section.confidence.why}`);
-    }
-  }
-
-  // Levels (key prices)
+  // Levels (key prices) — numeric, not a restatement.
   if (envelope.levels && envelope.levels.length > 0) {
     for (const level of envelope.levels) {
       evidence.push(`${level.label}: $${level.price.toFixed(2)}`);
     }
   }
 
-  // Scenarios
+  // Scenarios — bull/base/bear theses carry their own numbers (targets), not a bare restatement.
   if (envelope.scenarios && envelope.scenarios.length > 0) {
     for (const scenario of envelope.scenarios) {
       evidence.push(`${scenario.kind.toUpperCase()}: ${scenario.thesis}`);
     }
   }
 
-  // Invalidation
+  // Invalidation — the specific go-flat condition/price, not a restatement of the claim.
   if (envelope.invalidation) {
     evidence.push(`Invalidation: ${envelope.invalidation}`);
   }
 
-  // If we have no evidence yet, fall back to bias + headline
+  // Only when NOTHING above produced a single real item: fall back to bias + headline so the
+  // contract's "non-empty array" requirement is satisfied honestly rather than fabricated.
   if (evidence.length === 0) {
     evidence.push(`${envelope.headline} (${envelope.bias})`);
   }
