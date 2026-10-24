@@ -7574,7 +7574,7 @@ test("watchForSection: watch/open buckets are unchanged — still show live thes
     "watch",
   );
   assert.match(section.body, /Thesis \*\*unknown\*\*/);
-  assert.match(section.body, /Reclaim gamma flip \*\*99\.31\*\* — invalidates short thesis/);
+  assert.match(section.body, /Reclaim gamma flip \*\*99\.31\*\* \(3\.7% away\) — invalidates short thesis/);
   assert.equal(section.title, "Watch levels");
 });
 
@@ -7600,7 +7600,7 @@ test("watchForSection: LONG with spot ABOVE flip — still 'Lose', the level has
     },
     "watch",
   );
-  assert.match(section.body, /Lose gamma flip \*\*183\.49\*\* — dealer posture turns against longs/);
+  assert.match(section.body, /Lose gamma flip \*\*183\.49\*\* \(3\.4% away\) — dealer posture turns against longs/);
 });
 
 test("watchForSection: LONG with spot BELOW flip (live COIN repro) — 'Reclaim', not 'Lose' an already-lost level", () => {
@@ -7623,7 +7623,7 @@ test("watchForSection: LONG with spot BELOW flip (live COIN repro) — 'Reclaim'
   assert.doesNotMatch(section.body, /Lose gamma flip/);
   assert.match(
     section.body,
-    /Reclaim gamma flip \*\*183\.49\*\* — needed to restore dealer support for longs/,
+    /Reclaim gamma flip \*\*183\.49\*\* \(4\.9% away\) — needed to restore dealer support for longs/,
   );
 });
 
@@ -7645,7 +7645,7 @@ test("watchForSection: SHORT with spot ABOVE flip — 'Lose', needs to confirm t
     "watch",
   );
   assert.doesNotMatch(section.body, /Reclaim gamma flip/);
-  assert.match(section.body, /Lose gamma flip \*\*99\.31\*\* — needed to confirm the short thesis/);
+  assert.match(section.body, /Lose gamma flip \*\*99\.31\*\* \(3\.6% away\) — needed to confirm the short thesis/);
 });
 
 // Premium stop rail showed only the absolute dollar level ("thesis breaks if mark closes below

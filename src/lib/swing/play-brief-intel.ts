@@ -2017,16 +2017,27 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     // (see play-brief-narrative.ts's own comment on the live RDDT repro, 2026-09-11) — comparing
     // spot to the level itself, not inferring posture from trade direction alone.
     const spotAboveFlip = spot > flip;
+    // GAP FOUND (Ask Largo standing mandate, 2026-10-24): same omission class already fixed this
+    // cycle for "Entry trigger" (this same function) and for narrateFlip's own gamma-flip bullet
+    // in the sibling "Trade manager read" narration (play-brief-narrative.ts) — this inline
+    // gamma-flip line (a separate, duplicate implementation for "Watch levels"/"What to watch")
+    // never stated how close spot is to the cited flip either, even though both values needed to
+    // compute it are already resolved a few lines above. Matches this function's own "(X% away)"
+    // convention (Math.abs((spot-level)/spot), same as the Entry trigger fix a few lines up), not
+    // narrateFlip's "(X% from spot)" phrasing — each file keeps its own established wording.
+    // Scoped to the live watch/open branches only — the CLOSED branch already states both raw
+    // numbers side by side ("Now trades X vs gamma flip Y") and is left as-is.
+    const distAway = ` (${Math.abs(((spot - flip) / spot) * 100).toFixed(1)}% away)`;
     const watch =
       bucket === "closed"
         ? `Now trades **${fmtPriceLevel(spot)}** vs gamma flip **${fmtPriceLevel(flip)}** — where the dealer regime sits since this play closed`
         : play.direction === "LONG"
           ? spotAboveFlip
-            ? `Lose gamma flip **${fmtPriceLevel(flip)}** — dealer posture turns against longs`
-            : `Reclaim gamma flip **${fmtPriceLevel(flip)}** — needed to restore dealer support for longs`
+            ? `Lose gamma flip **${fmtPriceLevel(flip)}**${distAway} — dealer posture turns against longs`
+            : `Reclaim gamma flip **${fmtPriceLevel(flip)}**${distAway} — needed to restore dealer support for longs`
           : spotAboveFlip
-            ? `Lose gamma flip **${fmtPriceLevel(flip)}** — needed to confirm the short thesis`
-            : `Reclaim gamma flip **${fmtPriceLevel(flip)}** — invalidates short thesis`;
+            ? `Lose gamma flip **${fmtPriceLevel(flip)}**${distAway} — needed to confirm the short thesis`
+            : `Reclaim gamma flip **${fmtPriceLevel(flip)}**${distAway} — invalidates short thesis`;
     lines.push(watch);
   }
 
