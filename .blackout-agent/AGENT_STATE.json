@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-22T05:45:02.385Z",
+  "updated_at": "2026-10-24T11:37:59.001Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0301d5123a97ef175e06651ce7a35468b62b2147",
+    "last_main_sha": "a720deebe2cd799418ca9be5574ce4dcfde70b2d",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
@@ -1255,34 +1255,114 @@
       "open_pr_count": 5
     },
     {
-      "at": "2026-10-22T05:44:53.763Z",
+      "at": "2026-10-24T11:37:40.366Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 13
     },
     {
-      "at": "2026-10-22T05:44:58.525Z",
+      "at": "2026-10-24T11:37:50.290Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 13
     },
     {
-      "at": "2026-10-22T05:45:02.385Z",
+      "at": "2026-10-24T11:37:59.001Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 13
     }
   ],
   "open_prs": [
     {
-      "number": 6549,
-      "title": "docs(audit): Swift banger-catching investigation — 2026-10-21 session, min_dominance retest, FLOW/BREAKOUT merge lead",
-      "branch": "docs/swift-comparison-2026-10-21",
+      "number": 6616,
+      "title": "docs(audit): consolidate Swift trade sessions into one verified, machine-readable dataset",
+      "branch": "docs/swift-verified-dataset",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-22T05:35:37Z"
+      "updated_at": "2026-10-24T11:36:46Z"
+    },
+    {
+      "number": 6615,
+      "title": "Add MARKET-OPEN-VALIDATION.md entries for #6607/#6608/#6609",
+      "branch": "docs/market-open-validation-6607-6608-6609",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-24T11:34:16Z"
+    },
+    {
+      "number": 6614,
+      "title": "feat(zerodte): independent momentum/RVOL/reachability discovery signal (shadow-only)",
+      "branch": "feat/momentum-discovery-shadow",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-24T11:34:25Z"
+    },
+    {
+      "number": 6613,
+      "title": "Fix fetchUwFlow0dte cold-start branch poisoning shared Redis cache",
+      "branch": "fix/uw-flow0dte-cold-start-poisons-shared-cache",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-24T11:31:43Z"
+    },
+    {
+      "number": 6612,
+      "title": "docs(findings): fold batch-47 findings into FINDINGS.md",
+      "branch": "docs/fold-batch-47",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-24T11:26:36Z"
+    },
+    {
+      "number": 6611,
+      "title": "fix(audit): validate-deploy Postgres catch used the narrow transient-error helper",
+      "branch": "fix/validate-deploy-pg-transient-classification",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-24T11:25:41Z"
+    },
+    {
+      "number": 6610,
+      "title": "fix(audit): full-site-deep-audit PREMIUM-CAP check used a stale $20 cap",
+      "branch": "fix/deep-audit-premium-cap-stale-20",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "completed/success",
+      "updated_at": "2026-10-24T11:23:29Z"
+    },
+    {
+      "number": 6577,
+      "title": "fix(ops): treat PG connection terminated as unreachable in RTH open-check",
+      "branch": "cursor/autopilot-state-recovery-loop-92cb",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-24T11:29:17Z"
+    },
+    {
+      "number": 6574,
+      "title": "fix(ops): treat RDS connection-terminated as unreachable in RTH open check",
+      "branch": "cursor/autopilot-work-loop-7903",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-24T11:31:04Z"
     },
     {
       "number": 5547,
