@@ -5384,6 +5384,62 @@ test("watchForSection: a live, still-enterable trigger keeps the unqualified cau
   assert.match(section.body, /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24, static audit of the Largo deep-dive): every
+// OTHER price level this brief narrates (GEX walls, gamma flip, committed structural stop) states
+// its distance from spot as "(X% away)" — this entry trigger line, arguably the single most
+// actionable number in a WATCH brief, never did. Pins the fix: once spot is known and still on the
+// not-yet-triggered side, the line now quantifies how close the setup actually is.
+test("watchForSection: entry trigger states how far spot is from firing it, when spot is known and still approaching", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 182.5,
+        setupState: "TRIGGERED",
+        watchEntryExpired: false,
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 180.0 } } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  // (180 - 182.5) / 180 = -1.389% -> 1.4% away.
+  assert.match(
+    section.body,
+    /Entry trigger: \*\*182\.50\*\* \(1\.4% away\) — Break\/reclaim above this is what actually fires the setup/,
+  );
+});
+
+test("watchForSection: entry trigger distance is omitted (never guessed) once spot has already moved through it in the entry direction", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 182.5,
+        setupState: "TRIGGERED",
+        watchEntryExpired: false,
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 185.0 } } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/);
+  assert.doesNotMatch(section.body, /% away/);
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-10-18): entryTriggerDeadReason() used to call only
 // the narrow deadPlayReason (4 cases: INVALIDATED/expired-window/contract-expired/EXTENDED), which
 // returns null for a TRIGGERED/AT_TRIGGER play that is merely below the lane score floor — so this
