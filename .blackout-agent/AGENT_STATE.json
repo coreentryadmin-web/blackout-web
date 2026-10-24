@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-21T18:37:06.444Z",
+  "updated_at": "2026-10-22T05:45:02.385Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b688e0a8aa42e26a0d1db5ad4902a136ee0c3483",
+    "last_main_sha": "0301d5123a97ef175e06651ce7a35468b62b2147",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-12T14:39:42.433Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-12T14:39:48.033Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-12T15:17:37.953Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-12T15:17:45.663Z",
       "type": "context_sync",
@@ -1271,18 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-22T05:44:53.763Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-22T05:44:58.525Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-22T05:45:02.385Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6533,
-      "title": "docs(findings): fold batch-45 findings into FINDINGS.md",
-      "branch": "docs/fold-batch-45",
+      "number": 6549,
+      "title": "docs(audit): Swift banger-catching investigation — 2026-10-21 session, min_dominance retest, FLOW/BREAKOUT merge lead",
+      "branch": "docs/swift-comparison-2026-10-21",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-21T18:34:16Z"
+      "updated_at": "2026-10-22T05:35:37Z"
     },
     {
       "number": 5547,
