@@ -38,6 +38,170 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## zerodte-warm scan heartbeat `critical_stale` during RTH — scan hung past 10m watchdog
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
+
+| **Status** | FIXED (PR pending) |
+|------------|-------------------|
+
+**Symptom:** Scheduled `Cron audit query` on `main` failed with `problems: zerodte-warm` while prod HTTP stayed healthy (`0301d512`, 2026-10-22 ~15:50Z).
+
+**Root cause:** `recordZeroDteScanTick("cron")` ran only after `scanZeroDteBoard()` returned. A child fetch with no deadline (or a wedged overlap/heavy-slot skip) could leave the heartbeat silent for >10m even though `cron_job_runs` logged ok/skipped.
+
+**Fix:**
+1. `awaitWithWarmDeadline` on the warm cron path (default 8m, `ZERODTE_SCAN_WARM_TIMEOUT_MS`) — on timeout/error, record heartbeat and skip persist for that cycle.
+2. Wedged-lock steal + heavy-slot escalation when heartbeat is `stale` (>5m) or `critical_stale` (>10m) during cash RTH (~5m earlier recovery).
+
+**Verify:** RTH `node scripts/cron-audit-query.mjs` green; CloudWatch `[zerodte-scan] … warm deadline` should be rare, not sustained `critical_stale`.
+
+## zerodte-warm — cooldown/overlap skips while scan heartbeat critical_stale — FIXED
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
+
+| **Status** | FIXED (PR pending) |
+| --- | --- |
+
+**Symptom:** `Cron audit query` failed on `main` @ `0301d512` (2026-10-22 ~15:51 UTC, RTH) with `problems: zerodte-warm` despite #6546 heavy-slot escalation already on `main`.
+
+**Root cause:** When `zerodte_scan_heartbeat` was already `critical_stale`, routine `zerodte-warm` fires could still idempotent-skip on the 60s rerun cooldown or the overlap lock (`previous zerodte warm still in flight`) before dispatching `warmZeroDteBoard()`. Wedged-lock steal cleared keys only on the atomic steal winner; subsequent fires hit cooldown/overlap gates without bypass.
+
+**Fix:** During cash RTH, when heartbeat is `critical_stale`, bypass cooldown skip, retry overlap claim, and if still blocked force dispatch without deleting another replica's overlap lock (release only when this run acquired it).
+
+**Verify after deploy:** During RTH with forced stale heartbeat in staging, confirm cron fires log `background done` and cron audit query returns GREEN.
+
+## Swing thesis-health `rungLabel` named a process word with no reference to whether anything had actually moved since commit, at 2 renderers beyond play-brief.ts's own fix
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Symptom:** `rungFromHealth`/`rungLabel` bands purely off absolute `health` %, never
+`delta`/`moves` — "Weakening"/"Degraded"/"Broken" are process words that presuppose decay, but a
+position can sit in a low band from commit day one, unchanged, forever, purely from imperfect
+entry geometry. `play-brief.ts`'s "Thesis health" section already disambiguated this (2026-10-07,
+refined 2026-10-14/16) with a local check — two sibling renderers of the SAME `h.rungLabel` never
+got it:
+- `holdPlanSection`'s "Thesis health" line (`play-brief-intel.ts`) — also gated a "Tighten risk —
+  thesis fading" bullet on bare `health < 45` with no drift check.
+- `thesisPillarCoaching` (`play-brief-narrative-coaching.ts`) — could render `"**Thesis Degraded**
+  (50%) — Thesis fading — tighten risk or trim into strength"` for a position that, by its own
+  `moves` field, had never moved.
+
+**Root cause:** the disambiguation logic (`h.moves?.[0]?.includes("unchanged") &&
+!h.materialGivebackSinceCommit`) lived only as a local in `play-brief.ts`, never shared, so the
+two later renderers of the same `rungLabel` never inherited it.
+
+**Fix:** extracted the shared predicate `thesisHealthUnchangedSinceCommit` (`thesis-health.ts`);
+all three renderers (`play-brief.ts`, `play-brief-intel.ts`, `play-brief-narrative-coaching.ts`)
+now call it, so they can never disagree about the same fact again. Both `play-brief-intel.ts` call
+sites (the rungLabel line and the "Tighten risk" bullet) and the narrative-coaching advisory
+sentence are gated on it.
+
+**Verify:** `thesis-health.test.ts` — new `thesisHealthUnchangedSinceCommit` suite (3 cases:
+unchanged/flat default, real pillar fade, fallback sentinel with hidden material giveback).
+
+## Swing closed-deck card identity (`positionId`) pointed at the wrong leg while content described the worst leg
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Symptom:** For a multi-leg closed swing chain, `closedDeckSourcesFromChains` (closed-plays.ts)
+re-points every content field (contract/occ/mid/delta, entry/peak/trough premium) at the WORST leg
+when it differs from the terminal leg — but left `positionId` pointing at the terminal leg's own
+`row.id`. Live repro: AMZN chain with terminal leg id 48 (+72.41%) and worst leg id 44 (-27.67%) —
+the served card's content/P&L correctly described leg 44, but its `positionId` was 48. Clicking
+through resolves `play-brief-resolve.ts`'s `loadClosedPlay` by `r.id === positionId`, which builds a
+brief from leg 48's own terminal row — directly contradicting the card the member just clicked.
+
+**Root cause:** every other identity/content field already borrows from `worstLegRow` when it's set
+(non-null only when the worst leg differs from the terminal leg); `positionId` was the one field
+nobody had re-pointed.
+
+**Fix:** `positionId: worstLegRow?.id ?? src.positionId` — same fallback shape every sibling field
+already uses, so identity and content can never disagree again for the same card.
+
+**Verify:** `src/lib/swing/closed-plays.test.ts` — every existing `closedDeckSourcesFromChains`
+case (both live AMZN/AAPL repros, the real-absence case, and the worst-leg-is-terminal case) now
+also asserts `positionId`: it must match the worst leg's own id whenever one differs from the
+terminal leg, and still match the terminal leg's own id when the worst leg IS the terminal leg (no
+behavior change for the common case).
+
+## RTH open-check false RED — Postgres "Connection terminated unexpectedly" from CI — FIXED
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
+
+| **Status** | FIXED (PR pending) |
+| --- | --- |
+
+**Symptom:** `RTH open check` workflow failed on `main` @ `ae00300c` (2026-10-22 ~18:10 UTC) after deploy validation passed: `Postgres RTH checks: Connection terminated unexpectedly`.
+
+**Root cause:** GitHub Actions can reach `DATABASE_PUBLIC_URL` briefly then lose the RDS/proxy session. `validate-deploy` already skipped `ECONNRESET` via `isPrivateDbUnreachableError`, but `rth-open-check` used the same classifier on `e.message` only — and **"Connection terminated unexpectedly"** was not in the pattern, so RTH-open hard-failed.
+
+**Fix:** Extend `isPrivateDbUnreachableError` for terminated-connection messages; use `describeConnectError` in `rth-open-check` catch.
+
+**Verify:** Re-run `RTH open check` workflow on `main` during RTH window — should skip Postgres writer checks with warning when CI cannot hold a connection, not exit 1.
+
+## `extractEvidence()` (Largo swing adapter) discarded the brief's real `envelope.evidence[]` in favor of a headline/bias restatement
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Symptom:** Largo product-contract C7 ("the specific numbers behind the claim, not a
+restatement of it" — `ProductSignal.evidence`'s own doc comment). `play-brief-adapter.ts`'s
+`extractEvidence()` never read `envelope.evidence` at all — the real, sourced evidence array
+`evidenceFromContext` (`play-brief.ts`) builds for exactly this purpose (dealer-posture strike/γ
+reads, HELIX flow $ premiums/print counts, earnings dates, peer lists — literal numbers). Instead
+it manufactured its own list out of exactly what C7 disclaims: the headline+bias repeated
+verbatim, each section's bare bias word, and confidence prose. A model reading the structured
+`evidence` field saw zero of the brief's real sourced numbers, only a paraphrase of the claim
+those numbers are supposed to back up.
+
+**Root cause:** the function was written independently of `evidenceFromContext`'s real array and
+never wired to read it — a dead-contract-field defect, not a logic bug in either function.
+
+**Fix:** `extractEvidence` now leads with `envelope.evidence[].text` (every real fact/calc/
+inference/scenario entry). Levels/scenarios/invalidation stay (they carry real numbers too); the
+pure-restatement bits (headline+bias, section bias words, confidence prose) are dropped. The bare
+headline+bias fallback is kept ONLY for the genuine-emptiness case, so the contract's non-empty-
+array requirement (`contractViolations`) is never satisfied by fabrication.
+
+**Verify:** `play-brief-adapter.test.ts` — new case confirms a real `evidenceFromContext` fact
+(earnings-calendar date) reaches the Largo-facing `evidence[]` unchanged.
+
+## RTH deep audit (`audit` job) failed on transient infra noise
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
+
+| **Status** | FIXED (PR pending) |
+|------------|-------------------|
+
+**Symptom:** `rth-deep-audit.yml` job `audit` red on `main` @ `7b0f46b0` — `socket-health: HTTP 503` and `postgres: read ECONNRESET`.
+
+**Root cause:** `gha-rth-audit.mjs` Postgres catch regex omitted `ECONNRESET` (unlike shared `isPrivateDbUnreachableError`). `socket-health` was a single fetch with no retry (unlike `rth-open-check` / `probeOptionsSocketWithRetries`).
+
+**Fix:** Align Postgres with `describeConnectError` + `isPrivateDbUnreachableError` + private VPC skip; probe socket-health with retries.
+
+## zerodte-warm — heavy-cron pool starvation during critical scanner stall — FIXED
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
+
+| **Status** | FIXED (PR pending) |
+| --- | --- |
+
+**Symptom:** `Cron audit query` failed on `main` three times in ~25 minutes (2026-10-21 ~15:55–16:19 UTC) with `problems: zerodte-warm` via the HTTP watchdog fallback.
+
+**Root cause:** After wedged-lock steal (#5213) cleared cooldown/overlap, `acquireHeavyCronSlot` still returned `null` when both shared pool slots were held by long-running Vector crons. Each `zerodte-warm` fire logged `heavy-cron concurrency slot unavailable (idempotent skip)` while `zerodte_scan_heartbeat` stayed `critical_stale`.
+
+**Fix:** When `scanHeartbeat.critical_stale` during cash RTH, escalate past the shared heavy-cron cap (noop slot handle) so the scanner tick can run; routine contention still idempotent-skips.
+
+**Verify after deploy:** During RTH, confirm `zerodte-warm` completes `background done` and cron audit query GREEN after a period when Vector heavy crons are both in flight.
+
 ## 2026-10-21 — [FINDING, P2 Ask Largo x Night Hawk Swings / Largo product contract] RESEARCH/SKIP swing candidates render "HOLD" in the "Trade manager read" narrative's "Entry stance" and "Live read" bullets — deferred follow-up to #6532 — FIXED
 
 > **kind:** `FINDING`
