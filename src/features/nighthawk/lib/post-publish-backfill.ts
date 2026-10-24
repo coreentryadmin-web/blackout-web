@@ -9,7 +9,10 @@ import {
 import type { TickerDossier } from "./dossier";
 import type { ScoredCandidate } from "./scorer";
 import type { PlaybookPlay } from "./types";
-import { backfillThinEditionPlays } from "./play-backfill";
+import { backfillThinEditionPlays, repairStaleBackfillPlays } from "./play-backfill";
+import { fetchEditionChains } from "./option-chain-prompt";
+import { parseOptionsContract } from "./option-contract-parse";
+import { publishedAtRef } from "./legacy-play-contract";
 import { effectiveMinPublishPlays, computeQualityFloorNote } from "./edition-quality";
 import { buildRankFinalSnapshotRows } from "./edition-builder";
 import { alertCandidateSnapshotWriteFailure } from "./candidate-snapshot-alert";
@@ -101,7 +104,14 @@ export function reconstructScoredPoolFromRankGovernorRows(
 }
 
 export type RepublishBackfillResult =
-  | { ok: true; status: "noop_already_at_minimum"; editionFor: string; playsCount: number }
+  | {
+      ok: true;
+      status: "noop_already_at_minimum";
+      editionFor: string;
+      playsCount: number;
+      repairedTickers: string[];
+      droppedTickers: string[];
+    }
   | { ok: true; status: "noop_no_eligible_pool"; editionFor: string; playsCount: number }
   | {
       ok: true;
@@ -110,8 +120,39 @@ export type RepublishBackfillResult =
       playsCount: number;
       addedTickers: string[];
       notes: string[];
+      repairedTickers: string[];
+      droppedTickers: string[];
     }
   | { ok: false; status: "no_published_edition" | "no_rank_governor_snapshot"; editionFor: string };
+
+/**
+ * I/O wrapper around `repairStaleBackfillPlays` (play-backfill.ts) — fetches fresh chains for
+ * ONLY the BACKFILL tickers whose own contract has already expired relative to `editionFor` (not
+ * the whole play list), then hands off to the pure repair function. Returns `plays` untouched
+ * with zero chain fetches when nothing is actually stale — this runs on EVERY
+ * `republishBackfilledEdition` call, same as `syncOutcomeRows` above, so it must stay cheap on
+ * the overwhelmingly common case where there is nothing to repair.
+ */
+async function repairStaleBackfillContracts(
+  editionFor: string,
+  plays: PlaybookPlay[],
+  dossiers: Record<string, TickerDossier>,
+  referenceDate?: Date
+): Promise<{ plays: PlaybookPlay[]; repairedTickers: string[]; droppedTickers: string[] }> {
+  const stale = plays.filter((p) => {
+    if (p.selection_tier !== "BACKFILL") return false;
+    const expiry = parseOptionsContract(p.options_play, referenceDate)?.expiryYmd ?? null;
+    return expiry != null && expiry <= editionFor;
+  });
+  if (!stale.length) return { plays, repairedTickers: [], droppedTickers: [] };
+
+  const dossierList = stale
+    .map((p) => dossiers[p.ticker.toUpperCase()])
+    .filter((d): d is TickerDossier => Boolean(d));
+  const chains = await fetchEditionChains({ stockTickers: stale.map((p) => p.ticker), dossiers: dossierList });
+
+  return repairStaleBackfillPlays({ editionFor, plays, chains, referenceDate });
+}
 
 /**
  * Operator-directed, admin-triggered republish (2026-09-28): an edition already published below
@@ -128,7 +169,7 @@ export async function republishBackfilledEdition(editionFor: string): Promise<Re
   const existing = await fetchNighthawkEditionByDate(editionFor);
   if (!existing) return { ok: false, status: "no_published_edition", editionFor };
 
-  const finalPlays: PlaybookPlay[] = (existing.plays as PlaybookPlay[]).map((p) => ({
+  let finalPlays: PlaybookPlay[] = (existing.plays as PlaybookPlay[]).map((p) => ({
     ...p,
     selection_tier: p.selection_tier ?? "QUALIFIED",
   }));
@@ -149,9 +190,49 @@ export async function republishBackfilledEdition(editionFor: string): Promise<Re
   // further down. See syncOutcomeRows above for the full defect this closes.
   await syncOutcomeRows(editionFor, finalPlays, dossiers);
 
+  // Second repair pass, same "runs on EVERY call, even when already at minPlays" placement and
+  // for the same reason: a BACKFILL play already in `existing.plays` whose own contract has gone
+  // stale (expired relative to `editionFor`) needs re-picking or dropping regardless of whether
+  // the play COUNT needs topping up. See repairStaleBackfillContracts above for the full defect
+  // this closes -- a real, live instance of exactly this (PLTR, edition_for 2026-10-26) is what
+  // surfaced the gap.
+  const repair = await repairStaleBackfillContracts(
+    editionFor,
+    finalPlays,
+    dossiers,
+    publishedAtRef(existing.published_at)
+  );
+  finalPlays = repair.plays;
+  const contractRepairHappened = repair.repairedTickers.length > 0 || repair.droppedTickers.length > 0;
+
   const minPlays = effectiveMinPublishPlays();
   if (finalPlays.length >= minPlays) {
-    return { ok: true, status: "noop_already_at_minimum", editionFor, playsCount: finalPlays.length };
+    if (contractRepairHappened) {
+      await upsertNighthawkEdition({
+        edition_for: existing.edition_for,
+        session_date: existing.session_date,
+        recap_headline: existing.recap_headline,
+        recap_summary: existing.recap_summary,
+        market_recap: existing.market_recap,
+        plays: finalPlays,
+        meta: {
+          ...existing.meta,
+          stale_backfill_contract_repair: {
+            at: new Date().toISOString(),
+            repairedTickers: repair.repairedTickers,
+            droppedTickers: repair.droppedTickers,
+          },
+        },
+      });
+    }
+    return {
+      ok: true,
+      status: "noop_already_at_minimum",
+      editionFor,
+      playsCount: finalPlays.length,
+      repairedTickers: repair.repairedTickers,
+      droppedTickers: repair.droppedTickers,
+    };
   }
 
   const snapshotRows = await fetchNighthawkCandidateSnapshots(editionFor, { stage: "rank_governor" });
@@ -180,6 +261,15 @@ export async function republishBackfilledEdition(editionFor: string): Promise<Re
         at: new Date().toISOString(),
         notes: result.notes,
       },
+      ...(contractRepairHappened
+        ? {
+            stale_backfill_contract_repair: {
+              at: new Date().toISOString(),
+              repairedTickers: repair.repairedTickers,
+              droppedTickers: repair.droppedTickers,
+            },
+          }
+        : {}),
     },
   });
 
@@ -207,5 +297,7 @@ export async function republishBackfilledEdition(editionFor: string): Promise<Re
     playsCount: result.plays.length,
     addedTickers,
     notes: result.notes,
+    repairedTickers: repair.repairedTickers,
+    droppedTickers: repair.droppedTickers,
   };
 }

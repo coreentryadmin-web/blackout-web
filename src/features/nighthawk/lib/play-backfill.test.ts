@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { pickAffordableChainContract, selectBackfillPlays } from "./play-backfill";
+import { pickAffordableChainContract, selectBackfillPlays, repairStaleBackfillPlays } from "./play-backfill";
 import { buildDirectionalStockLevels } from "./play-levels";
 import { validatePlayGeometry } from "./play-constraints";
 import type { PlaybookPlay } from "./types";
@@ -620,4 +620,115 @@ test("selectBackfillPlays: thin dossier (no catalyst/flow signal) still gets a r
   assert.doesNotMatch(play.thesis, /^Ranked-pool backfill \(score/, "must not regress to the old generic backfill placeholder text");
   assert.notEqual(play.thesis, dossiers.KOD!.tech!.summary, "must not regress to the bare dossier.tech.summary fallback, even with a thin signal set");
   assert.match(play.thesis, /KOD in bullish trend/, "narrative leads with the real technical setup, matching buildDeterministicThesis's own opener");
+});
+
+// ── repairStaleBackfillPlays (2026-10-24 — retroactive repair for already-published editions) ──
+// Live repro: GET /api/market/nighthawk/edition for edition_for "2026-10-26" carried a
+// BACKFILL/gate_promoted PLTR play recommending "PLTR $197.5 Call 2026-10-23" — already expired
+// at read time. The expiry-floor fix above (pickAffordableChainContract) only stops a NEW,
+// already-dead contract from being picked going forward; it does nothing for an edition that was
+// published BEFORE that floor shipped and already carries one. This is the repair half.
+
+function bfPlay(ticker: string, overrides: Partial<PlaybookPlay> = {}): PlaybookPlay {
+  return {
+    rank: 1,
+    ticker,
+    direction: "LONG",
+    conviction: "C",
+    play_type: "stock",
+    thesis: `${ticker} thesis`,
+    key_signal: `${ticker} key signal`,
+    entry_range: "$100-$105",
+    target: "$120",
+    stop: "$90",
+    options_play: `${ticker} $100 Call 2026-10-23, entry prem ~$0.11`,
+    entry_premium: 0.11,
+    selection_tier: "BACKFILL",
+    ...overrides,
+  };
+}
+
+test("repairStaleBackfillPlays: re-picks a live replacement contract for a BACKFILL play whose own contract already expired (regression — live PLTR 2026-10-24 defect)", () => {
+  const editionFor = "2026-10-26";
+  const plays = [bfPlay("PLTR", { options_play: "PLTR $197.5 Call 2026-10-23, entry prem ~$0.11" })];
+  const chains = { PLTR: bfChain(197.5) };
+
+  const { plays: repaired, repairedTickers, droppedTickers } = repairStaleBackfillPlays({
+    editionFor,
+    plays,
+    chains,
+  });
+
+  assert.deepEqual(repairedTickers, ["PLTR"]);
+  assert.deepEqual(droppedTickers, []);
+  assert.equal(repaired.length, 1);
+  assert.doesNotMatch(repaired[0]!.options_play, /2026-10-23/, "must never keep serving the dead contract");
+  assert.match(repaired[0]!.options_play, new RegExp(ymdPlus(30)), "replacement contract is a genuinely live one from the fresh chain");
+});
+
+test("repairStaleBackfillPlays: drops the play (never a placeholder) when no live replacement contract exists", () => {
+  const editionFor = "2026-10-26";
+  const plays = [bfPlay("PLTR", { options_play: "PLTR $197.5 Call 2026-10-23, entry prem ~$0.11" })];
+  const chains = { PLTR: bfChainUnaffordable(197.5) };
+
+  const { plays: repaired, repairedTickers, droppedTickers } = repairStaleBackfillPlays({
+    editionFor,
+    plays,
+    chains,
+  });
+
+  assert.deepEqual(repairedTickers, []);
+  assert.deepEqual(droppedTickers, ["PLTR"]);
+  assert.equal(repaired.length, 0, "the stale play is dropped entirely, never left with a dead contract nor a placeholder");
+});
+
+test("repairStaleBackfillPlays: leaves a BACKFILL play alone when its contract is still live as of editionFor", () => {
+  const editionFor = "2026-10-26";
+  const plays = [bfPlay("PLTR", { options_play: "PLTR $200 Call 2026-10-30, entry prem ~$5.00" })];
+  const chains = { PLTR: bfChain(197.5) };
+
+  const { plays: repaired, repairedTickers, droppedTickers } = repairStaleBackfillPlays({
+    editionFor,
+    plays,
+    chains,
+  });
+
+  assert.deepEqual(repairedTickers, []);
+  assert.deepEqual(droppedTickers, []);
+  assert.equal(repaired.length, 1);
+  assert.equal(repaired[0]!.options_play, "PLTR $200 Call 2026-10-30, entry prem ~$5.00", "untouched — nothing was stale");
+});
+
+test("repairStaleBackfillPlays: never touches an already-published QUALIFIED play, even with an expired-looking contract string", () => {
+  const editionFor = "2026-10-26";
+  const plays = [
+    bfPlay("CRWD", {
+      selection_tier: "QUALIFIED",
+      options_play: "CRWD $260 Call 2026-10-23, entry prem ~$7.88",
+    }),
+  ];
+  const chains = { CRWD: bfChain(260) };
+
+  const { plays: repaired, repairedTickers, droppedTickers } = repairStaleBackfillPlays({
+    editionFor,
+    plays,
+    chains,
+  });
+
+  assert.deepEqual(repairedTickers, []);
+  assert.deepEqual(droppedTickers, []);
+  assert.equal(repaired[0]!.options_play, "CRWD $260 Call 2026-10-23, entry prem ~$7.88", "QUALIFIED plays are out of this repair's scope entirely");
+});
+
+test("repairStaleBackfillPlays: SHORT direction repairs with a put, not a call", () => {
+  const editionFor = "2026-10-26";
+  const plays = [
+    bfPlay("PLTR", { direction: "SHORT", options_play: "PLTR $197.5 Put 2026-10-23, entry prem ~$0.11" }),
+  ];
+  const chains = { PLTR: bfChain(197.5) };
+
+  const { plays: repaired, repairedTickers } = repairStaleBackfillPlays({ editionFor, plays, chains });
+
+  assert.deepEqual(repairedTickers, ["PLTR"]);
+  assert.match(repaired[0]!.options_play, /Put/);
 });
