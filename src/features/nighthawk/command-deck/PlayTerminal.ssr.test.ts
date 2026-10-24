@@ -455,3 +455,28 @@ test("Legacy play: no mobile Largo fallback mounted (Swing-only feature)", async
   const html = await render(legacyPlay());
   assert.doesNotMatch(html, /nh-deck-right-largo-mobile/);
 });
+
+// DEAD-CODE REMOVAL (Ask Largo standing mandate, 2026-10-24): `legacySinglePanel` unconditionally
+// routes every Legacy play to LegacyPlayDetailPanel, even when `initialTab="pnl"` asks for the
+// tab bar explicitly — that is exactly why the now-deleted `LegacyPnlPanel` (PnlPanel's old
+// LEGACY branch) could never render in production. Pins that behavior: no tab bar markup, and
+// the single-panel's own excursion bar (sourced from legacyPrimaryPeakPct/TroughPct, matching
+// TradeExcursionGraphic's existing fix from PR #6619) still renders correctly with pnlPct/peak/
+// trough null and only the stock* fields populated — proving the deletion changed nothing a real
+// Legacy play ever showed.
+test("Legacy play: initialTab='pnl' still renders the single-panel view, never a tab bar — stock-fallback excursion bar renders correctly", async () => {
+  const html = await render(
+    legacyPlay({
+      pnlPct: null,
+      peak: null,
+      trough: null,
+      stockMovePct: 6.4,
+      stockPeakPct: 11.2,
+      stockTroughPct: -3.5,
+    }),
+    { initialTab: "pnl" },
+  );
+  assert.doesNotMatch(html, /nh-deck-tabs/);
+  assert.match(html, /nh-deck-excursion-graphic/);
+  assert.match(html, /\+6\.4%/);
+});

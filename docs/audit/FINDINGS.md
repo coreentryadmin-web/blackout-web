@@ -38,6 +38,196 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## `ZeroDteCommandPanel`'s verdict-band headline and RATCHET-track marker both skipped the trim-scale as-managed blend, contradicting the SAME panel's own "Trade outcome" section
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Symptom:** standing Ask Largo × Night Hawk Swings ownership mandate (extends to the whole Night
+Hawk product — 0DTE, Swings, Legacy, LEAPS). `ZeroDteCommandPanel.tsx` is the Command Deck's
+0DTE/SWING detail panel. Its "Trade outcome" section (the CLOSED-only "what happened" block, built
+for the roadmap brief's Post-Trade Attribution framing) already computes `realizedPct` via
+`closedRealizedPct(play)` — the as-managed outcome, preferring the recorded exit stamp, then the
+trim-scale blend for a `closedReason: "stopped"` row with armed tranches, then raw live P&L as the
+last resort. But the verdict band at the very TOP of the same panel — the first number a member
+sees — read `play.pnlPct` directly, with no CLOSED-aware handling at all, and the RATCHET
+stop→target track's marker position (`managementFor(...).progress`) was fed that same raw value.
+For a CLOSED, stopped 0DTE play whose trim tranches had already armed before the final stop (e.g.
+`peak: 87.3`, `closedReason: "stopped"`, no `exitPnlPct`), the panel showed **two disagreeing
+numbers for the same trade in the same view**: the verdict band's headline read the raw mechanical
+`-50.0%` stop pin while the Trade-outcome section a few lines below correctly read `+6.7%`, and the
+RATCHET marker sat pinned at the far-left `STOP` end instead of near the middle where the real
+outcome landed.
+
+**Root cause:** the adapter (`terminalPlayFromZeroDte`, `adapters.ts`) sets `play.pnlPct` straight
+from the board's `live_pnl_pct` for a CLOSED row — it is never re-blended once the position closes,
+so it still carries whatever the mechanical stop read at the moment of the stop-out. The component
+already imports and correctly uses `closedRealizedPct`/`closedCapturePct` for the Trade-outcome
+section, but the verdict band and the `managementFor()` call that drives the RATCHET-track marker
+were written (or never updated) to read `play.pnlPct` directly — the exact same bug class already
+fixed this cycle in `TerminalPremiumPanels.tsx`'s `TradeExcursionGraphic` and `PlayTerminal.tsx`'s
+`PnlPanel`/`LegacyPnlPanel`, but a fourth, independent render site that nobody had swept yet.
+
+**Fix:** hoisted the `isClosed`/`realizedPct`/`capturePct` computation above `mgmt`, and introduced
+one closed-aware `pnlPct` local — `isClosed ? realizedPct : play.pnlPct` — that now feeds BOTH the
+verdict-band headline and the `managementFor(play.exitModel, play.status, pnlPct ?? null)` call
+whose `progress` drives the RATCHET-track marker. `markFlash` was left reading the corrected
+`pnlPct` too (its own fallback only ever triggers when `play.mark` is null, which the adapter
+doesn't do for closed rows, so this is inert for closed rows but consistent). No other call site
+changed — `mgmt.progress`/`mgmt.recommendation`/`mgmt.recNote` all flow from the same corrected
+value with no further changes needed.
+
+**Verify:**
+- `src/features/nighthawk/command-deck/ZeroDteCommandPanel.test.ts` — new describe block: a
+  CLOSED, stopped play with `peak: 87.3, pnlPct: -50, exitPnlPct: null` (the same fixture
+  `play-card-lifecycle.test.ts` pins `closedRealizedPct` at `6.67` for) now shows `+6.7%` in the
+  verdict band, not `-50.0%`; the RATCHET marker lands at `38%` (derived from the blended
+  `+6.67%` via the `(p+50)/150` track formula), not `0%` (what the raw `-50%` stop would produce).
+  Confirmed RED pre-fix (source reverted to `HEAD` via `git show`, tests failed exactly as
+  expected: band `-50.0%`, marker `0%`), GREEN post-fix.
+- 7/7 tests pass in this file, 456/456 across the whole `command-deck` test directory, on Node 20;
+  `npx tsc --noEmit` clean.
+
+## Ask Largo swing Book Context: duplicate OTHER ticker scattered instead of clustered
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+### Root cause
+
+`bookContextSection` (`src/lib/swing/play-brief-intel.ts`) builds its theme-overlap "Concentration"
+sentence by mapping `overlap.sameThemeSameDirection`/`sameThemeOpposedDirection` (minus the
+reviewed ticker) straight into a comma-joined name list, in whatever order `checkPortfolioOverlap`
+returned them. `formatOverlapPosition` already disambiguates a ticker that appears more than once
+in that list with its own position id (fixed 2026-09-17, #5167) — but nothing groups the two
+occurrences of the SAME ticker together. If an unrelated ticker happens to sit between them in the
+source order, the duplicate reads as an accidental repeat rather than a deliberate second position.
+
+Live repro (2026-10-24, Night Hawk Swings standing mandate, `GET /api/market/swing/play-brief?
+playId=SWING:PANW:67&ticker=PANW`):
+
+```
+Concentration — already holding 5 same-direction positions in theme "software":
+ZS LONG (separate position #2106), SNOW LONG, NET LONG, CRWD LONG, ZS LONG (separate position #2028).
+```
+
+ZS (two Banger-origin positions, #2106 and #2028) is correctly annotated both times, but SNOW/NET/CRWD
+sit between the two mentions, so a trader skimming the sentence sees "ZS LONG ... ZS LONG" with no
+visual grouping and reasonably reads it as a rendering bug rather than two real, independently-opened
+positions.
+
+This is the same underlying concern (`MAX_OVERLAP_NAMES`'s own doc comment calls it "bullet-dump
+instead of trade-manager voice") as the already-fixed MRNA/TSLA/TSLL same-ticker cases, but one
+level down: those fixes split a duplicate that matches the REVIEWED ticker into its own sentence.
+This is a duplicate WITHIN the "other" (non-reviewed) side of a multi-name theme sentence, which
+none of the existing splits cover, because there's no single ticker to pull into a dedicated
+sentence when the theme has several genuinely different names.
+
+### Blast radius
+
+Both call sites that build an "other" (non-reviewed-ticker) names list from a theme-overlap bucket
+are affected identically: `otherSameDir` (the `sameThemeSameDirection` "Concentration" sentence) and
+`otherOpposed` (the `sameThemeOpposedDirection` "Internal conflict" sentence). Both now route through
+the same `clusterByTicker` helper.
+
+### Fix
+
+Added `clusterByTicker(positions)`: a stable grouping pass that moves every occurrence of the same
+ticker to sit contiguously, preserving first-occurrence order between distinct tickers. Applied to
+`otherSameDir` and `otherOpposed` immediately after filtering out the reviewed ticker, before mapping
+to `formatOverlapPosition`/`joinOverlapNames`. Pure reordering — `dupTickers`/`crossEngineDupTickers`
+are computed by the caller over the original (unclustered) list beforehand and are unaffected.
+
+### Evidence
+
+- Live repro captured above via the real production `play-brief` endpoint before writing the fix.
+- Regression test (`src/lib/swing/play-brief-intel.test.ts`, `"bookContextSection: a duplicate OTHER
+  ticker in a multi-name theme overlap is clustered adjacently, not scattered (2026-10-24, live PANW
+  repro)"`) reproduces the exact live shape (ZS/SNOW/NET/CRWD/ZS) and fails without the fix (confirmed
+  via `git stash` of `play-brief-intel.ts` alone), passes with it.
+- Full `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-intel.test.ts`: 320/320
+  pass. `tsc --noEmit`: clean.
+
+### Why this fix and not an alternative
+
+Considered combining duplicate tickers into a single entry ("ZS LONG ×2 (positions #2106, #2028)")
+instead of clustering. Rejected for this PR: it would change `formatOverlapPosition`'s per-row
+contract (which several other call sites and tests depend on returning one string per position) and
+is a larger, more opinionated UI change. Clustering is the minimal fix that solves the actual
+scannability problem (the two mentions are no longer separated by unrelated names) without touching
+any other rendering behavior.
+
+## `LegacyPnlPanel` was unreachable dead code — a stale comment claimed Legacy was still tabbed, three cross-references pointed at a function nobody ever renders
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Context:** standing Ask Largo × Night Hawk Swings ownership mandate (extends to the whole Night
+Hawk product — 0DTE, Swings, Legacy, LEAPS). Investigated as a *candidate* live display bug —
+`LegacyPnlPanel` (`PlayTerminal.tsx`) read raw `play.pnlPct`/`play.peak`/`play.trough` instead of
+the `legacyPrimaryPnlPct`/`Peak`/`Trough` fallback helpers already used correctly elsewhere in the
+same file, the exact shape of two bugs fixed earlier this cycle (`TradeExcursionGraphic`'s "Close"
+stat, PR #6619; LEAPS `PnlPanel`'s "Live P&L" headline, PR #6622). Since
+`use-legacy-quotes.ts`'s `overlayLegacyQuotes` unconditionally nulls `pnlPct`/`peak`/`trough` for
+every Legacy play (a deliberate "FAIL CLOSED" design — no live option mark is sourced for Legacy
+yet), the three raw-field reads inside `LegacyPnlPanel` looked permanently dead/wrong: a
+"stock P&L from entry" line that could never render, a `TradeExcursionGraphic` MFE/MAE mount gate
+that could never pass, and a footer note permanently stuck on its "awaiting quote" branch.
+
+**This is NOT the bug it looked like.** Tracing the actual render tree (`PlayTerminal` function,
+same file) showed `LegacyPnlPanel` can never execute for any real play, by construction:
+- `legacySinglePanel = play.horizon === "LEGACY"` (line ~248) is **unconditional** — every Legacy
+  play takes this branch and renders `LegacyPlayDetailPanel` instead.
+- The tab bar / `PnlPanel` branch (where `LegacyPnlPanel` was called) is only reached when
+  `!commandSinglePanel && !legacySinglePanel` — i.e. only for `horizon === "LEAPS"` (the only one
+  of the four `Horizon` values neither `commandSinglePanel` `(ZERO_DTE | SWING)` nor
+  `legacySinglePanel` `(LEGACY)` claims).
+- `grep -rn "LegacyPnlPanel"` across the repo found exactly one call site (the now-removed
+  `if (play.horizon === "LEGACY") return <LegacyPnlPanel .../>` inside `PnlPanel`), and
+  `initialTab` (the only prop that selects a starting tab) is never set to `"pnl"` for a Legacy
+  play anywhere in production — only in this file's own test harness.
+- `LegacyPlayDetailPanel` (the actually-reachable renderer) already uses `legacyPrimaryPnlPct`/
+  `legacyPrimaryPeakPct`/`legacyPrimaryTroughPct` correctly, and its own `TradeExcursionGraphic`
+  mount gate (`play.stockPeakPct != null || play.stockTroughPct != null`) is equivalent to the
+  "correct" gate for real Legacy data, since `legacyPrimaryPeakPct`/`Troughpct`'s first branch
+  (gated on `pnlPct != null`) can never fire when `pnlPct` is always null. **No live member has
+  ever seen a defect here.**
+
+The surrounding comments were themselves stale in a way that caused the misdiagnosis: a comment
+at the top of `PlayTerminal` claimed "Tabbed horizons (Swing/Legacy/…)" — wrong on both counts
+(neither Swing nor Legacy is tabbed; LEAPS is the only horizon that is), and two further comments
+elsewhere in the file cited `LegacyPnlPanel`'s rows as the reason some *other* duplicate rows were
+removed (2026-08-05 panel declutter) — accurate at the time, now pointing at a function about to
+be deleted.
+
+**Fix:** removed `LegacyPnlPanel` entirely, removed the dead `if (horizon === "LEGACY")` branch in
+`PnlPanel`, and corrected all three stale comments (the horizon-tabbing claim, and the two
+cross-references) to point at `LegacyPlayDetailPanel` instead. This is a dead-code removal, not a
+behavior change — there is no before/after difference in anything a real Legacy play ever showed,
+so there is no RED→GREEN bug-fix proof to offer (there was no live symptom to be RED about).
+
+**Why remove rather than "fix in place":** the repo's own stated convention — delete confirmed-dead
+code rather than patch it — plus a concrete, lived cost: this exact function's raw-field reads were
+investigated this cycle as if they were a live bug, following the same template that correctly
+caught two real ones earlier the same day. Leaving it in place, "fixed" to use the right helpers,
+would have kept a plausible-looking trap for the next audit pass to re-discover and re-diagnose
+from scratch.
+
+**Verify:**
+- `src/features/nighthawk/command-deck/PlayTerminal.ssr.test.ts` — new case pins the structural
+  fact this fix relies on: a Legacy play with `initialTab="pnl"` (pnlPct/peak/trough null, only
+  `stockMovePct`/`stockPeakPct`/`stockTroughPct` populated) still renders the single-panel view
+  (no `nh-deck-tabs` markup) with its stock-fallback excursion bar intact. This test passes
+  identically with and without the removal (confirmed via `git stash` of the source change) —
+  which is the expected signature of a true dead-code removal, not a RED→GREEN bug fix.
+- 31/31 tests pass in this file on Node 20; `npx tsc --noEmit` clean; full suite run alongside.
+
 ## 2026-10-24 — [FINDING, P2 CI/Ops] validate-deploy's Postgres catch block under-classified transient errors — FIXED
 
 > **kind:** `FINDING`
