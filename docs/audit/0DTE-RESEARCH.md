@@ -1320,9 +1320,55 @@ population) and should NOT be judged a failure for missing contrarian/dip-buy se
 NVDA trade — those need a structurally different signal (e.g. a mean-reversion/exhaustion read),
 which is out of scope for what was built this round and not fabricated here to cover this gap.
 
+### Step 8 — the real-cost A/B for an ATM-biased FLOW selector: genuinely unstable, same shape as `min_dominance`
+
+Step 6's sharpened hypothesis (FLOW's `top_strike` premium-concentration pick, not a merge-
+precedence question, is the real locus of the contract-leverage gap) is now tested directly, not
+just argued. Built `scripts/audit/zerodte-flow-atm-selector-real-cost-ab.mjs` (+
+`lib/flow-atm-selector-eval.mjs`, 11 unit tests): pulls the REAL FLOW-origin committed population
+via `GET /api/admin/zerodte/tier-export`, and for each row grades BOTH the real traded contract
+(`top_strike`, real recorded `entry_premium`) AND a counterfactual nearest-to-spot ("ATM") contract
+through the IDENTICAL real `evaluateExitState`/`TRIM_SCALE_RULES`/`resolveExitModeForTier` exit
+engine, same real time-stop, same regime. Paired design (same commit instant, two strikes), same
+statistical discipline as `swing-early-trim-ab.mjs`'s `comparePolicies()` — mean paired delta with a
+normal-approx 95% CI, chronological TRAIN/VALIDATION split.
+
+**Disclosed approximation** (can't be avoided, not papered over): the ATM counterfactual strike is
+picked by pure distance-to-spot from the real listed-strike universe — it does NOT reproduce
+`pickAtmZeroDteContract`'s full liquidity-quality scoring (spread + OI), which needs a real
+NBBO+OI snapshot for every listed strike at the exact historical commit instant, unavailable
+offline. Its entry premium is therefore the real contract's own first traded bar's open at/after
+the commit timestamp (a real print), not a recorded fill — asymmetric with the actual side's real
+recorded `entry_premium`, disclosed rather than smoothed over.
+
+**First live run, 90-day window (the tool's own max), 144 FLOW-origin rows, ALL 144 paired-graded
+(zero drops in any category — actual-bars/spot/chain/ATM-bars all resolved cleanly), 37/144 (25.7%)
+where the ATM pick happened to equal the real `top_strike`:**
+
+| | TRAIN (n=72) | VALIDATION (n=72) |
+|---|---|---|
+| win rate: actual / ATM | 30.6% / 41.7% | 38.9% / 40.3% |
+| mean P&L: actual / ATM | -16.38% / -11.61% | -4.37% / -5.68% |
+| mean paired delta (ATM − actual) | +4.78pp [-4.81, 14.37] | -1.31pp [-12.45, 9.83] |
+| verdict | INCONCLUSIVE | INCONCLUSIVE |
+
+**Same shape as the `min_dominance` result (Step 3), not a coincidence worth ignoring**: both CIs
+straddle zero, AND the two halves disagree on sign (TRAIN leans ATM, VALIDATION leans actual) —
+genuinely unstable, not merely under-powered (n=72/half is a real, reasonably-powered sample by
+this file's own n≥20 convention). One consistent thread across both halves worth naming, not
+over-reading: ATM's win RATE is higher in both (41.7% vs 30.6%; 40.3% vs 38.9%) even though the
+P&L sign flips — a higher hit rate on smaller average moves is a different trade shape than a lower
+hit rate with occasional large winners, not necessarily a better one net of variance, and this
+script does not have the power to separate those explanations. **Per the operator's own "do not
+manufacture bangers by loosening risk controls... or using hindsight" instruction, this does NOT
+clear the bar to touch `top_strike`'s premium-concentration selection.** No gate/selector changed.
+The win-rate thread (ATM consistently higher hit rate) is the one loose end worth a future look —
+with a larger population once more FLOW-origin history accumulates, not from re-running the same
+90-day window again.
+
 ### Status / next checkpoint
 
-**Not solved — five real results this round, none of them a ship:**
+**Not solved — six real results this round, none of them a ship:**
 1. `min_dominance` real-cost A/B, run THREE times now at increasing statistical power
    (n=19/13/23 REJECT per half across the runs) — genuinely **UNSTABLE across day-windows**, not
    just under-powered. Per the operator's own "do not manufacture bangers... using hindsight"
@@ -1338,11 +1384,9 @@ which is out of scope for what was built this round and not fabricated here to c
    SPY/NVDA/AAPL/AMD that day (all four failed the 2% gain floor cleanly; close-strength was never
    the limiting factor). The real locus of the contract-leverage gap on this cluster is FLOW's own
    `top_strike` premium-concentration pick (Step 4's original finding), not a merge-precedence
-   question. A genuinely ATM-biased FLOW-origin selector (not borrowed from BREAKOUT's merge path,
-   since BREAKOUT structurally won't be present on these small-underlying-move/high-leverage days)
-   is the next real candidate — scoped as a new, separately-validated selector variant, not a
-   threshold tune, and subject to the same real-cost/out-of-sample discipline as every other
-   candidate in this file before it ships.
+   question. The genuinely ATM-biased FLOW-origin selector this pointed to WAS built and
+   real-cost/out-of-sample tested — see item 5 below (Step 8): also inconclusive, same shape as
+   `min_dominance`.
 4. **Step 7 above — the new shadow momentum-discovery modules cannot, by design, catch a
    contrarian/dip-buy entry** (the NVDA 220C reconstruction). Only 2 of the 7 COMMITTED-cluster
    trades had an unambiguous price-match window at all; of those, one showed a flat/no-signal
@@ -1350,6 +1394,13 @@ which is out of scope for what was built this round and not fabricated here to c
    actually a dip Swift bought before a later reversal (NVDA 220C). A real, disclosed boundary on
    what this signal family can explain — not fixed this round, and not something to paper over
    when Task #3/#4's real-cost validation runs.
+5. **Step 8 above — the ATM-biased FLOW selector real-cost A/B is INCONCLUSIVE and genuinely
+   UNSTABLE, same shape as `min_dominance`** (144 FLOW-origin rows, 90-day window, n=72/half — both
+   CIs straddle zero AND the two halves disagree on sign). Per the same "do not manufacture
+   bangers... using hindsight" discipline, `top_strike`'s premium-concentration selection is NOT
+   touched on this evidence. One loose thread worth a future look, not acted on now: ATM's win rate
+   was higher in BOTH halves even though the P&L sign flipped — needs a larger population before
+   it means anything, not a re-run of the same window.
 
 Checkpoints continue in `docs/audit/nighthawk-0dte-live-journal.json` across the standing Night
 Hawk 0DTE trigger cadence — this is a multi-session research program, not a single-turn task.
