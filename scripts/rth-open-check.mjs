@@ -223,7 +223,11 @@ async function main() {
           console.log(`  ⚠ options-socket (attempt ${attempt}/3): ${detail} — retrying…`);
         },
       });
-      if (socketResult.preOpenWarn) {
+      if (socketResult.preOpenWarn?.includes("CRON_SECRET")) {
+        console.log(
+          "  ⚠ options-socket probe HTTP 401 — CRON_SECRET in this env may not match prod (ECS crons unaffected)"
+        );
+      } else if (socketResult.preOpenWarn) {
         console.log(`  ⚠ options-socket: ${socketResult.preOpenWarn}`);
       } else if (socketResult.successDetail) {
         ok(`options-socket: ${socketResult.successDetail}`);

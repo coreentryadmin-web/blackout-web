@@ -16,7 +16,13 @@
 import { execSync } from "node:child_process";
 import { spawnSync } from "node:child_process";
 import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
-import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
+import {
+  createAuditClient,
+  resolveAuditDbUrl,
+  describeConnectError,
+  isTransientAuditPgError,
+  isStaleAuditDbAuthError,
+} from "./pg-audit.mjs";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
@@ -456,10 +462,11 @@ if (IS_STAGING && dbUrl) {
 
     await client.end();
   } catch (e) {
-    if (isPrivateDbUnreachableError(e.message)) {
-      warn(`Postgres unreachable from this host (private RDS) — skipping DB checks: ${e.message}`);
+    const detail = describeConnectError(e);
+    if (isTransientAuditPgError(e) || isStaleAuditDbAuthError(detail)) {
+      warn(`Postgres unavailable from this host — skipping DB checks: ${detail}`);
     } else {
-      fail(`Postgres query failed: ${e.message}`);
+      fail(`Postgres query failed: ${detail}`);
     }
   }
 } else {
