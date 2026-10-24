@@ -1216,6 +1216,29 @@ applied — NOT the already-existing `merge-precedence-ab.mjs` (that tool tests 
 disagreement rows specifically, a different code branch than the same-direction case found here)
 — a genuinely new, not-yet-built real-cost A/B is needed.
 
+### Step 5 — consolidated the two Swift sessions into one verified, machine-readable dataset
+
+`docs/audit/history/swift-trades/consolidated-verified.json` merges the 2026-10-19 (14 trades) and
+2026-10-21 (21 trades) files into one 35-trade dataset, per-trade, with explicit structured
+completeness flags rather than only prose notes: `is_0dte` (computed, not guessed, from
+`expiry === session_date`), `missing_fields` (`alert_ts`/`entry_ts`/`exit_ts` — neither source
+screenshot carries exact timestamps, a property of the source material disclosed per-trade here,
+not an extraction gap), and `verified_fields` (the fields that ARE real/transcribed:
+ticker/side/expiry/strike/entry_px/exit_px/pct/swift_marked). Totals tie out exactly against the
+two source files (35 trades, 31 0DTE, 1 loss — the ambiguous SPX 7695C row).
+
+**Explicit, disclosed limitation this step surfaces rather than papers over**: the operator asked
+to "study all examples, including losses — not just the biggest winners," but this Swift-sourced
+dataset is, by construction, almost entirely a winner population (2026-10-21 is 22-0 per the
+channel's own stated record; 2026-10-19 has exactly one ambiguously-classified loss). Swift's
+recap channel is a highlight feed — it structurally cannot supply a real losing-trade population.
+The dataset's own `dataset_bias_disclosure` field says this plainly: the loss side of this study
+has to come from Night Hawk's OWN real historical losing 0DTE commits, not from manufacturing or
+assuming a loss shape out of Swift's winners. That cross-reference (pulling our own real closed
+0DTE losers via `GET /api/market/zerodte/record` and reconstructing the same pre-entry signals for
+them) is the natural next step before any pre-entry-signal reconstruction (Step 6 below) can honestly
+claim to cover "including losses," not just winners.
+
 ### Status / next checkpoint
 
 **Not solved — three real results this round, none of them a ship:**
