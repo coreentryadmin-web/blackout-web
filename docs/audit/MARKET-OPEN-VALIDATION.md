@@ -96,6 +96,24 @@ sibling lane's journal note.
 
 ---
 
+## WATCH LIST — 2026-10-24 Vector gamma-magnet callout level/percent mismatch — fixed, deploy pending validation
+
+**What was fixed:** `GammaMagnet.callout` (`vector-gamma-magnet.ts`) used to pair a whole-dollar
+rounded level with a percent computed from the unrounded, cents-precision strike — whenever the
+weighted-mean magnet strike wasn't near-integer, the two numbers in one sentence described
+different levels (live repro BMNR: "gamma pivot 31 (+36.86%)" when 31's real distance is +38.33%
+and +36.86% belongs to the real strike, 30.67). Fixed by passing the same cents-precision strike
+into the callout, formatted via the shared `fmtPriceLevel()` helper every other consumer already
+uses. Full write-up: `docs/audit/findings-staging/2026-10-24-vector-gamma-magnet-callout-rounding.md`.
+
+**Specific things to check at next RTH open:** open the Vector chart (`/heatmap` or `/vector`) for
+a few live tickers and check the gamma-magnet tooltip/callout text — confirm the quoted level and
+the quoted percent agree with each other (recompute `(level - spot) / spot * 100` by hand for one
+or two and check it matches). Also check a swing play-brief's "Chart technicals"/structureLadder
+magnet rung for the same consistency, since it renders the identical `callout` string.
+
+---
+
 ## WATCH LIST — 2026-10-24 Legacy stale-BACKFILL-contract retroactive repair — fixed, deploy pending validation
 
 **What was fixed (this PR):** #6631 (directly below) fixed `pickAffordableChainContract` so a NEW
