@@ -38,6 +38,179 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-24 — [FINDING, P2 Night Hawk Swings] Swing play-brief/horizons "Spread" line could render a nonsensical percentage from an unguarded backstop ask — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+### What broke
+
+`GET /api/market/swing/play-brief?playId=SWING:CAG&ticker=CAG&positionId=2082` rendered:
+
+> Spread: **13000.0%** ($0.00/$3.90) — this sub-lane's own entry liquidity bar was **25%**, so
+> current execution is now wider than it.
+
+for a $16-strike call on a ~$14.86 underlying at delta 0.15 — a contract that cannot have a real
+fillable $3.90 ask. The live quote behind it was `{bid: 0, ask: 3.9, mid: 0.03}`: the `mid` was
+already correctly guarded down to the real last trade ($0.03), but `bid`/`ask` were not, so the
+Position section's Spread line (`play-brief.ts`, ~line 749-763) computed
+`(ask - bid) / mid = (3.90 - 0) / 0.03 = 13000%` from a mismatched pair — a sanitized mid sitting
+next to an unsanitized ask.
+
+### Root cause
+
+`reliableMarkFromSnapshot`/`reliableMarkFromQuote` (`src/lib/providers/options-snapshot.ts`) exist
+specifically to catch a dead bid (0) paired with a market-maker "backstop" ask nobody could
+actually transact at — confirmed live twice before (CRSR 2026-09-14, CRI 2026-10-08) — but they
+only ever correct the resolved **mark**. They never touch `snap.ask` itself.
+
+`loadOptionQuote` (`src/app/api/cron/swing-active-refresh/route.ts`) already calls
+`reliableMarkFromSnapshot(snap)` to guard `mark`, but built the `SwingLiveQuote` it returns with
+`ask: snap.ask` — the raw, unguarded value — right next to that same guarded mark. That quote is
+persisted onto the position's append-only manage snapshot (`manage-sync.ts`), read back by
+`liveQuoteFromEvent`, and fed into `contractFromRow` (`src/lib/swing/live-plays.ts`), which sets
+`ChainContract.mid` from the **guarded** `row.last_mark` but `ChainContract.bid`/`ask` straight off
+the **unguarded** quote. `liquidityFromContract` (`src/features/nighthawk/command-deck/adapters.ts`)
+then computes `spreadPct = (ask - bid) / mid` from that one `ChainContract` — mixing the sanitized
+mid with the unsanitized ask on the same object produces the incoherent percentage.
+
+### Blast radius
+
+- `liquidityFromContract`'s only call site is `terminalPlayFromHorizon` (adapters.ts), which also
+  feeds `executableFill(bid, ask, entry)` from the same raw `src.contract.bid/ask` — but
+  `executableFill` already requires `bid > 0` to produce a `fill`/`pnl_pct` at all, so a bid=0
+  backstop case (this repro) was already null there; unaffected by this bug, confirmed by reading
+  the function, no change needed.
+- `TerminalPlay.liquidity` has exactly one renderer today: `play-brief.ts`'s Position section
+  Spread/Quote line. No `.tsx` component in `command-deck` reads `.liquidity` directly yet (checked
+  via repo-wide grep), so the Command Deck board itself has no separate instance of this bug to fix.
+- CLOSED swing rows never carry bid/ask at all (`closed-plays.ts`'s `contractBundleFromRow` only
+  returns `mid`/`delta`), so closed positions are structurally unaffected.
+- The Banger lane's pre-entry WATCH rows (`banger-lane-merge.ts`'s `horizonPlayFromBangerWatch`)
+  carry their own `bid`/`ask` straight off the entry-time pick with `mid: entryPremium` — a
+  different data shape that never runs through `reliableMarkFromSnapshot` at all, so it is not an
+  instance of this same bug and was left untouched (no unrelated refactor).
+
+### Fix
+
+Added `reliableAskFromSnapshot(snap)` next to `reliableMarkFromSnapshot`/`reliableMarkFromQuote`
+in `options-snapshot.ts` — it reuses `reliableMarkFromSnapshot` verbatim (never reimplements the
+divergence math) to decide whether the mark guard substituted the reference for the naive
+doc-priority mark; when it did (the exact bid===0 + magnitude-divergence case, including the
+thin-one-lot 3x bar), the ask is the same unfillable backstop number, so it is nulled instead of
+passed through. `loadOptionQuote` now sets `ask: reliableAskFromSnapshot(snap)` instead of
+`ask: snap.ask`. A nulled ask makes `liquidityFromContract` return `spreadPct: null` for that
+contract, and `play-brief.ts`'s existing honest fallback fires instead of asserting a false
+precise number:
+
+> Quote: **$0.00** _(one-sided book — spread not priceable)_
+
+**Deliberately left unchanged:** `midOf`/the mark-resolution priority ladder, `executableFill`,
+and every other consumer of `ChainContract.bid/ask` outside this one data path — the fix is scoped
+to the single choke point (`loadOptionQuote`) that already resolves the mark guard but skipped the
+ask, matching the existing `reliableMarkFromSnapshot` guard's own scope (only `bid===0` is ever
+second-guessed; a real two-sided market is never touched).
+
+### Verify
+
+- `src/lib/providers/options-snapshot.test.ts` — 7 new `reliableAskFromSnapshot` cases, including
+  the exact CAG repro numbers (bid:0, ask:3.90, last:0.03 → nulled) and the existing
+  `reliableMarkFromSnapshot` boundary cases (bid>0 passthrough, legitimate deep-OTM kept, no
+  reference, thin one-lot 3x bar). RED confirmed pre-fix (function did not exist, 7/50 fail);
+  GREEN post-fix (50/50 pass).
+- `src/app/api/cron/swing-active-refresh/route.test.ts` — new source-wiring assertion (matching
+  this file's own existing convention for route.ts's provider-heavy wiring) that `loadOptionQuote`
+  resolves `ask` through `reliableAskFromSnapshot`, not raw `snap.ask`. RED confirmed pre-fix
+  (1/9 fail); GREEN post-fix (9/9 pass).
+- Full affected-file regression run post-fix: `options-snapshot.test.ts` +
+  `route.test.ts` + `live-plays.test.ts` + `adapters.test.ts` + `play-brief.test.ts` — 436/436 pass.
+- `npx tsc --noEmit` (Node 20) — clean.
+
+## Night Hawk Swings: "Earnings peer lens" gave live position-management advice on a CLOSED play with none of the sibling sections' CLOSED-bucket disclosure — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — member-facing current-vs-as-traded ambiguity on a CLOSED swing play-brief |
+| **Found** | 2026-10-24, Ask Largo standing mandate, weekend-backlog verification pass |
+| **Fixed in** | `src/lib/swing/play-brief-intel.ts` |
+
+### Root cause
+
+Every "live read" market-context section in `play-brief-intel.ts` that renders the CURRENT state
+of something (not what a now-closed trade actually traded under) unshifts a disclosure line when
+the brief's bucket is CLOSED:
+
+- `chartTechnicalsSection`/`chartLevelsSection` → `"_Current levels — not what this trade traded under._"`
+- `gexPostureSection` → `"_Current dealer posture — not what this trade traded under._"`
+- `flowIntelSection` → `"_Current flow — not what this trade traded under._"`
+- `wallDynamicsSection` → `"_Current wall activity — not what this trade traded under._"`
+- `catalystsSection` → `"_Current catalysts — not what this trade traded under._"` (fixed 2026-10-21, PR #6493)
+
+`meridianPeerSection`/`meridianPeerEarningsCoaching` (the "Earnings peer lens" section —
+implied move, days-to-print, sector beat-rate context, and this ticker's own print history) reads
+from the exact same kind of READ-TIME-current data (`ctx.meridian`/`ctx.meridianPeer`, fetched
+fresh at read time regardless of bucket) and, worse, ends on an explicit live
+position-management instruction — "Peers that beat often gap through implied — size down or
+hedge vol unless thesis is the print" — but never carried the matching disclosure. It was the one
+sibling this earlier sweep missed.
+
+`meridianPeerEarningsCoaching` (`play-brief-meridian-peer-core.ts`) takes no play/bucket parameter
+at all — it is a pure, play-unaware formatter — so the gap could only be closed at its caller,
+`meridianPeerSection(ctx)`, the same assembly layer `catalystsSection` already does its own
+disclosure-prepending at.
+
+### Live repro
+
+`GET /api/market/swing/play-brief?playId=SWING:GOOGL:58&ticker=GOOGL&expandIntel=1` — position is
+CLOSED/STOPPED, exited 2026-10-16 10:01 ET (-35.9%), checked 8 days later with GOOGL earnings 4
+days out:
+
+```
+=== Earnings peer lens ===
+**Earnings peer lens** — implied move ... reports in **4d** ... Peers that beat often gap through
+implied — size down or hedge vol unless thesis is the print.
+```
+
+Every other market-context section in the SAME brief (Chart technicals, Levels on chart, GEX
+posture, Vector desk, Catalysts & news) correctly prepended the "_Current ... — not what this
+trade traded under._" caveat. "Earnings peer lens" was the one section with no such disclosure,
+telling a member to "size down or hedge vol" on a position that had already been closed for over
+a week.
+
+### Fix
+
+`meridianPeerSection` now prepends `"_Current earnings peer lens — not what this trade traded
+under._\n\n"` to the body when `statusBucket(ctx.play) === "closed"`, matching the exact pattern
+(and exact `ctx.play` / `statusBucket` check) every sibling section already uses.
+`meridianPeerEarningsCoaching` itself is left untouched/pure — `ctx` is already a required,
+non-nullable parameter on `meridianPeerSection` (unlike `catalystsSection`'s optional `ctx`), so no
+extra null-guard is needed.
+
+### Evidence
+
+- RED: extended `play-brief-intel.test.ts` with a new test (`meridianPeerSection: CLOSED bucket
+  prefixes a current-not-as-traded disclosure`) asserting the CLOSED-bucket disclosure appears
+  (and an OPEN-bucket sibling case asserting it does NOT) — failed before the fix with the actual
+  live-shaped body (`'**Earnings peer lens** — implied move **6.5%** · reports in **4d** · ...
+  Peers that beat often gap through implied — size down or hedge vol unless thesis is the print.'`
+  and no disclosure line), proven via a real RED→GREEN stash/restore cycle (`git apply -R`/`git
+  apply` on just the source-file hunk, test file left in place).
+- GREEN: same test passes after the fix; full `play-brief-intel.test.ts` (321 tests) passes, 0
+  failures.
+- `npx tsc --noEmit` clean (Node 20.20.2).
+
+### Blast radius
+
+Scoped entirely to `meridianPeerSection`'s own CLOSED-bucket output. `meridianPeerSection` has
+exactly one production call site (`buildIntelSections` in the same file); `meridianPeerEarningsCoaching`
+is unchanged, so its own direct test coverage in `play-brief-intel.test.ts`/`play-brief-absence.test.ts`/
+`play-brief-meridian-peer.test.ts` is unaffected.
+
 ## Night Hawk Legacy BACKFILL/gate-promoted plays could recommend an already-expired, unquotable option contract — `pickAffordableChainContract` had no expiry floor against the edition's own target trading day
 
 > **kind:** `FINDING`
