@@ -51,6 +51,28 @@ test("TradeExcursionGraphic renders entry-centered MAE/MFE bar (stats row only, 
   assert.doesNotMatch(html, /nh-deck-excursion-graphic__journey/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-24): the "Close" stat used to be a standalone
+// `play.exitPnlPct ?? play.pnlPct` ternary — a simpler reimplementation of closedRealizedPct()
+// (play-card-lifecycle.ts) that skipped the as-managed trim-scale blend for a `closedReason:
+// "stopped"` row with armed trim tranches and no recorded `exitPnlPct`. The default fixture above
+// happens to set `exitPnlPct === pnlPct`, so it could never exercise this path — every real
+// payload with the gap looks identical to one without it under that fixture. This case pins the
+// exact repro: `peak: 87.3` is the same value play-card-lifecycle.test.ts's own
+// "closedRealizedPct: trim-scale as-managed when peak armed tranches before runner stop" case
+// uses, confirming closedRealizedPct(this exact play) resolves to +6.67%, not the raw -50% stop
+// pin the old ternary would have shown.
+test("TradeExcursionGraphic: Close stat uses the trim-scale as-managed blend for a stopped row with no exit stamp, not the raw mechanical stop pin", async () => {
+  const { TradeExcursionGraphic } = await load();
+  const html = renderToStaticMarkup(
+    React.createElement(TradeExcursionGraphic, {
+      play: play({ exitPnlPct: null, closedReason: "stopped", peak: 87.3, pnlPct: -50 }),
+    }),
+  );
+  const closeStat = html.match(/<span class="k">Close<\/span>\s*<span[^>]*>([^<]*)<\/span>/);
+  assert.ok(closeStat, "expected a Close stat in the stats row");
+  assert.equal(closeStat![1], "+6.7%", "Close stat must show the blended as-managed outcome, not the raw -50% mechanical stop pin");
+});
+
 test("ThesisChecklistPanel: merges pillar checks under one taxonomy, no duplicate Flow/Breadth/Gamma rows", async () => {
   const { ThesisChecklistPanel } = await load();
   const html = renderToStaticMarkup(
