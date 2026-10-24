@@ -1216,9 +1216,48 @@ applied — NOT the already-existing `merge-precedence-ab.mjs` (that tool tests 
 disagreement rows specifically, a different code branch than the same-direction case found here)
 — a genuinely new, not-yet-built real-cost A/B is needed.
 
+### Step 5 — the BREAKOUT co-flag question (Step 4's open item) — answered: NO, and it's decisive
+
+Ran the REAL `screenBreakoutMovers` (`src/features/nighthawk/lib/candidates.ts`) against REAL
+Polygon grouped-daily bars for 2026-10-21 — the session the 7 COMMITTED trades (SPY×5, NVDA, AAPL)
+came from — at a generous `maxKeep=5000` (not production's `top-40`) so a near-miss would still
+show up as "qualifies but ranked low," not just "absent."
+
+| Ticker | real o→c gain | real close_strength | BREAKOUT_MIN_GAIN (2%) | BREAKOUT_MIN_CLOSE_STRENGTH (0.5) | Cleared screen? |
+|---|---|---|---|---|---|
+| SPY | +0.25% | 0.776 | **FAIL** | pass | NO |
+| NVDA | +0.46% | 0.951 | **FAIL** | pass | NO |
+| AAPL | +1.36% | 0.804 | **FAIL** | pass | NO |
+| AMD | +1.25% | 0.791 | **FAIL** | pass | NO |
+
+**None of the four cleared the screen, and all four failed on the SAME single variable** — the
+2% intraday gain floor — while comfortably passing close-strength (0.78–0.95, well above the 0.5
+floor). This is not a close call: AAPL's 1.36% is the nearest of the four and still under half the
+threshold. **This closes Step 4's open question as a real, decisive NO**: BREAKOUT never had a
+candidate for SPY/NVDA/AAPL/AMD on 2026-10-21 to merge with FLOW's, so the
+`mergeSameTickerDiscovery`/"contract geometry stays with the kept setup" mechanism never had an
+opportunity to act on these specific trades — it is a dead end for THIS session's contract-pick
+gap, not the explanation. (It may still matter on a different day where BREAKOUT *does* clear 2%
+gain on a flow-corroborated ticker — that general question stays open; only this session's
+specific trades are resolved.)
+
+**This sharpens the diagnosis back to Step 4's ORIGINAL finding, not its correction**: Swift's own
+strikes that day were within 0.01%–1.9% of the session's close (SPY 771/772/773 vs close 773.09;
+NVDA 220 vs close 221.97; AAPL 337.5 vs close 343.99) — i.e. genuinely near-ATM/slightly-ITM picks
+on underlyings that barely moved (sub-1.5% gain in 3 of 4 cases). The outsized option returns
+(+193% to +415% on the SPY/NVDA calls) are 0DTE leverage/convexity doing the work on a small real
+move, not a big underlying breakout — which is exactly why BREAKOUT (calibrated to find *big*
+moves) was silent. Night Hawk's own committed contract on this cluster (SPY 775C, further from the
+close than any of Swift's three SPY strikes) being less leveraged is therefore, as Step 4
+originally found before the merge-mechanism correction, a direct consequence of FLOW's
+`top_strike` picking "where the real premium concentrated" rather than "nearest to spot" — not a
+contract-geometry-merge issue. No gate/selector changed by this step; it is a negative result on
+the specific lead, reported honestly per the operator's own "report honestly if the evidence
+doesn't support an improvement" instruction, not a reason to keep re-testing the same mechanism.
+
 ### Status / next checkpoint
 
-**Not solved — three real results this round, none of them a ship:**
+**Not solved — four real results this round, none of them a ship:**
 1. `min_dominance` real-cost A/B, run THREE times now at increasing statistical power
    (n=19/13/23 REJECT per half across the runs) — genuinely **UNSTABLE across day-windows**, not
    just under-powered. Per the operator's own "do not manufacture bangers... using hindsight"
@@ -1229,11 +1268,16 @@ disagreement rows specifically, a different code branch than the same-direction 
    round — connects to the SEPARATE, already-documented `score_floor` INVERTED finding (E6
    below, 28 real sessions, 2026-09-17) and is a candidate for the SAME kind of real-cost re-test
    just run on `min_dominance`.
-3. **The FLOW-vs-BREAKOUT same-direction contract-geometry mechanism (Step 4 correction above)
-   is the strongest, most concrete lead found this round** — a real, code-confirmed mechanism
-   (not a guess), narrowly scoped (one merge branch, one existing ATM selector already in
-   production), with a precise next step: check whether BREAKOUT actually co-flagged Swift's
-   tickers that day, then build the real-cost A/B if it did.
+3. **CLOSED, negative result (Step 5 above): the FLOW-vs-BREAKOUT same-direction contract-geometry
+   merge mechanism is a dead end for the 2026-10-21 COMMITTED trades** — BREAKOUT never co-flagged
+   SPY/NVDA/AAPL/AMD that day (all four failed the 2% gain floor cleanly; close-strength was never
+   the limiting factor). The real locus of the contract-leverage gap on this cluster is FLOW's own
+   `top_strike` premium-concentration pick (Step 4's original finding), not a merge-precedence
+   question. A genuinely ATM-biased FLOW-origin selector (not borrowed from BREAKOUT's merge path,
+   since BREAKOUT structurally won't be present on these small-underlying-move/high-leverage days)
+   is the next real candidate — scoped as a new, separately-validated selector variant, not a
+   threshold tune, and subject to the same real-cost/out-of-sample discipline as every other
+   candidate in this file before it ships.
 
 Checkpoints continue in `docs/audit/nighthawk-0dte-live-journal.json` across the standing Night
 Hawk 0DTE trigger cadence — this is a multi-session research program, not a single-turn task.
