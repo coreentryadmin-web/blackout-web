@@ -51,6 +51,7 @@ const RUNNABLE_CRONS = new Set([
   "coaching-alerts",
   "bie-full-state-snapshot",
   "swing-active-refresh",
+  "swing-discovery",
   "nighthawk-playbook",
 ]);
 

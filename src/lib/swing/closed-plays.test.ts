@@ -251,7 +251,11 @@ describe("closedDeckSourcesFromChains", () => {
     });
     const out = closedDeckSourcesFromChains([[parent, child]]);
     assert.equal(out.length, 1);
-    assert.equal(out[0]!.positionId, 11);
+    assert.equal(
+      out[0]!.positionId,
+      10,
+      "positionId must identify the worst leg (10), whose P&L/contract/premium bounds this card actually shows — not the terminal leg (11), which this card never describes",
+    );
     assert.equal(out[0]!.exitPnlPct, -20, "worst-leg composite, not terminal-leg +15");
     assert.equal(out[0]!.closedReason, "stopped");
   });
@@ -301,6 +305,7 @@ describe("closedDeckSourcesFromChains", () => {
     assert.equal(out[0]!.entryPremium, 3.6, "must be the WORST leg's own entry, not the terminal's 2.26 and not null");
     assert.equal(out[0]!.peakPremium, 3.6, "must be the WORST leg's own peak, not the terminal's +25.7%-implying 2.84");
     assert.equal(out[0]!.troughPremium, 2.13, "must be the WORST leg's own trough, not the terminal's 1.29");
+    assert.equal(out[0]!.positionId, 30, "positionId must identify the worst leg (30), not the terminal leg (35)");
   });
 
   // BUG FIX (Ask Largo standing mandate, 2026-10-11, live repro AMZN root 44/terminal 48): the
@@ -343,6 +348,7 @@ describe("closedDeckSourcesFromChains", () => {
     assert.equal(out[0]!.occ, "O:AMZN261016C00605000", "occ must identify the leg that actually lost -27.67%, not the terminal leg's own contract");
     assert.equal(out[0]!.contract.strike, 605, "strike must match the contract the P&L belongs to");
     assert.equal(out[0]!.contract.expiry, "2026-10-16");
+    assert.equal(out[0]!.positionId, 44, "positionId must identify leg 44, the same leg occ/contract/exitPnlPct already point at");
   });
 
   // BUG FIX (Ask Largo standing mandate, 2026-10-18, live repro AAPL positionId 40 (root 37 ->
@@ -399,6 +405,7 @@ describe("closedDeckSourcesFromChains", () => {
       "mid must be the WORST leg's own exit_mark (3.73), not the terminal leg's own exit_mark (10.00) — two different real contracts must not be merged onto one card",
     );
     assert.equal(out[0]!.contract.delta, 0.42, "delta must be the WORST leg's own delta, not the terminal leg's (0.6)");
+    assert.equal(out[0]!.positionId, 44, "positionId must identify leg 44 — the same leg every other field on this card already describes");
   });
 
   // Second independent live repro of the same bug (AAPL positionId 40, root 37) — a DIFFERENT chain
@@ -449,6 +456,7 @@ describe("closedDeckSourcesFromChains", () => {
       "mid must be leg 37's own exit_mark (5.23), not leg 40's own exit_mark (7.70)",
     );
     assert.equal(out[0]!.contract.delta, 0.3, "delta must be leg 37's own delta, not leg 40's (0.48)");
+    assert.equal(out[0]!.positionId, 37, "positionId must identify leg 37, not the terminal leg 40");
   });
 
   // BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro AMZN positionId 48 (root 44) + AAPL
@@ -500,6 +508,11 @@ describe("closedDeckSourcesFromChains", () => {
     assert.equal(out[0]!.entryPremium, 5.15, "must be leg 44's own entry_premium, not null and not leg 48's 5.8");
     assert.equal(out[0]!.peakPremium, 5.15, "must be leg 44's own peak_premium, not null and not leg 48's 10.0");
     assert.equal(out[0]!.troughPremium, 3.73, "must be leg 44's own trough_premium, not null and not leg 48's 5.8");
+    assert.equal(
+      out[0]!.positionId,
+      44,
+      "positionId must identify leg 44 (the worst leg, whose contract/premiums this card shows) — serving 48 (the terminal leg) would resolve a DIFFERENT, contradicting brief on click-through",
+    );
   });
 
   it("falls back to null (genuine absence, not a leg mismatch) when the worst leg's own premium columns are themselves null", () => {
@@ -529,6 +542,7 @@ describe("closedDeckSourcesFromChains", () => {
     assert.equal(out[0]!.entryPremium, null, "a real absence on the worst leg's own row must stay null, never borrowed from the terminal leg");
     assert.equal(out[0]!.peakPremium, null);
     assert.equal(out[0]!.troughPremium, null);
+    assert.equal(out[0]!.positionId, 50, "positionId still identifies the worst leg (50) even when its premium columns are themselves genuinely absent");
   });
 
   // BUG FIX (Ask Largo standing mandate, live repro 2026-10-16, same AMZN root-44/terminal-48 chain
@@ -593,6 +607,7 @@ describe("closedDeckSourcesFromChains", () => {
     assert.equal(out[0]!.entryPremium, 2.26, "terminal leg's own bounds ARE the worst leg's bounds -- keep them");
     assert.equal(out[0]!.peakPremium, 2.84);
     assert.equal(out[0]!.troughPremium, 1.29);
+    assert.equal(out[0]!.positionId, 41, "when the worst leg IS the terminal leg, positionId stays the terminal's own id (no re-pointing needed)");
   });
 
   // BUG FIX (2026-09-13, live repro NFLX#12/WULF#13/IGV#16/WULF#17/PYPL#24): a single-leg chain

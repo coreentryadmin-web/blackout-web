@@ -161,6 +161,13 @@ export async function probeWriterTargetFresh(jobKey: string): Promise<WriterTarg
         detail: `gex-positioning:SPY asof ${ageMin != null ? `${ageMin.toFixed(1)}m` : "?"} ago`,
       };
     }
+    case "swing-discovery": {
+      const { readSwingServingSnapshot } = await import("@/lib/swing/serving-lane");
+      const { probeSwingDiscoveryServingSnapshot } = await import("@/lib/swing/discovery-cron-health");
+      const snap = await readSwingServingSnapshot();
+      const probe = probeSwingDiscoveryServingSnapshot(snap);
+      return { fresh: probe.fresh, detail: probe.detail };
+    }
     case "vector-bead-record": {
       const { formatEtDate } = await import("@/features/nighthawk/lib/session");
       const { loadSessionWallHistory } = await import("@/features/vector/lib/vector-wall-persist");

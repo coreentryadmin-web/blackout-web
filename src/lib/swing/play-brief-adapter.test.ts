@@ -151,6 +151,51 @@ test("adaptSwingBriefToLargo: surfaces a known stale Vector age as age_seconds/f
   assert.equal(largoRead.freshness, "stale", "freshness must be derived from the real age, not hardcoded cached");
 });
 
+// BUG (found during the 2026-10-22 Ask Largo cycle): `extractEvidence` never read
+// `envelope.evidence` — the REAL, sourced evidence array `evidenceFromContext` (play-brief.ts)
+// builds (dealer-posture strike/γ reads, HELIX flow premiums, earnings dates, peer lists — the
+// literal "specific numbers behind the claim" `ProductSignal.evidence`'s own doc comment names for
+// Largo C7). Instead it manufactured a list out of restatements the SAME C7 doc comment explicitly
+// disclaims (the headline+bias repeated verbatim, each section's bare bias word, confidence
+// prose) — a model reading the structured `evidence` field saw zero of the brief's real sourced
+// numbers, only a paraphrase of the claim those numbers are supposed to back up.
+test("adaptSwingBriefToLargo: evidence[] surfaces the brief's REAL sourced evidence (Largo C7), not a bias/headline restatement", () => {
+  // `arsenal.earnings.earnings_date` -> evidenceFromContext's unconditional "Next earnings ..."
+  // fact (play-brief.ts) — deterministic regardless of wall-clock staleness, unlike the Vector/GEX
+  // calc facts, which this fixture deliberately avoids depending on for that reason.
+  const ctx = fixtureCtx({
+    ecosystem: {
+      gex_positioning: null,
+      vector_full_state: null,
+      arsenal: {
+        scope: "single_name",
+        earnings: { earnings_date: "2026-09-12", days_until: 7, report_time: "AMC", is_confirmed: true },
+        fundamentals: { days_to_cover: 2.1, short_volume_ratio: 0.35, price_target: null, as_of: "2026-09-05" },
+        related: ["AMD", "NVDA"],
+        news: { count: 2, newest: "2026-09-05", headlines: ["INTC restructures fab unit"] },
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+  });
+  const brief = composeSwingPlayBrief(ctx);
+  // Sanity: the brief's own real evidence[] must genuinely carry this fact — otherwise this test
+  // would pass for the wrong reason (no real evidence in play at all).
+  assert.ok(
+    brief.envelope.evidence.some((e) => e.text.includes("Next earnings 2026-09-12")),
+    "expected composeSwingPlayBrief's real evidence[] to carry the earnings-calendar fact"
+  );
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.ok(
+    largoRead.data.evidence.some((e) => e.includes("Next earnings 2026-09-12")),
+    "Largo-facing evidence[] must carry the brief's real sourced fact, not just a headline/bias restatement"
+  );
+});
+
 // Sibling case: the pre-existing honest-omission behavior must survive this fix — a brief with
 // genuinely NO knowable per-source age (a fresh WATCH candidate, no Vector/GEX/option-mark read at
 // all this cycle) must still fall back to "cached"/null rather than fabricating an age of 0.

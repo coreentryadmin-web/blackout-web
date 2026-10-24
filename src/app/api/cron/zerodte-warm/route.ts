@@ -99,6 +99,13 @@ const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
 const STEAL_ATTEMPT_KEY = "zerodte-warm:steal-attempt";
 const STEAL_ATTEMPT_TTL_SEC = 30;
 
+/** Cash-RTH recovery when the scan heartbeat is past the 5m stale band (or 10m critical). */
+function scanHeartbeatNeedsWedgedRecovery(
+  hb: Awaited<ReturnType<typeof loadZeroDteScanHeartbeat>> | null
+): boolean {
+  return Boolean(hb?.stale || hb?.critical_stale);
+}
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -120,7 +127,7 @@ export async function GET(req: NextRequest) {
   let scanHeartbeat: Awaited<ReturnType<typeof loadZeroDteScanHeartbeat>> | null = null;
   if (isEtCashRth()) {
     scanHeartbeat = await loadZeroDteScanHeartbeat().catch(() => null);
-    if (scanHeartbeat?.critical_stale) {
+    if (scanHeartbeatNeedsWedgedRecovery(scanHeartbeat)) {
       const wonSteal = await sharedCacheSetNx(
         STEAL_ATTEMPT_KEY,
         { startedAt: started },
@@ -145,21 +152,49 @@ export async function GET(req: NextRequest) {
     effectiveCooldownSec
   ).catch(() => true));
   if (withinCooldown) {
-    const payload = {
-      ok: true,
-      skipped: true,
-      reason: `rate-limited — zerodte-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
-    };
-    await logCronRun("zerodte-warm", started, payload);
-    return NextResponse.json(payload);
+    // Steal clears cooldown only for the NX winner; other replicas (or a handshake that re-set
+    // cooldown every 60s without scanZeroDteBoard finishing) must still recover during
+    // critical_stale — measured 2026-10-22: cron-audit query RED while scan heartbeat >10m stale.
+    if (scanHeartbeat?.critical_stale) {
+      console.warn(
+        "[cron/zerodte-warm] cooldown active but scan heartbeat critical_stale — bypassing rerun floor"
+      );
+      await sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined);
+    } else {
+      const payload = {
+        ok: true,
+        skipped: true,
+        reason: `rate-limited — zerodte-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
+      };
+      await logCronRun("zerodte-warm", started, payload);
+      return NextResponse.json(payload);
+    }
   }
 
-  const acquired = await sharedCacheSetNx(
+  let overlapAcquired = await sharedCacheSetNx(
     OVERLAP_LOCK_KEY,
     { startedAt: started },
     OVERLAP_LOCK_TTL_SEC
   ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
-  if (!acquired) {
+  if (!overlapAcquired && scanHeartbeat?.critical_stale) {
+    console.warn(
+      "[cron/zerodte-warm] overlap lock held but scan heartbeat critical_stale — clearing wedged overlap lock"
+    );
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    overlapAcquired = await sharedCacheSetNx(
+      OVERLAP_LOCK_KEY,
+      { startedAt: started },
+      OVERLAP_LOCK_TTL_SEC
+    ).catch(() => true);
+  }
+  let forceDispatchWithoutOverlap = false;
+  if (!overlapAcquired && scanHeartbeat?.critical_stale) {
+    console.warn(
+      "[cron/zerodte-warm] overlap lock busy but scan heartbeat critical_stale — forcing dispatch without overlap claim"
+    );
+    forceDispatchWithoutOverlap = true;
+  }
+  if (!overlapAcquired && !forceDispatchWithoutOverlap) {
     const payload = {
       ok: true,
       skipped: true,
@@ -180,9 +215,9 @@ export async function GET(req: NextRequest) {
     // zerodte-warm fire logged this skip while zerodte_scan_heartbeat stayed critical_stale for
     // 30+ minutes and Cron audit query failed on main. Escalate only when the scanner heartbeat
     // is already in the watchdog's critical band; routine contention still idempotent-skips.
-    if (scanHeartbeat?.critical_stale) {
+    if (scanHeartbeatNeedsWedgedRecovery(scanHeartbeat)) {
       console.warn(
-        "[cron/zerodte-warm] heavy-cron pool full but scan heartbeat critical_stale — escalating past shared slot cap"
+        "[cron/zerodte-warm] heavy-cron pool full but scan heartbeat stale/critical — escalating past shared slot cap"
       );
       slot = {
         cronName: "zerodte-warm",
@@ -244,7 +279,9 @@ export async function GET(req: NextRequest) {
         console.error("[cron/zerodte-warm] background warm REJECTED:", err);
       })
       .finally(() => {
-        void sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+        if (overlapAcquired) {
+          void sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+        }
         void slot.release();
       });
   };

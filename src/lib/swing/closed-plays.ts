@@ -388,6 +388,22 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
       worstLegRow?.trough_premium != null ? round2(worstLegRow.trough_premium) : null;
     out.push({
       ...src,
+      // BUG FIX (Ask Largo standing mandate, 2026-10-22, live repro AMZN positionId 48 (root 44) +
+      // AAPL positionId 40 (root 37)): every sibling field above (contract/occ/mid/delta, and the
+      // 2026-10-21 fix's entryPremium/peakPremium/troughPremium) is already re-pointed at the worst
+      // leg's own row when it isn't the terminal leg — but `positionId` stayed unconditionally
+      // `src.positionId` (the TERMINAL leg's own `row.id`, from `closedDeckSourceFromRow`), the one
+      // identity field nobody had re-pointed yet. Consequence: the served card's CONTENT describes
+      // the worst leg (its contract, its mid/delta, its premium bounds, its P&L) while its IDENTITY
+      // points at a different, real leg entirely. Concretely, `play-brief-resolve.ts`'s
+      // `loadClosedPlay` resolves a brief request by `r.id === positionId` — clicking through on the
+      // served AMZN card (`positionId: 48`) would resolve leg 48 itself and build a PER-LEG brief
+      // from `closedDeckSourceFromRow(terminal)`, i.e. leg 48's own +72.41% outcome — directly
+      // contradicting the card the member just clicked, which correctly showed leg 44's -27.67%.
+      // Fix: borrow `positionId` from `worstLegRow` the same way every other identity/content field
+      // already does, falling back to `src.positionId` only when the worst leg IS the terminal leg
+      // (`worstLegRow` is `null` in exactly that case) or the worst leg's own row can't be resolved.
+      positionId: worstLegRow?.id ?? src.positionId,
       exitPnlPct: compositePnl ?? src.exitPnlPct,
       entryPremium: worstLegIsTerminal ? src.entryPremium : worstLegEntryPremium,
       peakPremium: worstLegIsTerminal ? src.peakPremium : worstLegPeakPremium,
