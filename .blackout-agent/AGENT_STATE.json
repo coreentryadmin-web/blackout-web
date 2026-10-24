@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-24T17:20:53.219Z",
+  "updated_at": "2026-10-24T21:07:37.586Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "ae86d4bb4028bd0ec28a530b9437401e6f975a6c",
+    "last_main_sha": "7165f8e0ec552858174c1128f3dc2647ad508935",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-12T18:07:41.273Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-12T18:07:45.682Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-12T18:37:34.478Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
     {
       "at": "2026-10-12T18:37:40.527Z",
       "type": "context_sync",
@@ -1271,9 +1253,47 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-24T21:07:27.198Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-24T21:07:33.355Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-24T21:07:37.586Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
+    {
+      "number": 6646,
+      "title": "docs(findings): fold batch-55 findings into FINDINGS.md",
+      "branch": "docs/fold-batch-55",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-10-24T20:53:44Z"
+    },
+    {
+      "number": 6645,
+      "title": "fix(vector): align gamma-magnet callout's level with its own quoted percent",
+      "branch": "fix/vector-gamma-magnet-callout-rounding",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-24T21:02:53Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
