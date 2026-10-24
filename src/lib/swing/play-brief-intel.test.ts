@@ -8485,6 +8485,33 @@ test("bookContextSection: a mixed same-ticker + different-ticker same-direction 
   assert.doesNotMatch(sameUnderlyingSentence, /ON LONG|NBIS LONG/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24, live repro PANW's own book context): a
+// ticker with two separate OTHER (non-reviewed) positions rendered scattered across the generic
+// theme sentence -- "ZS LONG (separate position #2106), SNOW LONG, NET LONG, CRWD LONG, ZS LONG
+// (separate position #2028)" -- reading like an accidental duplicate rather than a deliberate
+// second position, because SNOW/NET/CRWD sat between the two ZS mentions. Each instance was
+// already correctly disambiguated with its own position id (#5167); this only asserts they're
+// also grouped adjacently.
+test("bookContextSection: a duplicate OTHER ticker in a multi-name theme overlap is clustered adjacently, not scattered (2026-10-24, live PANW repro)", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "ZS", direction: "LONG", positionId: 2106 },
+    { ticker: "SNOW", direction: "LONG", positionId: 2105 },
+    { ticker: "NET", direction: "LONG", positionId: 2104 },
+    { ticker: "CRWD", direction: "LONG", positionId: 2102 },
+    { ticker: "ZS", direction: "LONG", positionId: 2028 },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:PANW:67", ticker: "PANW", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /ZS LONG \(separate position #2106\), ZS LONG \(separate position #2028\), SNOW LONG, NET LONG, CRWD LONG/,
+    `both ZS instances must be adjacent, preceding the other, unrelated tickers in first-occurrence order, got: ${section!.body}`,
+  );
+});
+
 // BUG FOUND (Ask Largo standing mandate, 2026-10-08 :40 cycle, live repro SWING:TNGX:1611):
 // breakTrigger (play-brief-narrative.ts), the narrative's authoritative "Break watch" bullet AND
 // the headline `envelope.invalidation` field, was fixed on 2026-09-15 to pick whichever real
