@@ -17,7 +17,7 @@ import { refreshOrBreakMemory } from "@/features/spx/lib/playbook-break-memory-s
 import { maybeLogPlaybookShadowMatch } from "@/features/spx/lib/playbook-shadow-log";
 import { isPremarketPlanningWindow, isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import { loadOpenPlay } from "@/features/spx/lib/spx-play-store";
-import { degradedPlayPayload } from "@/features/spx/lib/spx-play-payload";
+import { degradedPlayPayload, currentSessionPhase } from "@/features/spx/lib/spx-play-payload";
 import { playMemberReadCacheSec, playMemberPeekMaxAgeSec } from "@/features/spx/lib/spx-play-config";
 import { isSpxPlaySnapshotFreshEnough } from "@/features/spx/lib/spx-play-freshness";
 import { playMemberReadMaxBlockMs } from "@/lib/providers/config";
@@ -263,9 +263,22 @@ export async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<Return
  * Single derivation for member `/api/market/spx/play`, BIE `spx_full_state`, and Largo
  * `get_spx_play`. Collapses member polls into one eval per cache window — no
  * stale-while-revalidate so BIE/Largo and the dashboard never disagree on grade/score.
+ *
+ * BUG FIX (2026-10-21, Ask Largo/5-engine standing mandate, live repro): this used to call
+ * `degradedPlayPayload()` bare, which defaults `session_phase: "closed"` — a flat, false claim
+ * about the DESK (not just the play-eval pipeline that actually failed/lost the lock). That
+ * field feeds `spx-play-verdict-bar.ts`'s `resolveMode()` (`session_phase === "closed"` ⇒ show
+ * the member-facing CLOSED badge) regardless of whether the real market session is open. Same
+ * root cause the 2026-10-16 headline fix (route.ts, see that comment) addressed for a different
+ * field — the pipeline failing is not evidence the desk/session is closed. `peekMergedSpxDesk()`
+ * is already proven fast/non-blocking even when the expensive play-eval path times out or loses
+ * its cross-replica lock (see `docs/audit/MARKET-OPEN-VALIDATION.md` #398), so peek it here and
+ * derive the real phase via the same `currentSessionPhase()` every non-degraded path already uses.
  */
-function spxPlayReadDegraded(): Awaited<ReturnType<typeof evaluateSpxPlayState>> {
-  return degradedPlayPayload() as Awaited<ReturnType<typeof evaluateSpxPlayState>>;
+async function spxPlayReadDegraded(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {
+  const peeked = await peekMergedSpxDesk().catch(() => null);
+  const extras = peeked ? { session_phase: currentSessionPhase(peeked.merged) } : undefined;
+  return degradedPlayPayload(extras) as Awaited<ReturnType<typeof evaluateSpxPlayState>>;
 }
 
 async function spxPlayReadFallback(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {

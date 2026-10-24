@@ -265,11 +265,29 @@ function stableStringify(value: unknown): string {
   return `{${body}}`;
 }
 
+/** Configurable scaling (2026-10-20, member audit directive: "make stops and scaling
+ *  configurable"). `ZERODTE_TRIM_TRANCHE_FRACTION` overrides the fraction of the original
+ *  position banked at each trim_scale tranche — TRIM_SCALE_RULES.tranche_fraction's default
+ *  (1/3, the E5-measured winner) stays byte-identical absent the env var. Read HERE, not in
+ *  exit-engine.ts, which documents itself as deliberately IO-free/no-env-reads (the pure
+ *  decision core); this resolution layer already reads PLAN_RULES the same dynamic way.
+ *  Bounded to (0, 1) exclusive — a fraction outside that range isn't a tranche, it's either a
+ *  no-op or more than the whole position, so an invalid value falls back to the default rather
+ *  than being silently clamped (clamping would hide a misconfiguration as if it were intended). */
+export function resolveTrancheFraction(fallback: number): number {
+  const raw = process.env.ZERODTE_TRIM_TRANCHE_FRACTION?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 && n < 1 ? n : fallback;
+}
+
 /**
  * Resolve the FULL numeric exit policy for `mode` from the real sources of truth
- * (PLAN_RULES + EXIT_RULES / TRIM_SCALE_RULES). PURE. The returned object's `config_hash`
+ * (PLAN_RULES + EXIT_RULES / TRIM_SCALE_RULES). The returned object's `config_hash`
  * fingerprints every exit constant that can move a graded outcome — the drift-guard test
- * pins it to a golden, so a silent numeric edit without an EXIT_VERSION bump fails CI.
+ * pins it to a golden, so a silent numeric edit without an EXIT_VERSION bump fails CI. (Reads
+ * two configurable env vars via PLAN_RULES/resolveTrancheFraction, both byte-identical to their
+ * fixed defaults absent those vars — see each one's own doc for why that keeps this safe.)
  */
 export function buildResolvedExitPolicy(
   mode: ZeroDteExitMode = EXIT_POLICY,
@@ -286,19 +304,22 @@ export function buildResolvedExitPolicy(
     const activeRegime: ZeroDteRegime = opts?.regime ?? "neutral";
     const tranches = r[activeRegime];
     const extendedRunner = (opts?.target_pct ?? PLAN_RULES.target_pct) > PLAN_RULES.target_pct;
+    const configuredTrancheFraction = resolveTrancheFraction(TRIM_SCALE_RULES.tranche_fraction);
     // Extended runners (200–400% targets): bank 25% at each trim, let 50% ride — captures more
-    // of Vector-style multi-baggers without changing the standard +100% ⅓/⅓/⅓ ladder.
-    const trancheFraction = extendedRunner ? 0.25 : TRIM_SCALE_RULES.tranche_fraction;
+    // of Vector-style multi-baggers without changing the standard +100% ⅓/⅓/⅓ ladder. The
+    // extended-runner fractions (0.25/0.5) are their OWN deliberate schedule, not the configured
+    // standard tranche fraction — only the standard (non-extended) path reads the override.
+    const trancheFraction = extendedRunner ? 0.25 : configuredTrancheFraction;
     trim_levels = tranches.map((trigger_pct) => ({
       trigger_pct,
       fraction: trancheFraction,
     }));
-    runner_fraction = extendedRunner ? 0.5 : TRIM_SCALE_RULES.tranche_fraction;
+    runner_fraction = extendedRunner ? 0.5 : configuredTrancheFraction;
     trailing_rule = extendedRunner
       ? `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${trancheFraction};` +
         `runner_fraction=${runner_fraction};extended_runner=true;` +
         `tranches trend=[${r.trend.join(",")}] neutral=[${r.neutral.join(",")}] range=[${r.range.join(",")}]`
-      : `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${TRIM_SCALE_RULES.tranche_fraction};` +
+      : `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${configuredTrancheFraction};` +
         `tranches trend=[${r.trend.join(",")}] neutral=[${r.neutral.join(",")}] range=[${r.range.join(",")}]`;
   } else {
     // ratchet: bank half at the plan target, then run under the monotonic floor.

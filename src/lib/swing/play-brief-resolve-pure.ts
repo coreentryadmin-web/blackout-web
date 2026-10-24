@@ -54,11 +54,18 @@ export function rightFromContractType(contract_type: string | null | undefined):
 // (play-brief-context.ts) now passes `resolved.play` through untouched, so every section reads
 // the same single canonical `pnlPct` with no transform in between.
 
+// BUG FIX (2026-10-20, Ask Largo standing mandate — live-reproduced two-leg repro, strike vs right
+// treated as independent optional filters per the Largo tool's own documented call shape: "Optional
+// positionId/strike/right/status disambiguate ... omit them for the single obvious match," any
+// subset). The old `if (strike == null) return true;` short-circuit ran BEFORE `right` was ever
+// examined, so a caller supplying only `right` (no `strike`) matched EVERY contract regardless of
+// call/put — live-repro'd: two same-ticker rows (call strike 100, put strike 90), requesting
+// `{right: "P"}` alone returned the CALL. Each hint is now checked independently; only an actual
+// mismatch on a SUPPLIED hint disqualifies a candidate.
 function contractMatches(play: HorizonPlay, strike: number | null, right: "C" | "P" | null): boolean {
-  if (strike == null) return true;
-  if (play.contract.strike !== strike) return false;
-  if (right == null) return true;
-  return play.contract.right === right;
+  if (strike != null && play.contract.strike !== strike) return false;
+  if (right != null && play.contract.right !== right) return false;
+  return true;
 }
 
 /** Pick the best lane row when multiple plays share a ticker. */

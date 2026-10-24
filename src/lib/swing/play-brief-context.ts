@@ -279,6 +279,7 @@ export async function loadSwingPlayBriefContext(
   // rejection is just another throw here, so it flows through the same failed-flag path.
   let ecosystemFetchFailed = false;
   let vectorFetchFailed = false;
+  let archetypeTrackRecordFetchFailed = false;
   const positionId = positionIdFromPlayId(play.id);
   const [
     meridian,
@@ -311,13 +312,19 @@ export async function loadSwingPlayBriefContext(
     loadOpenBook(),
     // Ask Largo C10 (historical context) — a plain, best-effort shared-cache read the cron writes
     // (calibration-cache.ts). Bounded so a wedged Redis hop degrades to "no citation" rather than
-    // blocking the whole brief; unlike ecosystem/vector above this has no dedicated *FetchFailed
-    // flag because a miss here is never surfaced as an absence/error to the member — an ungraduated
-    // or unavailable track record simply omits the "Track record" section (Largo C6: omission, not
-    // fabrication), the same as a play with no track record to cite at all. `withBriefSourceTimeout`
-    // now REJECTS on timeout (see the import-site comment above), so this read keeps its own
-    // `.catch(() => null)` to preserve that "never surfaces as a failure" contract.
-    withBriefSourceTimeout(readSwingArchetypeTrackRecord()).catch(() => null),
+    // blocking the whole brief. A RESOLVED `null` here (cold cache / genuinely ungraduated bucket)
+    // still correctly omits the "Track record" section with no disclosure (Largo C6: omission, not
+    // fabrication) — but a REJECTED read (a reachable `withBriefSourceTimeout` timeout, per the
+    // import-site comment above) is a genuine outage, not an honest absence, and used to collapse
+    // into the identical silent `null`, unlike every sibling best-effort source above
+    // (ecosystemFetchFailed/vectorFetchFailed), leaving it invisible to both
+    // collectBriefUnavailableSources and swingPlayBriefConfidence (BUG FIX, 2026-10-21, Ask Largo
+    // standing mandate, live repro EWY).
+    withBriefSourceTimeout(readSwingArchetypeTrackRecord()).catch((err) => {
+      console.warn(`[swing-play-brief] archetype track-record fetch failed for ${ticker}:`, err);
+      archetypeTrackRecordFetchFailed = true;
+      return null;
+    }),
     // Best-effort like the read above — a DB hiccup degrades to "no roll history cited" rather
     // than failing the whole brief; loadRollHistory already wraps its own try/catch.
     withBriefSourceTimeout(loadRollHistory(positionId, ticker)).catch(() => null),
@@ -359,6 +366,7 @@ export async function loadSwingPlayBriefContext(
     ecosystemFetchFailed,
     vectorFetchFailed,
     archetypeTrackRecord,
+    archetypeTrackRecordFetchFailed,
     rollHistory,
     tickerTrackRecord,
   };

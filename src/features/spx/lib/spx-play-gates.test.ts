@@ -406,6 +406,24 @@ test("evaluatePlayGates: cold BUY path requires A-grade and min score", () => {
   assert.match(result.blocks.join(" "), /grade A or better/i);
 });
 
+test("evaluatePlayGates: cold BUY block message names the play's ACTUAL grade, not a hardcoded 'B'", () => {
+  // Regression for a live production repro (2026-10-21): confluence.grade was "C" (score 40) and
+  // the block message still read "B setups need WATCH→ENTRY" — the static text named only grade B
+  // even though the gate condition above fires for ANY sub-A grade (B, C, D, F alike).
+  mockHaltBlock = { block: false, reason: null };
+  const result = evaluatePlayGates(
+    baseDesk(),
+    baseConfluence({ grade: "C", score: 40 }),
+    emptySession,
+    passingConfirmations,
+    { entry_intent: "buy", cold_buy_path: true }
+  );
+  const joined = result.blocks.join(" ");
+  assert.match(joined, /grade A or better/i);
+  assert.match(joined, /C setups need WATCH→ENTRY/);
+  assert.doesNotMatch(joined, /B setups need WATCH→ENTRY/);
+});
+
 test("evaluatePlayGates: inverted stop (long stop ABOVE entry) is blocked as invalid geometry", () => {
   mockHaltBlock = { block: false, reason: null };
   const result = evaluatePlayGates(

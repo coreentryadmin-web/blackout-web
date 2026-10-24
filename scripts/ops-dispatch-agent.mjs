@@ -196,6 +196,9 @@ if (resp.status !== 0) {
     }
   }
   // Durable artifact is the GitHub issue; transient Cursor API errors must not fail the workflow.
+  console.warn(
+    `[ops-dispatch] Continuing — GitHub issue #${issueNumber} was created; fix or re-dispatch manually.`
+  );
   process.exit(issueNumber ? 0 : 1);
 }
 

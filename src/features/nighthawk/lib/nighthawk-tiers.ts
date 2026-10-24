@@ -223,3 +223,39 @@ export function nhTierInputFromScored(scored: {
     earningsRisk: scored.earnings_risk ?? false,
   };
 }
+
+/**
+ * Cap a tier ASSIGNMENT (not just the bare `conviction` letter) for a gate-promoted
+ * (rescued-past-a-failed-quality-gate) play.
+ *
+ * `publish-context.ts`'s `tier` field independently recomputes `assignNighthawkTier` and
+ * is never run through `capGatePromotedConviction` (publish-gates.ts), which only caps the
+ * play's own `conviction` string. A gate-promoted play that merit-scored "A" therefore kept
+ * showing `conviction: "B"` (correctly capped) right next to a `tier: { tier: "A", factors:
+ * [...] }` object whose OWN factors read as the uncapped A-grade case ("Prime score band —
+ * the overnight sweet spot") — a direct, visible self-contradiction between two fields on
+ * the same pinned record (live repro: MSTR, 2026-10-21 health check, score 52).
+ *
+ * Capping `tier` alone without touching `factors` would just move the contradiction down a
+ * level (a "B" tier whose own rationale still reads as A-grade evidence), so this appends an
+ * honest disclosure factor rather than silently truncating the measured-evidence factors —
+ * same "disclose, don't flatten" discipline the rest of this file's honesty spine follows.
+ */
+export function capGatePromotedTierAssignment(
+  assignment: NighthawkTierAssignment,
+  gatePromoted: boolean
+): NighthawkTierAssignment {
+  if (!gatePromoted || assignment.tier !== "A") return assignment;
+  return {
+    tier: "B",
+    factors: [
+      ...assignment.factors,
+      {
+        label: "Gate-promoted cap",
+        direction: "down",
+        detail:
+          "Promoted past a failed quality gate — conviction capped at B regardless of the measured score band.",
+      },
+    ],
+  };
+}

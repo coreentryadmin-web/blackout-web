@@ -152,7 +152,15 @@ export function humanizeGateBlock(
   desk: SpxDeskPayload,
   confluence: SpxConfluence
 ): string {
-  if (block.includes("headwinds") || block.includes("too many conflicts")) {
+  // BUG FIX (2026-10-20, Ask Largo/5-engine standing mandate, live repro): the real mixed-tape
+  // gate message (spx-play-gates.ts's mixedTapeMsg) reads "too many conflicting signals for clean
+  // entry" — this check matched "too many conflicts", a substring that never appears in it, so
+  // the mixed-tape block was NEVER humanized/deduped against the idea line produced by a separate
+  // gate (grade-below-minimum). Live evidence: gates.blocks carried both the raw, untouched
+  // mixed-tape string AND a humanized idea line for the same underlying condition, back to back,
+  // reading as two unrelated problems instead of one. "headwinds" never appears as a gate message
+  // anywhere in src/ (confirmed by grep) — dropped as dead code alongside the fix.
+  if (block.includes("too many conflicting signals")) {
     return buildPlayIdeaIntel(desk, confluence) ?? block;
   }
   if (block.includes("too low — quality setups only")) {

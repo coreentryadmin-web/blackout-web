@@ -669,6 +669,26 @@ test("enrich: full dossier merges score, factors, technicals, streak, dark pool"
   assert.equal(e.news_hot, null);
 });
 
+// Live repro 2026-10-21: QQQ key_supports=[707.23, 707.23], AMD key_supports=[524.6, 524.6] —
+// technicals.ts's support_levels/resistance_levels concatenate THREE independent sources
+// (swing/weekly/monthly) that can legitimately coincide at the same round-number price, and
+// enrichSetup's top-2 slice had no dedup before it, so a coincidence showed one real level
+// twice and silently dropped the actual second-best level. Fixture: weekly support resolves
+// to the SAME price as the nearest swing support (both 186.5); a real, distinct second-best
+// support (184.1) must still surface instead of a duplicated 186.5.
+test("enrich: duplicate support/resistance levels from coincident sources are deduped before top-2", () => {
+  const dossier = fakeDossier({
+    tech: {
+      ...fakeDossier().tech!,
+      support_levels: [186.5, 186.5, 184.1, 179.9],
+      resistance_levels: [190.2, 190.2, 193.5, 175.0],
+    },
+  });
+  const e = enrichSetup(baseSetup(), dossier);
+  assert.deepEqual(e.key_supports, [186.5, 184.1]);
+  assert.deepEqual(e.key_resistances, [190.2, 193.5]);
+});
+
 // 9-8: scoreCandidate (scorer.ts) always folds fundamental/catalyst/short_interest/
 // wall_proximity/vex_alignment/skew into `score` alongside the original five — enrichSetup
 // dropped all six when building factor_breakdown, so the "Why this play was picked" panel
@@ -1047,12 +1067,18 @@ test("resolveLedgerEntryPremium: floors the graded basis at the flag-time mark w
 // hard stop breaching within ~1 second of a fresh commit is a mispriced entry, not real
 // decay.
 //
-// Threshold fix (2026-09-11): the ceiling originally reused CHASE_PCT (55%) — the wrong
-// threshold, borrowed from the UP/MOVED case where 55% was tuned for gamma-swing chase
-// logic, not achievability. That left a dead zone: a dislocation of 50-54.99% stayed
-// UNCORRECTED, yet the live mark was already AT OR PAST the play's own -50% hard stop —
-// an "instant stop" grade off a fill nobody could get, the exact failure this ceiling
-// exists to close. Now triggers at STOP_TRIGGER_PCT (|PLAN_RULES.stop_pct| = 50) instead.
+// Threshold history: originally reused CHASE_PCT (55%, wrong — tuned for gamma-swing chase
+// logic, not achievability), then moved to STOP_TRIGGER_PCT (50%, 2026-09-11 — closed the
+// 50-54.99% dead zone where the mark was already past the play's own hard stop). LOWERED
+// AGAIN to a standalone ACHIEVABILITY_CEILING_PCT=20 (2026-10-19, live finding): a 32-row
+// probe of every real same-day-expiry 0DTE commit over 14 sessions
+// (scripts/audit/zerodte-entry-dislocation-probe.mjs) found 3 commits with dislocation
+// 33.5-37.1% — all below the old 50% trigger, all graded a hard "-50%"-floor stop off the
+// inflated basis — against 29 clean commits all measuring <15% (real bid/ask noise, worst
+// case 14.3%). The 20-point gap between 14.3% and 33.5% is why 20 was chosen rather than
+// guessed. See plan.ts's ACHIEVABILITY_CEILING_PCT comment for the full TSLA counterfactual
+// (ledger entry 3.50 vs real NBBO 2.28/2.30 at the commit instant — the SAME real exit mark
+// that graded -22.57% off the inflated basis would have graded +18.3%, a win, off the real one).
 test("resolveLedgerEntryPremium: caps the graded basis DOWN at the flag-time mark when the mark is FAR BELOW the flow fill (outlier fill, achievability ceiling)", () => {
   // The live QQQ shape: flow fill 3.27, live mark 0.88 (~73% below) — outlier, cap to mark.
   assert.equal(resolveLedgerEntryPremium(3.27, 3.27, 0.88), 0.88);
@@ -1061,19 +1087,22 @@ test("resolveLedgerEntryPremium: caps the graded basis DOWN at the flag-time mar
   // Ordinary CHEAPER (real front-running): mark modestly below the fill, well inside the
   // band — untouched, matches the existing CHEAPER test above.
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 3.5), 4.0);
-  // Exactly at the stop-trigger boundary (50% of the fill remains, i.e. 50% below) — the
-  // ceiling fires (>=): this is precisely the dead-zone case that used to slip through at
-  // 55%'s old boundary (10.0, 10.0, 5.0) — a mark this far below the fill already breaches
-  // the play's own -50% stop, so it must correct here, not stay uncorrected.
+  // Exactly at the NEW 20%-ceiling boundary (80% of the fill remains, i.e. 20% below) — the
+  // ceiling fires (>=): this is the real TSLA/SPXW dead-zone shape (33.5-37.1% dislocation,
+  // all graded "stopped" off an unachievable basis) that the old 50%-coupled threshold let
+  // straight through uncorrected.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 8.0), 8.0);
+  // Just inside the NEW boundary (80.01% of the fill remains, i.e. 19.99% below) — no
+  // ceiling; the measured "clean" population (real bid/ask noise) tops out at 14.3%, well
+  // under this boundary, so ordinary front-running stays untouched.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 8.001), 10.0);
+  // The OLD 50%-threshold boundary (50% below) still correctly corrects — lowering the
+  // trigger only ever ADDS coverage, it never loses a case the old threshold already caught.
   assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 5.0), 5.0);
-  // Just inside the boundary (50.01% of the fill remains, i.e. 49.99% below) — no ceiling;
-  // this dislocation alone would NOT already breach the -50% stop, so it's still ordinary
-  // (if unusually large) front-running, not an unachievable fill.
-  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 5.001), 10.0);
-  // The OLD 55%-threshold boundary (54.99% below) now correctly corrects too — this was
+  // The OLD 55%-threshold boundary (54.99% below) still correctly corrects too — this was
   // the live dead-zone shape (QQQ 2026-09-09 -51.42%, SPXW 2026-08-12 -52.96%, etc.): a
   // mark this far below the fill was already an instant, unachievable stop under the old
-  // CHASE_PCT-based threshold, and now gets capped to the achievable mark instead
+  // CHASE_PCT-based threshold, and still gets capped to the achievable mark
   // (round2(4.501) = 4.5 — the cap rounds like every other premium here).
   assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.501), 4.5);
   // A malformed non-positive mark never drags the basis down via this path either.
@@ -1081,6 +1110,18 @@ test("resolveLedgerEntryPremium: caps the graded basis DOWN at the flag-time mar
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, -1), 4.0);
   // No mark supplied → legacy behavior, unaffected.
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0), 4.0);
+});
+
+// The real 2026-10-19 TSLA shape, reproduced mechanically: a 34.6% dislocation (entry 3.50,
+// real mark ~2.29) now corrects under the new ceiling, where it previously passed through
+// unchanged under the old 50%-coupled threshold.
+test("resolveLedgerEntryPremium: the real TSLA 2026-10-19 dislocation (34.6%) now corrects — it did not under the old 50% threshold", () => {
+  const oldThresholdBehavior = (base, mark) => {
+    const pctBelow = ((base - mark) / base) * 100;
+    return pctBelow >= 50 ? mark : base;
+  };
+  assert.equal(oldThresholdBehavior(3.5, 2.29), 3.5); // old threshold: never fired (34.6% < 50%)
+  assert.equal(resolveLedgerEntryPremium(3.5, 3.5, 2.29), 2.29); // new threshold: fires (34.6% >= 20%)
 });
 
 // Fix 3, end-to-end: the achievable-entry floor flips a flattered "doubled" into the honest

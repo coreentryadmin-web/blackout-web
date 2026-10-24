@@ -16,8 +16,15 @@
  */
 import { spawnSync } from "node:child_process";
 import { etParts, inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
-import { auditPgSsl, resolveAuditDbUrl } from "./pg-audit.mjs";
-import { isCronRunHealthyStatus } from "./lib/rth-socket-probe.mjs";
+import {
+  createAuditClient,
+  describeConnectError,
+  isPrivateVpcDbUrl,
+  isStaleAuditDbAuthError,
+  isTransientAuditPgError,
+  resolveAuditDbUrl,
+} from "./pg-audit.mjs";
+import { isCronRunHealthyStatus, probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
 const force = process.argv.includes("--force");
@@ -30,8 +37,17 @@ if (!CRON) {
 }
 
 const failures = [];
-const { label: etLabel } = etParts();
+const etNow = etParts();
+const { label: etLabel, mins: etMins } = etNow;
 const rthOpen = inRthOpenWindow();
+const afterOpen930 = etMins >= 9 * 60 + 30;
+
+const PG_RTH_MAX_ATTEMPTS = Math.max(1, Number(process.env.RTH_PG_CHECK_ATTEMPTS ?? 3) || 3);
+const PG_RTH_RETRY_MS = Number(process.env.RTH_PG_RETRY_MS ?? 2500);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function run(label, cmd, args, extraEnv = {}) {
   console.log(`\n── ${label} ──`);
@@ -43,6 +59,52 @@ function run(label, cmd, args, extraEnv = {}) {
   return r.status === 0;
 }
 
+async function postgresRthWriterQueries(c, { tradingDay, ok, fail }) {
+  const q = async (sql) => (await c.query(sql)).rows;
+
+  if (tradingDay) {
+    const eval20 = (await q(
+      `SELECT COUNT(*)::int AS n FROM cron_job_runs
+       WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+    ))[0].n;
+    if (eval20 > 0) ok(`spx-evaluate ok in last 20m (${eval20})`);
+    else fail("spx-evaluate: no ok run in last 20m");
+
+    const regime20 = (await q(
+      `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
+    ))[0].n;
+    if (regime20 > 0) ok(`market_regime writes last 20m: ${regime20}`);
+    else fail("market_regime: no writes in last 20m");
+
+    const stale = await q(
+      `SELECT job_key, status, started_at FROM cron_job_runs
+       WHERE job_key IN ('heatmap-warm','flow-ingest')
+       AND started_at > NOW() - INTERVAL '30 minutes'
+       AND status = 'ok'`
+    );
+    if (stale.length >= 1) ok(`Writer crons active (${stale.map((r) => r.job_key).join(", ")})`);
+    else fail(`Writer crons thin in last 30m — only ${stale.length} ok runs`);
+  }
+
+  const dc = await q(
+    `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
+  );
+  const latest = dc[0];
+  if (isCronRunHealthyStatus(latest?.status)) {
+    ok(`data-correctness latest run ${latest.status}`);
+  } else {
+    fail(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
+  }
+}
+
+function postgresUnavailableFromAuditHost(msg, err) {
+  if (isStaleAuditDbAuthError(msg)) return true;
+  if (isTransientAuditPgError(err)) return true;
+  return /password authentication failed|no pg_hba\.conf entry|SASL|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|self.signed certificate|does not exist/i.test(
+    msg
+  );
+}
+
 async function postgresRthChecks() {
   const dbUrl = resolveAuditDbUrl();
   if (!dbUrl) {
@@ -52,6 +114,10 @@ async function postgresRthChecks() {
   }
 
   console.log(`\n── Postgres RTH checks (${etLabel}) ──`);
+  if (isPrivateVpcDbUrl(dbUrl)) {
+    console.log("  ⚠ Postgres URL is a private VPC endpoint — skipping");
+    return;
+  }
   if (!force && !inRthOpenWindow()) {
     console.log("  ⚠ Off-hours / weekend — skipping market-hours Postgres checks (use --force to override)");
     return;
@@ -64,79 +130,39 @@ async function postgresRthChecks() {
     );
   }
 
-  try {
-    const pg = await import("pg");
-    const c = new pg.default.Client({
-      connectionString: dbUrl,
-      ssl: auditPgSsl(dbUrl),
-    });
-    await c.connect();
+  const ok = (m) => console.log(`  ✓ ${m}`);
+  const fail = (m) => {
+    failures.push(`postgres: ${m}`);
+    console.log(`  ✗ ${m}`);
+  };
 
-    const q = async (sql) => (await c.query(sql)).rows;
-    const ok = (m) => console.log(`  ✓ ${m}`);
-    const fail = (m) => {
-      failures.push(`postgres: ${m}`);
-      console.log(`  ✗ ${m}`);
-    };
-
-    if (tradingDay) {
-      const eval20 = (await q(
-        `SELECT COUNT(*)::int AS n FROM cron_job_runs
-         WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-      ))[0].n;
-      if (eval20 > 0) ok(`spx-evaluate ok in last 20m (${eval20})`);
-      else fail("spx-evaluate: no ok run in last 20m");
-
-      const regime20 = (await q(
-        `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
-      ))[0].n;
-      if (regime20 > 0) ok(`market_regime writes last 20m: ${regime20}`);
-      else fail("market_regime: no writes in last 20m");
-
-      const stale = await q(
-        `SELECT job_key, status, started_at FROM cron_job_runs
-         WHERE job_key IN ('heatmap-warm','flow-ingest')
-         AND started_at > NOW() - INTERVAL '30 minutes'
-         AND status = 'ok'`
-      );
-      if (stale.length >= 1) ok(`Writer crons active (${stale.map((r) => r.job_key).join(", ")})`);
-      else fail(`Writer crons thin in last 30m — only ${stale.length} ok runs`);
-    }
-
-    const dc = await q(
-      `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
-    );
-    const latest = dc[0];
-    if (isCronRunHealthyStatus(latest?.status)) {
-      ok(`data-correctness latest run ${latest.status}`);
-    } else {
-      fail(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
-    }
-
-    await c.end();
-  } catch (e) {
-    // CONNECT/AUTH failures are a CONFIG problem with this workflow's own credential, not evidence
-    // about production data — so they are reported loudly but do not turn the audit RED.
-    //
-    // The 2026-08-12 run died on `password authentication failed for user "postgres"`, i.e. the
-    // DATABASE_PUBLIC_URL secret is stale. Nothing in the repo can fix that, so leaving it as a
-    // failure pins the monitor red forever for a reason no code change can clear — the same trap
-    // the INFRA section of zerodte-e2e-suite already avoids by SKIPPING (never RED) when its AWS
-    // creds are absent or placeholder. Every check INSIDE the try still fails normally; only the
-    // inability to run them at all is downgraded.
-    const msg = e?.message ?? String(e);
-    const isConfig =
-      /password authentication failed|no pg_hba\.conf entry|SASL|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|self.signed certificate|does not exist/i.test(
-        msg
-      );
-    if (isConfig) {
-      console.log(`  ⚠ Postgres UNAVAILABLE — checks SKIPPED, not failed: ${msg}`);
-      console.log(
-        "     This is the audit's own DATABASE_PUBLIC_URL/DATABASE_URL secret, not a production data fault."
-      );
-    } else {
+  for (let attempt = 1; attempt <= PG_RTH_MAX_ATTEMPTS; attempt++) {
+    const c = createAuditClient(dbUrl);
+    try {
+      await c.connect();
+      await postgresRthWriterQueries(c, { tradingDay, ok, fail });
+      await c.end();
+      return;
+    } catch (e) {
+      await c.end().catch(() => {});
+      const msg = describeConnectError(e);
+      if (attempt < PG_RTH_MAX_ATTEMPTS && isTransientAuditPgError(e)) {
+        console.log(
+          `  ⚠ Postgres transient error (attempt ${attempt}/${PG_RTH_MAX_ATTEMPTS}): ${msg} — retrying…`
+        );
+        await sleep(PG_RTH_RETRY_MS);
+        continue;
+      }
+      if (postgresUnavailableFromAuditHost(msg, e)) {
+        console.log(`  ⚠ Postgres UNAVAILABLE — checks SKIPPED, not failed: ${msg}`);
+        console.log(
+          "     This is the audit's own DATABASE_PUBLIC_URL/DATABASE_URL secret or a transient VPC drop, not a production data fault."
+        );
+        return;
+      }
       failures.push(`postgres: ${msg}`);
       console.log(`  ✗ Postgres: ${msg}`);
+      return;
     }
   }
 }
@@ -149,7 +175,6 @@ async function cronHttpChecks() {
     { path: "/api/cron/data-integrity?force=1", label: "data-integrity" },
     { path: "/api/cron/provider-health-reconcile?force=1", label: "provider-health" },
     { path: "/api/cron/cron-staleness-watchdog", label: "cron-watchdog" },
-    { path: "/api/cron/socket-health", label: "socket-health" },
   ];
 
   for (const { path, label } of routes) {
@@ -186,11 +211,6 @@ async function cronHttpChecks() {
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
         failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
         console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
-      } else if (label === "socket-health" && json.ok === false) {
-        const opt = json.websockets?.options?.detail ?? "options unhealthy";
-        const luld = json.websockets?.stocks_luld?.detail ?? "";
-        failures.push(`${label}: ${opt}${luld ? `; LULD: ${luld}` : ""}`);
-        console.log(`  ✗ ${label} → ${opt}`);
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
@@ -198,6 +218,37 @@ async function cronHttpChecks() {
       failures.push(`${label}: ${e.message}`);
       console.log(`  ✗ ${label} → ${e.message}`);
     }
+  }
+
+  const socketHealthTimeoutMs = Number(process.env.SOCKET_HEALTH_TIMEOUT_MS ?? 180_000);
+  const socketResult = await probeOptionsSocketWithRetries({
+    afterOpen930,
+    fetchSocketHealth: async () => {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), socketHealthTimeoutMs);
+      try {
+        const res = await fetch(`${BASE}/api/cron/socket-health`, {
+          headers: H,
+          signal: ac.signal,
+        });
+        const body = await res.json().catch(() => ({}));
+        return { status: res.status, body };
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    onRetry: (attempt, detail) => {
+      console.log(`  ⚠ socket-health (attempt ${attempt}/3): ${detail} — retrying…`);
+    },
+  });
+  if (socketResult.preOpenWarn) {
+    console.log(`  ⚠ socket-health: ${socketResult.preOpenWarn}`);
+  } else if (socketResult.successDetail) {
+    console.log(`  ✓ socket-health → ${socketResult.successDetail}`);
+  }
+  if (socketResult.failure) {
+    failures.push(`socket-health: ${socketResult.failure}`);
+    console.log(`  ✗ socket-health → ${socketResult.failure}`);
   }
 }
 

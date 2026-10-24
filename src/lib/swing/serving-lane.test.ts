@@ -357,6 +357,37 @@ test("persisted flag anchors stamp first-flag underlying — enrichPlay does not
   assert.equal(nvda?.flagUnderlyingPx, 180, "anchor wins over live scan spot");
 });
 
+// BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA WATCH short): enrichPlay never
+// set `liveSpot`, so watchForSection's "Since flag" track-since-flag bullet (adapters.ts, gated on
+// status WATCH/SKIP + non-null liveSpot) was structurally dead for every real discovery-origin WATCH
+// candidate — the only real liveSpot writer in the whole repo is live-plays.ts's committed-ledger
+// path (status OPEN/HOLD/TRIM), which is mutually exclusive with WATCH/SKIP on status. Distinct from
+// the flagUnderlyingPx guard above: that pins the FLAG ANCHOR (never overwritten by scan spot);
+// liveSpot is the separate, CURRENT-price field "Since flag" measures movement FROM the anchor, and
+// must track the live scan spot every time.
+test("enrichPlay stamps liveSpot from the live scan read — the Since-flag track field is no longer dead for real WATCH candidates", async () => {
+  const d = buildSwingDossier(dossier("NVDA"));
+  const arch = d.archetype.archetype;
+  await persistSwingServingSnapshot({
+    asOf: "2026-07-24T20:00:00.000Z",
+    sessionDay: "2026-07-24",
+    dossiers: [d],
+    plays: [play({ ticker: "NVDA", direction: "LONG", status: "WATCH", archetype: arch })],
+    watch: [watchCand({ ticker: "NVDA", direction: "LONG", archetype: arch })],
+    flagAnchorsByThesisKey: { [swingThesisKey("NVDA", "LONG", arch)]: 180 },
+    spotsByTicker: { NVDA: 200 },
+  });
+
+  const lane = await getSwingServingLane({
+    discover: discoverSwingFromPersisted,
+    readsByTicker: new Map([
+      ["NVDA", { setup: { price: 200, triggerPx: 195, invalidationPx: 170, atr: 3 } }],
+    ]),
+  });
+  const nvda = Object.values(lane.sections).flat().find((p) => p.ticker === "NVDA");
+  assert.equal(nvda?.liveSpot, 200, "liveSpot must carry the live scan spot so trackPct/Since-flag can compute");
+});
+
 test("persisted scan with no cleared names → member-safe empty lane (empty is fine when there's no data)", async () => {
   await persistSwingServingSnapshot({
     asOf: "2026-07-24T20:00:00.000Z", sessionDay: "2026-07-24",

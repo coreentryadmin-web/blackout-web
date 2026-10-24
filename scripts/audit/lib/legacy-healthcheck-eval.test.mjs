@@ -74,6 +74,52 @@ test("verdictForEdition: healthy edition is GREEN", () => {
   assert.equal(verdictForEdition({ fetchOk: true, available: true, playsCount: 3 }).verdict, "GREEN");
 });
 
+// 2026-10-18 finding: verdictForEdition's noPlays branch could not tell a genuinely quiet market
+// apart from a starved funnel (real candidates that never got ranked/scored). Confirmed-live gap:
+// a real incident (20 candidates, 0 ranked) scored a clean GREEN for over a day.
+test("verdictForEdition: honest no_plays with a genuinely empty funnel (no candidates) is still GREEN — do not regress the quiet-market case", () => {
+  const result = verdictForEdition({
+    fetchOk: true,
+    available: true,
+    playsCount: 0,
+    noPlays: true,
+    funnelCandidates: 0,
+    funnelRanked: 0,
+  });
+  assert.equal(result.verdict, "GREEN");
+});
+
+test("verdictForEdition: honest no_plays with candidates that were legitimately ranked/scored down to zero is still GREEN", () => {
+  const result = verdictForEdition({
+    fetchOk: true,
+    available: true,
+    playsCount: 0,
+    noPlays: true,
+    funnelCandidates: 20,
+    funnelRanked: 8,
+  });
+  assert.equal(result.verdict, "GREEN");
+});
+
+test("verdictForEdition: honest no_plays with NO funnel data at all (older/partial payload) still falls back to the original honest-empty GREEN", () => {
+  const result = verdictForEdition({ fetchOk: true, available: true, playsCount: 0, noPlays: true });
+  assert.equal(result.verdict, "GREEN");
+});
+
+test("verdictForEdition: no_plays with real candidates but ZERO ranked is a RED starved funnel, not a quiet market (live 2026-10-19 P0 shape)", () => {
+  const result = verdictForEdition({
+    fetchOk: true,
+    available: true,
+    playsCount: 0,
+    noPlays: true,
+    funnelCandidates: 20,
+    funnelRanked: 0,
+  });
+  assert.equal(result.verdict, "RED");
+  assert.match(result.evidence, /20 candidate/);
+  assert.match(result.evidence, /starved funnel/);
+});
+
 test("verdictForMarkRow: missing row is RED", () => {
   assert.equal(verdictForMarkRow(null).verdict, "RED");
 });

@@ -68,6 +68,60 @@ plays), and scoped to this one edition only.**
   "0 candidates found, market was quiet." A future enhancement should flag `recap_only &&
   funnel.candidates>0` as AMBER/RED specifically.
 
+**UPDATE 2026-10-19 21:51Z — CONFIRMED RECURRING, not a one-off (a sibling Night Hawk Legacy audit
+lane's own healthcheck caught it independently the same evening — see `docs/audit/
+nighthawk-legacy-live-journal.json`, key `legacyStarvedFunnelRecurrence_2026_10_19T2151Z`, and the
+second Stage-A-eval enhancement bullet directly above was already SHIPPED 2026-10-18 as PR #6259,
+which is exactly what flagged this recurrence as RED instead of a silent GREEN this time).** The
+VERY NEXT nighthawk-playbook build (2026-10-19 21:41:46 UTC, publishing `edition_for:"2026-10-20"`)
+hit the **identical shape**: `recap_only_reason:"No scored dossiers after staging (20
+candidate(s))."`, `funnel:{candidates:20,ranked:0,dossiers:0,synthesized:0,critic_passed:0,
+published:0}` — same candidate count, same total collapse, one day later. Two consecutive build
+nights with the identical signature changes the risk read from "transient blip, unlikely to recur"
+to "needs a safety net regardless of root cause." **The first secondary bullet above — "detect
+`recap_only && funnel.candidates>0` and auto-trigger one retry" — is now BUILT**: PR #6286 added
+`shouldRetryRecapOnlyEdition` (`edition-stale.ts`), gated on `dossiers===0` specifically (not any
+recap-only) and a 45-minute cooldown, wired into `buildEveningEdition`'s existing same-day
+"already published" branch. Full write-up: `docs/audit/findings-staging/
+2026-10-19-nighthawk-legacy-recap-only-same-day-no-retry.md`. **This does NOT replace the
+remediation call above** — it is a go-forward safety net for FUTURE collapses, not a fix for
+TONIGHT's specific 2026-10-20 edition (still live-broken as of this writing, and production deploys
+are independently stuck on the ongoing ECS capacity deadlock tracked on PR #4076, so even once
+merged this fix won't reach prod until that unblocks). The admin-rebuild-of-one-specific-edition
+question above is unchanged and still needs operator/admin go-ahead, same reasoning as before.
+**Root cause is still unconfirmed for this second instance** (no AWS/CloudWatch access either
+session had this evening) — next session with CloudWatch/replay access should still trace which
+exact failure (timeout vs. a thrown exception vs. something else) is zeroing every dossier, per the
+sibling lane's journal note.
+
+---
+
+## WATCH LIST — 2026-10-18 SPX Slayer `confluence.rawScore` stale after Night Hawk morning-prior bonus — fixed, deploy pending validation
+
+**What was fixed:** `reclassifyConfluenceScore()` (`src/features/spx/lib/spx-signals.ts`) — added
+2026-09-22 specifically to keep every field derived from `score`/`factors` in sync after the Night
+Hawk morning-prior bonus mutates an already-built `SpxConfluence` — covered
+`score`/`bias`/`action`/`grade`/`direction`/`agreeing`/`conflicts`/`weighted_conflicts` but omitted
+`rawScore` from both its return type and the call site's reassignment list. `rawScore`
+(`clamp(round(|score|*1.15 + factors.length*3), 0, 96)`) is a function of the exact same two
+mutated inputs, so it stayed frozen at the pre-bonus value — the one shown to members and
+persisted as "confidence" (`spx-signal-log.ts`) and in outcome snapshots (`spx-play-outcomes.ts`).
+Does NOT affect any gating/trading decision (those key off `score`/`grade`/`direction`, already
+correctly fresh). Fixed by widening `reclassifyConfluenceScore`'s return type to also recompute
+`rawScore` with the same formula on the post-bonus inputs, and reassigning
+`confluence.rawScore` at the call site in `spx-play-engine.ts`. Full write-up:
+`docs/audit/findings-staging/2026-10-18-spx-rawscore-stale-nighthawk-bonus.md`.
+
+**Specific thing to check at next RTH open (needs real intraday conditions to confirm — market
+was closed when this was found/fixed):** on a session where `getNhConfluenceBonus()` actually
+returns a non-zero bonus (requires a fresh (<20h old) Night Hawk edition showing a clear
+directional A-grade cluster), pull the live SPX Slayer play payload (`/api/market/spx/*` or the
+admin SPX dashboard) and confirm `rawScore` equals
+`clamp(round(|score|*1.15 + factors.length*3), 0, 96)` evaluated on that SAME play's own
+post-bonus `score` and `factors.length` (factors array should include the pushed "Night Hawk
+prior" entry) — not a value consistent only with one fewer factor / the pre-bonus score, which
+would mean the frozen-stale bug reappeared.
+
 ---
 
 ## WATCH LIST — 2026-10-18 Swing WATCH play-brief below-floor/still-forming gate framing — fixed, deployed, and live-confirmed same cycle
@@ -8161,3 +8215,15 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
 - **What was broken:** found incidentally during this cycle's Legacy health check (cross-checking the legacy-marks mechanism against an older edition beyond the specific checks that cycle asked for). A 2026-09-13 fix anchored `resolveLegacyPlayOcc`'s bare "Mon DD" label year-inference on the edition's own publish instant at ONE call site (`adapters.ts`'s `terminalPlayFromEdition`) — but three other call sites re-deriving the same OCC from the same free-text label were never updated: `db.ts`'s `fetchLegacyDiscordLiveRows()` (read by the production `legacy-live-sync` cron, spans every active edition date up to ~14 trading days back), and two Discord trade-notify builders (`legacyInputFromOutcomeRow` — the PRIMARY path `legacyInputFromLiveRow` tries first, so its unanchored re-parse silently shadowed the correctly-resolved `contract_occ` the `db.ts` fix produces — and `legacyInputFromPlaybookPlay`). Live-reproduced: an "Oct 16"-labeled play from the 2026-10-14 edition resolved to a 2027-10-16 contract instead of 2026-10-16 once real "now" moved past Oct 16; `legacy-marks` correctly returned all-null for it as a direct consequence.
 - **What changed:** `resolveLegacyOutcomeExitPremium` now builds its OCC directly from its input's already-resolved `expiry`/`top_strike`/`direction` (new `occFromTradeDiscordInput`) instead of re-parsing `options_play` a second time at all. The other two call sites anchor on the edition's `published_at`/row's own `created_at`, via a newly shared, exported, tested `publishedAtRef` (previously a private, untested helper duplicated only inside `adapters.ts`).
 - **RTH check:** once deployed, pull an older Legacy edition (14 or fewer trading days back) whose plays carry an expiry label that has since passed this calendar year, and confirm `legacy-marks` now resolves real option data instead of all-null for those plays. Also watch the `legacy-live-sync` cron's CloudWatch output for any OCC resolution on an older active edition and confirm the year matches the edition's own publish year, not a rolled-forward one.
+
+### 401. Night Hawk's public/AI-crawler copy omitted the shipped Swing Command tab at 6 call sites — fix/night-hawk-swing-command-seo-copy-stale — 2026-10-20
+
+- **What was broken:** DISCOVERY-lane SEO/GEO sweep. `/nighthawk` shipped a third tab, Swing Command, alongside ZERO_DTE (0DTE Command) and LEGACY (Evening Edition) — confirmed live in `src/features/nighthawk/command-deck/` and documented correctly in the Learn-guide chapter body itself. But every summary/index layer feeding SEO + GEO surfaces still described Night Hawk as a two-part product: `product-manifest.ts`'s `hawk` entry (feeds the pricing page's schema.org `featureList` via `manifestSchemaFeatureList()`), `LEARN_NAV`'s night-hawk descriptor (mapped verbatim into `/llms.txt`), and `guide-seo.ts`'s night-hawk `metaTitle`/`metaDescription` (for the page whose own body already covers Swing — a direct meta-vs-content mismatch). The same stale "(0DTE Command + Evening Edition)" phrase was also copy-pasted into `/why-blackout`'s tool list and two lifecycle-email templates (`downgrade.ts`, `welcome-sequence.ts`).
+- **What changed:** added a Swing Command mention to all 6 call sites, phrased to fit each existing sentence. `guide-seo.ts`'s `dateModified` bumped to reflect the material content change. Deliberately did NOT touch `vs/others`/`methodology`'s "SPX Slayer, Night Hawk, and 0DTE Command" phrasing — that could be a deliberate enumeration of three separately-graded play streams rather than a naming error, a content-strategy call rather than an unambiguous drift bug.
+- **RTH/live check:** once deployed, pull `GET /llms.txt` and confirm the Night Hawk curriculum line mentions Swing Command; pull `/pricing`'s page source and check the `SoftwareApplicationJsonLd` `featureList` includes a Swing Command bullet; view-source `/learn/night-hawk`'s `<meta name="description">` and confirm it mentions Swing Command, matching the page body. None of these need live market data to verify — purely static-content checks, any time.
+
+### 402. `edition-outcome-overlay.ts`'s read-time merge re-inflated a gate-promoted play's `tier` object, right next to its correctly-capped `conviction` — fix/edition-outcome-overlay-tier-cap-leak — 2026-10-21
+
+- **What was broken:** 5-engine live monitor cycle, Ask Largo standing mandate, live Legacy health check. PR #6483 (same day) fixed three sites where a gate-promoted play's merit `tier` assignment could leak an uncapped "A"/"A+" next to its correctly-capped `conviction: "B"` badge, via `capGatePromotedTierAssignment()`. A fourth site was missed: `edition-outcome-overlay.ts`'s `applyEditionOutcomeOverlay()`, which runs on every live `GET /api/market/nighthawk/edition` read (not just build time) and re-derives `tier` from the raw DB-pinned `publish_context.tier` — it only ran `conviction`/`key_signal` through `capGatePromotedConviction`, never the full `tier` object through the shared cap. Live repro: MSTR showed `conviction: "B"` (correctly capped) right next to `tier: { tier: "A", ... }` (still uncapped) on a real edition read.
+- **What changed:** the overlay now runs the pinned `tier` through `capGatePromotedTierAssignment` (keyed on the play's own `gate_promoted` flag) before assigning it, mirroring `publish-context.ts`'s build-time pattern — the overlay is now fail-closed on `tier` the same way it already was on `conviction`, regardless of what the underlying DB pin says.
+- **RTH check:** once deployed, pull a live edition carrying a `gate_promoted: true` play and confirm `tier.tier` never exceeds "B" — specifically re-check MSTR (or whichever ticker is gate-promoted once tonight's edition regenerates) and confirm `tier.tier === conviction` with no A/B mismatch. Also worth re-checking an OLDER, still-cached edition (published before this fix deployed) if one is still being served — that is exactly the stale-pin case this fix's defense-in-depth is for, so it should now read "B" on a live GET even though the underlying DB pin itself predates the fix.

@@ -37,6 +37,7 @@
 
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { PLAN_RULES } from "./plan";
+import { asManagedPnlPct } from "./record";
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import type { ZeroDteGateBlock } from "./gates";
 import { timeOfDayFactor } from "./intraday";
@@ -158,6 +159,21 @@ export const CORRELATION_GROUPS: ReadonlyArray<ReadonlySet<string>> = [
   new Set(["MSFT", "GOOGL", "META", "AMZN"]), // Mega-cap tech — correlated on macro/NQ moves
   new Set(["AAPL", "AVGO", "CRM", "ADBE"]),   // Tech/enterprise — second tech cluster
   new Set(["JPM", "GS", "MS", "BAC"]),         // Financials — rate-sensitive, move together on yields
+  // Bitcoin miners — operating economics (hash price, power cost, BTC-denominated revenue) move
+  // almost entirely on BTC spot, so these co-move far MORE tightly intraday than the sector pairs
+  // above. Added 2026-10-20 (live member book audit): the "2026-07-30 crypto cluster session"
+  // comment two blocks below has cited a crypto-cluster incident as the REASON same-direction
+  // concentration enforcement shipped at all since this file's own git history — but no crypto
+  // group was ever actually added, so the governor could never see one. Live evidence the SAME
+  // day this gap was found: RIOT and HUT both flagged long at the identical instant (14:42:09Z),
+  // BTDR five minutes later (14:47:14Z), all three open simultaneously and uncapped (none sharing
+  // a group with any other), plus MARA/CLSK long earlier the same session — a real 3-5-wide
+  // same-direction cluster the GOVERNOR_MAX_CORRELATED_SAME_DIR=2 cap exists specifically to catch
+  // and never did. Scoped to the core publicly-traded miners only (not exchanges/treasury-holding
+  // names like COIN/MSTR/SBET, which are BTC-exposed but a structurally different business and a
+  // separate, larger judgment call) — same "narrowest precedented addition" discipline as the
+  // TQQQ/SQQQ fix (FINDINGS.md) used for the broad-index group.
+  new Set(["RIOT", "MARA", "CLSK", "HUT", "BTDR", "CIFR", "WULF", "CORZ", "BITF", "IREN"]),
 ];
 
 /** WS-05 version stamp for the concentration MEASURE frozen at commit (freezeConcentration
@@ -506,13 +522,23 @@ function ledgerRowStopped(r: GovernorLedgerRow): boolean {
 }
 
 /** AUDIT SEV-3: a CLOSED row's REALIZED session P&L % contribution, or null if the
- *  row isn't realized yet. Prefers the graded plan_pnl_pct (the true close P&L, which
- *  captures a losing time-stop the −50%-only hard-stop test never sees); falls back to
- *  the −50% stop level for a row whose latched trough already proves a hard stop but
- *  the lazy grader hasn't stamped plan_pnl_pct yet (mirrors ledgerRowStopped, so the
- *  halt is right BEFORE grading, same discipline the stop count already uses). */
+ *  row isn't realized yet. Prefers the AS-MANAGED outcome (record.ts's `asManagedPnlPct` —
+ *  the real engine exit stamp when one fired, else the mechanical mid grade), NEVER the raw
+ *  mechanical `plan_pnl_pct` column directly — that column is the naive bar-walk grade (what
+ *  an unmanaged hold would have done), which record.ts's own OUTCOME-GRADING-SPEC.md
+ *  deliberately never headlines for exactly this reason: it can disagree with the real outcome
+ *  in EITHER direction, not just undercount it. FOUND LIVE 2026-10-20 (HOOD): a real
+ *  ratchet-profit-floor exit at +3.35% (a genuine win) carried a mechanical plan_pnl_pct of
+ *  -50/"stopped" (a naive hold would have later traded through the stop, AFTER the real engine
+ *  had already exited) — the old code counted that win as a realized loser and dragged
+ *  session_pnl_pct down by 50 points for a trade that made money. asManagedPnlPct still falls
+ *  back to the mechanical grade when no live-managed exit exists (legacy rows, or a row with no
+ *  entry_context at all), so the THIRD CHANNEL below (for a CLOSED row the grader hasn't reached
+ *  AT ALL yet) and the stop-trough fallback are unchanged — this only replaces what counts as
+ *  "graded". */
 function ledgerRowRealizedPnlPct(r: GovernorLedgerRow): number | null {
-  if (r.plan_pnl_pct != null && Number.isFinite(r.plan_pnl_pct)) return r.plan_pnl_pct;
+  const managed = asManagedPnlPct(r);
+  if (managed != null && Number.isFinite(managed)) return managed;
   if (ledgerRowStopped(r)) return PLAN_RULES.stop_pct; // −50, proven by outcome/trough
 
   /**

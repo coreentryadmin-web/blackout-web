@@ -66,7 +66,15 @@ const SECTORS: Record<string, string[]> = {
   megatech: ["AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "AMZU"],
   // PLTU is a leveraged single-stock ETF tracking PLTR itself — same bet, different wrapper.
   software: ["PLTR", "PLTU", "CRM", "NOW", "SNOW", "ADBE", "ORCL", "CRWD", "NET", "DDOG", "PANW", "MDB", "ZS", "SHOP"],
-  "ev-auto": ["TSLA", "RIVN", "LCID", "F", "GM"],
+  // Added 2026-10-20 (Ask Largo standing mandate, Night Hawk Swings lane, live finding): a real
+  // committed book held TSLA and TSLL ("Direxion Daily TSLA Bull 2X ETF", confirmed via Polygon
+  // reference, not guessed from the symbol) concurrently LONG — the exact same single-stock
+  // leveraged-wrapper shape already fixed for SMCX/MULL/AVGX (semis), AMZU (megatech), PLTU
+  // (software) and GLWG (its own "corning" bucket) above: a leveraged ETF tracking ONE underlying
+  // that already has an entry here joins that entry's bucket directly, not its own isolated
+  // cluster. TSLA already has a peer bucket ("ev-auto"), so TSLL joins it rather than needing a
+  // new single-pair bucket the way GLW/GLWG did.
+  "ev-auto": ["TSLA", "RIVN", "LCID", "F", "GM", "TSLL"],
   financials: ["JPM", "GS", "BAC", "MS", "WFC", "C", "SCHW", "BLK", "AXP", "V", "MA"],
   energy: ["XOM", "CVX", "OXY", "SLB", "COP", "MPC", "PSX", "DVN", "HAL"],
   // MSTU/MSTX are leveraged single-stock ETFs tracking MSTR itself — same bet, different wrapper.
@@ -159,6 +167,21 @@ const SECTORS: Record<string, string[]> = {
   // a single-segment company whose entire value hinges on one trial readout, the exact same binary
   // clinical/regulatory catalyst risk driver as every other name in this bucket.
   biotech: ["NTLA", "CRSP", "VIR", "MIRM", "IONS", "NVAX", "IOVA", "PCVX", "TNGX", "RLAY", "ABVX"],
+  // Added 2026-10-20 (Ask Largo standing mandate, Night Hawk Swings lane, live finding): a real
+  // committed book held KGC and AEM concurrently LONG (both Banger-origin BREAKOUT calls, same
+  // discovery batch) with neither ticker mapped anywhere in this file, so both resolved to
+  // isolated `NAME:KGC`/`NAME:AEM` own-clusters and NEITHER position's play-brief rendered a
+  // "Book context" section at all — the same gap shape as every other extension in this file
+  // (ALAB/CRDO/KLAC, quantum-computing, biotech): two names whose dominant risk driver is the SAME
+  // underlying commodity price (gold), not two independent edges. Verified via Polygon reference
+  // (`/v3/reference/tickers/<T>`), not guessed from the symbol: KGC (Kinross Gold Corporation) and
+  // AEM (Agnico Eagle Mines Ltd.) are both large-cap gold-mining producers whose equity price is
+  // dominated by the spot gold price and mine-level production/cost results, not by any sector
+  // already listed above. Deliberately conservative, same discipline as the crypto-equity/
+  // quantum-computing/biotech precedents: only the two names actually live in the book at time of
+  // fix, not a speculative broader miners basket (e.g. NEM, GOLD) with no live partner to
+  // demonstrate against in this snapshot.
+  "precious-metals": ["KGC", "AEM"],
 };
 
 // Inverted once at module load: TICKER → sector.

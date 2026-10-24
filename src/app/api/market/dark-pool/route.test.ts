@@ -44,3 +44,17 @@ test("route wraps JSON with roundFloats at the boundary", () => {
   const src = readFileSync(new URL("./route.ts", import.meta.url), "utf8");
   assert.match(src, /roundFloats\(/);
 });
+
+// Regression (2026-10-20, DISCOVERY-lane input-validation sweep): `?? 50` only guards an absent
+// `limit` param — a non-numeric one (e.g. `limit=xyz`) produces `Number("xyz")` = NaN, which
+// survives `??` (NaN is neither null nor undefined) and reaches `fetchUwDarkPoolRecent(NaN)`,
+// whose `coerced.slice(0, NaN)` silently returns [] even when real cached rows exist. `|| 50`
+// catches it (NaN is falsy), matching the safe idiom flows/route.ts already uses.
+test("the limit query param falls back to 50 on malformed (non-numeric) input, not NaN", () => {
+  const src = readFileSync(new URL("./route.ts", import.meta.url), "utf8");
+  assert.match(
+    src,
+    /Number\(sp\.get\("limit"\) \?\? 50\) \|\| 50/,
+    "limit must be guarded with `|| 50` so a non-numeric param can't survive as NaN"
+  );
+});

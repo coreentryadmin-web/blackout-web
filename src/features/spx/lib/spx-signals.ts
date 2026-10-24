@@ -194,6 +194,18 @@ function scoreToGrade(absScore: number, conflicts: number): SpxConfluenceGrade {
  * bounded at ±3 (getNhConfluenceBonus's own contract), so a boundary score (e.g. 57→60, crossing
  * the 58 A threshold) is a real, reachable case, not a hypothetical one.
  *
+ * BUG FIX (2026-10-18): this function's return type used to omit `rawScore`, so the Night Hawk
+ * prior mutation site in spx-play-engine.ts reassigned every OTHER derived field but left
+ * `confluence.rawScore` frozen at the value `computeSpxConfluence` produced BEFORE the bonus
+ * factor existed — evaluated on the stale pre-bonus |score| and factors.length. That stale
+ * number is shown to members and persisted as "confidence" (spx-signal-log.ts's
+ * `confidence: play.rawScore`) and in outcome snapshots used for calibration (spx-play-
+ * outcomes.ts), even though it does not affect any gating/trading decision (those key off
+ * score/grade/direction, which are correctly fresh via the fields above). `rawScore` now uses
+ * the EXACT same formula `computeSpxConfluence` uses below, re-evaluated on the post-bonus
+ * clamped score and factor count, so it can never again drift from the fields it's derived
+ * alongside.
+ *
  * Call this any time `score`/`factors` are mutated on an already-built SpxConfluence, and
  * reassign every field it returns — never just `score` alone.
  */
@@ -203,7 +215,15 @@ export function reclassifyConfluenceScore(
   factors: SpxSignalFactor[]
 ): Pick<
   SpxConfluence,
-  "score" | "bias" | "action" | "grade" | "direction" | "agreeing" | "conflicts" | "weighted_conflicts"
+  | "score"
+  | "rawScore"
+  | "bias"
+  | "action"
+  | "grade"
+  | "direction"
+  | "agreeing"
+  | "conflicts"
+  | "weighted_conflicts"
 > {
   const clamped = clamp(score, -100, 100);
   const abs = Math.abs(clamped);
@@ -227,12 +247,25 @@ export function reclassifyConfluenceScore(
     bias = "neutral";
   }
 
+  // Same formula computeSpxConfluence uses below — re-evaluated on the (possibly post-bonus)
+  // clamped score and factor count so rawScore can never drift stale relative to score/grade.
+  const rawScore = clamp(Math.round(abs * 1.15 + factors.length * 3), 0, 96);
   const grade = scoreToGrade(abs, conflicts);
   const direction: SpxPlayDirection | null =
     bias === "bullish" ? "long" : bias === "bearish" ? "short" : null;
   const agreeing = direction === "long" ? bullFactors : direction === "short" ? bearFactors : 0;
 
-  return { score: clamped, bias, action, grade, direction, agreeing, conflicts, weighted_conflicts };
+  return {
+    score: clamped,
+    rawScore,
+    bias,
+    action,
+    grade,
+    direction,
+    agreeing,
+    conflicts,
+    weighted_conflicts,
+  };
 }
 
 function buildLevels(

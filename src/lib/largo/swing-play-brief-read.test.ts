@@ -49,6 +49,14 @@ test("requires a ticker — never composes a brief for an empty ticker", async (
   const v = await swingPlayBriefForLargo("");
   assert.equal(v.available, false);
   assert.equal((v as { error?: string }).error, "ticker_required");
+  // BUG FIX (Ask Largo standing mandate, 2026-10-19, Largo C3): every failure path here used to
+  // return a bare {available:false, error} with no reason/what_is_missing/retryable, the exact
+  // "unavailable with no stated reason" shape the contract calls a defect.
+  const unavailable = (v as { unavailable?: { reason: string; what_is_missing: string; retryable: boolean } })
+    .unavailable;
+  assert.ok(unavailable, "expected an `unavailable` field on a ticker_required failure");
+  assert.equal(unavailable!.retryable, false);
+  assert.match(unavailable!.what_is_missing, /ticker/);
 });
 
 test("resolves with the ticker uppercased and forwards optional hints to the context loader", async () => {
@@ -81,6 +89,11 @@ test("returns available:false with error:play_not_found rather than fabricating 
   assert.equal(v.available, false);
   assert.equal((v as { error?: string }).error, "play_not_found");
   assert.match((v as { note?: string }).note ?? "", /ZZZZ/);
+  const unavailable = (v as { unavailable?: { reason: string; what_is_missing: string; retryable: boolean } })
+    .unavailable;
+  assert.ok(unavailable, "expected an `unavailable` field on a play_not_found failure");
+  assert.equal(unavailable!.retryable, false);
+  assert.match(unavailable!.reason, /ZZZZ/);
 });
 
 test("a thrown error from the pipeline degrades to available:false, never a crash", async () => {
@@ -91,4 +104,11 @@ test("a thrown error from the pipeline degrades to available:false, never a cras
   const v = await swingPlayBriefForLargo("NRG");
   assert.equal(v.available, false);
   assert.equal((v as { error?: string }).error, "db_unreachable");
+  const unavailable = (v as { unavailable?: { reason: string; what_is_missing: string; retryable: boolean } })
+    .unavailable;
+  assert.ok(unavailable, "expected an `unavailable` field on a thrown-error failure");
+  // An uncaught exception is the ambiguous "transient or real bug" case the contract's
+  // retryable flag exists for — default true, since this layer can't tell them apart either.
+  assert.equal(unavailable!.retryable, true);
+  assert.equal(unavailable!.reason, "db_unreachable");
 });

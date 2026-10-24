@@ -254,6 +254,46 @@ test("toActivePlay: excludes a row whose OCC expired on a different day than its
   assert.equal(live!.occ, "O:OKTA260911C00140000");
 });
 
+// BUG FIX (2026-10-20, live member audit — "verify quote freshness, executable exit prices"):
+// the zombie-row test above correctly guarded against an OCC that already expired (dte<0 — a
+// stale row). But it also had the guard reject ANY OCC that wasn't the LITERAL same calendar
+// day as session_date — which silently excluded every single-name 0DTE play (RIOT, NBIS, HUT,
+// ...), none of which have daily-expiry options, from the live-marks lane AT ALL. Those rows
+// are deliberately committed up to ZERODTE_MAX_DTE (4) days out (board.ts's own SETUP_MAX_DTE)
+// — a real, intended 0DTE play, not a zombie. Live evidence: 0/12 open single-name rows ever
+// carried a bid/ask across a live RTH board poll while the same lane showed real quotes for
+// genuinely-tracked contracts the whole time.
+test("toActivePlay: a single-name 0DTE row whose nearest expiry is a few days out (no daily listing) is still tracked, not excluded as a zombie", async () => {
+  const lm = await loadLane();
+  const nearTerm = lm.toActivePlay(
+    ledgerRow({
+      ticker: "RIOT",
+      session_date: "2026-10-20",
+      status: "HOLD",
+      entry_premium: 0.53,
+      // Expiry 2026-10-23 is a Friday weekly, 3 calendar days out — RIOT has no daily listing.
+      plan_json: { occ: "O:RIOT261023C00014500" },
+    })
+  );
+  assert.ok(nearTerm, "a 3-DTE single-name OCC within ZERODTE_MAX_DTE must still be tracked");
+  assert.equal(nearTerm!.occ, "O:RIOT261023C00014500");
+});
+
+test("toActivePlay: still excludes an OCC further out than ZERODTE_MAX_DTE (a genuinely wrong/stale row)", async () => {
+  const lm = await loadLane();
+  const tooFar = lm.toActivePlay(
+    ledgerRow({
+      ticker: "RIOT",
+      session_date: "2026-10-20",
+      status: "HOLD",
+      entry_premium: 0.53,
+      // Expiry 10 calendar days out — past ZERODTE_MAX_DTE (4), never a real 0DTE commit.
+      plan_json: { occ: "O:RIOT261030C00014500" },
+    })
+  );
+  assert.equal(tooFar, null, "an implausibly-far OCC is still excluded, same as before this fix");
+});
+
 test("mark store: newest asOf wins — an older write never regresses a fresher tick", async () => {
   const lm = await loadLane();
   lm._resetZeroDteLiveMarksForTest();

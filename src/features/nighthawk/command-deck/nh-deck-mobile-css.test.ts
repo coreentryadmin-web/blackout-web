@@ -48,3 +48,34 @@ test("mobile detail rail is a fixed overlay — list is never display:none swapp
   assert.doesNotMatch(mobileDeckCss, /\.nh-deck-left\{display:none/);
   assert.doesNotMatch(mobileDeckCss, /\.nh-deck-right\{display:none/);
 });
+
+/**
+ * Guards a live defect (Ask Largo mobile audit, 2026-10-19): the unconditional
+ * `.nh-deck-right.nh-deck-dim{opacity:.84}` rule (written for the desktop side-panel layout) also
+ * applied to the mobile full-screen `.nh-deck-right` overlay above, letting ~16% of the list behind
+ * it bleed through a STALE play's detail view — visibly double-exposed, largely unreadable text.
+ * The override must (a) exist, (b) live INSIDE the @media(max-width:820px) block (so it never
+ * touches the desktop dimming effect), and (c) come AFTER the unconditional rule in source order —
+ * same specificity (two classes), so cascade order is what decides the winner at this breakpoint.
+ */
+test("mobile full-screen detail overlay is never dimmed by the stale indicator", () => {
+  const unconditionalDimIdx = indexOf(
+    /\.nh-deck-right\.nh-deck-dim\{opacity:\.84/,
+    "unconditional .nh-deck-right.nh-deck-dim opacity:.84 rule",
+  );
+  const overrideOffset = mobileDeckCss.indexOf(".nh-deck-right.nh-deck-dim{opacity:1}");
+  assert.ok(overrideOffset >= 0, "mobile opacity:1 override for .nh-deck-right.nh-deck-dim not found");
+
+  const mediaBlockOffset = mobileDeckCss.indexOf("@media (max-width:820px)");
+  assert.ok(mediaBlockOffset >= 0, "nh-deck mobile media block missing");
+  assert.ok(
+    overrideOffset > mediaBlockOffset,
+    "the dim override must live inside the @media(max-width:820px) block, not before it",
+  );
+
+  const overrideAbsolute = mobileDeckStart + overrideOffset;
+  assert.ok(
+    overrideAbsolute > unconditionalDimIdx,
+    "the mobile opacity:1 override must come AFTER the unconditional opacity:.84 rule to win the cascade",
+  );
+});

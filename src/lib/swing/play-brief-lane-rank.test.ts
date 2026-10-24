@@ -129,6 +129,22 @@ test("computeLaneRank: named leader skips a peer whose own manage engine says EX
   assert.equal(snap!.total, 3);
 });
 
+// BUG FIX (2026-10-20, Ask Largo standing mandate, static-code sweep): EXITING_MANAGE_ACTIONS
+// omitted STOP_OUT (a position that just hit its own hard -60% capital-preservation stop) even
+// though it is exactly as much a "get out" verdict as EXIT/EXIT_RUNNER — the sibling
+// REDUCE_MANAGE_ACTIONS two lines below already included it. Mirrors the EXIT_RUNNER test above.
+test("computeLaneRank: named leader skips a peer whose own manage engine says STOP_OUT", () => {
+  const lanes = [
+    row("CRWD", 86.5, "COMMIT", undefined, "STOP_OUT"),
+    row("AAPL", 84.4, "COMMIT", undefined, "HOLD"),
+    row("NN", 23, "COMMIT", undefined, "HOLD"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "NN", score: 23 }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "AAPL", "the raw #1 (CRWD) just stopped out — the named leader must skip it");
+  assert.equal(snap!.topScore, 84.4);
+});
+
 test("computeLaneRank: named leader falls back to the raw #1 when every peer is exiting", () => {
   const lanes = [
     row("CRWD", 86.5, "COMMIT", undefined, "EXIT_RUNNER"),

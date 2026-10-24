@@ -123,17 +123,45 @@ function closedReasonFromRow(row: SwingPositionRow): string | null {
 }
 
 /**
- * Pure contract identity (strike/right/expiry/dte/occ) for ANY row — not gated on CLOSED status,
- * unlike `closedDeckSourceFromRow` below. Honest-null when `contract_type` can't be resolved to
- * call/put or strike/expiry are missing, same rule that function already applies for its own
- * (terminal-leg) contract. Extracted (Ask Largo standing mandate, 2026-10-11) so
- * `closedDeckSourcesFromChains` can resolve a NON-terminal leg's own contract too — see that
- * function's own "BUG FOUND 2026-10-11" note for why the terminal leg's contract is wrong to reuse
- * when the worst leg is a different, earlier, rolled-away contract.
+ * Contract identity (strike/right/expiry/dte/occ) PLUS this row's OWN quote fields (mid/delta) —
+ * not gated on CLOSED status, unlike `closedDeckSourceFromRow` below. Honest-null when
+ * `contract_type` can't be resolved to call/put or strike/expiry are missing, same rule that
+ * function already applies for its own (terminal-leg) contract. Extracted (Ask Largo standing
+ * mandate, 2026-10-11) so `closedDeckSourcesFromChains` can resolve a NON-terminal leg's own
+ * contract too — see that function's own "BUG FOUND 2026-10-11" note for why the terminal leg's
+ * contract is wrong to reuse when the worst leg is a different, earlier, rolled-away contract.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-18, live repro AAPL positionId 40 (root 37 ->
+ * terminal 40) + AMZN positionId 48 (root 44 -> terminal 48)): this function originally returned
+ * ONLY identity fields (strike/right/expiry/dte/occ) — no quote. That was enough to fix the
+ * 2026-10-11 bug (contract IDENTITY silently reused the terminal leg's), but left the exact same
+ * bug class alive one field over: `closedDeckSourcesFromChains` re-pointed `contract`'s
+ * strike/right/expiry/occ at the worst leg while still spreading `...src.contract` underneath —
+ * and `src.contract.mid`/`src.contract.delta` are the TERMINAL leg's own `last_mark`/
+ * `contract_delta` (see `closedDeckSourceFromRow` below), never overridden alongside the identity
+ * fields. Result: a served card whose strike/expiry/occ correctly named the worst leg's contract,
+ * but whose mid/delta were a DIFFERENT real contract's own price — two different option contracts
+ * merged into one row. Live: AAPL's served contract (330C 2026-09-21, the correctly-identified
+ * worst leg 37) showed mid 7.70 — that is leg 40's (terminal) own exit_mark; leg 37's REAL
+ * exit_mark was 5.23. AMZN's served contract (245C per the pre-this-fix bug, since corrected to
+ * leg 44's 605C) showed mid 10.00/delta 0.6 — leg 48's (terminal) own quote; leg 44's REAL
+ * exit_mark was 3.73. Returning mid/delta from THIS function (always this row's own
+ * `last_mark`/`contract_delta`, never borrowed) lets the call site source the whole contract —
+ * identity AND quote — from one consistent row instead of patching fields in piecemeal.
+ * `gamma`/`theta`/`vega`/`iv` have no equivalent column on `SwingPositionRow` (always null
+ * regardless of which leg is used — unchanged by this fix, same honest-absence as before).
  */
 function contractBundleFromRow(
   row: SwingPositionRow,
-): { strike: number; right: "C" | "P"; expiry: string; dte: number; occ: string | null } | null {
+): {
+  strike: number;
+  right: "C" | "P";
+  expiry: string;
+  dte: number;
+  occ: string | null;
+  mid: number | null;
+  delta: number | null;
+} | null {
   const expiry = row.contract_expiry;
   const strike = row.contract_strike;
   if (!expiry || strike == null || !Number.isFinite(strike)) return null;
@@ -151,7 +179,7 @@ function contractBundleFromRow(
   // shrinking on every subsequent view).
   const exitAt = row.closed_at ?? row.graded_at;
   const dte = calendarDte((exitAt ?? etYmd()).slice(0, 10), expiry.slice(0, 10));
-  return { strike, right, expiry, dte, occ: row.contract_occ };
+  return { strike, right, expiry, dte, occ: row.contract_occ, mid: row.last_mark, delta: row.contract_delta };
 }
 
 /** Map one graded CLOSED ledger row to a deck source. Null when not reconstructible. */
@@ -159,7 +187,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
   if (row.status !== "CLOSED" || !row.graded_at) return null;
   const bundle = contractBundleFromRow(row);
   if (!bundle) return null;
-  const { strike, right, expiry, dte } = bundle;
+  const { strike, right, expiry, dte, mid, delta } = bundle;
   const exitAt = row.closed_at ?? row.graded_at;
   // BUG FIX (Ask Largo standing mandate, live repro 2026-10-16, AMZN root-44/terminal-48 + AAPL
   // root-37/terminal-40): `evidence_score` was unconditionally defaulted to the literal `0` with
@@ -195,8 +223,8 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
       right,
       expiry,
       dte,
-      mid: row.last_mark,
-      delta: row.contract_delta,
+      mid,
+      delta,
       gamma: null,
       theta: null,
       vega: null,
@@ -209,9 +237,20 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     topFlowProvenance,
     firstSeenAt: row.first_seen_at,
     committedAt: row.committed_at,
-    entryPremium: row.entry_premium,
-    peakPremium: row.peak_premium,
-    troughPremium: row.trough_premium,
+    // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro BE): these three raw DB floats
+    // used to pass straight through, unrounded — but `terminalPlayFromClosedSwing`'s `peakDisplay`/
+    // `troughDisplay` (adapters.ts) derive a percentage directly from them, while the SEPARATE
+    // `GET /api/market/swing/record` HTTP route (the Command Deck UI's own CLOSED-tab source,
+    // containers.tsx) independently wraps the SAME raw columns in `roundFloats(..., dp=2)` before
+    // feeding the identical `terminalPlayFromClosedSwing` function. Two real consumers of one pure
+    // function, fed two different precision bases for the same closed position — exactly the
+    // raw-vs-rounded shape already found and fixed for 0DTE (FINDINGS.md, peak_pnl_pct/
+    // mfe_capture_pct). Rounding once, here, at the single shared source, makes both callers
+    // (the direct-DB Ask Largo brief path AND the HTTP /record route) agree, and makes /record's
+    // own roundFloats() a no-op on these three fields rather than a second, uncoordinated rounding.
+    entryPremium: row.entry_premium != null ? round2(row.entry_premium) : null,
+    peakPremium: row.peak_premium != null ? round2(row.peak_premium) : null,
+    troughPremium: row.trough_premium != null ? round2(row.trough_premium) : null,
     occ: bundle.occ,
     exitAt,
     exitPnlPct: exitPnl,
@@ -275,13 +314,9 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
     // that "peak" chronologically postdates the loss it's shown beside (leg 1 didn't exist until
     // leg 0's roll). Downstream, `primaryReturnPct` (play-card-display.ts) prefers `peak` as the
     // CLOSED-tab headline number, so this fabricated a green "+25.7%" card for a chain whose real
-    // worst outcome was a loss. The single-leg play-brief path (`play-brief-resolve.ts`) already
-    // avoids this by construction (it never applies the chain-composite override) — this brings the
-    // list-view/Closed-tab path in line: when the worst leg isn't the terminal leg, the terminal's
-    // own price bounds don't correspond to the P&L being reported, so omit them (honest omission,
-    // per this codebase's own absence principle) rather than pair a real number with the wrong leg's
-    // journey. `primaryReturnPct` already has a clean fallback to the actual exit P&L when peak is
-    // null (play-card-display.ts:72-73), so this is a safe no-crash path, not just a null-check.
+    // worst outcome was a loss. This fix originally (2026-09-15) omitted the three fields outright —
+    // **SUPERSEDED by the 2026-10-21 fix below**, which found a genuine per-leg equivalent to borrow
+    // instead of omitting; see that comment for why omission was never actually necessary here.
     const terminalPnl = fin(terminal.realized_pnl_pct);
     const worstLegIsTerminal =
       compositePnl != null && terminalPnl != null && round2(terminalPnl) === compositePnl;
@@ -298,11 +333,46 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
     // terminal leg, resolve ITS OWN contract bundle (same `contractBundleFromRow` helper used for
     // single-leg rows) and use that leg's strike/right/expiry/dte/occ instead of the terminal's —
     // correct identity for the P&L being shown, not just an honest omission (the worst leg's own
-    // contract IS knowable here, unlike entryPremium/peakPremium/troughPremium above, which have no
-    // per-leg equivalent to borrow). Falls back to omitting `occ` (nullable) only in the defensive
+    // contract IS knowable here — see the 2026-10-21 fix below for why entryPremium/peakPremium/
+    // troughPremium are exactly the same case, not the "no per-leg equivalent" exception this
+    // comment originally claimed). Falls back to omitting `occ` (nullable) only in the defensive
     // case where the worst leg's own row can't yield a contract bundle either (malformed/legacy
     // data) — `contract` itself stays non-optional per its type, so the terminal's bundle is kept
     // rather than left absent, same trade-off `SwingClosedDeckSource.contract` already makes.
+    //
+    // BUG FIX (Ask Largo standing mandate, 2026-10-18, live repro AAPL positionId 40 (root 37 ->
+    // terminal 40) + AMZN positionId 48 (root 44 -> terminal 48)): the fix above re-points
+    // strike/right/expiry/dte/occ at the worst leg but builds `contract` as `{ ...src.contract,
+    // <those four fields> }` — `src.contract` is `closedDeckSourceFromRow(terminal)`'s own
+    // contract, so `mid`/`delta` (and gamma/theta/vega/iv) survive the spread UNCHANGED, still the
+    // TERMINAL leg's own `last_mark`/`contract_delta`. Same bug class as the 2026-10-11 fix above,
+    // one field deeper: the card now correctly NAMES the worst leg's contract but still PRICES it
+    // with a different, real contract's own quote. Live: AAPL's worst leg (37, -22.3%) has its own
+    // real exit_mark 5.23; the served card showed mid 7.70 — leg 40's (terminal) own exit_mark, a
+    // different contract entirely. AMZN's worst leg (44, -27.67%) has its own real exit_mark 3.73;
+    // the served card showed mid 10.00/delta 0.6 — leg 48's (terminal) own quote. Fix: `mid`/`delta`
+    // now come from `worstLegBundle` (contractBundleFromRow's own `row.last_mark`/
+    // `row.contract_delta`, extended above to carry quote fields for exactly this reason), the same
+    // worst-leg row the identity fields already source from — one consistent leg, not two merged.
+    //
+    // BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro AMZN positionId 48 (root 44) +
+    // AAPL positionId 40 (root 37)): the 2026-09-15 fix above (see its comment, now marked
+    // SUPERSEDED) unconditionally NULLED entryPremium/peakPremium/troughPremium whenever the worst
+    // leg wasn't the terminal leg, reasoning that the terminal leg's own price bounds don't belong
+    // to the worst leg's journey — correct — but it never checked whether the WORST LEG'S OWN row
+    // (`worstLegRow`, already resolved two lines above and already used to borrow strike/mid/delta)
+    // carries these same three columns. It does: `entry_premium`/`peak_premium`/`trough_premium` are
+    // per-row columns on `swing_positions` (SwingPositionRow), exactly the same class as
+    // `contract_strike`/`last_mark`/`contract_delta`, which this function ALREADY correctly borrows
+    // from `worstLegRow` via `worstLegBundle` two lines below. There never was a "no per-leg
+    // equivalent" case for these fields — that was this code's own misconception, not a real data
+    // gap. Live: AMZN leg 44 (the worst leg, -27.67%) has its own real `entry_premium: 5.15`,
+    // `peak_premium`/`trough_premium` likewise real — the served row nulled all three instead of
+    // showing them, despite `worstLegRow` sitting in scope with the real values. Same for AAPL leg
+    // 37 (entry_premium: 6.73, -22.3%). Fix: borrow entryPremium/peakPremium/troughPremium from
+    // `worstLegRow` the same way contract identity/mid/delta already are, falling back to omission
+    // only in the genuine absence case (the column itself is null on that row — a real data gap,
+    // not a leg-mismatch one).
     const worstLegRow = worstLegIsTerminal
       ? null
       : (ordered.find((r) => {
@@ -310,12 +380,18 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
           return pnl != null && round2(pnl) === compositePnl;
         }) ?? null);
     const worstLegBundle = worstLegRow ? contractBundleFromRow(worstLegRow) : null;
+    const worstLegEntryPremium =
+      worstLegRow?.entry_premium != null ? round2(worstLegRow.entry_premium) : null;
+    const worstLegPeakPremium =
+      worstLegRow?.peak_premium != null ? round2(worstLegRow.peak_premium) : null;
+    const worstLegTroughPremium =
+      worstLegRow?.trough_premium != null ? round2(worstLegRow.trough_premium) : null;
     out.push({
       ...src,
       exitPnlPct: compositePnl ?? src.exitPnlPct,
-      entryPremium: worstLegIsTerminal ? src.entryPremium : null,
-      peakPremium: worstLegIsTerminal ? src.peakPremium : null,
-      troughPremium: worstLegIsTerminal ? src.troughPremium : null,
+      entryPremium: worstLegIsTerminal ? src.entryPremium : worstLegEntryPremium,
+      peakPremium: worstLegIsTerminal ? src.peakPremium : worstLegPeakPremium,
+      troughPremium: worstLegIsTerminal ? src.troughPremium : worstLegTroughPremium,
       closedReason: compositeReason,
       reason: `${src.reason} · chain composite (${record.composite.gradedLegs} leg${record.composite.gradedLegs === 1 ? "" : "s"})`,
       ...(worstLegBundle
@@ -326,6 +402,8 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
               right: worstLegBundle.right,
               expiry: worstLegBundle.expiry,
               dte: worstLegBundle.dte,
+              mid: worstLegBundle.mid,
+              delta: worstLegBundle.delta,
             },
             occ: worstLegBundle.occ,
           }

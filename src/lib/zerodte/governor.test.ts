@@ -22,6 +22,7 @@ import {
   correlationGroupId,
   CONCENTRATION_POLICY_VERSION,
   GOVERNOR_MAX_CONCURRENT_PLANS,
+  GOVERNOR_MAX_CORRELATED_SAME_DIR,
   GOVERNOR_MAX_SESSION_STOPS,
   GOVERNOR_REENTRY_LOCK_MS,
   GOVERNOR_LOSS_HALT_COUNT,
@@ -290,6 +291,57 @@ test("SEV-3 (disabled by default): the cumulative session-P&L floor is measured 
 
 test("GOVERNOR_ENFORCE_LOSS_HALT defaults to false (the enforcement toggle for the disabled channel above)", () => {
   assert.equal(GOVERNOR_ENFORCE_LOSS_HALT, false);
+});
+
+// ── Live bug, 2026-10-20 (HOOD): realized_losers/session_pnl_pct must read the AS-MANAGED
+// outcome, not the raw mechanical `plan_pnl_pct` DB column. A real position can close via a
+// live-only ratchet-profit-floor exit (a genuine win, stamped on entry_context.exit) while the
+// naive mechanical bar-walk grade (plan_pnl_pct/plan_outcome — what a passive, unmanaged hold
+// would have done, walking the SAME bars past the real exit instant) independently shows the
+// position later traded through the −50% stop. Both numbers are legitimately different VIEWS
+// (record.ts's own documented mechanical-vs-managed duality, OUTCOME-GRADING-SPEC.md) — but
+// record.ts deliberately NEVER headlines the mechanical grade for exactly this reason, while
+// ledgerRowRealizedPnlPct (pre-fix) read plan_pnl_pct FIRST, so a real HOOD-shaped win (real
+// exit +3.35%, mechanical grade plan_pnl_pct=-50/plan_outcome="stopped") counted as a "realized
+// loser" and dragged session_pnl_pct down by 50 points for a trade that actually made money.
+test("SEV-3: realized_losers reads the AS-MANAGED exit, not the mechanical plan_pnl_pct — a real ratchet win is never counted as a realized loser", () => {
+  const realWin = row({
+    ticker: "HOOD",
+    status: "CLOSED",
+    plan_outcome: "stopped", // mechanical bar-walk grade: a naive hold would have been stopped out
+    plan_pnl_pct: -50, // ... at -50% -- but this is NOT what actually happened live
+    trough_premium: 2.0, // entry 4.0 -> trough proves the mechanical stop is real, for the UNMANAGED walk
+    entry_context: {
+      exit: { reason: "ratchet_profit_floor", pnl_pct: 3.35, peak_pnl_pct: 12.5 }, // the REAL, live-managed exit
+    },
+  });
+  const snap = deriveGovernorFromLedger([realWin]);
+  assert.equal(snap.realized_losers, 0, "the real exit was a win -- must not count as a realized loser");
+  assert.equal(snap.session_pnl_pct, 3.35, "session P&L must reflect the real exit, not the fictitious -50%");
+  assert.equal(governorLossHaltReason(snap), null, "a real win must never surface a loss-halt reason");
+});
+
+test("SEV-3: realized_losers still counts a GENUINE as-managed loss even when the mechanical grade disagrees in magnitude", () => {
+  const realLoss = row({
+    ticker: "KORU",
+    status: "CLOSED",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: -38.46, // mechanical grade: a bigger loss than what actually happened
+    trough_premium: 3.0,
+    entry_context: {
+      exit: { reason: "flat_theta_bleed", pnl_pct: -23.08, peak_pnl_pct: 0 }, // the real, smaller realized loss
+    },
+  });
+  const snap = deriveGovernorFromLedger([realLoss]);
+  assert.equal(snap.realized_losers, 1, "still a real loss -- must still count");
+  assert.equal(snap.session_pnl_pct, -23.08, "must use the REAL realized magnitude, not the mechanical one");
+});
+
+test("SEV-3: a row with no live-managed exit at all still falls back to the mechanical grade (legacy/no-engine-exit rows unaffected)", () => {
+  const legacyLoss = losingTimeStop("LEGACY", -30); // no entry_context.exit -- exactly the pre-existing fixture shape
+  const snap = deriveGovernorFromLedger([legacyLoss]);
+  assert.equal(snap.realized_losers, 1, "unchanged behavior for a row with no as-managed exit stamp");
+  assert.equal(snap.session_pnl_pct, -30);
 });
 
 test("SEV-3: a session of WINNERS does not halt (only losing exits count)", () => {
@@ -657,6 +709,38 @@ test("correlationGroupOf: index/ETF names resolve to their group; sector names r
   assert.notEqual(id, correlationGroupId(correlationGroupOf("NVDA")!), "NVDA is in a different group than SPY");
 });
 
+// BUG FIX (2026-10-20, live member book audit): CORRELATION_GROUPS had no crypto-miner group at
+// all despite GOVERNOR_ENFORCE_CONCENTRATION's own comment citing a "2026-07-30 crypto cluster
+// session" as the reason concentration enforcement shipped — live evidence the same day this gap
+// was found showed RIOT+HUT+BTDR all open long simultaneously, uncapped, none sharing a group.
+test("correlationGroupOf: bitcoin miners resolve to their own group, uncapped before this fix", () => {
+  assert.ok(correlationGroupOf("RIOT"), "RIOT must now resolve to a correlation group");
+  assert.ok(correlationGroupOf("HUT"));
+  assert.ok(correlationGroupOf("BTDR"));
+  assert.ok(correlationGroupOf("MARA"));
+  assert.ok(correlationGroupOf("CLSK"));
+  const id = correlationGroupId(correlationGroupOf("RIOT")!);
+  assert.equal(id, correlationGroupId(correlationGroupOf("HUT")!), "RIOT and HUT share the same group");
+  assert.equal(id, correlationGroupId(correlationGroupOf("BTDR")!), "RIOT and BTDR share the same group");
+  assert.notEqual(id, correlationGroupId(correlationGroupOf("SPY")!), "miners are a distinct group from the broad index/ETF group");
+  // COIN/MSTR/SBET are BTC-exposed but a structurally different business (exchange/treasury) —
+  // deliberately NOT folded into the miner group by this fix.
+  assert.equal(correlationGroupOf("COIN"), null, "exchanges are a separate, unscoped judgment call");
+  assert.equal(correlationGroupOf("MSTR"), null, "treasury-holding names are a separate, unscoped judgment call");
+});
+
+test("freezeConcentrationState: a THIRD same-direction crypto-miner candidate now trips the same-beta concentration count the broad-index group already enforces", () => {
+  const c = freezeConcentrationState({ ticker: "BTDR", direction: "long" }, [
+    { ticker: "RIOT", direction: "long" },
+    { ticker: "HUT", direction: "long" },
+  ]);
+  assert.equal(c.same_beta_open_count, 2, "RIOT and HUT both share BTDR's new miner group");
+  assert.ok(
+    c.same_beta_open_count >= GOVERNOR_MAX_CORRELATED_SAME_DIR,
+    "a third same-direction miner now meets/exceeds the governor's existing concentration cap"
+  );
+});
+
 // ── freezeConcentrationState: adversarial (opposed direction, dedup, rounding, single name) ──
 test("freezeConcentrationState: a SHORT candidate counts only the same-direction (short) existing book", () => {
   const c = freezeConcentrationState({ ticker: "QQQ", direction: "short" }, [
@@ -787,8 +871,11 @@ test("a CLOSED row the grader has not reached is still counted, from entry vs ma
 });
 
 test("a graded row still wins — the mark channel never overrides plan_pnl_pct", () => {
+  // plan_outcome and plan_pnl_pct are always written together by the real grading UPDATE
+  // (db.ts) -- pairing them here (not just plan_pnl_pct alone) is what makes this row actually
+  // GRADED per isGradedZeroDteRow, so asManagedPnlPct's mechanical fallback can see it.
   const snap = deriveGovernorFromLedger([
-    row({ status: "CLOSED", plan_pnl_pct: -12, entry_premium: 4, last_mark: 1, last_mark_at: "2026-08-11T15:00:00Z" }),
+    row({ status: "CLOSED", plan_outcome: "time_stop", plan_pnl_pct: -12, entry_premium: 4, last_mark: 1, last_mark_at: "2026-08-11T15:00:00Z" }),
   ]);
   assert.equal(snap.session_pnl_pct, -12);
 });

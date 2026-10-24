@@ -444,6 +444,40 @@ test("runSkipGrading: a DATE-column session_date (pg's real Date-at-UTC-midnight
   assert.equal(summary.ungradeable, 0);
 });
 
+// REGRESSION (2026-10-20, member audit directive: "preserve recoverable records before they
+// expire"). Live-measured 2026-10-20: FOUR real session days 9-23 days old each showed 2000/2000
+// rows with counterfactual:null — the old MAX_SKIP_GRADE_DAYS=14/MAX_ROWS_PER_RUN=200 caps meant
+// the grading cron's own query would never look back far enough, nor clear enough per run, to
+// reach them; `since` moves forward every day, so a row never graded within 14 days was never
+// graded at all. Pins the raised constants reaching the real SQL query, not silently re-clamped.
+test("runSkipGrading: the raised MAX_SKIP_GRADE_DAYS/MAX_ROWS_PER_RUN reach the real SQL query", async () => {
+  const { runSkipGrading, MAX_SKIP_GRADE_DAYS } = await mod();
+  assert.equal(MAX_SKIP_GRADE_DAYS, 35, "the days ceiling was raised from 14 — do not silently revert it");
+  dbState.queries = [];
+  dbState.selectRows = [];
+  await runSkipGrading({ nowMs: NOW }); // no explicit `days` — must default to the full raised ceiling
+
+  const selects = dbState.queries.filter((q) => /^\s*SELECT id, observed_at/.test(q.text));
+  assert.equal(selects.length, 1);
+  const [since, today, limit] = selects[0]!.values as [string, string, number];
+  assert.equal(today, "2026-07-10");
+  // 35 real days back from 2026-07-10 ET, computed the same way the module does (etYmd of
+  // nowMs - days*86_400_000) — asserted dynamically rather than hand-computed, so this can't drift
+  // from the module's own arithmetic by a timezone/off-by-one the hand-written literal would hide.
+  const expectedSince = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(
+    new Date(NOW - 35 * 24 * 60 * 60 * 1000)
+  );
+  assert.equal(since, expectedSince);
+  assert.equal(limit, 500, "MAX_ROWS_PER_RUN was raised from 200 — do not silently revert it");
+
+  // A caller-supplied `days` beyond the ceiling is still clamped — the raise widens the ceiling,
+  // it does not remove it (per-row Polygon fetch cost is still real and still bounded).
+  dbState.queries = [];
+  await runSkipGrading({ days: 999, nowMs: NOW });
+  const selects2 = dbState.queries.filter((q) => /^\s*SELECT id, observed_at/.test(q.text));
+  assert.equal(selects2[0]!.values![0], expectedSince, "days beyond MAX_SKIP_GRADE_DAYS must still clamp to it");
+});
+
 test("runSkipGrading / fetchGradedSkips fail soft — a dead DB is a structured summary / empty list, never a throw", async () => {
   const { runSkipGrading, fetchGradedSkips } = await mod();
   dbState.failAll = true;

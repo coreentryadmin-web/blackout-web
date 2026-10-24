@@ -129,6 +129,43 @@ test("pin records gate_promoted provenance for analytics joins", () => {
   assert.deepEqual(ctx.gate_warnings, ["band detached"]);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro MSTR score 52): this `tier` field
+// used to recompute assignNighthawkTier straight from `scored`, ignoring capGatePromotedConviction's
+// cap on the play's own `conviction` field entirely -- a gate-promoted play could pin
+// conviction:"B" (correctly capped, elsewhere) right next to tier:{tier:"A", factors:[...A-grade
+// rationale...]} in the SAME publish-context record, a direct self-contradiction a structured
+// reader (or Largo) would see verbatim.
+test("pin's tier field is capped in lockstep with conviction for a gate-promoted A-scoring play", () => {
+  // score 52 + 5 confirming signals lands in the merit engine's prime band with strong signal
+  // breadth -- an organic (non-promoted) play with this evidence earns tier "A" (confirmed by the
+  // sibling assignNighthawkTier/capGatePromotedTierAssignment unit tests in nighthawk-tiers.test.ts).
+  const aGradeScored = scored({ score: 52, confirming_signals: 5 });
+
+  const organic = buildNighthawkPublishContext({
+    play: play({ gate_promoted: false }),
+    scored: aGradeScored,
+    dossier: dossier(),
+    market: market(),
+    builtAt: "2026-07-14T21:35:00.000Z",
+  });
+  assert.equal(organic.tier?.tier, "A", "sanity: this evidence shape does earn A when not promoted");
+
+  const gatePromoted = buildNighthawkPublishContext({
+    play: {
+      ...play({ gate_promoted: true, gate_warnings: ["band detached"] }),
+    },
+    scored: aGradeScored,
+    dossier: dossier(),
+    market: market(),
+    builtAt: "2026-07-14T21:35:00.000Z",
+  });
+  assert.equal(gatePromoted.tier?.tier, "B", "gate-promoted A must be capped to B, matching conviction");
+  assert.ok(
+    gatePromoted.tier?.factors.some((f) => /gate.promoted/i.test(f.label)),
+    "the capped tier must disclose WHY, not silently read as an unexplained B"
+  );
+});
+
 test("pin captures spot/prior-close/geometry the builder saw — the AMD 7/07 shape becomes reconstructable", () => {
   const ctx = buildNighthawkPublishContext({
     play: play(),

@@ -135,6 +135,7 @@ export function ExitIntentCapture() {
             <input
               type="email"
               autoComplete="email"
+              aria-label="Email address"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}

@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import {
   READ_ONLY_TASKDEF_FIELDS,
   assertDeploymentConfigSane,
+  minDesiredCountForZeroLossRoll,
   buildImageUri,
   deriveSecretArn,
   dropReadOnlyTaskDefFields,
@@ -285,6 +286,40 @@ test("deploy workflow's WEB window survives assertDeploymentConfigSane across th
       },
     });
     assert.equal(r.ok, true, `workflow window ${web!.min}/${web!.max} FAILS at desiredCount=${desired}: ${r.failures.join(" ")}`);
+  }
+});
+
+test("minDesiredCountForZeroLossRoll: 100/120 needs at least 5 tasks (web autoscaling floor)", () => {
+  assert.equal(minDesiredCountForZeroLossRoll(100, 120), 5);
+  for (let desired = 5; desired <= 12; desired++) {
+    assert.equal(
+      assertDeploymentConfigSane({
+        serviceName: "blackout-production-web",
+        desiredCount: desired,
+        deploymentConfiguration: {
+          deploymentCircuitBreaker: CB_OK,
+          minimumHealthyPercent: 100,
+          maximumPercent: 120,
+        },
+      }).ok,
+      true,
+      `desired=${desired}`,
+    );
+  }
+  for (const desired of [2, 3, 4]) {
+    assert.equal(
+      assertDeploymentConfigSane({
+        serviceName: "blackout-production-web",
+        desiredCount: desired,
+        deploymentConfiguration: {
+          deploymentCircuitBreaker: CB_OK,
+          minimumHealthyPercent: 100,
+          maximumPercent: 120,
+        },
+      }).ok,
+      false,
+      `desired=${desired} must deadlock`,
+    );
   }
 });
 

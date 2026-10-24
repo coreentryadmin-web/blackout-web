@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Guards against AdminCronDashboard.tsx's client-side RUNNABLE_CRONS allowlist drifting from
+ * Guards AdminCronDashboard.tsx's client-side RUNNABLE_CRONS allowlist against drifting from
  * cron-dispatch.ts's CRON_DISPATCH. Found live 2026-10-12: RUNNABLE_CRONS still had the original
  * 3 entries from when the "Run now" button shipped, while CRON_DISPATCH had grown to 19 over many
  * follow-on PRs — 16 backend-supported, self-heal-safe crons never got a "Run now" button in the

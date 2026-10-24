@@ -482,6 +482,11 @@ export async function evaluateLedgerRowExit(
       exitMode,
       regime,
       trimsTaken,
+      // Only the LIVE flag means `trimsTaken` is a real persisted bank — deps.trimsTaken
+      // (test/AB override) always means it genuinely, same precedence as every other
+      // override above. See exit-engine.ts's trimsTakenIsGenuine doc for why this
+      // controls narrative text only, never the ladder math.
+      trimsTakenIsGenuine: deps.trimsTaken != null ? true : trimBankLive,
       gexQualityDegraded,
       entryGexWallsVetoRelieved: entryGexWallsVetoReliefOf(row.entry_context),
       troughPremium: row.trough_premium,

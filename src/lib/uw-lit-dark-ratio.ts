@@ -66,10 +66,20 @@ export function computeLitDarkRatio(resolvedDarkPool?: DarkPoolSnapshot | null):
     }
   }
   const total = litPremium + darkPremium;
+  // `updated_at` must reflect whichever source(s) actually fed this result fresh, not the raw WS
+  // stores unconditionally (BUG, 2026-10-21): when dark freshness comes from a caller-resolved
+  // snapshot (resolvedFresh) rather than the raw darkPoolStore, that store's own `updatedAt` can
+  // be dead at 0 forever (same dead-WS-lane shape the 2026-10-06 fix above already handles for
+  // premium/share) while the resolved snapshot's own freshest print age is known via
+  // `resolvedAgeMs`. Derive an `updatedAt` from that age instead of reading the dead store.
+  let updatedAt = 0;
+  if (litFresh) updatedAt = Math.max(updatedAt, litTradesStore.updatedAt);
+  if (darkStoreFresh) updatedAt = Math.max(updatedAt, darkPoolStore.updatedAt);
+  if (resolvedFresh && resolvedAgeMs != null) updatedAt = Math.max(updatedAt, now - resolvedAgeMs);
   return {
     lit_premium: litPremium,
     dark_premium: darkPremium,
     lit_share: total > 0 ? litPremium / total : null,
-    updated_at: Math.max(litTradesStore.updatedAt, darkPoolStore.updatedAt),
+    updated_at: updatedAt,
   };
 }

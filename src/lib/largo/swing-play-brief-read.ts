@@ -19,7 +19,15 @@ export type SwingPlayBriefLargoHints = {
 
 export async function swingPlayBriefForLargo(ticker: string, hints?: SwingPlayBriefLargoHints) {
   const t = (ticker ?? "").trim().toUpperCase();
-  if (!t) return { available: false, error: "ticker_required" };
+  if (!t) {
+    return {
+      available: false,
+      error: "ticker_required",
+      // Largo contract C3 (never signal absence without a reason) — see this file's own
+      // `unavailable` additions below for the full rationale.
+      unavailable: { reason: "ticker_required", what_is_missing: "a non-empty ticker", retryable: false },
+    };
+  }
   try {
     // playId is a required SwingBriefResolveHints field, but resolveSwingPlayForBrief prefers
     // `ticker` over the playId-parsed one whenever `ticker` is supplied (see its own comment:
@@ -34,15 +42,35 @@ export async function swingPlayBriefForLargo(ticker: string, hints?: SwingPlayBr
       right: hints?.right ?? null,
     });
     if (!ctx) {
+      const note = `No open, watch, or recently closed Swing position found for ${t}.`;
       return {
         available: false,
         error: "play_not_found",
-        note: `No open, watch, or recently closed Swing position found for ${t}.`,
+        note,
+        // BUG FIX (Ask Largo standing mandate, 2026-10-19): every top-level failure path here
+        // used to return a bare {available:false, ...} with no `reason`/`what_is_missing`/
+        // `retryable` — the exact C3 ambiguity LARGO-PRODUCT-CONTRACT.md says is a defect "even
+        // when every test passes," since a caller (or Largo itself) can't tell a transient
+        // provider hiccup (retry) from a ticker that genuinely has no brief (don't retry) from
+        // an actual bug. This case is the "genuinely doesn't exist" kind — not retryable.
+        unavailable: {
+          reason: note,
+          what_is_missing: "an open, watch, or recently closed Swing position for this ticker",
+          retryable: false,
+        },
       };
     }
     const brief = composeSwingPlayBrief(ctx);
     return roundFloats({ available: true, ...brief });
   } catch (e) {
-    return { available: false, error: e instanceof Error ? e.message : "swing_play_brief_failed" };
+    const message = e instanceof Error ? e.message : "swing_play_brief_failed";
+    return {
+      available: false,
+      error: message,
+      // An unhandled exception (DB hiccup, upstream timeout, a real bug) is the ambiguous case
+      // the Unavailable type exists to flag — default retryable:true, the safer signal for a
+      // caller that can't otherwise distinguish "transient, ask again" from "a real defect."
+      unavailable: { reason: message, what_is_missing: "a successfully composed play-brief", retryable: true },
+    };
   }
 }

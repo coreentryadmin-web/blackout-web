@@ -1834,6 +1834,27 @@ export function matchHotNews(
   return out;
 }
 
+/**
+ * Dedupe a list of price levels, keeping the first occurrence of each distinct level.
+ * `support_levels`/`resistance_levels` (technicals.ts) are a concatenation of THREE
+ * independently-sourced levels (swing/weekly/monthly) that can legitimately resolve to
+ * the same round-number price — without this, a coincidence survives an undeduplicated
+ * sort+slice(0,2) as two copies of one level, silently dropping the real second-best one
+ * (live repro 2026-10-21: QQQ/AMD key_supports both `[X, X]` instead of two distinct
+ * levels). Uses the same relative-tolerance convention as `swingLevels`'s own internal
+ * `dedup` in technicals.ts (0.5%, floor 0.01) rather than exact equality, since every
+ * source already rounds to 2dp but isn't guaranteed to collide byte-for-byte.
+ */
+function dedupeLevels(levels: number[]): number[] {
+  const out: number[] = [];
+  for (const lv of levels) {
+    if (!out.some((kept) => Math.abs(lv - kept) / Math.max(Math.abs(kept), 0.01) <= 0.005)) {
+      out.push(lv);
+    }
+  }
+  return out;
+}
+
 export function enrichSetup(
   setup: ZeroDteSetup,
   dossier: SetupDossierView | null,
@@ -1857,13 +1878,22 @@ export function enrichSetup(
 
   // Nearest structure around price: the 2 highest supports below, 2 lowest
   // resistances above — the levels that actually matter for a same-day trade.
+  // `support_levels`/`resistance_levels` (technicals.ts) concatenate THREE independent
+  // sources (swing, weekly, monthly) that can legitimately coincide at the same price
+  // (e.g. swing support and weekly support both sitting at the same round number) — so
+  // dedupe BEFORE the top-2 slice, or a coincidence silently shows one real level twice
+  // and drops the actual second-best level entirely.
   const keySupports =
     price != null
-      ? (tech?.support_levels ?? []).filter((l) => l > 0 && l < price).sort((a, b) => b - a).slice(0, 2)
+      ? dedupeLevels((tech?.support_levels ?? []).filter((l) => l > 0 && l < price))
+          .sort((a, b) => b - a)
+          .slice(0, 2)
       : [];
   const keyResistances =
     price != null
-      ? (tech?.resistance_levels ?? []).filter((l) => l > price).sort((a, b) => a - b).slice(0, 2)
+      ? dedupeLevels((tech?.resistance_levels ?? []).filter((l) => l > price))
+          .sort((a, b) => a - b)
+          .slice(0, 2)
       : [];
 
   // Defined-risk iron-condor geometry for the name (calibration-first evidence — see the

@@ -124,7 +124,13 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/platform-warm",
     schedule_label: "~Every 5 min (extended warm window)",
-    stale_after_min: 15,
+    // 10, not 15 — matches this cron's own OVERLAP_LOCK_TTL_SEC=600s (route.ts) and its true
+    // siblings in the same "~5min warm window" job family (desk-warm, meridian-warm, both 10).
+    // Was 15 here only; corrected 2026-10-20 (DISCOVERY-lane sweep) after finding route.ts's own
+    // comment claimed lockstep with "10" (copy-pasted from meridian-warm when #5984 added the
+    // overlap guard) while this registry entry still said 15 — a real invariant drift, same bug
+    // class as the vector-pick-sweep TTL silent-revert found the same cycle.
+    stale_after_min: 10,
     weekdays_only: true,
     market_hours_only: true,
     description:

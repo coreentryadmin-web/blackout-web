@@ -211,6 +211,29 @@ export type BieAnswerEnvelope = {
    */
   ticker_class?: "index" | "equity" | "etf" | null;
   /**
+   * Native per-product directional label (Largo C5 DIRECTION) — distinct from `bias` above, the
+   * cross-product-NORMALIZED bullish/bearish/neutral/mixed read every envelope already carries.
+   * Each product keeps its own native vocabulary here (e.g. swing play-brief's "LONG"/"SHORT")
+   * rather than being force-fit into `bias`'s coarser union — the Largo contract's own ADDITIVE
+   * rule (wrap a product's own data, never flatten it away — `product-read.ts`'s file header)
+   * applies to this envelope shape too, and is exactly what this field was added to restore: a
+   * CLOSED swing brief carried `bias` and a `headline` that NAMED the direction in prose, but no
+   * field a programmatic reader (Largo, an audit) could read structurally — see
+   * `docs/audit/findings-staging/2026-10-18-closed-brief-direction-thesis.md` and its 2026-10-19
+   * follow-up finding for the live repro. Absent when a composer has no directional claim to make
+   * (e.g. a pure concept/glossary answer) — never fabricated to fill the field.
+   */
+  direction?: string | null;
+  /**
+   * One normalized, single-sentence thesis claim (Largo C8 NARRATIVE) — distinct from the full
+   * per-section prose in `sections` and from the backward-compatible `markdown` string below. A
+   * consumer that wants "what is this answer's core claim, in one line" reads this instead of
+   * parsing `headline`/`sections` prose itself. Same gap/fix as `direction` immediately above —
+   * see that field's doc comment. Absent, never fabricated, when a composer has no single claim
+   * condensed enough to state honestly (e.g. a multi-topic concept answer).
+   */
+  thesis?: string | null;
+  /**
    * Origin of the brief (Largo C8 PROVENANCE).
    * Examples: "computed" (for deterministic engines), "model" (for Anthropic-generated reads).
    * Indicates the primary source/methodology of the answer.
