@@ -16,7 +16,6 @@ import {
   resolveImageTag,
   rewriteImage,
   stripStaleSecretRefs,
-  // @ts-expect-error — untyped .mjs sibling
 } from "./lib/taskdef-rewrite.mjs";
 
 // @ts-expect-error — untyped .mjs sibling
