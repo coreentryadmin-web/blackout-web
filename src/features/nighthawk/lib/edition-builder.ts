@@ -1387,6 +1387,7 @@ export async function buildEveningEdition(opts?: {
         ranked: synthesisRanked,
         dossiers,
         minPlays: effectiveMinPublishPlays(),
+        editionFor,
       });
       if (backfillNotes.length) {
         finalPlays = toppedUp.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
@@ -1501,6 +1502,7 @@ export async function buildEveningEdition(opts?: {
               ranked: synthesisRanked,
               dossiers,
               minPlays: effectiveMinPublishPlays(),
+              editionFor,
             });
             if (floorNotes.length) {
               finalPlays = toppedUp.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
@@ -1588,6 +1590,7 @@ export async function buildEveningEdition(opts?: {
           ranked: synthesisRanked,
           dossiers,
           minPlays: effectiveMinPublishPlays(),
+          editionFor,
         });
         if (floorNotes.length) {
           finalPlays = toppedUp.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
