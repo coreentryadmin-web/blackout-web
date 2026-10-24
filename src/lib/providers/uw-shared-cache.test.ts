@@ -114,3 +114,34 @@ test("uwCacheGet: caller A aborting while B is still attached does NOT settle A'
   assert.equal(await pendingA, "resolved-for-both", "A shares the SAME final outcome as B, since it's one coalesced request");
   assert.equal(await pendingB, "resolved-for-both");
 });
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-22, follow-up to unusual-whales.ts's 2026-10-14
+// `isDegenerateFlowAggregate` fix): `uwCacheGet`'s own write path (`if (redis && result != null)
+// { redis.setex(...) }`) is shape-agnostic by design — it writes whatever the fetcher RETURNS,
+// with no concept of "this particular result shouldn't be cached." `fetchUwFlow0dte`'s cold-start
+// branch (no per-process `lastGoodFlow0dteByTicker` value to substitute yet) relies on its fetcher
+// THROWING instead of returning, specifically so this write never happens — this is the mechanism
+// that fix depends on, proven here in isolation from `getUwCacheRedis()`'s real dynamic-import/
+// REDIS_URL resolution (not worth mocking — same convention as uw-rate-limiter.test.ts's own
+// acquireGlobalRedisSlot note) by passing a literal fake Redis client straight into `uwCacheGet`.
+test("uwCacheGet: a fetcher that THROWS (instead of returning a value) never reaches the Redis write — the rejection propagates, setex is never called", async () => {
+  const { uwCacheGet } = await import("./uw-shared-cache");
+  const key = `throw-skips-write-${Date.now()}`;
+  let setexCalls = 0;
+  const fakeRedis = {
+    get: async () => null,
+    setex: async () => {
+      setexCalls += 1;
+      return "OK" as const;
+    },
+    disconnect: () => {},
+  };
+
+  await assert.rejects(
+    uwCacheGet(fakeRedis, key, 60, async () => {
+      throw new Error("cold-start degenerate — must not be cached");
+    }),
+    /cold-start degenerate/
+  );
+  assert.equal(setexCalls, 0, "a fetcher rejection must never reach the Redis write — exactly the mechanism fetchUwFlow0dte's cold-start throw relies on");
+});

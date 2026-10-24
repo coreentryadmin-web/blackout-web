@@ -755,18 +755,51 @@ export function isDegenerateFlowAggregate(agg: { call_premium: number; put_premi
  *  run-tool) read from. */
 const lastGoodFlow0dteByTicker = new Map<string, { call_premium: number; put_premium: number; net: number }>();
 
+/**
+ * Thrown ONLY from `fetchUwFlow0dte`'s own `uwCacheGet` fetcher, for the genuine cold-start case
+ * (a degenerate poll with no per-process `lastGoodFlow0dteByTicker` value to substitute yet) — see
+ * that function's own doc comment for why this must never reach `uwCacheGet`'s normal return path.
+ */
+class ColdStartDegenerateFlow0dteError extends Error {
+  constructor(readonly fresh: { call_premium: number; put_premium: number; net: number }) {
+    super("cold-start degenerate 0DTE flow aggregate — honest zero, must not be cached");
+  }
+}
+
 export async function fetchUwFlow0dte(ticker = "SPX") {
   const redis = await getUwCacheRedis();
   const key = safeTicker(ticker);
-  return uwCacheGet(redis, UW_KEYS.flowPerStrike(ticker), UW_CACHE_TTL.flowPerStrike, async () => {
-    const data = await uwGetSafe<unknown>(`/api/stock/${key}/flow-per-strike-intraday`, {});
-    const fresh = aggregateFlowPerStrikeRows(extractRows(data));
-    if (!isDegenerateFlowAggregate(fresh)) {
-      lastGoodFlow0dteByTicker.set(key, fresh);
-      return fresh;
-    }
-    return lastGoodFlow0dteByTicker.get(key) ?? fresh;
-  });
+  try {
+    return await uwCacheGet(redis, UW_KEYS.flowPerStrike(ticker), UW_CACHE_TTL.flowPerStrike, async () => {
+      const data = await uwGetSafe<unknown>(`/api/stock/${key}/flow-per-strike-intraday`, {});
+      const fresh = aggregateFlowPerStrikeRows(extractRows(data));
+      if (!isDegenerateFlowAggregate(fresh)) {
+        lastGoodFlow0dteByTicker.set(key, fresh);
+        return fresh;
+      }
+      const lastGood = lastGoodFlow0dteByTicker.get(key);
+      if (lastGood) return lastGood;
+      // BUG FIX (Ask Largo standing mandate, 2026-10-22, follow-up to the 2026-10-14 fix above):
+      // the 2026-10-14 fix substitutes a per-process `lastGood` value before a degenerate result
+      // reaches `uwCacheGet`'s own write — but on a TRUE cold start (no `lastGood` yet anywhere in
+      // THIS process, e.g. right after a deploy restarts every ECS task, or simply the first poll
+      // this process has ever made for this ticker), there is nothing to substitute, and
+      // `uwCacheGet`'s wrapper (its own `result != null` write-skip, never shape-aware) would still
+      // write the bare zero to the SHARED Redis cache for the full 120s TTL — poisoning it for
+      // every OTHER replica too, including ones whose OWN in-process `lastGood` map already holds
+      // a perfectly real value, because a Redis cache HIT short-circuits before ever calling this
+      // fetcher (so their real value is never even consulted). Throwing here — instead of
+      // returning `fresh` — stops `uwCacheGet` from ever persisting it, mirroring the
+      // `uw-cache-refresh` cron's own write-skip discipline for the identical degenerate shape.
+      // Caught just below and converted back into the same honest zero for THIS ONE caller only;
+      // every other caller/replica is left free to populate the shared cache with a real value on
+      // its own next poll instead of being locked out for the TTL by this process's bad luck.
+      throw new ColdStartDegenerateFlow0dteError(fresh);
+    });
+  } catch (err) {
+    if (err instanceof ColdStartDegenerateFlow0dteError) return err.fresh;
+    throw err;
+  }
 }
 
 type MarketFlowRow = { raw: Record<string, unknown>; flow: MarketFlowAlert };
