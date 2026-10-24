@@ -205,7 +205,7 @@
     "@aws-sdk/client-secrets-manager": "^3.1152.0",
     "@clerk/nextjs": "^7.9.16",
     "@clerk/types": "^4.101.26",
-    "@sentry/nextjs": "^10.75.0",
+    "@sentry/nextjs": "^10.76.2",
     "@tanstack/react-virtual": "^3.14.20",
     "@types/web-push": "^3.6.4",
     "@whop/sdk": "0.0.42",
@@ -229,7 +229,8 @@
     "ws": "^8.22.0"
   },
   "overrides": {
-    "postcss": "$postcss"
+    "postcss": "$postcss",
+    "fast-uri": "^3.1.9"
   },
   "devDependencies": {
     "@types/node": "^26",
