@@ -392,6 +392,66 @@ test("tradeManagerNarrativeSection: LONG Break watch never cites a level ABOVE s
   assert.doesNotMatch(section!.body, /Break watch.*105\.00/i);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24): "Break watch" is the single most
+// safety-critical, reserved, always-shown line in the whole brief, yet it never stated how close
+// the cited risk currently is — even though `FocalLevel.distancePct` was already computed and
+// sitting right there on the matched level, unused. Pins the fix for the real (non-flip-fallback)
+// LONG case: spot 100, put wall 90 -> (90-100)/100 = -10% -> "10.0% away".
+test("tradeManagerNarrativeSection: LONG Break watch states how far the structural support level is from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        gexWalls: { callWalls: [], putWalls: [{ strike: 90, gex: 1 }] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch\*\* — lose \*\*90\.00\*\* \(10\.0% away\) on a closing basis/i);
+});
+
+// SHORT sibling: spot 100, GEX king 103 -> (103-100)/100 = +3% -> "3.0% away".
+test("tradeManagerNarrativeSection: SHORT Break watch states how far the structural resistance level is from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "SHORT" }),
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 103, isKing: true }] },
+        gexWalls: { callWalls: [{ strike: 120, gex: 1 }], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch\*\* — reclaim \*\*103\.00\*\* \(3\.0% away\)/i);
+});
+
+// The LONG gamma-flip FALLBACK (no put_wall/dark_pool/king candidate exists below spot at all)
+// must get the same treatment, not just the primary wall/king/dark-pool path — the flip's own
+// `FocalLevel` entry (collectFocalLevels always derives one when a flip is known) carries the
+// identical `distancePct` field. Spot 100, flip 95 -> (95-100)/100 = -5% -> "5.0% away".
+test("tradeManagerNarrativeSection: LONG Break watch states distance for the gamma-flip fallback too, not just the primary wall/king/dark-pool path (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        gammaFlip: 95,
+        gexWalls: { callWalls: [], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch\*\* — lose \*\*95\.00\*\* \(5\.0% away\) on a closing basis/i);
+});
+
 // FINDING (Ask Largo standing mandate, 2026-10-16, live repro SWING:GOOGL:58): an OPEN position's
 // real, committed structural stop (`play.invalidationUnderlyingPx`, pinned at commit from
 // `thesis_invalidation_px` — manage.ts's own PRECEDENCE RANK #1 exit trigger, "fires at ANY
