@@ -38,6 +38,30 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-24 — [FINDING, stale-OPEN correction, Meridian] "Estimate-revision timeline is momentary, not cumulative" (2026-08-18) is already fixed on `main` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **The stale entry** | `docs/audit/FINDINGS.md`'s 2026-08-18 entry, *"Estimate-revision timeline is momentary, not cumulative"*, is still marked **OPEN — queued as the remaining half of the estimate-revision work**. It names the exact fix needed: *"The emitted entries need persisting (the `meridian_report_snapshots` pattern) so the event page can show the full run-up to a print rather than a momentary sample."* That fix has been live on `main` for weeks. |
+| **Verification** | `git log --oneline -S "mergeEstimateRevisionTimeline" -- src/lib/meridian/meridian-benzinga-earnings.ts` → `e83b354d8 fix(meridian): persist estimate-revision timeline instead of one-shot emission (#3037)`. `src/lib/meridian/meridian-benzinga-analytics.ts` now exports `mergeEstimateRevisionTimeline(live, persisted, limit)`, whose own doc comment cites this exact FINDINGS.md entry by name ("measured 2026-08-18: 4 entries at 14:52 UTC, 0 at 14:57 UTC — see FINDINGS.md 'Estimate-revision timeline is momentary, not cumulative'") and explains the fix: dedupe key `(ticker, date, change_kind, last_updated)` merges this build's live diff with persisted history, live winning on collision. Confirmed end-to-end wired, not just defined: `meridian-benzinga-earnings.ts:12` imports `recordMeridianEstimateRevision`/`readRecentMeridianEstimateRevisions` from `@/lib/db` (the actual DB read/write pair, `db.ts:11506`), line 133 calls `readRecentMeridianEstimateRevisions(since, 24)`, and line 134 merges it with the live diff via `mergeEstimateRevisionTimeline(liveRevisions, persistedRevisions, 24)` before it reaches `estimate_revision_timeline`. |
+| **Why this was missed** | The fix (#3037) landed after the 2026-08-18 finding was written and nobody revisited the OPEN status once it shipped — same "drifts out of sync with reality after the underlying fix ships" pattern as this week's ECS-deploy-deadlock, Thermal/shared-cache, and mobile-sticky-CTA corrections. |
+| **What was NOT touched** | No code change — this is a documentation-only correction restamping the stale status. |
+| **Status** | FIXED — the underlying feature gap was already closed by #3037; this entry only corrects the stale OPEN status left over from before that fix landed. |
+
+## 2026-10-24 — [FINDING, stale-OPEN correction, Marketing/public site] "Mobile sticky CTA bar overlaps FAQ answer" (2026-08-23) is already fixed on `main` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **The stale entry** | `docs/audit/FINDINGS.md`'s 2026-08-23 entry, *"Home page's mobile sticky CTA bar physically overlaps and blocks taps on a FAQ answer once the reader has opened a couple of questions above it"*, is still marked **OPEN — routed to the owning lane (public/marketing site)**. It is not open — the fix has been live on `main` for weeks. |
+| **Verification** | `git log --oneline --diff-filter=A -- src/lib/marketing/mobile-sticky-cta.ts` → `5ea5ef133 fix(marketing): suppress mobile sticky CTA over FAQ taps (#2799) (#3007)`. The module exports `rectsOverlap`/`mobileStickyBlockedByContent`/`shouldShowMobileStickyCta` with its own `mobile-sticky-cta.test.ts`, and `src/components/landing/LandingRedesignFx.tsx:2314-2362` wires them in exactly as the original finding's "plausible fix shape" suggested: a `syncSticky()` helper reads the sticky bar's rect plus every `.sec-faq .faq-item` rect and the footer rect on each `IntersectionObserver` hero-exit event, each FAQ `toggle` event, and each scroll tick, and toggles the `.visible` class only when `shouldShowMobileStickyCta(heroPast, blocked)` is true — i.e. the bar is suppressed the instant it would overlap an expanded FAQ row or the footer, not just hidden once near the top of the page. The code comment at the wiring site even cites the original finding by number (`FINDINGS P2 #2799`), confirming this is the intentional fix, not a coincidental rewrite. |
+| **Why this was missed** | The fix (PR #2799, landed via #3007) shipped after the 2026-08-23 finding was written, and nobody revisited the OPEN status once it landed — the same "drifts out of sync with reality after the underlying fix ships" pattern this file's own ECS-deploy-deadlock and Thermal/shared-cache corrections already describe this week. |
+| **What was NOT touched** | No code change — this is a documentation-only correction restamping the stale status. |
+| **Status** | FIXED — the underlying bug was already resolved by #2799/#3007; this entry only corrects the stale OPEN status left over from before that fix landed. |
+
 ## Night Hawk Swings: half the "Trade manager read" level narrations never stated their distance from spot — FIXED
 
 > **kind:** `FINDING`
