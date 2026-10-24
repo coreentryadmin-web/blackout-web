@@ -63,12 +63,27 @@ export function ZeroDteCommandPanel({
   nowMs: number;
   sessionClosed?: boolean;
 }) {
-  const markFlash = useFlash(play.mark ?? play.pnlPct ?? null);
+  const isClosed = play.status === "CLOSED";
+  const realizedPct = isClosed ? closedRealizedPct(play) : null;
+  const capturePct = isClosed ? closedCapturePct(play) : null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-24): a CLOSED row's headline P&L must be the
+  // as-managed realized outcome (closedRealizedPct — exit stamp, then trim-scale as-managed blend,
+  // then raw live P&L as the last resort), not play.pnlPct directly. For a row that was STOPPED
+  // with trim tranches already armed, play.pnlPct still carries the raw mechanical −50% stop pin
+  // (the adapter sets it straight from the board's live_pnl_pct, which is never re-blended once the
+  // row closes) while the "Trade outcome" section a few lines below already shows the correct
+  // blended `realizedPct` for the SAME play — a direct within-panel contradiction. This value feeds
+  // both the verdict-band headline and managementFor()'s RATCHET-track marker position, so neither
+  // disagrees with the Trade-outcome number. Same bug class already fixed at the TerminalPlay
+  // render layer in TerminalPremiumPanels.tsx's TradeExcursionGraphic and PlayTerminal.tsx's
+  // PnlPanel/LegacyPnlPanel.
+  const pnlPct = isClosed ? realizedPct : play.pnlPct;
+  const markFlash = useFlash(play.mark ?? pnlPct ?? null);
   const premium = isZeroDtePremiumTerminal(play);
   const isCandidate = play.status === "WATCH" || play.status === "SKIP";
   const isCondor = play.isCondor === true;
   const isWorking = play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
-  const mgmt = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
+  const mgmt = managementFor(play.exitModel, play.status, pnlPct ?? null);
   const badge =
     (play.horizon === "ZERO_DTE" || play.horizon === "SWING") && play.recommendation
       ? play.recommendation
@@ -96,11 +111,7 @@ export function ZeroDteCommandPanel({
     return parts.join(" · ");
   })();
   const hasEntry = play.entry != null;
-  const pnlPct = play.pnlPct;
   const technicalsOpen = !isWorking;
-  const isClosed = play.status === "CLOSED";
-  const realizedPct = isClosed ? closedRealizedPct(play) : null;
-  const capturePct = isClosed ? closedCapturePct(play) : null;
 
   return (
     <div className="nh-deck-command-panel nh-deck-command-panel-v2 nh-deck-body">
