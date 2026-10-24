@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-24T12:07:56.510Z",
+  "updated_at": "2026-10-24T12:56:53.494Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "edb52605451a8d42d9c2afaeafbd58374f5a72b5",
+    "last_main_sha": "71e6fff4ec1010ca1032fd657763948da766d680",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-12T15:39:16.349Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-12T15:39:20.866Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-12T16:36:46.507Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-12T16:36:51.342Z",
       "type": "context_sync",
@@ -1271,9 +1253,57 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-24T12:56:40.382Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-24T12:56:48.179Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-24T12:56:53.494Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
+    {
+      "number": 6627,
+      "title": "chore(state): sync autopilot heartbeat + x-intel creative rotation state",
+      "branch": "chore/heartbeat-sync-20261024-1",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-24T12:55:54Z"
+    },
+    {
+      "number": 6626,
+      "title": "chore(nighthawk): remove unreachable LegacyPnlPanel dead code, correct stale comments",
+      "branch": "fix/legacy-pnlpanel-stock-move-fallback",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-24T12:53:47Z"
+    },
+    {
+      "number": 6625,
+      "title": "fix(nighthawk): ZeroDteCommandPanel verdict-band + RATCHET marker skip trim-scale blend for closed stopped rows",
+      "branch": "fix/zerodte-command-panel-verdict-band-trim-blend",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-24T12:50:14Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
