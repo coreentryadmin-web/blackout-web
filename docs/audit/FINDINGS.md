@@ -38,6 +38,269 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## zerodte-warm scan heartbeat `critical_stale` during RTH — scan hung past 10m watchdog
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6561 ("fix(cron): bound zerodte-warm scan and recover on stale heartbeat"); `awaitWithWarmDeadline` + wedged-lock-steal/heavy-slot-escalation confirmed live in the warm cron path. Restamped from a stale mid-flight status line that was never revisited after the merge. |
+|------------|-------------------|
+
+**Symptom:** Scheduled `Cron audit query` on `main` failed with `problems: zerodte-warm` while prod HTTP stayed healthy (`0301d512`, 2026-10-22 ~15:50Z).
+
+**Root cause:** `recordZeroDteScanTick("cron")` ran only after `scanZeroDteBoard()` returned. A child fetch with no deadline (or a wedged overlap/heavy-slot skip) could leave the heartbeat silent for >10m even though `cron_job_runs` logged ok/skipped.
+
+**Fix:**
+1. `awaitWithWarmDeadline` on the warm cron path (default 8m, `ZERODTE_SCAN_WARM_TIMEOUT_MS`) — on timeout/error, record heartbeat and skip persist for that cycle.
+2. Wedged-lock steal + heavy-slot escalation when heartbeat is `stale` (>5m) or `critical_stale` (>10m) during cash RTH (~5m earlier recovery).
+
+**Verify:** RTH `node scripts/cron-audit-query.mjs` green; CloudWatch `[zerodte-scan] … warm deadline` should be rare, not sustained `critical_stale`.
+
+## 2026-10-22 — [FINDING, P2 Night Hawk 0DTE, tooling] zerodte-warm heartbeat false RTH stale while overlap lock held — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6551 ("fix(cron-health): zerodte-warm in-flight scan grace for watchdog"); `buildCronHealthSnapshot`'s overlap-lock downgrade confirmed live in `src/lib/admin-cron-health.ts`. Restamped from a stale mid-flight status line that was never revisited after the merge. |
+|------------|-------------------|
+| **Severity** | P2 — cron audit CI / watchdog noise |
+| **Discovered** | 2026-10-22 Cron audit query run 39808664306 |
+
+### Symptom
+
+Scheduled `Cron audit query` failed: `problems: zerodte-warm` during RTH (recurring ~11:50 ET pattern).
+
+### Root cause
+
+`recordZeroDteScanTick` runs only after `scanZeroDteBoard()` returns. Multi-minute scans under RTH load can exceed the heartbeat's **10m `critical_stale`** threshold while `zerodte-warm:running` overlap lock is still held — watchdog treats that as discovery stalled even though work is in flight.
+
+### Fix
+
+`buildCronHealthSnapshot`: when overlap lock is present and heartbeat age &lt; 18m, downgrade to `warning` with `market_hours_stale: false` instead of RTH stale.
+
+### Evidence
+
+Run 39808664306 at 15:51 UTC; prior day same class after slot-starvation fix (#6494).
+
+## 2026-10-22 — [FINDING, P1 Night Hawk 0DTE] zerodte-warm skipped on cooldown/overlap while scan heartbeat critical_stale — FIXED
+
+> **kind:** `FINDING`
+
+### Summary
+
+Cron audit `query` failed on `0301d512` (2026-10-22 RTH) with `problems: zerodte-warm` despite #6546 heavy-slot escalation. Steal NX only clears locks for one replica; others could still idempotent-skip on cooldown or wedged overlap while `zerodte_scan_heartbeat` stayed `critical_stale`.
+
+### Fix
+
+When `scanHeartbeat.critical_stale` during cash RTH: bypass cooldown skip (delete key and continue) and clear/retry overlap lock before skip.
+
+### Status
+
+| **Status** | FIXED in fix/zerodte-warm-bypass-guards-on-critical-stale |
+
+## zerodte-warm — cooldown/overlap skips while scan heartbeat critical_stale — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6563 ("fix(cron): bypass zerodte-warm cooldown/overlap when scan heartbeat critical_stale"). Restamped from a stale mid-flight status line that was never revisited after the merge. |
+| --- | --- |
+
+**Symptom:** `Cron audit query` failed on `main` @ `0301d512` (2026-10-22 ~15:51 UTC, RTH) with `problems: zerodte-warm` despite #6546 heavy-slot escalation already on `main`.
+
+**Root cause:** When `zerodte_scan_heartbeat` was already `critical_stale`, routine `zerodte-warm` fires could still idempotent-skip on the 60s rerun cooldown or the overlap lock (`previous zerodte warm still in flight`) before dispatching `warmZeroDteBoard()`. Wedged-lock steal cleared keys only on the atomic steal winner; subsequent fires hit cooldown/overlap gates without bypass.
+
+**Fix:** During cash RTH, when heartbeat is `critical_stale`, bypass cooldown skip, retry overlap claim, and if still blocked force dispatch without deleting another replica's overlap lock (release only when this run acquired it).
+
+**Verify after deploy:** During RTH with forced stale heartbeat in staging, confirm cron fires log `background done` and cron audit query returns GREEN.
+
+## 2026-10-22 — [FINDING, P2 Night Hawk Swings, tooling] swing-discovery cron health — serving snapshot probe + self-heal dispatch — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6571 ("fix(cron-health): swing-discovery serving snapshot probe + self-heal dispatch"); `TARGET_FRESH_OVERRIDE_KEYS`/`probeSwingDiscoveryServingSnapshot` confirmed live in `src/lib/admin-cron-health.ts`/`src/lib/cron-writer-target-fresh.ts`. Restamped from a stale mid-flight status line that was never revisited after the merge. |
+|------------|-------------------|
+| **Severity** | P2 — Cron audit query / watchdog false positive vs real lane outage |
+| **Discovered** | 2026-10-22 Cron audit query runs 39812996844 / 39813170535 |
+
+### Symptom
+
+`Cron audit query` on `main` failed with `problems: swing-discovery` via HTTP watchdog fallback while other crons were healthy.
+
+### Root cause
+
+`swing-discovery` is phase-anchored: most EventBridge firings are intentional skips, but the **authoritative member artifact** is `swing:serving:latest:v1` (written only on a successful phase scan). The health board treated **`cron_job_runs` handshake age alone** as stale after 36h with no phase/serving cross-check — so a quiet `cron_job_runs` tail (e.g. last row ~36h old) pages even when the serving snapshot still reflects today's session, and conversely a genuinely dark lane (snapshot `sessionDay` lagging) must stay red.
+
+### Fix
+
+- `probeSwingDiscoveryServingSnapshot()` + `probeWriterTargetFresh("swing-discovery")` — downgrade handshake-only staleness when the serving snapshot matches the expected ET session/phases.
+- Register `swing-discovery` in `CRON_DISPATCH` (`force:1` ops recovery) and include stale `swing-discovery` in watchdog self-heal targets.
+
+### Verify
+
+After deploy: `node scripts/cron-audit-query.mjs` GREEN when serving snapshot is current; stays RED when `sessionDay` lags during RTH. Watchdog self-heal (when enabled) re-dispatches stale `swing-discovery`.
+
+## 2026-10-22 — [FINDING, P2 Night Hawk Swings, tooling] Cron audit RED — swing-discovery transient failed handshake — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6565 ("fix(cron-health): swing-discovery probe serving snapshot for cron audit"). Restamped from a stale mid-flight status line that was never revisited after the merge. |
+|------------|-------------------|
+
+### Symptom
+
+`main@e54926506` **Cron audit query** failed RTH with `problems: swing-discovery` (not zerodte-warm).
+
+### Root cause
+
+`swing-discovery` logs `cron_job_runs` only after the inline phase scan finishes. A timeout/throw marks the **last** row `failed` even when the Redis serving snapshot from an earlier successful phase remains fresh for members. The watchdog treats any `failed` row as a problem; unlike warmers, swing-discovery had no writer-target override.
+
+### Fix
+
+- Probe `readSwingServingSnapshot()` in `probeWriterTargetFresh("swing-discovery")` and add swing-discovery to `TARGET_FRESH_OVERRIDE_KEYS`, including `failed` handshakes when the snapshot is fresh.
+- Downgrade to `warning` when a live `running` phase claim is held (scan in flight).
+
+### Verify
+
+`npx tsx --test src/lib/cron-writer-target-fresh.test.ts src/lib/admin-cron-health.test.ts`; next `query` CI on `main` after deploy.
+
+## RTH open-check false RED — Postgres "Connection terminated unexpectedly" from CI — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6576 ("fix(ops): skip RTH-open Postgres checks on terminated CI connections"). Restamped from a stale mid-flight status line that was never revisited after the merge. |
+| --- | --- |
+
+**Symptom:** `RTH open check` workflow failed on `main` @ `ae00300c` (2026-10-22 ~18:10 UTC) after deploy validation passed: `Postgres RTH checks: Connection terminated unexpectedly`.
+
+**Root cause:** GitHub Actions can reach `DATABASE_PUBLIC_URL` briefly then lose the RDS/proxy session. `validate-deploy` already skipped `ECONNRESET` via `isPrivateDbUnreachableError`, but `rth-open-check` used the same classifier on `e.message` only — and **"Connection terminated unexpectedly"** was not in the pattern, so RTH-open hard-failed.
+
+**Fix:** Extend `isPrivateDbUnreachableError` for terminated-connection messages; use `describeConnectError` in `rth-open-check` catch.
+
+**Verify:** Re-run `RTH open check` workflow on `main` during RTH window — should skip Postgres writer checks with warning when CI cannot hold a connection, not exit 1.
+
+## 2026-10-22 — [FINDING, P2 CI/Ops] GHA RTH deep audit failed on transient socket-health 503 + Postgres ECONNRESET — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6595 ("fix(ops): harden GHA RTH deep audit against transient PG/socket blips"); `isTransientAuditPgError`/`probeOptionsSocketWithRetries` confirmed live in `scripts/gha-rth-audit.mjs`. Restamped from a stale mid-flight status line that was never revisited after the merge. |
+
+### What broke
+
+`RTH deep audit` on `7b0f46b` failed with `socket-health: HTTP 503` and `postgres: read ECONNRESET` while full-site deep audit and cron watchdog were green — edge/proxy blips, not platform outage.
+
+### Fix
+
+`scripts/gha-rth-audit.mjs`: socket-health uses `probeOptionsSocketWithRetries`; Postgres writer checks retry via `createAuditClient` + `isTransientAuditPgError`, then skip-with-warning when the audit host cannot hold a session.
+
+### Market-open validation
+
+Next scheduled `RTH deep audit` run should stay green unless sockets or crons are genuinely unhealthy.
+
+## RTH deep audit (`audit` job) failed on transient infra noise
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6592 ("fix(ops): harden gha-rth-audit Postgres and socket-health probes"). Restamped from a stale mid-flight status line that was never revisited after the merge. |
+|------------|-------------------|
+
+**Symptom:** `rth-deep-audit.yml` job `audit` red on `main` @ `7b0f46b0` — `socket-health: HTTP 503` and `postgres: read ECONNRESET`.
+
+**Root cause:** `gha-rth-audit.mjs` Postgres catch regex omitted `ECONNRESET` (unlike shared `isPrivateDbUnreachableError`). `socket-health` was a single fetch with no retry (unlike `rth-open-check` / `probeOptionsSocketWithRetries`).
+
+**Fix:** Align Postgres with `describeConnectError` + `isPrivateDbUnreachableError` + private VPC skip; probe socket-health with retries.
+
+## 2026-10-22 — [FINDING, P2 CI/Ops] RTH deep audit crash on full-site fetch ECONNRESET — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6606 ("fix(audit): retry transient fetch in full-site deep audit"). Restamped from a stale mid-flight status line that was never revisited after the merge. |
+|------------|-------------------|
+| **Severity** | P2 — `RTH deep audit` / `audit` check noise |
+| **Discovered** | 2026-10-22 run 39839665457 (post-#6592) |
+
+### Symptom
+
+`gha-rth-audit` reported `FAILED (1): Full-site deep audit` because `full-site-deep-audit.mjs` threw uncaught `TypeError: fetch failed` / `read ECONNRESET` in `getJson` during `auditCrons()`. Postgres and socket-health sections already passed/skipped.
+
+### Root cause
+
+`getJson` had no retry; a single transient GHA→origin reset aborted the entire script (non-zero exit) even though only P1/P2 issues are meant to fail the numeric audit.
+
+### Fix
+
+Retry transient fetch errors in `getJson`; on exhaustion record a P2 network issue and return `{ status: 0 }` instead of throwing.
+
+### Verify
+
+Re-run `RTH deep audit` on GHA; isolated ECONNRESET during cron plane fetch should not crash the harness.
+
+## zerodte-warm — heavy-cron pool starvation during critical scanner stall — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6546 ("fix(cron): escalate zerodte-warm past heavy-cron cap when scan heartbeat critical_stale"). Restamped from a stale mid-flight status line that was never revisited after the merge. |
+| --- | --- |
+
+**Symptom:** `Cron audit query` failed on `main` three times in ~25 minutes (2026-10-21 ~15:55–16:19 UTC) with `problems: zerodte-warm` via the HTTP watchdog fallback.
+
+**Root cause:** After wedged-lock steal (#5213) cleared cooldown/overlap, `acquireHeavyCronSlot` still returned `null` when both shared pool slots were held by long-running Vector crons. Each `zerodte-warm` fire logged `heavy-cron concurrency slot unavailable (idempotent skip)` while `zerodte_scan_heartbeat` stayed `critical_stale`.
+
+**Fix:** When `scanHeartbeat.critical_stale` during cash RTH, escalate past the shared heavy-cron cap (noop slot handle) so the scanner tick can run; routine contention still idempotent-skips.
+
+**Verify after deploy:** During RTH, confirm `zerodte-warm` completes `background done` and cron audit query GREEN after a period when Vector heavy crons are both in flight.
+
+## 2026-10-21 — [FINDING, P3 SEO/tooling] SEO deploy-smoke flake — fetchAuthed lacked curlRetry — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+### Symptom
+
+Deploy smoke on `aaf1cf0f` failed `validate:seo`: `admin /dashboard: HTTP 0` with `curl: (56) Recv failure: Connection reset by peer` during ECS rollout. Prod recovered immediately (transient).
+
+### Root cause
+
+`fetchPublic` already used `curlRetry`; `fetchAuthed` still called bare `curl()`, so authed dashboard probe could not retry the same transient edge reset.
+
+### Fix
+
+Wire `fetchAuthed` through `curlRetry` + regression test.
+
+## 2026-10-20 — [FINDING, P2 Deploy/Infra] ECR deploy timeout — web desiredCount below autoscaling floor deadlocks roll — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6496 ("fix(ops): soft-fail AWS configure on SPX backlog agent workflow"); `minDesiredCountForZeroLossRoll` confirmed live in `scripts/deploy/lib/taskdef-rewrite.mjs`/`scripts/deploy/roll-ecs.test.ts`. Restamped from a stale mid-flight status line that was never revisited after the merge. |
+|------------|-------------------|
+
+### Symptom
+
+`main@4e7f2eb22` (and several prior merges 2026-10-20): **build-and-push** failed after 36 min with `PRIMARY: running=0/1, rollout=IN_PROGRESS` → `Timed out waiting for PRIMARY deployment to stabilize.` Prod `/api/health` stayed 200 on old tasks; new SHA never completed roll.
+
+### Root cause
+
+`blackout-production-web` was at **desiredCount=2** while the workflow applies `minimumHealthyPercent=100,maximumPercent=120`. For desired&lt;5, `floor(desired × 120/100) < desired + 1` — no spare slot for a replacement task, so the PRIMARY deployment never progresses (same arithmetic documented in `ecr-push-production.yml` and `assertDeploymentConfigSane`).
+
+### Fix
+
+Before `update-service --force-new-deployment`, if `desiredCount < 5`, restore the autoscaling floor (`update-service --desired-count 5`) and wait for `runningCount >= 5`. Pure helper `minDesiredCountForZeroLossRoll` + tests in `roll-ecs.test.ts`.
+
+### Verify
+
+Next ECR push on main after merge should complete roll when fleet had been scaled down; if new tasks still fail ALB health, circuit breaker should flip (separate incident).
+
+## 2026-10-18 — [FINDING, P3 CI/Ops] SPX platform backlog agent — AWS configure hard-fail paints main red — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6496 ("fix(ops): soft-fail AWS configure on SPX backlog agent workflow"); `continue-on-error: true` confirmed live in `.github/workflows/spx-platform-backlog-agent.yml`. Restamped from a stale mid-flight status line that was never revisited after the merge. |
+|------------|-------------------|
+
+### Symptom
+
+On `main@baec3f755`, branch CI reported **2 failures**: `smoke` (origin `/api/health` down) and **`collect-and-dispatch`** from workflow **SPX platform backlog agent** (not Ops auto-fix). Run `39155017489`: step **Configure AWS credentials** failed with invalid security token; job exited before the ops deferral probe could run.
+
+### Root cause
+
+`ops-auto-fix.yml` already uses `continue-on-error` on AWS configure (#6214) plus GitHub secret fallbacks for `ops:collect`. `spx-platform-backlog-agent.yml` still hard-failed the homonymous job when IAM-invalidated GHA AWS keys rejected configure — a duplicate check name on `main` made the outage look like a second automation regression.
+
+### Fix
+
+Mirror ops-auto-fix: `continue-on-error` + warning step; pass `CRON_SECRET` / `DATABASE_PUBLIC_URL` / `AWS_REGION` into the deferral `ops-collect` step so prod P0 items are detected without Secrets Manager.
+
+### Verify
+
+- After merge: next **SPX platform backlog agent** run should stay **green** (or defer with exit 0) when AWS configure fails but GitHub fallbacks work.
+- `smoke` remains red until origin health recovers — intentional.
+
 ## 2026-10-21 — [FINDING, P2 Ask Largo x Night Hawk Swings / Largo product contract] RESEARCH/SKIP swing candidates render "HOLD" in the "Trade manager read" narrative's "Entry stance" and "Live read" bullets — deferred follow-up to #6532 — FIXED
 
 > **kind:** `FINDING`
