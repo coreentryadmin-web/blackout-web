@@ -68,6 +68,18 @@ describe("spx-desk-intel formatters", () => {
     assert.ok(line?.includes("put wall"));
   });
 
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repros AAPL/META/AMZN/MSFT): the prior
+  // version of this test only checked substring presence, never the γflip clause's own sign —
+  // which is exactly how the fixture's own backwards sign (flip BELOW spot but a POSITIVE
+  // distance_to_flip_pct) went uncaught. Flip here (5890) is 10pts BELOW spot (5900), so the
+  // correctly-signed distance must be NEGATIVE, matching the same "level minus spot" convention
+  // the call/put wall clauses a few words earlier in the identical line already use.
+  test("wallsBriefLine's γflip distance sign matches the call/put wall clauses' convention (level minus spot)", () => {
+    const line = wallsBriefLine({ positioning: fakePositioning() }, 5900);
+    assert.ok(line);
+    assert.match(line!, /\{\{-0\.2\}\}% from γflip/, `flip (5890) is below spot (5900), distance must be negative; got: ${line}`);
+  });
+
   test("signalsBriefLine exposes grade score and factors", () => {
     const conf: SpxConfluence = {
       score: 72,

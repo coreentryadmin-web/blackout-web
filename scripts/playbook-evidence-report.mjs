@@ -17,7 +17,7 @@ import {
   buildPlaybookPromotionReport,
 } from "../src/features/spx/lib/playbook-promotion-sample.ts";
 
-function requireDbInCi(): boolean {
+function requireDbInCi() {
   return (
     process.env.PLAYBOOK_EVIDENCE_REQUIRE_DB === "1" ||
     Boolean(process.env.STAGING_SECRET_NAME?.trim()) ||

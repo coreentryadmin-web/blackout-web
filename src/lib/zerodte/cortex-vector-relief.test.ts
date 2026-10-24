@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CortexVerdict } from "@/lib/nighthawk/cortex";
-import { applyCortexCommitRelief, vectorExemptsCortexBlocks } from "./cortex-vector-relief";
+import { applyCortexCommitRelief, gexWallsVetoWasRelieved, vectorExemptsCortexBlocks } from "./cortex-vector-relief";
 import { cortexGateBlocks } from "./cortex-gate";
 import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
 
@@ -123,4 +123,74 @@ test("applyCortexCommitRelief: BREAKOUT 85+ amplify strips gex-walls without Vec
   const relieved = applyCortexCommitRelief(blocked, "long", 88, null, breakoutCtx);
   assert.equal(relieved.decision, "PASS");
   if (prev !== undefined) process.env.ZERODTE_AMPLIFY_CORTEX_RELIEF = prev;
+});
+
+// Live-monitor finding, 2026-09-09 (SHOP/MSTR): a play committed via relief carries a
+// frozen `cortex` blob whose narrative still says "BLOCKED by 1 veto" / lists the
+// "VETO [gex-walls] ..." line (narrative is composed BEFORE relief strips the vetoes
+// array — compose.ts never regenerates it), while `decision` is PASS and `vetoes` is
+// empty. gexWallsVetoWasRelieved() must detect exactly this post-relief shape so the
+// exit engine can be told not to immediately re-veto on the fact relief overrode.
+test("gexWallsVetoWasRelieved: detects the post-relief narrative/vetoes mismatch", () => {
+  const prev = process.env.ZERODTE_VECTOR_CORTEX_RELIEF;
+  delete process.env.ZERODTE_VECTOR_CORTEX_RELIEF;
+  const blocked = {
+    decision: "VETO" as const,
+    abstained: false as const,
+    verdict: verdict({
+      vetoes: [{ source: "gex-walls", detail: "short target path crosses dominant wall", weight: 1, stance: "vetoes", halfLifeSec: 900, asOf: AS_OF }],
+      score: 0.03,
+      narrative: [
+        "CORTEX SHOP short: BLOCKED by 1 veto (net score +0.03), conviction C.",
+        "VETO [gex-walls] short target path crosses dominant wall",
+      ],
+    }),
+  };
+  assert.equal(gexWallsVetoWasRelieved(blocked), false, "not relieved yet — still carries the veto");
+  const relieved = applyCortexCommitRelief(blocked, "long", 72, pulse(), amplifyCtx);
+  assert.equal(relieved.decision, "PASS", "sanity: relief actually stripped the veto for this fixture");
+  assert.equal(gexWallsVetoWasRelieved(relieved), true, "narrative still says BLOCKED but vetoes[] is now empty");
+  if (prev !== undefined) process.env.ZERODTE_VECTOR_CORTEX_RELIEF = prev;
+});
+
+test("gexWallsVetoWasRelieved: false when the veto never fired (no narrative line to strand)", () => {
+  const clean = {
+    decision: "PASS" as const,
+    abstained: false as const,
+    verdict: verdict({ narrative: ["CORTEX SHOP short: net score +0.40, conviction B."] }),
+  };
+  assert.equal(gexWallsVetoWasRelieved(clean), false);
+});
+
+test("gexWallsVetoWasRelieved: false when the veto is still active (not relieved)", () => {
+  const stillVetoed = {
+    decision: "VETO" as const,
+    abstained: false as const,
+    verdict: verdict({
+      vetoes: [{ source: "gex-walls", detail: "wall in path", weight: 1, stance: "vetoes", halfLifeSec: 900, asOf: AS_OF }],
+      narrative: ["CORTEX SHOP short: BLOCKED by 1 veto (net score +0.03), conviction C.", "VETO [gex-walls] wall in path"],
+    }),
+  };
+  assert.equal(gexWallsVetoWasRelieved(stillVetoed), false);
+});
+
+test("gexWallsVetoWasRelieved: false for an abstained assessment", () => {
+  assert.equal(gexWallsVetoWasRelieved({ decision: "VETO_BLIND", abstained: true, reason: "no data" }), false);
+});
+
+// Live crash found via scan.test.ts's full-suite run: a hand-built PASS verdict with
+// `vetoes: []` but no `narrative` field at all (a valid partial fixture — narrative is
+// only load-bearing for THIS detector, nothing else in cortex-gate.ts's contract
+// requires it) must never throw; it must read as "not relieved" like any other
+// missing-evidence case.
+test("gexWallsVetoWasRelieved: false (never throws) when narrative is absent from the verdict", () => {
+  const noNarrative = {
+    decision: "PASS" as const,
+    abstained: false as const,
+    verdict: verdict({ vetoes: [] }),
+  };
+  // The `verdict()` fixture defaults narrative to [], so force the omission directly —
+  // this is what a hand-built partial fixture elsewhere in the codebase looks like.
+  delete (noNarrative.verdict as { narrative?: string[] }).narrative;
+  assert.equal(gexWallsVetoWasRelieved(noNarrative), false);
 });

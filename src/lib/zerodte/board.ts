@@ -521,11 +521,24 @@ export function mergeSameTickerDiscovery(
         masked_origin: [...kept.discovery_origin],
       };
     }
+    // The LOSING kept setup can still carry real FLOW evidence (gross_premium/flow_quality) that
+    // the winning incoming setup lacks (a BREAKOUT/PIN setup carries gross_premium=0 by
+    // construction). Without this, that evidence is discarded entirely — only the losing origin's
+    // direction+score survive via origin_contributions — and `railHitsFromLegacySetup`'s
+    // scoreFlowRail gate then sees a zeroed gross_premium and silently suppresses the FLOW hit,
+    // so a real, recorded disagreement (origin_maps.disagreeing_origins) never reaches
+    // disagreeing_rails (FINDINGS 2026-10-16). No-op when incoming already has FLOW evidence of
+    // its own, or kept never carried any.
+    stampFlowEvidenceFromIncoming(incoming, kept);
     return incoming;
   }
   // Kept wins (higher or equal score). Stamp conflict; no corroboration boost on a fight.
   noteOriginDirectionConflict(kept, incoming);
   kept.discovery_origin = unionDiscoveryOrigins(kept.discovery_origin, incoming.discovery_origin);
+  // Mirror of the branch above: the LOSING incoming setup can carry real FLOW evidence that the
+  // winning kept setup lacks. Same rationale — preserve it so the disagreement is actually
+  // visible downstream instead of being gated out by a zeroed gross_premium.
+  stampFlowEvidenceFromIncoming(kept, incoming);
   return kept;
 }
 
@@ -744,11 +757,29 @@ export type ZeroDteSetup = {
    * gate stack still judges `score`. Null only if the tape produced no usable prints.
    */
   flow_quality: FlowQuality | null;
+  /**
+   * Real intraday day % change magnitude (e.g. 8.2 for an 8.2% move), from the SAME grouped-daily
+   * bar already fetched for the whole-market BREAKOUT/BREAKDOWN screen (`mover.gain × 100` —
+   * screenBreakoutMovers/screenBreakdownMovers, candidates.ts). Populated ONLY by
+   * buildBreakoutSetup (breakout-source.ts) for BREAKOUT-origin setups: FLOW/PIN-origin setups
+   * have no equivalent already-fetched change% source (their dossier's `tech` carries
+   * rel_volume, not a day-change field), and fabricating one there would violate the
+   * never-invent-an-input discipline (docs/audit/LARGO-PRODUCT-CONTRACT.md). Feeds
+   * scoreMomentumRail's `change_pct` input (rails/momentum.ts, wired via
+   * rails/legacy-bridge.ts's `railHitsFromLegacySetup`) — see that rail's own comment for why
+   * this field existing matters: without it, a BREAKOUT-origin setup's MOMENTUM rail score was
+   * structurally capped near 62 (no rel_volume either, since enrichSetup runs with a null
+   * dossier for this origin — breakout-source.ts's own comment), which tripped
+   * archetype-gates.ts's `momentum_abs_floor` (>=60) on real, tradeable breakout continuations
+   * that simply lacked a corroborating input the origin was never given a chance to supply.
+   * null/absent for every other origin — never fabricated.
+   */
+  change_pct?: number | null;
 };
 
 // Exported so the audit trail (buildZeroDteAuditRow below) can cite the actual
 // live gate thresholds instead of a second, driftable copy of these numbers.
-export const SETUP_MIN_GROSS = 200_000; // lowered 750K→300K→200K — quiet tapes were starving FLOW; $200K still filters noise while catching mid-cap institutional prints
+export const SETUP_MIN_GROSS = 150_000; // 2026-09-08: lowered 750K→300K→200K→150K (operator directive — whole-market volume too thin, "only 1 play on 0DTE all session"); still well above noise-floor prints, admits more mid-cap FLOW candidates into scoring
 export const SETUP_MIN_DOMINANCE = 0.55; // lowered from 0.65 — still requires directional lean but lets mixed-tape movers through
 // Day Trade board admission ceiling — re-exported under its historical name (SETUP_MAX_DTE) so
 // existing call sites (:828, :853 below) need no edit. Sourced from horizons.ts's ZERODTE_MAX_DTE,
@@ -774,16 +805,21 @@ export const SETUP_MAX_ITM_PCT = 2;
  *  (typ. 2–5% OTM) is untouched — this only rejects the tail. Env-overridable via
  *  ZERODTE_SETUP_MAX_OTM_PCT (a number; invalid/absent → the 12 default). Set very high
  *  (e.g. 999) to effectively disable. */
+// 2026-09-08: default widened 12→16 (operator directive, volume complaint) — still a tail
+// cap, not a floor with negative-EV evidence attached (unlike G-3/G-17's score bands), so
+// widening it admits more genuine momentum entries in the 12-16% OTM range without reopening
+// a band this desk has already measured losing.
 export const SETUP_MAX_OTM_PCT = ((): number => {
   const raw = Number(process.env.ZERODTE_SETUP_MAX_OTM_PCT);
-  return Number.isFinite(raw) && raw > 0 ? raw : 12;
+  return Number.isFinite(raw) && raw > 0 ? raw : 16;
 })();
 
 /** Relaxed far-OTM cap for Vector-confirmed runner/winner attaches (100–500% geometry).
- *  Default 20% — wider than SETUP_MAX_OTM_PCT (12) but still blocks egregious lotto tails. */
+ *  Default 26% (2026-09-08, was 20) — wider than SETUP_MAX_OTM_PCT (16) but still blocks
+ *  egregious lotto tails. */
 export const RUNNER_SETUP_MAX_OTM_PCT = ((): number => {
   const raw = Number(process.env.ZERODTE_RUNNER_MAX_OTM_PCT);
-  return Number.isFinite(raw) && raw > SETUP_MAX_OTM_PCT ? raw : 20;
+  return Number.isFinite(raw) && raw > SETUP_MAX_OTM_PCT ? raw : 26;
 })();
 
 /** How much of a print's premium counts DIRECTIONALLY, by aggressor side.
@@ -853,13 +889,25 @@ export type ZeroDteGateFailure =
   // didn't ticker X commit" is one queryable surface for both gate families.
   | "tape_alignment" // G-1: direction fights the SPY session bias
   | "no_market_bias" // G-1 fail-closed: bias read missing or stale
+  | "input_desync" // G-20: option quote and SPY tape bias individually fresh but desynced from each other (>5min apart) — index/ETF only (mirrors G-1's scoping)
+  | "input_desync_underlying" // G-20 broadening (2026-09-09, item 10): option quote and its OWN underlying quote individually fresh but desynced from each other — EVERY directional setup (index/ETF and single-name alike), distinct from input_desync above (which compares against the SPY tape bias, not the name's own underlying)
+  // ── Live-commit-path precondition (item 9, 2026-09-09) — NOT produced by
+  // evaluateZeroDteGates itself. G-9/G-12/both G-20 legs above correctly FAIL OPEN inside
+  // the pure gate library when their input is simply missing (so a generic/test/fixture
+  // caller isn't penalized for data it never had) — this code is pushed ONLY by the live-
+  // commit call site (scan.ts's persistZeroDteScan, via gates.ts's
+  // liveCommitPreconditionsUnmet/liveCommitPreconditionBlock) when a REAL fresh commit's
+  // gate verdict was COMMIT but one of those specific reads was genuinely absent for THIS
+  // setup — an unverified pass, not a verified-clean one.
+  | "live_commit_precondition_unmet"
   | "opening_window" // G-2: no new commits before 10:00 ET
   | "late_afternoon" // G-14: no new directional commits after 15:30 ET
   | "horizon_weekly_fallback" // G-15: WEEKLY_FALLBACK excluded — not same-day gradable on 0DTE ledger
   | "score_floor" // G-3: post-edge-layer score below origin-aware floor (65 FLOW / looser BREAKOUT·PIN)
-  | "score_top_band" // G-19: F-5 top-band inversion (85+ WR collapse)
+  | "score_top_band" // G-19: F-5 top-band inversion (85+ WR collapse) — DOWNGRADED 2026-09-09 to non-blocking telemetry (ZeroDteGateVerdict.topBandInversionFlag); this code is retained as a historical/type value only and is never pushed by evaluateZeroDteGates anymore
   | "early_window_prime_score" // G-18: sub-prime scores in early window
-  | "single_rail_corroboration" // G-17: the 65-74 band needs the prime floor (≥75), any origin combo
+  | "single_rail_corroboration" // G-17 (RESTRUCTURED 2026-09-09): the 65-69 sub-band — rejected outright, no admission path
+  | "conditional_band_unmet" // G-17 (RESTRUCTURED 2026-09-09): the 70-74 sub-band — CONDITIONAL admission (confluence>=2 + clean tape/VIX/execution) not met
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open
   | "governor_session_stops" // G-5: 3 stops today — halted for the session
@@ -878,6 +926,10 @@ export type ZeroDteGateFailure =
   // ── WS-04 malformed-quote validation (fail-closed; additive to plan_illiquid/plan_no_quote) ──
   | "plan_quote_invalid" // G-9: malformed book — zero/null bid, crossed, locked, mark out of band, or $-spread over cap
   | "plan_quote_stale" // G-9: quote age beyond the freshness bound (only when a quote timestamp is available)
+  // ── G-21 contract liquidity/depth (2026-09-09 split OUT of G-9's plan_quote_invalid) —
+  // a well-formed, in-band quote can still be too THIN to fill; distinct from quote integrity.
+  | "plan_thin_size" // G-21: resting bid/ask size below the floor (only when the provider reports size)
+  | "plan_no_volume_or_oi" // G-21: BOTH day volume and open interest read zero (only when both were supplied)
   | "intraday_conflict" // G-10: VWAP + 5m trend oppose the play direction
   | "halted" // G-11: underlying trading halt
   | "earnings" // G-11: reports today/next session — different trade than 0DTE scalp
@@ -913,6 +965,14 @@ export type ZeroDteGateFailure =
   | "condor_macro_block" // block a condor HARDER in a macro window (a CPI/FOMC breakout is its worst case)
   | "condor_range_break" // spot has approached/breached a short strike — the defended range is failing
   | "flow_accumulation_conflict" // G-13: multi-day flow direction opposes the setup (aligned === false)
+  // G-23: qualification-to-commit price dislocation / circuit-breaker — the underlying moved an
+  // abnormal amount in an abnormally short window since this setup passed the evidence gates
+  // (distinct from G-8 no-chase, which is anchored to the flow PRINT's fill, not the qualification
+  // moment, and never re-checks the underlying itself; distinct from the moneyness re-check, which
+  // only re-tests final strike distance, not the SPEED of the move that produced it), OR the
+  // contract's live quote is crossed/locked at commit time. See qualificationDislocationGateBlocks
+  // (gates.ts) for the full doc.
+  | "qualification_dislocation"
   | "regime_blind" // Regime Plane: VIX/macro/halt/GEX blind — no fresh commits
   | "governor_concentration" // Q9 enforced: too many correlated same-direction opens
   | "governor_premium_budget" // Phase 2c: aggregate entry premium budget exceeded
@@ -924,6 +984,13 @@ export type ZeroDteGateFailure =
 export type ZeroDteGateRejection = {
   ticker: string;
   gate_failed: ZeroDteGateFailure;
+  /** EVERY gate code that failed this evaluation (gate_failed is only blocks[0] — the
+   *  first/primary code). Added 2026-09-09: prerequisite for gate-ablation/marginal-value
+   *  analysis, which needs to know the FULL set of gates a rejected candidate failed, not
+   *  just the one that happened to be checked first. Null/empty for the four evidence
+   *  gates (board.ts's own min_gross/min_aggr_share/min_dominance/moneyness checks, which
+   *  predate the hard-gate stack and only ever produce one code per candidate anyway). */
+  blocks?: ZeroDteGateFailure[] | null;
   /** Human-readable block sentence (hard-gate rows; the UI's SKIP card copy). Null for
    *  the four evidence gates, whose numeric columns already carry the whole story. */
   reason?: string | null;
@@ -1417,7 +1484,7 @@ import type { ContractPlan } from "./plan";
 import type { IntradayRead } from "./intraday";
 // Type-only (erased at compile time — no runtime cycle with ./gates, which imports
 // only types back from this module).
-import type { ZeroDteGateVerdict } from "./gates";
+import type { ZeroDteGateVerdict, LiveCommitPreconditionGap } from "./gates";
 // Type-only for the same reason: ./cortex-gate's runtime deps (the Cortex barrel)
 // never enter this module's load graph.
 import type { ZeroDteCortexAssessment } from "./cortex-gate";
@@ -1470,6 +1537,14 @@ export type SetupDossierView = {
     anomaly_penalty?: number;
     flow_conviction_bonus?: number;
     regime_adjustment?: number;
+    // Ask Largo standing mandate (2026-10-14): scoreCandidate added momentum_score as a
+    // SEVENTH component folded into `preRegimeSum`/`total` (and into `confirmingSignals`'s own
+    // `momentumScore >= 5` check) without a matching update here — the exact same "real score
+    // component, no typed path into factor_breakdown" gap the 9-8/9-9 comments above already
+    // describe fixing twice. deterministic-edition.ts's two factor_breakdown builders (Legacy)
+    // already carry `momentum: scored.momentum_score`; this view had simply drifted out of sync
+    // with that pattern again, not omitted it on purpose. See enrichSetup's mapping below.
+    momentum_score?: number;
   } | null;
   /** Benzinga analyst price-target one-liner (e.g. "PT raised to $210 at MS"). */
   price_target?: string | null;
@@ -1557,6 +1632,21 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  block is clock-based). Null = not evaluated (already-committed ticker, or the
    *  gate context couldn't be built — persist fails closed on that). */
   gate: ZeroDteGateVerdict | null;
+  /**
+   * Item 9 (2026-09-09 CTO gate-architecture review): which live-commit-path
+   * preconditions (gates.ts's liveCommitPreconditionsUnmet) were genuinely ABSENT when
+   * `gate` above was computed — G-9's quote-age timestamp, G-12's confluence read, and/or
+   * either G-20 leg's cross-input timestamps. `gate` itself may still read COMMIT (the
+   * pure gate library correctly fails OPEN on each of these individually), but a non-empty
+   * array here means that COMMIT is UNVERIFIED on this specific front, not verified-clean.
+   * Computed alongside (never inside) `gate` in scan.ts's attachGateVerdicts, and
+   * RECOMPUTED after a deferred (thesis-first) contract-plan attach the same way the G-20/
+   * moneyness/qualification-dislocation refresh* helpers are. `[]` = every precondition
+   * this setup structurally needed was present. `null`/undefined = not yet computed
+   * (mirrors `gate: null` — never itself treated as "unmet" by the live-commit call site,
+   * which only downgrades on a non-empty array; see persistZeroDteScan).
+   */
+  live_commit_preconditions?: LiveCommitPreconditionGap[] | null;
   /** Night Hawk Cortex assessment (./cortex-gate.ts) — evaluated ONLY for a fresh
    *  find that survived the hard gate stack. Null = Cortex never ran for this
    *  setup this cycle (gate-blocked before the Cortex layer, or an
@@ -1608,6 +1698,22 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  overnight; it does NOT gate or score the board today. Null = not computed (e.g. same-day
    *  0DTE with no overnight to measure, or malformed today/expiry inputs) — never fabricated. */
   session_gap_days?: number | null;
+  /**
+   * G-23 (gates.ts qualificationDislocationGateBlocks): the underlying price + as-of this setup
+   * QUALIFIED on — a FROZEN copy of `underlying_price`/`underlying_price_as_of` taken here, in
+   * enrichSetup, which runs immediately after deriveZeroDteSetups and BEFORE scan.ts's
+   * attachContractPlans ever calls refreshUnderlyingFromLiveSpot. That refresh mutates
+   * `underlying_price`/`underlying_price_as_of` IN PLACE (see refreshUnderlyingFromLiveSpot's own
+   * doc) so by commit time those two fields hold the CURRENT live-refreshed mark, not the one this
+   * setup was evaluated against when it passed the evidence gates. Without a frozen copy there is
+   * no way to ask "how far has price moved since this candidate qualified" — the qualification-time
+   * value is gone the moment it is refreshed. Optional/undefined is the ordinary case for any setup
+   * enrichSetup never touched (tests, fixtures, a setup built by a path that doesn't call
+   * enrichSetup) — G-23 fails OPEN on absence like every other supplementary gate input in this
+   * file, never fabricating a block from data that was never captured.
+   */
+  qualification_underlying_price?: number | null;
+  qualification_underlying_price_as_of?: string | null;
 };
 
 // ── Stage 4 audit trail (alert_audit_log) ─────────────────────────────────────────
@@ -1728,6 +1834,27 @@ export function matchHotNews(
   return out;
 }
 
+/**
+ * Dedupe a list of price levels, keeping the first occurrence of each distinct level.
+ * `support_levels`/`resistance_levels` (technicals.ts) are a concatenation of THREE
+ * independently-sourced levels (swing/weekly/monthly) that can legitimately resolve to
+ * the same round-number price — without this, a coincidence survives an undeduplicated
+ * sort+slice(0,2) as two copies of one level, silently dropping the real second-best one
+ * (live repro 2026-10-21: QQQ/AMD key_supports both `[X, X]` instead of two distinct
+ * levels). Uses the same relative-tolerance convention as `swingLevels`'s own internal
+ * `dedup` in technicals.ts (0.5%, floor 0.01) rather than exact equality, since every
+ * source already rounds to 2dp but isn't guaranteed to collide byte-for-byte.
+ */
+function dedupeLevels(levels: number[]): number[] {
+  const out: number[] = [];
+  for (const lv of levels) {
+    if (!out.some((kept) => Math.abs(lv - kept) / Math.max(Math.abs(kept), 0.01) <= 0.005)) {
+      out.push(lv);
+    }
+  }
+  return out;
+}
+
 export function enrichSetup(
   setup: ZeroDteSetup,
   dossier: SetupDossierView | null,
@@ -1751,13 +1878,22 @@ export function enrichSetup(
 
   // Nearest structure around price: the 2 highest supports below, 2 lowest
   // resistances above — the levels that actually matter for a same-day trade.
+  // `support_levels`/`resistance_levels` (technicals.ts) concatenate THREE independent
+  // sources (swing, weekly, monthly) that can legitimately coincide at the same price
+  // (e.g. swing support and weekly support both sitting at the same round number) — so
+  // dedupe BEFORE the top-2 slice, or a coincidence silently shows one real level twice
+  // and drops the actual second-best level entirely.
   const keySupports =
     price != null
-      ? (tech?.support_levels ?? []).filter((l) => l > 0 && l < price).sort((a, b) => b - a).slice(0, 2)
+      ? dedupeLevels((tech?.support_levels ?? []).filter((l) => l > 0 && l < price))
+          .sort((a, b) => b - a)
+          .slice(0, 2)
       : [];
   const keyResistances =
     price != null
-      ? (tech?.resistance_levels ?? []).filter((l) => l > price).sort((a, b) => a - b).slice(0, 2)
+      ? dedupeLevels((tech?.resistance_levels ?? []).filter((l) => l > price))
+          .sort((a, b) => a - b)
+          .slice(0, 2)
       : [];
 
   // Defined-risk iron-condor geometry for the name (calibration-first evidence — see the
@@ -1775,6 +1911,11 @@ export function enrichSetup(
 
   return {
     ...setup,
+    // G-23 frozen qualification snapshot — captured HERE, before attachContractPlans ever runs,
+    // so it survives the later live-spot refresh that overwrites underlying_price/_as_of in place.
+    // See the field doc on EnrichedZeroDteSetup for the full rationale.
+    qualification_underlying_price: setup.underlying_price,
+    qualification_underlying_price_as_of: setup.underlying_price_as_of,
     dossier_score: scored?.score ?? null,
     conviction: scored?.conviction ?? null,
     direction_confirmed: scored ? scored.direction === setup.direction : null,
@@ -1811,6 +1952,10 @@ export function enrichSetup(
             ? { flow_conviction_bonus: scored.flow_conviction_bonus }
             : {}),
           ...(scored.regime_adjustment != null ? { regime_adjustment: scored.regime_adjustment } : {}),
+          // Ask Largo standing mandate (2026-10-14): the 7th scorer component — see the
+          // `momentum_score` field doc on SetupDossierView["scored"] above for the full
+          // root-cause. Mirrors deterministic-edition.ts's own `momentum: scored.momentum_score`.
+          ...(scored.momentum_score != null ? { momentum: scored.momentum_score } : {}),
         }
       : null,
     trend: tech?.trend ?? null,

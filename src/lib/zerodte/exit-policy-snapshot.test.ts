@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import {
   buildResolvedExitPolicy,
   exitPolicyGraderParams,
+  resolveTrancheFraction,
   type ResolvedExitPolicy,
 } from "./strategy-version";
 import { EXIT_VERSION } from "./strategy-version";
@@ -34,8 +35,28 @@ import {
 // (PLAN_RULES stop/target/time-stop, EXIT_RULES arm/lock/runner floors, TRIM_SCALE tranches)
 // changes config_hash; if that edit is NOT accompanied by an EXIT_VERSION bump, THIS test
 // fails, forcing the deliberate version bump the calibration cohort relies on.
-const GOLDEN_RATCHET_HASH = "exitcfg-26da6211";
-const GOLDEN_TRIM_SCALE_HASH = "exitcfg-1ace50c7";
+// Bumped 2026-09-14 (EXIT_VERSION v4->v5): the ratchet "locked" floor (peak >= +50%) now
+// scales with the peak instead of a flat +20% — see EXIT_RULES.ratchet_lock_floor_fraction
+// in exit-engine.ts. Only the RATCHET hash moved (its trailing_rule text encodes the lock
+// tier); TRIM_SCALE's trailing_rule doesn't mention the lock tier's constants at all, so its
+// hash is unchanged except for the version-string bump baked into `version` itself — verified
+// by hand-deriving both hashes from the real stableStringify/fnv1a32 source.
+// Bumped again 2026-09-21 (EXIT_VERSION v5->v6): the early-arm (+15%) and arm (+20%) ratchet
+// floors now scale the same way (peak * 0.4) instead of staying flat at +5%/+0% — same
+// measurement discipline as the v5 bump, see EXIT_RULES.ratchet_early_arm_floor_pct /
+// ratchet_arm_floor_pct in exit-engine.ts. Both goldens move this time: RATCHET's
+// trailing_rule text was rewritten (the three separate `early@.../arm@.../lock@...` clauses
+// collapsed into one `arm@+15%->floor=peak*0.4` clause now that all three tiers share the
+// same formula); TRIM_SCALE's trailing_rule text is unchanged, so only its embedded
+// `version` field moved. Both hashes recomputed live from the real source (not guessed).
+// Bumped again 2026-09-23 (EXIT_VERSION v6->v7): the early-arm threshold itself LOWERED
+// from +15% to +5% — before this, any peak below +15% got zero floor protection at all;
+// see EXIT_RULES.ratchet_early_arm_pnl_pct's own comment for the 90-day n=67 measurement.
+// RATCHET's trailing_rule text changes again (now reads `arm@+5%->floor=peak*0.4`);
+// TRIM_SCALE's trailing_rule text still doesn't mention the early-arm constant, so only
+// its embedded `version` field moved. Both hashes recomputed live from the real source.
+const GOLDEN_RATCHET_HASH = "exitcfg-f8375eb9";
+const GOLDEN_TRIM_SCALE_HASH = "exitcfg-b2852c1e";
 
 test("WS-02 buildResolvedExitPolicy: resolves the real numeric exit params from the sources of truth", () => {
   const r = buildResolvedExitPolicy("ratchet");
@@ -72,6 +93,78 @@ test("WS-02 DRIFT-GUARD: resolved config_hash matches the committed golden (a si
 
 test("WS-02 config_hash is stable + deterministic across repeated builds (pure, order-independent)", () => {
   assert.equal(buildResolvedExitPolicy("ratchet").config_hash, buildResolvedExitPolicy("ratchet").config_hash);
+});
+
+test("WS-02 trailing_rule never leaks a raw unrounded float (found 2026-10-06 live audit: tranche_fraction=0.3333333333333333)", () => {
+  // `trailing_rule` is a display string, so the shared response-boundary `roundFloats()`
+  // (round-floats.ts) can never reach a float baked into it — it only rounds genuine JSON
+  // number values. TRIM_SCALE_RULES.tranche_fraction is exactly 1/3, so an un-rounded
+  // interpolation serializes 16 noise digits straight into a member/Largo-facing API field.
+  // Any run of 3+ digits after a decimal point is exactly that noise signature.
+  const trim = buildResolvedExitPolicy("trim_scale");
+  assert.ok(
+    !/\.\d{3,}/.test(trim.trailing_rule),
+    `trailing_rule leaked an unrounded float: ${trim.trailing_rule}`,
+  );
+  assert.match(trim.trailing_rule, /tranche_fraction=0\.33;/);
+
+  // An extended-runner (200-400% target) policy takes the OTHER trailing_rule branch
+  // (tranche_fraction=0.25, already exact) — still assert the guard holds there too.
+  const extended = buildResolvedExitPolicy("trim_scale", { target_pct: 300, regime: "trend" });
+  assert.ok(
+    !/\.\d{3,}/.test(extended.trailing_rule),
+    `extended-runner trailing_rule leaked an unrounded float: ${extended.trailing_rule}`,
+  );
+
+  // The fix must be purely cosmetic: config_hash (the calibration-cohort key) is derived from
+  // the RAW, pre-rounding value and must stay byte-identical to the committed golden above —
+  // this display fix must never silently fork a calibration cohort.
+  assert.equal(trim.config_hash, GOLDEN_TRIM_SCALE_HASH);
+});
+
+// ── Configurable scaling (2026-10-20 audit directive): resolveTrancheFraction ──────────
+test("resolveTrancheFraction: absent env var falls back to the default", () => {
+  delete process.env.ZERODTE_TRIM_TRANCHE_FRACTION;
+  assert.equal(resolveTrancheFraction(1 / 3), 1 / 3);
+});
+
+test("resolveTrancheFraction: a valid override inside (0,1) is honored", () => {
+  process.env.ZERODTE_TRIM_TRANCHE_FRACTION = "0.25";
+  assert.equal(resolveTrancheFraction(1 / 3), 0.25);
+  delete process.env.ZERODTE_TRIM_TRANCHE_FRACTION;
+});
+
+test("resolveTrancheFraction: out-of-range or malformed values fall back rather than being clamped", () => {
+  for (const bad of ["0", "1", "1.5", "-0.1", "abc", ""]) {
+    process.env.ZERODTE_TRIM_TRANCHE_FRACTION = bad;
+    assert.equal(resolveTrancheFraction(1 / 3), 1 / 3, `"${bad}" must fall back, not clamp`);
+  }
+  delete process.env.ZERODTE_TRIM_TRANCHE_FRACTION;
+});
+
+test("buildResolvedExitPolicy: ZERODTE_TRIM_TRANCHE_FRACTION changes the resolved trim_scale fractions AND config_hash", () => {
+  const baseline = buildResolvedExitPolicy("trim_scale");
+  process.env.ZERODTE_TRIM_TRANCHE_FRACTION = "0.2";
+  const configured = buildResolvedExitPolicy("trim_scale");
+  delete process.env.ZERODTE_TRIM_TRANCHE_FRACTION;
+  assert.equal(configured.trim_levels[0]?.fraction, 0.2);
+  assert.equal(configured.runner_fraction, 0.2);
+  // A real behavior change MUST change config_hash — two deployments running different
+  // overrides must never silently share a calibration cohort (see this file's own header on
+  // why the hash exists at all).
+  assert.notEqual(configured.config_hash, baseline.config_hash);
+  // And the override must be gone on the NEXT call once the env var is removed again.
+  assert.equal(buildResolvedExitPolicy("trim_scale").config_hash, baseline.config_hash);
+});
+
+test("buildResolvedExitPolicy: an extended-runner policy's 0.25/0.5 schedule is UNCHANGED by the tranche-fraction override", () => {
+  // The extended-runner fractions are their own deliberate schedule (comment in
+  // buildResolvedExitPolicy) -- only the standard path reads ZERODTE_TRIM_TRANCHE_FRACTION.
+  process.env.ZERODTE_TRIM_TRANCHE_FRACTION = "0.2";
+  const extended = buildResolvedExitPolicy("trim_scale", { target_pct: 300, regime: "trend" });
+  delete process.env.ZERODTE_TRIM_TRANCHE_FRACTION;
+  assert.equal(extended.trim_levels[0]?.fraction, 0.25);
+  assert.equal(extended.runner_fraction, 0.5);
 });
 
 test("WS-02 readFrozenExitPolicy: returns a present snapshot, null-guards legacy/malformed rows", () => {

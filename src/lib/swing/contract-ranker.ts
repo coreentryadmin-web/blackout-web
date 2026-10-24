@@ -326,6 +326,13 @@ export function chainContractFromSnapshot(
     bidSize: isNum(snap.bidSize) ? snap.bidSize : null,
     askSize: isNum(snap.askSize) ? snap.askSize : null,
     dayVolume: isNum(snap.dayVolume) ? snap.dayVolume : null,
-    quoteUpdatedMs: isNum(snap.observedAtMs) ? snap.observedAtMs : isNum(snap.quoteUpdatedMs) ? snap.quoteUpdatedMs : null,
+    // Bug fixed 2026-09-13 (same root cause as legacy-option-mark-row.ts): this used to prefer
+    // `snap.observedAtMs` (our own fetch clock) over `snap.quoteUpdatedMs` (the real
+    // `last_quote.last_updated` market clock) under a field literally named `quoteUpdatedMs` —
+    // exactly the clock `evaluateQuoteStaleGate` (v2/gates.ts) needs to detect a genuinely stale
+    // book, and a successful re-fetch is not proof the quote itself moved. No live call site
+    // reaches this mapper today (grepped repo-wide), so this is a latent-bug fix, not a behavior
+    // change in production — fixed so no future caller silently inherits the same mistake.
+    quoteUpdatedMs: isNum(snap.quoteUpdatedMs) ? snap.quoteUpdatedMs : isNum(snap.observedAtMs) ? snap.observedAtMs : null,
   };
 }

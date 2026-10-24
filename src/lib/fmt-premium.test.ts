@@ -62,3 +62,11 @@ test("finite values still format normally after the guard", () => {
   assert.equal(pctClass(1), "num-bull");
   assert.equal(pctClass(-1), "num-bear");
 });
+
+// 6.175 is stored as a double as 6.1749999999999998..., so a bare
+// n.toFixed(2) rounds the wrong way (prints "6.17"). fmtPct must round
+// first, same as fmt-money.ts's own fmtPct already does. Feeds SPX desk's
+// dayChange display (SpxSniperHeader/SpxLiveSpotPrice/SpxIosMarketStrip).
+test("rounds the float boundary correctly instead of truncating via a raw toFixed", () => {
+  assert.equal(fmtPct(6.175), "+6.18%");
+});

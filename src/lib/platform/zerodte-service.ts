@@ -10,6 +10,8 @@ import { condorFlagEnabled } from "@/lib/zerodte/condor";
 import { ironCondorProductForLargo, liveCondorForLargo } from "@/lib/largo/zerodte-condor-for-largo";
 import { fetchNighthawkEchoForTickers, type EcosystemNightHawkTake } from "@/lib/bie/ecosystem-context";
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
+import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
+import { etMinutes } from "@/features/spx/lib/spx-play-session-time";
 import { fetchBenzingaNews } from "@/lib/providers/polygon";
 import { zerodteBoardMaxBlockMs } from "@/lib/providers/config";
 import { readGridEarnings } from "@/lib/zerodte/earnings";
@@ -55,6 +57,7 @@ import { fetchZeroDteSessionContext } from "@/lib/zerodte/entry-context";
 import {
   categorizeExitReason,
   ratchetFloorPct,
+  ratchetTargetReached,
   type ZeroDteExitReasonCategory,
 } from "@/lib/zerodte/exit-engine";
 import { PLAN_RULES } from "@/lib/zerodte/plan";
@@ -68,8 +71,14 @@ import { fetchDiscoveryFunnelHint, type DiscoveryFunnelHint } from "@/lib/zerodt
 import { computeZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-stats";
 import { fetchZeroDteVectorPulseByTicker } from "@/lib/zerodte/vector-crosslink";
 
-function mfeCapturePct(exitPnlPct: number | null, peakPnlPctVal: number | null): number | null {
-  if (exitPnlPct == null || peakPnlPctVal == null || peakPnlPctVal <= 0) return null;
+// "Captured X% of the peak move" only reads as a real fraction when the exit itself is still a
+// gain — once exitPnlPct goes negative the play round-tripped past breakeven into a realized
+// loss, a DIFFERENT event (not a worse "capture"). Dividing a negative exit by a small positive
+// peak blows up to a nonsensical magnitude (e.g. peak +1.25%, exit -40% → "captured -3200%"), so
+// a round-trip is withheld (null) rather than shown as a fabricated capture ratio. Mirrors the
+// same fix already shipped for swing plays (mfeCaptureOutcome, src/lib/swing/mfe-capture.ts).
+export function mfeCapturePct(exitPnlPct: number | null, peakPnlPctVal: number | null): number | null {
+  if (exitPnlPct == null || peakPnlPctVal == null || peakPnlPctVal <= 0 || exitPnlPct < 0) return null;
   return Math.round((exitPnlPct / peakPnlPctVal) * 100);
 }
 import { computeVectorNearMisses } from "@/lib/zerodte/vector-near-miss";
@@ -327,22 +336,50 @@ export type ZeroDteBoardPayload = {
 // on a stale-while-revalidate cadence (single writer per cycle) so `as_of`/scores/marks
 // advance every cycle instead of freezing.
 const BOARD_SNAPSHOT_KEY = "zerodte:board:snapshot:v1";
-// How long the published snapshot lives in Redis. Comfortably longer than the serve/
-// refresh windows below so freshness is governed by the snapshot's own `as_of` age
-// (BOARD_SNAPSHOT_*_MS), never by the Redis key silently expiring under us.
-const BOARD_SNAPSHOT_TTL_SEC = 600;
+// How long the published snapshot lives in Redis. MUST be >= BOARD_SHARED_SNAPSHOT_STALE_MAX_AGE_MS
+// below (in seconds) or the key evaporates from Redis before that ceiling is ever reached — see its
+// comment for the incident this caused when the two were equal.
+const BOARD_SNAPSHOT_TTL_SEC = 1_200;
 // Soft age: once the shared snapshot is older than this, the NEXT reader kicks a
 // background rebuild (non-blocking SWR) so the cycle advances. Matches the ~5s member
 // poll cadence — most polls land inside a fresh snapshot and never trigger a rebuild.
 const BOARD_SNAPSHOT_REFRESH_MS = 5_000;
 // Past BOARD_SNAPSHOT_REFRESH_MS the reader kicks a background rebuild (non-blocking SWR).
-// Serve ceiling aligned with Redis TTL — a key still present is always served SWR-style
-// so a stalled writer never 504s the route; only a true cold miss blocks on build.
+// "Fully fresh" ceiling — intentionally NOT derived from BOARD_SNAPSHOT_TTL_SEC (see that
+// constant's comment for why these two used to be accidentally coupled).
 // Proven 2026-07-29: blocking cold builds under parallel audit load exceeded CF origin
 // timeout → HTTP 504 on /api/market/zerodte/board while the snapshot was still in Redis.
-const BOARD_SNAPSHOT_SERVE_MAX_AGE_MS = BOARD_SNAPSHOT_TTL_SEC * 1000;
-/** Serve stale shared snapshot up to 10m while rebuild runs — never 504 the route. */
+const BOARD_SNAPSHOT_SERVE_MAX_AGE_MS = 600_000;
+/** Serve stale shared snapshot up to 10m while rebuild runs — never 504 the route.
+ *  This is `localBoardIsServable`'s OWN ceiling for the per-replica last-good-board fallback
+ *  (a different mechanism — see that function), NOT the shared Redis snapshot's stale-serve
+ *  ceiling below. Keep them separate: this one has its own explicit 10m/11m regression test
+ *  (zerodte-board-convergence.test.ts) guarding a real historical as_of-regression incident;
+ *  widening it would be an untested, unrelated behavior change to a guard that already works. */
 const BOARD_STALE_SERVE_MAX_AGE_MS = 10 * 60_000;
+/**
+ * Past BOARD_SNAPSHOT_SERVE_MAX_AGE_MS, the shared Redis snapshot is still served — never 504
+ * the route — but explicitly as STALE: the reader kicks an unlocked cold rebuild rather than
+ * blocking on one. This ceiling bounds that window.
+ *
+ * BUG FIXED 2026-10-08: this used to BE BOARD_STALE_SERVE_MAX_AGE_MS, which was in turn equal to
+ * BOARD_SNAPSHOT_SERVE_MAX_AGE_MS (both 600_000) and to BOARD_SNAPSHOT_TTL_SEC*1000 (also
+ * 600_000) — all three the same number. That made this whole safety net dead code: by the
+ * instant a snapshot's age would have crossed into "stale but still servable", the Redis key
+ * had ALSO just hit its own TTL and was already gone, so `readSharedBoardSnapshot()` returned
+ * null and every read fell straight through to the cold-build-and-block path instead. Under
+ * real load (board builds measured live at 20-45s, worse under UW-queue backpressure) that
+ * path routinely blocks past `maxBlockMs` (default 3s) and serves the synthetic empty
+ * `upstream_ok:false` fallback to a real member — confirmed live 2026-10-08: 11 occurrences of
+ * "[zerodte-board-fallback] cold build still running past maxBlockMs" inside one 30-minute
+ * CloudWatch window during RTH, while `[zerodte-scan]`/`[zerodte-breakout]` logs in that SAME
+ * window show the real discovery pipeline finding 180-200+ setups every cycle — the board had
+ * a real, recent snapshot to serve and served an empty one instead because the dead branch
+ * could never reach it. Deliberately a SEPARATE constant from BOARD_STALE_SERVE_MAX_AGE_MS
+ * (see that constant's comment) so this fix cannot silently change the per-replica fallback's
+ * own, independently-tested 10-minute ceiling.
+ */
+const BOARD_SHARED_SNAPSHOT_STALE_MAX_AGE_MS = 20 * 60_000;
 // Cross-replica rebuild lock: elects ONE replica to rebuild+publish per cycle so N
 // replicas don't each re-derive the same snapshot. Auto-expires (writer crash safety);
 // the winner also deletes it right after publishing so the next cycle can advance.
@@ -461,17 +498,61 @@ function mapLedgerRow(
   // floor). A credit condor has no such ladder — its risk is the defined-loss cap, and its
   // "best" excursion is the LOWEST mark, not the highest — so applying the long-framed floor to
   // it would surface an inverted, meaningless number. Suppress it for condors (null).
+  //
+  // "TRIM status" used to be a safe proxy for "peak cleared the target" here (RATCHET's
+  // own single trim event IS `status === "TRIM"` — peak tagged the ratchet's +100%
+  // target — and that used to be true for trim_scale rows too, since derivePlayStatus
+  // had no trim_scale-specific threshold). It no longer is: a trim_scale row's badge now
+  // flips to TRIM at ITS OWN, much lower, first-tranche threshold (plan.ts's
+  // derivePlayStatus fix, 2026-09-09 finding), so reading `status === "TRIM"` here would
+  // show the member a premature +50% floor after banking only ONE of the two scheduled
+  // tranches. ratchetTargetReached (exit-engine.ts) re-derives the ORIGINAL "peak >=
+  // target" fact directly from the row's own frozen target — the same fact
+  // decideTrimScale's own floor computation now uses — so this display number stays
+  // byte-consistent with both the live engine's behavior AND every row's PRE-fix floor
+  // behavior, for ratchet and trim_scale alike, independent of the (now decoupled)
+  // badge.
   const floorPnlPct = isCondor
     ? null
-    : ratchetFloorPct(pinnedLivePnlPct(r.entry_premium, r.peak_premium), r.status === "TRIM");
+    : ratchetFloorPct(
+        pinnedLivePnlPct(r.entry_premium, r.peak_premium),
+        ratchetTargetReached(pinnedLivePnlPct(r.entry_premium, r.peak_premium), rails.targetPct)
+      );
   // The terminal close label, now distinguishing the exit type: a pinned stop pins (and
-  // wins); else an engine exit is categorized; else a plain 15:50 close is "time_stop";
+  // wins); else an engine exit is categorized; else a GENUINE 15:50 ET close is "time_stop";
   // else the row is still live (null).
+  //
+  // BUG FIX (2026-10-20, member audit directive — "verify stop execution, thesis
+  // invalidation, time stops... don't dismiss this"): `engineExitCategory` reads null in TWO
+  // completely different situations that this used to conflate under one fallback label:
+  // (1) a GENUINE 15:50 ET hard time-stop (PLAN_RULES.time_stop_et_minutes) — plan.ts's own
+  // close, which never stamps an exit-engine context at all, so "time_stop" is the correct,
+  // only available label; and (2) a row the EXIT ENGINE already closed (ratchet/thesis/flat/
+  // plan_stop/trim_scale) whose `stampZeroDteExitContext` write simply hasn't landed yet —
+  // exit-sync.ts stamps entry_context.exit and the caller flips `status` to CLOSED in two
+  // SEPARATE, unsynchronized DB writes (live-marks.ts / scan.ts), so a board read in that
+  // window sees status=CLOSED with no stamp yet, which is indistinguishable from (1) under
+  // the old blind `?? "time_stop"` fallback. Live evidence (SNXX, 2026-10-20): committed
+  // ~10:11 ET, nowhere near the 15:50 boundary; a board read at 15:23 UTC showed
+  // closed_reason:"time_stop" / exit_pnl_pct:null; a read six minutes later (once the real
+  // stamp landed) showed closed_reason:"ratchet" / exit_pnl_pct:14.04 — proving the
+  // "time_stop" label shown in between was never true, just the fallback's only available
+  // string. Gated now on the row's OWN frozen `last_mark_at` (CASE-guarded to the close
+  // instant — see updateZeroDteLiveState) genuinely falling at/after the time-stop boundary,
+  // with a few minutes of slack for the ~1s/~2min sync lanes' own tick latency; otherwise
+  // report null ("exit reason not yet persisted") rather than a specific reason the row
+  // cannot yet support. `exit_pnl_pct`/`exit_reason` already read null honestly in this
+  // window (unchanged) — this fix makes `closed_reason` consistent with them instead of
+  // contradicting them with a wrong, meaningful-sounding label.
+  const lastMarkEtMinutes =
+    typeof r.last_mark_at === "string" ? etMinutes(new Date(r.last_mark_at)) : null;
+  const isGenuineTimeStop =
+    lastMarkEtMinutes != null && lastMarkEtMinutes >= PLAN_RULES.time_stop_et_minutes - 2;
   const boardClosedReason: ZeroDteBoardLedgerRow["closed_reason"] =
     closedReason === "stopped"
       ? "stopped"
       : r.status === "CLOSED"
-        ? (engineExitCategory ?? "time_stop")
+        ? (engineExitCategory ?? (isGenuineTimeStop ? "time_stop" : null))
         : null;
 
   return {
@@ -814,18 +895,65 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   // what gradePlanFromBars will stamp after the session). Same single derivation as mapLedgerRow.
   return {
     ...payload,
-    ledger: payload.ledger.map((row) => ({
-      ...row,
-      live_pnl_pct: reconcileLedgerLivePnlPct(row),
-      // Re-price the executable P&L off the member-visible ROUNDED bid/entry (same reason the
-      // mid live_pnl_pct is recomputed here) so the two exit lanes stay directly comparable.
-      live_pnl_pct_exec: executableFill(row.bid, row.ask, row.entry_premium).pnl_pct,
-      // Re-derive the ladder fired-state off the rounded entry/peak so a tranche's rendered
-      // premium level and its FIRED flag agree with the numbers shown elsewhere on the row.
-      exit_policy: row.exit_policy
-        ? buildTerminalExitLadder(row.exit_policy, row.entry_premium, row.peak_premium)
-        : null,
-    })),
+    ledger: payload.ledger.map((row, i) => {
+      // BUG FIX (2026-10-20, Ask Largo/5-engine standing mandate, live repro): peak_pnl_pct/
+      // mfe_capture_pct/floor_pnl_pct were computed in mapLedgerRow from the RAW pre-roundFloats
+      // entry_premium/peak_premium, but roundFloats() below rounds entry_premium/peak_premium
+      // independently of each other — so a row with a half-cent peak (e.g. a real 0.695 rounding
+      // to a displayed 0.70) ends up with a peak_pnl_pct that no longer matches the simple
+      // (peak−entry)/entry arithmetic a member would do from the row's OWN displayed
+      // peak_premium/entry_premium fields. live_pnl_pct/live_pnl_pct_exec/exit_policy already get
+      // this exact re-derivation treatment below for the identical reason — these three fields
+      // never did. Re-derived here from the same member-visible rounded premiums, same functions
+      // mapLedgerRow itself uses (peakPnlPct/mfeCapturePct/ratchetFloorPct+ratchetTargetReached).
+      //
+      // BUG FIX (2026-10-21, live repro — QQQ/SPCX/NVDA/AAPL): the recompute above was applied
+      // UNCONDITIONALLY, including to CLOSED rows. floor_pnl_pct's own doc comment (above, on the
+      // ZeroDteBoardLedgerRow type) frames it as LIVE-ONLY guidance ("your stop is now at...") —
+      // but a CLOSED row's `peak_premium` is the row's FINAL/latched value, which is not
+      // guaranteed to equal the peak that was actually armed at the moment the exit engine made
+      // its decision (entry_context.exit is stamped FIRST-WRITE-WINS off the peak seen at THAT
+      // tick; peak_premium can still widen on the very same transition before the row's lanes
+      // fully quiesce). Live evidence: a CLOSED QQQ row served peak_pnl_pct 11.11 / floor_pnl_pct
+      // 4.44 (= round2(11.11×0.4)) while its OWN pinned exit_detail read "...+4.24% floor armed by
+      // a +10.61% peak" — the served numbers were self-consistent with each other but NOT with the
+      // frozen narrative the member actually traded under; SPCX/NVDA/AAPL showed the identical
+      // peak-pnl_pct×0.4-floor pattern against their own disagreeing exit_detail text. A CLOSED
+      // row's exit-time peak is ALREADY on the payload, honestly, via the pinned
+      // entry_context.exit blob (readExitStampFromEntryContext's peak_pnl_pct — the exact value
+      // buildExitContext stamped when the engine decided, same input exit_detail's prose was built
+      // from) — so a CLOSED row with an engine-exit stamp now reports THAT frozen value instead of
+      // re-deriving from peak_premium. A CLOSED row with NO engine-exit stamp (a mechanical stop or
+      // a genuine 15:50 time-stop, neither of which stamps entry_context.exit) has no better frozen
+      // source and keeps the existing rounded-premium recompute, unchanged. OPEN/HOLD/TRIM rows are
+      // completely unaffected — this guards on row.status === "CLOSED" only.
+      const r = ledgerRows[i];
+      const frozenPeakPnl =
+        row.status === "CLOSED" ? readExitStampFromEntryContext(r?.entry_context ?? null).peak_pnl_pct : null;
+      const peakPnl = frozenPeakPnl != null ? frozenPeakPnl : peakPnlPct(row.entry_premium, row.peak_premium);
+      return {
+        ...row,
+        live_pnl_pct: reconcileLedgerLivePnlPct(row),
+        // Re-price the executable P&L off the member-visible ROUNDED bid/entry (same reason the
+        // mid live_pnl_pct is recomputed here) so the two exit lanes stay directly comparable.
+        live_pnl_pct_exec: executableFill(row.bid, row.ask, row.entry_premium).pnl_pct,
+        // Re-derive the ladder fired-state off the rounded entry/peak so a tranche's rendered
+        // premium level and its FIRED flag agree with the numbers shown elsewhere on the row.
+        exit_policy: row.exit_policy
+          ? buildTerminalExitLadder(row.exit_policy, row.entry_premium, row.peak_premium)
+          : null,
+        peak_pnl_pct: peakPnl,
+        mfe_capture_pct: mfeCapturePct(row.exit_pnl_pct, peakPnl),
+        // floor_pnl_pct is a pure function of the SAME peak (frozen-or-live, resolved above) and
+        // the row's frozen target_pct — reusing `peakPnl` (rather than re-deriving
+        // pinnedLivePnlPct(row.entry_premium, row.peak_premium) twice, as this used to) keeps a
+        // CLOSED row's floor consistent with its own served peak_pnl_pct/exit_detail by
+        // construction, never re-introducing the live peak through a second code path.
+        floor_pnl_pct: row.is_condor
+          ? null
+          : ratchetFloorPct(peakPnl, ratchetTargetReached(peakPnl, row.target_pct ?? PLAN_RULES.target_pct)),
+      };
+    }),
   };
 }
 
@@ -1023,9 +1151,18 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   }
 
   // Soft-stale snapshot still in Redis — serve immediately, rebuild in background.
-  if (shared && shared.ageMs <= BOARD_STALE_SERVE_MAX_AGE_MS) {
+  if (shared && shared.ageMs <= BOARD_SHARED_SNAPSHOT_STALE_MAX_AGE_MS) {
     kickColdBoardBuild();
     return rememberGoodBoard(shared.value);
+  }
+
+  // Off-hours with no fresh snapshot: serve last-good board stale rather than expensive rebuild.
+  // The snapshot is only refreshed by discovery crons (market-hours only), so off-hours reads
+  // would pay the full cold-build cost (polygon-gex full-chain escalation) on every poll.
+  // Instead, serve the per-replica fallback board if it's still servable (within 10m).
+  if (!isEtExtendedWarmHours()) {
+    const local = readLastGoodBoardLocal();
+    if (local) return local;
   }
 
   if (!coldBuildInflight) {
@@ -1054,6 +1191,17 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
           // Never await the cold build here — that defeats maxBlockMs under load (live: 20–43s
           // member polls). Return a structurally valid empty board immediately; coldBuildInflight
           // keeps running and publishes to Redis for the next poll.
+          // 2026-10-02: the OTHER route to upstream_ok:false (readZeroDteLedgerChecked's catch,
+          // fixed in the previous commit) now logs its error, but this route — the cold build
+          // simply running past blockMs with no Redis snapshot or local fallback to serve instead
+          // — logged nothing at all. Confirmed live the same day: an upstream_ok:false instance
+          // with zero matching CloudWatch Logs lines, including the fix from the prior commit,
+          // which this route does not go through.
+          console.warn(
+            `[zerodte-board-fallback] cold build still running past maxBlockMs=${blockMs}ms with ` +
+              "no Redis snapshot or local last-good board to serve — returning the minimal empty " +
+              "fallback (upstream_ok:false). The cold build keeps running in the background."
+          );
           resolve(buildMinimalBoardFallback());
         })();
       }, blockMs);

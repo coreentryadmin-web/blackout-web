@@ -9,6 +9,7 @@ import {
   nighthawkOutcomesRunHealth,
   outcomeSessionDate,
   parsePlayLevels,
+  premiumExcursionFromLiveState,
   resolveOutcome,
 } from "./play-outcomes";
 import type { NighthawkPlayOutcomeRow } from "@/lib/db";
@@ -136,6 +137,127 @@ test("SHORT that gapped ABOVE its entry band and never returned grades 'unfilled
   } as NighthawkPlayOutcomeRow;
 
   assert.equal(resolveOutcome(row).outcome, "unfilled");
+});
+
+// ── premium excursion from live-managed state (Night Hawk Legacy Signal Intelligence
+// Phase 1.7) — the OPTION-premium MFE/MAE discord_live_state.peak_premium/trough_premium
+// carries, distinct from the stock-price-based hit_target/hit_stop/outcome verdict above and
+// from debrief.ts's own single-bar stock-price computeExcursion. ─────────────────────────
+
+test("premiumExcursionFromLiveState: no discord_live_state at all -> all four fields null", () => {
+  const row = {} as NighthawkPlayOutcomeRow;
+  assert.deepEqual(premiumExcursionFromLiveState(row), {
+    premium_peak: null,
+    premium_trough: null,
+    premium_mfe_pct: null,
+    premium_mae_pct: null,
+  });
+});
+
+test("premiumExcursionFromLiveState: live state present but no entry_premium resolvable -> raw peak/trough pass through, percentages stay null", () => {
+  const row = {
+    discord_live_state: { peak_premium: 7.4, trough_premium: 3.9 },
+  } as unknown as NighthawkPlayOutcomeRow;
+  assert.deepEqual(premiumExcursionFromLiveState(row), {
+    premium_peak: 7.4,
+    premium_trough: 3.9,
+    premium_mfe_pct: null,
+    premium_mae_pct: null,
+  });
+});
+
+test("premiumExcursionFromLiveState: entry_premium from publish_context.entry_premium (top-level pin shape)", () => {
+  const row = {
+    publish_context: { entry_premium: 4.2 },
+    discord_live_state: { peak_premium: 8.4, trough_premium: 2.1 },
+  } as unknown as NighthawkPlayOutcomeRow;
+  assert.deepEqual(premiumExcursionFromLiveState(row), {
+    premium_peak: 8.4,
+    premium_trough: 2.1,
+    premium_mfe_pct: 100, // (8.4/4.2 - 1) * 100
+    premium_mae_pct: -50, // (2.1/4.2 - 1) * 100
+  });
+});
+
+test("premiumExcursionFromLiveState: entry_premium from publish_context.final_output.entry_premium (audit-trail pin shape)", () => {
+  const row = {
+    publish_context: { final_output: { entry_premium: 2.0 } },
+    discord_live_state: { peak_premium: 2.6, trough_premium: 1.6 },
+  } as unknown as NighthawkPlayOutcomeRow;
+  assert.deepEqual(premiumExcursionFromLiveState(row), {
+    premium_peak: 2.6,
+    premium_trough: 1.6,
+    premium_mfe_pct: 30,
+    premium_mae_pct: -20,
+  });
+});
+
+test("premiumExcursionFromLiveState: raw peak/trough only recorded once the live-sync loop has actually touched the row (both null before any poll)", () => {
+  const row = {
+    publish_context: { entry_premium: 5 },
+    discord_live_state: { last_action: null },
+  } as unknown as NighthawkPlayOutcomeRow;
+  assert.deepEqual(premiumExcursionFromLiveState(row), {
+    premium_peak: null,
+    premium_trough: null,
+    premium_mfe_pct: null,
+    premium_mae_pct: null,
+  });
+});
+
+test("resolveOutcome: folds the premium excursion fields into every branch, including 'pending' and 'unfilled', without touching the stock-based verdict", () => {
+  const liveState = { peak_premium: 6, trough_premium: 3 };
+  const publishContext = { entry_premium: 4 };
+
+  const pendingRow = {
+    direction: "LONG",
+    next_day_close: null,
+    publish_context: publishContext,
+    discord_live_state: liveState,
+  } as unknown as NighthawkPlayOutcomeRow;
+  const pendingVerdict = resolveOutcome(pendingRow);
+  assert.equal(pendingVerdict.outcome, "pending");
+  assert.equal(pendingVerdict.premium_peak, 6);
+  assert.equal(pendingVerdict.premium_trough, 3);
+  assert.equal(pendingVerdict.premium_mfe_pct, 50);
+  assert.equal(pendingVerdict.premium_mae_pct, -25);
+
+  const unfilledRow = {
+    direction: "LONG",
+    entry_range_low: 198,
+    entry_range_high: 202,
+    target: 215,
+    stop: 190,
+    next_day_open: 208,
+    next_day_close: 216,
+    session_high: 217,
+    session_low: 206,
+    publish_context: publishContext,
+    discord_live_state: liveState,
+  } as unknown as NighthawkPlayOutcomeRow;
+  const unfilledVerdict = resolveOutcome(unfilledRow);
+  assert.equal(unfilledVerdict.outcome, "unfilled");
+  assert.equal(unfilledVerdict.premium_mfe_pct, 50);
+  assert.equal(unfilledVerdict.premium_mae_pct, -25);
+
+  const gradedRow = {
+    direction: "LONG",
+    entry_range_low: 198,
+    entry_range_high: 202,
+    target: 215,
+    stop: 190,
+    next_day_open: 201,
+    next_day_close: 211,
+    session_high: 216,
+    session_low: 199,
+    publish_context: publishContext,
+    discord_live_state: liveState,
+  } as unknown as NighthawkPlayOutcomeRow;
+  const gradedVerdict = resolveOutcome(gradedRow);
+  assert.equal(gradedVerdict.outcome, "target");
+  assert.equal(gradedVerdict.hit_target, true);
+  assert.equal(gradedVerdict.premium_mfe_pct, 50);
+  assert.equal(gradedVerdict.premium_mae_pct, -25);
 });
 
 // ── both-hit tiebreaker (audit 2026-07-28: "ambiguous" was systematically

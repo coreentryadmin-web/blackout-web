@@ -4,7 +4,7 @@ import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
 import { getLiveOptionMarkSync } from "@/lib/ws/options-socket";
-import { ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
+import { LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -48,9 +48,20 @@ export async function GET(req: NextRequest) {
   }
 
   const now = Date.now();
+  // BUG (found 2026-09-16, live audit — sibling of the legacy-option-mark-row.ts fix earlier
+  // today): this WS-freshness gate used ZERODTE_MARK_STALE_MS (5s) to decide whether a cached
+  // WS tick counts as "live" at all — a tick 5-30s old was silently discarded here and the row
+  // fell through to the REST snapshot instead, even when the REST snapshot's own quote clock
+  // was EQUALLY OR MORE stale than the WS tick that got thrown away. Reproduced live: CRWD (a
+  // normal liquid name) read `stale:true` repeatedly with asof lagging real time by 70-90s,
+  // because a genuinely <30s-old WS tick kept getting rejected by this 5s gate before
+  // buildLegacyOptionMarkRow's own (already-correct, LEGACY_QUOTE_STALE_MS) staleness check
+  // ever saw it. This route is Legacy-only (no horizon branching needed, same as
+  // legacy-option-mark-row.ts) — gate on LEGACY_QUOTE_STALE_MS so a WS tick up to 30s old is
+  // still treated as live, consistent with the staleness bar the row itself is graded against.
   const marks: LegacyOptionMarkRow[] = occs.map((occ) => {
-    const ws = getLiveOptionMarkSync(occ, ZERODTE_MARK_STALE_MS)
-      ?? getLiveOptionMarkSync(legacyOccForSnapshot(occ), ZERODTE_MARK_STALE_MS);
+    const ws = getLiveOptionMarkSync(occ, LEGACY_QUOTE_STALE_MS)
+      ?? getLiveOptionMarkSync(legacyOccForSnapshot(occ), LEGACY_QUOTE_STALE_MS);
     const snap = lookupLegacyOptionSnapshot(snaps, occ);
     return buildLegacyOptionMarkRow(occ, ws, snap, now);
   });

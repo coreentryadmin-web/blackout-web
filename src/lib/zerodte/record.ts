@@ -51,6 +51,10 @@ export type ZeroDteRecordPlay = {
   /** Peak evidence score for the session (score_max) — the committed score, when the
    *  row carries entry_context, lives in entry_context.score. */
   score: number;
+  /** Dossier-scored Night Hawk letter when the row's origin has options-flow evidence to
+   *  score (FLOW), else the PR-F merit tier as a real fallback (toPlay's own doc comment
+   *  has the full mechanism) — never a bare null when SOME rank exists for the play. Null
+   *  only when the row genuinely carries no pinned evidence at all (pre-C-2 rows). */
   conviction: string | null;
   /** MECHANICAL plan grade (fixed -50/+100/15:50) — the labeled comparison, not the
    *  headline. Kept per-play so the desk can show "managed vs held" side by side. */
@@ -65,6 +69,13 @@ export type ZeroDteRecordPlay = {
   managed_outcome: string | null;
   managed_pnl_pct: number | null;
   managed_source: "reconstructed" | "engine" | "plan" | null;
+  /** HONEST maximum favorable excursion — how high this position's REAL mark got before it
+   *  closed, reported SEPARATELY from managed_pnl_pct (the realized/as-managed result) so the
+   *  two are never conflated in a report (member audit directive: "separate realized exits
+   *  from maximum potential gains"). null when the row never carried a live-managed exit
+   *  (still open, or a pre-exit-engine legacy row) — absence, never a fabricated zero. See
+   *  extractMaxFavorablePct's own doc for the exact source. */
+  max_favorable_pct: number | null;
   /** Underlying direction grade (close vs flag) — the separate honesty ledger. */
   direction_hit: boolean | null;
   move_pct: number | null;
@@ -298,34 +309,91 @@ type GradeView = {
  *  every field optional, malformed blobs degrade to "no engine exit". */
 export function readManagedExit(
   entryContext: Record<string, unknown> | null | undefined
-): { reason: string | null; pnl_pct: number | null } | null {
+): { reason: string | null; pnl_pct: number | null; peak_pnl_pct: number | null } | null {
   const exit = entryContext?.exit;
   if (!exit || typeof exit !== "object") return null;
   const e = exit as Record<string, unknown>;
   const pnl = typeof e.pnl_pct === "number" && Number.isFinite(e.pnl_pct) ? e.pnl_pct : null;
   const reason = typeof e.reason === "string" ? e.reason : null;
-  return { reason, pnl_pct: pnl };
+  // peak_pnl_pct (2026-10-20, member audit directive: "separate realized exits from maximum
+  // potential gains") — the live-managed MAXIMUM FAVORABLE EXCURSION this position reached
+  // before it closed, already stamped by the exit engine on every live-managed exit but never
+  // promoted past this nested blob to a labeled, top-level record field (see
+  // extractMaxFavorablePct below). Never fabricated: absent/non-finite reads null, same
+  // discipline as pnl_pct/reason above.
+  const peak = typeof e.peak_pnl_pct === "number" && Number.isFinite(e.peak_pnl_pct) ? e.peak_pnl_pct : null;
+  return { reason, pnl_pct: pnl, peak_pnl_pct: peak };
+}
+
+/**
+ * The HONEST maximum-favorable-excursion for one row — "how high did this position actually
+ * get before it closed," reported SEPARATELY from the realized/as-managed P&L so a member or
+ * Largo answer never conflates the two (member audit directive, point 6 of the original brief:
+ * "separate realized exits from maximum potential gains"). Sourced from the SAME live-managed
+ * exit stamp `managedGradeView`/`readManagedExit` already read — not a second, independently-
+ * computed peak, so this can never disagree with the engine's own tracking. Returns null (never
+ * a fabricated peak) when the row never carried a live-managed exit at all (e.g. still open, or a
+ * pre-exit-engine legacy row) — an ungraded/no-peak row is absence, not zero.
+ */
+export function extractMaxFavorablePct(entryContext: Record<string, unknown> | null | undefined): number | null {
+  const exit = readManagedExit(entryContext);
+  return exit?.peak_pnl_pct ?? null;
 }
 
 /** Map an engine EXIT reason (exit-engine.ts) to a record outcome bucket. Only EXIT
- *  decisions stamp entry_context.exit, so the reason is always one of the exit reasons. */
+ *  decisions stamp entry_context.exit, so the reason is always one of the exit reasons.
+ *
+ *  FIXED 2026-09-22: this used to hand-roll its own ad hoc checks + a `/ratchet|runner/`
+ *  substring regex instead of reusing `categorizeExitReason` (exit-engine.ts), the module's
+ *  OWN authoritative reason→family classifier (already imported here and already trusted by
+ *  `realExitIsBarWalkReproducible` above). Two real trim-scale-mode EXIT reasons this file's
+ *  ad hoc regex never accounted for correctly:
+ *    - `trim_scale_dead_zone_floor` (the trim-scale regime dead-zone's own protective floor,
+ *      exit-engine.ts's decideTrimScale) contains neither "ratchet" nor "runner", so it fell
+ *      all the way through to the bare win/loss/breakeven-by-sign label — the ONE real,
+ *      live-stampable EXIT reason this function had no case for at all, silently missing from
+ *      every by_outcome breakdown a member/Largo reads.
+ *    - `trim_scale_runner_target` (both tranches banked AND the final third also tags the
+ *      plan target — the trim-scale analogue of ratchet mode's `plan_target_final`/"doubled")
+ *      DOES contain the substring "runner", so the old regex mislabeled a genuine, full
+ *      profit-TARGET capture as "ratchet" (a defensive floor exit) — conflating two outcome
+ *      shapes by_outcome exists specifically to keep apart. Confirmed reachable live: this
+ *      exact reason is stamped whenever a trim_scale row's real engine exit is graded without
+ *      (or ahead of) its WS-11 bar-walk reconstruction — see managedGradeView's precedence
+ *      just above, and the two live fixture reproductions from #4939/#4941-era rows in this
+ *      module's own tests that stamp `trim_scale_runner_target` as a REAL exit reason.
+ *  `categorizeExitReason`'s prefix ordering already resolves both correctly (dead-zone floor is
+ *  an exact match checked BEFORE the general `trim_scale`-prefix "target" bucket), so mapping
+ *  its four categories straight onto the record's outcome vocabulary fixes both, and keeps this
+ *  function from ever drifting out of sync with the module its own realExitIsBarWalkReproducible
+ *  already depends on for the same reason string. */
 function managedOutcomeLabel(reason: string | null, pnl: number): string {
   // Missing/unknown/future reason: bucket by sign rather than mislabel it as a known outcome.
   const bySign = pnl > 0 ? "win" : pnl < 0 ? "loss" : "breakeven";
   if (reason == null) return bySign;
-  if (reason === "plan_stop") return "stopped";
-  if (reason === "plan_target_final") return "doubled";
-  if (reason.startsWith("thesis_break")) return "thesis_break";
-  if (reason === "flat_theta_bleed") return "flat_scratch";
-  if (/ratchet|runner/.test(reason)) return "ratchet";
-  return bySign;
+  switch (categorizeExitReason(reason)) {
+    case "stop":
+      return "stopped";
+    case "target":
+      return "doubled";
+    case "ratchet":
+      return "ratchet";
+    case "thesis":
+      return "thesis_break";
+    case "flat":
+      return "flat_scratch";
+    default:
+      // categorizeExitReason fails CLOSED (null) on an unrecognized/future reason — bucket by
+      // sign rather than mislabel it as a known outcome, same discipline as the null-reason case.
+      return bySign;
+  }
 }
 
 /** MECHANICAL grade view — the fixed -50/+100/15:50 plan grade, on the OFFICIAL
  *  (conservative-executable, WS-10) lane with a mid fallback for legacy rows. This is the
  *  simulated plan P&L the directive switches to the executable frame; the AS-MANAGED headline
  *  (the engine's realized exit) moves to the executable side separately in WS-11. */
-function mechanicalGradeView(row: ZeroDteSetupLogRow): GradeView {
+function mechanicalGradeView(row: OfficialGradableRow): GradeView {
   const graded = isGradedZeroDteRow(row);
   const pnl = graded ? round2(officialPlanPnlPct(row) as number) : null;
   return {
@@ -431,7 +499,7 @@ function reconstructedGradeView(reco: { plan_outcome: string | null; plan_pnl_pc
  *      reconstruction whose real-exit counterpart is a live-only reason per (1b).
  *  (3) no engine exit → the reconstruction (even if degenerate) if present, else the play rode
  *      to the plan's own stop/target/time-stop (mechanical) — never silently ungraded. */
-function managedGradeView(row: ZeroDteSetupLogRow): GradeView {
+function managedGradeView(row: OfficialGradableRow): GradeView {
   const reco = readReconstructedTrimScale(row.entry_context);
   const exit = readManagedExit(row.entry_context);
   const hasRealTerminalExit = exit != null && exit.pnl_pct != null;
@@ -465,8 +533,12 @@ function managedGradeView(row: ZeroDteSetupLogRow): GradeView {
 /** WS-11 — the member-facing AS-MANAGED plan P&L for a row (the same number managedGradeView's
  *  headline reports). Exported so the grade path (scan.ts) can measure
  *  grade_vs_asmanaged_delta = officialPlanPnlPct(row) − asManagedPnlPct(row) and confirm the
- *  reconciliation holds (≈ 0 for a reconstructed TRIM-SCALE row). Null when the row is ungraded. */
-export function asManagedPnlPct(row: ZeroDteSetupLogRow): number | null {
+ *  reconciliation holds (≈ 0 for a reconstructed TRIM-SCALE row). Null when the row is ungraded.
+ *  Typed on the narrower `OfficialGradableRow` (not the full `ZeroDteSetupLogRow`) so governor.ts
+ *  can call this directly off its own `GovernorLedgerRow` Pick — see that file's
+ *  ledgerRowRealizedPnlPct for why it needs the SAME as-managed precedence this function already
+ *  implements, not the raw mechanical `plan_pnl_pct` column. */
+export function asManagedPnlPct(row: OfficialGradableRow): number | null {
   const view = managedGradeView(row);
   return view.graded ? view.pnl_pct : null;
 }
@@ -590,6 +662,9 @@ function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
       ? `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")} ET`
       : "";
   const managed = managedGradeView(r);
+  // Computed once, reused for both `conviction`'s fallback and `tier` below — same
+  // adapter, same pinned blob, one call.
+  const tierAssignment = tierFromEntryContext(r.entry_context);
   return {
     session_date: r.session_date,
     ticker: r.ticker,
@@ -597,7 +672,36 @@ function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
     flagged_at: r.first_flagged_at,
     flagged_et: flaggedEt,
     score: r.score_max,
-    conviction: r.conviction,
+    // `r.conviction` is the dossier-scored Night Hawk letter (scoreCandidate/assignNighthawkTier
+    // over flow/tech/pos/news/smart-money) — board.ts's enrichSetup(setup, dossier) stamps it
+    // from `dossier.scored.conviction`. BREAKOUT/PIN-origin setups are discovered from a bare
+    // price/volume breakout or a GEX pin, with no options-flow evidence to score, so BOTH
+    // discovery call sites (breakout-source.ts, pin-source.ts) pass enrichSetup a hardcoded
+    // `null` dossier — there is no flow to fetch a dossier FOR. The column is null for these
+    // origins not because the play is unranked, but because this ONE ranking method doesn't
+    // apply to them: measured live 2026-09-09, 36/57 (63.2%) committed plays over a 14-day
+    // window carried `conviction: null`, essentially all BREAKOUT-origin, vs 18/18 FLOW-origin
+    // plays with a real letter — a silent per-origin gap, a direct violation of the Largo
+    // product contract's C3 absence principle (a consumer that cannot tell "unranked" from
+    // "not this kind of play" reports absence as a finding).
+    //
+    // A real, already-computed, origin-agnostic signal exists one layer down: the PR-F merit
+    // tier (assignZeroDteTier via tierFromEntryContext, right below) is derived from evidence
+    // EVERY committed origin pins at commit — score, day-open VIX, Cortex, commit-time —
+    // regardless of discovery_origin (buildZeroDteEntryContext, entry-context.ts, runs
+    // unconditionally on every commit). It is not a re-derivation of the same dossier letter
+    // (different formula, different evidence, deliberately excludes A+ — see tiers.ts's own
+    // doc comment) but it IS a real, calibrated, non-fabricated rank for this exact play, on
+    // the same A/B/C vocabulary the vocabulary checks elsewhere in this codebase already
+    // accept (nighthawk-verifier.ts's VALID_CONVICTION). Falling back to it beats a bare null:
+    // omission is honest only when no signal exists at all, and one does here.
+    //
+    // Read-time fallback (not a commit-time backfill) so this ALSO fixes the 36 already-
+    // committed historical rows the live measurement found, the same way `tier` below is
+    // already recomputed from the pinned blob rather than trusted from a frozen column.
+    // Rows with genuinely no entry_context (pre-C-2, or the rare fail-soft failure) keep a
+    // real null here — zero pinned evidence is honestly "unrankable", not a fabricated grade.
+    conviction: r.conviction ?? tierAssignment?.tier ?? null,
     // The per-play "plan" column reflects the OFFICIAL (executable, WS-10) lane so the public
     // record shows the return a member could have exited at; mid stays on the live board.
     plan_outcome: officialPlanOutcome(r),
@@ -605,10 +709,11 @@ function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
     managed_outcome: managed.outcome,
     managed_pnl_pct: managed.pnl_pct,
     managed_source: managed.source,
+    max_favorable_pct: extractMaxFavorablePct(r.entry_context) != null ? round2(extractMaxFavorablePct(r.entry_context) as number) : null,
     direction_hit: r.direction_hit,
     move_pct: r.move_pct != null ? round2(r.move_pct) : null,
     entry_context: r.entry_context,
-    tier: tierFromEntryContext(r.entry_context)?.tier ?? null,
+    tier: tierAssignment?.tier ?? null,
   };
 }
 

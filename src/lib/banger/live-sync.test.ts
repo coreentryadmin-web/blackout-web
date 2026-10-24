@@ -111,3 +111,94 @@ test("runBangerLiveSync skips (no-quote) a row with no usable mark, without thro
   assert.equal(result.refreshed, 0);
   assert.equal(updates.length, 0);
 });
+
+// ── expired-contract settlement (found live 2026-09-23: 41/168 open banger rows had an
+// already-expired contract, one 40 calendar days stale, none of them ever closing — see
+// `fetchExpiryClose`'s doc comment on BangerLiveSyncDeps in live-sync.ts) ──────────────────
+
+const EXPIRED_ROW = baseRow({ contract_expiry: "2020-01-01", contract_strike: 100 });
+
+test("runBangerLiveSync force-closes an expired row at intrinsic value when fetchExpiryClose is wired", async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  const result = await runBangerLiveSync({
+    fetchOpenPositions: async () => [EXPIRED_ROW], // entry 1.5, strike 100
+    fetchMarks: async () => new Map(), // provider no longer quotes the expired contract
+    fetchExpiryClose: async () => 104, // underlying closed 104 on expiry day -> intrinsic 4
+    updateLiveState: async (id, u) => {
+      updates.push({ id, ...u });
+    },
+  });
+  assert.equal(result.expiredSettled, 1);
+  assert.equal(result.noQuote, 0);
+  const u = updates[0]!;
+  assert.equal(u.status, "CLOSED_RUNNER");
+  assert.equal(u.mark, 4); // intrinsic = max(0, 104 - 100)
+  assert.equal(u.scaleOutAction, "EXPIRED");
+  // realized = 1 * intrinsic(4); entry 1.5 -> pct = (4/1.5 - 1)*100
+  const expectedPct = (4 / 1.5 - 1) * 100;
+  assert.ok(Math.abs((u.realizedPnlPct as number) - expectedPct) < 1e-9);
+});
+
+test("runBangerLiveSync settles an expired PARTIAL row using the pinned partial + remaining intrinsic", async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  await runBangerLiveSync({
+    fetchOpenPositions: async () => [
+      { ...EXPIRED_ROW, status: "PARTIAL", scaled_already: true, partial_realized_premium: 1.5 },
+    ],
+    fetchMarks: async () => new Map(),
+    fetchExpiryClose: async () => 98, // closed BELOW strike -> intrinsic 0 (expired worthless)
+    updateLiveState: async (id, u) => {
+      updates.push({ id, ...u });
+    },
+  });
+  const u = updates[0]!;
+  assert.equal(u.status, "CLOSED_RUNNER");
+  assert.equal(u.mark, 0);
+  // partial 1.5 (pinned) + remaining 0.5 * intrinsic(0) = 1.5; entry 1.5 -> pct = 0
+  assert.ok(Math.abs((u.realizedPnlPct as number) - 0) < 1e-9);
+});
+
+test("runBangerLiveSync leaves an expired row untouched when fetchExpiryClose is omitted (back-compat)", async () => {
+  const updates: unknown[] = [];
+  const result = await runBangerLiveSync({
+    fetchOpenPositions: async () => [EXPIRED_ROW],
+    fetchMarks: async () => new Map(),
+    updateLiveState: async (id, u) => {
+      updates.push({ id, ...u });
+    },
+  });
+  assert.equal(result.expiredSettled, 0);
+  assert.equal(result.noQuote, 1);
+  assert.equal(updates.length, 0);
+});
+
+test("runBangerLiveSync leaves an expired row untouched when fetchExpiryClose returns null (no data yet)", async () => {
+  const updates: unknown[] = [];
+  const result = await runBangerLiveSync({
+    fetchOpenPositions: async () => [EXPIRED_ROW],
+    fetchMarks: async () => new Map(),
+    fetchExpiryClose: async () => null,
+    updateLiveState: async (id, u) => {
+      updates.push({ id, ...u });
+    },
+  });
+  assert.equal(result.expiredSettled, 0);
+  assert.equal(result.noQuote, 1);
+  assert.equal(updates.length, 0);
+});
+
+test("runBangerLiveSync does NOT call fetchExpiryClose for a still-live contract with no quote yet", async () => {
+  let called = false;
+  const result = await runBangerLiveSync({
+    fetchOpenPositions: async () => [baseRow({ contract_expiry: "2099-01-01" })],
+    fetchMarks: async () => new Map(),
+    fetchExpiryClose: async () => {
+      called = true;
+      return 999;
+    },
+    updateLiveState: async () => {},
+  });
+  assert.equal(called, false);
+  assert.equal(result.noQuote, 1);
+  assert.equal(result.expiredSettled, 0);
+});

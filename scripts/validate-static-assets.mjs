@@ -9,6 +9,11 @@
  *   BASE_URL=https://staging.blackouttrades.com node scripts/validate-static-assets.mjs
  */
 
+import {
+  EXIT_EDGE_BLOCKED,
+  isCloudflareEdgeBlock,
+} from "./lib/cloudflare-edge-block.mjs";
+
 const BASE = (process.env.BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const PAGES = ["/", "/sign-in", "/sign-up"];
 
@@ -32,10 +37,12 @@ async function headStatus(path) {
 
 const failures = [];
 const checked = new Set();
+let edgeBlockedPages = 0;
 
 for (const page of PAGES) {
   const { status, text } = await fetchText(page);
   if (status !== 200) {
+    if (isCloudflareEdgeBlock(status, text)) edgeBlockedPages += 1;
     failures.push(`${page} → HTTP ${status}`);
     continue;
   }
@@ -52,6 +59,12 @@ console.log(`Checked ${checked.size} static assets across ${PAGES.length} pages 
 
 if (failures.length) {
   for (const f of failures) console.error(`  ✗ ${f}`);
+  if (edgeBlockedPages === PAGES.length) {
+    console.error(
+      "  Cloudflare edge block on all pages — cannot validate static assets from this network."
+    );
+    process.exit(EXIT_EDGE_BLOCKED);
+  }
   process.exit(1);
 }
 

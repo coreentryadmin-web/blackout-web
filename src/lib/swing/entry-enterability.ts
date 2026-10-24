@@ -11,6 +11,11 @@ import type { SwingDiscoveryPath } from "./discovery";
 import { isSwingConfluenceEnforced } from "./v2/config";
 import { blockedByFromSwingGates, failingSwingCommitGates } from "./v2/gates";
 import { LEGACY_COMMIT_GATE_EXEMPT } from "./entry-gate-constants";
+// Pure calendar math (Intl-based, no IO) — same NYSE trading-day/holiday table
+// `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s temporal contract already relies on elsewhere
+// (session-calendar.ts). Needed here so a multi-day entry window counts real trading
+// sessions, not raw calendar days — see the `advanceTradingDaysMs` comment below.
+import { isTradingDayEt, formatEtDate } from "@/features/nighthawk/lib/session";
 
 export type SwingEntryAction = "buy" | "still_buy" | "wait" | "dont_buy";
 
@@ -38,6 +43,23 @@ export type SwingEntryEnterability = {
   action: SwingEntryAction;
   reason: string;
   enterable: boolean;
+  /** True only when `dont_buy` fired because the entry-validity deadline has passed — lets a
+   *  caller distinguish "this setup's entry window is dead" from every other `dont_buy`/`wait`
+   *  reason (invalidated, extended-chase, gate-blocked, not-yet-triggered), which otherwise all
+   *  collapse into the same generic WAIT pill member-facing. */
+  expired?: boolean;
+  /**
+   * The resolved entry-validity deadline as an ISO timestamp, whenever it could be computed —
+   * present on EVERY branch (not just the `expired` one), so a caller can show the forward-looking
+   * "entry window closes on X" fact while the setup is still enterable, not only retroactively once
+   * it has already lapsed. Gap found 2026-09-18 (Ask Largo standing mandate): `entryDeadlineMs` was
+   * already computed here (from `entryDeadline` or the `anchoredAt`+sub-lane fallback) to decide
+   * `expired`, then discarded — only the boolean survived to any caller. A member watching a WATCH
+   * play had no way to learn how much runway was left before the setup went stale; the first they'd
+   * hear of it was the EXPIRED badge itself, after the window had already closed. Null when neither
+   * `entryDeadline` nor a resolvable `anchoredAt` was supplied (never fabricated).
+   */
+  deadlineIso?: string | null;
 };
 
 const DISCOVERY_PATH_KINDS = new Set<SwingDiscoveryPath>([
@@ -59,6 +81,15 @@ const DAY_MS = 86_400_000;
 
 const ENTERABLE_ENTRY_STATES = new Set<SwingEntryState>(["AT_TRIGGER", "PULLBACK_TO_ENTRY"]);
 
+/**
+ * The member-facing `TerminalPlay.gateBlocks[].code` entry-verdict.ts's `commitGateBlocksForVerdict`
+ * maps `LEGACY_COMMIT_GATE_EXEMPT` ("legacy:exempt") to. Duplicated as a literal rather than
+ * imported — entry-verdict.ts imports FROM this file, so importing back would cycle — but it is a
+ * narrow, display-only mapping unlikely to drift (both sides are swing-specific and reviewed
+ * together); `gateFramingMootReason`'s own tests pin this string.
+ */
+const LEGACY_EXEMPT_GATE_CODE = "legacy_exempt";
+
 function resolveCommitGateBlockedBy(input: SwingEntryEnterabilityInput): string[] {
   if (input.commitGateBlockedBy?.length) return [...input.commitGateBlockedBy];
   const kinds = input.signalKinds ?? [];
@@ -77,6 +108,34 @@ function resolveCommitGateBlockedBy(input: SwingEntryEnterabilityInput): string[
   return blockedByFromSwingGates(fails);
 }
 
+/**
+ * Advance `tradingDays` real NYSE sessions past `anchorMs`, counting only trading days but
+ * otherwise stepping in exact 24h increments (so the deadline lands at the same clock time as
+ * the anchor, just on a later session).
+ *
+ * THE BUG THIS FIXES: the old `anchorMs + days * DAY_MS` counted raw calendar days, so a
+ * multi-day entry window silently SHRINKS whenever it spans a weekend (or holiday) — a setup
+ * flagged Thursday with a 3-day STANDARD window read as EXPIRED by Sunday evening, before
+ * Monday's market had even reopened, even though only ONE real trading session (Friday) had
+ * actually elapsed. Live-reproduced 2026-09-13: GOOGL (flagged Thu 2026-09-10 12:05 ET,
+ * `Entry stance: EXPIRED`) and ORCL (flagged Wed 2026-09-09) both read EXPIRED on a Sunday with
+ * only one intervening trading day, member-facing copy telling holders to abandon a setup that
+ * had barely had a chance to play out.
+ */
+function advanceTradingDaysMs(anchorMs: number, tradingDays: number): number {
+  let cursorMs = anchorMs;
+  let counted = 0;
+  // Bounded rather than an unconditional loop: tradingDays is at most 5 (EXTENDED sub-lane) and
+  // no real NYSE calendar strings together more than a handful of non-trading days in a row
+  // (a long weekend plus an adjacent holiday), so this comfortably terminates — the cap just
+  // stops a corrupted holiday table from spinning forever instead of failing loudly.
+  for (let i = 0; i < tradingDays + 14 && counted < tradingDays; i++) {
+    cursorMs += DAY_MS;
+    if (isTradingDayEt(formatEtDate(new Date(cursorMs)))) counted++;
+  }
+  return cursorMs;
+}
+
 function entryDeadlineMs(input: SwingEntryEnterabilityInput): number | null {
   if (input.entryDeadline) {
     const t = Date.parse(input.entryDeadline);
@@ -87,12 +146,147 @@ function entryDeadlineMs(input: SwingEntryEnterabilityInput): number | null {
   const anchorMs = Date.parse(anchor);
   if (!Number.isFinite(anchorMs)) return null;
   const days = input.subLane ? ENTRY_VALIDITY_DAYS[input.subLane] : DEFAULT_ENTRY_VALIDITY_DAYS;
-  return anchorMs + days * DAY_MS;
+  return advanceTradingDaysMs(anchorMs, days);
 }
 
 function pastEntryDeadline(input: SwingEntryEnterabilityInput, nowMs: number): boolean {
   const deadline = entryDeadlineMs(input);
   return deadline != null && nowMs > deadline;
+}
+
+/**
+ * Short reason a WATCH play's entry mechanics are already moot, independent of any gate state —
+ * null while the play is still genuinely enterable. `evaluateSwingEntryEnterability`'s own
+ * if-chain checks INVALIDATED/past-deadline/contract-expired/extended-chase BEFORE gate-blocked
+ * (this file, above), so a play can be both dead-for-one-of-those-reasons AND gate-blocked at
+ * once — entry-verdict.ts's `dont_buy` branch deliberately keeps the gate evidence attached in
+ * that case (see its own comment: "regardless of which dont_buy reason fired (deadline-expired,
+ * contract-expired, extended-chase)") rather than dropping it, but every renderer of that gate
+ * text must know the gate is secondary: clearing it would NOT make the play enterable, because
+ * one of these checks fires first regardless.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-09-18): this function only ever recognized 2 of the
+ * 4 dead-entry states `evaluateSwingEntryEnterability` can return `dont_buy` for — INVALIDATED and
+ * deadline-expired (`watchEntryExpired`) — leaving CONTRACT-EXPIRED (`entryStatus === "EXPIRED"`)
+ * and EXTENDED-CHASE (`setupState === "EXTENDED"` or `entryStatus === "EXTENDED_CHASE"`) silently
+ * uncovered, even though entry-verdict.ts's own comment (quoted above) names them explicitly as
+ * cases where `gateBlocks` stays populated. Both fields are already rendered as raw facts by
+ * `watchEntrySection` ("Setup: **EXTENDED**" / "Entry geometry: **EXPIRED**"), so a WATCH brief
+ * could show those alongside an un-qualified "**Gates blocking entry:**" header — the exact same
+ * "clearing the gate would reopen entry" false implication this function was written to prevent,
+ * just for the two dead-reasons nobody had added yet. Narrow structural type (not the full
+ * `TerminalPlay`) so this stays a dependency-free leaf export any brief-render module can import
+ * without a cycle risk back through play-brief-narrative.ts/play-brief-intel.ts.
+ *
+ * Deliberately NOT extended to cover `setupState === "FORMING"` or `aboveFloor === false` (see
+ * `gateFramingMootReason` below for why those two need a SEPARATE function rather than a 5th/6th
+ * case here) — this function's two OTHER call sites (`isSwingPlayStaleCheckExempt` below, and
+ * `play-brief-absence.ts`'s `isNotLive`) key on it to mean "nothing will ever meaningfully refresh
+ * this play's live reads again," which is true for all 4 cases above (the play is categorically
+ * done) but FALSE for FORMING/below-floor candidates — those are still actively rescanned every
+ * cycle on the WATCH board (serving.ts: `aboveFloor===false` IS the WATCH-routing condition), so
+ * adding them here would wrongly suppress real staleness disclosures on a candidate that is very
+ * much still live, just not yet enterable.
+ */
+export function deadPlayReason(play: {
+  setupState?: string | null;
+  entryStatus?: string | null;
+  watchEntryExpired?: boolean | null;
+}): string | null {
+  if (play.setupState === "INVALIDATED") return "thesis already invalidated";
+  if (play.watchEntryExpired === true) return "entry-validity window expired";
+  if (play.entryStatus === "EXPIRED") return "contract expired";
+  if (play.setupState === "EXTENDED" || play.entryStatus === "EXTENDED_CHASE") {
+    return "extended past the valid entry window";
+  }
+  return null;
+}
+
+/**
+ * Short reason the "Gates blocking entry" framing is misleading — broader than `deadPlayReason`
+ * above by exactly two cases: `setupState === "FORMING"` and `aboveFloor === false`. Both are
+ * `evaluateSwingEntryEnterability`'s OTHER two reasons (besides the 4 `dont_buy` ones
+ * `deadPlayReason` covers) that are checked and returned BEFORE that function ever reaches its one
+ * true gate-check branch (this file, lines ~296-312) — so on a play held back by either of them,
+ * `commitGateBlockedBy`/`gateBlocks` is computed and populated independently (gates don't require
+ * TRIGGERED/above-floor to be evaluated) but clearing it would NOT open entry, same false
+ * implication `deadPlayReason` exists to catch for its 4 cases.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-10-18): live repro, GET /api/market/swing/play-brief
+ * for CLS (WATCH, 2026-10-18 ~06:17 ET) — score 59 vs a 60 lane commit floor (`aboveFloor: false`),
+ * setupState TRIGGERED, entryStatus AT_TRIGGER (none of `deadPlayReason`'s 4 cases apply).
+ * `signalKinds` is Legacy-only, so `resolveCommitGateBlockedBy` auto-stamps the non-blocking
+ * `legacy:exempt` provenance tag into `commitGateBlockedBy` (confirmed non-blocking: the identical
+ * tag is present on live COMMITTED Legacy-promoted positions in the same horizons payload). Both
+ * `watchEntrySection` (play-brief.ts) and `watchGateCoaching` (play-brief-narrative-coaching.ts)
+ * rendered an un-qualified "**Gates blocking entry:**" header as a result — implying clearing that
+ * tag would open entry, when the real (and separately, correctly stated, in the brief's Verdict
+ * section) reason is the score floor. Intentionally NOT merged into `deadPlayReason` itself — see
+ * that function's own comment for why a FORMING/below-floor candidate must NOT be treated as
+ * "dead" by its other two callers. Takes the same narrow structural type, widened by the one extra
+ * field (`aboveFloor`) this check needs — not the full `TerminalPlay`, for the same
+ * dependency-free-leaf-export reason `deadPlayReason` stays narrow.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-10-18, second instance): live repro, UNH — a
+ * TRIGGERED/AT_TRIGGER/above-floor, Legacy-promoted play whose ONLY gate block is the
+ * `legacy_exempt` provenance code (never a real failed gate — see `resolveCommitGateBlockedBy`'s
+ * own comment: a Legacy-only `signalKinds` row resolves to exactly `[LEGACY_COMMIT_GATE_EXEMPT]`
+ * before real gate evaluation ever runs). This is a DIFFERENT case from the two above — neither
+ * FORMING nor below-floor, so `evaluateSwingEntryEnterability` genuinely reaches its one gate-check
+ * branch — but the gate it finds is the same kind of non-real marker, so "Gates blocking entry"
+ * is equally misleading here. **Deliberately does NOT change `action`/`enterable`** (unlike the
+ * two cases above, which only ever affected framing because the real `wait`/`dont_buy` reason had
+ * already won before the gate check ran): a TRIGGERED Legacy-promoted play staying on WATCH instead
+ * of auto-committing is the operator's own recorded, intentional caution on this exact real-money
+ * commit path (the Legacy-commit bridge, `isSwingLegacyCommitBridgeEnabled()`, is flag-gated OFF by
+ * default — see `docs/audit/FINDINGS.md`'s 2026-10-09 #5577 entry). This function only corrects
+ * what the member reads about WHY it's still WAIT, not whether it should be.
+ */
+export function gateFramingMootReason(play: {
+  setupState?: string | null;
+  entryStatus?: string | null;
+  watchEntryExpired?: boolean | null;
+  aboveFloor?: boolean | null;
+  gateBlocks?: readonly { code: string }[] | null;
+}): string | null {
+  const dead = deadPlayReason(play);
+  if (dead) return dead;
+  if (play.setupState === "FORMING") return "thesis still forming — not yet at trigger";
+  if (play.aboveFloor === false) return "below the lane score floor";
+  if (play.gateBlocks?.length && play.gateBlocks.every((g) => g.code === LEGACY_EXEMPT_GATE_CODE)) {
+    return "Legacy-promoted — commit gates were never evaluated on this path, not a live gate to clear";
+  }
+  return null;
+}
+
+/**
+ * Shared "is today's live desk state even meaningful for this play?" gate — CLOSED (a historical
+ * record) or a dead WATCH candidate (`deadPlayReason` non-null: invalidated, entry-window expired,
+ * contract expired, or extended past the valid entry window) both answer no, for the identical
+ * reason `play-brief-absence.ts`'s `collectBriefUnavailableSources` documents at length: every
+ * "is TODAY's scan/Vector/GEX/HELIX read current" check is individually honest but permanently
+ * true (and therefore useless) once nothing will ever refresh that read again for this play.
+ *
+ * Extracted (Ask Largo standing mandate, 2026-10-07) because `collectBriefUnavailableSources` had
+ * this exact `isClosed || isDeadWatch` logic inlined as a private local, and `play-brief-intel.ts`'s
+ * `dataFreshnessSection` independently re-derived only the `isClosed` half of it — so a dead-but-
+ * not-closed WATCH play (live repro: NTAP, `entryStatus: "EXTENDED_CHASE"`) got a narrative line
+ * ("HELIX flow: **pipeline stale** — tape read may lag") that flatly contradicted the SAME
+ * envelope's `unavailableSources: []` and `confidence: "Every live source ... resolved cleanly"` —
+ * the structured chip and the free-text prose disagreeing about the same fact in the same brief.
+ * A single shared predicate keeps that from drifting apart again the next time a third call site
+ * needs the same freshness gate.
+ */
+export function isSwingPlayStaleCheckExempt(play: {
+  status?: string | null;
+  setupState?: string | null;
+  entryStatus?: string | null;
+  watchEntryExpired?: boolean | null;
+}): boolean {
+  const status = String(play.status ?? "").toUpperCase();
+  if (status === "CLOSED") return true;
+  if (status === "OPEN" || status === "HOLD" || status === "TRIM") return false;
+  return deadPlayReason(play) != null;
 }
 
 /**
@@ -105,12 +299,17 @@ export function evaluateSwingEntryEnterability(
   const setup = input.setupState ?? null;
   const entry = input.entryStatus ?? null;
   const gateBlocked = resolveCommitGateBlockedBy(input);
+  // Computed once, attached to EVERY branch below (see the `deadlineIso` doc comment on
+  // `SwingEntryEnterability` for why this must not stay expired-only).
+  const deadlineMs = entryDeadlineMs(input);
+  const deadlineIso = deadlineMs != null ? new Date(deadlineMs).toISOString() : null;
 
   if (input.persistenceObserved === true) {
     return {
       action: "dont_buy",
       enterable: false,
       reason: "Below cross-session persistence bar — not served for entry yet.",
+      deadlineIso,
     };
   }
 
@@ -119,6 +318,7 @@ export function evaluateSwingEntryEnterability(
       action: "dont_buy",
       enterable: false,
       reason: "Structure invalidated — no entry recommended.",
+      deadlineIso,
     };
   }
 
@@ -127,6 +327,8 @@ export function evaluateSwingEntryEnterability(
       action: "dont_buy",
       enterable: false,
       reason: "Entry-validity window expired — wait for a fresh setup.",
+      expired: true,
+      deadlineIso,
     };
   }
 
@@ -135,6 +337,7 @@ export function evaluateSwingEntryEnterability(
       action: "dont_buy",
       enterable: false,
       reason: "Contract expired — no entry on this strike/expiry.",
+      deadlineIso,
     };
   }
 
@@ -143,14 +346,7 @@ export function evaluateSwingEntryEnterability(
       action: "dont_buy",
       enterable: false,
       reason: "Extended past the valid entry window — do not chase; wait for a reset.",
-    };
-  }
-
-  if (gateBlocked.length > 0) {
-    return {
-      action: "wait",
-      enterable: false,
-      reason: "At trigger, but commit gates have not cleared — wait before sizing.",
+      deadlineIso,
     };
   }
 
@@ -159,6 +355,7 @@ export function evaluateSwingEntryEnterability(
       action: "wait",
       enterable: false,
       reason: "Thesis is still building — track persistence before entry.",
+      deadlineIso,
     };
   }
 
@@ -167,10 +364,39 @@ export function evaluateSwingEntryEnterability(
       action: "wait",
       enterable: false,
       reason: "Below the lane commit floor — watch until conviction clears the bar.",
+      deadlineIso,
     };
   }
 
+  // Gate-blocked is only checked here, scoped to the branch that would otherwise return
+  // buy/still_buy — NOT as an early, unconditional return before this point. A FORMING or
+  // PRE_TRIGGER play can ALSO be gate-blocked (gates are evaluated independently of setup
+  // maturity), and the old unconditional check fired first regardless, so a play that had not
+  // yet reached its trigger still got told "At trigger, but commit gates have not cleared" —
+  // a factually wrong claim live-reproduced on PLTR 2026-09-14 (FORMING/PRE_TRIGGER, gate-
+  // blocked, entry geometry explicitly PRE_TRIGGER in the same brief). Scoping the check to
+  // this branch keeps the message accurate: it's now only ever shown when the play genuinely
+  // IS at trigger and gates are the one thing still holding it back.
   if (setup === "TRIGGERED" && entry != null && ENTERABLE_ENTRY_STATES.has(entry)) {
+    if (gateBlocked.length > 0) {
+      // Deliberately still "wait" even when `gateBlocked` is legacy:exempt-only — the Legacy-
+      // commit-bridge wiring gap (FINDINGS.md 2026-10-09, #5577) is intentionally flag-gated OFF
+      // by default per the operator's own recorded caution on this exact real-money commit path;
+      // this function does not decide whether to arm it. Only the REASON TEXT differs for that
+      // case: "commit gates have not cleared" falsely implies a real, clearable gate is pending
+      // (live repro: UNH, TRIGGERED/AT_TRIGGER/above-floor, Legacy-promoted, gateBlocked exactly
+      // [LEGACY_COMMIT_GATE_EXEMPT]) — `gateFramingMootReason` (below) separately corrects the
+      // SAME false implication in the Entry/Trade-manager-read sections' gate-list framing.
+      const legacyExemptOnly = gateBlocked.every((b) => b === LEGACY_COMMIT_GATE_EXEMPT);
+      return {
+        action: "wait",
+        enterable: false,
+        reason: legacyExemptOnly
+          ? "At trigger, but this is a Legacy-promoted thesis — held on WATCH until the commit bridge is armed, not blocked by a live gate."
+          : "At trigger, but commit gates have not cleared — wait before sizing.",
+        deadlineIso,
+      };
+    }
     const action: SwingEntryAction = input.deskCommitted ? "still_buy" : "buy";
     const reason =
       entry === "PULLBACK_TO_ENTRY"
@@ -180,7 +406,7 @@ export function evaluateSwingEntryEnterability(
         : input.deskCommitted
           ? "At trigger with clean geometry — desk is in; members can still enter."
           : "At trigger with clean entry geometry — actionable buy window.";
-    return { action, enterable: true, reason };
+    return { action, enterable: true, reason, deadlineIso };
   }
 
   if (setup === "TRIGGERED" && entry === "PRE_TRIGGER") {
@@ -188,6 +414,7 @@ export function evaluateSwingEntryEnterability(
       action: "wait",
       enterable: false,
       reason: "Waiting for price to reach the trigger — setup has not fired yet.",
+      deadlineIso,
     };
   }
 
@@ -196,6 +423,7 @@ export function evaluateSwingEntryEnterability(
       action: "wait",
       enterable: false,
       reason: "No setup maturity read — track until classified.",
+      deadlineIso,
     };
   }
 
@@ -203,6 +431,7 @@ export function evaluateSwingEntryEnterability(
     action: "wait",
     enterable: false,
     reason: "Thesis is live but entry geometry is not clean yet — wait for a better fill.",
+    deadlineIso,
   };
 }
 

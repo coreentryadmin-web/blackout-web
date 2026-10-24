@@ -118,6 +118,40 @@ test("force=1 is rate-limited by a minimum re-run cooldown, independent of the h
   );
 });
 
+// Regression: force=1 was only rate-limited at a flat 60s floor regardless of whether the call
+// landed inside or outside the extended warm window — fine for a legitimate in-app dispatcher
+// (both already gate on the holiday-aware hours check before ever calling this route, so they
+// physically cannot reach this branch off-window), but nothing defended against a REPEATED
+// external caller doing so anyway. Measured live 2026-09-07 (Labor Day, an NYSE holiday that falls
+// on a weekday): 166 "force=1 bypassed the hours gate" log lines for this key in 6h from 47+
+// distinct source IPs (not any known in-app dispatcher), 70 full runs completed, correlating with
+// a measured ALB p99 68s / Max 100s spike in the same window — on a day the market is closed and
+// nothing should be warming this cache at all.
+test("a force=1 call OUTSIDE the extended warm window is throttled at a much wider floor than one made inside it", () => {
+  assert.match(
+    routeSrc,
+    /import \{ isEtExtendedWarmHours \} from "@\/lib\/et-market-hours"/,
+    "must check the SAME holiday-aware window the in-app dispatchers already gate on"
+  );
+  assert.match(
+    routeSrc,
+    /OFF_WINDOW_FORCE_COOLDOWN_SEC = 300/,
+    "the off-window floor must be materially wider than the in-window 60s floor"
+  );
+  assert.match(
+    routeSrc,
+    /const effectiveCooldownSec = isEtExtendedWarmHours\(\)\s*\n\s*\? RERUN_COOLDOWN_SEC\s*\n\s*: OFF_WINDOW_FORCE_COOLDOWN_SEC;/,
+    "the floor actually used must depend on the window, not just exist as an unused constant"
+  );
+  // The claim itself must use the computed floor, not the bare in-window constant — otherwise the
+  // ternary above is dead code and the bug reproduces unchanged.
+  assert.match(
+    routeSrc,
+    /const withinCooldown = !\(await sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY,\s*\{ startedAt: started \},\s*effectiveCooldownSec\s*\)/,
+    "the cooldown claim must use effectiveCooldownSec, not the flat RERUN_COOLDOWN_SEC"
+  );
+});
+
 // Behavioral proof (not just source text): app/api/*/route.ts files can only export the documented
 // Next.js route fields (GET, dynamic, runtime, maxDuration, ...) — an extra named export like the
 // cooldown constants trips a build-time error — so this exercises the SAME underlying primitive

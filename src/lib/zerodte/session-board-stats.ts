@@ -83,11 +83,18 @@ export function computeZeroDteSessionBoardStats(
     if (st === "OPEN" || st === "HOLD" || st === "TRIM") committed_open += 1;
     else if (st === "CLOSED") committed_closed += 1;
   }
+  // Prefer THIS pass's own live block distribution (fromSetups) over funnelTopCode — the latter
+  // is discovery_funnel.top_gate, a SESSION-CUMULATIVE gate-rejection tally that can diverge
+  // sharply from what's actually blocking commits right now (e.g. it stays pinned to an early-
+  // session gate like opening_window long after later gates like score_floor/plan_illiquid have
+  // taken over as the live dominant blocker). A trader reading this field wants "why is nothing
+  // committing right now", not a running total since market open. Only fall back to the cumulative
+  // funnel figure when this pass itself has no block data to offer (e.g. zero gate-blocked setups
+  // this cycle) — found live 2026-09-17, journaled in nighthawk-0dte-live-journal.json.
   const fromSetups = topBlockFromCounts(blockCodeCounts);
   const top_block_code =
-    funnelTopCode && funnelTopCode.length > 0 ? funnelTopCode : fromSetups.code;
-  const top_block_label =
-    top_block_code != null ? zeroDteGateLabel(top_block_code) : fromSetups.label;
+    fromSetups.code ?? (funnelTopCode && funnelTopCode.length > 0 ? funnelTopCode : null);
+  const top_block_label = top_block_code != null ? zeroDteGateLabel(top_block_code) : null;
   return {
     scanned: setups.length,
     commit_ready,

@@ -57,11 +57,32 @@ export type VectorAbsenceReport = {
   /** Null when the rail has samples. */
   wall_history_empty_reason: WallHistoryEmptyReason | null;
   /**
+   * True when `dark_pool_levels` is in `unavailable_sections` because the cached read is STALE
+   * (present but old), not because it is genuinely empty. The dark-pool cache (`vector-dark-pool-
+   * cache.ts`) is warmed on its own ~10min cadence with a 25min TTL — deliberately looser than the
+   * 120s `VECTOR_STALE_MS` the rest of the Vector snapshot uses — and the compute-recency `asOf` on
+   * the surrounding state says nothing about this ONE field's own cache age (`getVectorDarkPoolLevels`
+   * discards the cache entry's `fetchedAt` before it ever reaches the composer). So a Vector state
+   * computed fresh seconds ago can still carry dark-pool levels last fetched 20+ minutes earlier —
+   * silently, with no distinction from a current read — exactly when `vector-dark-pool-warm` is
+   * failing at a high rate (the live trigger for this fix, 2026-10-06). Downstream consumers use
+   * this to say "stale — last synced HH:MM" instead of the generic "not present on this read".
+   */
+  dark_pool_stale: boolean;
+  /**
    * The disclaimer that keeps this honest. An entry in `unavailable_sections` means the section is
    * NOT PRESENT on this read — it does NOT establish that the underlying thing does not exist.
    */
   absence_note: string | null;
 };
+
+/**
+ * How old a cached dark-pool read may be before it is disclosed as stale rather than presented as
+ * current. 20 minutes = 2x the warm cron's ~10min cadence (tolerates exactly one missed run, same
+ * tolerance the cache layer's own 25min TTL already documents) while still catching a read that is
+ * meaningfully older than "the cron ran recently and came up empty".
+ */
+export const DARK_POOL_STALE_MS = 20 * 60 * 1000;
 
 const ABSENCE_NOTE =
   "A section named in unavailable_sections was not present on this read. That is NOT evidence the " +
@@ -81,10 +102,14 @@ export type VectorAbsenceInput = {
   flowMarkers: unknown;
   vexWalls: unknown;
   darkPoolLevels: readonly unknown[] | null | undefined;
+  /** Epoch ms the dark-pool CACHE ENTRY was actually fetched (not when this read happened); 0/null/undefined = unknown or a legacy pre-envelope entry. */
+  darkPoolAsOf?: number | null;
   wallHistory: readonly unknown[] | null | undefined;
   play: unknown;
   /** True when the read happened inside cash RTH — the only cheap, real reason-distinction we have. */
   isRth: boolean;
+  /** The instant to measure dark-pool staleness against. Defaults to Date.now(). */
+  readMs?: number;
 };
 
 export function reportVectorAbsences(input: VectorAbsenceInput): VectorAbsenceReport {
@@ -100,7 +125,12 @@ export function reportVectorAbsences(input: VectorAbsenceInput): VectorAbsenceRe
   if (absent(input.technicals)) missing.push("technicals");
   if (absent(input.flowMarkers)) missing.push("flow_markers");
   if (absent(input.vexWalls)) missing.push("vex_walls");
-  if (!input.darkPoolLevels?.length) missing.push("dark_pool_levels");
+  const darkPoolEmpty = !input.darkPoolLevels?.length;
+  const darkPoolAsOf = input.darkPoolAsOf ?? 0;
+  const readMs = input.readMs ?? Date.now();
+  const darkPoolStale =
+    !darkPoolEmpty && darkPoolAsOf > 0 && readMs - darkPoolAsOf > DARK_POOL_STALE_MS;
+  if (darkPoolEmpty || darkPoolStale) missing.push("dark_pool_levels");
   if (!input.wallHistory?.length) missing.push("wall_history");
   // The play is DERIVED, so its absence means the inputs were too thin to build one — still worth
   // naming, because "no play" reads as "no setup" when it can mean "not enough state to judge".
@@ -115,6 +145,7 @@ export function reportVectorAbsences(input: VectorAbsenceInput): VectorAbsenceRe
         ? "no_samples_during_rth"
         : "outside_rth_no_recording_yet"
       : null,
+    dark_pool_stale: darkPoolStale,
     absence_note: missing.length ? ABSENCE_NOTE : null,
   };
 }

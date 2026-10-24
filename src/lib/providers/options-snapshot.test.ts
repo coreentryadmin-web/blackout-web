@@ -423,3 +423,171 @@ test("getOptionSnapshot: a missing OCC → null (caller falls back to the chain)
   assert.equal(await getOptionSnapshot("O:NOPE000000C00000000"), null);
   assert.equal(await getOptionSnapshot(""), null);
 });
+
+// ---------------------------------------------------------------------------
+// reliableMarkFromSnapshot — live 2026-09-14: CRSR 260918C00015000 showed bid:0/ask:15 → mid
+// $7.50 while last_trade.price (and session.close) were BOTH $0.07, a 107x divergence — the mid
+// was a market-maker "backstop" quote nobody could actually transact at, and swing/banger's live
+// P&L displayed a fabricated +10614% instead of the true ~flat position. Same shape on 5 other
+// concurrently-committed BANGER positions same session. midOf's own bid>=0 guard is intentional
+// (a genuinely worthless deep-OTM contract legitimately has bid=0) so this is a SEPARATE,
+// additive divergence check — not a change to midOf/zeroDteMidOf.
+function baseSnap(overrides: Partial<import("./options-snapshot").OptionSnapshot>) {
+  return {
+    ticker: "O:TEST260918C00015000",
+    mark: null,
+    bid: null,
+    ask: null,
+    last: null,
+    dayClose: null,
+    delta: null,
+    gamma: null,
+    theta: null,
+    vega: null,
+    iv: null,
+    openInterest: null,
+    bidSize: null,
+    askSize: null,
+    dayVolume: null,
+    underlyingPrice: null,
+    strike: null,
+    optionType: null,
+    expiry: null,
+    sharesPerContract: null,
+    quoteUpdatedMs: null,
+    ...overrides,
+  };
+}
+
+test("reliableMarkFromSnapshot: null mark passes through unchanged", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromSnapshot(baseSnap({ mark: null })), null);
+});
+
+test("reliableMarkFromSnapshot: bid>0 (a real two-sided market) is never second-guessed", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  // Even a huge mid-vs-last divergence is left alone when there's a real bid behind it.
+  const snap = baseSnap({ mark: 7.5, bid: 5, ask: 10, last: 0.07 });
+  assert.equal(reliableMarkFromSnapshot(snap), 7.5);
+});
+
+test("reliableMarkFromSnapshot: bid=0 backstop quote (CRSR live repro) falls through to last trade", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  // bid:0, ask:15 -> mid 7.5; real last trade 0.07 -> 107x divergence, well past the 10x bar.
+  const snap = baseSnap({ mark: 7.5, bid: 0, ask: 15, last: 0.07, dayClose: 0.07 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.07);
+});
+
+test("reliableMarkFromSnapshot: bid=0, no last trade -> falls through to dayClose", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 7.5, bid: 0, ask: 15, last: null, dayClose: 0.1 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.1);
+});
+
+test("reliableMarkFromSnapshot: bid=0 legitimate deep-OTM case (mid close to last) is kept", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  // bid:0, ask:0.05 -> mid 0.025; last 0.03 -> same order of magnitude, not a backstop artifact.
+  const snap = baseSnap({ mark: 0.025, bid: 0, ask: 0.05, last: 0.03 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.025);
+});
+
+test("reliableMarkFromSnapshot: bid=0, no last/dayClose reference at all -> mark passes through (nothing to compare against)", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 7.5, bid: 0, ask: 15, last: null, dayClose: null });
+  assert.equal(reliableMarkFromSnapshot(snap), 7.5);
+});
+
+test("reliableMarkFromSnapshot: exactly at the 10x boundary is kept (boundary is inclusive of mark)", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 1.0, bid: 0, ask: 2, last: 0.1 });
+  assert.equal(reliableMarkFromSnapshot(snap), 1.0);
+});
+
+test("reliableMarkFromSnapshot: just past the 10x boundary falls through", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 1.01, bid: 0, ask: 2.02, last: 0.1 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.1);
+});
+
+// Live repro 2026-10-08 (Ask Largo standing mandate): CRI 261016C00035000 showed bid:0 (size 0),
+// ask:5.60 (size 1) -> mid $2.80, while the contract's own last trade was $0.55 -- a 5.09x
+// divergence, comfortably under the general 10x bar, so it was NOT caught by the pre-fix guard
+// and fed a fabricated +409.1% P&L (and a real TAKE_PARTIAL/SCALING_OUT trade-management flip,
+// banger-live-sync's peak_premium ratchet) into the live Swing book. An independent Black-Scholes
+// check (same snapshot's own strike $35/DTE 8/IV 0.5308/spot $32.27) priced the contract at ~$0.21,
+// confirming $2.80 was never a real valuation.
+test("reliableMarkFromSnapshot: thin one-lot ask (askSize<=1) applies the tighter 3x bar — CRI live repro", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 2.8, bid: 0, ask: 5.6, askSize: 1, last: 0.55 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.55, "a 5.09x divergence on a one-lot ask must fall through to the real last trade");
+});
+
+test("reliableMarkFromSnapshot: the SAME 5.09x divergence with normal ask size still keeps the 10x bar (no regression)", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 2.8, bid: 0, ask: 5.6, askSize: 25, last: 0.55 });
+  assert.equal(snap.askSize, 25);
+  assert.equal(reliableMarkFromSnapshot(snap), 2.8, "real size behind the ask must keep the existing 10x tolerance untouched");
+});
+
+test("reliableMarkFromSnapshot: askSize absent (unknown, e.g. WS stream) keeps the existing 10x behavior — no false positive from missing data", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 2.8, bid: 0, ask: 5.6, askSize: null, last: 0.55 });
+  assert.equal(reliableMarkFromSnapshot(snap), 2.8, "absent size must never be read as thin — falls back to the unchanged 10x bar");
+});
+
+test("reliableMarkFromSnapshot: thin ask (size<=1) exactly at the new 3x boundary is kept (inclusive)", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 0.3, bid: 0, ask: 0.6, askSize: 1, last: 0.1 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.3);
+});
+
+test("reliableMarkFromSnapshot: thin ask (size<=1) just past the new 3x boundary falls through", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 0.301, bid: 0, ask: 0.602, askSize: 1, last: 0.1 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.1);
+});
+
+// ---------------------------------------------------------------------------
+// reliableMarkFromQuote — the generic form reliableMarkFromSnapshot delegates to, extracted
+// 2026-09-15 so a non-OptionSnapshot quote shape (the WS mark stream, {mark, bid, last}, no
+// dayClose) can apply the identical bid=0 backstop-quote divergence guard. Same rule, same
+// numbers as the reliableMarkFromSnapshot tests above — these exercise the generic signature
+// directly rather than via a fabricated OptionSnapshot.
+test("reliableMarkFromQuote: null mark passes through unchanged", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(null, 0, 0.07), null);
+});
+
+test("reliableMarkFromQuote: bid>0 is never second-guessed", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(7.5, 5, 0.07), 7.5);
+});
+
+test("reliableMarkFromQuote: bid=0 backstop quote falls through to the reference", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(7.5, 0, 0.07), 0.07);
+});
+
+test("reliableMarkFromQuote: bid=0, no reference at all -> mark passes through", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(7.5, 0, null), 7.5);
+});
+
+test("reliableMarkFromQuote: bid=0, reference <= 0 -> mark passes through (nothing honest to fall back to)", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(7.5, 0, 0), 7.5);
+});
+
+// CRI live repro (generic-signature form — see reliableMarkFromSnapshot's own test above for the
+// full incident writeup).
+test("reliableMarkFromQuote: thin one-lot ask (askSize<=1) applies the tighter 3x bar", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(2.8, 0, 0.55, 1), 0.55);
+});
+
+test("reliableMarkFromQuote: askSize omitted entirely (WS stream shape) keeps the unchanged 10x behavior", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  // Same 5.09x divergence as the thin-ask test above, but called exactly as the WS mark stream
+  // does (legacy-option-mark-row.ts) — no 4th argument at all, not even `undefined`/`null`.
+  assert.equal(reliableMarkFromQuote(2.8, 0, 0.55), 2.8);
+});

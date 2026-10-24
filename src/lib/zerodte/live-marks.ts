@@ -34,7 +34,7 @@
 // never come from two different quote lanes.
 
 import { dbConfigured, fetchZeroDteSetupLog, updateZeroDteLiveState, type ZeroDteSetupLogRow } from "@/lib/db";
-import { evaluateLedgerRowExit } from "./exit-sync";
+import { evaluateLedgerRowExit, playRailsFromRow } from "./exit-sync";
 import { condorLegRoles, condorNetDebitToCloseExec, condorNetMarkPerShare, type CondorLegRoleOcc } from "./condor";
 import { etNowParts, todayEt } from "@/features/nighthawk/lib/session";
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -42,6 +42,7 @@ import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/provider
 import { roundFloats, type RoundFloatsKeyDp } from "@/lib/round-floats";
 import { getLiveOptionMark, subscribeContracts, unsubscribeContracts } from "@/lib/ws/options-socket";
 import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
+import { ZERODTE_MAX_DTE } from "@/lib/horizons";
 import {
   advancePlayLatch,
   condorSellerPnlPct,
@@ -281,19 +282,70 @@ export function resolveLedgerRowLiveMark(
   return resolved;
 }
 
+/** OCC option-symbol expiry, as YYYY-MM-DD, or null if `occ` doesn't parse.
+ *  Format: [O:]TICKER YYMMDD [C|P] STRIKE(8) — same shape parsed elsewhere (e.g.
+ *  providers/unusual-whales.ts's parseOccSymbol). EXPORTED (2026-09-11 finding, a
+ *  correction to #4790's own "kept local" note above): swing/live-marks-active.ts
+ *  already imports `ActiveZeroDtePlay` from this module, and its own zombie-OCC
+ *  guard reuses this exact parse rather than re-deriving it a second way. */
+export function occExpiryYmd(occ: string): string | null {
+  const m = /^O:[A-Z.]{1,6}(\d{6})[CP]\d{8}$/.exec(occ.toUpperCase());
+  if (!m) return null;
+  const ymd = m[1]!;
+  return `20${ymd.slice(0, 2)}-${ymd.slice(2, 4)}-${ymd.slice(4, 6)}`;
+}
+
 /** Extract the live-lane view of a ledger row; null when it can't be tracked
- *  (CLOSED = frozen by design; no plan OCC / condor legs = nothing to quote). */
+ *  (CLOSED = frozen by design; no plan OCC / condor legs = nothing to quote;
+ *  OCC expiry != the row's own session_date = a stale/zombie row whose contract
+ *  can never quote — see the 2026-09-11 finding below). */
 export function toActivePlay(r: ZeroDteSetupLogRow): ActiveZeroDtePlay | null {
   if (r.status === "CLOSED") return null;
   const ec = r.entry_context as Record<string, unknown> | null;
   const condorLegs = condorLegRoles(ec?.condor);
-  if (condorLegs.length === 4 && (ec?.play_type === "CONDOR" || ec?.condor)) {
+  const isCondor = condorLegs.length === 4 && (ec?.play_type === "CONDOR" || ec?.condor);
+  const occ = isCondor ? condorLegs[0]!.occ : typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
+  if (!occ) return null;
+  // BUG FIX (2026-10-20, live member audit — "verify quote freshness, executable exit
+  // prices... don't dismiss this"): this guard used to require occExpiry === session_date
+  // EXACTLY, on the premise "0DTE's whole premise is same-day expiry." That premise is only
+  // true for underlyings with DAILY option listings (SPY/QQQ/IWM/SPX/NDX); every single-name
+  // 0DTE play (RIOT, NBIS, HUT, ...) is committed against the NEAREST available expiry, up to
+  // ZERODTE_MAX_DTE (4) calendar days out (board.ts's own SETUP_MAX_DTE, widened 1->4 on
+  // 2026-08-06 specifically to cover this population) — so the strict equality silently
+  // excluded EVERY single-name 0DTE row from this lane, permanently: `getActivePlays` never
+  // returns them, so the ~1s poller never quotes them, and attachLiveMarkMeta
+  // (zerodte-service.ts) always falls back to bid:null/ask:null/mark_source:null/
+  // live_pnl_pct_exec:null for the ENTIRE single-name population, every session, with no
+  // error anywhere (same shape as every other "silently correct, structurally always
+  // excluded" bug this toolkit has caught). Live evidence: a board poll during RTH showed
+  // 0/12 open single-name rows ever carrying a bid/ask across repeated polls spanning several
+  // minutes, while the SAME lane's dedicated /marks route showed real, <1s-fresh bid/ask/
+  // greeks for genuinely-tracked (swing) contracts the whole time — the lane itself works;
+  // this guard just never let single-name 0DTE rows register with it. Fixed to accept any
+  // occExpiry within [session_date, session_date + ZERODTE_MAX_DTE] — still excludes a
+  // genuinely-expired row (occExpiry < session_date, the real "stale zombie row" case the
+  // original comment was protecting against) or an implausibly-far OCC (occExpiry too far
+  // past the window, the real "OCC is wrong" case) — same two failure modes as before, just
+  // no longer conflating "not today" with "wrong." Skip the check when occExpiryYmd can't
+  // parse the symbol at all — a format problem, not an expiry one; the existing null-mark
+  // path already surfaces it honestly.
+  const occExpiry = occExpiryYmd(occ);
+  if (occExpiry != null) {
+    const expiryMs = Date.parse(`${occExpiry}T00:00:00Z`);
+    const sessionMs = Date.parse(`${r.session_date}T00:00:00Z`);
+    if (Number.isFinite(expiryMs) && Number.isFinite(sessionMs)) {
+      const dte = Math.round((expiryMs - sessionMs) / 86_400_000);
+      if (dte < 0 || dte > ZERODTE_MAX_DTE) return null;
+    }
+  }
+  if (isCondor) {
     return {
       session_date: r.session_date,
       ticker: r.ticker,
       direction: r.direction,
       strike: r.top_strike,
-      occ: condorLegs[0]!.occ,
+      occ,
       is_condor: true,
       condor_legs: condorLegs,
       entry_premium: r.entry_premium,
@@ -302,8 +354,6 @@ export function toActivePlay(r: ZeroDteSetupLogRow): ActiveZeroDtePlay | null {
       trough_premium: r.trough_premium,
     };
   }
-  const occ = typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
-  if (!occ) return null;
   return {
     session_date: r.session_date,
     ticker: r.ticker,
@@ -643,45 +693,58 @@ export async function runZeroDteMarkTick(deps?: {
           resolved.mark != null && resolved.asOf > 0 && !isZeroDteMarkStale(resolved.asOf, now)
             ? resolved.mark
             : null;
+        // Frozen rails (target/stop/regime) for this row, if the ledger has one — read
+        // ONCE per tick and reused across both advancePlayLatch calls below, so the
+        // ~1s lane's badge threshold agrees with the ~2min cron sync's (scan.ts) rather
+        // than silently re-persisting a stale one every second (2026-09-09 finding: an
+        // earlier draft of this fix only patched scan.ts, which this lane's own
+        // higher-frequency persist would have kept clobbering back to the old +100%
+        // literal within ~1s of every correct flip). Only `trimScaleFirstTranchePct` is
+        // threaded through here — `targetPct`/`stopPct` deliberately keep this lane's
+        // pre-existing (default PLAN_RULES) behavior, unchanged by this fix, to keep the
+        // diff scoped to the trim_scale badge lag rather than also touching the
+        // separate, narrower extended-runner-target gap this lane already had.
+        const row = rowsByKey.get(key);
+        const rails = row ? playRailsFromRow(row) : null;
         let latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes, {
           deferPlanStop: true,
+          trimScaleFirstTranchePct: rails?.trimScaleFirstTranchePct,
         });
         let finalStatus = latch.status;
         let persistMark = mark;
 
         // B-8 exit engine on the ~1s lane — runs BEFORE the plan-stop latch so a
         // breakeven floor can fire when trough already crossed −50%.
-        if (finalStatus !== "CLOSED") {
-          const row = rowsByKey.get(key);
-          if (row) {
-            const exit = await evalExit(
-              row,
-              { syncMark: engineMark, status: finalStatus },
-              {
-                nowMs: now,
-                // Persist a newly-armed trim_scale tranche immediately (not just at the
-                // heartbeat below) — the NEXT ~1s tick must already see it via
-                // row.trims_taken, or the same tranche could re-arm repeatedly within
-                // the heartbeat window. A no-op while ZERODTE_TRIM_BANK_LIVE is off.
-                onTrimBank: async (trimsTaken) => {
-                  await persist(play.session_date, play.ticker, {
-                    status: finalStatus,
-                    mark: persistMark,
-                    trimsTaken,
-                  }).catch(() => {});
-                },
-              }
-            ).catch(() => null);
-            if (exit) {
-              finalStatus = "CLOSED";
-              persistMark = exit.mark;
-              latch = { ...latch, status: "CLOSED" };
+        if (finalStatus !== "CLOSED" && row) {
+          const exit = await evalExit(
+            row,
+            { syncMark: engineMark, status: finalStatus },
+            {
+              nowMs: now,
+              // Persist a newly-armed trim_scale tranche immediately (not just at the
+              // heartbeat below) — the NEXT ~1s tick must already see it via
+              // row.trims_taken, or the same tranche could re-arm repeatedly within
+              // the heartbeat window. A no-op while ZERODTE_TRIM_BANK_LIVE is off.
+              onTrimBank: async (trimsTaken) => {
+                await persist(play.session_date, play.ticker, {
+                  status: finalStatus,
+                  mark: persistMark,
+                  trimsTaken,
+                }).catch(() => {});
+              },
             }
+          ).catch(() => null);
+          if (exit) {
+            finalStatus = "CLOSED";
+            persistMark = exit.mark;
+            latch = { ...latch, status: "CLOSED" };
           }
         }
 
         if (finalStatus !== "CLOSED") {
-          latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes);
+          latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes, {
+            trimScaleFirstTranchePct: rails?.trimScaleFirstTranchePct,
+          });
           finalStatus = latch.status;
         }
 

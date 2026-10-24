@@ -156,6 +156,14 @@ export function railHitsFromLegacySetup(
     direction,
     rel_vol: setup.rel_volume ?? null,
     intraday: extras.intraday ?? setup.intraday ?? null,
+    // Real day % change magnitude, populated ONLY for BREAKOUT-origin setups (breakout-source.ts
+    // — see ZeroDteSetup.change_pct's doc, board.ts). Previously never read here at all, for any
+    // origin — a dead input on scoreMomentumRail regardless of `rel_vol`. Wiring it through gives
+    // BREAKOUT-origin setups a genuine third momentum signal instead of being structurally capped
+    // near a score of 62 (base 40 + at most 12 trend + 10 VWAP, with rel_vol always null since
+    // enrichSetup runs with no dossier for this origin) — the root cause of E6's
+    // momentum_abs_floor false-reject rate (docs/audit/0DTE-RESEARCH.md).
+    change_pct: setup.change_pct ?? null,
   });
   if (mom) hits.push(mom);
 

@@ -10,8 +10,21 @@
 // AFTER the flows-array cap below shipped — the flows array was never the whole
 // problem, `raw.spx` alone can exceed the cap on its own. Reuses the existing SPX
 // fitter rather than a second copy of the same row-cap table.
+//
+// MEASURED STILL TRUNCATED live 2026-10-17, AFTER the fix above: `get_platform_snapshot
+// TRUNCATED 131690/16000`. Root cause: `fitSpxStructureForModel(raw.spx)` was called with
+// NO budget override, so it defaults to the FULL `LARGO_RESULT_CHAR_BUDGET` (14000 chars) and
+// fits `raw.spx` to the EDGE of that budget in total isolation — its own "HARD BOUND" backstop
+// deliberately maximizes usage up to whatever budget it's given, so a rich live desk (full
+// RTH flow/tape activity) legitimately lands `fitted.spx` close to 14000 bytes on its own. Then
+// `nighthawk` and the (already-capped) `flows` array get added ON TOP of that already-full
+// budget, guaranteeing the combined envelope can exceed the 16k transport cap. Same bug SHAPE as
+// `get_earnings` (#6130) and `get_options_flow` (#6111): a sub-object fit against its own
+// standalone budget, merged with sibling fields with no shared accounting. Fixed the same way —
+// fit `spx` LAST, against whatever budget remains after everything else already decided.
 
 import { fitSpxStructureForModel } from "@/lib/largo/spx-structure-fit";
+import { LARGO_RESULT_CHAR_BUDGET } from "@/lib/largo/fit-tool-result";
 
 export interface PlatformSnapshotFittedResult {
   spx?: any;
@@ -31,9 +44,10 @@ export function fitPlatformSnapshotForModel(
   // Keep core product states but reduce flow array size
   const fitted: PlatformSnapshotFittedResult = {};
 
-  // Copy core product states (spx, nighthawk, largo) — spx goes through the same
-  // structure fitter get_spx_structure uses, since it carries the same fat tail.
-  if (raw.spx) fitted.spx = fitSpxStructureForModel(raw.spx).fitted;
+  // Small, essentially-fixed-size fields first — `nighthawk` is a tiny digest summary
+  // (`NightHawkEditionSummary`) and `largo` is only populated when explicitly requested. These
+  // form the base `spx`'s own budget is measured against below, so neither can silently blow the
+  // cap without the other knowing.
   if (raw.nighthawk) fitted.nighthawk = raw.nighthawk;
   if (raw.largo) fitted.largo = raw.largo;
 
@@ -42,6 +56,15 @@ export function fitPlatformSnapshotForModel(
     fitted.flows = raw.flows.slice(0, flowLimitForModel);
     fitted.flows_shown = fitted.flows.length;
     fitted.flows_truncated = raw.flows.length > flowLimitForModel;
+  }
+
+  // Fit spx LAST, against whatever budget remains after nighthawk/largo/flows are already
+  // decided — spx goes through the same structure fitter get_spx_structure uses, since it
+  // carries the same fat tail, but now budget-aware of its siblings instead of fit in isolation.
+  if (raw.spx) {
+    const reserved = JSON.stringify(fitted).length;
+    const remaining = Math.max(0, LARGO_RESULT_CHAR_BUDGET - reserved);
+    fitted.spx = fitSpxStructureForModel(raw.spx, { budget: remaining }).fitted;
   }
 
   return { fitted };

@@ -82,7 +82,11 @@ export function LearnHub() {
               <div className="learn-hub-card h-full">
                 <div className="flex items-center gap-3">
                   <span className="learn-hub-chapter-num">{String(i + 2).padStart(2, "0")}</span>
-                  {guide.product === "docs" ? (
+                  {guide.slug === "meridian" ? (
+                    <span aria-hidden className="meridian-mark grid size-10 place-items-center text-[1.5rem]">
+                      ✦
+                    </span>
+                  ) : guide.product === "docs" ? (
                     <span className="grid size-10 place-items-center rounded-xl border border-white/10 bg-white/[0.04] font-mono text-xs text-cyan-300">
                       Abc
                     </span>

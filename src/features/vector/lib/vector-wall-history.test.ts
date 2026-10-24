@@ -8,6 +8,7 @@ import {
   backfillRailPrefix,
   compactHistoryToCap,
   backfillRailGaps,
+  beadRailHistoryForHorizon,
   railCoverageGaps,
   railUncoveredSec,
   decimateSeedHistory,
@@ -29,9 +30,6 @@ import {
   strikeTrailLifecycle,
   strikeTrailWeight,
   trailsByStrike,
-  trailForFlipLevel,
-  trailForGammaFlip,
-  trailForRank,
   trimHistoryForLiveTrails,
   trimHistoryToSession,
   LIVE_TRAIL_LOOKBACK_SEC,
@@ -79,33 +77,6 @@ test("recordWallSample: over the cap it THINS the old end — it must not amputa
   for (let i = 1; i < live.length; i++) {
     assert.equal(live[i]!.time - live[i - 1]!.time, 5, "the newest 30 min must stay at 5s");
   }
-});
-
-test("trailForRank: projects one rank's strike/pct across the history, in order", () => {
-  const history: WallHistorySample[] = [
-    { time: 100, walls: walls([6800, 6850], [6700]) },
-    { time: 160, walls: walls([6810, 6850], [6700, 6650]) },
-  ];
-  assert.deepEqual(trailForRank(history, "callWalls", 0), [
-    { time: 100, strike: 6800, pct: 10 },
-    { time: 160, strike: 6810, pct: 10 },
-  ]);
-});
-
-test("trailForRank: omits bars where that rank didn't exist, instead of inserting a placeholder", () => {
-  const history: WallHistorySample[] = [
-    { time: 100, walls: walls([6800, 6850], [6700]) }, // rank 1 exists
-    { time: 160, walls: walls([6810], [6700]) }, // rank 1 dropped out (ladder thinned)
-    { time: 220, walls: walls([6810, 6860], [6700]) }, // rank 1 reappears
-  ];
-  assert.deepEqual(trailForRank(history, "callWalls", 1), [
-    { time: 100, strike: 6850, pct: 9 },
-    { time: 220, strike: 6860, pct: 9 },
-  ]);
-});
-
-test("trailForRank: returns an empty trail for an empty history", () => {
-  assert.deepEqual(trailForRank([], "putWalls", 0), []);
 });
 
 test("seedWallHistoryForDisplay: seeds one honest dot at the last bar when history is empty", () => {
@@ -487,29 +458,6 @@ test("trailsByStrike: threads wall notional onto trail points when present on Ge
   assert.equal(trail[0]!.notional, 1.2e9);
 });
 
-test("trailForGammaFlip: horizontal bead row when flip is present", () => {
-  const history: WallHistorySample[] = [
-    { time: 100, walls: walls([6800], [6700]), gammaFlip: 6745 },
-    { time: 160, walls: walls([6810], [6700]), gammaFlip: 6750 },
-    { time: 220, walls: walls([6810], [6700]), gammaFlip: null },
-  ];
-  assert.deepEqual(trailForGammaFlip(history), [
-    { time: 100, strike: 6745 },
-    { time: 160, strike: 6750 },
-  ]);
-});
-
-test("trailForFlipLevel: vanna flip trail from vexFlip field", () => {
-  const history: WallHistorySample[] = [
-    {
-      time: 100,
-      walls: walls([6800], [6700]),
-      vexWalls: walls([6820], [6680]),
-      vexFlip: 6760,
-    },
-  ];
-  assert.deepEqual(trailForFlipLevel(history, "vex"), [{ time: 100, strike: 6760 }]);
-});
 
 test("hasVexInHistory: true when vex walls present", () => {
   assert.equal(
@@ -864,6 +812,34 @@ test("backfillRailGaps: fills every hole, and NEVER displaces an observed sample
     "the 14:45→15:15 hole must carry ghost beads"
   );
   assert.ok(merged.every((s, i) => i === 0 || s.time > merged[i - 1]!.time), "strictly ordered");
+});
+
+test("beadRailHistoryForHorizon: fills narrowed gaps from blended without displacing observed buckets", () => {
+  const H = (h: number, m = 0) => Math.floor(Date.UTC(2026, 8, 7, 13 + h, m) / 1000);
+  const sample = (t: number): WallHistorySample => ({
+    time: t,
+    callWalls: [{ strike: 7700, pct: 1 }],
+    putWalls: [],
+    modeled: false,
+  });
+  const modeledSample = (t: number): WallHistorySample => ({
+    time: t,
+    callWalls: [{ strike: 7700, pct: 0.5 }],
+    putWalls: [],
+    modeled: true,
+  });
+  // Narrowed starts at 15:30 — the Sep-7 prod gap symptom.
+  const narrowed = [sample(H(1, 30)), sample(H(2)), sample(H(3))];
+  const blended: WallHistorySample[] = [];
+  for (let t = H(0); t <= H(3); t += 300) blended.push(modeledSample(t));
+
+  const merged = beadRailHistoryForHorizon(narrowed, blended, H(0), H(3));
+  assert.ok(merged.some((s) => s.time < H(1, 30) && s.modeled), "prefix gap filled from blended");
+  assert.equal(
+    merged.find((s) => s.time === H(1, 30))?.modeled,
+    false,
+    "observed narrowed bucket stays solid"
+  );
 });
 
 test("backfillRailGaps: no modeled sample lands where the rail already has coverage", () => {

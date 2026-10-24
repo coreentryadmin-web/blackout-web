@@ -16,7 +16,7 @@ import {
   liquidityQualityScore,
   type BreakoutChainRow,
 } from "./breakout-source";
-import type { ContractPlan } from "./plan";
+import type { ContractPlan, LiquidityTickerClass } from "./plan";
 import { buildContractPlan, PLAN_ILLIQUID_SPREAD_PCT } from "./plan";
 
 export type LiquidStrikeCandidate = {
@@ -182,6 +182,12 @@ export type BuildPlanForAttachInput = {
   bidSize?: number | null;
   askSize?: number | null;
   quoteAgeMs?: number | null;
+  /** G-21 (2026-09-09): same per-class floor the primary attach uses — a fallback candidate
+   *  must clear the SAME bar the primary strike did, or the fallback would silently re-widen
+   *  the floor back to the legacy uniform 1 for exactly the plans that hit thin_size. */
+  tickerClass?: LiquidityTickerClass;
+  dayVolume?: number | null;
+  openInterest?: number | null;
   keySupports: number[];
   keyResistances: number[];
   vwap: number | null;
@@ -193,7 +199,10 @@ export type BuildPlanForAttachInput = {
 export function pickLiquidStrikePlan(
   candidates: LiquidStrikeCandidate[],
   snaps: Map<string, import("@/lib/providers/options-snapshot").OptionSnapshot>,
-  buildInput: Omit<BuildPlanForAttachInput, "occ" | "bid" | "ask" | "mark" | "bidSize" | "askSize" | "quoteAgeMs"> & {
+  buildInput: Omit<
+    BuildPlanForAttachInput,
+    "occ" | "bid" | "ask" | "mark" | "bidSize" | "askSize" | "quoteAgeMs" | "dayVolume" | "openInterest"
+  > & {
     quoteAgeMsFor: (snap: import("@/lib/providers/options-snapshot").OptionSnapshot | null | undefined) => number | undefined;
   }
 ): { candidate: LiquidStrikeCandidate; plan: ContractPlan } | null {
@@ -211,6 +220,9 @@ export function pickLiquidStrikePlan(
       bidSize: snap?.bidSize ?? null,
       askSize: snap?.askSize ?? null,
       quoteAgeMs: buildInput.quoteAgeMsFor(snap),
+      tickerClass: buildInput.tickerClass,
+      dayVolume: snap?.dayVolume ?? null,
+      openInterest: snap?.openInterest ?? null,
       keySupports: buildInput.keySupports,
       keyResistances: buildInput.keyResistances,
       vwap: buildInput.vwap,

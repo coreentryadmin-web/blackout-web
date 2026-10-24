@@ -14,7 +14,7 @@
 // PURE & deterministic — no IO. Evidence-only: flags overlap; sizes and blocks nothing.
 
 import type { PlayDirection } from "../horizon-fanout";
-import { resolveTheme, sameThesis } from "./theme-cluster";
+import { resolveTheme, sameThesis, effectiveDirection } from "./theme-cluster";
 
 /** A held (or candidate) position — the minimum the overlap check needs. */
 export interface PortfolioPosition {
@@ -22,6 +22,18 @@ export interface PortfolioPosition {
   direction: PlayDirection;
   /** Ledger row id when known — lets play-brief exclude the reviewed position by identity. */
   positionId?: number;
+  /** Banger-engine row id, DISPLAY-ONLY — never read by this module's own exclude/match logic
+   *  (which only ever compares `positionId`). Exists solely so play-brief-intel.ts's
+   *  `formatOverlapPosition` can tell two DIFFERENT cross-engine siblings on the same ticker apart
+   *  in the rendered concentration list (see that function's own doc comment for the live repro:
+   *  two genuinely distinct open Banger CRWD LONG positions both rendered the identical, bare
+   *  "CRWD LONG (separate, cross-engine position)" text, reading as a duplicate-counting bug to a
+   *  member even though the underlying count was honest). Deliberately a separate field from
+   *  `positionId` rather than reusing it — `positionId` intentionally stays unset on a banger row
+   *  (play-brief-context.ts's `loadOpenBook` comment) because `banger_positions` and
+   *  `swing_positions` are separate DB sequences that can collide on numeric id, and
+   *  `excludePositionId` above trusts `positionId` as an exact identity match. */
+  bangerId?: number;
 }
 
 export interface PortfolioOverlap {
@@ -94,7 +106,22 @@ export function checkPortfolioOverlap(
   // independent EWZ LONG in the book gets mis-counted as overlap against itself.
   let selfExcluded = false;
   for (const pos of existing) {
-    if (excludePositionId != null && pos.positionId === excludePositionId) continue;
+    // Match on EITHER id field, not just `positionId`. A Banger-origin reviewed play's "ledger
+    // id" (what `bookContextSection` passes as `excludePositionId`) is actually the banger row's
+    // own id — banger-lane-merge.ts stamps `positionId: row.id` from `banger_positions`, never a
+    // real swing_positions row. `loadOpenBook()` deliberately leaves `positionId` UNSET on every
+    // banger-origin book row and stores that same number only under `bangerId` (to avoid a
+    // DIFFERENT, already-fixed cross-sequence collision risk on `positionId` — see
+    // `PortfolioPosition.bangerId`'s own doc comment). Each choice is correct in isolation, but
+    // composed they left a gap: excluding only on `positionId` can never match a banger-origin
+    // candidate's own row, which carries the exact same id as `bangerId` instead — so the
+    // candidate reported ITSELF back as "a separate, cross-engine position" (live repro 2026-10-07,
+    // VST and MRVL both self-flagged as concentration against their own open position).
+    if (
+      excludePositionId != null &&
+      (pos.positionId === excludePositionId || pos.bangerId === excludePositionId)
+    )
+      continue;
     if (
       excludePositionId == null &&
       excludeSelfMatch &&
@@ -106,7 +133,15 @@ export function checkPortfolioOverlap(
       continue;
     }
     if (!sameThesis(candidate.ticker, pos.ticker)) continue;
-    if (pos.direction === candidate.direction) sameDir.push(pos);
+    // Classify by EFFECTIVE direction, not the raw field — a LONG position in a known inverse-
+    // leverage ETF (e.g. SOXS) is an economically SHORT bet on the theme it clusters into (see
+    // `effectiveDirection`'s own doc comment for the live repro: a real SOXS LONG was narrated as
+    // "stacking the same wager" alongside a real bullish MRVL LONG, exactly backwards). Raw
+    // `direction` is still used for self-match exclusion above — that's an identity check (is this
+    // row the candidate's own position), not an economic-bet comparison, so it must stay literal.
+    const candidateEffective = effectiveDirection(candidate.ticker, candidate.direction);
+    const posEffective = effectiveDirection(pos.ticker, pos.direction);
+    if (posEffective === candidateEffective) sameDir.push(pos);
     else opposedDir.push(pos);
   }
 

@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
       billingKind: result.billingKind,
     }, { headers: NO_STORE_HEADERS });
   } catch (err) {
+    console.error("[admin-users] sync failed:", err);
     const msg = err instanceof Error ? err.message : "Sync failed";
     return NextResponse.json({ error: msg }, { status: 500, headers: NO_STORE_HEADERS });
   }

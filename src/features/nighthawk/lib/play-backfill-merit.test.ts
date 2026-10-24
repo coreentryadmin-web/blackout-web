@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { rankedCandidateMeritEligible } from "./play-backfill";
+import { backfillCandidateEligible } from "./play-backfill";
 import type { ScoredCandidate } from "./scorer";
 
 const scored = (ticker: string, score: number, over: Partial<ScoredCandidate> = {}): ScoredCandidate =>
@@ -24,25 +24,23 @@ const scored = (ticker: string, score: number, over: Partial<ScoredCandidate> = 
     ...over,
   }) as ScoredCandidate;
 
-test("rankedCandidateMeritEligible rejects sub-floor scores under global-strongest defaults", () => {
-  const keys = ["NH_LEGACY_GLOBAL_STRONGEST", "NH_MIN_PUBLISH_SCORE", "NH_LEGACY_MIN_TIER"] as const;
-  const prev: Record<string, string | undefined> = {};
-  for (const k of keys) prev[k] = process.env[k];
-  delete process.env.NH_LEGACY_GLOBAL_STRONGEST;
-  delete process.env.NH_MIN_PUBLISH_SCORE;
-  process.env.NH_LEGACY_MIN_TIER = "B";
-  try {
-    // Global-strongest's score floor is Math.max(MIN_PUBLISH_SCORE, NH_SCORE_PRIME_MIN) =
-    // Math.max(38, 40) = 40 (edition-quality.ts's effectiveMinPublishScore — deliberately lowered
-    // from the old hardcoded 55 to the measured overnight PRIME band floor, see that function's
-    // own comment). 44 is now legitimately above the floor, not sub-floor — use 35 to still test
-    // genuine rejection.
-    assert.equal(rankedCandidateMeritEligible(scored("WEAK", 35), {}), false);
-    assert.equal(rankedCandidateMeritEligible(scored("STRONG", 72), {}), true);
-  } finally {
-    for (const k of keys) {
-      if (prev[k] === undefined) delete process.env[k];
-      else process.env[k] = prev[k];
-    }
-  }
+// 2026-09-28 backfill redesign (operator-directed): backfillCandidateEligible replaces the old
+// rankedCandidateMeritEligible, which required the SAME score+tier bar as the organic path and
+// made backfill a no-op on any night where the whole pool scored weakly. It is now deliberately
+// score/tier-blind — a very LOW score must still be eligible, because that is the entire point of
+// backfill existing (reaching the configured minimum on a genuinely thin night). Structural safety
+// (real contract, valid geometry, sector-cap-respecting rank order) is enforced elsewhere, by
+// backfillThinEditionPlays itself — see play-backfill.test.ts.
+test("backfillCandidateEligible admits a candidate regardless of how low its score is", () => {
+  assert.equal(backfillCandidateEligible(scored("VERY_WEAK", 1)), true);
+  assert.equal(backfillCandidateEligible(scored("WEAK", 25)), true);
+  assert.equal(backfillCandidateEligible(scored("STRONG", 72)), true);
+});
+
+test("backfillCandidateEligible rejects a trading-halted candidate regardless of score", () => {
+  assert.equal(backfillCandidateEligible(scored("HALTED", 90, { trading_halt: true })), false);
+});
+
+test("backfillCandidateEligible is unaffected by tier/conviction — score/tier are not checked at all", () => {
+  assert.equal(backfillCandidateEligible(scored("C_TIER", 20, { conviction: "C" })), true);
 });

@@ -455,6 +455,86 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
     assert.equal(swingActionDisplay(base({ horizon: "SWING", status: "SKIP" })), null);
   });
 
+  it("WATCH past its own entry-validity deadline → EXPIRED pill, not generic WAIT (live repro 2026-09-12: MU/AMD sat WATCH 46-49 days past a 2-5 day window with no member-facing distinction from a freshly-forming setup)", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: true,
+        }),
+      ),
+      { label: "EXPIRED", tone: "watch" },
+    );
+  });
+
+  it("WATCH not past deadline still reads as the plain WAIT pill", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: false,
+        }),
+      ),
+      { label: "WAIT", tone: "watch" },
+    );
+  });
+
+  // BUG FIX (2026-10-08, Ask Largo standing mandate, live repro NTAP 2026-10-08): setupState
+  // EXTENDED / entryStatus EXTENDED_CHASE is a DIFFERENT dead-reason than the calendar-deadline
+  // `watchEntryExpired` case above (price moved too far past the trigger to enter cleanly, not a
+  // calendar deadline) but previously fell through to the identical generic "WAIT" pill — the
+  // same member-facing ambiguity the EXPIRED fix above exists to prevent. entry-enterability.ts's
+  // `deadPlayReason` (the broader check play-brief.ts/entry-verdict.ts/serving.ts already use for
+  // this exact play) treats both as dead; this pill must distinguish them from a live WAIT.
+  it("WATCH with setupState EXTENDED → EXTENDED pill, not generic WAIT", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: false,
+          setupState: "EXTENDED",
+        }),
+      ),
+      { label: "EXTENDED", tone: "watch" },
+    );
+  });
+
+  it("WATCH with entryStatus EXTENDED_CHASE → EXTENDED pill, not generic WAIT (live repro: NTAP, entryStatus EXTENDED_CHASE, watchEntryExpired false)", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: false,
+          entryStatus: "EXTENDED_CHASE",
+        }),
+      ),
+      { label: "EXTENDED", tone: "watch" },
+    );
+  });
+
+  it("calendar-deadline EXPIRED still wins over EXTENDED when both happen to be set (EXPIRED check runs first)", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: true,
+          entryStatus: "EXTENDED_CHASE",
+        }),
+      ),
+      { label: "EXPIRED", tone: "watch" },
+    );
+  });
+
   it("live OPEN with swingEntryAction still_buy → STILL BUY pill (not HOLD)", () => {
     assert.deepEqual(
       swingActionDisplay(
@@ -484,6 +564,65 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
         }),
       ),
       { label: "TRIM 50%", tone: "active" },
+    );
+  });
+
+  // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro CRWD #39): manage.ts's
+  // TAKE_PARTIAL/EXIT_RUNNER actions come from MULTIPLE independent rungs, but only
+  // "profit_ladder" actually fires off exitPolicy.trim_levels. catalyst_shift/regime_shift/
+  // flow_decay/rel_strength_loss/vol_collapse are evidence-only advisories unrelated to the
+  // ladder's own trigger_pct — citing it in the label falsely implies the ladder itself fired.
+  it("TRIM recommendation driven by an unrelated advisory rung (catalyst_shift) does NOT borrow the ladder's trigger_pct", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "catalyst_shift",
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM", tone: "active" },
+      "must never show a ladder trigger_pct that has nothing to do with why TRIM was recommended",
+    );
+  });
+
+  it("TRIM recommendation genuinely driven by the profit ladder still cites its trigger_pct", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "profit_ladder",
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 100%", tone: "active" },
+    );
+  });
+
+  it("TRIM recommendation with no manageReason (row has no live manage tick yet) keeps the pre-existing ladder-citing behavior", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 100%", tone: "active" },
     );
   });
 
@@ -548,5 +687,20 @@ describe("closedCapturePct — honest post-trade attribution (2026-08-29)", () =
       base({ status: "CLOSED", exitPnlPct: null, pnlPct: null, closedReason: "stopped", peak: 60 }),
     );
     assert.ok(pct != null, "expected a real number, not null, once closedRealizedPct has a stop-blend fallback");
+  });
+
+  it("a round-trip past breakeven into a realized loss → null, never a sign-flipped blowup ratio", () => {
+    // Reproduces a real production render: peak +1.4%, realized -56.2% → naive ratio math gives
+    // "captured -4014% of peak", a number with no honest reading. Mirrors the same guard already
+    // shipped in mfe-capture.ts's mfeCaptureOutcome and zerodte-service.ts's mfeCapturePct.
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: -56.2, peak: 1.4 })),
+      null,
+    );
+    // A small negative realized still nulls out even against a large peak.
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: -0.5, peak: 90 })),
+      null,
+    );
   });
 });

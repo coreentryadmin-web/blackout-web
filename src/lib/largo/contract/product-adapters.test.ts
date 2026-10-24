@@ -7,6 +7,7 @@ import {
   meridianContribution,
   nighthawkContribution,
   spxContribution,
+  swingContribution,
   thermalContribution,
   vectorContribution,
 } from "./product-adapters";
@@ -113,18 +114,107 @@ test("meridian sizes risk but does not point a direction — an expected move is
   assert.match(String(none.missingReason), /no earnings or catalyst event/);
 });
 
-test("night hawk votes from what the desk actually committed", () => {
-  const c = nighthawkContribution({
-    ticker: "SPX",
+test("night hawk votes from what the desk actually committed ON THE QUERIED TICKER", () => {
+  const c = nighthawkContribution(
+    {
+      plays: [
+        { ticker: "SPX", option_type: "PUT" },
+        { ticker: "NVDA", option_type: "PUT" },
+        { ticker: "QQQ", option_type: "CALL" },
+      ],
+    },
+    "SPX"
+  );
+  assert.equal(c.signal?.direction, "bearish");
+  assert.equal(c.signal?.ticker, "SPX");
+  const empty = nighthawkContribution({ plays: [] }, "SPX");
+  assert.match(String(empty.missingReason), /no committed 0DTE play on SPX/);
+});
+
+test("night hawk IDENTITY (regression): a whole-board vote must never be borrowed for an unrelated ticker", () => {
+  // get_zerodte_plays returns the WHOLE multi-ticker board (no ticker filter at the tool layer —
+  // cross-product-read.ts's `input: () => ({})`). Before this fix, nighthawkContribution ignored
+  // the queried ticker entirely and voted off EVERY play on the board — asking about a ticker with
+  // no 0DTE play today (TSLA) still returned a confident direction sourced from unrelated names
+  // (here: 2 puts on SPX/NVDA vs 1 call on QQQ -> "bearish"), and the signal's own `ticker` field
+  // read `p.ticker`, which the real board payload never carries, so it silently defaulted to "".
+  const board = {
     plays: [
       { ticker: "SPX", option_type: "PUT" },
       { ticker: "NVDA", option_type: "PUT" },
       { ticker: "QQQ", option_type: "CALL" },
     ],
-  });
-  assert.equal(c.signal?.direction, "bearish");
-  const empty = nighthawkContribution({ plays: [] });
-  assert.match(String(empty.missingReason), /no committed plays/);
+  };
+  const tsla = nighthawkContribution(board, "TSLA");
+  assert.equal(tsla.signal, null, "no committed play on TSLA -- must be an honest absence, never a borrowed board vote");
+  assert.match(String(tsla.missingReason), /no committed 0DTE play on TSLA/);
+
+  // A ticker that DOES have a play on the board must vote off ONLY its own row(s), not the board.
+  const nvda = nighthawkContribution(
+    {
+      plays: [
+        { ticker: "NVDA", option_type: "CALL" },
+        { ticker: "SPX", option_type: "PUT" },
+        { ticker: "SPX", option_type: "PUT" },
+      ],
+    },
+    "NVDA"
+  );
+  assert.equal(nvda.signal?.direction, "bullish", "NVDA's own play is a call; the two unrelated SPX puts must not flip it bearish");
+  assert.equal(nvda.signal?.ticker, "NVDA");
+  assert.equal(nvda.signal?.native && (nvda.signal.native as { play_count?: number }).play_count, 1);
+});
+
+test("night hawk NEUTRAL-STRUCTURE (regression): a committed condor must never cast a directional vote", () => {
+  // condor.ts's own buildCondorSetup comment: a condor row's `direction` field "carries the pin's
+  // nominal fade side for provenance but is UNUSED by the neutral structure's gates/grader". Before
+  // this fix, nighthawkContribution fell through to that same field (option_type ?? side ??
+  // direction) for every play, so a condor with no option_type/side counted its nominal fade side
+  // as a real call/put vote -- a delta-neutral SOLD structure with no directional thesis reporting
+  // a confident bullish/bearish signal.
+  const onlyCondor = nighthawkContribution(
+    { plays: [{ ticker: "SPX", is_condor: true, play_type: "CONDOR", direction: "short" }] },
+    "SPX"
+  );
+  assert.equal(onlyCondor.signal, null, "a lone condor must be an honest non-directional absence, never a vote");
+  assert.match(String(onlyCondor.missingReason), /delta-neutral sold structure with no directional thesis/);
+  assert.match(String(onlyCondor.missingReason), /1 committed 0DTE iron condor on SPX/);
+
+  // A raw payload shape carrying only `play_type: "CONDOR"` (no `is_condor` flag) must be caught
+  // the same way -- the two are alternate identifications of the same structural fact.
+  const rawPlayType = nighthawkContribution(
+    { plays: [{ ticker: "SPX", play_type: "CONDOR", direction: "long" }] },
+    "SPX"
+  );
+  assert.equal(rawPlayType.signal, null);
+  assert.match(String(rawPlayType.missingReason), /delta-neutral sold structure/);
+
+  // A REAL directional play on the same ticker must still vote, and the condor must be excluded
+  // from the tally (not flip a 1-call/1-nominal-condor tie into a false split) while still being
+  // named in the evidence as context.
+  const mixed = nighthawkContribution(
+    {
+      plays: [
+        { ticker: "SPX", option_type: "CALL" },
+        { ticker: "SPX", is_condor: true, play_type: "CONDOR", direction: "short" },
+      ],
+    },
+    "SPX"
+  );
+  assert.equal(mixed.signal?.direction, "bullish", "the one real directional call must win the vote unopposed by the condor's nominal fade");
+  assert.equal(
+    (mixed.signal?.native as { play_count?: number; condor_count?: number } | undefined)?.play_count,
+    1,
+    "play_count must reflect only the directional plays actually voted on"
+  );
+  assert.equal(
+    (mixed.signal?.native as { condor_count?: number } | undefined)?.condor_count,
+    1
+  );
+  assert.ok(
+    mixed.signal?.evidence.some((e) => /condor/i.test(e)),
+    "the excluded condor should still surface as evidence/context, not vanish silently"
+  );
 });
 
 test("spx votes from the play-engine direction on SPX/SPXW only", () => {
@@ -141,10 +231,39 @@ test("spx votes from the play-engine direction on SPX/SPXW only", () => {
   assert.match(String(offScope.missingReason), /only tracks SPX\/SPXW/);
 });
 
+test("swing votes from the play-brief envelope's own bias, and reports a real absence reason when there is no position", () => {
+  const bullish = swingContribution(
+    {
+      available: true,
+      playId: 123,
+      ticker: "NVDA",
+      engine: "swing_play_intelligence",
+      envelope: { bias: "bullish", headline: "HOLD — NVDA 950C 2026-10-16" },
+    },
+    "NVDA"
+  );
+  assert.equal(bullish.signal?.direction, "bullish");
+  assert.equal(bullish.signal?.ticker_class, "equity");
+  assert.deepEqual(bullish.signal?.evidence, ["HOLD — NVDA 950C 2026-10-16"]);
+
+  const noPosition = swingContribution(
+    { available: false, error: "play_not_found", note: "No open, watch, or recently closed Swing position found for ZZZZ." },
+    "ZZZZ"
+  );
+  assert.equal(noPosition.signal, null);
+  assert.match(String(noPosition.missingReason), /No open, watch, or recently closed Swing position/);
+
+  // A payload that carries no `note` (e.g. a thrown-error shape) must still state a real reason —
+  // same C3 discipline every other adapter here follows, never a blank absence.
+  const noNote = swingContribution({ available: false, error: "swing_play_brief_failed" }, "AAPL");
+  assert.equal(noNote.signal, null);
+  assert.match(String(noNote.missingReason), /AAPL/);
+});
+
 test("every adapter survives a garbage payload rather than taking the read down", () => {
   // Five agents are rewriting these payloads concurrently. An adapter that throws would fail the
   // whole cross-product read instead of degrading one product.
-  for (const fn of [helixContribution, thermalContribution, vectorContribution, meridianContribution, nighthawkContribution, spxContribution]) {
+  for (const fn of [helixContribution, thermalContribution, vectorContribution, meridianContribution, nighthawkContribution, spxContribution, swingContribution]) {
     for (const junk of [null, undefined, 42, "nope", [], { unexpected: true }]) {
       const c = fn(junk);
       assert.equal(c.signal, null);
@@ -174,10 +293,10 @@ test("ticker_class is derived from the actual ticker, not a hardcoded per-produc
     "vector hardcoded index — must read equity for TSLA"
   );
 
-  const nighthawkEquity = nighthawkContribution({
-    ticker: "TSLA",
-    plays: [{ ticker: "TSLA", option_type: "CALL" }],
-  });
+  const nighthawkEquity = nighthawkContribution(
+    { plays: [{ ticker: "TSLA", option_type: "CALL" }] },
+    "TSLA"
+  );
   assert.equal(
     nighthawkEquity.signal?.ticker_class,
     "equity",
@@ -197,7 +316,7 @@ test("END TO END — a real split, with honest coverage", () => {
   // vector has no baseline, meridian has no event.
   const read = joinProductSignals("SPX", [
     helixContribution({ ticker: "SPX", session: { call_pct: 71, alert_count: 140 } }),
-    nighthawkContribution({ ticker: "SPX", plays: [{ ticker: "SPX", option_type: "PUT" }] }),
+    nighthawkContribution({ plays: [{ ticker: "SPX", option_type: "PUT" }] }, "SPX"),
     thermalContribution({ thermal: { gamma_posture: "short", volatility_regime: "amplifying" } }),
     vectorContribution({ ticker: "SPX", has_baseline: false, signals: [] }),
     meridianContribution({ events: [] }),

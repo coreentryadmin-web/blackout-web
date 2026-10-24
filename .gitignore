@@ -24,6 +24,10 @@ tsconfig.tsbuildinfo
 # data-validator runtime output (may contain live production data)
 audit-output/
 
+# ad-hoc live-endpoint sweep dumps (raw production API responses captured during investigation —
+# same "may contain live production data" reasoning as audit-output/ above)
+sweep-output/
+
 # iOS Capacitor (generated / local)
 apps/blackout-ios/node_modules
 apps/blackout-ios/ios/

@@ -82,12 +82,3 @@ export function downloadHelixCsv(alerts: readonly FlowAlert[], filterSummary?: s
   URL.revokeObjectURL(url);
   return { rowCount: alerts.length, filterSummary };
 }
-
-export function helixTapeToJson(alerts: readonly FlowAlert[]): string {
-  const dist = helixScoreDistribution(alerts.map((a) => a.score));
-  const rows = alerts.map((a) => ({
-    ...a,
-    score_context: helixScoreContextForPrint(a.score, dist),
-  }));
-  return JSON.stringify(rows, null, 2);
-}

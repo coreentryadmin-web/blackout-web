@@ -43,11 +43,14 @@ export type BangerScreenConfig = {
   maxCloseGiveback: number;
 };
 
+// 2026-09-08: minVol lowered 1M→750k and minGain 5%→4% (operator directive, whole-market volume
+// complaint) — maxCloseGiveback (the close-strength quality filter) is unchanged, same reasoning
+// as the BREAKOUT screen in candidates.ts.
 export const DEFAULT_BANGER_SCREEN_CONFIG: BangerScreenConfig = {
   priceMin: 5,
   priceMax: 400,
-  minVol: 1_000_000,
-  minGain: 0.05,
+  minVol: 750_000,
+  minGain: 0.04,
   maxCloseGiveback: 0.5,
 };
 

@@ -19,6 +19,7 @@ import {
   fetchUwFlowPerStrikeRows,
   UW_FLOW_PER_STRIKE_FETCH_CAP,
   aggregateFlowPerStrikeRows,
+  isDegenerateFlowAggregate,
 } from "@/lib/providers/unusual-whales";
 import { fetchMarketMovers } from "@/lib/providers/polygon";
 import { seedUwCacheFromWsStores, shouldSkipUwCacheRefreshTask } from "@/lib/uw-ws-cache-bridge";
@@ -93,12 +94,14 @@ async function runUwCacheRefreshTasks(
     ...FLOW_STRIKE_TICKERS.map((ticker) => async () => {
       if (shouldSkipUwCacheRefreshTask("flow_per_strike", ticker)) return;
       const rows = await fetchUwFlowPerStrikeRows(ticker, UW_FLOW_PER_STRIKE_FETCH_CAP);
-      await uwCacheSet(
-        redis,
-        UW_KEYS.flowPerStrike(ticker),
-        UW_CACHE_TTL.flowPerStrike,
-        aggregateFlowPerStrikeRows(rows)
-      );
+      const aggregate = aggregateFlowPerStrikeRows(rows);
+      // A both-sides-zero aggregate is almost always a transient empty/degraded upstream read,
+      // not genuine zero flow (see isDegenerateFlowAggregate's own doc comment — this is the
+      // SAME shared aggregate `fetchUwFlow0dte`'s live-read path guards). Skip the write rather
+      // than overwrite a real cached value with a zero for the full 2-min TTL; the existing
+      // cached value (if any) simply keeps counting down to its own expiry.
+      if (isDegenerateFlowAggregate(aggregate)) return;
+      await uwCacheSet(redis, UW_KEYS.flowPerStrike(ticker), UW_CACHE_TTL.flowPerStrike, aggregate);
     }),
   ];
 

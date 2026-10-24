@@ -7,6 +7,7 @@ import { roundFloats } from "@/lib/round-floats";
 import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { fmtPremium } from "@/lib/fmt-money";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { etNowParts } from "@/features/nighthawk/lib/session";
 import {
   maxPainForExpiryFromHeatmap,
   summarizeHeatmapGammaByExpiry,
@@ -256,6 +257,8 @@ export async function buildMeridianMacroBrief(input: {
     0,
     Math.round((Date.parse(`${input.date}T12:00:00-04:00`) - Date.parse(`${today}T12:00:00-04:00`)) / 86_400_000)
   );
+  const nowEt = etNowParts();
+  const now_et_minutes = nowEt.hour * 60 + nowEt.minute;
 
   const report = buildMeridianMacroReport({
     event: input.event,
@@ -264,6 +267,7 @@ export async function buildMeridianMacroBrief(input: {
     impact: input.impact,
     estimate: input.estimate?.trim() || null,
     days_until,
+    now_et_minutes,
     correlation_rail,
     surprise,
     related_headlines: macroHistory.related_headlines,

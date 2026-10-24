@@ -240,6 +240,7 @@ export default function XIntelDetailPage({
         <div className="flex gap-2 mb-3">
           <input
             type="text"
+            aria-label="X/Twitter post ID"
             placeholder="Paste the X/Twitter post ID here..."
             value={tweetId}
             onChange={(e) => setTweetId(e.target.value)}

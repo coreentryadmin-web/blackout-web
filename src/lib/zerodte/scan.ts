@@ -74,6 +74,10 @@ import { getFlowSourceHealthState } from "@/lib/ws/uw-socket";
 import { withServerCache } from "@/lib/server-cache";
 import { recordZeroDteScanTick } from "@/lib/play-engine-heartbeat";
 import {
+  awaitWithWarmDeadline,
+  zerodteScanWarmTimeoutMs,
+} from "./scan-warm-deadline";
+import {
   buildZeroDteAuditRow,
   computeLedgerGrade,
   deriveZeroDteSetups,
@@ -122,8 +126,13 @@ import {
   exitPolicyGraderParams,
 } from "./strategy-version";
 import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy, playRailsFromRow } from "./exit-sync";
-import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
-import { applyCortexCommitRelief } from "./cortex-vector-relief";
+import {
+  cortexAbstainForCondor,
+  cortexEntryContextFor,
+  cortexGateBlocks,
+  evaluateCortexForCommit,
+} from "./cortex-gate";
+import { applyCortexCommitRelief, gexWallsVetoWasRelieved } from "./cortex-vector-relief";
 import { applyCortexVetoDwell } from "./cortex-veto-dwell";
 import { persistZeroDteRejections } from "./rejections";
 import { attachThesisFirstShadow, thesisFirstEntryContext } from "./thesis/scan-shadow";
@@ -141,11 +150,18 @@ import {
   gateRejectionFor,
   runnerConfluenceCount,
   planQualityGateBlocks,
+  contractLiquidityGateBlocks,
   refreshPlanQualityGateBlocks,
+  refreshContractLiquidityGateBlocks,
   refreshMoneynessGateBlocks,
+  refreshQualificationDislocationGateBlocks,
+  refreshInputDesyncUnderlyingGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
   refreshGovernorCycleBlocks,
   recentNighthawkTake,
+  INDEX_ETF_TICKERS,
+  liveCommitPreconditionsUnmet,
+  liveCommitPreconditionBlock,
 } from "./gates";
 import {
   fetchZeroDteVectorPulseByTicker,
@@ -167,7 +183,7 @@ import {
   ensureChainsForSetups,
   type LiquidStrikeCandidate,
 } from "./liquid-strike-fallback";
-import { computeVectorGateBoost } from "./vector-commit-boost";
+import { computeVectorGateBoost, computeVectorGateBoostForPlayType } from "./vector-commit-boost";
 import {
   effectiveChasePct,
   planChaseExempt,
@@ -224,6 +240,7 @@ import {
 // grade to the record's AS-MANAGED number on the SAME row (both read from record.ts, the single
 // source of truth), so a reconciliation regression surfaces as a non-zero telemetry percentile.
 import { asManagedPnlPct, officialPlanPnlPct } from "./record";
+import { computeRelativeVolumeShadow, type RelativeVolumeShadowRead } from "./relative-volume-source";
 
 /** Leveraged/inverse wrappers and vol ETPs stay out (not directional single plays);
  *  index products (SPY/SPX/NDX/QQQ…) are eligible per product direction. Night Hawk
@@ -328,7 +345,13 @@ export async function scanZeroDteBoard(flags?: {
     // ingestion admits 0-1DTE prints down to MIN_PREMIUM_NEAR_DATED, this query must not
     // re-exclude them, or the lower ingestion floor accomplishes nothing for FLOW discovery).
     fetchRecentFlows({ since_hours: 7, min_premium: MIN_PREMIUM_NEAR_DATED, order: "premium", limit: 500, max_dte: 1 }).catch(
-      () => {
+      (err) => {
+        // upstream_ok surfaces this on the board payload (health check consumes it), but that
+        // alone leaves CloudWatch with no trace of WHY — unlike the sibling BREAKOUT/PIN
+        // discovery-source catches below (~L515-524, L565-568), which log a reason even though
+        // they too set a health flag. This is the primary FLOW fetch (feeds deriveZeroDteSetups
+        // directly), so a recurring failure here is at least as worth a log line as those.
+        console.warn("[zerodte-scan] primary flow fetch failed — board degrades to empty FLOW origin this cycle:", err);
         upstreamOk = false;
         return [];
       }
@@ -683,6 +706,7 @@ export async function scanZeroDteBoard(flags?: {
         const planGateOpts = { chaseExempt: planChaseExempt(chaseCtx) };
         s.plan_chase_exempt = planGateOpts.chaseExempt;
         s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null, planGateOpts);
+        s.gate = refreshContractLiquidityGateBlocks(s.gate, s.plan ?? null);
         s.gate = refreshMoneynessGateBlocks(
           s.gate,
           s.otm_pct ?? null,
@@ -693,6 +717,41 @@ export async function scanZeroDteBoard(flags?: {
             ),
           }
         );
+        // G-23: attachContractPlans (and its refreshUnderlyingFromLiveSpot) has now run above —
+        // s.underlying_price/_as_of and s.plan are the real post-refresh values, so re-apply the
+        // dislocation circuit-breaker against them, mirroring the moneyness refresh just above.
+        s.gate = refreshQualificationDislocationGateBlocks(s.gate, {
+          qualificationPrice: s.qualification_underlying_price ?? null,
+          qualificationAsOfMs: parseIsoMs(s.qualification_underlying_price_as_of),
+          currentPrice: s.underlying_price ?? null,
+          currentAsOfMs: parseIsoMs(s.underlying_price_as_of),
+          quote: s.plan ? { bid: s.plan.bid, ask: s.plan.ask, mark: s.plan.mark } : null,
+          isCondor: s.play_type === "CONDOR",
+        });
+        // G-20 broadening (item 10): same reasoning as the G-23 refresh just above — under
+        // thesis-first attachContractPlans (and its refreshUnderlyingFromLiveSpot) has now run,
+        // so s.plan.quoteAgeMs and s.underlying_price_as_of are the real post-refresh values.
+        s.gate = refreshInputDesyncUnderlyingGateBlocks(s.gate, {
+          plan: s.plan ?? null,
+          underlyingQuoteAsOfMs: parseIsoMs(s.underlying_price_as_of),
+          nowMs: reconcileNowMs,
+          isCondor: s.play_type === "CONDOR",
+        });
+        // Item 9 (2026-09-09 CTO gate-architecture review): re-run the live-commit
+        // precondition check off the SAME real post-refresh values the G-20 refresh just
+        // above used (s.plan/s.underlying_price_as_of are now live, not the pre-refresh
+        // snapshot the FIRST attachGateVerdicts pass saw before attachContractPlans ran
+        // under thesis-first) — mirrors the ordinary (non-thesis-first) call site exactly,
+        // just re-computed post-refresh instead of computed once pre-refresh.
+        s.live_commit_preconditions = liveCommitPreconditionsUnmet({
+          ticker: s.ticker,
+          play_type: s.play_type,
+          plan: s.plan ?? null,
+          confluence: s.confluence ?? null,
+          nowMs: reconcileNowMs,
+          biasAsOfMs: tape.biasAsOfMs,
+          underlyingQuoteAsOfMs: parseIsoMs(s.underlying_price_as_of),
+        });
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
           s.plan?.entry_max ?? s.plan?.mark ?? null,
@@ -710,10 +769,15 @@ export async function scanZeroDteBoard(flags?: {
             governorPremiumAtRisk,
             governorShortGammaOpen,
             committedThisCycle: governorAccurate,
+            play_type: s.play_type,
           });
         }
         if (s.gate.verdict === "COMMIT") {
-          governorAccurate.push({ ticker: s.ticker.toUpperCase(), direction: s.direction });
+          governorAccurate.push({
+            ticker: s.ticker.toUpperCase(),
+            direction: s.direction,
+            is_condor: s.play_type === "CONDOR",
+          });
         }
       }
     }
@@ -746,8 +810,31 @@ export async function scanZeroDteBoard(flags?: {
   };
 }
 
-/** Cached (3-min) intraday read from a name's own minute bars. */
-async function intradayReadFor(ticker: string, today: string): Promise<IntradayRead | null> {
+/** Per-ticker intraday read timeout — a miss here only softens ONE setup's score
+ *  adjustment (best-effort), so a tight budget is fine. */
+const TICKER_INTRADAY_FETCH_TIMEOUT_MS = 2_500;
+/** SPY's own read timeout — deliberately more generous than the per-ticker one above.
+ *  Unlike a per-ticker miss, a SPY miss nulls `bias`/`biasAsOfMs` for the WHOLE scan
+ *  cycle, which G-1 (no_market_bias, gates.ts) reads as "tape unreadable" and hard-
+ *  blocks EVERY index-ETF/SPX-family setup (QQQ/SPY/SPXW/SPX/DIA) at once — a single
+ *  slow Polygon response (SPY's minute-bar payload is larger than a single name's) was
+ *  measured live 2026-09-16 concentrating 94% of all `no_market_bias` rejections onto
+ *  exactly these 5 tickers, including simultaneous same-cycle blocks on QQQ(84)/SPY(78)/
+ *  SPXW(68)/SPX(66) — the four highest-scoring setups in the whole pool. Giving SPY's
+ *  read room to finish (still well under MARKET_BIAS_MAX_AGE_MS's 15-min staleness
+ *  ceiling, gates.ts) trades a slightly slower scan cycle for not needlessly vetoing
+ *  the market's most-watched, highest-scoring names on a transient response-time blip
+ *  that has nothing to do with whether the tape is actually readable. */
+export const SPY_BIAS_FETCH_TIMEOUT_MS = 6_000;
+
+/** Cached (3-min) intraday read from a name's own minute bars. `timeoutMs` lets the
+ *  SPY-bias caller (attachIntradayEdge) opt into a longer budget than the default
+ *  per-ticker one — see SPY_BIAS_FETCH_TIMEOUT_MS's doc for why the two must differ. */
+export async function intradayReadFor(
+  ticker: string,
+  today: string,
+  timeoutMs: number = TICKER_INTRADAY_FETCH_TIMEOUT_MS
+): Promise<IntradayRead | null> {
   return within(
     withServerCache<IntradayRead>(`zerodte:intraday:${ticker}:${today}`, 3 * 60 * 1000, async () => {
       // Index roots (SPXW/SPX/NDX…) only price under Polygon's I: namespace —
@@ -759,7 +846,7 @@ async function intradayReadFor(ticker: string, today: string): Promise<IntradayR
           .map((b) => ({ t: b.t as number, h: b.h, l: b.l, c: b.c, v: b.v }))
       );
     }),
-    2_500
+    timeoutMs
   );
 }
 
@@ -791,7 +878,7 @@ export function applyIntradayEdgeToBreakdown(
  *  conflicts flagged for the A-tier gate. Best-effort: missing bars = no adjust.
  *  Returns the SPY bias (+ its freshness) so the hard-gate layer judges the SAME
  *  tape read the scores were adjusted with. */
-async function attachIntradayEdge(
+export async function attachIntradayEdge(
   setups: EnrichedZeroDteSetup[]
 ): Promise<{ bias: MarketBias | null; biasAsOfMs: number | null }> {
   if (setups.length === 0) return { bias: null, biasAsOfMs: null };
@@ -807,7 +894,7 @@ async function attachIntradayEdge(
   // the light per-ticker read; the heavy DOSSIER enrichment (Redis single-flight) still stays at top-N.
   const edged = setups;
   const [spyRead, ...reads] = await Promise.all([
-    intradayReadFor("SPY", today),
+    intradayReadFor("SPY", today, SPY_BIAS_FETCH_TIMEOUT_MS),
     ...edged.map((s) => intradayReadFor(s.ticker, today)),
   ]);
   const bias = marketBias(spyRead ?? null);
@@ -1047,11 +1134,16 @@ async function attachGateVerdicts(
   // Setups arrive score-ranked, so the concurrency budget goes to the best finds:
   // committedThisCycle carries earlier accepted fresh commits within this same pass
   // (both for the cap and the correlated-conflict check).
-  const committedThisCycle: Array<{ ticker: string; direction: "long" | "short" }> = [];
+  const committedThisCycle: Array<{ ticker: string; direction: "long" | "short"; is_condor?: boolean }> = [];
   for (const s of setups) {
     if (committed.has(s.ticker.toUpperCase())) continue;
     const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
-    const boost = computeVectorGateBoost(s.direction, s.score, pulse);
+    // CONDOR BYPASS: see computeVectorGateBoostForPlayType's doc (vector-commit-boost.ts) — a
+    // CONDOR's `direction` is nominal fade provenance only (delta-neutral), so Vector's
+    // directional-alignment boost must not inflate the score fed to G-3/G-18 (neither is
+    // condor-exempt) or grant a directional gate exemption. Same root-cause family as the
+    // Cortex layer's own condor-direction misread fixed alongside this in the same audit pass.
+    const boost = computeVectorGateBoostForPlayType(s.play_type, s.direction, s.score, pulse);
     let gateScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
     if (boost.score_bump > 0) s.score = gateScore;
     const reliefCtx = planChaseContextFromSetup({
@@ -1070,7 +1162,7 @@ async function attachGateVerdicts(
       s.score = gateScore;
       reliefCtx.score = gateScore;
     }
-    const postBoost = computeVectorGateBoost(s.direction, gateScore, pulse);
+    const postBoost = computeVectorGateBoostForPlayType(s.play_type, s.direction, gateScore, pulse);
     const runnerOtmRelax = vectorRunnerOtmRelax(s.direction, gateScore, pulse);
     s.gate = evaluateZeroDteGates({
       ticker: s.ticker,
@@ -1086,6 +1178,15 @@ async function attachGateVerdicts(
       nowMs,
       bias,
       biasAsOfMs,
+      // G-20 broadening (item 10): the underlying's own live-quote observation instant, for
+      // the option-vs-underlying leg (ALL directional setups, not just index/ETF — see
+      // gates.ts's inputDesyncUnderlyingGateBlocks doc). In the ORDINARY (non-thesis-first)
+      // pipeline attachContractPlans has already run above (same ordering the otmPct/G-23
+      // comments describe), so underlying_price_as_of here is already the live-refreshed
+      // value; under thesis-first it is still pre-refresh and
+      // refreshInputDesyncUnderlyingGateBlocks (below) re-applies against the real refreshed
+      // value once that pass has happened, mirroring refreshQualificationDislocationGateBlocks.
+      underlyingQuoteAsOfMs: parseIsoMs(s.underlying_price_as_of),
       governor,
       committedThisCycle,
       governorPremiumAtRisk,
@@ -1112,6 +1213,16 @@ async function attachGateVerdicts(
       // value — refreshMoneynessGateBlocks (below) re-applies the same caps once the refresh has
       // actually happened, exactly like refreshPlanQualityGateBlocks does for G-8/G-9.
       otmPct: s.otm_pct ?? null,
+      // G-23 (same ordinary-vs-thesis-first split as otmPct above): qualification_underlying_price
+      // was frozen in enrichSetup BEFORE any refresh ever ran, so it always reflects the true
+      // qualification moment regardless of pipeline. underlying_price/_as_of, by contrast, are
+      // already live-refreshed here in the ordinary pipeline (attachContractPlans ran above) and
+      // still pre-refresh under thesis-first — refreshQualificationDislocationGateBlocks (below)
+      // re-applies against the real refreshed values once that pass has happened.
+      qualificationUnderlyingPrice: s.qualification_underlying_price ?? null,
+      qualificationUnderlyingPriceAsOfMs: parseIsoMs(s.qualification_underlying_price_as_of),
+      currentUnderlyingPrice: s.underlying_price ?? null,
+      currentUnderlyingPriceAsOfMs: parseIsoMs(s.underlying_price_as_of),
       intradayConflict: s.intraday_conflict,
       market_aligned: s.market_aligned ?? null,
       regime_structure: marketState?.regime_structure ?? null,
@@ -1145,6 +1256,22 @@ async function attachGateVerdicts(
       vector_confluence_credit: postBoost.confluence_credit,
       max_otm_pct: runnerOtmRelax ? effectiveMaxOtmPct(true) : null,
     });
+    // Item 9 (2026-09-09 CTO gate-architecture review): computed ALONGSIDE the gate
+    // verdict just above, off the SAME field values just fed to evaluateZeroDteGates
+    // (plan/confluence/biasAsOfMs/underlyingQuoteAsOfMs/nowMs) — never a second gate
+    // pass, purely an additional read of the same input. See gates.ts's
+    // liveCommitPreconditionsUnmet doc for why the pure gate library must stay
+    // permissive here while the live-commit call site (persistZeroDteScan, below in
+    // this file) must not inherit that permissiveness.
+    s.live_commit_preconditions = liveCommitPreconditionsUnmet({
+      ticker: s.ticker,
+      play_type: s.play_type,
+      plan: s.plan ?? null,
+      confluence: s.confluence ?? null,
+      nowMs,
+      biasAsOfMs,
+      underlyingQuoteAsOfMs: parseIsoMs(s.underlying_price_as_of),
+    });
     s.regime_plane = regimePlane;
     if (s.thesis_gate_blocks?.length && !regimeBypassesThesisBlocks(reliefCtx)) {
       const tb = thesisBlocksToGateBlocks(s.thesis_gate_blocks);
@@ -1169,9 +1296,18 @@ async function attachGateVerdicts(
     // evaluateCortexForCommit never throws. failClosedOnVetoBlind:true detects when BOTH
     // veto-capable sources (gex-walls + flow-quality) failed to read → VETO_BLIND hard HOLD
     // (fresh commit blocked with cortex_veto_blind) — see cortex-gate.ts for the WHY.
-    s.cortex = await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
-      failClosedOnVetoBlind: true,
-    });
+    //
+    // CONDOR BYPASS: a CONDOR's `direction` is nominal fade provenance only (delta-neutral,
+    // condor.ts) — Cortex's whole evidence model is directional, so feeding it a condor's
+    // nominal direction would let it VETO/block a neutral structure on evidence that argues
+    // about a direction the condor never actually bet on. Same defect already fixed for the
+    // Largo read, governor, Thesis Health and confluence — see cortexAbstainForCondor's doc.
+    s.cortex =
+      s.play_type === "CONDOR"
+        ? cortexAbstainForCondor()
+        : await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
+            failClosedOnVetoBlind: true,
+          });
     s.cortex = await applyCortexVetoDwell(today, s.ticker, s.cortex);
     s.cortex = applyCortexCommitRelief(
       s.cortex,
@@ -1191,9 +1327,17 @@ async function attachGateVerdicts(
       s.gate = { ...s.gate, verdict: "BLOCKED", blocks: cortexBlocks };
       continue;
     }
-    committedThisCycle.push({ ticker: s.ticker, direction: s.direction });
+    committedThisCycle.push({ ticker: s.ticker, direction: s.direction, is_condor: s.play_type === "CONDOR" });
   }
   return { governorPremiumAtRisk, governorSnapshot: governor, governorShortGammaOpen };
+}
+
+/** Parse an ISO-8601 as-of stamp to epoch-ms, or null on absence/malformed input — never NaN,
+ *  which would otherwise silently poison the G-23 dislocation-window arithmetic downstream. */
+function parseIsoMs(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
 }
 
 /**
@@ -1214,6 +1358,18 @@ export function computeQuoteAgeMs(
   if (quoteUpdatedMs == null) return undefined;
   const age = nowMs - quoteUpdatedMs;
   return age > 0 ? age : 0;
+}
+
+/** G-21 (2026-09-09): ticker-class bucket for plan.ts's per-class min-quote-size floor.
+ *  SPX/SPXW have no underlying ETF share (they trade a cash-settled index directly), so
+ *  they aren't in gates.ts's `INDEX_ETF_TICKERS` — added explicitly here since, measured
+ *  2026-09-09 (`scripts/audit/zerodte-contract-liquidity-measure.mjs`), SPX's near-the-money
+ *  0DTE ask-size depth (median 15.5, n=294) sits in the same deep-liquidity regime as
+ *  SPY/QQQ, not with single names. */
+export function zeroDteLiquidityTickerClass(ticker: string): "index_etf" | "single" {
+  const t = ticker.toUpperCase();
+  if (t === "SPX" || t === "SPXW" || INDEX_ETF_TICKERS.has(t)) return "index_etf";
+  return "single";
 }
 
 /** One batched quote snapshot for every find's top-strike contract, then a pure
@@ -1248,6 +1404,20 @@ async function attachContractPlans(
     const attached = resolveZeroDteContractAttach(s, pulse, chain);
     if (attached) {
       s.top_strike = attached.strike;
+      // 2026-10-08 finding: this call site previously left s.expiry/contract_horizon/
+      // actual_dte_at_commit/grading_policy untouched even when the resolved contract's own
+      // expiry differs from the setup's pre-attach target — the two other contract-resolution
+      // call sites in this codebase (below, and contract-attach.ts's attachThesisContractPlans)
+      // both sync all four fields together whenever a contract is (re)resolved; this one must too,
+      // or the board displays a stale/wrong DTE for the contract actually being traded.
+      if (attached.expiry) {
+        s.expiry = attached.expiry;
+        if (attached.dte != null) {
+          s.contract_horizon = deriveContractHorizon(attached.dte);
+          s.actual_dte_at_commit = attached.dte;
+          s.grading_policy = gradingPolicyForHorizon(s.contract_horizon);
+        }
+      }
       occOf.set(s.ticker, attached.occ);
       continue;
     }
@@ -1329,12 +1499,29 @@ async function attachContractPlans(
       mark: snap?.mark ?? null,
       bidSize: snap?.bidSize ?? null,
       askSize: snap?.askSize ?? null,
+      openInterest: snap?.openInterest ?? null,
+      dayVolume: snap?.dayVolume ?? null,
       quoteAgeMs: computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
+      // G-21 (2026-09-09): per-class min-quote-size floor (plan.ts's CONTRACT_LIQUIDITY) —
+      // computed here (not in plan.ts, which is a dependency-free leaf) using the SAME
+      // INDEX_ETF_TICKERS set G-1/G-9 already use. SPX/SPXW have no ETF share and aren't in
+      // that set, so they're added explicitly — both are the deepest, most continuously
+      // quoted options markets that exist and belong in the stricter bucket.
+      tickerClass: zeroDteLiquidityTickerClass(s.ticker),
       keySupports: s.key_supports,
       keyResistances: s.key_resistances,
       vwap: s.vwap,
       chasePct,
       illiquidSpreadPct,
+      // Contract selection using Greeks alongside liquidity (2026-10-20, member audit
+      // directive) — OptionSnapshot already fetches delta/gamma/theta/vega for the live
+      // quote; threaded through here (previously discarded) so buildContractPlan can compute
+      // the SHADOW-ONLY evaluateContractGreeksQuality diagnostic. Omitted entirely (not just
+      // null-filled) when there's no live snapshot at all, matching every other conditional
+      // field's "absence is not a measured zero" discipline.
+      ...(snap
+        ? { greeks: { delta: snap.delta ?? null, gamma: snap.gamma ?? null, theta: snap.theta ?? null, vega: snap.vega ?? null } }
+        : {}),
     });
     s.plan_chase_exempt = planChaseExempt(chaseCtx);
   }
@@ -1451,6 +1638,7 @@ async function applyLiquidStrikeFallback(
       vwap: s.vwap,
       chasePct,
       illiquidSpreadPct,
+      tickerClass: zeroDteLiquidityTickerClass(s.ticker),
       quoteAgeMsFor: (snap) => computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
     });
     if (!picked) continue;
@@ -1559,16 +1747,37 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     const planGateOpts = { chaseExempt };
     const planBlocked =
       s.play_type === "CONDOR" ? false : freshCommitBlockedByPlan(s.plan, planGateOpts);
-    if (s.gate?.verdict === "COMMIT" && !planBlocked) {
+    // Item 9 (2026-09-09 CTO gate-architecture review): THIS is the real capital-
+    // committing step (committedFresh feeds `eligible` → the DB upsert rows below) — the
+    // one place in the whole pipeline that must not inherit evaluateZeroDteGates's
+    // deliberate fail-open permissiveness on missing G-9/G-12/G-20 inputs. s.gate can read
+    // COMMIT purely because those specific reads were never present for this setup (the
+    // gate had nothing to check, not something it checked and cleared); a live commit must
+    // not treat that as equivalent to an actually-verified COMMIT. s.live_commit_preconditions
+    // was computed alongside s.gate in attachGateVerdicts (scan.ts) — read here, never
+    // recomputed, so this stays a pure downstream DECISION, not a second gate pass.
+    const preconditionsUnmet = (s.live_commit_preconditions?.length ?? 0) > 0;
+    if (s.gate?.verdict === "COMMIT" && !planBlocked && !preconditionsUnmet) {
       committedFresh.push(s);
       continue;
     }
     let verdict = s.gate;
-    if (s.gate?.verdict === "COMMIT" && planBlocked) {
+    if (s.gate?.verdict === "COMMIT" && (planBlocked || preconditionsUnmet)) {
       verdict = {
         ...s.gate,
         verdict: "BLOCKED",
-        blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null, planGateOpts)],
+        blocks: [
+          ...s.gate.blocks,
+          ...(planBlocked
+            ? [
+                ...planQualityGateBlocks(s.plan ?? null, planGateOpts),
+                ...contractLiquidityGateBlocks(s.plan ?? null),
+              ]
+            : []),
+          ...(preconditionsUnmet
+            ? [liveCommitPreconditionBlock(s.live_commit_preconditions ?? [])]
+            : []),
+        ],
       };
     }
     gateRejections.push(gateRejectionFor(s, verdict ?? null));
@@ -1597,6 +1806,24 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   // never writes a ledger row, so it never receives an entry_context either.
   const sessionCtx = await fetchZeroDteSessionContext().catch(() => null);
   const committedAtMs = Date.now();
+  // RVOL SHADOW SIGNAL (2026-10-19 member audit, standalone/unwired module relative-volume.ts) —
+  // computed here, ADDITIVELY, ONLY for freshly-committed setups (never `refresh`, to avoid a real
+  // Polygon fetch on every 5-min refresh tick for an already-open position — the upsert's own
+  // COALESCE pin would discard a refresh-lane recomputation anyway). NEVER gates, scores, or alters
+  // entry/exit/stop/target in any way — see relative-volume.ts's own header for the full rationale
+  // and the intended graduation path before this is ever registered as a real cortex source.
+  // `computeRelativeVolumeShadow` never throws and enforces its own per-ticker fetch timeout
+  // (relative-volume-source.ts); Promise.allSettled is still used as a second safety net.
+  const rvolShadowByTicker = new Map<string, RelativeVolumeShadowRead>();
+  if (committedFresh.length > 0) {
+    const rvolResults = await Promise.allSettled(
+      committedFresh.map((s) => computeRelativeVolumeShadow(s.ticker, committedAtMs))
+    );
+    committedFresh.forEach((s, i) => {
+      const r = rvolResults[i];
+      if (r.status === "fulfilled" && r.value != null) rvolShadowByTicker.set(s.ticker, r.value);
+    });
+  }
   // Strategy version manifest + config hash (design Q12, strategy-version.ts) — computed ONCE per
   // scan (it's a pure snapshot of the current strategy constants, identical for every row this cycle)
   // and FROZEN onto every committed row below. This is the integrity spine for calibration: a
@@ -1636,7 +1863,10 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       {
         score: s.score,
         gamma_regime: s.gamma_regime,
-        cortex: cortexEntryContextFor(s.cortex),
+        cortex: cortexEntryContextFor(
+          s.cortex,
+          s.cortex != null ? gexWallsVetoWasRelieved(s.cortex) : false
+        ),
         discovery_origin: s.discovery_origin,
       },
       sessionCtx,
@@ -1736,7 +1966,15 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // G-4/G-6 calibration verdict at commit (C-2 context columns). Refresh-lane
     // setups carry gate=null and pass null here — the upsert's COALESCE pin keeps
     // the original commit-time verdict untouched either way.
-    gate_calibration_json: s.gate ? ({ ...s.gate.calibration } as unknown as Record<string, unknown>) : null,
+    // G-19 (2026-09-09): topBandInversionFlag rides alongside the G-4/G-6 calibration
+    // columns so the ledger can check for a recurrence of the F-5 top-band-inversion
+    // pattern without needing to re-derive it from raw score/origin after the fact.
+    gate_calibration_json: s.gate
+      ? ({
+          ...s.gate.calibration,
+          top_band_inversion_flag: s.gate.topBandInversionFlag,
+        } as unknown as Record<string, unknown>)
+      : null,
     // entry_context.cortex pins the FULL evidence vector (or the honest abstain
     // record) at commit — the §3.1 calibration loop's raw material. Refresh-lane
     // setups never ran the Cortex (s.cortex null → blob field null), and the
@@ -1777,6 +2015,24 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       ...(s.origin_direction_conflict ? { origin_direction_conflict: s.origin_direction_conflict } : {}),
       ...(s.thesis_first
         ? { thesis_first: thesisFirstEntryContext(s.thesis_first) }
+        : {}),
+      // SHADOW SIGNALS — additive, non-gating diagnostics only. Combined into ONE spread
+      // (not two independent ones) specifically because a plain object spread doesn't deep-
+      // merge: two separate `...(cond ? {shadow_signals: {...}} : {})` entries in this same
+      // literal would silently let the later one clobber the earlier one's `shadow_signals`
+      // key at runtime. This was caught at merge time reconciling two independently authored
+      // PRs (RVOL shadow wiring + contract-greeks shadow diagnostic) that each originally wrote
+      // their own spread — see CLAUDE.md's "CROSS-PR ORDERING DEPENDENCIES" section for why
+      // this class of bug is dangerous to merge blind. Each sub-key is present only when that
+      // signal actually computed a real read for this setup; the whole `shadow_signals` key is
+      // omitted when neither did, so the blob stays honest (never a fabricated placeholder).
+      ...(rvolShadowByTicker.has(s.ticker) || s.plan?.greeks_quality
+        ? {
+            shadow_signals: {
+              ...(rvolShadowByTicker.has(s.ticker) ? { relative_volume: rvolShadowByTicker.get(s.ticker) } : {}),
+              ...(s.plan?.greeks_quality ? { contract_greeks: s.plan.greeks_quality } : {}),
+            },
+          }
         : {}),
       // Play STRUCTURE (Phase 4) pinned at first flag: play_type routes the CONDOR grade path in
       // gradeZeroDteLedger (a condor is graded WIN/breach, never on the −50/+100 directional grader)
@@ -1843,6 +2099,45 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
         },
         committedAtMs
       ),
+      // G-23 dislocation TELEMETRY (2026-09-12, evidence only — never gates, mirrors the
+      // input_age_manifest role above). qualificationDislocationGateBlocks (gates.ts) already
+      // computes elapsed-ms/move-pct from these same four fields to decide whether to BLOCK a
+      // commit, but that verdict only ever exposes a formatted `reason` string on a real trip —
+      // there was no way to ask, after the fact, how large the real qualify-to-commit gap is for
+      // the population of commits that DIDN'T trip it (the population the gate is calibrated
+      // against). This pins the raw inputs and the same derived elapsedMs/movePct math on every
+      // committed row, tripped or not, so a future measurement (an audit script reading
+      // GET /api/market/zerodte/record) can build the real distribution before considering
+      // whether the gate's threshold/window need retuning, instead of guessing from anecdotes.
+      // Deliberately recomputed from s.qualification_underlying_price(_as_of)/s.underlying_price
+      // (_as_of) — the SAME fields and the SAME formula qualificationDislocationGateBlocks uses —
+      // rather than reading the gate verdict, so the telemetry can never disagree with what
+      // actually decided the block. Omitted (not zero-filled) when either snapshot is missing,
+      // same "never fabricate" discipline as origin_direction_conflict/session_gap_days above.
+      ...((): Record<string, unknown> => {
+        const qp = s.qualification_underlying_price;
+        const qAt = parseIsoMs(s.qualification_underlying_price_as_of);
+        const cp = s.underlying_price;
+        const cAt = parseIsoMs(s.underlying_price_as_of);
+        if (
+          qp == null || !Number.isFinite(qp) || qp <= 0 ||
+          cp == null || !Number.isFinite(cp) || cp <= 0 ||
+          qAt == null || !Number.isFinite(qAt) ||
+          cAt == null || !Number.isFinite(cAt)
+        ) {
+          return {};
+        }
+        return {
+          qualification_dislocation_telemetry: {
+            qualification_underlying_price: qp,
+            qualification_underlying_price_as_of: s.qualification_underlying_price_as_of,
+            current_underlying_price: cp,
+            current_underlying_price_as_of: s.underlying_price_as_of,
+            elapsed_ms: cAt - qAt,
+            move_pct: Math.round((Math.abs((cp - qp) / qp) * 100) * 10_000) / 10_000,
+          },
+        };
+      })(),
     } as unknown as Record<string, unknown>,
     flags_json: {
       ...(s.earnings ? { earnings: s.earnings } : {}),
@@ -1940,6 +2235,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
             direction: setup.direction,
             entry_premium: row.entry_premium ?? setup.plan?.entry_max ?? setup.plan?.mark ?? null,
             gamma_regime: setup.gamma_regime ?? null,
+            is_condor: setup.play_type === "CONDOR",
           },
           snap,
           committedAtMs,
@@ -1954,7 +2250,11 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
           );
           continue;
         }
-        acceptedThisTxn.push({ ticker: setup.ticker.toUpperCase(), direction: setup.direction });
+        acceptedThisTxn.push({
+          ticker: setup.ticker.toUpperCase(),
+          direction: setup.direction,
+          is_condor: setup.play_type === "CONDOR",
+        });
         survivors.push(row);
       }
       return survivors;
@@ -2049,15 +2349,37 @@ const GRADE_ATTEMPT_INTERVAL_MS = 10 * 60 * 1000;
  * Grade ungraded ledger rows from FINISHED sessions against their official close
  * (Polygon daily bar for that exact date). Lazy: called opportunistically from the
  * scan warm and board builds — no dedicated cron needed.
+ *
+ * `gradeThroughToday` (2026-10-09 finding): `fetchUngradedZeroDteRows(beforeDate)` is a
+ * STRICT `session_date < beforeDate` filter, so passing today's own date (the old,
+ * unconditional behavior below) can never select today's own rows — they only became
+ * eligible the NEXT calendar day, once `todayEt()` advanced past them. That silently
+ * contradicted this function's own doc comment above ("FINISHED sessions") for the one
+ * caller that exists specifically to grade TODAY'S session promptly after today's own
+ * close (`/api/cron/zerodte-grade`, scheduled 16:00-18:45 ET post-close): verified live
+ * 2026-10-08, 7/7 of that session's CLOSED 0DTE rows (WOLF/SPY/CIFR/SPXW/QQQ/IONQ/AMD)
+ * stayed `plan_outcome: null` through 12 same-day cron runs while the prior two sessions
+ * (2026-10-06/07) graded 6/6 each — every session's plan_outcome has been lagging a full
+ * calendar day behind its close, every day, since this lazy grader shipped.
+ *
+ * Scoped to an opt-in flag rather than changing the shared default: `warmZeroDteBoard`'s
+ * own ~2-min RTH-cadence call (10-minute-throttled, `force=false`) must keep excluding
+ * today, because it can fire WHILE today's session is still open — grading an open
+ * position's plan against only the bars-so-far would apply the same-day 15:50 ET
+ * time-stop rule against a PARTIAL day and PERMANENTLY pin a premature outcome (the
+ * `row.plan_outcome == null` guard never re-grades a stamped row). Only the dedicated
+ * post-close cron, which by construction never fires until today's session is genuinely
+ * finished, opts in.
  */
-export async function gradeZeroDteLedger(force = false): Promise<number> {
+export async function gradeZeroDteLedger(force = false, gradeThroughToday = false): Promise<number> {
   if (!dbConfigured()) return 0;
   const now = Date.now();
   if (!force && now - lastGradeAttemptMs < GRADE_ATTEMPT_INTERVAL_MS) return 0;
   lastGradeAttemptMs = now;
 
   const today = todayEt();
-  const ungraded = await fetchUngradedZeroDteRows(today).catch(() => [] as ZeroDteSetupLogRow[]);
+  const fetchBound = gradeThroughToday ? nextTradingDayEt(today) : today;
+  const ungraded = await fetchUngradedZeroDteRows(fetchBound).catch(() => [] as ZeroDteSetupLogRow[]);
   let graded = 0;
   for (const row of ungraded) {
     try {
@@ -2254,7 +2576,22 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
  * small summary object (grid-warm counts a non-null result as a successful warm).
  */
 export async function warmZeroDteBoard(): Promise<{ found: number; logged: number } | null> {
-  const { setups, rejections, market_state } = await scanZeroDteBoard();
+  const deadlineMs = zerodteScanWarmTimeoutMs();
+  const raced = await awaitWithWarmDeadline(scanZeroDteBoard(), deadlineMs);
+  if (!raced.ok) {
+    if (raced.reason === "timeout") {
+      console.warn(
+        `[zerodte-scan] scanZeroDteBoard exceeded ${deadlineMs}ms warm deadline — heartbeat only this cycle`
+      );
+    } else {
+      console.warn("[zerodte-scan] scanZeroDteBoard failed:", raced.error);
+    }
+    await recordZeroDteScanTick("cron").catch((err) => {
+      console.warn("[zerodte-scan-heartbeat] tick record failed:", err);
+    });
+    return null;
+  }
+  const { setups, rejections, market_state } = raced.value;
   // NH-R10: record this scan cycle's tick as soon as scanZeroDteBoard() has actually
   // returned — this is the always-on cron cadence tick (distinct from the member-poll
   // board route), so a silent stall here is the same class of blind spot the SPX play
@@ -2315,8 +2652,25 @@ export async function readZeroDteLedgerChecked(): Promise<ZeroDteLedgerRead> {
     const rows = await fetchZeroDteSetupLog(today);
     lastGoodLedger = { date: today, rows };
     return { rows, committed_known: true };
-  } catch {
-    if (lastGoodLedger?.date === today) return { rows: lastGoodLedger.rows, committed_known: true };
+  } catch (err) {
+    // 2026-10-01 production incident: upstream_ok went false for up to ~90min across
+    // 4 separate instances in one session day, with zero trading-path impact but no
+    // way to root-cause WHY — this catch previously swallowed the error silently, so
+    // live CloudWatch keyword searches found a cause for one instance and nothing for
+    // another. Log every occurrence so the next instance is diagnosable from logs
+    // alone instead of inferred from infra metrics that all read healthy.
+    if (lastGoodLedger?.date === today) {
+      console.warn(
+        "[zerodte-ledger-read] fetchZeroDteSetupLog failed — serving same-session last-good snapshot:",
+        err
+      );
+      return { rows: lastGoodLedger.rows, committed_known: true };
+    }
+    console.warn(
+      "[zerodte-ledger-read] fetchZeroDteSetupLog failed with NO same-session snapshot — " +
+        "committed_known:false, board degrades to upstream_ok:false:",
+      err
+    );
     return { rows: [], committed_known: false };
   }
 }
@@ -2425,6 +2779,7 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
         deferPlanStop: true,
         targetPct: rails.targetPct,
         stopPct: rails.stopPct,
+        trimScaleFirstTranchePct: rails.trimScaleFirstTranchePct,
         isCondor,
       });
       const exit =
@@ -2459,6 +2814,7 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
               nowEtMinutes,
               targetPct: rails.targetPct,
               stopPct: rails.stopPct,
+              trimScaleFirstTranchePct: rails.trimScaleFirstTranchePct,
               isCondor,
             })
           : preStop;

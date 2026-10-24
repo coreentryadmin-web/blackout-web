@@ -29,23 +29,76 @@ export function parseSwingPlayId(playId: string): ParsedSwingPlayId {
   return { ticker, positionId: pos != null && Number.isFinite(pos) ? pos : null };
 }
 
+// BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
+// roll-history fix). `contract_type` is a genuinely nullable DB column (TEXT, no NOT NULL); the
+// naive `contract_type === "put" ? "P" : "C"` ternary used across this file's siblings
+// (closed-plays.ts, live-plays.ts) fabricates "C" for a row whose real type was never recorded.
+// Pulled out here (this module deliberately carries no heavy imports — see the file's own
+// pattern with play-brief-roll-history.ts) so play-brief-resolve.ts's identity-matching logic can
+// be unit-tested directly without dragging in the server-only-guarded DB/Vector import chain.
+export function rightFromContractType(contract_type: string | null | undefined): "C" | "P" | null {
+  if (contract_type === "put") return "P";
+  if (contract_type === "call") return "C";
+  return null;
+}
+
+// REMOVED (2026-10-16, Ask Largo standing mandate — live GOOG/KMPR repro, Bug 1 of the standing
+// "Ask Largo x Night Hawk Swings" ownership mandate). `reconcileLivePnlPctWithDisplayMark` used
+// to live here (added 2026-10-09 for a live CTVA repro, see git history for its original body and
+// rationale) — it recomputed `pnlPct` from a cent-rounded `mark` so every section of a brief
+// showed the same number as the Position section's own cent-rounded display. That recompute could
+// itself disagree with the single canonical `pnlPct` every OTHER surface agrees on (the horizons
+// board's own `livePnlPct`, PlayTerminal.tsx's Command Deck card) by up to 10 full percentage
+// points (live KMPR repro, positionId 1634 — see play-brief.ts's `pnlForDisplay` comment for the
+// full write-up). Fix: stop reconciling to a recompute at all — `loadSwingPlayBriefContext`
+// (play-brief-context.ts) now passes `resolved.play` through untouched, so every section reads
+// the same single canonical `pnlPct` with no transform in between.
+
+// BUG FIX (2026-10-20, Ask Largo standing mandate — live-reproduced two-leg repro, strike vs right
+// treated as independent optional filters per the Largo tool's own documented call shape: "Optional
+// positionId/strike/right/status disambiguate ... omit them for the single obvious match," any
+// subset). The old `if (strike == null) return true;` short-circuit ran BEFORE `right` was ever
+// examined, so a caller supplying only `right` (no `strike`) matched EVERY contract regardless of
+// call/put — live-repro'd: two same-ticker rows (call strike 100, put strike 90), requesting
+// `{right: "P"}` alone returned the CALL. Each hint is now checked independently; only an actual
+// mismatch on a SUPPLIED hint disqualifies a candidate.
 function contractMatches(play: HorizonPlay, strike: number | null, right: "C" | "P" | null): boolean {
-  if (strike == null) return true;
-  if (play.contract.strike !== strike) return false;
-  if (right == null) return true;
-  return play.contract.right === right;
+  if (strike != null && play.contract.strike !== strike) return false;
+  if (right != null && play.contract.right !== right) return false;
+  return true;
 }
 
 /** Pick the best lane row when multiple plays share a ticker. */
 export function pickLanePlayForBrief(
   rows: HorizonPlay[],
   ticker: string,
-  hints: { status?: string | null; strike?: number | null; right?: "C" | "P" | null },
+  hints: { status?: string | null; strike?: number | null; right?: "C" | "P" | null; positionId?: number | null },
 ): HorizonPlay | null {
   const upper = ticker.toUpperCase();
   const forTicker = rows.filter((p) => p.ticker.toUpperCase() === upper);
   if (!forTicker.length) return null;
   if (forTicker.length === 1) return forTicker[0]!;
+
+  // BANGER-ORIGIN IDENTITY FIX (Ask Largo standing mandate, 2026-09-21). A banger-origin swing play's
+  // `positionId` is `banger_positions.id` (banger-lane-merge.ts's own doc comment: "a completely
+  // separate id space from swing_positions.id"), so `loadOpenTerminalPlay`/`loadClosedPlay` in
+  // play-brief-resolve.ts — which only ever query the `swing_positions` table — can NEVER find a row
+  // for it, no matter which positionId the caller asked about. Before this fix, that meant the
+  // positionId hint was silently dropped once resolution fell through to THIS function, and with no
+  // strike/right hint either, a ticker carrying two live banger-origin positions (e.g. ABTC's 9.5C
+  // TRIM +200% and 10.5C OPEN +25%, live 2026-09-21) always resolved to whichever leg had the higher
+  // live P&L — REGARDLESS of which positionId was requested. Live-repro'd: `?playId=SWING:ABTC:1220`
+  // and `?playId=SWING:ABTC:1185` (and the equivalent `&positionId=` query-param forms) all returned
+  // the IDENTICAL 9.5C brief, while `&strike=10.5&right=C` correctly resolved the other leg — proving
+  // the strike-hint path already worked and only the positionId path was blind. Since every
+  // HorizonPlay this function sees DOES carry its own correct `positionId` (banger's `row.id`, or a
+  // real `swing_positions.id` for a non-banger-origin lane row), the fix is a direct, exact match on
+  // it here — first, before any of the heuristic fallbacks below, so an unambiguous positionId never
+  // gets second-guessed by a P&L/score tiebreak it doesn't need.
+  if (hints.positionId != null) {
+    const exact = forTicker.find((p) => p.positionId === hints.positionId);
+    if (exact) return exact;
+  }
 
   const right = hints.right ?? null;
   const strike = hints.strike ?? null;

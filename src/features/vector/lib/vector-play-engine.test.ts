@@ -366,8 +366,37 @@ test("starred: headline always first; wall-at and confluence added", () => {
     })
   )!;
   assert.equal(play.starred[0], play.headline);
-  assert.ok(play.starred.some((s) => /call wall at/.test(s)));
+  assert.ok(play.starred.some((s) => /call wall 7600 at/.test(s)));
   assert.ok(play.starred.some((s) => /Confluence 7,600/.test(s)));
+});
+
+// BUG FIX (2026-09-12): starred[1] for a call/put-wall proximity used to PREPEND a synthesized
+// "{strike} {side} wall {nearness} —" prefix ahead of `prox.callout` — but the REAL
+// `deriveWallProximity` callout (vector-wall-proximity.ts) already states the strike/side/"wall"
+// itself as a complete sentence. The `proximity()` fixture above hands back a short synthetic
+// callout (`"call wall 7600 at"`) that never restates the wall, so it could never catch this —
+// this test instead uses a callout shaped exactly like the REAL one, live-repro'd off the AAPL
+// swing brief 2026-09-12 (Ask Largo's `vectorPlayCoaching` renders this exact starred entry
+// verbatim): the old code produced the doubled, ungrammatical
+// "332.5 put wall at — Testing 332.50 put wall (0.02% below) — dealers buy weakness...".
+test("starred: wall-proximity line is the real callout verbatim, not double-prefixed with the wall it already names", () => {
+  const realisticCallout =
+    "Testing 332.50 put wall (0.02% below) — dealers buy weakness; support unless it breaks on volume.";
+  const play = buildVectorPlay(
+    base({
+      spot: 332.58,
+      proximity: { strike: 332.5, side: "put", distancePct: -0.02, nearness: "at", callout: realisticCallout },
+    })
+  )!;
+  const wallLine = play.starred.find((s) => s !== play.headline);
+  assert.equal(
+    wallLine,
+    realisticCallout,
+    "wall-proximity starred line must be the callout as-is — no duplicated strike/side/'wall' prefix"
+  );
+  // Guards the specific failure mode even if the assertion above is ever loosened: the strike
+  // must never appear twice (once in a prefix, once inside the callout).
+  assert.equal((wallLine ?? "").split("332.5").length - 1, 1, "strike must appear exactly once");
 });
 
 // ── BIE grounding (slice 3 shape, engine-side) ───────────────────────────────
@@ -612,6 +641,82 @@ test("a breakout targets levels BEYOND the trigger, never the trigger itself", (
   for (const t of play.targets) {
     assert.doesNotMatch(t, /7,600/, `target "${t}" is the break level itself`);
   }
+  // BUG FIX (Ask Largo standing mandate, 2026-10-21, round-11 deep-dive, live repro XE):
+  // gex-wall-levels.ts sorts callWalls by `.pct` (gamma-share strength) descending, not by
+  // distance to spot, so the second-strongest wall (7,650, pct 4) can legitimately sit BEYOND
+  // the strongest one (7,600, pct 8) here. Both used to push into collectLevels under the
+  // identical "call wall" label, so a reader of this target list could not tell this 7,650
+  // entry apart from a second, independent "call wall" reading at that price — it must be
+  // labeled distinctly as the secondary wall.
+  assert.ok(
+    play.targets.some((t) => t === "2nd call wall 7,650"),
+    `expected the secondary call wall to be distinctly labeled; got ${JSON.stringify(play.targets)}`
+  );
+});
+
+// ── Flip-fallback invalidation must sit on the correct side of spot ─────────
+// Live GOOG 2026-09-11 (via the swing Largo play-brief's Vector cross-check): spot 332.50, gamma
+// flip 363.47, posture "short" (spot below flip, per vector-regime.ts's convention). The
+// style==="position" EMA override picks momentum-long off the trend alone, with no wall break in
+// range, so invalidation fell through to the bare "flip" fallback and printed
+// "5m close < 363.47" — a condition already true at spot, not a real, watchable stop line.
+test("momentum-long, no wall break, flip ABOVE spot (short-gamma regime): invalidation omitted, not already-breached", () => {
+  const play = buildVectorPlay(
+    base({
+      ticker: "GOOG",
+      horizon: "monthly",
+      timeframeMin: 5,
+      spot: 332.5,
+      regime: { posture: "short" },
+      gammaFlip: 363.47,
+      proximity: null,
+      gexWalls: { callWalls: [{ strike: 335, pct: 5 }], putWalls: [{ strike: 325, pct: 5 }] },
+      magnet: null,
+      technicals: { emaStack: "up", macd: "bull" },
+    })
+  )!;
+  assert.equal(play.setup, "momentum-long");
+  assert.equal(
+    play.invalidation,
+    undefined,
+    `flip (363.47) sits above spot (332.50) — "close < flip" is already true and not a real stop; got ${play.invalidation}`
+  );
+});
+
+test("momentum-long, no wall break, flip BELOW spot (real regime match): flip invalidation still fires", () => {
+  const play = buildVectorPlay(
+    base({
+      horizon: "monthly",
+      spot: 7590,
+      regime: { posture: "short" },
+      gammaFlip: 7500,
+      proximity: null,
+      technicals: { emaStack: "up", macd: "bull" },
+    })
+  )!;
+  assert.equal(play.setup, "momentum-long");
+  assert.match(play.invalidation!, /close < 7,500/);
+});
+
+test("momentum-short, no wall break, flip BELOW spot: invalidation omitted, not already-breached", () => {
+  const play = buildVectorPlay(
+    base({
+      horizon: "monthly",
+      spot: 332.5,
+      regime: { posture: "long" },
+      gammaFlip: 300,
+      proximity: null,
+      gexWalls: { callWalls: [{ strike: 335, pct: 5 }], putWalls: [{ strike: 325, pct: 5 }] },
+      magnet: null,
+      technicals: { emaStack: "down", macd: "bear" },
+    })
+  )!;
+  assert.equal(play.setup, "momentum-short");
+  assert.equal(
+    play.invalidation,
+    undefined,
+    `flip (300) sits below spot (332.50) — "close > flip" is already true and not a real stop; got ${play.invalidation}`
+  );
 });
 
 test("a range mean sitting ON a rail falls back to the rail midpoint", () => {

@@ -23,6 +23,19 @@ mock.module("../db", {
       if (/^\s*SELECT/i.test(text)) return { rows: dbState.selectRows };
       return { rows: [] };
     },
+    // Real db.ts implementation (kept in lockstep deliberately — this is the exact helper
+    // runSkipGrading's session_date normalization must call through; see the 2026-09-12
+    // regression test below for why a Date-shaped DATE column must resolve via UTC, never ET).
+    isoDateString: (value: unknown): string => {
+      if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+      }
+      const s = String(value ?? "");
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+      const reparsed = new Date(s);
+      if (!Number.isNaN(reparsed.getTime())) return reparsed.toISOString().slice(0, 10);
+      return s.slice(0, 10);
+    },
   },
 });
 const polyState = {
@@ -386,6 +399,85 @@ test("runSkipGrading: a captured Polygon failureReason (no thrown exception) is 
   }
 });
 
+// REGRESSION (2026-09-12, docs/audit/0DTE-RESEARCH.md "Gate-overlap ablation" 2026-09-10 run —
+// ALL 18 hard-gate codes read n=0 graded on the Blocked side, dominant ungradeable reason "no
+// underlying bar at/after the block time" / "no bar data for the session"). node-postgres hands a
+// DATE column back as a JS Date at UTC MIDNIGHT for that calendar day (never a plain string) — the
+// OLD code ran that midnight-UTC instant through `etYmd()` (built for converting a REAL epoch
+// instant to its ET calendar day), and because America/New_York is BEHIND UTC, midnight UTC always
+// reads as the previous evening in ET — so `etYmd()` silently returned the day BEFORE the row's
+// real, stored session_date on every row, deterministically, not occasionally. That wrong date then
+// drove `barsFor` to fetch the WRONG session's minute bars, so `entryBarOf` could never find a bar
+// at/after the (correctly-computed) `blockedAtMs` — every fetched bar was ~a day too early. This
+// pins the fix (read the UTC Y-M-D via db.ts's own `isoDateString`, the established idiom for every
+// other DATE column in this codebase) by asserting the underlying-bar fetch is issued for the SAME
+// calendar day the row's session_date actually is, not the day before.
+//
+// Every earlier hermetic test in this file passed `session_date` as a plain string
+// ("2026-07-10") — never as the real pg-returned Date shape — so this exact bug shipped
+// undetected: the mock never exercised the code path it was actually hiding.
+test("runSkipGrading: a DATE-column session_date (pg's real Date-at-UTC-midnight shape) fetches bars for the SAME day, not the day before", async () => {
+  const { runSkipGrading } = await mod();
+  dbState.queries = [];
+  dbState.selectRows = [
+    {
+      id: 11,
+      observed_at: new Date(et("10:00")).toISOString(),
+      // What node-postgres actually returns for a DATE column storing '2026-07-10': a JS Date
+      // at that calendar day's UTC midnight — NOT the string "2026-07-10".
+      session_date: new Date("2026-07-10T00:00:00.000Z"),
+      ticker: "NVDA",
+      gate_failed: "score_floor",
+      direction: "long",
+    },
+  ];
+  polyState.calls = [];
+  polyState.bars = [bar("10:00", 100), bar("14:00", 105)]; // real bars, correct day
+  const summary = await runSkipGrading({ days: 3, nowMs: NOW });
+  assert.equal(summary.errors, 0);
+  // The bug: with the old etYmd(midnight-UTC) normalization this would be "2026-07-09".
+  assert.deepEqual(polyState.calls, [{ symbol: "NVDA", from: "2026-07-10" }]);
+  // And because the fetch now lands on the right day, the block IS gradeable (real bars present
+  // at/after blockedAtMs) — the pre-fix version stayed stuck on the generic "no bar data" reason
+  // even with real bars in the mock, because they were requested under the wrong date entirely.
+  assert.equal(summary.graded, 1);
+  assert.equal(summary.ungradeable, 0);
+});
+
+// REGRESSION (2026-10-20, member audit directive: "preserve recoverable records before they
+// expire"). Live-measured 2026-10-20: FOUR real session days 9-23 days old each showed 2000/2000
+// rows with counterfactual:null — the old MAX_SKIP_GRADE_DAYS=14/MAX_ROWS_PER_RUN=200 caps meant
+// the grading cron's own query would never look back far enough, nor clear enough per run, to
+// reach them; `since` moves forward every day, so a row never graded within 14 days was never
+// graded at all. Pins the raised constants reaching the real SQL query, not silently re-clamped.
+test("runSkipGrading: the raised MAX_SKIP_GRADE_DAYS/MAX_ROWS_PER_RUN reach the real SQL query", async () => {
+  const { runSkipGrading, MAX_SKIP_GRADE_DAYS } = await mod();
+  assert.equal(MAX_SKIP_GRADE_DAYS, 35, "the days ceiling was raised from 14 — do not silently revert it");
+  dbState.queries = [];
+  dbState.selectRows = [];
+  await runSkipGrading({ nowMs: NOW }); // no explicit `days` — must default to the full raised ceiling
+
+  const selects = dbState.queries.filter((q) => /^\s*SELECT id, observed_at/.test(q.text));
+  assert.equal(selects.length, 1);
+  const [since, today, limit] = selects[0]!.values as [string, string, number];
+  assert.equal(today, "2026-07-10");
+  // 35 real days back from 2026-07-10 ET, computed the same way the module does (etYmd of
+  // nowMs - days*86_400_000) — asserted dynamically rather than hand-computed, so this can't drift
+  // from the module's own arithmetic by a timezone/off-by-one the hand-written literal would hide.
+  const expectedSince = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(
+    new Date(NOW - 35 * 24 * 60 * 60 * 1000)
+  );
+  assert.equal(since, expectedSince);
+  assert.equal(limit, 500, "MAX_ROWS_PER_RUN was raised from 200 — do not silently revert it");
+
+  // A caller-supplied `days` beyond the ceiling is still clamped — the raise widens the ceiling,
+  // it does not remove it (per-row Polygon fetch cost is still real and still bounded).
+  dbState.queries = [];
+  await runSkipGrading({ days: 999, nowMs: NOW });
+  const selects2 = dbState.queries.filter((q) => /^\s*SELECT id, observed_at/.test(q.text));
+  assert.equal(selects2[0]!.values![0], expectedSince, "days beyond MAX_SKIP_GRADE_DAYS must still clamp to it");
+});
+
 test("runSkipGrading / fetchGradedSkips fail soft — a dead DB is a structured summary / empty list, never a throw", async () => {
   const { runSkipGrading, fetchGradedSkips } = await mod();
   dbState.failAll = true;
@@ -406,4 +498,38 @@ test("runSkipGrading / fetchGradedSkips fail soft — a dead DB is a structured 
   } finally {
     dbState.configured = true;
   }
+});
+
+// REGRESSION (2026-09-17, docs/audit/findings-staging/
+// 2026-09-17-zerodte-calibration-graded-skips-window-truncation.md). Live-measured: GET
+// /api/market/zerodte/calibration?days=14, ?days=30, ?days=60 and ?days=90 all returned the
+// IDENTICAL total (1777 graded + 223 ungradeable = exactly 2000) — proving the old
+// `Math.min(2000, ...)` clamp silently overrode any caller-requested limit, so a "90-day" read
+// was actually only ever reading the same most-recent-2000-rows slice a 14-day read already saw.
+// This pins the fix: a wide caller-supplied limit (as calibration.ts now computes from `days`)
+// must reach the SQL LIMIT parameter, not be re-clamped back down to the old flat ceiling.
+test("fetchGradedSkips: a wide caller-supplied limit reaches the SQL LIMIT param, not silently reclamped to the old flat 2000", async () => {
+  const { fetchGradedSkips, MAX_GRADED_SKIPS_LIMIT } = await mod();
+  dbState.queries = [];
+  dbState.selectRows = [];
+  await fetchGradedSkips({ sinceYmd: "2026-06-19", throughYmd: "2026-09-17", limit: 27_000 });
+  const selects = dbState.queries.filter((q) => /^\s*SELECT gate_failed/.test(q.text));
+  assert.equal(selects.length, 1);
+  assert.equal(
+    selects[0]!.values![2],
+    27_000,
+    "a days=90-scaled limit (calibration.ts: days * GRADED_SKIPS_PER_DAY_BUDGET) must reach the query, not be clamped to 2000"
+  );
+
+  // Still bounded against a pathological request — MAX_GRADED_SKIPS_LIMIT is the real ceiling now.
+  dbState.queries = [];
+  await fetchGradedSkips({ sinceYmd: "2026-06-19", throughYmd: "2026-09-17", limit: 999_999 });
+  const selects2 = dbState.queries.filter((q) => /^\s*SELECT gate_failed/.test(q.text));
+  assert.equal(selects2[0]!.values![2], MAX_GRADED_SKIPS_LIMIT);
+
+  // Unspecified callers keep the historical default (2000) — behavior-preserving for anyone else.
+  dbState.queries = [];
+  await fetchGradedSkips({ sinceYmd: "2026-06-19", throughYmd: "2026-09-17" });
+  const selects3 = dbState.queries.filter((q) => /^\s*SELECT gate_failed/.test(q.text));
+  assert.equal(selects3[0]!.values![2], 2000);
 });

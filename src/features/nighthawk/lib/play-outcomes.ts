@@ -11,7 +11,9 @@ import {
   fetchNighthawkRowsMissingScaleOutGrade,
   pinNighthawkScaleOutGrade,
   type NighthawkPlayOutcomeRow,
+  type LegacyDiscordLiveState,
 } from "@/lib/db";
+import { legacyPublishFieldsFrom } from "./legacy-publish-fields";
 import {
   resolveBangerGradeRequest,
   gradeBangerScaleOut,
@@ -554,6 +556,56 @@ export function outcomeSessionDate(row: Pick<NighthawkPlayOutcomeRow, "edition_f
   return row.edition_for;
 }
 
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/**
+ * Night Hawk Legacy Signal Intelligence, Phase 1.7: the OPTION-PREMIUM excursion the live
+ * Chief Trade Alert Bot has actually observed for this play SO FAR, from `discord_live_state`
+ * (legacy-live-sync.ts's mark-and-manage loop) — a genuinely different signal from
+ * debrief.ts's `computeExcursion`, which derives MFE/MAE from a single STOCK daily bar
+ * relative to the fill price. This one is option-premium-based and accumulates over the
+ * position's real (possibly multi-day) hold, not just the next session.
+ *
+ * Point-in-time, not a lifetime-final claim: `discord_live_state` keeps updating on every
+ * later live-sync poll for as long as the position stays open, which can be AFTER this
+ * function is called (e.g. the headline stock-based grade already resolved to 'open' while
+ * the live option position is still being managed). Callers must not read this as "the
+ * final excursion for the whole trade" — only as "the best/worst premium observed as of
+ * the most recent live-sync poll at read time."
+ *
+ * `entry_premium` is not a column on `NighthawkPlayOutcomeRow` itself (only
+ * `LegacyDiscordLiveRow`, the live-sync-specific join, carries it) — resolved here from the
+ * already-selected `publish_context` via the same `legacyPublishFieldsFrom` helper
+ * legacy-live-sync.ts/legacy-discord-trade-notify.ts use, with no `editionPlay` fallback (not
+ * available at grading time without a second query) — honestly `null` on the rare pin that
+ * omitted it, never fabricated.
+ */
+export function premiumExcursionFromLiveState(
+  row: Pick<NighthawkPlayOutcomeRow, "publish_context" | "discord_live_state">
+): {
+  premium_peak: number | null;
+  premium_trough: number | null;
+  premium_mfe_pct: number | null;
+  premium_mae_pct: number | null;
+} {
+  const entryPremium = legacyPublishFieldsFrom({
+    publish_context: row.publish_context ?? null,
+    editionPlay: null,
+  }).entry_premium;
+  const live: LegacyDiscordLiveState | null = row.discord_live_state ?? null;
+  const premium_peak = live?.peak_premium ?? null;
+  const premium_trough = live?.trough_premium ?? null;
+  const premium_mfe_pct =
+    entryPremium != null && entryPremium > 0 && premium_peak != null
+      ? round2((premium_peak / entryPremium - 1) * 100)
+      : null;
+  const premium_mae_pct =
+    entryPremium != null && entryPremium > 0 && premium_trough != null
+      ? round2((premium_trough / entryPremium - 1) * 100)
+      : null;
+  return { premium_peak, premium_trough, premium_mfe_pct, premium_mae_pct };
+}
+
 export function resolveOutcome(row: NighthawkPlayOutcomeRow): {
   hit_target: boolean;
   hit_stop: boolean;
@@ -563,7 +615,16 @@ export function resolveOutcome(row: NighthawkPlayOutcomeRow): {
   // be excluded from win/loss tallies and reported separately so operators know
   // the effective sample size rather than silently inflating the win rate.
   stop_data_unavailable: boolean;
+  // Phase 1.7 (additive, see premiumExcursionFromLiveState's doc): the live-managed
+  // OPTION-premium excursion observed so far, independent of the stock-based verdict
+  // above — never blended into hit_target/hit_stop/outcome, per this file's convention
+  // of keeping distinct-basis grades separate (docs/audit/OUTCOME-GRADING-SPEC.md).
+  premium_peak: number | null;
+  premium_trough: number | null;
+  premium_mfe_pct: number | null;
+  premium_mae_pct: number | null;
 } {
+  const premiumExcursion = premiumExcursionFromLiveState(row);
   const close = row.next_day_close;
   const high = row.session_high;
   const low = row.session_low;
@@ -572,7 +633,7 @@ export function resolveOutcome(row: NighthawkPlayOutcomeRow): {
   const stop = row.stop;
 
   if (close == null) {
-    return { hit_target: false, hit_stop: false, outcome: "pending", stop_data_unavailable: false };
+    return { hit_target: false, hit_stop: false, outcome: "pending", stop_data_unavailable: false, ...premiumExcursion };
   }
 
   const isLong = row.direction === "LONG";
@@ -590,7 +651,7 @@ export function resolveOutcome(row: NighthawkPlayOutcomeRow): {
     // Range intersection: session [low, high] must overlap entry [range_low, range_high].
     const fillable = low! <= row.entry_range_high && high! >= row.entry_range_low;
     if (!fillable) {
-      return { hit_target: false, hit_stop: false, outcome: "unfilled", stop_data_unavailable: false };
+      return { hit_target: false, hit_stop: false, outcome: "unfilled", stop_data_unavailable: false, ...premiumExcursion };
     }
   }
   // When a stop is defined but only close data is available we cannot determine
@@ -644,7 +705,7 @@ export function resolveOutcome(row: NighthawkPlayOutcomeRow): {
     outcome = "target";
   }
 
-  return { hit_target, hit_stop, outcome, stop_data_unavailable };
+  return { hit_target, hit_stop, outcome, stop_data_unavailable, ...premiumExcursion };
 }
 
 export async function resolvePendingNighthawkOutcomes(opts?: {
@@ -691,6 +752,8 @@ export async function resolvePendingNighthawkOutcomes(opts?: {
         hit_target: verdict.hit_target,
         hit_stop: verdict.hit_stop,
         outcome: verdict.outcome,
+        premium_mfe_pct: verdict.premium_mfe_pct,
+        premium_mae_pct: verdict.premium_mae_pct,
       });
 
       if (verdict.outcome === "target" || verdict.outcome === "stop") {

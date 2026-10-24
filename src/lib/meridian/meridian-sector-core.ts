@@ -249,12 +249,21 @@ export function buildSectorCohort(input: {
 
   const cohortLabel = label ?? `SIC ${majorGroup}`;
   if (values.length < MIN_COHORT_PEERS) {
+    // GAP FOUND (Ask Largo standing mandate, 2026-10-10): the general "only N peer(s) reporting"
+    // phrasing reads fine for N>=1 but is grammatically confusing at N=0 ("only 0 peers reporting
+    // with a comparable number" — live repro: LRN/CLF swing play-briefs, Education/Metals & Mining
+    // sectors, 2026-10-10 weekend read). Special-case the zero count to the plain, unambiguous
+    // "no peers reporting" rather than "only 0 peers reporting".
+    const insufficientReason =
+      values.length === 0
+        ? "no peers reporting with a comparable number — too few to rank against"
+        : `only ${values.length} peer${values.length === 1 ? "" : "s"} reporting with a comparable number — too few to rank against`;
     return {
       majorGroup,
       label: cohortLabel,
       members,
       distribution: null,
-      insufficientReason: `only ${values.length} peer${values.length === 1 ? "" : "s"} reporting with a comparable number — too few to rank against`,
+      insufficientReason,
     };
   }
 

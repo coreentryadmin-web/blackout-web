@@ -101,10 +101,3 @@ export function flowContractKeyOrUnknown(flow: FlowContractIdentity): string {
   const expiry = normalizeFlowExpiry(String(flow.expiry || ""));
   return `${ticker}|nostrike|${expiry}|${contractSide(flow.option_type)}`;
 }
-
-/** True when both rows name the same contract. False when either strike is unusable. */
-export function sameFlowContract(a: FlowContractIdentity, b: FlowContractIdentity): boolean {
-  const ka = flowContractKey(a);
-  if (ka == null) return false;
-  return ka === flowContractKey(b);
-}

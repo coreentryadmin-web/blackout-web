@@ -108,6 +108,7 @@ import {
   strikeTrailLifecycle,
   trimHistoryForLiveTrails,
   trimHistoryToSession,
+  beadRailHistoryForHorizon,
   alignWallHistoryToBarTimes,
   type StrikeTrail,
   type VectorWallLens,
@@ -136,7 +137,7 @@ import { extendedHoursShadeBands } from "@/features/vector/lib/vector-session-ho
 import { computeVolumeProfile, sessionRthVolumeProfileBars } from "@/features/vector/lib/vector-volume-profile";
 import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
 import { vectorChartTimeScaleGutter } from "@/features/vector/lib/vector-volume-profile-layout";
-import type { WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
+import { sidePctMaxima, type WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
 import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
@@ -206,6 +207,7 @@ import {
   VECTOR_COMPARE_FOUR_UP_OVERLAY_REFRESH_MS,
   VECTOR_WALL_TRAIL_SEC,
   vectorComparePerfPollMs,
+  liveTickDisplayRecomputeDue,
 } from "@/features/vector/lib/vector-cadence";
 import { vectorWallTrailSecClient } from "@/features/vector/lib/vector-wall-sample";
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
@@ -272,9 +274,6 @@ const GAMMA_FLIP_COLOR = "#22d3ee";
 const VANNA_FLIP_COLOR = "#38bdf8";
 const DARK_POOL_COLOR = "#ff8a3d"; // orange, not cyan — dark-pool cyan #00d4ff failed CVD separation vs gamma-flip cyan #22d3ee (worst-pair ΔE 6.9); orange lifts it to 36.7 (validated via dataviz palette checker)
 const REPLAY_STEP_MS = 350;
-/** Post embed fast→full upgrade: narrowed horizons may borrow the blended rail only inside this window. */
-const EMBED_BOOTSTRAP_BLEND_MS = 30 * 60 * 1000;
-const EMBED_BOOTSTRAP_BLEND_MIN_SAMPLES = 120;
 /** Live RTH refresh for reconstructed GEX heatmap — aligned with server cache TTL. */
 const GEX_HEATMAP_REFRESH_MS = VECTOR_GEX_HEATMAP_POLL_MS;
 /** Widen the price axis to reveal walls within this % of spot (env-tunable). Without
@@ -1268,9 +1267,31 @@ function applyWallBeadMarkers(
   return { strikes: active, rendered };
 }
 
-/** Feed the WallRailPrimitive the composed call+put trails. maxPct is taken across BOTH sides so the
- *  king wall (whichever side) is the single frame reference every band scales against — a call and a
- *  put of equal share render equally fat. A null primitive or empty trails draws nothing. */
+/**
+ * Feed the WallRailPrimitive the composed call+put trails.
+ *
+ * `maxPct` (combined) still gates overall rail visibility. SIZE/COLOUR now scale each side
+ * against its OWN side's peak (`callMaxPct`/`putMaxPct`), not the combined one.
+ *
+ * WHY THIS CHANGED (2026-09-10, live member report — screenshot showed every call-side bead at
+ * one indistinguishable size/shade): the combined-book denominator was deliberate ("a call and a
+ * put of equal share render equally fat" — see the prior version of this comment) and correct on
+ * a balanced day. But on a day where one side's book share dominates the other (measured live,
+ * SPX 0DTE: put walls 16.3%/6.3%/6.2%/5.7%..., call walls 0.89%/0.45%/0.4%/0.35%... — an 18x gap
+ * between the two sides' own kings), EVERY bead on the weaker side sits so far below the
+ * combined-book denominator that both `beadRadiusForPctShare`'s fixed floor and `fillAlpha`'s
+ * floor clamp the entire side to one size/shade — the real ~6x spread within that side (0.14% to
+ * 0.89%) never gets a chance to show. A member reads that as "the beads all look the same",
+ * because on that side they genuinely do.
+ *
+ * Per-SIDE (not per-ROW/per-strike) is the right granularity: the prior A/B history in
+ * vector-wall-rail-primitive.ts rejected a per-ROW peak denominator (self-fulfilling — a
+ * gradually-building wall is always near its own running max) and a per-ROW SESSION peak (measured
+ * to INVERT cross-row ordering). Neither objection applies here: like the combined-book
+ * denominator this replaces, a per-side max is SHARED across every strike on that side, so
+ * cross-strike ordering within a side is preserved exactly as it was — the only change is which
+ * strikes share the denominator (one side's strikes, not both sides' combined).
+ */
 function feedWallRail(
   rail: WallRailPrimitive | null,
   callRendered: StrikeTrail[],
@@ -1291,15 +1312,15 @@ function feedWallRail(
   intervalSec = 0
 ): void {
   if (!rail) return;
-  let maxPct = 0;
-  for (const t of callRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
-  for (const t of putRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
+  const { callMaxPct, putMaxPct, maxPct } = sidePctMaxima(callRendered, putRendered);
   const tierMaps = showIntegrityRings ? beadIntegrityTierMaps(history, activeLens) : null;
   rail.setData(
     {
       callTrails: callRendered,
       putTrails: putRendered,
       maxPct,
+      callMaxPct,
+      putMaxPct,
       callColor,
       putColor,
       profile,
@@ -1603,6 +1624,8 @@ export function VectorChart({
   /** Canonical 1m session bars — SSE live ticks and Polygon seed write here only. */
   const minuteBarsRef = useRef<VectorBar[]>(initialBars);
   const displayBarTimeRef = useRef<number>(0);
+  /** Throttle gate for the live-tick display-bar/volume recompute — see vector-cadence.ts. */
+  const lastDisplayRecomputeAtRef = useRef<number>(0);
   const timeframeRef = useRef<VectorTimeframeMinutes>(initialTimeframe);
   // Tracks the timeframe the time scale was last fitContent()'d to, so the timeframe effect can
   // tell a GENUINE timeframe switch (refit expected) from a re-run triggered by a dependency's
@@ -1642,8 +1665,6 @@ export function VectorChart({
   const seedRailEmpty = initialWallHistory.length === 0;
   const seedRailEmptyRef = useRef(seedRailEmpty);
   seedRailEmptyRef.current = seedRailEmpty;
-  /** Set on embed seed upgrade; gates narrowed→blended fallback to the bootstrap window only. */
-  const embedBootstrapBlendUntilMsRef = useRef(0);
   const dteHorizonRef = useRef<VectorDteHorizon>(openingDteHorizon);
   /** Session overview on load (full RTH + bead trail) until the member pans to the live edge. */
   const liveFollowEnabledRef = useRef(defaultChartViewport === "live");
@@ -2501,30 +2522,16 @@ export function VectorChart({
       timeframeRef.current
     );
     const composed = composeHorizonTrail(recordedTrail, currentColumn);
+    const blended = wallHistoryRef.current;
     const railSource =
       horizon === "all"
-        ? (composed ?? wallHistoryRef.current)
-        : (() => {
-            const narrowed = composed ?? [];
-            const blended = wallHistoryRef.current;
-            // SPX Slayer opens 0DTE: embed fast-bootstrap can ship a thin narrowed trail while
-            // blended wallHistoryRef already has the full session — prefer the denser source so
-            // beads span RTH instead of clustering in one column on the right edge.
-            // Scoped to the post-upgrade bootstrap window only — a persistently sparse narrowed
-            // horizon must not masquerade as observed narrowed structure all session (#4470).
-            if (narrowed.length >= EMBED_BOOTSTRAP_BLEND_MIN_SAMPLES) {
-              embedBootstrapBlendUntilMsRef.current = 0;
-            }
-            const bootstrapBlendWindow = Date.now() < embedBootstrapBlendUntilMsRef.current;
-            if (
-              bootstrapBlendWindow &&
-              blended.length > narrowed.length &&
-              narrowed.length < EMBED_BOOTSTRAP_BLEND_MIN_SAMPLES
-            ) {
-              return blended;
-            }
-            return narrowed.length ? narrowed : blended;
-          })();
+        ? (composed ?? blended)
+        : beadRailHistoryForHorizon(
+            composed ?? [],
+            blended,
+            railBarTimes[0],
+            railBarTimes[railBarTimes.length - 1]
+          );
     const railHistory = trimHistoryToSession(railSource, railBarTimes[0]);
     const markerHistory =
       sessionOverview || !liveSessionRef.current || replayModeRef.current
@@ -2656,7 +2663,6 @@ export function VectorChart({
       upgraded = true;
     }
     if (!upgraded || replayModeRef.current) return;
-    embedBootstrapBlendUntilMsRef.current = Date.now() + EMBED_BOOTSTRAP_BLEND_MS;
     const chart = chartRef.current;
     if (
       chart &&
@@ -4404,7 +4410,16 @@ export function VectorChart({
         }
         minuteBarsRef.current = upsertBar(minuteBarsRef.current, snap.candle as VectorBar);
         setSessionBars(minuteBarsRef.current);
-        if (!inReplay) {
+        // THROTTLED (2026-10-14): displayBarsFromMinute + the volume rebuild below are O(n) full
+        // rebuilds of the whole bar history, not incremental — see vector-cadence.ts's own comment
+        // on VECTOR_LIVE_TICK_DISPLAY_RECOMPUTE_THROTTLE_MS for the measured production impact of
+        // running this ungated on every SSE tick (main thread pinned near 100%, which starves
+        // Next.js's low-priority nav transition and makes clicking away from a long-open SPX
+        // Slayer tab silently do nothing). Gating to 5Hz keeps the chart visually live while
+        // bounding the rebuild's cost regardless of tick frequency.
+        const nowTick = Date.now();
+        if (!inReplay && liveTickDisplayRecomputeDue(lastDisplayRecomputeAtRef.current, nowTick)) {
+          lastDisplayRecomputeAtRef.current = nowTick;
           const displayBars = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
           const lastDisplay = displayBars[displayBars.length - 1];
           if (lastDisplay) {

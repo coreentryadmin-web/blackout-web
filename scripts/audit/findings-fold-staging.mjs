@@ -46,12 +46,44 @@ const KIND_LINE_RE = /^> \*\*kind:\*\* `?([A-Z-]+)`?\s*$/;
  * line is the "real" entry title when a body legitimately needs its own `## ` for other reasons —
  * left for a human pass instead, same as the other two defects.
  * Left in staging for a human pass, not silently mishandled.
+ *
+ * BUG FIX (2026-09-17, Ask Largo standing mandate): the heading scan below used to count every
+ * line starting with `## ` regardless of fenced-code-block state, so a finding whose EVIDENCE
+ * section quotes a live product's own markdown output — a normal, encouraged pattern in this
+ * repo's "PR write-up policy" (evidence = "live numbers, header captures... whatever actually
+ * proved the bug") — got misidentified as "a body using `## ` for its own sub-sections" (the
+ * genuine defect this guard exists to catch, see above) whenever that quoted output itself
+ * contained real `## `-level headings. Live repro: two well-formed, single-real-heading Ask Largo
+ * swing findings (2026-09-17-lane-rank-score-precision-mismatch.md,
+ * 2026-09-17-watch-entry-geometry-duplication.md) each quote a live play-brief's own markdown
+ * inside a ``` fence in their Evidence section (containing `## Why this setup` / `## Entry` /
+ * etc.) — both silently never folded across multiple fold runs, indistinguishable from the
+ * genuine 10-of-109 multi-heading defect without reading each skipped file by hand. `realLineMask`
+ * marks every line NOT inside a ``` ... ``` fence (the fence delimiter line itself never counts as
+ * heading/kind content either way); heading/kind detection below only looks at those.
  */
+function realLineMask(lines) {
+  let inFence = false;
+  return lines.map((l) => {
+    if (l.trim().startsWith("```")) {
+      inFence = !inFence;
+      return false;
+    }
+    return !inFence;
+  });
+}
+
+function findRealHeadingIdx(lines) {
+  const mask = realLineMask(lines);
+  return lines.findIndex((l, i) => mask[i] && l.startsWith("## "));
+}
+
 function normalizeEntry(content) {
   const lines = content.split("\n");
-  const headingIdx = lines.findIndex((l) => l.startsWith("## "));
-  const kindIdx = lines.findIndex((l) => KIND_LINE_RE.test(l));
-  const headingCount = lines.filter((l) => l.startsWith("## ")).length;
+  const mask = realLineMask(lines);
+  const headingIdx = lines.findIndex((l, i) => mask[i] && l.startsWith("## "));
+  const kindIdx = lines.findIndex((l, i) => mask[i] && KIND_LINE_RE.test(l));
+  const headingCount = lines.filter((l, i) => mask[i] && l.startsWith("## ")).length;
   if (headingIdx === -1 || kindIdx === -1 || headingCount > 1) return null;
 
   const kindWord = lines[kindIdx].match(KIND_LINE_RE)[1];
@@ -66,7 +98,7 @@ function normalizeEntry(content) {
 
   const dropBlankAfterKind = lines[kindIdx + 1] === "";
   const rest = lines.filter((_, i) => i !== kindIdx && !(dropBlankAfterKind && i === kindIdx + 1));
-  const newHeadingIdx = rest.findIndex((l) => l.startsWith("## "));
+  const newHeadingIdx = findRealHeadingIdx(rest);
   return [...rest.slice(0, newHeadingIdx + 1), "", canonicalKindLine, ...rest.slice(newHeadingIdx + 1)].join("\n");
 }
 

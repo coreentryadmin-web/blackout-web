@@ -54,6 +54,10 @@ export interface ParentGradeFreeze {
   grade_methodology: string;
   legacy_grade?: Record<string, unknown> | null;
   realized_pnl_pct?: number | null;
+  /** The same fresh mark realized_pnl_pct was computed from — latched onto last_mark/last_mark_at at
+   *  grade time so a closed position's displayed contract.mid can never disagree with its own
+   *  realized exit (FINDINGS 2026-10-17). Omitted/null leaves last_mark untouched. */
+  exit_mark?: number | null;
 }
 
 /** The new leg to open on a ROLL, minus the chain-link columns — those are computed from the parent so the
@@ -242,9 +246,20 @@ export async function closeAndRollSwingPosition(
     }
 
     // Append the management snapshot documenting the roll/close tick (append-only) — outside the terminal tx,
-    // as it is evidence, not part of the all-or-nothing close.
-    const snapshotId = req.snapshot ? await deps.insertSnapshot(req.snapshot) : null;
-    return { ...base, childId, parentGraded: true, snapshotId };
+    // as it is evidence, not part of the all-or-nothing close. The terminal write above already committed
+    // (parent graded, and on a ROLL the child inserted), so a failure HERE must not be reported as a roll/close
+    // failure — that would falsely tell the caller the parent is still OPEN when it is already terminal. A real
+    // caller (swing-active-refresh/route.ts) gates its member-facing terminal Discord notification on
+    // `parentGraded`, so collapsing this into the outer catch silently drops that notification for a roll/close
+    // that genuinely happened, just because the trailing evidence write hiccuped.
+    let snapshotId: number | null = null;
+    let snapshotError: string | undefined;
+    try {
+      snapshotId = req.snapshot ? await deps.insertSnapshot(req.snapshot) : null;
+    } catch (err) {
+      snapshotError = err instanceof Error ? err.message : String(err);
+    }
+    return { ...base, childId, parentGraded: true, snapshotId, error: snapshotError };
   } catch (err) {
     // Fail-soft. On a ROLL, a child-insert failure (or a rolled-back atomic roll) leaves parentGraded false →
     // the parent is still OPEN, so the position is never half-closed.

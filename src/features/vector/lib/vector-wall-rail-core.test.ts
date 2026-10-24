@@ -17,16 +17,12 @@ import {
   clampTuningToSpacing,
   closestRowGapPx,
   beadKey,
-  beadRenderTuning,
   fillAlpha,
   kingKey,
   kingStrikeByTime,
-  maxPctByTime,
-  targetHalfPx,
   withA,
   trailingRefs,
   rowPeakRefs,
-  rowSwellMul,
   rowStrengthHaloExtraPx,
   ROW_HALO_ROW_GAP_FILL,
   BEAD_ROW_FILL_FOR_TEST,
@@ -34,7 +30,7 @@ import {
   beadCenterSpacingPx,
   ROW_HALO_BAR_SPACING_FILL,
   ROW_SWELL_FLOOR,
-  MIN_CLAMPED_HALF_RANGE_PX,
+  sidePctMaxima,
 } from "./vector-wall-rail-core";
 
 // ── withA ────────────────────────────────────────────────────────────────────
@@ -174,6 +170,98 @@ test("targetHalfPx: ordering is monotonic in pct when no notional is recorded", 
   for (let i = 1; i < radii.length; i++) {
     assert.ok(radii[i] >= radii[i - 1], `radius must not shrink as pct grows: ${radii.join(", ")}`);
   }
+});
+
+// ── sidePctMaxima / per-side denominator (2026-09-10 member report) ────────────────────────────
+// Live SPX 0DTE, RTH, screenshot + API repro: put walls dominated the book (16.3/6.26/6.21/5.73%
+// ...) while call walls sat far below (0.89/0.45/0.4/0.35% ...). Every call bead was sized/coloured
+// against the COMBINED maxPct (16.3, the put king), so the whole call side clamped to the sizing
+// floor and one alpha shade — "all beads look the same", true only of the weaker side.
+
+test("sidePctMaxima: each side's own peak, not the combined book peak", () => {
+  const callTrails = [{ points: [{ pct: 0.89 }] }, { points: [{ pct: 0.45 }] }];
+  const putTrails = [{ points: [{ pct: 16.3 }] }, { points: [{ pct: 6.26 }] }];
+  const { callMaxPct, putMaxPct, maxPct } = sidePctMaxima(callTrails, putTrails);
+  assert.equal(callMaxPct, 0.89);
+  assert.equal(putMaxPct, 16.3);
+  assert.equal(maxPct, 16.3, "combined max still used for overall rail visibility gating");
+});
+
+test("sidePctMaxima: an empty side reports 0, never NaN or the other side's peak", () => {
+  const { callMaxPct, putMaxPct, maxPct } = sidePctMaxima([], [{ points: [{ pct: 4 }] }]);
+  assert.equal(callMaxPct, 0);
+  assert.equal(putMaxPct, 4);
+  assert.equal(maxPct, 4);
+});
+
+// REGRESSION GUARD for the 2026-09-10 member report ("current model all beads look same .. cant
+// differentiate", live SPX 0DTE screenshot). Real measured shares from that session: call walls
+// 0.89/0.45/0.4/0.35/0.22% (top 5), put walls 16.3/6.26/6.21/5.73/5.72% (top 5).
+//
+// TWO channels feed off the book-peak denominator, and fixing it helps them differently:
+//  - COLOUR (fillAlpha) is the decisive fix — see the next test. Its sub-linear curve (REL_ALPHA_EXP
+//    0.8) was built specifically so a super-linear curve wouldn't "pin every non-king row near the
+//    floor" (its own doc comment), and it does not.
+//  - SIZE, via targetHalfPx's rowPeakPct/rowSwellMul path, has an ABSOLUTE visibility floor
+//    (BEAD_VISIBLE_MIN_HALF_PX = 2.0px, "measured against a member's eyes") that a sub-2.0 swelled
+//    result clamps UP to — a real, DOCUMENTED, and intentional limit (targetHalfPx's own comment:
+//    "below roughly the floor/ceiling ratio, the fade has to be carried by a channel other than
+//    radius"). Swelling this particular narrow, sub-1%-share call cluster against its own 0.89% max
+//    still pushes 3 of 5 beads below that floor — own-side swelling is still strictly correct (the
+//    KING call bead is now visibly the largest, where the combined denominator flattened it too),
+//    it just cannot single-handedly restore size differentiation to a range this tight. That is
+//    exactly the "carried by a channel other than radius" case the code already documents, and
+//    colour is that channel — see the next test for the size of that improvement.
+test("targetHalfPx: own-side swell makes the side's own king visibly the largest — combined swell does not", () => {
+  const callPcts = [0.89, 0.45, 0.4, 0.35, 0.22];
+  const putPcts = [16.3, 6.26, 6.21, 5.73, 5.72];
+  const { callMaxPct, maxPct } = sidePctMaxima(
+    callPcts.map((pct) => ({ points: [{ pct }] })),
+    putPcts.map((pct) => ({ points: [{ pct }] }))
+  );
+
+  const combinedKing = targetHalfPx(0.89, undefined, maxPct, BEAD_TUNING_DEFAULT, { rowPeakPct: maxPct });
+  const combinedWeakest = targetHalfPx(0.22, undefined, maxPct, BEAD_TUNING_DEFAULT, { rowPeakPct: maxPct });
+  assert.ok(
+    combinedKing - combinedWeakest < 0.5,
+    `expected the combined denominator to flatten king vs weakest (documents the bug) — king ${combinedKing.toFixed(2)} vs weakest ${combinedWeakest.toFixed(2)}`
+  );
+
+  const ownKing = targetHalfPx(0.89, undefined, callMaxPct, BEAD_TUNING_DEFAULT, { rowPeakPct: callMaxPct });
+  const ownWeakest = targetHalfPx(0.22, undefined, callMaxPct, BEAD_TUNING_DEFAULT, { rowPeakPct: callMaxPct });
+  assert.ok(
+    ownKing - ownWeakest >= 1.5,
+    `own-side king must visibly outsize the weakest call bead — king ${ownKing.toFixed(2)} vs weakest ${ownWeakest.toFixed(2)}`
+  );
+});
+
+// THE DECISIVE FIX for the reported symptom. fillAlpha's sub-linear curve does not hit the same
+// absolute floor the size channel's swell does, so per-side normalization restores full, legible
+// differentiation across the WHOLE weak side, not just its king.
+test("fillAlpha: a real-world lopsided book — weak side coloured against its OWN max spans a legible range, against the COMBINED max it does not", () => {
+  const callPcts = [0.89, 0.45, 0.4, 0.35, 0.22];
+  const putPcts = [16.3, 6.26, 6.21, 5.73, 5.72];
+  const { callMaxPct, maxPct } = sidePctMaxima(
+    callPcts.map((pct) => ({ points: [{ pct }] })),
+    putPcts.map((pct) => ({ points: [{ pct }] }))
+  );
+
+  const collapsed = callPcts.map((p) => fillAlpha(p, maxPct, BEAD_TUNING_DEFAULT));
+  const collapsedSpread = collapsed[0]! - collapsed[collapsed.length - 1]!;
+  assert.ok(
+    collapsedSpread < 0.1,
+    `expected the combined-max denominator to compress every call bead's alpha near the floor (documents the bug) — spread ${collapsedSpread.toFixed(3)}: ${collapsed.map((a) => a.toFixed(3)).join(", ")}`
+  );
+
+  const fixed = callPcts.map((p) => fillAlpha(p, callMaxPct, BEAD_TUNING_DEFAULT));
+  for (let i = 1; i < fixed.length; i++) {
+    assert.ok(fixed[i - 1]! > fixed[i]!, `alpha must strictly decrease with pct: ${fixed.map((a) => a.toFixed(3)).join(", ")}`);
+  }
+  const fixedSpread = fixed[0]! - fixed[fixed.length - 1]!;
+  assert.ok(
+    fixedSpread >= 0.35,
+    `call side must span a clearly legible alpha range once coloured against its own peak — spread only ${fixedSpread.toFixed(3)}: ${fixed.map((a) => a.toFixed(3)).join(", ")}`
+  );
 });
 
 test("compare bead profile shrinks radius vs default but keeps weak beads legible", () => {
@@ -505,6 +593,23 @@ test("the alpha budget is wide enough to be a channel at all", () => {
   );
 });
 
+// ── WEAK-BEAD LEGIBILITY FLOOR (2026-09-08, member follow-up on the fix above) ────────────────
+// 0.25 solved "everything looks equally bold" but pushed the weak end far enough down that the
+// weakest bead on a busy rail read as barely-there against the dark chart background. This raises
+// the floor to 0.35 — still nowhere near the old 0.6 uniformity bug, but visibly more present —
+// while re-asserting every invariant the earlier fix established still holds with margin.
+test("weak-bead legibility floor sits at 0.35, not the old 0.25", () => {
+  assert.ok(
+    FILL_ALPHA_MIN >= 0.35 - 1e-9,
+    `FILL_ALPHA_MIN regressed to ${FILL_ALPHA_MIN} — the weakest bead is barely visible again`
+  );
+  const weakest = fillAlpha(0, 100);
+  assert.ok(
+    weakest >= 0.35 - 1e-9,
+    `a zero-strength bead renders at ${weakest}, below the legibility floor`
+  );
+});
+
 test("SIZE and ALPHA use DIFFERENT curves, and each keeps its own job", () => {
   // They shared one exponent, which is why the rail could never have both channels alive: the
   // super-linear shape size needs (a fading wall must visibly shrink) is the same shape that pins
@@ -535,31 +640,13 @@ test("a profile may still override the alpha curve explicitly", () => {
   assert.ok(fillAlpha(50, 100, custom) < fillAlpha(50, 100, BEAD_TUNING_DEFAULT));
 });
 
-// ── POINT-IN-TIME CONTRAST (2026-08-18) ──────────────────────────────────────────────────────
-// The rail knew which strike was king at each bucket (kingStrikeByTime) and used it only to draw a
-// crown; strength itself was scaled against the SESSION-WIDE maximum. So a wall that dominated the
-// board at 10:15 and was noise by 14:00 rendered at nearly the same brightness in both buckets.
-
-test("THE DEFECT: the same share reads differently in a loud bucket than in a quiet one", () => {
-  const trails = [
-    { points: [{ time: 100, pct: 30 }, { time: 200, pct: 8 }] }, // the row under test
-    { points: [{ time: 100, pct: 40 }, { time: 200, pct: 9 }] }, // the rest of the board
-  ];
-  const byTime = maxPctByTime(trails);
-  assert.equal(byTime.get(100), 40, "bucket 100 was loud");
-  assert.equal(byTime.get(200), 9, "bucket 200 was quiet");
-
-  // 8 of a 9-max bucket DOMINATED that moment; 30 of a 40-max bucket did not. Against a single
-  // session max (40) the quiet-bucket bead would have been the dimmest thing on the chart.
-  const quietBucketAlpha = fillAlpha(8, byTime.get(200));
-  const loudBucketAlpha = fillAlpha(30, byTime.get(100));
-  const sessionWideAlpha = fillAlpha(8, 40);
-  assert.ok(quietBucketAlpha > loudBucketAlpha, "dominating a quiet moment must read as dominant");
-  assert.ok(
-    quietBucketAlpha - sessionWideAlpha > 0.25,
-    "and must be clearly brighter than the session-wide scaling made it"
-  );
-});
+// ── SIZE VS CONTRAST CHANNELS ────────────────────────────────────────────────────────────────
+// SIZE and CONTRAST answer different questions on purpose: size says how big a wall is whenever
+// it occurred (comparing across TIME); contrast/colour says how much it dominates relative to its
+// own side's book peak (comparing across STRIKES). The per-bucket point-in-time contrast design
+// explored 2026-08-18 (`maxPctByTime`) was superseded 2026-08-19 by the per-side book-peak
+// denominator (`sidePctMaxima`, below) — `maxPctByTime` itself was removed as dead code once its
+// only caller (`project()`'s derived cache) stopped computing it.
 
 test("SIZE stays absolute while CONTRAST goes relative — the two channels differ on purpose", () => {
   // A huge wall must look huge whenever it happened (comparing across TIME), while brightness says
@@ -571,22 +658,6 @@ test("SIZE stays absolute while CONTRAST goes relative — the two channels diff
     fillAlpha(2, 2.2) > fillAlpha(9, 40),
     "but the small wall that owned its moment must out-shine the big one that did not"
   );
-});
-
-test("maxPctByTime ignores junk and covers both sides of the board", () => {
-  const m = maxPctByTime([
-    { points: [{ time: 1, pct: 5 }, { time: 1, pct: NaN }, { time: 2, pct: 0 }] },
-    { points: [{ time: 1, pct: 12 }, { time: 3, pct: 7 }] },
-  ]);
-  assert.equal(m.get(1), 12, "max across trails at that bucket");
-  assert.equal(m.get(2), undefined, "a non-positive share is not a maximum");
-  assert.equal(m.get(3), 7);
-});
-
-test("a bucket with no reference falls back to the frame max rather than throwing", () => {
-  const m = maxPctByTime([]);
-  assert.equal(m.get(999), undefined);
-  assert.ok(fillAlpha(5, m.get(999) ?? 20) > 0, "caller's ?? fallback keeps the bead drawable");
 });
 
 // ── ROW SWELL (2026-08-19) — competitor-style strength along a strike row ─────────────────────

@@ -77,6 +77,74 @@ export interface ThesisHealthPayload {
   /** Maps to TerminalPlay.thesisBreak for backward-compatible monitor strip. */
   thesisBreakLevel: "intact" | "warn" | "break" | "unknown";
   thesisBreakNote: string;
+  /**
+   * Swing-only (optional — 0DTE never sets this, so every existing reader is unaffected): true
+   * when the position has round-tripped from a real favorable peak into a current loss (same
+   * `mfeCaptureOutcome` "round_trip" test play-brief-intel.ts/play-brief-narrative.ts already use
+   * to narrate "Round-tripped past breakeven" elsewhere in the SAME brief).
+   *
+   * BUG FIX (Ask Largo standing mandate, 2026-10-14): `computeSwingThesisHealth`'s `moves` array —
+   * the ONLY signal `thesisHealthSection` (play-brief.ts) uses to decide whether to print "—
+   * unchanged since commit" — can never reflect this kind of swing. Four of its five pillars
+   * (persistence/entry_geometry/flow_corroboration/regime) compute `commit` and `current` scores
+   * from the SAME single live-state input every call (confirmed structurally for
+   * flow_corroboration/regime: `{commit: score, current: score}` off one `score` variable;
+   * confirmed empirically for persistence/entry_geometry: every matched switch-case branch sets
+   * commit===current), so their `deltaPts` reads exactly 0 in the overwhelming common case — a
+   * real swing only trips `moves` via a narrow set of separate triggers (thesisBreak
+   * warn/break, `manageAction !== HOLD`, or `pnlPct <= -40`), none of which a round-trip through a
+   * real peak is guaranteed to cross. Live repro 2026-10-14, SWING:INTC:56: peak +15.3% →
+   * trough -36.6%, currently -36.5% (3.5pts short of the -40 trigger, thesisBreak still "intact") —
+   * "Thesis health" rendered "67% · Weakening — unchanged since commit" with every pillar showing
+   * "(Δ +0.0 pts)", directly contradicting the SAME brief's own "Trade manager read" section one
+   * scroll down, which correctly narrates "Round-tripped past breakeven — was up 15% at peak, now
+   * -37% — consider protecting what's left." Two sections of one envelope disagreeing about the
+   * same fact is exactly the class of defect this codebase's own duplication/contradiction guards
+   * (see this file's sibling fixes) exist to prevent — this is the same class in reverse (a false
+   * negative instead of a duplicate positive). Fixed at the SOURCE of the contradiction
+   * (`noDriftSinceCommit` in play-brief.ts) rather than by trying to make the four structurally-
+   * static pillars genuinely time-varying (would need a real "value at actual commit time" snapshot
+   * persisted per position — a larger, separate schema change, out of scope here). Deliberately NOT
+   * threaded into `moves` itself: `moves` has a second consumer
+   * (`thesisPillarCoaching`/"What moved" in play-brief-narrative-coaching.ts) that already renders
+   * the identical round-trip fact via its own path — adding it to `moves` would create a NEW
+   * duplicate-narration bug of the exact kind this codebase has repeatedly fixed elsewhere.
+   */
+  roundTripSinceCommit?: boolean;
+  /**
+   * Swing-only (optional — 0DTE never sets this, same discipline as `roundTripSinceCommit`
+   * immediately above, which this field extends rather than replaces).
+   *
+   * BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 4 of the standing Ask Largo x Night Hawk
+   * Swings mandate). The 2026-10-14 `roundTripSinceCommit` fix above only covers the case where
+   * P&L has gone NEGATIVE since peak (`mfeCaptureOutcome(...)?.kind === "round_trip"`, which
+   * requires `exitPnlPct < 0`). A position that retraces hard from its peak but stays barely
+   * POSITIVE still printed the pre-2026-10-14 contradiction: "unchanged since commit" sitting
+   * directly above/below a "Gave back N% of peak" narrative line in the SAME response, because
+   * `thesisPillarCoaching`'s giveback computation (play-brief-narrative.ts's `actionNarrative`,
+   * reading the SAME `mfeCaptureOutcome(play.pnlPct, play.peak, null)`) fires its own "Gave back
+   * X% of peak" line whenever `giveback.kind === "capture" && giveback.capturePct < 75` — a
+   * threshold `roundTripSinceCommit`'s narrower `=== "round_trip"` check never sees.
+   *
+   * Live repro: GOOG OPEN brief, positionId 59 (2026-10-16 01:57 UTC) — "Thesis health" read
+   * "73% · Minor drift — unchanged since commit" with all five pillars showing "(Δ +0.0 pts)",
+   * while the SAME response's "Trade manager read" section opened with "Hold the line — thesis
+   * health 73%... **Gave back 85% of peak — consider protecting runner.**" Peak +9.2%, current
+   * P&L +1.4%, trough -4.0% — `(9.2-1.4)/9.2 = 84.8%` ≈ the cited 85% giveback, computed from the
+   * SAME peak/current numbers `roundTripSinceCommit` already reads, just never compared against
+   * the SAME 75% capture threshold the giveback narrative uses.
+   *
+   * Fix: reuse the IDENTICAL `mfeCaptureOutcome` call and the IDENTICAL `capturePct < 75`
+   * threshold the giveback narrative already uses (never a new, independently-tuned threshold —
+   * see `computeSwingThesisHealth`'s own comment for why) so this field and that narrative line
+   * can never disagree about what counts as a material giveback. True whenever EITHER
+   * `roundTripSinceCommit` already fires OR a real capture has fallen under that same 75%
+   * threshold while P&L stays net-positive — a strict superset of `roundTripSinceCommit`, kept as
+   * a separate field (rather than redefining `roundTripSinceCommit` itself) because the two names
+   * mean genuinely different things: a position that stays positive has not "round-tripped past
+   * breakeven," even though it HAS given back a material fraction of its peak.
+   */
+  materialGivebackSinceCommit?: boolean;
 }
 
 export interface ThesisLiveInputs {
@@ -458,7 +526,22 @@ export function formatComputedEt(nowMs: number): string {
 
 /**
  * Compute thesis health for one working ledger row. Returns null when the row has no
- * entry_context (pre-wire-in legacy) or is not a working position.
+ * entry_context (pre-wire-in legacy), is not a working position, or is a committed CONDOR.
+ *
+ * NEUTRAL-STRUCTURE FIX: every pillar below (flow/tape/VWAP/market-align/confluence) scores
+ * against `live.direction` — for a directional play that IS the play's real stance, but a
+ * committed 0DTE iron condor's `direction` is only the pin's nominal fade side, stated as
+ * provenance-only by condor.ts's own doc ("carries the pin's nominal fade side for provenance
+ * but is UNUSED by the neutral structure's gates/grader"). Before this fix, every pillar here
+ * silently scored a condor's nominal side as if it were a real directional thesis, producing a
+ * fabricated "Thesis Health" percentage that reached the LIVE production ThesisHealthPanel
+ * (command-deck) and Largo (zerodte-service.ts) for a delta-neutral, credit-sold structure with
+ * no real directional thesis to score. `null` is already this function's established "not
+ * applicable" return (used above for a non-working status or a missing entry_context) and every
+ * consumer already renders it correctly — CommandDeck/PlayTerminal/ZeroDteCommandPanel all
+ * already gate on `thesisHealth != null` and fall back to an honest "no thesis health wired"
+ * state, exactly the same path a WATCH/Legacy row already takes — so this degrades safely rather
+ * than needing new UI plumbing.
  */
 export function computeThesisHealth(
   entryContext: CommitBlob,
@@ -469,6 +552,8 @@ export function computeThesisHealth(
   const st = String(opts?.status ?? "").toUpperCase();
   if (!["OPEN", "HOLD", "TRIM"].includes(st)) return null;
   if (!entryContext || typeof entryContext !== "object") return null;
+  const ec = entryContext as Record<string, unknown>;
+  if (ec.play_type === "CONDOR" || Boolean(ec.condor)) return null;
 
   const direction = live.direction;
   const commitConf = entryContext.confluence as ZeroDteConfluence | undefined;

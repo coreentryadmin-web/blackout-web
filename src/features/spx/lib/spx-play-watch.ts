@@ -157,7 +157,7 @@ export async function evaluateWatchPromote(params: {
     await clearWatchRecord();
     return { eligible: false, reason: `WATCH expired (${maxAge}m)`, record: null };
   }
-  const ageMin = ageMs / 60_000;
+  const ageMin = Math.max(0, ageMs / 60_000);
   if (ageMin > maxAge) {
     await clearWatchRecord();
     return { eligible: false, reason: `WATCH expired (${maxAge}m)`, record: null };

@@ -87,6 +87,29 @@ test("force=1 is rate-limited by a minimum re-run cooldown, independent of the h
   );
 });
 
+test("a force=1 call OUTSIDE the extended warm window is throttled at a much wider floor than one made inside it", () => {
+  assert.match(
+    routeSrc,
+    /import \{ isEtExtendedWarmHours \} from "@\/lib\/et-market-hours"/,
+    "must check the SAME holiday-aware window the in-app dispatchers already gate on"
+  );
+  assert.match(
+    routeSrc,
+    /OFF_WINDOW_FORCE_COOLDOWN_SEC = 300/,
+    "the off-window floor must be materially wider than the in-window 60s floor"
+  );
+  assert.match(
+    routeSrc,
+    /const effectiveCooldownSec = isEtExtendedWarmHours\(\)\s*\n\s*\? RERUN_COOLDOWN_SEC\s*\n\s*: OFF_WINDOW_FORCE_COOLDOWN_SEC;/,
+    "the floor actually used must depend on the window, not just exist as an unused constant"
+  );
+  assert.match(
+    routeSrc,
+    /const withinCooldown = !\(await sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY,\s*\{ startedAt: started \},\s*effectiveCooldownSec\s*\)/,
+    "the cooldown claim must use effectiveCooldownSec, not the flat RERUN_COOLDOWN_SEC"
+  );
+});
+
 test("the cooldown primitive genuinely refuses a second claim of the same key inside its TTL", async () => {
   const { sharedCacheSetNx, sharedCacheDel } = await import("@/lib/shared-cache");
   const key = `meridian-warm:cooldown:test:${Date.now()}:${Math.random()}`;

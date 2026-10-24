@@ -74,6 +74,14 @@ function fmtSignedMoney(n: number): string {
   return `+${fmtPremium(n)}`;
 }
 
+/** Arrow glyph for a signed delta chip — the chip's own sign decides direction; the arrow was
+ *  previously hardcoded to "up" regardless of sign, so a negative delta (e.g. "-$3.7B") rendered
+ *  as "↑-$3.7B", an up arrow glued to a decrease. */
+export function deltaArrowText(delta: string): string {
+  const negative = delta.startsWith("-");
+  return `${negative ? "↓" : "↑"}${delta.replace(/^[+-]/, "")}`;
+}
+
 function volLabelForGamma(posture: "long" | "short" | null | undefined): string | null {
   if (posture === "long") return "SUPPRESSED";
   if (posture === "short") return "EXPANDED";

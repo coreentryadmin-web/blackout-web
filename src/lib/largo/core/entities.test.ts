@@ -5,7 +5,6 @@ import {
   canonicalTicker,
   sameTicker,
   parseOccSymbol,
-  buildOccSymbol,
   canonicalSession,
   extractTickers,
 } from "./entities";
@@ -35,6 +34,24 @@ test("kind classification drives labelling, not routing", () => {
   // An unknown symbol is still a well-formed key — this layer does not decide what exists.
   assert.equal(canonicalTicker("ZZQQXX")?.kind, "equity");
   assert.equal(canonicalTicker("ZZQQXX")?.key, "ZZQQXX");
+});
+
+// BUG FIX (2026-10-17): these were real, currently-committed Night Hawk Swings positions that all
+// fell through to "equity" — ETF_KEYS being "partial is safe" stopped being true the moment a
+// member-facing Largo identity field (swing play-brief's ticker_class) started reading `kind`.
+test("leveraged/inverse/volatility ETFs live in the swing book classify as etf, not equity", () => {
+  for (const ticker of ["ETHA", "ETHU", "LABD", "NAIL", "SOXS", "SQQQ", "URA", "UVIX"]) {
+    assert.equal(canonicalTicker(ticker)?.kind, "etf", ticker);
+  }
+});
+
+// CORRECTION, same day: a fresh sweep of the FULL live swing book (not just the sample the first
+// fix's repro happened to name) found 4 more real ETFs — each confirmed via Polygon's own
+// `type:"ETF"` reference field before adding, not guessed from the ticker name alone.
+test("a full live-book sweep's remaining ETFs (ARKG/EWY/KORU/SNDQ) also classify as etf", () => {
+  for (const ticker of ["ARKG", "EWY", "KORU", "SNDQ"]) {
+    assert.equal(canonicalTicker(ticker)?.kind, "etf", ticker);
+  }
 });
 
 test("non-symbols never become entities", () => {
@@ -67,20 +84,6 @@ test("OCC strike is thousandths — the factor-of-1000 bug is pinned against rea
   assert.equal(parseOccSymbol("SPY260821C00612500")?.strike, 612.5);
 });
 
-test("OCC round-trips: build(parse(x)) === x", () => {
-  for (const sym of ["NVDA260821C00230000", "SPY260918P00450500", "AAPL270115C00300000"]) {
-    const parsed = parseOccSymbol(sym);
-    assert.ok(parsed, sym);
-    const rebuilt = buildOccSymbol({
-      ticker: parsed!.ticker,
-      expiry: parsed!.expiry,
-      right: parsed!.right,
-      strike: parsed!.strike,
-    });
-    assert.equal(rebuilt, sym, `round-trip broke for ${sym}`);
-  }
-});
-
 test("malformed contract symbols return null rather than a plausible guess", () => {
   for (const junk of [
     "NVDA260821X00230000", // no such right
@@ -94,15 +97,6 @@ test("malformed contract symbols return null rather than a plausible guess", () 
   ]) {
     assert.equal(parseOccSymbol(junk), null, junk);
   }
-});
-
-test("buildOccSymbol refuses inputs it cannot represent", () => {
-  assert.equal(buildOccSymbol({ ticker: "NVDA", expiry: "2026-8-21", right: "C", strike: 230 }), null);
-  assert.equal(buildOccSymbol({ ticker: "", expiry: "2026-08-21", right: "C", strike: 230 }), null);
-  assert.equal(buildOccSymbol({ ticker: "NVDA", expiry: "2026-08-21", right: "C", strike: 0 }), null);
-  assert.equal(buildOccSymbol({ ticker: "NVDA", expiry: "2026-08-21", right: "C", strike: NaN }), null);
-  // 8 digits caps the strike at 99,999.999 — above that there is no valid symbol to return.
-  assert.equal(buildOccSymbol({ ticker: "NVDA", expiry: "2026-08-21", right: "C", strike: 200_000 }), null);
 });
 
 test("sessions key on the ET calendar date in either common spelling", () => {

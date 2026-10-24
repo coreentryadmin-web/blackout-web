@@ -15,6 +15,7 @@ function spxPlayDebug(...args: unknown[]) {
 }
 import {
   computeSpxConfluence,
+  reclassifyConfluenceScore,
   type SpxConfluence,
   type SpxPlayAction,
   type SpxPlayDirection,
@@ -28,7 +29,7 @@ import {
 } from "@/features/spx/lib/playbook-gate-categories";
 import type { PlaybookId } from "@/features/spx/lib/playbook-registry";
 import { forceExitCutoffLabel, isPastForceExitCutoff, isBeforeCashOpen, isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
-import type { LottoPlayPayload } from "@/features/spx/lib/spx-play-lotto";
+import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
 import { evaluatePlayConfirmations, flowAlignedForDirection } from "@/features/spx/lib/spx-play-confirmations";
 import { buildPlayTechnicals, type PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
@@ -1771,12 +1772,31 @@ async function evaluateSpxPlayCore(
   // Bounded at ±3 — a soft prior, not an override. Only applies when the edition is fresh
   // (< 20h old) and shows a clear directional A-grade cluster.
   if (nhBonus && nhBonus.bonus !== 0) {
-    confluence.score += nhBonus.bonus;
     confluence.factors.push({
       label: "Night Hawk prior",
       weight: nhBonus.bonus,
       detail: nhBonus.label,
     });
+    // BUG FIX (2026-09-22): mutating `score`/`factors` alone left `grade`/`direction`/`agreeing`/
+    // `conflicts`/`weighted_conflicts` frozen at their PRE-bonus values (computed once inside
+    // computeSpxConfluence) — see reclassifyConfluenceScore's own header for the full trace.
+    // evaluatePlayGates gates on confluence.grade/direction directly and evaluateMtfHybrid below
+    // is called with both confluence.grade (would have been stale) and confluence.score (already
+    // mutated) — reassign every derived field together so they can never disagree with score.
+    // BUG FIX (2026-10-18): `rawScore` was the one field this fix's own Pick<...> omitted, so it
+    // stayed frozen at the pre-bonus value (persisted downstream as "confidence" — see
+    // reclassifyConfluenceScore's updated header) while every other field here was already fresh.
+    // Now included in `reclass` and reassigned alongside the rest.
+    const reclass = reclassifyConfluenceScore(desk, confluence.score + nhBonus.bonus, confluence.factors);
+    confluence.score = reclass.score;
+    confluence.rawScore = reclass.rawScore;
+    confluence.bias = reclass.bias;
+    confluence.action = reclass.action;
+    confluence.grade = reclass.grade;
+    confluence.direction = reclass.direction;
+    confluence.agreeing = reclass.agreeing;
+    confluence.conflicts = reclass.conflicts;
+    confluence.weighted_conflicts = reclass.weighted_conflicts;
   }
 
   const confirmations = evaluatePlayConfirmations(desk, confluence, technicals);

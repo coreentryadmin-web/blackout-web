@@ -311,6 +311,21 @@ export function assertDeploymentConfigSane(service) {
 }
 
 /**
+ * Smallest desiredCount where minHealthy>=100 rolls can start a replacement task.
+ * Matches WEB_MIN_TASKS in src/lib/ecs-deploy-config.test.ts (autoscaling floor = 5).
+ */
+export function minDesiredCountForZeroLossRoll(minimumHealthyPercent, maximumPercent) {
+  const min = Number(minimumHealthyPercent);
+  const max = Number(maximumPercent);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min < 100) return 1;
+  for (let desired = 1; desired <= 64; desired++) {
+    const ceiling = Math.floor((desired * max) / 100);
+    if (ceiling >= desired + 1) return desired;
+  }
+  throw new Error(`no desiredCount satisfies min=${min} max=${max}`);
+}
+
+/**
  * Verdict for one poll of the PRIMARY deployment. Ported VERBATIM from the workflow's poll loop:
  * `rolloutState == COMPLETED` → done; `FAILED` → fail; `running == desired && desired != 0` → done.
  *

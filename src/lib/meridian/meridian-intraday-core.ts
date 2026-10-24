@@ -20,7 +20,9 @@ export function etMinutesFromMs(ms: number): number {
     minute: "numeric",
     hour12: false,
   }).formatToParts(new Date(ms));
-  const hh = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
+  // `hour12: false` renders ET midnight as "24" in this Node/ICU build, not "00" (same quirk
+  // fixed in nighthawk/session.ts #4703/#4714/#4715) — fold it back before the arithmetic.
+  const hh = Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
   const mm = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
   return hh * 60 + mm;
 }

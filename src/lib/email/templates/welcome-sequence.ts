@@ -141,7 +141,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
         ],
         [
           "Night Hawk",
-          "0DTE Command scans the whole market intraday with Cortex gates on every commit; Evening Edition publishes prep for the next session after the close.",
+          "0DTE Command scans the whole market intraday with Cortex gates on every commit; Swing Command tracks multi-day positions; Evening Edition publishes prep for the next session after the close.",
           ENGINE_ACCENT.red,
         ],
         [
@@ -166,7 +166,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       const body =
         h1("Every light on the board is live, {{firstName}}.") +
         p(
-          `Four days ago we handed you the gamma read — the current under the price action nobody else points at. That was one tool. Here's the other ${manifestProductCount() - 1}. ${manifestProductCount()} products, one login, zero dead weight, every instrument built for the hours that actually move your account. No fluff modules nobody opens twice. Just the tape, read straight.`
+          `Four days ago we handed you the gamma read — the current under the price action nobody else points at. That's one piece of a bigger board. Here's the whole thing: all ${engines.length}. ${manifestProductCount()} products, one login, zero dead weight, every instrument built for the hours that actually move your account. No fluff modules nobody opens twice. Just the tape, read straight.`
         ) +
         emailScreenshot(vectorShot, "Live Vector chart — dealer gamma structure on SPX") +
         `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">${items}</table>` +
@@ -237,7 +237,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
           "Eight days ago you walked onto the floor, {{firstName}}. Since then you've watched us call a regime and grade a setup A through F before a single candle confirms anything — then show you exactly how it landed. Win or lose. Losses sit right next to wins, untouched, un-hidden. No quiet deletes, no highlight reel dressed up as a track record. That's not marketing. That's the whole book, open, every single day."
         ) +
         p(
-          `Here's the structure, plain: SPX Slayer — the 0DTE desk, live SPX regime read, GEX, every setup graded before anyone knows if it wins — starts at ${usd(MEMBERSHIP_PRICING.community)}/mo. Want the full terminal? Premium unlocks all ${manifestProductCount()} products: SPX Slayer, Thermal's GEX/VEX/DEX/CHARM heatmaps, HELIX flagging sweeps and dark-pool prints, Night Hawk 0DTE Command + Evening Edition, Largo AI riding the live data, Vector universe scanner, and Meridian catalyst desk. ${usd(MEMBERSHIP_PRICING.monthly)}/mo, or ${usd(MEMBERSHIP_PRICING.yearly)}/yr if you're all-in — annual carries a 7-day money-back guarantee. Monthly cancels anytime. No contract, no hooks in you.`
+          `Here's the structure, plain: SPX Slayer — the 0DTE desk, live SPX regime read, GEX, every setup graded before anyone knows if it wins — starts at ${usd(MEMBERSHIP_PRICING.community)}/mo. Want the full terminal? Premium unlocks all ${manifestProductCount()} products: SPX Slayer, Thermal's GEX/VEX/DEX/CHARM heatmaps, HELIX flagging sweeps and dark-pool prints, Night Hawk 0DTE Command + Swing Command + Evening Edition, Largo AI riding the live data, Vector universe scanner, and Meridian catalyst desk. ${usd(MEMBERSHIP_PRICING.monthly)}/mo, or ${usd(MEMBERSHIP_PRICING.yearly)}/yr if you're all-in — annual carries a 7-day money-back guarantee. Monthly cancels anytime. No contract, no hooks in you.`
         ) +
         p(
           "We're not asking you to trust a highlight reel. Every grade we issue gets marked to market — wins post, losses post, same ticker, same grade, logged before the candle closes and never touched after. That's the edge. The desk doesn't wait around for you to catch up."

@@ -166,6 +166,28 @@ export async function loadMergedSpxDesk(): Promise<MergedSpxDeskBundle> {
   return bundle;
 }
 
+/**
+ * Instant merged-desk read — Redis/L1 only, never invokes loadMergedSpxDeskCore. Same contract
+ * as peekSpxDesk() above, mirrored for the merged bundle.
+ *
+ * Used by evaluateSpxPlayState() (spx-service.ts) to answer "is the market closed right now"
+ * without paying loadMergedSpxDesk()'s own cold-cache cost (up to deskBootstrapMaxBlockMs(),
+ * 3s default) — a cost that, measured live 2026-10-18, reliably exceeds the OUTER
+ * playMemberReadMaxBlockMs() budget (800ms) wrapping the whole SPX-play read on a cold desk
+ * cache, causing every closed-market/off-hours member read to time out before the 2026-10-17
+ * closed-market fast path (which depends on `merged` already being loaded) is ever reached. A
+ * generous default maxStaleMs (vs peekSpxDesk()'s implicit 10-minute MAX_STALE_AGE_MS) is
+ * deliberate and safe ONLY for this specific caller's closed-market use: once the market is
+ * genuinely closed, "stale" and "correct" are the same thing (nothing changes), so a Friday-close
+ * snapshot read on a quiet Sunday is accurate, not wrong. The caller is still responsible for
+ * never trusting this peek during/near real trading hours (see spx-service.ts's own
+ * isSpxEngineCronWindow guard) — this function makes no such guarantee on its own.
+ */
+export async function peekMergedSpxDesk(opts?: { maxStaleMs?: number }): Promise<MergedSpxDeskBundle | null> {
+  const date = todayEtYmd();
+  return peekServerCache<MergedSpxDeskBundle>(`spx-merged:${date}`, opts);
+}
+
 async function buildMergedBundle(): Promise<MergedSpxDeskBundle> {
   return loadMergedSpxDesk();
 }

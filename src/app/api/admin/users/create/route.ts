@@ -97,6 +97,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ id: user.id, email, whopTier }, { status: 201, headers: NO_STORE_HEADERS });
   } catch (err) {
+    console.error("[admin-users] create failed:", err);
     const errors = (err as { errors?: Array<{ message: string }> })?.errors;
     const msg = errors?.[0]?.message ?? "Failed to create user";
     return NextResponse.json({ error: msg }, { status: 422, headers: NO_STORE_HEADERS });

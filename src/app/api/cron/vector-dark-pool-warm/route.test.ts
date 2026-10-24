@@ -51,3 +51,80 @@ test("the downstream fulfilled/fetchFailed aggregation is unchanged by the pooli
   assert.match(routeSrc, /if \(r\.status === "fulfilled"\)/);
   assert.match(routeSrc, /if \(r\.value\.fetchFailed\)/);
 });
+
+// Regression (2026-10-07): the concurrency bound above caps this cron's OWN admission-queue
+// entrants, but a fresh re-measurement (post PR #5579's GLOBAL_MAX_RPS 2->4 raise) showed the
+// full ~55-69-ticker universe still fails 90%+ of tickers per run — the shared queue is
+// saturated by AGGREGATE cluster-wide UW demand, not just this cron's concurrency. The route
+// must rotate through a HALF-sized batch per run (selectDarkPoolWarmBatch/halfBatchSize in
+// ./rotation.ts) rather than asking the shared queue to admit the whole universe every time.
+test("the route rotates a half-universe batch through the shared rotation helper, not the full universe", () => {
+  assert.match(
+    routeSrc,
+    /import \{ halfBatchSize, selectDarkPoolWarmBatch \} from "\.\/rotation"/,
+    "must reuse the shared rotation helper, not reimplement batch selection inline"
+  );
+  assert.match(
+    routeSrc,
+    /selectDarkPoolWarmBatch\(\s*allTickers,\s*cursor,\s*halfBatchSize\(allTickers\.length\)\s*\)/,
+    "must select a HALF-sized rotating batch, not the full universe, per run"
+  );
+  assert.doesNotMatch(
+    routeSrc,
+    /runUwPool\(\s*allTickers\.map/,
+    "must pool over the rotated batch, not the raw full-universe ticker list"
+  );
+});
+
+test("the rotation cursor is persisted across runs via the shared cache, not per-process memory", () => {
+  assert.match(
+    routeSrc,
+    /sharedCacheGet<number>\(ROTATION_CURSOR_KEY\)/,
+    "must read the cursor back from shared (Redis-backed) cache so rotation survives across ECS tasks/runs"
+  );
+  assert.match(
+    routeSrc,
+    /sharedCacheSet\(ROTATION_CURSOR_KEY, nextCursor, ROTATION_CURSOR_TTL_SEC\)/,
+    "must persist the next cursor so the following run continues coverage instead of restarting at 0"
+  );
+});
+
+// Regression (2026-10-13/14): this cron's own self-overlap lock only ever stopped IT from
+// overlapping with itself. Live CloudWatch (2026-10-13 13:35-13:56 UTC) showed this cron and 5
+// OTHER heavy crons in flight at once on the shared web tier, 1:1 correlated with sustained ALB
+// tail latency — see heavy-cron-concurrency-guard.ts's header for the full evidence.
+test("a cross-cron concurrency slot is acquired after the self-overlap lock, before dispatch", () => {
+  assert.match(
+    routeSrc,
+    /import \{ acquireHeavyCronSlot, type HeavyCronSlot \} from "@\/lib\/cron\/heavy-cron-concurrency-guard"/,
+    "must import the shared cross-cron concurrency guard"
+  );
+  assert.match(
+    routeSrc,
+    /const slot = await acquireHeavyCronSlot\("vector-dark-pool-warm", 610\);/,
+    "must acquire a named heavy-cron slot with the same TTL as the self-overlap lock"
+  );
+  const overlapClaimIdx = routeSrc.indexOf('"cron:vector-dark-pool-warm:lock"');
+  const slotIdx = routeSrc.indexOf("const slot = await acquireHeavyCronSlot(");
+  const dispatchIdx = routeSrc.indexOf("const dispatchWarm = () => {");
+  assert.ok(
+    overlapClaimIdx > 0 && slotIdx > overlapClaimIdx && slotIdx < dispatchIdx,
+    "the cross-cron slot must be acquired AFTER the self-overlap lock and BEFORE dispatch is defined"
+  );
+});
+
+test("a lost cross-cron concurrency race skips the run instead of dispatching a second heavy warm", () => {
+  assert.match(
+    routeSrc,
+    /if \(!slot\) \{\s*const payload = \{ ok: true, skipped: true, reason: "heavy-cron concurrency slot unavailable \(idempotent skip\)" \};/,
+    "a lost race must skip honestly, not silently proceed without a slot"
+  );
+});
+
+test("the heavy-cron slot is released alongside the background warm, in the inner function's finally block", () => {
+  assert.match(
+    routeSrc,
+    /async function runVectorDarkPoolWarm\(started: number, slot: HeavyCronSlot\): Promise<void> \{\s*try \{\s*await runVectorDarkPoolWarmInner\(started\);\s*\} finally \{\s*await slot\.release\(\);\s*\}\s*\}/,
+    "release must run on both the success and error paths, wrapping the real work rather than inlined into it"
+  );
+});

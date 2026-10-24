@@ -27,7 +27,7 @@ import {
   getSwingServingLane,
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
-import { buildZeroDteRecord } from "@/lib/zerodte/record";
+import { buildZeroDteRecord, type ZeroDteRecordPlay } from "@/lib/zerodte/record";
 import { getNighthawkMetrics } from "@/features/nighthawk/lib/analytics";
 import { bangerPnlForModel } from "./banger-pnl";
 import { zeroDteHorizonSummary } from "./zero-dte-horizon-summary";
@@ -70,12 +70,56 @@ function compactSwingLane(lane: Awaited<ReturnType<typeof getSwingServingLane>>)
     horizon: p.horizon,
     score: p.score ?? null,
     reason: typeof p.reason === "string" ? p.reason.slice(0, 120) : null,
+    // Same "status COMMIT is not a real position" gap `committed_count_note` already discloses at
+    // the AGGREGATE level (2026-09-08) — but this per-row sample carried no equivalent per-item
+    // signal, so a model reading an individual sampled play still had no way to tell "floor-cleared
+    // candidate, real-time gates still blocking, no capital" from "genuinely open position." Live
+    // repro 2026-09-22: AMD/META both sample here with status "COMMIT" (score cleared the floor) but
+    // carry real, populated `commitGateBlockedBy` (G-S12 halt-feed-stale / G-S6 confluence / G-S14
+    // cortex veto) and no `positionId` — the exact two-of-eight sampled rows a member asking "what's
+    // committed in swings" would most likely have Largo describe, with no caveat that they aren't
+    // actually open. `open_position` mirrors `open_position_count`'s own real-ledger-row test
+    // (positionId presence, not the status label); `commit_gate_blocked` surfaces the same evidence
+    // entry-verdict.ts's member-facing WAIT pill already keys on, so Largo can say "not yet — gates
+    // are still blocking" instead of treating a floor-cleared candidate as live.
+    open_position: p.positionId != null,
+    commit_gate_blocked: (p.commitGateBlockedBy?.length ?? 0) > 0,
   }));
+  // `committed_count` is `lane.committed.length` — every play whose STATUS field is "COMMIT". For
+  // SWING that flag means "score cleared the commit floor", which is stamped on a play the moment
+  // discovery scores it, LONG before any real capital moves (serving.ts's `aboveFloor` gate) — a
+  // real ledger position ALSO carries status "COMMIT" (live-plays.ts: "live capital is committed —
+  // back-compat committed[] view"), so this one number silently mixes "floor-cleared candidate,
+  // no position yet" with "real open position" and cannot be read as an open-position count.
+  // Measured live 2026-09-08: `committed_count` read 14 while only 4 names were actually open on
+  // the member board — the other 10 were COMMIT_NOW/WAITING_FOR_ENTRY candidates still pre-entry.
+  // `open_position_count` is the number this field is often mistaken for: real `swing_positions`
+  // rows, i.e. the three LIVE sections (MANAGING + SCALING_OUT + EXITING) that `section_counts`
+  // already carries but that nothing previously surfaced as a single, unambiguous total.
+  const openPositionCount =
+    (sectionCounts.MANAGING ?? 0) + (sectionCounts.SCALING_OUT ?? 0) + (sectionCounts.EXITING ?? 0);
   return {
     horizon: lane.horizon,
     label: lane.label,
     committed_count: lane.committedCount,
+    committed_count_note:
+      "Score-floor-cleared candidates (pre-entry + open) — NOT a count of open positions. Use open_position_count for that.",
+    open_position_count: openPositionCount,
     watch_count: lane.watchCount,
+    // `watch_count` is the STATUS-based back-compat split (`status === "WATCH"`, i.e. score below
+    // the commit floor) — it is NOT the same population as the member-facing "Watch" rail the desk
+    // actually renders (`section_counts.WATCH`), which ALSO includes FORMING-stage candidates that
+    // have already cleared the floor (status "COMMIT") but haven't triggered yet — `sectionForSwingPlay`
+    // (serving.ts) routes those to WATCH before it ever checks the floor. The two can diverge in
+    // either direction: measured live 2026-09-21, one fetch read watch_count 0 / section_counts.WATCH
+    // 2 minutes apart on the SAME lane with no restart in between — an ordinary snapshot refresh, not
+    // an error. Same root shape as `committed_count`'s own note above (a status-based field silently
+    // answering a section-based question) — use `section_counts.WATCH` for "how many names is the desk
+    // watching," not this field.
+    watch_count_note:
+      "Status-based back-compat count (score below the commit floor) — NOT the member-facing Watch " +
+      "rail. Use section_counts.WATCH for that; it also includes floor-cleared FORMING-stage names " +
+      "this field omits, and can differ from watch_count in either direction.",
     section_counts: sectionCounts,
     sample_plays: sample,
     score_floor: lane.scoreFloor,
@@ -270,6 +314,44 @@ export async function nighthawkHorizonsForLargo() {
  *  grading lanes) which return it scoped to ONE ticker and comfortably in budget. */
 const ZERODTE_RECORD_MAX_SAMPLE_PLAYS = 40;
 
+/**
+ * The lean, model-facing projection of one committed 0DTE play: every member-facing
+ * column `record.ts` already computes, minus the `entry_context` commit-forensics
+ * blob (see the doc comment above this constant), PLUS one honest addition —
+ * `committed_score` — so stripping that blob doesn't also strip the one field out
+ * of it a model needs most.
+ *
+ * WHY `committed_score` EXISTS. Every `ZeroDteRecordPlay.score` is `score_max` — the
+ * session-PEAK evidence score, which keeps ratcheting UP across scan ticks even
+ * AFTER the play commits (record.ts's own doc comment on `ZeroDteRecordPlay.score`
+ * already names this gap: "the committed score, when the row carries entry_context,
+ * lives in entry_context.score"). The real commit-time score — the number every
+ * score-band gate actually acted on — lived ONLY in `entry_context`, which this
+ * tool strips wholesale for payload-size reasons, so Largo had no path to it at
+ * all: asked about a specific play's score, it would confidently cite the
+ * ratcheted peak as if it were what the play committed at, with no way to notice
+ * the two could differ. Found live 2026-10-16 alongside the identical defect in
+ * the member-facing Track Record UI (`PlayHistoryTable.tsx`, same finding) — a
+ * 30-day live window showed the top-level `score` disagreeing with
+ * `entry_context.score` on 121/215 rows (56.3%), e.g. TEM 2026-10-15 peak 100 vs
+ * committed 87.
+ *
+ * ADDITIVE, per the Largo product contract — `score` is left exactly as it was
+ * (some existing answers already rely on it meaning "peak"); `committed_score` is
+ * OMITTED (never emitted as an equal or fabricated value) whenever there's nothing
+ * new to say: no `entry_context`, a non-numeric/garbled `entry_context.score`, or a
+ * commit score that happens to equal the peak (no ratchet occurred). That keeps
+ * the field's presence itself meaningful — and keeps the payload cost on the ~44%
+ * of rows where the number actually differs, not on every row. */
+export function leanZeroDtePlayForModel(
+  play: ZeroDteRecordPlay
+): Omit<ZeroDteRecordPlay, "entry_context"> & { committed_score?: number } {
+  const { entry_context, ...rest } = play;
+  const ctxScore = entry_context?.score;
+  const hasRealCommitScore = typeof ctxScore === "number" && Number.isFinite(ctxScore);
+  return hasRealCommitScore && ctxScore !== rest.score ? { ...rest, committed_score: ctxScore } : rest;
+}
+
 /** Aggregate-only base is ~2.8k chars; each lean play is ~330. 40 is a reading
  *  ceiling, not a size one — the budget in `fitRowsToBudget` is the real bound and
  *  will cut below 40 on a wide window rather than let the aggregates be at risk. */
@@ -289,7 +371,7 @@ export async function zerodteRecordForLargo(days = 30) {
     // entry_context. This reshaping is for the MODEL's copy only, which is the one
     // that has a 16k tail-truncating transport in front of it.
     const { plays, ...aggregates } = record;
-    const leanPlays = plays.map(({ entry_context: _entryContext, ...play }) => play);
+    const leanPlays = plays.map(leanZeroDtePlayForModel);
     const base = roundFloats(aggregates) as Record<string, unknown>;
     const fitted = fitRowsToBudget(base, "plays", roundFloats(leanPlays) as typeof leanPlays, {
       maxRows: ZERODTE_RECORD_MAX_SAMPLE_PLAYS,
@@ -302,7 +384,13 @@ export async function zerodteRecordForLargo(days = 30) {
         fitted.kept.length,
         fitted.total,
         "committed 0DTE plays",
-        "Per-play commit forensics (entry_context) are omitted here — use get_cortex_decision for one ticker's evidence."
+        "Per-play commit forensics (entry_context) are omitted here — use get_cortex_decision for one " +
+          "ticker's evidence. `score` is the session-PEAK evidence score (score_max) and can keep " +
+          "rising after commit — when a play also carries `committed_score`, that is the REAL score " +
+          "at commit (the one every score-band gate acted on), and it should be quoted instead of " +
+          "`score` when citing why a specific play was taken. No `committed_score` on a play means " +
+          "either `score` already IS the commit-time value (no ratchet occurred) or no commit-time " +
+          "score was recorded for it — not that the two are known to match."
       ),
       // LAST on purpose. If anything downstream ever pushes this result back over the
       // transport cap, the tail cut must eat the sample rows, never the track record.
@@ -770,8 +858,9 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
     const state = await fetchVectorFullState(ticker, h);
     if (!state) {
       // No live spot is not an empty pulse — it is no read at all. Saying so stops "no signals"
-      // from being reported as a quiet tape.
-      return { available: false, reason: "no_live_vector_state", ticker: ticker.toUpperCase(), signals: [] };
+      // from being reported as a quiet tape. `signals` itself must stay null, not [], for the
+      // same reason the comment states — an empty array here is still a countable answer.
+      return { available: false, reason: "no_live_vector_state", ticker: ticker.toUpperCase(), signals: null };
     }
 
     // The OBSERVATION clock (`nowMs`) stays keyed to the snapshot, because every signal age and
@@ -872,7 +961,7 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
   } catch (e) {
     return {
       available: false,
-      signals: [],
+      signals: null,
       error: e instanceof Error ? e.message : "vector_pulse_failed",
     };
   }

@@ -9,14 +9,18 @@ import {
   isCarriedContractLive,
   carriedContractExpiry,
   legacyPlayDirection,
+  legacyCommitCandidatesFromSnapshot,
   mergeLegacyPromotedSnapshot,
   refreshCarriedLegacyPlay,
+  removeCommittedLegacyFromSnapshot,
 } from "./legacy-confirm-promote.ts";
 import { HORIZONS } from "../horizons.ts";
 import { subLaneForDte } from "./taxonomy.ts";
 import { discoverSwingFromPersisted, persistSwingServingSnapshot } from "./serving-lane.ts";
 import type { ChainStrikeRow } from "@/features/nighthawk/lib/option-chain-prompt";
 import { swingThesisKey } from "./accumulation-store.ts";
+import { computeSwingCommitPlan, type CommitBookPosition } from "./commit.ts";
+import { DEFAULT_PORTFOLIO_BUDGET } from "./swing-portfolio-budget.ts";
 
 const chainRows: ChainStrikeRow[] = [
   {
@@ -102,6 +106,69 @@ test("buildLegacySwingArtifacts stamps NIGHT HAWK provenance and serve-only grad
     subLaneForDte(artifact!.play.contract!.dte),
     "dossier subLane must match the picked contract DTE",
   );
+});
+
+// BUG FIX (2026-10-21, Ask Largo round-3 deep-dive): a Legacy-morning-confirm-promoted play's
+// enrichedPlay never set `liveSpot`, so adapters.ts's "Since flag" track field was structurally
+// dead for this origin the same way it was for organic discovery plays (serving-lane.ts's
+// enrichPlay) — the only real liveSpot writer anywhere in the repo is live-plays.ts's committed-
+// ledger path (status OPEN/HOLD/TRIM), mutually exclusive with WATCH/SKIP on status.
+test("buildLegacySwingArtifacts: liveSpot carries the grounded live spot, so the Since-flag track field is no longer dead for Legacy-promoted WATCH plays", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 99.5,
+    chainRows,
+    chainSpot: 99.5,
+  });
+  assert.ok(artifact);
+  assert.equal(artifact!.play.liveSpot, 99.5, "liveSpot must carry the grounded spot used to build this play's plan");
+});
+
+// ─── score/factors reconciliation (FINDINGS 2026-09-12) ───────────────────────────────────────
+// Live commits showed the SHOWN score (Legacy's edition conviction score) diverge sharply from
+// `factors`' sum (the dossier's own independently-computed synthetic pillar score) — e.g. real
+// MRVL 81 vs 74.7, IREN 61 vs 75.8, SKHY(WATCH) 59 vs 26.6. `contributionsToFactors`'s own doc
+// comment names this exact failure mode: pairing one run's factors with a different run's score.
+
+test("buildLegacySwingArtifacts: factors sum to the play's own SHOWN score, not the dossier's synthetic one", () => {
+  // A conviction score high enough that the dossier's synthetic pillar score (built from
+  // structure/regime/data-quality heuristics, NOT from play.score) is very unlikely to coincide.
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ score: 97 }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 99.5,
+    chainRows,
+    chainSpot: 99.5,
+  });
+  assert.ok(artifact);
+  const { play } = artifact!;
+  assert.equal(play.score, 97, "score must stay Legacy's own published edition conviction score");
+  const factorSum = (play.factors ?? []).reduce((n, f) => n + f.points, 0);
+  assert.equal(
+    factorSum,
+    play.score,
+    "the 'Why this play was picked' factor breakdown must sum to the score shown next to it",
+  );
+  assert.deepEqual(play.factors, [{ label: "Night Hawk edition score", points: 97 }]);
+});
+
+test("buildLegacySwingArtifacts: score/factor reconciliation holds even when it falls back to the default 70", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ score: undefined }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 99.5,
+    chainRows,
+    chainSpot: 99.5,
+  });
+  assert.ok(artifact);
+  const { play } = artifact!;
+  assert.equal(play.score, 70);
+  const factorSum = (play.factors ?? []).reduce((n, f) => n + f.points, 0);
+  assert.equal(factorSum, play.score);
 });
 
 test("filterChainRowsForSwingPromotion drops sub-floor expiries", () => {
@@ -398,4 +465,248 @@ test("refreshCarriedLegacyPlay recomputes DTE and merges a fresher organic quote
   assert.equal(refreshed!.contract.dte, 7);
   assert.equal(refreshed!.contract.mid, 0.22);
   assert.match(refreshed!.reason ?? "", /7DTE/);
+});
+
+// BUG FIX (2026-10-20, Ask Largo standing mandate — live EWY/SHOP/UNH repro). When no fresher
+// same-contract quote is available, a drifted DTE label makes mid/bid/ask drop to null (the
+// pre-existing "a stale quote too — drop it honestly" fix above) — but the greeks from that exact
+// same stale chain read used to survive untouched, served with full confidence right next to the
+// sibling fields the system itself judged too stale to show.
+test("refreshCarriedLegacyPlay: with NO fresh match, a drifted DTE label nulls the greeks too, not just mid/bid/ask", () => {
+  const carried = {
+    ticker: "EWY",
+    direction: "LONG" as const,
+    horizon: "SWING" as const,
+    score: 70,
+    status: "WATCH" as const,
+    scoreFloor: 60,
+    reason: "NIGHT HAWK · 10DTE",
+    contract: {
+      strike: 60,
+      expiry: "2026-08-14",
+      right: "C" as const,
+      dte: 10,
+      mid: 1.2,
+      bid: 1.1,
+      ask: 1.3,
+      openInterest: 0,
+      delta: 0.59,
+      gamma: 0.0252,
+      theta: -0.2065,
+      vega: 0.1241,
+      iv: 0.5066,
+    },
+  };
+  // No entry for EWY in freshPlayByTicker at all — the exact shape of the real incident (no
+  // same-day organic scan match), so sameContract is false and the staleDte branch fires.
+  // sessionDay picked so the recomputed DTE (5) lands inside the SWING window [5,15] while still
+  // differing from the carried contract's frozen dte (10), so staleDte is true.
+  const refreshed = refreshCarriedLegacyPlay(carried, "2026-08-09", new Map());
+  assert.ok(refreshed, "a live, un-expired contract must still resolve");
+  assert.equal(refreshed!.contract.mid, null);
+  assert.equal(refreshed!.contract.bid, null);
+  assert.equal(refreshed!.contract.ask, null);
+  assert.equal(refreshed!.contract.delta, null, "delta must not survive from the stale read");
+  assert.equal(refreshed!.contract.gamma, null, "gamma must not survive from the stale read");
+  assert.equal(refreshed!.contract.theta, null, "theta must not survive from the stale read");
+  assert.equal(refreshed!.contract.vega, null, "vega must not survive from the stale read");
+  assert.equal(refreshed!.contract.iv, null, "iv must not survive from the stale read");
+});
+
+test("refreshCarriedLegacyPlay: a MATCHING fresh contract still carries its own live greeks through untouched", () => {
+  const carried = {
+    ticker: "NVDA",
+    direction: "LONG" as const,
+    horizon: "SWING" as const,
+    score: 70,
+    status: "WATCH" as const,
+    scoreFloor: 60,
+    reason: "NIGHT HAWK · 10DTE",
+    contract: {
+      strike: 100,
+      expiry: "2026-08-14",
+      right: "C" as const,
+      dte: 10,
+      mid: 6.44,
+      bid: 6.2,
+      ask: 6.6,
+      openInterest: 0,
+      delta: 0.6,
+      gamma: 0.02,
+      theta: -0.3,
+      vega: 0.2,
+      iv: 0.5,
+    },
+  };
+  const fresh = {
+    ...carried,
+    contract: { ...carried.contract, dte: 7, mid: 0.22, bid: 0.2, ask: 0.24, delta: 0.08, gamma: 0.01, theta: -0.1, vega: 0.05, iv: 0.9 },
+  };
+  const refreshed = refreshCarriedLegacyPlay(carried, "2026-08-07", new Map([["NVDA", fresh]]));
+  assert.ok(refreshed);
+  // sameContract path (strike/expiry/right agree) merges the FRESH contract through — greeks must
+  // reflect the live read, not be nulled by the unrelated no-fresh-match branch.
+  assert.equal(refreshed!.contract.delta, 0.08);
+  assert.equal(refreshed!.contract.gamma, 0.01);
+  assert.equal(refreshed!.contract.theta, -0.1);
+  assert.equal(refreshed!.contract.vega, 0.05);
+  assert.equal(refreshed!.contract.iv, 0.9);
+});
+
+// ─── GRADUATION BRIDGE (PR #5577) ──────────────────────────────────────────────────────────────
+// Legacy-promoted rows were permanently serve-only — `bucketGraduated: false` and
+// `commitGateBlockedBy: ["legacy:exempt"]` hardcoded because these rows live entirely in this
+// module's own persisted snapshot, structurally disjoint from accumulation-store.ts (the only
+// store discovery.ts's commit loop reads candidates from). `legacyCommitCandidatesFromSnapshot` is
+// the bridge: only a triple whose setupState/entryStatus has reached the same TRIGGERED+AT_TRIGGER
+// bar an organic candidate needs for COMMIT_NOW becomes a real SwingCommitCandidate. These tests
+// hand-construct the triggered play (the shape `swing-active-refresh`'s own live reclassification
+// already produces in production — see the file header correction) rather than re-deriving it,
+// since reclassification itself is proven to already work and isn't this file's concern.
+
+test("legacyCommitCandidatesFromSnapshot: a still-FORMING triple is never offered to the commit gate", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  assert.equal(artifact.play.setupState, "FORMING", "sanity: promotion-day spot (97) is below the 99 trigger");
+  const candidates = legacyCommitCandidatesFromSnapshot([artifact], { sessionDate: "2026-08-04" });
+  assert.equal(candidates.length, 0, "FORMING/PRE_TRIGGER must never reach the commit gate");
+});
+
+test("legacyCommitCandidatesFromSnapshot: a TRIGGERED+AT_TRIGGER triple becomes a real SwingCommitCandidate", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  // The shape `swing-active-refresh` + `enrichPlay`'s live reclassification already produces in
+  // production once price clears the trigger — proven live (PR #5577 correction), not re-derived here.
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  const triggeredTriple = { ...artifact, play: triggeredPlay };
+
+  const candidates = legacyCommitCandidatesFromSnapshot([triggeredTriple], { sessionDate: "2026-08-04" });
+  assert.equal(candidates.length, 1);
+  const c = candidates[0]!;
+  assert.equal(c.ticker, "NVDA");
+  assert.equal(c.direction, "LONG");
+  assert.equal(c.entryUnderlyingPx, 99);
+  assert.equal(c.thesisInvalidationPx, 95);
+  assert.ok(c.contract, "must carry the already-materialized contract — no new fetch needed");
+  assert.deepEqual(c.discoveryPaths, [], "a Legacy-only candidate carries no Tier-0 paths unless independently screened this scan");
+});
+
+test("legacyCommitCandidatesFromSnapshot: credits REAL Tier-0 provenance when pathsByTicker names one (never invents a NIGHT HAWK kind)", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  const candidates = legacyCommitCandidatesFromSnapshot(
+    [{ ...artifact, play: triggeredPlay }],
+    { sessionDate: "2026-08-04", pathsByTicker: new Map([["NVDA", ["FLOW", "STRUCTURE"]]]) },
+  );
+  assert.deepEqual(candidates[0]!.discoveryPaths, ["FLOW", "STRUCTURE"]);
+});
+
+test("removeCommittedLegacyFromSnapshot: drops a committed ticker so it is not ALSO carried as a WATCH row", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ ticker: "NVDA" }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const snap = mergeLegacyPromotedSnapshot(null, [artifact], {
+    sessionDay: "2026-08-04",
+    asOf: "2026-08-04T13:20:00.000Z",
+    spotsByTicker: { NVDA: 97 },
+  });
+  const after = removeCommittedLegacyFromSnapshot(snap, new Set(["NVDA"]));
+  assert.equal(after.plays.some((p) => p.ticker === "NVDA"), false);
+  assert.equal(after.watch.some((w) => w.ticker === "NVDA"), false);
+});
+
+// ─── FULL LIFECYCLE PROOF — the REAL, unmodified commit.ts gate pipeline, not a reimplementation ──
+
+test("FULL LIFECYCLE: a TRIGGERED+AT_TRIGGER Legacy play reaches ACTIVE (committable:true) through the real, unmodified computeSwingCommitPlan, with every real-time gate still applying", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ ticker: "NVDA", score: 85 }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = {
+    ...artifact.play,
+    setupState: "TRIGGERED" as const,
+    entryStatus: "AT_TRIGGER" as const,
+    contract: { ...artifact.play.contract!, bid: 1.3, ask: 1.4, mid: 1.35 },
+  };
+
+  const candidates = legacyCommitCandidatesFromSnapshot(
+    [{ ...artifact, play: triggeredPlay }],
+    { sessionDate: "2026-08-04" },
+  );
+  assert.equal(candidates.length, 1);
+
+  // The REAL function from commit.ts — imported, never reimplemented.
+  const plan = computeSwingCommitPlan({
+    candidates,
+    report: null,
+    book: [],
+    budget: DEFAULT_PORTFOLIO_BUDGET,
+  });
+  assert.equal(plan.committableCount, 1, "TRIGGERED -> ACTIVE: the real commit gate opens it");
+  const decision = plan.decisions[0]!;
+  assert.equal(decision.committable, true);
+  assert.equal(decision.insert?.status, "OPEN");
+  assert.equal(decision.insert?.ticker, "NVDA");
+
+  // Deduplication / idempotency still applies — a SECOND run against a book that already holds
+  // this exact thesis must refuse to double-open it (no bypass of Gate 3).
+  const alreadyOpenBook: CommitBookPosition[] = [
+    { ticker: "NVDA", direction: "LONG", archetype: decision.archetype, commitKey: decision.commitKey, riskUsd: decision.riskUsd, isEvent: false, isOvernight: true },
+  ];
+  const planAgain = computeSwingCommitPlan({ candidates, report: null, book: alreadyOpenBook, budget: DEFAULT_PORTFOLIO_BUDGET });
+  assert.equal(planAgain.committableCount, 0, "idempotency must still block a duplicate open — never bypassed for a Legacy-sourced candidate");
+  assert.ok(planAgain.decisions[0]!.blockedBy.includes("already_open"));
+});
+
+test("FULL LIFECYCLE: G-S6 confluence still blocks a Legacy-only candidate with zero independent corroboration when V2 confluence is enforced (no silent bypass)", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ ticker: "NVDA" }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  const candidates = legacyCommitCandidatesFromSnapshot(
+    [{ ...artifact, play: triggeredPlay }],
+    { sessionDate: "2026-08-04" }, // no pathsByTicker -> zero Tier-0 provenance, same as a real Legacy-only name
+  );
+  const plan = computeSwingCommitPlan({
+    candidates,
+    report: null,
+    book: [],
+    budget: DEFAULT_PORTFOLIO_BUDGET,
+    v2: { enforceConfluence: true },
+  });
+  assert.equal(plan.committableCount, 0, "a single human-curated signal must not satisfy G-S6 confluence alone");
+  assert.ok(plan.decisions[0]!.blockedBy.some((b) => b.startsWith("gate:G-S6")));
 });

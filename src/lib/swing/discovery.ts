@@ -61,7 +61,8 @@ import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
-import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, isSwingHaltGateEnforced, isSwingRegimeGateEnforced, isSwingQuoteStaleGateEnforced, isSwingDailyBarGateEnforced, swingCortexPreflightCap } from "./v2/config";
+import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, isSwingHaltGateEnforced, isSwingRegimeGateEnforced, isSwingQuoteStaleGateEnforced, isSwingDailyBarGateEnforced, isSwingLegacyCommitBridgeEnabled, swingCortexPreflightCap } from "./v2/config";
+import { legacyCommitCandidatesFromSnapshot } from "./legacy-confirm-promote";
 import { readSwingHaltStateForTickers } from "./v2/halt-read";
 import { regimeBandFor01 } from "./v2/regime";
 export { regimeBandFor01 };
@@ -138,8 +139,11 @@ export interface SwingDiscoveryConfig {
 
 export const DEFAULT_SWING_DISCOVERY_CONFIG: SwingDiscoveryConfig = {
   flowWindowHours: 120,
-  maxStructureMovers: 40,
-  tier1Cap: 40,
+  // 2026-09-08: raised 40→60 (operator directive, whole-market volume complaint) — admits more
+  // STRUCTURE-origin (breakout) candidates into Tier-0 merge before the dynamic Tier-1 cap
+  // (swingTier1CapCeiling, v2/config.ts) applies its own breadth-scaled limit downstream.
+  maxStructureMovers: 60,
+  tier1Cap: 40, // legacy/fallback budget only — superseded by the dynamic Tier-1 cap when V2 is on
   minPersistenceSessions: MIN_PERSISTENCE_SESSIONS,
   intendedDte: 14,
   enrichConcurrency: 8,
@@ -641,6 +645,30 @@ export interface SwingDiscoveryDeps {
   budget?: PortfolioBudget;
   /** The book-percent caps (defaults to DEFAULT_SWING_CAPS). */
   caps?: SwingCaps;
+  /** BUG FIX (2026-10-09, Ask Largo standing mandate — live VST repro, commitGateBlockedBy stuck on
+   *  "legacy:exempt" forever). PR #5577 built `legacyCommitCandidatesFromSnapshot`
+   *  (legacy-confirm-promote.ts) specifically to bridge a Legacy-morning-confirm-promoted play, once
+   *  it reaches the SAME `setupState==="TRIGGERED"`+`entryStatus==="AT_TRIGGER"`/`"PULLBACK_TO_ENTRY"`
+   *  bar an organic candidate needs for COMMIT_NOW, into a REAL `SwingCommitCandidate` evaluated by
+   *  the REAL G-S3/G-S4/G-S6/G-S12/G-S14 gate stack — but the function was never actually called from
+   *  this file's own commit loop below, so every Legacy-promoted play stayed permanently serve-only
+   *  exactly like before PR #5577 shipped (see `docs/audit/FINDINGS.md`'s 2026-10-01 entry, "What was
+   *  deliberately NOT shipped this PR" — this closes that named follow-up). Reproduced live: VST
+   *  (promoted 2026-10-07 via Night Hawk Legacy morning confirm) sat at live `setupState: "TRIGGERED"`,
+   *  `entryStatus: "AT_TRIGGER"` on 2026-10-09 — the exact bridge condition — while
+   *  `GET /api/market/nighthawk/horizons?view=swings` still served `commitGateBlockedBy:
+   *  ["legacy:exempt"]` for it.
+   *
+   *  Carries raw TRIPLES, not pre-built `SwingCommitCandidate`s: `legacyCommitCandidatesFromSnapshot`
+   *  wants `pathsByTicker` (the per-scan Tier-0 provenance map) so a Legacy ticker ALSO independently
+   *  screened this scan gets credit for real corroboration at G-S6 — that map only exists inside this
+   *  file's own scan execution, so the candidates are built HERE, not by the caller. The caller
+   *  (swing-discovery/route.ts, which already reads the serving snapshot) passes the triples via
+   *  `legacyPromotedTriplesFromSnapshot` (legacy-confirm-promote.ts, already used by
+   *  `carryLegacyPromotedIntoSnapshot`); absent or the `isSwingLegacyCommitBridgeEnabled()` flag off
+   *  ⇒ unchanged pre-fix behavior (every unit test / evidence-only caller, and production until the
+   *  flag is explicitly armed — see that flag's own doc comment on why it defaults OFF). */
+  legacyTriples?: ReadonlyArray<{ dossier: SwingDossier; play: HorizonPlay; watch: SwingWatchCandidate }>;
 
   nowMs: number;
   /** ET session day (YYYY-MM-DD) the scan is anchored to — the distinct-day persistence key. */
@@ -748,7 +776,14 @@ export async function runSwingDiscoveryScan(
       const hits = await deps.fetchPositioningHits();
       positioningTickers = hits.map((h) => h.ticker);
       for (const h of hits) positioningDirectionByTicker.set(h.ticker.toUpperCase(), h.direction);
-    } catch {
+    } catch (err) {
+      // Sibling parity: every other Tier-0 origin fetch (fetchPositioningTickers fallback below,
+      // CATALYST/BANGER/VECTOR) logs its throw via fetchTier0OriginTickers's own console.warn —
+      // this preferred fetchPositioningHits path previously swallowed the error silently, so a
+      // real POSITIONING origin outage (the corroborated-confluence origin, not a minor one) was
+      // invisible in CloudWatch and distinguishable from "the origin legitimately returned zero
+      // names" only by reading `recall.tier0OriginFetchErrors` off a scan result nobody was tailing.
+      console.warn("[swing-discovery] Tier-0 origin POSITIONING fetch failed:", err);
       originFetchErrors.push("POSITIONING");
     }
   } else if (engineV2 && deps.fetchPositioningTickers) {
@@ -1047,6 +1082,24 @@ export async function runSwingDiscoveryScan(
         })(),
       };
     });
+
+    // Merge in Legacy-promoted candidates that have reached the bridge's own TRIGGERED/AT_TRIGGER
+    // bar (see `legacyTriples`'s doc comment on SwingDiscoveryDeps for the full story). Organic wins
+    // on a ticker|direction collision: an organic screen already found independent evidence, so the
+    // Legacy row would only ever duplicate — never override — a thesis already under evaluation.
+    if (isSwingLegacyCommitBridgeEnabled() && deps.legacyTriples?.length) {
+      const legacyCandidates = legacyCommitCandidatesFromSnapshot(deps.legacyTriples, {
+        sessionDate: deps.sessionDay,
+        pathsByTicker,
+      });
+      const organicKeys = new Set(commitCandidates.map((c) => `${c.ticker.toUpperCase()}|${c.direction}`));
+      for (const lc of legacyCandidates) {
+        const key = `${lc.ticker.toUpperCase()}|${lc.direction}`;
+        if (organicKeys.has(key)) continue;
+        organicKeys.add(key);
+        commitCandidates.push(lc);
+      }
+    }
 
     if (engineV2 && isSwingCortexEnforced()) {
       const cap = swingCortexPreflightCap();

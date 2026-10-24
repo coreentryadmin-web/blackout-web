@@ -36,9 +36,9 @@ async function auditViaWatchdog() {
     console.error(`[cron-audit] watchdog HTTP ${res.status}`);
     process.exit(1);
   }
-  const problems = [...(body.problem_keys ?? []), ...(body.rth_stale_keys ?? [])].filter(
-    (key) => !isXMarketingCronSuppressed(key)
-  );
+  const problems = [
+    ...new Set([...(body.problem_keys ?? []), ...(body.rth_stale_keys ?? [])]),
+  ].filter((key) => !isXMarketingCronSuppressed(key));
   console.log("\n=== CRON AUDIT (HTTP watchdog fallback) ===\n");
   console.log(`checked: ${body.checked ?? "?"}`);
   console.log(`problems: ${problems.length ? problems.join(", ") : "(none)"}`);

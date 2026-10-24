@@ -276,14 +276,17 @@ export function evaluateSwingCommitBudget(
   if (!budget.enforce || verdict.hardExceeded.length === 0) {
     return { ...base, blocked: false, blockedDimensions: [] };
   }
-  const key = candidate.ticker.trim().toUpperCase();
   const blockedDimensions = verdict.hardExceeded.filter((dim) => {
     const dv = verdict.verdicts.find((v) => v.dimension === dim);
     switch (dim) {
       case "per_position_loss":
-        // Per-position lists exactly the positions whose OWN risk exceeds the cap — block iff the candidate
-        // is itself an offender (an existing over-cap position must not block a fresh small one).
-        return dv?.offenders.includes(key) ?? false;
+        // Compare the CANDIDATE's own risk against the resolved limit directly — never via `dv.offenders`,
+        // which lists every over-cap position by TICKER STRING. Two positions on the same ticker (different
+        // archetype/direction — swingThesisKey allows this to coexist) collapse to one string, so an existing
+        // over-cap sibling would otherwise wrongly block a fresh, properly-sized candidate merely for sharing
+        // its ticker (the exact invariant this gate's own docstring requires: "an existing over-cap position
+        // must not block a fresh small one").
+        return dv?.constrained === true && dv.limitUsd != null && candidateRiskUsd > dv.limitUsd;
       case "event_exposure":
         return candidate.isEvent === true && candidateRiskUsd > 0;
       case "overnight":

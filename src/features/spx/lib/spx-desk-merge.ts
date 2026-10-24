@@ -307,14 +307,56 @@ export function mergePulseIntoDesk(
   const ema200 = stickyStructureLevel("ema200", pulse.ema200, base.ema200);
   const sma50 = stickyStructureLevel("sma50", pulse.sma50, base.sma50);
   const sma200 = stickyStructureLevel("sma200", pulse.sma200, base.sma200);
-  const vix = pulse.vix != null && pulse.vix > 0 ? pulse.vix : base.vix;
+  // pulse.vix falls back to base.vix when pulse's own vix read is unavailable (below) — vix's
+  // OWN change_pct must take the identical fallback, since pulse.vix_change_pct was computed
+  // against pulse's (now-discarded) vix, not against base.vix. Serving pulse.vix_change_pct
+  // unconditionally here let a null/stale pulse-side change% silently overwrite a perfectly
+  // good base-side one whenever `vix` itself correctly fell back to base.
+  const pulseVixLive = pulse.vix != null && pulse.vix > 0;
+  const vix = pulseVixLive ? pulse.vix : base.vix;
   return {
     ...base,
     price,
-    spx_change_pct: pulse.spx_change_pct,
+    // Fall back to the desk's own spx_change_pct when pulse could not anchor its own (common
+    // off-hours/pre-open, when pulse has no trusted prior-close basis) — mirrors the vix
+    // fallback immediately below rather than letting a null pulse-side value blank out a real
+    // one already sitting on base, computed from the exact same price/prior_close this merged
+    // payload reports.
+    spx_change_pct: pulse.spx_change_pct ?? base.spx_change_pct,
     vix,
-    vix_change_pct: pulse.vix_change_pct,
-    above_vwap: pulse.above_vwap,
+    vix_change_pct: pulseVixLive ? pulse.vix_change_pct : base.vix_change_pct,
+    // BUG FIX (Ask Largo standing mandate, 2026-10-09): this function never assigned
+    // prior_close/gap_pct/gap_source at all — the `...base` spread above silently carried
+    // whatever `base` already had, forever, with no fallback to `pulse`'s own values the way
+    // every other derived field here already gets (spx_change_pct/vix_change_pct two lines up,
+    // pdh/pdl a few lines down). Harmless in the common path, where `base` is a REAL desk build
+    // with its own correct prior_close — but `deskShellFromPulse` (spx-desk.ts) calls this exact
+    // function as `mergePulseIntoDesk(emptyDeskPayload(...), pulse)` to build the FALLBACK merged
+    // shell (`buildBootstrapFastLane`, used whenever the real merged build is cold/slow — e.g.
+    // right after a deploy, a cache miss, or a cache stampede) — and `emptyDeskPayload` seeds
+    // prior_close/gap_pct/gap_source to `null`. With no assignment here, that `null` survived
+    // forever even though `pulse` (the ONLY data source this fallback shell has) carried the real,
+    // correct value the whole time. Live-reproduced 2026-10-09 ~09:14 UTC, mid an ECS rolling
+    // deploy (cold per-task cache): `GET /api/market/spx/merged` served
+    // `available:false, source:"none", prior_close:null, gap_pct:null, gap_source:null` while
+    // `pdh:7807.02/pdl:7763.34` (correctly pulled from pulse two lines down) and the sibling
+    // `/api/market/spx/pulse` route (prior_close:7801.77, gap_pct/gap_source populated) proved the
+    // real values were sitting right there, just never copied over. Same `?? base.X` fallback
+    // shape as `spx_change_pct` above (prefer pulse's fresher ~1s read, fall back to base's slower
+    // ~10s one when pulse itself has none) — not the heavier `stickyStructureLevel` treatment
+    // pdh/pdl/vwap/emas get, since prior_close/gap_pct/gap_source don't flicker intraday the way a
+    // live level can.
+    prior_close: pulse.prior_close ?? base.prior_close,
+    gap_pct: pulse.gap_pct ?? base.gap_pct,
+    gap_source: pulse.gap_source ?? base.gap_source,
+    // Recompute above_vwap from the price/vwap this function JUST resolved (sticky fallback
+    // already applied), instead of trusting pulse's own flag — pulse computes above_vwap
+    // against ITS OWN vwap, which is routinely null off-hours/pre-open even though the sticky
+    // `vwap` above has a real value, so pulse.above_vwap can disagree with the vwap/price this
+    // very payload reports (e.g. price genuinely above vwap, flag still reads false). Same
+    // "recompute against the merged value, don't transport a stale derived flag" fix already
+    // applied to above_gamma_flip below (ISSUE-18+20).
+    above_vwap: vwap != null ? price >= vwap : pulse.above_vwap,
     lod,
     hod,
     vwap,
@@ -330,7 +372,21 @@ export function mergePulseIntoDesk(
     add: pulse.add ?? base.add,
     regime: pulse.regime ?? base.regime,
     leader_stocks: pulse.leader_stocks.length ? pulse.leader_stocks : base.leader_stocks,
-    vix_term: pulse.vix_term ?? base.vix_term,
+    // BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro): the off-hours "serve today's
+    // own settled close" branch of buildSpxDeskPulse (spx-desk.ts, empty-shell spread) sets
+    // vix_term to the DEFINED placeholder {vix9d:null,vix3m:null,structure:"unknown",detail:""},
+    // never reassigning it. A bare `pulse.vix_term ?? base.vix_term` keeps that placeholder
+    // (it's a defined object, not null/undefined) and discards the real base desk's vix_term —
+    // silently dropping the scored "VIX curve" factor from GET /api/market/spx/play while the
+    // sibling GET /api/market/spx/desk (built without this merge) still showed real contango/
+    // backwardation data at the exact same instant. Same "check for real content, not just
+    // definedness" fix already applied to leader_stocks two lines below (`.length ?` instead of
+    // a bare `??`) — applied here the same way, since vix_term can likewise be a real,
+    // non-empty object with no values set.
+    vix_term:
+      pulse.vix_term && (pulse.vix_term.vix9d != null || pulse.vix_term.vix3m != null)
+        ? pulse.vix_term
+        : base.vix_term,
     data_quality: pulse.data_quality ?? base.data_quality,
     market_open: pulse.market_open ?? base.market_open,
     market_status: pulse.market_status ?? base.market_status,

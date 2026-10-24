@@ -39,6 +39,9 @@ mock.module("../../../../lib/tool-access-server", {
     },
   },
 });
+// Controls `skipSlowEnrichment` (route.ts: `matrixPeek.cached && !matrixPeek.stale`) — defaults
+// to the pre-existing fixture (cached:false) so every PRE-EXISTING test's behavior is untouched.
+let mockMatrixCachedFresh = false;
 mock.module("../../../../lib/providers/polygon-options-gex", {
   namedExports: {
     fetchGexHeatmap: async () => {
@@ -47,20 +50,24 @@ mock.module("../../../../lib/providers/polygon-options-gex", {
     },
     peekGexHeatmapCache: async () => ({
       ticker: "SPY",
-      cached: false,
+      cached: mockMatrixCachedFresh,
       last_compute_at: null,
-      age_sec: null,
+      age_sec: mockMatrixCachedFresh ? 5 : null,
       ttl_sec: 5,
-      stale: true,
+      stale: !mockMatrixCachedFresh,
       spot: null,
       events_count: null,
     }),
     readGexHeatmapSnapshot: async () => mockHeatmap,
   },
 });
+let validateGexAgainstUWCalls = 0;
 mock.module("../../../../lib/providers/gex-cross-validation", {
   namedExports: {
-    validateGexAgainstUW: async () => null,
+    validateGexAgainstUW: async () => {
+      validateGexAgainstUWCalls++;
+      return null;
+    },
   },
 });
 mock.module("../../../../lib/providers/unusual-whales", {
@@ -484,5 +491,52 @@ describe("/api/market/gex-heatmap WS wall override near-term scope", () => {
 
     mockWsLive = false;
     mockWsLadder = null;
+  });
+});
+
+// Regression (2026-09-21, THERMAL-MAP.md §10 item 3's "STILL UNMEASURED" question, now measured
+// live: 20/20 RTH reads across SPX/SPY/QQQ/IWM, matrix age 1.6-43.8s, cross_validation null every
+// time). `crossValPromise` used to be gated on `skipSlowEnrichment` (matrix cached AND fresh),
+// which `heatmap-warm` keeps true essentially always during healthy RTH — so the UW cross-check
+// never ran precisely when the system was healthy, and the member-facing "Cross-check" chip
+// (thermal-desk-state.ts) sat permanently "off" with copy promising it "resumes when the live
+// strike ladder is back at the open." Fix: cross-validation no longer depends on matrix
+// freshness (it does no network I/O on this call site — see the route.ts comment for why).
+describe("/api/market/gex-heatmap cross-validation is not gated on matrix freshness", () => {
+  let GET: (req: NextRequest) => Promise<Response>;
+  before(async () => {
+    ({ GET } = await import("./route"));
+    mockHeatmap = liveHeatmap({ underlying: "SPY" });
+  });
+
+  test("a FRESH (non-stale) cached matrix still invokes validateGexAgainstUW for a preset ticker", async () => {
+    mockMatrixCachedFresh = true; // skipSlowEnrichment === true
+    validateGexAgainstUWCalls = 0;
+    const res = await GET(new NextRequest("http://localhost/api/market/gex-heatmap?ticker=SPY"));
+    assert.equal(res.status, 200);
+    assert.equal(
+      validateGexAgainstUWCalls,
+      1,
+      "cross-validation must run even when the matrix cache is fresh — it is a cheap, no-network-I/O check, not a 'slow enrichment'"
+    );
+    mockMatrixCachedFresh = false;
+  });
+
+  test("a STALE cached matrix also invokes validateGexAgainstUW (no regression on the pre-existing path)", async () => {
+    mockMatrixCachedFresh = false; // skipSlowEnrichment === false
+    validateGexAgainstUWCalls = 0;
+    const res = await GET(new NextRequest("http://localhost/api/market/gex-heatmap?ticker=SPY"));
+    assert.equal(res.status, 200);
+    assert.equal(validateGexAgainstUWCalls, 1);
+  });
+
+  test("a non-preset ticker still skips cross-validation regardless of freshness (UW overlay budget guard intact)", async () => {
+    mockHeatmap = liveHeatmap({ underlying: "ZZZZ" });
+    mockMatrixCachedFresh = true;
+    validateGexAgainstUWCalls = 0;
+    const res = await GET(new NextRequest("http://localhost/api/market/gex-heatmap?ticker=ZZZZ"));
+    assert.equal(res.status, 200);
+    assert.equal(validateGexAgainstUWCalls, 0);
+    mockMatrixCachedFresh = false;
   });
 });

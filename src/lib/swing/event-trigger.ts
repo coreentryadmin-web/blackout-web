@@ -27,12 +27,24 @@ import { observeSwingCandidate } from "./accumulation-store";
  *  floor: one live print should be genuinely large to move the memory out-of-band; smaller flow still counts,
  *  it just waits for the scheduled scan's aggregated multi-day read. Provisional (not a graduated edge). */
 export const SWING_EVENT_MIN_PREMIUM = 750_000;
-/** The swing contract window is HORIZONS.SWING.dteMin–30 DTE (taxonomy sub-lanes); a print outside it is a
+/** The swing contract window is HORIZONS.SWING.dteMin–dteMax (taxonomy sub-lanes); a print outside it is a
  *  day-trade lottery (0DTE board's widened dte 0-4 window) or a LEAP, not a swing thesis. Inclusive bounds.
- *  Derives from horizons.ts rather than a hardcoded copy — see taxonomy.ts's header note on the 2026-08-06
- *  cross-engine dual-admission bug this independent-constant pattern caused. */
+ *  Both bounds derive from horizons.ts rather than a hardcoded copy — see taxonomy.ts's header note on the
+ *  2026-08-06 cross-engine dual-admission bug this independent-constant pattern caused.
+ *
+ *  BUG FIX (Ask Largo standing mandate, 2026-09-22): SWING_EVENT_MAX_DTE was hardcoded to 30 — correct when
+ *  written (HORIZONS.SWING.dteMax was 30 then), but it never moved when the 2026-09-04 narrowing dropped
+ *  dteMax to 15, while SWING_EVENT_MIN_DTE right above it already derived from HORIZONS.SWING.dteMin and so
+ *  tracked the EARLIER 2026-08-06 floor move automatically. This is live-wired (uw-socket.ts's WS flow
+ *  handler calls `advanceSwingAccumulationFromFlow` on every material print), and `observeSwingCandidate`
+ *  accretes an observation keyed on (ticker, direction, UNCLASSIFIED) with no DTE field at all — so a real
+ *  16-30 DTE print (now genuinely LEAPS territory; `subLaneForDte` returns null for it, meaning no swing
+ *  sub-lane could EVER commit that DTE) was silently corroborating cross-session persistence for a
+ *  ticker/direction that could never actually resolve to a committable swing thesis at that DTE. Fixed by
+ *  deriving MAX the same way MIN already does, so both bounds move together the next time this window
+ *  changes. */
 export const SWING_EVENT_MIN_DTE = HORIZONS.SWING.dteMin;
-export const SWING_EVENT_MAX_DTE = 30;
+export const SWING_EVENT_MAX_DTE = HORIZONS.SWING.dteMax;
 /** At most one advance per (ticker,direction) per this interval — well above the write cost, spam-proof. */
 export const SWING_EVENT_MIN_INTERVAL_MS = 60_000;
 /** Cadence provenance tag written into `phases_seen` so a live-tape advance is distinguishable from a
@@ -63,9 +75,10 @@ export function swingDirectionOf(optionType: string): PlayDirection | null {
 
 /**
  * Is this live print material enough to advance the swing accumulation memory out-of-band? A big (≥ $750k),
- * DIRECTIONAL (call/put, not unknown), SWING-DATED (2–30 DTE) print — i.e. real multi-day positioning on a
- * contract the swing lane actually trades. Conservative on purpose: only genuinely large directional swing
- * flow advances the memory early; everything else waits for the scheduled scan's aggregated read.
+ * DIRECTIONAL (call/put, not unknown), SWING-DATED (HORIZONS.SWING.dteMin–dteMax DTE) print — i.e. real
+ * multi-day positioning on a contract the swing lane actually trades. Conservative on purpose: only
+ * genuinely large directional swing flow advances the memory early; everything else waits for the
+ * scheduled scan's aggregated read.
  */
 export function isMaterialSwingFlow(flow: MaterialSwingFlowInput, nowMs: number): boolean {
   if (!(flow.premium >= SWING_EVENT_MIN_PREMIUM)) return false;

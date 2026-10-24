@@ -15,8 +15,12 @@ export type VectorPresetTimeframe = (typeof VECTOR_PRESET_TIMEFRAMES)[number];
 /** Default candle interval on first paint (SPX Slayer embed + standalone /vector). */
 export const VECTOR_DEFAULT_TIMEFRAME: VectorPresetTimeframe = 3;
 
-/** Bead rows per side when a narrowed 0DTE horizon is active — wider than the 3m default (8) so the
- *  desk opens on more of the intraday rail than a tight spot cluster.
+/** Bead rows per side when a narrowed 0DTE horizon is active. `wallCountForTimeframe`'s own
+ *  tf<=3 floor is already 11, so at the desk's 3m default this constant's `Math.max` has no
+ *  effect — it only widens the rail at tf<=1 (8 -> 10). See FINDINGS.md 2026-10-12 ("0DTE
+ *  wall-count override is a no-op at the desk's default 3m timeframe") for whether that's the
+ *  intended behavior; not revisited here, this corrects only the stale "(8)" comment text that
+ *  used to describe a 3m-default effect this constant doesn't actually have.
  *
  *  Was 12. Reduced to 10 (member-directed, 2026-08-09): 12 rows per side read as "painted" on a 3m
  *  0DTE chart, and 8 was felt to be too tight when it was the old value. 10 is the settled middle. */

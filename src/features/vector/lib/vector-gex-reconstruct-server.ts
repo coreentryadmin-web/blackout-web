@@ -9,10 +9,8 @@ import {
 } from "./vector-ticker";
 import {
   reconstructGexRail,
-  reconstructGexHeatmapGrid,
   type ReconstructContract,
   type SpotSample,
-  type GexHeatmapGrid,
 } from "./vector-gex-reconstruct";
 import {
   barsToSpotSamples,
@@ -231,38 +229,3 @@ export async function reconstructSessionRail(
   return rail;
 }
 
-const HEATMAP_CACHE_PREFIX = "vector:gex-heatmap";
-
-function heatmapCacheKey(ticker: string, sessionYmd: string): string {
-  return `${HEATMAP_CACHE_PREFIX}:${ticker}:${sessionYmd}`;
-}
-
-/**
- * Reconstruct the strike×time GEX surface (task #14 heatmap) for one ticker + past
- * session — the full per-strike gamma grid, not just the top walls. Shares the exact
- * fetch + spot-path the rail uses (`loadReconstructInputs`), then keeps every strike's
- * signed net GEX per time bucket. Returns null (never throws, never fabricates) when
- * inputs are unavailable. Redis-cached like the rail: a past session's inputs are final.
- */
-export async function reconstructSessionHeatmap(
-  opts: ReconstructRailOptions
-): Promise<GexHeatmapGrid | null> {
-  const ticker = normalizeVectorTicker(opts.ticker);
-  const sessionYmd = String(opts.sessionYmd ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionYmd)) return null;
-
-  const key = heatmapCacheKey(ticker, sessionYmd);
-  if (!opts.forceRefresh) {
-    const hit = await sharedCacheGet<GexHeatmapGrid>(key).catch(() => null);
-    if (hit) return hit;
-  }
-
-  const inputs = await loadReconstructInputs(opts);
-  if (!inputs) return null;
-
-  const grid = reconstructGexHeatmapGrid(inputs.contracts, inputs.spots, inputs.sessionYmd);
-  if (grid.times.length) {
-    await sharedCacheSet(key, grid, CACHE_TTL_SEC).catch(() => {});
-  }
-  return grid;
-}

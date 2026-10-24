@@ -22,12 +22,13 @@ test("vectorRunnerOtmRelax: aligned winner relaxes OTM", () => {
   assert.equal(vectorRunnerOtmRelax("long", 70, pulse), true);
 });
 
-test("moneynessGateBlocks: runner cap allows 15% OTM that standard cap blocks", () => {
-  const standard = moneynessGateBlocks(15, false);
+test("moneynessGateBlocks: runner cap allows 20% OTM that standard cap blocks", () => {
+  // SETUP_MAX_OTM_PCT=16, RUNNER_SETUP_MAX_OTM_PCT=26 as of 2026-09-08 — 20% sits between them.
+  const standard = moneynessGateBlocks(20, false);
   assert.equal(standard.length, 1);
   assert.equal(standard[0]!.code, "max_otm_pct");
 
-  const runner = moneynessGateBlocks(15, false, { maxOtmPct: RUNNER_SETUP_MAX_OTM_PCT });
+  const runner = moneynessGateBlocks(20, false, { maxOtmPct: RUNNER_SETUP_MAX_OTM_PCT });
   assert.equal(runner.length, 0);
 });
 

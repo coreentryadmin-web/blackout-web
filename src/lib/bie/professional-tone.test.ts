@@ -68,6 +68,18 @@ test("out-of-scope refusals do not require grounded numbers", () => {
   assert.deepEqual(honestyIssues(refusal, "clarify_read"), []);
 });
 
+test("any clarify_read response is exempt from the no-grounded-numbers check, not just phrases matching the out-of-scope wording", () => {
+  // Live-reproduced 2026-09-18 (issue #5202): Largo's clarify_read answer to garbage input is
+  // LLM-generated and varies per call. This exact phrasing does not match the "no data"/"out of
+  // scope" exemption regex above, so before this fix it fell through to the digit check.
+  const keyboardMash =
+    "Verdict: Not a market question — nothing to analyze here.\n\nData: No ticker, catalyst, or desk request was named, so no tools were called this turn.\n\nIf you meant to ask something, try a ticker, or ask for the overall picture and I'll pull the desk read.\n\nBottom line: Give me a real question and I'll give you a real answer — right now looks like a keyboard mash, not a request.";
+  assert.deepEqual(honestyIssues(keyboardMash, "clarify_read"), []);
+  // Same text with no intent at all still correctly demands grounding -- the exemption is
+  // specifically for the clarify_read intent, not a blanket pass for this wording.
+  assert.ok(honestyIssues(keyboardMash).includes("no-grounded-numbers"));
+});
+
 test("honest empty-state answers do not require grounded numbers", () => {
   const empty =
     "This turn came back empty — nothing was pulled and nothing was written up. That isn't a gap in the desk.";
@@ -87,4 +99,18 @@ test("platform_read with named desks does not require digits when caches are col
   const platform =
     "Cross-product snapshot: SPX Slayer desk is live, HELIX flow tape is scanning, Night Hawk edition is recap-only off-hours, 0DTE Command board is empty, Thermal matrix is warming.";
   assert.deepEqual(honestyIssues(platform, "platform_read"), []);
+});
+
+test("self-critical and comparative questions do not require grounded numbers", () => {
+  const selfCritical =
+    "Where is the desk wrong on SPX if anything? The core limitation is that gamma shifts faster than the pinned wall can update, especially on high-vol tape moves.";
+  assert.deepEqual(honestyIssues(selfCritical), []);
+
+  const comparative =
+    "Difference between Vector and Thermal in Largo? Vector focuses on realized vol and tape momentum, while Thermal emphasizes dealer gamma positioning and mean-reversion setups.";
+  assert.deepEqual(honestyIssues(comparative), []);
+
+  const weakness =
+    "What's the weakness in this approach? The biggest issue is that overnight gaps can invalidate the entire thesis without any real-time signal to react to.";
+  assert.deepEqual(honestyIssues(weakness), []);
 });

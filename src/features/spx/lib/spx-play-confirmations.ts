@@ -20,17 +20,36 @@ export type PlayConfirmationResult = {
   checks: PlayConfirmationCheck[];
 };
 
-function newsSentiment(headlines: SpxDeskPayload["news_headlines"]): "bullish" | "bearish" | "neutral" {
+type NewsHeadline = SpxDeskPayload["news_headlines"][number];
+
+type NewsSentimentResult = {
+  sentiment: "bullish" | "bearish" | "neutral";
+  /** The headline(s) that actually tripped BULL_NEWS/BEAR_NEWS — i.e. the real evidence
+   *  behind `sentiment`, as opposed to whatever happens to sit first in the raw feed. */
+  matched: NewsHeadline[];
+};
+
+function newsSentiment(headlines: SpxDeskPayload["news_headlines"]): NewsSentimentResult {
   let bull = 0;
   let bear = 0;
+  const bullMatches: NewsHeadline[] = [];
+  const bearMatches: NewsHeadline[] = [];
   for (const h of headlines.slice(0, 5)) {
     const t = h.title ?? "";
-    if (BEAR_NEWS.test(t)) bear += 1;
-    if (BULL_NEWS.test(t)) bull += 1;
+    if (BEAR_NEWS.test(t)) {
+      bear += 1;
+      bearMatches.push(h);
+    }
+    if (BULL_NEWS.test(t)) {
+      bull += 1;
+      bullMatches.push(h);
+    }
   }
-  if (bear > bull) return "bearish";
-  if (bull > bear) return "bullish";
-  return "neutral";
+  if (bear > bull) return { sentiment: "bearish", matched: bearMatches };
+  if (bull > bear) return { sentiment: "bullish", matched: bullMatches };
+  // Neutral covers both "nothing matched" and a genuine bull==bear>0 tie — in the tie case
+  // cite whichever headlines actually matched (either side) rather than an unrelated one.
+  return { sentiment: "neutral", matched: [...bullMatches, ...bearMatches] };
 }
 
 function nearLevel(price: number, level: number | null, pts = playStructureProximityPts()): boolean {
@@ -268,15 +287,19 @@ export function evaluatePlayConfirmations(
 
   const news = newsSentiment(desk.news_headlines ?? []);
   const newsOk =
-    news === "neutral" ||
-    (direction === "long" && news === "bullish") ||
-    (direction === "short" && news === "bearish");
-  const topHeadline = desk.news_headlines?.[0]?.title?.slice(0, 80) ?? "none";
+    news.sentiment === "neutral" ||
+    (direction === "long" && news.sentiment === "bullish") ||
+    (direction === "short" && news.sentiment === "bearish");
+  // Cite the headline(s) that actually matched BULL_NEWS/BEAR_NEWS — NOT news_headlines[0]
+  // unconditionally. The feed is not sorted by relevance, so the first headline is frequently
+  // an unrelated single-stock note (e.g. a ticker whose name happens to contain "SPX") that
+  // played no part in the bullish/bearish verdict above it quotes as if it were the evidence.
+  const topHeadline = news.matched[0]?.title?.slice(0, 80) ?? "none";
   checks.push({
     label: "News catalyst",
     required: false,
     passed: newsOk,
-    detail: newsOk ? `News ${news} · ${topHeadline}` : `News opposes ${direction}: ${topHeadline}`,
+    detail: newsOk ? `News ${news.sentiment} · ${topHeadline}` : `News opposes ${direction}: ${topHeadline}`,
   });
 
   const price = desk.price;

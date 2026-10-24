@@ -22,6 +22,7 @@ import {
   correlationGroupId,
   CONCENTRATION_POLICY_VERSION,
   GOVERNOR_MAX_CONCURRENT_PLANS,
+  GOVERNOR_MAX_CORRELATED_SAME_DIR,
   GOVERNOR_MAX_SESSION_STOPS,
   GOVERNOR_REENTRY_LOCK_MS,
   GOVERNOR_LOSS_HALT_COUNT,
@@ -64,10 +65,13 @@ function losingTimeStop(ticker: string, pnlPct = -30): GovernorLedgerRow {
 // Session-stop halt + re-entry lock stay pinned — those are the 7/13 runaway-loss brakes.
 // Concurrent open-play ceiling is a PRODUCT dial (default 100 / env ZERODTE_MAX_CONCURRENT),
 // NOT a scarcity throttle: quality gates + stop/loss floors decide how many plans are live.
-test("FIREWALL: governor risk brakes are pinned (halt after 3 stops, 20-min re-entry lock; concurrent default 100)", () => {
+test("FIREWALL: governor risk brakes are pinned (halt after 4 stops, 10-min re-entry lock; concurrent default 100)", () => {
+  // GOVERNOR_MAX_SESSION_STOPS raised 3→4 and GOVERNOR_REENTRY_LOCK_MS shortened 20m→10m on
+  // 2026-09-08 (operator directive, whole-market volume complaint) — no specific incident ties
+  // 3/20m as uniquely correct vs 4/10m, just Slayer's own convention carried over.
   assert.equal(GOVERNOR_MAX_CONCURRENT_PLANS, 100);
-  assert.equal(GOVERNOR_MAX_SESSION_STOPS, 3);
-  assert.equal(GOVERNOR_REENTRY_LOCK_MS, 20 * 60 * 1000);
+  assert.equal(GOVERNOR_MAX_SESSION_STOPS, 4);
+  assert.equal(GOVERNOR_REENTRY_LOCK_MS, 10 * 60 * 1000);
 });
 
 // AUDIT SEV-3 — the realized-loss halt only ever ADDS conservatism; a silent LOOSENING
@@ -125,8 +129,8 @@ test("mergeGovernorStops: recorded (timestamped) events win over timeless ledger
 
 // ── pure rules ─────────────────────────────────────────────────────────────────────
 
-test("governor: 3 stops halt the session — single dominating block", () => {
-  const stops = ["SPY", "MU", "AMD"].map((t) => ({ ticker: t, direction: "long" as const, at_ms: null }));
+test("governor: 4 stops halt the session — single dominating block", () => {
+  const stops = ["SPY", "MU", "AMD", "TSLA"].map((t) => ({ ticker: t, direction: "long" as const, at_ms: null }));
   const blocks = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: [], stops }, NOW);
   assert.deepEqual(blocks.map((b) => b.code), ["governor_session_stops"]);
   assert.equal(blocks[0]!.threshold, GOVERNOR_MAX_SESSION_STOPS);
@@ -173,13 +177,13 @@ test("governor/B-3: v1 groups are the index/ETF complex only — a single name d
   assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "short" }, snap, NOW), []);
 });
 
-test("governor: 20-min same-direction re-entry lock — inside blocks, outside/opposite pass", () => {
-  const stopAt = NOW - 10 * 60_000; // 10 minutes ago
+test("governor: 10-min same-direction re-entry lock — inside blocks, outside/opposite pass", () => {
+  const stopAt = NOW - 5 * 60_000; // 5 minutes ago (lock shortened 20m→10m on 2026-09-08)
   const snap = { open_plans: [], stops: [{ ticker: "META", direction: "short" as const, at_ms: stopAt }] };
 
   const locked = evaluateZeroDteGovernor({ ticker: "META", direction: "short" }, snap, NOW);
   assert.deepEqual(locked.map((b) => b.code), ["governor_reentry_lock"]);
-  assert.match(locked[0]!.reason, /10 more minutes/);
+  assert.match(locked[0]!.reason, /5 more minutes/);
 
   // Lock expired.
   const later = NOW - GOVERNOR_REENTRY_LOCK_MS - (NOW - stopAt);
@@ -289,6 +293,57 @@ test("GOVERNOR_ENFORCE_LOSS_HALT defaults to false (the enforcement toggle for t
   assert.equal(GOVERNOR_ENFORCE_LOSS_HALT, false);
 });
 
+// ── Live bug, 2026-10-20 (HOOD): realized_losers/session_pnl_pct must read the AS-MANAGED
+// outcome, not the raw mechanical `plan_pnl_pct` DB column. A real position can close via a
+// live-only ratchet-profit-floor exit (a genuine win, stamped on entry_context.exit) while the
+// naive mechanical bar-walk grade (plan_pnl_pct/plan_outcome — what a passive, unmanaged hold
+// would have done, walking the SAME bars past the real exit instant) independently shows the
+// position later traded through the −50% stop. Both numbers are legitimately different VIEWS
+// (record.ts's own documented mechanical-vs-managed duality, OUTCOME-GRADING-SPEC.md) — but
+// record.ts deliberately NEVER headlines the mechanical grade for exactly this reason, while
+// ledgerRowRealizedPnlPct (pre-fix) read plan_pnl_pct FIRST, so a real HOOD-shaped win (real
+// exit +3.35%, mechanical grade plan_pnl_pct=-50/plan_outcome="stopped") counted as a "realized
+// loser" and dragged session_pnl_pct down by 50 points for a trade that actually made money.
+test("SEV-3: realized_losers reads the AS-MANAGED exit, not the mechanical plan_pnl_pct — a real ratchet win is never counted as a realized loser", () => {
+  const realWin = row({
+    ticker: "HOOD",
+    status: "CLOSED",
+    plan_outcome: "stopped", // mechanical bar-walk grade: a naive hold would have been stopped out
+    plan_pnl_pct: -50, // ... at -50% -- but this is NOT what actually happened live
+    trough_premium: 2.0, // entry 4.0 -> trough proves the mechanical stop is real, for the UNMANAGED walk
+    entry_context: {
+      exit: { reason: "ratchet_profit_floor", pnl_pct: 3.35, peak_pnl_pct: 12.5 }, // the REAL, live-managed exit
+    },
+  });
+  const snap = deriveGovernorFromLedger([realWin]);
+  assert.equal(snap.realized_losers, 0, "the real exit was a win -- must not count as a realized loser");
+  assert.equal(snap.session_pnl_pct, 3.35, "session P&L must reflect the real exit, not the fictitious -50%");
+  assert.equal(governorLossHaltReason(snap), null, "a real win must never surface a loss-halt reason");
+});
+
+test("SEV-3: realized_losers still counts a GENUINE as-managed loss even when the mechanical grade disagrees in magnitude", () => {
+  const realLoss = row({
+    ticker: "KORU",
+    status: "CLOSED",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: -38.46, // mechanical grade: a bigger loss than what actually happened
+    trough_premium: 3.0,
+    entry_context: {
+      exit: { reason: "flat_theta_bleed", pnl_pct: -23.08, peak_pnl_pct: 0 }, // the real, smaller realized loss
+    },
+  });
+  const snap = deriveGovernorFromLedger([realLoss]);
+  assert.equal(snap.realized_losers, 1, "still a real loss -- must still count");
+  assert.equal(snap.session_pnl_pct, -23.08, "must use the REAL realized magnitude, not the mechanical one");
+});
+
+test("SEV-3: a row with no live-managed exit at all still falls back to the mechanical grade (legacy/no-engine-exit rows unaffected)", () => {
+  const legacyLoss = losingTimeStop("LEGACY", -30); // no entry_context.exit -- exactly the pre-existing fixture shape
+  const snap = deriveGovernorFromLedger([legacyLoss]);
+  assert.equal(snap.realized_losers, 1, "unchanged behavior for a row with no as-managed exit stamp");
+  assert.equal(snap.session_pnl_pct, -30);
+});
+
 test("SEV-3: a session of WINNERS does not halt (only losing exits count)", () => {
   const rows = ["A", "B", "C", "D"].map((t) =>
     row({ ticker: t, status: "CLOSED", plan_outcome: "doubled", plan_pnl_pct: 100, trough_premium: 3.5 })
@@ -315,16 +370,17 @@ test("SEV-3: winners net against losers — a green session under the floor stay
   assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW), []);
 });
 
-test("SEV-3: the existing 3× HARD-stop halt + re-entry lock still fire unchanged", () => {
-  // Hard-stop halt: 3 graded stops → the ORIGINAL block, with the ORIGINAL threshold.
-  const stops = ["SPY", "MU", "AMD"].map((t) => ({ ticker: t, direction: "long" as const, at_ms: null }));
+test("SEV-3: the existing hard-stop halt + re-entry lock still fire unchanged", () => {
+  // Hard-stop halt: GOVERNOR_MAX_SESSION_STOPS graded stops → the ORIGINAL block, with the
+  // ORIGINAL threshold (now 4 as of 2026-09-08, was 3).
+  const stops = ["SPY", "MU", "AMD", "TSLA"].map((t) => ({ ticker: t, direction: "long" as const, at_ms: null }));
   const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, { open_plans: [], stops }, NOW);
   assert.deepEqual(halt.map((b) => b.code), ["governor_session_stops"]);
   assert.equal(halt[0]!.threshold, GOVERNOR_MAX_SESSION_STOPS, "hard-stop halt keeps its own threshold");
   assert.match(halt[0]!.reason, /stopped out today/, "hard-stop wording, not the realized-loss wording");
 
   // Re-entry lock (keyed off a hard stop's timestamp) is untouched by the loss channel.
-  const stopAt = NOW - 10 * 60_000;
+  const stopAt = NOW - 5 * 60_000;
   const lockSnap = { open_plans: [], stops: [{ ticker: "META", direction: "short" as const, at_ms: stopAt }] };
   const locked = evaluateZeroDteGovernor({ ticker: "META", direction: "short" }, lockSnap, NOW);
   assert.deepEqual(locked.map((b) => b.code), ["governor_reentry_lock"]);
@@ -384,27 +440,29 @@ test("summarizeGovernorForBoard: merges recorded stop timestamps and flips halte
       row({ ticker: "SPY", status: "CLOSED", trough_premium: 1.9 }), // trough-crossed stop, untimed
       row({ ticker: "MU", status: "CLOSED", plan_outcome: "stopped" }),
       row({ ticker: "AMD", status: "CLOSED", plan_outcome: "stopped" }),
+      row({ ticker: "TSLA", status: "CLOSED", plan_outcome: "stopped" }),
       row({ ticker: "NVDA", status: "HOLD" }),
     ],
     [{ ticker: "SPY", direction: "long", at_ms: NOW - 5 * 60_000 }]
   );
-  assert.equal(s.halted, true, "3 stops = session halt");
-  assert.equal(s.stops.length, 3);
+  assert.equal(s.halted, true, "4 stops = session halt (GOVERNOR_MAX_SESSION_STOPS raised to 4 on 2026-09-08)");
+  assert.equal(s.stops.length, 4);
   assert.equal(s.stops.find((x) => x.ticker === "SPY")!.at_ms, NOW - 5 * 60_000, "recorded timestamp wins");
   assert.equal(s.stops.find((x) => x.ticker === "MU")!.at_ms, null, "ledger-only stop stays untimed");
-  assert.deepEqual(s.open_plans, [{ ticker: "NVDA", direction: "long" }]);
+  assert.deepEqual(s.open_plans, [{ ticker: "NVDA", direction: "long", is_condor: false }]);
 });
 
 // ── persistence round-trip (real shared-cache in-memory fallback) ──────────────────
 
-test("governor state: a simulated 3-stop session persists, reloads, and halts", async () => {
+test("governor state: a simulated 4-stop session persists, reloads, and halts", async () => {
   const day = "2099-01-02"; // unique per test — the fallback map is module-global
   await recordGovernorStops(day, [{ ticker: "SPY", direction: "long", at_ms: NOW - 30 * 60_000 }]);
   await recordGovernorStops(day, [{ ticker: "MU", direction: "long", at_ms: NOW - 20 * 60_000 }]);
   await recordGovernorStops(day, [{ ticker: "AMD", direction: "long", at_ms: NOW - 5 * 60_000 }]);
+  await recordGovernorStops(day, [{ ticker: "TSLA", direction: "long", at_ms: NOW - 2 * 60_000 }]);
 
   const recorded = await loadRecordedGovernorStops(day);
-  assert.equal(recorded.length, 3);
+  assert.equal(recorded.length, 4);
 
   const snap = { open_plans: [], stops: mergeGovernorStops([], recorded) };
   const blocks = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW);
@@ -459,6 +517,60 @@ test("Q9 enforced (Wave A/B default): evaluateZeroDteGovernor blocks a 3rd corre
   const blocks = evaluateZeroDteGovernor({ ticker: "IWM", direction: "long" }, snap, NOW);
   assert.equal(blocks.length, 1);
   assert.equal(blocks[0]!.code, "governor_concentration");
+});
+
+// ── NEUTRAL-STRUCTURE FIX: a committed CONDOR must never be counted as directional exposure ──
+// condor.ts's own buildCondorSetup doc: a condor row's `direction` "carries the pin's nominal
+// fade side for provenance but is UNUSED by the neutral structure's gates/grader." Before this
+// fix, deriveGovernorFromLedger/committedThisCycle carried that nominal direction into
+// evaluateZeroDteGovernor's DIRECTIONAL checks (B-3 correlated-conflict + Q9 concentration)
+// unfiltered, so a delta-neutral SPX/NDX condor (both share CORRELATION_GROUPS's broad index/ETF
+// group with SPY/QQQ/IWM/DIA) could wrongly (a) "oppose" a genuine directional candidate with no
+// real conflicting exposure, and (b) inflate the same-direction concentration count.
+
+test("governor NEUTRAL-STRUCTURE (regression): an open CONDOR must not trigger a false correlated_conflict", () => {
+  // An open SPX condor whose nominal fade side happens to be "short" must not block a genuine,
+  // uncorrelated-in-reality QQQ long — before the fix this read as "QQQ long opposes SPX short".
+  const snap = deriveGovernorFromLedger([
+    row({ ticker: "SPX", direction: "short", status: "OPEN", entry_context: { play_type: "CONDOR", condor: { net_credit: 3000, max_loss: 12000 } } }),
+  ]);
+  const blocks = evaluateZeroDteGovernor({ ticker: "QQQ", direction: "long" }, snap, NOW);
+  assert.deepEqual(blocks, [], "a neutral condor's nominal direction must never manufacture a directional conflict");
+
+  // The SAME open position, but a REAL directional SPY short, must still correctly conflict.
+  const realSnap = deriveGovernorFromLedger([row({ ticker: "SPY", direction: "short", status: "OPEN" })]);
+  const realBlocks = evaluateZeroDteGovernor({ ticker: "QQQ", direction: "long" }, realSnap, NOW);
+  assert.equal(realBlocks[0]?.code, "correlated_conflict", "a REAL directional conflict must still block — this fix must not weaken the gate");
+});
+
+test("governor NEUTRAL-STRUCTURE (regression): open CONDORs must not inflate same-direction concentration", () => {
+  // Two open SPX/NDX condors that happen to carry the same nominal fade side as SPY/QQQ real
+  // longs must not push a 3rd correlated real long over the Q9 cap — before the fix, the two
+  // condors' nominal directions counted as 2 of the same-direction pile alongside the 2 real
+  // longs, over-blocking on non-existent directional risk.
+  const snap = deriveGovernorFromLedger([
+    row({ ticker: "SPY", direction: "long", status: "OPEN" }),
+    row({ ticker: "SPX", direction: "long", status: "OPEN", entry_context: { play_type: "CONDOR", condor: { net_credit: 3000, max_loss: 12000 } } }),
+    row({ ticker: "NDX", direction: "long", status: "OPEN", entry_context: { play_type: "CONDOR", condor: { net_credit: 3000, max_loss: 12000 } } }),
+  ]);
+  const blocks = evaluateZeroDteGovernor({ ticker: "QQQ", direction: "long" }, snap, NOW);
+  assert.deepEqual(blocks, [], "condors must not count toward the real-directional concentration cap");
+
+  // Two REAL directional longs must still trip the cap on a 3rd — this fix must not weaken Q9.
+  const realSnap = deriveGovernorFromLedger([
+    row({ ticker: "SPY", direction: "long", status: "OPEN" }),
+    row({ ticker: "QQQ", direction: "long", status: "OPEN" }),
+  ]);
+  const realBlocks = evaluateZeroDteGovernor({ ticker: "IWM", direction: "long" }, realSnap, NOW);
+  assert.equal(realBlocks[0]?.code, "governor_concentration");
+});
+
+test("governor NEUTRAL-STRUCTURE (regression): a CONDOR candidate itself skips the directional checks", () => {
+  // A fresh CONDOR candidate's own nominal direction must not itself be blocked as "opposing" a
+  // real open directional play it has no true conflict with.
+  const snap = deriveGovernorFromLedger([row({ ticker: "SPY", direction: "long", status: "OPEN" })]);
+  const blocks = evaluateZeroDteGovernor({ ticker: "QQQ", direction: "short", is_condor: true }, snap, NOW);
+  assert.deepEqual(blocks, [], "a condor candidate has no real directional stance to conflict with an open play");
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -597,6 +709,38 @@ test("correlationGroupOf: index/ETF names resolve to their group; sector names r
   assert.notEqual(id, correlationGroupId(correlationGroupOf("NVDA")!), "NVDA is in a different group than SPY");
 });
 
+// BUG FIX (2026-10-20, live member book audit): CORRELATION_GROUPS had no crypto-miner group at
+// all despite GOVERNOR_ENFORCE_CONCENTRATION's own comment citing a "2026-07-30 crypto cluster
+// session" as the reason concentration enforcement shipped — live evidence the same day this gap
+// was found showed RIOT+HUT+BTDR all open long simultaneously, uncapped, none sharing a group.
+test("correlationGroupOf: bitcoin miners resolve to their own group, uncapped before this fix", () => {
+  assert.ok(correlationGroupOf("RIOT"), "RIOT must now resolve to a correlation group");
+  assert.ok(correlationGroupOf("HUT"));
+  assert.ok(correlationGroupOf("BTDR"));
+  assert.ok(correlationGroupOf("MARA"));
+  assert.ok(correlationGroupOf("CLSK"));
+  const id = correlationGroupId(correlationGroupOf("RIOT")!);
+  assert.equal(id, correlationGroupId(correlationGroupOf("HUT")!), "RIOT and HUT share the same group");
+  assert.equal(id, correlationGroupId(correlationGroupOf("BTDR")!), "RIOT and BTDR share the same group");
+  assert.notEqual(id, correlationGroupId(correlationGroupOf("SPY")!), "miners are a distinct group from the broad index/ETF group");
+  // COIN/MSTR/SBET are BTC-exposed but a structurally different business (exchange/treasury) —
+  // deliberately NOT folded into the miner group by this fix.
+  assert.equal(correlationGroupOf("COIN"), null, "exchanges are a separate, unscoped judgment call");
+  assert.equal(correlationGroupOf("MSTR"), null, "treasury-holding names are a separate, unscoped judgment call");
+});
+
+test("freezeConcentrationState: a THIRD same-direction crypto-miner candidate now trips the same-beta concentration count the broad-index group already enforces", () => {
+  const c = freezeConcentrationState({ ticker: "BTDR", direction: "long" }, [
+    { ticker: "RIOT", direction: "long" },
+    { ticker: "HUT", direction: "long" },
+  ]);
+  assert.equal(c.same_beta_open_count, 2, "RIOT and HUT both share BTDR's new miner group");
+  assert.ok(
+    c.same_beta_open_count >= GOVERNOR_MAX_CORRELATED_SAME_DIR,
+    "a third same-direction miner now meets/exceeds the governor's existing concentration cap"
+  );
+});
+
 // ── freezeConcentrationState: adversarial (opposed direction, dedup, rounding, single name) ──
 test("freezeConcentrationState: a SHORT candidate counts only the same-direction (short) existing book", () => {
   const c = freezeConcentrationState({ ticker: "QQQ", direction: "short" }, [
@@ -727,8 +871,11 @@ test("a CLOSED row the grader has not reached is still counted, from entry vs ma
 });
 
 test("a graded row still wins — the mark channel never overrides plan_pnl_pct", () => {
+  // plan_outcome and plan_pnl_pct are always written together by the real grading UPDATE
+  // (db.ts) -- pairing them here (not just plan_pnl_pct alone) is what makes this row actually
+  // GRADED per isGradedZeroDteRow, so asManagedPnlPct's mechanical fallback can see it.
   const snap = deriveGovernorFromLedger([
-    row({ status: "CLOSED", plan_pnl_pct: -12, entry_premium: 4, last_mark: 1, last_mark_at: "2026-08-11T15:00:00Z" }),
+    row({ status: "CLOSED", plan_outcome: "time_stop", plan_pnl_pct: -12, entry_premium: 4, last_mark: 1, last_mark_at: "2026-08-11T15:00:00Z" }),
   ]);
   assert.equal(snap.session_pnl_pct, -12);
 });

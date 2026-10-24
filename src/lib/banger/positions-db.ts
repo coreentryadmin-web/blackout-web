@@ -10,7 +10,8 @@
  */
 
 import type { QueryResultRow } from "pg";
-import { dbQuery, toJsonbParam } from "@/lib/db";
+import { dbQuery, isoDateString, isoTimestampString, toJsonbParam } from "@/lib/db";
+import { todayEt } from "@/lib/et-date";
 
 export type BangerStatus = "OPEN" | "PARTIAL" | "CLOSED_RUNNER" | "STOPPED";
 
@@ -44,7 +45,32 @@ export type BangerPositionRow = {
   contract_occ: string;
   entry_premium: number;
   last_mark: number | null;
+  /** When a real quote last landed on this row. NULL = a mark was never observed at all — mirrors
+   *  swing_positions.last_mark_at (see FINDINGS 2026-09-11: this column didn't exist before that fix,
+   *  so every banger-origin position served markAsOf=null forever regardless of true freshness). */
+  last_mark_at: string | null;
   peak_premium: number | null;
+  /** Running MINIMUM mark since entry (MAE — max adverse excursion), latched the same
+   *  GREATEST/LEAST way swing_positions.trough_premium is (see FINDINGS 2026-09-21). Was
+   *  absent from this table entirely until that fix — banger_positions only ever tracked
+   *  peak_premium, so every banger-origin swing position (BANGER-origin rows merged into the
+   *  Swing lane by banger-lane-merge.ts) could never show a Position-card "Trough" or a
+   *  closed-play "Drawdown before outcome" line even when the DB genuinely had the data,
+   *  because the column to hold it never existed upstream. */
+  trough_premium: number | null;
+  /** Live NBBO + greeks carried from the SAME options-unified-snapshot banger-live-sync already
+   *  fetches every tick (see updateBangerQuoteFields below and FINDINGS 2026-10-09) — purely
+   *  additive evidence for the member board / Ask Largo, never read by the scale-out decision
+   *  path (deriveScaleOutAction reads only `mark`). NULL = no quote has landed yet on this row
+   *  (pre-migration row, or a tick where the snapshot had no usable value) — never fabricated. */
+  bid: number | null;
+  ask: number | null;
+  open_interest: number | null;
+  quote_delta: number | null;
+  quote_gamma: number | null;
+  quote_theta: number | null;
+  quote_vega: number | null;
+  quote_iv: number | null;
   scaled_already: boolean;
   scale_out_action: string | null;
   scale_out_reason: string | null;
@@ -79,18 +105,28 @@ export function mapBangerPositionRow(r: QueryResultRow): BangerPositionRow {
   return {
     id: Number(r.id),
     commit_key: String(r.commit_key),
-    session_date: String(r.session_date).slice(0, 10),
+    session_date: isoDateString(r.session_date),
     ticker: String(r.ticker).toUpperCase(),
     discovery_gain: num(r.discovery_gain),
     discovery_vol: num(r.discovery_vol),
     discovery_dollar_vol: num(r.discovery_dollar_vol),
     discovery_close_strength: num(r.discovery_close_strength),
     contract_strike: Number(r.contract_strike),
-    contract_expiry: String(r.contract_expiry).slice(0, 10),
+    contract_expiry: isoDateString(r.contract_expiry),
     contract_occ: String(r.contract_occ),
     entry_premium: Number(r.entry_premium),
     last_mark: num(r.last_mark),
+    last_mark_at: isoTimestampString(r.last_mark_at),
     peak_premium: num(r.peak_premium),
+    trough_premium: num(r.trough_premium),
+    bid: num(r.bid),
+    ask: num(r.ask),
+    open_interest: num(r.open_interest),
+    quote_delta: num(r.quote_delta),
+    quote_gamma: num(r.quote_gamma),
+    quote_theta: num(r.quote_theta),
+    quote_vega: num(r.quote_vega),
+    quote_iv: num(r.quote_iv),
     scaled_already: Boolean(r.scaled_already),
     scale_out_action: r.scale_out_action != null ? String(r.scale_out_action) : null,
     scale_out_reason: r.scale_out_reason != null ? String(r.scale_out_reason) : null,
@@ -99,10 +135,10 @@ export function mapBangerPositionRow(r: QueryResultRow): BangerPositionRow {
     realized_pnl_usd: num(r.realized_pnl_usd),
     entry_context: jsonbToObject(r.entry_context),
     status: (r.status as BangerStatus) ?? "OPEN",
-    first_seen_at: String(r.first_seen_at),
-    committed_at: r.committed_at != null ? String(r.committed_at) : null,
-    closed_at: r.closed_at != null ? String(r.closed_at) : null,
-    updated_at: String(r.updated_at),
+    first_seen_at: isoTimestampString(r.first_seen_at) ?? "",
+    committed_at: isoTimestampString(r.committed_at),
+    closed_at: isoTimestampString(r.closed_at),
+    updated_at: isoTimestampString(r.updated_at) ?? "",
   };
 }
 
@@ -124,6 +160,22 @@ const BANGER_PINNED_COLUMNS = [
  * Insert (or idempotently re-touch) a committed banger position. Upserts on commit_key so a re-running
  * discovery scan lands on the SAME row; every identity + commit-time column is COALESCE-pinned
  * first-write-wins. Returns the position id.
+ *
+ * SEV-2 FIX (Ask Largo/Night Hawk Swings standing mandate, 2026-10-15): peak_premium/trough_premium
+ * used to be left NULL here and only started accumulating on the FIRST successful
+ * updateBangerLiveState latch — which seeds them from COALESCE(peak_premium, $3)/(trough_premium, $3),
+ * i.e. the first OBSERVED MARK, never entry_premium. A contract that gapped against its position
+ * before that first tick ever sampled it therefore seeded peak_premium BELOW its own entry (or
+ * trough_premium ABOVE it) — arithmetically impossible for a watermark meant to bracket the
+ * contract's whole life since entry, since the entry fill itself IS an observed mark of that
+ * contract. This is the EXACT SAME shape FINDINGS 2026-08-06 already fixed on swing_positions
+ * (insertSwingPosition seeds both from entry_premium, db.ts) — never ported to this sibling table.
+ * Live proof 2026-10-15 (Ask Largo play-brief sweep): 7 real committed rows (SLS/METU/SNXX/MUU/
+ * ALAB/CBRS/WDC) showed peak_premium < entry_premium and 2 (ORKA/SOXS) showed
+ * trough_premium > entry_premium. Seeding both from entry_premium here (not added to
+ * BANGER_PINNED_COLUMNS below — the ratchet owns them after insert, same as swing_positions) closes
+ * the gap for every NEWLY committed position going forward; ensureSchema's boot-time backfill
+ * (db.ts, mirroring the swing_positions one) repairs rows written before this fix.
  */
 export async function insertBangerPosition(pos: BangerPositionInsert): Promise<number> {
   const res = await dbQuery<{ id: string }>(
@@ -131,9 +183,9 @@ export async function insertBangerPosition(pos: BangerPositionInsert): Promise<n
     INSERT INTO banger_positions (
       commit_key, session_date, ticker, discovery_gain, discovery_vol, discovery_dollar_vol,
       discovery_close_strength, contract_strike, contract_expiry, contract_occ, entry_premium,
-      entry_context, status, committed_at, updated_at
+      entry_context, status, peak_premium, trough_premium, committed_at, updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,'OPEN',NOW(),NOW()
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,'OPEN',$11,$11,NOW(),NOW()
     )
     ON CONFLICT (commit_key) DO UPDATE SET
       ${BANGER_PINNED_COLUMNS.map((c) => `${c} = COALESCE(banger_positions.${c}, EXCLUDED.${c})`).join(",\n      ")},
@@ -186,7 +238,16 @@ export async function updateBangerLiveState(id: number, s: BangerLiveStateUpdate
          ELSE $2
        END,
        last_mark = COALESCE($3, last_mark),
+       -- Same stamp discipline as updateSwingLiveState's last_mark_at: only advance it on a tick
+       -- that actually delivered a fresh mark ($3 IS NOT NULL), never on a status-only/scale-out-only
+       -- write — otherwise "last touched" would masquerade as "last quoted" (FINDINGS 2026-09-11).
+       last_mark_at = CASE WHEN $3 IS NOT NULL THEN NOW() ELSE last_mark_at END,
        peak_premium = CASE WHEN $3 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $3), $3) ELSE peak_premium END,
+       -- FINDINGS 2026-09-21 (Ask Largo/swing audit): peak_premium ratcheted up on every mark but
+       -- there was no LEAST-latched counterpart, so banger_positions could never answer "how far
+       -- underwater did this position get" — mirrors updateSwingLiveState's identical
+       -- peak/trough pair in db.ts.
+       trough_premium = CASE WHEN $3 IS NOT NULL THEN LEAST(COALESCE(trough_premium, $3), $3) ELSE trough_premium END,
        scaled_already = scaled_already OR COALESCE($4, FALSE),
        scale_out_action = COALESCE($5, scale_out_action),
        scale_out_reason = COALESCE($6, scale_out_reason),
@@ -213,6 +274,57 @@ export async function updateBangerLiveState(id: number, s: BangerLiveStateUpdate
   );
 }
 
+export type BangerQuoteFieldsUpdate = {
+  bid?: number | null;
+  ask?: number | null;
+  openInterest?: number | null;
+  delta?: number | null;
+  gamma?: number | null;
+  theta?: number | null;
+  vega?: number | null;
+  iv?: number | null;
+};
+
+/**
+ * Carry the live NBBO + greeks onto a banger position — PURELY ADDITIVE evidence, same discipline
+ * as `banger_quote_tick_log` (quote-tick-log.ts): best-effort, fire-and-forget, never on the
+ * scale-out decision path (updateBangerLiveState above remains the sole writer of `mark`/status/
+ * realized P&L). See FINDINGS 2026-10-09 / migration 017 for why this exists — banger-live-sync's
+ * cron already fetches this exact snapshot every tick for the quote-tick log; this just stops
+ * throwing the rest of it away for the LIVE row.
+ *
+ * Unlike updateBangerLiveState's COALESCE/ratchet semantics, this is a plain overwrite: a quote
+ * field represents "the market right now", not a running extremum, so a field absent on THIS tick
+ * (e.g. the provider stopped quoting bid/ask momentarily but still returned greeks) is written as
+ * NULL rather than silently preserving a stale prior value that would misrepresent the current
+ * tick as quoted when it was not.
+ */
+export async function updateBangerQuoteFields(id: number, q: BangerQuoteFieldsUpdate): Promise<void> {
+  await dbQuery(
+    `UPDATE banger_positions SET
+       bid = $2,
+       ask = $3,
+       open_interest = $4,
+       quote_delta = $5,
+       quote_gamma = $6,
+       quote_theta = $7,
+       quote_vega = $8,
+       quote_iv = $9
+     WHERE id = $1`,
+    [
+      id,
+      q.bid ?? null,
+      q.ask ?? null,
+      q.openInterest ?? null,
+      q.delta ?? null,
+      q.gamma ?? null,
+      q.theta ?? null,
+      q.vega ?? null,
+      q.iv ?? null,
+    ],
+  );
+}
+
 /** Every live (non-terminal) banger position — the live-sync loop's working set. */
 export async function fetchOpenBangerPositions(): Promise<BangerPositionRow[]> {
   const res = await dbQuery<QueryResultRow>(
@@ -233,10 +345,19 @@ export async function fetchOpenBangerPositions(): Promise<BangerPositionRow[]> {
  * Measured 2026-08-10: Largo reported "40 open positions" in one answer and "20 open positions" in
  * another ~60 seconds later, because it was reading a page-limited tally through a field named
  * `open_count`.
+ *
+ * ALSO filters `contract_expiry >= today` (ET) — status alone is not enough. A row can sit in
+ * `PARTIAL`/`OPEN` past its own contract's expiry whenever `runBangerLiveSync` hasn't ticked it
+ * since expiring (e.g. a quote gap right at the boundary); until that tick runs, this is a REAL,
+ * live bug symptom, not a hypothetical: KLAC/LRCX/SOXL each reported "already holding 8 same-
+ * direction positions" in theme "semis" when 3 of the 8 were already-expired rows still reading as
+ * open (2026-09-28). No other consumer of this function needs the raw count — see
+ * `fetchBangerOpenBookRowsSettled`'s header for the one consumer that does need the unfiltered set.
  */
 export async function fetchBangerOpenCount(): Promise<number> {
   const res = await dbQuery<{ n: string }>(
-    `SELECT count(*)::text AS n FROM banger_positions WHERE status IN ('OPEN','PARTIAL')`,
+    `SELECT count(*)::text AS n FROM banger_positions WHERE status IN ('OPEN','PARTIAL') AND contract_expiry >= $1::date`,
+    [todayEt()],
   );
   const n = Number(res.rows[0]?.n ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -250,14 +371,144 @@ export async function fetchBangerBoardRows(limit = 60): Promise<BangerPositionRo
   return res.rows.map(mapBangerPositionRow);
 }
 
-/** Open-book rows only — use for live marks and horizon merge (not page-limited all-status scans). */
-export async function fetchBangerOpenBookRows(limit = 80): Promise<BangerPositionRow[]> {
+/**
+ * Open-book rows only — use for live marks, horizon merge, book-context concentration, and
+ * identity resolution (not page-limited all-status scans).
+ *
+ * `limit` is OPTIONAL and, when omitted, the query carries NO `LIMIT` clause at all — every
+ * real OPEN/PARTIAL row is returned. Unlike `fetchBangerBoardRows`'s closed history (unbounded
+ * lifetime, genuinely needs paging), the open set is a fixed-in-time snapshot of currently-live
+ * positions — the exact same "must never page out from under a live holding" principle
+ * `fetchBangerClosedBoardRows`'s own doc comment already states for this side of the split.
+ *
+ * FIX (Ask Largo standing mandate, live-verified 2026-09-23): every call site previously passed
+ * a hardcoded `limit=80`, which silently truncated the real open book the moment true open
+ * positions exceeded 80 — measured live at 168 real open banger_positions rows (`ORDER BY
+ * session_date DESC, id DESC` means the OLDEST ~88 positions, the ones open longest, were the
+ * ones dropped). This is the exact same page-limited-truncation shape already fixed once for
+ * `fetchBangerBoardRows` (FINDINGS.md, "GET /api/banger/board hardcodes limit=60... an
+ * older-but-still-OPEN position ages out of the shared window and silently vanishes from the
+ * board, even though it is a real, live holding") — this function's own OPEN-only filter meant
+ * it looked immune to that class of bug, but a hardcoded LIMIT truncates just as surely as a
+ * mixed-status page does once the open count grows past it. Confirmed impact: the Swing Command
+ * board (`horizons/route.ts`), live marks (`live-marks-active.ts`), book-context concentration
+ * (`play-brief-context.ts`), identity resolution (`play-brief-resolve.ts`), and the Banger board
+ * itself (`banger/board/route.ts`) all silently dropped ~85-88 real, currently-open member
+ * positions — the Swing lane board reported 85 committed positions where 171 (3 native + 168
+ * banger) actually exist.
+ */
+export async function fetchBangerOpenBookRows(limit?: number): Promise<BangerPositionRow[]> {
+  const res =
+    limit != null
+      ? await dbQuery<QueryResultRow>(
+          `SELECT * FROM banger_positions
+           WHERE status IN ('OPEN','PARTIAL')
+           ORDER BY session_date DESC, id DESC
+           LIMIT $1`,
+          [limit],
+        )
+      : await dbQuery<QueryResultRow>(
+          `SELECT * FROM banger_positions
+           WHERE status IN ('OPEN','PARTIAL')
+           ORDER BY session_date DESC, id DESC`,
+        );
+  return res.rows.map(mapBangerPositionRow);
+}
+
+/**
+ * Same as `fetchBangerOpenBookRows`, plus `contract_expiry >= today` (ET) — for every consumer
+ * that only ever COUNTS or LISTS a row as "open" and never writes to it. Deliberately a SEPARATE
+ * function rather than adding the filter to `fetchBangerOpenBookRows` itself: `live-marks-active.ts`
+ * calls that one specifically BECAUSE it needs to see an already-expired OPEN/PARTIAL row — it
+ * applies its own `occAlreadyExpired` guard afterward so it can still force-settle a row sitting
+ * past expiry, and filtering here would hide exactly the rows it exists to catch.
+ *
+ * Every other consumer (the Swing Command board, the Banger board itself, book-context
+ * concentration, legacy serving-lane resolution) has no such need and was reading a real, live
+ * defect: a `banger_positions` row can sit in `PARTIAL`/`OPEN` past its own contract's expiry
+ * whenever `runBangerLiveSync` hasn't force-settled it yet, and every one of those reads counted it
+ * as a currently-held position. Measured 2026-09-28: KLAC/LRCX/SOXL each reported "already holding
+ * 8 same-direction positions" in theme "semis" via `play-brief-context.ts`'s book-context check —
+ * 3 of the 8 were rows already past `contract_expiry`, inflating a real concentration gate off
+ * stale state. `GET /api/market/swing/record`'s `summary.bangerOpens` showed the identical
+ * inflation (61 reported == 61 raw unfiltered, confirming the gap reaches the member-facing count
+ * too, not just the internal concentration check).
+ */
+export async function fetchBangerOpenBookRowsSettled(limit?: number): Promise<BangerPositionRow[]> {
+  const today = todayEt();
+  const res =
+    limit != null
+      ? await dbQuery<QueryResultRow>(
+          `SELECT * FROM banger_positions
+           WHERE status IN ('OPEN','PARTIAL') AND contract_expiry >= $2::date
+           ORDER BY session_date DESC, id DESC
+           LIMIT $1`,
+          [limit, today],
+        )
+      : await dbQuery<QueryResultRow>(
+          `SELECT * FROM banger_positions
+           WHERE status IN ('OPEN','PARTIAL') AND contract_expiry >= $1::date
+           ORDER BY session_date DESC, id DESC`,
+          [today],
+        );
+  return res.rows.map(mapBangerPositionRow);
+}
+
+/**
+ * Closed rows only, newest first — the member board's "recently closed" section. Unlike open
+ * positions (unbounded lifetime, must never be paged out from under a live holding), the closed
+ * history genuinely grows without bound and paging it is correct — this is the SAME truncation
+ * `fetchBangerBoardRows` used to apply to BOTH statuses at once, kept here for the side where it's
+ * actually the right call.
+ *
+ * FIX (Ask Largo standing mandate, live-verified 2026-09-23): this used to sort by `session_date
+ * DESC, id DESC` — ENTRY-time recency, not CLOSE-time recency — despite this doc comment's own
+ * claim of "newest first" meaning most recently closed. Those diverge hard: PR #5468 (this same
+ * session) fixed 41 banger_positions rows stuck OPEN/PARTIAL with an already-expired contract
+ * (oldest 40 days past expiry, session_date back in July). Once deployed, the live-sync cron's
+ * first RTH tick genuinely closed them (`fetchBangerOpenCount()` confirmed 168 -> 123, a real DB
+ * write) — but NONE appeared in this route's 60-row window, because every one of them has an OLD
+ * session_date and the old sort put September's freshly-OPENED (but not yet closed) entries ahead
+ * of July's freshly-CLOSED ones. A member reading "recently closed" saw only this week's entries
+ * and never learned a month-old zombie position had finally resolved. Sorting by `closed_at`
+ * (which `updateBangerLiveState` always stamps via `COALESCE(closed_at, NOW())` the moment a row
+ * transitions to CLOSED_RUNNER/STOPPED — see that function) fixes this directly; `id DESC` stays
+ * as the tiebreak for two rows closing in the same instant.
+ */
+export async function fetchBangerClosedBoardRows(limit = 60): Promise<BangerPositionRow[]> {
   const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM banger_positions
-     WHERE status IN ('OPEN','PARTIAL')
-     ORDER BY session_date DESC, id DESC
+     WHERE status IN ('CLOSED_RUNNER','STOPPED')
+     ORDER BY closed_at DESC, id DESC
      LIMIT $1`,
     [limit],
+  );
+  return res.rows.map(mapBangerPositionRow);
+}
+
+/**
+ * FULL closed-position history for offline analysis (Ask Largo standing mandate, 2026-09-25 —
+ * operator directive to build discovery-edge instrumentation for Engine B before touching any
+ * selection threshold). `fetchBangerClosedBoardRows` is deliberately page-limited for the member
+ * board (60 rows is the right UI window); an edge study needs EVERY closed row since a `since`
+ * date, not a recency-truncated page — same "unbounded when the caller needs the whole population"
+ * principle `fetchBangerOpenBookRows`'s own doc comment already states for the open side, applied
+ * here to the closed side for the one legitimate reason to want it unbounded: research, not display.
+ * `since` filters on `closed_at` (when the OUTCOME was known), not `session_date` (when the position
+ * was entered) — a position entered near the study's start but held for weeks would otherwise be
+ * silently excluded even though its outcome landed well inside the window.
+ */
+export async function fetchBangerClosedExportRows(
+  since: string,
+  limit = 5000,
+): Promise<BangerPositionRow[]> {
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM banger_positions
+     WHERE status IN ('CLOSED_RUNNER','STOPPED')
+       AND closed_at >= $1
+     ORDER BY closed_at ASC, id ASC
+     LIMIT $2`,
+    [since, limit],
   );
   return res.rows.map(mapBangerPositionRow);
 }

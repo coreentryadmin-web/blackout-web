@@ -1,10 +1,8 @@
 /**
- * VECTOR CONTRACT PICKS — public types + legacy entry for callers that only have bias/conviction.
- * Prefer `rankVectorPlayCandidates` with full `VectorPlayPickContext` for the ranked 1–3 system.
+ * VECTOR CONTRACT PICKS — public types + entry for the ranked 1–3 system.
+ * Use `rankVectorPlayCandidates` with full `VectorPlayPickContext`.
  */
 import type { EditionChainData } from "@/features/nighthawk/lib/option-chain-prompt";
-import type { VectorPlayBias } from "./vector-play-engine";
-import type { VectorDteHorizon } from "./vector-dte-horizon";
 import {
   rankVectorPlayCandidates,
   VECTOR_CANDIDATE_POOL_SIZE,
@@ -60,43 +58,3 @@ export function buildRankedVectorPicks(
 }
 
 export { VECTOR_CANDIDATE_POOL_SIZE, type RankVectorPlayCandidatesOptions };
-
-/** Legacy shim: bias-only input → ranked picks with synthetic play shell. */
-export function buildVectorContractPicks(
-  play: { bias: VectorPlayBias; conviction: number; style?: "scalp" | "swing" | "position"; grade?: "A" | "B" | "C"; headline?: string; thesis?: string; entryZone?: string; targets?: string[] } | null,
-  chain: EditionChainData | null,
-  _horizon: VectorDteHorizon
-): VectorContractPick[] {
-  if (!play || !chain || play.bias === "neutral") return [];
-  const spot = chain.spot;
-  if (!(spot > 0)) return [];
-
-  const ctx: VectorPlayPickContext = {
-    play: {
-      style: play.style ?? "swing",
-      bias: play.bias,
-      setup:
-        play.bias === "long"
-          ? "momentum-long"
-          : play.bias === "short"
-            ? "momentum-short"
-            : play.bias === "range"
-              ? "range"
-              : "stand-aside",
-      conviction: play.conviction,
-      grade: play.grade ?? "B",
-      headline: play.headline ?? `${play.bias} setup`,
-      thesis: play.thesis ?? "",
-      entryZone: play.entryZone,
-      targets: play.targets ?? [],
-      starred: [],
-    },
-    spot,
-    callWall: null,
-    putWall: null,
-    magnetStrike: null,
-    platformInputs: null,
-  };
-
-  return rankVectorPlayCandidates(ctx, chain);
-}

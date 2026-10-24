@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { clsx } from "clsx";
 
 export type VectorBoardDetailTab = "overview" | "path" | "timeline" | "desk";
@@ -35,8 +34,4 @@ export function VectorBoardDetailTabs({
       ))}
     </nav>
   );
-}
-
-export function useVectorBoardDetailTab(defaultTab: VectorBoardDetailTab = "overview") {
-  return useState<VectorBoardDetailTab>(defaultTab);
 }

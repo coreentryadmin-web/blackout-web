@@ -702,10 +702,18 @@ export function deriveWatchLevels(s: SpxVoiceSnapshot, max = 3): SpxWatchLevel[]
           label: "PDL",
           level: s.pdl,
           tone: "bear",
+          // BUG FIX (2026-10-14, Ask Largo standing mandate): the `side !== "below"` branch
+          // (price has ALREADY broken DOWN through PDL, so PDL now sits overhead) used to read
+          // "yesterday's low reclaimed — holding above it repairs the damage" — a RECLAIM
+          // narrative, self-contradicting the very state that triggers it (price still BELOW
+          // PDL, not back above it). Likely inherited from LOD's own symmetric branch below,
+          // which is safe only because LOD is tautologically <= price (that branch is near-
+          // unreachable there) — PDL has no such bound, so the "already broken" case is real and
+          // common. Mirrors PDH's correct "now support" branch for the breakdown direction.
           meaning: (side) =>
             side === "below"
               ? "lose it and it's a multi-day breakdown — longs above become supply"
-              : "yesterday's low reclaimed — holding above it repairs the damage",
+              : "yesterday's low is now resistance — reclaiming it would repair the damage",
         }
       : null
   );

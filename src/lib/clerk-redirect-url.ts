@@ -8,6 +8,21 @@
 
 const STAGING_ORIGIN = "https://staging.blackouttrades.com";
 
+/**
+ * Next.js `searchParams` yields a `string[]` for a repeated query key (e.g.
+ * `?redirect_url=a&redirect_url=b`) even though route `Props` types commonly
+ * (and incorrectly) declare it as a bare `string` — `tsc` cannot catch the
+ * mismatch since the declared type is just wrong, not unsound given its own
+ * premise. A `.trim()` on the array crashes with a real, live-observed
+ * `TypeError: a?.trim is not a function` on `/sign-up` and `/sign-in`. Always
+ * take the first value, same as `URLSearchParams.get()` already does for the
+ * one caller (middleware) that isn't reading from `searchParams` directly.
+ */
+function firstRedirectParam(raw: string | string[] | undefined | null): string | undefined {
+  if (Array.isArray(raw)) return raw[0];
+  return raw ?? undefined;
+}
+
 /** True for `/dashboard`, `/flows?x=1`; false for `https://…`, `//evil.com`, bare paths. */
 export function isSafeAppRelativePath(raw: string): boolean {
   return raw.startsWith("/") && !raw.startsWith("//");
@@ -59,8 +74,8 @@ export function clerkStagingReturnPath(raw: string | undefined | null): string {
 }
 
 /** Post-auth destination: explicit redirect_url wins; otherwise the unified marketing home. */
-export function clerkPostAuthReturnPath(raw: string | undefined | null): string {
-  const trimmed = raw?.trim();
+export function clerkPostAuthReturnPath(raw: string | string[] | undefined | null): string {
+  const trimmed = firstRedirectParam(raw)?.trim();
   if (!trimmed) return CLERK_DEFAULT_POST_AUTH_PATH;
   return clerkStagingReturnPath(trimmed);
 }

@@ -194,23 +194,6 @@ function dedupeEvents(events: MacroEvent[]): MacroEvent[] {
   return out.slice(0, 8);
 }
 
-/** Resolve today's macro catalysts from curated schedule + headline keywords. */
-export async function resolveMacroEventsToday(input: {
-  headlines?: Array<{ title?: string }>;
-}): Promise<{ events: MacroEvent[]; source: "static" | "headlines" | "none" }> {
-  const staticHits = staticMacroToday();
-  if (staticHits.length > 0) {
-    return { events: staticHits, source: "static" };
-  }
-
-  const fromNews = macroFromHeadlines(input.headlines);
-  if (fromNews.length > 0) {
-    return { events: fromNews, source: "headlines" };
-  }
-
-  return { events: [], source: "none" };
-}
-
 /** Merge static schedule + headline keywords for desk macro rail. */
 export async function mergeMacroEventsToday(input: {
   headlines?: Array<{ title?: string }>;
@@ -295,9 +278,21 @@ const HIGH_IMPACT_REPORT_RE = /CPI|payroll|nonfarm|PCE|PPI|retail|ISM|unemploy|c
 
 /** Map UW economic-calendar rows → MacroEvent[]. Defensive per-row (a malformed row is
  *  dropped, never throws). FOMC label is byte-identical to the literal so dedupe keys and
- *  the EXPECTED_FOMC canary stay aligned. */
+ *  the EXPECTED_FOMC canary stay aligned.
+ *
+ *  GAP FOUND (Ask Largo standing mandate, 2026-10-11): this used to push every row 1:1 with no
+ *  dedup at all. Live repro: `GET /api/market/meridian/timeline?days=14` returned 20 genuinely
+ *  duplicate item ids out of 321 (e.g. `macro:2026-10-13:Monthly-Treasury-Balance` twice,
+ *  `macro:2026-10-14:CPI` twice) — the upstream UW economic-calendar feed itself returns the
+ *  same (date, event) release more than once for a subset of rows. `buildMeridianTimeline`'s own
+ *  id scheme (`macro:<date>:<event-slug>`) already treats (date, event) as the unique identity
+ *  for a macro item — downstream code has no narrower key to dedupe on even if it wanted to — so
+ *  deduping here, at the one place this provider turns raw rows into `MacroEvent`s, is the
+ *  correct boundary: it can never collapse two genuinely distinct releases, since the system's
+ *  own identity model already doesn't distinguish them. */
 export function parseUwEconomicCalendar(rows: Record<string, unknown>[]): MacroEvent[] {
   const out: MacroEvent[] = [];
+  const seen = new Set<string>();
   for (const r of rows) {
     try {
       const type = String(r.type ?? "").toLowerCase().trim();
@@ -337,6 +332,10 @@ export function parseUwEconomicCalendar(rows: Record<string, unknown>[]): MacroE
         event = rawEvent;
         impact = HIGH_IMPACT_REPORT_RE.test(rawEvent) ? "high" : "medium";
       }
+
+      const dedupeKey = `${date}|${event}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
 
       out.push({
         time: isoUtcToEtHhmm(timeIso),

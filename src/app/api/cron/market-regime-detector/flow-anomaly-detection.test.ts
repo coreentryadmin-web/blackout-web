@@ -319,6 +319,42 @@ test("a non-zero premium that rounds to $0.0M is shown as <$0.1M, not as zero", 
   assert.doesNotMatch(skew!.detail, /\$0\.0M/);
 });
 
+// ---------------------------------------------------------------------------
+// THE STATED RATIO MUST RECONCILE WITH THE TWO ROUNDED $ AMOUNTS SHOWN BESIDE IT.
+//
+// skewDetail() printed `${ratio.toFixed(0)}:1` computed from the EXACT, unrounded premiums,
+// while the dollar amounts next to it (`millions()`) round each side independently to 1 decimal.
+// A member who does the mental math from the two numbers actually shown gets a DIFFERENT ratio
+// than the one stated — live repro 2026-10-13 (MSTR flow anomaly): "extreme call skew (29:1
+// call/put) — $1.6M calls vs $0.1M puts" (1.6/0.1 = 16, not 29). Same failure shape the module's
+// own 99:1-sentinel fix above already named: a number presented as a measurement that does not
+// match the evidence displayed beside it is a wrong number, even when the underlying precise
+// ratio used for gating is correct.
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: the printed ratio reconciles with the rounded $ amounts shown beside it", async () => {
+  const { detectFlowAnomalies } = await mod();
+  resetState();
+  // Exact ratio is 1,600,000 / 55,000 = 29.09 ("29:1"), but both premiums round to $1.6M/$0.1M
+  // for display — a reader redoing the math from what's actually shown gets 16:1, not 29:1.
+  state.rows = [
+    row({ ticker: "MSTR", premium: 1_600_000, option_type: "call" }),
+    row({ ticker: "MSTR", premium: 55_000, option_type: "put" }),
+  ];
+
+  const anomalies = await detectFlowAnomalies();
+  const skew = anomalies.find((a) => a.type === "DIRECTIONAL_FLOW_SKEW");
+  assert.ok(skew);
+  assert.match(skew!.detail, /\$1\.6M calls vs \$0\.1M puts/, "sanity: the displayed amounts are as expected");
+  assert.match(
+    skew!.detail,
+    /extreme call skew \(16:1 call\/put\)/,
+    "the printed ratio must match the two rounded $ amounts shown next to it (1.6M / 0.1M = 16), not the unrounded 29:1"
+  );
+  // Gating and the persisted metric stay on the PRECISE ratio — only the member-facing text changes.
+  assert.equal(skew!.metric_value, Math.round((1_600_000 / 55_000) * 100) / 100);
+});
+
 test("REGRESSION: gating and metric_value are untouched by the wording change", async () => {
   const { detectFlowAnomalies, ONE_SIDED_RATIO } = await mod();
   resetState();

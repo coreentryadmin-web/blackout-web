@@ -162,15 +162,21 @@ async function measureTruncation(session, tool, toolArgs, base) {
 async function main() {
   let session;
   let userId;
+  let cleanupFn = null;
 
   try {
     log("Starting Largo truncation measurement...");
     log(`Base URL: ${BASE}`);
 
     // Mint session
-    const { cookie, user_id } = await mintClerkPremiumSession();
-    session = { cookie };
-    userId = user_id;
+    const minted = await mintClerkPremiumSession({ appUrl: BASE });
+    if (!minted || minted.skip) {
+      console.error(`SKIP — could not mint a Clerk session: ${minted?.reason ?? "unknown"}`);
+      process.exit(2);
+    }
+    session = { cookie: minted.cookieHeader };
+    userId = minted.userId;
+    cleanupFn = minted.cleanup;
 
     log(`Authenticated as temp user ${userId}`);
 
@@ -275,8 +281,9 @@ async function main() {
     );
     log("Detailed measurements saved to docs/audit/LARGO-TRUNCATION-MEASUREMENTS.json");
   } finally {
-    if (userId) {
+    if (cleanupFn) {
       log(`Cleanup: deleting temp user ${userId}`);
+      await cleanupFn().catch(() => {});
     }
   }
 }

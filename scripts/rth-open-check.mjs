@@ -11,7 +11,12 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
-import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
+import {
+  createAuditClient,
+  resolveAuditDbUrl,
+  describeConnectError,
+  isTransientAuditPgError,
+} from "./pg-audit.mjs";
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
@@ -51,6 +56,58 @@ function shouldAgentRun(now = new Date()) {
   return mins >= 9 * 60;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const PG_RTH_MAX_ATTEMPTS = Math.max(1, Number(process.env.RTH_PG_CHECK_ATTEMPTS ?? 3) || 3);
+
+/** Run writer-freshness SQL checks; throws on connect/query errors (caller handles retry/skip). */
+async function postgresRthWriterChecks(c) {
+  const eval15 = (
+    await c.query(
+      `SELECT COUNT(*)::int AS n FROM cron_job_runs
+       WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+    )
+  ).rows[0].n;
+  if (eval15 <= 0) throw new Error("spx-evaluate: no ok run in last 20m during RTH");
+
+  const regime15 = (
+    await c.query(
+      `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
+    )
+  ).rows[0].n;
+  if (regime15 <= 0) throw new Error("market_regime: no writes in last 20m during RTH");
+
+  const dc = await c.query(
+    `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
+  );
+  const latest = dc.rows[0];
+  if (latest?.status !== "ok") {
+    throw new Error(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
+  }
+
+  const ph = await c.query(
+    `SELECT status, started_at FROM cron_job_runs
+     WHERE job_key = 'provider-health-reconcile'
+     ORDER BY started_at DESC LIMIT 1`
+  );
+  const phRow = ph.rows[0];
+  if (phRow?.status !== "ok" && phRow?.status !== "skipped") {
+    throw new Error(`provider-health-reconcile latest: ${phRow?.status ?? "never"}`);
+  }
+
+  const grid15 = (
+    await c.query(
+      `SELECT COUNT(*)::int AS n FROM cron_job_runs
+       WHERE job_key = 'zerodte-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
+    )
+  ).rows[0].n;
+  if (grid15 <= 0) throw new Error("zerodte-warm: no ok run in last 20m during RTH");
+
+  return { eval15, regime15, grid15, phStatus: phRow.status };
+}
+
 async function main() {
   const now = new Date();
   const et = etParts(now);
@@ -77,14 +134,17 @@ async function main() {
     process.exit(1);
   }
 
+  const ymd = todayEtYmd(now);
+  if (!force && !isTradingDayEt(ymd)) {
+    console.log(
+      `\n${ymd} is a US equity market holiday — skipping RTH session checks (no open to validate).`
+    );
+    console.log("\nGREEN — RTH-open validation passed (market holiday).\n");
+    return;
+  }
+
   if (force || inRthOpenWindow(now)) {
-    const tradingDay = isTradingDayEt(todayEtYmd(now));
     console.log("\n2. RTH session checks");
-    if (!tradingDay) {
-      console.log(
-        `  ⚠ ${todayEtYmd(now)} is not a US equity trading session (market holiday) — skipping writer/regime freshness checks`
-      );
-    }
     const dbUrl = resolveAuditDbUrl();
 
     const failures = [];
@@ -94,65 +154,43 @@ async function main() {
       console.log(`  ✗ ${m}`);
     };
     if (dbUrl) {
-      try {
+      let pgDone = false;
+      for (let attempt = 1; attempt <= PG_RTH_MAX_ATTEMPTS && !pgDone; attempt++) {
         const c = createAuditClient(dbUrl);
-        await c.connect();
-
-        if (tradingDay) {
-          const eval15 = (
-            await c.query(
-              `SELECT COUNT(*)::int AS n FROM cron_job_runs
-               WHERE job_key = 'spx-evaluate' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-            )
-          ).rows[0].n;
-          if (eval15 > 0) ok(`spx-evaluate ran in last 20m (${eval15} ok run(s))`);
-          else fail("spx-evaluate: no ok run in last 20m during RTH");
-
-          const regime15 = (
-            await c.query(
-              `SELECT COUNT(*)::int AS n FROM market_regime WHERE captured_at > NOW() - INTERVAL '20 minutes'`
-            )
-          ).rows[0].n;
-          if (regime15 > 0) ok(`market_regime fresh (writes last 20m: ${regime15})`);
-          else fail("market_regime: no writes in last 20m during RTH");
-        }
-
-        const dc = await c.query(
-          `SELECT status, message FROM cron_job_runs WHERE job_key = 'data-correctness' ORDER BY started_at DESC LIMIT 1`
-        );
-        const latest = dc.rows[0];
-        if (latest?.status === "ok") ok("data-correctness latest run ok");
-        else fail(`data-correctness latest: ${latest?.status ?? "?"} — ${latest?.message ?? ""}`);
-
-        const ph = await c.query(
-          `SELECT status, started_at FROM cron_job_runs
-           WHERE job_key = 'provider-health-reconcile'
-           ORDER BY started_at DESC LIMIT 1`
-        );
-        const phRow = ph.rows[0];
-        if (phRow?.status === "ok" || phRow?.status === "skipped") {
-          ok(`provider-health-reconcile latest ${phRow.status}`);
-        } else {
-          fail(`provider-health-reconcile latest: ${phRow?.status ?? "never"}`);
-        }
-
-        if (tradingDay) {
-          const grid15 = (
-            await c.query(
-              `SELECT COUNT(*)::int AS n FROM cron_job_runs
-               WHERE job_key = 'zerodte-warm' AND started_at > NOW() - INTERVAL '20 minutes' AND status = 'ok'`
-            )
-          ).rows[0].n;
-          if (grid15 > 0) ok(`zerodte-warm ran in last 20m (${grid15} ok run(s))`);
-          else fail("zerodte-warm: no ok run in last 20m during RTH");
-        }
-
-        await c.end();
-      } catch (e) {
-        if (isPrivateDbUnreachableError(e.message)) {
-          console.log(`  ⚠ Postgres unreachable from this host — skipping RTH writer checks: ${e.message}`);
-        } else {
-          fail(`Postgres RTH checks: ${e.message}`);
+        try {
+          await c.connect();
+          const stats = await postgresRthWriterChecks(c);
+          ok(`spx-evaluate ran in last 20m (${stats.eval15} ok run(s))`);
+          ok(`market_regime fresh (writes last 20m: ${stats.regime15})`);
+          ok("data-correctness latest run ok");
+          ok(`provider-health-reconcile latest ${stats.phStatus}`);
+          ok(`zerodte-warm ran in last 20m (${stats.grid15} ok run(s))`);
+          await c.end();
+          pgDone = true;
+        } catch (e) {
+          try {
+            await c.end();
+          } catch {
+            /* ignore */
+          }
+          const detail = describeConnectError(e);
+          const transient = isTransientAuditPgError(e);
+          if (transient && attempt < PG_RTH_MAX_ATTEMPTS) {
+            console.log(
+              `  ⚠ Postgres RTH checks transient error (attempt ${attempt}/${PG_RTH_MAX_ATTEMPTS}): ${detail} — retrying…`
+            );
+            await sleep(1500 * attempt);
+            continue;
+          }
+          if (transient) {
+            console.log(
+              `  ⚠ Postgres unreachable/transient from this host — skipping RTH writer checks: ${detail}`
+            );
+            pgDone = true;
+            continue;
+          }
+          fail(`Postgres RTH checks: ${detail}`);
+          pgDone = true;
         }
       }
     } else {
@@ -181,20 +219,20 @@ async function main() {
             clearTimeout(socketTimer);
           }
         },
-        onRetry: (attempt, detail) =>
-          console.log(`  ⚠ options-socket (attempt ${attempt}/3): ${detail} — retrying…`),
+        onRetry: (attempt, detail) => {
+          console.log(`  ⚠ options-socket (attempt ${attempt}/3): ${detail} — retrying…`);
+        },
       });
       if (socketResult.preOpenWarn?.includes("CRON_SECRET")) {
         console.log(
           "  ⚠ options-socket probe HTTP 401 — CRON_SECRET in this env may not match prod (ECS crons unaffected)"
         );
-      } else if (socketResult.failure) {
-        fail(socketResult.failure);
       } else if (socketResult.preOpenWarn) {
-        console.log(`  ⚠ options-socket: pre-09:30 — ${socketResult.preOpenWarn}`);
-      } else {
-        ok(`options-socket: ${socketResult.successDetail ?? "ok"}`);
+        console.log(`  ⚠ options-socket: ${socketResult.preOpenWarn}`);
+      } else if (socketResult.successDetail) {
+        ok(`options-socket: ${socketResult.successDetail}`);
       }
+      if (socketResult.failure) fail(socketResult.failure);
     } else {
       console.log("  ⚠ CRON_SECRET unset — skipping options-socket HTTP probe");
     }

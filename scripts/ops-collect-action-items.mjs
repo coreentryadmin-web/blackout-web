@@ -24,7 +24,12 @@ import {
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
-import { shouldRetryWatchdogFetch, watchdogHttpPriority, shouldPageNighthawkZeroPlays } from "./audit/lib/ops-collect-scope.mjs";
+import {
+  shouldRetryWatchdogFetch,
+  watchdogHttpPriority,
+  shouldPageNighthawkZeroPlays,
+  originHealthFailurePriority,
+} from "./audit/lib/ops-collect-scope.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -195,6 +200,22 @@ async function fetchWithTimeout(url, headers, timeoutMs) {
 }
 
 async function httpItems() {
+  try {
+    const health = await fetchWithTimeout(`${BASE}/api/health`, {}, 20_000);
+    const healthPri = originHealthFailurePriority(health.status, health.json);
+    if (healthPri) {
+      add(
+        healthPri,
+        "origin",
+        "origin:health",
+        "Production origin liveness failed",
+        `GET /api/health → HTTP ${health.status}${health.err ? ` (${health.err})` : ""}`
+      );
+    }
+  } catch (e) {
+    add("P0", "origin", "origin:health", "Production origin liveness failed", e.message);
+  }
+
   if (!CRON) return;
   const H = { Authorization: `Bearer ${CRON}` };
 

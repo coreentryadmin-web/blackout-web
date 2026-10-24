@@ -10,6 +10,7 @@ import type { SwingSetupState, SwingEntryState, SwingArchetype, SwingSubLane } f
 import type { SwingDiscoveryPath } from "./discovery";
 import { isSwingConfluenceEnforced } from "./v2/config";
 import { blockedByFromSwingGates, failingSwingCommitGates } from "./v2/gates";
+import { evaluateSwingConfluence } from "./v2/confluence";
 import {
   evaluateSwingEntryEnterability,
   swingEntryActionLabel,
@@ -46,6 +47,10 @@ export type SwingEntryVerdictInput = {
   anchoredAt?: string | null;
   deskCommitted?: boolean;
   nowMs?: number;
+  /** Entry-validity deadline already passed (evaluateSwingEntryEnterability's `expired` flag) —
+   *  the same reason `sectionForSwingPlay` (serving.ts) routes a stale-but-triggered setup to
+   *  RESEARCH. See `researchGateBlocks`'s own doc comment for why this needs its own case. */
+  entryWindowExpired?: boolean | null;
 };
 
 /** Resolve the serving section when the play was not stamped (tests / partial payloads). */
@@ -71,8 +76,20 @@ const DISCOVERY_PATH_KINDS = new Set<SwingDiscoveryPath>([
   "VECTOR",
 ]);
 
+/** Context needed to enrich a G-S6 confluence block with its real, already-computed diagnostic
+ *  (how many independent kinds are present vs required) instead of the flat static reason —
+ *  `evaluateSwingConfluence` computes this at gate-evaluation time and it was being thrown away
+ *  before reaching the member-facing text. Optional: omitting it keeps the prior flat reason. */
+export type SwingGateBlockDiagnosticContext = {
+  signalKinds?: readonly string[] | null;
+  archetype?: SwingArchetype | string | null;
+};
+
 /** Map commit `blockedBy` tokens to member-facing gate blocks. */
-export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingEntryGateBlock[] {
+export function commitGateBlocksForVerdict(
+  blockedBy: readonly string[],
+  diagnostics?: SwingGateBlockDiagnosticContext
+): SwingEntryGateBlock[] {
   return blockedBy
     .filter((b) => b.startsWith("gate:G-S") || b === LEGACY_COMMIT_GATE_EXEMPT)
     .map((b) => {
@@ -84,10 +101,28 @@ export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingE
         };
       }
       if (b.startsWith("gate:G-S6:")) {
-        return {
-          code: "g_s6_confluence",
-          reason: "Independent signal confluence below commit threshold — desk will not open.",
-        };
+        const paths = (diagnostics?.signalKinds ?? []).filter((k): k is SwingDiscoveryPath =>
+          DISCOVERY_PATH_KINDS.has(k as SwingDiscoveryPath)
+        );
+        const verdict =
+          paths.length > 0
+            ? evaluateSwingConfluence(paths, (diagnostics?.archetype as SwingArchetype) ?? null)
+            : null;
+        // GAP FOUND (2026-10-14, live verification of this same enrichment, AVGO repro):
+        // `signalKinds` on a served WATCH row can accumulate past the last gate-evaluation pass
+        // (gates stamp `commitGateBlockedBy` once per discovery scan; signal kinds can keep growing
+        // between scans), and this function's own simple type-filter also doesn't replicate
+        // `discoveryPathsForConfluence`'s POSITIONING-direction-mismatch drop. Either gap can make
+        // this recompute disagree with the real, already-fired block — live repro showed AVGO
+        // rendering "5/3 kinds agree (...)" (a PASSING-shaped label) directly inside a sentence
+        // explaining why entry is still blocked, which reads as self-contradictory to a trader.
+        // Only trust the enriched label when it AGREES the gate should still be failing; otherwise
+        // fall back to the flat text rather than assert a passing count next to a live block.
+        const reason =
+          verdict && !verdict.pass
+            ? `Independent signal confluence below commit threshold — ${verdict.label}.`
+            : "Independent signal confluence below commit threshold — desk will not open.";
+        return { code: "g_s6_confluence", reason };
       }
       if (b.startsWith("gate:G-S3:")) {
         return {
@@ -171,6 +206,24 @@ function researchGateBlocks(input: SwingEntryVerdictInput): SwingEntryGateBlock[
       },
     ];
   }
+  // Same live repro `watchEntryExpired` (adapters.ts) was built to fix for the WATCH-pill display
+  // (2026-09-12: MU/AMD sat 46-49 days past their own 2-5 day entry window) — this is the sibling
+  // gap for the RESEARCH-bucket verdict's own reason text. A row only reaches this branch once the
+  // three checks above have all passed, so it is never a thin/invalidated/unclassified thesis —
+  // it's a real, mature setup whose clean-fill window already lapsed. The prior fallback
+  // ("thesis needs more work") misrepresented that as a weak thesis rather than a stale entry
+  // opportunity — a real, still-scoring setup (live repro: AMD score 81.3, TRIGGERED+AT_TRIGGER,
+  // first seen 2026-07-30, still routed RESEARCH via entryWindowExpired) read as if it had been
+  // rejected on the merits.
+  if (input.entryWindowExpired === true) {
+    return [
+      {
+        code: "entry_window_expired",
+        reason:
+          "This setup triggered, but its entry window already lapsed — the thesis wasn't rejected, the clean-fill opportunity closed.",
+      },
+    ];
+  }
   return [
     {
       code: "research_review",
@@ -205,17 +258,40 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
   if (!section) return null;
 
   if (section === "RESEARCH") {
+    // GAP FOUND (2026-10-08, Ask Largo standing mandate, live AMD repro): `researchGateBlocks`
+    // below returns exactly ONE reason from its own priority ladder (invalidated > persistence
+    // gap > unclassified > entry-window-expired > generic "needs more work") and that single
+    // reason was the WHOLE `gateBlocks` output — `input.commitGateBlockedBy` (the real, live
+    // commit-gate stack: G-S3/G-S4/G-S6/G-S12/G-S14) was never consulted at all on this branch.
+    // Live repro: AMD (RESEARCH, EVENT_DRIVEN/TACTICAL, entry window lapsed 8 days ago) ALSO
+    // carried 3 active real gates (G-S12 halt_feed_stale, G-S4 regime_degraded, G-S14
+    // cortex_net_negative) at the exact same moment — the play-brief Entry section rendered only
+    // "entry_window_expired" and silently dropped all three, even though the data existed and was
+    // already available via `resolveSwingCommitGateBlockedBy`/`commitGateBlocksForVerdict`. This
+    // is the identical defect class the "past entry deadline + active commit gate blocks" WATCH-
+    // section fix below already closed for the `dont_buy` branch ("commitGateBlockedBy is computed
+    // ... regardless of which ... reason fired ... NOT specific to the wait branch") — that fix
+    // never reached this earlier RESEARCH-section early return. Fix: append the real, mapped gate
+    // evidence after the primary research-ladder reason, never replacing it (the ladder's own
+    // reason — e.g. "thesis invalidated" — stays first and authoritative; the commit-gate detail
+    // is additive context a member can act on, same as the WATCH-section sibling already does).
+    const commitGateBlockedBy = resolveSwingCommitGateBlockedBy(input);
+    const gateDiagnostics = { signalKinds: input.signalKinds, archetype: input.archetype };
+    const realGateBlocks = commitGateBlockedBy.length
+      ? commitGateBlocksForVerdict(commitGateBlockedBy, gateDiagnostics)
+      : [];
     return {
       deckStatus: "SKIP",
       recommendation: "HOLD",
       recNote: "Desk is passing this setup — no entry recommended.",
-      gateBlocks: researchGateBlocks(input),
+      gateBlocks: [...researchGateBlocks(input), ...realGateBlocks],
       actionLabel: null,
       entryAction: "dont_buy",
     };
   }
 
   const commitGateBlockedBy = resolveSwingCommitGateBlockedBy(input);
+  const gateDiagnostics = { signalKinds: input.signalKinds, archetype: input.archetype };
   const enter = evaluateSwingEntryEnterability(enterabilityInputFromVerdict(input));
 
   switch (enter.action) {
@@ -234,7 +310,9 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
         deckStatus: "WATCH",
         recommendation: "HOLD",
         recNote: enter.reason,
-        gateBlocks: commitGateBlockedBy.length ? commitGateBlocksForVerdict(commitGateBlockedBy) : null,
+        gateBlocks: commitGateBlockedBy.length
+          ? commitGateBlocksForVerdict(commitGateBlockedBy, gateDiagnostics)
+          : null,
         actionLabel: "WAIT",
         entryAction: "wait",
       };
@@ -253,7 +331,21 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
         deckStatus: "WATCH",
         recommendation: "HOLD",
         recNote: enter.reason,
-        gateBlocks: null,
+        // `commitGateBlockedBy` is computed above regardless of which `dont_buy` reason fired
+        // (deadline-expired, contract-expired, extended-chase — see
+        // evaluateSwingEntryEnterability's ordering, entry-enterability.ts) — it is NOT specific
+        // to the "wait" branch two cases up. Dropping it here unconditionally silently discarded
+        // real, already-mapped gate evidence (live repro: MU 2026-09-11 — 3 active commit gates
+        // G-S12/G-S4/G-S6 computed and then thrown away because the entry-validity deadline had
+        // ALSO expired, which fires first in evaluateSwingEntryEnterability's if-chain and wins
+        // the `reason`/`recNote`) whenever a play was BOTH past its entry window AND still gate-
+        // blocked — a common combination for a persistently-WATCH name. `recNote`/`actionLabel`
+        // stay the deadline-expired text (that's still the primary, correct verdict); this only
+        // restores the secondary gate detail so play-brief/play-brief-intel/narrative-coaching
+        // (all gated on `play.gateBlocks?.length`) can surface it instead of rendering nothing.
+        gateBlocks: commitGateBlockedBy.length
+          ? commitGateBlocksForVerdict(commitGateBlockedBy, gateDiagnostics)
+          : null,
         actionLabel: "WAIT",
         entryAction: "dont_buy",
       };

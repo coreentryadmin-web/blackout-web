@@ -19,6 +19,7 @@ import {
   readRejectionCounterfactual,
   retroWouldBlock,
   summarizeDebriefPins,
+  summarizePulledByRule,
   targetAtrDistribution,
   type DebriefAggregateRow,
   type NighthawkGateRejectionInput,
@@ -165,6 +166,115 @@ test("summarizeDebriefPins: low_n clears at the shared threshold", () => {
     row({ edition_for: `2026-07-0${(i % 5) + 1}`, debrief: pin("stopped_normal") })
   );
   assert.equal(summarizeDebriefPins(rows).low_n, false);
+});
+
+// ── summarizePulledByRule (Phase 2B) ─────────────────────────────────────────────────
+
+function pulledRow(tag: "pulled_wrongly" | "pulled_correctly", reason: string, over: Partial<DebriefAggregateRow> = {}): DebriefAggregateRow {
+  return row({ pulled: true, pulled_reason: reason, debrief: pin(tag), ...over });
+}
+
+test("summarizePulledByRule: attributes wrongly/correctly counts to the specific rule that fired", () => {
+  const rows = [
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+    pulledRow("pulled_correctly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.rules.length, 1);
+  assert.equal(s.rules[0]!.rule, "regime_mismatch_hard");
+  assert.equal(s.rules[0]!.wrongly, 2);
+  assert.equal(s.rules[0]!.correctly, 1);
+  assert.equal(s.rules[0]!.n, 3);
+  assert.equal(s.rules[0]!.wrongly_rate_pct, 66.7);
+  assert.equal(s.total_pulled, 3);
+});
+
+test("summarizePulledByRule: a multi-reason severe pull attributes to EVERY contributing rule, so per-rule n can exceed total_pulled", () => {
+  const rows = [
+    pulledRow(
+      "pulled_wrongly",
+      "Pulled pre-open (severe degradation): Regime is CHOPPY — choppy/neutral reduces conviction for directional plays; Put wall drifted 12 pts (5800 → 5788) — tighten stop"
+    ),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.total_pulled, 1);
+  const byRule = new Map(s.rules.map((r) => [r.rule, r]));
+  assert.equal(byRule.get("regime_choppy")?.wrongly, 1);
+  assert.equal(byRule.get("gex_wall_drift_soft")?.wrongly, 1);
+  // Both rules co-fired on the SAME single pull -- their n's sum (2) exceeds total_pulled (1).
+  assert.ok(s.rules.reduce((sum, r) => sum + r.n, 0) > s.total_pulled);
+});
+
+test("summarizePulledByRule: an unrecognized pulled_reason counts as unattributed, never silently dropped or mis-bucketed", () => {
+  const rows = [pulledRow("pulled_wrongly", "some future reason wording this taxonomy has never seen")];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.rules.length, 0);
+  assert.equal(s.unattributed, 1);
+  assert.equal(s.total_pulled, 1);
+});
+
+test("summarizePulledByRule: only pulled_wrongly/pulled_correctly tagged rows enter -- a non-pulled row is ignored even if it happens to carry a pulled_reason value", () => {
+  const rows = [
+    row({ pulled: false, pulled_reason: "irrelevant leftover value", debrief: pin("clean_win") }),
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected"),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.total_pulled, 1);
+  assert.equal(s.rules.length, 1);
+  assert.equal(s.rules[0]!.rule, "contrary_anomalies_hard");
+});
+
+test("summarizePulledByRule: legacy-methodology rows are excluded (anti-blend, same discipline as summarizeDebriefPins)", () => {
+  const rows = [
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected", { grade_methodology: GRADE_METHODOLOGY_LEGACY }),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.total_pulled, 0);
+  assert.equal(s.rules.length, 0);
+});
+
+test("summarizePulledByRule: low_n reflects total_pulled against the shared threshold", () => {
+  const rows = Array.from({ length: LOW_N_THRESHOLD }, () =>
+    pulledRow("pulled_correctly", "Pulled pre-open: 2 contrary flow anomalies detected")
+  );
+  assert.equal(summarizePulledByRule(rows).low_n, false);
+  assert.equal(summarizePulledByRule(rows.slice(0, -1)).low_n, true);
+});
+
+test("summarizePulledByRule: wrongly_rate_shrunk_pct pulls a THIN rule's alarming 100% toward the pool of every OTHER rule -- the exact noise trap Phase 2E exists to prevent", () => {
+  const rows = [
+    // A thin rule: n=2, 100% wrongly -- reads as a damning verdict on its own.
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected"),
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected"),
+    // A much larger, genuinely low-wrongly-rate rule providing real pool evidence.
+    ...Array.from({ length: 18 }, () => pulledRow("pulled_correctly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction")),
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+  ];
+  const s = summarizePulledByRule(rows);
+  const thin = s.rules.find((r) => r.rule === "contrary_anomalies_hard")!;
+  assert.equal(thin.n, 2);
+  assert.equal(thin.wrongly_rate_pct, 100);
+  assert.ok(
+    thin.wrongly_rate_shrunk_pct! < 60,
+    `a 2-sample 100% rule must be pulled well below its raw rate toward the pool, got ${thin.wrongly_rate_shrunk_pct}`
+  );
+  const large = s.rules.find((r) => r.rule === "regime_mismatch_hard")!;
+  assert.equal(large.n, 20);
+  // The large, real sample should stay close to its own observed rate, not get yanked toward the thin outlier.
+  assert.ok(
+    Math.abs(large.wrongly_rate_shrunk_pct! - large.wrongly_rate_pct!) < 5,
+    `a 20-sample rule should barely move from its own raw rate`
+  );
+});
+
+test("summarizePulledByRule: wrongly_rate_shrunk_pct is null exactly when wrongly_rate_pct is null (n=0 never happens in the output map, but the null-pool edge case is covered)", () => {
+  // A single rule with real data -- pool == its own rate, so shrinkage should be a no-op (self-pool).
+  const rows = [pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected")];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.rules[0]!.wrongly_rate_pct, 100);
+  assert.equal(s.rules[0]!.wrongly_rate_shrunk_pct, 100, "the only rule IS the pool, so shrinking toward it is a no-op");
 });
 
 // ── Blocked value ────────────────────────────────────────────────────────────────────
@@ -338,6 +448,77 @@ test("gatePublishedMirror: buckets resolved current rows by retro verdict; unfil
   assert.equal(band.would_block.low_n, true);
 });
 
+// ── G-N4's own mirror (book_tape_conflict) ────────────────────────────────────────────
+// Built 2026-09-10 in direct response to the improvement queue's own wrong_direction
+// suggestion ("measure via gate_validation.blocked_value before widening G-N4's scope"):
+// blocked_value only sees the rare REJECTED-by-G-N4 population (n=3 live in a 30d prod
+// window — too thin to answer anything). published_mirror already answers the identical
+// question for band_detached/target_unreachable over the much larger PUBLISHED
+// population; G-N4 was simply never wired into it, even though publish-gates.ts pins the
+// exact same {code, passed, value, threshold} shape for book_tape_conflict as it does for
+// the other two gates (publish-gates.ts:270-272).
+
+test("retroWouldBlock: book_tape_conflict reads the pinned `passed` bit directly — no threshold to recompute", () => {
+  const conflicted = row({
+    publish_context: {
+      context_version: 2,
+      gates: {
+        checks: [{ code: "book_tape_conflict", passed: false, value: "bearish", threshold: "not bearish" }],
+      },
+    },
+  });
+  const aligned = row({
+    publish_context: {
+      context_version: 2,
+      gates: {
+        checks: [{ code: "book_tape_conflict", passed: true, value: "bullish", threshold: "not bearish" }],
+      },
+    },
+  });
+  assert.equal(retroWouldBlock(conflicted, "book_tape_conflict"), true);
+  assert.equal(retroWouldBlock(aligned, "book_tape_conflict"), false);
+  // A pin that predates G-N4 (shipped 2026-08-03) has no checks[] entry for this code —
+  // unlike band_detached/target_unreachable, there is no live-constant fallback to guess
+  // with (the gate didn't exist), so this must be null, never a silent false.
+  assert.equal(retroWouldBlock(row({ publish_context: { context_version: 2 } }), "book_tape_conflict"), null);
+  assert.equal(retroWouldBlock(row({ publish_context: null }), "book_tape_conflict"), null);
+  // Corrupt pin: entry present but `passed` isn't a boolean.
+  const corrupt = row({
+    publish_context: { context_version: 2, gates: { checks: [{ code: "book_tape_conflict", passed: "yes" }] } },
+  });
+  assert.equal(retroWouldBlock(corrupt, "book_tape_conflict"), null);
+});
+
+test("gatePublishedMirror: covers book_tape_conflict over the PUBLISHED population, not just G-N4's rare rejections", () => {
+  const conflictGeo = {
+    context_version: 2,
+    gates: { checks: [{ code: "book_tape_conflict", passed: false, value: "bearish", threshold: "not bearish" }] },
+  };
+  const alignedGeo = {
+    context_version: 2,
+    gates: { checks: [{ code: "book_tape_conflict", passed: true, value: "bullish", threshold: "not bearish" }] },
+  };
+  const rows = [
+    row({ outcome: "stop", publish_context: conflictGeo }),
+    row({ outcome: "stop", publish_context: conflictGeo }),
+    row({ outcome: "target", publish_context: conflictGeo }),
+    row({ outcome: "target", publish_context: alignedGeo }),
+    row({ outcome: "stop", publish_context: alignedGeo }),
+    row({ outcome: "stop", publish_context: alignedGeo }),
+    row({ outcome: "open", publish_context: null }), // pre-G-N4 pin — no geometry
+  ];
+  const mirror = gatePublishedMirror(rows);
+  const tape = mirror.find((l) => l.gate === "book_tape_conflict")!;
+  assert.equal(tape.would_block.n, 3); // the 3 rows whose pinned tape read CONFLICTED
+  assert.equal(tape.would_block.win_rate_pct, 33.3); // 1 of 3 decided
+  assert.equal(tape.would_pass.n, 3);
+  assert.equal(tape.would_pass.win_rate_pct, 33.3);
+  assert.equal(tape.no_geometry_n, 1);
+  // band_detached/target_unreachable still get their own lines — this is additive.
+  assert.ok(mirror.find((l) => l.gate === "band_detached"));
+  assert.ok(mirror.find((l) => l.gate === "target_unreachable"));
+});
+
 // ── The never-filled record defect (2026-08-06) ──────────────────────────────────────
 
 test("gatePublishedMirror: an all-unfilled would_block bucket is VISIBLE and carries no win rate", () => {
@@ -500,6 +681,25 @@ test("improvement queue: dominant failure mode signals with its share; convictio
   assert.match(inv.suggestion!, /mis-weighted/);
 });
 
+test("wrong_direction suggestion does not claim the book-vs-tape veto is missing — G-N4 shipped 2026-08-03", () => {
+  // FINDINGS.md 2026-08-03 "G-N4 book-vs-tape alignment veto — built" shipped publish-gates.ts's
+  // book_tape_conflict gate specifically in response to this exact signal, but the suggestion
+  // string here was never updated and still said "add a book-vs-tape alignment veto at publish"
+  // over a month later — live 2026-09-10 data still shows wrong_direction dominant (15/28, 53.6%)
+  // even with the gate live, which makes the stale "add one" text actively misleading to anyone
+  // reading the queue (it reads as an unaddressed gap, not a residual one).
+  const rows = [
+    ...Array.from({ length: 4 }, (_, i) => row({ ticker: `W${i}`, debrief: pin("wrong_direction") })),
+    row({ debrief: pin("clean_win"), outcome: "target" }),
+    row({ debrief: pin("stopped_normal") }),
+  ];
+  const summary = summarizeDebriefPins(rows);
+  const queue = buildImprovementQueue({ summary, blockedValue: [], mirror: [], byConviction: [] });
+  const dom = queue.find((i) => i.signal === "failure_mode:wrong_direction:dominant")!;
+  assert.doesNotMatch(dom.suggestion!, /add a book-vs-tape/i, "G-N4 already shipped — must not read as missing");
+  assert.match(dom.suggestion!, /G-N4/, "must name the gate that already exists");
+});
+
 // ── Full report shape ────────────────────────────────────────────────────────────────
 
 test("analyzeNighthawkDebriefs: report shape, per-conviction records, empty-tier honesty, availability", () => {
@@ -524,7 +724,9 @@ test("analyzeNighthawkDebriefs: report shape, per-conviction records, empty-tier
   assert.equal(b.unfilled, 1);
   assert.equal(b.pulled, 1);
   assert.deepEqual(report.by_tier, []); // no tier pinned anywhere yet — empty, not invented
-  assert.equal(report.gate_validation.published_mirror.length, 2);
+  // band_detached, target_unreachable, book_tape_conflict (2026-09-10: the mirror now
+  // covers G-N4 too, not just the two numeric-threshold gates).
+  assert.equal(report.gate_validation.published_mirror.length, 3);
 });
 
 // ── Pinned target-ATR distribution ───────────────────────────────────────────────────

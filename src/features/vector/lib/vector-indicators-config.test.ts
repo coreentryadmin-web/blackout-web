@@ -1,23 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  isVectorBeadDisplayId,
   VECTOR_OVERLAYS,
   VECTOR_OVERLAY_FAMILIES,
   VECTOR_LEVELS,
   VECTOR_INDICATOR_GROUPS,
-  isVectorOverlayId,
   isVectorOverlayFamilyId,
-  isVectorLevelId,
-  isVectorGexHeatmapId,
-  isVectorGammaRegimeId,
-  isVectorExpectedMoveConeId,
   overlayFamilyAvailability,
   VECTOR_DEFAULT_ENABLED_INDICATORS,
   defaultVectorIndicators,
   VECTOR_OPENING_RANGE_PRESETS,
   DEFAULT_OPENING_RANGE_MINUTES,
-  isVectorOpeningRangeMinutes,
   openingRangeLabel,
 } from "./vector-indicators-config";
 
@@ -32,14 +25,6 @@ test("VECTOR_OVERLAYS: unique ids, ema/sma carry a positive period, vwap does no
   }
 });
 
-test("isVectorOverlayId: accepts registry ids, rejects anything else", () => {
-  assert.ok(isVectorOverlayId("vwap"));
-  assert.ok(isVectorOverlayId("ema21"));
-  assert.ok(!isVectorOverlayId("rsi"));
-  assert.ok(!isVectorOverlayId(""));
-  assert.ok(!isVectorOverlayId(null));
-});
-
 test("VECTOR_OVERLAY_FAMILIES: partition the overlays, one type per toggle, hex dot colours", () => {
   const famIds = VECTOR_OVERLAY_FAMILIES.map((f) => f.id);
   assert.equal(new Set(famIds).size, famIds.length, "family ids unique");
@@ -50,9 +35,9 @@ test("VECTOR_OVERLAY_FAMILIES: partition the overlays, one type per toggle, hex 
     assert.ok(/^#[0-9a-f]{6}$/i.test(fam.color), `${fam.id} has a hex dot colour`);
     assert.ok(fam.memberIds.length > 0, `${fam.id} has at least one member line`);
     for (const id of fam.memberIds) {
-      assert.ok(isVectorOverlayId(id), `${id} is a real overlay id`);
-      const def = VECTOR_OVERLAYS.find((o) => o.id === id)!;
-      assert.equal(def.family, fam.id, `${id} declares family ${fam.id}`);
+      const def = VECTOR_OVERLAYS.find((o) => o.id === id);
+      assert.ok(def, `${id} is a real overlay id`);
+      assert.equal(def!.family, fam.id, `${id} declares family ${fam.id}`);
       seen.push(id);
     }
   }
@@ -68,13 +53,10 @@ test("isVectorOverlayFamilyId: accepts family ids, rejects individual line ids +
   assert.ok(!isVectorOverlayFamilyId(null));
 });
 
-test("VECTOR_LEVELS + isVectorLevelId: hex colours, unique ids, disjoint from families", () => {
+test("VECTOR_LEVELS: hex colours, unique ids, disjoint from families", () => {
   const ids = VECTOR_LEVELS.map((l) => l.id);
   assert.equal(new Set(ids).size, ids.length, "level ids unique");
   for (const l of VECTOR_LEVELS) assert.ok(/^#[0-9a-f]{6}$/i.test(l.color), `${l.id} hex colour`);
-  assert.ok(isVectorLevelId("fib") && isVectorLevelId("hod-lod"));
-  assert.ok(!isVectorLevelId("vwap"), "overlay family id is not a level id");
-  assert.ok(!isVectorLevelId(null));
   // family/level id spaces don't collide (the enabled Set holds both).
   for (const id of ids) assert.ok(!isVectorOverlayFamilyId(id), `${id} not also a family id`);
 });
@@ -109,17 +91,6 @@ test("overlayFamilyAvailability: full / partial / none track the bar count vs me
   assert.equal(overlayFamilyAvailability("sma", 200).status, "full");
 });
 
-test("isVectorGexHeatmapId: accepts the heatmap id only, rejects other toggle ids + junk", () => {
-  assert.ok(isVectorGexHeatmapId("gex-heatmap"));
-  assert.ok(!isVectorGexHeatmapId("expected-move"));
-  assert.ok(!isVectorGexHeatmapId("flow-markers"));
-  assert.ok(!isVectorGexHeatmapId("vwap"), "overlay family id is not the heatmap id");
-  assert.ok(!isVectorGexHeatmapId(null));
-  // id space is disjoint from the families/levels the enabled Set also holds.
-  assert.ok(!isVectorOverlayFamilyId("gex-heatmap"));
-  assert.ok(!isVectorLevelId("gex-heatmap"));
-});
-
 test("VECTOR_INDICATOR_GROUPS: covers every family + level + structure id exactly once (the toggle space)", () => {
   const grouped = VECTOR_INDICATOR_GROUPS.flatMap((g) => g.items.map((i) => i.id));
   const expected = [
@@ -148,13 +119,9 @@ test("bead-integrity-rings is retired from the UI but still a valid saved prefer
   // storage migration is needed. Deleting the id outright is what would break them.
   const surfaced = VECTOR_INDICATOR_GROUPS.flatMap((g) => g.items.map((i) => i.id));
   assert.ok(!surfaced.includes("bead-integrity-rings"), "must not be offered in the UI any more");
-  assert.ok(isVectorBeadDisplayId("bead-integrity-rings"), "but must remain a valid id");
 });
 
 test("expected-move-cone: opt-in companion to the flat band, in the Expected move group, OFF by default", () => {
-  assert.ok(isVectorExpectedMoveConeId("expected-move-cone"));
-  assert.ok(!isVectorExpectedMoveConeId("expected-move"));
-  assert.ok(!isVectorExpectedMoveConeId(null));
   // Lives next to the flat band in the "Expected move" group.
   const em = VECTOR_INDICATOR_GROUPS.find((g) => g.title === "Expected move");
   assert.ok(em);
@@ -190,11 +157,6 @@ test("VECTOR_OPENING_RANGE_PRESETS: 5/15/30/60 windows, default 15m, label match
   assert.deepEqual([...VECTOR_OPENING_RANGE_PRESETS], [5, 15, 30, 60]);
   assert.equal(DEFAULT_OPENING_RANGE_MINUTES, 15);
   assert.ok(VECTOR_OPENING_RANGE_PRESETS.includes(DEFAULT_OPENING_RANGE_MINUTES));
-
-  for (const m of VECTOR_OPENING_RANGE_PRESETS) assert.ok(isVectorOpeningRangeMinutes(m));
-  assert.ok(!isVectorOpeningRangeMinutes(45), "45 is not one of the presets");
-  assert.ok(!isVectorOpeningRangeMinutes("15"), "string, not a number");
-  assert.ok(!isVectorOpeningRangeMinutes(null));
 
   assert.equal(openingRangeLabel(15), "Opening range (15m)");
   assert.equal(openingRangeLabel(30), "Opening range (30m)");
@@ -239,12 +201,7 @@ test("no two distinct indicator ids share a hex colour across the WHOLE toggle s
   assert.deepEqual(collisions, [], `duplicate indicator colours found: ${collisions.join(" | ")}`);
 });
 
-test("isVectorGammaRegimeId: matches only the regime toggle id", () => {
-  assert.ok(isVectorGammaRegimeId("gamma-regime"));
-  assert.ok(!isVectorGammaRegimeId("gex-heatmap"));
-  assert.ok(!isVectorGammaRegimeId("vwap"));
-  assert.ok(!isVectorGammaRegimeId(null));
-  // gamma-regime lives in the "Positioning" group alongside gex-heatmap.
+test("gamma-regime lives in the Positioning group alongside gex-heatmap", () => {
   const positioning = VECTOR_INDICATOR_GROUPS.find((g) => g.title === "Positioning");
   assert.ok(positioning);
   assert.deepEqual(

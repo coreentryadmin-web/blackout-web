@@ -3,14 +3,8 @@
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { VECTOR_ORACLE_TICKERS, normalizeVectorTicker } from "./vector-ticker";
 
-/** SSE hub tick — spot + forming candle for every ticker. */
-export const VECTOR_SPOT_TICK_MS = 1_000;
-
 /** Wall bead trail sample — shared universe + oracle names (server + client). */
 export const VECTOR_WALL_TRAIL_SEC = 5;
-
-/** Wall bead trail sample — any non-oracle ticker outside the always-on universe recorder. */
-export const VECTOR_NON_UNIVERSE_WALL_TRAIL_SEC = 15;
 
 /** Scoped DTE walls + wall-history REST poll — oracle / universe names. */
 export const VECTOR_WALLS_SCOPE_POLL_MS = 5_000;
@@ -34,9 +28,6 @@ export const VECTOR_GEX_HEATMAP_POLL_MS = 5_000;
  * this competitive with the tick-driven overlays.
  */
 export const VECTOR_EXPECTED_MOVE_POLL_MS = 30_000;
-
-/** SPY share-volume backfill poll for SPX chart proxy. */
-export const VECTOR_SPY_VOLUME_BACKFILL_MS = 60_000;
 
 /** Redis TTL for vector strike×time heatmap (server). */
 export const VECTOR_GEX_HEATMAP_CACHE_SEC = 5;
@@ -67,6 +58,29 @@ export const VECTOR_COMPARE_FOUR_UP_OVERLAY_REFRESH_MS = 2_000;
 export function vectorComparePerfPollMs(baseMs: number, backgroundPane: boolean): number {
   if (!backgroundPane || !Number.isFinite(baseMs) || baseMs <= 0) return baseMs;
   return Math.round(baseMs * VECTOR_COMPARE_FOUR_UP_POLL_MULTIPLIER);
+}
+
+/**
+ * Minimum ms between live-tick display-bar/volume recomputes (VectorChart's SSE handler).
+ *
+ * `displayBarsFromMinute` + the volume histogram/average rebuild the full bar history from
+ * scratch on every call — O(n), not incremental — and SSE ticks can arrive far faster than this
+ * (sub-second). An ungated call per tick pins the main thread near 100% continuously: live CDP
+ * profiling of a real SPX Slayer tab (2026-10-14) measured ~60s of `TaskDuration` per 60s
+ * wall-clock window, every one of 15 straight sampled minutes, with zero user interaction and the
+ * market closed overnight (so this isn't even driven by real price-tick volume). A saturated main
+ * thread starves Next.js's low-priority client-side navigation transition (`<Link>` runs inside
+ * `startTransition`) indefinitely — the member's click registers but the route never changes,
+ * with no console error and no failed request, because the transition never gets an uninterrupted
+ * window to commit. 200ms (5Hz) reads as live to a human eye but caps the rebuild's cost at a
+ * bounded rate regardless of how fast ticks actually arrive.
+ */
+export const VECTOR_LIVE_TICK_DISPLAY_RECOMPUTE_THROTTLE_MS = 200;
+
+/** Is it time to re-run the live-tick display-bar/volume recompute, or should this tick be
+ * skipped (the next due tick will pick up the latest data anyway)? */
+export function liveTickDisplayRecomputeDue(lastRecomputeAtMs: number, nowMs: number): boolean {
+  return nowMs - lastRecomputeAtMs >= VECTOR_LIVE_TICK_DISPLAY_RECOMPUTE_THROTTLE_MS;
 }
 
 /** Server wall-scope / heatmap fallback refresh — oracle path. */

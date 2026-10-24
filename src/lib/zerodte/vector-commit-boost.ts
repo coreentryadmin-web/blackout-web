@@ -65,6 +65,32 @@ export function computeVectorGateBoost(
   return { score_bump: 0, g17_exempt: false, confluence_credit: 0, reason: null };
 }
 
+const NO_VECTOR_BOOST: VectorGateBoost = { score_bump: 0, g17_exempt: false, confluence_credit: 0, reason: null };
+
+/**
+ * CONDOR BYPASS (added 2026-09-17): a CONDOR's `direction` is nominal fade provenance only —
+ * "the condor is delta-neutral" (condor.ts). computeVectorGateBoost's whole model is "Vector's
+ * directional pulse agrees with this setup's direction", which is meaningless for a delta-neutral
+ * structure: Vector prints a LONG/SHORT read, and a condor was never betting on that direction in
+ * the first place, so "alignment" is coincidence, not corroboration. Feeding it through anyway
+ * would (a) inflate the score fed to G-3/G-18 (neither is condor-exempt, unlike G-17) on
+ * meaningless grounds, and (b) grant a chase/prime-band exemption a condor structurally cannot
+ * use. Same root-cause family as cortexAbstainForCondor() (cortex-gate.ts) — that fix, this one,
+ * and four earlier ones (Largo's cross-product read, the governor, Thesis Health, live
+ * confluence) are all the identical "condor's nominal direction misread as real directional
+ * evidence" defect at a different surface. Wraps computeVectorGateBoost rather than requiring
+ * every call site to remember the play_type check inline.
+ */
+export function computeVectorGateBoostForPlayType(
+  playType: string | null | undefined,
+  direction: "long" | "short",
+  score: number,
+  pulse: ZeroDteVectorPulse | null | undefined
+): VectorGateBoost {
+  if (playType === "CONDOR") return NO_VECTOR_BOOST;
+  return computeVectorGateBoost(direction, score, pulse);
+}
+
 /** G-17 exemption predicate — exported for gates.ts. */
 export function vectorExemptsG17PrimeBand(
   direction: "long" | "short",

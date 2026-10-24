@@ -20,6 +20,9 @@ import {
   type TierZeroSeed,
 } from "./discovery.ts";
 import { assembleSwingDossierInput } from "./swing-ingest.ts";
+import { buildLegacySwingArtifacts } from "./legacy-confirm-promote.ts";
+import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
+import type { ChainStrikeRow } from "@/features/nighthawk/lib/option-chain-prompt";
 import { parseEarningsWindows } from "./swing-catalyst.ts";
 import type { SwingAccumAccessors } from "./accumulation-store.ts";
 import type { SwingAccumRow, SwingPositionInsert } from "../db.ts";
@@ -67,6 +70,37 @@ test("runSwingDiscoveryScan: records tier0OriginFetchErrors when a V2 origin fet
     },
   });
   assert.deepEqual(res.recall.tier0OriginFetchErrors, ["VECTOR"]);
+});
+
+test("runSwingDiscoveryScan: logs (not just records) when the preferred fetchPositioningHits origin throws", async () => {
+  const { accessors } = makeFakeAccum();
+  const warnings: unknown[][] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+  try {
+    const deps = { ...makeDeps("2026-07-23", accessors) };
+    delete (deps as Partial<SwingDiscoveryDeps>).fetchPositioningTickers;
+    const res = await runSwingDiscoveryScan({
+      ...deps,
+      fetchPositioningHits: async () => {
+        throw new Error("positioning origin unavailable");
+      },
+    });
+    assert.deepEqual(res.recall.tier0OriginFetchErrors, ["POSITIONING"], "still recorded on the result");
+    const positioningWarning = warnings.find((args) =>
+      args.some((a) => typeof a === "string" && a.includes("POSITIONING")),
+    );
+    assert.ok(
+      positioningWarning,
+      "a thrown fetchPositioningHits must log — sibling origins (CATALYST/BANGER/VECTOR, and the " +
+        "fetchPositioningTickers fallback) all log via fetchTier0OriginTickers's console.warn; this " +
+        "preferred path silently swallowed the error before the fix",
+    );
+  } finally {
+    console.warn = originalWarn;
+  }
 });
 
 test("mergeTierZeroScreens: V2 POSITIONING, CATALYST, and BANGER origins union into provenance", () => {
@@ -278,8 +312,11 @@ test("runSwingDiscoveryScan: two-tier, both paths surface dossiers, nothing comm
   assert.equal(calls.markAccumPromoted, 0, "WATCH-only rail: the position-linking (commit) accessor never ran");
   assert.deepEqual(res.playSet, { ZERO_DTE: [], SWING: [], LEAPS: [] }, "no chains injected → empty play set");
 
-  // First scan (1 distinct session day) → nothing has persisted yet.
-  assert.equal(res.watchCount, 0, "a first-sighting candidate is below the persistence bar");
+  // First scan (1 distinct session day). Pre-2026-09-08 this stayed below the persistence bar
+  // regardless of corroboration; the loosening (docs/audit/INTENTIONAL-DESIGN.md item #7) means a
+  // multi-signal-kind first sighting (FLOW + POSITIONING + CATALYST + VECTOR, per `makeDeps`) now
+  // clears on session 1 via corroboration — only ASTS (flow-less, no direction to persist) can't.
+  assert.deepEqual(res.watchCandidates.map((c) => c.ticker), ["NVDA"], "multi-signal corroboration fast-tracks even a first sighting under the loosened rule");
 });
 
 test("runSwingDiscoveryScan: WATCH rail clears only after cross-session persistence", async () => {
@@ -610,14 +647,21 @@ test("runSwingDiscoveryScan: an EVENT_DRIVEN name gets the 1-session fast-track 
   assert.deepEqual([...res.watchCandidates[0].sessionSignalKinds].sort(), ["CATALYST", "FLOW"], "corroboration = FLOW screen + grounded catalyst");
 });
 
-test("runSwingDiscoveryScan: WITHOUT a dominant catalyst, a cross-session name still needs 2 sessions (no false fast-track)", async () => {
-  // The same flow name, but enriched as a plain cross-session thesis (no catalyst) → its archetype is NOT an
-  // event archetype, so the resolver leaves it on the 2-session gate. A single session must NOT promote it.
+test("runSwingDiscoveryScan: WITHOUT a dominant catalyst, a cross-session name with multi-signal corroboration ALSO fast-tracks (2026-09-08 loosening)", async () => {
+  // The same flow name, enriched as a plain cross-session thesis (no catalyst) → its archetype is NOT an
+  // event archetype. Before 2026-09-08 this stayed gated to 2 distinct sessions; the loosening
+  // (docs/audit/INTENTIONAL-DESIGN.md item #7 — the extra calendar-day wait showed no forward-outcome
+  // benefit in a 90-day recall measurement) puts EVERY classified archetype except FAILED_BREAKDOWN on
+  // the same 1-session+corroboration bar as EVENT_DRIVEN. `makeDeps` wires FLOW + POSITIONING + CATALYST
+  // + VECTOR origins (unlike the isolated EVENT_DRIVEN test above), so corroboration (2+ distinct signal
+  // kinds) is satisfied on a SINGLE session even without an event-archetype classification.
   const { accessors } = makeFakeAccum();
   const res = await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
   const nvda = res.dossiers.find((d) => d.ticker === "NVDA");
   assert.ok(nvda && nvda.archetype.archetype !== "EVENT_DRIVEN" && nvda.archetype.archetype !== "POST_EARNINGS_DRIFT", "no catalyst → a cross-session archetype");
-  assert.equal(res.watchCount, 0, "a cross-session archetype is still gated to 2 distinct sessions (fast-track is event-only)");
+  assert.deepEqual(res.watchCandidates.map((c) => c.ticker), ["NVDA"], "multi-signal corroboration fast-tracks a cross-session archetype too, not just event archetypes");
+  assert.equal(res.watchCandidates[0].distinctSessionDays, 1, "cleared on a SINGLE session under the loosened rule");
+  assert.ok(new Set(res.watchCandidates[0].sessionSignalKinds).size >= 2, "corroboration requires 2+ distinct signal kinds");
 });
 
 // ── RECALL instrumentation (evidence-only; operator critique #7) ──────────────────
@@ -799,4 +843,196 @@ test("runSwingDiscoveryScan: dailyBarComplete is per-ticker — NVDA blocked whe
     if (prevDailyBar === undefined) delete process.env.SWING_ENGINE_V2_ENFORCE_DAILY_BAR;
     else process.env.SWING_ENGINE_V2_ENFORCE_DAILY_BAR = prevDailyBar;
   }
+});
+
+// ─── LEGACY GRADUATION BRIDGE WIRING (2026-10-09, Ask Largo mandate — live VST repro) ──────────────
+// PR #5577 built `legacyCommitCandidatesFromSnapshot` (legacy-confirm-promote.ts) + its own full-
+// lifecycle tests, but deliberately left the live wiring into THIS file's commit loop as a named
+// follow-up (docs/audit/FINDINGS.md, 2026-10-01). These two tests prove the wiring itself — that a
+// `deps.legacyTriples` triple actually reaches `commitCandidates`/`computeSwingCommitPlan` — gated
+// by `isSwingLegacyCommitBridgeEnabled()` (OFF by default, per that flag's own doc comment on why the
+// operator-requested caution applies to the WIRING, not just the pure function).
+
+const legacyChainRows: ChainStrikeRow[] = [
+  {
+    // dte from editionFor 2026-07-24 → 9 days — inside HORIZONS.SWING's [5,15] dteMin/dteMax window
+    // (the 2026-08-14 expiry other fixtures use is only valid relative to THEIR later editionFor).
+    expiry: "2026-08-02",
+    strike: 100,
+    call_bid: 1.2,
+    call_ask: 1.3,
+    call_delta: 0.55,
+    call_oi: 3000,
+    call_iv: 0.35,
+    put_bid: 0.8,
+    put_ask: 0.9,
+    put_delta: -0.45,
+    put_oi: 2500,
+    put_iv: 0.38,
+  },
+];
+
+function legacyPlayFixture(over: Partial<PlaybookPlay> = {}): PlaybookPlay {
+  return {
+    rank: 1,
+    ticker: "ZS",
+    direction: "LONG",
+    conviction: "HIGH",
+    play_type: "stock",
+    thesis: "Flow accumulation",
+    key_signal: "Multi-day call flow",
+    entry_range: "$98.00-$100.00",
+    target: "110",
+    stop: "95",
+    options_play: "Aug 14 100C",
+    score: 85,
+    flow_streak_days: 3,
+    ...over,
+  };
+}
+
+/** A TRIGGERED+AT_TRIGGER Legacy triple — the same bridge-eligible shape
+ *  `legacyCommitCandidatesFromSnapshot`'s own "FULL LIFECYCLE" tests use. */
+function triggeredLegacyTriples() {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlayFixture(),
+    checkedAt: "2026-07-24T20:16:00.000Z",
+    editionFor: "2026-07-24",
+    spot: 97,
+    chainRows: legacyChainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  return [{ ...artifact, play: triggeredPlay }];
+}
+
+/** G-S6 confluence legitimately blocks a Legacy-only candidate with zero independent corroboration
+ *  (proven separately by legacy-confirm-promote.test.ts's own FULL LIFECYCLE test) — disabled here
+ *  so these two tests isolate exactly what they're testing: does the candidate reach the gate stack
+ *  AT ALL, gated on the bridge flag, not on confluence. */
+function withConfluenceDisabled<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.SWING_ENGINE_V2_ENFORCE_CONFLUENCE;
+  process.env.SWING_ENGINE_V2_ENFORCE_CONFLUENCE = "0";
+  return fn().finally(() => {
+    if (prev === undefined) delete process.env.SWING_ENGINE_V2_ENFORCE_CONFLUENCE;
+    else process.env.SWING_ENGINE_V2_ENFORCE_CONFLUENCE = prev;
+  });
+}
+
+test("runSwingDiscoveryScan: isSwingLegacyCommitBridgeEnabled OFF (default) — a TRIGGERED Legacy triple never reaches the commit gate, stays permanently serve-only", async () => {
+  await withConfluenceDisabled(async () => {
+    const prevBridge = process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+    delete process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED; // explicit default: unset ⇒ OFF
+    try {
+      const { accessors } = makeFakeAccum();
+      const opened: SwingPositionInsert[] = [];
+      const deps: SwingDiscoveryDeps = {
+        ...makeDeps("2026-07-25", accessors),
+        legacyTriples: triggeredLegacyTriples(),
+        fetchGradedHistory: async () => [],
+        fetchOpenBook: async () => [],
+        insertPosition: async (pos) => {
+          opened.push(pos);
+          return opened.length;
+        },
+        budget: PRODUCTION_PORTFOLIO_BUDGET,
+      };
+      const res = await runSwingDiscoveryScan(deps);
+      assert.equal(
+        opened.filter((p) => p.ticker === "ZS").length,
+        0,
+        "bridge flag OFF: the TRIGGERED Legacy candidate must not be merged into commitCandidates",
+      );
+      assert.equal(
+        res.commit?.committed.some((c) => c.ticker === "ZS"),
+        false,
+      );
+    } finally {
+      if (prevBridge === undefined) delete process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+      else process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED = prevBridge;
+    }
+  });
+});
+
+test("runSwingDiscoveryScan: SWING_LEGACY_COMMIT_BRIDGE_ENABLED=1 — a TRIGGERED Legacy triple reaches the REAL commit gate and opens (the #5577 follow-up, now wired)", async () => {
+  await withConfluenceDisabled(async () => {
+    const prevBridge = process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+    process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED = "1";
+    try {
+      const { accessors } = makeFakeAccum();
+      const opened: SwingPositionInsert[] = [];
+      const deps: SwingDiscoveryDeps = {
+        ...makeDeps("2026-07-25", accessors),
+        legacyTriples: triggeredLegacyTriples(),
+        fetchGradedHistory: async () => [],
+        fetchOpenBook: async () => [],
+        insertPosition: async (pos) => {
+          opened.push(pos);
+          return opened.length;
+        },
+        budget: PRODUCTION_PORTFOLIO_BUDGET,
+      };
+      const res = await runSwingDiscoveryScan(deps);
+      assert.equal(
+        opened.filter((p) => p.ticker === "ZS").length,
+        1,
+        "bridge flag ON: the TRIGGERED Legacy candidate is merged into commitCandidates and opens through the real gate stack",
+      );
+      assert.ok(res.commit?.committed.some((c) => c.ticker === "ZS"));
+    } finally {
+      if (prevBridge === undefined) delete process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+      else process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED = prevBridge;
+    }
+  });
+});
+
+test("runSwingDiscoveryScan: an organic candidate for the SAME ticker|direction wins over a Legacy triple (no duplicate/override)", async () => {
+  await withConfluenceDisabled(async () => {
+    const prevBridge = process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+    process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED = "1";
+    try {
+      const { accessors } = makeFakeAccum();
+      await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
+      await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors)); // NVDA WATCH (organic)
+      const nvda = (await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors))).dossiers.find(
+        (d) => d.ticker === "NVDA",
+      )!;
+
+      // A Legacy triple for the SAME ticker|direction NVDA already has organic coverage for.
+      const legacyArtifact = buildLegacySwingArtifacts({
+        play: legacyPlayFixture({ ticker: "NVDA", score: 10 }), // deliberately a worse score to detect an override
+        checkedAt: "2026-07-24T20:16:00.000Z",
+        editionFor: "2026-07-24",
+        spot: 97,
+        chainRows: legacyChainRows,
+        chainSpot: 97,
+      })!;
+      const legacyTriggeredPlay = {
+        ...legacyArtifact.play,
+        setupState: "TRIGGERED" as const,
+        entryStatus: "AT_TRIGGER" as const,
+      };
+
+      const opened: SwingPositionInsert[] = [];
+      const deps: SwingDiscoveryDeps = {
+        ...makeDeps("2026-07-25", accessors),
+        fetchChainRows: async () => nvdaChain(),
+        legacyTriples: [{ ...legacyArtifact, play: legacyTriggeredPlay }],
+        fetchGradedHistory: async () => gradedRows(nvda.archetype.archetype!, nvda.subLane!),
+        fetchOpenBook: async () => [],
+        insertPosition: async (pos) => {
+          opened.push(pos);
+          return opened.length;
+        },
+        budget: PRODUCTION_PORTFOLIO_BUDGET,
+      };
+      const res = await runSwingDiscoveryScan(deps);
+      const nvdaOpens = opened.filter((p) => p.ticker === "NVDA");
+      assert.equal(nvdaOpens.length, 1, "exactly one NVDA position opens — never duplicated");
+      assert.ok(res.commit?.committed.some((c) => c.ticker === "NVDA"));
+    } finally {
+      if (prevBridge === undefined) delete process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+      else process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED = prevBridge;
+    }
+  });
 });

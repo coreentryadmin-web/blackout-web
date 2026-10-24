@@ -506,6 +506,20 @@ export function playMemberReadCacheSec(): number {
   return num(process.env.SPX_PLAY_MEMBER_READ_CACHE_SEC, 5);
 }
 
+/**
+ * Fail-closed staleness bound for peekSpxPlayState()'s fast path (spx-service.ts). That path
+ * exists to serve `/api/market/spx/play` instantly without blocking on a fresh eval — but its
+ * underlying `peekServerCache` deliberately tolerates up to 10 minutes of staleness
+ * (`MAX_STALE_AGE_MS`, server-cache.ts) as a GENERIC worst case, which is 120x looser than this
+ * route's own claimed 5s freshness contract (`playMemberReadCacheSec`). A generous multiple of
+ * the real TTL — not the generic 10-minute ceiling — is what actually matches this route's
+ * intent: tolerate real refresh-latency jitter, not silently serve a many-minutes-old snapshot as
+ * if it were current.
+ */
+export function playMemberPeekMaxAgeSec(): number {
+  return num(process.env.SPX_PLAY_MEMBER_PEEK_MAX_AGE_SEC, 20);
+}
+
 export function gradeRank(grade: string): number {
   const ranks: Record<string, number> = { D: 0, C: 1, B: 2, A: 3, "A+": 4 };
   return ranks[grade.toUpperCase()] ?? 0;

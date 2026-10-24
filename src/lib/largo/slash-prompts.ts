@@ -22,8 +22,7 @@ function pushUnique(out: SlashPrompt[], p: SlashPrompt) {
 
 async function buildHelixPrompts(): Promise<SlashPrompt[]> {
   const out: SlashPrompt[] = [];
-  const [{ marketPlatform }, productReads, { helixThermalCompareForLargo }] = await Promise.all([
-    import("@/lib/platform"),
+  const [productReads, { helixThermalCompareForLargo }] = await Promise.all([
     import("@/lib/largo/product-reads"),
     import("@/lib/largo/helix-thermal-compare"),
   ]);

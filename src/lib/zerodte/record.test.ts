@@ -7,15 +7,18 @@ import type { ZeroDteSetupLogRow } from "@/lib/db";
 import {
   asManagedPnlPct,
   buildZeroDteRecord,
+  extractMaxFavorablePct,
   isGradedZeroDteRow,
   isZeroDteWin,
   LOW_N_THRESHOLD,
   officialPlanPnlPct,
+  readManagedExit,
   scoreBand,
   scoreForBanding,
   todBucket,
   ZERODTE_RECORD_METHODOLOGY,
 } from "./record";
+import { tierFromEntryContext } from "./tiers";
 
 function row(overrides: Partial<ZeroDteSetupLogRow>): ZeroDteSetupLogRow {
   return {
@@ -207,6 +210,74 @@ test("scoreBand + scoreForBanding + graded/win predicates", () => {
   assert.equal(isZeroDteWin(row({ plan_pnl_pct: 0 })), false);
   assert.equal(isZeroDteWin(row({ plan_pnl_pct: null })), false);
   assert.equal(LOW_N_THRESHOLD, 5);
+});
+
+// ── conviction:null for BREAKOUT/PIN origins — RED→GREEN for the 2026-09-09 fix ─────────
+// Root cause: board.ts's enrichSetup(setup, dossier) always resolves `conviction` from
+// `dossier?.scored?.conviction`, and breakout-source.ts/pin-source.ts both call it with a
+// hardcoded `null` dossier (no options-flow evidence exists to score for a bare price/volume
+// breakout or a GEX pin) — so the DB `conviction` column is null for every BREAKOUT/PIN
+// commit, forever, regardless of how strong the play was. Measured live 2026-09-09:
+// GET /api/market/zerodte/record?days=14 showed 36/57 (63.2%) committed plays with
+// conviction:null, essentially all BREAKOUT-origin, vs 18/18 FLOW-origin plays with a real
+// letter. Fix: toPlay() falls back to the PR-F merit tier (tierFromEntryContext, the same
+// origin-agnostic adapter the `tier` field already uses) instead of passing the null column
+// straight through — a real signal, not a fabricated one.
+test("toPlay: a null DB conviction (BREAKOUT/PIN, no dossier) falls back to the merit tier, not a bare null", () => {
+  // Same shape a real BREAKOUT/PIN commit pins (buildZeroDteEntryContext runs unconditionally
+  // on every origin) — prime score band + calm VIX + clean Cortex + midday commit → tier A,
+  // the exact PINNED_FULL fixture tiers.test.ts already proves resolves to "A".
+  const entryContext = {
+    vix_open: 16.2,
+    spy_bias: "up",
+    score: 78,
+    committed_at_et: "2026-07-10 12:10 ET",
+    discovery_origin: ["BREAKOUT"],
+    cortex: {
+      abstained: false,
+      score: 1.85,
+      vetoes: [],
+      supports: [{ source: "positioning" }, { source: "flow" }],
+      absent: [],
+    },
+  };
+  // Independently confirm what tier this blob resolves to, rather than hardcoding "A" twice —
+  // a change to tiers.ts's bands would then fail this assertion instead of silently drifting.
+  const expectedTier = tierFromEntryContext(entryContext)?.tier;
+  assert.equal(expectedTier, "A");
+
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "BRKO", conviction: null, entry_context: entryContext })],
+    WINDOW
+  );
+  const play = rec.plays[0]!;
+  assert.equal(play.conviction, "A", "null DB conviction must fall back to the real merit tier, not stay null");
+  assert.equal(play.tier, "A", "conviction's fallback must agree with the independently-rendered tier field");
+});
+
+test("toPlay: a real dossier conviction (FLOW origin) is NEVER overridden by the merit tier", () => {
+  // Same entry_context as above (would tier "A"), but the DB column already carries the
+  // dossier-scored FLOW letter — that letter is the more specific signal and must win.
+  const entryContext = {
+    vix_open: 16.2,
+    score: 78,
+    committed_at_et: "2026-07-10 12:10 ET",
+    cortex: { abstained: false, score: 1.85, vetoes: [], supports: [{ source: "positioning" }, { source: "flow" }], absent: [] },
+  };
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "FLOWX", conviction: "B", entry_context: entryContext })],
+    WINDOW
+  );
+  assert.equal(rec.plays[0]!.conviction, "B");
+});
+
+test("toPlay: a row with genuinely no pinned evidence stays honestly null (never fabricated)", () => {
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "PRECTX", conviction: null, entry_context: null })],
+    WINDOW
+  );
+  assert.equal(rec.plays[0]!.conviction, null);
+  assert.equal(rec.plays[0]!.tier, null);
 });
 
 // ── Fix 5: the graded predicate requires a FINITE plan_pnl_pct (partial-write guard) ──
@@ -504,6 +575,49 @@ test("FINDINGS 2026-08-27: a real RATCHET-FLOOR exit (exactly breakeven) outrank
   assert.equal(rec.breakeven, 1, "breakeven, neither win nor loss — not the fictitious +56% the reconstruction alone would report");
 });
 
+test("managedOutcomeLabel: a real trim_scale_runner_target exit (no reconstruction) buckets as 'doubled', not 'ratchet'", () => {
+  // trim_scale_runner_target fires when BOTH tranches are already banked and the LAST third
+  // also tags the plan target (exit-engine.ts decideTrimScale, action EXIT reason
+  // "trim_scale_runner_target") — the trim-scale-mode analogue of ratchet mode's
+  // "plan_target_final" ("doubled"): the position captured its full bullish target, just via
+  // banked tranches instead of one lump. The OLD code bucketed it under "ratchet" purely
+  // because its own ad hoc /ratchet|runner/ regex substring-matched "runner" inside
+  // "trim_scale_runner_target" — conflating a profit-TARGET hit with a defensive ratchet
+  // FLOOR exit, two economically different outcome shapes the by_outcome breakdown exists
+  // specifically to keep apart (see BUCKET_ORDER's own doc comment). Reachable live any time
+  // a trim_scale row's WS-11 reconstruction is absent/degenerate (readReconstructedTrimScale
+  // returns null, or reconstructionShowsGenuinePartialBank is false) so managedGradeView falls
+  // through to the real engine exit stamp instead of the reconstruction.
+  const r = withExit(
+    { ticker: "AAPL", plan_outcome: "time_stop", plan_pnl_pct: 60 },
+    { reason: "trim_scale_runner_target", pnl_pct: 60 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_outcome, "doubled");
+  assert.equal(rec.wins, 1);
+});
+
+test("managedOutcomeLabel: a real trim_scale_dead_zone_floor exit (no reconstruction) buckets as 'ratchet', not a bare win/loss/breakeven sign", () => {
+  // trim_scale_dead_zone_floor is the trim-scale-mode protective floor for the regime-
+  // conditioned dead zone (exit-engine.ts's decideTrimScale, floored at HALF the peak when no
+  // tranche has armed yet) — the trim-scale analogue of ratchet mode's
+  // "ratchet_breakeven_floor"/"ratchet_early_profit_floor"/"ratchet_profit_floor" (all bucket
+  // "ratchet"). The OLD code's ad hoc /ratchet|runner/ regex does not match this exact string
+  // at all (no "ratchet" or "runner" substring), so it silently fell through to the bare
+  // win/loss/breakeven-by-sign label instead of the named "ratchet" bucket every other
+  // protective-floor exit gets — the ONE real EXIT reason exit-engine.ts can stamp that this
+  // record.ts label function had no case for at all.
+  const r = withExit(
+    { ticker: "META", plan_outcome: "time_stop", plan_pnl_pct: 30 },
+    { reason: "trim_scale_dead_zone_floor", pnl_pct: 5 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_outcome, "ratchet");
+  assert.equal(rec.wins, 1);
+});
+
 test("FINDINGS 2026-08-27: a real FLAT-TIMEOUT exit outranks a genuine reconstruction (live-only reason, unreproducible by the bar-walk)", () => {
   const r = row({
     ticker: "MU",
@@ -722,3 +836,62 @@ test("buildZeroDteRecord: an all-directional window reports an empty condor lane
     assert.equal(rec.condor.committed, 0);
     assert.equal(rec.condor.no_live_record, true);
   });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// max_favorable_pct / extractMaxFavorablePct — reporting that separates REALIZED exits
+// from MAXIMUM FAVORABLE EXCURSION (member audit directive, point 6 of the original brief:
+// "separate realized exits from maximum potential gains").
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("readManagedExit: carries peak_pnl_pct alongside pnl_pct/reason when the row has a real exit stamp", () => {
+  const exit = readManagedExit({ exit: { reason: "thesis_break:gex-walls", pnl_pct: -22.57, peak_pnl_pct: 0 } });
+  assert.deepEqual(exit, { reason: "thesis_break:gex-walls", pnl_pct: -22.57, peak_pnl_pct: 0 });
+});
+
+test("readManagedExit: a non-finite/missing peak_pnl_pct reads null, never fabricated", () => {
+  assert.equal(readManagedExit({ exit: { reason: "plan_stop", pnl_pct: -50 } })?.peak_pnl_pct, null);
+  assert.equal(readManagedExit({ exit: { reason: "plan_stop", pnl_pct: -50, peak_pnl_pct: "NaN" } })?.peak_pnl_pct, null);
+});
+
+test("extractMaxFavorablePct: reads the real peak off a live-managed exit stamp", () => {
+  assert.equal(extractMaxFavorablePct({ exit: { reason: "ratchet_profit_floor", pnl_pct: 34.54, peak_pnl_pct: 86.27 } }), 86.27);
+});
+
+test("extractMaxFavorablePct: null when the row never carried a live-managed exit at all (absence, not zero)", () => {
+  assert.equal(extractMaxFavorablePct(null), null);
+  assert.equal(extractMaxFavorablePct({}), null);
+  assert.equal(extractMaxFavorablePct({ exit: "not-an-object" }), null);
+});
+
+test("buildZeroDteRecord: a play's max_favorable_pct is reported SEPARATELY from managed_pnl_pct, never conflated", () => {
+  // The real TSLA 2026-10-19 shape investigated this session: peak_pnl_pct=0 ("never moved
+  // favorably") alongside a -22.57% realized exit -- both numbers are real and must both survive
+  // to the public record, not be collapsed into one.
+  const rec = buildZeroDteRecord(
+    [
+      row({
+        ticker: "TSLA",
+        plan_outcome: "stopped",
+        plan_pnl_pct: -22.57,
+        entry_context: {
+          exit: { reason: "thesis_break:gex-walls", pnl_pct: -22.57, peak_pnl_pct: 0 },
+        } as unknown as ZeroDteSetupLogRow["entry_context"],
+      }),
+    ],
+    { since: "2026-10-19", through: "2026-10-19", days: 1 },
+  );
+  const play = rec.plays.find((p) => p.ticker === "TSLA");
+  assert.ok(play);
+  assert.equal(play!.max_favorable_pct, 0);
+  assert.equal(play!.managed_pnl_pct, -22.57);
+});
+
+test("buildZeroDteRecord: max_favorable_pct is null (not 0) for a row with no live-managed exit stamp", () => {
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "NVDA", plan_outcome: "stopped", plan_pnl_pct: -50, entry_context: null })],
+    { since: "2026-07-13", through: "2026-07-13", days: 1 },
+  );
+  const play = rec.plays.find((p) => p.ticker === "NVDA");
+  assert.ok(play);
+  assert.equal(play!.max_favorable_pct, null);
+});

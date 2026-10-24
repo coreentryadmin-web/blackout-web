@@ -127,12 +127,21 @@ export async function diffEstimateRevisionTimeline(
       const revenue_delta_pct = Number(
         (((row.estimated_revenue - prev.estimated_revenue) / Math.abs(prev.estimated_revenue)) * 100).toFixed(1)
       );
-      out.push(
-        revisionEntry(row, "revenue", {
-          revenue_delta_pct,
-          headline: `${row.ticker} Rev est revised ${revenue_delta_pct >= 0 ? "+" : ""}${revenue_delta_pct}%`,
-        })
-      );
+      // A real (nonzero) raw change can still round to "0.0%" at the 1-decimal display
+      // precision this timeline shows — e.g. a few thousand dollars nudged on a
+      // near-billion-dollar revenue base. Surfacing that as a timeline entry reads as
+      // "Rev est revised +0%", which looks like real news while telling the member nothing
+      // actually moved. Skip emitting a visible entry for a change that displays as zero;
+      // the snapshot below still updates so the next diff compares against the latest value
+      // instead of accumulating unreported drift.
+      if (revenue_delta_pct !== 0) {
+        out.push(
+          revisionEntry(row, "revenue", {
+            revenue_delta_pct,
+            headline: `${row.ticker} Rev est revised ${revenue_delta_pct >= 0 ? "+" : ""}${revenue_delta_pct}%`,
+          })
+        );
+      }
       changed = true;
     }
 

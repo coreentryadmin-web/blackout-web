@@ -1,11 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import {
-  describeVectorFreshness,
-  VECTOR_FRESHNESS_LIVE_SEC,
-  VECTOR_FRESHNESS_RECENT_SEC,
-} from "./vector-state-freshness";
+import { describeVectorFreshness } from "./vector-state-freshness";
 import { freshnessFromAgeMs } from "./answer-envelope";
 import {
   buildPulseSnapshot,
@@ -131,11 +127,16 @@ test("the full-state snapshot PERSISTS its ET anchor — contract C1, and it is 
 
 test("the tiers ARE freshnessFromAgeMs's — one classifier for the product, not a second", () => {
   const at = (sec: number) => describeVectorFreshness(new Date(T0).toISOString(), T0 + sec * 1000);
+  // Literal seconds, not a locally-exported constant: this module used to export
+  // VECTOR_FRESHNESS_LIVE_SEC/VECTOR_FRESHNESS_RECENT_SEC "for" these boundaries, but
+  // freshnessFromAgeMs (answer-envelope.ts) hardcodes its own 60_000/600_000ms inline and never
+  // read them — a real edit target pointing at nothing. Probing with literals here is honest
+  // about what actually sets the boundary (found + fixed 2026-10-11).
   assert.equal(at(0).freshness, "live");
-  assert.equal(at(VECTOR_FRESHNESS_LIVE_SEC - 1).freshness, "live");
-  assert.equal(at(VECTOR_FRESHNESS_LIVE_SEC).freshness, "recent");
-  assert.equal(at(VECTOR_FRESHNESS_RECENT_SEC - 1).freshness, "recent");
-  assert.equal(at(VECTOR_FRESHNESS_RECENT_SEC).freshness, "stale");
+  assert.equal(at(59).freshness, "live");
+  assert.equal(at(60).freshness, "recent");
+  assert.equal(at(599).freshness, "recent");
+  assert.equal(at(600).freshness, "stale");
   // The full TTL is reachable in practice and must read as stale, loudly.
   assert.equal(at(15 * 60).freshness, "stale");
   assert.match(at(15 * 60).note!, /15m ago/);
@@ -154,6 +155,64 @@ test("the tiers ARE freshnessFromAgeMs's — one classifier for the product, not
 test("only a non-live read carries a disclosure note", () => {
   assert.equal(describeVectorFreshness(new Date(T0).toISOString(), T0).note, null);
   assert.ok(describeVectorFreshness(new Date(T0).toISOString(), T0 + 10 * 60_000).note);
+});
+
+// ---------------------------------------------------------------------------
+// market_session — orthogonal to compute `freshness` (found 2026-09-20, raised across several
+// prior cycles on #4076 before being scoped here). A weekend/holiday self-warm genuinely computes
+// a fresh number off Friday's closing tape, so `freshness` correctly reads "live" while the market
+// itself has not ticked in 40+ hours. `market_session` is the field that tells a reader the second
+// half of that story instead of leaving `freshness: "live"` to imply a live tick backs the number.
+// ---------------------------------------------------------------------------
+
+test("a compute-fresh state on a CLOSED market carries market_session + a disclosure note", () => {
+  // Saturday 2026-08-22 10:00 ET — market is CLOSED (weekend), and the compute happened seconds
+  // ago (e.g. an off-hours self-warm serving a reader that missed the Redis cache).
+  const read = Date.parse("2026-08-22T14:00:00.000Z"); // Sat 10:00 ET
+  const f = describeVectorFreshness(new Date(read - 5_000).toISOString(), read);
+  assert.equal(f.freshness, "live", "the COMPUTE really is 5s old");
+  assert.equal(f.market_session, "CLOSED", "…but the MARKET has not ticked since Friday's close");
+  assert.match(f.market_session_note!, /market is CLOSED/);
+  assert.match(f.market_session_note!, /5s ago/);
+});
+
+test("a compute-fresh state on an OPEN market carries no market_session_note", () => {
+  // Wednesday 2026-08-19 14:30 ET — mid-RTH.
+  const read = Date.parse("2026-08-19T18:30:00.000Z");
+  const f = describeVectorFreshness(new Date(read - 5_000).toISOString(), read);
+  assert.equal(f.freshness, "live");
+  assert.equal(f.market_session, "OPEN");
+  assert.equal(f.market_session_note, null, "an open market never needs the closed-market disclosure");
+});
+
+test("market_session is evaluated on a market HOLIDAY too, not just weekends", () => {
+  // 2026-11-26 is Thanksgiving — a Thursday, so the weekday alone would read as a trading day.
+  const read = Date.parse("2026-11-26T18:30:00.000Z"); // would-be 13:30 ET on an ordinary Thursday
+  const f = describeVectorFreshness(new Date(read - 5_000).toISOString(), read);
+  assert.equal(f.freshness, "live");
+  assert.equal(f.market_session, "CLOSED", "a holiday reads CLOSED even though the clock alone would say OPEN");
+  assert.ok(f.market_session_note);
+});
+
+test("a genuinely STALE compute does not get a second, redundant market_session_note", () => {
+  // Session-old AND market closed — `freshness`'s own "stale" note already covers it; piling a
+  // second disclosure on top would bury the more important one, not add information.
+  const measured = Date.parse("2026-08-20T20:00:00.000Z"); // Thu 16:00 ET
+  const read = Date.parse("2026-08-22T14:00:00.000Z"); // Sat 10:00 ET — CLOSED, and ~42h stale
+  const f = describeVectorFreshness(new Date(measured).toISOString(), read);
+  assert.equal(f.freshness, "stale");
+  assert.equal(f.market_session, "CLOSED");
+  assert.match(f.note!, /has not refreshed since/);
+  assert.equal(f.market_session_note, null, "the stale note already says it — no second note");
+});
+
+test("market_session_note is suppressed on an unparseable/clock-skewed read (freshness unknown)", () => {
+  const unreadable = describeVectorFreshness("not-a-timestamp", T0);
+  assert.equal(unreadable.market_session_note, null);
+  assert.ok("market_session" in unreadable, "market_session must still be present, just no extra note");
+
+  const skewed = describeVectorFreshness(new Date(T0 + 30_000).toISOString(), T0);
+  assert.equal(skewed.market_session_note, null);
 });
 
 test("an unreadable timestamp is 'unknown', never 'live'", () => {

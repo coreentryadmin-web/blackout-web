@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { mapBangerPositionRow } from "./positions-db.ts";
+
+// Source-inspection: fetchBangerOpenCount/fetchBangerOpenBookRowsSettled run raw SQL this sandbox
+// cannot exercise against live Postgres — same idiom as src/lib/db.test.ts for DB-query code.
+const SRC = readFileSync(fileURLToPath(new URL("./positions-db.ts", import.meta.url)), "utf8");
 
 test("mapBangerPositionRow coerces numeric/jsonb columns and defaults status", () => {
   const row = mapBangerPositionRow({
@@ -18,6 +24,7 @@ test("mapBangerPositionRow coerces numeric/jsonb columns and defaults status", (
     entry_premium: "1.5",
     last_mark: "3.2",
     peak_premium: "3.4",
+    trough_premium: "1.4",
     scaled_already: true,
     scale_out_action: "TAKE_PARTIAL",
     scale_out_reason: "mark >= 2x entry",
@@ -41,6 +48,135 @@ test("mapBangerPositionRow coerces numeric/jsonb columns and defaults status", (
   assert.equal(row.status, "PARTIAL");
   assert.deepEqual(row.entry_context, { discovery: { screen: "banger" } });
   assert.equal(row.closed_at, null);
+  assert.equal(row.last_mark_at, null);
+  assert.equal(row.trough_premium, 1.4);
+  // Columns absent from this raw row entirely (pre-migration-017 shape) must degrade to honest
+  // null, never a fabricated 0/default — same discipline as every other optional column above.
+  assert.equal(row.bid, null);
+  assert.equal(row.ask, null);
+  assert.equal(row.open_interest, null);
+  assert.equal(row.quote_delta, null);
+  assert.equal(row.quote_gamma, null);
+  assert.equal(row.quote_theta, null);
+  assert.equal(row.quote_vega, null);
+  assert.equal(row.quote_iv, null);
+});
+
+// FINDINGS 2026-10-09 (Ask Largo standing mandate — migration 017): banger_positions never carried
+// a live NBBO/greeks quote at all — horizonPlayFromBangerPosition (banger-lane-merge.ts) hardcoded
+// bid/ask/openInterest/delta/gamma/theta/vega/iv to null/0 regardless of what the provider actually
+// quoted, because there was nowhere on this row for that data to live. Confirms the mapper
+// round-trips the new columns now that they exist (db.ts's ALTERs + updateBangerQuoteFields), same
+// pattern as the trough_premium test above.
+test("mapBangerPositionRow surfaces bid/ask/OI/greeks when the columns carry a value", () => {
+  const base = {
+    id: "1",
+    commit_key: "k",
+    session_date: "2026-08-04",
+    ticker: "T",
+    contract_strike: "1",
+    contract_expiry: "2026-08-14",
+    contract_occ: "occ",
+    entry_premium: "2",
+    last_mark: "1.5",
+    peak_premium: "2.5",
+    scaled_already: false,
+    scale_out_action: null,
+    scale_out_reason: null,
+    partial_realized_premium: null,
+    realized_pnl_pct: null,
+    realized_pnl_usd: null,
+    entry_context: null,
+    status: "OPEN",
+    first_seen_at: "2026-08-04T13:30:00.000Z",
+    committed_at: "2026-08-04T13:30:00.000Z",
+    closed_at: null,
+    updated_at: "2026-08-04T14:00:00.000Z",
+  };
+  const withQuote = mapBangerPositionRow({
+    ...base,
+    bid: "1.45",
+    ask: "1.55",
+    open_interest: "312",
+    quote_delta: "0.58",
+    quote_gamma: "0.021",
+    quote_theta: "-0.09",
+    quote_vega: "0.11",
+    quote_iv: "0.62",
+  });
+  assert.equal(withQuote.bid, 1.45);
+  assert.equal(withQuote.ask, 1.55);
+  assert.equal(withQuote.open_interest, 312);
+  assert.equal(withQuote.quote_delta, 0.58);
+  assert.equal(withQuote.quote_gamma, 0.021);
+  assert.equal(withQuote.quote_theta, -0.09);
+  assert.equal(withQuote.quote_vega, 0.11);
+  assert.equal(withQuote.quote_iv, 0.62);
+
+  const withoutQuote = mapBangerPositionRow(base);
+  assert.equal(withoutQuote.bid, null);
+  assert.equal(withoutQuote.ask, null);
+  assert.equal(withoutQuote.open_interest, null);
+  assert.equal(withoutQuote.quote_delta, null);
+});
+
+// FINDINGS 2026-09-21 (Ask Largo/Night Hawk Swings audit): banger_positions never had a
+// trough_premium column at all — only peak_premium was ever tracked — so a BANGER-origin swing
+// play could never show a Position-card "Trough" or a closed-play "Drawdown before outcome" line
+// even when the position genuinely dipped below entry, because there was nowhere for that number
+// to live. Confirms the mapper round-trips it now that the column + latch exist (db.ts's
+// ALTER + updateBangerLiveState's LEAST clause), same pattern as the last_mark_at test above.
+test("mapBangerPositionRow surfaces trough_premium when the column carries a value, and null when absent", () => {
+  const base = {
+    id: "1",
+    commit_key: "k",
+    session_date: "2026-08-04",
+    ticker: "T",
+    contract_strike: "1",
+    contract_expiry: "2026-08-14",
+    contract_occ: "occ",
+    entry_premium: "2",
+    last_mark: "1.5",
+    peak_premium: "2.5",
+    scaled_already: false,
+    scale_out_action: null,
+    scale_out_reason: null,
+    partial_realized_premium: null,
+    realized_pnl_pct: null,
+    realized_pnl_usd: null,
+    entry_context: null,
+    status: "OPEN",
+    first_seen_at: "2026-08-04T13:30:00.000Z",
+    committed_at: "2026-08-04T13:30:00.000Z",
+    closed_at: null,
+    updated_at: "2026-08-04T14:00:00.000Z",
+  };
+  const withTrough = mapBangerPositionRow({ ...base, trough_premium: "1.35" });
+  assert.equal(withTrough.trough_premium, 1.35);
+  const withoutTrough = mapBangerPositionRow({ ...base, trough_premium: null });
+  assert.equal(withoutTrough.trough_premium, null);
+});
+
+// FINDINGS 2026-09-11: banger_positions never had a per-mark timestamp column at all, so this
+// field couldn't be tested before it existed. Confirms the mapper round-trips it like every other
+// TIMESTAMPTZ column once the writer starts stamping it.
+test("mapBangerPositionRow surfaces last_mark_at when the column carries a value", () => {
+  const row = mapBangerPositionRow({
+    id: "1",
+    commit_key: "k",
+    session_date: "2026-08-04",
+    ticker: "T",
+    contract_strike: "1",
+    contract_expiry: "2026-08-14",
+    contract_occ: "occ",
+    entry_premium: "1",
+    last_mark: "1.1",
+    last_mark_at: "2026-08-04T15:00:00.000Z",
+    status: "OPEN",
+    first_seen_at: "2026-08-04T13:30:00.000Z",
+    updated_at: "2026-08-04T14:00:00.000Z",
+  });
+  assert.equal(row.last_mark_at, "2026-08-04T15:00:00.000Z");
 });
 
 test("mapBangerPositionRow parses a JSON-string entry_context (raw driver shape)", () => {
@@ -62,6 +198,43 @@ test("mapBangerPositionRow parses a JSON-string entry_context (raw driver shape)
   assert.deepEqual(row.entry_context, { a: 1 });
 });
 
+// REGRESSION (production incident, 2026-09-08): mapBangerPositionRow's session_date/contract_expiry
+// used `String(r.field).slice(0, 10)` — correct for an already-ISO string fixture (which is all the
+// tests above ever passed) but wrong for what node-postgres ACTUALLY returns for a DATE column with
+// no setTypeParser override in this repo: a raw JS `Date`. `String(date)` runs `Date.prototype.toString()`
+// ("Wed Aug 19 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"), and slicing the first 10 chars
+// yields "Wed Aug 19" — a year-less, weekday-first label. That garbled session_date then flowed,
+// unchanged, through bangerRowToActivePlay (live-marks-active.ts) into the ~1s live-marks poller's
+// updateZeroDteLiveState($1::date, ...) call, and Postgres threw `invalid input syntax for type date`
+// on every tick for every open banger position — thousands of error_events rows in 15 minutes.
+// isoDateString (db.ts), the helper already used everywhere else in this codebase for this exact
+// class of bug (mapZeroDteLogRow, mapSwingPositionRow), handles a raw Date correctly.
+test("REGRESSION: mapBangerPositionRow normalizes a raw pg Date session_date/contract_expiry to ISO, not toString().slice(0,10)", () => {
+  const pgDate = new Date(Date.UTC(2026, 7, 19)); // "Wed Aug 19 2026" when .toString()'d
+  // Precondition: this is the garbage the old `String(date).slice(0, 10)` code produced.
+  assert.equal(String(pgDate).slice(0, 10), "Wed Aug 19");
+  const row = mapBangerPositionRow({
+    id: "1",
+    commit_key: "k",
+    session_date: pgDate,
+    ticker: "T",
+    contract_strike: "1",
+    contract_expiry: pgDate,
+    contract_occ: "occ",
+    entry_premium: "1",
+    scaled_already: false,
+    entry_context: null,
+    status: "OPEN",
+    first_seen_at: pgDate,
+    updated_at: pgDate,
+  });
+  assert.equal(row.session_date, "2026-08-19");
+  assert.equal(row.contract_expiry, "2026-08-19");
+  // The TIMESTAMPTZ twin (first_seen_at/updated_at) had the identical `String(Date)` bug.
+  assert.equal(row.first_seen_at, pgDate.toISOString());
+  assert.equal(row.updated_at, pgDate.toISOString());
+});
+
 test("mapBangerPositionRow defaults status to OPEN when the column is missing", () => {
   const row = mapBangerPositionRow({
     id: "1",
@@ -79,4 +252,50 @@ test("mapBangerPositionRow defaults status to OPEN when the column is missing", 
     updated_at: "2026-08-04T00:00:00.000Z",
   });
   assert.equal(row.status, "OPEN");
+});
+
+test("fetchBangerOpenCount filters out expired-but-still-OPEN/PARTIAL rows via contract_expiry >= today (ET), not status alone", () => {
+  const fn = SRC.slice(SRC.indexOf("export async function fetchBangerOpenCount"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.match(body, /status IN \('OPEN','PARTIAL'\) AND contract_expiry >= \$1::date/);
+  assert.match(body, /todayEt\(\)/, "must use the shared ET-anchored today helper, not a UTC/local Date");
+});
+
+test("fetchBangerOpenBookRowsSettled filters out expired-but-still-OPEN/PARTIAL rows, both the limited and unlimited query branches", () => {
+  const fn = SRC.slice(SRC.indexOf("export async function fetchBangerOpenBookRowsSettled"));
+  const body = fn.slice(0, fn.indexOf("\nexport "));
+  const matches = body.match(/status IN \('OPEN','PARTIAL'\) AND contract_expiry >= \$\d::date/g) ?? [];
+  assert.equal(matches.length, 2, "both the LIMIT and no-LIMIT branches must carry the expiry filter");
+});
+
+test("fetchBangerOpenBookRows (the UNFILTERED sibling live-marks-active.ts depends on) is untouched — no expiry filter added to it", () => {
+  const start = SRC.indexOf("export async function fetchBangerOpenBookRows(");
+  const fn = SRC.slice(start, SRC.indexOf("\n}\n", start) + 3);
+  assert.ok(!fn.includes("contract_expiry"), "the raw reader live-marks-active.ts uses must keep seeing expired rows to force-settle them");
+});
+
+// ─── SEV-2 (FINDINGS 2026-10-15, Ask Largo/Night Hawk Swings standing mandate): premium watermarks
+// must be BRACKETED BY ENTRY — the exact same shape FINDINGS 2026-08-06 already fixed on
+// swing_positions (src/lib/db-swing-ledger.test.ts), never ported to this sibling table. Live proof
+// 2026-10-15 (GET /api/market/nighthawk/horizons?view=swings): 7 real committed rows
+// (SLS/METU/SNXX/MUU/ALAB/CBRS/WDC) showed peak_premium < entry_premium and 2 (ORKA/SOXS) showed
+// trough_premium > entry_premium — arithmetically impossible, since the entry fill itself IS an
+// observed mark of the contract. Root cause: insertBangerPosition never seeded peak_premium/
+// trough_premium at INSERT, so updateBangerLiveState's ratchet (GREATEST(COALESCE(peak_premium,
+// $3), $3)) seeded peak_premium from the FIRST OBSERVED MARK instead — below entry whenever the
+// contract gapped against the position before the first live-sync tick ever sampled it. ───────────
+
+test("insertBangerPosition: SEEDS peak_premium/trough_premium from entry_premium ($11) at commit", () => {
+  const start = SRC.indexOf("export async function insertBangerPosition");
+  const fn = SRC.slice(start, SRC.indexOf("\n}\n", start) + 3);
+  assert.match(fn, /entry_context, status, peak_premium, trough_premium, committed_at, updated_at/);
+  // Both seeded from $11 — the entry_premium placeholder — not a fresh param or a literal.
+  assert.match(fn, /'OPEN',\$11,\$11,NOW\(\),NOW\(\)/);
+});
+
+test("insertBangerPosition: peak_premium/trough_premium are NOT pinned on the commit_key re-touch — the ratchet owns them after insert", () => {
+  const start = SRC.indexOf("const BANGER_PINNED_COLUMNS");
+  const block = SRC.slice(start, SRC.indexOf("] as const;", start));
+  assert.ok(!block.includes('"peak_premium"'), "peak_premium must not be COALESCE-pinned, or a re-running scan would rewind a ratcheted extreme");
+  assert.ok(!block.includes('"trough_premium"'), "trough_premium must not be COALESCE-pinned, same reasoning");
 });

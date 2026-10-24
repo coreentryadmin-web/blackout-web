@@ -10,6 +10,99 @@
 // (a real production data-correctness bug). Do not change the branch
 // thresholds or decimal precision without auditing every call site.
 
+/**
+ * Absolute per-contract option-premium PRICE at 2dp, e.g. "$6.18" — never signed (a stop/entry/
+ * mark/target price is a price, not a delta; callers that need a signed value format it
+ * separately). This MUST round with the exact same algorithm `roundFloats` uses at every API
+ * route boundary (`src/lib/round-floats.ts`: `Math.round(n * 100) / 100`, THEN stringify) rather
+ * than calling `n.toFixed(2)` directly on the raw float — `toFixed` and `Math.round(n*100)/100`
+ * can disagree by a full cent on an IEEE-754 double that lands near an exact half-cent boundary
+ * (`(6.175).toFixed(2)` is `"6.17"` because 6.175 is actually stored as
+ * 6.1749999999999998..., while `Math.round(6.175 * 100) / 100` is `6.18`, because the
+ * floating-point *multiplication* rounds the other way first).
+ *
+ * Live repro (Ask Largo standing mandate, 2026-09-12): AAPL swing position #37's
+ * `GET /api/market/swing/play-brief` response carried the SAME raw `mark` value twice — once as
+ * a plain JSON number inside the response's own `briefContentKey` diagnostic field (which the
+ * route wraps in `roundFloats()`, giving `6.18`), and once baked into the markdown "Position" and
+ * "Trade manager read" sections via this module's OWN local `n.toFixed(2)` formatter, which
+ * printed `"$6.17"` for the identical underlying number. `roundFloats()` cannot fix the markdown
+ * copy because by the time it runs the number is already a string inside `body`/`markdown` — the
+ * exact "systemic: several endpoints serve unrounded floats" class CLAUDE.md already names, one
+ * layer deeper (a *consistently* wrong rounding, not a raw unrounded float). The same bug had
+ * already been independently pasted into FOUR files (`play-brief.ts`'s `fmtUsd`,
+ * `play-brief-narrative.ts`'s `fmtOptionUsd`, `play-brief-narrative-coaching.ts`'s `fmtUsd`,
+ * `play-brief-intel.ts`'s `fmtUsd`) as an exact byte-for-byte copy — each one previously carried
+ * (and was fixed for) the same *sign* defect on 2026-09-09/11, confirming they are the same
+ * function maintained in four places rather than four independent designs. Centralizing here
+ * fixes the rounding bug and removes the duplication in one pass, same as `fmtPremium` above.
+ */
+export function fmtOptionUsd(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `$${(Math.round(n * 100) / 100).toFixed(2)}`;
+}
+
+/**
+ * Bare (no `$`) price-LEVEL at 2dp, e.g. "152.04" — for underlying spot/wall/flip/pin levels,
+ * never a dollar amount (those are `fmtOptionUsd` above). Same rounding-consistency requirement,
+ * same fix: `Math.round(n * 100) / 100` THEN `.toFixed(2)`, matching `roundFloats` exactly,
+ * rather than `n.toFixed(2)` directly, which can disagree by a full cent at an IEEE-754 half-cent
+ * boundary (see `fmtOptionUsd`'s own header for the mechanism).
+ *
+ * THIRD OCCURRENCE of this exact bug class (Ask Largo standing mandate, 2026-09-21). `fmtOptionUsd`
+ * above already documents two prior fixes for option-mark/stop/target dollar amounts (a sign defect
+ * 2026-09-09, this same rounding mismatch 2026-09-12) — but those never covered the BARE price
+ * levels (`spot`/`level.price`/wall/flip/pin) narrated across `play-brief-narrative.ts`,
+ * `play-brief-narrative-coaching.ts`, `play-brief-intel.ts`, `play-brief.ts`, `play-brief-ladder.ts`
+ * and `play-brief-diff.ts`, all of which independently call `n.toFixed(2)` on a raw float that is
+ * ALSO exposed as a plain JSON number elsewhere in the same swing play-brief response (`envelope.
+ * levels[].price`, `envelope.structureLadder`), which the route rounds via `roundFloats` at the
+ * response boundary. Live repro (SPCX, 2026-09-21): the same request's narrative text read
+ * "Spot **152.03**" (`n.toFixed(2)` on the raw float) while `envelope.levels` and
+ * `envelope.structureLadder.spot` both carried the number `152.04` (`roundFloats`'s
+ * `Math.round(n*100)/100` on the identical raw float) — two different values for the same fact in
+ * one response, the exact Largo-contract precision violation (C9) `fmtOptionUsd`'s own history
+ * already names.
+ */
+export function fmtPriceLevel(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return (Math.round(n * 100) / 100).toFixed(2);
+}
+
+/**
+ * Signed percentage at N decimals (default 1), e.g. "+2.3%" / "-4.9%" — for a distance/change
+ * percentage narrated in markdown alongside the SAME fact's own JSON number (an API route rounds
+ * that number via `roundFloats()` at the response boundary). MUST round with the exact same
+ * algorithm `roundFloats` uses (`Math.round(n * 10**digits) / 10**digits`, THEN stringify) rather
+ * than calling `n.toFixed(digits)` directly on the raw float — see `fmtOptionUsd`'s header for why
+ * `toFixed` and round-first-then-stringify can disagree at a half-unit boundary.
+ *
+ * FOURTH OCCURRENCE of this bug class (Ask Largo standing mandate, 2026-10-08), now at
+ * PERCENTAGE/distance fields rather than dollar or bare-price-level ones. `fmtPct` had been
+ * independently pasted, byte-identical modulo nullability, into FOUR files (`play-brief.ts`,
+ * `play-brief-narrative.ts`, `play-brief-narrative-coaching.ts`, `play-brief-intel.ts`) — the
+ * exact same four files `fmtOptionUsd`'s own history names for the money version of this bug —
+ * and none of the four pre-rounded before `toFixed`. Combined with the swing play-brief API route
+ * rounding `structureLadder` via `roundFloats()` (2dp, no `distancePct` override) and
+ * `BieStructureLadder.tsx`'s own `fmtDist()` then re-rounding that ALREADY-2dp wire value to 1dp
+ * again, the SAME underlying distance-to-level fact could display as two different percentages in
+ * one response: live repro, raw `distancePct` -4.94999 read "-4.9%" in the narrative bullet text
+ * (plain `toFixed(1)` on the raw float) and "-5.0%" in the structure-ladder visual (2dp-then-1dp
+ * double round) for the identical rung — the exact Largo-contract precision violation (C9)
+ * `fmtPriceLevel`'s own header already names, here at percentages instead of prices.
+ *
+ * Sign is read off the ROUNDED value, not the raw one (mirrors `rail-levels.ts`'s own
+ * `formatDistance`): a raw value that rounds to exactly 0 at the requested precision (e.g. 0.04 at
+ * 1dp) must read "0.0%", never the misleading "+0.0%" a raw-value sign check would produce.
+ */
+export function fmtPct(n: number | null | undefined, digits = 1): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const factor = 10 ** digits;
+  const rounded = Math.round(n * factor) / factor;
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded.toFixed(digits)}%`;
+}
+
 /** Compact signed dollar magnitude, e.g. "$38.2M" / "-$4.1K". */
 export function fmtPremium(n: number | null): string {
   // NaN/Infinity guard (not just null): these formatters are used pervasively by desk

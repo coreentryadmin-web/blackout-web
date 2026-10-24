@@ -19,10 +19,10 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { NextEarnings } from "@/lib/providers/uw-earnings";
 import type { TickerFundamentalsBundle } from "@/lib/bie/ticker-fundamentals";
 import type { RelatedCompanies } from "@/lib/providers/polygon-related";
-import type { NewsResult } from "@/lib/providers/polygon-news";
+import type { NewsResult, NewsItem } from "@/lib/providers/polygon-news";
 import type { PolygonMacroBackdrop } from "@/lib/providers/polygon-macro";
 import type { MarketBreadthBundle } from "@/lib/bie/market-breadth";
-import { SPX_CONFIDENCE_OMITTED } from "@/lib/largo/spx-confidence-boundary";
+import { SPX_CONFIDENCE_OMITTED, SPX_SCORE_CLAMP_NOTE } from "@/lib/largo/spx-confidence-boundary";
 
 // mock.module() must be registered before ecosystem-context.ts (and therefore
 // its "@/lib/db" import) is ever loaded — an ordinary top-level `import` of
@@ -156,11 +156,17 @@ mock.module("../providers/gex-positioning", {
 // server graph (uw-socket / polygon providers) into the test at all.
 let mockVectorFullState: VectorFullState | null = null;
 let vectorFullStateCalls: Array<[string, string]> = [];
+// Set true only by the withEcosystemVectorSubTimeout integration regression test below, to prove a
+// hung internal Vector read no longer takes its siblings (gex_positioning chief among them) down
+// with it. Reset to false at the end of that one test so every other test keeps the normal,
+// immediately-resolving mock behavior.
+let vectorFullStateShouldHang = false;
 
 mock.module("./vector-full-state", {
   namedExports: {
     fetchVectorFullState: async (ticker: string, horizon: string) => {
       vectorFullStateCalls.push([ticker, horizon]);
+      if (vectorFullStateShouldHang) return new Promise<VectorFullState | null>(() => {});
       return mockVectorFullState;
     },
   },
@@ -181,6 +187,7 @@ let earningsCalls: string[] = [];
 let fundamentalsCalls: string[] = [];
 let relatedCalls: string[] = [];
 let tickerNewsCalls: string[] = [];
+let tickerNewsOpts: Array<{ limit?: number } | undefined> = [];
 let catalystCalls = 0;
 let macroCalls = 0;
 let breadthCalls = 0;
@@ -219,8 +226,9 @@ mock.module("../providers/polygon-related", {
 });
 mock.module("../providers/polygon-news", {
   namedExports: {
-    fetchTickerNews: async (ticker: string) => {
+    fetchTickerNews: async (ticker: string, opts?: { limit?: number }) => {
       tickerNewsCalls.push(ticker);
+      tickerNewsOpts.push(opts);
       return mockTickerNews;
     },
     fetchMarketCatalysts: async () => {
@@ -263,10 +271,21 @@ let ECOSYSTEM_CONTEXT_FIELDS: typeof import("./ecosystem-context").ECOSYSTEM_CON
 let mapNighthawkEchoRows: typeof import("./ecosystem-context").mapNighthawkEchoRows;
 let assembleEcosystemArsenal: typeof import("./ecosystem-context").assembleEcosystemArsenal;
 let isEcosystemIndexTicker: typeof import("./ecosystem-context").isEcosystemIndexTicker;
+let rankNewsItemsBySpecificity: typeof import("./ecosystem-context").rankNewsItemsBySpecificity;
+let withEcosystemVectorSubTimeout: typeof import("./ecosystem-context").withEcosystemVectorSubTimeout;
+let ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS: typeof import("./ecosystem-context").ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS;
 
 before(async () => {
-  ({ fetchEcosystemContext, ECOSYSTEM_CONTEXT_FIELDS, mapNighthawkEchoRows, assembleEcosystemArsenal, isEcosystemIndexTicker } =
-    await import("./ecosystem-context"));
+  ({
+    fetchEcosystemContext,
+    ECOSYSTEM_CONTEXT_FIELDS,
+    mapNighthawkEchoRows,
+    assembleEcosystemArsenal,
+    isEcosystemIndexTicker,
+    rankNewsItemsBySpecificity,
+    withEcosystemVectorSubTimeout,
+    ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS,
+  } = await import("./ecosystem-context"));
 });
 
 test("ECOSYSTEM_CONTEXT_FIELDS: covers every real field with a non-empty description", () => {
@@ -415,10 +434,29 @@ test("fetchEcosystemContext: spx_play is null for a non-SPX ticker, and the SPX-
 
 
 /** The fixture as it should arrive at the model: everything verbatim, minus the uncalibrated
- *  `confidence`, plus the named absence that replaces it. */
+ *  `confidence`, plus the named absence that replaces it — and, when the fixture's `factors[]`
+ *  don't sum to its `score` (this hand-typed fixture only carries one representative factor, so
+ *  they don't), the honest clamp note `omitUncalibratedSpxConfidence` also attaches for that same
+ *  reason. Derived here rather than hand-asserted so this stays a byte-for-byte full-fidelity
+ *  guard against the REAL sanitizer, not a copy of its logic that could silently drift from it. */
 function withConfidenceOmitted(payload: Record<string, unknown>): Record<string, unknown> {
   const { rawScore: _omitted, ...rest } = payload;
-  return { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED };
+  const out: Record<string, unknown> = { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED };
+  const { score, factors } = payload as { score?: unknown; factors?: unknown };
+  if (typeof score === "number" && Array.isArray(factors)) {
+    const rawSum = factors.reduce(
+      (s: number, f) =>
+        s + (f && typeof f === "object" && typeof (f as { weight?: unknown }).weight === "number"
+          ? (f as { weight: number }).weight
+          : 0),
+      0
+    );
+    if (rawSum !== score) {
+      out.factor_sum_pre_clamp = rawSum;
+      out.score_clamp_note = SPX_SCORE_CLAMP_NOTE;
+    }
+  }
+  return out;
 }
 
 // Regression: Largo's own get_spx_play tool (src/lib/largo/run-tool.ts ->
@@ -750,6 +788,73 @@ test('fetchEcosystemContext: vector_full_state is NOT gated by isSpxSlayerTicker
   assert.equal(fullStateCalls, 1);
 });
 
+// BUG FIX regression (Ask Largo standing mandate, 2026-10-18, live repro NVDA position #62):
+// withEcosystemVectorSubTimeout's own mechanics, unit-tested in isolation with a short override —
+// same three-case shape as swing/brief-source-timeout.test.ts's own tests for its sibling helper.
+test("withEcosystemVectorSubTimeout: rejects with a named EcosystemContextVectorSubTimeout before an upstream that never resolves", async () => {
+  const neverResolves = new Promise<never>(() => {});
+  await assert.rejects(withEcosystemVectorSubTimeout(neverResolves, 20), (err: Error) => {
+    assert.equal(err.name, "EcosystemContextVectorSubTimeout");
+    return true;
+  });
+});
+
+test("withEcosystemVectorSubTimeout: resolves with the upstream value when it finishes inside the budget", async () => {
+  const fast = Promise.resolve("ok");
+  assert.equal(await withEcosystemVectorSubTimeout(fast, 50), "ok");
+});
+
+test("withEcosystemVectorSubTimeout: propagates a genuine upstream rejection unchanged, not as a timeout", async () => {
+  const upstreamError = new Error("boom");
+  const failing = Promise.reject(upstreamError);
+  await assert.rejects(withEcosystemVectorSubTimeout(failing, 50), (err: Error) => {
+    assert.equal(err, upstreamError);
+    return true;
+  });
+});
+
+test("ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS is meaningfully shorter than the caller's 8s outer brief-source budget", () => {
+  // Not importing BRIEF_SOURCE_TIMEOUT_MS itself (that would pull swing's "server-only"-adjacent
+  // import graph into this hermetic BIE-layer test file) — the 8_000 literal is play-brief-context.ts's
+  // own documented outer budget (brief-source-timeout.ts), restated here as the fixed point this
+  // constant must stay under so the fix's whole premise (sub-timeout fires before the outer one) holds.
+  assert.ok(
+    ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS < 8_000,
+    "a sub-timeout that isn't shorter than the outer 8s brief-source budget can't prevent the outer timeout from firing first"
+  );
+});
+
+// Integration-level proof, at the REAL production constant (6s) — not a parameterized stand-in —
+// that a cold/hung internal Vector read no longer takes its siblings (gex_positioning chief among
+// them) down with it. Pre-fix, this exact scenario hung fetchEcosystemContext forever (no internal
+// timeout existed at all, so the Promise.all simply never settled); post-fix it resolves in just
+// over 6s with vector_full_state degraded to null and gex_positioning still fully populated.
+test(
+  "fetchEcosystemContext: a Vector read that never resolves degrades vector_full_state to null WITHOUT losing gex_positioning or any other sibling field (live repro NVDA#62)",
+  { timeout: 10_000 },
+  async () => {
+    vectorFullStateCalls = [];
+    gexPositioningCalls = [];
+    mockGexPositioning = makeGexPositioning();
+    vectorFullStateShouldHang = true;
+
+    try {
+      const ctx = await fetchEcosystemContext("NVDA");
+
+      assert.equal(ctx.vector_full_state, null, "a hung Vector read must degrade to null, not hang the whole context forever");
+      assert.deepEqual(
+        ctx.gex_positioning,
+        mockGexPositioning,
+        "gex_positioning must still populate — it must not share the hung Vector read's fate"
+      );
+      assert.deepEqual(gexPositioningCalls, ["NVDA"], "getGexPositioning's own fast read must still have run and resolved");
+      assert.deepEqual(vectorFullStateCalls, [["NVDA", "all"]], "the Vector read must still have been attempted");
+    } finally {
+      vectorFullStateShouldHang = false;
+    }
+  }
+);
+
 test("mapNighthawkEchoRows: maps rows keyed by uppercased ticker", () => {
   const map = mapNighthawkEchoRows([
     { ticker: "aapl", edition_for: "2026-07-01", direction: "long", conviction: "high", outcome: "target", score: 82 },
@@ -820,6 +925,9 @@ test("assembleEcosystemArsenal(single_name): earnings/fundamentals/peers/news po
   assert.deepEqual(ars.related, ["AMD", "AVGO", "MU"]);
   assert.equal(ars.news?.count, 2);
   assert.deepEqual(ars.news?.headlines, ["NVDA guidance raised", "new GPU"]);
+  // Largo C2 (2026-09-18): `NewsResult.asOf` (the real fetch-time stamp) must reach the arsenal
+  // summary, not be dropped at this fold — see EcosystemArsenalNews.as_of's own doc comment.
+  assert.equal(ars.news?.as_of, "2026-07-13T00:00:00Z");
   // Macro/breadth aren't relevant to a single name → plain null, and NOT surfaced as "unavailable".
   assert.equal(ars.macro, null);
   assert.equal(ars.breadth, null);
@@ -852,6 +960,154 @@ test("assembleEcosystemArsenal: Benzinga headline HTML entities are decoded for 
   ]);
 });
 
+test("rankNewsItemsBySpecificity: ascending tag-count, stable on recency within a tier (Ask Largo mandate, live repro 2026-10-08)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:AMZN&ticker=AMZN — the raw Benzinga
+  // tickers.any_of=AMZN feed (re-verified directly against the provider, bypassing this repo
+  // entirely) returned, most-recent-first: 3 broad AI-industry stories co-tagging AMZN alongside
+  // 3-9 OTHER megacaps, THEN two genuinely AMZN-specific stories (AWS funding, a new Alexa
+  // product) further back in recency. `.slice(0, 4)` on the raw order would surface 0 of the 2
+  // AMZN-specific stories.
+  const broadClaudeDocs = { headline: "Anthropic Announces Claude Docs...", tickers: ["AMZN", "GOOG", "GOOGL"] };
+  const broadCyberMission = {
+    headline: "Anthropic Launches Cyber Mission...",
+    tickers: ["AMZN", "GOOGL", "GOOG", "MSFT", "PANW", "CRWD", "ACN", "ROK", "BAH"],
+  };
+  const broadSamsungTsmc = {
+    headline: "Stock Reaction To Samsung And TSMC Earnings...",
+    tickers: ["USO", "SPY", "NVDA", "TSLA", "QQQ", "AMZN", "AAPL", "GOOG", "META", "MSFT", "AMD", "TSM"],
+  };
+  const specificAws = { headline: "Amazon Web Services Announces Golden Age of Science Accelerator", tickers: ["AMZN"] };
+  const specificAlexa = { headline: "Amazon Introducing All-New Amazon Alexa Tablets", tickers: ["AMZN"] };
+  const items = [broadClaudeDocs, broadCyberMission, broadSamsungTsmc, specificAws, specificAlexa] as unknown as NewsItem[];
+
+  const ranked = rankNewsItemsBySpecificity(items);
+  assert.deepEqual(
+    ranked.map((i) => i.headline),
+    [
+      // Both 1-tag items first (tie broken by original/recency order: AWS before Alexa).
+      specificAws.headline,
+      specificAlexa.headline,
+      // Then broad items, in their original recency order — never hidden, just deprioritized.
+      broadClaudeDocs.headline,
+      broadCyberMission.headline,
+      broadSamsungTsmc.headline,
+    ],
+  );
+
+  // End-to-end through the real fold: the two AMZN-specific stories now survive `.slice(0, 4)`
+  // instead of being crowded out by 3 broad co-tagged ones occupying every slot.
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: null,
+    related: null,
+    news: { items, asOf: "2026-10-08T20:55:00Z", newest: "2026-10-08T20:00:00Z" } as unknown as NewsResult,
+    macro: null,
+    breadth: null,
+  });
+  assert.deepEqual(ars.news?.headlines, [
+    specificAws.headline,
+    specificAlexa.headline,
+    broadClaudeDocs.headline,
+    broadCyberMission.headline,
+  ]);
+  // Total count is unaffected by the re-rank — still every item the provider returned.
+  assert.equal(ars.news?.count, 5);
+});
+
+test("rankNewsItemsBySpecificity: an item with no tickers field sorts as maximally specific, never penalized for missing metadata", () => {
+  const noTagField = { headline: "hand-built fixture, no tickers field at all" } as unknown as NewsItem;
+  const emptyTags = { headline: "normalized but untagged", tickers: [] } as unknown as NewsItem;
+  const broad = { headline: "broad story", tickers: ["A", "B", "C"] } as unknown as NewsItem;
+  const ranked = rankNewsItemsBySpecificity([broad, noTagField, emptyTags]);
+  assert.deepEqual(ranked.map((i) => i.headline), [noTagField.headline, emptyTags.headline, broad.headline]);
+});
+
+test("rankNewsItemsBySpecificity: within a tied tag-count tier, a genuinely on-topic item outranks an incidentally co-tagged off-topic one (Ask Largo mandate, live repro GOOG OPEN brief, 2026-10-16)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:GOOG:59&ticker=GOOG&positionId=59 —
+  // all three items below tie at tagCount=3 from the SAME fetched batch. Pre-fix, the pure
+  // tag-count sort fell through straight to recency within that tie, and the X Corp story (most
+  // recent of the tier) won the #4/4 member-facing slot even though it has zero business
+  // connection to Alphabet/Google — it was tagged ['SPCX','GOOG','GOOGL'] purely incidentally.
+  // The other two genuinely discuss "Google" by name and lost on recency alone.
+  const xCorpOffTopic = {
+    headline: "X Corp Launches Creator Monetization Program For Premium Subscribers",
+    tickers: ["SPCX", "GOOG", "GOOGL"],
+  };
+  const bloomFuelCell = {
+    headline: "Google's $4 Billion Fuel-Cell Project Puts Bloom Energy's AI Power Backlog In The Spotlight",
+    tickers: ["GOOGL", "GOOG", "BE"],
+  };
+  const cnnPartnership = {
+    headline: "CNN And Google Strike Multiyear Partnership To Embrace Generative AI",
+    tickers: ["SKYD", "GOOG", "GOOGL"],
+  };
+  // Benzinga order: most-recent-first, exactly as fetchTickerNews returns it.
+  const items = [xCorpOffTopic, bloomFuelCell, cnnPartnership] as unknown as NewsItem[];
+
+  // Confirms the OLD bug reproduces when no ticker is passed (the pre-fix call shape): with no
+  // aboutness signal at all, the tie collapses straight to recency and the off-topic item wins.
+  const noTickerRanked = rankNewsItemsBySpecificity(items);
+  assert.equal(noTickerRanked[0].headline, xCorpOffTopic.headline);
+
+  // With the ticker passed, the two genuinely on-topic items now outrank the off-topic one within
+  // their shared tagCount=3 tier, even though it was more recent than both of them.
+  const ranked = rankNewsItemsBySpecificity(items, "GOOG");
+  assert.deepEqual(ranked.map((i) => i.headline), [
+    bloomFuelCell.headline,
+    cnnPartnership.headline,
+    xCorpOffTopic.headline,
+  ]);
+
+  // End-to-end through the real fold, as the swing play-brief's "Catalysts & news" section would
+  // see it: the off-topic X Corp story now survives (never hidden — only deprioritized) but drops
+  // out of the member-facing top-2 once a third tied, genuinely-on-topic item exists.
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    ticker: "GOOG",
+    earnings: null,
+    fundamentals: null,
+    related: null,
+    news: { items, asOf: "2026-10-16T00:00:00Z", newest: "2026-10-16T00:00:00Z" } as unknown as NewsResult,
+    macro: null,
+    breadth: null,
+  });
+  assert.deepEqual(ars.news?.headlines, [bloomFuelCell.headline, cnnPartnership.headline, xCorpOffTopic.headline]);
+});
+
+test("rankNewsItemsBySpecificity: an untracked ticker (no alias-map entry) falls back to the pre-existing recency-only tiebreak, unchanged", () => {
+  // "ZZZZ" is deliberately not in NEWS_SPECIFICITY_COMPANY_ALIASES — the fix must degrade
+  // gracefully for any ticker it doesn't recognize rather than erroring or silently hiding anything.
+  const newer = { headline: "Some Newer Story Mentioning ZZZZ And Others", tickers: ["ZZZZ", "AAA", "BBB"] };
+  const older = { headline: "An Older Story Also Mentioning ZZZZ Directly", tickers: ["ZZZZ", "CCC", "DDD"] };
+  const items = [newer, older] as unknown as NewsItem[]; // most-recent-first
+  const ranked = rankNewsItemsBySpecificity(items, "ZZZZ");
+  // Tied tagCount (3,3); no alias signal for ZZZZ, so this reads identically to the pre-fix
+  // function — recency (original order) alone decides the tie.
+  assert.deepEqual(ranked.map((i) => i.headline), [newer.headline, older.headline]);
+});
+
+test("assembleEcosystemArsenal(single_name): market catalysts (no single ticker) are left in Benzinga's own recency order, not re-ranked", () => {
+  // The specificity re-rank only makes sense when there IS a "this ticker" to be specific to.
+  // A market-wide catalyst read (scope: "index") has no such anchor — re-ranking by tag-count
+  // there would just reorder by how many stocks each macro story happens to list, which is noise,
+  // not a correctness improvement. Confirms the `single` gate actually gates.
+  const items = [
+    { headline: "narrow by chance", tickers: ["X"] },
+    { headline: "broad macro story", tickers: ["A", "B", "C", "D", "E"] },
+  ] as unknown as NewsItem[];
+  const ars = assembleEcosystemArsenal({
+    scope: "index",
+    earnings: null,
+    fundamentals: null,
+    related: null,
+    news: { items, asOf: "2026-10-08T20:55:00Z", newest: "2026-10-08T20:00:00Z" } as unknown as NewsResult,
+    macro: null,
+    breadth: null,
+  });
+  assert.deepEqual(ars.news?.headlines, ["narrow by chance", "broad macro story"]);
+});
+
 test("assembleEcosystemArsenal(single_name): percent-scale short_volume_ratio normalizes to 0–1 fraction (audit #12)", () => {
   const ars = assembleEcosystemArsenal({
     scope: "single_name",
@@ -877,11 +1133,18 @@ test("assembleEcosystemArsenal(index): macro/breadth/catalysts populate; single-
     fundamentals: null,
     related: null,
     news: { items: [{ headline: "FOMC minutes" }], asOf: "2026-07-13T00:00:00Z", newest: "2026-07-12T00:00:00Z" } as unknown as NewsResult,
-    macro: { as_of: "2026-07-11", treasury: { yield_10_year: 4.2, curve_10y_1y_spread: -0.3 }, inflation: { cpi: 3.1 } } as unknown as PolygonMacroBackdrop,
+    macro: { as_of: "2026-07-11", treasury: { yield_10_year: 4.2, curve_10y_1y_spread: -0.3, date: "2026-07-11" }, inflation: { cpi: 3.1, date: "2026-05-01" } } as unknown as PolygonMacroBackdrop,
     breadth: { as_of: "2026-07-13", tone: "risk_on", summary: "Market breadth: 62% advancing — risk on." } as unknown as MarketBreadthBundle,
   });
   assert.equal(ars.scope, "index");
-  assert.deepEqual(ars.macro, { yield_10_year: 4.2, curve_10y_1y_spread: -0.3, cpi: 3.1, as_of: "2026-07-11" });
+  assert.deepEqual(ars.macro, {
+    yield_10_year: 4.2,
+    curve_10y_1y_spread: -0.3,
+    cpi: 3.1,
+    as_of: "2026-07-11",
+    treasury_as_of: "2026-07-11",
+    cpi_as_of: "2026-05-01",
+  });
   assert.equal(ars.breadth?.tone, "risk_on");
   assert.equal(ars.news?.count, 1);
   assert.equal(ars.earnings, null);
@@ -904,6 +1167,56 @@ test("assembleEcosystemArsenal: requested-but-thin legs surface in unavailable_s
   assert.deepEqual(sources, ["earnings", "fundamentals/short-interest", "news", "peers"]);
   assert.ok(!sources.includes("macro backdrop"), "an irrelevant leg is never 'unavailable'");
   assert.ok(!sources.includes("breadth"));
+});
+
+// Live-verified 2026-09-12 (EWZ swing play-brief): every unavailable_sources entry reached the
+// member-facing envelope via play-brief-absence.ts's `[...ctx.ecosystem?.arsenal?.unavailable_sources]`
+// spread carrying only {source, reason} — the C3 what_is_missing/retryable fields #4861 added to
+// BieUnavailableSource were never populated at THIS reader layer's own push sites. Asserts every
+// site now carries both fields, and that the retryable/structural split matches the reasoning in
+// each push site's own inline comment (a provider-graph absence like "no peers found" doesn't
+// change on retry; a live fetch miss like "news read failed" can).
+test("assembleEcosystemArsenal: every unavailable_sources entry carries what_is_missing + retryable (C3)", () => {
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: null,
+    related: { ticker: "ZZZZ", related: [], as_of: null } as unknown as RelatedCompanies,
+    news: { items: [], asOf: "x", newest: null, unavailable: "timeout" } as unknown as NewsResult,
+    macro: null,
+    breadth: null,
+  });
+  for (const entry of ars.unavailable_sources) {
+    assert.ok(
+      typeof entry.what_is_missing === "string" && entry.what_is_missing.length > 0,
+      `${entry.source} is missing what_is_missing`,
+    );
+    assert.equal(typeof entry.retryable, "boolean", `${entry.source} is missing retryable`);
+  }
+  const bySource = Object.fromEntries(ars.unavailable_sources.map((u) => [u.source, u]));
+  // Structural absences (a provider graph genuinely has nothing for this ticker) — retry is futile.
+  assert.equal(bySource["earnings"]?.retryable, false);
+  assert.equal(bySource["fundamentals/short-interest"]?.retryable, false);
+  assert.equal(bySource["peers"]?.retryable, false);
+  // A live fetch that errored this pass — a retry can succeed.
+  assert.equal(bySource["news"]?.retryable, true);
+
+  const indexArs = assembleEcosystemArsenal({
+    scope: "index",
+    earnings: null,
+    fundamentals: null,
+    related: null,
+    news: null, // read failed entirely
+    macro: null, // requested (index scope) but empty → unavailable, transient
+    breadth: { as_of: "x", tone: "unknown", summary: "" } as unknown as MarketBreadthBundle,
+  });
+  const indexBySource = Object.fromEntries(indexArs.unavailable_sources.map((u) => [u.source, u]));
+  assert.equal(indexBySource["macro backdrop"]?.retryable, true);
+  assert.equal(indexBySource["breadth"]?.retryable, true);
+  assert.equal(indexBySource["news"]?.retryable, true);
+  for (const entry of indexArs.unavailable_sources) {
+    assert.ok(typeof entry.what_is_missing === "string" && entry.what_is_missing.length > 0);
+  }
 });
 
 test("assembleEcosystemArsenal: an empty-but-successful news read is 'no recent news' (count 0), not unavailable", () => {
@@ -939,6 +1252,37 @@ test('fetchEcosystemContext("AAPL"): runs ONLY the single-name arsenal readers, 
   assert.equal(ctx.arsenal.scope, "single_name");
   assert.equal(ctx.arsenal.earnings?.days_until, 12);
   assert.deepEqual(ctx.arsenal.related, ["MSFT", "GOOGL"]);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-09 :20 cycle, live repro GET
+// /api/market/swing/play-brief?playId=SWING:AMZN:48): #5717 (2026-10-08) added
+// rankNewsItemsBySpecificity() to stop broad multi-ticker co-tagged stories from crowding out a
+// genuinely ticker-specific headline — but it re-ranks whatever `fetchTickerNews` already fetched,
+// and the live call site (`fetchEcosystemArsenal` above) still requests only `limit: 6`. For a
+// high-news-volume megacap, Benzinga's own 6 MOST RECENT items can ALL be broad roundups (an
+// Anthropic product launch, a Jim Cramer segment, an Elon Musk tweet story, a "Micron commodity
+// stock" piece) while the genuinely AMZN-specific items ("Amazon Web Services Announces Golden Age
+// of Science Accelerator", tagged with ONLY `AMZN`) sit a few hours further back, outside that
+// 6-item window — re-verified live 2026-10-09, same symptom, different headlines than #5717's own
+// AWS/Alexa repro, because this is a structural gap (fetch window too narrow for the re-rank to
+// ever see the specific item), not a one-off news cycle. A fetch limit wide enough for the
+// specificity ranking to have a real pool to choose from is the fix — this test pins that limit
+// rather than re-asserting the (already correct) ranking order `rankNewsItemsBySpecificity`'s own
+// tests already cover.
+test('fetchEcosystemContext(single name): requests enough ticker-news items for rankNewsItemsBySpecificity to have a real pool — a too-small fetch defeats the #5717 re-rank for high-news-volume tickers', async () => {
+  earningsCalls = []; fundamentalsCalls = []; relatedCalls = []; tickerNewsCalls = []; tickerNewsOpts = []; catalystCalls = 0; macroCalls = 0; breadthCalls = 0;
+  mockTickerNews = { items: [{ headline: "placeholder" }], asOf: "x", newest: "y" } as unknown as NewsResult;
+
+  await fetchEcosystemContext("AMZN");
+
+  assert.deepEqual(tickerNewsCalls, ["AMZN"]);
+  assert.equal(tickerNewsOpts.length, 1);
+  assert.ok(
+    (tickerNewsOpts[0]?.limit ?? 0) >= 15,
+    `fetchTickerNews limit must be wide enough for rankNewsItemsBySpecificity to find a genuinely ` +
+      `specific item outside the top handful of broad co-tagged stories (got ${tickerNewsOpts[0]?.limit}) — ` +
+      `see #5717's own AWS/Alexa repro, which sat at raw positions 8/11 by recency`,
+  );
 });
 
 test('fetchEcosystemContext("SPX"): runs ONLY the index arsenal readers (macro/breadth/catalysts), never the single-name ones', async () => {

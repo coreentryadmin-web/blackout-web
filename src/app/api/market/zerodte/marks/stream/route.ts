@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { recheckSseUserEntitlement } from "@/lib/sse-stream-entitlement";
+import { runSseTickSafely } from "@/lib/sse-safe-tick";
 import { ensureZeroDteMarkPoller, getZeroDteLiveMarksFrame } from "@/lib/zerodte/live-marks";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
@@ -68,12 +69,16 @@ export async function GET(req: NextRequest) {
       clearInterval(heartbeatInterval);
       heartbeatInterval = null;
     }
+    // Remove abort listener to prevent accumulation (fixes memory leak from uncleaned event listeners).
+    // Each connection's listener held closures over controller and intervals; accumulated listeners
+    // kept dead connections' state alive indefinitely, causing heap growth until OOM.
+    req.signal.removeEventListener("abort", cleanup);
   };
 
   const stream = new ReadableStream({
     start(controller) {
       let lastSentKey: string | null = null;
-      const send = async () => {
+      const sendTick = async () => {
         if (closed) return;
         if (streamUserId) {
           const verdict = await recheckSseUserEntitlement(streamUserId, "premium", "nighthawk");
@@ -119,6 +124,7 @@ export async function GET(req: NextRequest) {
           }
         }
       };
+      const send = () => runSseTickSafely(sendTick, "zerodte-marks-stream");
 
       req.signal.addEventListener("abort", cleanup);
       interval = setInterval(() => {

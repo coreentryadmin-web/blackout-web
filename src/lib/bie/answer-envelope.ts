@@ -33,6 +33,24 @@ export type BieProvenance = {
   /** ISO timestamp of the underlying data, when known. */
   asOf?: string | null;
   freshness?: BieFreshness;
+  /**
+   * ADDITIVE, orthogonal to `freshness` (Largo Product Contract C2 fix, 2026-10-16 — live TSM/
+   * BBWI repro, Ask Largo standing mandate). `freshness` answers "how old is this compute" —
+   * for a snapshot-based read (GEX matrix, Vector full-state), a weekend/holiday self-warm can
+   * genuinely COMPUTE a fresh number *from* the last session's closing tape while the market
+   * itself has been shut for hours, so `freshness: "live"` is not wrong, only incomplete: it says
+   * nothing about whether the underlying TAPE the compute describes has moved since. This field
+   * carries that orthogonal disclosure (mirrors `vector-state-freshness.ts`'s own
+   * `VectorFreshnessBlock.market_session_note`, which this type predates — see that module's
+   * header for why a consumer needing "can I trust this as a live tick" must check BOTH fields,
+   * never `freshness` alone) — null whenever the compute genuinely reflects an open/moved
+   * session, or whenever `freshness` itself is already "stale"/"unknown" (that verdict's own
+   * caveat already covers it). Per the contract's own ADDITIVE rule (wrap, never flatten):
+   * `freshness` is deliberately left alone rather than overloaded to a new value for this case —
+   * see `gexMarketSessionNote`/`describeVectorFreshness` (swing play-brief's call sites) for the
+   * fix this field was added for.
+   */
+  market_session_note?: string | null;
 };
 
 /** One evidence item — the statement + its honesty kind + provenance. */
@@ -91,8 +109,25 @@ export type BieSection = {
   provenance?: BieProvenance;
 };
 
-/** A source that was requested but unavailable — surfaced, never silently omitted (§4). */
-export type BieUnavailableSource = { source: string; reason: string };
+/**
+ * A source that was requested but unavailable — surfaced, never silently omitted (§4).
+ *
+ * `what_is_missing`/`retryable` are OPTIONAL here (unlike the Largo product-read contract's
+ * `unavailable{reason,what_is_missing,retryable}`, which requires all three — see
+ * `src/lib/largo/contract/product-read.ts`) because this envelope shape is shared by every
+ * BIE-narrative consumer across the app (chat answers, desk read layouts, verdicts), most of
+ * which predate the two fields and populate only `reason`. Making them required here would be
+ * a breaking change to every existing populator. New/updated call sites — starting with swing
+ * play-brief's `collectBriefUnavailableSources` (Largo C3) — should populate both: a model
+ * reading only `reason` prose must otherwise GUESS whether asking again later is worth it,
+ * which is exactly the guessing C3 exists to remove.
+ */
+export type BieUnavailableSource = {
+  source: string;
+  reason: string;
+  what_is_missing?: string;
+  retryable?: boolean;
+};
 
 /**
  * The complete structured answer the UI renders. Only `version`, `headline`, `bias`, `sections`,
@@ -154,6 +189,14 @@ export type BieAnswerEnvelope = {
   /** Sources requested but unavailable this turn — always surfaced. */
   unavailableSources?: BieUnavailableSource[];
   /**
+   * Swing play-brief "Structure Ladder" widget (`src/lib/swing/play-brief-ladder.ts`) — a
+   * single-source price ladder of every real structural node (walls/flip/king/max-pain/dark-pool/
+   * magnet) with real per-level R:R to the actual structural stop and a cross-desk gamma-regime
+   * agreement flag. Populated ONLY by `composeSwingPlayBrief` for an OPEN/WATCH swing play; absent
+   * everywhere else (never fabricated for a product that doesn't compute these levels).
+   */
+  structureLadder?: import("@/lib/swing/play-brief-ladder").StructureLadder | null;
+  /**
    * The persisted assistant-message id for this turn, when it was stored.
    *
    * Carried so the UI can ask the server to rebuild a visual from THIS turn's own tool results
@@ -161,6 +204,41 @@ export type BieAnswerEnvelope = {
    * (no DB configured, or a path that does not store).
    */
   turnId?: number | null;
+  /**
+   * Asset class of the ticker this envelope describes (Largo C4 IDENTITY).
+   * Enables cross-product asset-class filtering and schema joins.
+   * Absent when the envelope does not describe a specific ticker.
+   */
+  ticker_class?: "index" | "equity" | "etf" | null;
+  /**
+   * Native per-product directional label (Largo C5 DIRECTION) — distinct from `bias` above, the
+   * cross-product-NORMALIZED bullish/bearish/neutral/mixed read every envelope already carries.
+   * Each product keeps its own native vocabulary here (e.g. swing play-brief's "LONG"/"SHORT")
+   * rather than being force-fit into `bias`'s coarser union — the Largo contract's own ADDITIVE
+   * rule (wrap a product's own data, never flatten it away — `product-read.ts`'s file header)
+   * applies to this envelope shape too, and is exactly what this field was added to restore: a
+   * CLOSED swing brief carried `bias` and a `headline` that NAMED the direction in prose, but no
+   * field a programmatic reader (Largo, an audit) could read structurally — see
+   * `docs/audit/findings-staging/2026-10-18-closed-brief-direction-thesis.md` and its 2026-10-19
+   * follow-up finding for the live repro. Absent when a composer has no directional claim to make
+   * (e.g. a pure concept/glossary answer) — never fabricated to fill the field.
+   */
+  direction?: string | null;
+  /**
+   * One normalized, single-sentence thesis claim (Largo C8 NARRATIVE) — distinct from the full
+   * per-section prose in `sections` and from the backward-compatible `markdown` string below. A
+   * consumer that wants "what is this answer's core claim, in one line" reads this instead of
+   * parsing `headline`/`sections` prose itself. Same gap/fix as `direction` immediately above —
+   * see that field's doc comment. Absent, never fabricated, when a composer has no single claim
+   * condensed enough to state honestly (e.g. a multi-topic concept answer).
+   */
+  thesis?: string | null;
+  /**
+   * Origin of the brief (Largo C8 PROVENANCE).
+   * Examples: "computed" (for deterministic engines), "model" (for Anthropic-generated reads).
+   * Indicates the primary source/methodology of the answer.
+   */
+  source?: string | null;
   /** When the envelope was assembled (ISO). */
   asOf: string;
   /**

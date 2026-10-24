@@ -79,6 +79,38 @@ export function markStreamKind(opts: {
   return "NONE";
 }
 
+/**
+ * Cross-deck / URL-seeded ticker focus (`focusTicker`, e.g. `/nighthawk?ticker=AAPL`, or a
+ * Legacy "moved to Swings Open" link): which play a focus request should select and open on
+ * mobile, decoupled from whatever `selId` happens to be right now.
+ *
+ * The naive guard this replaced was `selId !== match.id` — "only act if the selection would
+ * actually change." That misreads a COINCIDENTAL match as "already handled": the board's own
+ * default-selection effect (`preferredPlayId`, prefer OPEN/HOLD first) can independently land
+ * on the exact ticker a focus request names — e.g. a top-ranked committed position is both the
+ * default pick AND the `?ticker=` deep-link target. When that happens `selId` already equals
+ * `match.id` on the FIRST render, so the old guard never fires `setMobileDetailOpen(true)`, and
+ * a narrow (phone) viewport is left showing the list and detail rails stacked/overlapping
+ * instead of switching to the single-column detail view — even though the right data IS
+ * selected. Live repro 2026-09-13: `/nighthawk?view=swings&ticker=AAPL` at 430px, AAPL already
+ * the default `selId` (rank #2 by score, also HOLD status) — CommandDeck rendered both panes.
+ *
+ * Tracking "have we handled THIS focusTicker value" (via `alreadyHandledFocusTicker`) instead
+ * of inferring it from `selId` fixes the coincidence without reintroducing the bug this guard
+ * was ALSO protecting against: re-opening the mobile detail view on every poll refresh after a
+ * member has explicitly closed it (a plain `if (focusTicker)` with no memory would do that,
+ * since `plays` — and therefore this effect's re-run — changes every poll).
+ */
+export function resolveFocusTickerMatch<T extends { id: string; ticker: string }>(
+  plays: T[],
+  focusTicker: string | null,
+  alreadyHandledFocusTicker: string | null,
+): { id: string } | null {
+  if (!focusTicker || focusTicker === alreadyHandledFocusTicker) return null;
+  const match = plays.find((p) => p.ticker.toUpperCase() === focusTicker.toUpperCase());
+  return match ? { id: match.id } : null;
+}
+
 /** Prefer working → watch → closed when picking the initial selected play. */
 export function preferredPlayId<T extends { id: string; status: string }>(plays: T[]): string | null {
   if (plays.length === 0) return null;

@@ -179,9 +179,6 @@ export function VectorDrawToolsMenu({
   );
 }
 
-/** @deprecated Use VectorDrawToolsMenu — kept for import stability in tests/scripts. */
-export const VectorDrawToolbar = VectorDrawToolsMenu;
-
 function toolIcon(t: VectorDrawTool): string {
   switch (t) {
     case "select":

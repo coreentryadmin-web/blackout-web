@@ -18,6 +18,7 @@ import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { seedUwCacheFromWsStores } from "@/lib/uw-ws-cache-bridge";
 import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { warmFlowsMemberCaches } from "@/lib/flows-member-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
@@ -78,9 +79,38 @@ const OVERLAP_LOCK_TTL_SEC = 600;
  * 60s sits safely BELOW every legitimate cadence so it never blocks real traffic: rth-warm-leader's
  * own heal threshold for this key is 90s (RTH_WRITER_HEAL_AFTER_MIN["desk-warm"]) and EventBridge's
  * own schedule is every 5 min — neither path re-requests this key sooner than 60s ever would allow.
+ *
+ * OFF-WINDOW FLOOR (2026-09-07): the 60s floor above assumes the caller is a legitimate in-window
+ * dispatcher whose OWN cadence is already >=60s apart, which is true for every in-app dispatcher
+ * (rth-warm-leader, cron-staleness-watchdog self-heal) — each of those already gates on
+ * `isEtExtendedWarmHours` (or the market-hours-stale flag, which is itself holiday-aware; see
+ * admin-cron-health.ts) before ever calling this route, so they cannot fire at all outside the
+ * window. Measured live 2026-09-07 (Labor Day, an NYSE full-day closure that falls on a weekday):
+ * CloudWatch showed 166 "`force=1` bypassed the hours gate" log lines for this key in 6h, from 47+
+ * distinct source IPs (`ua=node` — not any known in-app dispatcher, whose calls originate from the
+ * small, stable set of ECS task IPs), each completing a real 5-94s UW/Polygon-bound fan-out — 70
+ * full runs in that window alone, entirely on a day the market is closed and nothing should be
+ * warming this cache. The 13:36-14:45 UTC cluster of these calls lines up with the SAME window's
+ * measured `AWS/ApplicationELB` TargetResponseTime spike (p99 68s / Max 100s, against a 0.02s p50
+ * the rest of the day) — the exact "low average, high p99/Max = one saturating background job"
+ * signature this repo's standing perf-audit mandate describes, not a fleet-capacity problem. The
+ * source of those calls was NOT traced to any script in THIS repo (`compare-latency-envs.mjs`,
+ * `latency-burst-audit.mjs`, and `validate-deploy.mjs` all already gate on the holiday-aware
+ * `isDeployCacheWarmAllowed` per #4489, merged 2026-09-07 15:38 UTC — well before the cluster above
+ * — and `site-latency-audit.mjs`'s own force-warm helper is unconditionally `IS_STAGING`-gated,
+ * which is always false against production) — so whatever the caller is, this route cannot assume
+ * good faith about ITS cadence the way it can for the two known in-app dispatchers.
+ *
+ * Rather than chase an external caller this route has no way to identify, defend the route itself:
+ * `force=1` still bypasses the HOURS gate immediately (a single on-demand/debug warm still works
+ * exactly as before — the 60s floor already covers a legitimate one-off), but a REPEATED force=1
+ * call made OUTSIDE the extended warm window is throttled at a much wider floor than one made
+ * inside it, where a real dispatcher's own cadence already provides the discipline this floor
+ * exists to enforce.
  */
 const RERUN_COOLDOWN_KEY = "desk-warm:cooldown";
 const RERUN_COOLDOWN_SEC = 60;
+const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
 
 async function runDeskWarm(started: number): Promise<void> {
   try {
@@ -157,17 +187,24 @@ export async function GET(req: NextRequest) {
   // Rate floor — checked even when force=1 legitimately cleared the hours gate above (see
   // RERUN_COOLDOWN_KEY doc comment). Not deleted on completion like OVERLAP_LOCK below — it is
   // meant to persist for its full TTL so the cadence floor holds regardless of how fast each
-  // individual run finishes.
+  // individual run finishes. Widened OFF-window (see OFF_WINDOW_FORCE_COOLDOWN_SEC doc comment
+  // above) — a legitimate in-app dispatcher never calls in this branch at all (both already gate
+  // on the same holiday-aware hours check before dispatching), so anything reaching here outside
+  // the window is either a one-off human debug hit (unaffected — it still runs immediately, same
+  // as before) or a repeated external caller this route has no other way to defend against.
+  const effectiveCooldownSec = isEtExtendedWarmHours()
+    ? RERUN_COOLDOWN_SEC
+    : OFF_WINDOW_FORCE_COOLDOWN_SEC;
   const withinCooldown = !(await sharedCacheSetNx(
     RERUN_COOLDOWN_KEY,
     { startedAt: started },
-    RERUN_COOLDOWN_SEC
+    effectiveCooldownSec
   ).catch(() => true)); // fail OPEN on a Redis error — same posture as OVERLAP_LOCK below
   if (withinCooldown) {
     const payload = {
       ok: true,
       skipped: true,
-      reason: `rate-limited — desk-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
+      reason: `rate-limited — desk-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
     };
     await logCronRun("desk-warm", started, payload);
     return NextResponse.json(payload);

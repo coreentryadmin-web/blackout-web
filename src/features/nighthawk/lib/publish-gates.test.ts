@@ -5,6 +5,7 @@ import {
   applyNighthawkPublishGates,
   evaluateNighthawkPublishGates,
   GATE_BAND_MAX_DISTANCE_PCT,
+  GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE,
   GATE_TARGET_MAX_ATR_MULTIPLE,
   promoteTopBlocked,
   publishGateRecapReason,
@@ -553,12 +554,18 @@ test("promoteTopBlocked ranks promotable plays by fewer gate failures first, the
 });
 
 test("promoteTopBlocked promotes target_unreachable only when multiple ≤ rescue cap", () => {
+  // value must exceed GATE_TARGET_MAX_ATR_MULTIPLE (2.0) — a real target_unreachable block
+  // can never carry a value at or below the primary gate's own threshold (see
+  // evaluateNighthawkPublishGates: the block is only pushed when `!targetOk`, i.e.
+  // targetAtrMultiple > GATE_TARGET_MAX_ATR_MULTIPLE). A fixture below 2.0 here would
+  // silently pass even with GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE regressed to be <= the
+  // primary threshold — exactly the dead-rescue-path bug this test exists to catch.
   const promotable = [{
     ticker: "NVDA",
     play: play({ ticker: "NVDA", score: 60, conviction: "B" }),
     result: {
       verdict: "BLOCK" as const,
-      blocks: [{ code: "target_unreachable" as const, reason: "too far", threshold: 2.0, value: 1.8 }],
+      blocks: [{ code: "target_unreachable" as const, reason: "too far", threshold: 2.0, value: 2.2 }],
       checks: [],
     },
     scored: null,
@@ -582,6 +589,23 @@ test("promoteTopBlocked promotes target_unreachable only when multiple ≤ rescu
   assert.equal(isPromotableBlockedPlay(unreachable[0]), false);
 });
 
+test("GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE must stay strictly above GATE_TARGET_MAX_ATR_MULTIPLE", () => {
+  // Structural invariant, not a calibration opinion: evaluateNighthawkPublishGates only ever
+  // creates a target_unreachable block when targetAtrMultiple > GATE_TARGET_MAX_ATR_MULTIPLE,
+  // so a rescue cap at or below that same threshold makes isPromotableBlockedPlay reject
+  // EVERY real target_unreachable block unconditionally — the rescue path NON_PROMOTABLE_
+  // GATE_CODES deliberately keeps this gate out of (to avoid repeating the Jul 27 zero-play
+  // edition) silently becomes dead code again. This regressed twice already (2026-09-17's
+  // gatePromoteTargetUnreachableDeadCode finding, then again via the 2026-09/10 engine
+  // overhaul that reintroduced both constants at 2.0/2.0) — assert the invariant directly so
+  // a third reintroduction fails CI instead of surfacing as a live thin edition.
+  assert.ok(
+    GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE > GATE_TARGET_MAX_ATR_MULTIPLE,
+    `rescue cap (${GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE}) must exceed the primary gate ` +
+      `(${GATE_TARGET_MAX_ATR_MULTIPLE}) or every real target_unreachable block becomes unrescuable`
+  );
+});
+
 test("promoteTopBlocked returns empty when every block fails hard geometry gates", () => {
   const blocked = [{
     ticker: "NVDA",
@@ -603,6 +627,42 @@ test("capGatePromotedConviction leaves organic plays untouched", () => {
     capGatePromotedConviction(play({ conviction: "A", gate_promoted: true })).conviction,
     "B"
   );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro MSTR score 52): the cap only ever
+// rewrote `conviction` -- `key_signal`'s own "score N (LETTER)" trailer embeds the SAME pre-cap
+// letter (buildDeterministicThesis, deterministic-edition.ts) and was never kept in sync, so a
+// capped A->B play kept citing its own uncapped "(A)"/"(A+)" grade in the member-facing summary
+// sentence right next to the correctly-capped badge -- a direct, visible self-contradiction.
+test("capGatePromotedConviction also rewrites key_signal's trailing grade token to stay in sync", () => {
+  const capped = capGatePromotedConviction(
+    play({
+      conviction: "A",
+      gate_promoted: true,
+      key_signal: "BULLISH — flow + positioning · score 52 (A)",
+    })
+  );
+  assert.equal(capped.conviction, "B");
+  assert.equal(capped.key_signal, "BULLISH — flow + positioning · score 52 (B)");
+});
+
+test("capGatePromotedConviction rewrites an (A+) key_signal trailer too", () => {
+  const capped = capGatePromotedConviction(
+    play({
+      conviction: "A+",
+      gate_promoted: true,
+      key_signal: "BEARISH — technicals · score 71 (A+)",
+    })
+  );
+  assert.equal(capped.conviction, "B");
+  assert.equal(capped.key_signal, "BEARISH — technicals · score 71 (B)");
+});
+
+test("capGatePromotedConviction never touches key_signal when not gate_promoted or not A/A+", () => {
+  const untouched = capGatePromotedConviction(
+    play({ conviction: "B", gate_promoted: true, key_signal: "BULLISH — flow · score 45 (B)" })
+  );
+  assert.equal(untouched.key_signal, "BULLISH — flow · score 45 (B)");
 });
 
 test("promoteTopBlocked caps at count", () => {

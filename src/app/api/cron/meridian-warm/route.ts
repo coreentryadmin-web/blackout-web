@@ -4,6 +4,7 @@ import { logCronRun } from "@/lib/cron-run";
 import { warmMeridianCaches } from "@/lib/meridian/meridian-snapshot";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
@@ -34,6 +35,8 @@ const OVERLAP_LOCK_TTL_SEC = 600;
  */
 const RERUN_COOLDOWN_KEY = "meridian-warm:cooldown";
 const RERUN_COOLDOWN_SEC = 60;
+/** Wider floor for repeated `?force=1` calls outside the extended warm window — same gap #4558 fixed on desk-warm. */
+const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
 
 async function runMeridianWarm(started: number): Promise<void> {
   try {
@@ -59,16 +62,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(skipped);
   }
 
+  const effectiveCooldownSec = isEtExtendedWarmHours()
+    ? RERUN_COOLDOWN_SEC
+    : OFF_WINDOW_FORCE_COOLDOWN_SEC;
   const withinCooldown = !(await sharedCacheSetNx(
     RERUN_COOLDOWN_KEY,
     { startedAt: started },
-    RERUN_COOLDOWN_SEC
+    effectiveCooldownSec
   ).catch(() => true));
   if (withinCooldown) {
     const payload = {
       ok: true,
       skipped: true,
-      reason: `rate-limited — meridian-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
+      reason: `rate-limited — meridian-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
     };
     await logCronRun("meridian-warm", started, payload);
     return NextResponse.json(payload);

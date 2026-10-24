@@ -29,6 +29,7 @@ import {
   clampedCacheAgeSec,
   gexHeatmapCacheEntryStale,
   gexHeatmapCacheEntryWithinTtl,
+  shouldStartHeatmapBackgroundRebuild,
 } from "./polygon-options-gex";
 
 function contract(
@@ -186,6 +187,61 @@ test("fetchGexHeatmap caps inflight/cold builds with gexHeatmapMaxBlockMs (never
   assert.match(src, /pollPeerHeatmapCache/);
 });
 
+// REGRESSION (2026-10-15): tryStaleWhileRevalidateHeatmap's detached background rebuild had NO
+// concurrency cap at all — unlike the fully-cold branch below it in fetchGexHeatmap, which is
+// bounded by both heatmap-warm's own `runPolygonPool(8)` (shipped 2026-10-08) and a cross-replica
+// sharedCacheSetNx lock. Because heatmap-warm's real sweep cadence (46-209s measured) vastly
+// exceeds the 5s per-ticker TTL but mostly stays under the 90s max-stale ceiling, nearly every
+// ticker in a single pass lands in THIS branch, each firing an independent, uncapped detached
+// Polygon rebuild. Live-caught 2026-10-15: a single rth-warm-leader backup dispatch of
+// heatmap-warm logged 100+ "[polygon-gex] full-chain escalation ADOPTED" lines across unrelated
+// tickers within ~4 minutes, time-correlated with a 79.5s ALB TargetResponseTime Max / 6.43s
+// AVERAGE spike — the same cross-request-stall mechanism already documented for the Vector
+// `/universe` and boot-warm paths, firing through this third, previously-uncapped entry point.
+test("shouldStartHeatmapBackgroundRebuild: refuses once the global in-flight count hits the cap", () => {
+  assert.equal(shouldStartHeatmapBackgroundRebuild(0, 8), true);
+  assert.equal(shouldStartHeatmapBackgroundRebuild(7, 8), true);
+  assert.equal(
+    shouldStartHeatmapBackgroundRebuild(8, 8),
+    false,
+    "at the cap — must not start another detached rebuild on top of 8 already in flight"
+  );
+  assert.equal(shouldStartHeatmapBackgroundRebuild(50, 8), false);
+});
+
+test("shouldStartHeatmapBackgroundRebuild: default cap honors GEX_HEATMAP_MAX_CONCURRENT_BUILDS env override", () => {
+  const prev = process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS;
+  try {
+    process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS = "2";
+    assert.equal(shouldStartHeatmapBackgroundRebuild(1), true);
+    assert.equal(shouldStartHeatmapBackgroundRebuild(2), false);
+
+    delete process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS;
+    assert.equal(shouldStartHeatmapBackgroundRebuild(7), true, "default cap is 8");
+    assert.equal(shouldStartHeatmapBackgroundRebuild(8), false, "default cap is 8");
+
+    process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS = "not-a-number";
+    assert.equal(shouldStartHeatmapBackgroundRebuild(7), true, "garbage env falls back to default 8");
+  } finally {
+    if (prev === undefined) delete process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS;
+    else process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS = prev;
+  }
+});
+
+test("tryStaleWhileRevalidateHeatmap: the detached rebuild kickoff is actually gated by the cap (wiring proof)", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  // The gate must wrap the SAME kickoff the old, uncapped code used (heatmapInflight.has +
+  // starting `build`), not just exist somewhere unrelated in the file.
+  assert.match(
+    src,
+    /!heatmapInflight\.has\(cacheKey\)\s*&&\s*\n\s*shouldStartHeatmapBackgroundRebuild\(heatmapInflight\.size\)/,
+    "the background-rebuild kickoff inside tryStaleWhileRevalidateHeatmap must be gated by shouldStartHeatmapBackgroundRebuild(heatmapInflight.size)"
+  );
+});
+
 test("SPX matrix build applies UW 0DTE overlay before cache write (#2503)", () => {
   const src = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
@@ -227,6 +283,40 @@ test("gex heatmap Redis TTL covers SWR window (not 5s matrix TTL only)", () => {
   assert.match(src, /sharedCacheSet\(cacheKey, entry, gexHeatmapRedisTtlSec\(\)\)/);
   assert.match(src, /export async function readGexHeatmapSnapshot/);
   assert.match(src, /export async function readGexHeatmapCacheOnly/);
+});
+
+// 2026-09-18 UW/Polygon rate-limiter queue-timeout-surge incident: a root with 0 Polygon
+// contracts AND an empty UW strike-exposure fallback (structurally chain-less, not a blip) was
+// re-fetching BOTH upstreams on every Redis matrix TTL expiry (~90s) forever, confirmed live via
+// ACEEU/RWTN retrying every ~75-90s for 90+ minutes straight. Fix: a long negative cache that
+// short-circuits future rebuilds for a confirmed chain-less root before either upstream call.
+test("chain-less root (0 Polygon contracts + empty UW fallback) is negative-cached and short-circuits the NEXT build before any upstream call", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(
+    src,
+    /const NO_CHAIN_NEGATIVE_TTL_SEC = 600;/,
+    "expected a long (10min) negative-cache TTL for confirmed chain-less roots"
+  );
+  // The short-circuit must run BEFORE resolveSpotSnapshot — otherwise a confirmed chain-less
+  // root still pays for a wasted spot fetch on every rebuild cycle.
+  const shortCircuitIdx = src.indexOf("if (await isKnownNoChainTicker(root))");
+  const spotFetchIdx = src.indexOf("const snap = await resolveSpotSnapshot(optionsRoot);");
+  assert.ok(shortCircuitIdx > 0, "expected the no-chain short-circuit check in buildGexHeatmapUncached");
+  assert.ok(spotFetchIdx > 0, "expected the spot fetch this check must precede");
+  assert.ok(
+    shortCircuitIdx < spotFetchIdx,
+    "no-chain short-circuit must run before the spot fetch, not after — else the spot call still leaks every cycle"
+  );
+  // The negative cache must only be SET once BOTH upstreams (Polygon chain + UW fallback) have
+  // actually come up empty for this build — never marked speculatively before the UW attempt.
+  assert.match(
+    src,
+    /if \(uwMatrix\) return uwMatrix;[\s\S]{0,600}markNoChainTicker\(root, now\);/,
+    "markNoChainTicker must run only after the UW fallback also returned null"
+  );
 });
 
 // ── task #136: computeGexEvents — the pure diff durable persistence (gex-regime-
@@ -990,19 +1080,33 @@ test("dividend-yield resolve normalizes percent notation and caches a genuine no
 // pinned to 0 through this path — this test locks down the fix: /v3/reference/dividends DOES cover
 // ETFs, so a null ratios read now falls through to a trailing-12mo cash sum instead of a throw.
 test("dividend-yield resolve falls back to trailing dividends when ratios has no row (ETF)", async () => {
-  ratiosStub = async () => null;
-  dividendsStub = async () => [
-    { cash_amount: 1.5, ex_dividend_date: "2026-06-18" },
-    { cash_amount: 1.5, ex_dividend_date: "2026-03-20" },
-    { cash_amount: 1.5, ex_dividend_date: "2025-12-19" },
-    { cash_amount: 1.5, ex_dividend_date: "2025-09-19" },
-    // Outside the trailing-12mo window from a 2026-08-28 "now" — must be excluded.
-    { cash_amount: 1.5, ex_dividend_date: "2025-06-20" },
-  ];
-  const spot = 600;
-  const q = await __test_resolveHeatmapDividendYieldUncached("SPY", spot);
-  // 4 of the 5 rows are within the trailing 12 months of the fixed "now" below: 4 × 1.5 / 600.
-  assert.ok(Math.abs(q - (6 / spot)) < 1e-9, `expected ~${6 / spot}, got ${q}`);
+  // BUG FIX (2026-09-19): this test's fixture dates were pinned to a comment-only "2026-08-28
+  // now" assumption, but `resolveHeatmapDividendYieldUncached` calls
+  // `trailingTwelveMonthDividendYield(dividends, spot, Date.now())` with the REAL current time —
+  // unlike its sibling test below, which already passes an explicit `nowMs`. As real time passed
+  // the 12mo window drifted, and the "2025-09-19" fixture row (deliberately placed just inside
+  // the window as of 2026-08-28) silently crossed back OUTSIDE it once today reached 2026-09-19,
+  // flipping the count from 4 qualifying rows to 3 with no code change — caught live in CI on
+  // that exact date. Freezing the clock to the date the fixture was authored for makes the
+  // assertion actually test what its own comments claim, on every future run.
+  mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-08-28T00:00:00Z") });
+  try {
+    ratiosStub = async () => null;
+    dividendsStub = async () => [
+      { cash_amount: 1.5, ex_dividend_date: "2026-06-18" },
+      { cash_amount: 1.5, ex_dividend_date: "2026-03-20" },
+      { cash_amount: 1.5, ex_dividend_date: "2025-12-19" },
+      { cash_amount: 1.5, ex_dividend_date: "2025-09-19" },
+      // Outside the trailing-12mo window from the frozen 2026-08-28 "now" — must be excluded.
+      { cash_amount: 1.5, ex_dividend_date: "2025-06-20" },
+    ];
+    const spot = 600;
+    const q = await __test_resolveHeatmapDividendYieldUncached("SPY", spot);
+    // 4 of the 5 rows are within the trailing 12 months of the frozen "now": 4 × 1.5 / 600.
+    assert.ok(Math.abs(q - (6 / spot)) < 1e-9, `expected ~${6 / spot}, got ${q}`);
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test("trailingTwelveMonthDividendYield excludes rows outside the trailing 12mo window", () => {

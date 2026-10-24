@@ -250,6 +250,27 @@ export interface SwingCommitPlan {
 
 const isFin = (x: number | null | undefined): x is number => x != null && Number.isFinite(x);
 
+/**
+ * Pin the real bid/ask/spread at commit time, alongside `entry_premium` (which is always the raw
+ * mid — see grade.ts's own header comment, dated FINDINGS 2026-07-30, for why that is a disclosed,
+ * intentional simplification and not a bug). `entry_premium` alone cannot tell a later audit how
+ * FAR a realistic fill (near the ask, on a long) would have sat from that mid — on a wide-spread
+ * name the two can differ enormously (e.g. a book snapshot 2026-09-10: bid 0.25 / ask 1.95 / mid
+ * 1.10, a spread wider than the mid itself). Without this, that question is unanswerable after the
+ * fact because bid/ask are never stored anywhere past the commit tick, only re-derivable if you
+ * happened to be polling at that exact moment. Purely additive to `entry_context` — nothing reads
+ * or writes over it, same idiom as `entry_context.exit`/`entry_context.executable` elsewhere.
+ */
+function fillQualityAtCommit(c: ChainContract): Record<string, unknown> | null {
+  if (!isFin(c.bid) || !isFin(c.ask) || !isFin(c.mid) || c.mid <= 0) return null;
+  return {
+    entry_bid: c.bid,
+    entry_ask: c.ask,
+    entry_mid: c.mid,
+    entry_spread_fraction: (c.ask - c.bid) / c.mid,
+  };
+}
+
 /** Stable idempotency key: one per (session, name, archetype, sub-lane, side). Matches ledger commit_key (Q20). */
 export function swingCommitKey(
   sessionDate: string,
@@ -549,6 +570,7 @@ function buildCommitInsert(
       contract_multiplier: OPTION_CONTRACT_MULTIPLIER,
       is_event: isEventArchetype(cand.archetype),
       is_overnight: true,
+      fill_quality: fillQualityAtCommit(c),
       budget: {
         capitalUsd: budget.capitalUsd,
         maxPortfolioLossPct: budget.maxPortfolioLossPct,
@@ -559,6 +581,14 @@ function buildCommitInsert(
       },
       budget_verdict: budgetVerdict ? { blocked: budgetVerdict.blocked, blockedDimensions: budgetVerdict.blockedDimensions } : null,
       cortex: cortexEntryContextFor(cand.cortexAssessment ?? null),
+      // Pin the SAME discovery-provenance kinds already computed for the G-S6 confluence gate
+      // (`discoveryPathsForConfluence`, assembled onto `cand.discoveryPaths` in discovery.ts) so
+      // computeSwingThesisHealth's `flow_corroboration` pillar can read it after commit — before
+      // this, the value existed at commit time (used to DECIDE whether to commit) but was thrown
+      // away, so `thesisHealthUncalibrated` treated every committed position as forever unknown on
+      // this pillar. Reusing the gate's own already-graduated value rather than recomputing keeps
+      // this consistent with what actually cleared G-S6, not a fresh re-derivation.
+      signal_kinds: cand.discoveryPaths ?? null,
     },
     gate_calibration_json: {
       methodology: "swing.commit.graduation.v1",
@@ -630,6 +660,7 @@ function buildShadowInsert(
       contract_multiplier: OPTION_CONTRACT_MULTIPLIER,
       is_event: isEventArchetype(cand.archetype),
       is_overnight: true,
+      fill_quality: fillQualityAtCommit(c),
       blocked_by: blockedBy,
     },
     gate_calibration_json: {

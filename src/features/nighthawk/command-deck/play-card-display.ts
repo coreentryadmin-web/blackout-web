@@ -1,7 +1,6 @@
 import type { TerminalPlay } from "./types";
 import { tierRank } from "./deck-sort";
 import { isWatchTrackStatus } from "./play-card-lifecycle";
-import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 
 /** Quality / confidence % for the row — score is 0–100 on 0DTE; confidence is 0–1 when wired. */
 export function playQualityPct(play: TerminalPlay): number | null {
@@ -15,19 +14,22 @@ export function playQualityPct(play: TerminalPlay): number | null {
   return null;
 }
 
-/** Letter grade for display — tier label first; horizon lanes fall back to score→letter. */
+/**
+ * Letter grade for display — tier label only.
+ *
+ * SWING/LEAPS used to fall back to `convictionFromScore(play.score)` when no `tierLabel` was
+ * pinned — the exact score->letter mapping `nighthawk-tiers.ts`'s own header documents as
+ * empirically INVERTED for the overnight product it was calibrated on (A+ scored worst, B
+ * scored best), never validated for swing's own differently-shaped score distribution (which
+ * this lane's own `swing-score-calibration.mjs` separately found is ALSO not a reliable outcome
+ * ranker). The adapter (`terminalPlayFromHorizon`) now honestly leaves `tierLabel` null for
+ * SWING/LEAPS instead of pre-computing that mapping — but this fallback would have silently
+ * re-derived the identical bad grade right back at render time, undoing that fix. Removed
+ * rather than gated: there is no swing-calibrated tier engine to fall back TO yet.
+ */
 export function playGradeLabel(play: TerminalPlay): string | null {
   const t = play.tierLabel?.trim();
-  if (t) return t;
-  if (
-    (play.horizon === "SWING" || play.horizon === "LEAPS") &&
-    play.score != null &&
-    Number.isFinite(play.score) &&
-    play.score > 0
-  ) {
-    return convictionFromScore(play.score);
-  }
-  return null;
+  return t || null;
 }
 
 /** Entry premium in the GRADE column — 0DTE/Legacy only; swings show letter grade, entry lives in the rail. */

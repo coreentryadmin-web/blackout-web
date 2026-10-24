@@ -93,8 +93,18 @@ export const CONTRACT_SELECTOR_VERSION = "v2";
  *  the SAME entry to a different outcome); this constant is only the fallback. */
 export const EXIT_POLICY: ZeroDteExitMode = DEFAULT_EXIT_MODE;
 /** Exit-rule VERSION within the active policy (the numeric thresholds — arm/lock/trim
- *  levels, time-stop). Bump when those move even if the POLICY name is unchanged. */
-export const EXIT_VERSION = "v4";
+ *  levels, time-stop). Bump when those move even if the POLICY name is unchanged.
+ *  v5 (2026-09-14): the ratchet/trim_scale "locked" floor (peak >= +50%) now SCALES
+ *  with the peak (peak * 0.4) instead of a flat +20% — see EXIT_RULES.ratchet_lock_floor_fraction.
+ *  v6 (2026-09-21): the early-arm (+15%) and arm (+20%) floors now scale the SAME way
+ *  (peak * 0.4) instead of staying flat at +5%/+0% — see EXIT_RULES.ratchet_early_arm_floor_pct
+ *  and ratchet_arm_floor_pct's own comments for the measurement. The whole ratchet floor
+ *  curve from +15% up is now one continuous rule instead of three independently-flat tiers.
+ *  v7 (2026-09-23): the early-arm threshold itself LOWERED from +15% to +5% — before this,
+ *  any peak below +15% got ZERO floor protection; see EXIT_RULES.ratchet_early_arm_pnl_pct's
+ *  own comment for the 90-day n=67 measurement. The continuous peak*0.4 curve now starts at
+ *  +5% instead of +15%. */
+export const EXIT_VERSION = "v7";
 /** Grader — how a committed play is turned into a WIN/LOSS + PnL (−50/+100 directional,
  *  condor breach, time-stop rules). Bump when the grading rule changes (it re-labels
  *  the very outcomes calibration counts). */
@@ -255,11 +265,29 @@ function stableStringify(value: unknown): string {
   return `{${body}}`;
 }
 
+/** Configurable scaling (2026-10-20, member audit directive: "make stops and scaling
+ *  configurable"). `ZERODTE_TRIM_TRANCHE_FRACTION` overrides the fraction of the original
+ *  position banked at each trim_scale tranche — TRIM_SCALE_RULES.tranche_fraction's default
+ *  (1/3, the E5-measured winner) stays byte-identical absent the env var. Read HERE, not in
+ *  exit-engine.ts, which documents itself as deliberately IO-free/no-env-reads (the pure
+ *  decision core); this resolution layer already reads PLAN_RULES the same dynamic way.
+ *  Bounded to (0, 1) exclusive — a fraction outside that range isn't a tranche, it's either a
+ *  no-op or more than the whole position, so an invalid value falls back to the default rather
+ *  than being silently clamped (clamping would hide a misconfiguration as if it were intended). */
+export function resolveTrancheFraction(fallback: number): number {
+  const raw = process.env.ZERODTE_TRIM_TRANCHE_FRACTION?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 && n < 1 ? n : fallback;
+}
+
 /**
  * Resolve the FULL numeric exit policy for `mode` from the real sources of truth
- * (PLAN_RULES + EXIT_RULES / TRIM_SCALE_RULES). PURE. The returned object's `config_hash`
+ * (PLAN_RULES + EXIT_RULES / TRIM_SCALE_RULES). The returned object's `config_hash`
  * fingerprints every exit constant that can move a graded outcome — the drift-guard test
- * pins it to a golden, so a silent numeric edit without an EXIT_VERSION bump fails CI.
+ * pins it to a golden, so a silent numeric edit without an EXIT_VERSION bump fails CI. (Reads
+ * two configurable env vars via PLAN_RULES/resolveTrancheFraction, both byte-identical to their
+ * fixed defaults absent those vars — see each one's own doc for why that keeps this safe.)
  */
 export function buildResolvedExitPolicy(
   mode: ZeroDteExitMode = EXIT_POLICY,
@@ -276,28 +304,29 @@ export function buildResolvedExitPolicy(
     const activeRegime: ZeroDteRegime = opts?.regime ?? "neutral";
     const tranches = r[activeRegime];
     const extendedRunner = (opts?.target_pct ?? PLAN_RULES.target_pct) > PLAN_RULES.target_pct;
+    const configuredTrancheFraction = resolveTrancheFraction(TRIM_SCALE_RULES.tranche_fraction);
     // Extended runners (200–400% targets): bank 25% at each trim, let 50% ride — captures more
-    // of Vector-style multi-baggers without changing the standard +100% ⅓/⅓/⅓ ladder.
-    const trancheFraction = extendedRunner ? 0.25 : TRIM_SCALE_RULES.tranche_fraction;
+    // of Vector-style multi-baggers without changing the standard +100% ⅓/⅓/⅓ ladder. The
+    // extended-runner fractions (0.25/0.5) are their OWN deliberate schedule, not the configured
+    // standard tranche fraction — only the standard (non-extended) path reads the override.
+    const trancheFraction = extendedRunner ? 0.25 : configuredTrancheFraction;
     trim_levels = tranches.map((trigger_pct) => ({
       trigger_pct,
       fraction: trancheFraction,
     }));
-    runner_fraction = extendedRunner ? 0.5 : TRIM_SCALE_RULES.tranche_fraction;
+    runner_fraction = extendedRunner ? 0.5 : configuredTrancheFraction;
     trailing_rule = extendedRunner
       ? `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${trancheFraction};` +
         `runner_fraction=${runner_fraction};extended_runner=true;` +
         `tranches trend=[${r.trend.join(",")}] neutral=[${r.neutral.join(",")}] range=[${r.range.join(",")}]`
-      : `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${TRIM_SCALE_RULES.tranche_fraction};` +
+      : `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${configuredTrancheFraction};` +
         `tranches trend=[${r.trend.join(",")}] neutral=[${r.neutral.join(",")}] range=[${r.range.join(",")}]`;
   } else {
     // ratchet: bank half at the plan target, then run under the monotonic floor.
     trim_levels = [{ trigger_pct: PLAN_RULES.target_pct, fraction: 0.5 }];
     runner_fraction = 0.5;
     trailing_rule =
-      `ratchet:early@+${EXIT_RULES.ratchet_early_arm_pnl_pct}%->floor+${EXIT_RULES.ratchet_early_arm_floor_pct}%,` +
-      `arm@+${EXIT_RULES.ratchet_arm_pnl_pct}%->floor+${EXIT_RULES.ratchet_arm_floor_pct}%,` +
-      `lock@+${EXIT_RULES.ratchet_lock_pnl_pct}%->floor+${EXIT_RULES.ratchet_lock_floor_pct}%,` +
+      `ratchet:arm@+${EXIT_RULES.ratchet_early_arm_pnl_pct}%->floor=peak*${EXIT_RULES.ratchet_lock_floor_fraction},` +
       `runner_floor+${EXIT_RULES.runner_floor_pct}%;` +
       `flat_timeout=${EXIT_RULES.flat_timeout_min}min@±${EXIT_RULES.flat_band_pct}%`;
   }
@@ -313,7 +342,27 @@ export function buildResolvedExitPolicy(
     time_stop_et,
     collision_rule,
   };
-  return { ...core, config_hash: `exitcfg-${fnv1a32(stableStringify(core))}` };
+  // config_hash is derived from `core` AS-IS (including the raw, unrounded `trailing_rule`
+  // text) so the drift-guard/calibration-cohort hash is completely untouched by the display
+  // fix below — changing how a number is PRINTED must never silently fork a calibration
+  // cohort, only a real exit-constant change should (see this file's own header doc).
+  const config_hash = `exitcfg-${fnv1a32(stableStringify(core))}`;
+  // BUG (found 2026-10-06, live audit): `trailing_rule` embeds TRIM_SCALE_RULES.tranche_fraction
+  // (1/3 exactly) via raw template-literal interpolation, so the string this API serves reads
+  // `tranche_fraction=0.3333333333333333` — a 16-digit IEEE-754 float leaking straight past the
+  // shared `roundFloats()` response-boundary fix (round-floats.ts), which only walks genuine
+  // JSON *number* values and can't reach a float baked into a *string*. The sibling numeric
+  // field `trim_levels[].fraction` already serializes as a clean `0.33` because THAT one is a
+  // real number roundFloats can round; this is the same raw float leaking through a text field
+  // instead, served live to members/Largo on every `/api/market/zerodte/record` and
+  // `get_zerodte_record` read whose policy resolves to trim_scale. Fixed by rounding display-only
+  // copies to 2dp (matching roundFloats' own default) — applied AFTER config_hash is computed
+  // above, so no committed row's `strategy_config_hash`/calibration cohort moves.
+  const displayTrailingRule = trailing_rule.replace(
+    /tranche_fraction=(\d+\.\d{3,})/g,
+    (_m, raw: string) => `tranche_fraction=${Math.round(Number(raw) * 100) / 100}`,
+  );
+  return { ...core, trailing_rule: displayTrailingRule, config_hash };
 }
 
 /** The grader-facing numeric subset of a resolved policy — stop/target %, and the ET

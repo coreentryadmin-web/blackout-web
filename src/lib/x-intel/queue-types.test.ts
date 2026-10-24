@@ -12,6 +12,7 @@ import {
   type XIntelQueueRow,
 } from "@/lib/x-intel/queue-types";
 import { X_INTEL_QUEUE_FIXTURES } from "@/lib/x-intel/queue-fixtures";
+import { nightHawkPostGate } from "@/lib/x-intel/nighthawk-gate";
 
 function attachment(over: Partial<XIntelAttachment> = {}): XIntelAttachment {
   return {
@@ -107,6 +108,36 @@ describe("readyBlockReason — chronology", () => {
       market_event: null,
     });
     assert.equal(readyBlockReason(readyRow({ chronology: reported })), null);
+  });
+});
+
+describe("readyBlockReason — confidence (C6: calibrated or absent, never invented)", () => {
+  it("allows a row with no confidence field at all", () => {
+    assert.equal(readyBlockReason(readyRow()), null);
+  });
+
+  it("allows a properly calibrated confidence", () => {
+    const withConfidence = readyRow() as ReadyInput & {
+      confidence: { score: number; basis: string; sample_size: number | null };
+    };
+    withConfidence.confidence = { score: 0.68, basis: "n=47 similar prior signals, 68% hit rate", sample_size: 47 };
+    assert.equal(readyBlockReason(withConfidence), null);
+  });
+
+  it("refuses a confidence score outside 0..1", () => {
+    const row = readyRow() as ReadyInput & {
+      confidence: { score: number; basis: string; sample_size: number | null };
+    };
+    row.confidence = { score: 5, basis: "n=47 similar prior signals, 68% hit rate", sample_size: 47 };
+    assert.match(String(readyBlockReason(row)), /confidence\.score must be a number between 0 and 1/);
+  });
+
+  it("refuses a confidence with no basis — invented certainty with nothing behind it", () => {
+    const row = readyRow() as ReadyInput & {
+      confidence: { score: number; basis: string; sample_size: number | null };
+    };
+    row.confidence = { score: 0.7, basis: "", sample_size: null };
+    assert.match(String(readyBlockReason(row)), /requires a basis/);
   });
 });
 
@@ -463,5 +494,34 @@ describe("horizon — an all-expiry aggregate must not describe today's session"
       ),
       null,
     );
+  });
+});
+
+describe("readyBlockReason — GAP (documented, NOT fixed): Night Hawk P&L gate is never consulted", () => {
+  // nighthawk-gate.ts's own header claims: "Enforced in code for the same reason the chronology
+  // rule is" — and content/Screenshot-Playbook.md:284 tells the OPERATOR the same thing:
+  // "Enforced in `src/lib/x-intel/nighthawk-gate.ts`; requires both a >50% closed play and a
+  // session that did not finish red." Neither claim is true: readyBlockReason — the one real
+  // function queue-store.ts calls before a row can persist as READY — has no branch on
+  // `franchise` at all and never imports nightHawkPostGate. This test documents today's actual
+  // (wrong) behavior as a tripwire, not as desired behavior — fixing it needs new fields
+  // (closed plays, session_pnl_r) that don't exist on XIntelQueueRow yet, which is a real design
+  // decision (where does that data come from — operator-entered? board-read at capture time?),
+  // not something to invent here. See the write-up PR for the full root cause.
+  it("a NIGHT_HAWK_STRIKE package cherry-picking a winner from a red session is NOT blocked", () => {
+    const row = readyRow({
+      underlying_evidence: [{ what: "SPX spot", value: "7,641.16", source: "market" }],
+    });
+    (row as XIntelQueueRow).franchise = "NIGHT_HAWK_STRIKE";
+
+    // The real gate WOULD refuse this exact scenario, if anything ever called it:
+    const gateVerdict = nightHawkPostGate({
+      closed: [{ ticker: "SPX", contract: "16.5C 0DTE", pnl_pct: 97, window_et: "10:33→10:45", grade: "A" }],
+      session_pnl_r: -2.8, // session finished red
+    });
+    assert.equal(gateVerdict.publishable, false);
+
+    // But readyBlockReason never calls it, so the package reaches READY anyway.
+    assert.equal(readyBlockReason(row), null, "GAP: should be blocked, is not — nightHawkPostGate is dead code");
   });
 });

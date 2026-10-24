@@ -1,22 +1,20 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-07T18:08:02.615Z
-**Run:** a5792231-bc47-45d5-a207-311f3d5fdf5d
+**At:** 2026-09-07T05:59:10.448Z
+**Run:** 035371de-8d1d-44c7-978b-4e557744bd4d
 
 ## Summary
 
-PR #4520 merged (platform-warm holiday gate). validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Dependabot majors held (red CI). Updated handoff state post-rebase.
+PR wake cycle: #4464 peer-reviewed APPROVED (14/14 occ-symbol tests). Undraft #4464 blocked (GitHub API rate limit). #4465 verify GREEN — 105/105 vector tests locally; Claude peer review requested (Cursor cannot self-approve). Lifecycle GREEN (22 checks), validate:deploy GREEN, ops:collect 0. Labor Day — RTH skipped.
 
 ## Deploy
 
-- main: `20e6df5371b7d66123766154e271da06496f2a12`
-- status: 
+- main: `48d0bbbc81661f91db1efd377a48ddb099939369`
+- status: success
 
 ## Open PRs
 
-- #4521 [cursor] chore(state): autopilot handoff after holiday-gate merge wave
-- #4480 [human] chore(deps): bump next from 15.5.23 to 16.3.4
-- #4479 [human] chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4
-- #4478 [human] chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2
-- #4477 [human] chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0
-- #4476 [human] chore(deps): bump the minor-and-patch group with 11 updates
+- #4467 [cursor] chore(autopilot): Labor Day wake handoff — lifecycle GREEN, #4464 approved
+- #4466 [human] chore(state): cursor handoff after 48d0bbbc merge wake
+- #4465 [cursor] fix(vector): align bead rail x-domain with session viewport (Sep-3 restore v2)
+- #4464 [human] test(occ-symbol): add missing direct unit coverage for buildOcc

@@ -9,6 +9,7 @@ const SIGIL_BY_KEY: Record<string, ToolSigil> = {
   heatmap: "heatmap",
   largo: "largo",
   nighthawk: "nighthawk",
+  vector: "vector",
 };
 
 function sourceLabel(source: LaunchSource): string {

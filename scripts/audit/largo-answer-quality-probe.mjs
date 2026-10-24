@@ -221,6 +221,7 @@ function detectDrift(answer, toolsCalled, truncatedTools) {
 async function main() {
   let session;
   let userId;
+  let cleanupFn = null;
 
   try {
     log("Starting Largo answer quality probe...");
@@ -228,9 +229,14 @@ async function main() {
     log(`Questions to ask: ${QUESTION_COUNT}`);
 
     // Mint temp session
-    const { cookie, user_id } = await mintClerkPremiumSession();
-    session = { cookie };
-    userId = user_id;
+    const minted = await mintClerkPremiumSession({ appUrl: BASE });
+    if (!minted || minted.skip) {
+      console.error(`SKIP — could not mint a Clerk session: ${minted?.reason ?? "unknown"}`);
+      process.exit(2);
+    }
+    session = { cookie: minted.cookieHeader };
+    userId = minted.userId;
+    cleanupFn = minted.cleanup;
 
     log(`Authenticated as temp user ${userId}`);
 
@@ -362,9 +368,9 @@ async function main() {
     );
     log("\nResults saved to docs/audit/LARGO-ANSWER-QUALITY-RESULTS.json");
   } finally {
-    if (userId) {
+    if (cleanupFn) {
       log(`Cleanup: deleting temp user ${userId}`);
-      // Cleanup happens via Clerk API
+      await cleanupFn().catch(() => {});
     }
   }
 }

@@ -6,6 +6,17 @@
 //
 // SECURITY: webhook URLs embed a secret token. We NEVER log the URL or token value;
 // we log only a non-reversible label + host so operators can tell which channel failed.
+//
+// TIMEOUT: every fetch carries AbortSignal.timeout(DISCORD_FETCH_TIMEOUT_MS). Several
+// real production crons (cron-staleness-watchdog, helix-discord-digest, darkpool-discord)
+// `await postDiscordWebhook(...)`/`notifyOpsDiscord(...)` synchronously in their main
+// path — without a bounded deadline, an unresponsive Discord endpoint would hang the
+// `await` for as long as the underlying socket stays open, consuming the cron route's
+// entire `maxDuration` budget instead of failing fast into the existing fallback/logging
+// path. cron-staleness-watchdog is the one job responsible for ALERTING when every other
+// cron goes stale — it hanging on its own outbound alert is the worst place for this to
+// bite. 10s is generous for a webhook POST while staying well inside every caller's
+// `maxDuration`.
 
 export interface DiscordEmbedPayload {
   title?: string;
@@ -35,6 +46,8 @@ export interface DiscordFileAttachment {
   contentType?: string;
 }
 
+const DISCORD_FETCH_TIMEOUT_MS = 10_000;
+
 /** Redact a webhook URL to host only (no path/token) for safe logging. */
 export function redactWebhook(url: string): string {
   try {
@@ -50,6 +63,7 @@ async function postOnce(url: string, payload: DiscordPayload): Promise<{ ok: boo
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(DISCORD_FETCH_TIMEOUT_MS),
     });
     return { ok: res.ok, status: res.status };
   } catch (error) {
@@ -76,7 +90,11 @@ async function postOnceWithFiles(
     });
     // wait=true so Discord returns 200 only after the message is accepted (better delivery signal).
     const sep = url.includes("?") ? "&" : "?";
-    const res = await fetch(`${url}${sep}wait=true`, { method: "POST", body: form });
+    const res = await fetch(`${url}${sep}wait=true`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(DISCORD_FETCH_TIMEOUT_MS),
+    });
     return { ok: res.ok, status: res.status };
   } catch (error) {
     return { ok: false, status: null, error };

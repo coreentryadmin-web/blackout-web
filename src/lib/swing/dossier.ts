@@ -38,6 +38,7 @@ import {
 } from "./archetype";
 import type { SwingPlanLevels } from "./structure-levels";
 import type { SwingEarningsWindows } from "./swing-catalyst";
+import type { IndustryGroupRsFacts } from "./industry-group-rs";
 
 /** Bump when the carrier's shape changes so old graded/persisted dossiers stay interpretable. */
 export const SWING_DOSSIER_VERSION = 1;
@@ -90,6 +91,11 @@ export interface SwingDossier {
   ivRank?: number | null;
   /** Catalyst read: earnings print inside intended holding window (drives G-S3 when enforced). */
   earningsInWindow?: boolean;
+  /** The raw industry-group RS facts behind `archetypeExtras.sectorLeadership01` (benchmark ETF/label,
+   *  the name's and the group's own %-returns, and the delta) — carried here rather than dropped after
+   *  classification, so the play-brief can cite a concrete "leading/lagging XYZ by N%" read. Null when
+   *  the 0-1 score itself is null (no benchmark resolved / not enough history). */
+  sectorLeadershipFacts?: IndustryGroupRsFacts | null;
 }
 
 /** Grounded pillar-helper inputs. Each cluster is optional; an absent cluster → that pillar is null (absent),
@@ -120,6 +126,9 @@ export interface SwingDossierInput {
   topFlowStrike?: number | null;
   /** UW EOD IV rank (0–100 or 0–1) when resolved at ingest — optional, pinned onto the dossier. */
   ivRank?: number | null;
+  /** The raw industry-group RS facts behind `archetypeExtras.sectorLeadership01` — pinned through to the
+   *  dossier verbatim (see `SwingDossier.sectorLeadershipFacts`). */
+  sectorLeadershipFacts?: IndustryGroupRsFacts | null;
   /** Raw catalyst derive inputs — re-run post-classify so earningsInWindow matches the archetype DTE (Q12). */
   catalystDerive?: {
     signedReturnPct10d: number | null;
@@ -190,5 +199,6 @@ export function buildSwingDossier(input: SwingDossierInput): SwingDossier {
     topFlowStrike,
     ivRank,
     earningsInWindow,
+    sectorLeadershipFacts: input.sectorLeadershipFacts ?? null,
   };
 }

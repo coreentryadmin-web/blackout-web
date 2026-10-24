@@ -524,6 +524,57 @@ test("thesis: direction confirmed/refuted from the pinned reference; regime test
   assert.equal(down.thesis.find((f) => f.label === "regime")!.verdict, "refuted");
 });
 
+test("thesis: regime factor requires the pin to have supported THIS PLAY's direction, not just the market's own move", () => {
+  // A SHORT published against a bullish pin, then the market rallies (stopping the SHORT
+  // out) exactly as the bullish pin predicted. The regime's own call came true, but it
+  // never supported a SHORT in the first place -- this must NOT read as "regime confirmed"
+  // for this play, per the factor's own stated definition ("the pinned regime supported
+  // THIS DIRECTION and the session moved that way").
+  const contrarianLoss = debriefPlay(
+    row({
+      direction: "SHORT",
+      entry_range_low: 100,
+      entry_range_high: 102,
+      target: 90,
+      stop: 108,
+      outcome: "stop",
+      next_day_close: 110,
+      session_high: 111,
+      publish_context: PIN, // bullish pin
+    })
+  )!;
+  assert.equal(contrarianLoss.thesis.find((f) => f.label === "direction")!.verdict, "refuted");
+  assert.equal(
+    contrarianLoss.thesis.find((f) => f.label === "regime")!.verdict,
+    "refuted",
+    "the bullish pin never supported a SHORT -- it cannot read as confirmed just because the market rallied"
+  );
+  assert.match(
+    contrarianLoss.thesis.find((f) => f.label === "regime")!.detail,
+    /did not support the published SHORT direction/
+  );
+
+  // The mirror case: a SHORT published against a bullish pin that instead SELLS OFF (the
+  // play wins, fighting the regime and being right). The regime still never supported this
+  // direction, so it stays "refuted" -- winning despite the regime is not the regime
+  // "confirming" anything for this play.
+  const contrarianWin = debriefPlay(
+    row({
+      direction: "SHORT",
+      entry_range_low: 100,
+      entry_range_high: 102,
+      target: 90,
+      stop: 108,
+      outcome: "target",
+      next_day_close: 90,
+      session_low: 89,
+      publish_context: PIN,
+    })
+  )!;
+  assert.equal(contrarianWin.thesis.find((f) => f.label === "direction")!.verdict, "confirmed");
+  assert.equal(contrarianWin.thesis.find((f) => f.label === "regime")!.verdict, "refuted");
+});
+
 test("thesis: non-directional regime and missing pin are untestable — never scored", () => {
   const neutral = debriefPlay(
     row({

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildGroundedPlayExplanationFallback } from "./play-explainer-fallback";
+import {
+  buildGroundedPlayExplanationFallback,
+  factorBreakdownLines,
+  playRiskLines,
+} from "./play-explainer-fallback";
 import { checkNumbersGrounded, extractNumbersFromText } from "@/lib/grounding-guard";
 import type { PlaybookPlay } from "./types";
 
@@ -48,4 +52,85 @@ test("grounding guard: a briefing citing a hallucinated level fails", () => {
   const result = checkNumbersGrounded(briefing, known);
   assert.equal(result.grounded, false);
   assert.equal(result.ungroundedValue, 415);
+});
+
+// 2026-09-13 finding: earnings_risk and gate_promoted/gate_warnings are real, already-computed
+// risk signals on the play object that used to be silently dropped from the "Risks &
+// invalidation" section of both the LLM data block (play-explainer.ts's formatPlayBlock) and
+// this no-LLM fallback, even though that section explicitly promises risk/invalidation coverage.
+test("playRiskLines: plain risk_note-only play reports just the risk note", () => {
+  const lines = playRiskLines(play);
+  assert.deepEqual(lines, []);
+});
+
+test("playRiskLines: earnings_risk surfaces as an explicit risk line", () => {
+  const lines = playRiskLines({ ...play, earnings_risk: true });
+  assert.ok(lines.some((l) => /earnings risk/i.test(l) && /hold window/i.test(l)));
+});
+
+test("playRiskLines: gate_promoted surfaces the promotion warning plus every gate_warnings entry", () => {
+  const lines = playRiskLines({
+    ...play,
+    gate_promoted: true,
+    gate_warnings: ["Did not clear the score floor", "Target distance exceeds the reachability band"],
+  });
+  assert.ok(lines.some((l) => /gate-promoted/i.test(l)));
+  assert.ok(lines.some((l) => l.includes("Did not clear the score floor")));
+  assert.ok(lines.some((l) => l.includes("Target distance exceeds the reachability band")));
+});
+
+test("fallback briefing's Risks & invalidation section includes earnings_risk and gate_promoted warnings when present", () => {
+  const text = buildGroundedPlayExplanationFallback({
+    play: {
+      ...play,
+      earnings_risk: true,
+      gate_promoted: true,
+      gate_warnings: ["Play did not pass the critic's quality review — use extra caution"],
+    },
+  });
+  assert.match(text, /Earnings risk: this name reports earnings within the play's hold window\./);
+  assert.match(text, /Gate-promoted:/);
+  assert.match(text, /Play did not pass the critic's quality review/);
+});
+
+test("fallback briefing omits risk_note fallback text once a real risk signal exists, but keeps a real risk_note alongside it", () => {
+  const text = buildGroundedPlayExplanationFallback({
+    play: { ...play, risk_note: "Watch the $310 gap fill", earnings_risk: true },
+  });
+  assert.match(text, /Watch the \$310 gap fill/);
+  assert.match(text, /Earnings risk:/);
+  assert.doesNotMatch(text, /no additional risk note was generated/);
+});
+
+// 2026-09-16 finding: factor_breakdown is a real, already-computed per-component composite-score
+// breakdown (flow/tech/positioning/etc.) that PlaybookBriefingPanel.tsx already shows members as
+// "Score components" chips — but it was never surfaced into either the LLM data block or the
+// no-LLM fallback's "Why ranked #N" section, even though that section explicitly exists to answer
+// exactly this question. Same defect class as the 2026-09-13 fix above.
+test("factorBreakdownLines: no factor_breakdown reports nothing", () => {
+  assert.deepEqual(factorBreakdownLines({ factor_breakdown: undefined }), []);
+});
+
+test("factorBreakdownLines: zero-contribution entries are dropped, non-zero sorted by magnitude descending", () => {
+  const lines = factorBreakdownLines({
+    factor_breakdown: { flow: 14, tech: -3, positioning: 0, news: 9 },
+  });
+  assert.deepEqual(lines, ["flow: +14", "news: +9", "tech: -3"]);
+});
+
+test("factorBreakdownLines: negative contributions keep their sign, positive get an explicit +", () => {
+  const lines = factorBreakdownLines({ factor_breakdown: { smart_money: -5 } });
+  assert.deepEqual(lines, ["smart_money: -5"]);
+});
+
+test("fallback briefing's Why ranked section includes score drivers when factor_breakdown is present", () => {
+  const text = buildGroundedPlayExplanationFallback({
+    play: { ...play, factor_breakdown: { flow: 14, positioning: 9, tech: 6 } },
+  });
+  assert.match(text, /Score drivers \(largest impact first\): flow: \+14, positioning: \+9, tech: \+6/);
+});
+
+test("fallback briefing omits the score-drivers line entirely when factor_breakdown is absent", () => {
+  const text = buildGroundedPlayExplanationFallback({ play });
+  assert.doesNotMatch(text, /Score drivers/);
 });

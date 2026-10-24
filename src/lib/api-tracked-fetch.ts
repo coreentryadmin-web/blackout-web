@@ -15,6 +15,20 @@ export type TrackedFetchOptions = RequestInit & {
   correlationId?: string;
   /** Overrides DEFAULT_FETCH_TIMEOUT_MS — mainly for tests exercising the timeout path fast. */
   timeoutMs?: number;
+  /**
+   * Ms the caller spent waiting for shared-rate-limiter admission BEFORE calling
+   * trackedFetch — e.g. uw-rate-limiter.ts's `acquireSlot()` result, threaded through
+   * unusual-whales.ts's uwGet. Purely a pass-through for telemetry (see
+   * ApiCallEvent.queue_wait_ms); trackedFetch does no queueing itself. Optional —
+   * omitting it (every caller today) changes nothing.
+   */
+  queueWaitMs?: number | null;
+  /**
+   * Caller-supplied reason this call is being aborted (see ApiCallEvent.cancel_reason).
+   * Optional — when omitted, an AbortError is still recorded but with a generic
+   * "default_fetch_timeout" reason rather than a caller-specific one.
+   */
+  cancelReason?: string | null;
 };
 
 function headerNames(init?: RequestInit): string[] {
@@ -56,6 +70,59 @@ async function readSnippet(res: Response): Promise<string | null> {
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Strips CR/LF and other control characters so an interpolated field can never forge a
+ * fake `[api-queue-timing]` line or inject extra log fields (CodeQL log-injection guard,
+ * #990). None of today's callers can actually reach this — `endpoint`/`correlationId` are
+ * either internal literals or already pass through an allowlist sanitizer (safeTicker/
+ * safePathSegment) before being interpolated into a path, and no caller supplies a
+ * `cancelReason` yet — but `cancelReason` and `endpoint` are both externally-typed `string`
+ * parameters on `TrackedFetchOptions`/`trackedFetch`'s own signature with no such guarantee
+ * enforced AT THIS FUNCTION, so a future caller could add one without ever revisiting this
+ * log line. Cheap to close now rather than rely on every future caller getting it right.
+ */
+function sanitizeForLogLine(value: string): string {
+  return value.replace(/[\r\n\t\x00-\x1f\x7f]/g, " ");
+}
+
+/**
+ * One structured line per attempt, ONLY when the caller passed queue-timing
+ * (today: only uw-rate-limiter.ts's callers) — a plain Polygon/Benzinga call
+ * with no queueing concept never emits this, so it adds no log volume for
+ * providers this instrumentation isn't about. Read `[api-queue-timing]` lines
+ * from CloudWatch to see queue-wait vs. HTTP-execution vs. total elapsed
+ * broken out per request, joined by `correlation_id` across retries.
+ */
+function logQueueTiming(fields: {
+  provider: ApiProviderId;
+  endpoint: string;
+  correlationId: string;
+  attempt: number;
+  queueEnterAt: number | null;
+  queueAdmitAt: number | null;
+  queueWaitMs: number | null;
+  httpStartAt: number;
+  httpEndAt: number;
+  httpDurationMs: number;
+  status: number | null;
+  cancelReason: string | null;
+}): void {
+  if (fields.queueWaitMs == null) return; // no queue-timing context supplied — nothing to report
+  const totalElapsedMs =
+    (fields.queueWaitMs ?? 0) + fields.httpDurationMs;
+  console.info(
+    `[api-queue-timing] provider=${sanitizeForLogLine(fields.provider)} ` +
+      `endpoint=${sanitizeForLogLine(fields.endpoint)} ` +
+      `correlation_id=${sanitizeForLogLine(fields.correlationId)} attempt=${fields.attempt} ` +
+      `queue_enter=${fields.queueEnterAt ?? "-"} queue_admit=${fields.queueAdmitAt ?? "-"} ` +
+      `queue_wait_ms=${fields.queueWaitMs ?? "-"} http_start=${fields.httpStartAt} ` +
+      `http_end=${fields.httpEndAt} http_duration_ms=${fields.httpDurationMs} ` +
+      `status=${fields.status ?? "-"} ` +
+      `cancel_reason=${fields.cancelReason ? sanitizeForLogLine(fields.cancelReason) : "-"} ` +
+      `total_elapsed_ms=${totalElapsedMs}`
+  );
 }
 
 // Bare `fetch()` has no default timeout — a stalled upstream TCP connection (seen live
@@ -111,7 +178,7 @@ export async function trackedFetch(
   url: string,
   init?: TrackedFetchOptions
 ): Promise<Response> {
-  const { maxRetries, retryDelayMs, correlationId, timeoutMs, ...fetchInit } = init ?? {};
+  const { maxRetries, retryDelayMs, correlationId, timeoutMs, queueWaitMs, cancelReason, ...fetchInit } = init ?? {};
   const method = (fetchInit.method ?? "GET").toUpperCase();
   const maxAttempts = Math.max(1, (maxRetries ?? 0) + 1);
   const delayMs = retryDelayMs ?? 2000;
@@ -151,7 +218,8 @@ export async function trackedFetch(
       : timeoutSignal;
     try {
       const res = await fetch(url, { ...fetchInit, signal });
-      const latency_ms = Date.now() - start;
+      const end = Date.now();
+      const latency_ms = end - start;
       const snippet = res.ok ? null : await readSnippet(res);
       const rateLimited = res.status === 429;
 
@@ -172,6 +240,22 @@ export async function trackedFetch(
         response_snippet: snippet,
         rate_limited: rateLimited,
         headers_sent: headersSent,
+        queue_wait_ms: queueWaitMs ?? null,
+        cancel_reason: null,
+      });
+      logQueueTiming({
+        provider,
+        endpoint: endpointKey,
+        correlationId: corrId,
+        attempt,
+        queueEnterAt: queueWaitMs != null ? start - queueWaitMs : null,
+        queueAdmitAt: queueWaitMs != null ? start : null,
+        queueWaitMs: queueWaitMs ?? null,
+        httpStartAt: start,
+        httpEndAt: end,
+        httpDurationMs: latency_ms,
+        status: res.status,
+        cancelReason: null,
       });
 
       if (res.ok || attempt >= maxAttempts) return res;
@@ -183,8 +267,18 @@ export async function trackedFetch(
 
       return res;
     } catch (err) {
-      const latency_ms = Date.now() - start;
+      const end = Date.now();
+      const latency_ms = end - start;
       const message = err instanceof Error ? err.message : "Network error";
+      // AbortSignal.timeout() (trackedFetch's own internal deadline) rejects with a
+      // TimeoutError DOMException; an explicit caller-driven controller.abort() rejects
+      // with AbortError (or whatever reason.name the caller's DOMException carries) —
+      // both are "this request was cancelled, not a real network/HTTP failure".
+      const isAbort = err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
+      // Today nothing passes fetchInit.signal or cancelReason, so this branch is only
+      // ever reached via trackedFetch's OWN internal AbortSignal.timeout — already-existing
+      // behavior, just now labeled instead of collapsing into a generic error string.
+      const cancel_reason = isAbort ? (cancelReason ?? "default_fetch_timeout") : null;
 
       lastEvent = recordApiCall({
         provider,
@@ -203,7 +297,34 @@ export async function trackedFetch(
         response_snippet: null,
         rate_limited: false,
         headers_sent: headersSent,
+        queue_wait_ms: queueWaitMs ?? null,
+        cancel_reason,
       });
+      logQueueTiming({
+        provider,
+        endpoint: endpointKey,
+        correlationId: corrId,
+        attempt,
+        queueEnterAt: queueWaitMs != null ? start - queueWaitMs : null,
+        queueAdmitAt: queueWaitMs != null ? start : null,
+        queueWaitMs: queueWaitMs ?? null,
+        httpStartAt: start,
+        httpEndAt: end,
+        httpDurationMs: latency_ms,
+        status: null,
+        cancelReason: cancel_reason,
+      });
+
+      // A caller-initiated cancellation must never be retried. The caller explicitly asked to
+      // stop, and retrying fires a SECOND real fetch() whose composed signal (AbortSignal.any
+      // above) is already aborted before the call even starts — that doesn't retry anything
+      // meaningful, it just opens another connection the caller no longer wants. Observed live:
+      // that second connection doesn't fail fast either, so an aborted request took ~2x
+      // DEFAULT_FETCH_TIMEOUT_MS to finally settle instead of resolving promptly, defeating the
+      // entire point of passing a signal. Only the CALLER's own signal disqualifies a retry here
+      // — this attempt's own internal per-attempt AbortSignal.timeout() firing is a genuine
+      // transient failure and must still retry exactly as before.
+      if (fetchInit.signal?.aborted) throw err;
 
       if (attempt >= maxAttempts) throw err;
       await sleep(delayMs * attempt);

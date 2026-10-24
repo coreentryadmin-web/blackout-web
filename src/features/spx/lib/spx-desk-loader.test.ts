@@ -1,7 +1,7 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 
-test("loadSpxDesk, loadSpxDeskPulse, and loadSpxDeskFlow share one cache lane each with loadMergedSpxDesk (regression: bare keys raced date-scoped loader keys)", async () => {
+test("loadSpxDesk, loadSpxDeskPulse, and loadSpxDeskFlow share one cache lane each with loadMergedSpxDesk (regression: bare keys raced date-scoped loader keys); peekMergedSpxDesk() is a true non-blocking peek (2026-10-18 fix)", async () => {
   let deskCount = 0;
   let pulseCount = 0;
   let flowCount = 0;
@@ -27,8 +27,18 @@ test("loadSpxDesk, loadSpxDeskPulse, and loadSpxDeskFlow share one cache lane ea
     },
   });
 
-  const { loadSpxDesk, loadSpxDeskPulse, loadSpxDeskFlow, loadMergedSpxDesk } =
+  const { loadSpxDesk, loadSpxDeskPulse, loadSpxDeskFlow, loadMergedSpxDesk, peekMergedSpxDesk } =
     await import("./spx-desk-loader");
+
+  // REGRESSION (Ask Largo standing mandate, 2026-10-18 — live repro: closed-market SPX Slayer
+  // reads reliably timing out off-hours/weekends because evaluateSpxPlayState's own
+  // `await loadMergedSpxDesk()` could legitimately take up to deskBootstrapMaxBlockMs() on a cold
+  // cache, exceeding the much tighter outer playMemberReadMaxBlockMs() budget before the
+  // closed-market fast path was ever reached). peekMergedSpxDesk() must be a TRUE non-blocking
+  // peek — never invoking the real builders — before anything has been built under this key yet.
+  const beforeBuild = await peekMergedSpxDesk();
+  assert.equal(beforeBuild, null, "a peek before any load must return null, not trigger a build");
+  assert.equal(deskCount, 0, "peekMergedSpxDesk() must never invoke buildSpxDesk");
 
   const fromStandaloneDesk = await loadSpxDesk();
   const fromStandalonePulse = await loadSpxDeskPulse();
@@ -53,6 +63,15 @@ test("loadSpxDesk, loadSpxDeskPulse, and loadSpxDeskFlow share one cache lane ea
   assert.deepEqual(fromStandaloneDesk, merged.desk);
   assert.deepEqual(fromStandalonePulse, merged.pulse);
   assert.deepEqual(fromStandaloneFlow, merged.flow);
+
+  // Now that loadMergedSpxDesk() has cached a bundle under this key, a peek must return the
+  // SAME bundle without rebuilding anything — confirming it's a true non-blocking peek, not a
+  // second builder invocation.
+  const peeked = await peekMergedSpxDesk();
+  assert.deepEqual(peeked, merged, "peekMergedSpxDesk() must return the SAME bundle loadMergedSpxDesk() just cached");
+  assert.equal(deskCount, 1, "peekMergedSpxDesk() must not rebuild — deskCount must stay at 1");
+  assert.equal(pulseCount, 1, "peekMergedSpxDesk() must not rebuild the pulse layer either");
+  assert.equal(flowCount, 1, "peekMergedSpxDesk() must not rebuild the flow layer either");
 
   mock.restoreAll();
 });

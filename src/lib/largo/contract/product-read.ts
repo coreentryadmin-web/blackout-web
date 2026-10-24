@@ -23,7 +23,7 @@
 // product-specific intelligence to satisfy this is a violation, not compliance.
 
 /** The products Largo reasons across. */
-export type ProductId = "helix" | "thermal" | "vector" | "meridian" | "nighthawk" | "spx";
+export type ProductId = "helix" | "thermal" | "vector" | "meridian" | "nighthawk" | "spx" | "swing";
 
 /**
  * How current a value is.

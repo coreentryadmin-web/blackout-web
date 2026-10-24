@@ -19,6 +19,8 @@ let wallSampleWrites: Array<{
   horizon?: string;
   sample: { walls?: { callWalls?: { strike: number }[]; putWalls?: { strike: number }[] } };
 }> = [];
+/** Per-ticker call counter for the SLOWCOLD fixture below — first call misses, rest resolve. */
+let slowColdCallCount = 0;
 
 mock.module("../../../lib/heatmap-allowlist", {
   namedExports: {
@@ -92,6 +94,17 @@ mock.module("../../../lib/providers/polygon-options-gex", {
           vex: { flip: 99, strike_totals: { "95": 1, "100": 1 } },
         };
       }
+      // 2026-09-08 audit finding (live KIAN): a halted/delisted ticker's heatmap can return spot
+      // literally 0 (not null/undefined) — `?? null` only catches nullish, so a member-visible
+      // row showed `spot: 0` while every downstream computation already treats <= 0 as absent.
+      if (ticker === "ZEROSPOT") {
+        return {
+          spot: 0,
+          asof: new Date().toISOString(),
+          gex: { flip: null, strike_totals: {} },
+          vex: { flip: null, strike_totals: {} },
+        };
+      }
       // Regression fixture for the 2026-09-04 audit finding: strike 90 (below spot) carries more
       // |gamma| than strike 108 (above spot), so the unconstrained scan used to pick 90 as the
       // "call wall" — a resistance level below current price — the exact live IBIT/SPX shape.
@@ -120,6 +133,36 @@ mock.module("../../../lib/providers/polygon-options-gex", {
             flip: 99,
             strike_totals: { "90": 5e9, "108": 1e9 },
           },
+        };
+      }
+      // Regression fixture for the 2026-09-09 audit finding: a null flip's reason
+      // (`gex.flip_reason`) was silently discarded building the universe row — a real market
+      // state (no zero-gamma crossing exists, e.g. net-short dealer book everywhere) rendered
+      // indistinguishable from an upstream gap, on the one surface (the scanner table / Largo's
+      // Vector tool) that already has a `flip_reason` field to show it, the same way the
+      // canonical GEX heatmap route and Thermal's regime strip already do.
+      if (ticker === "NOFLIP") {
+        return {
+          spot: 100,
+          asof: new Date().toISOString(),
+          gex: { flip: null, flip_reason: "net_short_everywhere", strike_totals: { "100": 1 } },
+          vex: { flip: 99, strike_totals: { "95": 1, "100": 1 } },
+        };
+      }
+      // 2026-09-12 audit finding: a cold ticker with no recent cache entry (none of the ~11 UI
+      // preset chips get direct member-view traffic to keep the extended-allowlist names warm)
+      // can still miss fetchGexHeatmap's own live-request-tuned 3s block cap even under the
+      // bounded pool — first attempt comes back with no data at all (mirrors the real
+      // awaitHeatmapBuildWithBlockCap "nothing to hand off yet" case), the SAME background build
+      // finishes moments later so every subsequent call resolves normally.
+      if (ticker === "SLOWCOLD") {
+        slowColdCallCount += 1;
+        if (slowColdCallCount === 1) return null;
+        return {
+          spot: 250,
+          asof: new Date().toISOString(),
+          gex: { flip: 245, strike_totals: { "250": 1, "255": 2 } },
+          vex: { flip: 249, strike_totals: { "245": 1, "250": 1 } },
         };
       }
       return {
@@ -230,6 +273,46 @@ test("buildVectorUniverseSnapshot: GEX wall never lands on the wrong side of spo
   assert.ok(row!.topCallPct != null && row!.topCallPct > 0, "pct must still be populated for the constrained pick");
 });
 
+test("buildVectorUniverseSnapshot: a heatmap spot of literal 0 renders as null, not 0 (2026-09-08 KIAN finding)", async () => {
+  dynamicTickers = ["ZEROSPOT"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "ZEROSPOT");
+  assert.ok(row, "ZEROSPOT row must be present");
+  assert.equal(row!.spot, null, "a heatmap spot of literal 0 must render as null, matching every other absent-spot field");
+});
+
+// Regression for the 2026-09-09 audit finding: the universe row discarded `gex.flip_reason`
+// entirely — a null gammaFlip read as an unexplained gap on the scanner table / Largo's Vector
+// tool even when the upstream heatmap route already knew (and reported) exactly why no crossing
+// exists this session, the same fact Thermal's regime strip and the canonical GEX heatmap route
+// already surface.
+test("buildVectorUniverseSnapshot: a null gammaFlip carries its flip_reason through to the row", async () => {
+  dynamicTickers = ["NOFLIP"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "NOFLIP");
+  assert.ok(row, "NOFLIP row must be present");
+  assert.equal(row!.gammaFlip, null);
+  assert.equal(row!.flipReason, "net_short_everywhere");
+});
+
+test("buildVectorUniverseSnapshot: flipReason is null when gammaFlip resolves normally", async () => {
+  dynamicTickers = ["SPY"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "SPY");
+  assert.ok(row, "SPY row must be present");
+  assert.notEqual(row!.gammaFlip, null);
+  assert.equal(row!.flipReason, null, "a resolved flip carries no reason — nothing to explain");
+});
+
 // Bead rail (wall-history) uses unconstrained ranking — Sep 3 desk density. Scanner row
 // (topCallWall) stays spot-constrained; only durable bead samples use the below-spot strike.
 test("recordVectorUniverseWallSample: narrowed-horizon bead rail keeps unconstrained Sep-3 ranking", async () => {
@@ -305,6 +388,60 @@ test("ensureTickerInUniverseSnapshot: no-op when ticker already present", async 
   assert.equal(cacheStore.rows.find((r) => r.ticker === "HOOD")?.spot, 42);
 });
 
+// 2026-09-12 audit finding, reproduced live: a single member-view-driven append destroyed the
+// ENTIRE stored universe roster whenever more than 15 minutes had passed since the last full cron
+// rebuild (every weekday evening, and all weekend — the cron is RTH-gated and does not run then).
+// `ensureTickerInUniverseSnapshot` used to merge its one new row with `mergeUniverseSnapshot`'s
+// DEFAULT maxAgeMs (15 min, tuned for the cron's own 5-min rebuild cadence) — a threshold that has
+// nothing to do with how often a member happens to open a ticker. Live evidence: the cron last
+// completed a healthy 84-row build Friday 2026-09-11 20:00 UTC; by Saturday, GET
+// /api/market/vector/universe served only 5 rows (whatever handful had been individually viewed
+// since). This test pins a snapshot older than 15 minutes (but well inside its own 48h TTL) and
+// asserts that appending ONE new ticker does not silently expire the rest of a still-valid roster.
+test("ensureTickerInUniverseSnapshot: does not prune the rest of an aged (but still-valid) roster", async () => {
+  dynamicTickers = [];
+  fetchCalls = [];
+  const staleAsOf = Date.now() - 25 * 60 * 60 * 1000; // 25h old — past the cron's 15-min merge
+  // threshold, comfortably inside the 48h snapshot TTL (e.g. a healthy Friday-evening cron build
+  // still being read on Saturday, before Monday's cron ever runs again).
+  cacheStore = {
+    updatedAt: staleAsOf,
+    rows: [
+      {
+        ticker: "SPY",
+        spot: 500,
+        gammaFlip: 501,
+        vexFlip: 499,
+        topCallWall: 510,
+        topPutWall: 490,
+        topCallPct: 10,
+        topPutPct: 8,
+        asOf: staleAsOf,
+      },
+      {
+        ticker: "NVDA",
+        spot: 900,
+        gammaFlip: 905,
+        vexFlip: 895,
+        topCallWall: 950,
+        topPutWall: 850,
+        topCallPct: 12,
+        topPutPct: 9,
+        asOf: staleAsOf,
+      },
+    ],
+  };
+
+  await ensureTickerInUniverseSnapshot("HOOD");
+  const snap = await loadVectorUniverseSnapshot();
+  assert.ok(snap);
+  assert.deepEqual(
+    snap!.rows.map((r) => r.ticker).sort(),
+    ["HOOD", "NVDA", "SPY"],
+    "a 25h-old roster must survive a single new-ticker append, not collapse to just the new row"
+  );
+});
+
 test("warmDynamicTickerSessionWall: records session bead for dynamic ticker once", async () => {
   fetchCalls = [];
   wallSampleCalls = [];
@@ -344,6 +481,46 @@ test("buildVectorUniverseSnapshot: null spot fail-closes GEX walls (no unconstra
   assert.equal(row!.spot, null);
   assert.equal(row!.topCallWall, null, "must not pick strike 90 as call wall when spot is unknown");
   assert.equal(row!.topPutWall, null, "must not pick strike 92 as put wall when spot is unknown");
+});
+
+// Regression for the 2026-09-12 audit finding: a bounded-pool build can be "complete" (every
+// ticker produced A row — isCompleteBuild's own bar) while a substantial fraction of those rows
+// carry spot:null because the underlying fetchGexHeatmap call missed its own 3s block cap on a
+// genuinely cold chain — live-measured as 35/64 null rows in GET /api/market/vector/universe,
+// every one a static-allowlist name outside the ~11 UI preset chips (so never kept warm by direct
+// member view traffic). Fixed by retrying just the null rows once the main fan-out completes.
+test("buildVectorUniverseSnapshot: retries a ticker whose first attempt missed the cold-build block cap", async () => {
+  dynamicTickers = ["SLOWCOLD"];
+  fetchCalls = [];
+  slowColdCallCount = 0;
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "SLOWCOLD");
+  assert.ok(row, "SLOWCOLD row must be present");
+  assert.equal(row!.spot, 250, "the retry pass must pick up the resolved spot once the cold build finishes");
+  assert.ok(
+    fetchCalls.filter((t) => t === "SLOWCOLD").length >= 2,
+    "must have retried the null-spot row at least once"
+  );
+});
+
+// A ticker that is genuinely, permanently unresolvable must NOT be corrupted by the retry pass —
+// it retries to another null and is left exactly as first-built (still fail-closed GEX walls).
+test("buildVectorUniverseSnapshot: a permanently-unresolvable ticker still fail-closes after the retry pass", async () => {
+  dynamicTickers = ["NOSPOT"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "NOSPOT");
+  assert.ok(row, "NOSPOT row must be present");
+  assert.equal(row!.spot, null, "a genuinely unresolvable ticker must stay null, not be corrupted by the retry");
+  assert.equal(row!.topCallWall, null, "must still not pick strike 90 as call wall when spot is unknown");
+  assert.ok(
+    fetchCalls.filter((t) => t === "NOSPOT").length >= 2,
+    "the retry pass must still have attempted NOSPOT once more"
+  );
 });
 
 test("recordVectorUniverseWallSample: null spot still records bead rail (unconstrained)", async () => {

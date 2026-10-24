@@ -13,9 +13,11 @@
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 import type { LegacyDiscordLiveRow, NighthawkPlayOutcomeRow } from "@/lib/db";
 import { parseOccSymbol } from "@/lib/largo/core/entities";
+import { buildOccContractId } from "@/lib/helix/occ-contract-id";
 import type { LegacyPublishFieldSource } from "@/features/nighthawk/lib/legacy-publish-fields";
 import { legacyPublishFieldsFrom } from "@/features/nighthawk/lib/legacy-publish-fields";
 import { parseOptionsContract } from "@/features/nighthawk/lib/option-contract-parse";
+import { publishedAtRef } from "@/features/nighthawk/lib/legacy-play-contract";
 import {
   chiefTradeVirtualLots,
   formatZeroDteExpiry,
@@ -69,7 +71,11 @@ export function legacyInputFromPlaybookPlay(
   editionFor: string,
   play: PlaybookPlay
 ): LegacyTradeDiscordInput | null {
-  const parsed = parseOptionsContract(play.options_play ?? "");
+  // Anchor year-inference on the edition's own date, not real wall-clock now — this builder is
+  // also used by notifyLegacyOutcomeClose's fallback path for an OUTCOME row that can belong to
+  // an older edition (see resolveLegacyPlayOcc's own doc comment + option-contract-parse.ts: an
+  // unanchored parse rolls an already-past "Mon DD" label a full year forward).
+  const parsed = parseOptionsContract(play.options_play ?? "", publishedAtRef(editionFor));
   if (!parsed?.expiryYmd || !Number.isFinite(parsed.strike) || parsed.strike <= 0) return null;
 
   const premium = play.entry_premium;
@@ -131,7 +137,13 @@ export function legacyInputFromOutcomeRow(
   });
   if (!optionsPlay || entryPremium == null) return null;
 
-  const parsed = parseOptionsContract(optionsPlay);
+  // Anchor year-inference on the row's own creation instant (stamped at edition publish time,
+  // per the PR-N4 comment on NighthawkPlayOutcomeRow), not real wall-clock now — this is the
+  // PRIMARY path legacyInputFromLiveRow tries first for a live-sync row that can belong to any
+  // of the up-to-14-trading-day-old active editions (activeLegacyEditionDates()), so an
+  // unanchored parse here silently re-breaks the OCC even when the row's own contract_occ was
+  // already correctly resolved upstream (fetchLegacyDiscordLiveRows, src/lib/db.ts).
+  const parsed = parseOptionsContract(optionsPlay, publishedAtRef(row.created_at));
   if (!parsed?.expiryYmd || !Number.isFinite(parsed.strike) || parsed.strike <= 0) return null;
 
   const direction =
@@ -187,6 +199,22 @@ export function buildLegacyTradePayload(
   };
 }
 
+/** Build the OCC directly from a resolved LegacyTradeDiscordInput's structured fields (expiry/
+ *  top_strike/direction, set once by legacyInputFrom*() via parseOptionsContract) rather than
+ *  re-parsing input.options_play's free-text "Mon DD" label a second time — a second parse
+ *  re-runs the label's year-inference against whatever reference point the caller happens to
+ *  use, which can roll an already-correct year forward a full year for an older edition (the
+ *  exact trap resolveLegacyPlayOcc's own doc comment warns about). input.expiry is already a
+ *  full YYYY-MM-DD, so there is no year left to infer. Pure/sync — safe to unit test directly. */
+export function occFromTradeDiscordInput(input: LegacyTradeDiscordInput): string | null {
+  return buildOccContractId(
+    input.ticker,
+    input.expiry,
+    input.direction === "short" ? "PUT" : "CALL",
+    input.top_strike
+  );
+}
+
 /** Rough option exit fallback when no live/session mark is available. */
 export function legacyOutcomeExitPremium(
   entryPremium: number,
@@ -204,11 +232,9 @@ export async function resolveLegacyOutcomeExitPremium(
   sessionDate: string
 ): Promise<number> {
   const fallback = legacyOutcomeExitPremium(input.entry_premium, outcome);
-  if (!input.options_play) return fallback;
 
   try {
-    const { resolveLegacyPlayOcc } = await import("@/features/nighthawk/lib/legacy-play-contract");
-    const occ = resolveLegacyPlayOcc(input.ticker, input.options_play);
+    const occ = occFromTradeDiscordInput(input);
     if (!occ) return fallback;
 
     const { fetchPolygonOptionBars } = await import("@/lib/providers/polygon-largo");

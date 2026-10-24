@@ -99,3 +99,71 @@ test("excludePositionId: lone self row produces no overlap", () => {
   const o = checkPortfolioOverlap(long("NVDA"), book, { excludePositionId: 12 });
   assert.equal(o.hasOverlap, false);
 });
+
+// Regression — live repro 2026-10-07 (Ask Largo standing mandate): a Banger-origin reviewed play
+// self-flagged as "concentration" against its OWN position. banger-lane-merge.ts stamps a
+// Banger-origin TerminalPlay's `positionId` from the BANGER row's own id (banger_positions.id),
+// never a real swing_positions id — but play-brief-context.ts's `loadOpenBook()` deliberately
+// leaves `positionId` UNSET on every banger-origin row in the book, storing that same number only
+// under `bangerId` (to avoid a different, already-fixed cross-sequence collision risk — see
+// portfolio.ts's own `bangerId` doc comment). The two choices are individually correct but compose
+// into a gap: `excludePositionId` only ever matches on `pos.positionId`, so a banger-origin
+// candidate's own row in the book — carrying that exact number as `bangerId`, not `positionId` —
+// is never excluded, and gets reported back as "a separate, cross-engine position" sharing its own
+// id. Live: VST and MRVL both showed "already holding 1 same-direction position... (separate,
+// cross-engine position #<id>)" where `<id>` was the reviewed play's own id.
+test("excludePositionId also matches on bangerId — a banger-origin candidate does not flag itself", () => {
+  const book: PortfolioPosition[] = [{ ticker: "VST", direction: "LONG", bangerId: 1478 }];
+  const o = checkPortfolioOverlap(long("VST"), book, { excludePositionId: 1478 });
+  assert.equal(o.hasOverlap, false, "the candidate's own banger-origin row must not self-flag");
+});
+
+test("excludePositionId by bangerId still reports a genuinely separate banger sibling", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "VST", direction: "LONG", bangerId: 1478 }, // self
+    { ticker: "VST", direction: "LONG", bangerId: 2200 }, // genuinely separate sibling
+  ];
+  const o = checkPortfolioOverlap(long("VST"), book, { excludePositionId: 1478 });
+  assert.equal(o.hasOverlap, true);
+  assert.equal(o.sameThemeSameDirection.length, 1);
+  assert.equal(o.sameThemeSameDirection[0]?.bangerId, 2200);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-09) — live repro: a real MRVL (LONG, bullish)
+// play-brief's Book context section read "already holding 1 same-direction position in theme
+// 'semis': SOXS LONG. MRVL stacks the same wager rather than diversifying risk" against a real
+// open SOXS LONG position. That is backwards: SOXS is a -3x inverse semiconductor ETF, so a LONG
+// SOXS position is a BEARISH bet on semis — the opposite economic bet to a bullish LONG MRVL.
+// Pairing them is an INTERNAL CONFLICT (one leg fights the other), not concentration (stacking the
+// identical wager); the prior raw-`direction`-field comparison told the trader to read their own
+// book's risk exactly backwards. Fixed by classifying on `effectiveDirection` (theme-cluster.ts),
+// which flips the nominal direction for a known inverse-leverage ETF before comparing.
+test("a real SOXS LONG is an OPPOSED bet against a bullish MRVL/NVDA LONG, not concentration (2026-10-09 live finding)", () => {
+  const o = checkPortfolioOverlap(long("MRVL"), [long("SOXS")]);
+  assert.equal(o.theme, "semis");
+  assert.equal(o.hasOverlap, true);
+  assert.equal(
+    o.sameThemeOpposedDirection.length,
+    1,
+    "LONG SOXS is economically bearish semis — opposed to a bullish LONG MRVL, not stacked on top of it",
+  );
+  assert.equal(o.sameThemeSameDirection.length, 0);
+});
+
+test("a SHORT SOXS (bearish semis bet inverted to bullish) IS concentration against a bullish LONG MRVL", () => {
+  const o = checkPortfolioOverlap(long("MRVL"), [short("SOXS")]);
+  assert.equal(o.sameThemeSameDirection.length, 1, "SHORT SOXS's effective direction is LONG — same bullish bet as MRVL");
+  assert.equal(o.sameThemeOpposedDirection.length, 0);
+});
+
+test("two inverse-leverage legs on each side still compare correctly (SOXS LONG vs SOXS LONG is genuine concentration)", () => {
+  const o = checkPortfolioOverlap(long("SOXS"), [long("SOXS")], { excludeSelfMatch: false });
+  assert.equal(o.sameThemeSameDirection.length, 1, "both legs are the identical bearish bet on semis");
+  assert.equal(o.sameThemeOpposedDirection.length, 0);
+});
+
+test("SOXL (the bull sibling, not inverse) is unaffected — still compares on raw direction", () => {
+  const o = checkPortfolioOverlap(long("MRVL"), [long("SOXL")]);
+  assert.equal(o.sameThemeSameDirection.length, 1, "SOXL LONG is a genuinely bullish semis bet, same as MRVL LONG");
+  assert.equal(o.sameThemeOpposedDirection.length, 0);
+});

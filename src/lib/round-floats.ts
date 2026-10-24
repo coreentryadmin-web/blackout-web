@@ -57,6 +57,19 @@ export function roundFloats<T>(value: T, dp = 2, keyDp?: RoundFloatsKeyDp): T {
       return Math.round(v * f) / f;
     }
     if (Array.isArray(v)) return v.map((el) => walk(el, key));
+    // A `Date` has no own enumerable properties (its value lives in an internal slot, read
+    // only via methods) — `Object.entries(date)` below returns `[]`, so the generic-object
+    // branch would silently rebuild it as `{}`, destroying the timestamp. Pass it through
+    // unchanged; `JSON.stringify` (NextResponse.json) calls `Date.prototype.toJSON()` and
+    // serializes it as the correct ISO string, same as returning any other non-object leaf.
+    // Live-caught 2026-10-11: `/api/market/anomalies` passes a raw pg `Date` (`detected_at`)
+    // straight into `roundFloats`, so every anomaly's `detectedAt` field served to the client
+    // was `{}` — which made `new Date({}).getTime()` NaN in `isFlowAnomalyRecent`, which made
+    // every anomaly read as "not recent", which made `FlowAnomalyBanner` always render nothing
+    // (`anomalies.length === 0` after the recency filter), regardless of how real or fresh the
+    // underlying anomaly was. Any other call site passing a raw Date through this shared helper
+    // (160 call sites repo-wide) had the identical latent defect.
+    if (v instanceof Date) return v;
     if (v !== null && typeof v === "object") {
       const out: Record<string, unknown> = {};
       for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = walk(val, k);

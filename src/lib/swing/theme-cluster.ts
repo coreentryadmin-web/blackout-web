@@ -48,20 +48,100 @@ export const CORRELATION_THEMES: Readonly<Record<string, ReadonlySet<string>>> =
  * ETFs whose concentration makes them a PROXY for a driver theme rather than their nominal index bucket.
  * These override sectorFor/governor so the ETF clusters with the names that actually move it. WHY each:
  *  - QQQ / QQQM / NDX: the Nasdaq-100 is ~50% mega-cap tech + semis; it lives and dies with NVDA/AAPL/MSFT.
+ *  - TQQQ / SQQQ: 3x leveraged bull/bear Nasdaq-100 funds — the exact same QQQ basket, just levered, so
+ *    they cluster with QQQ for the identical reason the SOXL/SOXS pair below clusters with SMH/SOXX
+ *    (added after the Ask Largo mandate's 2026-10-09 SOXS fix, whose own doc comment on
+ *    `INVERSE_LEVERAGE_ETFS` already named SQQQ as the next entry this file expected).
  *  - SMH / SOXX / SOXL / SOXS: pure semiconductor ETFs — literally the NVDA/AMD/AVGO basket.
  *  - XLK: tech-select sector SPDR, mega-cap-tech-dominated.
+ *  - XRP / XRPZ / XXRP: three separate wrapper tickers on the SAME underlying token — not equities, so they
+ *    get their own cluster ("crypto-xrp") rather than folding into sectorFor's "crypto-equity" (mining/holding
+ *    equities like COIN/MSTR track a different, broader risk driver than one token's own price).
  * This is the override that makes `sameThesis("QQQ","NVDA") === true` (SEV-9 invariant).
  */
 export const ETF_PROXY_THEMES: Readonly<Record<string, string>> = Object.freeze({
   QQQ: "semis",
   QQQM: "semis",
   NDX: "semis",
+  TQQQ: "semis",
+  SQQQ: "semis",
   SMH: "semis",
   SOXX: "semis",
   SOXL: "semis",
   SOXS: "semis",
   XLK: "semis",
+  XRP: "crypto-xrp",
+  XRPZ: "crypto-xrp",
+  XXRP: "crypto-xrp",
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-17, live repro: LABD and IOVA both
+  // currently-committed LONG in the same book, zero conflict flag between them). LABD (Direxion
+  // Daily S&P Biotech Bear 3X) tracks the S&P Biotech Select Industry Index — equal-weighted, so
+  // dominated by the same small/mid-cap clinical-stage names sectorFor's "biotech" bucket already
+  // lists, not a different, larger-cap population. Measured, not guessed: 96 real trading days of
+  // daily-return correlation vs sectorFor's own biotech names (NTLA r=-0.615, CRSP r=-0.758, VIR
+  // r=-0.712, avg |r|~0.61) is more than double the correlation vs large-cap diversified
+  // healthcare (UNH/LLY/PFE/JNJ, avg |r|~0.27) — confirming "biotech", not a separate "broad
+  // biotech" theme, is the correct cluster.
+  LABD: "biotech",
 });
+
+/**
+ * Inverse/short-leveraged ETFs seeded into `ETF_PROXY_THEMES` above for THEME clustering (SOXS
+ * correctly shares the "semis" theme with NVDA/AMD/SOXL — it is driven by the exact same basket).
+ * But theme is not direction: SOXS is a -3x fund, so a nominal "LONG SOXS" position is an
+ * ECONOMICALLY BEARISH bet on semis, the opposite of a nominal "LONG NVDA" position.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-10-09): `checkPortfolioOverlap` (portfolio.ts)
+ * compares each book row's raw `direction` field to the candidate's, with no adjustment for this —
+ * live-reproduced on a real MRVL (LONG, bullish) play-brief that already held a real SOXS LONG
+ * position: the book-context narrative read "already holding 1 same-direction position in theme
+ * 'semis': SOXS LONG. MRVL stacks the same wager rather than diversifying risk" — exactly
+ * backwards. A LONG SOXS holder is betting semis fall; pairing it with a LONG MRVL bullish bet is
+ * an INTERNAL CONFLICT (one leg fights the other), not concentration (stacking the identical
+ * wager) — the trader-facing coaching text told a member to read risk in the wrong direction.
+ * `effectiveDirection()` below flips the nominal direction for any ticker in this set before
+ * `portfolio.ts` compares candidate vs. book row, so the same/opposed classification reflects the
+ * REAL economic bet, not the raw long/short field on the option position.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-10-11): this set was seeded with only SOXS even
+ * though this same doc comment already named SQQQ as the obvious next candidate — SQQQ (3x short
+ * Nasdaq-100) is one of the most commonly held retail inverse ETFs, far more so than SOXS, and
+ * until this fix it wasn't even in `ETF_PROXY_THEMES` at all: a member holding LONG SQQQ (bearish
+ * Nasdaq/semis) alongside a LONG QQQ or LONG NVDA swing play would get NO book-context flag at
+ * all, not even a backwards one — SQQQ resolved to its own isolated `NAME:SQQQ` cluster, so
+ * `sameThesis` never even saw the two positions as related. Added alongside TQQQ (its bullish 3x
+ * sibling, same direction as QQQ — no inverse-direction flag needed, exactly like SOXL's relation
+ * to SOXS) to `ETF_PROXY_THEMES` above, and SQQQ here, so the fix is a parallel pair just like
+ * SOXL/SOXS already is, not a one-sided patch.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-10-17): same shape again — LABD (3x short S&P
+ * Biotech) was in neither ETF_PROXY_THEMES nor here, so a LONG LABD (bearish biotech bet) held
+ * alongside a LONG biotech name like IOVA (both real, live, currently-committed positions in the
+ * same book at time of fix) got zero flag at all. Added as a parallel fix to ETF_PROXY_THEMES
+ * above, same pattern as SOXS/SQQQ.
+ */
+export const INVERSE_LEVERAGE_ETFS: ReadonlySet<string> = new Set(["SOXS", "SQQQ", "LABD"]);
+
+/** True when `ticker` is a known inverse/short-leveraged ETF (its nominal LONG/SHORT direction is
+ *  the opposite of its real directional bet on the theme it clusters into). */
+export function isInverseLeverageEtf(ticker: string | null | undefined): boolean {
+  return INVERSE_LEVERAGE_ETFS.has(normalize(ticker));
+}
+
+/**
+ * The REAL directional bet a position represents, flipping the nominal LONG/SHORT for a known
+ * inverse-leverage ETF (see `INVERSE_LEVERAGE_ETFS` above). A LONG SOXS position's effective
+ * direction is SHORT (bearish semis); every other ticker's effective direction equals its nominal
+ * one. Callers that need to compare two positions' REAL economic bet (not just their raw option
+ * side) should compare `effectiveDirection(...)` outputs, not the raw `direction` field directly.
+ */
+export function effectiveDirection(
+  ticker: string | null | undefined,
+  direction: "LONG" | "SHORT",
+): "LONG" | "SHORT" {
+  if (!isInverseLeverageEtf(ticker)) return direction;
+  return direction === "LONG" ? "SHORT" : "LONG";
+}
 
 function normalize(ticker: string | null | undefined): string {
   return (ticker ?? "").trim().toUpperCase();
@@ -103,4 +183,33 @@ export function sameThesis(a: string | null | undefined, b: string | null | unde
   const nb = normalize(b);
   if (!na || !nb) return false; // an unknown side is not a match
   return resolveTheme(na) === resolveTheme(nb);
+}
+
+/**
+ * Human-readable label for a theme key, for narrative/UI copy that quotes `resolveTheme`'s
+ * output directly (`theme "${theme}"` in play-brief-intel.ts/play-brief.ts). `NAME:<TICKER>` is
+ * an internal sentinel — "no shared theme was found, this ticker is its own cluster" — never a
+ * real theme name; a caller that interpolates it raw leaks the sentinel into trader-facing prose
+ * (caught live 2026-09-18: BYND's own Book context/evidence line literally read `theme "NAME:BYND"`,
+ * because two concurrent BYND positions share this own-cluster key and no call site stripped the
+ * prefix before display). Strip it here so every display call site gets the same clean label
+ * without re-deriving the sentinel format.
+ */
+export function themeDisplayLabel(theme: string): string {
+  return theme.startsWith(OWN_CLUSTER_PREFIX) ? theme.slice(OWN_CLUSTER_PREFIX.length) : theme;
+}
+
+/** True when `theme` is an own-cluster sentinel (`NAME:<TICKER>`) rather than a real shared theme. */
+export function isOwnClusterTheme(theme: string): boolean {
+  return theme.startsWith(OWN_CLUSTER_PREFIX);
+}
+
+/**
+ * Full narrative phrase for a theme overlap — `theme "software"` for a real shared theme, or
+ * `the same name (BYND)` for an own-cluster overlap (which can only mean the SAME ticker held
+ * twice, per `resolveTheme`'s own-cluster derivation: two distinct unmapped tickers never share
+ * a `NAME:` key). Callers should use this in place of hand-building `theme "${theme}"`.
+ */
+export function describeThemeOverlap(theme: string): string {
+  return isOwnClusterTheme(theme) ? `the same name (${themeDisplayLabel(theme)})` : `theme "${theme}"`;
 }

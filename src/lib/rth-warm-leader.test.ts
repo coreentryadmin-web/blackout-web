@@ -22,13 +22,15 @@ test("rthWriterOverdue: flow-ingest skipped for alternate writer is not overdue"
   );
 });
 
-test("rthWriterOverdue: heatmap-warm overdue after 25s (20s heal threshold)", () => {
-  const last = new Date(now - 25_000).toISOString();
+test("rthWriterOverdue: heatmap-warm overdue after 85s (81s heal threshold = p90 runtime)", () => {
+  const last = new Date(now - 85_000).toISOString();
   assert.equal(rthWriterOverdue("heatmap-warm", last, "ok", null, now), true);
 });
 
-test("rthWriterOverdue: heatmap-warm fresh at 10s", () => {
-  const last = new Date(now - 10_000).toISOString();
+test("rthWriterOverdue: heatmap-warm fresh at 70s (below the 81s p90-runtime threshold — the old"
+  + " 20s threshold wrongly called this 'overdue' the instant a normal ~60-110s run completed,"
+  + " which is the near-continuous-redispatch bug this threshold fixes)", () => {
+  const last = new Date(now - 70_000).toISOString();
   assert.equal(rthWriterOverdue("heatmap-warm", last, "ok", null, now), false);
 });
 

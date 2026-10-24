@@ -25,15 +25,6 @@
 
 export type SourceHealthState = "OFFLINE" | "RECOVERING" | "CATCHING_UP" | "WARM" | "HEALTHY";
 
-/** Ordered, low→high, so callers can compare "at least as healthy as". */
-export const SOURCE_HEALTH_ORDER: readonly SourceHealthState[] = [
-  "OFFLINE",
-  "RECOVERING",
-  "CATCHING_UP",
-  "WARM",
-  "HEALTHY",
-] as const;
-
 /**
  * Is the "only HEALTHY authorizes new source-dependent commits" gate turned ON?
  * DEFAULT-OFF: returns true ONLY for the exact literal "1". Any other value (unset, "0", "true",

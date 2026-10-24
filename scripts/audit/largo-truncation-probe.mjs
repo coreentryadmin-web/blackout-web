@@ -43,7 +43,7 @@ const JSON_OUT = process.argv.includes("--json");
 const BASE = arg("base", "https://blackouttrades.com").replace(/\/$/, "");
 
 /**
- * Lane tools, with the args each needs. Deliberately the LANES' list rather than all 137 — a
+ * Lane tools, with the args each needs. Deliberately the LANES' list rather than all 138 — a
  * lane's owner is better placed to say which of theirs carry enough data to be at risk, and
  * `--tools=` lets them point this at their own subset.
  *
@@ -70,7 +70,25 @@ const LANE_TOOLS = [
   ["get_gate_blocked_value", "days=30"],
   ["get_grader_agreement", "days=90"],
   ["get_banger_board", ""],
+  // Night Hawk Swings lane. `get_swing_discovery` sat in this list from 2026-08-23 until
+  // 2026-09-09 despite never being a real tool (confirmed: zero hits in src/ history) — every run
+  // against it came back INDETERMINATE and FINDINGS.md misattributed that to "needs compound
+  // arguments a generic probe can't synthesize," when the real reason was simpler: the model
+  // correctly said "I don't have a tool called get_swing_discovery." Removed rather than fixed
+  // with a recipe.
   ["get_swing_horizon", ""],
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-19): this comment used to claim "there is no
+  // second swing tool to probe" — stale the moment `get_swing_play_brief` shipped (2026-09-12,
+  // swing-play-brief-read.ts), and never caught because nothing re-checked the claim against the
+  // registry. Unlike every other lane's "fat" tool (get_nighthawk_edition, get_zerodte_record),
+  // `get_swing_play_brief`'s dispatch in run-tool.ts applies NO shaping/compaction step before
+  // returning — it hands back composeSwingPlayBrief's raw object verbatim, the exact absence of
+  // the pattern that already caused three real truncation defects elsewhere in this lane. Measured
+  // by inspection (not yet probed live): a maximally-populated single OPEN position — meridian
+  // catalyst + peer lens, graduated archetype track record, ticker history, roll history, trade-
+  // manager narrative — serializes to ~9.4k chars against the 16k cap, so this is not yet an
+  // active truncation (unlike the control), but it was never even watched for one.
+  ["get_swing_play_brief", "ticker NVDA"],
   // ── HELIX lane (docs/audit/HELIX-MAP.md) ──────────────────────────────────────────────────
   // Market-wide deliberately: no ticker means the whole tape, which is the biggest this gets.
   ["get_helix_tape_analytics", "no ticker, since_hours=168"],
@@ -190,9 +208,10 @@ const LANE_TOOLS = [
   ["get_signal_log", ""],
   ["get_similar_precedents", ""],
   ["get_stock_state", ""],
-  ["get_swing_discovery", ""],
+  // `get_technicals_spx` sat here from 2026-08-23 to 2026-09-09 despite never being a real tool
+  // (zero hits in src/ history, same phantom-name shape as the removed get_swing_discovery above)
+  // — SPX technicals coverage is `get_technicals` called with ticker SPX, not a separate tool.
   ["get_technicals", ""],
-  ["get_technicals_spx", ""],
   ["get_thermal_compare", ""],
   ["get_top_net_impact", ""],
   ["get_trade_history", ""],

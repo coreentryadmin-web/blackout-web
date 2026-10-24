@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildRankedVectorPicks, buildVectorContractPicks } from "./vector-contract-picks";
+import { buildRankedVectorPicks } from "./vector-contract-picks";
 import type { ChainStrikeRow, EditionChainData } from "@/features/nighthawk/lib/option-chain-prompt";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import type { VectorPlayPickContext } from "./vector-play-candidates";
@@ -80,12 +80,4 @@ test("buildRankedVectorPicks: range picks share play conviction; rank orders leg
   if (picks.length >= 2) {
     assert.ok((picks[0]!.rank ?? 0) < (picks[1]!.rank ?? 99));
   }
-});
-
-test("buildVectorContractPicks shim: neutral returns []", () => {
-  assert.deepEqual(buildVectorContractPicks({ bias: "neutral", conviction: 50 }, { spot: 100, rows: [] }, "monthly"), []);
-});
-
-test("buildVectorContractPicks shim: no chain returns []", () => {
-  assert.deepEqual(buildVectorContractPicks({ bias: "long", conviction: 80 }, null, "monthly"), []);
 });

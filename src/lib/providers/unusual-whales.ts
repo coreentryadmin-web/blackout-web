@@ -8,9 +8,10 @@ import {
   buildUwRequestKey,
   isUwCircuitOpen,
   noteUw429,
-  runUwSequential,
+  runUwPool,
   throttleUwCoalesced,
 } from "@/lib/providers/uw-rate-limiter";
+import { rateLimiterEnvNumber } from "@/lib/providers/provider-rate-limiter-shared";
 import {
   getUwCacheRedis,
   uwCacheGet,
@@ -103,6 +104,23 @@ function uwCacheTtlMs(path: string): number {
   if (path.startsWith("/api/economy/")) return uwEnvSec("UW_ECONOMY_CACHE_SEC", 3600) * 1000;
   if (path === "/api/market/market-tide") return uwEnvSec("UW_MARKET_TIDE_CACHE_SEC", 300) * 1000;
   if (path === "/api/net-flow/expiry") return uwEnvSec("UW_NET_FLOW_CACHE_SEC", 120) * 1000;
+  // ROOT-CAUSE FIX (Ask Largo standing perf mandate, 2026-10-18 — live ALB TargetResponseTime p99
+  // 8.94s/Max 43.2s, UW queue_wait_ms up to 19,460ms, recurring every 13-51min, traced to
+  // [api-queue-timing] bursts naming flow-per-expiry + greek-exposure/expiry + net-flow/expiry
+  // together). Unlike its two pool-siblings fetched in the SAME runUwPooled fan-out
+  // (fetchDeskEnrichmentFields / buildSpxDeskFlow, spx-desk.ts) — fetchUwFlowPerExpiry (Redis L2,
+  // 120s, UW_CACHE_TTL.flowPerExpiry) and fetchUwNetFlowExpiry (this file's own L1, just above,
+  // 120s) — fetchUwGreekExposureExpiry had NO cache layer anywhere, L1 or L2. buildSpxDeskFlow's
+  // wrapper (loadSpxDeskFlow, spx-desk-loader.ts) is cached for only 2s (deskFlowCacheTtlMs),
+  // matching the client's own SPX_FLOW_POLL_MS SWR interval — so under live RTH/extended-hours
+  // polling this was the single highest-frequency fully-live UW call in the app (~every 2s,
+  // continuously), competing for the same cluster-wide GLOBAL_MAX_CONCURRENCY/GLOBAL_MAX_RPS budget
+  // the periodic economy (GDP/CPI/UNRATE) + SPX-cluster enrichment bursts also need. 120s matches
+  // both siblings exactly — dealer positioning-by-expiry doesn't need sub-2s freshness any more
+  // than net-flow/expiry or flow-per-expiry do.
+  if (path.endsWith("/greek-exposure/expiry")) {
+    return uwEnvSec("UW_GREEK_EXPOSURE_EXPIRY_CACHE_SEC", 120) * 1000;
+  }
   if (path.includes("/api/group-flow/")) return uwEnvSec("UW_GROUP_FLOW_CACHE_SEC", 180) * 1000;
   if (path === "/api/market/economic-calendar") return uwEnvSec("UW_MACRO_CALENDAR_CACHE_SEC", 3600) * 1000;
   // IV rank + its daily series are END-OF-DAY data (UW recomputes once per session ~22:35 UTC —
@@ -136,42 +154,70 @@ function writeUwCache(key: string, path: string, data: unknown): void {
   uwResponseCache.set(key, { data, fetchedAt: Date.now(), ttlMs });
 }
 
-async function uwGet<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
+let uwCorrelationSeq = 0;
+
+async function uwGet<T>(
+  path: string,
+  params: Record<string, string | number> = {},
+  signal?: AbortSignal
+): Promise<T> {
   if (!uwConfigured()) throw new Error("UW_API_KEY not set");
   if (isUwCircuitOpen()) throw new Error(`Unusual Whales ${path} → 429 circuit`);
+  if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new DOMException("Aborted", "AbortError");
 
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) qs.set(k, String(v));
 
   const url = `${BASE}${path}${qs.size ? `?${qs}` : ""}`;
   const requestKey = buildUwRequestKey(path, params);
+  // Generated here (not left to trackedFetch's own default) so the SAME id covers this
+  // call's queue-admission wait and its eventual HTTP attempt(s) — joinable in the
+  // [api-queue-timing] log / ApiCallEvent ring buffer by one correlation_id end to end.
+  const corrId = `uw-${Date.now()}-${++uwCorrelationSeq}`;
+  let queueWaitMs: number | null = null;
 
   // Coalesce on the PARSED JSON, not the Response. A Response body is a one-shot stream,
   // so handing the same in-flight Response to concurrent callers made the 2nd .json()
   // throw 'body already read' — silently dropping greek-exposure / net-prem desk data
   // under load (uwGetSafe swallowed it as null). Parsing inside the coalesced fn lets
   // every concurrent caller share one already-parsed payload.
-  return throttleUwCoalesced(requestKey, async () => {
-    const res = await trackedFetch("unusual_whales", path, url, {
-      headers: {
-        Authorization: `Bearer ${KEY}`,
-        Accept: "application/json",
-        "UW-CLIENT-API-ID": CLIENT_ID,
-      },
-      cache: "no-store",
-    });
-    if (res.status === 429) {
-      // Do NOT count the 429 here. uwGetSafe's catch is the single counting site
-      // (noteUw429) for the breaker; counting in both this fetch path AND the catch
-      // double-incremented recent429Timestamps, tripping the breaker at half
-      // CIRCUIT_429_THRESHOLD (and faster under request coalescing: 1 here + N waiters
-      // in the catch). Direct-uwGet callers (fetchMarketFlowAlertRows) record the 429
-      // in their own catch instead.
-      throw new Error(`Unusual Whales ${path} → 429`);
+  //
+  // `signal` here is THIS caller's own cancellation intent, not the shared request's —
+  // throttleUwCoalesced's reference-counted group (coalesced-abort-group.ts) only
+  // actually cancels the underlying fetch once every attached caller (across every
+  // product sharing this exact path+params) has detached. A single ticker's wall
+  // timeout can never yank a response out from under a different, still-active caller.
+  return throttleUwCoalesced(
+    requestKey,
+    async (groupSignal) => {
+      const res = await trackedFetch("unusual_whales", path, url, {
+        headers: {
+          Authorization: `Bearer ${KEY}`,
+          Accept: "application/json",
+          "UW-CLIENT-API-ID": CLIENT_ID,
+        },
+        cache: "no-store",
+        correlationId: corrId,
+        queueWaitMs,
+        signal: groupSignal,
+      });
+      if (res.status === 429) {
+        // Do NOT count the 429 here. uwGetSafe's catch is the single counting site
+        // (noteUw429) for the breaker; counting in both this fetch path AND the catch
+        // double-incremented recent429Timestamps, tripping the breaker at half
+        // CIRCUIT_429_THRESHOLD (and faster under request coalescing: 1 here + N waiters
+        // in the catch). Direct-uwGet callers (fetchMarketFlowAlertRows) record the 429
+        // in their own catch instead.
+        throw new Error(`Unusual Whales ${path} → 429`);
+      }
+      if (!res.ok) throw new Error(`Unusual Whales ${path} → ${res.status}`);
+      return res.json() as Promise<T>;
+    },
+    signal,
+    (waitedMs) => {
+      queueWaitMs = waitedMs;
     }
-    if (!res.ok) throw new Error(`Unusual Whales ${path} → ${res.status}`);
-    return res.json() as Promise<T>;
-  });
+  );
 }
 
 /**
@@ -332,9 +378,13 @@ const rowToFlow = parseUwFlowAlert;
 async function uwGetSafe<T>(
   path: string,
   params: Record<string, string | number> = {},
-  retries = 2
+  retries = 2,
+  signal?: AbortSignal
 ): Promise<T | null> {
   if (!uwConfigured()) return null;
+  // "Safe" means never throw — an already-cancelled caller gets its honest null,
+  // exactly like every other early-out below, rather than propagating an AbortError.
+  if (signal?.aborted) return null;
 
   const cacheKey = buildUwRequestKey(path, params);
   const cacheable = uwCacheTtlMs(path) > 0;
@@ -347,12 +397,28 @@ async function uwGetSafe<T>(
     return null;
   }
 
+  // Wall-clock time budget for the entire retry loop to prevent orphaned retries
+  // from starving the shared 2-slot global UW concurrency pool (throttleUw's
+  // GLOBAL_MAX_CONCURRENCY). Per-attempt budget checks ensure the loop exits before a
+  // scheduled backoff would overshoot the wall. Read directly in milliseconds via
+  // rateLimiterEnvNumber (matching the `_MS` name and the sibling `_MS`-suffixed knobs
+  // this file's own uw-rate-limiter.ts already uses the same helper for, e.g.
+  // UW_CIRCUIT_PAUSE_MS) rather than uwEnvSec, which is this file's SECONDS-based
+  // helper (used elsewhere here only for `_SEC`-suffixed cache-TTL knobs) — routing an
+  // `_MS` name through the seconds helper would silently turn a value the operator
+  // wrote in milliseconds into that many SECONDS (a `UW_GET_SAFE_MAX_RETRY_BUDGET_MS`
+  // set to 20000 expecting 20s would instead arm a ~5.5-HOUR budget).
+  const maxRetryBudgetMs = rateLimiterEnvNumber("UW_GET_SAFE_MAX_RETRY_BUDGET_MS", 20_000);
+  const attemptStartMs = Date.now();
+
   for (let attempt = 0; attempt <= retries; attempt++) {
+    if (signal?.aborted) return null; // cancelled between retries — do not spend another attempt
     try {
-      const data = await uwGet<T>(path, params);
+      const data = await uwGet<T>(path, params, signal);
       if (cacheable) writeUwCache(cacheKey, path, data);
       return data;
     } catch (err) {
+      if (signal?.aborted) return null; // this attempt's failure IS the cancellation — do not retry it
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("403")) {
         console.error(`[uw] PLAN_BLOCKED ${path} — endpoint requires higher tier. Returning null.`);
@@ -362,6 +428,13 @@ async function uwGetSafe<T>(
         noteUw429(path);
         if (attempt < retries) {
           const delay = 1000 * Math.pow(2, attempt) + Math.random() * 500;
+          const elapsedMs = Date.now() - attemptStartMs;
+          if (elapsedMs + delay > maxRetryBudgetMs) {
+            const stale = cacheable ? readUwCache<T>(cacheKey, true) : undefined;
+            if (stale !== undefined) return stale;
+            console.warn(`[uw] RATE_LIMITED ${path} — budget exhausted (${elapsedMs}ms/${maxRetryBudgetMs}ms)`);
+            return null;
+          }
           if (process.env.UW_DEBUG_RETRIES === "1") {
             console.debug(`[uw] RATE_LIMITED ${path} — retry ${attempt + 1} in ${delay.toFixed(0)}ms`);
           }
@@ -379,6 +452,13 @@ async function uwGetSafe<T>(
       if (isUwUpstream5xx(msg)) {
         if (attempt < retries) {
           const delay = 1000 * Math.pow(2, attempt) + Math.random() * 500;
+          const elapsedMs = Date.now() - attemptStartMs;
+          if (elapsedMs + delay > maxRetryBudgetMs) {
+            const stale = cacheable ? readUwCache<T>(cacheKey, true) : undefined;
+            if (stale !== undefined) return stale;
+            console.warn(`[uw] UPSTREAM_5XX ${path} — budget exhausted (${elapsedMs}ms/${maxRetryBudgetMs}ms)`);
+            return null;
+          }
           if (process.env.UW_DEBUG_RETRIES === "1") {
             console.debug(`[uw] UPSTREAM_5XX ${path} — retry ${attempt + 1} in ${delay.toFixed(0)}ms`);
           }
@@ -399,6 +479,13 @@ async function uwGetSafe<T>(
       if (isUwTransientNetwork(msg)) {
         if (attempt < retries) {
           const delay = 1000 * Math.pow(2, attempt) + Math.random() * 500;
+          const elapsedMs = Date.now() - attemptStartMs;
+          if (elapsedMs + delay > maxRetryBudgetMs) {
+            const stale = cacheable ? readUwCache<T>(cacheKey, true) : undefined;
+            if (stale !== undefined) return stale;
+            console.warn(`[uw] NETWORK_BLIP ${path} — budget exhausted (${elapsedMs}ms/${maxRetryBudgetMs}ms)`);
+            return null;
+          }
           if (process.env.UW_DEBUG_RETRIES === "1") {
             console.debug(`[uw] NETWORK_BLIP ${path} — retry ${attempt + 1} in ${delay.toFixed(0)}ms`);
           }
@@ -579,9 +666,23 @@ export async function fetchUwNope(ticker = "SPX") {
     const row = Array.isArray(block) ? block[block.length - 1] : block;
     if (!row || typeof row !== "object") return null;
     const r = row as Record<string, unknown>;
+    // `net_delta` is NOT a real field UW returns here — same class of dead-field-lookup bug as
+    // `summarizeGroupGreekFlow`'s `net_delta`/`net_gamma` (PR #3290, 2026-09-02). Live-verified
+    // 2026-10-08 against the real `/api/stock/{t}/nope` row shape: `timestamp`, `call_delta`,
+    // `put_delta`, `call_vol`, `put_vol`, `stock_vol`, `call_fill_delta`, `put_fill_delta`,
+    // `nope_fill`, `nope` — there is no `net_delta` key anywhere on it, so `r.net_delta ?? 0`
+    // ALWAYS evaluated to the fabricated fallback. Every caller (SPX desk's `nope_net_delta`,
+    // and Largo's `get_nope` tool directly for every non-SPX ticker) rendered "net delta flow =
+    // 0" — perfectly balanced dealer positioning — on literally every call, never a measured
+    // number. Net option delta flow is the sum of the two signed per-side components UW's own
+    // `nope` is itself derived from (same inputs, same row) — compute it when at least one side
+    // is present, and OMIT (null) rather than fabricate when neither is, per the absence
+    // principle (docs/audit/LARGO-PRODUCT-CONTRACT.md).
+    const callDelta = r.call_delta != null ? Number(r.call_delta) : null;
+    const putDelta = r.put_delta != null ? Number(r.put_delta) : null;
     return {
       nope: Number(r.nope ?? 0),
-      net_delta: Number(r.net_delta ?? 0),
+      net_delta: callDelta != null || putDelta != null ? (callDelta ?? 0) + (putDelta ?? 0) : null,
     };
   });
 }
@@ -592,14 +693,14 @@ export async function fetchUwNope(ticker = "SPX") {
 // uwCacheTtlMs (L1) — same double-layer resilience as market-tide. Return contract is UNCHANGED
 // (number|null) so every caller (SPX desk, Nighthawk dossier, Largo, cold-profile runner) is
 // unaffected. The circuit-breaker / coalescer still run inside uwGetSafe → uwGet.
-export async function fetchUwIvRank(ticker = "SPX") {
+export async function fetchUwIvRank(ticker = "SPX", signal?: AbortSignal) {
   const redis = await getUwCacheRedis();
   return uwCacheGet(
     redis,
     UW_KEYS.ivRank(ticker),
     uwEnvSec("UW_IV_RANK_CACHE_SEC", UW_CACHE_TTL.ivRank),
-    async () => {
-      const data = await uwGetSafe<Record<string, unknown>>(`/api/stock/${safeTicker(ticker)}/volatility/stats`, {});
+    async (s) => {
+      const data = await uwGetSafe<Record<string, unknown>>(`/api/stock/${safeTicker(ticker)}/volatility/stats`, {}, 2, s);
       if (!data) return null;
       const block = data.data;
       const row = Array.isArray(block) ? block[0] : block;
@@ -607,6 +708,7 @@ export async function fetchUwIvRank(ticker = "SPX") {
       const ivRank = (row as Record<string, unknown>).iv_rank;
       return ivRank != null ? Number(ivRank) : null;
     },
+    signal,
   );
 }
 
@@ -632,11 +734,38 @@ export function aggregateFlowPerStrikeRows(rows: ReadonlyArray<Record<string, un
   return { call_premium: calls, put_premium: puts, net: calls - puts };
 }
 
+/**
+ * A flow-per-strike aggregate with BOTH sides exactly 0 is a transient empty/degraded upstream
+ * read (live 0DTE flow essentially never nets to exact zero on both legs), not a genuine "no
+ * flow" reading. Caching it verbatim under `UW_CACHE_TTL.flowPerStrike` (120s) would overwrite a
+ * real aggregate for the full TTL and silently corrupt every downstream reader — confirmed live
+ * 2026-10-14: SPX Slayer's desk `flow_0dte_net` field (and the score factor + gate block it
+ * drives) flipped between a real multi-hundred-million value and exactly 0/0/0 every ~2 minutes,
+ * 1:1 matching this TTL, with every response still reporting `feed_stalled:false` — the bad poll
+ * was accepted and served as valid.
+ */
+export function isDegenerateFlowAggregate(agg: { call_premium: number; put_premium: number }): boolean {
+  return agg.call_premium === 0 && agg.put_premium === 0;
+}
+
+/** Per-process last-good flow-per-strike aggregate, keyed by ticker — the same in-process sticky
+ *  pattern `spx-desk.ts` already uses for GEX walls/flip/unified tape (`lastGoodGexWalls` etc.),
+ *  applied here so a single degenerate poll substitutes the prior real value before it ever
+ *  reaches the shared Redis cache that every replica and both callers (spx-desk, Largo's
+ *  run-tool) read from. */
+const lastGoodFlow0dteByTicker = new Map<string, { call_premium: number; put_premium: number; net: number }>();
+
 export async function fetchUwFlow0dte(ticker = "SPX") {
   const redis = await getUwCacheRedis();
+  const key = safeTicker(ticker);
   return uwCacheGet(redis, UW_KEYS.flowPerStrike(ticker), UW_CACHE_TTL.flowPerStrike, async () => {
-    const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/flow-per-strike-intraday`, {});
-    return aggregateFlowPerStrikeRows(extractRows(data));
+    const data = await uwGetSafe<unknown>(`/api/stock/${key}/flow-per-strike-intraday`, {});
+    const fresh = aggregateFlowPerStrikeRows(extractRows(data));
+    if (!isDegenerateFlowAggregate(fresh)) {
+      lastGoodFlow0dteByTicker.set(key, fresh);
+      return fresh;
+    }
+    return lastGoodFlow0dteByTicker.get(key) ?? fresh;
   });
 }
 
@@ -706,12 +835,15 @@ function flowRowKey(row: MarketFlowRow): string {
 async function uwGetWithTransientRetry<T>(
   path: string,
   params: Record<string, string | number>,
-  retries = 2
+  retries = 2,
+  signal?: AbortSignal
 ): Promise<T> {
   for (let attempt = 0; ; attempt++) {
+    if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new DOMException("Aborted", "AbortError");
     try {
-      return await uwGet<T>(path, params);
+      return await uwGet<T>(path, params, signal);
     } catch (err) {
+      if (signal?.aborted) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       const is5xx = isUwUpstream5xx(msg);
       const isNet = isUwTransientNetwork(msg);
@@ -728,11 +860,12 @@ async function uwGetWithTransientRetry<T>(
 }
 
 async function fetchMarketFlowAlertPage(
-  query: Record<string, string | number>
+  query: Record<string, string | number>,
+  signal?: AbortSignal
 ): Promise<MarketFlowRow[]> {
   // Retry transient connect/5xx blips before giving up (429 still bubbles to the caller's
   // breaker + partial-serve logic). Without this a single blip blanked the HELIX tape.
-  const data = await uwGetWithTransientRetry<unknown>("/api/option-trades/flow-alerts", query);
+  const data = await uwGetWithTransientRetry<unknown>("/api/option-trades/flow-alerts", query, 2, signal);
   return extractRows(data).map((raw) => ({ raw, flow: rowToFlow(raw) }));
 }
 
@@ -742,7 +875,7 @@ export async function fetchMarketFlowAlertRows(params?: {
   min_premium?: number;
   newer_than?: string;
   older_than?: string;
-}): Promise<MarketFlowRow[]> {
+}, signal?: AbortSignal): Promise<MarketFlowRow[]> {
   const now = Date.now();
   const hasFreshCache =
     marketFlowCache &&
@@ -787,7 +920,7 @@ export async function fetchMarketFlowAlertRows(params?: {
 
       let batch: MarketFlowRow[];
       try {
-        batch = await fetchMarketFlowAlertPage(query);
+        batch = await fetchMarketFlowAlertPage(query, signal);
       } catch (pageErr) {
         // fetchMarketFlowAlertPage now retries transient connect/5xx blips internally but still
         // has no stale fallback and does NOT retry 429, so a 429 (or an exhausted transient blip)
@@ -949,16 +1082,17 @@ export function emptyDarkPoolSnapshot(): DarkPoolSnapshot {
 /** GET /api/darkpool/{ticker} — large institutional prints */
 export async function fetchUwDarkPool(
   ticker = "SPX",
-  opts?: { limit?: number; min_premium?: number }
+  opts?: { limit?: number; min_premium?: number },
+  signal?: AbortSignal
 ): Promise<DarkPoolSnapshot | null> {
   const redis = await getUwCacheRedis();
-  return uwCacheGet(redis, UW_KEYS.darkPoolTicker(ticker, opts), UW_CACHE_TTL.darkPoolTicker, async () => {
+  return uwCacheGet(redis, UW_KEYS.darkPoolTicker(ticker, opts), UW_CACHE_TTL.darkPoolTicker, async (s) => {
     const params: Record<string, string | number> = {
       limit: Math.min(opts?.limit ?? 20, 100),
     };
     if (opts?.min_premium) params.min_premium = opts.min_premium;
 
-    const data = await uwGetSafe<unknown>(`/api/darkpool/${safeTicker(ticker)}`, params);
+    const data = await uwGetSafe<unknown>(`/api/darkpool/${safeTicker(ticker)}`, params, 2, s);
     // DID THE UPSTREAM ANSWER? `uwGetSafe` never throws — it returns null when UW is not
     // configured, when the circuit breaker is open with no stale cache, on a 403, and when the
     // retries are exhausted. `extractRows(null)` is `[]`, so without this guard a call that never
@@ -1023,7 +1157,7 @@ export async function fetchUwDarkPool(
       pcr: callPrem > 0 ? Math.round((putPrem / callPrem) * 100) / 100 : null,
       detail: prints.length ? `${prints.length} print(s) | $${(total / 1_000_000).toFixed(2)}M` : "No prints today",
     };
-  });
+  }, signal);
 }
 
 /**
@@ -1501,8 +1635,8 @@ export type OiChangeItem = {
 };
 
 /** Intraday OI changes by strike */
-export async function fetchUwOiChange(ticker = "SPX"): Promise<OiChangeItem[]> {
-  const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/oi-change`, {});
+export async function fetchUwOiChange(ticker = "SPX", signal?: AbortSignal): Promise<OiChangeItem[]> {
+  const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/oi-change`, {}, 2, signal);
   return extractRows(data)
     .map((r) => ({
       strike: Number(r.strike ?? 0),
@@ -1517,13 +1651,13 @@ export async function fetchUwOiChange(ticker = "SPX"): Promise<OiChangeItem[]> {
 export type IvTermPoint = { expiry: string; iv: number };
 
 /** IV term structure curve */
-export async function fetchUwIvTermStructure(ticker = "SPX"): Promise<IvTermPoint[]> {
+export async function fetchUwIvTermStructure(ticker = "SPX", signal?: AbortSignal): Promise<IvTermPoint[]> {
   const sym = safeTicker(ticker);
   for (const path of [
     `/api/stock/${sym}/volatility/term-structure`,
     `/api/stock/${sym}/implied-volatility-term-structure`,
   ]) {
-    const data = await uwGetSafe<unknown>(path, {});
+    const data = await uwGetSafe<unknown>(path, {}, 2, signal);
     const rows = extractRows(data)
       .map((r) => ({
         expiry: String(r.expiry ?? r.expiration ?? r.date ?? "").slice(0, 10),
@@ -1630,13 +1764,13 @@ export async function fetchUwInsiderFlow(ticker: string) {
   return uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/insider-buy-sells`, {});
 }
 
-export async function fetchUwCongressTrades(ticker?: string, limit = 25) {
+export async function fetchUwCongressTrades(ticker?: string, limit = 25, signal?: AbortSignal) {
   const redis = await getUwCacheRedis();
-  return uwCacheGet(redis, UW_KEYS.congress(ticker?.toUpperCase()), UW_CACHE_TTL.congress, async () => {
+  return uwCacheGet(redis, UW_KEYS.congress(ticker?.toUpperCase()), UW_CACHE_TTL.congress, async (s) => {
     const params: Record<string, string | number> = { limit: Math.min(limit, 100) };
     if (ticker) params.ticker = ticker.toUpperCase();
-    return uwGetSafe<unknown>("/api/congress/recent-trades", params);
-  });
+    return uwGetSafe<unknown>("/api/congress/recent-trades", params, 2, s);
+  }, signal);
 }
 
 /** @deprecated Use fetchShortInterest from polygon.ts as primary (Polygon short interest — no rate limit). UW short float is fallback only when Polygon returns null. */
@@ -1652,12 +1786,12 @@ export async function fetchUwShortScreener(limit = 15) {
   });
 }
 
-export async function fetchUwFlowPerExpiry(ticker: string, limit = 12) {
+export async function fetchUwFlowPerExpiry(ticker: string, limit = 12, signal?: AbortSignal) {
   const redis = await getUwCacheRedis();
-  return uwCacheGet(redis, UW_KEYS.flowPerExpiry(ticker), UW_CACHE_TTL.flowPerExpiry, async () => {
-    const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/flow-per-expiry`, {});
+  return uwCacheGet(redis, UW_KEYS.flowPerExpiry(ticker), UW_CACHE_TTL.flowPerExpiry, async (s) => {
+    const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/flow-per-expiry`, {}, 2, s);
     return extractRows(data).slice(0, limit);
-  });
+  }, signal);
 }
 
 /** @deprecated Use fetchPolygonTickerDetails from polygon-largo.ts instead (Polygon reference data — no rate limit). */
@@ -1676,12 +1810,12 @@ export async function fetchUwEarnings(ticker: string) {
   return [];
 }
 
-export async function fetchUwScreenerStocks(limit = 15) {
+export async function fetchUwScreenerStocks(limit = 15, signal?: AbortSignal) {
   const redis = await getUwCacheRedis();
-  return uwCacheGet(redis, UW_KEYS.screenerStocks(), UW_CACHE_TTL.screenerStocks, async () => {
-    const data = await uwGetSafe<unknown>("/api/screener/stocks", { limit: Math.min(limit, 50) });
+  return uwCacheGet(redis, UW_KEYS.screenerStocks(), UW_CACHE_TTL.screenerStocks, async (s) => {
+    const data = await uwGetSafe<unknown>("/api/screener/stocks", { limit: Math.min(limit, 50) }, 2, s);
     return extractRows(data).slice(0, limit);
-  });
+  }, signal);
 }
 
 export async function fetchUwUnusualTrades(ticker?: string, limit = 20) {
@@ -1797,36 +1931,51 @@ export async function fetchUwFtds(ticker: string, limit = 15) {
   });
 }
 
-export async function fetchUwRealizedVol(ticker: string, limit = 15) {
-  const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/volatility/realized`, {});
+export async function fetchUwRealizedVol(ticker: string, limit = 15, signal?: AbortSignal) {
+  const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/volatility/realized`, {}, 2, signal);
   return extractRows(data).slice(0, limit);
 }
 
-export async function fetchUwRiskReversalSkew(ticker: string, limit = 15) {
+export async function fetchUwRiskReversalSkew(ticker: string, limit = 15, signal?: AbortSignal) {
   const data = await uwGetSafe<unknown>(
     `/api/stock/${safeTicker(ticker)}/historical-risk-reversal-skew`,
-    {}
+    {},
+    2,
+    signal
   );
   return extractRows(data).slice(0, limit);
 }
 
-export async function fetchUwInsiderTransactions(ticker: string, limit = 15) {
-  const data = await uwGetSafe<unknown>("/api/insider/transactions", {
-    ticker: ticker.toUpperCase(),
-    limit: Math.min(limit, 50),
-  });
+export async function fetchUwInsiderTransactions(ticker: string, limit = 15, signal?: AbortSignal) {
+  // Live-verified 2026-09-12: `/api/insider/transactions` silently IGNORES a `ticker` query
+  // param (and `symbol`/`symbols`/`tickers`/`ticker_symbols`) — it 200s and returns the
+  // unfiltered market-wide latest-transactions feed regardless of what `ticker` is set to. The
+  // real per-ticker filter param is `ticker_symbol` (confirmed: `ticker_symbol=AAPL` returns only
+  // AAPL rows; every other spelling returned FSLY/GETY/DBX/... for every ticker tried). Every
+  // caller of this function was therefore reading a different, random ticker's transactions and
+  // presenting it as the requested ticker's own insider activity — see
+  // docs/audit/findings-staging/2026-09-12-nighthawk-insider-ticker-param.md.
+  const data = await uwGetSafe<unknown>(
+    "/api/insider/transactions",
+    {
+      ticker_symbol: ticker.toUpperCase(),
+      limit: Math.min(limit, 50),
+    },
+    2,
+    signal
+  );
   return extractRows(data).slice(0, limit);
 }
 
-export async function fetchUwFdaCalendar(ticker: string, limit = 10) {
+export async function fetchUwFdaCalendar(ticker: string, limit = 10, signal?: AbortSignal) {
   const redis = await getUwCacheRedis();
-  return uwCacheGet(redis, UW_KEYS.fdaCalendar(), UW_CACHE_TTL.fdaCalendar, async () => {
+  return uwCacheGet(redis, UW_KEYS.fdaCalendar(), UW_CACHE_TTL.fdaCalendar, async (s) => {
     const data = await uwGetSafe<unknown>("/api/market/fda-calendar", {
       ticker: ticker.toUpperCase(),
       limit: Math.min(limit, 20),
-    });
+    }, 2, s);
     return extractRows(data).slice(0, limit);
-  });
+  }, signal);
 }
 
 /** Market-wide FDA calendar (no ticker filter) — Meridian timeline + desk scans. */
@@ -2141,12 +2290,12 @@ export async function fetchUwPredictionsConsensus(limit = 20, ticker?: string) {
   };
 }
 
-export async function fetchUwGreekFlow(ticker: string, expiry?: string, limit = 500) {
+export async function fetchUwGreekFlow(ticker: string, expiry?: string, limit = 500, signal?: AbortSignal) {
   const s = sym(ticker);
   const path = expiry
     ? `/api/stock/${s}/greek-flow/${safeDateSegment(expiry)}`
     : `/api/stock/${s}/greek-flow`;
-  const data = await uwGetSafe<unknown>(path, { limit: Math.min(limit, 500) });
+  const data = await uwGetSafe<unknown>(path, { limit: Math.min(limit, 500) }, 2, signal);
   return extractRows(data);
 }
 
@@ -2265,10 +2414,31 @@ export async function fetchUwEconomyIndicator(indicator: string): Promise<UwMacr
   return parseEconomyIndicatorRows(id, label, rows);
 }
 
+/**
+ * BUG FIX (Ask Largo standing performance mandate, 2026-10-15, live repro: `[uw] queue wait
+ * 13581ms (background sweep)` / `17303ms` on GDP + CPI inside ONE `fetchDeskEnrichmentFields`
+ * pass, coincident minute-for-minute with that session's AWS/ApplicationELB `TargetResponseTime`
+ * Max spiking to 40-43s): this used to fan `UW_MACRO_INDICATORS` out through `runUwSequential`
+ * (`await task()` one at a time), so each indicator's own rate-limiter admission wait was paid
+ * back-to-back rather than overlapped — with 3 indicators that can nearly TRIPLE the worst-case
+ * wall time under real contention, exactly the shape measured live. This function is shared by a
+ * latency-critical caller (`spx-desk.ts`'s `fetchDeskEnrichmentFields`, already documented
+ * elsewhere in this codebase as needing the pooled primitive for exactly this reason) and a batch
+ * one (nighthawk `market-wide.ts`, which can tolerate either shape) — it had defaulted to the
+ * slower, serializing shape for BOTH. `runUwPool` lets the fixed, small list (today: GDP/CPI/
+ * UNRATE) overlap their admission waits instead of stacking them, with no behavior change for
+ * either caller (same results, same per-task `.catch(() => null)` resilience) — just less total
+ * time spent competing for the shared UW rate limiter. Deliberately left at `runUwPool`'s own
+ * default concurrency (shared `MAX_CONCURRENCY`, currently 3 — matching today's 3-indicator list
+ * exactly) rather than passing `indicators.length` explicitly, so a future longer indicator list
+ * still respects the shared concurrency ceiling instead of silently bypassing it. See the
+ * regression test in unusual-whales.test.ts for a RED/GREEN reproduction of the stacking vs.
+ * overlap difference.
+ */
 export async function fetchUwMacroIndicators(
   indicators: string[] = UW_MACRO_INDICATORS.map((m) => m.id)
 ): Promise<UwMacroIndicatorSnapshot[]> {
-  const results = await runUwSequential(
+  const results = await runUwPool(
     indicators.map((id) => () => fetchUwEconomyIndicator(id).catch(() => null))
   );
   return results.filter((r): r is UwMacroIndicatorSnapshot => r != null);
@@ -2403,7 +2573,7 @@ export async function fetchUwInsiderTicker(ticker: string, limit = 25) {
   return extractRows(data).slice(0, limit);
 }
 
-export async function fetchUwCongressUnusualTrades(ticker?: string, limit = 25) {
+export async function fetchUwCongressUnusualTrades(ticker?: string, limit = 25, signal?: AbortSignal) {
   const params: Record<string, string | number> = { limit: Math.min(limit, 100) };
   if (ticker) params.ticker = sym(ticker);
   // /api/congress/unusual-trades is premium-gated on our UW plan — it 422s
@@ -2411,7 +2581,7 @@ export async function fetchUwCongressUnusualTrades(ticker?: string, limit = 25) 
   // caught by the BIE discovery report 2026-07-03). recent-trades is the
   // plan-included feed with the same row shape (name/ticker/txn_type/amounts/
   // transaction_date); our scorers do their own significance weighting anyway.
-  const data = await uwGetSafe<unknown>("/api/congress/recent-trades", params);
+  const data = await uwGetSafe<unknown>("/api/congress/recent-trades", params, 2, signal);
   return extractRows(data).slice(0, limit);
 }
 
@@ -2457,8 +2627,8 @@ export async function fetchUwInstitutionsLatestFilings(limit = 25) {
   return extractRows(data).slice(0, limit);
 }
 
-export async function fetchUwInstitutionOwnership(ticker: string, limit = 30) {
-  const data = await uwGetSafe<unknown>(`/api/institution/${sym(ticker)}/ownership`, { limit: Math.min(limit, 100) });
+export async function fetchUwInstitutionOwnership(ticker: string, limit = 30, signal?: AbortSignal) {
+  const data = await uwGetSafe<unknown>(`/api/institution/${sym(ticker)}/ownership`, { limit: Math.min(limit, 100) }, 2, signal);
   return extractRows(data).slice(0, limit);
 }
 

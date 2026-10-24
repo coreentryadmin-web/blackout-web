@@ -169,6 +169,21 @@ test("evaluatePlayGates: desk polled_at from the future is treated as stale, not
   assert.match(result.blocks.join(" "), /Desk data stale/i);
 });
 
+test("evaluatePlayGates: modest future polled_at skew clamps age to zero not negative", () => {
+  mockHaltBlock = { block: false, reason: null };
+  const result = evaluatePlayGates(
+    baseDesk({
+      polled_at: new Date(Date.now() + 30_000).toISOString(),
+      gex_age_ms: 1_000,
+    }),
+    baseConfluence(),
+    emptySession,
+    passingConfirmations
+  );
+  assert.doesNotMatch(result.blocks.join(" "), /Desk data stale/i);
+  assert.equal(result.passed, true);
+});
+
 // BUG FIX (2026-09-05): clock-skewed future pos.asof → negative gex_age_ms flowed into deskStaleSec
 // as a negative gexSec, so a desk with gex_stale:true (pill lit) could still pass play gates when
 // polled_at was fresh — the polled_at future guard did not cover the GEX snapshot age lane.
@@ -389,6 +404,24 @@ test("evaluatePlayGates: cold BUY path requires A-grade and min score", () => {
     { entry_intent: "buy", cold_buy_path: true }
   );
   assert.match(result.blocks.join(" "), /grade A or better/i);
+});
+
+test("evaluatePlayGates: cold BUY block message names the play's ACTUAL grade, not a hardcoded 'B'", () => {
+  // Regression for a live production repro (2026-10-21): confluence.grade was "C" (score 40) and
+  // the block message still read "B setups need WATCH→ENTRY" — the static text named only grade B
+  // even though the gate condition above fires for ANY sub-A grade (B, C, D, F alike).
+  mockHaltBlock = { block: false, reason: null };
+  const result = evaluatePlayGates(
+    baseDesk(),
+    baseConfluence({ grade: "C", score: 40 }),
+    emptySession,
+    passingConfirmations,
+    { entry_intent: "buy", cold_buy_path: true }
+  );
+  const joined = result.blocks.join(" ");
+  assert.match(joined, /grade A or better/i);
+  assert.match(joined, /C setups need WATCH→ENTRY/);
+  assert.doesNotMatch(joined, /B setups need WATCH→ENTRY/);
 });
 
 test("evaluatePlayGates: inverted stop (long stop ABOVE entry) is blocked as invalid geometry", () => {

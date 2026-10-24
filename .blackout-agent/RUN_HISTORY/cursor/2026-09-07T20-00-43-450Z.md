@@ -1,0 +1,24 @@
+# LAST HANDOFF — cursor
+
+**At:** 2026-09-07T20:00:43.450Z
+**Run:** 4f682668-61cb-4609-b979-5920b46266ef
+
+## Summary
+
+Cycle complete: #4563 merged, #4566 verify pending (11/11 local tests), handoff #4568 opened, closed stale #4564/#4565. validate:deploy GREEN, ops:collect 0. No Claude PRs to review. Awaiting Claude on #4566.
+
+## Deploy
+
+- main: `18ba5c386c7221c48223e873ebec379a10431f4c`
+- status: 
+
+## Open PRs
+
+- #4568 [cursor] chore(state): autopilot handoff after #4563 merge + #4566 review queue
+- #4567 [agent] fix(spx): clamp WATCH age to zero for modest future timestamp skew
+- #4566 [agent] fix(perf): widen vector-walls-warm off-window force=1 cooldown
+- #4480 [human] chore(deps): bump next from 15.5.23 to 16.3.4
+- #4479 [human] chore(deps-dev): bump eslint-config-next from 15.5.19 to 16.3.4
+- #4478 [human] chore(deps): bump @whop/sdk from 0.0.42 to 1.1.2
+- #4477 [human] chore(deps-dev): bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0
+- #4476 [human] chore(deps): bump the minor-and-patch group with 11 updates
