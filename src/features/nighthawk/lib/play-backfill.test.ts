@@ -7,10 +7,23 @@ import type { PlaybookPlay } from "./types";
 import type { ChainStrikeRow, EditionChainData } from "./option-chain-prompt";
 import type { ScoredCandidate } from "./scorer";
 import type { TickerDossier } from "./dossier";
+import { todayEtYmd } from "@/lib/providers/spx-session";
+
+// Relative to "today" (not a hardcoded calendar date) so these fixtures never silently rot into
+// a past expiry as real time passes — exactly the shape of defect this file's own 2026-10-24
+// expiry-floor fix (below) exists to catch in production.
+function ymdPlus(days: number): string {
+  const t = todayEtYmd();
+  const d = new Date(t + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+const FUTURE_EXPIRY = ymdPlus(30);
 
 const rows: ChainStrikeRow[] = [
   {
-    expiry: "2026-07-17",
+    expiry: FUTURE_EXPIRY,
     strike: 200,
     call_bid: 4.5,
     call_ask: 5.0,
@@ -24,7 +37,7 @@ const rows: ChainStrikeRow[] = [
     put_iv: 0.4,
   },
   {
-    expiry: "2026-07-17",
+    expiry: FUTURE_EXPIRY,
     strike: 210,
     call_bid: 2.5,
     call_ask: 3.0,
@@ -45,7 +58,7 @@ test("pickAffordableChainContract: long picks nearest liquid affordable call", (
   const picked = pickAffordableChainContract("NET", "long", chain);
   assert.ok(picked);
   assert.equal(picked!.entry_premium, 5);
-  assert.match(picked!.options_play, /NET \$200 Call 2026-07-17/);
+  assert.match(picked!.options_play, new RegExp(`NET \\$200 Call ${FUTURE_EXPIRY}`));
 });
 
 test("pickAffordableChainContract: short picks put side", () => {
@@ -60,6 +73,86 @@ test("pickAffordableChainContract: returns null when no affordable liquid contra
     rows: rows.map((r) => ({ ...r, call_ask: 40, put_ask: 40 })),
   };
   assert.equal(pickAffordableChainContract("NET", "long", expensive), null);
+});
+
+// ── Expiry floor (2026-10-24 — live defect) ─────────────────────────────────────────────────
+// Live repro: GET /api/market/nighthawk/edition published for edition_for "2026-10-26" carried a
+// BACKFILL/gate_promoted PLTR play recommending "PLTR $197.5 Call 2026-10-23" — an expiry 3
+// calendar days BEFORE the edition's own target trading day, already expired at publication time
+// (confirmed dead via legacy-marks: mark/bid/ask/asof all null). pickAffordableChainContract had
+// no comparison of row.expiry against the edition's target day at all — it ranked purely on
+// strike-distance then ascending expiry, so an already-expired row could still win if it happened
+// to be the nearest/cheapest. pickChainContract (deterministic-edition.ts) already guards this
+// ("Swing never trades a same-day expiry"); pickAffordableChainContract now mirrors it.
+test("pickAffordableChainContract: excludes an already-expired contract even when it is the nearest-strike, cheapest candidate (regression — live PLTR 2026-10-24 defect)", () => {
+  const editionFor = "2026-10-26"; // the edition's own target trading day
+  const expiredButNearest: ChainStrikeRow = {
+    expiry: "2026-10-23", // 3 days before edition_for — already expired by publish time
+    strike: 197.5, // exactly at spot — would win on strike-distance over the live row below
+    call_bid: 0.01,
+    call_ask: 0.05, // far cheaper than the live row — would also win on affordability
+    call_delta: 0,
+    call_oi: 50_000,
+    call_iv: 0,
+    put_bid: 0.01,
+    put_ask: 0.05,
+    put_delta: 0,
+    put_oi: 50_000,
+    put_iv: 0,
+  };
+  const liveRow: ChainStrikeRow = {
+    expiry: "2026-10-30", // genuinely after edition_for — the only contract that should ever be picked
+    strike: 200,
+    call_bid: 4.5,
+    call_ask: 5.0,
+    call_delta: 0.5,
+    call_oi: 5_000,
+    call_iv: 0.4,
+    put_bid: 3,
+    put_ask: 3.5,
+    put_delta: -0.45,
+    put_oi: 4_000,
+    put_iv: 0.4,
+  };
+  const chainWithExpiredRow: EditionChainData = { spot: 197.5, rows: [expiredButNearest, liveRow] };
+
+  const picked = pickAffordableChainContract("PLTR", "long", chainWithExpiredRow, editionFor);
+  assert.ok(picked, "a genuinely live contract exists and must still be picked");
+  assert.match(picked!.options_play, /2026-10-30/, "must never recommend the expired 2026-10-23 contract");
+  assert.doesNotMatch(picked!.options_play, /2026-10-23/);
+});
+
+test("pickAffordableChainContract: a contract expiring ON the edition's target day is excluded too (same-day, not just past)", () => {
+  const editionFor = "2026-10-26";
+  const sameDayRow: ChainStrikeRow = {
+    expiry: "2026-10-26",
+    strike: 200,
+    call_bid: 4.5,
+    call_ask: 5.0,
+    call_delta: 0.5,
+    call_oi: 5_000,
+    call_iv: 0.4,
+    put_bid: 3,
+    put_ask: 3.5,
+    put_delta: -0.45,
+    put_oi: 4_000,
+    put_iv: 0.4,
+  };
+  const chainSameDayOnly: EditionChainData = { spot: 200, rows: [sameDayRow] };
+  assert.equal(pickAffordableChainContract("PLTR", "long", chainSameDayOnly, editionFor), null);
+});
+
+test("pickAffordableChainContract: without an explicit asOf date, defaults to today's ET date as the floor", () => {
+  const chainWithPastRow: EditionChainData = {
+    spot: 200,
+    rows: [
+      { ...rows[0]!, strike: 200, expiry: ymdPlus(-5) }, // 5 days in the past relative to real "today"
+      { ...rows[1]!, strike: 210, expiry: FUTURE_EXPIRY },
+    ],
+  };
+  const picked = pickAffordableChainContract("NET", "long", chainWithPastRow);
+  assert.ok(picked);
+  assert.match(picked!.options_play, new RegExp(FUTURE_EXPIRY));
 });
 
 test("buildDirectionalStockLevels: LONG backfill shape passes geometry gate", () => {
@@ -256,15 +349,7 @@ test("buildDirectionalStockLevels: missing/zero ATR falls back to the 0.5% defau
 // toward the minimum from the next-best of THOSE, respecting the governor's sector demotion,
 // never placeholder-publishing, never exceeding the minimum, never touching the qualified plays
 // already in the edition.
-
-import { todayEtYmd } from "@/lib/providers/spx-session";
-
-function ymdPlus(days: number): string {
-  const t = todayEtYmd();
-  const d = new Date(t + "T12:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
+// (todayEtYmd / ymdPlus are imported/defined once near the top of this file and reused here.)
 
 function bfRow(strike: number, opts: { oi?: number; callAsk?: number; putAsk?: number } = {}): ChainStrikeRow {
   const oi = opts.oi ?? 5_000;

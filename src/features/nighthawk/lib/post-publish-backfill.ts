@@ -158,7 +158,7 @@ export async function republishBackfilledEdition(editionFor: string): Promise<Re
   if (!snapshotRows.length) return { ok: false, status: "no_rank_governor_snapshot", editionFor };
   const pool = reconstructScoredPoolFromRankGovernorRows(snapshotRows);
 
-  const result = await backfillThinEditionPlays({ finalPlays, ranked: pool, dossiers, minPlays });
+  const result = await backfillThinEditionPlays({ finalPlays, ranked: pool, dossiers, minPlays, editionFor });
   if (!result.notes.length) {
     return { ok: true, status: "noop_no_eligible_pool", editionFor, playsCount: finalPlays.length };
   }

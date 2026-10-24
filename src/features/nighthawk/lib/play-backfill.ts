@@ -14,19 +14,40 @@ import {
 } from "./option-chain-prompt";
 import type { ScoredCandidate } from "./scorer";
 import type { PlaybookPlay } from "./types";
+import { todayEtYmd } from "@/lib/providers/spx-session";
 
-/** Pick the nearest affordable, liquid chain contract for a directional play. */
+/**
+ * Pick the nearest affordable, liquid chain contract for a directional play.
+ *
+ * `asOfEtYmd` (defaults to today's ET date) is the hard expiry floor: any row whose expiry is
+ * on or before that date is excluded before ranking, never merely de-prioritized. Without this,
+ * a chain row that is already expired (or expires same-day) can still be picked when it happens
+ * to be the nearest-strike/cheapest-ask candidate — this is exactly how a live BACKFILL/
+ * gate-promoted PLTR play recommended "PLTR $197.5 Call 2026-10-23" inside an edition published
+ * for target trading day 2026-10-26 (confirmed dead via legacy-marks: mark/bid/ask all null) —
+ * `resolveTickerChainRows`'s Polygon snapshot is *usually* non-expired-only, but a chain fetched
+ * right at/after a Friday close can still momentarily carry that day's own contract. This mirrors
+ * the guard `pickChainContract` (deterministic-edition.ts) already enforces for the organic path
+ * ("Swing never trades a same-day expiry") — backfill had no equivalent, so it inherited none of
+ * that protection. Deliberately just the expiry floor, not pickChainContract's full 2-10 DTE
+ * band: that band has soft fallback pools (shortDated/longDated) for when nothing in the ideal
+ * window qualifies, whereas "already expired" has no such fallback anywhere in either picker —
+ * it is the one hard, unconditional exclusion both pickers share.
+ */
 export function pickAffordableChainContract(
   ticker: string,
   direction: "long" | "short",
-  chain: EditionChainData | undefined
+  chain: EditionChainData | undefined,
+  asOfEtYmd?: string
 ): { options_play: string; entry_premium: number } | null {
   if (!chain?.rows?.length) return null;
   const side = direction === "short" ? "put" : "call";
   const spot = chain.spot > 0 ? chain.spot : 0;
+  const today = asOfEtYmd ?? todayEtYmd();
 
   const minOi = spot > 0 ? tieredMinOi(spot) : 500;
   const affordable = (row: ChainStrikeRow): number | null => {
+    if (row.expiry <= today) return null;
     const ask = side === "put" ? row.put_ask : row.call_ask;
     const oi = side === "put" ? row.put_oi : row.call_oi;
     if (ask == null || !Number.isFinite(ask) || ask <= 0 || ask > MAX_OPTION_PREMIUM_PER_SHARE) return null;
@@ -89,8 +110,11 @@ export function selectBackfillPlays(params: {
   dossiers: Record<string, TickerDossier>;
   chains: Record<string, EditionChainData>;
   minPlays: number;
+  /** Edition's own target trading day (edition_for) — the expiry floor threaded into
+   *  pickAffordableChainContract below. Defaults to today's ET date when omitted. */
+  asOfEtYmd?: string;
 }): { plays: PlaybookPlay[]; notes: string[] } {
-  const { finalPlays, dossiers, chains, minPlays } = params;
+  const { finalPlays, dossiers, chains, minPlays, asOfEtYmd } = params;
   const used = new Set(finalPlays.map((p) => p.ticker.toUpperCase()));
   const notes: string[] = [];
   const backfilled: PlaybookPlay[] = [...finalPlays];
@@ -115,7 +139,7 @@ export function selectBackfillPlays(params: {
     // "prevent obviously bad/invalid contracts" guard — pickAffordableChainContract already
     // enforces the liquidity floor (tieredMinOi) and the $35/share premium cap; here we simply
     // refuse to fall through when it returns null instead of silently degrading to stock-only.
-    const contract = pickAffordableChainContract(ticker, scored.direction, chains[ticker]);
+    const contract = pickAffordableChainContract(ticker, scored.direction, chains[ticker], asOfEtYmd);
     if (!contract) {
       console.warn(`[nighthawk/backfill] skipped ${ticker} — no real liquid/affordable contract`);
       continue;
@@ -207,6 +231,10 @@ export async function backfillThinEditionPlays(params: {
   ranked: ScoredCandidate[];
   dossiers: Record<string, TickerDossier>;
   minPlays?: number;
+  /** Edition's own target trading day (edition_for) — threaded down to pickAffordableChainContract
+   *  as the hard expiry floor. Every call site has this value in scope; omitting it falls back to
+   *  today's ET date rather than failing, since "today" is still a correct (if less precise) floor. */
+  editionFor?: string;
 }): Promise<{ plays: PlaybookPlay[]; notes: string[] }> {
   const minPlays = params.minPlays ?? effectiveMinPublishPlays();
   if (params.finalPlays.length >= minPlays) {
@@ -235,5 +263,6 @@ export async function backfillThinEditionPlays(params: {
     dossiers: params.dossiers,
     chains,
     minPlays,
+    asOfEtYmd: params.editionFor,
   });
 }
