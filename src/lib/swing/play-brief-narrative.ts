@@ -381,8 +381,14 @@ function narrateDarkPool(level: FocalLevel, play: TerminalPlay, spot: number): s
         ? "cap rallies while below"
         : "lose short thesis if reclaimed";
 
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-24): this file's own convention — every level
+  // a member is told to watch states its distance from spot, "(X% from spot)" — already covers
+  // narrateWall/narrateMaxPain/narrateMagnet (all a few lines below) but silently skipped this
+  // one, narrateKing, and narrateFlip. `level.distancePct` is the identical already-computed field
+  // those three already read; nothing new to compute, just applying the same line everyone else
+  // in this file already has.
   return (
-    `**Watch ${fmtPriceLevel(level.price)}** — major **dark pool** print (${level.meta ?? "institutional block"}). ` +
+    `**Watch ${fmtPriceLevel(level.price)}** (${fmtPct(level.distancePct)} from spot) — major **dark pool** print (${level.meta ?? "institutional block"}). ` +
     `Institutions stacked here; treat as **${side}**. ${hold.charAt(0).toUpperCase()}${hold.slice(1)}.`
   );
 }
@@ -461,7 +467,9 @@ function narrateKing(level: FocalLevel, posture: string | null): string {
       : posture === "transition"
         ? "Dealers sitting at the gamma flip here — regime can tip either way fast."
         : "Max-gamma node — moves can accelerate through if wall fades.";
-  return `**GEX king ${fmtPriceLevel(level.price)}** — largest gamma concentration on the board. ${pin}`;
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-24) — same omission as narrateDarkPool above,
+  // see its comment.
+  return `**GEX king ${fmtPriceLevel(level.price)}** (${fmtPct(level.distancePct)} from spot) — largest gamma concentration on the board. ${pin}`;
 }
 
 function narrateMaxPain(level: FocalLevel, spot: number, posture: string | null): string {
@@ -524,7 +532,9 @@ function narrateFlip(level: FocalLevel, play: TerminalPlay, spot: number): strin
       : spotAboveFlip
         ? `Lose **${fmtPriceLevel(level.price)}** → needed to confirm the short thesis.`
         : `Reclaim **${fmtPriceLevel(level.price)}** → invalidates short gamma thesis.`;
-  return `**Gamma flip ${fmtPriceLevel(level.price)}** — regime line. ${longBreak}`;
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-24) — same omission as narrateDarkPool above,
+  // see its comment.
+  return `**Gamma flip ${fmtPriceLevel(level.price)}** (${fmtPct(level.distancePct)} from spot) — regime line. ${longBreak}`;
 }
 
 function flowNarrative(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
