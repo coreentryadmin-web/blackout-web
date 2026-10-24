@@ -956,6 +956,23 @@ test("whyThisSetupSection: 'Today's regime read' always stays its own separate l
   assert.match(section.body, /\*\*Today's regime read:\*\* Event-driven directional · regime 0\.6/);
 });
 
+// BUG FIX (2026-10-24, Ask Largo standing mandate, live repro BMNR): defense-in-depth guard — see
+// the comment above the `if (play.regime...)` line in play-brief-intel.ts for the full root cause
+// (the same BANGER_LEDGER_REGIME_LABEL sentinel the Command Deck's TerminalPlay.regime leak was
+// fixed for). The live production fix point is the shared adapter (terminalPlayFromHorizon,
+// adapters.ts), which the play-brief pipeline always routes through — but this test constructs the
+// fixture directly (bypassing the adapter) to prove this section ALSO never renders the sentinel,
+// independent of whether an upstream caller remembered to scrub it first.
+test("whyThisSetupSection: never renders 'Today's regime read' when regime carries the Banger-ledger sentinel, even if the caller bypassed the adapter's own guard", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["BANGER"],
+    archetype: "BREAKOUT",
+    regime: BANGER_LEDGER_REGIME_LABEL,
+  });
+  const section = whyThisSetupSection(play);
+  assert.doesNotMatch(section.body, /Today's regime read/, "the internal sentinel must never surface as a displayed regime read");
+});
+
 test("whyThisSetupSection: lede stands down (falls back to flat lines) on a near-tie classification — that disclosure must not be smoothed over", () => {
   const play = fixturePlay({
     discoveryOrigin: ["FLOW"],

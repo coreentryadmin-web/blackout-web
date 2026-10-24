@@ -1008,6 +1008,20 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     src.regime === BANGER_LEDGER_REGIME_LABEL
       ? { level: "unknown" as ThesisLevel, note: src.thesisBreak?.note }
       : (src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon));
+  // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro BMNR): the sibling
+  // `thesisBreakResolved` guard immediately above already treats `BANGER_LEDGER_REGIME_LABEL` as
+  // an internal "no real per-position dossier" sentinel, never a value fit for display — but
+  // `TerminalPlay.regime` itself (returned below) used to forward `src.regime` straight through
+  // with no equivalent guard. PlayTerminal.tsx's play-detail panel rendered a literal
+  // "Regime: BREAKOUT · BANGER" line, and SwingCockpitStrip.tsx's lane-level cockpit header
+  // (which picks the first play in the whole Swing book with ANY truthy `regime`) rendered the
+  // same sentinel as if it characterized the current market regime for the entire Swing lane —
+  // with 78/81 of the live committed Swing book Banger-origin (CLAUDE.md), this was the dominant
+  // rendered state of both surfaces, not an edge case. `src.regime` itself (the raw sentinel) is
+  // still passed into `computeSwingThesisHealth` below unchanged — that function's own
+  // `thesisHealthUncalibrated()` guard needs to SEE the sentinel to correctly withhold the
+  // aggregate score; only the value handed to the UI is suppressed here.
+  const regimeForDisplay = src.regime === BANGER_LEDGER_REGIME_LABEL ? null : (src.regime ?? null);
   // Ask Largo standing mandate (#4076): a committed row's WATCH-lane dossier state (setupState)
   // never survives the WATCH→COMMIT transition — src.setupState is structurally null for every
   // live SWING position, permanently withholding computeSwingThesisHealth's persistence pillar.
@@ -1128,7 +1142,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     archetypeNearTie: src.archetypeNearTie ?? null,
     topFlowProvenance: src.topFlowProvenance ?? null,
     gates: [],
-    regime: src.regime ?? null,
+    regime: regimeForDisplay,
     thesisBreak: thesisBreakResolved,
     ...mgmtWithThesis,
     ...(preEntrySwingMgmt ?? {}),

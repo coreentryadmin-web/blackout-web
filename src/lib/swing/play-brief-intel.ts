@@ -263,7 +263,22 @@ export function whyThisSetupSection(
   // Archetype "Breakout continuation" next to a fresh regime read of "Event-driven directional" with
   // no framing — read as an internal contradiction in the same document). The label now states which
   // one is current, so two different labels read as "thesis has evolved," not "this brief is broken."
-  if (play.regime) lines.push(`**Today's regime read:** ${play.regime}`);
+  //
+  // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro BMNR): the live production repro of
+  // this exact line was literally "**Today's regime read:** BREAKOUT · BANGER" — `play.regime` here
+  // carries `BANGER_LEDGER_REGIME_LABEL`, the internal "no real per-position dossier" sentinel
+  // (banger-lane-merge.ts), not a real fresh classifier read. The Command Deck's own `TerminalPlay.regime`
+  // leak of this same sentinel (terminalPlayFromHorizon, adapters.ts) was fixed separately and already
+  // closes this specific live repro end-to-end (the swing play-brief pipeline's `play` is always built
+  // via that same adapter — play-brief-resolve.ts), but this line gets its own explicit guard too,
+  // defense-in-depth, matching every OTHER consumer of this exact sentinel in this file
+  // (`bangerOriginNoRealThesis`/`reviewedIsBangerOrigin` below) — relying solely on an upstream
+  // adapter to scrub an internal sentinel before it reaches display logic is exactly the kind of
+  // single point of failure this file's own `attachThesisExplanation` double-call bug (serving-
+  // lane.ts) already proved can be bypassed by a future caller.
+  if (play.regime && play.regime !== BANGER_LEDGER_REGIME_LABEL) {
+    lines.push(`**Today's regime read:** ${play.regime}`);
+  }
   if (play.sectorLeadershipFacts) {
     const f = play.sectorLeadershipFacts;
     // BUG FOUND (Ask Largo standing mandate, 2026-09-22, follow-up to #5446): `sectorLeadershipFacts`
