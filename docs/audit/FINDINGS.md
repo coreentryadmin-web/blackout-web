@@ -38,6 +38,55 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-24 — [FINDING, stale-OPEN correction, infra] ECS web deploy-deadlock incident (2026-10-18/19) — Idea 1 shipped, incident resolved, two FINDINGS.md entries were stale-OPEN
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED — corrected (the underlying work was already shipped; this entry only restamps two stale FINDINGS.md statuses) |
+|---|---|
+
+### What was stale
+
+DISCOVERY-lane re-verification sweep (per the standing "re-verify old FINDINGS.md claims"
+brief). Two FINDINGS.md entries from the 2026-10-18/19 `blackout-production-web` ECS deploy
+deadlock incident were still reading as open/unimplemented, even though the incident was fully
+resolved days ago:
+
+1. **`## 2026-10-19 — [ENHANCEMENT IDEAS, P2 infra] Two proposals for the recurring ECS web
+   deploy deadlock (#6255) — OPEN, not implemented`** — proposed two remediation ideas and
+   explicitly deferred both ("Neither idea was implemented this cycle"). **Idea 1** (a pre-flight
+   check: read `desiredCount` via `describe-services` before `update-service`, and restore it to
+   the autoscaling floor of 5 if it has drifted below) is now live in
+   `.github/workflows/ecr-push-production.yml` in two places — an inline pre-flight check (lines
+   ~132-147: `::warning::desiredCount=... < ... — rolling deploy would deadlock. Restoring
+   autoscaling floor.`) and a second pre-scale step (lines ~312-328) — plus a dedicated helper
+   script, `node scripts/deploy/ensure-web-deploy-capacity.mjs`, invoked from the same workflow
+   (line ~251). This matches PR #6302 ("pre-scale ECS web to floor 5 when desiredCount deadlocks
+   roll", merged 2026-10-19) and the later consolidation in PR #6577/#6496 lineage
+   (`scripts/deploy/lib/taskdef-rewrite.mjs`'s `minDesiredCountForZeroLossRoll`, covered by
+   `scripts/deploy/roll-ecs.test.ts`). **Idea 2** (fail-fast on a `runningCount`-frozen rollout
+   instead of burning the full 36-minute wait budget) was NOT found anywhere in the current
+   workflow (`grep -n "stuck\|stall\|IDENTICAL" .github/workflows/ecr-push-production.yml` turns
+   up only the pre-existing incident comment, no new early-exit logic) — genuinely still open.
+2. **`## 2026-10-19 — [FINDING, infra] \`blackout-production-web\` deploy deadlock STILL
+   UNRESOLVED ~8h after it first appeared...`** — status `NEEDS OPERATOR ACTION`, severity P1.
+   Same incident, same root cause, now resolved by the same Idea-1 fix above (deployed the same
+   day per #6302's own commit timestamp, 2026-10-19 20:14 PT). Every ECR push observed live this
+   session (several per hour across this entire DISCOVERY-lane window) has completed normally with
+   no deadlock, confirming the fix holds in production, not just in the workflow source.
+
+### Fix
+
+No code change — this is a documentation correction only. Both entries' claims were overtaken by
+work that already shipped; restamping avoids a future session re-discovering the same "still
+open" status and either re-doing already-done work or re-escalating a resolved P1.
+
+### Verify
+
+- `grep -n "ensure-web-deploy-capacity\|desired-count\|desiredCount" .github/workflows/ecr-push-production.yml` shows the live pre-flight/pre-scale logic described above.
+- `git log --oneline -- scripts/deploy/lib/taskdef-rewrite.mjs scripts/deploy/roll-ecs.test.ts` shows `minDesiredCountForZeroLossRoll` and its test landed and is still present.
+- Idea 2 remains genuinely open (no code implements it) — worth a future standalone write-up if the recurring-deadlock pattern reappears, but it has not recurred since the Idea-1 fix landed.
+
 ## Night Hawk Legacy — an already-PUBLISHED edition's BACKFILL contract could stay dead forever; `republishBackfilledEdition` only ever appended plays, never re-validated an existing one
 
 > **kind:** `FINDING`
