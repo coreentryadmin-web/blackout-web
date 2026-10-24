@@ -136,3 +136,35 @@ describe("ZeroDteCommandPanel — SWING thesis health honesty gate (live repro R
     assert.match(html, /84/);
   });
 });
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-24): the verdict-band headline P&L and the RATCHET
+// stop→target marker both used to read raw `play.pnlPct` even for a CLOSED row — the mechanical
+// −50% stop pin a stopped-with-trim-armed row still carries — while the "Trade outcome" section
+// lower on the SAME panel already showed the correct trim-scale as-managed blend via
+// closedRealizedPct(). `peak: 87.3` is play-card-lifecycle.test.ts's own fixture for this exact
+// repro, pinning closedRealizedPct(this play) at 6.67 (renders "+6.7%"), not the raw −50% stop.
+describe("ZeroDteCommandPanel — verdict band + ratchet marker use the trim-scale as-managed blend for a stopped CLOSED row, not the raw mechanical stop pin", () => {
+  const stoppedClosed: TerminalPlay = {
+    ...base,
+    status: "CLOSED",
+    closedReason: "stopped",
+    exitPnlPct: null,
+    peak: 87.3,
+    pnlPct: -50,
+    progress: 0, // only gates showsRatchetTrack(); the marker's own position is recomputed in-component.
+  };
+
+  it("verdict-band headline shows the blended +6.7%, not the raw -50% mechanical stop", () => {
+    const html = render(stoppedClosed);
+    const band = html.match(/nh-deck-verdict-band__pnl[^"]*">([^<]*)</);
+    assert.ok(band, "expected a P&L stat in the verdict band");
+    assert.equal(band![1], "+6.7%", "verdict band must show the as-managed realized outcome, not the raw mechanical stop");
+  });
+
+  it("RATCHET track marker position reflects the blended outcome (~38%), not the raw stop (0%)", () => {
+    const html = render(stoppedClosed);
+    const marker = html.match(/class="mk" style="left:([0-9]+)%"/);
+    assert.ok(marker, "expected a RATCHET track marker");
+    assert.equal(marker![1], "38", "marker must be positioned from the blended realized P&L, not the raw -50% stop (which would read 0%)");
+  });
+});
