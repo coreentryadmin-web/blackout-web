@@ -540,6 +540,41 @@ function joinOverlapNames(names: readonly string[]): string {
   return `${shown.join(", ")}, + ${remaining} more`;
 }
 
+/**
+ * GAP FOUND (2026-10-24, Ask Largo standing mandate, live repro PANW's own book context: "theme
+ * 'software' ... ZS LONG (separate position #2106), SNOW LONG, NET LONG, CRWD LONG, ZS LONG
+ * (separate position #2028)"). `formatOverlapPosition` already disambiguates two separate
+ * positions on the SAME ticker with their own position-id (fixed 2026-09-17, #5167) -- the
+ * information is correct, not missing. But when a duplicate ticker's two instances are NOT
+ * adjacent in the rendered sentence (other, unrelated tickers sit between them), the repetition
+ * reads as an accidental duplicate rather than a deliberate second position -- exactly the
+ * "bullet-dump instead of trade-manager voice" failure mode `MAX_OVERLAP_NAMES`'s own doc comment
+ * above already names for a different shape (too many names) of the same underlying concern
+ * (scannability). Every prior same-ticker fix in this file (MRNA same-direction, TSLA/TSLL
+ * opposed) splits a same-ticker-AS-THE-REVIEWED-TICKER row into its own louder sentence; none of
+ * them cover a duplicate WITHIN the "other" (non-reviewed) side of a theme-overlap sentence,
+ * because that case needs grouping, not splitting -- there's no single ticker to pull out into a
+ * dedicated sentence when the theme itself has several names. Fix: stable-cluster the rendered
+ * list so every occurrence of the same ticker sits contiguously, preserving first-occurrence order
+ * between distinct tickers. Pure reordering -- `dupTickers`/`crossEngineDupTickers` are computed
+ * by the caller over the ORIGINAL (unclustered) list beforehand and are unaffected by this.
+ */
+function clusterByTicker(positions: readonly PortfolioPosition[]): PortfolioPosition[] {
+  const groups = new Map<string, PortfolioPosition[]>();
+  const order: string[] = [];
+  for (const p of positions) {
+    const key = p.ticker.trim().toUpperCase();
+    let group = groups.get(key);
+    if (!group) {
+      group = [];
+      groups.set(key, group);
+      order.push(key);
+    }
+    group.push(p);
+  }
+  return order.flatMap((key) => groups.get(key)!);
+}
+
 export function bookContextSection(
   play: TerminalPlay,
   openBook: PortfolioPosition[] | null | undefined,
@@ -601,8 +636,8 @@ export function bookContextSection(
     const sameTickerSameDir = overlap.sameThemeSameDirection.filter(
       (p) => p.ticker.trim().toUpperCase() === reviewedTickerUpper,
     );
-    const otherSameDir = overlap.sameThemeSameDirection.filter(
-      (p) => p.ticker.trim().toUpperCase() !== reviewedTickerUpper,
+    const otherSameDir = clusterByTicker(
+      overlap.sameThemeSameDirection.filter((p) => p.ticker.trim().toUpperCase() !== reviewedTickerUpper),
     );
     if (sameTickerSameDir.length) {
       const sameTickerNames = joinOverlapNames(
@@ -661,8 +696,8 @@ export function bookContextSection(
     const sameTickerOpposed = overlap.sameThemeOpposedDirection.filter(
       (p) => p.ticker.trim().toUpperCase() === reviewedTickerUpper,
     );
-    const otherOpposed = overlap.sameThemeOpposedDirection.filter(
-      (p) => p.ticker.trim().toUpperCase() !== reviewedTickerUpper,
+    const otherOpposed = clusterByTicker(
+      overlap.sameThemeOpposedDirection.filter((p) => p.ticker.trim().toUpperCase() !== reviewedTickerUpper),
     );
     if (sameTickerOpposed.length) {
       const sameTickerNames = joinOverlapNames(
