@@ -4,6 +4,18 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-24 (14:04 UTC / Sat 10:04 ET) — [SEO] Daily growth cycle: SKIPPED opportunity scan — no AWS creds this session
+
+Saturday, market closed. Resynced to `origin/main` (`e6bfb0762` → `0de331f86`, other-lane
+journal correction). **Step 1:** `gsc-opportunities-report.mjs` exited 0 with an honest `SKIP:
+cannot read the GSC service account (UnrecognizedClientException)` — no usable AWS creds this
+session. Not fabricating an opportunity register. **Step 2:** `robots.txt` still serves `Allow:
+/api/og` — confirmed live. CLS/`/api/og` already verified this morning's resumption cycle (within
+rule 6's 3-day window) — skipped redundant re-check. **Step 3:** 28-day GSC trend tracking also
+blocked by the same missing creds. **Step 4 — housekeeping:** PR sweep shows 0 open agent PRs
+fleet-wide. Nothing to rebase/chase. No PR opened. Quiet day, honestly reported as blocked rather
+than clean.
+
 ## 2026-10-24 (12:08 UTC / Sat 08:09 ET) — [SEO] Lane resumed after ~2.5-day gap (org spend limit), shipped fixes validated GOOD
 
 **Gap, honestly reported, not glossed over.** This session's last completed cycle was the Wed
