@@ -155,6 +155,32 @@ test("buildPlayIdea still falls back to the VWAP proxy when the score is exactly
 });
 
 /**
+ * Regression for the "fabricated short lean off a null VWAP" bug flagged by the standing Ask
+ * Largo / 5-engine monitor (cycle 2026-10-24 ~20:11 UTC, live closed-session GET
+ * /api/market/spx/play): score=0, bias="neutral", confluence.direction=null (a fully neutral
+ * confluence — the exact case the final VWAP-proxy fallback exists for), and `desk.vwap=null`
+ * (off-hours, no live or sticky VWAP). `desk.above_vwap` is not tri-state — every writer defaults
+ * it to the boolean `false` whenever `desk.vwap` is unknown, so the old unconditional
+ * `desk.above_vwap ? "long" : "short"` read that `false` as "price is below VWAP" and picked
+ * "short" ("Puts lean" in the rendered play idea) with zero real directional evidence. The fixed
+ * fallback must not trust `above_vwap` when `vwap` is null — it should land on the day's real
+ * price change instead.
+ */
+test("buildPlayIdea does not fabricate a short/Puts lean from a null VWAP's coerced above_vwap=false (live repro 2026-10-24)", () => {
+  const { desk, confluence } = fixture(0, false);
+  (desk as unknown as { vwap: number | null }).vwap = null;
+  (desk as unknown as { spx_change_pct: number | null }).spx_change_pct = 0.6; // real positive day-change
+
+  const idea = buildPlayIdea(desk, confluence);
+  assert.ok(idea);
+  assert.equal(
+    idea!.direction,
+    "long",
+    "with vwap unknown, the fallback must use a real signal (spx_change_pct), not the coerced above_vwap=false"
+  );
+});
+
+/**
  * Regression for the "anchor cites the farthest wall instead of the nearest" bug flagged by the
  * standing Ask Largo / 5-engine monitor (cycle 2026-10-17 ~19:21 UTC, live GET
  * /api/market/spx/desk + /api/market/spx/play): `desk.gex_walls` is returned strike-descending

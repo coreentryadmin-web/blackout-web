@@ -1900,10 +1900,28 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     if (play.entryTriggerUnderlyingPx != null) {
       const verb = play.direction === "SHORT" ? "Break/reclaim below" : "Break/reclaim above";
       const deadReason = entryTriggerDeadReason(play);
+      const trigger = play.entryTriggerUnderlyingPx;
+      // GAP FOUND (Ask Largo standing mandate, 2026-10-24): every OTHER price level this brief
+      // narrates (GEX call/put wall, gamma flip, committed structural stop — play-brief-narrative.ts's
+      // own `distPct` convention: `(spot - level) / spot`) states how far spot currently sits from
+      // it, "(X% away)". This line — arguably the single most actionable number in a WATCH brief,
+      // the exact price a trader is waiting to see broken — never did, reading as a bare price with
+      // no sense of proximity next to siblings that all quantify it. Added using the SAME convention
+      // (divides by spot, not the level, matching the 2026-10-17 fix to committedStructuralStopLine
+      // that caught the opposite, wrong denominator). Only shown while spot is still on the
+      // not-yet-triggered side of the level — once spot has moved through it in the entry direction,
+      // "N% away" would misstate a crossing that has already happened as still-pending; that distinct
+      // fact belongs to entryStatus/entryTriggerDeadReason, not invented here, so the suffix is simply
+      // omitted (never guessed) in that case and whenever spot itself is unknown this cycle.
+      const stillApproaching =
+        spot != null && (play.direction === "SHORT" ? spot > trigger : spot < trigger);
+      const distSuffix = stillApproaching
+        ? ` (${Math.abs(((spot - trigger) / spot) * 100).toFixed(1)}% away)`
+        : "";
       lines.push(
         deadReason
-          ? `Entry trigger: **${fmtPriceLevel(play.entryTriggerUnderlyingPx)}** — ${verb}, but ${deadReason}`
-          : `Entry trigger: **${fmtPriceLevel(play.entryTriggerUnderlyingPx)}** — ${verb} this is what actually fires the setup`,
+          ? `Entry trigger: **${fmtPriceLevel(trigger)}**${distSuffix} — ${verb}, but ${deadReason}`
+          : `Entry trigger: **${fmtPriceLevel(trigger)}**${distSuffix} — ${verb} this is what actually fires the setup`,
       );
     }
   }
