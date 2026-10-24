@@ -6601,6 +6601,91 @@ test("meridianPeerSection: null for index swings (no per-name peer cohort)", () 
   assert.equal(section, null);
 });
 
+// FINDING (Ask Largo standing mandate, 2026-10-24): same defect class as catalystsSection/
+// chartLevelsSection/gexPostureSection/wallDynamicsSection/flowIntelSection's own CLOSED-bucket
+// disclosure fixes -- this was the one sibling market-context section left giving live
+// position-management advice ("size down or hedge vol unless thesis is the print") on an
+// already-closed, settled play with no disclosure that the earnings/peer read is CURRENT, not
+// what the trade traded under. Live repro: SWING:GOOGL:58, CLOSED/STOPPED 2026-10-16, GOOGL
+// earnings 4 days out at read time.
+test("meridianPeerSection: CLOSED bucket prefixes a current-not-as-traded disclosure", () => {
+  const meridian = {
+    as_of: "2026-10-24 09:00 ET",
+    items: [
+      {
+        id: "earnings:GOOGL:2026-10-28",
+        kind: "earnings" as const,
+        title: "GOOGL earnings",
+        subtitle: null,
+        date: "2026-10-28",
+        time: null,
+        impact: "high" as const,
+        days_until: 4,
+        ticker: "GOOGL",
+        date_status: null,
+        importance: 3,
+        is_printed: false,
+        expected_move_pct: 6.5,
+        sector_label: "Tech",
+      },
+    ],
+    total_matched: 1,
+  };
+  const meridianPeer = {
+    available: true as const,
+    id: "earnings:GOOGL:2026-10-28",
+    subject_ticker: "GOOGL",
+    position_summary: null,
+    members: [
+      {
+        ticker: "META",
+        report_date: "2026-10-27",
+        expected_move_pct: 7,
+        avg_reaction_pct: -1.5,
+        reaction_sample_n: 4,
+        beat_rate: 0.75,
+        beat_rate_n: 4,
+        is_subject: false,
+      },
+    ],
+    interpretation: "",
+    sector_label: "Tech",
+    major_group: "50",
+    distribution: null,
+    insufficient_reason: null,
+  };
+
+  const closedSection = meridianPeerSection({
+    play: fixturePlay({ ticker: "GOOGL", status: "CLOSED" }),
+    asOf: "2026-10-24 09:00 ET",
+    sessionDate: "2026-10-24",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian,
+    meridianPeer,
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current earnings peer lens — not what this trade traded under/);
+
+  const openSection = meridianPeerSection({
+    play: fixturePlay({ ticker: "GOOGL", status: "OPEN" }),
+    asOf: "2026-10-24 09:00 ET",
+    sessionDate: "2026-10-24",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian,
+    meridianPeer,
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /not what this trade traded under/);
+});
+
 test("meridianPeerSection: dedicated section — coaching bullets must not duplicate peer lens", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ ticker: "BBWI" }),

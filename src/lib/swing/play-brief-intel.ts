@@ -2644,7 +2644,22 @@ export function meridianPeerSection(ctx: SwingPlayBriefContext): RichSection | n
   const earningsItem = pickEarningsForSwingPeer(ctx.meridian?.items, ctx.play.ticker);
   const body = meridianPeerEarningsCoaching(ctx.meridianPeer, earningsItem);
   if (!body) return null;
-  return { title: "Earnings peer lens", body };
+  // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro SWING:GOOGL:58 CLOSED/STOPPED
+  // brief): every sibling "live read" market-context section in this file (catalystsSection,
+  // chartLevelsSection, gexPostureSection, wallDynamicsSection, flowIntelSection) unshifts a
+  // "_Current ... — not what this trade traded under._" disclosure when statusBucket(ctx.play)
+  // is "closed" — this was the one sibling that never gained that guard when the others were
+  // fixed, despite ending on the exact same shape of live position-management advice ("Peers that
+  // beat often gap through implied — size down or hedge vol unless thesis is the print") on a
+  // position that is already closed/settled and has no forward sizing/hedging decision left.
+  // meridianPeerEarningsCoaching (play-brief-meridian-peer-core.ts) stays pure/play-unaware — the
+  // disclosure is prepended here, at the same section-assembly layer catalystsSection already
+  // does it at, rather than threading bucket into the pure helper.
+  const prefix =
+    statusBucket(ctx.play) === "closed"
+      ? "_Current earnings peer lens — not what this trade traded under._\n\n"
+      : "";
+  return { title: "Earnings peer lens", body: prefix + body };
 }
 
 /**
