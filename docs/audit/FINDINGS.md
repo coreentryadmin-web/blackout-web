@@ -38,6 +38,414 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-24 — [FINDING, P2 CI/Ops] validate-deploy's Postgres catch block under-classified transient errors — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+### What broke
+
+`scripts/validate-deploy.mjs`'s post-deploy Postgres check caught connection failures with
+`isPrivateDbUnreachableError(e.message)` and reported the bare `e.message` on failure. The
+sibling scripts (`scripts/rth-open-check.mjs`, `scripts/gha-rth-audit.mjs`) hit the identical
+connection-classification bug this week (closed PR cluster: #6584, #6576, #6595, #6592 — "RTH
+open/deep audit red on transient Postgres disconnects") and fixed it there, but
+`validate-deploy.mjs` carries the same catch-block shape and was never updated — the same root
+cause, left open in a second file (blast radius this session's earlier duplicate-PR triage
+flagged but didn't yet fix — see the closing comment on #6587).
+
+Two gaps specifically:
+- `isPrivateDbUnreachableError` is the narrower helper; `isTransientAuditPgError` (which already
+  subsumes it) also catches `connection terminated`, `server login has been failing`, `too many
+  clients`, and `remaining connection slots` — proxy/PgBouncer blips `isPrivateDbUnreachableError`
+  alone treats as a hard `fail` instead of a benign skip.
+- `e.message` alone drops any detail carried only on `e.cause` (a chained/wrapped connection
+  error) — `describeConnectError` walks the whole cause chain and never returns an empty string.
+
+### Fix
+
+Swap to the same `describeConnectError` + `isTransientAuditPgError` / `isStaleAuditDbAuthError`
+pattern already shipped in `rth-open-check.mjs`, with a new regression test
+(`validate-deploy.test.mjs`, new file — none existed for this script) asserting the source uses
+the wider classification and not the old narrow-helper-plus-bare-message pairing.
+
+Deliberately NOT adding a retry loop here (unlike `rth-open-check.mjs`/`gha-rth-audit.mjs`) —
+`validate-deploy.mjs` runs once per deploy as a smoke check, not on a tight CI schedule, so the
+retry complexity those scripts needed isn't warranted; this fix is scoped to the misclassification
+only.
+
+### Also checked, NOT a bug
+
+The same file area has a vestigial `railway logs --service blackout-web | rg 'uw-socket' | ...`
+check (Railway was fully decommissioned 2026-07-25 — no `railway` CLI exists in any current
+environment). Initially flagged this as an `rg`-vs-`grep` portability risk, but the whole
+`execSync` call is already wrapped in try/catch with an explicit `GITHUB_ACTIONS === "true"` skip
+message — the command throws (no `railway` binary), is caught, and silently no-ops exactly where
+it matters. Not touching it; a plain `rg`/`grep` swap would not change behavior, and ripping out
+the dead Railway reference is a separate, non-urgent cleanup.
+
+### Verify
+
+- `node --import tsx --experimental-test-module-mocks --test scripts/validate-deploy.test.mjs` —
+  1/1 pass post-fix; fails (RED) against the pre-fix source (git-stash confirmed).
+- Next scheduled `validate-deploy` run after a production deploy.
+
+## 2026-10-24 — [FINDING, P1 Night Hawk, tooling] full-site-deep-audit's PREMIUM-CAP check uses a stale $20 cap — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+### What broke
+
+`scripts/full-site-deep-audit.mjs`'s `auditNightHawk()` flagged any Night Hawk play with
+`entry_premium > 20` as a `P1 PREMIUM-CAP` violation. The real, current product cap is
+`MAX_OPTION_PREMIUM_PER_SHARE = 35` (`src/features/nighthawk/lib/constants.ts`). The audit's
+own literal had drifted stale relative to the product it audits.
+
+### Root cause
+
+Surfaced while triaging a large pile of duplicate open PRs (2026-10-22 batch, 28 PRs across 4
+unrelated bug clusters — see the closing comments on #6605/#6602/#6599/etc.) racing each other to
+fix a separate Postgres/cron-health issue. #6605 happened to bundle this premium-cap fix in with
+the (now-superseded) PG fix; extracting it here since nothing else covers it.
+
+The $20 literal was never updated when the product's premium cap was raised to $35 — the audit
+script and the product constant have no shared source, so the two can silently diverge with no
+compile-time or runtime signal until someone reads both side by side.
+
+### Fix
+
+Import-by-reference isn't practical here (`full-site-deep-audit.mjs` is a standalone script, not
+part of the Next.js build graph, and `src/features/nighthawk/lib/constants.ts` has its own
+dependency chain), so this names the shared constant explicitly in a local
+`NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35` with a comment pointing at the real source of truth, and a
+new regression test (`full-site-deep-audit.test.mjs`) that reads both files and asserts the two
+values stay equal — so a future bump to `MAX_OPTION_PREMIUM_PER_SHARE` without a matching audit
+update fails CI instead of silently drifting again.
+
+### Verify
+
+- `node --import tsx --experimental-test-module-mocks --test scripts/full-site-deep-audit.test.mjs`
+  — 2/2 pass post-fix; the new test fails (RED) against the pre-fix source (git-stash confirmed).
+- Next scheduled `full-site-deep-audit` run against production.
+
+## `TradeExcursionGraphic`'s "Close" stat skipped the trim-scale as-managed blend `closedRealizedPct` already applies in the same panel
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Symptom:** standing Ask Largo × Night Hawk Swings ownership mandate (this extends to the whole
+Night Hawk product — 0DTE, Swings, Legacy). `TradeExcursionGraphic` (`TerminalPremiumPanels.tsx`)
+computed a CLOSED play's "Close" stat as a standalone `play.exitPnlPct ?? play.pnlPct` ternary —
+an independent, simpler reimplementation of "realized P&L on a closed position" that skips the
+as-managed trim-scale blend. The canonical implementation, `closedRealizedPct()`
+(`play-card-lifecycle.ts`), explicitly refuses to trust the raw `play.pnlPct` when
+`play.closedReason === "stopped"` — it falls through to `trimScaleBlendedPnlAtStop(play.peak,
+PLAN_RULES.stop_pct)` instead, because `pnlPct`/`live_pnl_pct` is often just the raw mechanical
+stop pin (e.g. -50%), not the real as-managed blended result once tranches were banked before the
+stop.
+
+Both functions render in the SAME component tree for the SAME play object:
+`ZeroDteCommandPanel.tsx` computes `realizedPct = closedRealizedPct(play)` and renders it as
+"Realized: X%" in the "Trade outcome" section, then a few lines later renders
+`TradeExcursionGraphic`, whose "Close" stat used the un-blended ternary — same play, same panel,
+two different numbers, whenever `exitPnlPct` is null and `closedReason === "stopped"` with armed
+trim tranches.
+
+**Root cause:** the 2026-08-04 fix (PR #1580, `docs/audit/FINDINGS.md`) introduced
+`closedRealizedPct`/`trimScaleBlendedPnlAtStop` and wired them into the board/StatsCell/chip and
+`ZeroDteCommandPanel.tsx`'s own "Realized" stat, but never touched `TerminalPremiumPanels.tsx`'s
+`TradeExcursionGraphic` — a sibling renderer of the identical "closed play's headline P&L"
+question that was left on its pre-fix logic. `TerminalPremiumPanels.ssr.test.ts`'s fixture
+hardcodes `exitPnlPct: -50` equal to `pnlPct: -50`, so no existing test exercised the
+null-`exitPnlPct`/stopped/armed-tranches path — the gap was untested, not just unfixed.
+
+**Fix:** `TradeExcursionGraphic`'s `currentPct` for a closed play now calls
+`closedRealizedPct(play)` instead of the standalone ternary — the one canonical function, already
+used a few lines above in the same panel. No other field (Peak/Worst/Entry) changed.
+
+**Checked but deliberately left unchanged:** a third occurrence of the same `exitPnlPct ??
+pnlPct` shape exists at `src/lib/zerodte/play-timeline.ts:426` (`finalPnl`), inside the full
+timeline-reconstruction builder. This is architecturally different, not the same bug: that
+function already renders each fired trim tranche as its own separate "Trim" timeline event (with
+its own correct banked P&L) a few lines earlier in the same branch, and `finalPnl` there
+represents only the terminal/runner leg's own P&L within an already-decomposed sequence of
+events — not a single blended headline number competing with another renderer's blended number.
+Left untouched rather than widening this fix on an unconfirmed guess.
+
+**Verify:**
+- `src/features/nighthawk/command-deck/TerminalPremiumPanels.ssr.test.ts` — new case: a closed,
+  `closedReason: "stopped"` play with `peak: 87.3`, `pnlPct: -50`, `exitPnlPct: null` (the exact
+  peak value `play-card-lifecycle.test.ts`'s own `closedRealizedPct` trim-scale test uses, which
+  resolves to +6.67% → rendered "+6.7%") now shows the blended outcome in the Close stat, not the
+  raw -50% stop pin. Confirmed RED pre-fix (git stash of the source change), GREEN post-fix.
+- `src/features/nighthawk/command-deck/play-card-lifecycle.test.ts` — both existing
+  `closedRealizedPct` cases still pass unchanged.
+- 62/62 relevant tests pass on Node 20; `npx tsc --noEmit` clean.
+
+## LEAPS `PnlPanel`'s "Live P&L" headline ignored a closed play's recorded `exitPnlPct`, showing a stale mechanical mid instead
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Symptom:** standing Ask Largo × Night Hawk Swings ownership mandate (extends to the whole Night
+Hawk product — 0DTE, Swings, Legacy, LEAPS). `PnlPanel` (`PlayTerminal.tsx`), the LEAPS-horizon
+tabbed detail panel's "PnL" tab, computed its "Live P&L" headline number as a bare `play.pnlPct`
+read, with no awareness of whether the play was closed or whether a real, recorded `exitPnlPct`
+existed. `isZeroDtePremiumTerminal` (`terminal-display.ts`) is true only for `ZERO_DTE`/`SWING`
+(both of which divert to `ZeroDteCommandPanel`'s own `closedRealizedPct`-backed "Realized" stat
+instead), and `LEGACY` returns early inside `PnlPanel` via `LegacyPnlPanel` — so LEAPS is the
+*only* horizon that ever reaches this exact branch. For a closed LEAPS play whose last live mid
+(`pnlPct`) differed from its actual recorded exit fill (`exitPnlPct`) — e.g. a stale -50% mid vs
+a real +42% exit — the headline showed the stale mechanical number instead of the real outcome.
+
+**Root cause:** same class of bug as the sibling `TradeExcursionGraphic` fix (same cycle,
+`TerminalPremiumPanels.tsx`) — a renderer that never adopted the "prefer the recorded exit stamp"
+discipline other renderers of the same underlying P&L concept already use. Unlike that sibling
+fix, this one is **deliberately narrower in scope**: `closedRealizedPct()`
+(`play-card-lifecycle.ts`) isn't reused wholesale here, because its `closedReason === "stopped"`
+fallback blends via `trimScaleBlendedPnlAtStop(peak, PLAN_RULES.stop_pct)` — a 0DTE-specific
+-50% stop convention (`src/lib/zerodte/plan.ts`) that is unconfirmed for LEAPS's own (likely much
+wider, multi-session) stop/exit mechanics. Even SWING's own `SWING_SCALE_OUT_POLICY`
+(`exit-policy.ts`) uses a different -60% hard stop than `PLAN_RULES.stop_pct`'s -50% — a
+pre-existing mismatch already baked into `closedRealizedPct` for a horizon it IS used for,
+flagged here but deliberately left alone as out of scope for this fix. Applying that same
+unvalidated blend to LEAPS risked trading one honest-but-stale number for a confidently wrong
+blended one.
+
+**Fix:** `PnlPanel`'s `live` local now reads `play.status === "CLOSED" ? (play.exitPnlPct ??
+play.pnlPct) : play.pnlPct` — only the universally-safe part of the pattern (prefer the recorded
+exit stamp once genuinely closed; otherwise show the live mid exactly as before). The
+trim-scale-blend question for a `closedReason: "stopped"` LEAPS row with no `exitPnlPct` is left
+open, not silently assumed correct.
+
+**Verify:**
+- `src/features/nighthawk/command-deck/PlayTerminal.ssr.test.ts` — new cases: a CLOSED LEAPS
+  play with `pnlPct: -50, exitPnlPct: 42` now shows `+42.0%`, not the stale `-50.0%`; a sibling
+  OPEN LEAPS play (`exitPnlPct: null`) still shows its live mid unchanged, confirming the fix is
+  closed-only. Confirmed RED pre-fix (git stash of the source change), GREEN post-fix.
+- 30/30 tests pass on Node 20; `npx tsc --noEmit` clean.
+
+## `fetchUwFlow0dte`'s cold-start fallback still let a degenerate zero poison the shared Redis cache for the full TTL
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Symptom:** standing Ask Largo × Night Hawk Swings / SPX Slayer live-monitor mandate, follow-up
+to the 2026-10-14 `isDegenerateFlowAggregate` fix (same file). That fix substitutes a per-process
+`lastGoodFlow0dteByTicker` value before a degenerate 0DTE flow-per-strike poll ever reaches
+`uwCacheGet`'s own write — but only covers the case where THIS process already has a good value to
+substitute. On a genuine cold start (no `lastGood` entry yet in this process — e.g. right after a
+deploy restarts every ECS task, or simply the first poll a process ever makes for a ticker), the
+fetcher still RETURNED the bare `{0,0,0}` aggregate, and `uwCacheGet`'s generic write path
+(`if (redis && result != null) redis.setex(...)`) is shape-agnostic — it has no concept of
+"don't cache this one" — so it wrote the zero into the SHARED Redis cache for the full 120s TTL.
+Every OTHER replica then read that cached zero for 2 minutes, including replicas whose OWN
+in-process `lastGood` map already held a real value, because a Redis cache HIT short-circuits
+before `fetchUwFlow0dte`'s fetcher (and therefore that process's own substitution logic) is ever
+consulted. This is the exact live symptom the 2026-10-14 fix set out to kill, reopened specifically
+at cold start.
+
+**Root cause:** the cold-start branch returned its honest zero from the SAME closure `uwCacheGet`
+auto-caches from, with no way to tell the generic helper "compute done, but don't persist this."
+The sibling `uw-cache-refresh` cron write already follows the right discipline (skips the Redis
+write entirely on a degenerate poll, unconditionally) — the live-read path only matched that
+discipline when it had a substitute in hand, not in the harder cold-start case.
+
+**Fix:** the cold-start branch now `throw`s a private `ColdStartDegenerateFlow0dteError` instead of
+returning the zero. A promise rejection from the fetcher never reaches `uwCacheGet`'s write line
+(proven directly against the real `uwCacheGet` with a literal fake Redis client — see test below),
+so the shared cache is left untouched for the next real poll (by this or any other replica) to
+populate honestly. `fetchUwFlow0dte` catches that one specific error type just outside the
+`uwCacheGet` call and converts it back into the same honest zero for THIS ONE caller — external
+behavior (a true cold start still "honestly" returns zero) is unchanged; only the shared-cache
+side effect is removed.
+
+**Verify:**
+- `src/lib/providers/uw-shared-cache.test.ts` — new case: a fetcher passed to `uwCacheGet` that
+  throws never reaches the literal fake Redis client's `setex`, and the rejection propagates to
+  the caller.
+- `src/lib/providers/unusual-whales.test.ts` — both existing `fetchUwFlow0dte` cases (degenerate
+  poll substitutes the prior real aggregate; genuine cold-start poll served honestly as zero)
+  still pass unchanged, confirming the externally observable contract didn't move.
+
+## Swing thesis-health `rungLabel` named a process word with no reference to whether anything had actually moved since commit, at 2 renderers beyond play-brief.ts's own fix
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Symptom:** `rungFromHealth`/`rungLabel` bands purely off absolute `health` %, never
+`delta`/`moves` — "Weakening"/"Degraded"/"Broken" are process words that presuppose decay, but a
+position can sit in a low band from commit day one, unchanged, forever, purely from imperfect
+entry geometry. `play-brief.ts`'s "Thesis health" section already disambiguated this (2026-10-07,
+refined 2026-10-14/16) with a local check — two sibling renderers of the SAME `h.rungLabel` never
+got it:
+- `holdPlanSection`'s "Thesis health" line (`play-brief-intel.ts`) — also gated a "Tighten risk —
+  thesis fading" bullet on bare `health < 45` with no drift check.
+- `thesisPillarCoaching` (`play-brief-narrative-coaching.ts`) — could render `"**Thesis Degraded**
+  (50%) — Thesis fading — tighten risk or trim into strength"` for a position that, by its own
+  `moves` field, had never moved.
+
+**Root cause:** the disambiguation logic (`h.moves?.[0]?.includes("unchanged") &&
+!h.materialGivebackSinceCommit`) lived only as a local in `play-brief.ts`, never shared, so the
+two later renderers of the same `rungLabel` never inherited it.
+
+**Fix:** extracted the shared predicate `thesisHealthUnchangedSinceCommit` (`thesis-health.ts`);
+all three renderers (`play-brief.ts`, `play-brief-intel.ts`, `play-brief-narrative-coaching.ts`)
+now call it, so they can never disagree about the same fact again. Both `play-brief-intel.ts` call
+sites (the rungLabel line and the "Tighten risk" bullet) and the narrative-coaching advisory
+sentence are gated on it.
+
+**Verify:** `thesis-health.test.ts` — new `thesisHealthUnchangedSinceCommit` suite (3 cases:
+unchanged/flat default, real pillar fade, fallback sentinel with hidden material giveback).
+
+## Swing closed-deck card identity (`positionId`) pointed at the wrong leg while content described the worst leg
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Symptom:** For a multi-leg closed swing chain, `closedDeckSourcesFromChains` (closed-plays.ts)
+re-points every content field (contract/occ/mid/delta, entry/peak/trough premium) at the WORST leg
+when it differs from the terminal leg — but left `positionId` pointing at the terminal leg's own
+`row.id`. Live repro: AMZN chain with terminal leg id 48 (+72.41%) and worst leg id 44 (-27.67%) —
+the served card's content/P&L correctly described leg 44, but its `positionId` was 48. Clicking
+through resolves `play-brief-resolve.ts`'s `loadClosedPlay` by `r.id === positionId`, which builds a
+brief from leg 48's own terminal row — directly contradicting the card the member just clicked.
+
+**Root cause:** every other identity/content field already borrows from `worstLegRow` when it's set
+(non-null only when the worst leg differs from the terminal leg); `positionId` was the one field
+nobody had re-pointed.
+
+**Fix:** `positionId: worstLegRow?.id ?? src.positionId` — same fallback shape every sibling field
+already uses, so identity and content can never disagree again for the same card.
+
+**Verify:** `src/lib/swing/closed-plays.test.ts` — every existing `closedDeckSourcesFromChains`
+case (both live AMZN/AAPL repros, the real-absence case, and the worst-leg-is-terminal case) now
+also asserts `positionId`: it must match the worst leg's own id whenever one differs from the
+terminal leg, and still match the terminal leg's own id when the worst leg IS the terminal leg (no
+behavior change for the common case).
+
+## `extractEvidence()` (Largo swing adapter) discarded the brief's real `envelope.evidence[]` in favor of a headline/bias restatement
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Symptom:** Largo product-contract C7 ("the specific numbers behind the claim, not a
+restatement of it" — `ProductSignal.evidence`'s own doc comment). `play-brief-adapter.ts`'s
+`extractEvidence()` never read `envelope.evidence` at all — the real, sourced evidence array
+`evidenceFromContext` (`play-brief.ts`) builds for exactly this purpose (dealer-posture strike/γ
+reads, HELIX flow $ premiums/print counts, earnings dates, peer lists — literal numbers). Instead
+it manufactured its own list out of exactly what C7 disclaims: the headline+bias repeated
+verbatim, each section's bare bias word, and confidence prose. A model reading the structured
+`evidence` field saw zero of the brief's real sourced numbers, only a paraphrase of the claim
+those numbers are supposed to back up.
+
+**Root cause:** the function was written independently of `evidenceFromContext`'s real array and
+never wired to read it — a dead-contract-field defect, not a logic bug in either function.
+
+**Fix:** `extractEvidence` now leads with `envelope.evidence[].text` (every real fact/calc/
+inference/scenario entry). Levels/scenarios/invalidation stay (they carry real numbers too); the
+pure-restatement bits (headline+bias, section bias words, confidence prose) are dropped. The bare
+headline+bias fallback is kept ONLY for the genuine-emptiness case, so the contract's non-empty-
+array requirement (`contractViolations`) is never satisfied by fabrication.
+
+**Verify:** `play-brief-adapter.test.ts` — new case confirms a real `evidenceFromContext` fact
+(earnings-calendar date) reaches the Largo-facing `evidence[]` unchanged.
+
+## 2026-10-20 — [FINDING, P2 Deploy/Infra] ECS web deploy deadlock when desiredCount < autoscaling floor — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6577 ("fix(ops): treat PG connection terminated as unreachable in RTH open-check", which bundled this deploy-capacity fix in the same commit); `scripts/deploy/ensure-web-deploy-capacity.mjs` confirmed live in source. Restamped from a stale mid-flight status line that was never revisited after the merge. |
+
+### What broke
+
+2026-10-20: **ECR push (production)** timed out with `PRIMARY: running=0/1` for 36 minutes. ECS events: `unable to stop or start tasks during a deployment because of the service deployment configuration` — classic **100/120 deadlock** when `desiredCount` is below 5 (autoscaling had scaled the fleet to 2).
+
+Prod stayed on old tasks (health 200) but **#6301** and subsequent merges did not ship.
+
+### Fix
+
+`scripts/deploy/ensure-web-deploy-capacity.mjs` + call from `ecr-push-production.yml` before `update-service`: scale web `desiredCount` up to at least **5** (autoscaling MinCapacity) when below floor. Pure helpers `minDesiredForRollHeadroom` / `targetDesiredBeforeWebRoll` in `taskdef-rewrite.mjs`.
+
+### Verify
+
+`npx tsx --test scripts/deploy/roll-ecs.test.ts` (new headroom + workflow guard tests).
+
+## 2026-10-18 — [FINDING, P2 CI/Ops] Ops auto-fix workflow red when Cursor agent launch fails after issue create — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged `main` via #6577 ("fix(ops): treat PG connection terminated as unreachable in RTH open-check", which bundled this ops-dispatch fix in the same commit); the `process.exit(0)` soft-fail path confirmed live in `scripts/ops-dispatch-agent.mjs`. Restamped from a stale mid-flight status line that was never revisited after the merge. |
+
+### What broke
+
+After #6221, `collect-and-dispatch` successfully created GitHub issue **#6223** for the production 503 outage, then failed the job when `curl` to `https://api.cursor.com/v1/agents` returned non-zero (same class as SPX RTH `launch` job exit 22). The workflow reported **collect-and-dispatch** failure even though the durable ops artifact (the issue) was created.
+
+### Fix
+
+`scripts/ops-dispatch-agent.mjs`: on launch failure after issue create, comment on the issue and **exit 0** so the workflow does not go red on transient Cursor API errors.
+
+### Verify
+
+Manual/dry-run: simulate `curl` failure with issueNumber set → exit 0. Live: next ops-auto-fix run with action items should stay green if only agent launch fails.
+
+## 2026-09-07 — [FINDING, P2 CI/Ops] RTH open-check false-red on NYSE holidays — socket-health skip payload — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (pending merge) |
+|------------|------------------------|
+| **Area** | `scripts/lib/rth-socket-probe.mjs`, `scripts/rth-open-check.mjs` |
+| **Severity** | P2 — CI false-red, not prod outage |
+
+### Symptom
+
+`RTH open check` workflow failed on **Labor Day 2026-09-07** (`main@7246d9ad`, run #34151354668):
+
+```
+✗ options-socket: probe HTTP 200
+RTH-open FAILED (1)
+```
+
+### Root cause
+
+After **#4517**, `/api/cron/socket-health` returns early on non-trading days:
+
+```json
+{ "ok": true, "skipped": true, "reason": "non-trading day (2026-09-07)" }
+```
+
+`rth-open-check.mjs` only accepted `body.websockets.options` or HTTP 401 — HTTP 200 without `websockets` was retried 3× then failed. Unrelated to **#4522** (admin cron stale thresholds).
+
+### Fix
+
+- `isSocketHealthNonTradingSkip()` + handling in `probeOptionsSocketWithRetries()` (shared with `validate-deploy.mjs`)
+- Refactored `rth-open-check.mjs` to use the shared probe helper
+
+### Evidence
+
+- `scripts/lib/rth-socket-probe.test.mjs` — holiday skip passes on first attempt during RTH window
+- Pre-fix: run #34151354668 log (3× HTTP 200, no websockets)
+
+### Market-open validation
+
+Tuesday 2026-09-08: confirm `RTH open check` workflow is green at 09:40 ET; on next NYSE holiday, workflow should pass with `options-socket: skipped (non-trading day ...)`.
+
 ## zerodte-warm scan heartbeat `critical_stale` during RTH — scan hung past 10m watchdog
 > **kind:** `FINDING`
 
