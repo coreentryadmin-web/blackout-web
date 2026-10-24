@@ -62,7 +62,7 @@ import { formatDealerDollars } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason, gateFramingMootReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
-import { thesisHealthUncalibrated } from "./thesis-health";
+import { thesisHealthUncalibrated, thesisHealthUnchangedSinceCommit } from "./thesis-health";
 import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 import {
   archetypeLabelFromRaw,
@@ -2246,7 +2246,18 @@ export function holdPlanSection(
       // advisory is NOT repeated here — it's the exact sentence tradeManagerNarrativeSection's
       // pillar-fade narration already carries in "Trade manager read" (both render for any live
       // play). Health%/rung is a compact number, not a repeated sentence, so it stays.
-      lines.push(`Thesis health **${h.health}%** (${h.rungLabel})`);
+      //
+      // BUG FIX (Ask Largo standing mandate, 2026-10-22, sibling of play-brief.ts's 2026-10-07 fix
+      // at this exact gap): `h.rungLabel` names the ABSOLUTE health band with a process word
+      // ("Weakening"/"Degraded") that presupposes decay since commit — but `rungFromHealth` bands
+      // purely off `health`, never `delta`/`moves`, so a position can sit in a low band from day
+      // one, unchanged, forever. Append the same "unchanged since commit" qualifier play-brief.ts
+      // already uses when `thesisHealthUnchangedSinceCommit` is true, via the shared predicate so
+      // this line can never disagree with that one about the same fact.
+      const unchangedSinceCommit = thesisHealthUnchangedSinceCommit(h);
+      lines.push(
+        `Thesis health **${h.health}%** (${h.rungLabel})${unchangedSinceCommit ? " — unchanged since commit" : ""}`,
+      );
       // BUG FIX (2026-09-21, Ask Largo standing mandate — 4th instance of this file's own
       // round_trip/capture duplication class): actionNarrative's HOLD branch (play-brief-
       // narrative.ts, feeds "Trade manager read", renders for every OPEN play alongside this
@@ -2257,7 +2268,13 @@ export function holdPlanSection(
       // to back, exactly the pattern the round_trip/capture guards two lines below already close
       // for THIS section — this one line was the gap those guards never covered, because the call
       // site only ever derived roundTrip/capture flags from narrative.body, never a tighten one.
-      if (h.health < 45 && !narrativeAlreadyNoted?.tighten) {
+      //
+      // BUG FIX (Ask Largo standing mandate, 2026-10-22): this fired on `health < 45` alone, with
+      // no check for whether anything had actually moved since commit — the identical false-decay
+      // gap as the rungLabel fix just above, one line deeper. "Don't add size" is real, actionable
+      // advice; asserting it because of "fading" when the position has been flat since entry is a
+      // fabricated reason for a real instruction. Gated on the same shared predicate.
+      if (h.health < 45 && !unchangedSinceCommit && !narrativeAlreadyNoted?.tighten) {
         lines.push("**Tighten risk** — thesis fading; don't add size");
       }
     }

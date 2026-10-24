@@ -173,6 +173,86 @@ test("thesisPillarCoaching: silent when thesis health is uncalibrated (extends #
   assert.equal(thesisPillarCoaching(play({ thesisHealth: uncalibratedThesisHealth() })), null);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-22, sibling of the 2026-10-07 play-brief.ts fix at
+// this exact gap): low-health fallback reached this branch with NO pillar lost/faded and moves at
+// its "unchanged" sentinel — a position that has sat in a low health band since commit, never
+// having declined — but still rendered the decay-presupposing `advisory` sentence ("Thesis fading
+// — tighten risk..."). Live-shape repro: a position committed at health 50 with imperfect entry
+// geometry, never having moved.
+test("thesisPillarCoaching: low-health fallback reads 'unchanged since commit', not the decay advisory, when nothing actually moved", () => {
+  const line = thesisPillarCoaching(
+    play({
+      thesisHealth: {
+        health: 50,
+        entryIndex: 50,
+        currentIndex: 50,
+        delta: 0,
+        rung: "DEGRADED",
+        rungLabel: "Degraded",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        moves: ["All swing pillars unchanged since commit."],
+        committedAtEt: null,
+        computedAtEt: "20:00",
+        thesisBreakLevel: "warn",
+        thesisBreakNote: "pillars fading",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.3,
+            commitScore: 0.5,
+            currentScore: 0.5,
+            commitLabel: "mature",
+            currentLabel: "mature",
+            status: "intact",
+            contributionPts: 15,
+            deltaPts: 0,
+          },
+        ],
+      } as any,
+    }),
+  );
+  assert.match(line!, /Thesis Degraded.*\(50%\).*unchanged since commit/i);
+  assert.doesNotMatch(line!, /fading|tighten risk/i, "must not assert decay advice for a position that hasn't moved since commit");
+});
+
+test("thesisPillarCoaching: low-health fallback keeps the real advisory when a material giveback DID happen, even though moves itself reports 'unchanged'", () => {
+  const line = thesisPillarCoaching(
+    play({
+      thesisHealth: {
+        health: 50,
+        entryIndex: 50,
+        currentIndex: 50,
+        delta: 0,
+        rung: "DEGRADED",
+        rungLabel: "Degraded",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        moves: ["All swing pillars unchanged since commit."],
+        materialGivebackSinceCommit: true,
+        committedAtEt: null,
+        computedAtEt: "20:00",
+        thesisBreakLevel: "warn",
+        thesisBreakNote: "pillars fading",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.3,
+            commitScore: 0.5,
+            currentScore: 0.5,
+            commitLabel: "mature",
+            currentLabel: "mature",
+            status: "intact",
+            contributionPts: 15,
+            deltaPts: 0,
+          },
+        ],
+      } as any,
+    }),
+  );
+  assert.match(line!, /Thesis Degraded.*\(50%\).*fading.*tighten risk/i);
+});
+
 // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, forensic batch 33): play.trough was
 // rendered once in the Position section but never interpreted anywhere in the narrative. Live
 // repro shape: CRWD swung from -57.2% at its worst to +161.3% at its best while OPEN.

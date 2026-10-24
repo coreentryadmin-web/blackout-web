@@ -54,7 +54,11 @@ import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
 import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
-import { calibratedThesisPillars, thesisHealthUncalibrated } from "./thesis-health";
+import {
+  calibratedThesisPillars,
+  thesisHealthUncalibrated,
+  thesisHealthUnchangedSinceCommit,
+} from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { canonicalTicker } from "@/lib/largo/core/entities";
 
@@ -220,8 +224,10 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
   // narrative already uses, so the two can never disagree again — see its own doc comment
   // (zerodte/thesis-health.ts) for the full account. Supersedes the narrower `!h.roundTripSinceCommit`
   // check (a strict subset of what `materialGivebackSinceCommit` now covers).
-  const noDriftSinceCommit =
-    (h.moves?.[0]?.includes("unchanged") ?? false) && !h.materialGivebackSinceCommit;
+  // Pulled into a shared predicate (thesis-health.ts's `thesisHealthUnchangedSinceCommit`,
+  // 2026-10-22) so the two sibling renderers of `h.rungLabel` below (play-brief-narrative-
+  // coaching.ts, play-brief-intel.ts) can never drift apart from this exact definition.
+  const noDriftSinceCommit = thesisHealthUnchangedSinceCommit(h);
   const headline = noDriftSinceCommit
     ? `**${h.health}%** · ${h.rungLabel} — unchanged since commit`
     : `**${h.health}%** · ${h.rungLabel}`;

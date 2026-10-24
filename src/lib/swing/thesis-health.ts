@@ -109,6 +109,26 @@ export function thesisHealthUncalibrated(h: ThesisHealthPayload | null | undefin
   return false;
 }
 
+/**
+ * True when nothing has actually changed since commit — `h.moves` still carries the literal
+ * "unchanged" fallback sentinel AND no material peak-giveback has occurred.
+ *
+ * `rungFromHealth`/`rungLabel` band and name the thesis purely off the ABSOLUTE `health` %, with
+ * no reference to `delta`/`moves` at all — "Minor drift"/"Weakening"/"Degraded"/"Broken" are all
+ * PROCESS words that read as "something happened," but a position can sit in any of those bands on
+ * day one, forever, purely because its entry geometry was imperfect, and the label alone gives a
+ * reader no way to tell a genuine decline apart from an unchanged-since-commit starting point.
+ *
+ * This predicate is the single shared source of truth for that distinction — first established at
+ * play-brief.ts's "Thesis health" section (2026-10-07, refined 2026-10-14/2026-10-16 for the
+ * round-trip/giveback cases `moves` itself can't catch) — pulled out here so every OTHER renderer
+ * of `h.rungLabel` (play-brief-narrative-coaching.ts, play-brief-intel.ts) can apply the IDENTICAL
+ * disambiguation rather than re-deriving it and risking drifting apart from this one.
+ */
+export function thesisHealthUnchangedSinceCommit(h: ThesisHealthPayload): boolean {
+  return (h.moves?.[0]?.includes("unchanged") ?? false) && !h.materialGivebackSinceCommit;
+}
+
 /** `UNCALIBRATED_PILLAR_LABELS` keyed by the mapped `ThesisHealthPayload` pillar id instead of the
  *  swing-native `SwingThesisPillarId` — lets a caller filter `h.pillars` (which carries the mapped
  *  ids) without re-deriving `PILLAR_ID_MAP` itself. */

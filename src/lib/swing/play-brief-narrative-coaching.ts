@@ -25,7 +25,7 @@ import { computeLaneRank } from "./play-brief-lane-rank";
 import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
-import { thesisHealthUncalibrated } from "./thesis-health";
+import { thesisHealthUncalibrated, thesisHealthUnchangedSinceCommit } from "./thesis-health";
 import { technicalsBias } from "./play-brief-technicals";
 import { formatFixedNonZero } from "./format-nonzero";
 import { ARCHETYPE_META, type SwingArchetype } from "./taxonomy";
@@ -82,7 +82,21 @@ export function thesisPillarCoaching(play: TerminalPlay): string | null {
     return `**What moved** — ${h.moves.slice(0, 2).join(" · ")}.`;
   }
 
+  // BUG FIX (Ask Largo standing mandate, 2026-10-22, sibling of the 2026-10-07 play-brief.ts
+  // fix at this exact gap): reaching this branch means no pillar lost/faded AND `h.moves` is
+  // either empty or the literal "unchanged" fallback — i.e. the position hasn't actually moved
+  // since commit. `h.rungLabel` ("Weakening"/"Degraded"/etc.) and `h.advisory` ("fading", "tighten
+  // risk") are both PROCESS words that presuppose decay — rendering them here asserts a decline
+  // that never happened, purely because the position's absolute health sat in a low band from
+  // commit onward (e.g. imperfect entry geometry). Live-shape repro: a position committed at
+  // health 50 (DEGRADED band from day one, delta 0) would render "**Thesis Degraded** (50%) —
+  // Thesis fading — tighten risk or trim into strength," telling a member to cut risk on a
+  // position that is, by its own `moves` field, unchanged. Use the shared predicate instead of
+  // the bare advisory sentence when nothing has moved.
   if (!thesisHealthUncalibrated(h) && h.health < 55 && h.advisory) {
+    if (thesisHealthUnchangedSinceCommit(h)) {
+      return `**Thesis ${h.rungLabel}** (${h.health}%) — unchanged since commit, not a new decline.`;
+    }
     return `**Thesis ${h.rungLabel}** (${h.health}%) — ${h.advisory}`;
   }
 

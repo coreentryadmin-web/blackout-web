@@ -8352,6 +8352,68 @@ test("buildIntelSections: does not restate the low-thesis-health tighten-risk ad
   assert.doesNotMatch(hold!.body, /\*\*Tighten risk\*\* — thesis fading; don't add size/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-22, same gap one layer deeper than the dedup fix
+// just above): the compact "Thesis health X% (rung)" line, and the "Tighten risk" line beneath it,
+// both fired off health<45 alone, with no check for whether anything had actually moved since
+// commit — the identical false-decay gap already fixed at play-brief.ts's own "Thesis health"
+// section (2026-10-07). A position that has sat in a low health band since commit (no pillar
+// faded, moves at its "unchanged" fallback) must not have "Tighten risk — thesis fading; don't add
+// size" asserted against it, and the compact line should say so.
+test("buildIntelSections: Hold plan's compact thesis-health line reads 'unchanged since commit' and suppresses Tighten risk when nothing actually moved", () => {
+  const play = fixturePlay({
+    status: "HOLD",
+    recommendation: "HOLD",
+    contract: "110C · 12DTE",
+    thesisHealth: {
+      health: 30,
+      entryIndex: 30,
+      currentIndex: 30,
+      delta: 0,
+      rung: "MAJOR",
+      rungLabel: "Major fade",
+      pillars: [
+        {
+          id: "structure",
+          label: "Persistence",
+          weight: 0.28,
+          commitScore: 0.5,
+          currentScore: 0.5,
+          commitLabel: "triggered",
+          currentLabel: "triggered",
+          status: "intact",
+          contributionPts: 14,
+          deltaPts: 0,
+        },
+      ],
+      moves: ["All swing pillars unchanged since commit."],
+      committedAtEt: null,
+      computedAtEt: "10:00 ET",
+      advisory: "Thesis fading — tighten risk or trim into strength.",
+      thesisBreakLevel: "intact",
+    },
+  });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-09-21T20:00:00.000Z",
+    sessionDate: "2026-09-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const sections = buildIntelSections(ctx, "open", { collapseIntel: false });
+  const hold = sections.find((s) => s.title === "Hold plan");
+  assert.ok(hold, "Hold plan renders");
+  assert.match(hold!.body, /Thesis health \*\*30%\*\* \(Major fade\) — unchanged since commit/);
+  assert.doesNotMatch(
+    hold!.body,
+    /\*\*Tighten risk\*\* — thesis fading; don't add size/,
+    "must not assert decay advice for a position whose health has been unchanged since commit",
+  );
+});
+
 // GAP FOUND (2026-09-20, Ask Largo standing mandate, live repro BKKT: 28 same-theme overlaps
 // rendered as one uncapped comma-separated wall of tickers). A crowded book must still read as
 // trader-manager prose, not a raw name dump — see the doc comment on MAX_OVERLAP_NAMES/
