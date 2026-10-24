@@ -96,24 +96,31 @@ sibling lane's journal note.
 
 ---
 
-## WATCH LIST — 2026-10-24 Command Deck "Regime" stat leaking the internal Banger-ledger sentinel — fixed, deploy pending validation
+## WATCH LIST — 2026-10-24 Command Deck AND Largo swing play-brief both leaking the internal Banger-ledger sentinel — fixed, deploy pending validation
 
 **What was fixed:** `TerminalPlay.regime` forwarded the raw `BANGER_LEDGER_REGIME_LABEL`
 sentinel ("BREAKOUT · BANGER") straight through with no guard, unlike every other consumer of
 that exact sentinel elsewhere in the codebase. `PlayTerminal.tsx`'s play-detail panel rendered it
 verbatim under "Regime"; `SwingCockpitStrip.tsx`'s lane-level cockpit header picked the first
 play in the whole Swing book with any truthy `regime` and rendered the SAME internal fingerprint
-as if it characterized the current market regime for the entire lane (live repro BMNR). With
-78/81 of the live committed Swing book Banger-origin (CLAUDE.md), this was the dominant rendered
-state of both surfaces. Fixed by suppressing the sentinel to `null` at the same point
-`terminalPlayFromHorizon`'s existing `thesisBreakResolved` guard already does, leaving the raw
-value passed into `computeSwingThesisHealth` (which needs to see it) untouched. Full write-up:
+as if it characterized the current market regime for the entire lane; and the swing play-brief's
+own narrative rendered the identical literal string under "**Today's regime read:**" (live repro
+BMNR, confirmed directly against prod — the real markdown read `**Today's regime read:**
+BREAKOUT · BANGER` before this fix). Live count at confirmation time: 90 of 93 currently-committed
+Swing rows carry this sentinel, not 78/81 (CLAUDE.md's earlier estimate). Fixed at the shared root
+(`terminalPlayFromHorizon`, `adapters.ts` — suppresses the sentinel to `null` at the same point
+the existing `thesisBreakResolved` guard already does, leaving the raw value passed into
+`computeSwingThesisHealth` untouched) plus a redundant defense-in-depth guard in
+`whyThisSetupSection` (`play-brief-intel.ts`). Full write-up:
 `docs/audit/findings-staging/2026-10-24-swing-regime-sentinel-leak-command-deck.md`.
 
-**Specific thing to check at next RTH open:** open the Command Deck's Swing lane and confirm the
+**Specific things to check at next RTH open:** open the Command Deck's Swing lane and confirm the
 top-level cockpit "Regime" stat (if shown) is never the literal string "BREAKOUT · BANGER", and
 that a Banger-origin position's play-detail panel shows no "Regime" line at all (rather than that
-same literal string).
+same literal string). Also pull a live Banger-origin swing play-brief (e.g. `GET
+/api/market/swing/play-brief?playId=SWING:<ticker>:<positionId>&expandIntel=1` for any currently-
+committed Banger-origin position) and confirm the "Why this setup" section has no "Today's regime
+read" line at all.
 
 ---
 
