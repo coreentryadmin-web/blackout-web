@@ -38,6 +38,157 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Night Hawk Swings: "Entry trigger" was the one price level in the whole Ask Largo WATCH brief with no distance-from-spot context — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED
+
+### Root cause
+
+Every other price level `watchForSection`/`play-brief-narrative.ts` narrates in a swing play-brief
+states how far current spot sits from it, as `"(X% away)"`:
+
+- GEX call/put wall, gamma flip — `nearestWallOrFlipLine` (`play-brief-intel.ts`)
+- committed structural stop — `committedStructuralStopLine` (`play-brief-narrative.ts`), fixed
+  2026-10-17 specifically to correct the denominator of this exact convention
+  (`(spot - level) / spot`, never `/ level`)
+
+The "Entry trigger" line in `watchForSection` (`play-brief-intel.ts`, ~line 1900) is arguably the
+single most actionable number in a WATCH brief — the exact price a trader is waiting to see broken
+or reclaimed — and it never carried this annotation. It rendered a bare price plus a causal verb
+("Break/reclaim above ... this is what actually fires the setup") with no sense of proximity,
+while every sibling level line in the same document quantified exactly that.
+
+This was not caught by any existing test because no prior test supplied a resolved `spot` (via
+`ctx.vector`/`ctx.ecosystem.gex_positioning`) to a WATCH-bucket `entryTriggerUnderlyingPx` test —
+every existing fixture for this line used `vector: null, ecosystem: null`, so the gap was
+invisible to the suite until a spot was actually wired in.
+
+### Evidence
+
+Static audit (this cycle's board was weekend-frozen, no live repro available) — confirmed via
+`grep` that `(X% away)` is used for call wall, put wall, gamma flip, max pain, and the committed
+structural stop line everywhere else in `play-brief-intel.ts`/`play-brief-narrative.ts`, but never
+for `entryTriggerUnderlyingPx`. Confirmed via the `BieLevel` type (`src/lib/bie/answer-envelope.ts`)
+that there's no structured distance field either — the fact, if present anywhere, has to live in
+prose, same as every sibling level.
+
+### Fix
+
+Added the identical `(spot - trigger) / spot` convention (matching `committedStructuralStopLine`'s
+corrected denominator, not the wrong one it replaced) to the "Entry trigger" line, **only** when:
+
+1. `spot` is actually known this cycle (never guessed), and
+2. spot is still on the not-yet-triggered side of the level in the entry direction.
+
+When spot has already moved through the trigger in the entry direction, the distance suffix is
+omitted entirely rather than stating a now-nonsensical "N% away" for a level that's already been
+crossed — that's a materially different fact (a crossing that already happened), which belongs to
+`entryStatus`/`entryTriggerDeadReason`, not something this fix should invent or guess at. This
+avoids the exact "two sections of one brief disagreeing about the same fact" failure class this
+file's own history is full of (see the 2026-10-20 TSLA/UNH/MU fixes in the same section).
+
+### Blast radius
+
+Single call site (`watchForSection`'s WATCH-bucket branch, `play-brief-intel.ts`). No other
+renderer narrates `entryTriggerUnderlyingPx` with a distance figure (confirmed via repo-wide grep —
+`play-brief.ts`'s structured `levels[]` array and `play-brief-narrative-coaching.ts`'s two uses of
+the field compute unrelated distances: trigger-vs-wall collision and trigger-vs-invalidation
+cushion, neither of which is spot-vs-trigger).
+
+### Fix rationale
+
+Reused the file's own established convention exactly (same formula, same "(X% away)" phrasing,
+same denominator correction already proven right elsewhere) rather than inventing a new one.
+Deliberately did NOT attempt to classify "already through" with its own explanatory text (e.g.
+"already through this level") — that would require reasoning about `entryStatus`/live triggering
+semantics this fix has no need to touch, and the file's history shows exactly that kind of
+over-reach causing contradictions between sections. Omission is the safe, honest choice per the
+Largo product contract's absence principle.
+
+### Tests
+
+- RED: confirmed via `git stash` of only `play-brief-intel.ts` that the new "states how far spot
+  is" test fails (bare price, no suffix) against the old code.
+- GREEN: restored the fix — same test passes; all 323 tests in `play-brief-intel.test.ts` and all
+  1148 across `play-brief*.test.ts` pass; `npx tsc --noEmit` clean.
+- Added `watchForSection: entry trigger states how far spot is from firing it, when spot is known
+  and still approaching` and `watchForSection: entry trigger distance is omitted (never guessed)
+  once spot has already moved through it in the entry direction`.
+
+## SPX Slayer `resolveLeanDirection()` fabricates a "Puts lean" from an unknown VWAP — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | SPX Slayer play system (`src/features/spx/lib/spx-play-intel.ts`) |
+| **Found by** | Ask Largo / 5-engine standing monitor, 2026-10-24 ~20:11 UTC cycle, live GET `/api/market/spx/play` |
+
+### Symptom
+
+During a closed-market session (Saturday, `session_phase: "closed"`), the SPX Slayer play payload's `play_idea` text read:
+
+> "Tape's mixed, but Puts lean — 7625 Put on watch · Into 0DTE resistance 7625 (−1 pts)"
+
+— despite the underlying confluence being **completely neutral**: `score: 0` (10 factors summing to exactly zero, independently verified), `direction: null`, `bias: "neutral"`. There was no real directional evidence behind the "Puts lean" wording at all.
+
+### Root cause
+
+`resolveLeanDirection()` (`spx-play-intel.ts`) is the final tiebreaker `buildPlayIdea()` falls through to when the confluence score carries literally no lean information (exactly zero, after the score-sign preference fixed on 2026-09-09). The old final line was:
+
+```ts
+return desk.above_vwap ? "long" : "short";
+```
+
+`desk.above_vwap` is typed `boolean`, not tri-state. Every writer of it (`spx-desk.ts`'s `vwap != null ? price >= vwap : false`, mirrored in `spx-desk-merge.ts`'s pulse fallback and `usePulseStream.ts`) defaults it to the literal `false` whenever `desk.vwap` itself is unknown (off-hours, pre-open, no sticky/base VWAP to fall back to either) — `false` there means "we have no idea," not "price sat below VWAP." Live confirmed: at the time of the repro, `desk.vwap: null` and `desk.above_vwap: false` on the SAME payload.
+
+Reading that `false` unconditionally as a real signal turned "we don't know" into a confident "short" pick — the exact same failure class this codebase has fixed repeatedly elsewhere (task history: "VWAP side fabricating 'below' when spot unknown," play-brief-intel.ts, swing lane) — just not yet at this particular SPX-lane call site.
+
+### Blast radius
+
+Checked every other read site of `desk.above_vwap` (`grep -rn "\.above_vwap\b"`): `anchorPhrase` (two functions below, in the same file), `spx-play-terminal-lines.ts`, `spx-play-intel.ts`'s own `anchorPhrase`, `spx-play-confirmations.ts`'s gated sites, `SpxIosMarketStrip.tsx`'s UI chip, and `spx-signals.ts`'s scoring factor are all already gated on `desk.vwap != null` before trusting the boolean — `resolveLeanDirection`'s final fallback was the one unguarded consumer.
+
+### Fix
+
+Gate the fallback on `desk.vwap != null` (mirroring `anchorPhrase`'s own convention two functions down), computing the comparison directly from `desk.price`/`desk.vwap` rather than trusting the possibly-fabricated `above_vwap` field. When VWAP is *also* unknown, fall back to the day's real price change (`desk.spx_change_pct`) — a genuinely computed number, never a coerced placeholder — before a final, explicitly-commented last-resort default for the (extremely degenerate) case where neither is available.
+
+### Evidence
+
+- RED→GREEN: new test `"buildPlayIdea does not fabricate a short/Puts lean from a null VWAP's coerced above_vwap=false (live repro 2026-10-24)"` in `spx-play-intel.test.ts` fails against the pre-fix source (`git stash` of only `spx-play-intel.ts`) with `actual: 'short'` vs `expected: 'long'`, passes after the fix.
+- `npx tsx --experimental-test-module-mocks --test src/features/spx/lib/*.test.ts` → 864/864 pass (Node 20).
+- `npx tsc --noEmit` → clean.
+
+## Largo swing play-brief adapter: evidence_numbers level price uses raw `toFixed` instead of `fmtPriceLevel` — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Ask Largo swing play-brief adapter (`src/lib/swing/play-brief-adapter.ts`) |
+| **Found by** | Ask Largo fan-out audit (8-ticker parallel workflow, adversarially verified), 2026-10-24, live repro SOXX |
+
+### Symptom
+
+SOXX's live swing play-brief: top-level `evidence_numbers` read `"flag anchor: $479.20"` while `envelope.levels[0].price` was `479.21` and the "Watch levels" section body text read `"Flag anchor: **479.21**"` — the same underlying value (`play.flagUnderlyingPx`) rendered as two different numbers in the same response.
+
+### Root cause
+
+`extractEvidence()` (`play-brief-adapter.ts:84`) called `level.price.toFixed(2)` directly on the raw, pre-rounded float from `envelope.levels`. The API route rounds that same field via `roundFloats`'s `Math.round(n*100)/100` at the response boundary, and every other renderer in this codebase (`play-brief.ts`, `play-brief-narrative.ts`, `play-brief-narrative-coaching.ts`, `play-brief-intel.ts`) already migrated to the shared `fmtPriceLevel()` helper specifically to avoid this class of disagreement (documented at length in `fmt-money.ts`'s own header, citing a prior live repro). `play-brief-adapter.ts` was never migrated — this is the 8th known call site of the same bug class, not a new pattern. Mechanism: `(479.205).toFixed(2)` → `"479.20"`, `Math.round(479.205*100)/100` → `479.21`.
+
+### Fix
+
+Switched the levels loop to `fmtPriceLevel(level.price)`, matching every sibling renderer.
+
+### Evidence
+
+- RED→GREEN: new test injects a level price on the exact half-cent boundary (`479.205`); fails against pre-fix source (`git stash`), passes after.
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief*.test.ts` → 1149/1149 pass (Node 20).
+- `npx tsc --noEmit` → clean.
+
 ## 2026-10-24 — [FINDING, stale-OPEN correction, infra] A third sibling entry from the 2026-10-18 ECS deploy-deadlock incident was also still stale-OPEN
 
 > **kind:** `FINDING`
