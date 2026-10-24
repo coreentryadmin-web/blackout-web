@@ -1255,9 +1255,51 @@ contract-geometry-merge issue. No gate/selector changed by this step; it is a ne
 the specific lead, reported honestly per the operator's own "report honestly if the evidence
 doesn't support an improvement" instruction, not a reason to keep re-testing the same mechanism.
 
+### Step 6 — reconstructed pre-entry signals on the COMMITTED cluster with the new shadow modules — a real, disclosed limitation, not a win
+
+Task #7 of the mandate: "Reconstruct what was observable before each entry" using the new
+shadow-only `momentum-acceleration.ts`/`relative-volume.ts`/`strike-reachability.ts` modules
+(PR #6614). Ran this on the 7 COMMITTED-cluster trades (SPY×5, NVDA, AAPL, 2026-10-21) using ONLY
+real Polygon minute bars strictly BEFORE each trade's option price-match window (no lookahead), a
+30-minute opening-range as the key level, and a flat-proration RVOL read against each ticker's
+real trailing-20-day average volume.
+
+**First, an honest methodology check that mattered**: of the 7 trades, only 2 (SPY 771C, NVDA
+220C) have exactly ONE price-match window for the session — the other 5 have 3–6 candidate
+windows spanning most of the trading day (e.g. SPY 773C @ $0.56 matches 6 separate times, from
+09:32 to 16:14 ET). A cheap 0DTE option's premium revisits the same price repeatedly across a
+session, so "the first (or last) window" is NOT a reliable single-point entry-time proxy for
+those 5 — reporting a pre-entry signal reconstruction from an arbitrarily-chosen window among 3–6
+real candidates would be false precision, not evidence. Only the 2 unambiguous trades are reported
+below; the other 5 are a genuine data-availability ceiling (exact timestamps don't exist in the
+source, as already disclosed in `consolidated-verified.json`), not something this step can resolve.
+
+| Trade | Pre-entry momentum read | RVOL | What really happened (real bars) |
+|---|---|---|---|
+| SPY 771C @ $0.68 (window 10:09 ET) | `accelerating:false, confirmed:false` (flat/no signal) | 1.09 (normal) | momentum-discovery would NOT have detected a setup here — consistent with a quiet moment, not a miss. |
+| NVDA 220C @ $0.46 (window 10:11–10:30 ET) | `direction:"down", accelerating:true, confirmed:true` | 1.84 (high) | Real minute bars show NVDA genuinely bottomed near $218.0–218.3 in this exact window (strike was $220, so OTM) after opening at $220.96 — a real intraday DIP, not a continuation. NVDA went on to rally hard later that session (Swift's exit premium $2.10, +361.54%, per the Swift recap). |
+
+**The NVDA read is the important, honestly-reported result, not a success.** The new
+`momentum-acceleration.ts` module is deliberately built to detect CONTINUATION (an accelerating
+move confirmed by a same-direction key-level break) — by design it is structurally incapable of
+flagging a contrarian dip-buy as a long setup, and it didn't: it correctly read the real, genuine
+down-move in progress at that moment and reported `direction:"down"`. If `momentum-discovery.ts`'s
+`detected`/`direction` output were (hypothetically) used as a hard long/short signal at that exact
+timestamp, it would have pointed to a PUT, the opposite of Swift's profitable call. **This is not
+a bug in the new modules — it is a real, now-evidenced boundary on what a continuation-style
+momentum signal can ever explain**: at least one of Swift's two cleanly-reconstructable winners was
+a contrarian/mean-reversion entry, a different trade shape entirely from "catch the breakout
+early." Per the operator's own "report honestly if the evidence doesn't support an improvement"
+instruction, this is logged as exactly that — a real limitation, not downplayed or explained away.
+No code changed by this step. The implication for Task #3/#4: any real-cost validation of the new
+discovery path should expect it to catch continuation-shaped setups (if any exist in Swift's
+population) and should NOT be judged a failure for missing contrarian/dip-buy setups like this
+NVDA trade — those need a structurally different signal (e.g. a mean-reversion/exhaustion read),
+which is out of scope for what was built this round and not fabricated here to cover this gap.
+
 ### Status / next checkpoint
 
-**Not solved — four real results this round, none of them a ship:**
+**Not solved — five real results this round, none of them a ship:**
 1. `min_dominance` real-cost A/B, run THREE times now at increasing statistical power
    (n=19/13/23 REJECT per half across the runs) — genuinely **UNSTABLE across day-windows**, not
    just under-powered. Per the operator's own "do not manufacture bangers... using hindsight"
@@ -1278,6 +1320,13 @@ doesn't support an improvement" instruction, not a reason to keep re-testing the
    is the next real candidate — scoped as a new, separately-validated selector variant, not a
    threshold tune, and subject to the same real-cost/out-of-sample discipline as every other
    candidate in this file before it ships.
+4. **Step 6 above — the new shadow momentum-discovery modules cannot, by design, catch a
+   contrarian/dip-buy entry** (the NVDA 220C reconstruction). Only 2 of the 7 COMMITTED-cluster
+   trades had an unambiguous price-match window at all; of those, one showed a flat/no-signal
+   read (SPY 771C) and the other showed the module correctly reading a real down-move that was
+   actually a dip Swift bought before a later reversal (NVDA 220C). A real, disclosed boundary on
+   what this signal family can explain — not fixed this round, and not something to paper over
+   when Task #3/#4's real-cost validation runs.
 
 Checkpoints continue in `docs/audit/nighthawk-0dte-live-journal.json` across the standing Night
 Hawk 0DTE trigger cadence — this is a multi-session research program, not a single-turn task.
