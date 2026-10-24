@@ -96,6 +96,35 @@ sibling lane's journal note.
 
 ---
 
+## WATCH LIST — 2026-10-24 Legacy stale-BACKFILL-contract retroactive repair — fixed, deploy pending validation
+
+**What was fixed (this PR):** #6631 (directly below) fixed `pickAffordableChainContract` so a NEW
+BACKFILL contract can never be picked already-expired — but that guard only runs at edition-
+*generation* time. Checked the live edition about an hour after #6631 merged and confirmed the
+exact PLTR play #6631's own finding cites (`edition_for: "2026-10-26"`, "PLTR $197.5 Call
+2026-10-23") was STILL being served — the edition had already been published before #6631's fix
+deployed, and nothing retroactively repairs an already-published edition's frozen `plays` JSON.
+The one admin endpoint built for after-the-fact edition repair, `POST
+/api/admin/nighthawk/republish-backfill`, no-ops on this edition specifically: it only appends new
+BACKFILL plays when below the play-count floor, never re-validates an existing one, and this
+edition already had 3 plays. Fixed by adding a second repair pass, `repairStaleBackfillContracts`
+(`post-publish-backfill.ts`) + pure `repairStaleBackfillPlays` (`play-backfill.ts`), that
+re-validates every already-published BACKFILL play's contract against `editionFor` on every call
+to that same admin endpoint, re-picking a live replacement or dropping the play — never leaving a
+dead contract live, never fabricating a placeholder. Full write-up:
+`docs/audit/findings-staging/2026-10-24-nighthawk-legacy-stale-backfill-contract-repair.md`.
+
+**Specific things to check at next RTH open:**
+- Call `POST /api/admin/nighthawk/republish-backfill {"edition_for":"2026-10-26"}` and confirm the
+  response's `repairedTickers` (or `droppedTickers`) names PLTR, and that a follow-up
+  `GET /api/market/nighthawk/edition` no longer shows the dead "PLTR $197.5 Call 2026-10-23"
+  contract — either a genuinely live replacement, or PLTR no longer appears in `plays` at all.
+- Separately confirm `GET /api/market/nighthawk/legacy-marks` for whatever OCC the repaired PLTR
+  play now carries (if any) returns a real, non-null mark/bid/ask — proof the replacement contract
+  is actually quotable, not just syntactically well-formed.
+
+---
+
 ## WATCH LIST — 2026-10-24 three weekend-audit fixes (Legacy BACKFILL expiry floor, Swing backstop-ask spread guard, Largo earnings-peer CLOSED disclosure) — fixed, deploy pending validation
 
 **What was fixed (PR #6631):** `pickAffordableChainContract` (`src/features/nighthawk/lib/play-backfill.ts`)
