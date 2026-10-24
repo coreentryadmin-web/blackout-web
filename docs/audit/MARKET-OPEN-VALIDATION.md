@@ -96,6 +96,58 @@ sibling lane's journal note.
 
 ---
 
+## WATCH LIST — 2026-10-24 three weekend-audit fixes (Legacy BACKFILL expiry floor, Swing backstop-ask spread guard, Largo earnings-peer CLOSED disclosure) — fixed, deploy pending validation
+
+**What was fixed (PR #6631):** `pickAffordableChainContract` (`src/features/nighthawk/lib/play-backfill.ts`)
+had no `asOfEtYmd` expiry floor — unlike its organic-path sibling `pickChainContract`
+(`deterministic-edition.ts`), which already excludes `row.expiry <= today`. A Legacy BACKFILL play
+(the lower-rigor append-only path `republishBackfilledEdition`/`buildEveningEdition` uses when the
+real candidate pool comes up thin) could rank and recommend an already-expired contract by
+strike-distance alone. Fixed by threading `asOfEtYmd` (default `todayEtYmd()`) through
+`pickAffordableChainContract` → `selectBackfillPlays` → `backfillThinEditionPlays`, wired at all 4
+real call sites (`post-publish-backfill.ts`'s `republishBackfilledEdition` + 3 sites in
+`edition-builder.ts`'s `buildEveningEdition`). Full write-up:
+`docs/audit/findings-staging/2026-10-24-nighthawk-backfill-expiry-floor.md`.
+
+**What was fixed (PR #6632):** `reliableMarkFromSnapshot` (`src/lib/providers/options-snapshot.ts`)
+already catches a dead bid (0) paired with an unfillable "backstop" ask and falls back to a
+reliable reference for `mark` — but the same divergence guard was never extended to the raw
+`bid`/`ask` fields themselves, so a backstop-ask quote (CAG-style repro) flowed straight into
+`swing-active-refresh`'s `loadOptionQuote` and from there into the live Position-section Spread/
+Quote line, producing a nonsensical spread% instead of the honest "one-sided book — spread not
+priceable" fallback `play-brief.ts` already has for exactly this case. Fixed by adding
+`reliableAskFromSnapshot(snap)` (reuses the existing mark-guard's divergence math verbatim, no
+reimplementation) and wiring it into `loadOptionQuote`'s `ask` field. Full write-up:
+`docs/audit/findings-staging/2026-10-24-swing-spread-backstop-ask-guard.md`.
+
+**What was fixed (PR #6633):** `meridianPeerSection` (`src/lib/swing/play-brief-intel.ts`) was the
+one sibling section an earlier sweep (#6493) missed when adding the
+`statusBucket(ctx.play)==="closed"` → `"_Current ... — not what this trade traded under._"`
+disclosure pattern to `chartTechnicalsSection`/`gexPostureSection`/`wallDynamicsSection`/
+`flowIntelSection`/`catalystsSection`. Live repro: a CLOSED/STOPPED GOOGL position (-35.9%, exited
+2026-10-16) still rendered "Earnings peer lens" in full 8 days later with live
+size-down-or-hedge-vol coaching language, with no caveat that the read was current, not
+as-traded. Fixed by prepending the same disclosure at the section-assembly layer (the pure
+formatter `meridianPeerEarningsCoaching` stays play-unaware, unchanged). Full write-up:
+`docs/audit/findings-staging/2026-10-24-meridian-peer-closed-disclosure.md`.
+
+**Specific things to check at next RTH open (needs real market conditions to confirm — all three
+were found/fixed Saturday with markets closed):**
+- **#6631:** when Legacy next falls back to BACKFILL (thin organic candidate pool), pull
+  `GET /api/market/nighthawk/edition` and confirm every `source:"BACKFILL"` play's `expiry` is
+  strictly after that edition's own `edition_for` date — no same-day-or-earlier expiry should ever
+  appear on a BACKFILL-tagged pick.
+- **#6632:** find a live swing position whose underlying has a thin/crossed book (low-liquidity
+  name near market open/close) and confirm the Position-section Spread/Quote line shows the honest
+  "one-sided book — spread not priceable" fallback rather than a spread% computed off a dead-bid/
+  backstop-ask pair — the kind of quote CAG showed in the original repro.
+- **#6633:** pull `GET /api/market/swing/play-brief` for any real CLOSED swing position whose
+  ticker has upcoming earnings and confirm the "Earnings peer lens" section now opens with
+  `_Current earnings peer lens — not what this trade traded under._` before the peer-cohort
+  coaching body.
+
+---
+
 ## WATCH LIST — 2026-10-18 SPX Slayer `confluence.rawScore` stale after Night Hawk morning-prior bonus — fixed, deploy pending validation
 
 **What was fixed:** `reclassifyConfluenceScore()` (`src/features/spx/lib/spx-signals.ts`) — added
