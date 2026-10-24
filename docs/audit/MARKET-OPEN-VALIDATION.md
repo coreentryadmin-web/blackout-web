@@ -114,6 +114,41 @@ magnet rung for the same consistency, since it renders the identical `callout` s
 
 ---
 
+## WATCH LIST — 2026-10-24 Largo swing play-brief duplicate Vector fetch-failure disclosure — fixed, deploy pending validation
+
+**What was fixed:** `collectBriefUnavailableSources()` pushed both "Vector desk state"/"fetch
+failed" and "Vector state"/"fetch failed" for the same single absence whenever a Vector fetch
+failed with no ecosystem fallback (live repro UMAC: `confidence.why` said "9 sources unavailable"
+when the true count was 8). Fixed by unifying the guard and removing the redundant entry. Full
+write-up: `docs/audit/findings-staging/2026-10-24-play-brief-vector-unavailable-duplicate.md`.
+
+**Specific thing to check at next RTH open:** pull a live swing play-brief for any ticker whose
+Vector read is currently failing (`GET /api/market/swing/play-brief?playId=...&expandIntel=1`) and
+confirm `unavailableSources[]` lists Vector's fetch failure exactly once, and `confidence.why`'s
+stated count matches the array's real length.
+
+---
+
+## WATCH LIST — 2026-10-24 SPX Slayer fabricated "Puts lean" off a null VWAP — fixed, deploy pending validation
+
+**What was fixed:** `resolveLeanDirection()`'s (`spx-play-intel.ts`) final tiebreaker —
+reached only when the confluence score is exactly zero, direction null, bias neutral — used to
+read `desk.above_vwap ? "long" : "short"` unconditionally. Every writer of `above_vwap` defaults
+it to the literal `false` whenever `desk.vwap` is unknown (off-hours, no sticky value either), so
+a genuinely directionless confluence (live repro: 10 factors summing to exactly 0) got rendered
+as a confident "Tape's mixed, but Puts lean" with zero real evidence. Fixed by gating on
+`desk.vwap != null` before trusting the comparison, falling back to `desk.spx_change_pct`'s real
+sign when VWAP is also unknown. Full write-up:
+`docs/audit/findings-staging/2026-10-24-spx-slayer-fabricated-short-lean-null-vwap.md`.
+
+**Specific things to check at next RTH open:** pull `GET /api/market/spx/play` a few times through
+the morning session and confirm `play_idea`'s stated lean ("Calls"/"Puts") never contradicts
+`confluence.score`'s own sign when the score is non-zero, and that a genuinely flat/neutral read
+(score exactly 0) picks its lean from `spx_change_pct` rather than reading as an arbitrary
+coin-flip — i.e. the line should track the day's real tape, not a type-coercion artifact.
+
+---
+
 ## WATCH LIST — 2026-10-24 Legacy stale-BACKFILL-contract retroactive repair — fixed, deploy pending validation
 
 **What was fixed (this PR):** #6631 (directly below) fixed `pickAffordableChainContract` so a NEW

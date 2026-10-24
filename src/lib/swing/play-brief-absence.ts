@@ -922,7 +922,19 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // later receives Vector data is not evidence the fetch failure was incorrect — but a silent-null
   // fetch that was never disclosed is the race condition C3 forbids. Always disclose vector
   // fetch failure.
-  if (ctx.vectorFetchFailed) {
+  //
+  // BUG FIX (2026-10-24, Ask Largo fan-out audit, live repro UMAC): this push used to fire on the
+  // bare `ctx.vectorFetchFailed` flag alone, with no check for the ecosystem-embedded
+  // `vector_full_state` fallback — unlike the OTHER "fetch failed" push below (added a month
+  // earlier, originally labeled "Vector state"), which already gated on
+  // `!ctx.vector && !ctx.ecosystem?.vector_full_state` specifically so a successful fallback read
+  // suppresses the disclosure. Because this push's condition was a strict superset of that one's,
+  // whenever the standalone fetch failed with no fallback, BOTH pushed — "Vector desk state:
+  // fetch failed" and "Vector state: fetch failed" — two near-synonymous entries for the exact
+  // same single fact, inflating the member-facing "N sources unavailable" count by one. Adopting
+  // the same fallback guard here makes this the one and only "fetch failed" disclosure for Vector
+  // desk state (the standalone "Vector state" push below is removed as now fully redundant).
+  if (ctx.vectorFetchFailed && !ctx.vector && !ctx.ecosystem?.vector_full_state) {
     out.push({
       source: "Vector desk state",
       reason: "fetch failed",
@@ -988,15 +1000,6 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       source: "ecosystem context",
       reason: "fetch failed",
       what_is_missing: "the ecosystem context read (GEX/Vector/flow aggregate) for this ticker",
-      retryable: true,
-    });
-  }
-  // Standalone Vector fetch can fail while ecosystem.vector_full_state still succeeded in parallel.
-  if (ctx.vectorFetchFailed === true && !ctx.vector && !ctx.ecosystem?.vector_full_state) {
-    out.push({
-      source: "Vector state",
-      reason: "fetch failed",
-      what_is_missing: "the standalone Vector desk-state read for this ticker",
       retryable: true,
     });
   }

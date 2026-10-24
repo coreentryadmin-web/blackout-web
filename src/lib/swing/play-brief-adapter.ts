@@ -12,6 +12,7 @@ import {
   type ProductRead,
   type ProductSignal,
 } from "@/lib/largo/contract/product-read";
+import { fmtPriceLevel } from "@/lib/fmt-money";
 import type { SwingPlayBriefResult } from "@/lib/swing/play-brief-types";
 
 /** Swing play brief data for Largo consumption — the structured answer. */
@@ -79,9 +80,20 @@ function extractEvidence(envelope: BieAnswerEnvelope): string[] {
   }
 
   // Levels (key prices) — numeric, not a restatement.
+  //
+  // BUG FIX (2026-10-24, Ask Largo fan-out audit, live repro SOXX): `level.price.toFixed(2)` on
+  // the raw, pre-rounded float can disagree with the SAME field's own JSON number elsewhere in
+  // this response (`envelope.levels[].price`, which the API route rounds via `roundFloats`'
+  // `Math.round(n*100)/100` at the response boundary) — the exact `fmtPriceLevel`/`fmtOptionUsd`
+  // precision class this codebase has already fixed 7+ times across play-brief.ts,
+  // play-brief-narrative.ts, play-brief-narrative-coaching.ts and play-brief-intel.ts (see
+  // fmt-money.ts's own header). Live repro: SOXX's flag-anchor level — `evidence_numbers` read
+  // "flag anchor: $479.20" (`(479.205).toFixed(2)`) while `envelope.levels[0].price` and the
+  // "Watch levels" section both read 479.21 (`Math.round(479.205*100)/100`) — the exact
+  // `fmtPriceLevel` call site this adapter never adopted when every other renderer did.
   if (envelope.levels && envelope.levels.length > 0) {
     for (const level of envelope.levels) {
-      evidence.push(`${level.label}: $${level.price.toFixed(2)}`);
+      evidence.push(`${level.label}: $${fmtPriceLevel(level.price)}`);
     }
   }
 

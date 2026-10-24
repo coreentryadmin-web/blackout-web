@@ -33,7 +33,20 @@ function resolveLeanDirection(
   // the VWAP-position proxy when the score carries no lean information at all (exactly zero).
   if (confluence.score > 0) return "long";
   if (confluence.score < 0) return "short";
-  return desk.above_vwap ? "long" : "short";
+  // BUG FIX (2026-10-24, Ask Largo/5-engine standing mandate, live repro 2026-10-24 ~20:11 UTC
+  // closed-session SPX play: score=0, bias="neutral", confluence.direction=null — the exact
+  // all-neutral case this final fallback exists to handle): `desk.above_vwap` is NOT tri-state.
+  // Every writer of it (spx-desk.ts's `vwap != null ? price >= vwap : false`, mirrored in
+  // spx-desk-merge.ts/usePulseStream.ts) defaults it to the boolean `false` whenever `desk.vwap`
+  // itself is unknown (off-hours/pre-open, no sticky value either) — `false` there means "we don't
+  // know," not "price is below VWAP." Reading it unconditionally here treated that type-coercion
+  // artifact as a real directional signal, picking "short" ("Puts lean" in the rendered play idea)
+  // with ZERO actual evidence behind it. Gate on `desk.vwap != null` the same way `anchorPhrase`
+  // two functions down already does, and when VWAP is ALSO unknown, fall back to the day's real
+  // price change (`spx_change_pct`) — a genuine computed number, never a coerced placeholder.
+  if (desk.vwap != null) return desk.price >= desk.vwap ? "long" : "short";
+  if (desk.spx_change_pct != null) return desk.spx_change_pct >= 0 ? "long" : "short";
+  return "short";
 }
 
 function topFactorDetail(confluence: SpxConfluence, direction: SpxPlayDirection): string | null {
