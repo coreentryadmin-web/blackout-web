@@ -96,6 +96,21 @@ sibling lane's journal note.
 
 ---
 
+## WATCH LIST — 2026-10-24 Largo swing play-brief duplicate Vector fetch-failure disclosure — fixed, deploy pending validation
+
+**What was fixed:** `collectBriefUnavailableSources()` pushed both "Vector desk state"/"fetch
+failed" and "Vector state"/"fetch failed" for the same single absence whenever a Vector fetch
+failed with no ecosystem fallback (live repro UMAC: `confidence.why` said "9 sources unavailable"
+when the true count was 8). Fixed by unifying the guard and removing the redundant entry. Full
+write-up: `docs/audit/findings-staging/2026-10-24-play-brief-vector-unavailable-duplicate.md`.
+
+**Specific thing to check at next RTH open:** pull a live swing play-brief for any ticker whose
+Vector read is currently failing (`GET /api/market/swing/play-brief?playId=...&expandIntel=1`) and
+confirm `unavailableSources[]` lists Vector's fetch failure exactly once, and `confidence.why`'s
+stated count matches the array's real length.
+
+---
+
 ## WATCH LIST — 2026-10-24 SPX Slayer fabricated "Puts lean" off a null VWAP — fixed, deploy pending validation
 
 **What was fixed:** `resolveLeanDirection()`'s (`spx-play-intel.ts`) final tiebreaker —
