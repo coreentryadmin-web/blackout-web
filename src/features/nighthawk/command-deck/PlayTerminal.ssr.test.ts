@@ -292,6 +292,30 @@ test("pre-entry (not-yet-committed), PnL tab: R:R display floors instead of roun
   assert.doesNotMatch(html, /2\.0:1/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-24): PnlPanel's "Live P&L" headline used to read
+// bare `play.pnlPct` unconditionally — for a CLOSED play with a real recorded `exitPnlPct` that
+// disagrees with the last live mid (stale -50% mid vs a +42% actual exit fill), the headline
+// showed the stale number instead of the real outcome. LEAPS is the only horizon that reaches
+// this branch (see the reachability comment a few tests above).
+test("PnL tab, CLOSED LEAPS play: Live P&L headline prefers the recorded exitPnlPct over a stale pnlPct mid", async () => {
+  const html = await render(
+    play({ horizon: "LEAPS", status: "CLOSED", pnlPct: -50, exitPnlPct: 42 }),
+    { initialTab: "pnl" },
+  );
+  assert.match(html, /\+42\.0%/, `expected the real exit fill +42.0%, got: ${html}`);
+  assert.doesNotMatch(html, />-50\.0%</, `must not show the stale mechanical mid as the headline, got: ${html}`);
+});
+
+// Sibling case: an OPEN (not yet closed) LEAPS play must still show the live mid unchanged —
+// exitPnlPct is only ever meaningful once the play has actually closed.
+test("PnL tab, OPEN LEAPS play: Live P&L headline still shows the live pnlPct mid, unaffected by this fix", async () => {
+  const html = await render(
+    play({ horizon: "LEAPS", status: "OPEN", pnlPct: 18, exitPnlPct: null }),
+    { initialTab: "pnl" },
+  );
+  assert.match(html, /\+18\.0%/, `expected the live mid +18.0%, got: ${html}`);
+});
+
 test("OCC copy: absent OCC → no control rendered (graceful, no dead button)", async () => {
   const html = await render(play({ occ: null }));
   assert.doesNotMatch(html, /nh-deck-occcopy/);

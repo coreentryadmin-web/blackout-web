@@ -851,7 +851,20 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
   if (play.horizon === "LEGACY") return <LegacyPnlPanel play={play} />;
   const premium = isZeroDtePremiumTerminal(play);
   const has = play.entry != null;
-  const live = play.pnlPct;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-24): this used to be a bare `play.pnlPct` read,
+  // even for a CLOSED play with a real recorded `exitPnlPct` that disagrees with the last live
+  // mid (e.g. a stale -50% mid vs a +42% actual exit fill) — this is the only render path this
+  // horizon (LEAPS; ZERO_DTE/SWING divert to ZeroDteCommandPanel's own closedRealizedPct-backed
+  // "Realized" stat, LEGACY returns above) ever reaches for its headline P&L number. Deliberately
+  // NOT routed through the full closedRealizedPct() (play-card-lifecycle.ts) here, unlike the
+  // sibling TradeExcursionGraphic fix (PR #6619) — that function's stopped-row fallback blends via
+  // trimScaleBlendedPnlAtStop(peak, PLAN_RULES.stop_pct), a 0DTE-specific -50% stop convention
+  // that is unconfirmed for LEAPS's own (likely much wider, multi-session) stop/exit mechanics;
+  // even SWING's own SWING_SCALE_OUT_POLICY uses a different -60% hard stop than PLAN_RULES'
+  // -50%, so reusing that constant here would risk a confidently wrong blended number rather than
+  // the honest raw one. Only the universally-safe part of the fix applies: prefer the recorded
+  // exit stamp over the live mid once the play is closed.
+  const live = play.status === "CLOSED" ? (play.exitPnlPct ?? play.pnlPct) : play.pnlPct;
   const exec = play.execPnlPct;
   return (
     <>
