@@ -4,6 +4,28 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-24 (12:08 UTC / Sat 08:09 ET) — [SEO] Lane resumed after ~2.5-day gap (org spend limit), shipped fixes validated GOOD
+
+**Gap, honestly reported, not glossed over.** This session's last completed cycle was the Wed
+2026-10-21 18:16 UTC heartbeat (`0676f55ba`). 19 scheduled-trigger notifications queued between
+then and now (Wed 18:16 UTC through Sat 12:08 UTC — ~5 heartbeats, 3 RTH wakes, 1 daily growth
+cycle, plus a coordinator check-in) went unprocessed because **this session's turn FAILED on the
+org's monthly/weekly spend limit** (recorded ~2026-10-24 06:16:58 UTC on an attempted heartbeat;
+weekly reset window is 11:00 UTC). The coordinator's own check-in notification confirmed the
+limit, confirmed the reset window had passed, and explicitly asked this lane to resume rather
+than retry repeatedly or fabricate what happened during the gap. **Not attempting to
+retroactively reconstruct or backfill those 19 missed cycles** — a CLS reading or gamma-snapshot
+poll from 2+ days ago is unverifiable now and reporting one would be fabrication, which this
+lane's standing discipline forbids. Resuming cleanly from the current state instead.
+
+**Resumption validation:** repo intact, no container restart needed. Resynced to `origin/main`
+(`0676f55ba` → `edb526054`, 2+ days of other-lane commits, none SEO-relevant). Purged Cloudflare
+edge HTML, re-measured live homepage CLS — **0.0003, GOOD** (64/64 routed, 0 fail). Fetched
+`/api/og` with a Googlebot UA: `200`, `content-type: image/png` — crawlable. `/api/health`:
+`200` — confirms production stayed healthy through the gap (no undetected outage). **PR sweep:**
+1 open agent PR fleet-wide, other-lane and CI-RUNNING. Nothing for this lane to act on. No PR
+opened. Resuming the standing heartbeat/RTH/daily-growth-cycle cadence from here.
+
 ## 2026-10-21 (18:16 UTC / Wed 14:17 ET) — [SEO] Lane heartbeat: elevated-CLS blip investigated and resolved to timing variance, GOOD confirmed
 
 Resynced to `origin/main` (`c1a033687` → `f86f0a42a`, other-lane findings-fold). **Step 1:**
