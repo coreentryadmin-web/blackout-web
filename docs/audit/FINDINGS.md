@@ -38,6 +38,224 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Vector gamma-magnet callout: whole-dollar level paired with an unrounded-strike percent — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Vector gamma magnet (`src/features/vector/lib/vector-gamma-magnet.ts`) |
+| **Found by** | Ask Largo fan-out audit (8-ticker parallel workflow, adversarially verified), 2026-10-24, live repro BMNR |
+
+### Symptom
+
+BMNR's live swing play-brief `structureLadder` rung (`kind: "magnet"`) carried `price: 30.67`, `distancePct: 36.9`, but its own `meta` string (the `GammaMagnet.callout`) read `"gamma pivot 31 (+36.86%) — short gamma amplifies a move away, won't hold"`. The level named (31) and the percent quoted beside it (+36.86%) describe two *different* numbers: `(31-22.41)/22.41 = +38.33%`, not +36.86%; +36.86% is the real percent for the real strike, 30.67 — which is exactly what the rung's own `price`/`distancePct` fields (and the swing narrative's `fmtPriceLevel(m.strike)` line) already render correctly.
+
+### Root cause
+
+`deriveGammaMagnet()` computes `distancePct` from the unrounded, cents-precision `strike` (a weighted mean of call+put wall strikes — rarely near-integer), then called `buildCallout(Math.round(strike), distancePct, ...)` — passing a WHOLE-DOLLAR rounding of the level into the same sentence as a percent computed from the cents-precision one. Whenever the weighted strike wasn't already near-integer (the ordinary case), the two numbers in one sentence described different levels.
+
+### Blast radius
+
+`GammaMagnet.callout` is a single string consumed by `VectorChart.tsx`, `VectorPageShell.tsx`, `VectorPlayAnalyticsDrawer.tsx`, `vector-play-bootstrap.ts`, `vector-play-desk-snapshot.ts`, `vector-pulse.ts`, `src/lib/bie/vector-full-state.ts` (Largo's BIE narrative layers), and swing's `play-brief-narrative.ts` (`collectFocalLevels`, feeding the `structureLadder` rung's `meta`). All render the same self-inconsistent sentence whenever the magnet strike isn't near-integer.
+
+### Fix
+
+Pass the SAME cents-precision strike (`round2(strike)`, matching the already-correct `GammaMagnet.strike` field) into `buildCallout`, and format it via the shared `fmtPriceLevel()` helper (matching every narrative consumer's own formatting of `m.strike`) instead of raw number interpolation.
+
+### Evidence
+
+- RED→GREEN: new test reproduces the exact BMNR numbers (spot 22.41, weighted strike 30.67) via a 2-wall fixture; fails against pre-fix source (`git stash`), passes after.
+- `npx tsx --experimental-test-module-mocks --test src/features/vector/lib/*.test.ts src/lib/swing/play-brief*.test.ts` → 2454/2454 pass.
+- `npx tsx --experimental-test-module-mocks --test src/lib/bie/*.test.ts` → 787/787 pass.
+- `npx tsc --noEmit` → clean.
+
+## 2026-10-24 — [FINDING, P1 Night Hawk Swings] Command Deck AND the Largo swing play-brief both leak the internal Banger-ledger sentinel as a fabricated live regime read — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Night Hawk Swings — Command Deck (`PlayTerminal.tsx`, `SwingCockpitStrip.tsx`) AND the Largo swing play-brief narrative (`whyThisSetupSection`, `play-brief-intel.ts`) |
+| **Found by** | Ask Largo standing mandate — deferred BMNR finding from the 2026-10-24 Largo fan-out audit, investigated and confirmed this cycle |
+
+**Confirmed live** (pulled `GET /api/market/swing/play-brief?playId=SWING:BMNR:1974&expandIntel=1`
+against prod, 2026-10-24 ~21:15 UTC — the real BMNR position, before this fix deployed): the
+envelope's own markdown narrative read, verbatim, `**Today's regime read:** BREAKOUT · BANGER` —
+the exact live repro the deferred finding named. This is a SECOND, independent rendering of the
+same sentinel, in the Largo play-brief pipeline rather than the Command Deck UI. Also confirmed
+via `GET /api/market/nighthawk/horizons?view=swings`: of 93 currently-committed Swing rows, 90
+carry this exact sentinel as their `regime` field (see the PR's own comment thread for the full
+count).
+
+### Symptom
+
+Live repro BMNR: the Command Deck's Swing cockpit header showed a top-level "Regime" stat
+reading `BREAKOUT · BANGER`, which reads as a current market-regime characterization for the
+whole Swing lane. The same literal string also rendered under "Regime" in the per-position
+play-detail panel (`PlayTerminal.tsx`) for any Banger-origin position.
+
+`BREAKOUT · BANGER` is not a market regime at all — it is `BANGER_LEDGER_REGIME_LABEL`
+(`banger-lane-merge.ts`), an internal sentinel `horizonPlayFromBangerPosition` stamps on every
+Banger-origin ledger row to mean "no real per-position dossier exists for this play." Per
+CLAUDE.md's own count, 78/81 of the live committed Swing book is Banger-origin, so this was the
+dominant rendered state of both surfaces, not an edge case.
+
+### Root cause
+
+Every OTHER consumer of this exact sentinel already treats it as an internal fingerprint, never
+a display value:
+- `thesisHealthUncalibrated()` (`thesis-health.ts`) withholds the aggregate Thesis Health score.
+- `watchForSection` (`play-brief-intel.ts`) suppresses a fabricated "Thesis intact" line.
+- `attachThesisExplanation` (`serving-lane.ts`) refuses to let a fresh ticker-keyed dossier
+  overwrite the sentinel.
+- `terminalPlayFromHorizon`'s own `thesisBreakResolved` (`adapters.ts`) suppresses the derived
+  thesis-break level to `"unknown"`.
+
+`TerminalPlay.regime` itself was the one field that never got this treatment:
+`regime: src.regime ?? null` forwarded the raw sentinel straight through with no guard. From
+there:
+- `PlayTerminal.tsx:575` renders `play.regime` verbatim under the label "Regime".
+- `SwingCockpitStrip.tsx:42` picks `plays.find((p) => p.regime)?.regime` — the first play in the
+  WHOLE Swing book with any truthy `regime` — and renders it as a single lane-level "Regime"
+  cockpit stat. With the book dominated by Banger-origin rows, this arbitrary pick is very likely
+  to resolve to the sentinel, mischaracterizing the entire lane's regime read.
+
+A sibling test (`adapters.test.ts`, "horizon adapter: Banger-origin thesisLevel:'intact' is
+suppressed...") already constructed a Banger-origin fixture with `regime: "BREAKOUT · BANGER"`
+and asserted the derived `thesisBreak` was suppressed — but never asserted what `TerminalPlay.regime`
+itself resolved to, leaving this exact gap uncovered.
+
+### Fix
+
+`terminalPlayFromHorizon` now computes a `regimeForDisplay` value immediately beside the
+existing `thesisBreakResolved` guard: `src.regime === BANGER_LEDGER_REGIME_LABEL ? null :
+(src.regime ?? null)`. The returned `TerminalPlay.regime` uses `regimeForDisplay`; the raw
+`src.regime` (still carrying the sentinel) is passed unchanged into `computeSwingThesisHealth`
+a few lines above, which needs to see the sentinel to correctly withhold its own aggregate score.
+
+With the fix: a Banger-origin row's `TerminalPlay.regime` is `null` (nothing renders under
+"Regime" in the play-detail panel), and `SwingCockpitStrip`'s lane-level pick skips past it to
+the first row with a real regime value, or renders nothing if none exists — an honest omission
+instead of a fabricated characterization.
+
+The swing play-brief pipeline (`play-brief-resolve.ts`) always builds its `TerminalPlay` via the
+SAME `terminalPlayFromHorizon`, so this one fix also closes the Largo narrative leak end-to-end —
+confirmed with a direct unit-level repro (`terminalPlayFromHorizon` → `whyThisSetupSection`)
+before writing the second fix below. `whyThisSetupSection`'s own `**Today's regime read:**` line
+(`play-brief-intel.ts:266`) additionally gets its own explicit sentinel guard, defense-in-depth,
+matching every other consumer of this exact sentinel already in that file
+(`bangerOriginNoRealThesis`/`reviewedIsBangerOrigin`) — this file's own `attachThesisExplanation`
+double-call history (serving-lane.ts) already proved an upstream-only fix point can be bypassed
+by a future caller that doesn't route through the adapter.
+
+### Blast radius
+
+Two fix points, one root cause:
+- `terminalPlayFromHorizon` (`adapters.ts`) feeds both Command Deck display consumers
+  (`PlayTerminal.tsx`, `SwingCockpitStrip.tsx`) AND the swing play-brief pipeline's `play` object
+  (`play-brief-resolve.ts`) — no separate fix needed in any of the three.
+- `whyThisSetupSection` (`play-brief-intel.ts`) gets its own redundant guard as defense-in-depth.
+
+Confirmed via grep that no other `TerminalPlay.regime` consumer exists. 0DTE/Legacy/LEAPS
+adapters never produce the Banger sentinel, so they are unaffected.
+
+### Evidence
+
+- RED→GREEN (Command Deck adapter): new regression test in `adapters.test.ts` fails against
+  pre-fix source (`banger.regime` returns `"BREAKOUT · BANGER"` instead of `null`), passes after.
+- RED→GREEN (Largo narrative): new regression test in `play-brief-intel.test.ts` fails against
+  pre-fix source with the EXACT live repro string (`**Today's regime read:** BREAKOUT · BANGER`
+  present in the rendered section body), passes after.
+- Live confirmation: `GET /api/market/swing/play-brief?playId=SWING:BMNR:1974&expandIntel=1`
+  against prod showed this exact string in the live markdown before the fix; `GET
+  /api/market/nighthawk/horizons?view=swings` showed 90/93 currently-committed Swing rows
+  carrying the sentinel as their raw `regime` field.
+- `npx tsx --experimental-test-module-mocks --test src/features/nighthawk/command-deck/adapters.test.ts`
+  → 158/158 pass.
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief*.test.ts src/features/nighthawk/command-deck/*.test.ts`
+  → 1609/1609 pass.
+- `npx tsc --noEmit` → clean.
+
+## Night Hawk Swings: "Break watch" — the single most safety-critical, always-shown line in the whole brief — never stated how close its cited risk is — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED
+
+### Root cause
+
+`breakTrigger` (`play-brief-narrative.ts`) builds the "Break watch" bullet — explicitly documented
+in this file's own history as reserved, always shown, and bypassing `MAX_BULLETS` specifically
+because "safety-critical break coaching must not starve." It is shared by both
+`tradeManagerNarrativeSection`'s own bullet and `resolveBreakInvalidation` (the headline
+`envelope.invalidation` field `play-brief.ts` exposes), so both call sites carried the same gap.
+
+The level selection (`resolveInvalidationFocalLevel`) already returns a full `FocalLevel` object
+with a `distancePct` field (`(price - spot) / spot * 100`, signed, documented inline as needing "no
+extra spot plumbing" because it's already computed) — but `breakTrigger` only ever read `.price`
+off that object into `support`/`resist`, discarding `.distancePct` before constructing the final
+sentence. Every sibling "key level" line elsewhere in the same brief (GEX call/put wall, gamma
+flip, max pain, the committed structural stop) states `"(X% away)"`; the one line a member is told
+is the single most important thing to watch did not.
+
+Found during this session's own static audit (fixed `watchForSection`'s "Entry trigger" line for
+the identical gap minutes earlier, PR #6641 — re-checking sibling level-rendering call sites for
+the same class of omission surfaced this one, a materially higher-stakes instance of the same
+pattern).
+
+### Evidence
+
+Confirmed via direct reading of `breakTrigger`/`resolveInvalidationFocalLevel`
+(`play-brief-narrative.ts`) that `distancePct` is computed and attached to every `FocalLevel`
+(including the `gamma_flip` fallback entry) but never read past level *selection*. Confirmed via
+`grep` that two existing exact-string tests in `play-brief.test.ts` (fixture: spot 24.5, put wall
+22) asserted the bare-distance string, which the fix's RED proof then changed in lockstep.
+
+### Fix
+
+Added a small `distAwaySuffix(level)` helper that renders `Math.abs(level.distancePct).toFixed(1)`
+as `" (X.X% away)"` (or `""` when no level), applied to all three branches:
+
+1. LONG, primary wall/dark-pool/king candidate (`invalidationLevel`).
+2. SHORT, primary candidate (`invalidationLevel`).
+3. LONG, the gamma-flip fallback (no wall/dark-pool/king below spot at all) — changed the
+   existing `.some()` existence check to `.find()` so the matched `FocalLevel`'s own
+   `distancePct` is available too, rather than just a boolean.
+
+No new spot plumbing, no new computation — the value was already there and already correct
+(verified against the SAME formula every sibling line in this file uses); this just stops
+discarding it before the sentence is built.
+
+### Blast radius
+
+Single function (`breakTrigger`), both its call sites (`tradeManagerNarrativeSection`'s bullet,
+`resolveBreakInvalidation`'s `envelope.invalidation`) pick up the fix automatically since both route
+through it. Two exact-string tests in `play-brief.test.ts` updated to match (fixture: spot 24.5,
+put wall 22 → 10.2% away) — every other existing assertion on this output used a loose `.*` regex
+and needed no change (confirmed: full `play-brief*.test.ts`, 1153/1153 green unchanged).
+
+### Fix rationale
+
+Reused the exact `Math.abs()`/`toFixed(1)` convention this file already uses everywhere else for
+the identical "(X% away)" phrasing, rather than inventing new formatting. Scoped to the three
+branches that already select a real `FocalLevel`/flip candidate — did not touch the separate
+premium-stop fallback branches (`lose premium stop $X`) a few hundred lines below, which construct
+their own, unrelated strings off option mark/execStop, not an underlying structural level, and are
+untouched by this change.
+
+### Tests
+
+- RED: confirmed via `git stash` of only `play-brief-narrative.ts` that three new tests fail
+  against the old code (bare price, no suffix) — verified the exact expected percentages against
+  the brief's own sibling "Put wall 90.00 (-10.0% from spot)" line in the same test's output.
+- GREEN: restored the fix — all three new tests pass; full `play-brief*.test.ts` (1153 tests) and
+  full `npm test` (16701/16704, 3 skipped, 0 fail) green; `npx tsc --noEmit` clean.
+- Added `tradeManagerNarrativeSection: LONG Break watch states how far the structural support level
+  is from spot`, the SHORT sibling, and the LONG gamma-flip-fallback sibling (all 2026-10-24).
+
 ## Largo swing play-brief: duplicate "Vector desk state"/"Vector state" unavailable-source entries — FIXED
 
 > **kind:** `FINDING`
