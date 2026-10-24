@@ -1,4 +1,5 @@
 import type { VectorWalls } from "@/lib/api";
+import { fmtPriceLevel } from "@/lib/fmt-money";
 import type { VectorRegimePosture } from "./vector-regime";
 
 /**
@@ -97,7 +98,18 @@ export function deriveGammaMagnet(input: {
     distancePct,
     pull,
     posture,
-    callout: buildCallout(Math.round(strike), distancePct, pull, posture),
+    // BUG FIX (2026-10-24, Ask Largo fan-out audit, live repro BMNR): this used to pass
+    // `Math.round(strike)` — the level rounded to the nearest WHOLE DOLLAR — into the callout
+    // while `distancePct` (above) stays computed from the un-rounded, cents-precision `strike`.
+    // Whenever the weighted-mean magnet strike wasn't already near-integer (the ordinary case,
+    // since it's a weighted average of call+put wall strikes), the callout's level and its own
+    // quoted percent described two DIFFERENT numbers in one sentence: live repro BMNR, spot
+    // 22.41, callout read "gamma pivot 31 (+36.86%)" — (31-22.41)/22.41 = +38.33%, not +36.86%;
+    // +36.86% is the percent for the REAL strike, 30.67, which is exactly what `GammaMagnet.strike`
+    // (two lines up) and every narrative consumer (`fmtPriceLevel(m.strike)`, play-brief-narrative*
+    // .ts) already render. Pass the SAME cents-precision strike this field itself carries, so the
+    // level named in the sentence is never a different number than the percent beside it.
+    callout: buildCallout(round2(strike), distancePct, pull, posture),
   };
 }
 
@@ -107,17 +119,18 @@ function buildCallout(
   pull: GammaMagnetPull,
   posture: VectorRegimePosture
 ): string {
+  const levelStr = fmtPriceLevel(level);
   // distancePct is already a percent — no *100 here (it was needed while the field was a fraction).
   const dist = `${distancePct >= 0 ? "+" : ""}${distancePct.toFixed(2)}%`;
   if (posture === "long") {
     return pull === "at"
-      ? `gamma magnet ${level} — spot pinned at the dealer-hedging center of mass`
-      : `gamma magnet ${level} (${dist}) — long-gamma hedging pulls spot ${pull}`;
+      ? `gamma magnet ${levelStr} — spot pinned at the dealer-hedging center of mass`
+      : `gamma magnet ${levelStr} (${dist}) — long-gamma hedging pulls spot ${pull}`;
   }
   if (posture === "short") {
     return pull === "at"
-      ? `gamma pivot ${level} — short gamma: a break here accelerates, it won't hold`
-      : `gamma pivot ${level} (${dist}) — short gamma amplifies a move away, won't hold`;
+      ? `gamma pivot ${levelStr} — short gamma: a break here accelerates, it won't hold`
+      : `gamma pivot ${levelStr} (${dist}) — short gamma amplifies a move away, won't hold`;
   }
-  return `gamma center of mass ${level} (${dist})`;
+  return `gamma center of mass ${levelStr} (${dist})`;
 }
