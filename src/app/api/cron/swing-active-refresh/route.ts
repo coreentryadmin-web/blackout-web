@@ -39,7 +39,11 @@ import {
 } from "@/lib/db";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
 import { spotFromLastTradeResult } from "@/lib/swing/underlying-spot-freshness";
-import { fetchOptionsUnifiedSnapshot, reliableMarkFromSnapshot } from "@/lib/providers/options-snapshot";
+import {
+  fetchOptionsUnifiedSnapshot,
+  reliableAskFromSnapshot,
+  reliableMarkFromSnapshot,
+} from "@/lib/providers/options-snapshot";
 import { fetchUwIvRank } from "@/lib/providers/unusual-whales";
 import { todayEt } from "@/lib/et-date";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
@@ -150,9 +154,22 @@ async function loadOptionQuote(
     const mark = typeof resolved === "number" && Number.isFinite(resolved) && resolved > 0 ? resolved : null;
     // Every field passes through as-is — the provider mapper already normalised each to a finite
     // number or null, so nothing here can invent a greek the provider did not send.
+    //
+    // BUG FIX (2026-10-24, Ask Largo x Night Hawk Swings standing mandate — live CAG repro,
+    // positionId 2082): `mark` above is already guarded against a dead-bid backstop-ask artifact
+    // (reliableMarkFromSnapshot), but `ask` below used to pass through RAW from the same snapshot —
+    // so a backstop quote (bid:0, ask:3.90) produced a guarded mid of $0.03 sitting next to an
+    // unguarded $3.90 ask on the SAME ChainContract. live-plays.ts's `contractFromRow` sets
+    // `mid: row.last_mark` (this guarded mark) and `bid`/`ask` straight off this quote, and
+    // adapters.ts's `liquidityFromContract` then computes `(ask - bid) / mid` from that mismatched
+    // pair — `(3.90 - 0) / 0.03 = 13000%`, rendered verbatim on the swing play-brief's Spread line.
+    // `reliableAskFromSnapshot` reuses the exact same divergence guard (never reimplements it) to
+    // null the ask in the identical case the mark guard already rejected, so a backstop ask reads as
+    // an honest one-sided/absent quote (play-brief.ts's existing "spread not priceable" branch)
+    // instead of asserting a false precise spread.
     const quote: SwingLiveQuote = {
       bid: snap.bid,
-      ask: snap.ask,
+      ask: reliableAskFromSnapshot(snap),
       openInterest: snap.openInterest,
       delta: snap.delta,
       gamma: snap.gamma,
