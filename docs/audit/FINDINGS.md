@@ -38,6 +38,45 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-24 — [FINDING, stale-OPEN correction, infra] A third sibling entry from the 2026-10-18 ECS deploy-deadlock incident was also still stale-OPEN
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED — corrected (same underlying fix as the 2026-10-24 batch-53 correction; this restamps the remaining third sibling entry that pass missed) |
+|---|---|
+
+### What was stale
+
+Follow-up to this same DISCOVERY-lane cycle's "ECS web deploy-deadlock incident — Idea 1
+shipped, incident resolved" correction. That pass covered two of the three FINDINGS.md entries
+from this incident chain (the enhancement-ideas "OPEN, not implemented" entry and the ~8h-later
+"STILL UNRESOLVED" escalation) but missed the third, earliest sibling:
+
+`## 2026-10-18 — [FINDING, infra] \`blackout-production-web\` deploy stuck for the FULL 36-min
+budget — service's real desiredCount appears to have drifted back below 5, re-triggering the
+exact deployment-arithmetic deadlock...` — `**Status** | NEEDS OPERATOR ACTION (AWS creds
+required — this sandbox's own creds are invalid)`, severity P1. This is the original first report
+of the exact same incident the other two entries escalate and propose fixes for — same root
+cause (`desiredCount` drifted below the autoscaling floor of 5, deadlocking
+`minimumHealthyPercent=100`/`maximumPercent=120` arithmetic), same resolution (PR #6302's
+pre-flight `desiredCount` restore, now live in `.github/workflows/ecr-push-production.yml` and
+`scripts/deploy/ensure-web-deploy-capacity.mjs`, as already verified in the sibling correction).
+
+### Fix
+
+No code change — documentation correction only, same as the sibling correction this one
+follows. Restamping avoids a future session finding this still-P1-looking entry standalone
+(without having also read the other two, now-corrected siblings) and treating it as a live,
+unaddressed incident.
+
+### Verify
+
+Same verification as the sibling correction already covers: `grep -n
+"ensure-web-deploy-capacity\|desired-count\|desiredCount"
+.github/workflows/ecr-push-production.yml` shows the live fix; every ECR push observed live this
+DISCOVERY-lane session has completed normally with no recurrence of the `running=0/1` frozen
+pattern this entry originally reported.
+
 ## 2026-10-24 — [FINDING, stale-OPEN correction, infra] ECS web deploy-deadlock incident (2026-10-18/19) — Idea 1 shipped, incident resolved, two FINDINGS.md entries were stale-OPEN
 
 > **kind:** `FINDING`
