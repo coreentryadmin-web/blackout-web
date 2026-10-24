@@ -1,6 +1,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { calibratedThesisPillars, computeSwingThesisHealth, thesisHealthUncalibrated } from "./thesis-health.ts";
+import {
+  calibratedThesisPillars,
+  computeSwingThesisHealth,
+  thesisHealthUncalibrated,
+  thesisHealthUnchangedSinceCommit,
+} from "./thesis-health.ts";
 
 describe("computeSwingThesisHealth", () => {
   test("returns null for WATCH rows", () => {
@@ -549,6 +554,72 @@ describe("computeSwingThesisHealth", () => {
       });
       assert.ok(h);
       assert.equal(h!.materialGivebackSinceCommit, false);
+    });
+  });
+
+  // BUG FIX (Ask Largo standing mandate, 2026-10-22): the shared predicate behind the 2026-10-07
+  // play-brief.ts fix — pulled out so play-brief-narrative-coaching.ts and play-brief-intel.ts can
+  // apply the identical "has this actually moved since commit" check their own rungLabel/advisory
+  // renders were missing (live-shape repro: a position whose low health reflects imperfect ENTRY
+  // geometry, never a decline, rendering "Weakening"/"Degraded" + "tighten risk" advice as if a
+  // real deterioration had occurred).
+  describe("thesisHealthUnchangedSinceCommit", () => {
+    test("true when no pillar moved and no giveback occurred (the default commit==current case)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        signalKinds: ["FLOW"],
+        regime: "momentum long",
+        dte: 12,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.moves[0], "All swing pillars unchanged since commit.");
+      assert.equal(thesisHealthUnchangedSinceCommit(h!), true);
+    });
+
+    test("false when moves reports a real pillar fade, even phrased as 'unchanged' never applying", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        manageAction: "STOP_OUT",
+        signalKinds: ["FLOW"],
+        regime: "momentum long",
+        dte: 12,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.notEqual(h!.moves[0], "All swing pillars unchanged since commit.");
+      assert.equal(thesisHealthUnchangedSinceCommit(h!), false);
+    });
+
+    test("false when moves is the fallback sentinel BUT a material giveback has still occurred (round-trip hidden from the 4 non-theta pillars)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        thesisBreak: { level: "intact" },
+        dte: 12,
+        subLane: "STANDARD",
+        pnlPct: 1.4,
+        peak: 9.2,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.moves[0], "All swing pillars unchanged since commit.", "moves itself can't see this kind of giveback");
+      assert.equal(h!.materialGivebackSinceCommit, true);
+      assert.equal(
+        thesisHealthUnchangedSinceCommit(h!),
+        false,
+        "a real giveback happened even though the other 4 pillars never flagged it -- must not read as unchanged",
+      );
     });
   });
 });
