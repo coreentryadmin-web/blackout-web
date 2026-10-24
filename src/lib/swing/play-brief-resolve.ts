@@ -284,7 +284,17 @@ export async function loadOpenTerminalPlay(
     if (byContract.length === 1) row = byContract[0];
     else if (byContract.length > 1) row = byContract[0];
   }
-  if (!row && matches.length === 1) row = matches[0];
+  // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro PANW: `?playId=SWING:PANW:2103`
+  // resolved to the ledger's own PANW:67 row via THIS shortcut). `hints.positionId` already failed
+  // to match any row above (line ~280) — if the caller named a specific position and this ticker's
+  // one remaining open ledger row isn't it, that row is not an honest match, it's the only other
+  // ledger candidate on the same name. Taking it anyway served an unrelated position's entry/mark/
+  // P&L under the requested positionId with the response's own `playId` silently reporting back a
+  // DIFFERENT id than what was asked for. Only take this "lone candidate" guess when no positionId
+  // was requested at all — the exact same fail-closed rule this file's own 2026-10-20
+  // `closedFallback` fix already states: "an explicit, unresolvable positionId must surface as
+  // absence, never as an unrelated substitute."
+  if (!row && matches.length === 1 && hints.positionId == null) row = matches[0];
   if (!row && hints.status && WORKING.has(hints.status.toUpperCase())) {
     const working = matches.filter((r) => WORKING.has(String(r.status ?? "").toUpperCase()));
     if (working.length === 1) row = working[0];
