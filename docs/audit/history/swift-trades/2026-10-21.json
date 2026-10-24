@@ -1,0 +1,29 @@
+{
+  "source": "Discord #-swiftx, SWIFT CALLS list (screenshot, user-provided, 2026-10-22 message), session date 2026-10-21",
+  "session_date": "2026-10-21",
+  "stated_record": "22-0, Total Trades: 22, Today's Win Rate: 100%, Winners: 22, Losers: 0, Total Options Gain: +4362.75%, Average Gain per Options Call: +198.31%",
+  "note": "INCOMPLETE TRANSCRIPTION, flagged not guessed: the screenshot shows a horizontal rule directly above the '22-0' header, consistent with content being cropped ABOVE the visible list — only 21 trade lines are visible below that rule, one short of the stated 'Total Trades: 22'. The missing 22nd trade's ticker/strike/entry/exit/% is UNKNOWN and NOT fabricated here. As with the 2026-10-19 recap, there are NO exact alert/exit timestamps in this data source — only date, contract, entry/exit premium, and %. This channel's own stated record is 22-0 (zero losers) — by construction this data source shows ONLY winners, so it cannot by itself demonstrate a real edge; any comparison must treat it as a one-sided population, not a backtest.",
+  "trades": [
+    { "ticker": "XSP", "side": "put", "expiry": "2026-10-21", "strike": 776, "entry_px": 0.13, "exit_px": 2.80, "pct": 2140.00, "swift_marked": "win" },
+    { "ticker": "SPY", "side": "call", "expiry": "2026-10-21", "strike": 771, "entry_px": 0.68, "exit_px": 3.48, "pct": 414.81, "swift_marked": "win" },
+    { "ticker": "NVDA", "side": "call", "expiry": "2026-10-21", "strike": 220, "entry_px": 0.46, "exit_px": 2.10, "pct": 361.54, "swift_marked": "win" },
+    { "ticker": "SPY", "side": "call", "expiry": "2026-10-21", "strike": 773, "entry_px": 0.46, "exit_px": 1.69, "pct": 271.43, "swift_marked": "win" },
+    { "ticker": "SPY", "side": "call", "expiry": "2026-10-21", "strike": 772, "entry_px": 0.86, "exit_px": 2.54, "pct": 193.64, "swift_marked": "win" },
+    { "ticker": "NVDA", "side": "call", "expiry": "2026-10-23", "strike": 225, "entry_px": 0.65, "exit_px": 1.80, "pct": 179.07, "swift_marked": "win", "note": "NOT 0DTE on the recap date — 2 DTE from 2026-10-21, out of scope for the 0DTE comparison" },
+    { "ticker": "XSP", "side": "call", "expiry": "2026-10-21", "strike": 776, "entry_px": 0.14, "exit_px": 0.37, "pct": 155.17, "swift_marked": "win" },
+    { "ticker": "SPX", "side": "call", "expiry": "2026-10-21", "strike": 7770, "entry_px": 2.48, "exit_px": 5.35, "pct": 116.16, "swift_marked": "win" },
+    { "ticker": "SPX", "side": "put", "expiry": "2026-10-21", "strike": 7760, "entry_px": 0.95, "exit_px": 1.90, "pct": 100.00, "swift_marked": "win" },
+    { "ticker": "SPY", "side": "call", "expiry": "2026-10-23", "strike": 776, "entry_px": 1.34, "exit_px": 2.31, "pct": 71.75, "swift_marked": "win", "note": "NOT 0DTE on the recap date — 2 DTE from 2026-10-21, out of scope for the 0DTE comparison" },
+    { "ticker": "QCOM", "side": "call", "expiry": "2026-10-23", "strike": 180, "entry_px": 1.72, "exit_px": 2.45, "pct": 42.44, "swift_marked": "win", "note": "NOT 0DTE on the recap date — 2 DTE from 2026-10-21, out of scope for the 0DTE comparison" },
+    { "ticker": "SPX", "side": "call", "expiry": "2026-10-21", "strike": 7770, "entry_px": 2.60, "exit_px": 3.65, "pct": 40.38, "swift_marked": "win" },
+    { "ticker": "SPX", "side": "put", "expiry": "2026-10-21", "strike": 7755, "entry_px": 1.89, "exit_px": 2.63, "pct": 39.07, "swift_marked": "win" },
+    { "ticker": "SPY", "side": "call", "expiry": "2026-10-21", "strike": 773, "entry_px": 0.56, "exit_px": 0.76, "pct": 36.04, "swift_marked": "win" },
+    { "ticker": "AMD", "side": "call", "expiry": "2026-10-21", "strike": 555, "entry_px": 1.17, "exit_px": 1.57, "pct": 35.19, "swift_marked": "win" },
+    { "ticker": "SPX", "side": "put", "expiry": "2026-10-21", "strike": 7755, "entry_px": 2.58, "exit_px": 3.45, "pct": 33.98, "swift_marked": "win" },
+    { "ticker": "AMD", "side": "call", "expiry": "2026-10-21", "strike": 560, "entry_px": 0.52, "exit_px": 0.69, "pct": 31.73, "swift_marked": "win" },
+    { "ticker": "SPX", "side": "put", "expiry": "2026-10-21", "strike": 7755, "entry_px": 0.95, "exit_px": 1.23, "pct": 28.95, "swift_marked": "win" },
+    { "ticker": "AMD", "side": "call", "expiry": "2026-10-21", "strike": 555, "entry_px": 1.12, "exit_px": 1.34, "pct": 19.64, "swift_marked": "win" },
+    { "ticker": "AAPL", "side": "call", "expiry": "2026-10-21", "strike": 337.5, "entry_px": 2.71, "exit_px": 3.02, "pct": 11.42, "swift_marked": "win" },
+    { "ticker": "SPY", "side": "call", "expiry": "2026-10-21", "strike": 772, "entry_px": 0.79, "exit_px": 0.86, "pct": 8.86, "swift_marked": "win" }
+  ]
+}
