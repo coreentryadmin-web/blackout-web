@@ -620,6 +620,128 @@ test("legacyCommitCandidatesFromSnapshot: credits REAL Tier-0 provenance when pa
   assert.deepEqual(candidates[0]!.discoveryPaths, ["FLOW", "STRUCTURE"]);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25): discovery.ts's commit loop already computes REAL
+// per-ticker halt state (`haltActive`, readSwingHaltStateForTickers) and REAL grouped-daily presence
+// (`grouped`) for the SAME scan pass, at the SAME call site that invokes this bridge — and correctly
+// wires both into every ORGANIC commit candidate (`halted: haltActive.has(...)`,
+// `dailyBarComplete: tickerHasGroupedDailyBar(grouped, ...)`, discovery.ts:1073/1075). This bridge
+// instead hardcoded `halted: false, dailyBarComplete: true` for EVERY Legacy-promoted candidate,
+// regardless of the real, already-in-scope state — silently satisfying G-S12 (halt) and the
+// dailyBarComplete gate for a Legacy-sourced commit even when the underlying is genuinely halted or
+// missing a daily bar this session. The file's own header is explicit that this bridge must apply
+// "every real-time gate... exactly as it does to an organic candidate" and specifically reasons
+// through NOT weakening G-S6 this way — these two fields were the same failure mode for G-S12 and
+// the daily-bar-completeness check, just unnoticed. Fixed by accepting the same real `haltActive`/
+// `grouped` data the caller already computes (zero new IO) and computing real values instead of
+// fabricating the always-pass ones.
+test("legacyCommitCandidatesFromSnapshot: a REAL halt is not fabricated away as false", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  const candidates = legacyCommitCandidatesFromSnapshot(
+    [{ ...artifact, play: triggeredPlay }],
+    { sessionDate: "2026-08-04", haltActive: new Set(["NVDA"]) },
+  );
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]!.halted, true, "a ticker in the real halt set must be reported halted, not fabricated false");
+});
+
+test("legacyCommitCandidatesFromSnapshot: a missing grouped-daily bar is not fabricated away as complete", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  const candidates = legacyCommitCandidatesFromSnapshot(
+    [{ ...artifact, play: triggeredPlay }],
+    { sessionDate: "2026-08-04", grouped: [{ T: "SOME_OTHER_TICKER" }] },
+  );
+  assert.equal(candidates.length, 1);
+  assert.equal(
+    candidates[0]!.dailyBarComplete,
+    false,
+    "NVDA has no row in the real grouped-daily feed this session — must not be fabricated true",
+  );
+});
+
+test("legacyCommitCandidatesFromSnapshot: a present grouped-daily bar reports complete", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  const candidates = legacyCommitCandidatesFromSnapshot(
+    [{ ...artifact, play: triggeredPlay }],
+    { sessionDate: "2026-08-04", grouped: [{ T: "NVDA" }] },
+  );
+  assert.equal(candidates[0]!.dailyBarComplete, true);
+});
+
+test("legacyCommitCandidatesFromSnapshot: omitting haltActive/grouped degrades to the prior safe defaults (no new requirement on untouched callers)", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  const candidates = legacyCommitCandidatesFromSnapshot(
+    [{ ...artifact, play: triggeredPlay }],
+    { sessionDate: "2026-08-04" },
+  );
+  assert.equal(candidates[0]!.halted, false);
+  assert.equal(candidates[0]!.dailyBarComplete, true);
+});
+
+test("FULL LIFECYCLE: G-S12 halt still blocks a Legacy candidate when the real halt feed reports it active (no silent bypass)", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ ticker: "NVDA", score: 85 }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = {
+    ...artifact.play,
+    setupState: "TRIGGERED" as const,
+    entryStatus: "AT_TRIGGER" as const,
+    contract: { ...artifact.play.contract!, bid: 1.3, ask: 1.4, mid: 1.35 },
+  };
+  const candidates = legacyCommitCandidatesFromSnapshot(
+    [{ ...artifact, play: triggeredPlay }],
+    { sessionDate: "2026-08-04", haltActive: new Set(["NVDA"]) },
+  );
+  assert.equal(candidates[0]!.halted, true);
+
+  // The REAL function from commit.ts — imported, never reimplemented.
+  const plan = computeSwingCommitPlan({
+    candidates,
+    report: null,
+    book: [],
+    budget: DEFAULT_PORTFOLIO_BUDGET,
+    v2: { enforceHalt: true },
+  });
+  assert.equal(plan.committableCount, 0, "a genuinely halted underlying must block, even for a Legacy-sourced candidate");
+  assert.ok(plan.decisions[0]!.blockedBy.some((b) => b.includes("G-S12") || b.includes("halted")));
+});
+
 test("removeCommittedLegacyFromSnapshot: drops a committed ticker so it is not ALSO carried as a WATCH row", () => {
   const artifact = buildLegacySwingArtifacts({
     play: legacyPlay({ ticker: "NVDA" }),
