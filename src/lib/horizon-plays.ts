@@ -149,8 +149,26 @@ export interface HorizonPlay {
   markAsOf?: string | null;
   /** ISO instant capital was committed (live ledger). */
   committedAt?: string;
-  /** Discovery provenance kinds (FLOW / STRUCTURE / CATALYST). */
+  /** Discovery provenance kinds (FLOW / STRUCTURE / CATALYST). LIFETIME-accreted across every session
+   *  day this thesis has ever been observed (accumulation-store.ts's own header) — NOT what the G-S6
+   *  confluence gate evaluates. See `thisScanSignalKinds` below for that. */
   signalKinds?: string[];
+  /**
+   * GAP FOUND (2026-10-25, Ask Largo standing mandate — live SOXX repro): `signalKinds` above is a
+   * LIFETIME union, so a row can display enough kinds to satisfy an archetype's required confluence
+   * count while `commitGateBlockedBy` still carries `gate:G-S6:confluence` — because G-S6
+   * (`evaluateConfluenceGate`/`failingSwingCommitGates`, v2/gates.ts) evaluates ONLY this scan's
+   * Tier-0 discovery paths (`SwingCommitCandidate.discoveryPaths`, built by
+   * `discoveryPathsForConfluence` in discovery.ts), not the lifetime set — and nothing in the payload
+   * previously explained the gap. This carries the SAME scan-scoped kinds G-S6 actually evaluated,
+   * stamped alongside `commitGateBlockedBy` (`stampScanSignalKindsOnPlays`, discovery.ts) — the same
+   * idea as the existing `last_session_signal_kinds`/`sessionSignalKinds` precedent built for the
+   * persistence check (accumulation-store.ts, fixed 2026-07-24), applied to the gate this board's
+   * BUY/WAIT verdict actually reflects. Absent when this scan never built a commit candidate for the
+   * thesis (e.g. the commit seam isn't wired, or the row isn't a WATCH/COMMIT candidate this scan) —
+   * never a fabricated empty set standing in for "not evaluated."
+   */
+  thisScanSignalKinds?: string[];
   /**
    * Whether this play's archetype×sub-lane bucket has graduated the Wilson-LB ladder. Required for
    * COMMIT_NOW (serving.ts) — absent/false keeps a clean entry geometry in WAITING_FOR_ENTRY so the

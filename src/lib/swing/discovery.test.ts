@@ -15,10 +15,13 @@ import {
   discoveryPathsForConfluence,
   reconcileDiscoveryAfterCommit,
   stampCommitGateBlocksOnPlays,
+  stampScanSignalKindsOnPlays,
   type SwingCandidateSeed,
   type SwingDiscoveryDeps,
   type TierZeroSeed,
 } from "./discovery.ts";
+import { requiredSwingConfluenceCount } from "./v2/confluence.ts";
+import type { SwingCommitCandidate } from "./commit.ts";
 import { assembleSwingDossierInput } from "./swing-ingest.ts";
 import { buildLegacySwingArtifacts } from "./legacy-confirm-promote.ts";
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
@@ -608,6 +611,108 @@ test("reconcileDiscoveryAfterCommit: removes opened theses from WATCH and stamps
   assert.equal(out.watchCandidates.length, 0);
   assert.equal(out.playSet.SWING[0]?.status, "COMMIT");
   assert.ok(out.playSet.SWING[0]?.committedAt);
+});
+
+// ── stampScanSignalKindsOnPlays: scan-scoped G-S6 input vs the lifetime-accreted displayed signalKinds ──
+// (live SOXX repro, 2026-10-25) — see discovery.ts's own doc comment on the function for the full gap.
+
+test("stampScanSignalKindsOnPlays: scan-scoped kinds explain a G-S6 confluence block the lifetime count hides (live SOXX shape)", () => {
+  const contract = {
+    expiry: "2026-11-20",
+    strike: 50,
+    call_bid: 1.0,
+    call_ask: 1.1,
+    call_delta: 0.4,
+    call_oi: 500,
+    put_bid: 0.9,
+    put_ask: 1.0,
+    put_delta: -0.4,
+    put_oi: 400,
+  };
+  // The served row: PULLBACK_CONTINUATION requires 3 independent kinds (requiredSwingConfluenceCount),
+  // and the LIFETIME-accreted signalKinds (accumulation-store.ts's own union across every session day
+  // this thesis has ever shown up) carries exactly 3 — CATALYST/FLOW/VECTOR, each seen on a DIFFERENT
+  // earlier session day — which LOOKS like it satisfies confluence.
+  const play = {
+    ticker: "SOXX",
+    direction: "LONG" as const,
+    horizon: "SWING" as const,
+    score: 68,
+    status: "WATCH" as const,
+    contract,
+    scoreFloor: 60,
+    reason: "test",
+    archetype: "PULLBACK_CONTINUATION" as const,
+    signalKinds: ["CATALYST", "FLOW", "VECTOR"],
+    // Stamped by stampCommitGateBlocksOnPlays off the SAME commit decision this scan produced —
+    // the contradiction this fix closes: 3 displayed kinds, yet still G-S6-blocked.
+    commitGateBlockedBy: ["gate:G-S6:confluence"],
+  };
+  // THIS scan's real G-S6 input (SwingCommitCandidate.discoveryPaths, as built in discovery.ts and
+  // evaluated by evaluateConfluenceGate/failingSwingCommitGates): only FLOW corroborated TODAY — the
+  // other two lifetime kinds came from earlier session days, not this one.
+  const candidates: SwingCommitCandidate[] = [
+    {
+      ticker: "SOXX",
+      direction: "LONG",
+      archetype: "PULLBACK_CONTINUATION",
+      subLane: "STANDARD",
+      score: 68,
+      contract: null,
+      sessionDate: "2026-10-24",
+      discoveryPaths: ["FLOW"],
+    },
+  ];
+
+  assert.equal(requiredSwingConfluenceCount("PULLBACK_CONTINUATION"), 3, "standard archetype needs 3 kinds");
+  assert.ok(
+    play.signalKinds.length >= 3,
+    "precondition: the lifetime signalKinds alone looks like it satisfies confluence",
+  );
+
+  const [stamped] = stampScanSignalKindsOnPlays([play], candidates);
+
+  assert.deepEqual(
+    stamped.thisScanSignalKinds,
+    ["FLOW"],
+    "the new field reflects only what THIS scan's discovery paths actually carried",
+  );
+  assert.ok(
+    stamped.thisScanSignalKinds!.length < requiredSwingConfluenceCount("PULLBACK_CONTINUATION"),
+    "the scan-scoped count — not the lifetime count — is what actually explains the live G-S6 block",
+  );
+  // Additive: the existing lifetime-accreted field is untouched.
+  assert.deepEqual(stamped.signalKinds, ["CATALYST", "FLOW", "VECTOR"]);
+  assert.deepEqual(stamped.commitGateBlockedBy, ["gate:G-S6:confluence"]);
+});
+
+test("stampScanSignalKindsOnPlays: a play with no matching commit candidate this scan is left unchanged", () => {
+  const play = {
+    ticker: "AAPL",
+    direction: "LONG" as const,
+    horizon: "SWING" as const,
+    score: 50,
+    status: "WATCH" as const,
+    contract: {
+      expiry: "2026-11-20",
+      strike: 200,
+      call_bid: 2,
+      call_ask: 2.1,
+      call_delta: 0.5,
+      call_oi: 100,
+      put_bid: 1.9,
+      put_ask: 2.0,
+      put_delta: -0.5,
+      put_oi: 90,
+    },
+    scoreFloor: 60,
+    reason: "test",
+    archetype: "BREAKOUT" as const,
+    signalKinds: ["FLOW", "STRUCTURE"],
+  };
+  const [out] = stampScanSignalKindsOnPlays([play], []);
+  assert.equal(out.thisScanSignalKinds, undefined, "no commit candidate this scan ⇒ absent, never fabricated");
+  assert.deepEqual(out.signalKinds, ["FLOW", "STRUCTURE"], "untouched when nothing to stamp");
 });
 
 test("runSwingDiscoveryScan: an EVENT_DRIVEN name gets the 1-session fast-track (resolver + FLOW+CATALYST corroboration)", async () => {
