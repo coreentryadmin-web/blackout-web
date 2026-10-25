@@ -8509,3 +8509,22 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   Deck panel's "Why not committed" reason text matches the real block kind — "vetoed" only for a
   genuine `cortex_veto:*` code, a distinct weaker-sounding sentence for `cortex_net_negative`/
   `cortex_thin_evidence`/`cortex_contested`/`cortex_gex_walls_oppose_unresolved`.
+
+## WATCH LIST — 2026-10-25 (swing envelope.invalidation moot-gate leak fix, fix/swing-invalidation-moot-gate-leak)
+- **What was broken:** the top-level `envelope.invalidation` callout on a WATCH-bucket swing
+  play-brief fell straight through to the raw `play.gateBlocks?.[0]?.reason` whenever the play was
+  `setupState: "FORMING"` with no live resolvable break level — `gateFramingMootReason`
+  (entry-enterability.ts) already exists to reframe exactly this as moot and is wired into the
+  Entry section/Trade manager read, but was never wired into this field. Live-reproduced on PLTR
+  WATCH: `envelope.invalidation` read "Legacy morning-confirm promotion — Swing V2 confluence/
+  Cortex gates were not evaluated on this path." — gate-provenance boilerplate, not a real
+  invalidation level — while the SAME brief's Entry section correctly called the identical gate
+  moot.
+- **What the fix changed:** the raw gate-reason fallback is now suppressed whenever
+  `gateFramingMootReason(play)` is truthy (FORMING, below-floor, or legacy_exempt-only), falling
+  through to `null` instead of fabricating new text.
+- **What to re-check once the market opens:** pull `GET /api/market/swing/play-brief` for a
+  currently-FORMING WATCH candidate with no live GEX/Vector break level resolvable (check
+  `unavailableSources` for GEX/Vector absence) and confirm `envelope.invalidation` reads `null`
+  (omitted from the markdown's "**Invalidation:**" line) rather than a gate-provenance sentence,
+  and that a genuinely TRIGGERED/above-floor WATCH play still shows a real gate reason there.
