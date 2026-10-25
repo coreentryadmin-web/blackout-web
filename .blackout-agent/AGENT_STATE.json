@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-25T09:06:54.101Z",
+  "updated_at": "2026-10-25T09:38:01.393Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "aa312b7b34119adba09c64a286a0e16399e2666b",
+    "last_main_sha": "8b13ead354e6b29b2d5b49bfcc7b3b8faeab0704",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-13T12:30:14.590Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-13T12:30:20.901Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-18T23:20:28.589Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
     {
       "at": "2026-10-18T23:20:35.075Z",
       "type": "context_sync",
@@ -1271,18 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-25T09:37:53.250Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-25T09:37:57.347Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-25T09:38:01.393Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6687,
-      "title": "fix(swing): entry-verdict INVALIDATED/persistence-gap dont_buy branch dropped real gate blocks",
-      "branch": "fix/swing-entry-verdict-invalidated-gate-blocks",
+      "number": 6692,
+      "title": "docs(audit): fold batch-73 — 1 staged finding into FINDINGS.md",
+      "branch": "docs/fold-batch-73",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": true,
+      "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-25T08:57:18Z"
+      "updated_at": "2026-10-25T09:34:37Z"
     },
     {
       "number": 5547,
