@@ -1,3 +1,84 @@
+## WATCH LIST — 2026-10-25 Five-engine sweep + Ask Largo fix batch (7 PRs, all merged) — fixed, deploy pending validation
+
+**What was fixed (7 independent findings, one cycle):**
+
+1. **SPX Slayer closed-market freshness thrash** (PR #6743) — PR #6719's 20s freshness bound on
+   `GET /api/market/spx/play`'s Redis-cache read sites couldn't distinguish a legitimately-old
+   closed-market snapshot (`as_of` intentionally stamped from the desk snapshot's own old timestamp)
+   from a genuinely-stale live-market one, forcing every member poll during closed-market hours into
+   a redundant cross-replica re-evaluation. Added `isSpxPlaySnapshotShareable()`, gated on
+   `session_phase === "closed"`, at the three affected call sites in `spx-service.ts`. PR #6719's own
+   live-market fix is unchanged.
+2. **0DTE tranche-fraction rounding** (PR #6744) — `entry_context.executable.tranches[].fraction` on
+   a fully-fired 3-leg trim_scale play summed to 0.99 instead of 1.00 after independent per-leaf
+   rounding (the official `managed_pnl_pct` headline was always correct; only the displayed audit
+   trail drifted). Added `reconcileTrancheFractions()` to `round-floats.ts` (same pattern as the
+   existing `reconcileStrikeTotal`), wired at both `record/route.ts` and `board/route.ts` (the second
+   site found via blast-radius tracing, not in the original finding).
+3. **Swings G-S6 confluence disclosure gap** (PR #6745) — a row's displayed `signalKinds` is a
+   lifetime-accreted union, so it could show enough kinds to look confluence-satisfying while
+   `commitGateBlockedBy` still carried `gate:G-S6:confluence`, with nothing explaining the
+   contradiction. Added `thisScanSignalKinds` (additive), stamped from the exact scan-scoped
+   `discoveryPaths` G-S6 actually evaluated.
+4. **Swing manage-sync Q37 stale snapshot** (PR #6746) — when Q37's execution-time re-arbitration
+   (`executionVerdictForGating`) overrode the roll plan's original verdict (e.g. ROLL → forced
+   CLOSE), the persisted evidence snapshot still documented the stale pre-arbitration verdict, not
+   what was actually acted on. Added `snapshotWithVerdict()` to overlay the real executed verdict
+   onto the snapshot before persisting.
+5. **Swing earnings-peer-lens expiry contradiction** (PR #6747, live repro OUST 31C, confirmed
+   independently reproducing live on MRNA 185C during this cycle's audit) — "Earnings peer lens"
+   unconditionally said "size down or hedge vol" for any print within 14 days, even when the brief's
+   OWN "Trade manager read" section already established the contract expires before the print (no
+   real gap exposure). Added a guard at `meridianPeerSection` reusing the existing
+   `ownContractExpiry()` resolution; same-day-expiry edge case deliberately left unhandled (no
+   reliable report-time signal in the data this section reads).
+6. **Swing zero-bid executable disclosure** (PR #6748, live repro EXPE) — a confirmed `$0.00` bid
+   (a real two-sided quote, not a missing one) collapsed to the same `null` shape as "no quote at
+   all," so EXPE got WEAKER risk disclosure (no Exec P&L line, no "no real cushion" caveat, no
+   "stop already breached" bullet) than a comparable nonzero-low-bid position. Added
+   `bidConfirmedZero`/`execBidZero` threaded from `executableFill()` through the swing adapter to all
+   three narrative/rail consumers, routing a confirmed zero bid into the existing strongest-severity
+   language.
+7. **Swing cross-engine overlap mirror-direction gap** (PR #6750, live repro SNDQ 2120/2077,
+   independently reproducing on LQDA 2122/2033/1995 during this cycle's audit) —
+   `formatOverlapPosition()` only applied the "cross-engine" label when the REVIEWED play was
+   swing-native and the sibling was Banger-origin; the mirror direction (reviewed=Banger-origin,
+   sibling=native) fell through an earlier unconditional return and silently rendered as a
+   same-engine-looking duplicate. Added the missing direction as a dedicated branch before the
+   general early return.
+
+All 7 independently code-reviewed (full diff read, not just agent self-report), CI-verified green,
+and post-merge validated in isolated worktrees against the real merged SHA (tsc clean + full scoped
+test suites, no regressions) before merging. Staged findings:
+`docs/audit/findings-staging/2026-10-25-spx-play-closed-market-freshness-bound.md`,
+`2026-10-25-zerodte-tranche-fraction-reconciliation.md`,
+`2026-10-25-swing-gs6-confluence-signalkinds-mismatch.md`,
+`2026-10-25-swing-manage-q37-stale-snapshot.md`,
+`2026-10-25-swing-meridian-peer-earnings-expiry-guard.md`,
+`2026-10-25-swing-zero-bid-executable-disclosure.md`,
+`2026-10-25-swing-overlap-cross-engine-mirror-direction.md`.
+
+**Specific things to check at next RTH open:**
+- SPX Slayer: during closed-market hours, confirm `/api/market/spx/play` no longer forces a fresh
+  cross-replica re-evaluation on every poll (its `as_of` should track the desk snapshot's own
+  timestamp, not thrash); confirm the live-market freshness bound (PR #6719) still catches a
+  genuinely stale live snapshot.
+- 0DTE: pull a graded, fully-fired trim_scale play from `/api/market/zerodte/record` and
+  `/api/market/zerodte/board` and confirm `executable.tranches[].fraction`/`timeline_tranches[].fraction`
+  sum to exactly 1.00.
+- Swings board: find a live G-S6-confluence-blocked row and confirm `thisScanSignalKinds` is present
+  and reflects a genuinely smaller set than the lifetime `signalKinds`.
+- Swings manage-sync: watch for a live Q37 override (roll plan forced to CLOSE) and confirm the
+  persisted snapshot's `event_json.rung`/`thesis_state` match the executed verdict, not the original
+  plan.
+- Largo swing play-brief: re-check MRNA and OUST (or any contract expiring before its own earnings
+  print) — "Earnings peer lens" should now say "no earnings-gap exposure," matching "Trade manager
+  read," not the contradictory sizing instruction.
+- Largo swing play-brief: re-check EXPE (or any live `$0.00`-bid position) — the Position section's
+  Exec P&L line should read `-100.0%` with the total-loss caveat, not be silently absent.
+- Largo swing play-brief: re-check SNDQ (2120 vs 2077) and LQDA (2122 vs 2033/1995) — Book context
+  should now say "separate, cross-engine position #N" for the native sibling, not the plain label.
+
 ## ⚠️ ACTION NEEDED — 2026-10-19 Night Hawk Legacy edition is LIVE recap_only with 20 wasted candidates — awaiting operator/admin go-ahead to remediate (2026-10-17)
 
 **This is a live, time-sensitive P1 that needs a human (or a future session with explicit
