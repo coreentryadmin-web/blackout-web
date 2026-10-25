@@ -38,6 +38,18 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-25 — [FINDING, stale-OPEN correction, Commerce/billing] "Post-Whop-pay tier lag — no desk 'processing payment' UX" (2026-09-05, CLQ-041) is already fixed on `main` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **The stale entry** | `docs/audit/FINDINGS.md`'s 2026-09-05 entry (CLQ-041), *"Post-Whop-pay tier lag — no desk 'processing payment' UX"*, is still marked **OPEN — PARTIALLY PROVEN; live synthetic upgrade trace not run this session**. It names the exact gap: *"`whop/route.ts` evicts tier via `publishTierChanged` on webhook; no dedicated UI banner for paid-but-not-yet-tier state in layout code reviewed."* Recommended fix: *"Measure upgrade→desk-access p95; add interim 'activating membership' state if gap > few seconds."* That interim state has existed on `main` for a while. |
+| **Verification** | `src/components/MembershipActivatingBanner.tsx` exists, with a header comment that cites this exact finding ID: *"Post-checkout activation UX (CLQ-041): when a member returns signed-in but tier is still free, show an activating banner and poll `/api/membership/sync` until access lands or we time out."` `git log --oneline --diff-filter=A -- src/components/MembershipActivatingBanner.tsx` → `85627d9c6 feat(commerce): post-checkout membership activating banner (CLQ-041) (#3971)` — the commit message cites CLQ-041 by name, confirming this is the intentional fix, not a coincidental component. Confirmed end-to-end wired, not just defined: `src/components/providers/AppShellProviders.tsx` imports and renders `<MembershipActivatingBanner />` unconditionally in the app shell. The component's own logic (`src/lib/membership-activating.ts`'s `shouldPollMembershipActivation`/`tierFromMembershipSyncBody`/`isPaidTier`) gates visibility on a remembered checkout plan + a still-free tier, and polls `POST /api/membership/sync` (with a `Retry-After`-aware backoff on 429) until the synced tier is paid, then calls `router.refresh()` — exactly the recommended fix's shape ("interim 'activating membership' state... poll until access lands"). |
+| **Why this was missed** | The fix (#3971) landed after the 2026-09-05 finding was written and nobody revisited the OPEN status once it shipped — same "drifts out of sync with reality after the underlying fix ships" pattern as this week's ECS-deploy-deadlock, Thermal/shared-cache, mobile-sticky-CTA, Meridian estimate-revision-timeline, and CHARM-depth-validator corrections. |
+| **What was NOT touched** | No code change — this is a documentation-only correction restamping the stale status. |
+| **Status** | FIXED — the UX gap was already closed by #3971; this entry only corrects the stale OPEN status left over from before that fix landed. |
+
 ## 2026-10-25 — [FINDING, P1 Night Hawk Legacy] `repairStaleBackfillContracts` shipped as an admin-only, manually-triggered action with no automatic caller — a dead options contract stayed live in the member-facing edition for a full day — FIXED
 
 > **kind:** `FINDING`
