@@ -8425,3 +8425,18 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   duplicate-ticker cases) now spuriously 404s. The fix is scoped to the single-candidate path only
   and was unit-tested against the multi-candidate exact-match path, but a live RTH check against a
   real duplicate-ticker position is the strongest confirmation.
+
+## WATCH LIST — 2026-10-25 (`software` theme-map gap, FTNT/OKTA/S/RBRK — fix/swing-software-theme-cybersecurity-gap)
+- **What was broken:** live PANW play-brief's "Book context" section reported only "5 same-direction
+  positions in theme 'software'" (ZS×2, SNOW, NET, CRWD) while the real committed book also held
+  FTNT×2/OKTA×2/S/RBRK LONG at the same time — 4 real cybersecurity/software names, 6 more
+  positions, missing from `sector-map.ts`'s `software` bucket, so each resolved to its own isolated
+  theme cluster and never counted toward the concentration disclosure.
+- **What the fix changed:** added FTNT, OKTA, S, RBRK to the existing `software` bucket (verified
+  via Polygon reference: Fortinet, Okta, SentinelOne, Rubrik). No scoring/gate logic changed — this
+  only affects the `resolveTheme`/`sameThesis` classification that feeds `checkPortfolioOverlap`'s
+  Book-context concentration narrative.
+- **What to re-check once RTH opens:** pull a live PANW (or CRWD/ZS/SNOW/NET/FTNT/OKTA/S/RBRK, if
+  still concurrently open) play-brief's "Book context" section and confirm the same-direction count
+  now includes all 8 names instead of only 4 of them. Also spot-check that the count still excludes
+  genuinely different-theme holdings (no false merge into an unrelated cluster).

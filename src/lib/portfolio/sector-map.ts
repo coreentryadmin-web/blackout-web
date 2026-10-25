@@ -65,7 +65,21 @@ const SECTORS: Record<string, string[]> = {
   // above — AMZN already has a peer bucket here, so its leveraged wrapper joins it directly.
   megatech: ["AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "AMZU"],
   // PLTU is a leveraged single-stock ETF tracking PLTR itself — same bet, different wrapper.
-  software: ["PLTR", "PLTU", "CRM", "NOW", "SNOW", "ADBE", "ORCL", "CRWD", "NET", "DDOG", "PANW", "MDB", "ZS", "SHOP"],
+  // FTNT/OKTA/S/RBRK added 2026-10-25 (Ask Largo standing mandate, live finding, same gap shape as
+  // the ALAB/CRDO/KLAC, CRWV/NBIS and quantum-computing extensions above). A real committed book
+  // held PANW LONG alongside CRWD/ZS(x2)/SNOW/NET already in this bucket *and* FTNT(x2)/OKTA(x2)/
+  // S/RBRK LONG in the SAME batch — all four unmapped, so PANW's live Book-context section reported
+  // only "5 same-direction positions in theme 'software'" when the real cybersecurity/software
+  // concentration in the book was 9 positions across 8 names, roughly double what was disclosed.
+  // FTNT (Fortinet), OKTA (Okta), S (SentinelOne) and RBRK (Rubrik) are confirmed via Polygon
+  // reference (`/v3/reference/tickers/<T>`) — OKTA/S/RBRK share SIC 7372 "SERVICES-PREPACKAGED
+  // SOFTWARE" with no distinction from the sector's existing members, and FTNT (SIC 3577) is the
+  // cybersecurity-hardware/firewall peer the existing CRWD/ZS/PANW/NET cluster already represents
+  // the software side of — not guessed from the symbol alone.
+  software: [
+    "PLTR", "PLTU", "CRM", "NOW", "SNOW", "ADBE", "ORCL", "CRWD", "NET", "DDOG", "PANW", "MDB", "ZS", "SHOP",
+    "FTNT", "OKTA", "S", "RBRK",
+  ],
   // Added 2026-10-20 (Ask Largo standing mandate, Night Hawk Swings lane, live finding): a real
   // committed book held TSLA and TSLL ("Direxion Daily TSLA Bull 2X ETF", confirmed via Polygon
   // reference, not guessed from the symbol) concurrently LONG — the exact same single-stock
