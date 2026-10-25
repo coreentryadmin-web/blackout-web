@@ -38,6 +38,296 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Meridian — `bestPlayHint` still says "Wait for the print" after the print has landed — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Surface** | `src/lib/meridian/meridian-earnings-report-core.ts` (`bestPlayHint`, `buildMeridianEarningsReport`) |
+| **Severity** | P2 (member-facing: directly contradicts the report's own headline on the same panel) |
+
+### Root cause
+
+This exact file already fixed the identical defect class for `headline` and `confidence` (measured
+live 2026-08-21: three names that reported that morning were still headlined "Imminent print —
+stand aside for reaction" six hours after the numbers were out) by gating both on a `printed`
+flag — `input.post_print != null && input.post_print.lean !== "unknown"`. The surrounding comment
+is explicit about the scope of that fix: `printed` is "applied only where the forward-looking CLAIM
+is made: the headline and the confidence hedge" — but `best_play` makes exactly that same
+forward-looking claim ("Wait for the print — gap risk dominates") and was never included.
+
+`bestPlayHint` checked `input.days_until != null && input.days_until <= 1` directly, with no
+`printed` gate at all, so on the day a name reports, `best_play` kept recommending "Wait for the
+print" and "Size down or skip directional bets into the release" for the rest of the session —
+even after `headline` correctly switched to "printed — beat; the reaction is the read now".
+
+### Evidence
+
+Live repro (`node --import tsx`, BEKE, `days_until: 0`, `post_print: { lean: "beat", ... }`):
+
+```
+headline:  "BEKE printed — beat; the reaction is the read now"
+best_play: {
+  "headline": "Wait for the print — gap risk dominates",
+  "structure": "Reaction trade only after guidance and initial move settle",
+  "risk": "Size down or skip directional bets into the release"
+}
+```
+A member reading this report's "Best Play" box is told to wait for and size down into a print the
+headline two lines above already says has happened.
+
+### Blast radius
+
+Single call site (`buildMeridianEarningsReport`'s own `best_play` field) — every consumer of
+`MeridianEarningsReport.best_play` for a ticker that printed earnings earlier the same session
+(Meridian's Report tab) showed this contradiction for the rest of the trading day, until the
+`days_until` rollover at midnight.
+
+### Fix rationale
+
+Threaded the already-computed `printed` boolean into `bestPlayHint` and added a dedicated
+printed-branch mirroring `headline`'s own beat/miss/mixed framing (reaction-trade phrasing instead
+of "wait for"/"into earnings"), checked *before* the day-distance branch. `risk` text is reused
+verbatim from the matching pre-print branch where the framing still applies; only `headline`/
+`structure` change to drop the forward-looking claim. The `verdict`-branch test
+("the verdict branch is untouched — an inline print does not get re-routed") is unaffected — this
+fix touches only `best_play`, never `verdict`.
+
+### Tests
+
+Added two cases to `meridian-earnings-report-core.test.ts`, reusing the same `PRINTED_TODAY`
+fixture the existing headline/confidence tests use: one asserting `best_play.headline`/`.structure`
+never reads as pre-print once printed, one asserting the wait-for-print hint is preserved for an
+actually-upcoming print. RED→GREEN confirmed: reverting only the source fix (keeping the new tests)
+fails 1/12 exactly as expected; reapplying passes 12/12.
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/meridian/meridian-earnings-report-core.test.ts` — 12/12 pass
+- `npx tsc --noEmit` — clean
+
+## 2026-10-25 — [FINDING, P3 Night Hawk Swings / Ask Largo] `magnetCoaching`'s gamma-magnet distance trusts the upstream Vector snapshot verbatim instead of recomputing from the brief's own canonical spot, so it can disagree with every other level in the same brief — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | Swing play-brief "Trade manager read" section — `src/lib/swing/play-brief-narrative-coaching.ts`'s `magnetCoaching()` |
+| **Found by** | Ask Largo × Night Hawk Swings standing ownership mandate — fresh envelope-completeness dig against a live WATCH-bucket brief, 2026-10-25 |
+
+### Symptom
+
+Live repro: `GET /api/market/swing/play-brief?playId=SWING:MSTR&ticker=MSTR&status=WATCH` on
+2026-10-25 (spot **146.54**, gamma magnet strike **161.56**). The "Trade manager read" section's
+magnet bullet read:
+
+```
+Gamma magnet 161.56 (+10.3% from spot) — pull up toward this node.
+```
+
+but the SAME brief's `structureLadder.rungs` (feeding the member-facing ladder widget) reported the
+identical magnet level at:
+
+```
+"kind": "magnet", "price": 161.56, "distancePct": 10.2
+```
+
+`(161.56 - 146.54) / 146.54 * 100 = 10.2498...%`, which rounds to **10.2%** — the ladder's number is
+correct; the prose bullet's 10.3% is not. Two sections of the same envelope, reading the same spot
+and the same magnet level, disagreed on a number that should be identical by construction.
+
+### Root cause
+
+`collectFocalLevels` (`play-brief-narrative.ts:173-181`) recomputes the magnet's distance fresh via
+its own `distPct(spot, magnet)` helper — the SAME canonical `spot` the rest of the brief uses — and
+that recomputed value is what feeds both the "Why this setup"-style focal-level narration and
+`play-brief-ladder.ts`'s `structureLadder` widget. That file's own header comment states the
+intended invariant directly: the ladder widget "can never disagree with 'Trade manager read' about
+where a wall or the gamma flip sits" (lines 10-13).
+
+`magnetCoaching` (`play-brief-narrative-coaching.ts:330-361`) — the function that actually produces
+the "Trade manager read" bullet quoted above — is a separate, duplicate implementation (already
+flagged as such in a 2026-09-21-dated comment at `play-brief-narrative.ts:498-504`, which notes the
+two are "kept in sync" on their existence/staleness gating). That dedup logic was kept in sync; the
+*number* was not. `magnetCoaching` accepted a `spot` parameter but never referenced it — it read
+`m.distancePct` straight off the raw Vector snapshot (`vec.magnet.distancePct`), which is computed
+**upstream, by Vector's own engine, against Vector's own spot snapshot at write time**. That snapshot
+spot can differ fractionally from this brief's own resolved `spot` (146.54 here), so the two
+distance computations — one spot-anchored, one not — can and did diverge after rounding.
+
+### Fix
+
+`magnetCoaching` now computes `distancePct = ((m.strike - spot) / spot) * 100` from the function's
+own `spot` parameter — the same formula `collectFocalLevels` already uses — and uses that recomputed
+value both for the displayed `fmtPct(...)` text and for the `near` (<1.2%, "sitting on the magnet")
+threshold check. `m.distancePct` itself is no longer read for either purpose; only `m.strike`,
+`m.pull`, and `m.callout` are still taken from the upstream snapshot.
+
+### Blast radius
+
+One call site (`tradeManagerNarrativeSection`'s coaching-bullet collection, via
+`collectCoachingBullets`) — the only place `magnetCoaching` is wired in. The `near` threshold is also
+corrected by the same fix: a stale upstream `distancePct` that read "far" while the real spot/strike
+distance is inside the near band (or vice versa) previously could pick the wrong pin-gravity framing
+entirely (generic "pivot node" text vs. "you're sitting on the magnet" chop warning) — not just a
+cosmetic percentage mismatch.
+
+### Tests
+
+Added two regression tests to `play-brief-narrative-coaching.test.ts`:
+- Live-repro shape: `strike=161.56, spot=146.54`, upstream `vec.magnet.distancePct` deliberately set
+  to a wrong value (10.8) — asserts the bullet shows the spot/strike-derived `+10.2%`, not the
+  upstream snapshot's own 10.8%.
+- Threshold-direction repro: upstream says "5% away" (would skip the near-magnet framing) while the
+  real `strike=101`/`spot=100` distance is 1% (inside the <1.2% near band) — asserts the bullet still
+  picks "You're sitting on the magnet", proving the `near` check also uses the recomputed value.
+
+Updated one pre-existing test (`"uses ctx.readMs..."`) whose fixture had `strike=100=spot` while
+claiming `distancePct: 3` — an artifact of the old implementation never cross-checking strike against
+spot; changed to `strike=103` so the fixture is self-consistent under the new spot-anchored
+computation, preserving the test's original (unrelated) staleness-anchor intent.
+
+RED→GREEN reasoning (not a literal revert, to avoid mutating the shared working tree mid-fix): without
+the fix, the first new test's bullet would read `+10.8%` (from the trusted-verbatim upstream value),
+failing the `+10.2%` assertion; the second new test's `near` check would evaluate
+`Math.abs(5) < 1.2 === false`, routing to the long-posture "Dealer hedging center of mass" framing
+instead of the expected near-magnet text, failing that assertion too.
+
+Full suite after the fix: `play-brief-narrative-coaching.test.ts` 191/191 pass (1 pre-existing test
+fixture updated as above); all `src/lib/swing/play-brief*.test.ts` together 1167/1167 pass;
+`npx tsc --noEmit` clean; full repo suite (Node 20) 16870/16870 pass, 3 skipped, 0 fail.
+
+## 2026-10-25 — [FINDING, P2 shared formatting] `fmtPremium` overflows at K→M and M→B unit boundaries — FIXED
+
+> **kind:** `FINDING`
+
+**Root cause.** `fmtPremium` (`src/lib/fmt-money.ts`) is the canonical "compact signed dollar
+magnitude" formatter — its own header calls it the single source of truth that replaced ~15
+duplicated copies across the codebase precisely because divergent copies had rendered different
+strings for the same dollar figure before. It picks a unit bucket by comparing the RAW magnitude
+against `1_000_000_000` / `1_000_000` / `1_000`, then separately rounds the quotient to 1 decimal
+(millions/billions) or 0/1 decimals (thousands) for display. A value whose raw magnitude sits just
+under a bucket threshold but whose ROUNDED quotient reaches `1000` of the current unit was never
+promoted to the next unit — it printed the overflowed four-digit label instead:
+
+```
+fmtPremium(999_950_000) → "$1000.0M"   (should be "$1.0B")
+fmtPremium(999_999_999) → "$1000.0M"   (should be "$1.0B")
+fmtPremium(999_700)     → "$1000K"     (should be "$1.0M")
+```
+
+This is the exact same bug shape — compare-then-round-independently instead of rounding first and
+checking whether the ROUNDED value crossed the next unit boundary — as the Thermal
+`fmtCompactHeatMoney` defect fixed earlier today (PR #6686, `thermal-discord-card.ts` +
+`thermal-compact-matrix.ts`). `fmt-money.ts`'s own `fmtPremium` is a third, independent
+implementation of the identical "compact money" concept that was never audited for the same class
+of boundary bug when the first two were fixed.
+
+**Evidence.**
+```js
+> fmtPremium(999_950_000)
+'$1000.0M'
+> fmtPremium(999_999_999)
+'$1000.0M'
+> fmtPremium(-999_960_000)
+'-$1000.0M'
+> fmtPremium(999_700)
+'$1000K'
+```
+No existing test in `src/lib/fmt-money.test.ts` exercised a value within 0.05% of a unit boundary —
+every existing fixture (`38_200_000`, `22_100`, `456_700`, etc.) rounds cleanly within its bucket.
+
+**Blast radius.** `fmtPremium` is imported directly or via `src/lib/api.ts`'s re-export by ~45
+call sites across the product: every Helix flow/premium panel (`FlowFeed`, `NetPremiumLeaderboard`,
+`CumulativeNetPremiumChart`, `DarkPoolPanel`, `ExecutionAnalysisPanel`, `SectorFlowPanel`,
+`StrikeVolumeProfile`, `VelocityRadar`, `HelixSessionPulseBar`, `HelixHotTickersRail`,
+`NightHawkFlowPanel`, and more), Vector (`VectorHelixRail`, `vector-flow-markers.ts`,
+`vector-pulse.ts`, `vector-pick-evidence.ts`), Thermal's own `thermal-regime-strip.ts`, SPX
+(`SpxSniperHeader`, `spx-pulse.ts`), Nighthawk (`format.ts`, `grounding.ts`), BIE
+(`flow-brief.ts`, `spx-desk-brief.ts`, `spx-desk-intel.ts`, `vector-desk-intel.ts`), Meridian
+(`meridian-cross-product-for-earnings-core.ts`, `meridian-event-brief.ts`,
+`meridian-vector-for-earnings-core.ts`), Largo (`flow-strike-stacks.ts`, `mini-panel.ts`,
+`slash-prompts.ts`), swing's own play-brief files, and `zerodte/intel.ts`. Any single large option
+flow print or net-GEX figure landing in the `[999_950_000, 1_000_000_000)` or `[999_500, 1_000_000)`
+window on any of these surfaces would have shown an overflowed four-digit label.
+
+**Fix.** Mirrors the already-merged `fmtCompactHeatMoney` fix exactly: round the quotient FIRST,
+then check whether the rounded value reached `1000` of the current unit before formatting —
+promoting to the next unit when it does. Applied at both the millions→billions and
+thousands→millions boundaries (the two places `fmtPremium` has a "next unit up" to promote into).
+Left `fmtOptionUsd`/`fmtPriceLevel`/`fmtPct` in the same file untouched — they format absolute
+prices/percentages, not magnitude-bucketed compact labels, so they have no unit-boundary concept to
+share this bug.
+
+**Test.** `src/lib/fmt-money.test.ts` — new case asserting `999_950_000 → "$1.0B"`,
+`999_999_999 → "$1.0B"`, `-999_960_000 → "-$1.0B"`, `999_700 → "$1.0M"`, `-999_700 → "-$1.0M"`.
+RED (pre-fix, reverted source only) → 19/20 pass, the new case failing exactly as expected; GREEN
+(post-fix) → 20/20 pass. Also ran the full consuming test files
+(`src/lib/fmt-premium.test.ts` — exercises the same function via `api.ts`'s re-export,
+`src/lib/swing/play-brief-intel.test.ts`, `src/lib/bie/vector-desk-intel.test.ts`,
+`src/lib/gex-heatmap-display.test.ts`) — 377/377 pass, no regression. `tsc --noEmit` clean on the
+touched file.
+
+| **Status** | FIXED |
+
+## HELIX Discord — `formatAdvContextLine`'s ADV label overflows at the K→M unit boundary — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Surface** | `src/lib/discord-context-enrichment.ts` (`formatAdvContextLine`) |
+| **Severity** | P3 (member-facing cosmetic: Discord dark-pool block alerts' "Size: N% of 20D ~ADV" context line) |
+
+### Root cause
+
+Same bug shape as the Thermal `fmtCompactHeatMoney` fix (#6686, `thermal-discord-card.ts` +
+`thermal-compact-matrix.ts`) and the `fmt-money.ts` `fmtPremium` fix (#6690), found during the same
+DISCOVERY-lane sweep cycle while checking non-owned-lane money/magnitude formatters for siblings of
+that exact defect class: a unit bucket is chosen by comparing the RAW magnitude against
+`1_000_000`, then the K-bucket quotient is rounded independently — so a value whose raw `adv` sits
+just under 1,000,000 but whose rounded K-quotient reaches `1000` was never promoted to the M bucket:
+
+```js
+formatAdvContextLine(500_000, 999_950) → "Size: 50.0% of 20D ~1000K ADV"   // should be "~1.0M ADV"
+```
+
+### Evidence
+
+Live repro (`node --import tsx`, pre-fix):
+```
+formatAdvContextLine(500_000, 999_950) → 'Size: 50.0% of 20D ~1000K ADV'
+formatAdvContextLine(500_000, 999_999) → 'Size: 50.0% of 20D ~1000K ADV'
+formatAdvContextLine(500_000, 1_000_000) → 'Size: 50.0% of 20D ~1.0M ADV'   (already correct — exactly at the raw threshold)
+```
+
+### Blast radius
+
+`formatAdvContextLine` is called from `helix-discord-notify.ts` and `darkpool-discord-notify.ts` —
+the ADV context line shown on HELIX dark-pool block alerts posted to Discord. A ticker whose 20D
+average daily volume lands in `[999_500, 1_000_000)` shares would show the overflowed `~1000K ADV`
+label instead of `~1.0M ADV`.
+
+### Fix rationale
+
+Identical pattern to the three sibling fixes already merged/open this cycle: extracted the bucket
+logic into `formatAdvShareLabel(adv)`, round the K-quotient first, then check whether it reached
+`1000` before formatting — promoting to the M bucket when it does. The `>= 1_000_000` and
+`>= 1_000` raw-magnitude gates are otherwise unchanged; only the K-bucket's own rounded value is now
+checked for overflow before being rendered.
+
+### Tests
+
+Added a regression case to `discord-context-enrichment.test.ts` covering the boundary from both
+sides (`999_950`, `999_999`, `1_000_000` → all `~1.0M ADV`; `999_499` → `~999K ADV`, confirming the
+fix doesn't over-promote). RED→GREEN confirmed: reverting only the source fix (keeping the new
+test) fails 1/5 exactly as expected; reapplying passes 5/5.
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/discord-context-enrichment.test.ts` — 5/5 pass
+- `npx tsx --experimental-test-module-mocks --test src/lib/darkpool-discord-notify.test.ts` — 1/1 pass (consumer, unaffected)
+- `npx tsc --noEmit` — clean
+
 ## Night Hawk Swings — `swingEntryVerdict`'s INVALIDATED/persistence-gap dont_buy branch dropped real gate blocks — FIXED
 
 > **kind:** `FINDING`
