@@ -38,6 +38,242 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo swing play-brief: two more stale/absence-disclosure gaps (mark-unknown reason text, structural-node market-closed caveat) — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED (PR #6731, merged to `main`) |
+
+Two independent findings from the same 12-ticker parallel Largo play-brief audit (SNOW, RDW),
+both adversarially verified unanimously (3/3 skeptics, 0 refuted each), bundled into one PR per
+the established precedent (same "disclosure consistency" bug class as PR #6726, different files).
+
+### Finding 1 (SNOW): `collectOptionMarkStalenessAbsence` mislabels a genuinely-unknown mark as a real-but-untimestamped one
+
+**Root cause:** `collectOptionMarkStalenessAbsence()` (`src/lib/swing/play-brief-absence.ts`)
+returned the reason `"sync quote without freshness timestamp"` unconditionally whenever
+`play.markIsSync === true` — wording that asserts a real quote VALUE exists, just untimestamped.
+That's true for the ordinary banger/native-lane race this branch was built for, but not when
+`optionMarkGenuinelyUnknown(play)` also holds — the true entry-fallback case (no live tick has
+ever landed, `play.pnlPct` itself is `null`) that `pnlSection`'s own Mark line and
+`dataFreshnessSection` already render as "Mark: unknown … no live price yet" / "P&L is not yet
+known."
+
+**Evidence:** SWING:SNOW:2105 — `unavailableSources`/confidence/footer all said "sync quote
+without freshness timestamp" (implying a real, just-unstamped price) while the SAME brief's
+Position and Data-freshness sections correctly said no price exists at all.
+
+**Fix:** added a more specific branch, checked first, returning an honest
+`"no live price yet — sync quote, no real quote value has ever landed"` reason (with its own
+`what_is_missing`) when `optionMarkGenuinelyUnknown(play)` holds; falls through to the existing
+generic reason otherwise.
+
+**Regression caught before it shipped:** `dataHonestyCoaching()`
+(`src/lib/swing/play-brief-narrative-coaching.ts`) pattern-matched the OLD single reason string
+exactly (`markAbsence.reason === "sync quote without freshness timestamp"`). Since
+`optionMarkGenuinelyUnknown(play)` reduces to exactly `play.pnlPct == null` inside this function's
+`markIsSync === true` branch (every other input is already pinned true at that point), the new
+reason string would have fallen to that `if`'s `else` branch instead — which strips a
+`"stale — last synced "` prefix (a no-op on the new text) and would have rendered the garbled
+`"option mark from **no live price yet — sync quote, no real quote value has ever landed** — not
+live-synced"`. Fixed in the same PR: the branch now matches on the one reason shape that actually
+needs stamp-extraction (`reason.startsWith("stale — last synced ")`) and routes everything else
+through the existing `pnlPct != null` ternary, which already independently derives the identical
+real-vs-unknown distinction and needed no change.
+
+### Finding 2 (RDW): `watchForSection`'s "Structural support/resistance node" line never discloses a fresh-compute-but-market-closed read
+
+**Root cause:** `watchForSection()`'s "Structural support node"/"Structural resistance node" line
+(`src/lib/swing/play-brief-intel.ts`) renders a GEX/dark-pool/king-strike level resolved from the
+same Vector/GEX positioning snapshot every OTHER prose consumer of `closedMarketSessionNote`
+already discloses when it fires: `chartLevelsSection`/`chartTechnicalsSection`'s closed-bucket
+branches (this same file) and `dataHonestyCoaching`'s "Data caveat" bullet
+(`play-brief-narrative-coaching.ts`), which applies it UNCONDITIONALLY across WATCH/OPEN/HOLD/
+CLOSED, gated only on `!dead`. This line never carried the equivalent disclosure, for any bucket.
+A post-close/weekend self-warm genuinely computes a fresh Vector/GEX read off the LAST session's
+tape — ordinary staleness checks stay silent by design (the compute really is recent) — so a
+member could read a confident structural level here with no hint that the market itself has been
+shut for hours, directly alongside a brief that elsewhere discloses exactly that fact for the
+identical snapshot.
+
+**Fix:** computes `closedMarketSessionNote(vec, gexForLevels, readMs)` (both already in scope)
+and appends it as an italicized parenthetical suffix to whichever of the LONG/SHORT lines
+actually renders — scoped to this section's structural-node line specifically, for every bucket
+(not closed-bucket-only), since a live WATCH/OPEN play reads the same snapshot a CLOSED one would.
+
+### Tests
+
+- `collectBriefUnavailableSources: a genuinely-unknown mark (no live tick ever landed) gets an
+  honest reason, not the generic 'just untimestamped' wording` (`play-brief-absence.test.ts`) —
+  RED pre-fix, GREEN post-fix.
+- Two pre-existing `play-brief-absence.test.ts` fixtures (`{ markIsSync: true, status: "OPEN" }`
+  with no `pnlPct`) were given `pnlPct: 5.2` so they continue to exercise the real-but-
+  untimestamped case their own names/comments describe, rather than accidentally tripping the new
+  genuinely-unknown branch.
+- `watchForSection: Structural support node carries the market-closed session note when the
+  Vector snapshot is fresh but the market is shut (Largo C2, 2026-10-25 fix)`
+  (`play-brief-intel.test.ts`) — RED pre-fix, GREEN post-fix.
+- Full `dataHonestyCoaching` suite (196 tests, `play-brief-narrative-coaching.test.ts`) and full
+  `play-brief-absence.test.ts` (104 tests) and `play-brief-intel.test.ts` (326 tests) re-run clean
+  after both fixes, confirming no regression in the consumer this finding's own fix touches.
+
+### Blast radius
+
+`collectOptionMarkStalenessAbsence` has exactly two real call sites
+(`collectBriefUnavailableSources` in the same file, which pushes the reason verbatim with no
+string-matching — unaffected; and `dataHonestyCoaching`, fixed above). `closedMarketSessionNote`
+gains a 6th call site in `play-brief-intel.ts` (previously 5, all closed-bucket-only); no existing
+call site's behavior changes.
+
+## Legacy→Swing commit bridge fabricated `halted:false`/`dailyBarComplete:true` for every candidate, silently satisfying G-S12 and the daily-bar-completeness gate — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED (PR #6728, merged to `main`) |
+
+### Root cause
+
+`legacyCommitCandidatesFromSnapshot` (`src/lib/swing/legacy-confirm-promote.ts`) — the "graduation
+bridge" that lets a Legacy-promoted (Night Hawk) thesis become a real `SwingCommitCandidate` once
+it reaches the same `TRIGGERED`/`AT_TRIGGER` bar an organic candidate needs — hardcoded three
+fields on every candidate it built:
+
+```ts
+earningsInWindow: false,
+halted: false,
+dailyBarComplete: true,
+```
+
+`discovery.ts`'s commit loop (the one real caller) computes **real** per-ticker halt state
+(`haltActive`, via `readSwingHaltStateForTickers`) and **real** whole-market grouped-daily bars
+(`grouped`) for the exact same scan pass, and correctly wires both into every *organic* candidate
+a few lines above (`halted: haltActive.has(...)`, `dailyBarComplete: tickerHasGroupedDailyBar(grouped,
+...)`) — but never passed either into the Legacy bridge, which fabricated the always-pass value
+instead.
+
+Both `v2/gates.ts` gates read these fields literally:
+- `evaluateEarningsGate`/G-S3 and the halt check (G-S12) treat `halted !== true` as "not halted" → pass.
+- The daily-bar-completeness check treats `dailyBarComplete !== false` as "complete" → pass.
+
+So a Legacy-sourced commit candidate could sail through G-S12 (and the daily-bar check) with zero
+real evidence, even while the underlying was genuinely halted or missing a bar in the real feed
+that session — exactly the kind of real-time, capital-preservation gate this bridge's own file
+header explicitly reasons through NOT weakening (it already took care not to invent a fake G-S6
+confluence kind for this exact reason). This was the same failure mode, just on two gates nobody
+had traced through.
+
+### Evidence
+
+Confirmed via source trace, not a live incident: `discovery.ts:1028-1035` computes `haltActive`
+(real halt feed) and `discovery.ts:758` computes `grouped` (real Polygon grouped-daily), both used
+correctly for organic candidates at lines 1072-1075, in scope at the Legacy-bridge call site
+(`discovery.ts:1090-1101`) — but never threaded through. New regression tests confirm the gap
+RED→GREEN: a Legacy candidate built with a real `haltActive` set containing its own ticker read
+`halted:true` only after the fix; a `grouped` feed missing the ticker's own row read
+`dailyBarComplete:false` only after the fix; a full-lifecycle test through the real, unmodified
+`computeSwingCommitPlan` with `v2: { enforceHalt: true }` confirmed the candidate is now correctly
+blocked (`committableCount: 0`, `blockedBy` includes `gate:G-S12:halted`) where it previously
+committed (`committableCount: 1`).
+
+### Blast radius
+
+Only `legacyCommitCandidatesFromSnapshot` and its one real caller (`discovery.ts`'s commit loop)
+were touched. `earningsInWindow` is a **known, disclosed, separate gap** left unfixed here: a
+Legacy-promoted dossier is built from synthetic structural reads (`swingReadsForLegacy`), never a
+real catalyst/earnings fetch, so there is no real signal available yet to thread through — fixing
+it needs a new fetch path (mirroring `fetchLegacyPromoteCloses`'s pattern), which is a second,
+separate change, not bundled into this surgical fix (one issue per PR). Logged in the live journal
+for a future cycle.
+
+### Fix rationale
+
+Added `haltActive`/`grouped` as optional parameters to `legacyCommitCandidatesFromSnapshot`'s
+`opts`, computing real `halted`/`dailyBarComplete` values when supplied and degrading to the prior
+safe defaults (`false`/`true`) when omitted — so no other caller (tests included) breaks. Updated
+the one real caller to pass its already-computed, zero-new-IO `haltActive`/`grouped` through.
+`hasGroupedDailyBar` is a small local duplicate of `discovery.ts`'s `tickerHasGroupedDailyBar`
+(not imported — `discovery.ts` imports *from* this file, so importing back would cycle), matching
+this codebase's established pattern for tiny pure helpers shared across a would-be-circular
+boundary.
+
+### Tests
+
+Added to `src/lib/swing/legacy-confirm-promote.test.ts`: a real-halt-not-fabricated-away test, a
+missing/present grouped-daily-bar test pair, a no-regression test for callers that omit the new
+params, and a full-lifecycle test through the real `computeSwingCommitPlan` with
+`v2: { enforceHalt: true }` proving G-S12 now genuinely blocks. RED→GREEN confirmed (3 new failures
+pre-fix, all green post-fix). `discovery.test.ts`'s own Legacy-bridge tests (31/31) and the full
+`legacy-confirm-promote.test.ts` suite (33/33) stay green; `npx tsc --noEmit` clean; full
+`npm test` (Node 20): 16916 pass / 0 fail / 3 pre-existing skips.
+
+## Helix — `fmtShares` overflows at K→M unit boundary, in both the Discord formatter and the live `/flows` desk panel — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED (PR #6730, merged to `main`) |
+| **Area** | `src/lib/darkpool-discord-format.ts` (`fmtShares`) and `src/features/helix/components/DarkPoolPanel.tsx` (its own, separately-defined `fmtShares`) |
+| **Severity** | P3 (member-facing/Discord display overflow, no data corruption) |
+
+### Root cause
+
+Both functions bucket a share count by comparing the raw magnitude against `1_000_000`/`1_000`,
+then round the K-quotient independently. A raw share count just under 1,000,000 whose rounded
+K-quotient reaches `1000` was never promoted to M:
+
+```js
+fmtShares(999_600) → "~1000K shares"   // should be "~1.0M shares"
+fmtShares(999_999) → "~1000K"          // should be "1.0M"
+```
+
+Same bug shape (and same fix pattern: round the quotient first, then check whether it crossed the
+next unit) as `moneyShort`'s own K→M fix shipped earlier today (#6727) in `helix-discord-format.ts`
+— `darkpool-discord-format.ts` already imports that fixed `moneyShort`, but its own locally-defined
+`fmtShares` sibling had the identical gap, never caught in the same pass.
+
+### Evidence
+
+```
+> fmtShares(999_600)   → '~1000K shares'
+> fmtShares(999_999)   → '~1000K shares'
+```
+
+No existing test exercised a value near a unit boundary — the Discord-side `fmtShares` wasn't
+directly tested (not exported; covered through `buildDarkpoolDiscordEmbed`'s rendered output), and
+the live-UI component's `fmtShares` had zero test coverage at all (no test file existed for
+`DarkPoolPanel.tsx` before this fix).
+
+This K→M boundary is highly reachable for ordinary dark-pool block sizes — a sub-$10/share stock
+trading a $5-10M block easily lands a share count in `[999_500, 1_000_000)` — distinct from a
+previously-flagged, dismissed-as-low-reachability "no billion-shares bucket" gap in this same
+function (that one requires a sub-penny-stock-scale print).
+
+### Blast radius
+
+Every Discord dark-pool embed (single-print alert, top-blocks digest, ticker-burst alert) AND the
+live `/flows` desk's `DarkPoolPanel` share-size chip.
+
+### Fix
+
+Round the K-quotient first, then check whether it reached 1000 before formatting — promoting to M
+when it does. Applied identically to both independent `fmtShares` implementations (they are not a
+shared function; each file defines its own).
+
+### Tests
+
+- `darkpool-discord-format.test.ts` — new case through `buildDarkpoolDiscordEmbed` (the function
+  itself isn't exported). RED→GREEN confirmed (11/12 → 12/12).
+- `DarkPoolPanel.test.tsx` (new file, no prior test existed for this component) — exports
+  `fmtShares` for direct testing. RED→GREEN confirmed (0/2 fail pre-fix since the function wasn't
+  exported → 2/2 pass).
+- `discord-eod-recap.test.ts` (consumer) — 7/7 pass, no regression.
+- `npx tsc --noEmit` — clean.
+
 ## Ask Largo swing play-brief: plain "P&L:" / "next trim" distance line never disclosed the same stale quote Greeks/Spread/Exec P&L already flag — FIXED
 
 > **kind:** `FINDING`
