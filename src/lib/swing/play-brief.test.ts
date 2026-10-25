@@ -5702,6 +5702,75 @@ test("composeSwingPlayBrief: OPEN/CLOSED plays do not surface flag anchor/entry 
   assert.equal(brief.envelope.levels?.find((l) => l.label === "entry trigger"), undefined);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25 — live MSTR repro): `levelsFromContext` used to
+// stamp BOTH "flag anchor" and "entry trigger" with the IDENTICAL `pinnedProvenance` object (built
+// from `play.detectedAt`) unconditionally, even once the two prices had genuinely diverged — which
+// only happens when the dossier rebuilt its plan on a later scan pass and `entryTriggerUnderlyingPx`
+// moved away from the flag's pinned price (horizon-plays.ts's own field doc: "the two can diverge
+// once a dossier refreshes its plan on a later scan pass"). Live repro: MSTR flagUnderlyingPx 163.30
+// vs entryTriggerUnderlyingPx 147.47, both stamped asOf "2026-10-21 09:15 ET" — falsely claiming the
+// entry-trigger price was pinned at the same instant as the flag anchor when it plainly was not.
+test("composeSwingPlayBrief: entry trigger reuses the flag anchor's pinned provenance when the price still matches it", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "LONG",
+      flagUnderlyingPx: 163.3,
+      entryTriggerUnderlyingPx: 163.3, // identical — never recomputed since the flag was pinned
+      detectedAt: "2026-10-21T13:15:00.000Z",
+    }),
+    asOf: "2026-10-21 09:15 ET",
+    sessionDate: "2026-10-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  const entryTrigger = brief.envelope.levels?.find((l) => l.label === "entry trigger");
+  assert.ok(flagAnchor && entryTrigger);
+  // Unchanged behavior: still genuinely pinned to the flag's own moment, so it's honest to share
+  // the flag anchor's provenance verbatim.
+  assert.equal(entryTrigger?.provenance?.asOf, flagAnchor?.provenance?.asOf);
+  assert.equal(entryTrigger?.provenance?.freshness, flagAnchor?.provenance?.freshness);
+  assert.equal(entryTrigger?.provenance?.source, "Swing lane");
+});
+
+test("composeSwingPlayBrief: entry trigger gets honest unknown provenance once its price has diverged from the flag anchor's (MSTR repro)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "LONG",
+      flagUnderlyingPx: 163.3,
+      entryTriggerUnderlyingPx: 147.47, // dossier rebuilt on a later scan pass — no longer the flag's pinned price
+      detectedAt: "2026-10-21T13:15:00.000Z",
+    }),
+    asOf: "2026-10-21 09:15 ET",
+    sessionDate: "2026-10-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  const entryTrigger = brief.envelope.levels?.find((l) => l.label === "entry trigger");
+  assert.ok(flagAnchor && entryTrigger);
+  // The flag anchor itself is unaffected — it is genuinely pinned to detectedAt.
+  assert.match(flagAnchor?.provenance?.asOf ?? "", /2026-10-21/);
+  // The entry trigger must NOT borrow the flag anchor's asOf/freshness once the prices disagree —
+  // that would falsely claim it was pinned at the same instant.
+  assert.notEqual(entryTrigger?.provenance?.asOf, flagAnchor?.provenance?.asOf);
+  assert.equal(entryTrigger?.provenance?.asOf, null);
+  assert.equal(entryTrigger?.provenance?.freshness, "unknown");
+  assert.equal(entryTrigger?.provenance?.source, "Swing lane");
+});
+
 test("composeSwingPlayBrief: envelope level provenance uses ET stamps, not raw UTC ISO (C1)", () => {
   const staleAsOf = "2026-09-05T20:00:00.000Z";
   const ctx: SwingPlayBriefContext = {
