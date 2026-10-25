@@ -562,6 +562,26 @@ export function collectOptionMarkStalenessAbsence(
 ): BieUnavailableSource | null {
   if (!play || !playExpectsLiveOptionMark(play.status)) return null;
   if (play.markIsSync === true) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:SNOW:2105): this branch
+    // used to say "sync quote without freshness timestamp" unconditionally whenever
+    // `markIsSync===true` — wording that asserts a real quote VALUE exists, just untimestamped.
+    // That's true for the ordinary banger/native-lane race this branch was built for (comment
+    // below), but it is NOT true when `optionMarkGenuinelyUnknown(play)` also holds — the true
+    // entry-fallback case (`mid = last_mark ?? entry_premium`, no live tick has EVER landed,
+    // `play.pnlPct` itself is null) that pnlSection's own Mark line and dataFreshnessSection
+    // already render as "Mark: unknown ... no live price yet" / "P&L is not yet known". Live
+    // repro: SNOW's unavailableSources/confidence/footer all said "sync quote without freshness
+    // timestamp" — implying a real, just-unstamped price — while the SAME brief's Position and
+    // Data-freshness sections correctly said no price exists at all. Checked first (more specific
+    // predicate), falling through to the generic untimestamped-but-real-quote case otherwise.
+    if (optionMarkGenuinelyUnknown(play)) {
+      return {
+        source: "option mark",
+        reason: "no live price yet — sync quote, no real quote value has ever landed",
+        what_is_missing: "a live option-quote tick (none has synced since commit)",
+        retryable: true,
+      };
+    }
     return {
       source: "option mark",
       reason: "sync quote without freshness timestamp",

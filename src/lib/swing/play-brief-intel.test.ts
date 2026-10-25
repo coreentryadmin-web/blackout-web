@@ -5199,6 +5199,41 @@ test("watchForSection: live Vector put wall still shown when GEX matrix is stale
   assert.match(section.body, /put wall \*\*98\.00\*\*/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:RDW): the "Structural support/
+// resistance node" line reads the identical Vector/GEX positioning snapshot every OTHER prose
+// consumer of `closedMarketSessionNote` already discloses when it fires (chartLevelsSection/
+// chartTechnicalsSection's closed-bucket branches, dataHonestyCoaching's "Data caveat" bullet —
+// applied UNCONDITIONALLY on bucket) — but this section never carried the equivalent disclosure,
+// for any bucket. A post-close/weekend self-warm genuinely computes a fresh Vector snapshot off
+// the LAST session's tape (freshness checks alone stay silent by design), so this line could state
+// a structural level with no caveat while the rest of the brief says the read reflects a closed
+// market. Pins the fix for the OPEN bucket specifically — not closed-bucket-only, since a live
+// WATCH/OPEN play reads the same snapshot a CLOSED one would.
+test("watchForSection: Structural support node carries the market-closed session note when the Vector snapshot is fresh but the market is shut (Largo C2, 2026-10-25 fix)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG" }),
+      asOf: "2026-09-06 20:00 ET",
+      sessionDate: "2026-09-06",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: fixtureVec({
+        spot: 100,
+        dataAgeMs: 0,
+        freshness: "live",
+        market_session_note: "VECTOR_CLOSED_MARKET_NOTE_MARKER",
+        gexWalls: { putWalls: [{ strike: 95 }], callWalls: [] },
+      }) as unknown as VectorFullState,
+    },
+    "open",
+  );
+  assert.match(section.body, /Structural support node: put wall \*\*95\.00\*\*/);
+  assert.match(section.body, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
+});
+
 // Live 2026-09-12: a member read "Flag anchor" (the PINNED first-flagged reference price) as the
 // actionable entry level, which it is not — entryTriggerUnderlyingPx is the live level that
 // actually flips PRE_TRIGGER/FORMING to AT_TRIGGER/TRIGGERED, and the two can diverge once a

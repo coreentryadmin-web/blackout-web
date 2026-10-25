@@ -1530,7 +1530,25 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   const readMs = ctx.readMs ?? Date.now();
   const markAbsence = collectOptionMarkStalenessAbsence(play, readMs);
   if (markAbsence) {
-    if (markAbsence.reason === "sync quote without freshness timestamp") {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25, follow-up to the SNOW
+    // `collectOptionMarkStalenessAbsence` fix in play-brief-absence.ts): this used to branch on
+    // `markAbsence.reason === "sync quote without freshness timestamp"` — an exact-string match
+    // that broke the instant that function grew a THIRD reason string
+    // ("no live price yet — sync quote, no real quote value has ever landed") for the genuinely-
+    // unknown-mark case it previously lumped in under the same generic reason. Falling to the
+    // `else` branch for that new string would have run it through the "stale — last synced "
+    // stamp-stripper (a no-op on this text) and pushed the garbled
+    // "option mark from **no live price yet — sync quote, no real quote value has ever landed**
+    // — not live-synced". Matching on the one reason shape that actually needs stamp-extraction
+    // (the aged-markAsOf case) and routing everything else through the existing `pnlPct != null`
+    // ternary — which already independently derives the identical real-vs-unknown distinction
+    // `optionMarkGenuinelyUnknown` encodes, see its own 2026-09-11 TWST comment below — keeps this
+    // branch correct regardless of how many "sync, no timestamp yet" reason variants that function
+    // grows.
+    if (markAbsence.reason.startsWith("stale — last synced ")) {
+      const stamp = markAbsence.reason.replace(/^stale — last synced /, "");
+      warnings.push(`option mark from **${stamp}** — not live-synced`);
+    } else {
       // Live repro 2026-09-11 (Ask Largo standing mandate, TWST): `markIsSync` collapses two
       // different real-world cases (see play-brief.ts's own `markGenuinelyUnknown` split) — a
       // mark that is genuinely unknown (no P&L basis exists either) versus a REAL, live mark that
@@ -1546,9 +1564,6 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
           ? "mark is a live quote but lacks a freshness timestamp"
           : "mark not synced to live tape",
       );
-    } else {
-      const stamp = markAbsence.reason.replace(/^stale — last synced /, "");
-      warnings.push(`option mark from **${stamp}** — not live-synced`);
     }
   }
   // Largo C2 (2026-09-16): this Vector check used to be a raw `dataAgeMs > 120_000` comparison —
