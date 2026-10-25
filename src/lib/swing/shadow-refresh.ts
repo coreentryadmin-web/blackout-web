@@ -23,9 +23,22 @@ export type ShadowCloseDecision = {
   detail: string;
 };
 
-/** Premium return % from entry — same sign convention as roll-plan gradeParentFromMark. */
-export function shadowRealizedPnlPct(entryPremium: number, exitMark: number): number {
-  if (!Number.isFinite(entryPremium) || entryPremium <= 0 || !Number.isFinite(exitMark)) return 0;
+/**
+ * Premium return % from entry — same sign convention as roll-plan's `gradeParentFromMark`.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-25): this used to return a fabricated `0` (a flat
+ * "breakeven" close) whenever `entryPremium` was invalid (non-finite, zero, or negative — e.g. a
+ * corrupted `entry_premium` column) instead of the `null` its own doc comment claims to mirror from
+ * `gradeParentFromMark` ("roll.ts... DEFERS instead of freezing a fabricated grade... never freezes
+ * a fabricated OR silently-stale ... grade" — roll-plan.ts's own header). This module is WIRED INTO
+ * PRODUCTION (`swing-active-refresh` cron → `closeSwingShadowPosition`, db.ts), so a corrupt
+ * `entry_premium` on a real shadow row would have been graded a fake 0% close and marked CLOSED —
+ * permanently polluting the exact calibration feed this module exists to build (see file header).
+ * Null-honest now: the caller skips (never closes/grades) on null, leaving the row OPEN for
+ * re-evaluation next pass, same "defer rather than fabricate" posture as roll-plan.ts.
+ */
+export function shadowRealizedPnlPct(entryPremium: number, exitMark: number): number | null {
+  if (!Number.isFinite(entryPremium) || entryPremium <= 0 || !Number.isFinite(exitMark)) return null;
   return Number((((exitMark - entryPremium) / entryPremium) * 100).toFixed(4));
 }
 
@@ -184,8 +197,18 @@ export async function runSwingShadowRefresh(deps: ShadowRefreshDeps): Promise<Sh
         continue;
       }
 
+      const realizedPnlPct = shadowRealizedPnlPct(entry, exitMark);
+      // BUG FIX (Ask Largo standing mandate, 2026-10-25): never close+grade on a null realized P&L
+      // (invalid entry_premium) — that would permanently mark the row CLOSED with a fabricated 0%
+      // outcome. Skip instead, same as the entry/exitMark null-checks just above; the row stays
+      // OPEN and is re-evaluated next pass.
+      if (realizedPnlPct == null) {
+        skipped += 1;
+        continue;
+      }
+
       const touched = await deps.closeAndGrade(row.id, {
-        realized_pnl_pct: shadowRealizedPnlPct(entry, exitMark),
+        realized_pnl_pct: realizedPnlPct,
         close_reason: decision.reason,
         close_detail: decision.detail,
       });
