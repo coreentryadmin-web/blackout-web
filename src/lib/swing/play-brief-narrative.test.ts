@@ -2146,6 +2146,45 @@ test("tradeManagerNarrativeSection: Break watch says the stop is ALREADY breache
   assert.doesNotMatch(section!.body, /Break watch.*lose premium stop/i, "must not use the forward-looking framing once the stop is already breached");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: GET
+// /api/market/swing/play-brief?playId=SWING:EXPE:2071 -- bid $0.00, ask $1.20, a real two-sided
+// quote, not a missing one). `play.execMark` is null both when there's no bid at all AND when the
+// bid is a confirmed genuine $0.00 -- executableFill() (terminal-ladder.ts) correctly never
+// fabricates a fill at $0, so this bullet's `play.execMark != null` guard used to read a confirmed
+// worthless bid identically to "we don't know the bid at all" and fell through to the softer
+// forward-looking "Break watch -- lose premium stop" framing instead of this reserved
+// already-breached bullet -- the single WORST real executable state getting WEAKER disclosure than
+// the $0.70-bid NN case the test above pins. `play.execBidZero: true` (adapters.ts) distinguishes
+// the two null-shaped cases.
+test("tradeManagerNarrativeSection: Break watch says the stop is ALREADY breached for a CONFIRMED zero bid even though execMark itself is null (live EXPE repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "LONG",
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 0.6, // mid = (0 + 1.2) / 2 -- a real, live quote
+        execMark: null, // executableFill() correctly never fabricates a fill at a zero bid
+        execBidZero: true, // but the book IS real and the bid IS a confirmed $0.00
+        pnlPct: -36.8,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.38,
+          target_premium: 1.9,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.00\*\*.*through your premium stop \*\*\$0\.38\*\*/i,
+    `confirmed $0.00 bid must render as already-breached, not the softer forward-looking framing -- got: ${section!.body}`,
+  );
+  assert.doesNotMatch(section!.body, /Break watch.*lose premium stop/i, "must not use the forward-looking framing once a confirmed zero bid is already through the stop");
+});
+
 test("tradeManagerNarrativeSection: Break watch keeps the forward-looking framing when the executable bid is still above the stop", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

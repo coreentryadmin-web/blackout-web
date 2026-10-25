@@ -140,6 +140,12 @@ test("executable: one-sided / no book → mid only, no fake fill", () => {
   const zeroBid = executableFill(0, 0.1, 2.0);
   assert.equal(zeroBid.fill, null);
   assert.equal(zeroBid.pnl_pct, null);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE): `fill`/`pnl_pct` staying
+  // null for a confirmed zero bid is INTENTIONAL and unchanged by this fix (asserted above) — but a
+  // caller must be able to tell this case apart from "no book at all" (asserted just below), which
+  // the one-sided case above does NOT set.
+  assert.equal(zeroBid.bidConfirmedZero, true, "a real two-sided book with bid===0 is a CONFIRMED zero, not an absence");
+  assert.equal(oneSided.bidConfirmedZero, false, "no book at all must not be confused with a confirmed zero bid");
 });
 
 test("executable: crossed book is rejected (never a negative-spread fill)", () => {

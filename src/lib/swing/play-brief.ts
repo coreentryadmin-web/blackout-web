@@ -825,6 +825,18 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
     lines.push(
       `Exec P&L: **${fmtPct(play.execPnlPct)}**${blended != null ? " _(open runner only — trim already banked, see above)_" : ""}${staleCaveat}`,
     );
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: bid $0.00 / ask $1.20 / mid
+  // $0.60 — a real, live two-sided quote, not a missing one). `play.execPnlPct` is null both when
+  // there's no quote at all AND when there IS one and the bid is a confirmed $0.00 — the line above
+  // silently omitted itself either way, with zero caveat, so the single worst real executable state
+  // (no buyer at any price) rendered LESS disclosure than a comparable position with a nonzero low
+  // bid, which gets the line above. `play.execBidZero` (adapters.ts) distinguishes the two; a
+  // confirmed zero bid means the executable exit is worth nothing regardless of entry price, so the
+  // P&L is exactly -100% by construction — stated plainly rather than left silent.
+  else if (play.execBidZero === true)
+    lines.push(
+      `Exec P&L: **-100.0%** _(bid is $0.00 — no real buyer at any price; the executable exit is a total loss)_${blended != null ? " _(open runner only — trim already banked, see above)_" : ""}${staleCaveat}`,
+    );
   if (play.trackPct != null) lines.push(`Since flag: **${fmtPct(play.trackPct)}**`);
   return { title: "Position", body: lines.join("\n") };
 }

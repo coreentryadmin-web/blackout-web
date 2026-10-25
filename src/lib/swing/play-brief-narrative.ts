@@ -1657,7 +1657,16 @@ export function tradeManagerNarrativeSection(
   // always-surfaced bullet that IS the brief's actual risk headline. A member trusting "HOLD" at
   // the top could easily miss that their real exit is already past the intended risk line.
   const execStop = play.exitPolicy?.stop_premium;
-  const execBreached = execStop != null && play.execMark != null && play.execMark <= execStop;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: bid $0.00 / ask $1.20, a
+  // real two-sided quote, not a missing one): `play.execMark` is null both when there is no bid at
+  // all and when the bid is a confirmed $0.00 — `play.execBidZero` (adapters.ts) distinguishes the
+  // two. A confirmed $0.00 bid is at/through ANY positive stop by construction (there is no buyer
+  // at any price), so without this it fell through to the softer "future risk" `breakLine`
+  // fallback below instead of this reserved, always-surfaced "already breached" bullet — the
+  // MOST severe case getting WEAKER disclosure than a comparable nonzero-but-low bid (e.g. a bid
+  // of $0.10 already through the same stop correctly fires this bullet).
+  const execMarkForBreach = play.execBidZero === true ? 0 : play.execMark;
+  const execBreached = execStop != null && execMarkForBreach != null && execMarkForBreach <= execStop;
   // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro SWING:GTLB): the 2026-09-15 fix
   // above only surfaced "stop already breached on the executable side" when `breakLine` was still
   // null, i.e. when `breakTrigger()` found no structural GEX level to cite. Live on GTLB
@@ -1673,7 +1682,7 @@ export function tradeManagerNarrativeSection(
   // other.
   if (execBreached && (play.direction === "LONG" || play.direction === "SHORT")) {
     add(
-      `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(play.execMark)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.`,
+      `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(execMarkForBreach)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.`,
       { reserved: true },
     );
   } else if (!breakLine && play.direction === "LONG" && execStop != null) {

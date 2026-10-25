@@ -5978,6 +5978,48 @@ test("composeSwingPlayBrief: Exec P&L line has no qualifier when no trim has fir
   assert.doesNotMatch(position!.body, /Exec P&L.*open runner only/, `got: ${position!.body}`);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: GET
+// /api/market/swing/play-brief?playId=SWING:EXPE:2071 — a real, live two-sided quote (bid $0.00,
+// ask $1.20, mid $0.60=(0+1.2)/2, passing the "is this a real quote" backstop check), not a
+// missing one). `execPnlPct`/`execMark` are both null for a confirmed zero bid (executableFill,
+// terminal-ladder.ts, intentionally does not fabricate a fill price at $0), which is
+// indistinguishable, before this fix, from "no quote at all" — so the Exec P&L line silently
+// vanished with zero caveat, the single WORST real executable state getting WEAKER disclosure
+// than a comparable position with a nonzero low bid (e.g. BLSH, bid $0.32, which correctly renders
+// this line). `execBidZero: true` (adapters.ts, from executableFill's new `bidConfirmedZero`) is
+// how the brief now tells the two null-shaped cases apart.
+test("composeSwingPlayBrief: Exec P&L line surfaces a confirmed $0.00 bid as a total loss, not silence (live EXPE repro)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.95,
+      mark: 0.6, // mid = (0 + 1.2) / 2
+      pnlPct: -36.8,
+      peak: -10,
+      execMark: null, // executableFill() correctly keeps this null for a genuine zero bid
+      execPnlPct: null, // same — no honest nonzero fill price exists
+      execBidZero: true, // but the book IS real and the bid IS a confirmed $0.00
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(
+    position!.body,
+    /Exec P&L: \*\*-100\.0%\*\* _\(bid is \$0\.00 — no real buyer at any price; the executable exit is a total loss\)_/,
+    `a confirmed $0.00 bid must render the strongest disclosure, not silently omit the line — got: ${position!.body}`,
+  );
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro MRNA): Exec P&L is priced off the
 // exact same bid/ask snapshot the Greeks/Spread lines already flag stale — this line must carry
 // the identical caveat, not render as if the fill-based figure were freshly measured.
