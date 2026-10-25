@@ -2070,14 +2070,29 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // away)" convention as this function's own siblings.
   const invalidationDistAway =
     invalidationLevel != null ? ` (${Math.abs(invalidationLevel.distancePct).toFixed(1)}% away)` : "";
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:RDW): `invalidationLevel` is
+  // resolved from the identical Vector/GEX positioning snapshot every OTHER prose consumer of
+  // `closedMarketSessionNote` already discloses when it fires — chartLevelsSection/
+  // chartTechnicalsSection's closed-bucket branches a few hundred lines up in this same file, and
+  // dataHonestyCoaching's "Data caveat" bullet (play-brief-narrative-coaching.ts), which applies it
+  // UNCONDITIONALLY across WATCH/OPEN/HOLD/CLOSED, gated only on `!dead` — but this section never
+  // did, for ANY bucket. A post-close/weekend self-warm genuinely computes a fresh GEX/Vector read
+  // off the LAST session's tape (freshness checks alone stay silent by design — the compute really
+  // is recent), so this line could state a structural level with no caveat while the identical
+  // snapshot elsewhere in the same brief (or in a sibling brief) carries the "reflects the last
+  // session's tape, not a live tick" disclosure. Scoped to whichever direction actually renders, not
+  // closed-bucket-only — a WATCH/OPEN play reads the same live Vector/GEX snapshot a CLOSED one
+  // would, so the risk is identical regardless of bucket.
+  const sessionNote = closedMarketSessionNote(vec, gexForLevels, readMs);
+  const sessionNoteSuffix = sessionNote ? ` _(${sessionNote})_` : "";
   if (play.direction === "LONG" && invalidationLevel != null) {
     lines.push(
-      `Structural support node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**${invalidationDistAway}`,
+      `Structural support node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**${invalidationDistAway}${sessionNoteSuffix}`,
     );
   }
   if (play.direction === "SHORT" && invalidationLevel != null) {
     lines.push(
-      `Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**${invalidationDistAway}`,
+      `Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**${invalidationDistAway}${sessionNoteSuffix}`,
     );
   }
 

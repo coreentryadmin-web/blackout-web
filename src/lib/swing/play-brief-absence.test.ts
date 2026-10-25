@@ -1245,8 +1245,11 @@ test("archetypeTrackRecordIsStale: absent/malformed asOf never throws, reads as 
 test("collectBriefUnavailableSources: unsynced option mark surfaces in envelope (FINDINGS 2026-09-06 #22)", () => {
   // dataHonestyCoaching() already narrates "mark not synced to live tape" from this exact
   // boolean — this asserts the same fact reaches the structured C3 channel, not just prose.
+  // pnlPct is set to a real number so this fixture represents the ORDINARY banger/native-lane
+  // race (a real quote synced, just not yet timestamped) distinct from the genuinely-unknown
+  // case (pnlPct null) covered separately below — see optionMarkGenuinelyUnknown's own fix note.
   const ctx = {
-    play: { markIsSync: true, status: "OPEN" },
+    play: { markIsSync: true, status: "OPEN", pnlPct: 5.2 },
   } as SwingPlayBriefContext;
 
   const sources = collectBriefUnavailableSources(ctx);
@@ -1257,7 +1260,7 @@ test("collectBriefUnavailableSources: unsynced option mark surfaces in envelope 
 
 test("collectBriefUnavailableSources: unsynced option mark is retryable, not permanently stuck (found live 2026-10-08, Ask Largo mandate — a brand-new BANGER commit's markIsSync is honestly C3-absent, but the NEXT scheduled banger-live-sync/swing-active-refresh RTH tick WILL populate a real markAsOf on a future read, exactly the 'wait for more data' shape the GEX insufficient_data chip already treats as retryable — see collectOptionMarkStalenessAbsence's updated comment for why the old banger-has-no-column rationale for retryable:false went stale on 2026-09-11)", () => {
   const ctx = {
-    play: { markIsSync: true, status: "OPEN" },
+    play: { markIsSync: true, status: "OPEN", pnlPct: 5.2 },
   } as SwingPlayBriefContext;
 
   const sources = collectBriefUnavailableSources(ctx);
@@ -1268,6 +1271,29 @@ test("collectBriefUnavailableSources: unsynced option mark is retryable, not per
     true,
     "a never-synced mark resolves on the lane's own next scheduled refresh tick — it is not a structural dead end",
   );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:SNOW:2105): before this fix,
+// a genuinely-unknown mark (markIsSync true, pnlPct null — no live tick has EVER landed, the true
+// entry-fallback case) got the SAME "sync quote without freshness timestamp" reason as the
+// ordinary untimestamped-but-real-quote race — wording that implies a real price exists, just
+// unstamped. That directly contradicted the SAME brief's Position section ("Mark: unknown ...
+// no live price yet") and Data-freshness section ("P&L is not yet known"). This asserts the
+// structured C3 channel now agrees with that prose instead of contradicting it.
+test("collectBriefUnavailableSources: a genuinely-unknown mark (no live tick ever landed) gets an honest reason, not the generic 'just untimestamped' wording", () => {
+  const ctx = {
+    play: { markIsSync: true, status: "OPEN", pnlPct: null },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const chip = sources.find((s) => s.source === "option mark");
+  assert.ok(chip, "expected an option mark absence chip");
+  assert.notEqual(
+    chip!.reason,
+    "sync quote without freshness timestamp",
+    "a genuinely-unknown mark must not be described as a real, just-untimestamped quote",
+  );
+  assert.match(chip!.reason, /no live price yet|never landed/i);
 });
 
 test("collectBriefUnavailableSources: closed play with markIsSync does not surface option mark absence", () => {
