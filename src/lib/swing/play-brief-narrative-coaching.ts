@@ -931,8 +931,13 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
  * live brief said "size down or exit before report" because this function returned null and the
  * safety check never evaluated. Parsing `occ` fixes WATCH and is strictly more reliable for
  * committed rows too (an exact per-row key, no entry-premium coincidence match needed).
+ *
+ * Exported (2026-10-25, Ask Largo standing mandate, live repro OUST) so `meridianPeerSection`
+ * (play-brief-intel.ts) can reuse the SAME resolution this function already does for
+ * `catalystCoaching`'s own earnings-gap-exposure check, instead of re-deriving it a second way —
+ * see that call site's own comment for the contradiction this closes (SWING:OUST:2127).
  */
-function ownContractExpiry(ctx: SwingPlayBriefContext): string | null {
+export function ownContractExpiry(ctx: SwingPlayBriefContext): string | null {
   const { play } = ctx;
   const parsed = parseOccSymbol(play.occ ?? null);
   if (parsed && sameTicker(parsed.ticker, play.ticker)) return parsed.expiry;

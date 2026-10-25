@@ -58,7 +58,7 @@ import {
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
-import { printAlreadyLandedThresholdMs } from "./play-brief-narrative-coaching";
+import { ownContractExpiry, printAlreadyLandedThresholdMs } from "./play-brief-narrative-coaching";
 import { formatDealerDollars } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason, gateFramingMootReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
@@ -81,6 +81,7 @@ import {
 } from "./calibration-cache";
 import type { SwingTickerTrackRecord } from "./play-brief-ticker-history";
 import {
+  EARNINGS_PEER_SIZING_INSTRUCTION,
   meridianPeerEarningsCoaching,
   pickEarningsForSwingPeer,
 } from "./play-brief-meridian-peer-core";
@@ -2758,7 +2759,7 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
 export function meridianPeerSection(ctx: SwingPlayBriefContext): RichSection | null {
   const earningsItem = pickEarningsForSwingPeer(ctx.meridian?.items, ctx.play.ticker);
   const body = meridianPeerEarningsCoaching(ctx.meridianPeer, earningsItem);
-  if (!body) return null;
+  if (!body || !earningsItem) return null;
   // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro SWING:GOOGL:58 CLOSED/STOPPED
   // brief): every sibling "live read" market-context section in this file (catalystsSection,
   // chartLevelsSection, gexPostureSection, wallDynamicsSection, flowIntelSection) unshifts a
@@ -2774,7 +2775,37 @@ export function meridianPeerSection(ctx: SwingPlayBriefContext): RichSection | n
     statusBucket(ctx.play) === "closed"
       ? "_Current earnings peer lens — not what this trade traded under._\n\n"
       : "";
-  return { title: "Earnings peer lens", body: prefix + body };
+  // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro OUST 31C, SWING:OUST:2127):
+  // `meridianPeerEarningsCoaching` always ends on the same live-management instruction
+  // (`EARNINGS_PEER_SIZING_INSTRUCTION`, "size down or hedge vol...") because it gates only on
+  // `earningsItem.days_until <= 14` — it has no way to know whether THIS brief's own contract is
+  // even still alive when the print lands. `catalystCoaching` (play-brief-narrative-coaching.ts,
+  // "Trade manager read" section) already answers that exact question for the SAME earnings print
+  // via `ownContractExpiry(ctx)` — live OUST brief showed both sections at once: "Trade manager
+  // read" correctly said "this contract expires 2026-10-30, on/before the print, so no
+  // earnings-gap exposure from this position", while THIS section, two sections later in the same
+  // brief, said "Peers that beat often gap through implied — size down or hedge vol unless thesis
+  // is the print" about the identical print on the identical contract — opposite risk conclusions
+  // from the same brief. Reuses `ownContractExpiry` (now exported) rather than re-deriving the
+  // expiry-resolution logic a second way. Scoped deliberately narrower than `catalystCoaching`'s
+  // own noGapExposure check: `LargoTimelineItem` (the Meridian catalyst item this section reads,
+  // as opposed to catalystCoaching's UW-sourced `arsenal.earnings`) carries only an ET release
+  // `time` string, not a report_time bucket ("premarket"/"afterhours"/"unknown"), so there is no
+  // reliable same-day-but-after-close signal to check here — only the unambiguous case (contract
+  // expiry strictly BEFORE the print's calendar date, safe regardless of intraday timing) is
+  // handled; a same-day expiry falls through unchanged, matching this file's existing
+  // honest-absence discipline of never guessing a timing fact it cannot see.
+  const expiry = ownContractExpiry(ctx);
+  const noGapExposure = expiry != null && expiry < earningsItem.date;
+  const adjustedBody = noGapExposure
+    ? body.replace(
+        EARNINGS_PEER_SIZING_INSTRUCTION,
+        `This contract expires ${expiry}, on/before the print, so no earnings-gap exposure from ` +
+          `this position (a concurrent sibling with a later expiry may still be exposed — check ` +
+          `its own brief).`,
+      )
+    : body;
+  return { title: "Earnings peer lens", body: prefix + adjustedBody };
 }
 
 /**
