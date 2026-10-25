@@ -137,7 +137,10 @@ test("board route serves member path unchanged and only branches to sim behind t
 
 test("board route rounds member-visible floats at the API boundary (sim frames bypass zerodte-service)", () => {
   const route = readFileSync(join(ROOT, "app/api/market/zerodte/board/route.ts"), "utf8");
-  assert.match(route, /import \{ roundFloats \} from "@\/lib\/round-floats"/);
+  // Named-import drift guard — tolerate other names imported alongside roundFloats
+  // (e.g. reconcileTrancheFractions, #6744) rather than requiring an exact one-name
+  // import list, which broke the moment a second helper from the same module was added.
+  assert.match(route, /import \{[^}]*\broundFloats\b[^}]*\} from "@\/lib\/round-floats"/);
   assert.match(route, /roundFloats\(await getSimBoardPayload\(\)\)/);
   assert.match(route, /roundFloats\(await getZeroDteBoardPayload\(\)\)/);
 });
