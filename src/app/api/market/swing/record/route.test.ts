@@ -19,11 +19,14 @@ import { NextRequest } from "next/server";
 
 mock.module("server-only", { namedExports: {} });
 
+let openSwingPositionsRows: unknown[] = [];
+let swingPositionChainById: Record<number, unknown[]> = {};
 mock.module("../../../../../lib/db", {
   namedExports: {
     requireDatabaseInProduction: () => null,
     fetchSwingPositionsRange: async () => [],
-    fetchSwingPositionChain: async () => [],
+    fetchOpenSwingPositions: async () => openSwingPositionsRows,
+    fetchSwingPositionChain: async (id: number) => swingPositionChainById[id] ?? [],
   },
 });
 mock.module("../../../../../lib/market-api-auth", {
@@ -62,6 +65,45 @@ describe("/api/market/swing/record folds Engine B (Banger) opens into summary.op
     assert.equal(body.summary.nativeOpens, 0, "no swing_positions rows in this fixture");
     assert.equal(body.summary.bangerOpens, 81);
     assert.equal(body.summary.opens, 81, "0 native + 81 banger — must not silently read 0");
+  });
+
+  test("a genuinely-open native position outside the days window still counts in nativeOpens (2026-10-25, Ask Largo standing mandate)", async () => {
+    // BUG: fetchSwingPositionsRange(since, ...) filters on `session_date >= since` — a currently
+    // OPEN/HOLD/TRIM position whose own session_date (entry date) predates the window is invisible
+    // to that query, so `selectSwingRecordRootIds` never seeds its root and the chain never enters
+    // `records` at all. Live-measured on prod: GET /api/market/swing/record?days=1 reported
+    // nativeOpens:0 while days=7/30/90 all reported nativeOpens:2 for the SAME two real positions —
+    // "is this position currently open" was silently gated by a historical lookback window it has
+    // no logical dependency on. Fixed by independently unioning in fetchOpenSwingPositions()'s rows
+    // (unbounded by date, status-filtered) when seeding chain roots.
+    openSwingPositionsRows = [
+      {
+        id: 501,
+        root_position_id: null,
+        parent_position_id: null,
+        roll_seq: 0,
+        ticker: "OLDOPEN",
+        direction: "long",
+        status: "HOLD",
+        realized_pnl_pct: null,
+        graded_at: null,
+        grade_json: null,
+        session_date: "2026-01-01", // far outside any days=1..90 window fetchSwingPositionsRange would use
+      },
+    ];
+    swingPositionChainById = { 501: openSwingPositionsRows };
+    try {
+      const res = await GET(new NextRequest("http://localhost/api/market/swing/record?days=1"));
+      const body = await res.json();
+      assert.equal(
+        body.summary.nativeOpens,
+        1,
+        "a real OPEN/HOLD/TRIM row must count as an open position regardless of how old its session_date is",
+      );
+    } finally {
+      openSwingPositionsRows = [];
+      swingPositionChainById = {};
+    }
   });
 
   test("banger fetch is skipped and contributes 0 when the Engine B kill-switch is off", async () => {
