@@ -232,13 +232,17 @@ export async function discoverBreakoutSetups(opts: {
   nowEtMinutes: number;
   /** Tickers to exclude (static excludes + Night Hawk-covered names), same set the flow path uses. */
   excludeTickers: Set<string>;
+  /** When set, ONLY these tickers are eligible — the 0DTE-desk-wide universe restriction
+   *  (ticker-universe.ts). null/undefined means unrestricted (whole-market), same as before this
+   *  option existed. */
+  includeTickers?: Set<string> | null;
   maxCandidates?: number;
   /** Absolute wall-clock (Unix ms) for the WS-19 freshness check. Defaults to Date.now(); injected in tests. */
   nowMs?: number;
   /** IO seam override for tests; production omits it and uses the real providers. */
   deps?: Partial<BreakoutDiscoveryDeps>;
 }): Promise<BreakoutDiscoveryOutcome> {
-  const { today, nowEtMinutes, excludeTickers } = opts;
+  const { today, nowEtMinutes, excludeTickers, includeTickers } = opts;
   let maxCandidates = opts.maxCandidates ?? BREAKOUT_MAX_CANDIDATES;
   const nowMs = opts.nowMs ?? Date.now();
   const { fetchSummary, screen, screenBreakdowns, resolveChain, buildSetup, pickContract, fetchMinuteBars } = {
@@ -321,10 +325,12 @@ export async function discoverBreakoutSetups(opts: {
   // pool sized for the (smaller) floor — that would silently cap "qualifying" at the pool size and
   // defeat the breadth-driven formula on exactly the huge-breadth days it exists for.
   const screenPool = Math.max(BREAKOUT_MAX_CANDIDATES_CEILING * 4, BREAKOUT_SCREEN_POOL);
-  const longMovers = screen(breadthResults, screenPool).filter((m) => !excludeTickers.has(m.ticker.toUpperCase()));
-  const shortMovers = screenBreakdowns(breadthResults, screenPool).filter(
-    (m) => !excludeTickers.has(m.ticker.toUpperCase())
-  );
+  const eligible = (ticker: string) => {
+    const t = ticker.toUpperCase();
+    return !excludeTickers.has(t) && (!includeTickers || includeTickers.has(t));
+  };
+  const longMovers = screen(breadthResults, screenPool).filter((m) => eligible(m.ticker));
+  const shortMovers = screenBreakdowns(breadthResults, screenPool).filter((m) => eligible(m.ticker));
 
   // Dynamic-N (2026-08-04): size the chain-fetch cap to today's qualifying breadth instead of a
   // fixed number. Tests that pass an explicit `opts.maxCandidates` keep their exact override (a

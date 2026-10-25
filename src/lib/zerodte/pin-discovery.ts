@@ -168,9 +168,13 @@ export async function discoverPinSetups(opts: {
   nowEtMinutes: number;
   /** Tickers to exclude (static excludes + Night Hawk-covered names), same set the flow path uses. */
   excludeTickers: Set<string>;
+  /** When set, ONLY these tickers are eligible — the 0DTE-desk-wide universe restriction
+   *  (ticker-universe.ts), intersected with PIN's own curated universe. null/undefined means
+   *  unrestricted (PIN's full curated list), same as before this option existed. */
+  includeTickers?: Set<string> | null;
   maxCandidates?: number;
 }): Promise<EnrichedZeroDteSetup[]> {
-  const { today, nowEtMinutes, excludeTickers } = opts;
+  const { today, nowEtMinutes, excludeTickers, includeTickers } = opts;
   const maxCandidates = opts.maxCandidates ?? PIN_MAX_CANDIDATES;
 
   if (nowEtMinutes < RTH_OPEN_ET_MINUTES) {
@@ -188,7 +192,9 @@ export async function discoverPinSetups(opts: {
     return [];
   }
 
-  let universe = resolvePinUniverse().filter((t) => !excludeTickers.has(t.toUpperCase()));
+  let universe = resolvePinUniverse().filter(
+    (t) => !excludeTickers.has(t.toUpperCase()) && (!includeTickers || includeTickers.has(t.toUpperCase()))
+  );
   if (lateCondorOnly) {
     // Post-14:00: only cash-settled index roots can still open (G-14 / persist CONDOR exemption).
     universe = universe.filter((t) => condorEligibleTicker(t));

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-25T01:04:58.106Z",
+  "updated_at": "2026-10-25T01:27:40.781Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,13 +65,103 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0076e11e168e3a91318a77940f7b10834d110c66",
+    "last_main_sha": "507ac8bf840fa56153c3e5e7a98a17771163f7dd",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
+    {
+      "at": "2026-10-12T18:37:40.527Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-12T18:37:46.475Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-12T20:07:15.883Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-12T20:07:20.551Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-12T20:07:25.014Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T01:37:05.610Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T01:37:12.020Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T01:37:16.195Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T03:39:15.271Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T03:39:19.761Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T03:39:24.011Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T04:48:10.655Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T04:48:15.147Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T04:48:19.467Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T06:10:10.533Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
     {
       "at": "2026-10-13T06:10:15.330Z",
       "type": "context_sync",
@@ -1147,133 +1237,73 @@
       "open_pr_count": 7
     },
     {
-      "at": "2026-10-24T17:20:45.589Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T17:20:49.741Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T17:20:53.219Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T21:07:27.198Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-24T21:07:33.355Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-24T21:07:37.586Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-24T22:07:16.883Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T22:07:20.488Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T22:07:23.536Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T23:04:45.926Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T23:04:49.164Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T23:04:52.229Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T23:44:36.736Z",
+      "at": "2026-10-25T01:15:28.206Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
     },
     {
-      "at": "2026-10-24T23:44:41.595Z",
+      "at": "2026-10-25T01:15:33.016Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
     },
     {
-      "at": "2026-10-24T23:44:45.832Z",
+      "at": "2026-10-25T01:15:36.629Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
     },
     {
-      "at": "2026-10-24T23:53:18.278Z",
+      "at": "2026-10-25T01:27:30.593Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 6
+      "open_pr_count": 7
     },
     {
-      "at": "2026-10-24T23:53:23.141Z",
+      "at": "2026-10-25T01:27:35.856Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 6
+      "open_pr_count": 7
     },
     {
-      "at": "2026-10-24T23:53:27.563Z",
+      "at": "2026-10-25T01:27:40.781Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-25T01:04:50.952Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T01:04:55.095Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T01:04:58.106Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
+    {
+      "number": 6664,
+      "title": "feat(zerodte): restrict 0DTE desk universe to Mag 7 + SPX/SPY/QQQ (operator directive)",
+      "branch": "feat/zerodte-mag7-spx-spy-qqq-universe",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-25T01:27:05Z"
+    },
+    {
+      "number": 6663,
+      "title": "fix(swing): add FTNT/OKTA/S/RBRK to software theme bucket",
+      "branch": "fix/swing-software-theme-cybersecurity-gap",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-25T01:20:24Z"
+    },
+    {
+      "number": 6662,
+      "title": "fix(swing): add spot-distance to the Structural support/resistance node line",
+      "branch": "fix/swing-structural-node-spot-distance",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-10-25T01:12:32Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",

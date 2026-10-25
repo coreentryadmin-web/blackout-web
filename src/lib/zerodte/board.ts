@@ -1034,6 +1034,10 @@ export function deriveZeroDteSetups(
   opts?: {
     maxSetups?: number;
     excludeTickers?: Set<string>;
+    /** When set, ONLY these tickers are eligible — the 0DTE-desk-wide universe restriction
+     *  (ticker-universe.ts). Checked alongside excludeTickers; null/undefined means unrestricted
+     *  (whole-market), same as before this option existed. */
+    includeTickers?: Set<string> | null;
     nowMs?: number;
     todayYmd?: string;
     rejections?: ZeroDteGateRejection[];
@@ -1085,6 +1089,7 @@ export function deriveZeroDteSetups(
   for (const r of rows) {
     const ticker = r.ticker?.toUpperCase();
     if (!ticker || opts?.excludeTickers?.has(ticker)) continue;
+    if (opts?.includeTickers && !opts.includeTickers.has(ticker)) continue;
     const dte = r.dte ?? null;
     if (dte == null || dte > SETUP_MAX_DTE || dte < 0) continue;
     // dte was stamped at ALERT time — a 0DTE print from a prior session (the tape
