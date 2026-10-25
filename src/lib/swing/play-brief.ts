@@ -841,11 +841,28 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   // a flat self-contradiction to a member. Live repro: NTAP, 2026-10-08 (Ask Largo health-check
   // deep-dive) — see docs/audit/findings-staging/2026-10-08-swing-watch-entry-window-wording-collision.md.
   const dead = deadPlayReason(play);
+  const action = swingActionDisplay(play);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro TSLA 377.5P 7DTE, status SKIP /
+  // displayed "PASSED"): this label's own fallback chain is the SAME shape `swingVerdictVerb`'s own
+  // doc comment names as a leak into THREE sibling call sites (the headline/Verdict line, fixed
+  // directly in that function; `actionNarrative`'s "Entry stance" bullet and `degradedReadLine`'s
+  // "Live read" bullet, both fixed by exporting `swingVerdictVerb` for reuse) — but this FOURTH site
+  // was never named in that fix's enumeration, so it kept falling through
+  // `swingActionDisplay(play)?.label` (null for SKIP, by design — see that function's own "SKIP
+  // deliberately returns null" comment) straight to `play.recommendation` (the literal string
+  // "HOLD", stamped by entry-verdict.ts's RESEARCH branch even though nothing was ever entered).
+  // Live repro: this very TSLA brief rendered "Entry stance: HOLD" here, immediately followed a few
+  // lines later in the SAME response's "Trade manager read" section by "Entry stance — PASSED" for
+  // the identical play — the exact headline-vs-Verdict contradiction `swingVerdictVerb` exists to
+  // prevent, just one call site over. Special-casing SKIP first (same pattern `actionNarrative`
+  // already uses) and reusing `swingVerdictVerb` makes this label agree with every other "Entry
+  // stance" rendering in the brief; every non-SKIP play falls through to the identical, unchanged
+  // `swingActionDisplay(play)?.label ?? play.swingEntryAction?.toUpperCase() ?? play.recommendation
+  // ?? "WAIT"` chain as before.
   const label =
-    swingActionDisplay(play)?.label ??
-    play.swingEntryAction?.toUpperCase() ??
-    play.recommendation ??
-    "WAIT";
+    play.status === "SKIP"
+      ? swingVerdictVerb(play, action)
+      : action?.label ?? play.swingEntryAction?.toUpperCase() ?? play.recommendation ?? "WAIT";
   lines.push(`**Entry stance:** ${label}`);
   if (play.servingSection) lines.push(`Serving section: **${play.servingSection.replace(/_/g, " ")}**`);
   if (play.setupState) lines.push(`Setup: **${play.setupState}**`);
