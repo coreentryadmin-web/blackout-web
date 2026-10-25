@@ -305,7 +305,7 @@ export function manageObservablesFromEvent(
     // checks the underlying against its own structuralStopLevel through underlyingPriceForStructuralStop
     // (ex-dividend-adjusted, manage.ts's structuralStopBroken) and against the archetype-specific
     // thesis_stop signal — neither fired, so manage-sync.ts's thesisStateOf() correctly stamped
-    // thesis_state:"INTACT" (rung "hold"/"insufficient_data") onto the snapshot. Every branch
+    // thesis_state:"INTACT" (rung "hold") onto the snapshot. Every branch
     // above this one only ever moves thesisLevel TOWARD "break"; none of them ever reset it back
     // when the authoritative read disagrees with the cruder fallback, so thesisLevel stayed
     // "break" while manageReasonDetail (the exact same tick's `reason` string) read verbatim
@@ -316,12 +316,17 @@ export function manageObservablesFromEvent(
     // header doc already states the intended precedence ("Spot-based structural break remains
     // the fallback when no snapshot exists yet") — i.e. once a snapshot DOES exist, it should be
     // authoritative, including resetting a false-positive spot-only "break" back to "intact".
-    // Scoped to thesis_state "INTACT" only (rung hold/insufficient_data) — the one state
-    // manage-sync.ts stamps specifically to mean "the real structural/thesis check ran and did
-    // NOT find a break" (manage-sync.ts's thesisStateOf() doc comment). STOPPED/EXPIRY_RISK and
-    // the WATCH-tagged edge rungs (catalyst_shift/regime_shift/...) are deliberately left
-    // untouched here — no live repro backs changing those, and widening this reset beyond the
-    // one state with direct evidence would be scope creep.
+    // Scoped to thesis_state "INTACT" only (rung "hold") — the one state manage-sync.ts stamps
+    // specifically to mean "the real structural/thesis check ran and did NOT find a break"
+    // (manage-sync.ts's thesisStateOf() doc comment). BUG FIX (2026-10-25): a total data-outage
+    // tick (rung "insufficient_data" — nothing evaluable at all) used to collapse onto this SAME
+    // "INTACT" tag, which would have silently reset a live-detected spot break back to "intact" on
+    // zero evidence either way; manage-sync.ts now stamps that case "UNKNOWN" instead, which
+    // deliberately matches none of these branches, so a hollow read falls through and leaves the
+    // spot-only fallback's determination untouched. STOPPED/EXPIRY_RISK and the WATCH-tagged edge
+    // rungs (catalyst_shift/regime_shift/...) are deliberately left untouched here — no live repro
+    // backs changing those, and widening this reset beyond the one state with direct evidence
+    // would be scope creep.
     thesisLevel = "intact";
   }
 

@@ -212,6 +212,27 @@ test("livePlayFromSwingPosition: authoritative INTACT snapshot overrides a stale
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25): sibling of the INTC repro above, but for a total
+// data-outage tick (rung "insufficient_data" — manage.ts had NOTHING evaluable, not a real passed
+// check). Before the fix, manage-sync.ts's thesisStateOf() stamped this case "INTACT" too, so the
+// override above would ALSO have fired here and reset a live, spot-detected structural break back to
+// "intact" on zero real evidence either way — exactly the false-negative this tag exists to prevent.
+// thesis_state is now "UNKNOWN" for this rung, which matches none of the override branches, so the
+// spot-only fallback's own "break" read must survive untouched.
+test("livePlayFromSwingPosition: a total-data-outage snapshot (insufficient_data/UNKNOWN) must NOT override a live spot-detected break", () => {
+  const play = livePlayFromSwingPosition(
+    row({ status: "HOLD" }),
+    160, // below the 165 invalidation price -> spot-only fallback correctly calls this "break"
+    {
+      action: "HOLD",
+      rung: "insufficient_data",
+      thesis_state: "UNKNOWN",
+      reason: "no usable management read — holding (null-honesty)",
+    },
+  )!;
+  assert.equal(play.thesisLevel, "break", "a hollow read must never mask a live-detected structural break");
+});
+
 test("livePlayFromSwingPosition: stamps real DTE, entry, and live P&L from ledger row", () => {
   const play = livePlayFromSwingPosition(row(), 178)!;
   assert.ok(play.contract.dte >= 0);
