@@ -8440,3 +8440,25 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   still concurrently open) play-brief's "Book context" section and confirm the same-direction count
   now includes all 8 names instead of only 4 of them. Also spot-check that the count still excludes
   genuinely different-theme holdings (no false merge into an unrelated cluster).
+
+## WATCH LIST — 2026-10-25 (nighthawk-backfill-repair self-heal cron, fix/nighthawk-backfill-repair-cron)
+- **What was broken:** the live Legacy edition (edition_for "2026-10-26") was still serving a
+  BACKFILL play recommending an already-expired contract ("PLTR $197.5 Call 2026-10-23") a full
+  day after PR #6637 (2026-10-24) documented the exact same incident on the exact same edition.
+  Root cause: #6637 shipped the repair function (`repairStaleBackfillContracts`/
+  `republishBackfilledEdition`) but its only caller is an admin-only, manually-triggered endpoint
+  nobody had actually invoked for this edition.
+- **What the fix changed:** added a new, dedicated cron (`nighthawk-backfill-repair`, registered
+  in `cron-registry.ts`, scheduled 9:00 AM ET dual-band, 15 min before `nighthawk-morning-confirm`)
+  that automatically calls the already-shipped `republishBackfilledEdition` for today's edition
+  every trading morning. No existing cron's logic changed.
+- **IMPORTANT — the EventBridge schedule is NOT yet deployed.** `cron-registry.ts` is only a
+  mirror of the real deployed schedule (per this repo's own documented convention); the actual
+  EventBridge rule in `blackout-infra` still needs to be created by an AWS-credentialed session
+  (none available this run — `InvalidClientTokenId`). Until that rule exists, this cron is
+  reachable only via `?force=1` manual invocation — it will NOT self-heal anything automatically
+  yet. This is the single concrete next action blocking this fix from having any live effect.
+- **What to re-check once a future session has AWS creds:** create the EventBridge rule
+  (`0 13,14 * * 1-5` UTC, targeting `/api/cron/nighthawk-backfill-repair`), then confirm it fires
+  and that `GET /api/market/nighthawk/edition` for the live PLTR edition (or whichever edition is
+  current by then) no longer carries a dead BACKFILL contract.

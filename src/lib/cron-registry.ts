@@ -436,6 +436,24 @@ export const CRON_JOBS: CronJobDefinition[] = [
     produces_member_alert: true,
   },
   {
+    key: "nighthawk-backfill-repair",
+    name: "Night Hawk Backfill Repair",
+    kind: "http",
+    path: "/api/cron/nighthawk-backfill-repair",
+    schedule_label: "9:00 AM ET weekdays",
+    // 15 min BEFORE nighthawk-morning-confirm's own dual-band, same DST-coverage shape, so any
+    // repair this makes is already in the DB by the time morning-confirm reads the edition row.
+    // Added 2026-10-25 (Ask Largo standing mandate) — closes the gap PR #6637 (2026-10-24)
+    // shipped the repair CAPABILITY for but never wired an automatic caller: a BACKFILL play's
+    // contract that expired before its own edition's target trading day sat dead in the
+    // member-facing edition for a full day because nothing ever invoked the admin-only
+    // POST /api/admin/nighthawk/republish-backfill endpoint for it.
+    schedule_cron_utc: "0 13,14 * * 1-5",
+    stale_after_min: 36 * 60,
+    weekdays_only: true,
+    description: "Auto-repairs a BACKFILL play whose own contract has expired relative to the edition's target trading day, before morning-confirm and market open",
+  },
+  {
     key: "market-regime-detector",
     name: "Market Regime Detector",
     kind: "http",
