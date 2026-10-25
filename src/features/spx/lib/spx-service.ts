@@ -19,7 +19,10 @@ import { isPremarketPlanningWindow, isSpxEngineCronWindow } from "@/features/spx
 import { loadOpenPlay } from "@/features/spx/lib/spx-play-store";
 import { degradedPlayPayload, currentSessionPhase } from "@/features/spx/lib/spx-play-payload";
 import { playMemberReadCacheSec, playMemberPeekMaxAgeSec } from "@/features/spx/lib/spx-play-config";
-import { isSpxPlaySnapshotFreshEnough } from "@/features/spx/lib/spx-play-freshness";
+import {
+  isSpxPlaySnapshotFreshEnough,
+  isSpxPlaySnapshotShareable,
+} from "@/features/spx/lib/spx-play-freshness";
 import { playMemberReadMaxBlockMs } from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
@@ -206,7 +209,13 @@ function spxPlayServerCacheKey(date: string): string {
   return `server:spx-play-read:${date}`;
 }
 
-/** When another replica holds the eval lock, poll Redis for its published snapshot. */
+/** When another replica holds the eval lock, poll Redis for its published snapshot.
+ *
+ * Uses `isSpxPlaySnapshotShareable` (not the plain freshness bound) so a closed-market
+ * snapshot — whose `as_of` is the desk snapshot's own timestamp by design, not eval time — is
+ * trusted regardless of age; a live-market snapshot still has to clear the real bound. See
+ * spx-play-freshness.ts's doc comment for why (fix for a same-day regression in PR #6719).
+ */
 async function waitForPeerSpxPlaySnapshot(
   date: string,
   maxMs = 800
@@ -217,7 +226,7 @@ async function waitForPeerSpxPlaySnapshot(
     const hit = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
       spxPlayServerCacheKey(date)
     );
-    if (hit?.value && isSpxPlaySnapshotFreshEnough(hit.value.as_of, Date.now(), maxAgeMs)) {
+    if (hit?.value && isSpxPlaySnapshotShareable(hit.value, Date.now(), maxAgeMs)) {
       return hit.value;
     }
     await new Promise((resolve) => setTimeout(resolve, 400));
@@ -250,11 +259,23 @@ export async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<Return
     // failure this cross-replica lock exists to prevent (see comment above). peekSpxPlayState,
     // the only other reader of this same key, already bounds it with
     // isSpxPlaySnapshotFreshEnough; apply the same bound here instead of trusting the TTL alone.
+    //
+    // BUG FIX #2 (2026-10-25, same day, found live immediately after the fix above shipped):
+    // a plain freshness bound over-corrected for the CLOSED-MARKET case. Once the market is
+    // genuinely closed, evaluateSpxPlayState's closed-market branch (spx-play-engine.ts)
+    // deliberately stamps `as_of` from the desk snapshot's own timestamp, not eval time -- a
+    // 20s bound can never pass against that legitimately-old stamp, so every closed-market read
+    // here was rejecting the just-published snapshot and falling through to a redundant
+    // re-evaluation on every single contended request (defeating the single-flight cache this
+    // lock exists to provide), without fixing anything -- the re-eval reads the same stale desk
+    // peek and produces an identical answer. isSpxPlaySnapshotShareable trusts a
+    // `session_phase: "closed"` snapshot regardless of age while still applying the real bound
+    // to a live-market one, so PR #6719's live-market fix above is unchanged.
     const maxAgeMs = playMemberPeekMaxAgeSec() * 1000;
     const stale = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
       spxPlayServerCacheKey(date)
     );
-    if (stale?.value && isSpxPlaySnapshotFreshEnough(stale.value.as_of, Date.now(), maxAgeMs)) {
+    if (stale?.value && isSpxPlaySnapshotShareable(stale.value, Date.now(), maxAgeMs)) {
       return stale.value;
     }
     const peer = await waitForPeerSpxPlaySnapshot(date);
@@ -302,7 +323,10 @@ async function spxPlayReadFallback(): Promise<Awaited<ReturnType<typeof evaluate
   const hit = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
     spxPlayServerCacheKey(date)
   );
-  if (hit?.value && isSpxPlaySnapshotFreshEnough(hit.value.as_of, Date.now(), maxAgeMs)) {
+  // isSpxPlaySnapshotShareable (not the plain freshness bound) — see waitForPeerSpxPlaySnapshot's
+  // comment above: a closed-market snapshot's as_of is desk time by design, so it's trusted
+  // regardless of age, while a live-market snapshot still has to clear the real bound.
+  if (hit?.value && isSpxPlaySnapshotShareable(hit.value, Date.now(), maxAgeMs)) {
     return hit.value;
   }
   const peer = await waitForPeerSpxPlaySnapshot(date, 800);
