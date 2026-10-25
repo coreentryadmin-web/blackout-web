@@ -239,6 +239,9 @@ async function trailingRvolInputs(ticker, dayYmd) {
 /** The no-lookahead walk: returns the FIRST minute `evaluateMomentumSignal` detects (empty-chain
  *  pre-check), or null if the ticker never qualifies this session day. */
 function findSignalMinute(bars, profile, avgDailyVolume, dayYmd) {
+  // `avgDailyVolume` is guaranteed non-null here -- the one real call site (processTickerDayInner)
+  // already returns NO_RVOL_PROFILE before ever calling this function when it's null. Flagged by
+  // CodeQL as a dead null-check when this still read `avgDailyVolume != null ? ... : {ratio:null}`.
   const rthOpenMs = etWallClockToUtcMs(dayYmd, 9 * 60 + 30);
   const closeMs = etWallClockToUtcMs(dayYmd, 16 * 60);
   const rth = bars.filter((b) => b.t >= rthOpenMs && b.t < closeMs).sort((a, b) => a.t - b.t);
@@ -250,15 +253,12 @@ function findSignalMinute(bars, profile, avgDailyVolume, dayYmd) {
     const intraday = computeIntradayRead(soFar);
     if (intraday.or_high == null || intraday.or_low == null) continue; // OR not formed yet
     const referenceLevel = { high: intraday.or_high, low: intraday.or_low };
-    const rvol =
-      avgDailyVolume != null
-        ? computeRelativeVolume({
-            cumulativeVolumeToday: cumVol,
-            avgDailyVolume,
-            nowMs: rth[i].t,
-            timeOfDayProfile: profile,
-          })
-        : { ratio: null };
+    const rvol = computeRelativeVolume({
+      cumulativeVolumeToday: cumVol,
+      avgDailyVolume,
+      nowMs: rth[i].t,
+      timeOfDayProfile: profile,
+    });
     const minutesRemaining = Math.max(0, (closeMs - rth[i].t) / 60_000);
     const precheck = evaluateMomentumSignal({
       ticker: "x",
@@ -332,7 +332,6 @@ async function processTickerDay(ticker, day) {
 
 async function processTickerDayInner(ticker, day) {
   const dayOpenMs = etWallClockToUtcMs(day, 9 * 60 + 30);
-  const dayCloseMs = etWallClockToUtcMs(day, 16 * 60);
   const [bars, { profile, avgDailyVolume, daysUsed }] = await Promise.all([
     realMinuteBars(ticker, day, day),
     trailingRvolInputs(ticker, day),
