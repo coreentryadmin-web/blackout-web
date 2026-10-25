@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-25T20:31:49.077Z",
+  "updated_at": "2026-10-25T22:10:45.105Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f18838de8f26a4001c9061db21fd91ff82579523",
+    "last_main_sha": "18d4c5f39870df7852cd7cf6a5ef8d1aefe36849",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-20T05:09:27.816Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-20T05:09:32.684Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-20T06:27:04.712Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-20T06:27:09.048Z",
       "type": "context_sync",
@@ -1271,48 +1253,56 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-25T22:10:33.219Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-25T22:10:40.111Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-25T22:10:45.105Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 6731,
-      "title": "fix(swing): honest mark-unknown reason + structural-node market-closed caveat",
-      "branch": "fix/swing-mark-unknown-reason-structural-node-caveat",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-25T20:30:08Z"
-    },
-    {
-      "number": 6730,
-      "title": "fix(helix): fmtShares overflows at K→M unit boundary (Discord + live UI)",
-      "branch": "fix/darkpool-fmtshares-unit-boundary",
+      "number": 6737,
+      "title": "fix(swing): entry-trigger level no longer inherits flag anchor's stale provenance once prices diverge",
+      "branch": "fix/swing-entry-trigger-provenance-mismatch",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-25T20:25:51Z"
+      "updated_at": "2026-10-25T22:05:54Z"
     },
     {
-      "number": 6729,
-      "title": "docs(audit): fold batch-83 — 2 staged findings into FINDINGS.md",
-      "branch": "docs/fold-batch-83",
+      "number": 6736,
+      "title": "fix(swing): propagate stale/closed-market caveats to 4 more play-brief render sites",
+      "branch": "fix/swing-disclosure-caveat-batch-3",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-25T22:03:56Z"
+    },
+    {
+      "number": 6735,
+      "title": "fix(swing): entry price + exit-policy stop/target rails missing from evidence[]",
+      "branch": "fix/swing-evidence-position-entry-stop-target",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "completed/success",
-      "updated_at": "2026-10-25T20:18:43Z"
-    },
-    {
-      "number": 6728,
-      "title": "fix(swing): Legacy commit bridge fabricated halted:false/dailyBarComplete:true for every candidate",
-      "branch": "fix/swing-legacy-bridge-halt-dailybar-fabricated-false",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "completed/success",
-      "updated_at": "2026-10-25T20:16:43Z"
+      "updated_at": "2026-10-25T21:57:52Z"
     },
     {
       "number": 5547,
