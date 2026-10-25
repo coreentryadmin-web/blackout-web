@@ -117,12 +117,22 @@ export function fmtPremium(n: number | null): string {
   // "$5000.0M" instead of "$5.0B" (GexDealerPanel.tsx:39). Mirrors the sibling
   // fmtMoney formatters (GexHeatmap.tsx:254, gex-positioning.ts:80).
   if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000_000) {
+    const m = abs / 1_000_000;
+    // A value that ROUNDS to 1000 of this unit belongs in the next unit up, not an
+    // overflowed four-digit label (e.g. 999_950_000 must read "$1.0B", never "$1000.0M").
+    if (Math.round(m * 10) / 10 >= 1000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
+    return `${sign}$${m.toFixed(1)}M`;
+  }
   // Below $10K, keep 1 decimal so $1.4K and $1.5K don't collapse to the same
   // string (premium size is the signal); $10K+ stays whole-K for compactness.
   if (abs >= 1_000) {
     const k = abs / 1_000;
-    return `${sign}$${k < 10 ? k.toFixed(1) : k.toFixed(0)}K`;
+    if (k < 10) return `${sign}$${k.toFixed(1)}K`;
+    // Same overflow-into-next-unit guard as the millions branch above (e.g. 999_700
+    // must read "$1.0M", never "$1000K").
+    if (Math.round(k) >= 1000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+    return `${sign}$${k.toFixed(0)}K`;
   }
   return `${sign}$${abs.toFixed(0)}`;
 }
