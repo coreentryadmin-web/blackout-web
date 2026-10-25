@@ -375,11 +375,27 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
       };
     case "dont_buy":
       if (input.setupState === "INVALIDATED" || input.persistenceObserved === true) {
+        // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro: servingSection stamped
+        // "WATCH" while a freshly-read setupState already reads INVALIDATED): same defect class
+        // as the two sibling fixes in this file (the RESEARCH-section early return above, and the
+        // deadline-expired dont_buy branch below) — `commitGateBlockedBy` is computed once, above
+        // the switch, regardless of which branch fires, but this branch was the one case that
+        // still unconditionally discarded it. Reachable whenever `resolveSwingServingSection`
+        // trusts a stamped `servingSection` that predates a newer setupState/persistenceObserved
+        // read: `sectionForSwingPlay` would route straight to RESEARCH for either condition (which
+        // DOES append the real gate evidence), but a caller that already stamped a non-RESEARCH
+        // section on the row bypasses that recompute entirely (see this file's own
+        // `resolveSwingServingSection`), landing here instead with the live gate codes already in
+        // scope and silently dropped. Same fix: append the real, mapped gate evidence after the
+        // primary thesis-invalidated/persistence-gap reason, never replacing it.
+        const realGateBlocks = commitGateBlockedBy.length
+          ? commitGateBlocksForVerdict(commitGateBlockedBy, gateDiagnostics)
+          : [];
         return {
           deckStatus: "SKIP",
           recommendation: "HOLD",
           recNote: enter.reason,
-          gateBlocks: researchGateBlocks(input),
+          gateBlocks: [...researchGateBlocks(input), ...realGateBlocks],
           actionLabel: null,
           entryAction: "dont_buy",
         };
