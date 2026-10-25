@@ -211,12 +211,15 @@ async function waitForPeerSpxPlaySnapshot(
   date: string,
   maxMs = 800
 ): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>> | null> {
+  const maxAgeMs = playMemberPeekMaxAgeSec() * 1000;
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
     const hit = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
       spxPlayServerCacheKey(date)
     );
-    if (hit?.value) return hit.value;
+    if (hit?.value && isSpxPlaySnapshotFreshEnough(hit.value.as_of, Date.now(), maxAgeMs)) {
+      return hit.value;
+    }
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
   return null;
@@ -238,10 +241,22 @@ export async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<Return
   // single-flight optimization, not a guard against a stuck background job.
   const won = await sharedCacheSetNx(lockKey, Date.now(), SPX_PLAY_EVAL_LOCK_TTL_SEC).catch(() => false);
   if (!won) {
+    // BUG FIX (2026-10-25, Ask Largo/5-engine standing mandate, live repro): this read the shared
+    // spxPlayServerCacheKey hit unconditionally the instant it was non-null, trusting
+    // sharedCacheGetWithTtl's Redis-native `ttl > 0` gate alone. Live polling of
+    // GET /api/market/spx/play caught snapshots up to ~24 minutes stale served non-monotonically
+    // (a later poll returning an OLDER as_of than an earlier one, with genuinely different
+    // score/direction/factors) -- the exact "divergent grade/score/direction across replicas"
+    // failure this cross-replica lock exists to prevent (see comment above). peekSpxPlayState,
+    // the only other reader of this same key, already bounds it with
+    // isSpxPlaySnapshotFreshEnough; apply the same bound here instead of trusting the TTL alone.
+    const maxAgeMs = playMemberPeekMaxAgeSec() * 1000;
     const stale = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
       spxPlayServerCacheKey(date)
     );
-    if (stale?.value) return stale.value;
+    if (stale?.value && isSpxPlaySnapshotFreshEnough(stale.value.as_of, Date.now(), maxAgeMs)) {
+      return stale.value;
+    }
     const peer = await waitForPeerSpxPlaySnapshot(date);
     if (peer) return peer;
     return spxPlayReadDegraded();
@@ -283,10 +298,13 @@ async function spxPlayReadDegraded(): Promise<Awaited<ReturnType<typeof evaluate
 
 async function spxPlayReadFallback(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {
   const date = todayEtYmd();
+  const maxAgeMs = playMemberPeekMaxAgeSec() * 1000;
   const hit = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
     spxPlayServerCacheKey(date)
   );
-  if (hit?.value) return hit.value;
+  if (hit?.value && isSpxPlaySnapshotFreshEnough(hit.value.as_of, Date.now(), maxAgeMs)) {
+    return hit.value;
+  }
   const peer = await waitForPeerSpxPlaySnapshot(date, 800);
   if (peer) return peer;
   return spxPlayReadDegraded();
