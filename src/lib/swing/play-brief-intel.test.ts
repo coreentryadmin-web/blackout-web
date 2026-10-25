@@ -1770,6 +1770,66 @@ test("deskConsensusSection: watch/open buckets are unchanged (default param, no 
   assert.match(watchSection?.body ?? "", /before sizing/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:SPOT WATCH brief): for a
+// Legacy-promoted candidate, `nighthawk_recent` ("the last time Legacy published a pick on this
+// ticker") is, for a just-promoted play, the SAME edition that promoted this exact candidate —
+// the section used to cite that as if it were separate corroborating history ("weigh that track
+// record... before sizing") when it is actually the play's own originating event. Suppressed via
+// the same `isLegacyPromotedSignal(play.discoveryOrigin)` check `entryTriggerDeadReason` already
+// uses, plus a date match between the cited `edition_for` and the play's own "First flagged" date
+// (`play.detectedAt`).
+test("deskConsensusSection: suppresses a Legacy citation that is the play's own originating promotion event, not independent history", () => {
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-10-23",
+      direction: "long",
+      conviction: "high",
+      outcome: "open",
+    },
+  };
+  const section = deskConsensusSection(
+    eco,
+    fixturePlay({
+      direction: "LONG",
+      discoveryOrigin: ["NIGHT HAWK"],
+      detectedAt: "2026-10-23T13:15:00.000Z", // 09:15 ET, same day as edition_for
+    }),
+    "watch",
+    "2026-10-25",
+  );
+  assert.equal(section, null);
+});
+
+test("deskConsensusSection: a Legacy-promoted play still narrates a GENUINELY independent, older Legacy pick on the same ticker", () => {
+  // Same ticker was promoted into Swing off a recent edition, but Legacy separately published an
+  // earlier, unrelated pick on this name days before that promotion — real corroborating history,
+  // not a self-reference, so it must still render.
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      // 2 days before the play's own detectedAt (2026-10-23) — genuinely independent, but still
+      // within the existing 4-day staleness window off sessionDate (2026-10-25) so the sibling
+      // staleness gate above doesn't also suppress it for an unrelated reason.
+      edition_for: "2026-10-21",
+      direction: "long",
+      conviction: "medium",
+      outcome: "WIN",
+    },
+  };
+  const section = deskConsensusSection(
+    eco,
+    fixturePlay({
+      direction: "LONG",
+      discoveryOrigin: ["NIGHT HAWK"],
+      detectedAt: "2026-10-23T13:15:00.000Z",
+    }),
+    "watch",
+    "2026-10-25",
+  );
+  assert.ok(section);
+  assert.match(section?.body ?? "", /closed \*\*WIN\*\*/i);
+  assert.match(section?.body ?? "", /weigh that track record/i);
+});
+
 test("deskConsensusSection: null when only flow anomaly (covered by flowNarrative + Flow & positioning)", () => {
   const eco: EcosystemContext = {
     recent_anomalies: [{ anomaly_type: "sweep_cluster", detail: "$4.2M call sweeps at 145" }],
