@@ -21,6 +21,7 @@ export type WhyNowReason =
   | "accumulation" // multi-day stacked flow build (flow_accumulation.days ≥ 2)
   | "breakout" // BREAKOUT discovery rail surfaced it
   | "pin" // PIN (gamma-wall) discovery rail surfaced it
+  | "momentum" // MOMENTUM discovery rail surfaced it (underlying move + RVOL, no flow/breadth)
   | "sweep" // aggressive swept flow (sweep_pct over the material threshold)
   | "flow_spike" // sudden 30-minute flow surge (setup.spike)
   | "aggressor_flow"; // plain FLOW rail — dominant at-the-ask aggressor tape
@@ -67,6 +68,9 @@ export function deriveWhyNow(sig: WhyNowSignals): WhyNow | null {
   if (hasOrigin(sig.discovery_origin, "PIN")) {
     return { reason: "pin", label: "gamma-wall pin" };
   }
+  if (hasOrigin(sig.discovery_origin, "MOMENTUM")) {
+    return { reason: "momentum", label: "momentum + volume breakout" };
+  }
   const sweep = sig.sweep_pct;
   if (sweep != null && Number.isFinite(sweep) && sweep >= WHY_NOW_SWEEP_PCT) {
     return { reason: "sweep", label: "aggressive sweep" };
@@ -88,7 +92,15 @@ export function readPinnedWhyNow(entryContext: Record<string, unknown> | null | 
   const rec = wn as Record<string, unknown>;
   const reason = rec.reason;
   const label = rec.label;
-  const REASONS: WhyNowReason[] = ["accumulation", "breakout", "pin", "sweep", "flow_spike", "aggressor_flow"];
+  const REASONS: WhyNowReason[] = [
+    "accumulation",
+    "breakout",
+    "pin",
+    "momentum",
+    "sweep",
+    "flow_spike",
+    "aggressor_flow",
+  ];
   if (typeof reason !== "string" || !REASONS.includes(reason as WhyNowReason)) return null;
   if (typeof label !== "string" || label.length === 0) return null;
   return { reason: reason as WhyNowReason, label };

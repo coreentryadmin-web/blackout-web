@@ -189,7 +189,14 @@ export type FlowSetupInput = {
 // P&L by origin (the calibration origin band, calibration.ts) and each source graduates
 // through the n>=10 / delta>=15 ladder independently. PIN arrives in a later phase; the type
 // already admits it so the merge/label math never has to be revisited.
-export type DiscoveryOrigin = "FLOW" | "BREAKOUT" | "PIN";
+// MOMENTUM (operator directive, 2026-10-25) is the 4th: a same-day-expiration, sub-$1.00-ask
+// screen off a fixed ticker universe (ticker-universe.ts), detected from the underlying's own
+// momentum+RVOL action rather than an options print or a whole-market breadth screen — see
+// momentum-signal.ts / momentum-signal-source.ts / momentum-signal-discovery.ts. It is seated
+// LAST in DISCOVERY_ORIGIN_ORDER below (lowest tie-break priority, strictest score_floor via
+// gates.ts's default-case fallthrough) — the newest, least-proven origin inherits the most
+// conservative treatment everywhere by construction, never by a special case written for it.
+export type DiscoveryOrigin = "FLOW" | "BREAKOUT" | "PIN" | "MOMENTUM";
 
 // ── Play type (Phase 4, docs/audit/0DTE-UNIFICATION-DESIGN.md §1c + §3) ─────────────
 // The board commits TWO kinds of structure. Everything shipped through Phase 3b is
@@ -304,8 +311,9 @@ export function tradingSessionGapDays(todayYmd: string, expiryYmd: string): numb
   return gap;
 }
 
-/** Canonical order for a stable, dedup-friendly origin set/label (FLOW < BREAKOUT < PIN). */
-export const DISCOVERY_ORIGIN_ORDER: readonly DiscoveryOrigin[] = ["FLOW", "BREAKOUT", "PIN"];
+/** Canonical order for a stable, dedup-friendly origin set/label (FLOW < BREAKOUT < PIN <
+ *  MOMENTUM). MOMENTUM seated last (lowest tie-break priority) — see its doc comment above. */
+export const DISCOVERY_ORIGIN_ORDER: readonly DiscoveryOrigin[] = ["FLOW", "BREAKOUT", "PIN", "MOMENTUM"];
 
 /** Union two origin sets into a deduped, canonically-ordered set (pure). Used at merge time so
  *  a ticker found by two sources carries both origins, never a collapsed single value. */
@@ -545,12 +553,12 @@ export function mergeSameTickerDiscovery(
 /** Count how many board setups carry each discovery rail (and how many are multi-rail). Pure. */
 export function summarizeDiscoveryRailMix(
   setups: ReadonlyArray<Pick<EnrichedZeroDteSetup, "discovery_origin">>
-): { FLOW: number; BREAKOUT: number; PIN: number; multi: number; total: number } {
-  const out = { FLOW: 0, BREAKOUT: 0, PIN: 0, multi: 0, total: setups.length };
+): { FLOW: number; BREAKOUT: number; PIN: number; MOMENTUM: number; multi: number; total: number } {
+  const out = { FLOW: 0, BREAKOUT: 0, PIN: 0, MOMENTUM: 0, multi: 0, total: setups.length };
   for (const s of setups) {
     const origins = Array.isArray(s.discovery_origin) ? s.discovery_origin : [];
     for (const o of origins) {
-      if (o === "FLOW" || o === "BREAKOUT" || o === "PIN") out[o] += 1;
+      if (o === "FLOW" || o === "BREAKOUT" || o === "PIN" || o === "MOMENTUM") out[o] += 1;
     }
     if (origins.length > 1) out.multi += 1;
   }
@@ -760,10 +768,13 @@ export type ZeroDteSetup = {
   /**
    * Real intraday day % change magnitude (e.g. 8.2 for an 8.2% move), from the SAME grouped-daily
    * bar already fetched for the whole-market BREAKOUT/BREAKDOWN screen (`mover.gain × 100` —
-   * screenBreakoutMovers/screenBreakdownMovers, candidates.ts). Populated ONLY by
-   * buildBreakoutSetup (breakout-source.ts) for BREAKOUT-origin setups: FLOW/PIN-origin setups
-   * have no equivalent already-fetched change% source (their dossier's `tech` carries
-   * rel_volume, not a day-change field), and fabricating one there would violate the
+   * screenBreakoutMovers/screenBreakdownMovers, candidates.ts). Populated by buildBreakoutSetup
+   * (breakout-source.ts) for BREAKOUT-origin setups, and by buildMomentumSetup
+   * (momentum-signal-source.ts) for MOMENTUM-origin setups (there, the confirmed RECENT-WINDOW
+   * move from momentum-acceleration.ts, not a full day-change — see that builder's own
+   * comment). FLOW/PIN-origin setups have no equivalent already-fetched change% source (their
+   * dossier's `tech` carries rel_volume, not a day-change field), and fabricating one there
+   * would violate the
    * never-invent-an-input discipline (docs/audit/LARGO-PRODUCT-CONTRACT.md). Feeds
    * scoreMomentumRail's `change_pct` input (rails/momentum.ts, wired via
    * rails/legacy-bridge.ts's `railHitsFromLegacySetup`) — see that rail's own comment for why
