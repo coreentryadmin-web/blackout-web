@@ -50,6 +50,15 @@ test("fmtCompactHeatMoney always shows a number (never a blank dot)", () => {
   assert.equal(fmtCompactHeatMoney(-150_000), "-$150K");
 });
 
+test("fmtCompactHeatMoney promotes a value that rounds to 1000 of a unit into the next unit, never an overflowed four-digit label", () => {
+  assert.equal(fmtCompactHeatMoney(999_700), "+$1.0M");
+  assert.equal(fmtCompactHeatMoney(999_500), "+$1.0M");
+  assert.equal(fmtCompactHeatMoney(999_999), "+$1.0M");
+  assert.equal(fmtCompactHeatMoney(999_950_000), "+$1.0B");
+  assert.equal(fmtCompactHeatMoney(999_999_999), "+$1.0B");
+  assert.equal(fmtCompactHeatMoney(-999_700), "-$1.0M");
+});
+
 test("buildThermalDiscordCardSvg includes tickers and never invents spot", () => {
   const stub = {
     underlying: "SPY",
