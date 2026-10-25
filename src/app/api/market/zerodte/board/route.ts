@@ -14,7 +14,7 @@ import {
   shouldServeSimBoard,
 } from "@/lib/platform/zerodte-sim-board";
 import { requireToolApi } from "@/lib/tool-access-server";
-import { roundFloats } from "@/lib/round-floats";
+import { roundFloats, reconcileTrancheFractions } from "@/lib/round-floats";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -60,6 +60,15 @@ export async function GET(req: NextRequest) {
   ensureDataSockets();
   try {
     const payload = roundFloats(await getZeroDteBoardPayload());
+    // Same rounding-composition bug + fix as the record route's entry_context.executable.tranches
+    // reconciliation (round-floats.ts's reconcileTrancheFractions doc comment has the full
+    // write-up): `ledger[].timeline_tranches` is the SAME WS-11 per-leg array
+    // (readTimelineTranchesFromEntryContext reads it off the identical entry_context.executable
+    // blob), independently re-rounded here by roundFloats() above, so it carries the identical
+    // defect — a fully-fired ⅓/⅓/⅓ trim_scale row shows legs summing to 0.99, not 1.00.
+    for (const row of payload.ledger) {
+      row.timeline_tranches = reconcileTrancheFractions(row.timeline_tranches) ?? null;
+    }
     return NextResponse.json(payload, {
       headers: NO_STORE_HEADERS,
     });

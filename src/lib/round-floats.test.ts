@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals } from "./round-floats";
+import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals, reconcileTrancheFractions } from "./round-floats";
 
 test("rounds spurious float noise to 2dp by default", () => {
   assert.equal(roundFloats(7499.360000000001), 7499.36);
@@ -151,6 +151,70 @@ test("reconcileCellStrikeTotals: a strike missing from cells keeps its existing 
   };
   const fixed = reconcileCellStrikeTotals(block, ["2026-08-03"])!;
   assert.equal(fixed.strike_totals["105"], 12);
+});
+
+// ── reconcileTrancheFractions — live-caught (2026-10-25): a fully-fired WS-11 trim_scale
+// play's tranches[] fraction legs round to 0.33/0.33/0.33, summing to 0.99 instead of 1.00 ──
+
+test("reconcileTrancheFractions: reproduces the live DELL-style 3-leg bug — ⅓/⅓/⅓ rounds to 0.33/0.33/0.33 (sums to 0.99), and gets fixed to sum to exactly 1.00", () => {
+  // Same shape as plan.ts's reconstructTrimScaleExecutableFromBars output, post-roundFloats:
+  // each fraction independently rounded from 1/3 (0.3333...) to 0.33.
+  const tranches = [
+    { tranche: 1, fraction: 0.33, exit_pnl_pct: 25, exit_reason: "trim_scale_first", at_et: "10:15" },
+    { tranche: 2, fraction: 0.33, exit_pnl_pct: 50, exit_reason: "trim_scale_second", at_et: "11:00" },
+    { tranche: 3, fraction: 0.33, exit_pnl_pct: 80, exit_reason: "doubled", at_et: "14:30" },
+  ];
+  const fixed = reconcileTrancheFractions(tranches)!;
+  const sum = fixed.reduce((acc, t) => acc + t.fraction, 0);
+  // Exact float equality is safe here — 0.33+0.33+0.34 is exactly representable at 2dp.
+  assert.equal(Math.round(sum * 100) / 100, 1);
+  // Only the LAST (runner) leg absorbs the residual — the two trim legs are untouched.
+  assert.equal(fixed[0]!.fraction, 0.33);
+  assert.equal(fixed[1]!.fraction, 0.33);
+  assert.equal(fixed[2]!.fraction, 0.34);
+});
+
+test("reconcileTrancheFractions: a 2-leg split that already sums to 1.00 (0.33/0.67) is returned untouched", () => {
+  const tranches = [
+    { tranche: 1, fraction: 0.33, exit_pnl_pct: 25, exit_reason: "trim_scale_first", at_et: "10:15" },
+    { tranche: 2, fraction: 0.67, exit_pnl_pct: 60, exit_reason: "doubled", at_et: "13:00" },
+  ];
+  const fixed = reconcileTrancheFractions(tranches);
+  assert.strictEqual(fixed, tranches); // same array reference — nothing rewritten
+});
+
+test("reconcileTrancheFractions: a single-tranche array (immediate stop/time-stop, fraction=1) is returned untouched", () => {
+  const tranches = [{ tranche: 1, fraction: 1, exit_pnl_pct: -50, exit_reason: "stopped", at_et: "09:35" }];
+  const fixed = reconcileTrancheFractions(tranches);
+  assert.strictEqual(fixed, tranches);
+});
+
+test("reconcileTrancheFractions: passes through null/undefined/empty arrays unchanged", () => {
+  assert.equal(reconcileTrancheFractions(null), null);
+  assert.equal(reconcileTrancheFractions(undefined), undefined);
+  const empty: { fraction: number }[] = [];
+  assert.strictEqual(reconcileTrancheFractions(empty), empty);
+});
+
+test("reconcileTrancheFractions: a malformed (non-finite) fraction leaf is left untouched rather than guessed at", () => {
+  const tranches = [
+    { fraction: 0.33 },
+    { fraction: NaN },
+    { fraction: 0.33 },
+  ];
+  const fixed = reconcileTrancheFractions(tranches);
+  assert.strictEqual(fixed, tranches);
+});
+
+test("reconcileTrancheFractions: a 4-way even split (0.25 each) already sums to 1.00 and is left untouched", () => {
+  const tranches = [
+    { fraction: 0.25 },
+    { fraction: 0.25 },
+    { fraction: 0.25 },
+    { fraction: 0.25 },
+  ];
+  const fixed = reconcileTrancheFractions(tranches);
+  assert.strictEqual(fixed, tranches);
 });
 
 // RTH-scan regression (2026-07-13): Vector served the weekly gamma flip as 7622.381430556295. The

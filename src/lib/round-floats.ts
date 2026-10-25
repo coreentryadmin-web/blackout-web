@@ -145,3 +145,48 @@ export function reconcileCellStrikeTotals<
   }
   return { ...block, strike_totals: Object.fromEntries(strikeTotals) } as B;
 }
+
+/**
+ * Reconcile a WS-11 TRIM-SCALE `tranches[]` audit trail AFTER roundFloats: same rounding-
+ * composition bug as reconcileStrikeTotal/reconcileCellStrikeTotals above, one level deeper —
+ * here the drift is between SIBLING array leaves (each `fraction`), not between a leaf and a
+ * separately-rounded total. `reconstructTrimScaleExecutableFromBars` (plan.ts) tracks a
+ * `remaining` balance down to exactly 0 across tranches, so the UNROUNDED fractions always sum
+ * to 1 (within float epsilon) regardless of how many legs fired. But roundFloats() rounds each
+ * tranche's `fraction` leaf INDEPENDENTLY, and a fully-fired ⅓/⅓/⅓ trim_scale play (two trims +
+ * runner, TRIM_SCALE_RULES.tranche_fraction = 1/3) rounds to 0.33/0.33/0.33 — summing to 0.99,
+ * not 1.00. Not a wrong number at the SOURCE (plan.ts's `managed_pnl_pct` blends the exact,
+ * unrounded fractions BEFORE this rounding pass ever touches them, so the official headline P&L
+ * is unaffected) — but `tranches[]` is documented (plan.ts) as "the audit trail behind the one
+ * blended official number", and a member who recomputes the blend from these DISPLAYED fractions
+ * gets a result ~0.5pp below the real one. Live-caught 2026-10-25 (DELL 2026-10-14 and 11 other
+ * production rows over a 90-day window): recompute-from-served-fractions gave 52.53% vs the
+ * served managed_pnl_pct of 53.06%.
+ *
+ * Fix mirrors reconcileStrikeTotal's approach: adjust ONE value to absorb the rounding residual
+ * so the displayed array is self-consistent. The LAST tranche (the runner leg — "whatever is
+ * left over" by construction, per plan.ts's own comments) is the natural absorber. A split that
+ * already sums to 1.00 post-rounding (e.g. the 2-leg 0.33/0.67 case) is returned UNTOUCHED — this
+ * only adjusts an array whose rounded sum has actually drifted. A malformed leaf (non-finite
+ * `fraction`) also returns the array untouched rather than guessing. Call this AFTER roundFloats()
+ * on the SAME tranches array it rounded.
+ */
+export function reconcileTrancheFractions<T extends { fraction: number }>(
+  tranches: T[] | null | undefined,
+  dp = 2
+): T[] | null | undefined {
+  if (!Array.isArray(tranches) || tranches.length < 2) return tranches;
+  const factor = 10 ** dp;
+  let sumUnits = 0;
+  for (const t of tranches) {
+    if (!Number.isFinite(t.fraction)) return tranches;
+    sumUnits += Math.round(t.fraction * factor);
+  }
+  if (sumUnits === factor) return tranches; // already self-consistent — nothing to absorb
+  const residualUnits = factor - sumUnits;
+  const lastIdx = tranches.length - 1;
+  const last = tranches[lastIdx]!;
+  const out = tranches.slice();
+  out[lastIdx] = { ...last, fraction: (Math.round(last.fraction * factor) + residualUnits) / factor };
+  return out;
+}
