@@ -7,7 +7,7 @@ import { tieredMinOi } from "./grounding";
 import { parseOptionsContract } from "./option-contract-parse";
 import { validatePlayGeometry } from "./play-constraints";
 import { capGatePromotedConviction } from "./publish-gates";
-import { buildDirectionalStockLevels } from "./play-levels";
+import { buildDirectionalStockLevels, computeRiskReward } from "./play-levels";
 import {
   fetchEditionChains,
   type ChainStrikeRow,
@@ -223,6 +223,24 @@ export function selectBackfillPlays(params: {
     // flags, reading noticeably thinner than an organic pick even though buildDeterministicThesis
     // needs nothing selectBackfillPlays doesn't already have in scope (scored, dossier, levels).
     const { thesis, key_signal } = buildDeterministicThesis(scored, dossier, levels);
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25): mapClaudePlayToEdition (claude-edition.ts)
+    // never sets `rr_ratio` — only the two organic-path builders (buildPlay/buildRescuePlays,
+    // deterministic-edition.ts) compute it via computeRiskReward and attach it. buildDeterministicThesis
+    // above ALREADY computes the identical number (same function, same `levels`) to embed in the
+    // "R:R X:1" sentence of `thesis` — it just never reaches the structured field for this path. Live
+    // repro: 2026-10-26 edition, PLTR (selection_tier BACKFILL) — thesis read "R:R 0.9:1 (acceptable)"
+    // while `rr_ratio` was absent, so PlaybookBriefingPanel.tsx's "R:R" stat (gated on
+    // `play.rr_ratio != null`) and play-explainer.ts's "Risk/reward ratio: X" line both silently
+    // omitted it for a BACKFILL-tier play only — the same fact present in prose, missing from the
+    // structured field. Fix mirrors buildRescuePlays' own call shape exactly, so the two numbers can
+    // never disagree with each other.
+    const rr_ratio =
+      computeRiskReward({
+        direction: scored.direction === "short" ? "SHORT" : "LONG",
+        entry_range: levels.entry_range,
+        target: levels.target,
+        stop: levels.stop,
+      }) ?? undefined;
     const play = {
       ...mapClaudePlayToEdition(
         {
@@ -245,6 +263,7 @@ export function selectBackfillPlays(params: {
       // separate thesis field on ClaudePlayRaw) — override with buildDeterministicThesis's own
       // richer, distinct thesis text rather than letting the compact key_signal double as both.
       thesis,
+      rr_ratio,
     };
     // Defense in depth: skip backfill candidates that still fail geometry (e.g. resistance ≤ support).
     if (!validatePlayGeometry(play).ok) {

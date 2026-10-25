@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { pickAffordableChainContract, selectBackfillPlays, repairStaleBackfillPlays } from "./play-backfill";
-import { buildDirectionalStockLevels } from "./play-levels";
+import { buildDirectionalStockLevels, computeRiskReward } from "./play-levels";
 import { validatePlayGeometry } from "./play-constraints";
 import type { PlaybookPlay } from "./types";
 import type { ChainStrikeRow, EditionChainData } from "./option-chain-prompt";
@@ -477,6 +477,34 @@ test("selectBackfillPlays: fills sub-floor scores toward the minimum from the ra
   assert.ok(notes.some((n) => n.includes("WAT")));
   assert.ok(notes.some((n) => n.includes("KOD")));
   assert.ok(!notes.some((n) => n.includes("ZS")), "ZS was never needed once the minimum was reached");
+});
+
+test("selectBackfillPlays: BACKFILL-tier plays carry a structured rr_ratio matching the one already embedded in their own thesis prose (regression — live PLTR 2026-10-26 defect: thesis read 'R:R 0.9:1' while the structured field was undefined)", () => {
+  const pool = [bfScored("WAT", 32)];
+  const dossiers: Record<string, TickerDossier> = { WAT: bfDossier("WAT", 100) };
+  const chains: Record<string, EditionChainData> = { WAT: bfChain(100) };
+
+  const { plays } = selectBackfillPlays({
+    finalPlays: [],
+    pool,
+    dossiers,
+    chains,
+    minPlays: 1,
+  });
+
+  assert.equal(plays.length, 1);
+  const play = plays[0]!;
+  assert.equal(play.ticker, "WAT");
+  assert.equal(play.selection_tier, "BACKFILL");
+  assert.ok(play.rr_ratio != null, "BACKFILL plays must carry a structured rr_ratio, not just prose");
+  const expected = computeRiskReward({
+    direction: "LONG",
+    entry_range: play.entry_range,
+    target: play.target,
+    stop: play.stop,
+  });
+  assert.equal(play.rr_ratio, expected, "must match computeRiskReward exactly — the same function/inputs the thesis prose's own 'R:R X:1' sentence already used");
+  assert.match(play.thesis, /R:R [\d.]+:1/, "sanity: the thesis prose does carry its own R:R sentence");
 });
 
 test("selectBackfillPlays: respects the cross-edition sector-concentration governor — a raw-higher-scored but governor-demoted candidate ranks BEHIND a lower-raw-scored, undemoted one", () => {
