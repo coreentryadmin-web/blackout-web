@@ -726,6 +726,53 @@ test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope h
   assert.doesNotMatch(verdict!.body, /· SKIP/, "Verdict must not show the raw internal SKIP deckStatus");
 });
 
+// BUG FIX (2026-10-25, Ask Largo standing mandate, live repro TSLA 377.5P 7DTE): watchEntrySection's
+// own "Entry stance:" label (the "Entry" section, separate from Verdict/headline above) carries the
+// IDENTICAL `action?.label ?? play.swingEntryAction?.toUpperCase() ?? play.recommendation ?? "WAIT"`
+// fallback shape the 2026-10-21 fix already named as leaking into the headline/Verdict line,
+// actionNarrative's "Entry stance" bullet, and degradedReadLine's "Live read" bullet — but this
+// FOURTH site was never enumerated in that fix, so a SKIP/RESEARCH candidate still fell through to
+// raw "HOLD" here while every other section correctly said "PASSED". Live repro: the real TSLA
+// brief rendered "Entry stance: HOLD" in the Entry section and, a few lines later in the SAME
+// response's "Trade manager read" section, "Entry stance — PASSED" for the identical play — exactly
+// the headline-vs-Verdict contradiction `swingVerdictVerb` exists to prevent, one call site over.
+test("composeSwingPlayBrief: Entry section's own 'Entry stance' label agrees with Verdict/Trade-manager-read for a SKIP candidate", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "SKIP",
+      recommendation: "HOLD",
+      swingEntryAction: undefined,
+      servingSection: "RESEARCH",
+      recNote: "Desk is passing this setup — no entry recommended.",
+    }),
+    asOf: "2026-09-10T13:47:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry, "expected Entry section");
+  assert.match(
+    entry!.body,
+    /\*\*Entry stance:\*\* PASSED/,
+    `Entry section must agree with the headline/Verdict PASSED framing, got: ${entry!.body}`,
+  );
+  assert.doesNotMatch(
+    entry!.body,
+    /\*\*Entry stance:\*\* HOLD/,
+    "a declined SKIP candidate must never read HOLD in the Entry section — nothing was entered, so nothing is being held",
+  );
+  // Cross-section consistency: the SAME brief's Verdict line must agree, not just this section.
+  const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
+  assert.ok(verdict, "expected Verdict section");
+  assert.match(verdict!.body, /· PASSED$/m);
+});
+
 // BUG FIX regression (2026-10-21, Ask Largo standing mandate): the SKIP->"PASSED" special case
 // above must be scoped to SKIP only — a genuine OPEN position the desk is actively telling a
 // member to hold (recommendation:"HOLD", no trim fired, no still-forming entry action) must keep

@@ -96,6 +96,29 @@ sibling lane's journal note.
 
 ---
 
+## WATCH LIST — 2026-10-25 Swing play-brief "Entry" section's own "Entry stance" label leaked SKIP→"HOLD" (4th call site of an already-named leak) — fixed, deploy pending validation
+
+**What was fixed:** The 2026-10-21 fix (`swingVerdictVerb`, `play-brief.ts`) closed a RESEARCH/
+SKIP-candidate's literal `"HOLD"` leak at three named call sites (the headline/Verdict line,
+`actionNarrative`'s "Entry stance" bullet, `degradedReadLine`'s "Live read" bullet) but missed a
+fourth: `watchEntrySection`'s own "Entry stance:" label in the brief's "Entry" section, which
+carries the identical fallback shape and was never updated. Live repro 2026-10-25: a real TSLA
+377.5P 7DTE RESEARCH candidate (`status: "SKIP"`) read "**Entry stance:** HOLD" in the Entry
+section while the SAME response's "Trade manager read" section, Verdict section, and headline all
+correctly read "PASSED" — a real, member-visible contradiction inside one answer. Fixed by special-
+casing SKIP first and reusing the already-exported `swingVerdictVerb`, same pattern
+`actionNarrative` already uses; every non-SKIP play renders unchanged. Full write-up:
+`docs/audit/findings-staging/2026-10-25-swing-watch-entry-stance-skip-hold-leak.md`.
+
+**Specific things to check at next RTH open:** pull a live RESEARCH/SKIP-bucket swing play-brief
+(e.g. `GET /api/market/swing/play-brief?playId=SWING:<ticker>&ticker=<ticker>&expandIntel=1` for
+any currently-PASSED candidate — the Command Deck's Swing RESEARCH lane shows which tickers qualify)
+and confirm the "Entry" section's "**Entry stance:**" line reads "PASSED", not "HOLD", and agrees
+with the Verdict section and headline in the same response. Also spot-check a genuine OPEN/HOLD
+swing position's Entry section still reads "HOLD" verbatim (unaffected by this fix).
+
+---
+
 ## WATCH LIST — 2026-10-24 Command Deck AND Largo swing play-brief both leaking the internal Banger-ledger sentinel — fixed, deploy pending validation
 
 **What was fixed:** `TerminalPlay.regime` forwarded the raw `BANGER_LEDGER_REGIME_LABEL`
