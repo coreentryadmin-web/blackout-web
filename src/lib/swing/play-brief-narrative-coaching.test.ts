@@ -2203,7 +2203,9 @@ test("magnetCoaching: uses ctx.readMs, not the real wall clock, to judge Vector 
   const readMs = Date.parse("2026-09-05T20:00:00.000Z");
   const vec = {
     asOf: "2026-09-05T20:00:00.000Z",
-    magnet: { strike: 100, distancePct: 3, pull: "up" },
+    // strike/distancePct kept self-consistent with spot=100 below (distance is recomputed from
+    // spot/strike, not trusted off this field verbatim — see the dedicated recompute tests above).
+    magnet: { strike: 103, distancePct: 3, pull: "up" },
     regime: { posture: "long", label: "LONG GAMMA" },
   } as unknown as Parameters<typeof magnetCoaching>[1];
   const line = magnetCoaching(ctx({ readMs }), vec, 100);
@@ -2230,6 +2232,48 @@ test("magnetCoaching: strike matches roundFloats' rounding, not plain toFixed(2)
   assert.ok(line);
   assert.match(line!, /\*\*Gamma magnet 152\.04\*\*/, "must round like roundFloats (152.04), not plain toFixed(2) (152.03)");
   assert.doesNotMatch(line!, /152\.03/);
+});
+
+// BUG FIX (Ask Largo standing mandate, live repro MSTR 2026-10-25): `m.distancePct` is the raw
+// upstream Vector-computed distance, baked in against Vector's OWN spot snapshot at write time —
+// which can differ fractionally from this brief's canonical `spot` param. collectFocalLevels
+// (play-brief-narrative.ts) recomputes the identical magnet's distance fresh from `spot`, and that
+// recomputed value is what feeds both the "Why this setup" narration and the structureLadder widget
+// (play-brief-ladder.ts's own header comment: that widget "can never disagree with 'Trade manager
+// read' about where ... the gamma flip sits"). Live repro: MSTR, magnet strike 161.56, spot 146.54
+// — spot-derived distance is 10.2498...% (rounds to 10.2%), but the live response's Trade manager
+// read bullet showed 10.3%, meaning `vec.magnet.distancePct` disagreed with spot/strike by itself.
+test("magnetCoaching: distance is recomputed from spot/strike, not trusted verbatim off the upstream snapshot (Ask Largo, live MSTR repro)", () => {
+  const readMs = Date.parse("2026-09-05T20:00:00.000Z");
+  const vec = {
+    asOf: "2026-09-05T20:00:00.000Z",
+    // Deliberately WRONG relative to strike=161.56/spot=146.54 (true distance ~10.25%, i.e. "10.2%"
+    // once rounded) — simulates the upstream Vector snapshot having baked in a slightly different
+    // spot at write time than this brief's own canonical spot.
+    magnet: { strike: 161.56, distancePct: 10.8, pull: "up" },
+    regime: { posture: "long", label: "LONG GAMMA" },
+  } as unknown as Parameters<typeof magnetCoaching>[1];
+  const line = magnetCoaching(ctx({ readMs }), vec, 146.54);
+  assert.ok(line);
+  assert.match(line!, /\+10\.2% from spot/, "must show the spot/strike-derived 10.2%, matching the ladder/focal-level reading elsewhere in the same brief");
+  assert.doesNotMatch(line!, /10\.8%/, "must not surface the upstream snapshot's own stale-relative-to-spot distance verbatim");
+});
+
+// Same root fix, the OTHER failure direction: a stale upstream distancePct that reads "far" while
+// the true spot/strike distance is actually inside the 1.2% "sitting on the magnet" band must still
+// get the near-magnet framing, not the generic pivot-node framing.
+test("magnetCoaching: near-magnet threshold also uses the recomputed distance, not the upstream snapshot's", () => {
+  const readMs = Date.parse("2026-09-05T20:00:00.000Z");
+  const vec = {
+    asOf: "2026-09-05T20:00:00.000Z",
+    // Upstream says "5% away" (would NOT trip the near-magnet framing), but strike=101/spot=100 is
+    // genuinely only 1% away — inside the <1.2% "near" band.
+    magnet: { strike: 101, distancePct: 5, pull: "at" },
+    regime: { posture: "long", label: "LONG GAMMA" },
+  } as unknown as Parameters<typeof magnetCoaching>[1];
+  const line = magnetCoaching(ctx({ readMs }), vec, 100);
+  assert.ok(line);
+  assert.match(line!, /You're sitting on the magnet/, "near framing must follow the real spot/strike distance (1%), not the stale upstream 5%");
 });
 
 test("flowPrintsCoaching: stale Vector returns null (Largo C2)", () => {
