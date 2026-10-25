@@ -108,7 +108,13 @@ export function moneyShort(n: number): string {
     const v = n / 1e6;
     return `$${v >= 10 ? v.toFixed(1) : v.toFixed(2)}M`;
   }
-  if (Math.abs(n) >= 1e3) return `$${Math.round(n / 1e3).toLocaleString("en-US")}K`;
+  if (Math.abs(n) >= 1e3) {
+    // A value that ROUNDS to 1000 of this unit belongs in the next unit up, not an overflowed
+    // four-digit label (e.g. 999_600 must read "$1.00M", never "$1,000K").
+    const k = Math.round(n / 1e3);
+    if (Math.abs(k) >= 1000) return `$${(n / 1e6).toFixed(2)}M`;
+    return `$${k.toLocaleString("en-US")}K`;
+  }
   return `$${Math.round(n).toLocaleString("en-US")}`;
 }
 
