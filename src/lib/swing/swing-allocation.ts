@@ -240,6 +240,26 @@ export function allocateSwingBook(
   const positionsOverCap: string[] = [];
   let totalInSwingsOverCap = false;
 
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25): `positionsOverCap`'s own doc comment says
+  // "tickers whose proposed weight exceeded the per-position cap (only possible via injected
+  // existing weights)" — but nothing anywhere in this function ever checked an EXISTING position's
+  // own `weightPct` against `caps.perPositionPct`. The per-decision `per_position` capFlag below
+  // checks `proposedPct > caps.perPositionPct`, and `proposedPct` is UNCONDITIONALLY set to
+  // `caps.perPositionPct` two lines down ("never resized" — see the module header) — so that
+  // comparison is comparing the cap to itself and can never be true for a NEW candidate; that part
+  // is correct by design, not a bug (a fresh position can't be sized above the cap it's capped to).
+  // The real gap is the documented EXCEPTION this field exists for: an ALREADY-HELD position whose
+  // injected `weightPct` already exceeds the cap (e.g. appreciation, a manual override, a stale
+  // ledger weight) was silently invisible — `positionsOverCap` stayed `[]` no matter what `existing`
+  // carried. Live repro: `existing: [{ticker:"NVDA", weightPct:9}]` (well past the 5% cap) against
+  // any candidate set — pre-fix `capsApplied.positionsOverCap` reads `[]`. This loop is the missing
+  // check the doc comment always claimed existed; it is independent of `candidates`/`decisions`
+  // (an over-cap holding is over-cap whether or not it's being re-evaluated this pass).
+  for (const e of existing) {
+    const w = isFin(e.weightPct) ? e.weightPct : caps.perPositionPct;
+    if (w > caps.perPositionPct) positionsOverCap.push(e.ticker.trim().toUpperCase());
+  }
+
   const decisions: SwingAllocationDecision[] = ranked.map((d) => {
     const cand = byTicker.get(d.ticker.toUpperCase());
     const theme = resolveTheme(d.ticker);
