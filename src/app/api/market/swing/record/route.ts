@@ -2,6 +2,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
+  fetchOpenSwingPositions,
   fetchSwingPositionChain,
   fetchSwingPositionsRange,
   requireDatabaseInProduction,
@@ -45,7 +46,25 @@ export async function GET(req: NextRequest) {
 
   try {
     const rows = await fetchSwingPositionsRange(since, Math.min(MAX_ROWS, days * 40));
-    const rootIds = selectSwingRecordRootIds(rows).slice(0, MAX_CHAINS);
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25): `fetchSwingPositionsRange` filters on
+    // `session_date >= since` — a currently OPEN/HOLD/TRIM position whose own session_date (entry
+    // date) predates the window is invisible to that query, so `selectSwingRecordRootIds` never
+    // seeds its root and the whole chain silently drops out of `records`, undercounting
+    // `summary.opens`/`nativeOpens`. "Is this position currently open" is a PRESENT-TENSE fact,
+    // not a historical one bounded by how far back `days` happens to look — this file's own
+    // `selectSwingRecordRootIds` doc comment already states the intent ("currently OPEN/HOLD/TRIM
+    // ... a live, committed position"), the gap was only ever in which rows got handed to it.
+    // Live-measured on prod: `?days=1` reported `nativeOpens:0` while `?days=7/30/90` all reported
+    // `nativeOpens:2` for the SAME two real positions. Fixed by independently unioning in
+    // `fetchOpenSwingPositions()`'s rows (status-filtered, unbounded by date) — fail-soft to `[]`,
+    // matching this route's existing per-source fail-soft discipline (see the banger-opens fetch
+    // just below), so a DB hiccup on this extra read degrades to the pre-fix behavior rather than
+    // failing the whole route.
+    const openRows = await fetchOpenSwingPositions().catch(() => []);
+    const rootIds = [...new Set([...selectSwingRecordRootIds(rows), ...selectSwingRecordRootIds(openRows)])].slice(
+      0,
+      MAX_CHAINS,
+    );
     const chains = await Promise.all(rootIds.map((id) => fetchSwingPositionChain(id)));
     const records = chains.map((chain) => buildSwingRecord(chain));
     const nativeSummary = buildSwingRecordSummary(records, { since, through, days });
