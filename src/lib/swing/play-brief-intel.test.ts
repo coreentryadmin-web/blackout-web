@@ -224,7 +224,7 @@ test("bookContextSection: a same-ticker sibling is NOT labeled cross-engine when
       ticker: "CRWD",
       direction: "LONG",
       status: "OPEN",
-      regime: BANGER_LEDGER_REGIME_LABEL,
+      bangerOrigin: true,
     }),
     book,
   );
@@ -443,7 +443,7 @@ test("bookContextSection: a genuinely mixed-origin duplicate OTHER ticker is sti
     { ticker: "MSTX", direction: "LONG", bangerId: 4471 },
   ];
   const section = bookContextSection(
-    fixturePlay({ id: "SWING:RIOT:1203", ticker: "RIOT", direction: "LONG", status: "OPEN", regime: BANGER_LEDGER_REGIME_LABEL }),
+    fixturePlay({ id: "SWING:RIOT:1203", ticker: "RIOT", direction: "LONG", status: "OPEN", bangerOrigin: true }),
     book,
   );
   assert.ok(section);
@@ -5550,7 +5550,7 @@ test("watchForSection: Banger-origin thesis line is suppressed, not fabricated (
     {
       play: fixturePlay({
         direction: "LONG",
-        regime: BANGER_LEDGER_REGIME_LABEL,
+        bangerOrigin: true,
         thesisBreak: { level: "intact", note: "below the 2× partial and above the hard stop" },
       }),
       asOf: "2026-10-08 08:30 ET",
