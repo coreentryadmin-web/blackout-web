@@ -49,6 +49,20 @@ export type SwingMeridianPeerUnavailable = {
 
 export type SwingMeridianPeerSlice = SwingMeridianPeerAvailable | SwingMeridianPeerUnavailable;
 
+/**
+ * Trailing sizing/hedging instruction this function always appends to a rendered peer-lens
+ * bullet. Exported as a literal constant (2026-10-25, Ask Largo standing mandate, live repro
+ * OUST 31C) so `meridianPeerSection` (play-brief-intel.ts) can detect and replace it, at the
+ * section-assembly layer, for the one case this function itself cannot see: the REVIEWED
+ * position's own contract already expiring on/before the print (no earnings-gap exposure from
+ * THIS position specifically) — see that call site's own comment (SWING:OUST:2127) for the full
+ * contradiction this closes. This function stays pure/play-unaware (it has no `ctx`/`play` to
+ * check an expiry against), the same discipline the 2026-10-24 CLOSED-bucket fix already
+ * established for this exact function.
+ */
+export const EARNINGS_PEER_SIZING_INSTRUCTION =
+  "Peers that beat often gap through implied — size down or hedge vol unless thesis is the print.";
+
 /** Pure coaching line from peer cohort + catalyst item. */
 export function meridianPeerEarningsCoaching(
   peer: SwingMeridianPeerSlice | null | undefined,
@@ -139,8 +153,5 @@ export function meridianPeerEarningsCoaching(
   }
 
   if (!parts.length) return null;
-  return (
-    `**Earnings peer lens** — ${parts.join(" · ")}. ` +
-    `Peers that beat often gap through implied — size down or hedge vol unless thesis is the print.`
-  );
+  return `**Earnings peer lens** — ${parts.join(" · ")}. ${EARNINGS_PEER_SIZING_INSTRUCTION}`;
 }

@@ -6941,6 +6941,150 @@ test("meridianPeerSection: CLOSED bucket prefixes a current-not-as-traded disclo
   assert.doesNotMatch(openSection!.body, /not what this trade traded under/);
 });
 
+// FINDING (OUST, SWING:OUST:2127 — Ask Largo standing mandate, 2026-10-25). Live OUST 31C brief
+// (expiry 2026-10-30, entry $0.78, HOLD bucket) gave OPPOSITE risk conclusions about the SAME
+// 2026-11-03 earnings print from two sections of the SAME brief: "Trade manager read"
+// (catalystCoaching) correctly said this contract expires on/before the print so there is no
+// earnings-gap exposure, while THIS section said "Peers that beat often gap through implied —
+// size down or hedge vol unless thesis is the print" about the identical print/contract.
+test("meridianPeerSection: contract expiring BEFORE the earnings print discloses no-exposure instead of telling the trader to size down (live repro OUST 31C, SWING:OUST:2127)", () => {
+  const meridian = {
+    as_of: "2026-10-25 09:00 ET",
+    items: [
+      {
+        id: "earnings:OUST:2026-11-03",
+        kind: "earnings" as const,
+        title: "OUST earnings",
+        subtitle: null,
+        date: "2026-11-03",
+        time: null,
+        impact: "high" as const,
+        days_until: 9,
+        ticker: "OUST",
+        date_status: null,
+        importance: 3,
+        is_printed: false,
+        expected_move_pct: 12.0,
+        sector_label: "Industrials",
+      },
+    ],
+    total_matched: 1,
+  };
+  const meridianPeer = {
+    available: true as const,
+    id: "earnings:OUST:2026-11-03",
+    subject_ticker: "OUST",
+    position_summary: null,
+    members: [
+      {
+        ticker: "KTOS",
+        report_date: "2026-10-28",
+        expected_move_pct: 9,
+        avg_reaction_pct: 4,
+        reaction_sample_n: 4,
+        beat_rate: 0.75,
+        beat_rate_n: 4,
+        is_subject: false,
+      },
+    ],
+    interpretation: "",
+    sector_label: "Industrials",
+    major_group: "33",
+    distribution: null,
+    insufficient_reason: null,
+  };
+
+  const section = meridianPeerSection({
+    // Own contract (31C) expires 2026-10-30 -- strictly BEFORE the 2026-11-03 print.
+    play: fixturePlay({ ticker: "OUST", status: "HOLD", occ: "O:OUST261030C00031000" }),
+    asOf: "2026-10-25 09:00 ET",
+    sessionDate: "2026-10-25",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian,
+    meridianPeer,
+    ecosystem: null,
+    vector: null,
+  });
+
+  assert.ok(section);
+  assert.match(section!.body, /expires 2026-10-30/);
+  assert.match(section!.body, /no earnings-gap exposure from this position/i);
+  assert.doesNotMatch(section!.body, /size down or hedge vol/i);
+  // Peer stats remain -- only the contradictory sizing instruction is swapped out.
+  assert.match(section!.body, /KTOS/);
+});
+
+// Sibling to the OUST fix above: the ordinary, correct case (the brief's own contract is still
+// alive through the print, i.e. genuinely exposed to the earnings gap) must keep rendering the
+// real sizing/hedging instruction unchanged -- this fix must not regress the common case.
+test("meridianPeerSection: contract still alive through the print keeps the sizing/hedging instruction unchanged (no regression)", () => {
+  const meridian = {
+    as_of: "2026-10-25 09:00 ET",
+    items: [
+      {
+        id: "earnings:OUST:2026-11-03",
+        kind: "earnings" as const,
+        title: "OUST earnings",
+        subtitle: null,
+        date: "2026-11-03",
+        time: null,
+        impact: "high" as const,
+        days_until: 9,
+        ticker: "OUST",
+        date_status: null,
+        importance: 3,
+        is_printed: false,
+        expected_move_pct: 12.0,
+        sector_label: "Industrials",
+      },
+    ],
+    total_matched: 1,
+  };
+  const meridianPeer = {
+    available: true as const,
+    id: "earnings:OUST:2026-11-03",
+    subject_ticker: "OUST",
+    position_summary: null,
+    members: [
+      {
+        ticker: "KTOS",
+        report_date: "2026-10-28",
+        expected_move_pct: 9,
+        avg_reaction_pct: 4,
+        reaction_sample_n: 4,
+        beat_rate: 0.75,
+        beat_rate_n: 4,
+        is_subject: false,
+      },
+    ],
+    interpretation: "",
+    sector_label: "Industrials",
+    major_group: "33",
+    distribution: null,
+    insufficient_reason: null,
+  };
+
+  const section = meridianPeerSection({
+    // Own contract expires 2026-11-07 -- AFTER the 2026-11-03 print, genuinely exposed.
+    play: fixturePlay({ ticker: "OUST", status: "HOLD", occ: "O:OUST261107C00031000" }),
+    asOf: "2026-10-25 09:00 ET",
+    sessionDate: "2026-10-25",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian,
+    meridianPeer,
+    ecosystem: null,
+    vector: null,
+  });
+
+  assert.ok(section);
+  assert.match(section!.body, /size down or hedge vol unless thesis is the print/i);
+  assert.doesNotMatch(section!.body, /no earnings-gap exposure/i);
+});
+
 test("meridianPeerSection: dedicated section — coaching bullets must not duplicate peer lens", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ ticker: "BBWI" }),
