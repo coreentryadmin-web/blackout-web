@@ -2,12 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_ZERODTE_TICKER_UNIVERSE, resolveZeroDteTickerUniverse } from "./ticker-universe.ts";
 
-test("DEFAULT_ZERODTE_TICKER_UNIVERSE: contains exactly Mag 7 + SPX/SPXW/SPY/QQQ, both Google classes", () => {
+test("DEFAULT_ZERODTE_TICKER_UNIVERSE: contains exactly the operator's named Mag 7 + SPX/SPXW/SPY/QQQ", () => {
   const set = new Set(DEFAULT_ZERODTE_TICKER_UNIVERSE);
-  for (const t of ["AAPL", "MSFT", "AMZN", "NVDA", "META", "TSLA", "GOOGL", "GOOG", "SPX", "SPXW", "SPY", "QQQ"]) {
+  for (const t of ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "SPX", "SPXW", "SPY", "QQQ"]) {
     assert.ok(set.has(t), `expected ${t} in the default universe`);
   }
-  assert.equal(set.size, 12, "no extra tickers beyond the named Mag 7 + index/ETF set");
+  assert.equal(set.size, 11, "no extra tickers beyond the operator's exact list (GOOGL only, not GOOG)");
+  assert.ok(!set.has("GOOG"), "GOOG was explicitly not in the operator's final enumerated list");
 });
 
 test("resolveZeroDteTickerUniverse: no env override -> the default set", () => {
