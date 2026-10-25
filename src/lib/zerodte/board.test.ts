@@ -350,6 +350,24 @@ test("setups: excluded tickers (SPX handled by its own engines) are skipped", ()
   assert.equal(deriveZeroDteSetups(rows, { excludeTickers: new Set(["SPY"]) }).length, 0);
 });
 
+test("setups: includeTickers restricts to an explicit allowlist — a ticker outside it is skipped even with a strong tape", () => {
+  const rows = [row({ ticker: "AMD", premium: 2_000_000 })];
+  assert.equal(deriveZeroDteSetups(rows, { includeTickers: new Set(["NVDA", "SPY"]) }).length, 0);
+});
+
+test("setups: includeTickers lets a listed ticker through unaffected", () => {
+  const rows = [row({ ticker: "NVDA", premium: 2_000_000 })];
+  const out = deriveZeroDteSetups(rows, { includeTickers: new Set(["NVDA", "SPY"]) });
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.ticker, "NVDA");
+});
+
+test("setups: includeTickers omitted (null/undefined) is unrestricted — unchanged prior behavior", () => {
+  const rows = [row({ ticker: "AMD", premium: 2_000_000 })];
+  assert.equal(deriveZeroDteSetups(rows, { includeTickers: null }).length, 1);
+  assert.equal(deriveZeroDteSetups(rows).length, 1);
+});
+
 test("setups: sudden flow spike flagged when ≥half the tape lands in the last 30m", () => {
   const now = Date.parse("2026-07-06T15:00:00Z");
   const spiky = [

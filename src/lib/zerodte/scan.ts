@@ -241,6 +241,7 @@ import {
 // source of truth), so a reconciliation regression surfaces as a non-zero telemetry percentile.
 import { asManagedPnlPct, officialPlanPnlPct } from "./record";
 import { computeRelativeVolumeShadow, type RelativeVolumeShadowRead } from "./relative-volume-source";
+import { resolveZeroDteTickerUniverse } from "./ticker-universe";
 
 /** Leveraged/inverse wrappers and vol ETPs stay out (not directional single plays);
  *  index products (SPY/SPX/NDX/QQQ…) are eligible per product direction. Night Hawk
@@ -379,6 +380,9 @@ export async function scanZeroDteBoard(flags?: {
   // NH edition tickers are surfaced as covered_elsewhere but NOT excluded from discovery
   // (2026-07-28): excluding them removed the overnight playbook's best names from 0DTE.
   const excludes = new Set<string>([...STATIC_EXCLUDES]);
+  // Operator directive (2026-10-25): restrict the WHOLE 0DTE desk (all three discovery origins)
+  // to Mag 7 + SPX/SPY/QQQ — see ticker-universe.ts for the full rationale and spelling notes.
+  const includeTickers = resolveZeroDteTickerUniverse();
 
   // Always collected (cheap — a handful of array pushes per candidate ticker);
   // whether it's ever WRITTEN anywhere is a separate decision made by the caller
@@ -401,7 +405,7 @@ export async function scanZeroDteBoard(flags?: {
     })),
     // FLOW seat budget — raised 20→48 so the multi-rail merge isn't starved of
     // FLOW candidates while BREAKOUT/PIN fill their own seats (see GOVERNOR uncapped).
-    { maxSetups: 48, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
+    { maxSetups: 48, excludeTickers: excludes, includeTickers, nowMs: Date.now(), todayYmd: today, rejections }
   );
   const candidateDerivedAt = Date.now();
 
@@ -464,6 +468,7 @@ export async function scanZeroDteBoard(flags?: {
         today,
         nowEtMinutes: hour * 60 + minute,
         excludeTickers: excludes,
+        includeTickers,
       });
       const breakoutSetups = breakoutOutcome.setups;
       discoveryHealth.BREAKOUT = {
@@ -555,6 +560,7 @@ export async function scanZeroDteBoard(flags?: {
         today,
         nowEtMinutes: hour * 60 + minute,
         excludeTickers: excludes,
+        includeTickers,
       });
       // discoverPinSetups returns a bare array, so "ran and found nothing" and "was outside its own
       // window" are the same [] — pinWindowStatus separates them. Reporting a zero as `ok` at 8am
