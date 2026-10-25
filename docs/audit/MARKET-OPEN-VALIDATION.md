@@ -8642,3 +8642,18 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   OPEN/WATCH/CLOSED play whose `committedAt` is more than ~10 minutes before the brief's own
   `asOf`, and confirm the "Setup score" evidence entry's `provenance.asOf` matches the play's
   commit time (not "now") and `freshness` reads `stale` rather than `recent`.
+
+## WATCH LIST — 2026-10-25 (swing lane-rank score rounding mismatch fix, fix/swing-lane-rank-score-rounding-mismatch)
+- **What was broken:** `laneRankSection`'s rank line and `laneRankCoaching`'s "Lane leader"/"Below
+  lane median" bullets displayed `computeLaneRank`'s `playScore` verbatim — deliberately raw,
+  one-decimal `laneRows` precision — while `whyThisSetupSection`'s lede and the "Setup score"
+  evidence fact round the same underlying score to an integer. Live repro SOXX: "...scoring 74."
+  vs "score **73.7**" for the identical measurement, three sections apart in one brief.
+- **What the fix changed:** rounds the score ONLY at the 4 render call sites
+  (`Math.round(snap.playScore)`); `deltaFromMedian`/`medianScore` (computed from the raw value)
+  are untouched — never duplicated elsewhere in the brief, so their own precision was never
+  disputed.
+- **What to re-check once the market opens:** pull a live OPEN/WATCH swing brief whose lane peers
+  carry non-integer scores and confirm the "Lane rank" section's score and `laneRankCoaching`'s
+  leader-line score both match the integer shown in "Why this setup"'s lede and the "Setup score"
+  evidence fact for the SAME play, while the "vs median" delta keeps its own decimal precision.

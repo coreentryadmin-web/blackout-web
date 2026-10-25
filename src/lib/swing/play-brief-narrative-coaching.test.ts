@@ -3751,6 +3751,34 @@ test("laneRankCoaching: still names the real leader for a healthy rank-1 WATCH s
   assert.match(line!, /#1 of 2/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SOXX): laneRankCoaching's "Lane
+// leader" bullet used to print `snap.playScore` verbatim — laneRows' own raw one-decimal
+// precision — which disagreed with the SAME play's score as shown rounded by "Why this setup"'s
+// lede a few sections earlier in the brief. Proves the rank-1 leader line now rounds to match.
+test("laneRankCoaching: rounds the rank-1 leader's score to match whyThisSetupSection's display", () => {
+  const lanes = [
+    laneRow({ ticker: "SOXX", score: 73.7, status: "WATCH", setupState: "TRIGGERED" }),
+    laneRow({ ticker: "GOOGL", score: 51, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "SOXX", score: 74, status: "WATCH", setupState: "TRIGGERED" }),
+    lanes,
+  );
+  assert.match(line!, /score \*\*74\*\*/, "must round the raw 73.7 to 74 to match the rounded score shown elsewhere in the brief");
+  assert.doesNotMatch(line!, /\*\*73\.7\*\*/, "must never show the raw, unrounded score in the member-facing line");
+});
+
+// Same fix, the "below lane median" branch (a distinct call site in the same function).
+test("laneRankCoaching: rounds the below-median score to match whyThisSetupSection's display too", () => {
+  const lanes = [
+    laneRow({ ticker: "XOM", score: 90, status: "WATCH", setupState: "TRIGGERED" }),
+    laneRow({ ticker: "NN", score: 25.5, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(play({ ticker: "NN", score: 26, status: "WATCH" }), lanes);
+  assert.match(line!, /score \*\*26\*\*/, "must round the raw 25.5 to 26 to match the rounded score shown elsewhere in the brief");
+  assert.doesNotMatch(line!, /\*\*25\.5\*\*/, "must never show the raw, unrounded score in the member-facing line");
+});
+
 // Live repro 2026-09-12: CG sat #90/90 by raw entry-time score (3) — a real +169.2%/+134.6% exec
 // winner already on TRIM (manageAction TAKE_PARTIAL) — and this exact function still said "confirm
 // before adding size" three lines after the brief's own "Desk says TRIM ... Bank partial into
