@@ -38,6 +38,235 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Vector — live `/vector` play card's "2nd put wall" label points at the visually-dominant (king/trophy) GEX strike, while the unqualified "put wall" points at a weaker one — possible wall-source mismatch, open
+> **kind:** `FINDING`
+> **kind:** `FINDING`
+
+**Status.** OPEN — needs the owning Vector lane to trace which `gexWalls` source feeds
+`vector-play-engine.ts`'s `collectLevels()` vs. which feeds the on-screen GEX MATRIX ladder, and
+confirm whether they can legitimately disagree or are drifting.
+
+### Area
+
+`/vector` desk (non-owned, Vector lane) — the live SCALP play card's headline/targets
+(`src/features/vector/lib/vector-play-engine.ts`'s `collectLevels()`/`pickTargets()`) vs. the
+GEX MATRIX side panel ladder (same page).
+
+### Found by
+
+Live-UI visual check via `proxy-browser.cjs` against prod `/vector` (desktop viewport 1440×900,
+`--desktop`), DISCOVERY-lane sweep, 2026-10-25, ~11:20 AM ET (market closed, Sunday — SPX spot
+7,623.68, 0DTE nearest expiry Oct 26).
+
+### Symptom
+
+Live screenshot (`https://blackouttrades.com/vector`, desktop):
+
+- **GEX MATRIX ladder** (left panel) shows strike `7,620` with `-$374.6M` GEX, marked with a gold
+  trophy/king icon (the visually dominant strike in the visible range — the single largest
+  magnitude). Strike `7,600` shows `-$250.3M` — smaller magnitude, no king marker.
+- **SCALP play card** (same page, same instant) headline: *"SCALP · momentum short on
+  continuation → target 2nd put wall 7,620"*; its `TARGETS` line: *"2nd put wall 7,620 → put wall
+  7,600 → 1σ 7,554.31"*.
+
+So the play card's unqualified **"put wall"** (the label `vector-play-engine.ts` assigns to
+`gexWalls.putWalls[0]`, documented as the STRONGEST put wall by gamma-share — see the existing
+FINDINGS.md entry *"Vector play engine: secondary gamma wall rendered under the identical 'call
+wall'/'put wall' label as the primary — FIXED"*) is `7,600`, the WEAKER strike by the GEX MATRIX
+panel's own numbers — while **"2nd put wall"** (`gexWalls.putWalls[1]`, documented as the
+second-strongest) is `7,620`, the strike the GEX MATRIX panel itself marks as the single strongest
+(king) wall in view.
+
+### Why this isn't a confirmed bug yet
+
+The cited prior fix (same file) explicitly establishes that `gexWalls.putWalls` is sorted by
+`.pct` (gamma-share strength) descending, NOT by distance to spot, and that "the second-strongest
+wall can legitimately sit CLOSER to spot than the strongest one" — so the ORDER of the two target
+prices in the headline (nearest-to-spot first: 7,620 before 7,600) was already known to be
+independent of which one gets the "2nd" qualifier. That part is working as designed.
+
+What is NOT yet established is whether `gexWalls.putWalls[0]`/`[1]` (the play engine's input) and
+the GEX MATRIX panel's own per-strike magnitudes come from the **same underlying GEX computation**.
+If they're two independently-derived wall sets (plausible — this repo has at least three GEX-wall
+builders: `src/lib/providers/gex-wall-levels.ts`'s `computeGexWalls` sorted by `.pct`,
+`src/features/vector/lib/vector-gex-ladder.ts`'s `byStrength` sort, and whatever feeds the GEX
+MATRIX display component directly), the "strongest"/"2nd" labels in the play card could be
+correctly ranking a DIFFERENT, possibly stale or differently-scoped GEX reading than the one the
+member is looking at in the adjacent ladder — which would make "2nd put wall" point at the strike
+the member's own eyes tell them is the primary one. That is the member-facing contradiction worth
+investigating, not the ordering logic itself (which the prior fix already covers).
+
+### Next step (for whoever picks this up)
+
+Trace the live data flow for a single `/vector` render: which `GexWalls` object does
+`vector-play-engine.ts`'s `collectLevels()` actually receive at runtime (prop drilling /
+`vector-full-state` fetch), and does the GEX MATRIX ladder component read `strikeTotals`/the same
+ladder Map, or a separately-fetched/cached snapshot? If both ultimately derive from the identical
+ladder at the identical instant, re-verify this specific repro (SPX, 2026-10-25 ~11:20 AM ET,
+7,620 vs 7,600) against live data before concluding anything — a single screenshot is evidence, not
+proof, and the two widgets may simply have been captured at a few seconds' difference during a
+Sunday no-market idle-data window where nothing was actively refreshing.
+
+Not fixed in this pass — scope (tracing 3 separate GEX-wall builders + confirming which backs each
+widget) exceeds a single DISCOVERY-cycle fix; flagging for the Vector lane / a dedicated follow-up
+measurement, per the existing `docs/audit/INTENTIONAL-DESIGN.md`-style discipline of writing up
+rather than guessing at cross-widget data-provenance questions.
+
+## Night Hawk Swings — discovery-cron-health's "last ended phase" picked the wrong phase outside array order — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Surface** | `src/lib/swing/discovery-cron-health.ts` (`swingDiscoveryPhasesEndedBefore`, `probeSwingDiscoveryServingSnapshot`) |
+| **Severity** | P2 (health-check/monitoring surface, wired into `cron-writer-target-fresh.ts`) |
+
+### Root cause
+
+`scan-cadence.ts`'s own header is explicit that `SWING_SCAN_PHASES`' array order is **not**
+chronological: POST_CLOSE is deliberately listed first "so the stable render/iteration order puts
+it at the head. Correctness does NOT depend on this order ... only the render/first-of order
+does." The actual chronological order by `startMin` is PRE_OPEN → MIDDAY → POWER_HOUR →
+POST_CLOSE → OVERNIGHT.
+
+`swingDiscoveryPhasesEndedBefore` returned `SWING_SCAN_PHASES.filter(...).map(...)` in that same
+array order. Its only caller, `probeSwingDiscoveryServingSnapshot`, takes
+`endedPhases[endedPhases.length - 1]` and trusts it to be the phase that ended **most recently** —
+exactly the kind of "first-of/last-of" use `scan-cadence.ts`'s own header warns depends on real
+chronological order.
+
+### Evidence
+
+At 21:00 ET (after POST_CLOSE ends at 20:00, before OVERNIGHT ends at 24:00):
+
+```js
+swingDiscoveryPhasesEndedBefore(now, "2026-10-23")
+// pre-fix:  ["POST_CLOSE", "PRE_OPEN", "MIDDAY", "POWER_HOUR"]  (array order; last = POWER_HOUR)
+// post-fix: ["PRE_OPEN", "MIDDAY", "POWER_HOUR", "POST_CLOSE"]  (ended order; last = POST_CLOSE)
+```
+
+`POWER_HOUR` ended at 16:00; `POST_CLOSE` — the file's own "PRIMARY... cleanest read of the day's
+accumulation" phase — ended later, at 20:00. Picking `POWER_HOUR` as "last ended" floors the
+freshness check at its 15:00 start instead of POST_CLOSE's 16:15 start.
+
+Concrete downstream effect, `probeSwingDiscoveryServingSnapshot` at 21:00 ET with a snapshot
+timestamped 15:05 ET (predating POST_CLOSE's own start entirely, so it cannot possibly reflect
+POST_CLOSE having run):
+
+```
+Pre-fix:  { fresh: true,  detail: "serving snapshot 2026-10-23 · 355m old · phases ended: POST_CLOSE,PRE_OPEN,MIDDAY,POWER_HOUR" }
+Post-fix: { fresh: false, ... }
+```
+
+### Blast radius
+
+`swingDiscoveryPhasesEndedBefore` has one caller (`probeSwingDiscoveryServingSnapshot`, same
+file), which is itself consumed by `cron-writer-target-fresh.ts` — a live monitoring/health-check
+surface whose stated purpose (per this file's own header) is to "suppress handshake-only
+staleness... must not page when `swing:serving:latest:v1` still reflects today's session." The bug
+runs in the opposite direction from a false page: it is a false "fresh," during the daily
+20:00–24:00 ET window, that could mask a serving snapshot that never actually reflected the
+POST_CLOSE scan — exactly the phase this whole discovery lane is built around.
+
+### Fix rationale
+
+Sort the filtered phases by `endMin` ascending before returning, so both this function's own
+`.join(",")` display order and the caller's `[length-1]` "most recently ended" read are correct.
+Scoped entirely to this one function — `resolveScanPhase`/`decideSwingScan` (`scan-cadence.ts`)
+resolve by range containment, not array position, and were never affected.
+
+### Tests
+
+Added two cases to `discovery-cron-health.test.ts`: a direct case confirming
+`swingDiscoveryPhasesEndedBefore` returns ended-order (not array order) at 21:00 ET, and an
+integration case confirming `probeSwingDiscoveryServingSnapshot` correctly reads `fresh: false` for
+a snapshot predating POST_CLOSE's start when checked after POST_CLOSE has ended. RED→GREEN
+confirmed: reverting only the source fix (keeping the new tests) fails 2/6 exactly as expected;
+reapplying passes 6/6.
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/discovery-cron-health.test.ts` — 6/6 pass
+- `npx tsc --noEmit` — clean
+- Full `npm test` (Node 20) run alongside this PR
+
+## SPX Slayer — `GET /api/market/spx/play` served up to ~24-minute-stale, non-monotonic confluence snapshots because 3 of 4 cache read sites skip the freshness check the 4th enforces — FIXED
+
+> **kind:** `FINDING`
+
+**Status.** FIXED (branch `fix/spx-play-cache-staleness-read-sites`).
+
+| Field | Detail |
+|---|---|
+| **Area** | SPX Slayer play system — `src/features/spx/lib/spx-service.ts` |
+| **Found by** | 5-engine live monitor workflow (Ask Largo standing mandate), live investigation + independent adversarial verification, 2026-10-25 |
+| **Severity** | P1 (member-facing, divergent/flapping grade-score-direction on the live play card) |
+
+### Symptom
+
+Repeated authenticated `GET /api/market/spx/play` polls, spaced 8-90s apart, returned at least 4
+distinct cached "generations" of the confluence result in non-monotonic order — a later poll
+returning an OLDER `as_of` than an earlier poll (a direct backward jump), with two generations
+carrying genuinely different `score`/`direction`/`factors` (10 factors / score 0 vs 2 factors /
+score -11, direction short) for what should be the same market moment. One generation was
+measured ~24 minutes stale — about 71x the route's own enforced 20-second freshness bound
+(`playMemberPeekMaxAgeSec()`, default 20s). The sibling `GET /api/market/spx/desk` route, polled
+in the same windows, behaved sanely (monotonic `polled_at`), so this was specific to `/play`'s
+caching layer. Independently reproduced twice (initial investigation + adversarial verification
+pass), both live, both matching generation fingerprints.
+
+### Root cause
+
+`spxPlayServerCacheKey(date)` (`server:spx-play-read:<date>`) is read from Redis at four call
+sites in `spx-service.ts`. The fourth, `peekSpxPlayState()`, already bounds the hit with
+`isSpxPlaySnapshotFreshEnough(hit.value.as_of, Date.now(), maxAgeMs)` before trusting it (fixed
+2026-09-13, for exactly this class of bug). The other three returned whatever
+`sharedCacheGetWithTtl` found the instant it was non-null, with **no** freshness check at all,
+trusting the Redis key's own TTL alone:
+
+- `waitForPeerSpxPlaySnapshot` (polls for a peer replica's published snapshot)
+- `evaluateSpxPlayStateCrossReplica`'s lock-not-won branch (serves the shared key when another
+  replica holds the cross-replica eval lock)
+- `spxPlayReadFallback` (the `fallback` passed to `withServerCache` in `getSpxPlayState()`)
+
+`evaluateSpxPlayStateCrossReplica`'s own code comment names exactly this failure mode as the
+reason the cross-replica lock exists ("parallel cache misses on different replicas can return
+divergent grade/score/direction") — these three unguarded reads reopened that same failure
+through a different, still-unguarded path. Three closely-related staleness bugs on this exact
+file were already found and fixed (2026-09-13, 2026-10-08 P1, 2026-10-16), but none of their
+fixes reached these three call sites: they bypass `withServerCache`'s own generic caching and
+read the shared Redis key directly inside their own function bodies.
+
+### Blast radius
+
+All three fixed call sites feed `GET /api/market/spx/play`'s "lock not won" / "peer wait" /
+"`withServerCache` fallback-on-timeout" paths — exactly the paths exercised whenever the
+cross-replica lock is contended or the fresh eval doesn't finish within `maxBlockMs`, which the
+existing 2026-10-08 fix's own comment says is a routine outcome, not a rare one (in-process TTL is
+only 5s). Same shared `spx-play-read:<date>` cache entry read by every caller of
+`getSpxPlayState()`/`evaluateSpxPlayStateCrossReplica()` (member reads, BIE `spx_full_state`,
+Largo `get_spx_play`) — all three consumers were exposed to the same stale/divergent data.
+
+### Fix
+
+Added the identical `isSpxPlaySnapshotFreshEnough(value.as_of, Date.now(), maxAgeMs)` guard
+(`maxAgeMs = playMemberPeekMaxAgeSec() * 1000`, the route's own established freshness contract) at
+all three previously-unguarded read sites, matching what `peekSpxPlayState()` already does. A
+too-stale hit now falls through to the next step in each chain (peer-wait, then degraded) instead
+of being trusted outright — the same fallback behavior that already existed for a cache miss.
+
+### Tests
+
+New `src/features/spx/lib/spx-service-play-cache-staleness.test.ts` (2 cases, using the same
+`mock.module` harness as the existing `spx-service-cross-replica-lock.test.ts`):
+- A 24-minute-stale cached snapshot (the live-reproduced magnitude) is rejected by
+  `evaluateSpxPlayStateCrossReplica`'s lock-not-won branch, not served.
+- A genuinely fresh (5s-old) cached snapshot is still served — no regression on the working case.
+
+RED→GREEN confirmed via `git stash` (reverted `spx-service.ts` alone): 1/2 new assertions fail
+pre-fix (the stale-rejection case) exactly as expected, 2/2 pass post-fix. `npx tsc --noEmit`
+clean. Full existing suite for this file (`spx-service-cross-replica-lock.test.ts`,
+`spx-play-freshness.test.ts`) still 10/10 pass together.
+
 ## Helix — Session pulse bar's "Aggression read" showed a confident bull/bear % split directly contradicting its own "Unreadable" label — FIXED
 
 > **kind:** `FINDING`
