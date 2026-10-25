@@ -17,6 +17,10 @@ export type RegimeStripSegment = {
   tone?: "bull" | "bear" | "flip" | "wall" | "sky" | "neutral";
   /** Intraday / vs-prior delta chip — never fabricated. */
   delta?: string | null;
+  /** Delta chip's OWN color — the delta's direction, independent of the metric's absolute-level
+   *  `tone` above. A metric can be net-positive (bull level) while down vs prior close (bear
+   *  delta); without this field the chip borrowed the level's tone and could render a green ↓. */
+  deltaTone?: "bull" | "bear" | "neutral" | null;
 };
 
 export type RegimeStripBadge = {
@@ -156,7 +160,7 @@ function segment(
   key: string,
   label: string,
   value: string,
-  opts?: Partial<Pick<RegimeStripSegment, "icon" | "tone" | "delta" | "strike" | "title">>
+  opts?: Partial<Pick<RegimeStripSegment, "icon" | "tone" | "delta" | "deltaTone" | "strike" | "title">>
 ): RegimeStripSegment {
   return { key, label, value, ...opts };
 }
@@ -200,6 +204,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
       segment("netGex", "Net GEX", fmtSignedMoney(netTotal), {
         tone: netTotal >= 0 ? "bull" : "bear",
         delta: netDeltaChip,
+        deltaTone: netDeltaTone ?? null,
       }),
     ];
     if (magnetStrike != null) {
@@ -270,6 +275,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
       segment("netVex", "Net VEX", fmtSignedMoney(netTotal), {
         tone: netTotal >= 0 ? "sky" : "bear",
         delta: netDeltaChip,
+        deltaTone: netDeltaTone ?? null,
       }),
     ];
     if (callWall != null) {
@@ -312,6 +318,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
       segment("netDex", "Net DEX", fmtSignedMoney(netTotal), {
         tone: netTotal >= 0 ? "flip" : "bear",
         delta: netDeltaChip,
+        deltaTone: netDeltaTone ?? null,
       }),
     ];
     if (flip != null) {
@@ -334,6 +341,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
     segment("netCharm", "Net CHARM", fmtSignedMoney(netTotal), {
       tone: netTotal >= 0 ? "wall" : "bear",
       delta: netDeltaChip,
+      deltaTone: netDeltaTone ?? null,
     }),
   ];
   if (flip != null) {
