@@ -1983,6 +1983,28 @@ export function composeSwingPlayBrief(
   // `watchEntrySection`'s identical check; scoped to `bucket === "watch"` to match its two sibling
   // call sites exactly and leave OPEN/CLOSED invalidation logic untouched.
   const dead = bucket === "watch" ? deadPlayReason(play) : null;
+  // BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-25): `gateFramingMootReason`
+  // (entry-enterability.ts, added 2026-10-18) exists precisely to stop a FORMING/below-floor/
+  // legacy_exempt-only gate from being presented as if it were a real, clearable blocker — already
+  // wired into the Entry section (`watchEntrySection`) and Trade manager read (`watchGateCoaching`)
+  // below, but never into this field's own fallback chain. `dead` above does NOT cover FORMING by
+  // design (see `deadPlayReason`'s own comment — a FORMING candidate is still actively rescanned,
+  // not dead), so a FORMING play fell straight through to the raw `play.gateBlocks?.[0]?.reason`.
+  // Live repro: PLTR WATCH brief, 2026-10-24/25 (`GET /api/market/swing/play-brief?playId=
+  // SWING:PLTR&ticker=PLTR&status=WATCH`) — setupState FORMING, entry window with 3 days still
+  // left (not dead), gateBlocks exactly [{code:"legacy_exempt"}] — `envelope.invalidation` read
+  // "Legacy morning-confirm promotion — Swing V2 confluence/Cortex gates were not evaluated on
+  // this path.", a provenance marker about why gates weren't run, not a price level or condition
+  // that invalidates anything. The SAME brief's own Entry section correctly framed the identical
+  // gate as "(moot — thesis still forming — not yet at trigger)" — the top-level Invalidation
+  // callout disagreed with its own brief about whether this gate means anything. Note
+  // `gateFramingMootReason` fires on `setupState === "FORMING"` alone, independent of gate code —
+  // so this also wrongly surfaced a genuinely-real gate's reason text (not just legacy_exempt) as
+  // "the" invalidation whenever a play simply hadn't triggered yet.
+  // Fix: same "omit, don't fabricate" discipline as the `sourceFetchFailed` fix below — when the
+  // gate is moot, there is no real per-ticker invalidation level to report, so fall through past
+  // it rather than presenting a non-price provenance string as if it were one.
+  const gateFramingMoot = bucket === "watch" ? gateFramingMootReason(play) : null;
   // BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 3 of the standing Ask Largo x Night Hawk
   // Swings mandate — live META repro). `resolveBreakInvalidation` returns null whenever it cannot
   // resolve a live spot from EITHER Vector or GEX (see its own comment) — and that null has (at
@@ -2024,7 +2046,7 @@ export function composeSwingPlayBrief(
         : dead
           ? `${dead.charAt(0).toUpperCase()}${dead.slice(1)} — this setup is no longer live.`
           : resolveBreakInvalidation(ctx) ??
-            (sourceFetchFailed ? null : play.gateBlocks?.[0]?.reason) ??
+            (sourceFetchFailed || gateFramingMoot ? null : play.gateBlocks?.[0]?.reason) ??
             (bucket === "open" && play.exitPolicy?.stop_premium != null
               ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
               : null);

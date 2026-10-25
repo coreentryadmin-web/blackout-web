@@ -1036,9 +1036,15 @@ test("composeSwingPlayBrief: top-level Invalidation line reflects a dead entry w
   );
 });
 
+// FIXTURE FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-25): this test's own title
+// says "when entry is genuinely still open", but its fixture used the base `fixturePlay()`
+// defaults (setupState FORMING / entryStatus PRE_TRIGGER) — NOT genuinely still open at all, the
+// exact same fixture/title mismatch already caught and fixed for the sibling Entry-section test
+// below ("Entry section still frames gates as the live blocker...") on 2026-10-18, but missed here.
+// Overridden to the actual genuinely-still-open-but-gate-blocked state this test's title describes.
 test("composeSwingPlayBrief: top-level Invalidation line still uses the real gate reason when entry is genuinely still open", () => {
   const ctx: SwingPlayBriefContext = {
-    play: fixturePlay(),
+    play: fixturePlay({ setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", aboveFloor: true }),
     asOf: "2026-09-10T09:00:00.000Z",
     sessionDate: "2026-09-10",
     scanAsOf: null,
@@ -1050,6 +1056,67 @@ test("composeSwingPlayBrief: top-level Invalidation line still uses the real gat
   };
   const brief = composeSwingPlayBrief(ctx);
   assert.equal(brief.envelope.invalidation, "Bucket not graduated");
+});
+
+// BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-25): live repro, PLTR WATCH
+// brief, 2026-10-24/25 — setupState FORMING, entry window with 3 days still left (not dead per
+// `deadPlayReason`'s own design), gateBlocks exactly [{code:"legacy_exempt"}]. Before this fix,
+// `envelope.invalidation` read the raw gate-block reason text ("Legacy morning-confirm
+// promotion...") verbatim — a provenance marker about why gates weren't evaluated, not a price
+// level or condition that invalidates the setup — while the SAME brief's Entry section correctly
+// framed the identical gate as moot ("thesis still forming — not yet at trigger"). RED before the
+// fix (`git stash` on play-brief.ts reproduces the raw gate text), GREEN after.
+test("composeSwingPlayBrief: top-level Invalidation line omits a moot gate's raw reason text for a still-forming WATCH candidate", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      setupState: "FORMING",
+      entryStatus: "PRE_TRIGGER",
+      gateBlocks: [{ code: "legacy_exempt", reason: "Legacy morning-confirm promotion — Swing V2 confluence/Cortex gates were not evaluated on this path." }],
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    null,
+    "a FORMING play's moot gate reason must not be presented as a real invalidation level",
+  );
+});
+
+// BUG FIX continued (Ask Largo x Night Hawk Swings standing mandate, 2026-10-25): the moot-gate
+// fix above fires on `setupState === "FORMING"` alone (via `gateFramingMootReason`), independent
+// of gate code — so it also suppresses a genuinely-real gate's raw reason text (not just
+// legacy_exempt) whenever the play simply hasn't triggered yet, same as the Entry section already
+// does for that gate.
+test("composeSwingPlayBrief: top-level Invalidation line omits a real gate's reason too while the play is still FORMING (not yet at trigger)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      setupState: "FORMING",
+      entryStatus: "PRE_TRIGGER",
+      gateBlocks: [{ code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." }],
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    null,
+    "a FORMING play has not reached a real gate check yet, so its gate reason must not stand in for invalidation",
+  );
 });
 
 // BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 3 of the standing Ask Largo x Night Hawk
