@@ -7584,3 +7584,17 @@ AWS-permission-blocked here. Neither re-attempted this cycle. **Checked the six 
 trigger prompts (`trig_01NNvznmA6eMsH61cLe7yb6z` + 5 siblings) for stale "resolved" language before
 writing this up — none needed correction; their Vector-board instruction already says the
 contention mechanism "is still open... do not attempt a speculative fix," which remains accurate.**
+
+## 2026-10-25 — [GREEN] #6711 (SPX `mergePulseIntoDesk` available-field fix) live-confirmed post-deploy
+
+Confirmed via `GET /api/market/spx/play` on prod after the `ecr-push-production.yml` rolling
+deploy for merge commit `9082a57a8` completed (`Roll ECS production web` step finished
+2026-10-25T14:30:27Z). Pre-deploy repro (12:51 UTC, closed Sunday session): `assessed:false,
+score:0, factors:[]` — dead. Post-deploy (14:34 UTC, same closed session, same spot 7623.68):
+`assessed:true, score:0, rawScore:30`, 10 real factors (GEX resistance -18, 0DTE flow +14, live
+tape +12, market tide -10, TRIN -6, ADD +5, EMA20 -5, TICK +4, VIX curve +4, Mega-caps 0 — sum
+exactly 0, matching `score`). `GET /api/market/spx/merged?force=1` independently confirmed
+`available:true, source:"polygon+uw-flow"` for the same read. The play-level `available:false`
+remaining on this response is the honest, separate "Session closed"/gates-blocked signal (market
+genuinely closed, `gates.blocks:["Session closed"]`) — not the desk-data-availability bug #6711
+fixed; confluence is clearly computing from real data now, which is exactly what the fix restores.
