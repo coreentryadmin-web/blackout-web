@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-25T08:49:18.916Z",
+  "updated_at": "2026-10-25T09:06:54.101Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "54ee0f7fcda86fd99c97d60ea4945c9118618b33",
+    "last_main_sha": "aa312b7b34119adba09c64a286a0e16399e2666b",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-13T12:20:12.473Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-13T12:20:17.369Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-13T12:30:09.026Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-13T12:30:14.590Z",
       "type": "context_sync",
@@ -1271,18 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-25T09:06:45.828Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-25T09:06:50.217Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-25T09:06:54.101Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6686,
-      "title": "fix(thermal): fmtCompactHeatMoney overflows at K→M and M→B unit boundaries",
-      "branch": "fix/thermal-compact-money-boundary-rounding",
+      "number": 6687,
+      "title": "fix(swing): entry-verdict INVALIDATED/persistence-gap dont_buy branch dropped real gate blocks",
+      "branch": "fix/swing-entry-verdict-invalidated-gate-blocks",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": false,
+      "draft": true,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-25T08:47:20Z"
+      "updated_at": "2026-10-25T08:57:18Z"
     },
     {
       "number": 5547,
