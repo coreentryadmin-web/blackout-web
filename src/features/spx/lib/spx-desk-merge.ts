@@ -316,6 +316,16 @@ export function mergePulseIntoDesk(
   const vix = pulseVixLive ? pulse.vix : base.vix;
   return {
     ...base,
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25): same "never reassigned, inherited from
+    // base/emptyDeskPayload forever" shape as the prior_close/gap_pct/gap_source fix and the
+    // vix_term fix below — `available` was never reassigned either, so deskShellFromPulse's
+    // fallback shell (mergePulseIntoDesk(emptyDeskPayload(...), pulse)) stayed available:false
+    // forever even when pulse carried real, live data (pulse.available is true precisely when
+    // buildSpxDeskPulse resolved a real price). computeSpxConfluence gates on `!desk.available`
+    // and nulls confluence entirely when that happens, which cascades into
+    // evaluateSpxPlayCore's closed-market branch emitting assessed:false/score:0/factors:[]/
+    // direction:null/grade:"D" even with real underlying data sitting in pulse the whole time.
+    available: pulse.available || base.available,
     price,
     // Fall back to the desk's own spx_change_pct when pulse could not anchor its own (common
     // off-hours/pre-open, when pulse has no trusted prior-close basis) — mirrors the vix

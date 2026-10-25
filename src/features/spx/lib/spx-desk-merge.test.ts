@@ -279,6 +279,45 @@ describe("mergePulseIntoDesk off-hours derived-field fallback", () => {
     assert.equal(merged.vix_term.vix3m, 18.2);
     assert.equal(merged.vix_term.detail, "fresh pulse reading");
   });
+
+  // BUG FOUND (Ask Largo standing mandate, 2026-10-25, live repro GET /api/market/spx/play):
+  // mergePulseIntoDesk's `...base` spread never reassigns `available`, so it's silently
+  // inherited from `base` forever — the same "field never reassigned, inherited from base/
+  // emptyDeskPayload forever" shape as the prior_close/gap_pct/gap_source fix and the vix_term
+  // fix above it, just one field over. deskShellFromPulse (spx-desk.ts) calls this function as
+  // `mergePulseIntoDesk(emptyDeskPayload(...), pulse)` to build the fallback shell used whenever
+  // the real merged desk build is cold/slow (right after a deploy, a cache miss, a cache
+  // stampede) — emptyDeskPayload hardcodes available:false, and with no reassignment here that
+  // stays false even when pulse carries real, live price/VWAP/EMA/tick/trin/add data (pulse's
+  // own `available` is true precisely when buildSpxDeskPulse resolved real data). Downstream,
+  // computeSpxConfluence (spx-signals.ts) gates on `!desk.available` and nulls confluence
+  // entirely, so evaluateSpxPlayCore's closed-market branch then renders assessed:false,
+  // score:0, factors:[], direction:null, grade:"D" even though real desk data was sitting right
+  // there in pulse the whole time. Live-reproduced 2026-10-25: GET /api/market/spx/play served
+  // available:false/score:0 off a cold shell while GET /api/market/spx/desk at the same instant
+  // showed available:true, price 7623.68; forcing a fresh full-desk build via
+  // GET /api/market/spx/merged then made /play correctly return assessed:true, score:-4 for the
+  // identical session.
+  it("marks the merged shell available when pulse carries real data even though base (the empty fallback shell) does not", () => {
+    const base = deskStub({ available: false });
+    const pulse = pulseStub({ available: true });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.available, true);
+  });
+
+  it("keeps the merged shell available when base was already a real build (no regression)", () => {
+    const base = deskStub({ available: true });
+    const pulse = pulseStub({ available: true });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.available, true);
+  });
+
+  it("stays unavailable when neither base nor pulse has real data", () => {
+    const base = deskStub({ available: false });
+    const pulse = pulseStub({ available: false });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.available, false);
+  });
 });
 
 describe("mergeFlowIntoDesk gamma flip truth", () => {
