@@ -118,6 +118,26 @@ for that same position and confirm the thesis-health line still reads sensibly (
 Command Deck guard already handled `"unknown"` correctly — this should be a no-visible-change
 confirmation, not a new behavior).
 
+## WATCH LIST — 2026-10-25 Swing play-brief Exec P&L line/bullet never disclosed a stale quote, despite Greeks/Spread right above it flagging the identical snapshot — fixed, deploy pending validation
+
+**What was fixed:** `pnlSection`'s "Position" section and `execSlippageCoaching`'s "Trade manager
+read" bullet both read `execPnlPct`, priced off the exact same aged `contract.bid`/`contract.ask`
+snapshot the Greeks and Spread lines directly above already flag `_(stale — same quote Mark
+flagged above)_` — but neither Exec P&L line carried that caveat. Live repro MRNA: three
+consecutive lines honestly flagged stale, then a confident "Exec P&L: +6.7%" with no mention it's
+the same aged quote. Extracted the shared caveat logic into `optionMarkStaleCaveat`
+(`play-brief-absence.ts`) so both the Position section and the narrative bullet apply it
+consistently; `pnlSection`'s own Greeks/Spread lines now call the same shared function (no behavior
+change there). Full write-up:
+`docs/audit/findings-staging/2026-10-25-swing-exec-pnl-stale-quote-disclosure-gap.md`.
+
+**Specific things to check at next RTH open:** pull a live swing play-brief for a position whose
+option mark genuinely went stale intraday (a quote that hasn't ticked in 18+ minutes) and confirm
+both the "Position" section's `Exec P&L:` line and the "Trade manager read" section's "Executable
+P&L" bullet carry the `_(stale — same quote Mark flagged above)_` caveat, matching the Greeks/Spread
+lines in the same response. Also confirm a position with a genuinely fresh quote shows no caveat on
+any of these lines (no false-positive staleness).
+
 ---
 
 ## WATCH LIST — 2026-10-25 Swing play-brief "Entry" section's own "Entry stance" label leaked SKIP→"HOLD" (4th call site of an already-named leak) — fixed, deploy pending validation

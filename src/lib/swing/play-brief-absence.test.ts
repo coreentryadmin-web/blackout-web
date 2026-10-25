@@ -13,6 +13,7 @@ import {
   newsCatalystAgeMs,
   newsCatalystStale,
   optionMarkIsStale,
+  optionMarkStaleCaveat,
   resolveGammaPosture,
   trustedHelixFlow,
   vectorAgeStale,
@@ -1164,6 +1165,40 @@ test("optionMarkIsStale: a mark that has missed its next scheduled refresh IS st
     true,
     "a mark past 18 minutes old has missed a scheduled refresh and should read stale",
   );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro MRNA): extracted from pnlSection's
+// own inline ternary so execSlippageCoaching (play-brief-narrative-coaching.ts) can share the
+// identical caveat text for the "Exec P&L" line, which reads the exact same bid/ask snapshot as
+// the Greeks/Spread lines this caveat already covers.
+test("optionMarkStaleCaveat: a stale mark returns the 'same quote Mark flagged above' caveat", () => {
+  const readMs = Date.parse("2026-09-15T19:19:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z",
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  assert.match(optionMarkStaleCaveat(play, readMs), /stale — same quote Mark flagged above/);
+});
+
+test("optionMarkStaleCaveat: a genuinely-unknown (never-synced) mark returns the entry-time caveat, not the stale one", () => {
+  const play = {
+    markIsSync: true,
+    markAsOf: null,
+    status: "OPEN",
+    pnlPct: null,
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  assert.match(optionMarkStaleCaveat(play, Date.now()), /entry-time read — no live tick since commit/);
+});
+
+test("optionMarkStaleCaveat: a fresh, on-schedule mark returns an empty caveat", () => {
+  const readMs = Date.parse("2026-09-15T19:13:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z",
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  assert.equal(optionMarkStaleCaveat(play, readMs), "");
 });
 
 // Sibling bug (Ask Largo standing mandate, 2026-10-20, same defect class as optionMarkIsStale's
