@@ -75,6 +75,38 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.equal(v?.gateBlocks?.[0]?.code, "thesis_invalidated");
   });
 
+  it("stamped non-RESEARCH section + INVALIDATED → SKIP with thesis block AND the real, already-computed gate blocks (live-shape repro, 2026-10-25)", () => {
+    // Same defect class as the "past entry deadline + active commit gate blocks" test below and the
+    // RESEARCH-section fix in swingEntryVerdict itself: a stamped `servingSection` that predates a
+    // fresher setupState read bypasses sectionForSwingPlay's own INVALIDATED→RESEARCH routing
+    // (resolveSwingServingSection trusts the stamped value), so this lands in the dont_buy/
+    // INVALIDATED branch with real, live commit-gate codes already computed and in scope.
+    const v = swingEntryVerdict({
+      servingSection: "WATCH",
+      setupState: "INVALIDATED",
+      commitGateBlockedBy: ["gate:G-S12:halt_feed_stale", "gate:G-S4:regime_degraded"],
+    });
+    assert.equal(v?.deckStatus, "SKIP");
+    assert.equal(v?.actionLabel, null);
+    assert.equal(v?.gateBlocks?.[0]?.code, "thesis_invalidated"); // primary reason stays first
+    const codes = v?.gateBlocks?.map((g) => g.code) ?? [];
+    assert.ok(codes.includes("g_s12_halt_feed_stale"), "real gate evidence should not be dropped");
+    assert.ok(codes.includes("g_s4_regime"), "real gate evidence should not be dropped");
+  });
+
+  it("stamped non-RESEARCH section + persistence gap → SKIP with persistence reason AND the real gate blocks", () => {
+    const v = swingEntryVerdict({
+      servingSection: "WATCH",
+      persistenceObserved: true,
+      persistenceGapReason: "Needs 1 more session",
+      commitGateBlockedBy: ["gate:G-S6:confluence"],
+    });
+    assert.equal(v?.deckStatus, "SKIP");
+    assert.equal(v?.gateBlocks?.[0]?.code, "persistence_gap");
+    const codes = v?.gateBlocks?.map((g) => g.code) ?? [];
+    assert.ok(codes.includes("g_s6_confluence"), "real gate evidence should not be dropped");
+  });
+
   it("RESEARCH + persistence gap → SKIP with persistence reason", () => {
     const v = swingEntryVerdict({
       servingSection: "RESEARCH",
