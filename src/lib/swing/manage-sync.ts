@@ -229,6 +229,39 @@ function thesisStateOf(v: SwingManageVerdict): string {
 }
 
 /**
+ * Rebuild a snapshot's VERDICT-DERIVED fields (thesis_state, feature_vector.thesis_state, and the
+ * verdict-sourced keys inside event_json) for a DIFFERENT verdict than the one the snapshot was
+ * originally built from. Needed because `syncSwingManagement`'s roll-execution path re-arbitrates the
+ * verdict at execution time (`executionVerdictForGating`, Q37 — a concurrent pass or slow chain fetch
+ * can leave a stale verdict by the time the roll/close actually executes), but the snapshot handed to
+ * the roll executor had already been built from the PRE-arbitration verdict. Without this, the
+ * append-only evidence trail (`event_json.rung/action/reason/roll_intent`, `thesis_state`) would
+ * document a verdict the system did NOT actually act on — exactly the kind of narrative-vs-reality
+ * mismatch already fixed once in `live-plays.ts` (the 2026-10-15 INTC repro). Every OTHER field (marks,
+ * DTE, excursion, quote) is a READ, not a verdict derivation, so it is carried through unchanged.
+ */
+function snapshotWithVerdict(snapshot: SwingSnapshotInsert, verdict: SwingManageVerdict): SwingSnapshotInsert {
+  const thesisState = thesisStateOf(verdict);
+  const priorEvent = (snapshot.event_json ?? {}) as Record<string, unknown>;
+  const priorFeatureVector = (snapshot.feature_vector ?? {}) as Record<string, unknown>;
+  return {
+    ...snapshot,
+    thesis_state: thesisState,
+    feature_vector: { ...priorFeatureVector, thesis_state: thesisState },
+    event_json: {
+      ...priorEvent,
+      rung: verdict.rung,
+      action: verdict.action,
+      enforced: verdict.enforced,
+      gating: GATING_RUNGS.has(verdict.rung),
+      reason: verdict.reason,
+      dte_migration: verdict.dteMigration,
+      roll_intent: verdict.rollIntent,
+    },
+  };
+}
+
+/**
  * Signed favorable/adverse excursion (% vs entry), direction-aware, from the ratcheted price extremes plus
  * this tick's spot. The ledger keeps underlying_mfe/underlying_mae as PRICE high/low-water marks; this turns
  * those into the excursion the snapshot's running_mfe/running_mae must carry (feature-store.ts's trajectory
@@ -556,7 +589,9 @@ export async function syncSwingManagement(
           verdict: executionVerdict,
           parentGrade: rollPlan.parentGrade,
           childSpec: executionDecision.action === "ROLL" ? rollPlan.childSpec : undefined,
-          snapshot: plan.snapshot,
+          // snapshotWithVerdict: the snapshot must document the verdict actually acted on
+          // (executionVerdict, post-Q37), not the stale pre-arbitration plan.verdict — see its doc.
+          snapshot: snapshotWithVerdict(plan.snapshot, executionVerdict),
         });
         return {
           positionId: plan.positionId,

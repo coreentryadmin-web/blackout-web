@@ -414,3 +414,81 @@ test("planManageSync: NO quote read → NO `quote` key at all (absent ≠ presen
   );
   assert.equal("quote" in (plan.snapshot.event_json ?? {}), false);
 });
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25): syncSwingManagement's roll-execution branch
+// re-arbitrates the verdict at execution time via executionVerdictForGating (Q37 — "a concurrent
+// pass or slow chain fetch can leave a ROLL plan built while the structural stop has since
+// broken"), but used to hand the roll executor `plan.snapshot` — built from the PRE-arbitration
+// verdict — unchanged. So when Q37 flips the outcome (e.g. a ROLL becomes a CLOSE), the persisted
+// append-only evidence snapshot (event_json.rung/action/reason/roll_intent, thesis_state) would
+// document the verdict the system did NOT actually act on. This fixture demonstrates the
+// divergence mechanism directly supported by ManageSyncReads.structuralStopLevel (a live-override
+// seam the type already exposes): the primary verdict's structural check uses
+// `reads.structuralStopLevel ?? row.thesis_invalidation_px` (a loose 100, here) while Q37's
+// re-check uses `row.thesis_invalidation_px` directly (a tighter 145) — so the primary verdict
+// legitimately reaches expiry_risk/ROLL while Q37 independently finds a structural break at the
+// ledger-pinned level and forces CLOSE. The persisted snapshot must document CLOSE/structural_stop
+// (what was actually acted on), never the stale expiry_risk/ROLL verdict it was first built from.
+test("runSwingActiveRefresh: a Q37 roll-execution override is reflected in the persisted snapshot, not the stale pre-arbitration verdict", async () => {
+  const row = positionRow({
+    id: 7,
+    sub_lane: "TACTICAL", // expiryRiskDte:1, migrationDte:3 — both inside this fixture's dte:1
+    thesis_invalidation_px: 145, // the ledger-pinned level Q37 checks directly
+    entry_premium: 5,
+    peak_premium: 5,
+  });
+  const reads: ManageSyncReads = {
+    underlyingPrice: 140, // holds the LIVE/loose stop (100) but breaches the ledger-pinned one (145)
+    structuralStopLevel: 100, // the live-override seam — looser than the ledger-pinned 145
+    dte: 1,
+    mark: 3, // decaying (3/5 < 1) with no thesisProgress01 → theta-outpacing-thesis → rollIntent.roll
+  };
+
+  const gradeCalls: Array<{ id: number; status: string }> = [];
+  const childInserts: unknown[] = [];
+  const snapshots: SwingSnapshotInsert[] = [];
+
+  const res = await runSwingActiveRefresh({
+    fetchOpen: async () => [row],
+    loadReads: async () => reads,
+    insertSnapshot: async (s) => {
+      snapshots.push(s);
+      return snapshots.length;
+    },
+    updateLiveState: async () => 1,
+    gradeParent: async (id, g) => {
+      gradeCalls.push({ id, status: g.status });
+    },
+    insertChild: async (pos) => {
+      childInserts.push(pos);
+      return 900;
+    },
+    buildRollPlan: async () => ({
+      parentGrade: { grade_json: { thesis: "CONFIRMED" }, grade_methodology: "swing-multitruth-v1" },
+      childSpec: {
+        commit_key: "SWING:NVDA:long:2026-08-15:roll1",
+        session_date: "2026-07-24",
+        ticker: "NVDA",
+        direction: "long",
+        sub_lane: "STANDARD",
+        contract_strike: 130,
+        contract_expiry: "2026-08-15",
+        contract_type: "call",
+        entry_premium: 4.2,
+      },
+    }),
+  });
+
+  assert.equal(res.errored, 0);
+  assert.equal(gradeCalls.length, 1);
+  assert.equal(gradeCalls[0].status, "CLOSED", "Q37 must force CLOSE (structural break at the ledger-pinned level), not ROLL");
+  assert.equal(childInserts.length, 0, "a CLOSE must never open a child leg");
+  assert.equal(snapshots.length, 1);
+  const persisted = snapshots[0];
+  assert.equal(
+    (persisted.event_json as Record<string, unknown>).rung,
+    "structural_stop",
+    "the persisted snapshot must document the verdict Q37 ACTUALLY acted on (structural_stop/CLOSE), not the stale pre-arbitration expiry_risk/ROLL verdict",
+  );
+  assert.equal(persisted.thesis_state, "BROKEN");
+});
