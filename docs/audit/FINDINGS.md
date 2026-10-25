@@ -38,6 +38,18 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-25 — [FINDING, stale-OPEN correction, Audit tooling/GEX-CHARM] "No CHARM depth validator sibling to `gex-depth-validate.mjs`" (2026-09-05) is already fixed on `main` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **The stale entry** | `docs/audit/FINDINGS.md`'s 2026-09-05 entry (CLQ-017), *"No CHARM depth validator sibling to `gex-depth-validate.mjs`"*, is still marked **OPEN — P2, observability**. It names the exact gap: *"GEX has `scripts/gex-depth-validate.mjs`; grep finds no `charm-depth-validate` or equivalent."* Recommended fix: *"Add CHARM validator script + CI hook mirroring GEX depth audit pattern."* That script has existed on `main` for a while. |
+| **Verification** | `scripts/audit/charm-depth-validate.mjs` (93 lines) + `scripts/audit/charm-depth-validate.test.mjs` (26 lines) both exist. `git log --oneline --diff-filter=A -- scripts/audit/charm-depth-validate.mjs` → `14629db4c feat(audit): add charm-depth-validate offline script (CLQ-017) (#3970)` — the commit message cites CLQ-017 by name, confirming this is the intentional fix for this exact finding, not a coincidental script. The script's own header comment states the parallel explicitly: *"GEX has `gex-depth-validate.mjs` (live ladder vs provider gamma). CHARM had no sibling audit script (CLQ-017). This harness validates `charmPerShare()` in polygon-options-gex.ts against an independent Black-Scholes call-delta finite-difference route."* It imports `__test_charmPerShare` from `src/lib/providers/polygon-options-gex.ts` and `normCdf` from `src/lib/gex-depth.ts`, computing an independent closed-form delta-decay cross-check — read-only, no Polygon/DB calls, same operating profile as its GEX sibling. Neither `gex-depth-validate.mjs` nor `charm-depth-validate.mjs` has an `npm run` wrapper in `package.json` — both are invoked directly via `node --import tsx scripts/audit/<name>.mjs`, so the new script matches its sibling's own invocation convention exactly, not an inconsistent partial fix. |
+| **Why this was missed** | The fix (#3970) landed after the 2026-09-05 finding was written and nobody revisited the OPEN status once it shipped — same "drifts out of sync with reality after the underlying fix ships" pattern as this week's ECS-deploy-deadlock, Thermal/shared-cache, mobile-sticky-CTA, and Meridian estimate-revision-timeline corrections. |
+| **What was NOT touched** | No code change — this is a documentation-only correction restamping the stale status. |
+| **Status** | FIXED — the observability gap was already closed by #3970; this entry only corrects the stale OPEN status left over from before that fix landed. |
+
 ## Night Hawk Swings: the "Watch levels" gamma-flip line — a separate, duplicate implementation of narrateFlip — had the same missing-distance gap — FIXED
 
 > **kind:** `FINDING`
