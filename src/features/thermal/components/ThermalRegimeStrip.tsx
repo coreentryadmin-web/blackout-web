@@ -59,7 +59,7 @@ function RegimeSegment({
         <span
           className={clsx(
             "font-mono text-[10px] font-bold tabular-nums",
-            seg.tone === "bear" ? "text-rose-300" : "text-emerald-300"
+            (seg.deltaTone ?? seg.tone) === "bear" ? "text-rose-300" : "text-emerald-300"
           )}
         >
           {deltaArrowText(seg.delta)}
