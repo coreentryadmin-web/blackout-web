@@ -81,6 +81,29 @@ test("planManageSync: edge rung stays evidence-only (enforced:false)", () => {
   assert.equal(plan.snapshot.thesis_state, "WATCH");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25): `reads = {}` (no mark, no underlyingPrice, no
+// DTE, no advisory reads — the total-outage case, e.g. a provider fetch failure this tick) makes
+// NOTHING evaluable, so manage.ts's own `evaluateSwingManagement` returns rung:"insufficient_data"
+// with reason "no usable management read — holding (null-honesty)" — manage.ts's own doc is explicit
+// that this is a HOLLOW read, not a confident HOLD. But `thesisStateOf` (manage-sync.ts) collapsed
+// BOTH "hold" (a real check that ran and found nothing) AND "insufficient_data" (no check ran at all)
+// onto the SAME "INTACT" tag. live-plays.ts's 2026-10-15 fix explicitly trusts thesis_state:"INTACT"
+// to override a cruder spot-only "break" read back to "intact" (see its own doc comment: scoped to
+// "the one state manage-sync.ts stamps specifically to mean the real structural/thesis check ran and
+// did NOT find a break") — so a stale/outage tick with ZERO evidence either way would silently mask a
+// real, live-detected structural break from the member. `insufficient_data` must NOT produce the same
+// tag as a genuine passed check.
+test("planManageSync: total data outage (insufficient_data) must NOT be tagged the same as a real passed check (INTACT)", () => {
+  const reads: ManageSyncReads = {};
+  const plan = planManageSync(positionRow(), reads, { snapshotKind: "eod" });
+  assert.equal(plan.verdict.rung, "insufficient_data");
+  assert.notEqual(
+    plan.snapshot.thesis_state,
+    "INTACT",
+    "a total data outage must never be stamped identically to a real, evaluated 'thesis intact' read",
+  );
+});
+
 test("runSwingActiveRefresh: APPEND-ONLY snapshots, live-state latched, NEVER commits/closes", async () => {
   const snapshots: SwingSnapshotInsert[] = [];
   const liveStates: Array<{ id: number; status: string }> = [];

@@ -194,7 +194,22 @@ function syntheticDossierFromPosition(row: SwingPositionRow): SwingDossier {
   };
 }
 
-/** Map a management verdict → a coarse thesis_state tag for the snapshot (surfaced to the desk/grader). */
+/**
+ * Map a management verdict → a coarse thesis_state tag for the snapshot (surfaced to the desk/grader).
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-25): "hold" and "insufficient_data" used to share the
+ * SAME "INTACT" tag, but they are not the same claim. "hold" means `evaluateSwingManagement` actually
+ * checked the structural/thesis/premium rails against real reads and none fired — a genuinely
+ * evaluated, passed check. "insufficient_data" means NOTHING was evaluable this tick (manage.ts's own
+ * doc: "a hollow read, not a confident HOLD") — e.g. a total provider-fetch outage with no mark, no
+ * spot, no DTE, no advisory read at all. `live-plays.ts`'s INTACT-override fix (2026-10-15) trusts
+ * thesis_state:"INTACT" to reset a cruder spot-only "break" read back to "intact", on the documented
+ * assumption that INTACT specifically means "the real check ran and did NOT find a break." That
+ * assumption was false for insufficient_data: a stale/outage tick with ZERO evidence either way could
+ * silently mask a real, live-detected structural break from the member. "UNKNOWN" is honest about
+ * having no evaluated claim at all, and deliberately matches none of live-plays.ts's override branches
+ * — on this tag the serving layer falls through and keeps trusting the live spot-only read instead.
+ */
 function thesisStateOf(v: SwingManageVerdict): string {
   switch (v.rung) {
     case "structural_stop":
@@ -205,8 +220,9 @@ function thesisStateOf(v: SwingManageVerdict): string {
     case "premium_stop":
       return "STOPPED";
     case "hold":
-    case "insufficient_data":
       return "INTACT";
+    case "insufficient_data":
+      return "UNKNOWN"; // no evaluated claim — must never read as a passed "thesis intact" check
     default:
       return "WATCH"; // an advisory edge rung fired — worth watching, thesis not (yet) broken
   }
