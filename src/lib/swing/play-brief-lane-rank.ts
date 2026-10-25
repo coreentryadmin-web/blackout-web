@@ -249,8 +249,17 @@ export function laneRankSection(
     snap.deltaFromMedian >= 0
       ? `**+${snap.deltaFromMedian}** vs median`
       : `**${snap.deltaFromMedian}** vs median`;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SOXX): `snap.playScore` is
+  // deliberately kept at laneRows' raw one-decimal precision (2026-09-17 fix, so deltaFromMedian
+  // stays comparable to medianScore at the same precision — see computeLaneRank's own doc
+  // comment) — but rendering that raw value directly duplicates the SAME underlying fact
+  // `whyThisSetupSection`'s lede already shows, rounded, a few sections earlier ("...scoring 74."
+  // vs this section's "score 73.7"), reading as two disagreeing numbers for one measurement.
+  // Rounds ONLY the displayed score here to match that convention — deltaFromMedian/medianScore
+  // (computed from the raw value, untouched) still carry their own honest one-decimal precision.
+  const displayScore = Math.round(snap.playScore);
   const lines = [
-    `**#${snap.rank} of ${snap.total}** on ${label} · score **${snap.playScore}** (${delta})`,
+    `**#${snap.rank} of ${snap.total}** on ${label} · score **${displayScore}** (${delta})`,
     `Lane median: **${snap.medianScore}**`,
   ];
   // Ask Largo standing mandate, live repro 2026-10-11: `laneRows` (and therefore every number

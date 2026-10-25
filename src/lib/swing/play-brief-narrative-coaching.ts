@@ -1357,6 +1357,14 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
   if (snap.selfInvalidated) return null;
 
   const label = snap.bucket === "open" ? "OPEN" : "WATCH";
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SOXX — same fix as
+  // laneRankSection's own `displayScore`): `snap.playScore` is deliberately raw one-decimal
+  // precision (see computeLaneRank's doc comment), but every one of this function's three
+  // branches below renders it directly, duplicating the SAME score `whyThisSetupSection` already
+  // shows rounded a few sections earlier — two different numbers for one measurement. Rounds only
+  // the DISPLAYED score; deltaFromMedian/topScore stay untouched (they're never compared against
+  // the "Why this setup" number anywhere, so their own precision was never in question).
+  const displayScore = Math.round(snap.playScore);
   // Live repro 2026-09-12 (same cycle #4849 was opened): CRWD sat #1 of 90 on OPEN by raw score
   // (87) while its own manage engine was EXIT_RUNNER (round-tripped +130% peak -> -10%, all trims
   // banked, runner only) -- the brief's very first bullet said "Desk says TRIM ... consider
@@ -1367,7 +1375,7 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
   // for THIS play's self-referential rank-1 claim. selfReducing (added earlier this same PR for the
   // below-median branch) closes it here too.
   if (snap.rank === 1 && !snap.selfReducing) {
-    return `**Lane leader** — **#1 of ${snap.total}** on ${label} (score **${snap.playScore}**). Desk attention follows the top row.`;
+    return `**Lane leader** — **#1 of ${snap.total}** on ${label} (score **${displayScore}**). Desk attention follows the top row.`;
   }
   if (snap.deltaFromMedian < -15 && snap.selfReducing) {
     // Live repro 2026-09-12: CG sat #90/90 by raw entry-time score — a real +169.2%/+134.6% exec
@@ -1375,7 +1383,7 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
     // lines after "Desk says TRIM ... Bank partial into strength." The entry-time score standing is
     // real context, but "adding size" is backwards advice once the position's own plan is to reduce.
     return (
-      `**Below lane median on entry-time score** — **#${snap.rank}/${snap.total}** (score **${snap.playScore}**, ` +
+      `**Below lane median on entry-time score** — **#${snap.rank}/${snap.total}** (score **${displayScore}**, ` +
       `${snap.deltaFromMedian} vs median) — not a sizing signal here; this position's own plan already calls for reducing, not adding.`
     );
   }
@@ -1392,7 +1400,7 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
       ? " (structurally blocked from committing — a platform wiring gap, not a live gate)"
       : " — confirm before adding size";
     return (
-      `**Below lane median** — **#${snap.rank}/${snap.total}** (score **${snap.playScore}**, ` +
+      `**Below lane median** — **#${snap.rank}/${snap.total}** (score **${displayScore}**, ` +
       `${snap.deltaFromMedian} vs median). Leader: **${snap.topTicker ?? "—"}** @ **${snap.topScore ?? "—"}**${caveat}.`
     );
   }

@@ -8591,3 +8591,18 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   "Trade manager read" magnet bullet's percentage matches `envelope.structureLadder.rungs`'s
   `magnet` rung's `distancePct` exactly (same rounded value), and that the "sitting on the magnet"
   vs. generic pivot-node framing agrees with the real distance rather than a stale upstream one.
+
+## WATCH LIST — 2026-10-25 (swing lane-rank score rounding mismatch fix, fix/swing-lane-rank-score-rounding-mismatch)
+- **What was broken:** `laneRankSection`'s rank line and `laneRankCoaching`'s "Lane leader"/"Below
+  lane median" bullets displayed `computeLaneRank`'s `playScore` verbatim — deliberately raw,
+  one-decimal `laneRows` precision — while `whyThisSetupSection`'s lede and the "Setup score"
+  evidence fact round the same underlying score to an integer. Live repro SOXX: "...scoring 74."
+  vs "score **73.7**" for the identical measurement, three sections apart in one brief.
+- **What the fix changed:** rounds the score ONLY at the 4 render call sites
+  (`Math.round(snap.playScore)`); `deltaFromMedian`/`medianScore` (computed from the raw value)
+  are untouched — never duplicated elsewhere in the brief, so their own precision was never
+  disputed.
+- **What to re-check once the market opens:** pull a live OPEN/WATCH swing brief whose lane peers
+  carry non-integer scores and confirm the "Lane rank" section's score and `laneRankCoaching`'s
+  leader-line score both match the integer shown in "Why this setup"'s lede and the "Setup score"
+  evidence fact for the SAME play, while the "vs median" delta keeps its own decimal precision.
