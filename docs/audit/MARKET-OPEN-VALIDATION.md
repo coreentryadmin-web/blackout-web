@@ -8674,3 +8674,23 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   window this fallback shell actually serves), pull `GET /api/market/spx/play` a few times in
   quick succession and confirm `assessed`/`score`/`direction` populate as soon as `pulse` has real
   data, rather than reading `available:false`/`score:0` until the slower full-desk build finishes.
+
+## WATCH LIST — 2026-10-25 (SPX play-eval cache staleness, 3 unguarded read sites, fix/spx-play-cache-staleness-read-sites)
+- **What was broken:** three of four Redis read sites for the shared `spx-play-read:<date>`
+  cache key in `spx-service.ts` (`waitForPeerSpxPlaySnapshot`, `evaluateSpxPlayStateCrossReplica`'s
+  lock-not-won branch, `spxPlayReadFallback`) returned whatever `sharedCacheGetWithTtl` found
+  unconditionally, with no check against the route's own `playMemberPeekMaxAgeSec()` freshness
+  bound — unlike the fourth reader (`peekSpxPlayState`), which already enforced it. Live-reproduced
+  twice (initial find + independent adversarial re-verification) 2026-10-25: `GET
+  /api/market/spx/play` served at least 4 distinct cached generations non-monotonically across
+  sequential polls, one ~24 minutes stale (~71x the 20s bound), two generations carrying
+  genuinely different `score`/`direction`/`factors` for the same moment.
+- **What the fix changed:** added the same `isSpxPlaySnapshotFreshEnough` guard at all three
+  sites, matching `peekSpxPlayState()`'s established pattern — a too-stale hit now falls through
+  to the next fallback step instead of being trusted outright.
+- **What to re-check once the market opens, during live RTH (the mechanism is identical whether
+  the market is open or closed, but real concurrent member traffic is the condition most likely
+  to actually contend the cross-replica lock):** poll `GET /api/market/spx/play` repeatedly
+  (~5-10s apart) over a few minutes and confirm `as_of` never jumps backward across consecutive
+  polls, and that `score`/`direction`/`factors` never flip between two materially different values
+  faster than the underlying market data could plausibly explain.
