@@ -293,7 +293,10 @@ async function processTickerDayInner(ticker, day) {
   const entryMinuteFromOpen = Math.round((best.entry_triggered_at_ms - etWallClockToUtcMs(day, 9 * 60 + 30)) / 60_000);
   return {
     ticker, day, status: "GRADED", direction: best.direction, strike: alert.contract.strike, side: alert.contract.side,
-    entryAsk: alert.contract.ask, signalMinuteFromOpen, entryMinuteFromOpen, capturedFraction: candidates[0]?.captured_fraction ?? null,
+    signalAtMs: best.watch_detected_at_ms, entryTriggerAtMs: best.entry_triggered_at_ms, entryFillAtMs: entryAtMs,
+    entryAsk: alert.contract.ask, entryBid: alert.contract.bid,
+    spreadPct: candidates[0]?.spread_pct ?? null,
+    signalMinuteFromOpen, entryMinuteFromOpen, capturedFraction: candidates[0]?.captured_fraction ?? null,
     ...graded,
   };
 }
@@ -330,9 +333,9 @@ async function processDays(days, label) {
   for (const r of results) {
     if (r.status === "GRADED") {
       console.log(
-        `    ${r.day} ${r.ticker} ${r.direction} ${r.side}$${r.strike} entry=$${r.entryAsk} ` +
-          `signal@+${r.signalMinuteFromOpen}m entry@+${r.entryMinuteFromOpen}m MFE=${fmtPct(r.mfePct)} MAE=${fmtPct(r.maePct)} ` +
-          `reached_money=${r.reachedTheMoney} -> ${r.outcome} ${fmtPct(r.pnlPct)}`
+        `    ${r.day} ${r.ticker} ${r.direction} ${r.side}$${r.strike} bid/ask=$${r.entryBid}/$${r.entryAsk} spread=${r.spreadPct?.toFixed(1) ?? "—"}% ` +
+          `signal@${new Date(r.signalAtMs).toISOString().slice(11, 16)}Z(+${r.signalMinuteFromOpen}m) entry@${new Date(r.entryFillAtMs).toISOString().slice(11, 16)}Z(+${r.entryMinuteFromOpen}m) ` +
+          `MFE=${fmtPct(r.mfePct)} MAE=${fmtPct(r.maePct)} reached_money=${r.reachedTheMoney} -> ${r.outcome} ${fmtPct(r.pnlPct)}`
       );
     } else if (r.status === "WATCH") {
       console.log(`    ${r.day} ${r.ticker} WATCH only (level ${r.level}) -- never triggered`);
