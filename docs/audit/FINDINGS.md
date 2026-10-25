@@ -38,6 +38,180 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Swing manage-sync: a total data-outage tick was stamped identically to a real "thesis intact" check — FIXED
+
+> **kind:** `FINDING`
+
+**Lane:** Night Hawk Swings (Ask Largo × Night Hawk Swings standing mandate)
+**Date found/fixed:** 2026-10-25
+
+### Root cause
+
+`src/lib/swing/manage-sync.ts`'s `thesisStateOf()` mapped the PR-7 manager's verdict rung onto a coarse
+`thesis_state` tag persisted on every management snapshot. Two rungs — `hold` and `insufficient_data` —
+both collapsed onto the SAME `"INTACT"` tag:
+
+- `hold` (`manage.ts`) fires only when `evaluateSwingManagement` had real, evaluable inputs (premium,
+  underlying spot, DTE/lane, or at least one advisory read) and genuinely found nothing to act on — a
+  real, evaluated "thesis intact" claim.
+- `insufficient_data` fires when **nothing at all was evaluable** this tick — no mark, no underlying
+  spot, no DTE, no thesis-break flag, no advisory read. `manage.ts`'s own doc comment calls this "a
+  hollow read, not a confident HOLD" and is explicit that null-honesty requires it be distinguished from
+  a real HOLD, not merged into one.
+
+`src/lib/swing/live-plays.ts`'s 2026-10-15 fix (serving-layer INTACT override, live INTC repro) made
+`thesis_state:"INTACT"` AUTHORITATIVE: it resets a cruder spot-only `structuralBreakFromSpot` "break"
+read back to `"intact"` whenever the latest manage-sync snapshot says INTACT, on the documented
+assumption that INTACT specifically means "the real structural/thesis check ran and did NOT find a
+break." That assumption held for `hold` but was silently false for `insufficient_data` — a tick with a
+total provider outage (no live spot available to the cron, no DTE, nothing) would ALSO stamp INTACT,
+and the override would then reset a genuinely live-detected spot break back to "intact" purely because
+the authoritative tick had zero evidence either way, not because it confirmed the thesis was fine.
+
+### Blast radius
+
+Single call site reads `thesis_state` with exact-string matching: `live-plays.ts`'s
+`manageObservablesFromEvent` (the INTACT/BROKEN/STOPPED/EXPIRY_RISK override block,
+`livePlayFromSwingPosition`'s sole consumer). `feature-store.ts`/`feature-vector.ts` carry the field
+through as an opaque `string | null` for the grader/trajectory studies — no exact-string matching there,
+so no further blast radius.
+
+### Fix
+
+`thesisStateOf()` now stamps `insufficient_data` as `"UNKNOWN"` instead of `"INTACT"`. `"UNKNOWN"`
+deliberately matches none of `live-plays.ts`'s override branches (`BROKEN`/`STOPPED`/`EXPIRY_RISK`/
+`INTACT`), so a hollow-read tick falls through and the serving layer keeps trusting the live spot-only
+fallback instead of silently overriding it. `hold` is unchanged — still `"INTACT"`, still the one
+documented state the override is actually safe to trust.
+
+### Evidence
+
+RED→GREEN: `src/lib/swing/active-refresh.test.ts` — new test asserts `planManageSync` with an empty
+`reads` object (nothing evaluable) produces `rung:"insufficient_data"` and `thesis_state !== "INTACT"`
+(failed pre-fix, passes post-fix). `src/lib/swing/live-plays.test.ts` — new sibling test to the existing
+2026-10-15 INTC repro: a manage snapshot with `rung:"insufficient_data"`/`thesis_state:"UNKNOWN"` must
+NOT reset a live spot-detected `"break"` back to `"intact"` (failed pre-fix — asserted the opposite of
+the pre-fix behavior — passes post-fix). Full suite + `tsc --noEmit` clean post-fix.
+
+| **Status** | FIXED |
+
+## 2026-10-25 — [FINDING, P2 Night Hawk Swings / Ask Largo] `deskConsensusSection` cited a Legacy-promoted play's own originating event as independent corroborating history — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #6738, merged to `main`) |
+| **Found by** | Adversarially-verified live audit (Ask Largo standing mandate, CLAUDE.md "ASK LARGO × NIGHT HAWK SWINGS" section) |
+| **Scope** | `src/lib/swing/play-brief-intel.ts` (`deskConsensusSection`) |
+
+### Root cause
+
+For a Legacy-promoted swing candidate (`promoteLegacyConfirmedToSwing` /
+`buildLegacySwingArtifacts`, `src/lib/swing/legacy-confirm-promote.ts`), `nighthawk_recent`
+(`EcosystemContext.nighthawk_recent`) — "the last time Legacy published a pick on this ticker,"
+read with no awareness of how the CURRENT play itself came to exist — is, for a freshly-promoted
+play, almost always the literal SAME edition that promoted this exact candidate:
+`nighthawk-morning-confirm/route.ts`'s own session-match guard refuses to run
+`promoteLegacyConfirmedToSwing` unless `editionFor === today`, and `buildLegacySwingArtifacts`
+stamps `firstSeenAt: checkedAt` (that same run) onto the promoted row, which lands on
+`TerminalPlay.detectedAt` via `terminalPlayFromHorizon` (`adapters.ts`, `detectedAt:
+src.firstSeenAt ?? null`) — the exact "First flagged" date the Entry section of the same brief
+narrates for this play (`play-brief.ts`'s `watchEntrySection`, "First flagged **N days ago**
+(...)").
+
+`deskConsensusSection` (`play-brief-intel.ts`) receives `play` as a parameter and already carries a
+staleness gate (added 2026-09-12) comparing `nh.edition_for` against `sessionDate`/`play.exitAt` —
+but that gate only asks "is this pick recent enough to be worth citing," never "is this pick
+*this play's own origination event*." It had no self-reference guard at all, unlike the sibling
+function in the same file, `entryTriggerDeadReason`, which already special-cases a Legacy-promoted
+play for an analogous problem (a pinned, never-refreshed entry-trigger level) via
+`isLegacyPromotedSignal(play.discoveryOrigin)` (exported from `legacy-confirm-promote.ts`).
+`discoveryOrigin` is the right field — confirmed by reading the current `adapters.ts` and
+`TerminalPlay` (`command-deck/types.ts`): it is "Discovery rails that found this play
+(FLOW/BREAKOUT/PIN) — the origin badge," and a Legacy-promoted row stamps it with
+`LEGACY_SWING_SIGNAL_KIND = "NIGHT HAWK"`.
+
+### Evidence
+
+Live `GET /api/market/swing/play-brief?playId=SWING:SPOT&ticker=SPOT&expandIntel=1`, all four
+citing the identical 2026-10-23 date:
+
+- Entry: "First flagged **2 days ago** (2026-10-23 09:15 ET) — still on WAITING FOR ENTRY, not yet
+  graduated to a real position."
+- Trade manager read: "**Also gate-blocked** (moot...) — **legacy_exempt**: Legacy morning-confirm
+  promotion — Swing V2 confluence/Cortex gates were not evaluated on this path."
+- Why this setup: "Score pillars: • **Night Hawk edition score** — +70 pts" (the exact singleton
+  factors array only `legacy-confirm-promote.ts`'s `buildLegacySwingArtifacts` produces)
+- Desk context: "Night Hawk Legacy's last pick on this name (**2026-10-23**) is still
+  **unresolved** — weigh that track record against today's **LONG** setup before sizing."
+
+The fourth line presents the play's own originating promotion event as if it were separate,
+independent history to weigh when sizing the position — a self-referential citation dressed up as
+corroborating evidence.
+
+### Fix
+
+Added a self-reference guard at the top of `deskConsensusSection`, right after the existing
+`nh?.outcome`/`nh.edition_for` presence check and before the pre-existing staleness gate: when
+`isLegacyPromotedSignal(play.discoveryOrigin)` is true AND the play's own origination date
+(`etSessionDate(Date.parse(play.detectedAt))`) falls within 1 calendar day of the cited
+`nh.edition_for` (`daysBetweenYmd`, already imported in this file from
+`@/lib/meridian/meridian-event-expiry-core`), the section is suppressed (`return null`) rather than
+rendering the self-referential "weigh that track record... before sizing" line. The 1-day slack
+(not strict equality) covers a promotion run that lands just across an ET midnight boundary from
+whichever instant `edition_for` was itself stamped from; in the ordinary case both dates are
+byte-identical, as in the live SPOT evidence above.
+
+A genuinely independent, older Legacy pick on the same ticker — the ordinary case for a name that
+appeared in Legacy before, unrelated to today's promotion — still narrates normally: the new guard
+only trips when the cited edition is effectively the same event as the play's own origination, not
+merely whenever the play happens to be Legacy-promoted.
+
+### Fix rationale
+
+Mirrors `entryTriggerDeadReason`'s already-established "is this play itself Legacy-promoted" check
+(`isLegacyPromotedSignal(play.discoveryOrigin)`) rather than inventing a new detection mechanism —
+same file, same signal, same semantics. Suppression (not a reworded citation) was chosen to match
+this function's own existing sibling gate immediately below it in the same file (the 2026-09-12
+staleness gate), which already suppresses the whole section rather than asserting stale/misleading
+context with a caveat bolted on — consistent in shape with the rest of `deskConsensusSection`.
+Deliberately left unchanged: the pre-existing staleness gate (still runs for every other case,
+unaffected by this guard since it is checked independently and earlier); every other Legacy-promoted
+narration elsewhere in the brief (Entry's "First flagged", Trade manager read's `legacy_exempt`
+gate-moot line, "Why this setup"'s edition-score pillar) — those are not self-referential, they each
+narrate a genuinely distinct fact about the SAME originating event rather than citing it a second
+time dressed as independent history.
+
+### Blast radius
+
+Single call site: `deskConsensusSection` is only invoked from `composeSwingPlayBrief`
+(`play-brief-intel.ts`), and `nighthawk_recent` is not read by this self-reference pattern anywhere
+else in the Swing play-brief pipeline — the Entry/Trade-manager/Why-this-setup lines that also
+narrate the same Legacy-promotion event each read different fields (`play.detectedAt`,
+`play.gateBlocks`, `play.factors`) directly off `TerminalPlay`, not off `eco.nighthawk_recent`, so
+none of them carry this same defect.
+
+### Regression tests
+
+Added two tests to `play-brief-intel.test.ts`'s `deskConsensusSection` suite:
+
+- `deskConsensusSection: suppresses a Legacy citation that is the play's own originating promotion
+  event, not independent history` — a Legacy-promoted play (`discoveryOrigin: ["NIGHT HAWK"]`)
+  whose `detectedAt` ET-date matches `nighthawk_recent.edition_for` exactly; asserts the section is
+  `null`. Confirmed RED pre-fix (rendered the live self-referential wording verbatim), GREEN
+  post-fix.
+- `deskConsensusSection: a Legacy-promoted play still narrates a GENUINELY independent, older
+  Legacy pick on the same ticker` — same Legacy-promoted play, but `nighthawk_recent.edition_for`
+  is 2 days before its own `detectedAt` (outside the 1-day self-reference window, inside the
+  existing 4-day staleness window) — asserts the section still renders normally. Passed both before
+  and after the fix (this guards against a too-aggressive suppression regressing the genuinely-
+  independent case).
+
+Ran the full `play-brief-intel.test.ts` (328/328 pass), plus `play-brief.test.ts`,
+`entry-enterability.test.ts`, and `legacy-confirm-promote.test.ts` (239/239 pass across the three)
+on Node 20 via `npx tsx --experimental-test-module-mocks --test`, and `npx tsc --noEmit` clean.
+
 ## Swing play-brief: a committed OPEN position's own entry price and exit-policy stop/target rails never reached `envelope.evidence[]` — FIXED
 
 > **kind:** `FINDING`
