@@ -38,6 +38,173 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-25 — [FINDING, P1 Night Hawk Legacy] `repairStaleBackfillContracts` shipped as an admin-only, manually-triggered action with no automatic caller — a dead options contract stayed live in the member-facing edition for a full day — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | Night Hawk Legacy next-day digest edition (`src/features/nighthawk/lib/post-publish-backfill.ts`, `src/app/api/admin/nighthawk/republish-backfill/route.ts`) |
+| **Found by** | 5-ENGINE LIVE MONITOR CYCLE standing Ask Largo audit mandate, parallel Workflow sweep on 2026-10-25 |
+| **Status** | FIXED |
+
+### Symptom
+
+Live production, 2026-10-25: `GET /api/market/nighthawk/edition` (edition_for "2026-10-26", published
+2026-10-23T21:40:16Z) served a BACKFILL-tier play recommending **"PLTR $197.5 Call 2026-10-23"** —
+an options contract that expired three days before the edition's own target trading day, and even
+before "today." Independently verified: `GET /api/market/nighthawk/legacy-marks` for that contract's
+resolved OCC returned `{mark:null, bid:null, ask:null, asof:null, stale:true}`, while the edition's
+other two plays (CRWD, NET) resolved with real, live marks.
+
+This is NOT a new regression — it is the **exact same incident** PR #6637 (2026-10-24) documented in
+its own commit message, on the **exact same edition** (edition_for "2026-10-26"), re-discovered live a
+full day later by this cycle's audit.
+
+### Root cause
+
+PR #6637 shipped `repairStaleBackfillContracts`/`republishBackfilledEdition`
+(`post-publish-backfill.ts`) — a function that correctly re-picks or drops any BACKFILL play whose
+contract has expired relative to the edition's own target trading day. But the **only** caller of
+`republishBackfilledEdition` anywhere in the codebase (confirmed via repo-wide grep) is
+`POST /api/admin/nighthawk/republish-backfill` — an admin-only, manually-triggered, one-shot route.
+Nothing invokes it automatically: no cron, no hook inside the edition GET route, nothing. #6637
+shipped the repair *capability*; it never shipped an automatic *caller*. The admin endpoint was
+simply never actually invoked against this specific edition after #6637 merged, so the identical
+dead contract sat in the member-facing payload for a full extra day, confirmed by the fact that the
+exact ticker, strike, and expiry match #6637's own "Live repro" verbatim.
+
+### Blast radius
+
+Any already-published edition whose BACKFILL contract expires before, or on, the edition's own
+target trading day is affected identically — this is not specific to PLTR or to this one edition.
+An edition published before PR #6631's generation-time expiry floor deployed is especially exposed
+(that guard only protects *newly generated* editions), but the gap is general: nothing re-validates
+an *already-published* edition's BACKFILL contract liveness on any recurring basis.
+
+### Fix rationale
+
+Two existing crons were considered and rejected as the wiring point:
+- `nighthawk-morning-confirm` — its own header comment explicitly states "The edition ROW
+  (nighthawk_editions.plays) is still never mutated" by that route's logic (the pull latch lives on
+  the outcome row instead). Calling `republishBackfilledEdition` — which writes the repaired `plays`
+  back to the edition row — from inside that route would directly contradict its own documented
+  invariant.
+- `nighthawk-edition` (the evening discovery/scoring/publish pipeline for the *next* edition_for) is
+  the wrong shape entirely: it is a complex, checkpointed, fire-and-forget background build for a
+  future edition, not a repair pass on an edition already published and approaching its own trading
+  day. Bolting an unrelated repair step onto its job-staging logic would be scope creep on a
+  sensitive pipeline.
+
+Instead, added a new, single-purpose cron (`src/app/api/cron/nighthawk-backfill-repair/route.ts`)
+that does nothing but call the already-shipped, already-idempotent `republishBackfilledEdition` for
+today's edition, scheduled 15 minutes before `nighthawk-morning-confirm`'s own dual-band (9:00 AM ET
+vs 9:15 AM ET, same DST-coverage shape) so any repair is already persisted by the time morning-confirm
+reads the edition row. Reuses every gate (`isCronAuthorized`, `isTradingDayEt`, `inEtWindow`,
+session-match) from the exact same established patterns in `nighthawk-outcomes`/
+`nighthawk-morning-confirm` rather than inventing new ones. Alerts ops on Discord only when something
+was actually repaired or dropped — never on the overwhelmingly common clean no-op (matching
+`repairStaleBackfillContracts`'s own design intent: "must stay cheap on the overwhelmingly common case
+where there is nothing to repair").
+
+### Outstanding follow-up (narrowed — most of the work is already done)
+
+Registering the cron in `cron-registry.ts` alone only updates a mirror; `railway.<key>.toml` is the
+real in-repo source of truth `blackout-infra/scripts/sync-cron-schedules.mjs` reads
+(`src/lib/cron-registry-schedule.test.ts` enforces this — missing the TOML is what made this PR's
+own test suite fail on first push, caught and fixed in the same PR by adding
+`railway.nighthawk-backfill-repair.toml`). Ran `sync-cron-schedules.mjs` locally against this
+branch and confirmed the exact, minimal `cron-jobs.json` diff it produces (one 6-line entry,
+inserted alphabetically before `nighthawk-morning-confirm`, matching every sibling entry's shape
+exactly, verified against `terraform/modules/crons/main.tf`'s actual field usage). Opening that PR
+against `blackout-infra` requires push access this session's permission classifier correctly denied
+as a real access-scope elevation — the exact snippet is saved for a human or a future
+blackout-infra-authorized session to apply directly (see `docs/audit/MARKET-OPEN-VALIDATION.md`'s
+entry for the precise JSON). After that PR merges, a `terraform apply` against that module (by a
+human or a future AWS-credentialed session — none available here) still creates the real
+EventBridge rule; merging the JSON change alone does not. Until then the route is reachable only via
+`?force=1`.
+
+### Evidence / tests
+
+New regression test `src/app/api/cron/nighthawk-backfill-repair/route.test.ts` (6 tests, source-text
+assertions matching this repo's established style for cron route tests — see
+`nighthawk-outcomes/route.test.ts`): gate ordering (auth → trading-day → window → session-match →
+repair), `force=1` bypass of every gate, reuse (not reimplementation) of the repair logic, Discord-
+alert-only-when-repaired, schedule ordering vs `nighthawk-morning-confirm`, and try/catch isolation.
+`src/lib/cron-registry.test.ts` (4/4, including the two-way registry↔route consistency checks) and
+the existing `post-publish-backfill.test.ts`/`play-backfill.test.ts`/`nighthawk-edition/route.test.ts`/
+`nighthawk-outcomes/route.test.ts` all pass unchanged (53/53 across the full scoped run). `tsc
+--noEmit` clean. Full suite run on Node 20 (`npm test`) confirmed green.
+
+## 2026-10-25 — [FINDING, P3 Meridian] Timeline's "Next 24h" stat tile is a calendar-day proximity count, not an actual rolling 24-hour window — OPEN
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | Meridian timeline stats (`src/lib/meridian/meridian-snapshot.ts`, consumed by `src/features/meridian/components/MeridianDesk.tsx`) |
+| **Found by** | DISCOVERY-lane standing audit mandate, fresh-angle sweep on 2026-10-25 (Meridian lib loaders behind the thin `event`/`lookup`/`peer-reactions`/`timeline` API routes) |
+
+### Symptom
+
+`MeridianDesk.tsx:366` renders a live "Next 24h" stat tile (`<MeridianStatCard value={stats.next_24h}
+label="Next 24h" .../>`) that members read as "how many catalysts are coming up in the next day."
+The underlying count does not measure a rolling 24-hour window from now — it measures calendar-date
+proximity only, so it both over-counts (events that already happened earlier today) and under-counts
+(events up to ~47 hours away) relative to what the label promises.
+
+### Root cause
+
+`buildTimelineStats` (`meridian-snapshot.ts:37`):
+```ts
+next_24h: items.filter((i) => i.days_until <= 1).length,
+```
+`days_until` comes from `daysUntilEt` (`src/features/meridian/lib/meridian-timeline.ts:35-42`), which
+is a **pure calendar-day diff** between two YMD strings (`Date.UTC(y,m,d)` subtraction, divided by
+86.4M ms) — it carries no time-of-day information at all:
+```ts
+export function daysUntilEt(eventYmd: string, todayYmd: string): number {
+  const [y1, m1, d1] = todayYmd.split("-").map(Number) as [number, number, number];
+  const [y2, m2, d2] = eventYmd.split("-").map(Number) as [number, number, number];
+  const a = Date.UTC(y1, m1 - 1, d1);
+  const b = Date.UTC(y2, m2 - 1, d2);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.round((b - a) / 86_400_000);
+}
+```
+So `days_until <= 1` means "today or tomorrow by calendar date," not "within the next 24 hours from
+the current instant." Concrete failure cases:
+- An event that printed BMO (before market open) this morning is still counted in "Next 24h" at
+  11:59pm the same day — up to ~16+ hours after it already happened.
+- An event scheduled for tomorrow at 23:00 ET, checked just after midnight today, is genuinely
+  ~47 hours away but still counted as "Next 24h" because both dates differ by only 1 calendar day.
+
+No test covers this specifically — `grep -rn "next_24h" --include="*.test.ts"` returns zero hits.
+
+### Why a drive-by fix isn't appropriate here
+
+A correct fix needs each item's date+time resolved to a real ET instant and compared against "now"
+within an actual rolling 24h window — but not every item carries a usable time: macro/opex items
+and most earnings rows have a real `time` (`HH:MM`, e.g. `08:00`/`16:20`/`16:00`), while **FDA items
+carry `time: null`** (`meridian-timeline.ts:252`). A fix therefore requires a design decision on the
+FDA fallback (treat as end-of-day for the "next 24h" check? exclude FDA from the precise window and
+keep day-based inclusion only for that kind? something else?) — this is a product/design call, not a
+mechanical patch, so it is reported here for the Meridian lane owner to decide rather than built
+unilaterally per the standing DISCOVERY-lane write-up policy for findings that aren't small and
+self-contained.
+
+### Blast radius
+
+Single call site (`buildTimelineStats`'s `next_24h` field) feeding a single consumer
+(`MeridianDesk.tsx`'s stat tile). `daysUntilEt` itself is also used elsewhere for genuinely
+calendar-day-scoped purposes (upcoming-earnings date bucketing) where the current semantics are
+correct — the bug is specific to using it as a proxy for a rolling-hour window, not a defect in
+`daysUntilEt` itself.
+
+**Status.** OPEN — needs a Meridian-lane design decision on the FDA (`time: null`) fallback before
+a fix can be written; no code changed by this finding.
+
 ## Night Hawk Swings: "Structural support/resistance node" in Watch levels never stated its distance from spot either — FIXED
 
 > **kind:** `FINDING`
