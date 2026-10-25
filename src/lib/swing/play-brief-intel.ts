@@ -2797,6 +2797,33 @@ export function deskConsensusSection(
   const nh = eco.nighthawk_recent;
   if (!nh?.outcome || !nh.edition_for) return null;
 
+  // SELF-REFERENCE GUARD (Ask Largo standing mandate, 2026-10-25, live repro SPOT WATCH brief,
+  // `GET /api/market/swing/play-brief?playId=SWING:SPOT&ticker=SPOT&expandIntel=1`): for a
+  // Legacy-promoted swing candidate, `nighthawk_recent` ("the last time Legacy published a pick on
+  // this ticker," queried with no awareness of how THIS play itself came to exist) is, for a
+  // freshly-promoted play, the literal SAME edition that promoted this exact candidate —
+  // `promoteLegacyConfirmedToSwing`'s only caller (`nighthawk-morning-confirm/route.ts`) refuses to
+  // run unless `editionFor === today`, and `buildLegacySwingArtifacts` stamps `firstSeenAt:
+  // checkedAt` (that same run) onto the promoted row, which lands on `TerminalPlay.detectedAt`
+  // (adapters.ts) — the exact "First flagged" date the Entry section narrates for this play.
+  // Without this guard, a fresh Legacy-promoted WATCH play cited its OWN originating event as if it
+  // were separate corroborating history: "Night Hawk Legacy's last pick on this name (2026-10-23)
+  // is still unresolved — weigh that track record against today's LONG setup before sizing," on a
+  // play whose own "First flagged" date (same brief, Entry section) is the identical 2026-10-23 —
+  // a self-referential citation dressed up as independent evidence. Mirrors
+  // `entryTriggerDeadReason`'s established "is this play itself Legacy-promoted" check
+  // (`isLegacyPromotedSignal(play.discoveryOrigin)`) rather than inventing a new one; the date
+  // comparison allows 1 day of slack (not strict equality) for a promotion run that lands just
+  // across an ET midnight boundary from whichever instant `edition_for` was itself stamped from. A
+  // genuinely independent, older Legacy pick on the same ticker (the ordinary case for a name that
+  // appeared in Legacy before, unrelated to today's promotion) still narrates normally below — only
+  // the same-event citation is suppressed.
+  if (isLegacyPromotedSignal(play.discoveryOrigin) && play.detectedAt != null) {
+    const originDate = etSessionDate(Date.parse(play.detectedAt));
+    const gapFromOrigin = originDate ? daysBetweenYmd(nh.edition_for, originDate) : null;
+    if (gapFromOrigin !== null && Math.abs(gapFromOrigin) <= 1) return null;
+  }
+
   // STALENESS GATE (found 2026-09-12, live GOOGL brief): `nighthawk_recent` is "the last time
   // THIS TICKER appeared in a Legacy edition" with NO date filter — for most tickers that is not
   // today or yesterday, it is however long ago Legacy last happened to feature this name. This
