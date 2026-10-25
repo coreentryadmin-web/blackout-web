@@ -131,7 +131,24 @@ export function repairStaleBackfillPlays(params: {
       continue;
     }
     repairedTickers.push(ticker);
-    result.push({ ...play, options_play: contract.options_play, entry_premium: contract.entry_premium });
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25): an edition published BEFORE the
+    // selectBackfillPlays rr_ratio fix (same-day, earlier PR) shipped can still carry a BACKFILL
+    // play with no structured rr_ratio at all. Swapping the dead contract for a live one (above)
+    // never touches entry_range/target/stop, so it can't regenerate the missing field as a side
+    // effect — but this repair pass already has every input computeRiskReward needs sitting on
+    // `play` itself (direction/entry_range/target/stop), the exact same fields and function
+    // selectBackfillPlays uses. Only backfills when genuinely absent (`play.rr_ratio ?? ...`) —
+    // an already-correct rr_ratio is left untouched, never recomputed and silently replaced.
+    const rr_ratio =
+      play.rr_ratio ??
+      computeRiskReward({
+        direction: play.direction,
+        entry_range: play.entry_range,
+        target: play.target,
+        stop: play.stop,
+      }) ??
+      undefined;
+    result.push({ ...play, options_play: contract.options_play, entry_premium: contract.entry_premium, rr_ratio });
   }
 
   return { plays: result, repairedTickers, droppedTickers };

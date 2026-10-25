@@ -8592,6 +8592,24 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   `magnet` rung's `distancePct` exactly (same rounded value), and that the "sitting on the magnet"
   vs. generic pivot-node framing agrees with the real distance rather than a stale upstream one.
 
+## WATCH LIST — 2026-10-25 (Legacy `repairStaleBackfillPlays` missing rr_ratio backfill, fix/legacy-backfill-repair-missing-rr-ratio)
+- **What was broken:** `repairStaleBackfillPlays` (the `nighthawk-backfill-repair` self-heal cron's
+  pure repair function, `play-backfill.ts`) re-picks a live replacement options contract for a
+  BACKFILL play whose own contract has expired relative to `editionFor`, but only overwrote
+  `options_play`/`entry_premium` on the play — any edition published BEFORE the earlier same-day
+  `selectBackfillPlays` rr_ratio fix (#6679) shipped can still carry a BACKFILL play with no
+  structured `rr_ratio` at all, and swapping the dead contract never regenerates it (contract
+  pricing and `rr_ratio` are independent — the latter comes from `entry_range`/`target`/`stop`,
+  not the option strike/premium).
+- **What the fix changed:** the repair pass now backfills a missing `rr_ratio` via
+  `computeRiskReward` using the play's own already-present `direction`/`entry_range`/`target`/
+  `stop` (the exact same inputs/function `selectBackfillPlays` uses) — only when genuinely absent;
+  an already-correct `rr_ratio` is left untouched, never silently recomputed.
+- **What to re-check once the market opens:** if the `nighthawk-backfill-repair` cron actually
+  repairs a stale BACKFILL play's contract this cycle (check `meta.stale_backfill_contract_repair`
+  on `GET /api/market/nighthawk/edition`), confirm that repaired play's `rr_ratio` is populated
+  (not `undefined`) and that `PlaybookBriefingPanel.tsx`'s "R:R" stat renders for it.
+
 ## WATCH LIST — 2026-10-25 (swing lane-rank score rounding mismatch fix, fix/swing-lane-rank-score-rounding-mismatch)
 - **What was broken:** `laneRankSection`'s rank line and `laneRankCoaching`'s "Lane leader"/"Below
   lane median" bullets displayed `computeLaneRank`'s `playScore` verbatim — deliberately raw,
