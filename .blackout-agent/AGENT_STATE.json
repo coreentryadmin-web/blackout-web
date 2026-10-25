@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-25T10:37:44.005Z",
+  "updated_at": "2026-10-25T13:34:14.770Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "afe2a62d68373c2eb6694ac958347e9281e3fe09",
+    "last_main_sha": "1b55a9e287575a5d223860640356fd9e71847318",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-19T05:25:49.289Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-19T05:25:53.550Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-19T05:29:47.961Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-19T05:29:53.552Z",
       "type": "context_sync",
@@ -1271,9 +1253,47 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-25T13:34:02.187Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-25T13:34:09.446Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-25T13:34:14.770Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
+    {
+      "number": 6711,
+      "title": "fix(spx): mergePulseIntoDesk never reassigned `available`, spuriously zeroing score/direction",
+      "branch": "fix/spx-merge-pulse-available-never-reassigned",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-25T13:30:51Z"
+    },
+    {
+      "number": 6710,
+      "title": "fix(swing): shadowRealizedPnlPct fabricated 0% realized P&L on invalid entry premium",
+      "branch": "fix/shadow-refresh-realized-pnl-null-honesty",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-25T13:29:23Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
