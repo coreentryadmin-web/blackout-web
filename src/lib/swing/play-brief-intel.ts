@@ -627,7 +627,10 @@ export function bookContextSection(
   );
   if (!overlap.hasOverlap) return null;
 
-  const reviewedIsBangerOrigin = play.regime === BANGER_LEDGER_REGIME_LABEL;
+  // Same fix as `bangerOriginNoRealThesis` above: `play.regime` is always null for a Banger-origin
+  // row by the time it reaches here (adapters.ts nulls it for display), so this must read the
+  // stable `bangerOrigin` marker instead of re-checking the already-nulled `regime` field.
+  const reviewedIsBangerOrigin = play.bangerOrigin === true;
   const lines: string[] = [];
   if (overlap.sameThemeSameDirection.length) {
     const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeSameDirection);
@@ -1968,7 +1971,13 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // and `serving-lane.ts`'s `attachThesisExplanation` guard already use) rather than let it overclaim
   // a per-position judgment the lane cannot calibrate — the C6 absence principle (omission over
   // fabrication) applied to this one line, not just the aggregate panel.
-  const bangerOriginNoRealThesis = play.regime === BANGER_LEDGER_REGIME_LABEL;
+  // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro HAL/CLF/NET): this used to check
+  // `play.regime === BANGER_LEDGER_REGIME_LABEL`, but `terminalPlayFromHorizon` (adapters.ts) always
+  // nulls `TerminalPlay.regime` for a Banger-origin row before display (a LATER, separate fix, live
+  // repro BMNR) — so this check could never be true on a real play-brief and the suppression below
+  // never fired. `play.bangerOrigin` is the stable marker that survives that nulling — see its doc
+  // comment on TerminalPlay (command-deck/types.ts).
+  const bangerOriginNoRealThesis = play.bangerOrigin === true;
   // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro UNH and MU WATCH briefs, same
   // cycle): this line had no `deadPlayReason(play)` guard, so for a genuinely dead WATCH play
   // (EXTENDED/EXTENDED_CHASE) it rendered "Thesis **intact**" directly beneath this SAME section's

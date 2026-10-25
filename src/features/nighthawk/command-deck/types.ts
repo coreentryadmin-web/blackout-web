@@ -105,6 +105,16 @@ export interface TerminalPlay {
   factors: DeckFactor[];
   gates: Array<{ label: string; ok: boolean }>;
   regime?: string | null;
+  /**
+   * True when this row's source is the Banger-ledger merge (`horizonPlayFromBangerPosition`/
+   * `horizonPlayFromBangerWatch`, banger-lane-merge.ts) — a stamped-constant merge path with no
+   * real per-position dossier, distinct from `regime`, which `terminalPlayFromHorizon` (adapters.ts)
+   * always nulls for display regardless of origin once it has read this flag. Downstream Largo/
+   * book-context logic that needs to detect Banger origin (play-brief-intel.ts's
+   * `bangerOriginNoRealThesis`/`reviewedIsBangerOrigin`) must read THIS field, not `regime` —
+   * `regime` is unconditionally null for a Banger-origin row by the time it reaches them.
+   */
+  bangerOrigin?: boolean;
   confidence?: number | null; // 0–1
   allocation?: { role: string; sizing: string; reason?: string } | null;
   thesisBreak?: { level: ThesisLevel; note?: string } | null;

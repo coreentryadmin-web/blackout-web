@@ -8478,6 +8478,24 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   `GET /api/market/nighthawk/edition` for the live PLTR edition (or whichever edition is current by
   then) no longer carries a dead BACKFILL contract.
 
+## WATCH LIST — 2026-10-25 (swing Banger-origin thesis guard dead-code fix, fix/swing-banger-origin-thesis-dead-guard)
+- **What was broken:** a 2026-10-08 fix (`bangerOriginNoRealThesis`/`reviewedIsBangerOrigin` in
+  `play-brief-intel.ts`) and a 2026-10-24 fix (`regimeForDisplay` nulling in `adapters.ts`) were
+  each correct in isolation but silently defeated each other — the later fix nulled the exact
+  `TerminalPlay.regime` field the earlier fix's guards checked, so the thesis-line suppression
+  could never fire again. Live-reproduced on HAL/CLF/NET: the swing play-brief "What to watch"
+  section rendered "Thesis **unknown** — Engine B scale-out — whole-market breakout" for every
+  Banger-origin OPEN position (~78/81 of the live committed Swing book per CLAUDE.md's own count).
+- **What the fix changed:** added a new, stable `TerminalPlay.bangerOrigin` field computed before
+  the display-nulling, and pointed both downstream guards at it instead of the now-always-null
+  `regime` field.
+- **What to re-check once the market opens:** pull `GET /api/market/swing/play-brief` for a few
+  live Banger-origin OPEN/HOLD/TRIM swing positions and confirm the "What to watch"/"Trade manager
+  read" section never renders a "Thesis **unknown**"/"Thesis **intact**" line immediately next to
+  the generic "Engine B scale-out — whole-market breakout" note, and that a same-ticker
+  Banger/Banger overlap in Book context still reads "separate position" rather than
+  "cross-engine."
+
 ## WATCH LIST — 2026-10-25 (swing G-S14 Cortex non-veto mislabel fix, fix/swing-g-s14-cortex-nonveto-mislabel)
 - **What was broken:** `commitGateBlocksForVerdict`'s G-S14 branch collapsed every non-veto Cortex
   block code (`cortex_net_negative`, `cortex_thin_evidence`, `cortex_contested`,

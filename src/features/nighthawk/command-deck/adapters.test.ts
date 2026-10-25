@@ -13,6 +13,7 @@ import {
 import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import { overlayLegacyQuotes } from "./use-legacy-quotes.ts";
 import { swingActionDisplay } from "./play-card-lifecycle.ts";
+import { watchForSection } from "@/lib/swing/play-brief-intel";
 
 test("managementFor: RATCHET progress maps -50→0, +100→1; recommendations by P&L", () => {
   assert.equal(managementFor("RATCHET", "OPEN", -50).progress, 0);
@@ -189,6 +190,7 @@ test("horizon adapter: Banger-origin thesisLevel:'intact' is suppressed to 'unkn
   });
   assert.equal(banger.thesisBreak!.level, "unknown", "a fabricated 'intact' must never survive for a Banger-origin row");
   assert.equal(banger.thesisBreak!.note, "below the 2× partial and above the hard stop", "the real mechanical note is still useful and must be kept");
+  assert.equal(banger.bangerOrigin, true, "the stable origin marker downstream Largo guards read must be set");
 
   // A NATIVE swing position's real thesisBreak read (not Banger-origin) must be untouched.
   const native = terminalPlayFromHorizon({
@@ -200,6 +202,7 @@ test("horizon adapter: Banger-origin thesisLevel:'intact' is suppressed to 'unkn
     thesisBreak: { level: "intact", note: "thesis intact — structure holding" },
   });
   assert.equal(native.thesisBreak!.level, "intact", "a real, non-Banger thesis read must not be suppressed");
+  assert.notEqual(native.bangerOrigin, true, "a native swing row must never be flagged as Banger-origin");
 });
 
 // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro BMNR — Command Deck's "Regime"
@@ -230,6 +233,7 @@ test("horizon adapter: Banger-origin regime sentinel ('BREAKOUT · BANGER') is s
     regime: "BREAKOUT · BANGER",
   });
   assert.equal(banger.regime, null, "the internal Banger-ledger sentinel must never surface as a displayed regime read");
+  assert.equal(banger.bangerOrigin, true, "the stable origin marker must survive even though regime itself is nulled for display");
 
   // A NATIVE swing position's real regime read (not Banger-origin) must be untouched.
   const native = terminalPlayFromHorizon({
@@ -240,6 +244,51 @@ test("horizon adapter: Banger-origin regime sentinel ('BREAKOUT · BANGER') is s
     regime: "Breakout continuation · regime 0.60",
   });
   assert.equal(native.regime, "Breakout continuation · regime 0.60", "a real, non-Banger regime read must not be suppressed");
+  assert.notEqual(native.bangerOrigin, true, "a native swing row must never be flagged as Banger-origin");
+});
+
+// BUG FIX (2026-10-25, Ask Largo standing mandate, live repro HAL/CLF/NET): the two tests above
+// each prove ONE adapter-level guard in isolation, but neither ever fed the adapter's OUTPUT into
+// a real downstream Largo consumer — which is exactly how this regression shipped in the first
+// place. `play-brief-intel.ts`'s `bangerOriginNoRealThesis` used to re-check
+// `play.regime === BANGER_LEDGER_REGIME_LABEL` on the TerminalPlay the test above just proved has
+// `regime: null`, so that check could never fire; its own regression tests caught this only because
+// they constructed a `TerminalPlay` fixture directly with `regime: BANGER_LEDGER_REGIME_LABEL`,
+// bypassing this real adapter entirely. This test goes end-to-end through the actual pipeline
+// (`terminalPlayFromHorizon` -> `watchForSection`) a real swing play-brief uses, so a future change
+// to either function that reopens the same gap fails here, not just in production.
+test("end-to-end: a Banger-origin row's thesis line is suppressed through the REAL terminalPlayFromHorizon -> watchForSection pipeline, not just a hand-built fixture", () => {
+  const bangerPlay = terminalPlayFromHorizon({
+    ticker: "hal", direction: "LONG", horizon: "SWING", score: 55, status: "COMMIT",
+    contract: { strike: 30, right: "C", expiry: "2026-11-20", dte: 26, mid: 1.1 },
+    liveStatus: "OPEN",
+    livePnlPct: -4.2,
+    regime: "BREAKOUT · BANGER",
+    thesisBreak: { level: "intact", note: "Engine B scale-out — whole-market breakout" },
+  });
+  assert.equal(bangerPlay.regime, null);
+  assert.equal(bangerPlay.bangerOrigin, true);
+
+  const section = watchForSection(
+    {
+      play: bangerPlay,
+      asOf: "2026-10-25 09:30 ET",
+      sessionDate: "2026-10-25",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(
+    section.body,
+    /Thesis \*\*/,
+    `a Banger-origin row must never render a self-contradictory Thesis line through the real adapter pipeline, got: ${section.body}`,
+  );
+  assert.doesNotMatch(section.body, /Engine B scale-out/);
 });
 
 test("horizon adapter (PR-12): LEAPS / un-enriched caller is UNCHANGED — legacy literals preserved", () => {
