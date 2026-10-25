@@ -32,6 +32,7 @@ import {
   archetypeTrackRecordIsStale,
   optionMarkGenuinelyUnknown,
   optionMarkIsStale,
+  optionMarkStaleCaveat,
   playExpectsLiveOptionMark,
   darkPoolStale,
   resolveGammaPosture,
@@ -700,13 +701,13 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
   // — the entry-time/aged values are still real, useful context (e.g. "what were my greeks when I
   // entered"), so hiding them would be a regression, not a fix. Computed once, shared with the
   // Liquidity/Spread block below — both read the identical contract snapshot.
-  const staleCaveat = markGenuinelyUnknown
-    ? " _(entry-time read — no live tick since commit, do not read as current)_"
-    : markUnsynced
-      ? " _(live quote, no freshness timestamp)_"
-      : optionMarkIsStale(play, readMs)
-        ? " _(stale — same quote Mark flagged above)_"
-        : "";
+  //
+  // Extracted to `optionMarkStaleCaveat` (play-brief-absence.ts, Ask Largo standing mandate,
+  // 2026-10-25) so `execSlippageCoaching`'s "Executable P&L" bullet (play-brief-narrative-
+  // coaching.ts), which reads the exact same bid/ask snapshot via `execPnlPct`, shares this one
+  // definition instead of needing its own re-derivation — see that function's own call site for
+  // the live repro (MRNA) this exact gap produced one call site over.
+  const staleCaveat = optionMarkStaleCaveat(play, readMs);
   if (play.greeks) {
     const g = play.greeks;
     const sign = (v: number) => (v >= 0 ? "+" : "");
@@ -788,9 +789,17 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
   // own fill-based P&L — the same misread class this file has fixed repeatedly for the plain P&L
   // line (CRWD/NRG/NN 2026-09-10..14), just never reaching this sibling line. Mirror the same
   // qualifier, not a new one, so the two lines read consistently.
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro MRNA): `execPnlPct` is priced off
+  // the identical `contract.bid`/`contract.ask` snapshot the Greeks and Spread lines above read
+  // (`executableFill`, adapters.ts) — both of those lines already carry `staleCaveat` when that
+  // snapshot is aged, but this line never referenced it, so a stale bid/ask rendered "Mark: ...
+  // (stale)" / "Spread: ... (stale — same quote Mark flagged above)" directly above an unqualified
+  // "Exec P&L: +6.7%" computed from that exact same aged quote. Appended, not replacing the
+  // existing open-runner qualifier — a position can be both mid-trim and quote-stale at once.
   if (play.execPnlPct != null)
     lines.push(
-      `Exec P&L: **${fmtPct(play.execPnlPct)}**${blended != null ? " _(open runner only — trim already banked, see above)_" : ""}`,
+      `Exec P&L: **${fmtPct(play.execPnlPct)}**${blended != null ? " _(open runner only — trim already banked, see above)_" : ""}${staleCaveat}`,
     );
   if (play.trackPct != null) lines.push(`Since flag: **${fmtPct(play.trackPct)}**`);
   return { title: "Position", body: lines.join("\n") };

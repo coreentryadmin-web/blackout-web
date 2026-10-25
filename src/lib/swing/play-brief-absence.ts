@@ -481,6 +481,29 @@ export function optionMarkIsStale(play: TerminalPlay, readMs: number = Date.now(
 }
 
 /**
+ * The shared "is this contract snapshot aged/unreliable" caveat text — one of the three mutually
+ * exclusive reasons a quote-derived line shouldn't be read as fully current, or "" when none apply.
+ * `pnlSection` (play-brief.ts) computed this inline for the Greeks/Spread lines; extracted here
+ * (Ask Largo standing mandate, 2026-10-25, live repro MRNA) because `execPnlPct`/`execSlippageCoaching`
+ * (play-brief-narrative-coaching.ts) read the EXACT SAME `src.contract` bid/ask snapshot
+ * (`executableFill`, adapters.ts) as Greeks/Spread but had no caveat of its own — a second,
+ * independent re-derivation of this exact ternary would have been the same "three readers, one of
+ * them drifts" risk every other sentinel-leak fix in this codebase has already hit once.
+ */
+export function optionMarkStaleCaveat(play: TerminalPlay, readMs: number = Date.now()): string {
+  if (optionMarkGenuinelyUnknown(play)) {
+    return " _(entry-time read — no live tick since commit, do not read as current)_";
+  }
+  if (play.markIsSync === true && playExpectsLiveOptionMark(play.status)) {
+    return " _(live quote, no freshness timestamp)_";
+  }
+  if (optionMarkIsStale(play, readMs)) {
+    return " _(stale — same quote Mark flagged above)_";
+  }
+  return "";
+}
+
+/**
  * The archetype/sub-lane calibration-cache snapshot's ONLY writer is `swing-active-refresh`
  * (cron-registry.ts), the exact same 15-minute-during-RTH-only cron as the option mark above — so
  * this fact's `asOf` legitimately ranges from 0 to ~15 minutes old under fully healthy operation,

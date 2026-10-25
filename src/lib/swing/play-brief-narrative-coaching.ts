@@ -14,6 +14,7 @@ import {
   meridianCatalystAgeMs,
   meridianCatalystStale,
   optionMarkGenuinelyUnknown,
+  optionMarkStaleCaveat,
   resolveGammaPosture,
   vectorAgeStale,
   vectorSnapshotStale,
@@ -1195,15 +1196,23 @@ export function macroTapeCoaching(ctx: SwingPlayBriefContext): string | null {
 }
 
 /** Executable vs mid P&L honesty — slippage on the tape. */
-export function execSlippageCoaching(play: TerminalPlay): string | null {
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro MRNA): this bullet reads `execPnlPct`,
+// priced off the exact same `contract.bid`/`contract.ask` snapshot `pnlSection`'s Greeks/Spread
+// lines (play-brief.ts) already disclose staleness for — but this call site carried no equivalent
+// caveat, so a stale quote rendered a fully-confident "mid +17.4% vs fill +6.7% (-11% slippage)"
+// with no hint the "fill" side is computed off an aged bid/ask. `readMs` threaded in the same
+// optional, `ctx.readMs ?? Date.now()`-defaulted shape every other staleness-aware coaching
+// function in this file already uses.
+export function execSlippageCoaching(play: TerminalPlay, readMs?: number): string | null {
   const mid = fin(play.pnlPct);
   const exec = fin(play.execPnlPct);
   if (mid == null || exec == null) return null;
   const gap = mid - exec;
   if (Math.abs(gap) < 5) return null;
+  const staleCaveat = optionMarkStaleCaveat(play, readMs ?? Date.now());
   return (
     `**Executable P&L** — mid **${fmtPct(mid)}** vs fill **${fmtPct(exec)}** ` +
-    `(**${gap > 0 ? "-" : "+"}${Math.abs(gap).toFixed(0)}%** slippage). Size exits on the bid, not the mark.`
+    `(**${gap > 0 ? "-" : "+"}${Math.abs(gap).toFixed(0)}%** slippage). Size exits on the bid, not the mark.${staleCaveat}`
   );
 }
 
@@ -1839,7 +1848,7 @@ export function collectCoachingBullets(
   // (already rendered honestly via "Trim progress: X%" in play-brief.ts's Position section, which
   // has no RATCHET dependency), so nothing computable was lost — same dead-gate shape as
   // `scorecardCoaching`/`morningConfirmCoaching`, removed the same week for the identical reason.
-  push(execSlippageCoaching(play));
+  push(execSlippageCoaching(play, ctx.readMs ?? undefined));
   // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `underlyingExcursionCoaching`
   // (formerly here) gated on `play.stockMovePct`/`stockPeakPct`/`stockTroughPct` — fields written in
   // exactly one place repo-wide, `use-legacy-quotes.ts` (a client-side, Legacy-only React hook).
