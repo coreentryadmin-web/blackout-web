@@ -4,6 +4,18 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-25 (18:16 UTC / Sun 14:16 ET) — [SEO] Lane heartbeat: one-off CLS blip (non-reproducible), shipped fixes validated GOOD
+
+Sunday afternoon, market closed. Resynced to `origin/main` (`e5dd1f85c` → `b07237b18`,
+other-lane swing fix). **Step 1:** purged Cloudflare edge HTML, first CLS measurement came back
+elevated — **0.0331** with a real recorded shift (`[0.0329]`), still under the 0.1 threshold but
+notably above the usual ~0.0001-0.0005 baseline. Market closed, so this isn't the RTH-fetch-
+latency pattern seen Wed 2026-10-21. Immediately re-measured: **0.0002, GOOD, empty shifts** —
+settled clean on the very next run. One-off, non-reproducible blip, not escalated. Fetched
+`/api/og` with a Googlebot UA: `200`, `content-type: image/png` — crawlable, confirmed on
+production. **Step 2 — PR sweep:** 2 open agent PRs fleet-wide, both other-lane and CI-RUNNING.
+Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
 ## 2026-10-25 (14:05 UTC / Sun 10:05 ET) — [SEO] Daily growth cycle: SKIPPED opportunity scan — no AWS creds this session
 
 Sunday, market closed. Resynced to `origin/main` (`f8a6808c3` → `9082a57a8`, other-lane SPX
