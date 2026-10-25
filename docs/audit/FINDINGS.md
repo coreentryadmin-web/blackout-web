@@ -38,6 +38,128 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo swing play-brief: plain "P&L:" / "next trim" distance line never disclosed the same stale quote Greeks/Spread/Exec P&L already flag — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED (PR #6726, merged to `main`) |
+
+### Root cause
+
+`pnlSection()` (`src/lib/swing/play-brief.ts`) renders the Position section's `P&L:` line from
+`play.pnlPct` — the identical `contract.bid`/`contract.ask`/`markAsOf` snapshot the `Mark:` line
+above it renders and, when aged past `SWING_OPTION_MARK_STALE_MS`, tags `_(stale)_`. The function
+already computes `staleCaveat = optionMarkStaleCaveat(play, readMs)` and appends it to Greeks
+(fixed 2026-10-18), Spread (fixed 2026-10-18), and Exec P&L (fixed 2026-10-25, same day) — but the
+plain `P&L:` line, built several lines earlier in the same function, was never one of the fixed
+call sites. A member reading a brief saw `Mark: $1.10 (2026-10-23 16:00 ET) (stale)` immediately
+followed by an unqualified `P&L: -9.8%` computed from that exact same aged quote — and, worse, the
+identical `-9.8%` figure is rendered a *second* time in "Trade manager read"
+(`execSlippageCoaching`'s "Executable P&L — mid -9.8% vs fill ...") where it **does** carry the
+caveat, so one brief disclosed staleness for one rendering of a number and not the other.
+
+A sibling gap of the same shape was found in `manageLifecycleCoaching()`
+(`src/lib/swing/play-brief-narrative-coaching.ts`), which renders the "Manage plan" bullet's
+"next trim at +100% — bid $X, needs $Y (+Z% from here)" distance clause from `play.execMark ??
+play.mark` — the identical snapshot — but had **no `readMs` parameter at all** and never called
+`optionMarkStaleCaveat`.
+
+### Evidence
+
+Found and adversarially verified (3/3 skeptics, 0 refuted each) via a 12-ticker parallel Largo
+play-brief audit against live production:
+
+- **SWING:NAIL:2093** — `P&L: **-9.8%**` unflagged in Position, but the identical `-9.8%` IS
+  flagged `_(stale — same quote Mark flagged above)_` in the same brief's "Trade manager read"
+  section.
+- **SWING:BMNR:1974** — arithmetic-confirmed: bid $0.32/ask $0.37 → mid $0.345; `P&L: -51.4%` =
+  (0.345/0.71-1)×100, unflagged, while Greeks/Spread/Exec P&L (all derived from the same mid/bid)
+  carry the caveat.
+- **SWING:TDOC:2018** — arithmetic-confirmed P&L is sourced from the raw unrounded mid (not the
+  rounded displayed Mark), proving it shares the same snapshot as the flagged Spread/Exec P&L
+  lines, yet renders with no caveat itself.
+- **SWING:BLSH:2014** — `manageLifecycleCoaching`'s "Manage plan — ... bid $0.32, needs $2.20"
+  renders unflagged two bullets above the sibling "Executable P&L — ... _(stale — same quote Mark
+  flagged above)_" bullet, both priced off the identical snapshot.
+
+### Fix
+
+- `play-brief.ts`: moved `staleCaveat`'s computation earlier in `pnlSection()` (it only depends on
+  `play`/`readMs`, both already in scope) and appended it to the `P&L:` line, mirroring the
+  unconditional append already used for Exec P&L.
+- `play-brief-narrative-coaching.ts`: added an optional `readMs` parameter to
+  `manageLifecycleCoaching()` (threaded from its call site via `ctx.readMs`, same pattern as
+  `execSlippageCoaching`) and appended `optionMarkStaleCaveat(play, readMs ?? Date.now())` to the
+  rendered distance clause only (not the "already cleared" branch, which doesn't quote a dollar
+  figure).
+
+### Tests
+
+- `composeSwingPlayBrief: plain P&L line carries the same stale-quote caveat as Greeks/Spread/Exec
+  P&L` (`play-brief.test.ts`) — RED pre-fix, GREEN post-fix.
+- `manageLifecycleCoaching: 'next trim' distance clause carries the same stale-quote caveat as the
+  Position section` + a fresh-quote negative-control test (`play-brief-narrative-coaching.test.ts`)
+  — RED pre-fix, GREEN post-fix.
+- Full existing suite (both files, 371 tests) stays green; `tsc --noEmit` clean; full `npm test`
+  (Node 20): 16910 pass / 0 fail / 3 pre-existing skips (one unrelated flake on the first run,
+  confirmed clean on an immediate rerun).
+
+## Helix — `moneyShort` overflows at K→M unit boundary — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED (PR #6727) |
+| **Surface** | `src/lib/helix-discord-format.ts` (`moneyShort`) |
+| **Severity** | P3 (member/community-facing label overflow, no data corruption) |
+
+### Root cause
+
+`moneyShort` bucketed by raw magnitude (`abs(n) >= 1e6` for M, `>= 1e3` for K) then rounded the
+K-quotient independently, so a value whose raw size sits just under 1,000,000 but whose rounded
+K-quotient reaches 1000 was never promoted to M:
+
+```js
+moneyShort(999_600) → "$1,000K"   // should be "$1.00M"
+```
+
+Same bug shape as five other unit-boundary fixes shipped earlier the same day across Thermal's
+`fmtCompactHeatMoney`, `fmt-money.ts`'s `fmtPremium`, and `discord-context-enrichment.ts`'s
+`formatAdvContextLine` — this is the sixth confirmed instance.
+
+### Evidence
+
+```
+> moneyShort(999_600)   → '$1,000K'
+> moneyShort(999_999)   → '$1,000K'
+```
+
+`moneyShort` had zero existing test coverage before this fix.
+
+### Blast radius
+
+`moneyShort` is imported directly by `src/lib/discord-eod-recap.ts` and
+`src/lib/darkpool-discord-format.ts` (fixed transitively) — every HELIX Discord embed/digest, the
+EOD recap, and dark-pool block alerts that print a dollar figure in `[999_500, 1_000_000)`. Two
+OWNED-lane files (`src/features/spx/lib/spx-play-terminal-lines.ts`,
+`src/features/spx/lib/spx-odte-intel-feed.ts`) define their OWN local `moneyShort` with the
+identical bug shape but were intentionally left untouched — out of scope for this (non-owned) lane.
+
+### Fix
+
+Round the K-quotient first, then check whether it reached 1000 of the unit before formatting,
+promoting to M when it does — same pattern as the five sibling fixes.
+
+### Tests
+
+New case in `helix-discord-format.test.ts`. RED→GREEN confirmed: reverting only the source change
+(keeping the new test) fails 16/17 exactly as expected; reapplying passes 17/17. Consumer suites
+(`discord-eod-recap.test.ts`, `darkpool-discord-format.test.ts`) — 18/18 pass, no regression.
+`npx tsc --noEmit` clean.
+
 ## Swing `/record`'s `nativeOpens` silently undercounts a genuinely-open position when the `days` window predates its entry date — FIXED
 
 > **kind:** `FINDING`
