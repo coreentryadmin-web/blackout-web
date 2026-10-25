@@ -1,48 +1,58 @@
-// ── MOMENTUM discovery — IO orchestration ──────────────────────────────────────────
-// The provider-touching half of the MOMENTUM source (the pure half is momentum-signal-source.ts
-// + momentum-signal.ts). Dynamic-imported from scan.ts ONLY when the source is flag-enabled, so
-// the flow-only board never loads this provider graph.
+// ── MOMENTUM (early-entry) discovery — IO orchestration ────────────────────────────
+// The provider-touching half of the MOMENTUM origin. Dynamic-imported from scan.ts ONLY when the
+// source is flag-enabled, so the flow-only board never loads this provider graph.
+//
+// 2026-10-25, 2ND ITERATION — operator's own words: "My goal for NIGHTHAWK is to catch the setup
+// BEFORE the major move, selecting calls or puts around $1.00-$3.00 premium that have a realistic
+// path to running hard into the money... Separate WATCH from ENTRY." This REPLACES this file's
+// prior internals (a bare momentum-acceleration+RVOL detector targeting sub-$1.00 contracts
+// toward a $20 lotto-style target — momentum-signal.ts, still present, still tested, no longer
+// called from here) with the early-entry pipeline: developing-pressure detection
+// (early-entry-pressure.ts) -> a real WATCH/ENTRY/EXPIRED/INVALIDATED state machine
+// (early-entry-state.ts) -> a $1.00-$3.00 contract screen with an explicit "already extended"
+// rejection (early-entry-contract-select.ts) -> the final alert/NO_TRADE assembly
+// (early-entry-alert.ts) -> the board bridge (early-entry-source.ts). The origin tag
+// (discovery_origin: ["MOMENTUM"]) and every already-audited piece of board plumbing it rides on
+// (board.ts's DiscoveryOrigin union/DISCOVERY_ORIGIN_ORDER, discovery-health.ts's MOMENTUM lane,
+// why-now.ts's "momentum" reason, gates.ts's strictest-floor fallthrough) are UNCHANGED — only
+// what feeds that origin changed, so none of that already-reviewed plumbing had to be re-audited.
 //
 // UNLIKE BREAKOUT/PIN, this is NOT a whole-market/curated-universe screen — the scan list IS the
-// operator's fixed 10-name universe (ticker-universe.ts), so there is no breadth snapshot to
-// fetch and no dynamic chain-fetch cap to size: every universe name gets a real minute-bar read
-// every cycle, and only names that CLEAR the two-independent-confirmations detection gate
-// (momentum-signal.ts) ever cost a chain fetch.
+// operator's fixed 10-name universe (ticker-universe.ts).
 //
-// TWO-PHASE PER TICKER (budget discipline, cheap-before-expensive):
-//   1. Fetch today's real minute bars (ONE Polygon aggs call). Pre-check `evaluateMomentumSignal`
-//      with an EMPTY chain — the detection gate (momentum confirmed + RVOL floor) is computed
-//      from bars/RVOL alone and never touches the chain argument, so this cheaply answers
-//      "would this ticker even qualify" with ZERO chain-fetch cost for the (expected-common) case
-//      it doesn't.
-//   2. Only for a ticker that cleared step 1: fetch the real same-day option chain
-//      (resolveTickerChainRows), filter to TODAY's expiry only (the operator's spec is explicitly
-//      same-day-expiration), and re-run `evaluateMomentumSignal` with the real chain to get the
-//      final ranked candidates + hard-reject diagnostics.
+// THREE-PHASE PER TICKER (budget discipline, cheap-before-expensive):
+//   1. Fetch today's real minute bars (ONE Polygon aggs call) + the real trailing avg daily
+//      volume (relative-volume-source.ts's existing wiring, reused for its `avg_daily_volume`
+//      field only). Build a per-minute RVOL series IN MEMORY from the real bars' own cumulative
+//      volume (flat proration — `computeRelativeVolume`'s real, shipped fallback when no
+//      time-of-day profile is supplied; see that function's own header) — this needs no extra
+//      network call per minute, only the one avg-daily-volume fetch already made.
+//   2. Classify BOTH directions ("long" against a tested resistance, "short" against a tested
+//      support) against that bars+RVOL series via `classifySetup` — pure, no chain fetch yet.
+//      Only a ticker whose best classification is ENTRY ever proceeds to step 3 (a WATCH is
+//      real and reported, but not yet a tradeable candidate — see this file's own WATCH handling
+//      below); EXPIRED/INVALIDATED/NO_SETUP never do.
+//   3. Only for an ENTRY-classified ticker: fetch the real same-day option chain
+//      (resolveTickerChainRows), filter to TODAY's expiry, and run `selectEarlyEntryContract` +
+//      `buildEarlyEntryAlert` to get the final alert (or an honest NO_TRADE for that ticker).
 //
 // SPXW is in DEFAULT_ZERODTE_TICKER_UNIVERSE only as the raw-UW-flow-alert option-root SPELLING
-// for SPX (see ticker-universe.ts's own header) — it is not a separate underlying instrument.
-// This module has no flow-alert input at all (it reads bars/chain directly), so it scans "SPX"
-// once and never "SPXW" as a second, redundant underlying.
+// for SPX — this module has no flow-alert input, so it scans "SPX" once, never "SPXW" too.
 //
-// RVOL is sourced from the SAME real wiring layer the commit-time shadow signal already uses
-// (relative-volume-source.ts's `computeRelativeVolumeShadow`) — no second RVOL implementation.
-// The real time-of-day-profile-aware ratio is preferred; the flat-proration baseline is the
-// fallback when a profile hasn't been built yet for that ticker (see that module's own header).
-//
-// The OPENING-RANGE high/low (the `referenceLevel` momentum-acceleration.ts needs for its
-// key-level-break confirmation) is read off the SAME real minute bars via the EXISTING
-// `computeIntradayRead` (intraday.ts) — reused, not reinvented. Before the opening range has
-// even formed (first 30 minutes of the session), `or_high`/`or_low` are null, so this module
-// correctly reports "not yet detectable" rather than fabricating a reference level.
+// WATCH SETUPS ARE REAL BUT NOT YET SURFACED IN A DEDICATED UI (disclosed gap, not silently
+// dropped): `watches` on the outcome carries every real WATCH-state read this pass, logged via
+// console.info every cycle so they are observable in ops logs today; a dedicated watch-list
+// surface on the member-facing board is a follow-up, not built in this pass.
 
 import { fetchAggBars } from "@/lib/providers/polygon-largo";
 import { polygonSpotTicker, type EnrichedZeroDteSetup } from "./board";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
-import { computeIntradayRead } from "./intraday";
-import { evaluateMomentumSignal, type MomentumSignalChainRow } from "./momentum-signal";
-import type { MomentumBar } from "./momentum-acceleration";
-import { buildMomentumSetup } from "./momentum-signal-source";
+import { computeRelativeVolume } from "./relative-volume";
+import type { PressureBar } from "./early-entry-pressure";
+import { classifySetup, type RatedBar, type SetupClassification } from "./early-entry-state";
+import { selectEarlyEntryContract, type EarlyEntryChainRow } from "./early-entry-contract-select";
+import { buildEarlyEntryAlert, type EarlyEntryWatchAlert } from "./early-entry-alert";
+import { buildEarlyEntrySetup } from "./early-entry-source";
 import { computeRelativeVolumeShadow } from "./relative-volume-source";
 import { resolveZeroDteTickerUniverse } from "./ticker-universe";
 
@@ -61,10 +71,12 @@ export function momentumScanUniverse(includeTickers?: Set<string> | null): strin
 }
 
 /** Outcome of a momentum discovery pass. `setups` is ALWAYS present (possibly empty — a
- *  genuinely quiet universe this cycle is a real, honest zero, not an absence). */
+ *  genuinely quiet universe this cycle is a real, honest zero, not an absence). `watches` is
+ *  real, diagnostic-only developing-setup state (see this file's header). */
 export type MomentumDiscoveryOutcome = {
   status: "ok" | "skip_off_hours";
   setups: EnrichedZeroDteSetup[];
+  watches: EarlyEntryWatchAlert[];
 };
 
 /** Injectable IO seam — real providers by default; tests substitute hermetic fakes. */
@@ -80,8 +92,8 @@ const DEFAULT_DEPS: MomentumDiscoveryDeps = {
   computeRvolShadow: computeRelativeVolumeShadow,
 };
 
-function toMomentumBars(raw: unknown[]): MomentumBar[] {
-  const out: MomentumBar[] = [];
+function toPressureBars(raw: unknown[]): PressureBar[] {
+  const out: PressureBar[] = [];
   for (const b of raw) {
     const r = b as { t?: unknown; h?: unknown; l?: unknown; c?: unknown; v?: unknown };
     if (
@@ -92,13 +104,13 @@ function toMomentumBars(raw: unknown[]): MomentumBar[] {
     ) continue;
     out.push({ t: r.t, h: r.h, l: r.l, c: r.c, v: typeof r.v === "number" ? r.v : undefined });
   }
-  return out;
+  return out.sort((a, b) => a.t - b.t);
 }
 
-/** Build the per-side MOMENTUM chain rows for TODAY's expiry only (the operator's spec is
- *  explicitly same-day-expiration) from a resolved chain's strike rows. A ticker with no listed
- *  contract expiring today (common for a single name without a true daily 0DTE) yields an empty
- *  array — never a fabricated same-day row. */
+/** Build the per-side chain rows for TODAY's expiry only (the operator's spec is explicitly
+ *  same-day-expiration) from a resolved chain's strike rows. A ticker with no listed contract
+ *  expiring today (common for a single name without a true daily 0DTE) yields an empty array —
+ *  never a fabricated same-day row. */
 export function todayExpiryChainRows(
   rows: ReadonlyArray<{
     expiry: string;
@@ -113,8 +125,8 @@ export function todayExpiryChainRows(
     put_iv: number | null;
   }>,
   todayYmd: string
-): MomentumSignalChainRow[] {
-  const out: MomentumSignalChainRow[] = [];
+): EarlyEntryChainRow[] {
+  const out: EarlyEntryChainRow[] = [];
   for (const r of rows) {
     if (r.expiry.slice(0, 10) !== todayYmd) continue;
     out.push({ strike: r.strike, side: "call", bid: r.call_bid, ask: r.call_ask, oi: r.call_oi, iv: r.call_iv });
@@ -127,6 +139,30 @@ export function todayExpiryChainRows(
  *  at 0 (never negative — after the close there is no time left, not negative time). */
 function minutesRemainingInSession(nowEtMinutes: number): number {
   return Math.max(0, 16 * 60 - nowEtMinutes);
+}
+
+/** Build a per-minute RVOL-rated bar series from real bars + a real trailing avg daily volume —
+ *  flat proration (no time-of-day profile), the real shipped fallback `computeRelativeVolume`
+ *  itself defines when no profile is supplied. Pure given real inputs; no extra network call. */
+export function rateByRvol(bars: PressureBar[], avgDailyVolume: number | null): RatedBar[] {
+  let cumVol = 0;
+  return bars.map((bar) => {
+    cumVol += bar.v ?? 0;
+    const ratio =
+      avgDailyVolume != null
+        ? computeRelativeVolume({ cumulativeVolumeToday: cumVol, avgDailyVolume, nowMs: bar.t }).ratio
+        : null;
+    return { bar, rvolRatio: ratio };
+  });
+}
+
+/** Rank classifications by how actionable they are, for picking the single best direction to
+ *  pursue per ticker: ENTRY > WATCH > everything else (EXPIRED/INVALIDATED/NO_SETUP are all
+ *  equally "nothing to show" for this pass). Pure. */
+function actionabilityRank(state: SetupClassification["state"]): number {
+  if (state === "ENTRY") return 2;
+  if (state === "WATCH") return 1;
+  return 0;
 }
 
 /**
@@ -152,82 +188,76 @@ export async function discoverMomentumSetups(opts: {
 
   if (nowEtMinutes < RTH_OPEN_ET_MINUTES || nowEtMinutes >= RTH_CUTOFF_ET_MINUTES) {
     console.info("[zerodte-momentum] outside the RTH commit window -- SKIP");
-    return { status: "skip_off_hours", setups: [] };
+    return { status: "skip_off_hours", setups: [], watches: [] };
   }
 
   const universe = momentumScanUniverse(opts.includeTickers).filter((t) => !excludeTickers.has(t.toUpperCase()));
   const minutesRemaining = minutesRemainingInSession(nowEtMinutes);
 
-  type Precheck = { ticker: string; bars: MomentumBar[]; rvolRatio: number | null; qualifies: boolean };
-  const prechecks: Precheck[] = await Promise.all(
-    universe.map(async (ticker): Promise<Precheck> => {
+  type BestClassification = { ticker: string; rated: RatedBar[]; best: SetupClassification | null };
+  const classified: BestClassification[] = await Promise.all(
+    universe.map(async (ticker): Promise<BestClassification> => {
       try {
         const sym = polygonSpotTicker(ticker);
         const [rawBars, rvolShadow] = await Promise.all([
           fetchMinuteBars(sym, today, today).catch(() => []),
           computeRvolShadow(ticker, nowMs).catch(() => null),
         ]);
-        const bars = toMomentumBars(rawBars);
-        const rvolRatio = rvolShadow?.candidate.ratio ?? rvolShadow?.baseline.ratio ?? null;
-        const intraday = computeIntradayRead(bars);
-        const referenceLevel =
-          intraday.or_high != null && intraday.or_low != null
-            ? { high: intraday.or_high, low: intraday.or_low }
-            : null;
-        const precheck = evaluateMomentumSignal({
-          ticker,
-          bars,
-          referenceLevel,
-          rvolRatio,
-          minutesRemaining,
-          chain: [], // cheap detection-only pass -- see this file's header
-          nowMs,
-        });
-        return { ticker, bars, rvolRatio, qualifies: precheck.detected };
+        const bars = toPressureBars(rawBars);
+        const rated = rateByRvol(bars, rvolShadow?.avg_daily_volume ?? null);
+        const longClassification = classifySetup({ rated, direction: "long" });
+        const shortClassification = classifySetup({ rated, direction: "short" });
+        const best =
+          actionabilityRank(longClassification.state) >= actionabilityRank(shortClassification.state)
+            ? longClassification
+            : shortClassification;
+        return { ticker, rated, best: best.state === "NO_SETUP" ? null : best };
       } catch (err) {
-        console.warn(`[zerodte-momentum] precheck failed for ${ticker} -- SKIP this ticker:`, err);
-        return { ticker, bars: [], rvolRatio: null, qualifies: false };
+        console.warn(`[zerodte-momentum] classification failed for ${ticker} -- SKIP this ticker:`, err);
+        return { ticker, rated: [], best: null };
       }
     })
   );
 
-  const qualifying = prechecks.filter((p) => p.qualifies);
-  if (qualifying.length === 0) {
-    return { status: "ok", setups: [] };
+  const watches: EarlyEntryWatchAlert[] = [];
+  const entryCandidates = classified.filter((c) => c.best?.state === "ENTRY");
+  for (const c of classified) {
+    if (c.best?.state === "WATCH") {
+      const result = buildEarlyEntryAlert({
+        ticker: c.ticker, classification: c.best, candidates: [], rejections: [],
+        spotNow: c.rated[c.rated.length - 1]?.bar.c ?? 0, minutesRemaining,
+      });
+      if (result.state === "WATCH") watches.push(result);
+    }
   }
 
   const setups: EnrichedZeroDteSetup[] = [];
   await Promise.all(
-    qualifying.map(async ({ ticker, bars, rvolRatio }) => {
+    entryCandidates.map(async ({ ticker, rated, best }) => {
+      const classification = best!;
       try {
         const chainResult = await resolveChain(ticker).catch(() => null);
         if (!chainResult || !(chainResult.spot > 0) || chainResult.rows.length === 0) return;
         const chainRows = todayExpiryChainRows(chainResult.rows, today);
         if (chainRows.length === 0) return; // no true same-day 0DTE listed for this name today
-        const intraday = computeIntradayRead(bars);
-        const referenceLevel =
-          intraday.or_high != null && intraday.or_low != null
-            ? { high: intraday.or_high, low: intraday.or_low }
-            : null;
-        const result = evaluateMomentumSignal({
-          ticker,
-          bars,
-          referenceLevel,
-          rvolRatio,
+
+        const watchBar = rated.find((r) => r.bar.t === classification.watch_detected_at_ms);
+        const spotAtWatch = watchBar?.bar.c ?? chainResult.spot;
+
+        const { candidates, rejections } = selectEarlyEntryContract({
+          direction: classification.direction,
+          spotAtWatch,
+          spotNow: chainResult.spot,
           minutesRemaining,
           chain: chainRows,
-          nowMs,
         });
-        if (!result.detected || result.candidates.length === 0) return;
-        const top = result.candidates[0]!;
+        const alert = buildEarlyEntryAlert({
+          ticker, classification, candidates, rejections, spotNow: chainResult.spot, minutesRemaining,
+        });
+        if (alert.state !== "ENTRY") return; // NO_TRADE for this ticker -- never fabricate a setup
         setups.push(
-          buildMomentumSetup({
-            ticker,
-            candidate: top,
-            momentum: result.momentum,
-            rvolRatio: result.rvol_ratio,
-            spot: chainResult.spot,
-            todayYmd: today,
+          buildEarlyEntrySetup({
+            alert, candidate: candidates[0]!, pressure: classification.pressure, todayYmd: today,
           })
         );
       } catch (err) {
@@ -237,7 +267,8 @@ export async function discoverMomentumSetups(opts: {
   );
 
   console.info(
-    `[zerodte-momentum] universe=${universe.length} qualifying=${qualifying.length} setups=${setups.length}`
+    `[zerodte-momentum] universe=${universe.length} entry_candidates=${entryCandidates.length} ` +
+      `watches=${watches.length} setups=${setups.length}`
   );
-  return { status: "ok", setups };
+  return { status: "ok", setups, watches };
 }
