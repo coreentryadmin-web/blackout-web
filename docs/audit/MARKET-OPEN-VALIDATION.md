@@ -8694,3 +8694,27 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   (~5-10s apart) over a few minutes and confirm `as_of` never jumps backward across consecutive
   polls, and that `score`/`direction`/`factors` never flip between two materially different values
   faster than the underlying market data could plausibly explain.
+
+## WATCH LIST — 2026-10-25 (swing mark-unknown reason + structural-node market-closed caveat, PR #6731)
+- **What was broken (SNOW):** `collectOptionMarkStalenessAbsence()` (`play-brief-absence.ts`)
+  labeled a genuinely-unknown mark (no live tick ever landed, `pnlPct` null) with the same reason
+  text (`"sync quote without freshness timestamp"`) used for a real-but-untimestamped quote —
+  contradicting the Position/Data-freshness sections' own honest "unknown" framing for the
+  identical play. Live repro SWING:SNOW:2105.
+- **What was broken (RDW):** `watchForSection()`'s "Structural support/resistance node" line
+  (`play-brief-intel.ts`) never applied `closedMarketSessionNote` — unlike every other prose
+  consumer of the same Vector/GEX snapshot — so a post-close/weekend self-warm could state a
+  structural level with no hint the read reflects the last session's tape.
+- **What the fix changed:** SNOW — a more specific, checked-first branch returns an honest
+  "no live price yet — sync quote, no real quote value has ever landed" reason when
+  `optionMarkGenuinelyUnknown(play)` holds (also fixed a regression this introduced in
+  `dataHonestyCoaching()`, which pattern-matched the old single reason string). RDW — appends
+  `closedMarketSessionNote(vec, gexForLevels, readMs)` as a suffix to the structural node line,
+  for every bucket, not just closed.
+- **What to re-check once the market opens:** (SNOW) pull `GET /api/market/swing/play-brief` for a
+  live OPEN/WATCH play whose `markIsSync===true` and `pnlPct` is genuinely null (no live tick has
+  synced since commit) and confirm `unavailableSources`/confidence/footer say "no live price yet"
+  rather than implying a real, just-unstamped price exists. (RDW) pull a brief during a post-close/
+  weekend self-warm (fresh Vector/GEX compute, market CLOSED) for a play with a resolvable
+  structural support/resistance node and confirm that line carries the same "reflects the last
+  session's tape" caveat the brief's other GEX/Vector-derived lines already show.
