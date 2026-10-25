@@ -134,6 +134,38 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.ok(codes.includes("g_s14_cortex"), "must surface the real cortex gate, not discard it");
   });
 
+  // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro SOXX WATCH): commitGateBlocksForVerdict
+  // used to collapse every non-`cortex_unavailable` G-S14 block to "Cortex preflight vetoed this
+  // setup" — but cortex-gate.ts's own decision table distinguishes a genuine veto from four
+  // materially weaker, explicitly non-veto outcomes. Live SOXX WATCH row carried exactly
+  // `gate:G-S14:cortex_net_negative` and rendered as if Cortex had issued a hard veto.
+  it("commitGateBlocksForVerdict: G-S14 non-veto codes get their own honest reason, never the 'vetoed' sentence (live SOXX repro)", () => {
+    const netNegative = commitGateBlocksForVerdict(["gate:G-S14:cortex_net_negative"]);
+    assert.match(netNegative[0].reason, /nets negative/i);
+    assert.doesNotMatch(netNegative[0].reason, /vetoed/i, "net-negative is NOT a veto — must not say so");
+
+    const thinEvidence = commitGateBlocksForVerdict(["gate:G-S14:cortex_thin_evidence"]);
+    assert.match(thinEvidence[0].reason, /thinly corroborated/i);
+    assert.doesNotMatch(thinEvidence[0].reason, /vetoed/i, "thin evidence is NOT a veto — must not say so");
+
+    const contested = commitGateBlocksForVerdict(["gate:G-S14:cortex_contested"]);
+    assert.match(contested[0].reason, /contested/i);
+    assert.doesNotMatch(contested[0].reason, /vetoed/i, "contested evidence is NOT a veto — must not say so");
+
+    const gexWallsOppose = commitGateBlocksForVerdict(["gate:G-S14:cortex_gex_walls_oppose_unresolved"]);
+    assert.match(gexWallsOppose[0].reason, /dealer-wall opposition is unresolved/i);
+    assert.doesNotMatch(gexWallsOppose[0].reason, /vetoed/i, "an unresolved oppose is NOT a veto — must not say so");
+
+    const vetoBlind = commitGateBlocksForVerdict(["gate:G-S14:cortex_veto_blind"]);
+    assert.match(vetoBlind[0].reason, /failed to read/i);
+    assert.doesNotMatch(vetoBlind[0].reason, /vetoed this setup/i, "the fail-closed blind firewall is NOT a confirmed veto — must not say so");
+
+    // The genuine veto case must STILL say "vetoed" — this fix narrows the sentence to the real
+    // veto case, it must not also suppress it there.
+    const genuineVeto = commitGateBlocksForVerdict(["gate:G-S14:cortex_veto:gex-walls"]);
+    assert.match(genuineVeto[0].reason, /vetoed/i);
+  });
+
   it("RESEARCH with no expiry/persistence/invalidation signal still falls through to the generic reason", () => {
     const v = swingEntryVerdict({
       servingSection: "RESEARCH",

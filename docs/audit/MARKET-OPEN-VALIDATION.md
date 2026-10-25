@@ -8495,3 +8495,17 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   the generic "Engine B scale-out — whole-market breakout" note, and that a same-ticker
   Banger/Banger overlap in Book context still reads "separate position" rather than
   "cross-engine."
+
+## WATCH LIST — 2026-10-25 (swing G-S14 Cortex non-veto mislabel fix, fix/swing-g-s14-cortex-nonveto-mislabel)
+- **What was broken:** `commitGateBlocksForVerdict`'s G-S14 branch collapsed every non-veto Cortex
+  block code (`cortex_net_negative`, `cortex_thin_evidence`, `cortex_contested`,
+  `cortex_gex_walls_oppose_unresolved`) to the same hardcoded "Cortex preflight vetoed this setup"
+  sentence as a genuine veto. Live-reproduced on SOXX's WATCH row (`gate:G-S14:cortex_net_negative`)
+  rendering as if Cortex had issued a hard veto in the Command Deck "Why not committed" panel.
+- **What the fix changed:** each known non-veto G-S14 code now gets its own honest reason text
+  distinct from the genuine-veto sentence; `code` itself is unchanged.
+- **What to re-check once the market opens:** pull a few live SWING WATCH rows with an active
+  `gate:G-S14:*` block (`GET /api/market/nighthawk/horizons?view=swings`) and confirm the Command
+  Deck panel's "Why not committed" reason text matches the real block kind — "vetoed" only for a
+  genuine `cortex_veto:*` code, a distinct weaker-sounding sentence for `cortex_net_negative`/
+  `cortex_thin_evidence`/`cortex_contested`/`cortex_gex_walls_oppose_unresolved`.
