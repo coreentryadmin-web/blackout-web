@@ -1242,6 +1242,61 @@ test("holdPlanSection: peak giveback warning still shows when thesis health is u
   assert.doesNotMatch(section!.body, /Gave back \*\*93%\*\*/, "must not regress to the point-difference bug");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:DKNG): this "Gave back X% from
+// peak" bullet is a SECOND, independent call site of the exact bug play-brief-narrative.ts's
+// actionNarrative giveback bullets were just fixed for — both divide the identical `play.pnlPct`
+// the Position section's "P&L:" line already flags via `optionMarkStaleCaveat` when the underlying
+// quote is aged, but this section never threaded the caveat through either. Only deduped against
+// actionNarrative's output via `narrativeAlreadyNoted?.capture` (tested separately below), so it is
+// live-reachable on its own whenever actionNarrative's capture threshold (75) isn't crossed but
+// this section's own (70) is.
+test("holdPlanSection: peak giveback note carries the same stale-quote caveat as the Position section's P&L line", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      peak: 132.7,
+      pnlPct: 39.8,
+      markAsOf: "2026-09-05T18:00:00.000Z", // well before readMs below — past the stale bar
+      markIsSync: false,
+      // The giveback computation is nested inside the `if (play.thesisHealth)` block, so a real
+      // (calibrated) thesisHealth object is required for this bullet to render at all — same
+      // fixture shape as the NRG repro test immediately above.
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    readMs: Date.parse("2026-09-05T20:00:00.000Z"),
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Gave back \*\*70%\*\* from peak — consider trim into strength\s*_\(stale — same quote Mark flagged above\)_/,
+    `expected the giveback note to carry the same stale-quote caveat as Position's P&L line, got: ${section!.body}`,
+  );
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-10-07): `giveback.capturePct` divides RUNNER-only
 // `play.pnlPct` against `play.peak` — honest while nothing has been banked, but once a trim has
 // already fired this capture branch's "Gave back X% from peak — consider trim into strength"
@@ -5231,6 +5286,38 @@ test("watchForSection: Structural support node carries the market-closed session
     "open",
   );
   assert.match(section.body, /Structural support node: put wall \*\*95\.00\*\*/);
+  assert.match(section.body, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-25, live repro SWING:CRWD): the "Reclaim/Lose
+// gamma flip" bullet reads the identical Vector/GEX positioning snapshot the "Structural support
+// node" test immediately above carries this exact market-closed caveat for (both resolve off the
+// same `vec`/`gexForLevels` in `watchForSection`) — but the gamma-flip bullet never carried it,
+// in any bucket. Live repro: CRWD's "Reclaim gamma flip 265.76 (2.8% away)" rendered with zero
+// caveat while `envelope.levels[]` tagged that identical level's provenance with a market-closed
+// `market_session_note`.
+test("watchForSection: gamma-flip bullet carries the market-closed session note when the Vector snapshot is fresh but the market is shut (2026-10-25 fix)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG" }),
+      asOf: "2026-09-06 20:00 ET",
+      sessionDate: "2026-09-06",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: fixtureVec({
+        spot: 100,
+        gammaFlip: 105,
+        dataAgeMs: 0,
+        freshness: "live",
+        market_session_note: "VECTOR_CLOSED_MARKET_NOTE_MARKER",
+      }) as unknown as VectorFullState,
+    },
+    "open",
+  );
+  assert.match(section.body, /Reclaim gamma flip \*\*105\.00\*\*/);
   assert.match(section.body, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
 });
 

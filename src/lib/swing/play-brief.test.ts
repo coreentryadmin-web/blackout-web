@@ -5897,6 +5897,88 @@ test("composeSwingPlayBrief: plain P&L line carries the same stale-quote caveat 
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:PANW): Peak/Trough are DB
+// watermarks (peak_premium/trough_premium) ratcheted GREATEST/LEAST on the SAME live-tick cadence
+// as last_mark (db.ts), so when the mark freezes/goes stale, Peak/Trough are equally frozen/
+// unverified — but the two lines above (P&L, test above) and below (Greeks/Spread/Exec P&L,
+// earlier tests) all carry `staleCaveat` for the identical frozen snapshot, and Peak/Trough never
+// did. Live PANW repro: "Mark: $19.45 ... (stale)" / "P&L: +9.9% (stale...)" / "Peak: +9.9%" (no
+// caveat) / "Trough: -5.2%" (no caveat) / "Greeks: ... (stale...)".
+test("composeSwingPlayBrief: Peak/Trough lines carry the same stale-quote caveat as P&L/Greeks/Spread/Exec P&L", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 17.63,
+      mark: 20.7,
+      markAsOf: "2026-09-10T20:00:00.000Z", // 1 hour before asOf below — well past the 18-minute stale bar
+      markIsSync: false,
+      pnlPct: 17.4,
+      peak: 46.1,
+      trough: -5.2,
+      greeks: { delta: 0.4 },
+      liquidity: { bid: 18.8, ask: 22.6, spreadPct: 0.184 },
+      execPnlPct: 6.7,
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(
+    position!.body,
+    /Peak: \*\*\+46\.1%\*\*\s*_\(stale — same quote Mark flagged above\)_/,
+    `Peak must carry the same staleness caveat as P&L/Greeks above/below it, got: ${position!.body}`,
+  );
+  assert.match(
+    position!.body,
+    /Trough: \*\*-5\.2%\*\*\s*_\(stale — same quote Mark flagged above\)_/,
+    `Trough must carry the same staleness caveat as P&L/Greeks above/below it, got: ${position!.body}`,
+  );
+});
+
+// The markGenuinelyUnknown branch already renders its own distinct "(no live tick yet)" caveat —
+// appending `staleCaveat` there too would double up two different "we can't trust this" messages
+// on the same line. Pins that the fix above is correctly scoped to the non-unknown branch only.
+test("composeSwingPlayBrief: Peak/Trough 'no live tick yet' wording is not doubled up with the stale-quote caveat", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 10,
+      mark: 10,
+      markIsSync: true,
+      pnlPct: null,
+      peak: null,
+      trough: null,
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Peak: \*\*—\*\* _\(no live tick yet\)_/, `got: ${position!.body}`);
+  assert.match(position!.body, /Trough: \*\*—\*\* _\(no live tick yet\)_/, `got: ${position!.body}`);
+  assert.doesNotMatch(
+    position!.body,
+    /no live tick yet\)_\s*_\(/,
+    `must not double up the two distinct caveats, got: ${position!.body}`,
+  );
+});
+
 // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
 // `play.trough` (adapters.ts's troughDisplay, computed symmetrically alongside peakDisplay on
 // every TerminalPlay row) was fully computed and threaded onto every position but had ZERO
