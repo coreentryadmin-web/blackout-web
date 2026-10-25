@@ -4,6 +4,227 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-10-25 — [FINDING, P2 Night Hawk Swings / Ask Largo] "Setup score" evidence[] fact stamped read-time `asOf` for a commit-pinned value — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | Swing play-brief evidence array builder, `evidenceFromContext` (`src/lib/swing/play-brief.ts`) — the "Setup score" fact added earlier today by the OUST-style score evidence-gap fix (#6481) |
+| **Found by** | Ask Largo × Night Hawk Swings standing ownership mandate — parallel correctness sweep + adversarial verify pass, 2026-10-25 |
+
+### Symptom
+
+The "Setup score" evidence fact (`Setup score: 72 (Rel. strength +18, Regime +12).`) carries
+`provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" }`. `ctx.asOf` is the
+brief's own read/composition timestamp — "now", every time the brief is composed. But `play.score`
+and `play.factors` are a COMMIT-TIME snapshot (the frozen `feature_vector.evidence_score`, per
+`scoreWithheld`'s own doc comment in `closed-plays.ts`) that is never recomputed on a later read. A
+play committed days or weeks ago would have its score cited as `freshness: "recent"` forever —
+the exact dead-wired-timestamp shape the 2026-10-07 `pinnedProvenance` fix for WATCH levels
+(anchored to `play.detectedAt` instead of `ctx.asOf`) already corrected for a sibling fact in the
+same function.
+
+### Root cause
+
+`evidenceFromContext` had access to the real pin timestamp (`ctx.play.committedAt`) but stamped
+the generic read-time `ctx.asOf`/`"recent"` instead, the same "convenient but wrong" default every
+other fix in this file traces back to a commit-time fact being treated as read-time.
+
+### Fix
+
+Anchored the "Setup score" fact's provenance to `ctx.play.committedAt`: `asOf` now uses
+`etStampFromIso(ctx.play.committedAt) ?? ctx.asOf` (falls back only when `committedAt` is
+genuinely absent), and `freshness` is computed via `freshnessFromObservedMs(committedMs, readMs)`
+instead of the hardcoded `"recent"` — identical pattern to the WATCH-levels `pinnedProvenance`
+fix a few hundred lines above in the same file.
+
+### Blast radius
+
+Scoped to this one evidence fact. The sibling "concurrent live position(s)" fact a few lines above
+(line ~1659) legitimately uses `ctx.asOf` — it's a live count read fresh every composition, not a
+commit-pinned value, so it was correctly left untouched.
+
+### Tests
+
+- `play-brief.test.ts` — new test: a score committed 2 real days before the brief's `asOf` must
+  cite the commit timestamp (not the read timestamp) and read `freshness: "stale"`, never
+  `"recent"`. Confirmed RED on pre-fix code via `git stash` (asserted asOf fell back to `ctx.asOf`),
+  GREEN after. The pre-existing test (fixture has no `committedAt`) is unaffected — the fallback
+  path reproduces its exact prior behavior.
+
+Full `src/lib/swing/*.test.ts` (2044 tests) and `npx tsc --noEmit` both pass clean.
+
+## 2026-10-25 — [FINDING, P3 Night Hawk Swings / Ask Largo] Lane-rank/leader lines displayed the raw one-decimal score, disagreeing with "Why this setup"'s rounded display of the same fact — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | Swing play-brief "Lane rank" section (`laneRankSection`, `src/lib/swing/play-brief-lane-rank.ts`) and the "Trade manager read" rank/leader bullet (`laneRankCoaching`, `src/lib/swing/play-brief-narrative-coaching.ts`) |
+| **Found by** | Ask Largo × Night Hawk Swings standing ownership mandate — parallel correctness sweep + adversarial verify pass, 2026-10-25 (live repro SOXX: "Setup score: 74..." in "Why this setup" vs "score **73.7**" in "Lane rank") |
+
+### Symptom
+
+The same brief showed one play's own score as two different numbers: `whyThisSetupSection`'s lede
+("...scoring 74.") rounds `play.score` to the nearest integer, while `laneRankSection`/
+`laneRankCoaching` rendered `computeLaneRank`'s `playScore` field verbatim — raw, one-decimal
+precision sourced from `laneRows` (`HorizonPlay[]`), e.g. "score **73.7**" for the identical
+measurement three sections later in the same document.
+
+### Root cause
+
+`computeLaneRank`'s `playScore` field is DELIBERATELY kept at laneRows' raw precision (2026-09-17
+fix, regression-tested in `play-brief-lane-rank.test.ts`) so `deltaFromMedian` — computed from
+that same raw value against `medianScore` (also raw-derived) — stays internally consistent and
+doesn't round-trip through a differently-rounded type. That fix was correct and is untouched here.
+What it never addressed: every render call site (4 total, across two files) printed that same raw
+`playScore` straight into member-facing text, where it collides with `play.score`'s independent,
+separately-rounded display convention used everywhere else in the brief (`whyThisSetupSection`'s
+lede, the "Setup score" evidence[] fact).
+
+### Fix
+
+Rounds the score ONLY at the point of display (`Math.round(snap.playScore)`), at all 4 call sites:
+`laneRankSection`'s base rank line, and `laneRankCoaching`'s rank-1 "Lane leader" and "Below lane
+median" branches. `deltaFromMedian`/`medianScore` (computed from the raw value, inside
+`computeLaneRank`, before this change) are completely untouched — they were never duplicated
+elsewhere in the brief, so their own one-decimal precision was never in question. `snap.topScore`
+(a different ticker's score) is also left untouched — out of scope for this fix, which is
+specifically about THIS play's own score agreeing with itself across sections.
+
+### Blast radius
+
+Scoped to the 4 identified render sites. `computeLaneRank`'s own returned `playScore`/
+`deltaFromMedian`/`medianScore` fields are unchanged — the existing 2026-09-17 regression test
+(`"computeLaneRank: playScore uses the raw laneRows precision..."`) still passes untouched, since
+it tests the function's return value, not any rendered text.
+
+### Tests
+
+- `play-brief-lane-rank.test.ts` — new test: `laneRankSection`'s rank line rounds 25.5→26 to match
+  `whyThisSetupSection`'s convention, while the rendered `deltaFromMedian` (-24.1) keeps its own
+  raw precision. Confirmed RED on pre-fix code (rendered "score **25.5**"), GREEN after.
+- `play-brief-narrative-coaching.test.ts` — 2 new tests: `laneRankCoaching`'s rank-1 "Lane leader"
+  branch and its "Below lane median" branch both round the displayed score. Both confirmed RED
+  (rendered the raw decimal verbatim), GREEN after.
+
+Full `src/lib/swing/*.test.ts` (2046 tests) and `npx tsc --noEmit` both pass clean.
+
+## 2026-10-25 — [FINDING, P2 Night Hawk Swings / Ask Largo] Exec P&L reads the identical aged bid/ask quote the Greeks/Spread lines already flag stale, but carried no caveat of its own — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | Swing play-brief "Position" section (`pnlSection`, `src/lib/swing/play-brief.ts`) and "Trade manager read"'s `execSlippageCoaching` (`src/lib/swing/play-brief-narrative-coaching.ts`) |
+| **Found by** | Ask Largo × Night Hawk Swings standing ownership mandate — parallel correctness sweep, 2026-10-25 |
+
+### Symptom
+
+Live repro, a real MRNA swing play-brief: the "Position" section read `Mark: $20.70 (2026-10-23
+16:01 ET) _(stale)_`, `Greeks: Δ +0.40 _(stale — same quote Mark flagged above)_`, `Spread: 18.4%
+($18.80/$22.60) _(stale — same quote Mark flagged above)_`, then `Exec P&L: **+6.7%**` with **no**
+caveat. The "Trade manager read" section's `execSlippageCoaching` bullet — "**Executable P&L** —
+mid +17.4% vs fill +6.7% (-11% slippage). Size exits on the bid, not the mark." — carried none
+either. A reader sees three consecutive lines honestly flagged stale, then a confidently-stated
+execution figure computed from that exact same aged quote.
+
+### Root cause
+
+`execPnlPct` (`executableFill(bid, ask, entry)`, `adapters.ts`) is priced off the identical
+`contract.bid`/`contract.ask` snapshot — timestamped by the same `markAsOf` — that feeds the Greeks
+and Spread lines directly above it. `pnlSection` computes a `staleCaveat` once (covering three
+mutually-exclusive cases: genuinely-unknown, unsynced, or aged/stale) and applies it to the Greeks
+and Spread/Quote lines, per the 2026-10-18 fix that introduced it — but the Exec P&L line, added one
+sprint later (2026-10-17, CAVA repro) for an unrelated reason (the open-runner-only qualifier), never
+referenced it. The identical gap exists in `execSlippageCoaching`, which performs no staleness check
+anywhere in its call chain.
+
+### Fix
+
+Extracted the inline three-way ternary into a new shared export, `optionMarkStaleCaveat(play,
+readMs)` (`play-brief-absence.ts`, alongside the existing `optionMarkIsStale`/
+`optionMarkGenuinelyUnknown` it composes). `pnlSection` now calls it once (replacing its own inline
+copy, byte-identical output) and appends the result to the Exec P&L line too. `execSlippageCoaching`
+gained an optional `readMs` parameter (same `ctx.readMs ?? Date.now()`-defaulted shape every other
+staleness-aware coaching function in that file already uses) and now appends the same caveat to its
+bullet. Fixing this at one shared definition means a future second caller inherits the honest
+behavior for free, rather than becoming a third independent re-derivation that can drift from the
+other two.
+
+### Blast radius
+
+Checked every other reader of `staleCaveat`/`optionMarkIsStale` in both files — the Greeks and
+Spread/Quote lines in `pnlSection` are unaffected (still call the same logic, now via the shared
+function). No other consumer of `execPnlPct` exists repo-wide besides these two sites.
+
+### Tests
+
+- `play-brief-absence.test.ts` — 3 new tests directly exercising `optionMarkStaleCaveat`'s three
+  branches (stale, genuinely-unknown, fresh).
+- `play-brief.test.ts` — new test asserting the Exec P&L line carries the identical caveat text as
+  the Greeks/Spread lines above it. Confirmed RED on pre-fix code (`Exec P&L: **+6.7%**` with no
+  caveat, byte-for-byte matching the live repro), GREEN after.
+- `play-brief-narrative-coaching.test.ts` — new test asserting `execSlippageCoaching` appends the
+  caveat for a stale quote and omits it for a fresh one.
+
+Full `src/lib/swing/*.test.ts` (2047 tests) and `npx tsc --noEmit` both pass clean.
+
+## 2026-10-25 — [FINDING, P2 Night Hawk Legacy / Ask Largo] `repairStaleBackfillPlays` re-picks a dead BACKFILL contract but never backfills a missing `rr_ratio` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | `nighthawk-backfill-repair` self-heal cron's pure repair function, `repairStaleBackfillPlays` (`src/features/nighthawk/lib/play-backfill.ts`) |
+| **Found by** | Ask Largo × Night Hawk Swings standing ownership mandate — parallel correctness sweep, 2026-10-25, following up on the earlier same-day `selectBackfillPlays` rr_ratio fix (#6679) |
+
+### Symptom
+
+`repairStaleBackfillPlays` re-picks a live replacement options contract for a BACKFILL play whose
+own contract has expired relative to `editionFor` (the 2026-10-24 PLTR self-heal fix, #6665). It
+only overwrites `options_play`/`entry_premium` on the play it's repairing. Any edition published
+**before** the earlier same-day `selectBackfillPlays` fix (#6679 — which stopped
+`mapClaudePlayToEdition` from silently dropping `rr_ratio` for new BACKFILL plays) shipped can
+still carry a BACKFILL play with no structured `rr_ratio` at all. Repairing its dead contract does
+nothing to fix that: a reader gated on `play.rr_ratio != null` (`PlaybookBriefingPanel.tsx`'s "R:R"
+stat, `play-explainer.ts`'s "Risk/reward ratio: X" line — the same two consumers #6679 named) keeps
+silently omitting the field even after the self-heal cron has "fixed" the play.
+
+### Root cause
+
+`rr_ratio` and the options contract are independent facts about a play: `rr_ratio` is computed from
+the STOCK-level `direction`/`entry_range`/`target`/`stop` via `computeRiskReward`
+(`play-levels.ts`), never from the option's strike/premium. Swapping a dead contract for a live one
+touches none of those four fields, so it structurally cannot regenerate a missing `rr_ratio` as a
+side effect — the repair pass needed to compute it explicitly, and didn't.
+
+### Fix
+
+`repairStaleBackfillPlays` now backfills a missing `rr_ratio` via `computeRiskReward`, using the
+play's own already-present `direction`/`entry_range`/`target`/`stop` — the exact same inputs and
+function `selectBackfillPlays` already uses for newly-created BACKFILL plays. Guarded with
+`play.rr_ratio ?? computeRiskReward(...) ?? undefined`: an already-correct `rr_ratio` (any play
+created after #6679) is left untouched, never silently recomputed and replaced.
+
+### Blast radius
+
+Scoped to `repairStaleBackfillPlays` only — `selectBackfillPlays` (the other producer of
+BACKFILL-tier plays, already fixed by #6679) and the organic-path builders (`buildPlay`/
+`buildRescuePlays`, which always compute `rr_ratio` directly) are untouched. No other caller of
+`repairStaleBackfillPlays` or `repairStaleBackfillContracts` exists repo-wide besides
+`republishBackfilledEdition` (`post-publish-backfill.ts`), which passes the repaired plays straight
+through to `upsertNighthawkEdition` unmodified.
+
+### Tests
+
+- `play-backfill.test.ts` — 2 new tests: backfills a missing `rr_ratio` matching `computeRiskReward`
+  exactly on the play's own existing levels (confirmed RED on pre-fix code, GREEN after); leaves an
+  already-correct `rr_ratio` untouched rather than recomputing it.
+
+Full `src/features/nighthawk/**/*.test.ts` (2091 tests) and `npx tsc --noEmit` both pass clean.
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
