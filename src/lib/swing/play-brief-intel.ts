@@ -2054,11 +2054,22 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // re-deriving a put-wall-only version) means the two can never again disagree.
   const invalidationLevel =
     spot != null ? resolveInvalidationFocalLevel(play, collectFocalLevels(ctx, spot)) : undefined;
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-25): 6th instance of the same omission class
+  // fixed this session (Entry trigger, Break watch, narrateDarkPool/King/Flip, Watch-levels
+  // gamma-flip) — this line cites the identical `invalidationLevel` object `distAway` (a few
+  // lines above, "Break watch") already reads `.distancePct` off, yet never did here. Same "(X%
+  // away)" convention as this function's own siblings.
+  const invalidationDistAway =
+    invalidationLevel != null ? ` (${Math.abs(invalidationLevel.distancePct).toFixed(1)}% away)` : "";
   if (play.direction === "LONG" && invalidationLevel != null) {
-    lines.push(`Structural support node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
+    lines.push(
+      `Structural support node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**${invalidationDistAway}`,
+    );
   }
   if (play.direction === "SHORT" && invalidationLevel != null) {
-    lines.push(`Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
+    lines.push(
+      `Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**${invalidationDistAway}`,
+    );
   }
 
   // DEDUP FIX (Ask Largo standing mandate, 2026-10-18, live repro SWING:TSLA:60): this block used

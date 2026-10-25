@@ -8723,3 +8723,38 @@ test("watchForSection: Structural support node matches breakTrigger's nearest-le
   assert.match(watch.body, /Structural support node: GEX king \*\*97\.00\*\*/);
   assert.doesNotMatch(watch.body, /put wall \*\*90\.00\*\*/);
 });
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-25): "Structural support/resistance node" never
+// stated its distance from spot either, even though it cites the identical `invalidationLevel`
+// object the sibling "Break watch" bullet (fixed #6648) already reads `.distancePct` off. Same
+// fixture as the test above: spot 100, GEX king 97 -> (97-100)/100 = -3% -> "3.0% away".
+test("watchForSection: Structural support node states its distance from spot (2026-10-25)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ direction: "LONG", status: "OPEN" }),
+    asOf: "2026-10-08 20:44 ET",
+    sessionDate: "2026-10-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gex_king_strike: 102,
+        put_wall: 90,
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: {
+      spot: 100,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      gexWalls: { putWalls: [{ strike: 90 }], callWalls: [] },
+      ladder: { rows: [{ strike: 97, isKing: true }] },
+    } as unknown as VectorFullState,
+  };
+
+  const watch = watchForSection(ctx, "open");
+  assert.match(watch.body, /Structural support node: GEX king \*\*97\.00\*\* \(3\.0% away\)/);
+});
