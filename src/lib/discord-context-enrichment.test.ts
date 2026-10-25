@@ -25,6 +25,13 @@ test("formatAdvContextLine computes share pct of ADV", () => {
   assert.match(line ?? "", /5\.0% of 20D/);
 });
 
+test("formatAdvContextLine promotes an ADV that rounds to 1000K into 1.0M, never an overflowed label", () => {
+  assert.match(formatAdvContextLine(500_000, 999_950) ?? "", /~1\.0M ADV/);
+  assert.match(formatAdvContextLine(500_000, 999_999) ?? "", /~1\.0M ADV/);
+  assert.match(formatAdvContextLine(500_000, 1_000_000) ?? "", /~1\.0M ADV/);
+  assert.match(formatAdvContextLine(5_000, 999_499) ?? "", /~999K ADV/);
+});
+
 test("estimateDarkpoolShareSize derives from premium and price", () => {
   assert.equal(estimateDarkpoolShareSize({ premium: 1_000_000, price: 100, share_size: null }), 10_000);
 });
