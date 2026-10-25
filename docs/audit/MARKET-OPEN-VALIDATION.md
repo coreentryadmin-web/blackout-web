@@ -8440,3 +8440,40 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   still concurrently open) play-brief's "Book context" section and confirm the same-direction count
   now includes all 8 names instead of only 4 of them. Also spot-check that the count still excludes
   genuinely different-theme holdings (no false merge into an unrelated cluster).
+
+## WATCH LIST — 2026-10-25 (nighthawk-backfill-repair self-heal cron, fix/nighthawk-backfill-repair-cron)
+- **What was broken:** the live Legacy edition (edition_for "2026-10-26") was still serving a
+  BACKFILL play recommending an already-expired contract ("PLTR $197.5 Call 2026-10-23") a full
+  day after PR #6637 (2026-10-24) documented the exact same incident on the exact same edition.
+  Root cause: #6637 shipped the repair function (`repairStaleBackfillContracts`/
+  `republishBackfilledEdition`) but its only caller is an admin-only, manually-triggered endpoint
+  nobody had actually invoked for this edition.
+- **What the fix changed:** added a new, dedicated cron (`nighthawk-backfill-repair`, registered
+  in `cron-registry.ts`, scheduled 9:00 AM ET dual-band, 15 min before `nighthawk-morning-confirm`)
+  that automatically calls the already-shipped `republishBackfilledEdition` for today's edition
+  every trading morning. No existing cron's logic changed.
+- **IMPORTANT — the EventBridge schedule is NOT yet deployed, but most of the path there is
+  already done.** Added `railway.nighthawk-backfill-repair.toml` in this repo (required —
+  `cron-registry-schedule.test.ts` enforces that every registered schedule has a backing TOML,
+  and failed in CI on this PR's first push until it was added). Ran
+  `node scripts/sync-cron-schedules.mjs ../blackout-web` (blackout-infra) locally against this
+  branch and confirmed the EXACT, minimal diff it produces for `terraform/modules/crons/
+  cron-jobs.json` — a single 6-line entry inserted alphabetically before `nighthawk-morning-
+  confirm`, verified against `main.tf`'s actual field usage (`key`/`path`/`eventbridge_schedule`):
+  ```json
+      {
+        "key": "nighthawk-backfill-repair",
+        "path": "/api/cron/nighthawk-backfill-repair",
+        "railway_schedule": "0 13,14 * * 1-5",
+        "eventbridge_schedule": "cron(0 13,14 ? * MON-FRI *)"
+      },
+  ```
+  Opening the blackout-infra PR with this snippet requires push access this session's permission
+  classifier correctly denied (a real access-scope elevation). **Next action for a human or a
+  future blackout-infra-authorized session:** open that PR with the exact snippet above, merge it,
+  then run `terraform apply` against `terraform/modules/crons` (needs AWS creds — none available
+  this run, `InvalidClientTokenId`) to actually create the EventBridge rule. Until the apply runs,
+  this cron is reachable only via `?force=1` manual invocation.
+- **What to re-check once that chain completes:** confirm the rule fires and that
+  `GET /api/market/nighthawk/edition` for the live PLTR edition (or whichever edition is current by
+  then) no longer carries a dead BACKFILL contract.
