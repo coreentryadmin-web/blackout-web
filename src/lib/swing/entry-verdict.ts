@@ -151,9 +151,66 @@ export function commitGateBlocksForVerdict(
             reason: "Cortex preflight could not complete — desk will not open until evidence recovers.",
           };
         }
+        // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro SOXX WATCH): this used to
+        // collapse EVERY non-`cortex_unavailable` G-S14 code to "Cortex preflight vetoed this
+        // setup" — but cortex-gate.ts's own decision table (see its header comment) distinguishes
+        // a genuine VETO from four materially weaker, explicitly non-veto outcomes
+        // (`cortex_net_negative`, `cortex_thin_evidence`, `cortex_contested`,
+        // `cortex_gex_walls_oppose_unresolved`) and a fail-closed "could not verify either way"
+        // outcome (`cortex_veto_blind`) — each already carries its own specific, honest reason
+        // sentence in `cortexGateBlocks()` (cortex-gate.ts), but that text is discarded at the
+        // point this gate's bare code gets persisted (discovery.ts only keeps
+        // `pre.blockedBy`, never `pre.reason`), so by the time a brief/panel renders this gate it
+        // has only the bare code to go on. Rather than re-derive the exact evidence sentence (that
+        // needs a fresh, expensive Cortex read, not available at display time — unlike G-S6's
+        // cheap confluence recompute above), this at least stops telling a member a hard veto fired
+        // when the real decision was a materially weaker one. `code` is left as the existing
+        // `g_s14_cortex` for every branch here (nothing downstream keys off a more granular code
+        // yet) — only the member-facing reason text changes.
+        if (b.includes("cortex_veto_blind")) {
+          return {
+            code: "g_s14_cortex",
+            reason:
+              "Cortex's veto-capable sources (dealer walls, flow) both failed to read — desk will not open until evidence recovers (fail-closed; not a confirmed veto).",
+          };
+        }
+        if (b.includes("cortex_veto")) {
+          return {
+            code: "g_s14_cortex",
+            reason: "Cortex preflight vetoed this setup — desk will not open.",
+          };
+        }
+        if (b.includes("cortex_net_negative")) {
+          return {
+            code: "g_s14_cortex",
+            reason:
+              "Cortex evidence nets negative against this setup — desk will not open (no veto; the weight of evidence itself argues against it).",
+          };
+        }
+        if (b.includes("cortex_thin_evidence")) {
+          return {
+            code: "g_s14_cortex",
+            reason:
+              "Cortex evidence is too thinly corroborated to trust — desk will not open (no veto; too few sources answered).",
+          };
+        }
+        if (b.includes("cortex_gex_walls_oppose_unresolved")) {
+          return {
+            code: "g_s14_cortex",
+            reason:
+              "An active dealer-wall opposition is unresolved against this setup — desk will not open (no veto; the conviction floor wasn't cleared).",
+          };
+        }
+        if (b.includes("cortex_contested")) {
+          return {
+            code: "g_s14_cortex",
+            reason:
+              "Cortex evidence is contested — real support and real opposition are both present — desk will not open (no veto; the read isn't clean either way).",
+          };
+        }
         return {
           code: "g_s14_cortex",
-          reason: "Cortex preflight vetoed this setup — desk will not open.",
+          reason: "Cortex preflight blocked this setup — desk will not open.",
         };
       }
       return { code: b.replace(/[^a-z0-9_]+/gi, "_").toLowerCase(), reason: `Commit gate blocked (${b}).` };
