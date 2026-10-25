@@ -1617,6 +1617,59 @@ test("tradeManagerNarrativeSection: round-tripped-past-breakeven bullet fires wh
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:DKNG): the giveback bullets
+// above (`mfeCaptureOutcome(play.pnlPct, play.peak, null)`) are computed from the identical
+// `play.pnlPct` the Position section's "P&L:" line already flags via `optionMarkStaleCaveat` when
+// the underlying bid/ask quote is aged — but `actionNarrative` had no `readMs`/staleness parameter
+// at all, so neither giveback bullet ever carried the caveat. A member could read "P&L: -9.8%
+// (stale ...)" in Position and, a few sections later, an unqualified "Round-tripped past
+// breakeven ... was up X% at peak, now -9.8%" built off that exact same stale quote.
+test("tradeManagerNarrativeSection: round-trip giveback bullet carries the same stale-quote caveat as the Position section's P&L line", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        pnlPct: -10,
+        peak: 132.7,
+        markAsOf: "2026-09-05T18:00:00.000Z", // well before readMs below — past the stale bar
+        markIsSync: false,
+      }),
+      readMs: Date.parse("2026-09-05T20:00:00.000Z"),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Round-tripped past breakeven.*was up \*\*133%\*\* at peak, now \*\*-10%\*\*.*_\(stale — same quote Mark flagged above\)_/,
+    `expected the round-trip bullet to carry the same stale-quote caveat as Position's P&L line, got: ${section!.body}`,
+  );
+});
+
+test("tradeManagerNarrativeSection: capture-branch giveback bullet carries the same stale-quote caveat as the Position section's P&L line", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        pnlPct: 39.8,
+        peak: 132.7,
+        markAsOf: "2026-09-05T18:00:00.000Z",
+        markIsSync: false,
+      }),
+      readMs: Date.parse("2026-09-05T20:00:00.000Z"),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Gave back \*\*70%\*\* of peak — consider protecting runner\.\s*_\(stale — same quote Mark flagged above\)_/,
+    `expected the capture-branch bullet to carry the same stale-quote caveat, got: ${section!.body}`,
+  );
+});
+
 // Live repro (CRWD SWING:CRWD:19, 2026-09-14): 50% already banked at +100%, runner round-tripped
 // from +129.7% to -9.5% — Blended P&L (realized trim + open runner) was still +45.3%, a solid win.
 // The unqualified "Round-tripped past breakeven ... consider protecting what's left" bullet reads

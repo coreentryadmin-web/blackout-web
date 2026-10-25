@@ -661,9 +661,18 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
     // "Mark: unknown ... do not read as flat" line. `markGenuinelyUnknown` is already computed
     // above and already gates the Mark line — gate Peak/Trough the identical way, since the
     // underlying signal (no live tick has ever landed on this contract) is the same for all three.
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:PANW): Peak/Trough are DB
+    // watermarks (peak_premium/trough_premium) ratcheted GREATEST/LEAST on the SAME live-tick
+    // cadence as last_mark (db.ts) — so whenever the mark freezes/goes stale, Peak/Trough are
+    // equally frozen/unverified. Every OTHER quote-derived line in this section (P&L a few lines
+    // up, Greeks/Spread/Exec P&L a few lines below) already appends `staleCaveat` for the identical
+    // frozen snapshot; these two lines never did, rendering a confident "+9.9%"/"-5.2%" directly
+    // beside siblings all flagged "_(stale — same quote Mark flagged above)_". Guarded the same way
+    // the P&L/Greeks lines are: only in the non-`markGenuinelyUnknown` branch, so this never doubles
+    // up with the distinct "(no live tick yet)" wording that branch already renders.
     markGenuinelyUnknown
       ? `Peak: **—** _(no live tick yet)_`
-      : `Peak: **${fmtPct(peakForDisplay)}**`,
+      : `Peak: **${fmtPct(peakForDisplay)}**${staleCaveat}`,
     // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
     // `play.trough` (the position's own worst excursion — `troughDisplay`, adapters.ts:475-480,
     // computed symmetrically alongside `peakDisplay` on every TerminalPlay row, condor-aware) was
@@ -673,9 +682,10 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
     // don't flinch on the next drawdown scare") that the data already supports; mirrors Peak's own
     // render (fmtPct handles null as "—" — same convention, both null together when entry/premium
     // data is missing; the 2026-10-17 fix above now also mirrors Peak's `markGenuinelyUnknown` gate).
+    // Same fix as Peak immediately above — identical watermark, identical staleness exposure.
     markGenuinelyUnknown
       ? `Trough: **—** _(no live tick yet)_`
-      : `Trough: **${fmtPct(troughForDisplay)}**`,
+      : `Trough: **${fmtPct(troughForDisplay)}**${staleCaveat}`,
   ];
   // GAP FOUND (2026-09-18, Ask Largo standing mandate): `play.greeks` (DeckGreeks: delta/gamma/
   // theta/vega/iv) is a real, live per-contract read for every open swing position — the active-

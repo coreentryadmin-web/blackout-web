@@ -26,6 +26,7 @@ import {
   newsCatalystStale,
   optionMarkGenuinelyUnknown,
   optionMarkIsStale,
+  optionMarkStaleCaveat,
   resolveGammaPosture,
   vectorAgeStale,
   vectorSnapshotStale,
@@ -2003,6 +2004,16 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   }
 
   const gexForLevels = ctx.ecosystem?.gex_positioning;
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-25, live repro SWING:CRWD): moved up from below
+  // "Structural support/resistance node" (where PR #6731 added it the same day) so the "Reclaim/Lose
+  // gamma flip" bullet a few lines down can use it too — same `invalidationLevel`-adjacent
+  // Vector/GEX snapshot, same `closedMarketSessionNote` every other consumer of it already
+  // discloses. Live repro: CRWD's "Reclaim gamma flip 265.76 (2.8% away)" rendered with zero
+  // caveat while `envelope.levels[]` tagged that identical 265.76 gamma-flip level's provenance
+  // with a market-closed `market_session_note` — a member reading only this bullet had no hint the
+  // dealer-posture read it's keyed off reflects a shut market, not a live tick.
+  const sessionNote = closedMarketSessionNote(vec, gexForLevels, readMs);
+  const sessionNoteSuffix = sessionNote ? ` _(${sessionNote})_` : "";
   const vectorStaleForWalls = vectorStale;
   const vecFlip = vectorStaleForWalls ? undefined : vec?.gammaFlip;
   const flip = vecFlip ?? gexForLevels?.flip;
@@ -2037,16 +2048,20 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     // Scoped to the live watch/open branches only — the CLOSED branch already states both raw
     // numbers side by side ("Now trades X vs gamma flip Y") and is left as-is.
     const distAway = ` (${Math.abs(((spot - flip) / spot) * 100).toFixed(1)}% away)`;
+    // GAP FOUND (Ask Largo standing mandate, 2026-10-25, live repro SWING:CRWD): see the
+    // `sessionNoteSuffix` doc comment above `gexForLevels` for the full account — this bullet reads
+    // the identical Vector/GEX snapshot "Structural support/resistance node" already discloses the
+    // market-closed caveat for, but never carried it itself, in any bucket.
     const watch =
       bucket === "closed"
-        ? `Now trades **${fmtPriceLevel(spot)}** vs gamma flip **${fmtPriceLevel(flip)}** — where the dealer regime sits since this play closed`
+        ? `Now trades **${fmtPriceLevel(spot)}** vs gamma flip **${fmtPriceLevel(flip)}**${sessionNoteSuffix} — where the dealer regime sits since this play closed`
         : play.direction === "LONG"
           ? spotAboveFlip
-            ? `Lose gamma flip **${fmtPriceLevel(flip)}**${distAway} — dealer posture turns against longs`
-            : `Reclaim gamma flip **${fmtPriceLevel(flip)}**${distAway} — needed to restore dealer support for longs`
+            ? `Lose gamma flip **${fmtPriceLevel(flip)}**${distAway}${sessionNoteSuffix} — dealer posture turns against longs`
+            : `Reclaim gamma flip **${fmtPriceLevel(flip)}**${distAway}${sessionNoteSuffix} — needed to restore dealer support for longs`
           : spotAboveFlip
-            ? `Lose gamma flip **${fmtPriceLevel(flip)}**${distAway} — needed to confirm the short thesis`
-            : `Reclaim gamma flip **${fmtPriceLevel(flip)}**${distAway} — invalidates short thesis`;
+            ? `Lose gamma flip **${fmtPriceLevel(flip)}**${distAway}${sessionNoteSuffix} — needed to confirm the short thesis`
+            : `Reclaim gamma flip **${fmtPriceLevel(flip)}**${distAway}${sessionNoteSuffix} — invalidates short thesis`;
     lines.push(watch);
   }
 
@@ -2082,9 +2097,9 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // snapshot elsewhere in the same brief (or in a sibling brief) carries the "reflects the last
   // session's tape, not a live tick" disclosure. Scoped to whichever direction actually renders, not
   // closed-bucket-only — a WATCH/OPEN play reads the same live Vector/GEX snapshot a CLOSED one
-  // would, so the risk is identical regardless of bucket.
-  const sessionNote = closedMarketSessionNote(vec, gexForLevels, readMs);
-  const sessionNoteSuffix = sessionNote ? ` _(${sessionNote})_` : "";
+  // would, so the risk is identical regardless of bucket. (`sessionNote`/`sessionNoteSuffix`
+  // themselves are now computed earlier in this function, next to `gexForLevels`, so the gamma-flip
+  // bullet above can share this one definition too — see that fix's own comment.)
   if (play.direction === "LONG" && invalidationLevel != null) {
     lines.push(
       `Structural support node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**${invalidationDistAway}${sessionNoteSuffix}`,
@@ -2329,6 +2344,15 @@ export function holdPlanSection(
   if (statusBucket(play) !== "open") return null;
 
   const lines: string[] = [];
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:DKNG): the giveback bullets
+  // below (`mfeCaptureOutcome(play.pnlPct, play.peak, null)`) are a SECOND, independent call site of
+  // the identical bug actionNarrative's giveback bullets were just fixed for (play-brief-narrative.ts)
+  // — both divide the same `play.pnlPct` the Position section's "P&L:" line already flags as stale
+  // via `optionMarkStaleCaveat`, but this section never threaded the caveat through either. Only
+  // deduped against actionNarrative's output via `narrativeAlreadyNoted?.capture` (a few lines
+  // below), so it is live-reachable on its own whenever actionNarrative's capture threshold (75)
+  // isn't crossed but this section's own (70) is — not merely a redundant copy.
+  const readMs = ctx.readMs ?? Date.now();
   // recNote, desk stance, trim ladder, rails, and manageAction live in Management (play-brief.ts)
   // — do not repeat them here (same duplication class as whyThisSetupSection, FINDINGS 2026-09-06).
 
@@ -2411,6 +2435,9 @@ export function holdPlanSection(
     // roundTripAlreadyNoted/captureAlreadyNoted guards just below in this file — this OPEN-play
     // path never got the equivalent.
     const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
+    // See the `readMs`/giveback-staleness doc comment above this section's top — shared by both
+    // branches below.
+    const giveStaleCaveat = optionMarkStaleCaveat(play, readMs);
     if (giveback?.kind === "round_trip") {
       if (!narrativeAlreadyNoted?.roundTrip) {
         // NOT "consider trim into strength" — the play has already round-tripped PAST breakeven
@@ -2420,7 +2447,7 @@ export function holdPlanSection(
         // giveback and was missed by that fix's blast-radius check. Matches the wording
         // play-brief-narrative.ts's SELL branch already uses for the identical fact.
         lines.push(
-          `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left`,
+          `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left${giveStaleCaveat}`,
         );
       }
     } else if (giveback?.kind === "capture" && giveback.capturePct < 70 && !narrativeAlreadyNoted?.capture) {
@@ -2436,9 +2463,10 @@ export function holdPlanSection(
       // branch shared the same bug and was missed by that fix's own blast-radius check).
       const anyTrimBanked = (play.exitPolicy?.trim_levels ?? []).some((t) => t.fired);
       lines.push(
-        anyTrimBanked
+        (anyTrimBanked
           ? `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** of the runner since peak — part of this position is already banked at a profit; consider protecting what's left`
-          : `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak — consider trim into strength`,
+          : `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak — consider trim into strength`) +
+          giveStaleCaveat,
       );
     }
   }

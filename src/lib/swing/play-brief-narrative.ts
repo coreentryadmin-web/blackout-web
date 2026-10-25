@@ -19,6 +19,7 @@ import {
   nighthawkLiveForSession,
   zerodteLiveForSession,
   optionMarkGenuinelyUnknown,
+  optionMarkStaleCaveat,
 } from "./play-brief-absence";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
@@ -660,7 +661,19 @@ function trimReasonClause(reason: TerminalPlay["manageReason"] | undefined): str
   }
 }
 
-function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:DKNG): this function had no
+// `readMs`/staleness parameter at all, so it structurally could not call the shared
+// `optionMarkStaleCaveat()` helper (play-brief-absence.ts) that `pnlSection` (play-brief.ts)
+// already uses to flag the Position section's "P&L:" line as stale. The giveback bullets below
+// (`giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null)`) are computed from that exact same
+// `play.pnlPct` — so a stale quote could render "P&L: **-9.8%** _(stale...)_" in Position and, a
+// few sections later, an unqualified "Gave back 85% of peak" in Trade manager read, built off the
+// identical stale number. The call site (`tradeManagerNarrativeSection`) already has `ctx.readMs`
+// in scope two lines after this call (for vectorStale/gexStale) but never threaded it in. Adding
+// `readMs` here (default `Date.now()`, same convention as every other readMs-taking helper in this
+// file) rather than passing the pre-computed caveat string directly, so a future caller that
+// doesn't already have `optionMarkStaleCaveat` computed doesn't need to import it separately.
+function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed", readMs: number = Date.now()): string | null {
   if (bucket === "closed") return null;
 
   const rec = play.recommendation ?? "HOLD";
@@ -801,11 +814,18 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
     );
   }
 
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:DKNG): `giveback` is derived
+  // from `play.pnlPct` (see the comment above `giveback`'s own declaration) — the identical field
+  // the Position section's "P&L:" line already flags via `optionMarkStaleCaveat` when stale. Shared
+  // here so both giveback bullets below carry the same disclosure instead of rendering a confident
+  // "gave back X%" off a quote the Position section two sections earlier already called stale.
+  const giveStaleCaveat = optionMarkStaleCaveat(play, readMs);
   if (giveback?.kind === "round_trip") {
     lines.push(
-      anyTrimBanked
+      (anyTrimBanked
         ? `**Runner round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%**; part of this position is already banked at a profit — consider protecting what's left of the runner.`
-        : `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left.`,
+        : `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left.`) +
+        giveStaleCaveat,
     );
   } else if (giveback?.kind === "capture" && giveback.capturePct < 75) {
     // BUG FIX (Ask Largo standing mandate, 2026-10-07): this "Gave back X% of peak" line
@@ -825,9 +845,10 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
     // only disambiguating the (rarer) full-loss case and leaving this far more common
     // post-trim-pullback case to read as a whole-position alarm.
     lines.push(
-      anyTrimBanked
+      (anyTrimBanked
         ? `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** of the runner since peak — part of this position is already banked at a profit; consider protecting what's left.`
-        : `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** of peak — consider protecting runner.`,
+        : `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** of peak — consider protecting runner.`) +
+        giveStaleCaveat,
     );
   }
 
@@ -1514,7 +1535,7 @@ export function tradeManagerNarrativeSection(
     return { title: "Trade manager read", body: bullets.join("\n"), bias: "neutral" };
   }
 
-  const action = actionNarrative(play, bucket);
+  const action = actionNarrative(play, bucket, readMs);
   if (action) add(action);
 
   const rollLine = rollHistoryLine(ctx);
