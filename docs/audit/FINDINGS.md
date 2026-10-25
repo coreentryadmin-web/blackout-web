@@ -4,6 +4,194 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## Night Hawk Swings — `shadowRealizedPnlPct` fabricated 0% realized P&L on invalid entry premium, permanently closing a shadow row with a fake calibration outcome — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Surface** | `src/lib/swing/shadow-refresh.ts` (`shadowRealizedPnlPct`, `runSwingShadowRefresh`) |
+| **Severity** | P2 (live-wired calibration-feed corruption, narrow trigger) |
+
+### Root cause
+
+`shadowRealizedPnlPct`'s own doc comment says it uses "the same sign convention as roll-plan
+`gradeParentFromMark`" — but `gradeParentFromMark` (`roll-plan.ts`) returns `null` on an invalid
+entry premium ("a roll must never freeze a fabricated grade — it DEFERS instead"), while
+`shadowRealizedPnlPct` returned a literal `0` (a fabricated flat/"breakeven" close) for the same
+invalid-input shape (`!Number.isFinite(entryPremium) || entryPremium <= 0`).
+
+This module is wired into production: `runSwingShadowRefresh` is called from the
+`swing-active-refresh` cron (`src/app/api/cron/swing-active-refresh/route.ts`) and its
+`closeAndGrade` callback is bound to `closeSwingShadowPosition` (`db.ts`), which marks the row
+`CLOSED` and writes `realized_pnl_pct` permanently. The caller's own guard before calling
+`shadowRealizedPnlPct` only checked `entry == null` — not `Number.isFinite(entry)` or `entry > 0` —
+so a shadow row with a corrupted `entry_premium` (0, negative, or NaN) would fall through to a
+fabricated `0%` close and get marked `CLOSED` forever, with no re-evaluation path. Per this file's
+own header, shadow rows exist specifically to "feed calibration evidence" for the PR-16 graduation
+ladder — a fabricated 0% outcome pollutes exactly that feed, permanently, since `CLOSED` is terminal.
+
+### Evidence
+
+Live repro:
+
+```js
+shadowRealizedPnlPct(0, 12.5)   // entry_premium corrupted to 0
+shadowRealizedPnlPct(-5, 12.5)  // entry_premium corrupted to negative
+shadowRealizedPnlPct(NaN, 12.5) // entry_premium corrupted to NaN
+```
+
+Pre-fix: all three return `0` (a fake breakeven close).
+Post-fix: all three return `null`.
+
+And at the `runSwingShadowRefresh` level: a row with `entry_premium: 0` whose structural stop would
+otherwise fire pre-fix called `closeAndGrade` with `realized_pnl_pct: 0` (permanently closing the
+row on fabricated data); post-fix it is skipped (`skipped += 1`), leaving the row `OPEN` for
+re-evaluation next pass — the honest "defer, never fabricate" posture `roll-plan.ts` already uses
+for the identical input shape.
+
+### Blast radius
+
+Single call site inside `runSwingShadowRefresh` (confirmed via `git grep -rln
+"shadowRealizedPnlPct" src/`), but that call site is live production code on every
+`swing-active-refresh` cron pass. Reachability requires a corrupted/invalid `entry_premium` column
+on a real shadow row — not the common case, but shadow rows are written at commit-gate-block time
+(`commit.ts`'s zero-capital SHADOW path) and this file's own guard shape (checking
+`Number.isFinite`/`> 0` defensively) already anticipates that a typed-as-required DB value can
+still arrive malformed, the same "typed as required, defensively re-checked anyway" pattern every
+sibling null-honesty fix in this codebase guards against.
+
+### Fix rationale
+
+Two changes, mirroring the exact pattern `roll-plan.ts`'s `gradeParentFromMark` already
+establishes: (1) `shadowRealizedPnlPct` now returns `number | null`, `null` on the identical
+invalid-input guard it already had (never a fabricated `0`); (2) `runSwingShadowRefresh` checks the
+result for `null` immediately after computing it and skips (never calls `closeAndGrade`) exactly
+like its existing `entry == null`/`exitMark == null` guards two lines above — a corrupted row stays
+`OPEN` and gets another chance on the next cron pass instead of being permanently mis-graded.
+
+### Tests
+
+Added a direct case to `shadow-refresh.test.ts` (`shadowRealizedPnlPct` returns `null` for
+entry 0/negative/NaN and for a non-finite exit mark) and an integration case (`runSwingShadowRefresh`
+never calls `closeAndGrade` for a row whose structural stop would otherwise fire but whose
+`entry_premium` is `0`). RED→GREEN confirmed: reverting only the source fix (keeping the new tests)
+fails 2/10 exactly as expected; reapplying passes 10/10.
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/shadow-refresh.test.ts` — 10/10 pass
+- `npx tsc --noEmit` — clean
+- Full `npm test` (Node 20) run alongside this PR
+
+## SPX Slayer — `mergePulseIntoDesk` never reassigns `available`, spuriously zeroing the play's score/direction off a cold fallback shell
+
+> **kind:** `FINDING`
+
+**Area:** SPX Slayer / `src/features/spx/lib/spx-desk-merge.ts`
+**Found by:** background Workflow `five-engine-live-correctness-sweep` (adversarially verified), 2026-10-25, Ask Largo × 5-engine live monitor standing mandate
+
+### Symptom
+
+`GET /api/market/spx/play`'s closed-market snapshot served `available:false, assessed:false,
+score:0, factors:[], direction:null, grade:"D"` at 2026-10-25T12:51:11.955Z (Sunday, market
+closed) — but the real underlying desk data (price, VWAP, EMA, tick/trin/add) was fully
+available at the exact same instant, confirmed via a parallel `GET /api/market/spx/desk` showing
+`available:true`, price `7623.68`.
+
+Forcing a fresh full-desk build (`GET /api/market/spx/merged`) and re-polling
+`GET /api/market/spx/play` two minutes later, for the same closed session and the same price
+`7623.68`, correctly returned `assessed:true, score:-4, rawScore:38`, with 11 real factors whose
+weights sum exactly to `-4`.
+
+### Root cause
+
+`mergePulseIntoDesk` (`spx-desk-merge.ts`) builds a merged desk payload with `{...base, ...}` and
+explicitly reassigns ~30 derived fields in its return spread — but never reassigned `available`,
+so the spread silently carried whatever `base.available` already was, forever.
+
+That is harmless on the common path, where `base` is a real desk build that already carries a
+correct `available:true` of its own. But `deskShellFromPulse` (`spx-desk.ts`) calls this exact
+function as `mergePulseIntoDesk(emptyDeskPayload(...), pulse)` to build the **fallback shell**
+used whenever the real merged desk build is cold or slow (right after a deploy, a cache miss, a
+cache stampede — `buildBootstrapFastLane`/`deskCacheOpts.fallback` in `spx-desk-loader.ts`).
+`emptyDeskPayload` hardcodes `available:false`. With no reassignment in `mergePulseIntoDesk`,
+that `false` survived forever even when `pulse` — the ONLY data source this fallback shell has —
+carried real, live price/VWAP/EMA/tick/trin/add data the whole time (`SpxDeskPulse.available` is
+set `true` by `buildSpxDeskPulse` precisely when a real price was resolved).
+
+Downstream, `computeSpxConfluence` (`spx-signals.ts:466`) gates with
+`!price || price<=0 || !desk.available`, nulling confluence entirely whenever `available` is
+false — even with real price. `evaluateSpxPlayCore`'s closed-market branch
+(`spx-play-engine.ts:1609-1681`) then emits exactly the observed `assessed:false/score:0/
+factors:[]/direction:null/grade:"D"` whenever confluence is null.
+
+This is the same oversight shape as two already-merged fixes in this identical function:
+`prior_close`/`gap_pct`/`gap_source` (commit `3553dd98a`, #5748) and `vix_term` (commit
+`c2d93ef1d`, #6461) — both documented as "never reassigned, inherited `emptyDeskPayload`'s
+placeholder forever." Neither of those fixes touched `available` itself, so this third instance
+of the same class remained live and unfixed on `main` until now.
+
+### Fix
+
+`mergePulseIntoDesk`'s return object now assigns `available: pulse.available || base.available`.
+Mirrors the gate at the function's other call site (`mergeDeskLayers` only invokes
+`mergePulseIntoDesk` when `pulse.available` is already true) while correctly handling the
+fallback-shell case where `base.available` starts false: the merged shell becomes available the
+moment either side has real data, and — importantly — stays honestly unavailable when neither
+side does (never fabricated to `true`).
+
+### Blast radius
+
+Single call site, single field. `mergePulseIntoDesk` has exactly two callers
+(`mergeDeskLayers`, gated on `pulse.available` already being true — this fix is a no-op there
+since `pulse.available || base.available` is already true; and `deskShellFromPulse`, the
+fallback-shell path this bug actually affects). No other function reads/derives `available`
+differently for this payload shape.
+
+### Tests
+
+`src/features/spx/lib/spx-desk-merge.test.ts` — 3 new cases: merged shell becomes available when
+pulse has real data and base (the empty fallback shell) does not (RED→GREEN confirmed against
+pre-fix source); stays available when base was already a real build (no regression); stays
+honestly unavailable when neither side has real data.
+
+| **Gates** | `npx tsc --noEmit` clean · `npm test` full suite (Node 20.20.2, see run log). |
+| **Status** | FIXED (PR #6711, merged to `main`). |
+
 ## 2026-10-25 — [FINDING, P2 Night Hawk Swings / Ask Largo] "Setup score" evidence[] fact stamped read-time `asOf` for a commit-pinned value — FIXED
 
 > **kind:** `FINDING`
@@ -224,40 +412,6 @@ through to `upsertNighthawkEdition` unmodified.
   already-correct `rr_ratio` untouched rather than recomputing it.
 
 Full `src/features/nighthawk/**/*.test.ts` (2091 tests) and `npx tsc --noEmit` both pass clean.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-10-25 — [FINDING, P1 Night Hawk Swings / Ask Largo] Every Banger-origin committed SWING row served `thesisLevel:"intact"` from the raw API regardless of real P&L — three downstream guards each patched their own consumer, none patched the source — FIXED
 
