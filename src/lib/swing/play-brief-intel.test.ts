@@ -455,6 +455,35 @@ test("bookContextSection: a genuinely mixed-origin duplicate OTHER ticker is sti
   );
 });
 
+// BUG FIX (2026-10-25, Ask Largo standing mandate, live repro SNDQ SWING:SNDQ:2120): the
+// isReviewedTicker branch's cross-engine check (`!reviewedIsBangerOrigin`) was only ever reached
+// AFTER a `p.positionId != null` early return, so it never ran at all for a native sibling on the
+// reviewed play's OWN ticker -- the cross-engine label only ever fired in the mirror direction
+// (reviewed=native, sibling=Banger-origin, locked in by the "cross-engine label still fires..."
+// test above). A Banger-origin reviewed play (SNDQ:2120, confirmed Banger-origin via its real
+// "Banger breakout +5.4% · 21C 2026-10-30" management-section wording) with a genuinely
+// independent swing-native sibling on the SAME ticker (SNDQ:2077, a real swing_positions row)
+// under-disclosed a real cross-engine pair as a plain "(separate position #2077)".
+test("bookContextSection: a native sibling on the reviewed play's OWN ticker is labeled cross-engine when the REVIEWED play is itself Banger-origin (2026-10-25 fix, live repro SNDQ:2120/2077)", () => {
+  const book: PortfolioPosition[] = [{ ticker: "SNDQ", direction: "LONG", positionId: 2077 }];
+  const section = bookContextSection(
+    fixturePlay({
+      id: "SWING:SNDQ:2120",
+      ticker: "SNDQ",
+      direction: "LONG",
+      status: "OPEN",
+      bangerOrigin: true,
+    }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /SNDQ LONG \(separate, cross-engine position #2077\)/,
+    `a native sibling must still be labeled cross-engine when the reviewed play is itself Banger-origin, got: ${section!.body}`,
+  );
+});
+
 // ── archetypeTrackRecordSection (Largo C10 historical context; Ask Largo mandate) ─────────────────
 function trackRecordEntry(over: Partial<SwingTrackRecordEntry> = {}): SwingTrackRecordEntry {
   return {
