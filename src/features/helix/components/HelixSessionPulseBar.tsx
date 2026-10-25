@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import { fmtPremium } from "@/lib/api";
 import {
   computeHelixSessionPulse,
+  sessionPulseBullPct,
   type HelixSessionPulse,
 } from "@/features/helix/lib/helix-session-pulse";
 
@@ -32,9 +33,7 @@ export function HelixSessionPulseBar({
 
   if (pulse.printCount === 0) return null;
 
-  const readable = pulse.bullishPremium + pulse.bearishPremium;
-  const bullPct =
-    readable > 0 ? Math.round((pulse.bullishPremium / readable) * 100) : null;
+  const bullPct = sessionPulseBullPct(pulse);
 
   return (
     <div className={clsx("helix-session-pulse", className)} aria-label="Session flow pulse">
