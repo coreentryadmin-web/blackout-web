@@ -61,6 +61,33 @@ test("horizonPlayFromBangerPosition maps OPEN banger to SWING MANAGING with BANG
   assert.equal(play!.archetype, "BREAKOUT");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro WEN positionId 2098, -58.3% P&L):
+// there is no real per-position thesis dossier for this lane (a single mechanical price trigger,
+// per this file's own header) — `thesisLevel` used to be the literal "intact" on EVERY row this
+// function produces, regardless of real price action, which `GET /api/market/nighthawk/horizons?
+// view=swings` then served raw and unguarded (downstream guards in play-brief-intel.ts,
+// thesis-health.ts, and adapters.ts each independently protect THEIR OWN consumer, but none of
+// them can retroactively fix what this route's own JSON response already said). Must now read
+// "unknown" — the same honest, already-rendered-correctly value serving-ingest.ts and
+// ZeroDteCommandPanel.tsx use for exactly this case — for every banger-origin row, deeply
+// underwater or not, since this function has no way to measure a real thesis either way.
+test("horizonPlayFromBangerPosition never fabricates thesisLevel:intact — reports unknown regardless of live P&L", () => {
+  const deeplyUnderwater = horizonPlayFromBangerPosition(
+    bangerRow({ entry_premium: 4.2, last_mark: 1.75, scale_out_reason: "below the 2× partial and above the hard stop" }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(deeplyUnderwater);
+  assert.equal(deeplyUnderwater!.thesisLevel, "unknown");
+  assert.equal(deeplyUnderwater!.thesisNote, "below the 2× partial and above the hard stop", "the real mechanical note must survive untouched");
+
+  const green = horizonPlayFromBangerPosition(
+    bangerRow({ entry_premium: 4.2, last_mark: 5.5 }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(green);
+  assert.equal(green!.thesisLevel, "unknown", "a green position gets the same honest 'unknown', never a fabricated 'intact'");
+});
+
 // FINDINGS 2026-10-09 (Ask Largo standing mandate — migration 017): contract.bid/ask/openInterest/
 // delta/gamma/theta/vega/iv were ALWAYS hardcoded null/0 on every BANGER-origin committed position,
 // regardless of what the provider actually quoted — not because the data was unavailable, but
