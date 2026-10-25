@@ -177,6 +177,26 @@ export type ExecutableFill = {
   fill: number | null;
   /** Executable P&L % = (bid − entry)/entry against the PINNED entry. Null without both. */
   pnl_pct: number | null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: bid $0.00 / ask $1.20 /
+  // mid $0.60 — a real, live two-sided quote, not a missing one). `fill`/`pnl_pct` above are null
+  // in TWO genuinely different situations that downstream consumers (adapters.ts, the swing
+  // play-brief narrative/rail layers) had no way to tell apart: (1) no usable book at all
+  // (`validBook` false — bid/ask missing, one-sided, or crossed) and (2) a real, valid two-sided
+  // book whose bid happens to be a genuine zero (no buyer at any price — the WORST real
+  // executable state, strictly worse than any positive-but-low bid). Both collapsed to
+  // `fill: null`, so a confirmed $0.00 bid silently read as "we don't have a quote" instead of
+  // "we have a quote and it says this is worthless" — weaker disclosure than a comparable
+  // position with a nonzero low bid, which correctly got the strong "no real cushion" / "stop
+  // already breached" language. `fill`/`pnl_pct`'s own null-for-zero-bid behavior is UNCHANGED
+  // (locked in by the "executable: one-sided / no book" test below — a long genuinely cannot be
+  // SOLD at $0, so there is still no honest nonzero fill price to report) — this field is purely
+  // additive so a caller that cares can distinguish the two null-shaped cases without this
+  // function fabricating a fill that doesn't exist.
+  /** True iff the book is a real, valid two-sided quote (`validBook`) AND the bid is a genuine
+   *  zero — distinct from `fill == null` meaning "no quote at all". Callers that disclose
+   *  executable risk (the swing play-brief) must treat this as the MOST severe state, not an
+   *  absence. */
+  bidConfirmedZero: boolean;
 };
 
 /**
@@ -199,5 +219,6 @@ export function executableFill(
     fill != null && entryPremium != null && entryPremium > 0
       ? Math.round(((fill - entryPremium) / entryPremium) * 10000) / 100
       : null;
-  return { mid, fill, pnl_pct };
+  const bidConfirmedZero = validBook && bid === 0;
+  return { mid, fill, pnl_pct, bidConfirmedZero };
 }

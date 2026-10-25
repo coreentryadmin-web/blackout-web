@@ -2221,7 +2221,15 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
       );
     } else {
       const execMark = play.execMark;
-      const executableCushionGone = execMark != null && execMark <= stop;
+      // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: bid $0.00, a real
+      // confirmed quote, not a missing one): `execMark` is null both when there's no bid at all
+      // AND when the bid is a genuine $0.00 — `play.execBidZero` (adapters.ts, from
+      // executableFill's `bidConfirmedZero`, terminal-ladder.ts) tells the two apart. A confirmed
+      // $0.00 bid is at/through ANY positive stop level by construction, so it belongs in the same
+      // "no real cushion" branch a nonzero-but-sub-stop bid already gets — without this, EXPE fell
+      // through to the `cushionPct` branch below and rendered a falsely-reassuring mid-based
+      // cushion despite having zero real executable value.
+      const executableCushionGone = play.execBidZero === true || (execMark != null && execMark <= stop);
       const cushionBasis = execMark != null && execMark > 0 ? execMark : play.mark;
       const cushionBasisIsExec = execMark != null && execMark > 0;
       const cushionPct =

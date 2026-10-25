@@ -182,6 +182,13 @@ export interface TerminalPlay {
    *  number beside the mid `mark`/`pnlPct`. Null without a live two-sided book (mid-only). */
   execMark?: number | null;
   execPnlPct?: number | null;
+  /** True when the executable book is REAL (a valid two-sided quote) and the bid is a genuine
+   *  $0.00 — no buyer at any price. Distinct from `execMark == null`, which also covers "no quote
+   *  at all": both null-shaped the same way downstream before this field existed (Ask Largo
+   *  standing mandate, 2026-10-25, live repro EXPE), so a confirmed-worthless bid silently read as
+   *  an absent quote and got WEAKER risk disclosure than a comparable position with a nonzero low
+   *  bid. Swing play-brief consumers must treat this as the single most severe executable state. */
+  execBidZero?: boolean | null;
 
   // ── live-mark honesty (Terminal v2) ──
   /** ISO instant of the quote behind `mark` — the terminal shows its age. */

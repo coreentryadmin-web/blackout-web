@@ -7985,6 +7985,50 @@ test("watchForSection: Premium stop rail flags 'no real cushion' when the execut
   assert.doesNotMatch(section.body, /29% cushion/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: GET
+// /api/market/swing/play-brief?playId=SWING:EXPE:2071 — bid $0.00, ask $1.20, a real two-sided
+// quote, not a missing one). `execMark` is null both when there's no bid at all AND when the bid
+// is a confirmed genuine $0.00 — executableFill() (terminal-ladder.ts) correctly never fabricates
+// a fill price at $0, but that left this rail unable to tell "no quote" apart from "quote says
+// worthless". Before this fix, `execMark == null` fell straight to the `cushionBasis = play.mark`
+// branch and rendered a falsely-reassuring mid-based cushion despite the position having ZERO real
+// executable value — weaker disclosure than the $0.70-bid NN case directly above, despite being
+// strictly worse. `play.execBidZero: true` (adapters.ts) is the only signal that distinguishes the
+// two null-shaped cases.
+test("watchForSection: Premium stop rail flags 'no real cushion' for a CONFIRMED zero bid even though execMark itself is null (live EXPE repro)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 0.6, // mid = (0 + 1.2) / 2 -- a real, live quote
+        execMark: null, // executableFill() correctly never fabricates a fill at a zero bid
+        execBidZero: true, // but the book IS real and the bid IS a confirmed $0.00
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.38,
+        },
+      }),
+      asOf: "2026-09-12 16:47 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.38\*\*/);
+  assert.match(section.body, /no real cushion/i, `confirmed $0.00 bid must read as the worst case, got: ${section.body}`);
+  assert.doesNotMatch(section.body, /cushion from current mark/);
+});
+
 test("watchForSection: Premium stop rail keeps the normal cushion percentage when the executable price is still comfortably above the stop", () => {
   const section = watchForSection(
     {

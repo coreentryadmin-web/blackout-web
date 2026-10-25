@@ -1172,6 +1172,12 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
           : livePnl ?? exec.pnl_pct,
     execMark: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.fill,
     execPnlPct: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.pnl_pct,
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE): `exec.fill`/`exec.pnl_pct`
+    // above are null both for "no quote at all" and for a REAL two-sided book whose bid is a
+    // confirmed $0.00 — `exec.bidConfirmedZero` (terminal-ladder.ts) is the only place that tells
+    // the two apart, so it has to reach the play-brief narrative/rail layers the same gated way
+    // execMark/execPnlPct do, or the distinction is computed here and then thrown away.
+    execBidZero: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.bidConfirmedZero,
     occ: occPrefixed,
     markAsOf: src.markAsOf ?? null,
     markIsSync: src.markAsOf == null,
