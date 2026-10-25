@@ -1941,6 +1941,95 @@ test("composeSwingPlayBrief: setup score evidence is anchored to the play's own 
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro FLY OPEN brief): the "Position"
+// section renders "Entry: $0.55" (pnlSection) and the "Management" section renders "Rails: stop
+// $0.22 · target $1.10" (managementSection) for a committed OPEN position, but evidenceFromContext
+// — the sole feeder of envelope.evidence[]/evidence_numbers — never mirrored either, the same
+// "rendered-in-prose-but-never-mirrored" gap already fixed twice above (peers, score). Proves the
+// position's own entry price and exit-policy stop/target rails are now citable, typed evidence[]
+// facts for an OPEN position.
+test("composeSwingPlayBrief: entry price and exit-policy stop/target rails surface as citable evidence[] entries for an OPEN position", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.55,
+      mark: 0.6,
+      pnlPct: 9.1,
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 1.1, fired: false }],
+        runner_fraction: 0.5,
+        stop_premium: 0.22,
+        target_premium: 1.1,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-10-25 16:00 ET",
+    sessionDate: "2026-10-25",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+  const entryEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Entry:"));
+  assert.ok(entryEvidence, "expected a citable entry-price evidence entry");
+  assert.equal(entryEvidence!.text, "Entry: $0.55.");
+  assert.equal(entryEvidence!.provenance?.source, "Swing ledger");
+
+  const railsEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Exit-policy rails:"));
+  assert.ok(railsEvidence, "expected a citable exit-policy rails evidence entry");
+  assert.equal(railsEvidence!.text, "Exit-policy rails: stop $0.22 · target $1.10.");
+  assert.equal(railsEvidence!.provenance?.source, "Swing ledger");
+});
+
+// Same fix: a WATCH candidate (pre-entry, no exitPolicy pinned) and a CLOSED play (Outcome
+// section, not Position/Management) must never fabricate an entry/rails evidence fact — matching
+// the exact bucket Management/Position are themselves gated on in composeSwingPlayBrief.
+test("composeSwingPlayBrief: no entry/exit-policy-rails evidence fabricated for WATCH or CLOSED plays", () => {
+  const baseCtx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "WATCH", entry: null, exitPolicy: undefined }),
+    asOf: "2026-10-25 16:00 ET",
+    sessionDate: "2026-10-25",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const watchBrief = composeSwingPlayBrief(baseCtx);
+  assert.equal(watchBrief.envelope.evidence.some((e) => e.text.startsWith("Entry:")), false);
+  assert.equal(watchBrief.envelope.evidence.some((e) => e.text.startsWith("Exit-policy rails:")), false);
+
+  const closedCtx: SwingPlayBriefContext = {
+    ...baseCtx,
+    play: fixturePlay({
+      status: "CLOSED",
+      entry: 0.55,
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [],
+        runner_fraction: 1,
+        stop_premium: 0.22,
+        target_premium: 1.1,
+        time_stop_et: "15:50",
+      },
+    }),
+  };
+  const closedBrief = composeSwingPlayBrief(closedCtx);
+  assert.equal(closedBrief.envelope.evidence.some((e) => e.text.startsWith("Entry:")), false);
+  assert.equal(closedBrief.envelope.evidence.some((e) => e.text.startsWith("Exit-policy rails:")), false);
+});
+
 // Largo C10 enhancement (2026-09-20, Ask Largo standing mandate): the "Track record"/"Ticker
 // track record" sections above already cite the same wins/losses/n numbers in prose, but prose
 // cannot be joined/cited the way a typed evidence[] entry with its own provenance can — this
