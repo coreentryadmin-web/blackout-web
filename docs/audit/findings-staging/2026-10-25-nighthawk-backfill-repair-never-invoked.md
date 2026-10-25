@@ -67,15 +67,23 @@ was actually repaired or dropped — never on the overwhelmingly common clean no
 `repairStaleBackfillContracts`'s own design intent: "must stay cheap on the overwhelmingly common case
 where there is nothing to repair").
 
-### Outstanding follow-up (cannot be completed from this sandbox)
+### Outstanding follow-up (narrowed — most of the work is already done)
 
-The new cron route is registered in `src/lib/cron-registry.ts`, but — per this repo's own
-documented convention — `cron-registry.ts`'s `schedule_cron_utc` is **only a mirror** of the actually
-deployed EventBridge schedule in `blackout-infra`; it does not create the real schedule. This sandbox
-has no AWS credentials this session (`InvalidClientTokenId`, rechecked), so the actual EventBridge
-rule creation in `blackout-infra` is a necessary follow-up for a future AWS-credentialed session or
-the operator. Until that rule exists, the route is reachable only via `?force=1` manual/admin
-invocation — logged explicitly in `docs/audit/MARKET-OPEN-VALIDATION.md` so this isn't lost.
+Registering the cron in `cron-registry.ts` alone only updates a mirror; `railway.<key>.toml` is the
+real in-repo source of truth `blackout-infra/scripts/sync-cron-schedules.mjs` reads
+(`src/lib/cron-registry-schedule.test.ts` enforces this — missing the TOML is what made this PR's
+own test suite fail on first push, caught and fixed in the same PR by adding
+`railway.nighthawk-backfill-repair.toml`). Ran `sync-cron-schedules.mjs` locally against this
+branch and confirmed the exact, minimal `cron-jobs.json` diff it produces (one 6-line entry,
+inserted alphabetically before `nighthawk-morning-confirm`, matching every sibling entry's shape
+exactly, verified against `terraform/modules/crons/main.tf`'s actual field usage). Opening that PR
+against `blackout-infra` requires push access this session's permission classifier correctly denied
+as a real access-scope elevation — the exact snippet is saved for a human or a future
+blackout-infra-authorized session to apply directly (see `docs/audit/MARKET-OPEN-VALIDATION.md`'s
+entry for the precise JSON). After that PR merges, a `terraform apply` against that module (by a
+human or a future AWS-credentialed session — none available here) still creates the real
+EventBridge rule; merging the JSON change alone does not. Until then the route is reachable only via
+`?force=1`.
 
 ### Evidence / tests
 
