@@ -118,6 +118,26 @@ for that same position and confirm the thesis-health line still reads sensibly (
 Command Deck guard already handled `"unknown"` correctly — this should be a no-visible-change
 confirmation, not a new behavior).
 
+## WATCH LIST — 2026-10-25 Swing play-brief Exec P&L line/bullet never disclosed a stale quote, despite Greeks/Spread right above it flagging the identical snapshot — fixed, deploy pending validation
+
+**What was fixed:** `pnlSection`'s "Position" section and `execSlippageCoaching`'s "Trade manager
+read" bullet both read `execPnlPct`, priced off the exact same aged `contract.bid`/`contract.ask`
+snapshot the Greeks and Spread lines directly above already flag `_(stale — same quote Mark
+flagged above)_` — but neither Exec P&L line carried that caveat. Live repro MRNA: three
+consecutive lines honestly flagged stale, then a confident "Exec P&L: +6.7%" with no mention it's
+the same aged quote. Extracted the shared caveat logic into `optionMarkStaleCaveat`
+(`play-brief-absence.ts`) so both the Position section and the narrative bullet apply it
+consistently; `pnlSection`'s own Greeks/Spread lines now call the same shared function (no behavior
+change there). Full write-up:
+`docs/audit/findings-staging/2026-10-25-swing-exec-pnl-stale-quote-disclosure-gap.md`.
+
+**Specific things to check at next RTH open:** pull a live swing play-brief for a position whose
+option mark genuinely went stale intraday (a quote that hasn't ticked in 18+ minutes) and confirm
+both the "Position" section's `Exec P&L:` line and the "Trade manager read" section's "Executable
+P&L" bullet carry the `_(stale — same quote Mark flagged above)_` caveat, matching the Greeks/Spread
+lines in the same response. Also confirm a position with a genuinely fresh quote shows no caveat on
+any of these lines (no false-positive staleness).
+
 ---
 
 ## WATCH LIST — 2026-10-25 Swing play-brief "Entry" section's own "Entry stance" label leaked SKIP→"HOLD" (4th call site of an already-named leak) — fixed, deploy pending validation
@@ -8609,6 +8629,19 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   repairs a stale BACKFILL play's contract this cycle (check `meta.stale_backfill_contract_repair`
   on `GET /api/market/nighthawk/edition`), confirm that repaired play's `rr_ratio` is populated
   (not `undefined`) and that `PlaybookBriefingPanel.tsx`'s "R:R" stat renders for it.
+
+## WATCH LIST — 2026-10-25 (swing "Setup score" evidence[] provenance.asOf fix, fix/swing-setup-score-evidence-provenance-asof)
+- **What was broken:** `evidenceFromContext`'s "Setup score" fact stamped `provenance.asOf:
+  ctx.asOf` (the brief's read time) and a hardcoded `freshness: "recent"`, even though
+  `play.score`/`play.factors` are a commit-time snapshot that never gets recomputed later. A play
+  committed days ago would read its score as freshly "recent" forever.
+- **What the fix changed:** anchored the fact's provenance to `play.committedAt` (same pattern as
+  the existing WATCH-levels `pinnedProvenance` fix for `detectedAt`) — `asOf` now cites the real
+  commit timestamp and `freshness` is computed from the real age via `freshnessFromObservedMs`.
+- **What to re-check once the market opens:** pull `GET /api/market/swing/play-brief` for a live
+  OPEN/WATCH/CLOSED play whose `committedAt` is more than ~10 minutes before the brief's own
+  `asOf`, and confirm the "Setup score" evidence entry's `provenance.asOf` matches the play's
+  commit time (not "now") and `freshness` reads `stale` rather than `recent`.
 
 ## WATCH LIST — 2026-10-25 (swing lane-rank score rounding mismatch fix, fix/swing-lane-rank-score-rounding-mismatch)
 - **What was broken:** `laneRankSection`'s rank line and `laneRankCoaching`'s "Lane leader"/"Below

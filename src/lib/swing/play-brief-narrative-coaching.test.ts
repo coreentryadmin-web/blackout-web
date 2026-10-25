@@ -3291,6 +3291,24 @@ test("execSlippageCoaching: flags wide mid vs fill gap", () => {
   assert.match(line!, /slippage/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro MRNA): execPnlPct is priced off the
+// identical bid/ask snapshot pnlSection's Greeks/Spread lines (play-brief.ts) already flag stale —
+// this bullet must carry the same caveat rather than reading as a freshly-measured fill.
+test("execSlippageCoaching: appends the stale-quote caveat when the mark/quote snapshot is aged", () => {
+  const readMs = Date.parse("2026-09-05T21:00:00.000Z");
+  const stale = execSlippageCoaching(
+    play({ status: "OPEN", pnlPct: 50, execPnlPct: 30, markAsOf: "2026-09-05T20:00:00.000Z", markIsSync: false }),
+    readMs,
+  );
+  assert.match(stale!, /stale — same quote Mark flagged above/, `got: ${stale}`);
+
+  const fresh = execSlippageCoaching(
+    play({ status: "OPEN", pnlPct: 50, execPnlPct: 30, markAsOf: "2026-09-05T20:58:00.000Z", markIsSync: false }),
+    readMs,
+  );
+  assert.doesNotMatch(fresh!, /stale/, `a fresh quote must not carry a staleness caveat, got: ${fresh}`);
+});
+
 test("ivRankCoaching: fires when play carries ivRank", () => {
   const elevated = ivRankCoaching(play({ ivRank: 75 }));
   assert.match(elevated!, /IV rank 75/i);
