@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-25T20:08:55.781Z",
+  "updated_at": "2026-10-25T20:31:49.077Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "372f91872f68f0f1801ce2e54983be37438f00bf",
+    "last_main_sha": "f18838de8f26a4001c9061db21fd91ff82579523",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
@@ -1255,25 +1255,65 @@
       "open_pr_count": 4
     },
     {
-      "at": "2026-10-25T20:08:48.487Z",
+      "at": "2026-10-25T20:31:37.351Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 4
+      "open_pr_count": 8
     },
     {
-      "at": "2026-10-25T20:08:51.999Z",
+      "at": "2026-10-25T20:31:43.405Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 4
+      "open_pr_count": 8
     },
     {
-      "at": "2026-10-25T20:08:55.781Z",
+      "at": "2026-10-25T20:31:49.077Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 4
+      "open_pr_count": 8
     }
   ],
   "open_prs": [
+    {
+      "number": 6731,
+      "title": "fix(swing): honest mark-unknown reason + structural-node market-closed caveat",
+      "branch": "fix/swing-mark-unknown-reason-structural-node-caveat",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-25T20:30:08Z"
+    },
+    {
+      "number": 6730,
+      "title": "fix(helix): fmtShares overflows at K→M unit boundary (Discord + live UI)",
+      "branch": "fix/darkpool-fmtshares-unit-boundary",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-25T20:25:51Z"
+    },
+    {
+      "number": 6729,
+      "title": "docs(audit): fold batch-83 — 2 staged findings into FINDINGS.md",
+      "branch": "docs/fold-batch-83",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-10-25T20:18:43Z"
+    },
+    {
+      "number": 6728,
+      "title": "fix(swing): Legacy commit bridge fabricated halted:false/dailyBarComplete:true for every candidate",
+      "branch": "fix/swing-legacy-bridge-halt-dailybar-fabricated-false",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "completed/success",
+      "updated_at": "2026-10-25T20:16:43Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
