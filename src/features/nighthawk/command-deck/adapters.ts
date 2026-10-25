@@ -1004,10 +1004,23 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   // `thesisHealthUncalibrated()`'s (thesis-health.ts) identical guard for the aggregate score.
   // The mechanical `note` (e.g. "below the 2× partial and above the hard stop") is real, useful
   // information and is kept; only the misleading green "intact" level is suppressed.
-  const thesisBreakResolved =
-    src.regime === BANGER_LEDGER_REGIME_LABEL
-      ? { level: "unknown" as ThesisLevel, note: src.thesisBreak?.note }
-      : (src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon));
+  // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro HAL/CLF/NET): the two guards below
+  // (`thesisBreakResolved`, `regimeForDisplay`) both key off `src.regime === BANGER_LEDGER_REGIME_LABEL`
+  // — computed ONCE, here, so downstream consumers that need to detect Banger origin have a single
+  // source of truth that survives the display-nulling the rest of this function does to `regime`.
+  // Without this, `play-brief-intel.ts`'s `bangerOriginNoRealThesis`/`reviewedIsBangerOrigin` guards
+  // (which re-check `play.regime === BANGER_LEDGER_REGIME_LABEL` on the OUTPUT TerminalPlay, not the
+  // raw `src`) became dead code the moment `regimeForDisplay` started nulling that same field for
+  // display — `null === BANGER_LEDGER_REGIME_LABEL` is always false, so the suppression they gate
+  // never fires. Live-reproduced: HAL/CLF/NET's swing play-briefs each rendered the self-contradictory
+  // "Thesis **unknown** — Engine B scale-out — whole-market breakout" line (level forced to "unknown"
+  // by `thesisBreakResolved` below, but the generic Banger sentinel note rendered right alongside it
+  // because the line-level suppression itself never triggered). See `bangerOrigin` on `TerminalPlay`
+  // (types.ts) for the field this exposes to those downstream guards.
+  const isBangerOrigin = src.regime === BANGER_LEDGER_REGIME_LABEL;
+  const thesisBreakResolved = isBangerOrigin
+    ? { level: "unknown" as ThesisLevel, note: src.thesisBreak?.note }
+    : (src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon));
   // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro BMNR): the sibling
   // `thesisBreakResolved` guard immediately above already treats `BANGER_LEDGER_REGIME_LABEL` as
   // an internal "no real per-position dossier" sentinel, never a value fit for display — but
@@ -1021,7 +1034,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   // still passed into `computeSwingThesisHealth` below unchanged — that function's own
   // `thesisHealthUncalibrated()` guard needs to SEE the sentinel to correctly withhold the
   // aggregate score; only the value handed to the UI is suppressed here.
-  const regimeForDisplay = src.regime === BANGER_LEDGER_REGIME_LABEL ? null : (src.regime ?? null);
+  const regimeForDisplay = isBangerOrigin ? null : (src.regime ?? null);
   // Ask Largo standing mandate (#4076): a committed row's WATCH-lane dossier state (setupState)
   // never survives the WATCH→COMMIT transition — src.setupState is structurally null for every
   // live SWING position, permanently withholding computeSwingThesisHealth's persistence pillar.
@@ -1143,6 +1156,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     topFlowProvenance: src.topFlowProvenance ?? null,
     gates: [],
     regime: regimeForDisplay,
+    bangerOrigin: isBangerOrigin,
     thesisBreak: thesisBreakResolved,
     ...mgmtWithThesis,
     ...(preEntrySwingMgmt ?? {}),
