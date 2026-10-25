@@ -324,3 +324,23 @@ test("TSLA and TSLL (plain stock vs its 2x-leveraged wrapper) cluster together, 
   assert.equal(sameThesis("TSLL", "NVDA"), false);
   assert.equal(sameThesis("TSLA", "AAPL"), false);
 });
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-25, live finding): a real committed book held
+// PANW LONG alongside CRWD/ZS(x2)/SNOW/NET (all already in the software bucket) *and*
+// FTNT(x2)/OKTA(x2)/S/RBRK LONG in the same batch — all four cybersecurity/software names
+// unmapped, so PANW's live Book-context section reported only "5 same-direction positions in
+// theme 'software'" when the real concentration in the book was 9 positions across 8 names.
+// FTNT (Fortinet), OKTA (Okta), S (SentinelOne) and RBRK (Rubrik) confirmed via Polygon reference.
+test("cybersecurity/software names FTNT/OKTA/S/RBRK cluster into the software theme, not their own isolated clusters (2026-10-25 live finding: PANW+CRWD+ZS+SNOW+NET+FTNT+OKTA+S+RBRK concurrent LONG book, Book-context undercounted real concentration)", () => {
+  assert.equal(resolveTheme("FTNT"), "software");
+  assert.equal(resolveTheme("OKTA"), "software");
+  assert.equal(resolveTheme("S"), "software");
+  assert.equal(resolveTheme("RBRK"), "software");
+  assert.equal(sameThesis("FTNT", "PANW"), true);
+  assert.equal(sameThesis("OKTA", "CRWD"), true);
+  assert.equal(sameThesis("S", "ZS"), true);
+  assert.equal(sameThesis("RBRK", "NET"), true);
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("FTNT", "NVDA"), false);
+  assert.equal(sameThesis("S", "AAPL"), false);
+});
