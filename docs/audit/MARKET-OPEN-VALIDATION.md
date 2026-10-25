@@ -8657,3 +8657,20 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   carry non-integer scores and confirm the "Lane rank" section's score and `laneRankCoaching`'s
   leader-line score both match the integer shown in "Why this setup"'s lede and the "Setup score"
   evidence fact for the SAME play, while the "vs median" delta keeps its own decimal precision.
+
+## WATCH LIST — 2026-10-25 (SPX `mergePulseIntoDesk` available-field fix, fix/spx-merge-pulse-available-never-reassigned)
+- **What was broken:** `mergePulseIntoDesk`'s return spread never reassigned `available`, so
+  `deskShellFromPulse`'s cold/slow-build fallback shell (`mergePulseIntoDesk(emptyDeskPayload(...),
+  pulse)`) stayed `available:false` forever even when `pulse` carried real, live price/VWAP/EMA/
+  tick/trin/add data. `computeSpxConfluence` gates on `!desk.available` and nulls confluence
+  entirely in that case, which cascaded into `GET /api/market/spx/play` serving
+  `assessed:false/score:0/factors:[]/direction:null/grade:"D"` — live-reproduced 2026-10-25 while
+  the sibling `GET /api/market/spx/desk` showed real data (`available:true`, price 7623.68) at the
+  same instant.
+- **What the fix changed:** `available: pulse.available || base.available` in the merge's return
+  object — the shell becomes available the moment either side has real data, and stays honestly
+  unavailable when neither does.
+- **What to re-check once the market opens:** right after an ECS deploy/rolling restart (the
+  window this fallback shell actually serves), pull `GET /api/market/spx/play` a few times in
+  quick succession and confirm `assessed`/`score`/`direction` populate as soon as `pulse` has real
+  data, rather than reading `available:false`/`score:0` until the slower full-desk build finishes.
