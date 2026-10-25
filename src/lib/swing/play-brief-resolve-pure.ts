@@ -77,7 +77,22 @@ export function pickLanePlayForBrief(
   const upper = ticker.toUpperCase();
   const forTicker = rows.filter((p) => p.ticker.toUpperCase() === upper);
   if (!forTicker.length) return null;
-  if (forTicker.length === 1) return forTicker[0]!;
+  // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro PANW: requesting the banger-origin
+  // sibling `SWING:PANW:2103` — a REAL, open banger_positions row excluded from `rows` entirely by
+  // `mergeBangerPositionsIntoSwingPlays` because a native swing position already manages this
+  // ticker — silently returned the UNRELATED native PANW:67 play instead, with the response's own
+  // `playId` field reporting back 67, not the 2103 that was asked for). This shortcut used to
+  // return the ticker's lone candidate unconditionally, even when the caller supplied an explicit
+  // `positionId` hint that candidate doesn't carry. That is exactly the "an explicit, unresolvable
+  // positionId must surface as absence, never as an unrelated substitute" failure mode this file's
+  // own 2026-10-20 `closedFallback` fix (play-brief-resolve.ts) already names for a different
+  // trigger — the length===1 shortcut here was the same anti-pattern, just never caught because it
+  // only misfires when a hinted id is explicitly WRONG for the sole candidate, not merely absent.
+  if (forTicker.length === 1) {
+    const only = forTicker[0]!;
+    if (hints.positionId == null || only.positionId === hints.positionId) return only;
+    return null;
+  }
 
   // BANGER-ORIGIN IDENTITY FIX (Ask Largo standing mandate, 2026-09-21). A banger-origin swing play's
   // `positionId` is `banger_positions.id` (banger-lane-merge.ts's own doc comment: "a completely
