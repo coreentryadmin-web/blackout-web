@@ -38,6 +38,395 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-25 — [FINDING, P2 0DTE / Night Hawk] WS-11 `tranches[].fraction` audit trail rounds independently and sums to 0.99 instead of 1.00 — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #6744, merged to `main`) |
+| **Found by** | Adversarially-verified live audit, 12 production rows over a 90-day window |
+| **Scope** | `src/lib/round-floats.ts`, `src/app/api/market/zerodte/record/route.ts`, `src/app/api/market/zerodte/board/route.ts` |
+
+### Root cause
+
+A WS-11 reconstructed TRIM-SCALE 0DTE play (`reconstructTrimScaleExecutableFromBars`,
+`src/lib/zerodte/plan.ts`) that fires all 3 legs (two trims + the runner) produces a
+`tranches: PlanTrancheFill[]` audit trail whose per-leg `fraction` is exactly
+`TRIM_SCALE_RULES.tranche_fraction` (1/3, `src/lib/zerodte/exit-engine.ts`) for the first two
+legs and the exact remainder for the runner. `plan.ts` tracks a `remaining` balance down to
+precisely 0 across legs, so the UNROUNDED fractions always sum to 1 (within float epsilon)
+regardless of how many legs fired.
+
+This array is persisted verbatim into `entry_context.executable.tranches` at grading time
+(`scan.ts`, `stampZeroDteExecutableGrade`) and later read back through `record.ts`'s `toPlay()`
+(`entry_context: r.entry_context`, passed through unmodified) into `GET
+/api/market/zerodte/record`'s response. The generic response-boundary helper `roundFloats()`
+(`src/lib/round-floats.ts`, default `dp=2`) walks the whole payload and rounds every numeric leaf
+INDEPENDENTLY — including each tranche's own `fraction` leaf. `0.3333333333333333` rounds to
+`0.33` three times, and `0.33 + 0.33 + 0.33 = 0.99`, not `1.00`.
+
+The OFFICIAL blended headline number (`managed_pnl_pct`, ultimately sourced from
+`reconstructTrimScaleExecutableFromBars`'s own `round2(tranches.reduce((acc, t) => acc +
+t.fraction * t.exit_pnl_pct, 0))`, `plan.ts` ~line 1009) is computed from the EXACT, unrounded
+fractions BEFORE `roundFloats()` ever runs — so that number is correct and unaffected. The bug is
+purely in what gets SERVED in the `tranches[]` array itself, which `plan.ts`'s own doc comment
+describes as "the audit trail behind the one blended official number" — an invitation `record.ts`
+and the Command Deck timeline both act on. A member (or any consumer) who recomputes the blend
+from the DISPLAYED fractions gets a result ~0.5 percentage points below the real one. Confirmed on
+12 distinct live production rows over a 90-day window — e.g. DELL 2026-10-14: recompute-from-
+served-fractions gives 52.53%, served `managed_pnl_pct` is 53.06%.
+
+### Blast radius
+
+Two independent response-boundary sites serve the exact same persisted array and independently
+re-round it:
+
+1. **`GET /api/market/zerodte/record`** (`src/app/api/market/zerodte/record/route.ts`) —
+   `record.plays[].entry_context.executable.tranches[].fraction`, the site the finding was
+   reported against.
+2. **`GET /api/market/zerodte/board`** (`src/app/api/market/zerodte/board/route.ts`) —
+   `payload.ledger[].timeline_tranches[].fraction`. `timeline_tranches` is built by
+   `readTimelineTranchesFromEntryContext` (`src/lib/zerodte/play-timeline.ts`), which reads the
+   SAME `entry_context.executable.tranches` blob and reshapes it into `PlayTimelineTranche[]` for
+   the Command Deck's play timeline — carrying the identical defect, independently discovered
+   while tracing every consumer of the persisted array.
+
+`round-floats.ts` already has an established fix pattern for this exact class of bug —
+`reconcileStrikeTotal`/`reconcileCellStrikeTotals` — whose own doc comment states the general
+problem ("rounding each field independently means Σ(round(x_i)) can drift from round(Σx_i))") and
+fixes it by adjusting one value to absorb the rounding residual. Several OTHER fields literally
+named `fraction` exist elsewhere in the codebase (Meridian peer-viz segments, swing scale-out
+policy, 0DTE data-completeness groups) with unrelated semantics — this fix is deliberately scoped
+to the two named call sites reading the WS-11 tranche array, not baked into the generic
+`roundFloats()` walk, so none of those unrelated fields are touched.
+
+### Fix
+
+Added `reconcileTrancheFractions<T extends { fraction: number }>(tranches, dp = 2)` to
+`round-floats.ts`, mirroring `reconcileStrikeTotal`'s approach one level deeper (sibling array
+leaves instead of a leaf vs. a separately-rounded total): sums the ALREADY-ROUNDED fractions (as
+integer "cents" to avoid re-introducing float noise), and if the sum doesn't equal 1.00 at `dp`,
+adjusts the LAST tranche's `fraction` (the runner leg — "whatever is left over" by construction)
+to absorb the residual. A split that already sums to 1.00 post-rounding (the 2-leg `0.33/0.67`
+case, or any N-way split that happens to round evenly) is returned completely untouched — same
+object reference, nothing rewritten. A malformed (non-finite) leaf also returns the array
+untouched rather than guessing.
+
+Called it explicitly, after `roundFloats()`, at both call sites:
+
+- `record/route.ts`: loops `rounded.plays`, reconciling
+  `entry_context.executable.tranches` in place when present.
+- `board/route.ts`: loops `payload.ledger`, reconciling `timeline_tranches` in place.
+
+### Fix rationale
+
+Fixing at the response boundary (rather than at the source in
+`reconstructTrimScaleExecutableFromBars`, which persists at grading time) is lower blast radius
+for two reasons: (1) it protects BOTH known consumers of the persisted array with one shared
+function, rather than requiring the grading-time write path to anticipate every future reader's
+own independent rounding pass; (2) it never touches what's actually written to the DB (the
+full-precision fractions stay exactly as computed, so the official `managed_pnl_pct` — which reads
+those same unrounded fractions — can never be affected by a change made here). Explicit call sites
+(not baked into the generic `roundFloats()` walk) were chosen over a shape-matching generic pass
+specifically to avoid touching the unrelated `fraction`-named fields elsewhere in the codebase
+(Meridian viz, swing exit policy, 0DTE data-completeness) that this bug does not describe and that
+were out of scope for this fix.
+
+Deliberately left unchanged: the 2-leg case (already self-consistent, explicitly tested to confirm
+it stays byte-identical); the official `managed_pnl_pct`/`plan_pnl_pct` numbers (never touched by
+`roundFloats()` or this fix — they're already `round2()`-ed from the unrounded fractions at the
+source); the admin-only `/api/market/zerodte/board?sim=1` simulation branch (synthetic, non-member-
+facing debug data, not part of this finding's scope).
+
+### Evidence
+
+RED→GREEN (`src/lib/round-floats.test.ts`): reverted `round-floats.ts` to its pre-fix state
+(`git show HEAD:...`) and confirmed the 6 new `reconcileTrancheFractions` tests fail (the function
+doesn't exist yet); restored the fix and confirmed all 6 pass, along with the full existing
+27-test file (33/33 total). New tests cover: the exact DELL-style 3-leg `1/3+1/3+1/3` case
+(rounds to `[0.33, 0.33, 0.34]`, summing to exactly 1.00 — only the runner leg moves); the 2-leg
+`[0.33, 0.67]` case (returned as the same array reference, untouched); a single-tranche
+immediate-stop array (`fraction: 1`, untouched); null/undefined/empty-array passthrough; a
+malformed non-finite `fraction` leaf (untouched, never guessed); and a 4-way even split (`0.25`
+each, already self-consistent, untouched).
+
+Also ran `src/lib/zerodte/plan.test.ts`, `src/lib/zerodte/record.test.ts`,
+`src/lib/zerodte/exit-engine.test.ts`, and `src/lib/zerodte/play-timeline.test.ts` (all green,
+123+119 tests respectively across the two groups) to confirm no regression in the surrounding
+grading/reconstruction/timeline logic this fix sits beside. `npx tsc --noEmit` clean.
+
+Tests run on Node 20 (`/opt/node20/bin`) via
+`npx tsx --experimental-test-module-mocks --test <file>`.
+
+## Swing manage-sync: a Q37 roll-execution override wasn't reflected in the persisted snapshot — FIXED
+
+> **kind:** `FINDING`
+
+**Lane:** Night Hawk Swings (Ask Largo × Night Hawk Swings standing mandate)
+**Date found/fixed:** 2026-10-25
+
+### Root cause
+
+`src/lib/swing/manage-sync.ts`'s `syncSwingManagement` builds a management snapshot via `planManageSync`
+(`plan.snapshot`), computed from the manager's PRE-arbitration verdict (`plan.verdict`). On the roll
+branch, it then re-arbitrates that verdict at execution time via `executionVerdictForGating` (Q37 —
+documented in `roll.ts`'s header as protecting against "a concurrent pass or slow chain fetch [that]
+can leave a ROLL plan built while the structural stop has since broken"). When Q37's re-check
+disagrees with the original verdict (e.g. flipping an intended ROLL into a forced CLOSE), the code
+correctly used the NEW `executionVerdict` to decide and execute the terminal write (CLOSED vs ROLLED,
+child-or-not) — but still handed the roll executor `plan.snapshot`, built from the STALE,
+pre-arbitration verdict. The persisted append-only evidence snapshot (`event_json.rung`/`action`/
+`reason`/`roll_intent`, `thesis_state`) would then document a verdict the system did not actually act
+on — exactly the narrative-vs-reality mismatch already fixed once in `live-plays.ts` (the 2026-10-15
+INTC repro, same root cause shape: two paths computing related facts from different-aged data).
+
+### Blast radius
+
+Single call site: `syncSwingManagement`'s roll-execution branch (the `buildRollPlan`/`hasRollLedger`
+path). The mismatch would only ever manifest when `executionVerdictForGating` genuinely disagrees with
+`plan.verdict` — demonstrated here via `ManageSyncReads.structuralStopLevel`, a type-supported
+live-override seam no current production caller populates today (confirmed via repo-wide grep), so
+this was a currently-dormant gap rather than an active member-facing defect — but a real one the moment
+a caller starts supplying a live structural-stop level, or Q37 is extended to re-fetch fresher data
+mid-tick per its own stated intent.
+
+### Fix
+
+Added `snapshotWithVerdict(snapshot, verdict)` (manage-sync.ts) — a small pure helper that overlays
+`thesis_state`, `feature_vector.thesis_state`, and the verdict-sourced `event_json` keys from a given
+verdict onto an existing snapshot, leaving every read-derived field (marks, DTE, excursion, quote)
+untouched. `syncSwingManagement`'s roll branch now passes `snapshotWithVerdict(plan.snapshot,
+executionVerdict)` instead of the raw `plan.snapshot`, so the persisted evidence always documents the
+verdict actually acted on.
+
+### Evidence
+
+RED→GREEN: `src/lib/swing/active-refresh.test.ts` — new `runSwingActiveRefresh` end-to-end test
+constructs a fixture where the primary verdict's structural check (using
+`reads.structuralStopLevel ?? row.thesis_invalidation_px`, a loose 100) legitimately reaches
+`expiry_risk`/ROLL, while Q37's re-check (using `row.thesis_invalidation_px` directly, a tighter 145)
+independently finds a structural break and forces CLOSE. Asserts the ledger write is CLOSED (not
+ROLLED, no child inserted) AND the persisted snapshot's `event_json.rung`/`thesis_state` read
+`structural_stop`/`BROKEN` (what was acted on), not the stale `expiry_risk` the snapshot was first
+built from. Failed pre-fix (`expiry_risk` persisted instead), passes post-fix. Full suite +
+`tsc --noEmit` clean post-fix; existing `active-refresh.test.ts`/`manage-sync-q36.test.ts`/
+`manage-sync-q37.test.ts`/`roll.test.ts`/`live-plays.test.ts` (98 tests) stay green.
+
+| **Status** | FIXED |
+
+## 2026-10-25 — [FINDING, P2 Night Hawk Swings / Ask Largo] Served `signalKinds` is lifetime-accreted while G-S6 confluence evaluates only this scan's discovery paths, so a row can show enough kinds to look confluence-clear while still gate-blocked — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #6745, merged to `main`) |
+| **Found by** | Adversarially-verified live audit (Ask Largo standing mandate, CLAUDE.md "ASK LARGO × NIGHT HAWK SWINGS" section) |
+| **Scope** | `src/lib/swing/discovery.ts`, `src/lib/horizon-plays.ts` |
+
+### Root cause
+
+On the live `GET /api/market/nighthawk/horizons?view=swings` SWING lane, a candidate row's served
+`signalKinds` field (e.g. SOXX: `["CATALYST","FLOW","VECTOR"]`, 3 kinds) can appear to satisfy the
+archetype's own confluence requirement (`requiredSwingConfluenceCount`, `src/lib/swing/v2/confluence.ts`
+— 3 for a standard multi-session archetype like `PULLBACK_CONTINUATION`) while `commitGateBlockedBy`
+on the SAME row still shows `"gate:G-S6:confluence"` — with nothing in the payload explaining why,
+because the two fields come from genuinely different data sources measuring different things:
+
+1. The REAL input G-S6 (`evaluateConfluenceGate`, `src/lib/swing/v2/gates.ts`) actually evaluates is
+   `SwingCommitCandidate.discoveryPaths` (`src/lib/swing/discovery.ts`,
+   `discoveryPathsForConfluence(pathsByTicker.get(ticker) ?? [], dossier, {...})`) — strictly THIS
+   SCAN's Tier-0 discovery paths, additionally dropping POSITIONING on a direction mismatch. This is
+   what `commit.ts`'s `failingSwingCommitGates` call actually passes in, and what
+   `stampCommitGateBlocksOnPlays` stamps `commitGateBlockedBy` from.
+2. The DISPLAYED `signalKinds` field instead comes from `src/lib/swing/serving-lane.ts`
+   (`cand?.signalKinds ?? p.signalKinds` / `obs?.signalKinds ?? p.signalKinds`), sourced from
+   `src/lib/swing/accumulation-store.ts` (`signal_kinds: r.signal_kinds ?? []`) — explicitly
+   documented in that same file as a LIFETIME-ACCRETED union across every session day the
+   ticker/direction/archetype thesis has ever been observed, NOT this-scan-only. That file's own
+   header already flagged this exact trap once before (fixed 2026-07-24 for the PERSISTENCE check
+   specifically, by introducing `last_session_signal_kinds`/`sessionSignalKinds` as the scan-scoped
+   alternative for `hasCorroboration`) — the analogous fix for the G-S6-vs-display pairing was never
+   made.
+
+Reusing `last_session_signal_kinds` verbatim for this pairing was considered and rejected: it is
+accreted from the same per-scan `pathsByTicker` the gate reads, but — unlike
+`discoveryPathsForConfluence` — it does NOT drop a POSITIONING path on a direction mismatch (confirmed
+in `discoveryPathsForConfluence`'s own existing test, "drops POSITIONING when origin direction
+disagrees with dossier (Q5)"), so it can overcount relative to what G-S6 actually evaluates. The fix
+instead stamps the EXACT value the gate evaluated, not a close proxy.
+
+### Evidence
+
+RED→GREEN (`src/lib/swing/discovery.test.ts`): a new fixture matching the live SOXX shape — archetype
+`PULLBACK_CONTINUATION` (`requiredSwingConfluenceCount` returns 3), lifetime `signalKinds` carrying 3
+kinds (`CATALYST`/`FLOW`/`VECTOR`, satisfying the required count on its face) and
+`commitGateBlockedBy: ["gate:G-S6:confluence"]` already stamped, but the scan's real
+`SwingCommitCandidate.discoveryPaths` carrying only `["FLOW"]` — asserts the new field reflects the
+scan-scoped count (1) that actually explains the live block, while the existing lifetime `signalKinds`
+is left untouched. Failed pre-fix (`stampScanSignalKindsOnPlays` did not exist — import/reference
+error, both new tests failed) with the source reverted to `origin/main` and only the test file
+carrying the new cases; passed post-fix. A second new test proves the field stays absent (never
+fabricated) when no commit candidate exists for a play this scan. Full `discovery.test.ts` (33/33),
+`v2/gates.test.ts`, `v2/confluence.test.ts`, `commit.test.ts`, `serving-lane.test.ts`, and
+`horizon-plays.test.ts` all pass post-fix; `tsc --noEmit` clean.
+
+### Blast radius
+
+Single new field, additive only — no other call site reads `discoveryPaths`/`signalKinds` in a way
+this touches. `stampScanSignalKindsOnPlays` is joined by the identical thesis key
+(`swingThesisKey(ticker, direction, archetype)`) `stampCommitGateBlocksOnPlays` already uses, so the
+two stamps always describe the same play and can never disagree about which row they annotate.
+`discoverSwingFromPersisted` (`serving-lane.ts`) and `enrichPlay` both spread the play object
+(`{...play, ...}` / `{...p, ...}`) rather than reconstructing an explicit field list, so the new field
+passes through the existing persisted-snapshot → serving-lane → horizons-route pipeline unchanged,
+the same mechanism that already carries `commitGateBlockedBy` end to end. The existing `signalKinds`
+field is untouched — no existing consumer's behavior changes.
+
+### Fix rationale
+
+Added `HorizonPlay.thisScanSignalKinds` (additive — the existing `signalKinds` field is kept
+unchanged for any other consumer) and a new `stampScanSignalKindsOnPlays(plays, candidates)` in
+`discovery.ts`, mirroring `stampCommitGateBlocksOnPlays`'s existing thesis-keyed join exactly. It
+reads `SwingCommitCandidate.discoveryPaths` — the literal value already computed for, and passed into,
+G-S6 — rather than re-deriving or approximating it, so the two can never drift apart. Wired at the
+same call site `stampCommitGateBlocksOnPlays` already runs from (inside `if (deps.insertPosition)`,
+gated on `engineV2 && playSet.SWING.length > 0`), using the same `commitCandidates` array already
+built for `computeSwingCommitPlan` (including any Legacy-bridge-appended candidates). No gate
+evaluation logic changed — G-S6 was already evaluating correctly against its real input; this closes
+a disclosure/visibility gap only.
+
+### Deliberately left unchanged
+
+- `evaluateConfluenceGate`/`failingSwingCommitGates`/G-S6 itself — unchanged, already correct.
+- The existing lifetime-accreted `signalKinds` field and every current reader of it.
+- The known, separate gap where `last_session_signal_kinds` (persistence check) and
+  `discoveryPathsForConfluence` (G-S6) can themselves disagree on a POSITIONING-direction-mismatch —
+  pre-existing, orthogonal to this fix, and not touched here.
+- `legacyCommitCandidatesFromSnapshot`'s raw (non-`discoveryPathsForConfluence`-filtered) assembly of
+  `discoveryPaths` for Legacy-bridge candidates — a separate, already-disclosed gap in that file's own
+  header, out of scope for this surgical fix.
+
+## 2026-10-25 — [FINDING, P2 SPX Slayer] PR #6719's 20s freshness bound rejected every closed-market cached play snapshot, forcing a redundant re-evaluation on every contended poll — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #6743, merged to `main`) |
+| **Found by** | Adversarially-verified live audit, same-day follow-up to PR #6719 |
+| **Scope** | `src/features/spx/lib/spx-service.ts` (`waitForPeerSpxPlaySnapshot`, `evaluateSpxPlayStateCrossReplica`'s lock-not-won branch, `spxPlayReadFallback`), `src/features/spx/lib/spx-play-freshness.ts` |
+
+### Root cause
+
+PR #6719 (merged earlier today, `1f4f78319`) fixed a real bug: three of the four Redis read sites
+for the shared `spx-play-read:<date>` cache key trusted `sharedCacheGetWithTtl`'s Redis-native
+`ttl > 0` gate alone, with no check against the route's own 20s freshness bound
+(`isSpxPlaySnapshotFreshEnough` / `playMemberPeekMaxAgeSec()`), serving snapshots up to ~24 minutes
+stale non-monotonically. The fix applied that bound unconditionally at all three sites.
+
+That over-corrects for the CLOSED-MARKET case. `evaluateSpxPlayCore`'s closed-market branch
+(`src/features/spx/lib/spx-play-engine.ts`, the `!desk.market_open && !premarket` early return) —
+and the shared `scanningPayload()`/`degradedPlayPayload()` builders
+(`src/features/spx/lib/spx-play-payload.ts`) — all deliberately stamp `as_of` from the **desk
+snapshot's own timestamp** (`desk.polled_at ?? desk.as_of`), not evaluation time, whenever
+`session_phase` is `"closed"`. `evaluateSpxPlayState`'s own comment in `spx-service.ts` states the
+intent directly: "once the market is genuinely closed, 'stale' and 'correct' are the same thing...
+a generous staleness ceiling is safe here specifically." A plain 20s bound can never be satisfied
+against that legitimately-old stamp, so every closed-market read at the three fixed sites was
+rejecting the just-published snapshot and falling through to `waitForPeerSpxPlaySnapshot` (an
+800ms poll loop against the identical, identically-failing key) and then `spxPlayReadDegraded()` —
+forcing a redundant re-evaluation (or a "Desk warming" degraded placeholder) on every single
+contended request during closed-market hours, defeating the "collapse member polls into one eval
+per window" purpose `evaluateSpxPlayStateCrossReplica`'s single-flight lock exists to provide,
+without fixing anything real: the re-evaluation reads the exact same stale `spx-merged:<date>`
+desk peek (a DIFFERENT Redis lane, `peekMergedSpxDesk()`, which nothing refreshes off-hours except
+incidental traffic to `loadMergedSpxDesk()` callers like `/api/market/spx/merged`) and produces an
+identical result either way.
+
+`session_phase` — already present on every `SpxPlayPayload` (`"premarket" | "cash" | "closed"`,
+derived by `currentSessionPhase(desk)` or stamped directly in the closed-market branch) — is the
+existing, reliable discriminator: whenever a payload's `session_phase` is `"closed"`, its `as_of`
+is desk-snapshot time by design; every other payload (`"cash"`/`"premarket"`) that reaches the
+degraded builders (`spxPlayReadDegraded`/`degradedPlayPayload`) stamps a genuine eval-time `as_of`,
+and the one management/exit branch that force-settles an open position after close
+(`spx-play-engine.ts`, the `!desk.market_open` SELL/SESSION-FLAT path) hardcodes
+`session_phase: "cash"` with `as_of: confluence.as_of` (a fresh evaluation), not `"closed"` —
+confirming the field never disagrees with the age semantics of `as_of` on this specific cache key.
+
+### Evidence
+
+Live, 2026-10-25: `GET /api/market/spx/play`'s `as_of` frozen at
+`2026-10-25T21:15:02.434Z` across 3 consecutive polls spanning 22+ minutes, while the sibling
+`GET /api/market/spx/desk` (its own independent `spx-desk:<date>` cache lane, refreshed by its own
+traffic) stayed current the whole time — confirming the staleness lives in the un-refreshed
+`spx-merged:<date>` desk-peek lane `/play`'s off-hours shortcut reads, not in `/desk`'s own path.
+Traced the mechanism in the current source (`spx-service.ts`/`spx-play-engine.ts`/
+`spx-play-payload.ts`), confirmed every `session_phase: "closed"` payload stamps `as_of` from
+`desk.polled_at ?? desk.as_of`, and reproduced the rejection in a unit test against the actual
+`evaluateSpxPlayStateCrossReplica` lock-not-won branch (RED pre-fix, see Regression tests below).
+
+### Fix
+
+Added `isSpxPlaySnapshotShareable(value, nowMs, maxAgeMs)` to `spx-play-freshness.ts`: trusts a
+cached snapshot whose `session_phase === "closed"` regardless of its `as_of` age, otherwise falls
+through to the existing `isSpxPlaySnapshotFreshEnough` bound unchanged. Swapped the three PR #6719
+call sites (`waitForPeerSpxPlaySnapshot`, `evaluateSpxPlayStateCrossReplica`'s lock-not-won branch,
+`spxPlayReadFallback`) from `isSpxPlaySnapshotFreshEnough(hit.value.as_of, ...)` to
+`isSpxPlaySnapshotShareable(hit.value, ...)`. `peekSpxPlayState()` (the fourth, pre-existing
+2026-09-13 reader of the same cache key, not part of PR #6719 and not named in this finding's root
+cause) is deliberately left untouched — same unconditional `isSpxPlaySnapshotFreshEnough` behavior
+it has had for over a month, out of scope for this same-day regression fix.
+
+### Fix rationale
+
+`session_phase` is the discriminator the engine already stamps for exactly this purpose, so the fix
+reads it at the cache-read site rather than re-deriving market-open state independently there
+(which would risk disagreeing with whatever state the snapshot was actually built under). An
+alternative considered and rejected: widen the Redis-read freshness bound itself (e.g. to several
+hours) — rejected because that would silently restore exactly the non-monotonic-stale-snapshot risk
+PR #6719 fixed for the live-market case, just with a looser, easier-to-forget threshold instead of
+a correct per-case rule. Deliberately left unchanged: PR #6719's live-market fix itself (a
+live-market snapshot, `session_phase !== "closed"`, still has to clear the real 20s bound, proven by
+the new "live-market... still rejected" regression tests below); `peekSpxPlayState()`'s identical
+pre-existing check pattern (out of scope, not part of PR #6719, not touched); the underlying
+`spx-merged:<date>` desk-peek lane's own off-hours staleness (a separate, lower-priority
+observation the finding also traces but does not fix here — the frozen `as_of` itself is legitimate
+display behavior once the market is genuinely closed, per `evaluateSpxPlayState`'s own stated
+design intent; only the redundant-re-evaluation side effect is fixed).
+
+### Blast radius
+
+All three fixed call sites feed the same shared `spx-play-read:<date>` cache key read by every
+consumer of `getSpxPlayState()`/`evaluateSpxPlayStateCrossReplica()` — member reads
+(`GET /api/market/spx/play`), BIE `spx_full_state`, and Largo `get_spx_play`. No other call site in
+the repo applies this freshness bound to a cached `SpxPlayPayload`-shaped value; `peekSpxPlayState`
+is the only other reader of this exact key and is explicitly out of scope (see Fix above).
+
+### Regression tests
+
+Added to `src/features/spx/lib/spx-play-freshness.test.ts` (pure unit tests for the new predicate):
+a closed-market snapshot ~22 minutes stale is shareable regardless of age; a live-market
+(`session_phase: "cash"`) snapshot of the same age is still rejected; a premarket snapshot older
+than the bound is still rejected (only `"closed"` is exempt); a fresh live-market snapshot within
+the bound is still shareable; a null/undefined cached value is rejected (fail closed).
+
+Added to `src/features/spx/lib/spx-service-play-cache-staleness.test.ts` (exercising the real
+`evaluateSpxPlayStateCrossReplica` lock-not-won branch, per the finding's explicit request):
+`evaluateSpxPlayStateCrossReplica serves a stale CLOSED-MARKET cached snapshot instead of forcing a
+redundant re-evaluation` — a ~24-minute-stale snapshot with `session_phase: "closed"` is served
+as-is. Confirmed RED pre-fix (stashed the source-only change via a temporary copy, re-ran the test:
+failed, asserting the stale snapshot was wrongly rejected and the fallback's fresh `as_of` returned
+instead) and GREEN post-fix. The existing PR #6719 test
+(`evaluateSpxPlayStateCrossReplica rejects a stale ... cached snapshot ... (lock-not-won branch)`,
+renamed to make explicit it exercises the LIVE-MARKET case) still passes unchanged, confirming
+PR #6719's own fix is not weakened.
+
+Ran the full suite under `src/features/spx/` (142 test files, 919 tests, 0 failures) and
+`npx tsc --noEmit` (clean) on Node 20
+(`export PATH=/opt/node20/bin:$PATH && npx tsx --experimental-test-module-mocks --test ...`).
+
 ## Swing manage-sync: a total data-outage tick was stamped identically to a real "thesis intact" check — FIXED
 
 > **kind:** `FINDING`
