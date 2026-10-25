@@ -748,6 +748,38 @@ test("repairStaleBackfillPlays: never touches an already-published QUALIFIED pla
   assert.equal(repaired[0]!.options_play, "CRWD $260 Call 2026-10-23, entry prem ~$7.88", "QUALIFIED plays are out of this repair's scope entirely");
 });
 
+test("repairStaleBackfillPlays: backfills a missing rr_ratio using the play's own already-present entry_range/target/stop (regression — pre-#6679 editions carry no rr_ratio at all, and contract repair alone can't regenerate it)", () => {
+  const editionFor = "2026-10-26";
+  // bfPlay sets no rr_ratio override, so this fixture starts exactly like a real edition
+  // published before the selectBackfillPlays rr_ratio fix shipped.
+  const plays = [bfPlay("PLTR", { options_play: "PLTR $197.5 Call 2026-10-23, entry prem ~$0.11" })];
+  const chains = { PLTR: bfChain(197.5) };
+
+  const { plays: repaired } = repairStaleBackfillPlays({ editionFor, plays, chains });
+
+  assert.equal(repaired.length, 1);
+  assert.ok(repaired[0]!.rr_ratio != null, "repair pass must backfill the missing rr_ratio, not just the contract");
+  const expected = computeRiskReward({
+    direction: "LONG",
+    entry_range: "$100-$105",
+    target: "$120",
+    stop: "$90",
+  });
+  assert.equal(repaired[0]!.rr_ratio, expected, "must match computeRiskReward exactly on the play's own existing levels");
+});
+
+test("repairStaleBackfillPlays: leaves an already-correct rr_ratio untouched rather than silently recomputing it", () => {
+  const editionFor = "2026-10-26";
+  const plays = [
+    bfPlay("PLTR", { rr_ratio: 1.5, options_play: "PLTR $197.5 Call 2026-10-23, entry prem ~$0.11" }),
+  ];
+  const chains = { PLTR: bfChain(197.5) };
+
+  const { plays: repaired } = repairStaleBackfillPlays({ editionFor, plays, chains });
+
+  assert.equal(repaired[0]!.rr_ratio, 1.5, "an already-present rr_ratio must survive the repair pass unchanged");
+});
+
 test("repairStaleBackfillPlays: SHORT direction repairs with a put, not a call", () => {
   const editionFor = "2026-10-26";
   const plays = [
