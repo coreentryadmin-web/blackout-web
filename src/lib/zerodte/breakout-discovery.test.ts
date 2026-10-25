@@ -165,6 +165,46 @@ test("discoverBreakoutSetups: fresh snapshot with movers → ok + built candidat
   assert.ok(calls.resolveChain > 0, "fresh movers must reach the chain fetch");
 });
 
+test("discoverBreakoutSetups: includeTickers restricts to an explicit allowlist — a real mover outside it never reaches the chain fetch", async () => {
+  const now = Date.parse("2026-07-24T15:00:00Z");
+  const freshT = now - 19 * 3_600_000;
+  const { deps, calls } = makeDeps();
+  const out = await discoverBreakoutSetups({
+    today: "2026-07-24",
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    includeTickers: new Set(["AAAA"]),
+    nowMs: now,
+    maxCandidates: 6,
+    deps: {
+      ...deps,
+      fetchSummary: (async () => ({ results: [bar("AAAA", freshT), bar("BBBB", freshT)] })) as never,
+    },
+  });
+  assert.equal(out.status, "ok");
+  assert.equal(out.setups.length, 1, "only the allowlisted ticker should produce a setup");
+  assert.equal(out.setups[0]!.ticker, "AAAA");
+  assert.equal(calls.resolveChain, 1, "the non-allowlisted mover must never reach the chain fetch");
+});
+
+test("discoverBreakoutSetups: includeTickers omitted (undefined) is unrestricted — unchanged prior behavior", async () => {
+  const now = Date.parse("2026-07-24T15:00:00Z");
+  const freshT = now - 19 * 3_600_000;
+  const { deps } = makeDeps();
+  const out = await discoverBreakoutSetups({
+    today: "2026-07-24",
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    nowMs: now,
+    maxCandidates: 6,
+    deps: {
+      ...deps,
+      fetchSummary: (async () => ({ results: [bar("AAAA", freshT), bar("BBBB", freshT)] })) as never,
+    },
+  });
+  assert.equal(out.setups.length, 2);
+});
+
 test("rankMoversForChainFetch: gain-over-range ranks clean moves over exhausted ones", () => {
   // gain_over_range = gain / ((h - l) / o) — move relative to daily volatility.
   // MEGA: 4% gain on 31% daily range (h-l=30, o=100) → 0.04/(0.30) = 0.13 signal

@@ -1,5 +1,17 @@
 # 0DTE Unification — Design of Record (one board, whole-market, stronger)
 
+**UNIVERSE RESTRICTION (operator directive, 2026-10-25) — read before trusting "whole-market"
+below.** The operator explicitly narrowed the ENTIRE 0DTE desk's eligible universe: *"I only want
+the Mag 7s, SPX SPY and QQQ to come onto 0 DTE Desk."* All three discovery origins (FLOW,
+BREAKOUT, PIN) now check a single shared allowlist (`src/lib/zerodte/ticker-universe.ts`,
+`DEFAULT_ZERODTE_TICKER_UNIVERSE`) before a candidate on any other ticker can ever reach the
+board — overridable via `ZERODTE_TICKER_UNIVERSE` (comma-separated) if the operator widens it
+later. Everything below this note still describes the real mechanics (merge policy, gate stack,
+EV trade management) correctly — only the ELIGIBLE TICKER SET changed, not how a ticker that
+clears it is evaluated. Do not read "whole-market" literally without checking this note first; a
+future session correcting this file's title/prose wholesale would be the exact kind of staleness
+trap this repo's CLAUDE.md already warns about — this note exists so that doesn't happen here.
+
 **Date:** 2026-07-24. **Author:** audit synthesis (3 independent code audits + 45d live calibration
 + today's graded counterfactual + fresh condor backtest). **Goal:** collapse the two 0DTE engines into
 ONE live intraday product that scans the whole market, never prints a measured-losing setup, and manages
