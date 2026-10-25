@@ -38,6 +38,177 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-25 — [FINDING, P2 Swing Command Deck] G-S14 Cortex gate-block reason mislabels every non-veto outcome as a hard veto — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED on `fix/swing-g-s14-cortex-nonveto-mislabel` |
+| **Found by** | Workflow-fanned Night Hawk Swings board/track-record live audit agent |
+| **Scope** | `src/lib/swing/entry-verdict.ts` (`commitGateBlocksForVerdict`) |
+
+### Root cause
+
+`commitGateBlocksForVerdict()`'s G-S14 branch special-cased only `cortex_unavailable`; every other
+`gate:G-S14:*` code collapsed to the hardcoded reason `"Cortex preflight vetoed this setup — desk
+will not open."` But `cortex-gate.ts`'s own decision table (see its header comment) distinguishes a
+genuine Cortex **veto** from four materially weaker, explicitly non-veto block codes:
+
+- `cortex_net_negative` — no veto, the evidence weight itself nets negative
+- `cortex_thin_evidence` — no veto, too few sources answered to trust the read
+- `cortex_contested` — no veto, real support and real opposition are both present
+- `cortex_gex_walls_oppose_unresolved` — no veto, an active dealer-wall oppose wasn't cleared
+
+(plus `cortex_veto_blind`, the fail-closed firewall for when both veto-capable sources fail to
+read — a "could not verify either way" outcome, also not a confirmed veto.)
+
+Each of these already carries its own specific, honest reason sentence computed by
+`cortexGateBlocks()` (cortex-gate.ts) — but that text is discarded before it ever reaches storage:
+`discovery.ts`'s `evaluateSwingCortexForCommit` caller only keeps `pre.blockedBy` (the bare
+`gate:G-S14:<code>` tokens), never `pre.reason`. By the time `entry-verdict.ts` renders a
+member-facing sentence from the bare code, only the generic "vetoed" fallback was available to it.
+
+### Evidence
+
+Live `GET /api/market/nighthawk/horizons?view=swings` on 2026-10-25: the SOXX WATCH row carried
+`commitGateBlockedBy: ['gate:G-S4:regime_degraded', 'gate:G-S6:confluence',
+'gate:G-S14:cortex_net_negative']`. `swingEntryVerdict` → `commitGateBlocksForVerdict` feeds
+`TerminalPlay.gateBlocks` (`command-deck/adapters.ts:1149`), which `ZeroDteCommandPanel.tsx` —
+shared by SWING plays via `commandSinglePanel = horizon === 'ZERO_DTE' || horizon === 'SWING'`
+(`PlayTerminal.tsx:253`) — renders verbatim under the member-facing "Why not committed" section. A
+member reading SOXX's panel was told Cortex issued a veto, when the real decision was "no veto —
+the evidence just nets negative," a materially different and weaker claim. The existing
+`entry-verdict.test.ts` coverage (the AMD repro test) only asserted the block's `code` survives,
+never the `reason` text, so this mislabeling was never caught.
+
+### Fix
+
+`commitGateBlocksForVerdict`'s G-S14 branch now checks each known block code (`cortex_veto_blind`,
+`cortex_veto`, `cortex_net_negative`, `cortex_thin_evidence`, `cortex_gex_walls_oppose_unresolved`,
+`cortex_contested`) and gives each its own honest reason, distinct from the genuine-veto sentence.
+`code` is left unchanged (`"g_s14_cortex"` for every branch) since nothing downstream keys off a
+more granular code yet — only the member-facing reason text changes.
+
+### Fix rationale — why not recompute the real evidence sentence
+
+The real, specific `cortexGateBlocks()` reason (naming opposing sources, the net score, etc.) is
+the most precise answer, but recomputing it at display time would need a fresh, expensive Cortex
+preflight call — unlike G-S6's confluence recompute two branches above, which is cheap and already
+done this way. Persisting `pre.reason` alongside `pre.blockedBy` at the `discovery.ts` call site
+would be the more complete fix but is a larger, separate change (a new persisted field, a schema
+touch) — this fix closes the immediate, member-facing mislabeling (a wrong CLAIM about what kind of
+block fired) without that larger change; the follow-up to persist the real per-instance reason text
+is a natural next step, not done here to keep this PR single-issue.
+
+### Blast radius
+
+Only `commitGateBlocksForVerdict`'s G-S14 branch — no other gate branch in this function, no other
+caller of this function. Only the Command Deck panel's "Why not committed" rendering changes (what
+the exact words say); nothing in commit eligibility, gate evaluation, or storage changes.
+
+### Regression test
+
+`entry-verdict.test.ts`: new test directly exercises `commitGateBlocksForVerdict` with each
+non-veto G-S14 code and asserts the reason text never contains "vetoed" for those, while the
+genuine `cortex_veto:<source>` code still does. Confirmed RED (reproduces the live SOXX bug —
+`cortex_net_negative` rendering "Cortex preflight vetoed this setup") against the pre-fix branch,
+GREEN after.
+
+## 2026-10-25 — [FINDING, P1 Largo/Swing] Banger-origin thesis-suppression guard became dead code after a later, unrelated fix nulled the field it checked — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED on `fix/swing-banger-origin-thesis-dead-guard` |
+| **Found by** | Workflow-fanned Ask Largo live gap-hunt agent (Largo deep-dive mandate, CLAUDE.md "ASK LARGO × NIGHT HAWK SWINGS" section) |
+| **Scope** | `src/features/nighthawk/command-deck/adapters.ts`, `src/lib/swing/play-brief-intel.ts` |
+
+### Root cause
+
+Two independent, individually-correct fixes landed weeks apart and silently defeated each other:
+
+1. **2026-10-08** (`bangerOriginNoRealThesis`, play-brief-intel.ts) — suppresses the Ask Largo
+   "What to watch"/"Trade manager read" thesis line entirely for a Banger-ledger-origin swing
+   position (one with no real per-position dossier, just a mechanical Engine B price trigger — see
+   `horizonPlayFromBangerPosition`'s own header in `banger-lane-merge.ts`). Checked
+   `play.regime === BANGER_LEDGER_REGIME_LABEL` on the `TerminalPlay` the play-brief pipeline
+   reads. A sibling guard, `reviewedIsBangerOrigin` (same file, `bookContextSection`'s
+   `formatOverlapPosition` cross-engine labeling), checked the identical expression.
+
+2. **2026-10-24** (BMNR live repro, `adapters.ts`) — fixed a *different* leak: `TerminalPlay.regime`
+   itself used to forward the raw `BREAKOUT · BANGER` sentinel straight to the UI (rendered as a
+   literal "Regime: BREAKOUT · BANGER" line in `PlayTerminal.tsx`'s play-detail panel and
+   `SwingCockpitStrip.tsx`'s lane-level cockpit header). The fix was `regimeForDisplay = src.regime
+   === BANGER_LEDGER_REGIME_LABEL ? null : (src.regime ?? null)`, correctly nulling the field for
+   *display*.
+
+Both fixes were correct in isolation and both were tested in isolation. Neither noticed that
+`terminalPlayFromHorizon` (`adapters.ts`) is the SHARED adapter both consumers read from, and that
+fix #2 nulls the exact field fix #1's two guards read — `regimeForDisplay` runs *before* the
+`TerminalPlay` is returned, so by the time `play-brief-intel.ts` sees `play.regime`, it is always
+`null` for a Banger-origin row. `null === BANGER_LEDGER_REGIME_LABEL` is always `false`, so:
+
+- `bangerOriginNoRealThesis` is always `false` → the suppression at the thesis-line `if` never fires.
+- `reviewedIsBangerOrigin` is always `false` → `formatOverlapPosition`'s same-ticker-Banger-pair
+  "separate position" vs "cross-engine" distinction (the 2026-10-20 LABD/RNG fix) is defeated too.
+
+Neither regression test caught this because both constructed a `TerminalPlay` fixture directly
+with `regime: BANGER_LEDGER_REGIME_LABEL`, bypassing `terminalPlayFromHorizon` entirely — the real
+adapter pipeline a live play-brief actually runs through was never exercised end-to-end by either
+test suite.
+
+### Evidence
+
+Live GET `/api/market/swing/play-brief?playId=SWING:<ticker>:<id>` against production on
+2026-10-25 for three independent, previously-unchecked Banger-origin OPEN/MANAGING positions
+(`SWING:HAL:2113`, `SWING:CLF:2116`, `SWING:NET:2104`) all returned a "What to watch" section
+containing the literal, self-contradictory line:
+
+> Thesis **unknown** — Engine B scale-out — whole-market breakout
+
+— declaring the thesis unknown, then immediately stating what reads as the explanatory reason,
+directly beside a confidently-managed HOLD recommendation with specific dealer-posture/trim-ladder
+coaching in the same brief. Per CLAUDE.md's own prior measurement ("78/81 of the live committed
+Swing book is Banger-origin"), this affects the large majority of live OPEN-bucket swing
+play-briefs, not an edge case.
+
+### Fix
+
+Added a new, stable `TerminalPlay.bangerOrigin?: boolean` field, computed once in
+`terminalPlayFromHorizon` from the raw `src.regime === BANGER_LEDGER_REGIME_LABEL` check — BEFORE
+`regimeForDisplay` nulls the display-facing `regime` field — and exposed alongside it. Both
+`bangerOriginNoRealThesis` and `reviewedIsBangerOrigin` now read `play.bangerOrigin === true`
+instead of the already-nulled `play.regime`.
+
+### Blast radius
+
+Both consumers of the defeated sentinel check in `play-brief-intel.ts` are fixed by the same field:
+the thesis-line suppression (`watchForSection`) and the cross-engine book-context labeling
+(`bookContextSection`'s `formatOverlapPosition`, via `reviewedIsBangerOrigin`). No other consumer
+of `BANGER_LEDGER_REGIME_LABEL` was affected — `thesisHealthUncalibrated` (thesis-health.ts) and
+`computeSwingThesisHealth`'s own regime pillar read the RAW `src.regime` directly (adapters.ts
+passes `regime: src.regime` unchanged into that call), never the nulled `TerminalPlay.regime`, so
+they were never broken by the 2026-10-24 fix and needed no change. The `whyThisSetupSection`
+defense-in-depth check (`if (play.regime && play.regime !== BANGER_LEDGER_REGIME_LABEL)`) also
+needed no change — it degrades gracefully to "regime is falsy, don't render" once `regime` is
+nulled, which is the correct outcome either way.
+
+### Regression tests
+
+- `adapters.test.ts`: extended the two existing Banger-origin adapter tests to also assert
+  `TerminalPlay.bangerOrigin` is `true` for a Banger row and not `true` for a native row.
+- `adapters.test.ts`: added a new end-to-end test chaining the REAL `terminalPlayFromHorizon` output
+  into the REAL `watchForSection` — the exact pipeline shape a live play-brief runs, which the
+  original bug's own regression tests never exercised. Confirmed RED (reproduces the live
+  "Thesis **unknown** — Engine B scale-out — whole-market breakout" text byte-for-byte) against the
+  pre-fix `bangerOriginNoRealThesis` check, GREEN after the fix.
+- `play-brief-intel.test.ts`: the three existing fixtures that used to simulate Banger origin via
+  `regime: BANGER_LEDGER_REGIME_LABEL` directly (a combination the real adapter can no longer ever
+  produce post-fix) now use `bangerOrigin: true`, matching what `terminalPlayFromHorizon` actually
+  emits.
+
 ## 2026-10-25 — [FINDING, stale-OPEN correction, Commerce/billing] "Post-Whop-pay tier lag — no desk 'processing payment' UX" (2026-09-05, CLQ-041) is already fixed on `main` — FIXED
 
 > **kind:** `FINDING`
