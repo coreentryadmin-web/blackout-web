@@ -67,6 +67,28 @@ test("buildDarkpoolDiscordEmbed includes ticker and ET copy", () => {
   assert.match(emb.description ?? "", /Open this block in HELIX/);
 });
 
+test("buildDarkpoolDiscordEmbed promotes a share count that rounds to 1000K into 1.0M, never an overflowed label", () => {
+  const base = {
+    ticker: "XYZ",
+    premium: 5_500_000,
+    side: "buy" as const,
+    executed_at: "2026-08-04T14:18:11.000Z",
+    price: 5.5,
+  };
+  assert.match(
+    buildDarkpoolDiscordEmbed({ ...base, share_size: 999_600 }).description ?? "",
+    /~1\.0M shares/
+  );
+  assert.match(
+    buildDarkpoolDiscordEmbed({ ...base, share_size: 999_999 }).description ?? "",
+    /~1\.0M shares/
+  );
+  assert.match(
+    buildDarkpoolDiscordEmbed({ ...base, share_size: 999_499 }).description ?? "",
+    /~999K shares/
+  );
+});
+
 test("selectDarkpoolDigestPrints ranks in-window by premium", () => {
   const now = new Date("2026-08-04T14:32:00.000Z");
   const recent = "2026-08-04T14:28:00.000Z";

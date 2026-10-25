@@ -52,9 +52,15 @@ function fmtDate(iso: string | null | undefined): string {
   }
 }
 
-function fmtShares(n: number): string {
+export function fmtShares(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000)     return `${Math.round(n / 1000)}K`;
+  if (n >= 1_000) {
+    const k = Math.round(n / 1000);
+    // A value that rounds to 1000 of this unit belongs in the next unit up — same
+    // round-first-then-promote fix as darkpool-discord-format.ts's own sibling fmtShares.
+    if (k >= 1000) return `${(n / 1_000_000).toFixed(1)}M`;
+    return `${k}K`;
+  }
   return String(n);
 }
 
