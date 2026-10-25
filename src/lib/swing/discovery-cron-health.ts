@@ -41,10 +41,34 @@ function etYmdToUtcMs(ymd: string, minutesSinceMidnight: number): number {
   return guess + deltaMin * 60_000;
 }
 
-/** Phases whose ET window has fully ended before `now` on `sessionDay`. */
+/**
+ * Phases whose ET window has fully ended before `now` on `sessionDay`, in the order they ended
+ * (ascending `endMin`) — NOT `SWING_SCAN_PHASES`' own array order.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-25): this used to return `.filter(...).map(...)` in
+ * `SWING_SCAN_PHASES`' array order, which `scan-cadence.ts`'s own header is explicit is NOT
+ * chronological — POST_CLOSE is deliberately listed first for render/iteration purposes ("the
+ * stable render/iteration order puts it at the head. Correctness does NOT depend on this order
+ * ... only the render/first-of order does"). This function's own caller,
+ * `probeSwingDiscoveryServingSnapshot` below, takes `endedPhases[endedPhases.length - 1]` and
+ * trusts it to be the MOST RECENTLY ended phase — exactly the "first-of/last-of" use the module
+ * header warns depends on real chronological order.
+ *
+ * Live repro: at 21:00 ET (after POST_CLOSE ends at 20:00, before OVERNIGHT ends at 24:00), the
+ * array-order filter returns `[POST_CLOSE, PRE_OPEN, MIDDAY, POWER_HOUR]` (OVERNIGHT still active) —
+ * taking the last element gives `POWER_HOUR` (ended 16:00), when `POST_CLOSE` (ended 20:00, the
+ * PRIMARY phase — "the cleanest read of the day's accumulation" per scan-cadence.ts) is the one
+ * that actually ended most recently. The consumer then floors the freshness check at POWER_HOUR's
+ * 15:00 start instead of POST_CLOSE's 16:15 start — a snapshot timestamped 15:05 ET (predating
+ * POST_CLOSE's own start entirely, so it cannot possibly reflect POST_CLOSE having run) read
+ * `fresh: true` at 21:00 ET pre-fix. Sorting by `endMin` ascending before returning fixes both this
+ * function's own `.join(",")` display order and every `[length-1]`-style "most recent" consumer.
+ */
 export function swingDiscoveryPhasesEndedBefore(now: Date, sessionDay: string): string[] {
   const mins = etMinutesOfDay(now.getTime());
-  return SWING_SCAN_PHASES.filter((w) => mins >= w.endMin).map((w) => w.phase);
+  return SWING_SCAN_PHASES.filter((w) => mins >= w.endMin)
+    .sort((a, b) => a.endMin - b.endMin)
+    .map((w) => w.phase);
 }
 
 export type SwingDiscoveryServingProbe = { fresh: boolean; detail: string };

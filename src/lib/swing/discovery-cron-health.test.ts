@@ -5,6 +5,7 @@ import { SWING_SCAN_PHASES } from "@/lib/swing/scan-cadence";
 import {
   probeSwingDiscoveryServingSnapshot,
   swingDiscoveryHandshakeStaleMin,
+  swingDiscoveryPhasesEndedBefore,
   worstOrdinarySwingDiscoveryGapMin,
 } from "@/lib/swing/discovery-cron-health";
 import type { SwingServingSnapshot } from "@/lib/swing/serving-lane";
@@ -47,4 +48,30 @@ test("probeSwingDiscoveryServingSnapshot: not fresh when session day lags", () =
   const probe = probeSwingDiscoveryServingSnapshot(snap, now);
   assert.equal(probe.fresh, false);
   assert.match(probe.detail, /lags expected/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25): SWING_SCAN_PHASES is explicitly documented as
+// NOT chronologically ordered (POST_CLOSE is listed first for render purposes) — this function used
+// to return its filtered result in that array order instead of ended-order, so `[length-1]` picked
+// the wrong "most recently ended" phase.
+test("swingDiscoveryPhasesEndedBefore returns phases in the order they ENDED, not SWING_SCAN_PHASES' array order", () => {
+  const now = new Date("2026-10-24T01:00:00.000Z"); // 21:00 ET Fri (EDT) — after POST_CLOSE (ends 20:00), before OVERNIGHT (ends 24:00)
+  const ended = swingDiscoveryPhasesEndedBefore(now, "2026-10-23");
+  assert.deepEqual(ended, ["PRE_OPEN", "MIDDAY", "POWER_HOUR", "POST_CLOSE"]);
+  assert.equal(ended[ended.length - 1], "POST_CLOSE", "the LAST element must be the phase that ended most recently");
+});
+
+// Same bug, at the probeSwingDiscoveryServingSnapshot level: a snapshot timestamped BEFORE POST_CLOSE
+// even started cannot possibly reflect POST_CLOSE (the primary phase) having run, and must not read fresh.
+test("probeSwingDiscoveryServingSnapshot: not fresh when snapshot predates POST_CLOSE, checked after POST_CLOSE ended", () => {
+  const now = new Date("2026-10-24T01:00:00.000Z"); // 21:00 ET Fri
+  const snap: SwingServingSnapshot = {
+    asOf: "2026-10-23T19:05:00.000Z", // 15:05 ET — before POWER_HOUR (15:00-16:00) and POST_CLOSE (16:15-20:00)
+    sessionDay: "2026-10-23",
+    dossiers: [],
+    plays: [],
+    watch: [],
+  };
+  const probe = probeSwingDiscoveryServingSnapshot(snap, now);
+  assert.equal(probe.fresh, false, "a snapshot predating POST_CLOSE's own start cannot prove POST_CLOSE ran");
 });
