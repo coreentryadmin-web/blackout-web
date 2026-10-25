@@ -1088,9 +1088,15 @@ export async function runSwingDiscoveryScan(
     // on a ticker|direction collision: an organic screen already found independent evidence, so the
     // Legacy row would only ever duplicate — never override — a thesis already under evaluation.
     if (isSwingLegacyCommitBridgeEnabled() && deps.legacyTriples?.length) {
+      // BUG FIX (2026-10-25, Ask Largo standing mandate): `haltActive`/`grouped` are already real,
+      // computed for this exact scan pass a few lines up (and already wired into every ORGANIC
+      // candidate above) — pass them through so the bridge stops fabricating `halted: false` /
+      // `dailyBarComplete: true` for every Legacy-sourced candidate regardless of the real state.
       const legacyCandidates = legacyCommitCandidatesFromSnapshot(deps.legacyTriples, {
         sessionDate: deps.sessionDay,
         pathsByTicker,
+        haltActive,
+        grouped,
       });
       const organicKeys = new Set(commitCandidates.map((c) => `${c.ticker.toUpperCase()}|${c.direction}`));
       for (const lc of legacyCandidates) {
