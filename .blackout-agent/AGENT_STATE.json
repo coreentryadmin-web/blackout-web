@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-24T23:53:27.563Z",
+  "updated_at": "2026-10-25T01:11:58.759Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "58c8e4abd955c9f5183fc7acbeee013d0d3c1ba3",
+    "last_main_sha": "d9b54f77500c0ed6437be51ba32292b509ae56c8",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-13T04:48:15.147Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-13T04:48:19.467Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-13T06:10:10.533Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-13T06:10:15.330Z",
       "type": "context_sync",
@@ -1271,29 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-25T01:11:51.930Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-25T01:11:55.596Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-25T01:11:58.759Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 6656,
-      "title": "fix(swing): don't silently substitute an unrelated position for a stale/unmatched positionId",
-      "branch": "fix/swing-stale-positionid-silent-substitute",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-24T23:46:00Z"
-    },
-    {
-      "number": 6655,
-      "title": "docs(audit): fold batch-60 — 1 staged finding into FINDINGS.md",
-      "branch": "docs/fold-batch-60",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-24T23:43:29Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
