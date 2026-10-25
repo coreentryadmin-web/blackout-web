@@ -454,6 +454,22 @@ function formatOverlapPosition(
   const isReviewedTicker = p.ticker.toUpperCase() === reviewedTicker.toUpperCase();
   const isDuplicateOtherTicker = !isReviewedTicker && dupTickers.has(p.ticker.toUpperCase());
   if (!isReviewedTicker && !isDuplicateOtherTicker) return base;
+  // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro SNDQ SWING:SNDQ:2120/2077): the
+  // blanket `p.positionId != null` early return below (for ANY native sibling) used to fire BEFORE
+  // the isCrossEngine check further down ever ran -- so for the `isReviewedTicker` case, a native
+  // sibling on the reviewed play's OWN ticker could never be labeled cross-engine, even when the
+  // REVIEWED play is itself Banger-origin (a genuine cross-engine pair: Banger engine vs native
+  // swing engine, same ticker). The mirror direction (reviewed=native, sibling=Banger-origin,
+  // `p.positionId == null`) already reached the isCrossEngine check fine and is unaffected here --
+  // this only adds the missing direction, checked BEFORE the general early return so it is not
+  // short-circuited the same way. `isDuplicateOtherTicker`'s native-sibling shape is deliberately
+  // left untouched (still falls through to the unconditional early return below, same as before) --
+  // out of scope for this fix, which is scoped to the reviewed play's own ticker.
+  if (isReviewedTicker && p.positionId != null) {
+    return reviewedIsBangerOrigin
+      ? `${base} (separate, cross-engine position #${p.positionId})`
+      : `${base} (separate position #${p.positionId})`;
+  }
   if (p.positionId != null) return `${base} (separate position #${p.positionId})`;
   // BUG FIX (2026-10-20, Ask Largo standing mandate, live repro LABD #1955/#1761 and RNG #1966/
   // #1902): a null `p.positionId` means THIS sibling is Banger-origin (per loadOpenBook's own
