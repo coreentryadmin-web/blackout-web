@@ -133,7 +133,11 @@ export function troughResilienceCoaching(play: TerminalPlay, bucket: "watch" | "
 }
 
 /** Trim ladder state, time stop, runner, manage engine. */
-export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
+export function manageLifecycleCoaching(
+  play: TerminalPlay,
+  bucket: "watch" | "open" | "closed",
+  readMs?: number,
+): string | null {
   if (bucket !== "open") return null;
   const ep = play.exitPolicy;
   const parts: string[] = [];
@@ -226,6 +230,16 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
         const markBasisIsFabricated = optionMarkGenuinelyUnknown(play);
         const distanceBasis = play.execMark != null && play.execMark > 0 ? play.execMark : play.mark;
         const distanceBasisIsExec = play.execMark != null && play.execMark > 0;
+        // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro BLSH — sibling gap to the
+        // pnlSection "P&L:" line fix the same day, and the identical shape execSlippageCoaching was
+        // fixed for a line above): `distanceBasis`/`next.premium` are priced off the exact same
+        // `contract.bid`/`ask`/`markAsOf` snapshot pnlSection's Greeks/Spread/P&L lines already
+        // disclose staleness for, but this bullet (built with no `readMs` at all until now) never
+        // referenced it — a stale quote rendered "Mark: ... (stale)" above an unqualified "bid
+        // $0.32, needs $2.20" two sections later, right next to a sibling "Executable P&L" bullet
+        // that DOES carry the caveat for the identical snapshot. `markBasisIsFabricated` already
+        // excludes the genuinely-unknown case from rendering `distanceSuffix` at all, so appending
+        // here only ever surfaces the "stale"/"no freshness timestamp" branches of the shared helper.
         const distanceSuffix =
           !alreadyCrossed &&
           !markBasisIsFabricated &&
@@ -236,7 +250,7 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
             ? ` — ${distanceBasisIsExec ? "bid" : "mark"} **${fmtOptionUsd(distanceBasis)}**, needs **${fmtOptionUsd(next.premium)}** (+${(
                 ((next.premium - distanceBasis) / distanceBasis) *
                 100
-              ).toFixed(0)}% from here)`
+              ).toFixed(0)}% from here)${optionMarkStaleCaveat(play, readMs ?? Date.now())}`
             : "";
         parts.push(
           alreadyCrossed
@@ -1812,7 +1826,7 @@ export function collectCoachingBullets(
     // terse fact rather than adding trade-manager narrative, so they added no information.
   }
 
-  push(manageLifecycleCoaching(play, bucket));
+  push(manageLifecycleCoaching(play, bucket, ctx.readMs ?? undefined));
   push(catalystCoaching(ctx));
   // Meridian peer earnings live in meridianPeerSection (play-brief-intel.ts) — not here.
   // Duplicating meridianPeerEarningsCoaching in both places re-shipped the #4110/#4116
