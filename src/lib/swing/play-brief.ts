@@ -1806,6 +1806,40 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       provenance: { source: "Swing lane", asOf: ctx.asOf, freshness: "recent" },
     });
   }
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25): for a committed OPEN position, the
+  // "Position" section renders "Entry: $X" (pnlSection) and the "Management" section renders
+  // "Rails: stop $X · target $Y" (managementSection) off `play.entry`/`play.exitPolicy.
+  // stop_premium`/`target_premium` — but this function, the sole feeder of `envelope.evidence[]`/
+  // `evidence_numbers`, never mirrored either, the same "rendered-in-prose-but-never-mirrored"
+  // gap already found and fixed twice above in this function for peers (`arsenal.related`) and
+  // score (`play.score`/`play.factors`). A structured/machine Largo consumer had no typed,
+  // citable way to learn the position's own entry price or its exit-policy stop/target rails.
+  // Gated on `statusBucket === "open"` — the EXACT bucket Management/Position are themselves
+  // built under in `composeSwingPlayBrief` below — so this can never cite a number for a WATCH/
+  // CLOSED bucket whose brief carries no matching Management/Position section to back it (a
+  // WATCH play's `entry` is always null pre-commit per `siblingPositionsNote`'s own comment, and
+  // a CLOSED play gets an "Outcome" section instead, not Position/Management). Each fact is only
+  // emitted when its own field is genuinely present — never fabricated for a degraded row.
+  if (statusBucket(ctx.play) === "open") {
+    if (ctx.play.entry != null && Number.isFinite(ctx.play.entry)) {
+      out.push({
+        kind: "fact",
+        text: `Entry: ${fmtUsd(ctx.play.entry)}.`,
+        provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
+      });
+    }
+    const ep = ctx.play.exitPolicy;
+    if (ep && (ep.stop_premium != null || ep.target_premium != null)) {
+      const railParts: string[] = [];
+      if (ep.stop_premium != null) railParts.push(`stop ${fmtUsd(ep.stop_premium)}`);
+      if (ep.target_premium != null) railParts.push(`target ${fmtUsd(ep.target_premium)}`);
+      out.push({
+        kind: "fact",
+        text: `Exit-policy rails: ${railParts.join(" · ")}.`,
+        provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
+      });
+    }
+  }
   return out;
 }
 
