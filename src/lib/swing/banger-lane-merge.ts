@@ -213,7 +213,27 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
     bucketGraduated: false,
     liveStatus,
     manageAction,
-    thesisLevel: "intact",
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro WEN positionId 2098, -58.3% P&L):
+    // this was the literal `"intact"` — there is no real per-position thesis dossier for this lane
+    // (a single mechanical price trigger, per this file's own header), so "intact" was always a
+    // fabricated claim, not a measured one, for EVERY row this function produces. Three downstream
+    // consumers of the exact same fabrication have each independently had to guard against it —
+    // play-brief-intel.ts's `watchForSection` (#5693), thesis-health.ts's `calibratedThesisPillars`
+    // (omits the whole pillar breakdown for a Banger-origin row), and adapters.ts's
+    // `thesisBreakResolved` (PR #6671, merged earlier today) — but all three guard DOWNSTREAM
+    // consumers of this field, never the source. `GET /api/market/nighthawk/horizons?view=swings`
+    // itself (and any other direct reader of this route's JSON, Ask Largo's tooling included) still
+    // served the raw fabricated "intact" unguarded, because adapters.ts's guard runs client-side
+    // ("use client") on an already-fetched payload and cannot retroactively fix what the API itself
+    // returned. Fixing it here, at the one place this sentinel actually originates, means every
+    // future consumer inherits the honest value for free instead of needing its own guard — the
+    // same "fix the source, not every reader" principle CLAUDE.md's PR write-up policy calls for.
+    // "unknown" is the established, already-rendered-correctly value for exactly this case (see
+    // serving-ingest.ts's own "thesisLevel degrades to 'unknown' when no [dossier] data... NEVER a
+    // fabricated 'intact'" comment, and ZeroDteCommandPanel.tsx's existing `level === "unknown"`
+    // branch) — the real mechanical `thesisNote` below is kept untouched; only the fabricated level
+    // changes.
+    thesisLevel: "unknown",
     thesisNote: row.scale_out_reason ?? "Engine B scale-out — whole-market breakout",
     regime: BANGER_LEDGER_REGIME_LABEL,
     // FINDINGS 2026-09-12: this used to be `points: Math.round(gainPct)` — the RAW underlying %

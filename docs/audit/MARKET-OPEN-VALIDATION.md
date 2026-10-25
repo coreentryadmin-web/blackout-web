@@ -96,6 +96,30 @@ sibling lane's journal note.
 
 ---
 
+## WATCH LIST — 2026-10-25 Night Hawk Swings horizons board served `thesisLevel:"intact"` on every Banger-origin row regardless of real P&L (source-level fix, not another downstream guard) — fixed, deploy pending validation
+
+**What was fixed:** `horizonPlayFromBangerPosition` (`banger-lane-merge.ts`) stamped the literal
+`thesisLevel: "intact"` on every Banger-origin committed/watch SWING row — there is no real
+per-position thesis dossier for this lane, so it was always fabricated. Three downstream consumers
+(`play-brief-intel.ts`'s narrative, `thesis-health.ts`'s pillar breakdown, and `adapters.ts`'s
+Command Deck adapter, PR #6671 merged earlier the same day) had each independently guarded their own
+read of this fact, but none could fix what `GET /api/market/nighthawk/horizons?view=swings` itself
+already returned — live repro WEN positionId 2098 at `livePnlPct: -58.3%` still showed
+`thesisLevel: "intact"` in the raw API response; 22/90 live Banger-origin rows showed "intact" at
+worse than -20% P&L. Fixed at the one place the literal originates: now stamps `"unknown"` (the
+same honest, already-correctly-rendered value used elsewhere for "no real dossier exists"), keeping
+the real mechanical `thesisNote` untouched. Full write-up:
+`docs/audit/findings-staging/2026-10-25-swing-banger-thesislevel-fabricated-intact.md`.
+
+**Specific things to check at next RTH open:** pull `GET /api/market/nighthawk/horizons?view=swings`
+for a real deeply-underwater Banger-origin committed position and confirm `thesisLevel` reads
+`"unknown"`, never `"intact"`, regardless of `livePnlPct`. Also open the Command Deck's Swing lane
+for that same position and confirm the thesis-health line still reads sensibly (the existing
+Command Deck guard already handled `"unknown"` correctly — this should be a no-visible-change
+confirmation, not a new behavior).
+
+---
+
 ## WATCH LIST — 2026-10-25 Swing play-brief "Entry" section's own "Entry stance" label leaked SKIP→"HOLD" (4th call site of an already-named leak) — fixed, deploy pending validation
 
 **What was fixed:** The 2026-10-21 fix (`swingVerdictVerb`, `play-brief.ts`) closed a RESEARCH/
