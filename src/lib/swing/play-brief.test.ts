@@ -5858,6 +5858,45 @@ test("composeSwingPlayBrief: Exec P&L line carries the same stale-quote caveat a
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro NAIL/BMNR/TDOC): the plain "P&L:"
+// line is the one Position-section line still missing `staleCaveat` — Greeks/Spread/Exec P&L all
+// carry it (test above), but `pnlForDisplay` is derived from the identical stale contract snapshot.
+// A member could even read the SAME percentage stale-flagged in "Trade manager read"
+// (execSlippageCoaching's "Executable P&L — mid X%") and unflagged a few lines above in Position.
+test("composeSwingPlayBrief: plain P&L line carries the same stale-quote caveat as Greeks/Spread/Exec P&L", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 17.63,
+      mark: 20.7,
+      markAsOf: "2026-09-10T20:00:00.000Z", // 1 hour before asOf below — well past the 18-minute stale bar
+      markIsSync: false,
+      pnlPct: 17.4,
+      peak: 46.1,
+      greeks: { delta: 0.4 },
+      liquidity: { bid: 18.8, ask: 22.6, spreadPct: 0.184 },
+      execPnlPct: 6.7,
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(
+    position!.body,
+    /P&L: \*\*\+17\.4%\*\*\s*_\(stale — same quote Mark flagged above\)_/,
+    `the plain P&L line must carry the same staleness caveat as Greeks/Spread/Exec P&L below it, got: ${position!.body}`,
+  );
+});
+
 // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
 // `play.trough` (adapters.ts's troughDisplay, computed symmetrically alongside peakDisplay on
 // every TerminalPlay row) was fully computed and threaded onto every position but had ZERO

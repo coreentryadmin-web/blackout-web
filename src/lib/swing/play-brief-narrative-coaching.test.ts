@@ -581,6 +581,72 @@ test("manageLifecycleCoaching: 'next trim' distance prefers execMark (the live b
   assert.doesNotMatch(line!, /mark \*\*\$5\.83\*\*/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro BLSH — sibling gap to the
+// pnlSection "P&L:" line fix the same day, and the identical shape execSlippageCoaching was fixed
+// for earlier that same day): the "next trim ... bid $X, needs $Y" distance clause is priced off
+// the exact same `contract.bid`/`markAsOf` snapshot the Position section's Mark/Greeks/Spread/P&L
+// lines already disclose staleness for, but this bullet had no `readMs` parameter at all and never
+// referenced it — a stale quote rendered an unqualified dollar figure right next to a sibling
+// "Executable P&L" bullet that DOES carry the caveat for the identical snapshot.
+test("manageLifecycleCoaching: 'next trim' distance clause carries the same stale-quote caveat as the Position section", () => {
+  const readMs = Date.parse("2026-10-25T21:00:00.000Z"); // 1 hour after markAsOf below
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: -49.1,
+      mark: 0.56,
+      execMark: 0.32,
+      markAsOf: "2026-10-25T20:00:00.000Z", // well past the stale bar
+      markIsSync: false,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 2.2, fired: false }],
+        stop_premium: 0.44,
+        target_premium: 2.2,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+    readMs,
+  );
+  assert.match(
+    line!,
+    /bid \*\*\$0\.32\*\*, needs \*\*\$2\.20\*\* \(\+588% from here\)\s*_\(stale — same quote Mark flagged above\)_/,
+    `distance clause must carry the same staleness caveat Position's Exec P&L line carries, got: ${line}`,
+  );
+});
+
+// readMs not passed (undefined) falls back to Date.now() inside the function — a fresh markAsOf
+// relative to "now" must not spuriously trigger the stale caveat when the caller omits readMs.
+test("manageLifecycleCoaching: 'next trim' distance clause omits the stale caveat when the quote is fresh", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 3,
+      mark: 5.825,
+      execMark: 5.6,
+      markAsOf: new Date().toISOString(),
+      markIsSync: false,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 11.3, fired: false }],
+        stop_premium: 2.26,
+        target_premium: 11.3,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /needs \*\*\$11\.30\*\* \(\+102% from here\)/);
+  assert.doesNotMatch(line!, /stale/);
+});
+
 // Sibling: once the trigger is already crossed (mark math aside), the "already cleared" framing
 // stays -- the live distance-to-rung disclosure is moot there and must not appear.
 test("manageLifecycleCoaching: 'already cleared' branch does not render the (now-moot) distance disclosure", () => {

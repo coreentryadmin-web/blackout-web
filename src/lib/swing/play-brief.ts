@@ -585,6 +585,19 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
   // opposite direction: by never diverging from canonical, instead of reconciling every section
   // to a recompute that could itself diverge from canonical.
   const pnlForDisplay = play.pnlPct;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro NAIL/BMNR/TDOC — the 4th site of
+  // this exact bug class, after Greeks (2026-10-18), Spread (2026-10-18) and Exec P&L (2026-10-25,
+  // same day): `pnlForDisplay` (`play.pnlPct`) is derived from the identical `contract.bid`/`ask`
+  // snapshot the Mark line above renders and, when aged, tags `_(stale)_` — but the plain "P&L:"
+  // line never referenced that fact, so a stale quote rendered "Mark: $1.10 (2026-10-23 16:00 ET)
+  // (stale)" immediately followed by an unqualified "P&L: -9.8%" computed from that exact same aged
+  // quote. Worse, the SAME -9.8% figure is rendered a second time in "Trade manager read"
+  // (`execSlippageCoaching`'s "Executable P&L — mid -9.8% vs fill ...") and DOES carry the caveat
+  // there — so one brief disclosed staleness for one rendering of a number and not the other.
+  // Moved `optionMarkStaleCaveat`'s computation up from below (it only depends on `play`/`readMs`,
+  // both already in scope) so it can be appended here too, mirroring the Exec P&L line's own
+  // unconditional append a few lines down.
+  const staleCaveat = optionMarkStaleCaveat(play, readMs);
   // GUARD #2 (2026-10-15, Ask Largo standing mandate — live ENOV repro, positionId 1739, BANGER-
   // origin TRIM/PARTIAL; kept unchanged by the 2026-10-16 fix above — `pnlForDisplay` is now
   // always the canonical `play.pnlPct`, so this guard's job (protecting against a STALE
@@ -637,7 +650,7 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
           // own in-line caveats, makes every downstream "flagged above" reference accurate instead
           // of rewording each one around a cross-section reference that can drift again later.
           `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}${optionMarkIsStale(play, readMs) ? " _(stale)_" : ""}`,
-    `P&L: **${fmtPct(pnlForDisplay)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
+    `P&L: **${fmtPct(pnlForDisplay)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}${staleCaveat}`,
     // BUG FIX (2026-10-17, Ask Largo x Night Hawk Swings standing mandate — live NVDA:62 repro,
     // board-wide sweep found 9/63 committed positions affected). Before this fix, Peak/Trough
     // rendered `fmtPct(peakForDisplay)`/`fmtPct(troughForDisplay)` unconditionally whenever
@@ -706,8 +719,9 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
   // 2026-10-25) so `execSlippageCoaching`'s "Executable P&L" bullet (play-brief-narrative-
   // coaching.ts), which reads the exact same bid/ask snapshot via `execPnlPct`, shares this one
   // definition instead of needing its own re-derivation — see that function's own call site for
-  // the live repro (MRNA) this exact gap produced one call site over.
-  const staleCaveat = optionMarkStaleCaveat(play, readMs);
+  // the live repro (MRNA) this exact gap produced one call site over. (`staleCaveat` itself is now
+  // computed earlier in this function, next to `pnlForDisplay`, so the plain "P&L:" line above can
+  // use it too — see that fix's own comment.)
   if (play.greeks) {
     const g = play.greeks;
     const sign = (v: number) => (v >= 0 ? "+" : "");
