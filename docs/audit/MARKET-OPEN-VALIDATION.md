@@ -8718,3 +8718,61 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   weekend self-warm (fresh Vector/GEX compute, market CLOSED) for a play with a resolvable
   structural support/resistance node and confirm that line carries the same "reflects the last
   session's tape" caveat the brief's other GEX/Vector-derived lines already show.
+
+## WATCH LIST — 2026-10-25 (round-3 Largo swing play-brief fix batch, PRs #6735/#6736/#6737; #6738 pending)
+
+Four adversarially-confirmed (refutedCount:0/3 each) findings from the standing Ask Largo ×
+Night Hawk Swings mandate's round-3 fresh-ticker audit (SPOT/PANW/MRNA/FLY/AMPX/CLF/CRWD/DKNG/
+TMDX/IOT/MSTR/GM), fixed and merged same day:
+
+- **FLY — evidence[] gap (PR #6735, merged `3cd614a24`).** `evidenceFromContext()` never mirrored
+  a committed OPEN position's own entry price or exit-policy stop/target rails into
+  `envelope.evidence[]`/`evidence_numbers`, even though both render prominently in the Position/
+  Management sections' prose. Fixed: two new additive evidence facts, gated on the `open` bucket.
+  **Re-check once the market opens:** fetch a live OPEN swing play-brief
+  (`GET /api/market/swing/play-brief?playId=SWING:<ticker>&expandIntel=1`) and confirm
+  `envelope.evidence[]` now contains an "Entry: $X." fact and an "Exit-policy rails: stop $X ·
+  target $Y." fact with `provenance.source: "Swing ledger"` — and confirm neither appears for a
+  live WATCH or CLOSED play.
+
+- **PANW + CRWD + DKNG — disclosure-caveat propagation, 4 sites (PR #6736, merged `64bd1cb55`).**
+  Same bug class across 3 tickers: a rendered value sat beside a sibling that already carried a
+  staleness/market-closed caveat for the identical snapshot, but never threaded the caveat through
+  itself. Fixed: `pnlSection`'s Peak/Trough lines now append the existing `staleCaveat`;
+  `watchForSection`'s gamma-flip bullet now carries `closedMarketSessionNote` (mirroring the
+  structural-node bullet PR #6731 fixed the same day); `actionNarrative` (now takes `readMs`) and
+  `holdPlanSection`'s giveback blocks (two independent call sites) now append
+  `optionMarkStaleCaveat` to their "Gave back X%"/"Round-tripped" bullets.
+  **Re-check once the market opens:** on a live OPEN position whose option mark is genuinely
+  stale (check `unavailableSources` for an `option mark` entry), confirm the Position section's
+  Peak/Trough lines carry `_(stale — same quote Mark flagged above)_`; on a live WATCH/OPEN play
+  read during a closed-market self-warm, confirm the "Reclaim/Lose gamma flip" bullet in "What to
+  watch" carries the market-closed caveat; on a stale-mark OPEN play with a real giveback,
+  confirm the "Trade manager read" giveback bullet (and, separately, the "Hold plan" giveback
+  bullet if it fires instead) also carries the stale caveat.
+
+- **MSTR — entry-trigger provenance mismatch (PR #6737, merged `9eb08cf6f`).** A WATCH play's
+  structured `envelope.levels[]` "entry trigger" entry was unconditionally stamped with the "flag
+  anchor"'s own pinned `asOf`/`freshness`, even once the two underlying prices had genuinely
+  diverged (proving the trigger was recomputed on a later, unrecorded scan pass). Fixed: reuses
+  `entryTriggerDeadReason`'s existing `flagUnderlyingPx === entryTriggerUnderlyingPx` equality —
+  when they still match, behavior is unchanged; when they've diverged, the entry-trigger level now
+  gets an honest `{ asOf: null, freshness: "unknown" }` instead of a fabricated timestamp.
+  **Re-check once the market opens:** find a live WATCH play whose `flagUnderlyingPx` and
+  `entryTriggerUnderlyingPx` differ (a dossier rebuild since the flag was pinned) and confirm
+  `envelope.levels[]`'s "entry trigger" entry shows `freshness: "unknown"`/`asOf: null` rather than
+  reusing the (now provably wrong) flag-anchor timestamp; confirm a play where the two prices still
+  match renders unchanged (still inherits the flag's pinned provenance).
+
+- **SPOT — desk-consensus self-reference (PR #6738, CI pending at time of writing — confirm it
+  merged before relying on this entry).** For a Legacy-promoted WATCH candidate,
+  `deskConsensusSection` cited Night Hawk Legacy's "last pick on this name" as independent
+  track-record context, when that cited pick was the literal same-dated event that promoted this
+  exact candidate into existence. Fixed: a self-reference guard (`isLegacyPromotedSignal` +
+  a 1-day origination-date match against the cited `edition_for`) suppresses the section when the
+  citation would be self-referential; a genuinely older, independent Legacy pick on the same
+  ticker still renders normally. **Re-check once the market opens:** find a freshly
+  Legacy-promoted WATCH candidate (same-day `firstSeenAt`/`detectedAt` as a recent Legacy edition)
+  and confirm the brief's "Desk context" section is absent (not citing itself); find an older,
+  genuinely-independent Legacy pick on an unrelated ticker and confirm that section still renders
+  with its original wording.
