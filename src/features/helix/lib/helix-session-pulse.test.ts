@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { computeHelixSessionPulse } from "./helix-session-pulse.ts";
+import { computeHelixSessionPulse, sessionPulseBullPct } from "./helix-session-pulse.ts";
 import type { FlowAlert } from "@/lib/api";
 
 function flow(partial: Partial<FlowAlert> & { premium: number; ticker: string }): FlowAlert {
@@ -92,5 +92,55 @@ describe("computeHelixSessionPulse", () => {
       now
     );
     assert.equal(pulse.printsLast15m, 1);
+  });
+});
+
+describe("sessionPulseBullPct", () => {
+  // BUG FIX (2026-10-25): live repro on /flows — directionLabel correctly reads a tape as
+  // "undetermined" ("Unreadable" in the UI) whenever the undetermined premium outweighs the
+  // readable bullish+bearish premium, but the pulse bar's own bullPct used to be computed
+  // independently from bullish/bearish alone, ignoring undetermined entirely — so it rendered a
+  // confident-looking "45% bull / 55% bear" split directly under a label that says the read is
+  // unreadable. sessionPulseBullPct now returns null whenever directionRead is "undetermined",
+  // matching the label exactly.
+  test("returns null when directionRead is undetermined, even though bullish/bearish alone would split cleanly", () => {
+    const now = Date.parse("2026-10-25T12:00:00.000Z");
+    const pulse = computeHelixSessionPulse(
+      [
+        // Readable minority: $45K bullish (call bought), $55K bearish (put bought) — a clean
+        // 45/55 split on its own.
+        flow({ ticker: "SPX", premium: 45_000, option_type: "CALL", ask_pct: 80 }),
+        flow({ ticker: "SPX", premium: 55_000, option_type: "PUT", ask_pct: 80 }),
+        // Dominant undetermined premium (midpoint ask_pct) — more than the $100K readable total,
+        // which is exactly directionLabel's own "undetermined > readable" rule.
+        flow({ ticker: "SPX", premium: 500_000, option_type: "CALL", ask_pct: 50 }),
+      ],
+      now
+    );
+    assert.equal(pulse.directionRead, "undetermined");
+    assert.equal(sessionPulseBullPct(pulse), null);
+  });
+
+  test("returns a percentage for a readable mixed split", () => {
+    const now = Date.parse("2026-10-25T12:00:00.000Z");
+    const pulse = computeHelixSessionPulse(
+      [
+        flow({ ticker: "SPX", premium: 45_000, option_type: "CALL", ask_pct: 80 }),
+        flow({ ticker: "SPX", premium: 55_000, option_type: "PUT", ask_pct: 80 }),
+      ],
+      now
+    );
+    assert.equal(pulse.directionRead, "mixed");
+    assert.equal(sessionPulseBullPct(pulse), 45);
+  });
+
+  test("returns null when there is no readable premium at all", () => {
+    const now = Date.parse("2026-10-25T12:00:00.000Z");
+    const pulse = computeHelixSessionPulse(
+      [flow({ ticker: "SPX", premium: 100_000, option_type: "CALL", ask_pct: 50 })],
+      now
+    );
+    assert.equal(pulse.directionRead, "undetermined");
+    assert.equal(sessionPulseBullPct(pulse), null);
   });
 });
