@@ -1693,10 +1693,24 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
           .map((f) => `${f.label} ${f.points >= 0 ? "+" : ""}${f.points}`)
           .join(", ")})`
       : "";
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25 — adversarially verified via the Ask Largo
+    // sweep workflow): stamped `asOf: ctx.asOf` (today's brief-read time) even though
+    // `play.score`/`play.factors` are a COMMIT-TIME snapshot (the frozen `feature_vector.
+    // evidence_score`, per `scoreWithheld`'s own doc comment, closed-plays.ts) that never gets
+    // recomputed on a later brief read. A score committed days ago read `freshness: "recent"`
+    // forever — the identical dead-wired-timestamp shape the WATCH-levels `pinnedProvenance` fix
+    // above (2026-10-07) already corrected for `detectedAt`; same fix, anchored to `committedAt`.
+    // Falls back to `ctx.asOf`/"unknown" only when `committedAt` itself is absent, never silently
+    // reusing the wrong-but-present value.
+    const committedMs = ctx.play.committedAt ? Date.parse(ctx.play.committedAt) : NaN;
     out.push({
       kind: "fact",
       text: `Setup score: ${Math.round(ctx.play.score)}${factorStr}.`,
-      provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
+      provenance: {
+        source: "Swing ledger",
+        asOf: (ctx.play.committedAt ? etStampFromIso(ctx.play.committedAt) : null) ?? ctx.asOf,
+        freshness: Number.isFinite(committedMs) ? freshnessFromObservedMs(committedMs, readMs) : ("unknown" as const),
+      },
     });
   }
   const swingArchetype = (SWING_ARCHETYPES as readonly string[]).includes(ctx.play.archetype ?? "")

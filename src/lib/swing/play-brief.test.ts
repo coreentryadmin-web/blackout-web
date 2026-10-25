@@ -8,6 +8,7 @@ import type { HorizonPlay } from "@/lib/horizon-plays";
 import { computeSwingThesisHealth } from "./thesis-health";
 import { swingPlayBriefConfidence } from "./play-brief-confidence";
 import { collectBriefUnavailableSources } from "./play-brief-absence";
+import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -1905,6 +1906,38 @@ test("composeSwingPlayBrief: setup score and pillar breakdown surface as a citab
     withheldBrief.envelope.evidence.some((e) => e.text.startsWith("Setup score:")),
     false,
     "a withheld score must not be fabricated as evidence",
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25 — adversarially verified via the Ask Largo
+// sweep workflow): the "Setup score" evidence fact above stamped `asOf: ctx.asOf` (brief-read
+// time) even though score/factors are a COMMIT-TIME snapshot that never gets recomputed later. A
+// score committed days before this brief was read would have claimed `freshness: "recent"`
+// forever. Proves the fact is now anchored to the play's own `committedAt`, same fix shape as the
+// WATCH-levels `pinnedProvenance` precedent (detectedAt) a few hundred lines above in the source.
+test("composeSwingPlayBrief: setup score evidence is anchored to the play's own committedAt, not the brief's read time", () => {
+  const committedAt = "2026-09-08T14:00:00.000Z"; // 2 days before asOf below
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ score: 72, factors: [{ label: "Rel. strength", points: 18 }], committedAt }),
+    asOf: "2026-09-10 16:00 ET",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+  const evidence = brief.envelope.evidence.find((e) => e.text.startsWith("Setup score:"));
+  assert.ok(evidence, "expected a citable setup-score evidence entry");
+  assert.equal(evidence!.provenance?.asOf, etStampFromIso(committedAt), "must cite when the score was actually committed, not when the brief was read");
+  assert.notEqual(evidence!.provenance?.asOf, ctx.asOf, "must not reuse the read-time timestamp for a commit-pinned fact");
+  assert.equal(
+    evidence!.provenance?.freshness,
+    "stale",
+    "a score committed 2 real days ago must never read as freshly 'recent'",
   );
 });
 

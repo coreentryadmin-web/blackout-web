@@ -8629,3 +8629,16 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   repairs a stale BACKFILL play's contract this cycle (check `meta.stale_backfill_contract_repair`
   on `GET /api/market/nighthawk/edition`), confirm that repaired play's `rr_ratio` is populated
   (not `undefined`) and that `PlaybookBriefingPanel.tsx`'s "R:R" stat renders for it.
+
+## WATCH LIST — 2026-10-25 (swing "Setup score" evidence[] provenance.asOf fix, fix/swing-setup-score-evidence-provenance-asof)
+- **What was broken:** `evidenceFromContext`'s "Setup score" fact stamped `provenance.asOf:
+  ctx.asOf` (the brief's read time) and a hardcoded `freshness: "recent"`, even though
+  `play.score`/`play.factors` are a commit-time snapshot that never gets recomputed later. A play
+  committed days ago would read its score as freshly "recent" forever.
+- **What the fix changed:** anchored the fact's provenance to `play.committedAt` (same pattern as
+  the existing WATCH-levels `pinnedProvenance` fix for `detectedAt`) — `asOf` now cites the real
+  commit timestamp and `freshness` is computed from the real age via `freshnessFromObservedMs`.
+- **What to re-check once the market opens:** pull `GET /api/market/swing/play-brief` for a live
+  OPEN/WATCH/CLOSED play whose `committedAt` is more than ~10 minutes before the brief's own
+  `asOf`, and confirm the "Setup score" evidence entry's `provenance.asOf` matches the play's
+  commit time (not "now") and `freshness` reads `stale` rather than `recent`.
