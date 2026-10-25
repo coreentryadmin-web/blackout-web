@@ -95,8 +95,18 @@ export function fmtCompactHeatMoney(n: number): string {
   const sign = n > 0 ? "+" : "−";
   const abs = Math.abs(n);
   if (abs >= 1_000_000_000) return `${sign}${(abs / 1_000_000_000).toFixed(1)}B`;
-  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `${sign}${Math.round(abs / 1_000)}K`;
+  if (abs >= 1_000_000) {
+    const m = abs / 1_000_000;
+    // A value that ROUNDS to 1000 of this unit belongs in the next unit up, not an
+    // overflowed four-digit label (e.g. 999_950_000 must read "1.0B", never "1000.0M").
+    if (Math.round(m * 10) / 10 >= 1000) return `${sign}${(abs / 1_000_000_000).toFixed(1)}B`;
+    return `${sign}${m.toFixed(1)}M`;
+  }
+  if (abs >= 1_000) {
+    const k = Math.round(abs / 1_000);
+    if (k >= 1000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
+    return `${sign}${k}K`;
+  }
   return `${sign}${Math.round(abs)}`;
 }
 

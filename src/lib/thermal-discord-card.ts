@@ -235,10 +235,18 @@ export function fmtCompactHeatMoney(n: number): string {
   const sign = n > 0 ? "+" : "-";
   const abs = Math.abs(n);
   if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000_000) {
+    const m = abs / 1_000_000;
+    // A value that ROUNDS to 1000 of this unit (e.g. 999_950_000 -> "1000.0") belongs in the
+    // next unit up ("1.0B"), not displayed as an overflowed four-digit label.
+    if (Math.round(m * 10) / 10 >= 1000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
+    return `${sign}$${m.toFixed(1)}M`;
+  }
   if (abs >= 1_000) {
     const k = abs / 1_000;
-    return `${sign}$${k < 10 ? k.toFixed(1) : Math.round(k)}K`;
+    if (k < 10) return `${sign}$${k.toFixed(1)}K`;
+    if (Math.round(k) >= 1000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+    return `${sign}$${Math.round(k)}K`;
   }
   return `${sign}$${Math.round(abs)}`;
 }

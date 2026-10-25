@@ -54,6 +54,12 @@ test("fmtCompactHeatMoney dense labels", () => {
   assert.equal(fmtCompactHeatMoney(-150_000), "−150K");
 });
 
+test("fmtCompactHeatMoney promotes a value that rounds to 1000 of a unit into the next unit, never an overflowed four-digit label", () => {
+  assert.equal(fmtCompactHeatMoney(999_700), "+1.0M");
+  assert.equal(fmtCompactHeatMoney(999_950_000), "+1.0B");
+  assert.equal(fmtCompactHeatMoney(-999_700), "−1.0M");
+});
+
 test("compactMatrixPeak uses absolute max in window", () => {
   const cells = {
     "100": { "2026-07-28": 10, "2026-07-29": -40 },
