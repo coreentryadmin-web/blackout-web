@@ -1405,7 +1405,55 @@ with a larger population once more FLOW-origin history accumulates, not from re-
 Checkpoints continue in `docs/audit/nighthawk-0dte-live-journal.json` across the standing Night
 Hawk 0DTE trigger cadence — this is a multi-session research program, not a single-turn task.
 
-## Edge cases / scenarios still to simulate
+### E7 continuation — MOMENTUM origin rebuilt as a WATCH/ENTRY early-entry pipeline (2026-10-25)
+
+**Operator's 2nd-iteration spec, same day as the first MOMENTUM shipment:** catch the setup
+BEFORE the major move, $1.00-$3.00 premium, WATCH vs ENTRY separated with invalidation/expiry,
+contracts selected by room-to-run (never by raw cheapness), estimated value scenarios labeled as
+estimates, and a real historical validation with no look-ahead. Full build: `early-entry-
+pressure.ts` / `early-entry-state.ts` / `early-entry-contract-select.ts` / `early-entry-value-
+scenarios.ts` / `early-entry-alert.ts` / `early-entry-source.ts`, wired live into
+`momentum-signal-discovery.ts` (replacing that file's internals; `discovery_origin` stays
+`["MOMENTUM"]`). 54 new unit tests + 16 rewired integration tests, all passing; full suite 16855
+pass / 0 fail / 3 skipped (pre-existing); `tsc` clean.
+
+**Real historical backtest** (`scripts/audit/early-entry-backtest.mjs` — real Polygon minute
+bars, real listed same-day strikes via `/v3/reference/options/contracts?expired=true`, real
+point-in-time NBBO quotes, real option minute-bar walk, no look-ahead by construction — see the
+script's own header for the full REAL vs. APPROXIMATED disclosure, chiefly: no point-in-time IV,
+so ranking among several qualifying strikes falls back to spread/room-to-run; "reached the money"
+is a bar-touch, not a guaranteed fill; the graded P&L uses a simple mechanical -50%-stop-else-
+hold rule, not the live board's full exit machinery).
+
+**15-session run (2026-10-05…2026-10-23), chronological TRAIN/VALIDATION split:**
+
+| Split | n (ticker-day attempts) | GRADED (real $1-$3 ENTRY) | reached the money | win rate (mechanical rule) | avg P&L | max DD |
+|---|---|---|---|---|---|---|
+| TRAIN | 80 | 19 | **100.0%** | 42.1% | **+32.12%** | -253.33% |
+| VALIDATION (held out, unseen) | 70 | 25 | 88.0% | **12.0%** | **-30.53%** | -763.16% |
+
+Status breakdown (both splits): `NO_SETUP` (no coil ever formed) is the single largest bucket
+(33 + 12 = 45/150); `NO_SAME_DAY_LISTING` (confirmed real — several Mag-7 names list options only
+Mon/Wed/Fri) accounts for 25/150; `INVALIDATED` (coil broke the wrong way) 21/150; `EXPIRED`
+(watch went stale, never triggered) 11/150; `NO_QUALIFYING_CONTRACT` (ENTRY triggered, no listed
+$1-$3 strike survived the hard-reject stage) 4/150; zero `WATCH`-only attempts reached end-of-day
+still watching in this window.
+
+**Read this honestly, per the operator's own "don't optimize around a few spectacular winners...
+validate on separate, unseen dates" instruction:** the DETECTION half of the claim is strongly
+supported — the underlying reached the strike 88-100% of the time after a real WATCH→ENTRY
+trigger, in BOTH halves, which is the core premise ("catch the setup before it runs") actually
+holding up out of sample. The TRADE-MANAGEMENT half is NOT yet supported — TRAIN's apparently
+healthy +32% avg P&L / 42% win rate reversed hard on the genuinely unseen VALIDATION half (-31%
+avg P&L / 12% win rate, a materially WORSE max drawdown), the classic signature of a result that
+looked good on the sample it was shaped by and did not hold up. The most likely driver, visible in
+the per-row backtest output: a flat -50% hard stop keeps getting hit on ordinary intraday
+drawdown (avg MAE -64% to -73% of entry premium) well before the underlying's own later move to
+the strike pays off — not a GEX-wall-ignorant exit, no vol-adjustment, no partial scale-out. **No
+gate/threshold shipped on this evidence; this is the known, disclosed, correctly-separated-from-
+implementation performance question** — a GEX-wall-aware or vol-adjusted stop (or simply a wider
+stop given the measured MAE) is the natural next real-cost experiment, run the same TRAIN/
+VALIDATION way, before any live-sizing claim is made about this origin's edge.
 VIX-regime buckets; trend-day vs range-day; fade-the-open vs follow; gamma-regime (trade toward the
 flip / avoid pinned-to-wall); exit-engine replication vs hold-to-close; SPX/NDX index 0DTE; whole-market
 banger with a realistic scale-out exit rule (quantify realized vs maxRet); news/catalyst-day conditioning;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rankContractsByReachability, type ChainCandidate } from "./strike-reachability.ts";
+import { rankContractsByReachability, reachabilityToPremiumTarget, type ChainCandidate } from "./strike-reachability.ts";
 
 const MINUTES_IN_TRADING_YEAR = 252 * 390;
 
@@ -121,4 +121,52 @@ test("rankContractsByReachability: results are sorted by rank_score descending, 
   ];
   const r = rankContractsByReachability({ spot: 100, direction: "long", minutesRemaining: 120, candidates, minOi: 50 });
   assert.equal(r[0]!.strike, 101, "nearest liquid strike should rank first");
+});
+
+// ── reachabilityToPremiumTarget ──────────────────────────────────────────────────────
+
+test("reachabilityToPremiumTarget: call — required price is strike + target, move measured from spot", () => {
+  const r = reachabilityToPremiumTarget({
+    spot: 100, strike: 105, side: "call", iv: 0.3, minutesRemaining: 120, targetPremium: 20,
+  });
+  assert.equal(r.required_underlying_price, 125, "strike (105) + target premium (20)");
+  assert.ok(Math.abs(r.required_move_pct - 25) < 0.01, `expected +25% required move, got ${r.required_move_pct}`);
+});
+
+test("reachabilityToPremiumTarget: put — required price is strike - target", () => {
+  const r = reachabilityToPremiumTarget({
+    spot: 100, strike: 95, side: "put", iv: 0.3, minutesRemaining: 120, targetPremium: 20,
+  });
+  assert.equal(r.required_underlying_price, 75, "strike (95) - target premium (20)");
+  assert.ok(r.required_move_pct < 0, "a put's required move is downward (negative)");
+});
+
+test("reachabilityToPremiumTarget: a deep put target can require a negative (impossible) price — left unclamped, not hidden", () => {
+  const r = reachabilityToPremiumTarget({
+    spot: 100, strike: 10, side: "put", iv: 0.3, minutesRemaining: 120, targetPremium: 20,
+  });
+  assert.equal(r.required_underlying_price, -10, "strike (10) - target (20) — honestly negative, not clamped");
+  // An impossible/huge required move must read as near-zero reachability, never a fabricated high one.
+  assert.ok(r.target_reachability_prob! < 0.01, `expected near-zero reachability, got ${r.target_reachability_prob}`);
+});
+
+test("reachabilityToPremiumTarget: closer target (e.g. $2) is more reachable than a farther one (e.g. $20), same contract", () => {
+  const near = reachabilityToPremiumTarget({ spot: 100, strike: 101, side: "call", iv: 0.3, minutesRemaining: 120, targetPremium: 2 });
+  const far = reachabilityToPremiumTarget({ spot: 100, strike: 101, side: "call", iv: 0.3, minutesRemaining: 120, targetPremium: 20 });
+  assert.ok(near.target_reachability_prob! > far.target_reachability_prob!);
+  assert.ok(near.target_reachability_z! < far.target_reachability_z!);
+});
+
+test("reachabilityToPremiumTarget: more time remaining raises reachability for a fixed target", () => {
+  const short = reachabilityToPremiumTarget({ spot: 100, strike: 110, side: "call", iv: 0.3, minutesRemaining: 15, targetPremium: 20 });
+  const long = reachabilityToPremiumTarget({ spot: 100, strike: 110, side: "call", iv: 0.3, minutesRemaining: MINUTES_IN_TRADING_YEAR, targetPremium: 20 });
+  assert.ok(long.target_reachability_prob! > short.target_reachability_prob!);
+});
+
+test("reachabilityToPremiumTarget: missing iv -> reachability fields null, never a fabricated estimate", () => {
+  const r = reachabilityToPremiumTarget({ spot: 100, strike: 110, side: "call", iv: null, minutesRemaining: 120, targetPremium: 20 });
+  assert.equal(r.target_reachability_z, null);
+  assert.equal(r.target_reachability_prob, null);
+  // The required price/move are pure geometry (strike + target vs spot) — still computable without iv.
+  assert.equal(r.required_underlying_price, 130);
 });

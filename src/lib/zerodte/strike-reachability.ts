@@ -154,3 +154,63 @@ export function rankContractsByReachability(input: {
   out.sort((a, b) => b.rank_score - a.rank_score);
   return out;
 }
+
+export type PremiumTargetReachability = {
+  target_premium: number;
+  /** The underlying price at which this contract's INTRINSIC value alone would equal
+   *  `target_premium` — strike + target for a call, strike - target for a put. APPROXIMATION,
+   *  disclosed: this ignores any remaining extrinsic (time) value, so a real move to this level
+   *  while time is still left would likely cross `target_premium` somewhat EARLIER than this price
+   *  (extrinsic stacks on top of intrinsic) — a conservative (farther-than-strictly-necessary)
+   *  required-move estimate, never a precise one. For a put whose target exceeds the strike, this
+   *  is negative (an impossible stock price) — left unclamped on purpose: it is the honest signal
+   *  that this contract can never reach that target via intrinsic value alone, not a bug to hide. */
+  required_underlying_price: number;
+  /** (required_underlying_price - spot) / spot * 100, signed in the direction of the required move. */
+  required_move_pct: number;
+  /** |required_move_pct| / expected_move_pct — same scale as `reachability_z`, now measured against
+   *  the premium target's distance instead of the strike's. Null without a real `iv`. */
+  target_reachability_z: number | null;
+  /** Same reflection-principle touch-probability proxy as `reachability_prob` (this file's header),
+   *  evaluated at the premium-target distance instead of the strike distance. */
+  target_reachability_prob: number | null;
+};
+
+/** Pure. How far the underlying would have to move for THIS contract's own intrinsic value to
+ *  reach `targetPremium` (e.g. $20), and the same reflection-principle touch-probability proxy
+ *  used for strike reachability, now evaluated at that distance. A separate function rather than
+ *  folding into `rankContractsByReachability` — "can this reach ITS OWN strike" and "can this
+ *  reach a $X premium target" are related but distinct questions (a deep-ITM contract can reach
+ *  its strike trivially while still needing a large move to reach a high premium target). */
+export function reachabilityToPremiumTarget(input: {
+  spot: number;
+  strike: number;
+  side: "call" | "put";
+  iv: number | null;
+  minutesRemaining: number;
+  targetPremium: number;
+}): PremiumTargetReachability {
+  const { spot, strike, side, iv, minutesRemaining, targetPremium } = input;
+  const requiredUnderlyingPrice = side === "call" ? strike + targetPremium : strike - targetPremium;
+  const requiredMovePct = spot > 0 ? ((requiredUnderlyingPrice - spot) / spot) * 100 : 0;
+
+  let targetReachabilityZ: number | null = null;
+  let targetReachabilityProb: number | null = null;
+  if (iv != null && iv > 0 && minutesRemaining > 0) {
+    const expectedMovePct = iv * Math.sqrt(minutesRemaining / MINUTES_IN_TRADING_YEAR) * 100;
+    if (expectedMovePct > 0) {
+      targetReachabilityZ = Math.abs(requiredMovePct) / expectedMovePct;
+      const prob = 2 * (1 - standardNormalCdf(targetReachabilityZ));
+      targetReachabilityProb = Math.min(1, Math.max(0, prob));
+    }
+  }
+
+  return {
+    target_premium: targetPremium,
+    required_underlying_price: Math.round(requiredUnderlyingPrice * 100) / 100,
+    required_move_pct: Math.round(requiredMovePct * 10000) / 10000,
+    target_reachability_z: targetReachabilityZ != null ? Math.round(targetReachabilityZ * 10000) / 10000 : null,
+    target_reachability_prob:
+      targetReachabilityProb != null ? Math.round(targetReachabilityProb * 10000) / 10000 : null,
+  };
+}

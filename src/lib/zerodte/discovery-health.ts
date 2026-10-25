@@ -18,7 +18,7 @@
 // "nothing qualified" from "this lane never ran".
 
 /** Which discovery origins report health. FLOW is the base pipeline (its provenance is `upstream_ok`). */
-export const DISCOVERY_HEALTH_LANES = ["BREAKOUT", "PIN"] as const;
+export const DISCOVERY_HEALTH_LANES = ["BREAKOUT", "PIN", "MOMENTUM"] as const;
 export type DiscoveryHealthLane = (typeof DISCOVERY_HEALTH_LANES)[number];
 
 /**
@@ -63,6 +63,7 @@ export function initialDiscoveryHealth(): DiscoveryHealth {
   return {
     BREAKOUT: { status: "disabled", setups: 0 },
     PIN: { status: "disabled", setups: 0 },
+    MOMENTUM: { status: "disabled", setups: 0 },
   };
 }
 

@@ -12,6 +12,57 @@ clears it is evaluated. Do not read "whole-market" literally without checking th
 future session correcting this file's title/prose wholesale would be the exact kind of staleness
 trap this repo's CLAUDE.md already warns about — this note exists so that doesn't happen here.
 
+**MOMENTUM — the 4th discovery origin (operator directive, 2026-10-25, same session as the
+universe restriction above).** First iteration (sub-$1.00 "runner" framing toward a $20 target —
+`momentum-signal.ts`/`momentum-signal-source.ts`'s `evaluateMomentumSignal`): still present,
+still tested, no longer called from the live discovery path. **Superseded same-day by a 2nd,
+sharper operator spec** (verbatim): *"My goal for NIGHTHAWK is to catch the setup BEFORE the
+major move, selecting calls or puts around $1.00-$3.00 premium that have a realistic path to
+running hard into the money... Separate WATCH from ENTRY. WATCH identifies a developing setup;
+ENTRY requires a defined price trigger and confirmation. Show the invalidation level and expire
+stale signals... Never choose a distant strike simply because it is cheap... Reject setups where
+most of the likely move has already happened... Return NO TRADE when nothing meets the
+requirements, and never present a huge run as guaranteed."*
+
+**What's live now** (`discovery_origin: ["MOMENTUM"]` unchanged — same already-audited board
+plumbing, only the pipeline FEEDING it changed):
+- `early-entry-pressure.ts` — `detectDevelopingPressure`: price compression (a real prior swing
+  range shrinking, never a flat-data false positive — see its own "zero baseline range" guard),
+  rising RVOL, repeated tests of a real swing high/low without closing through it, and an
+  underlying-tape order-flow-bias proxy. Distinguishes "coiling" from "already extended."
+- `early-entry-state.ts` — `classifySetup`: a deterministic, stateless WATCH → ENTRY →
+  EXPIRED/INVALIDATED walk over real bars (re-derivable from scratch every scan, same idiom as
+  the rest of this file's shadow signals; proven in early-entry-state.test.ts that a single call
+  over a full session's bars gives the identical answer a live per-minute call would have, so the
+  SAME function backs both the live board and the no-look-ahead backtest). WATCH freezes a level
+  + invalidation level at detection; ENTRY requires BOTH a real price break past the level AND
+  RVOL confirmation at that same minute — a bare price touch is never enough.
+- `early-entry-contract-select.ts` — `selectEarlyEntryContract`: the $1.00-$3.00 band (never
+  outside it in either direction), hard-rejects on staleness/illiquidity (reuses
+  `rankContractsByReachability`, strike-reachability.ts), and an explicit `already_extended`
+  rejection (how much of the watch-to-strike distance has already closed since detection — never
+  ranks by raw cheapness).
+- `early-entry-value-scenarios.ts` — a standard Black-Scholes estimate, explicitly
+  `is_estimate: true` throughout, varied one axis at a time (underlying price / elapsed time /
+  volatility) — never a quote.
+- `early-entry-alert.ts` — `buildEarlyEntryAlert`: the final NO_TRADE / WATCH / ENTRY shape with
+  the exact contract, bid/ask, quote timestamp, trigger, targets, invalidation, and a "why
+  developing now" narrative. A WATCH never upgrades itself into a trade.
+- `early-entry-source.ts` — score mapping (reachability + room-to-run + spread quality + tested
+  conviction) + the `EnrichedZeroDteSetup` bridge; `momentum-signal-discovery.ts` rewired to this
+  pipeline (real bars, real per-minute RVOL via the existing `relative-volume-source.ts`'s own
+  `avg_daily_volume`, real same-day chain, real quotes). WATCH-state reads are real but not yet
+  surfaced on a dedicated member-facing watchlist — disclosed gap, logged every cycle.
+
+Being a brand-new, uncalibrated origin it still inherits the STRICTEST score_floor and zero
+relief/exemption everywhere on the board by construction (audited when the origin shipped; the
+pipeline swap touched none of that plumbing). Real historical backtest:
+`scripts/audit/early-entry-backtest.mjs` (the superseded sub-$1 framing's own backtest,
+`scripts/audit/momentum-signal-backtest.mjs`, is kept as the historical record of why the design
+moved away from it) — see `docs/audit/0DTE-RESEARCH.md`'s E7 section for the methodology and
+results (chronological TRAIN/VALIDATION split, no look-ahead, real Polygon minute bars + real
+point-in-time NBBO quotes + real listed same-day strikes + real MFE/MAE/reached-the-money).
+
 **Date:** 2026-07-24. **Author:** audit synthesis (3 independent code audits + 45d live calibration
 + today's graded counterfactual + fresh condor backtest). **Goal:** collapse the two 0DTE engines into
 ONE live intraday product that scans the whole market, never prints a measured-losing setup, and manages

@@ -53,6 +53,7 @@ import {
 } from "./flow-corroboration";
 import { deriveWhyNow } from "./why-now";
 import { pinSourceEnabled, mergePinOrigins } from "./pin-source";
+import { momentumSourceEnabled } from "./momentum-signal-source";
 import {
   initialDiscoveryHealth,
   laneStatusFromBreakoutOutcome,
@@ -585,6 +586,52 @@ export async function scanZeroDteBoard(flags?: {
     }
   }
 
+  // ── MOMENTUM discovery origin (operator directive, 2026-10-25) — the FOURTH, INDEPENDENT
+  // discovery source. Flag-gated via ZERODTE_WHOLE_MARKET + ZERODTE_SRC_MOMENTUM (default ON; set
+  // to "0" to disable). Unlike BREAKOUT/PIN this does not screen the whole market or a curated
+  // list — it screens the SAME fixed 10-name universe the FLOW/BREAKOUT include-filter already
+  // restricts to (includeTickers, ticker-universe.ts), detecting a setup directly from the
+  // underlying's own momentum+RVOL action (no options print, no breadth screen required) and
+  // ranking same-day sub-$1.00-ask contracts toward a $20 premium target. Emits candidates
+  // carrying discovery_origin ["MOMENTUM"]; they merge BY TICKER via the SAME origin-agnostic
+  // `mergeDiscoveryOrigins` every other origin uses (a shared ticker → e.g. ["FLOW","MOMENTUM"]).
+  // Merged here, AFTER deriveZeroDteSetups, so the FLOW evidence gates never see them; every
+  // MOMENTUM candidate runs the SAME mandatory contract-attach + shared hard gates + Cortex as a
+  // flow one, and (being a brand-new, uncalibrated origin) inherits the strictest score_floor
+  // (gates.ts's scoreFloorForOrigins default-case fallthrough) and no relief/exemption carve-out
+  // anywhere in the board — the newest, least-proven origin gets the most conservative treatment
+  // by construction, never a special case written for it. IO is dynamic-imported so the flow-only
+  // board never loads this provider graph; any failure degrades to the flow board (best-effort).
+  if (momentumSourceEnabled()) {
+    try {
+      const { hour, minute } = etNowParts();
+      const { discoverMomentumSetups } = await import("./momentum-signal-discovery");
+      const momentumOutcome = await discoverMomentumSetups({
+        today,
+        nowEtMinutes: hour * 60 + minute,
+        excludeTickers: excludes,
+        includeTickers,
+      });
+      discoveryHealth.MOMENTUM =
+        momentumOutcome.status === "skip_off_hours"
+          ? { status: "off_hours", setups: 0 }
+          : { status: "ok", setups: momentumOutcome.setups.length };
+      if (momentumOutcome.setups.length > 0) {
+        mergeDiscoveryOrigins(setups, momentumOutcome.setups);
+        // Prefer true 0DTE over 1DTE, then score — same tie-break every other origin merge uses.
+        setups.sort((a, b) => {
+          const ha = a.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          const hb = b.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          if (ha !== hb) return hb - ha;
+          return b.score - a.score;
+        });
+      }
+    } catch (err) {
+      discoveryHealth.MOMENTUM = { status: "failed", setups: 0, reason: "threw" };
+      console.warn("[zerodte-momentum] discovery failed — flow-only board this cycle:", err);
+    }
+  }
+
   // Market State Engine v0 — regime-adaptive rail priors at merge rank (shadow-safe: re-sorts only).
   if (marketState.confidence > 0 && process.env.ZERODTE_MARKET_STATE_ENABLED !== "0") {
     setups.sort((a, b) => {
@@ -609,7 +656,7 @@ export async function scanZeroDteBoard(flags?: {
     const mix = summarizeDiscoveryRailMix(setups);
     console.info(
       `[zerodte-scan] discovery rail mix total=${mix.total} FLOW=${mix.FLOW} BREAKOUT=${mix.BREAKOUT} ` +
-        `PIN=${mix.PIN} multi=${mix.multi} merge_policy=${MERGE_POLICY_VERSION}`
+        `PIN=${mix.PIN} MOMENTUM=${mix.MOMENTUM} multi=${mix.multi} merge_policy=${MERGE_POLICY_VERSION}`
     );
   }
 

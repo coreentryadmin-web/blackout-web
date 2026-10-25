@@ -11,6 +11,8 @@ import {
   noteOriginDirectionConflict,
   mergeSameTickerDiscovery,
   summarizeDiscoveryRailMix,
+  unionDiscoveryOrigins,
+  discoveryOriginLabel,
   type EnrichedZeroDteSetup,
   matchEarnings,
   matchHotNews,
@@ -1957,7 +1959,27 @@ test("summarizeDiscoveryRailMix counts per-rail presence and multi-rail rows", (
     { discovery_origin: ["PIN"] },
     { discovery_origin: ["BREAKOUT"] },
   ] as EnrichedZeroDteSetup[]);
-  assert.deepEqual(mix, { FLOW: 2, BREAKOUT: 2, PIN: 1, multi: 1, total: 4 });
+  assert.deepEqual(mix, { FLOW: 2, BREAKOUT: 2, PIN: 1, MOMENTUM: 0, multi: 1, total: 4 });
+});
+
+test("summarizeDiscoveryRailMix counts a MOMENTUM-origin setup", () => {
+  const mix = summarizeDiscoveryRailMix([
+    { discovery_origin: ["FLOW"] },
+    { discovery_origin: ["MOMENTUM"] },
+  ] as EnrichedZeroDteSetup[]);
+  assert.deepEqual(mix, { FLOW: 1, BREAKOUT: 0, PIN: 0, MOMENTUM: 1, multi: 0, total: 2 });
+});
+
+test("unionDiscoveryOrigins: MOMENTUM survives a union with another origin, never silently dropped", () => {
+  assert.deepEqual(unionDiscoveryOrigins(["FLOW"], ["MOMENTUM"]), ["FLOW", "MOMENTUM"]);
+  assert.deepEqual(unionDiscoveryOrigins(["MOMENTUM"], ["MOMENTUM"]), ["MOMENTUM"]);
+  assert.deepEqual(unionDiscoveryOrigins(["BREAKOUT", "PIN"], ["MOMENTUM"]), ["BREAKOUT", "PIN", "MOMENTUM"]);
+});
+
+test("discoveryOriginLabel: a pure-MOMENTUM origin set labels as \"MOMENTUM\", never \"no_origin\"", () => {
+  assert.equal(discoveryOriginLabel(["MOMENTUM"]), "MOMENTUM");
+  assert.equal(discoveryOriginLabel(["FLOW", "MOMENTUM"]), "FLOW+MOMENTUM");
+  assert.equal(discoveryOriginLabel([]), "no_origin");
 });
 
 test("mergeSameTickerDiscovery: same-dir FLOW + CONDOR keeps CONDOR structure (never drops condor_plan)", () => {
