@@ -210,6 +210,55 @@ test("pickLanePlayForBrief: exact positionId hint resolves the SPECIFIC banger-o
   assert.equal(pickedHigherPnl?.contract.strike, 9.5);
 });
 
+// BUG FIX (2026-10-24, Ask Largo standing mandate, live repro PANW: `GET
+// /api/market/swing/play-brief?playId=SWING:PANW:2103` returned a 200 whose own `playId` field
+// read back "SWING:PANW:67" — a completely different, unrelated position). `#2103` is a real,
+// open banger_positions row on PANW that `mergeBangerPositionsIntoSwingPlays` deliberately excludes
+// from the board's `rows` (a native swing ledger position already manages this ticker), so `rows`
+// here carries only the ONE unrelated native row. The old `forTicker.length === 1` shortcut
+// returned that lone row unconditionally — even though the caller asked for a SPECIFIC positionId
+// this row does not carry. Must now surface as absence (null) so the caller's broader fallback
+// chain gets a chance to report "not found" honestly, instead of being told the request succeeded
+// under a different play's id.
+test("pickLanePlayForBrief: a positionId hint that does not match the ticker's one lane row must not silently substitute that row", () => {
+  const rows = [
+    laneRow({
+      ticker: "PANW",
+      positionId: 67,
+      liveStatus: "HOLD",
+      contract: { ticker: "PANW", strike: 370, right: "C", expiry: "2026-10-30", dte: 6, mid: 19.45, bid: null, ask: null, delta: 0.65, openInterest: 258 },
+    }),
+  ];
+  const picked = pickLanePlayForBrief(rows, "PANW", { positionId: 2103 });
+  assert.equal(picked, null, "an unresolvable positionId must surface as absence, never the ticker's unrelated lone row");
+});
+
+test("pickLanePlayForBrief: the lone-row shortcut still fires normally when no positionId was requested", () => {
+  const rows = [
+    laneRow({
+      ticker: "PANW",
+      positionId: 67,
+      liveStatus: "HOLD",
+      contract: { ticker: "PANW", strike: 370, right: "C", expiry: "2026-10-30", dte: 6, mid: 19.45, bid: null, ask: null, delta: 0.65, openInterest: 258 },
+    }),
+  ];
+  const picked = pickLanePlayForBrief(rows, "PANW", {});
+  assert.equal(picked?.positionId, 67, "a ticker-only lookup with no positionId hint must still resolve the sole candidate");
+});
+
+test("pickLanePlayForBrief: the lone-row shortcut still fires when the positionId hint actually matches", () => {
+  const rows = [
+    laneRow({
+      ticker: "PANW",
+      positionId: 67,
+      liveStatus: "HOLD",
+      contract: { ticker: "PANW", strike: 370, right: "C", expiry: "2026-10-30", dte: 6, mid: 19.45, bid: null, ask: null, delta: 0.65, openInterest: 258 },
+    }),
+  ];
+  const picked = pickLanePlayForBrief(rows, "PANW", { positionId: 67 });
+  assert.equal(picked?.positionId, 67, "a positionId hint that matches the sole candidate must still resolve it");
+});
+
 // ── loadOpenTerminalPlay: Ask Largo must restore factors/regime the same way the main board does ──
 //
 // THE BUG (swing-system CTO audit, 2026-09-06, finding #3/#8/#9/#17/#20): serving-lane.ts's
@@ -414,6 +463,31 @@ describe("loadOpenTerminalPlay: restores factors/regime for a committed row (Lar
       play!.contract.includes("95"),
       `a right=P request must resolve the put leg (strike 95), not the call — got contract "${play!.contract}"`,
     );
+  });
+
+  // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro PANW — same defect class as
+  // pickLanePlayForBrief's sibling fix, found the same cycle). `fetchOpenSwingPositions()` only
+  // ever carries `swing_positions` rows, so a request for a banger-origin sibling's REAL id (e.g.
+  // the live PANW #2103 case: a genuinely open banger_positions row this ticker's native position
+  // already won the board's single display slot against) can NEVER match here — `matches` holds
+  // only the one unrelated native row. The old `matches.length === 1` fallback took that lone row
+  // anyway, so `loadOpenTerminalPlay("PANW", { positionId: 2103 })` silently returned the NATIVE
+  // #67 row's full data under the requested #2103 id. Must now return null so the caller's broader
+  // fallback chain gets an honest chance to report "not found" instead of a false substitute.
+  test("BUG FIX: a positionId hint that matches no open row must not fall back to the ticker's one other row", async () => {
+    mockOpenRows = [openRow("PANW", 67)];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const play = await mod.loadOpenTerminalPlay("PANW", { positionId: 2103 });
+    assert.equal(play, null, "an unresolvable positionId must surface as absence, never the ticker's unrelated lone row");
+  });
+
+  test("the lone-row fallback still fires normally when no positionId was requested", async () => {
+    mockOpenRows = [openRow("PANW", 67)];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const play = await mod.loadOpenTerminalPlay("PANW", {});
+    assert.ok(play, "a ticker-only lookup with no positionId hint must still resolve the sole open row");
   });
 });
 

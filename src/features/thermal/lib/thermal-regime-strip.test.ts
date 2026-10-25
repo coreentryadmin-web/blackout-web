@@ -75,6 +75,26 @@ describe("buildThermalRegimeStrip", () => {
     assert.ok(model.segments.some((s) => s.key === "anchor" && s.label === "King node"));
   });
 
+  test("net-positive GEX with a down delta carries a bear deltaTone independent of the bull level tone", () => {
+    const model = buildThermalRegimeStrip({
+      lens: "gex",
+      kicker: "SPY · near-term GEX",
+      spot: 777,
+      flip: 773,
+      callWall: 780,
+      putWall: 770,
+      maxPain: 763,
+      netTotal: 12_300_000_000,
+      magnetStrike: 780,
+      gammaPosture: "long",
+      netDelta: "-$17.7B",
+      netDeltaTone: "bear",
+    });
+    const netGex = model.segments.find((s) => s.key === "netGex");
+    assert.equal(netGex?.tone, "bull");
+    assert.equal(netGex?.deltaTone, "bear");
+  });
+
   test("missing posture omits vol segment and uses server read fallback", () => {
     const model = buildThermalRegimeStrip({
       lens: "gex",

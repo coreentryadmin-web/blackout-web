@@ -202,6 +202,46 @@ test("horizon adapter: Banger-origin thesisLevel:'intact' is suppressed to 'unkn
   assert.equal(native.thesisBreak!.level, "intact", "a real, non-Banger thesis read must not be suppressed");
 });
 
+// BUG FIX (2026-10-24, Ask Largo standing mandate, live repro BMNR — Command Deck's "Regime"
+// stat, PlayTerminal.tsx's play-detail panel AND SwingCockpitStrip.tsx's lane-level headline):
+// the sibling test above already constructs a Banger-origin row with `regime: "BREAKOUT ·
+// BANGER"` and correctly asserts the derived `thesisBreak` is suppressed — but never checks
+// `TerminalPlay.regime` itself, which is the SAME sentinel passed straight through unguarded
+// (`regime: src.regime ?? null` previously, with no BANGER_LEDGER_REGIME_LABEL check). Every
+// other consumer of this exact sentinel (thesisHealthUncalibrated in thesis-health.ts,
+// watchForSection in play-brief-intel.ts, attachThesisExplanation in serving-lane.ts, and this
+// same file's own thesisBreak guard immediately above) treats it as an internal "no real
+// per-position dossier" fingerprint, never a value fit for display. `TerminalPlay.regime` alone
+// skipped that treatment, so PlayTerminal.tsx's play-detail panel rendered a literal
+// "Regime: BREAKOUT · BANGER" line, and SwingCockpitStrip.tsx's lane-level cockpit header (which
+// picks the first play in the whole Swing book with any truthy `regime`) rendered the same
+// sentinel as if it characterized the CURRENT MARKET REGIME for the entire Swing lane — live
+// repro BMNR. With CLAUDE.md's own count that 78/81 of the live committed Swing book is
+// Banger-origin, this was the dominant rendered state of both surfaces, not an edge case. Fix:
+// suppress the sentinel to null at the same point every other consumer already does, leaving the
+// real internal `src.regime` value (still carrying the sentinel) untouched for
+// computeSwingThesisHealth's own correct detection a few lines above in the adapter.
+test("horizon adapter: Banger-origin regime sentinel ('BREAKOUT · BANGER') is suppressed to null, never rendered as a real regime read", () => {
+  const banger = terminalPlayFromHorizon({
+    ticker: "bmnr", direction: "LONG", horizon: "SWING", score: 62, status: "COMMIT",
+    contract: { strike: 35, right: "C", expiry: "2026-10-16", dte: 8, mid: 0.225 },
+    liveStatus: "OPEN",
+    livePnlPct: -10,
+    regime: "BREAKOUT · BANGER",
+  });
+  assert.equal(banger.regime, null, "the internal Banger-ledger sentinel must never surface as a displayed regime read");
+
+  // A NATIVE swing position's real regime read (not Banger-origin) must be untouched.
+  const native = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 70, status: "COMMIT",
+    contract: { strike: 500, right: "C", expiry: "2026-10-16", dte: 8, mid: 5 },
+    liveStatus: "OPEN",
+    livePnlPct: -10,
+    regime: "Breakout continuation · regime 0.60",
+  });
+  assert.equal(native.regime, "Breakout continuation · regime 0.60", "a real, non-Banger regime read must not be suppressed");
+});
+
 test("horizon adapter (PR-12): LEAPS / un-enriched caller is UNCHANGED — legacy literals preserved", () => {
   // No swing reads supplied (the live LEAPS path): factors []/regime null/thesisBreak intact — exactly as before.
   const play = terminalPlayFromHorizon({

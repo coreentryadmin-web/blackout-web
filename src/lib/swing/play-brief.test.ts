@@ -1403,7 +1403,7 @@ test("composeSwingPlayBrief: invalidation prefers a real per-ticker technical br
   // position that was never entered. See resolveBreakInvalidation's `preEntry` handling.
   assert.equal(
     brief.envelope.invalidation,
-    "**Break watch** — lose **22.00** on a closing basis → structural support failed; this setup is no longer live — skip it.",
+    "**Break watch** — lose **22.00** (10.2% away) on a closing basis → structural support failed; this setup is no longer live — skip it.",
   );
   assert.doesNotMatch(
     brief.envelope.invalidation ?? "",
@@ -1479,7 +1479,7 @@ test("composeSwingPlayBrief: OPEN play's invalidation callout keeps live positio
   const brief = composeSwingPlayBrief(ctx);
   assert.equal(
     brief.envelope.invalidation,
-    "**Break watch** — lose **22.00** on a closing basis → structural support failed; exit or cut size.",
+    "**Break watch** — lose **22.00** (10.2% away) on a closing basis → structural support failed; exit or cut size.",
   );
 });
 

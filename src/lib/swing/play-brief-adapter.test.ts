@@ -196,6 +196,31 @@ test("adaptSwingBriefToLargo: evidence[] surfaces the brief's REAL sourced evide
   );
 });
 
+// BUG FIX (2026-10-24, Ask Largo fan-out audit, live repro SOXX): `extractEvidence`'s levels loop
+// called `level.price.toFixed(2)` directly on the raw, pre-rounded float — the API route rounds
+// that SAME field via `roundFloats`'s `Math.round(n*100)/100` elsewhere in the response
+// (`envelope.levels[].price`), so a price sitting on a half-cent boundary can disagree between
+// the two: `(479.205).toFixed(2)` => "479.20" while `Math.round(479.205*100)/100` => 479.21.
+test("adaptSwingBriefToLargo: evidence_numbers' level prices use the same rounding as envelope.levels, not a raw toFixed (live repro SOXX)", () => {
+  const ctx = fixtureCtx();
+  const brief = composeSwingPlayBrief(ctx);
+  // Inject a level sitting exactly on the toFixed-vs-round-first boundary this bug depends on —
+  // deterministic regardless of what the real pipeline happens to compute this cycle.
+  brief.envelope.levels = [{ label: "flag anchor", price: 479.205 }];
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.ok(
+    largoRead.data.evidence.some((e) => e === "flag anchor: $479.21"),
+    `expected "flag anchor: $479.21" (matching envelope.levels' own rounding), got: ${JSON.stringify(largoRead.data.evidence)}`
+  );
+  assert.ok(
+    !largoRead.data.evidence.some((e) => e.includes("$479.20")),
+    "must not disagree with envelope.levels[].price by using a raw toFixed(2)"
+  );
+});
+
 // Sibling case: the pre-existing honest-omission behavior must survive this fix — a brief with
 // genuinely NO knowable per-source age (a fresh WATCH candidate, no Vector/GEX/option-mark read at
 // all this cycle) must still fall back to "cached"/null rather than fabricating an age of 0.

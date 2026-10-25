@@ -998,7 +998,7 @@ test("collectBriefUnavailableSources: a total Vector fetch failure surfaces in e
   } as SwingPlayBriefContext;
 
   const sources = collectBriefUnavailableSources(ctx);
-  assert.ok(sources.some((s) => s.source === "Vector state" && s.reason === "fetch failed"));
+  assert.ok(sources.some((s) => s.source === "Vector desk state" && s.reason === "fetch failed"));
 });
 
 test("collectBriefUnavailableSources: vectorFetchFailed does not surface when ecosystem.vector_full_state is present (#4249 follow-up)", () => {
@@ -1011,7 +1011,33 @@ test("collectBriefUnavailableSources: vectorFetchFailed does not surface when ec
   } as SwingPlayBriefContext;
 
   const sources = collectBriefUnavailableSources(ctx);
-  assert.ok(!sources.some((s) => s.source === "Vector state"));
+  assert.ok(!sources.some((s) => s.source === "Vector desk state" && s.reason === "fetch failed"));
+});
+
+/**
+ * BUG FIX (2026-10-24, Ask Largo fan-out audit, live repro UMAC): "Vector desk state"/"fetch
+ * failed" (above) and the former standalone "Vector state"/"fetch failed" entry were pushed by
+ * two independent checks whose conditions overlapped completely whenever the standalone fetch
+ * failed with no ecosystem fallback — the second check's extra fallback-aware guard was a strict
+ * subset of the first's bare-flag check, so both always fired together, double-counting one real
+ * absence as two in the member-facing "N sources unavailable" rationale. The former's guard is
+ * now the shared, single source of truth; the latter was removed as fully redundant.
+ */
+test("collectBriefUnavailableSources: vector fetch failure with no fallback produces exactly ONE 'fetch failed' entry, not a duplicate 'Vector desk state'/'Vector state' pair (live repro UMAC, 2026-10-24)", () => {
+  const ctx = {
+    vector: null,
+    vectorFetchFailed: true,
+    ecosystem: { vector_full_state: null },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const fetchFailedEntries = sources.filter((s) => s.reason === "fetch failed" && /vector/i.test(s.source));
+  assert.equal(
+    fetchFailedEntries.length,
+    1,
+    `expected exactly one vector fetch-failed entry, got ${JSON.stringify(fetchFailedEntries)}`,
+  );
+  assert.ok(!sources.some((s) => s.source === "Vector state"), "the redundant 'Vector state' label must be gone");
 });
 
 test("collectBriefUnavailableSources: Meridian peer cohort failure surfaces in envelope", () => {
@@ -1379,7 +1405,7 @@ test("collectBriefUnavailableSources: CLOSED play still surfaces genuine fetch f
 
   const sources = collectBriefUnavailableSources(ctx);
   assert.ok(sources.some((s) => s.source === "ecosystem context" && s.reason === "fetch failed"));
-  assert.ok(sources.some((s) => s.source === "Vector state" && s.reason === "fetch failed"));
+  assert.ok(sources.some((s) => s.source === "Vector desk state" && s.reason === "fetch failed"));
   assert.ok(sources.some((s) => s.source === "Meridian catalysts" && s.reason === "timeline read failed"));
 });
 

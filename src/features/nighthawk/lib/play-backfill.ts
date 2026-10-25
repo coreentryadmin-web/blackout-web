@@ -4,6 +4,7 @@ import { buildDeterministicThesis } from "./deterministic-edition";
 import type { TickerDossier } from "./dossier";
 import { effectiveMeritScore, effectiveMinPublishPlays } from "./edition-quality";
 import { tieredMinOi } from "./grounding";
+import { parseOptionsContract } from "./option-contract-parse";
 import { validatePlayGeometry } from "./play-constraints";
 import { capGatePromotedConviction } from "./publish-gates";
 import { buildDirectionalStockLevels } from "./play-levels";
@@ -72,6 +73,68 @@ export function pickAffordableChainContract(
     options_play: `${ticker} $${best.row.strike} ${sideLabel} ${best.row.expiry}, entry prem ~$${best.premium.toFixed(2)}`,
     entry_premium: best.premium,
   };
+}
+
+/**
+ * Retroactive repair pass (2026-10-24, Ask Largo/Legacy standing mandate — live repro, Monday
+ * 2026-10-26 edition). `pickAffordableChainContract`'s own expiry floor above only runs at
+ * GENERATION time — an edition already PUBLISHED before that floor shipped can still carry an
+ * already-dead BACKFILL contract in its persisted `plays`, and nothing else downstream catches
+ * it: `morning-confirm-verdict.ts` checks entry-trigger geometry, never contract liveness, so a
+ * BACKFILL play whose own options contract already expired relative to `editionFor` sails through
+ * untouched all the way to market open. Live repro: `edition_for: "2026-10-26"` carried a
+ * BACKFILL PLTR play recommending "PLTR $197.5 Call 2026-10-23" — already expired, confirmed dead
+ * via legacy-marks (mark/bid/ask all null) — three days before the edition's own target day.
+ *
+ * PURE — chains are an input, same "no network inside the testable function" split every sibling
+ * function in this file already uses (see `selectBackfillPlays`'s own comment). Deliberately
+ * BACKFILL-only, mirroring the admin republish route's own documented scope boundary ("never
+ * touches an already-published QUALIFIED play") — an organically-QUALIFIED play went through the
+ * real discovery/scoring pipeline and its contract is the pipeline's actual pick, not backfill's
+ * synthetic one; repairing it here would be a different, unaudited failure mode, not this one.
+ * A BACKFILL play whose replacement contract can't be resolved is DROPPED, never left stale and
+ * never replaced with a placeholder — the exact same skip-rather-than-placeholder discipline
+ * `selectBackfillPlays` already applies when backfilling a thin edition in the first place.
+ */
+export function repairStaleBackfillPlays(params: {
+  /** Edition's own target trading day — the expiry floor, same value `editionFor` means
+   *  everywhere else in this file. */
+  editionFor: string;
+  plays: PlaybookPlay[];
+  chains: Record<string, EditionChainData>;
+  /** Anchors year-inference for a bare "Mon DD" options_play label — pass the edition's own
+   *  publish instant (mirrors `resolveLegacyPlayOcc`'s documented convention), never real "now"
+   *  for a possibly-old edition. */
+  referenceDate?: Date;
+}): { plays: PlaybookPlay[]; repairedTickers: string[]; droppedTickers: string[] } {
+  const { editionFor, plays, chains, referenceDate } = params;
+  const repairedTickers: string[] = [];
+  const droppedTickers: string[] = [];
+  const result: PlaybookPlay[] = [];
+
+  for (const play of plays) {
+    if (play.selection_tier !== "BACKFILL") {
+      result.push(play);
+      continue;
+    }
+    const expiry = parseOptionsContract(play.options_play, referenceDate)?.expiryYmd ?? null;
+    // No parseable expiry, or still live as of the edition's own target day — leave untouched.
+    if (expiry == null || expiry > editionFor) {
+      result.push(play);
+      continue;
+    }
+    const ticker = play.ticker.toUpperCase();
+    const direction = play.direction?.toLowerCase() === "short" ? "short" : "long";
+    const contract = pickAffordableChainContract(ticker, direction, chains[ticker], editionFor);
+    if (!contract) {
+      droppedTickers.push(ticker);
+      continue;
+    }
+    repairedTickers.push(ticker);
+    result.push({ ...play, options_play: contract.options_play, entry_premium: contract.entry_premium });
+  }
+
+  return { plays: result, repairedTickers, droppedTickers };
 }
 
 /**

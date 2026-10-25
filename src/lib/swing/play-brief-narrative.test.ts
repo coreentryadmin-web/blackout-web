@@ -86,6 +86,27 @@ test("tradeManagerNarrativeSection: narrates dark pool + dealer posture", () => 
   assert.match(section!.body, /Break watch/i);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24): every narrated level in this file states its
+// distance from spot, "(X% from spot)" -- narrateWall/narrateMaxPain/narrateMagnet already do, but
+// narrateDarkPool, narrateKing and narrateFlip silently did not, even though `level.distancePct`
+// is the identical already-computed field. Pins the dark-pool fix: spot 100, dark pool 99.5 ->
+// (99.5-100)/100 = -0.5% -> "-0.5% from spot".
+test("tradeManagerNarrativeSection: dark pool narration states its distance from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        darkPoolLevels: [{ strike: 99.5, premium: 12_000_000, pct: 42 }],
+        gexWalls: { callWalls: [], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Watch 99\.50\*\* \(-0\.5% from spot\) — major \*\*dark pool\*\* print/i);
+});
+
 // PR #5994 added net_vex/net_dex/net_charm + their regime-read strings to gexPostureSection
 // ("GEX posture"), but collapseRedundantIntelSections drops that WHOLE section for OPEN/WATCH
 // buckets once a narrative is present, under a "folded into Trade manager read" note -- and
@@ -392,6 +413,66 @@ test("tradeManagerNarrativeSection: LONG Break watch never cites a level ABOVE s
   assert.doesNotMatch(section!.body, /Break watch.*105\.00/i);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24): "Break watch" is the single most
+// safety-critical, reserved, always-shown line in the whole brief, yet it never stated how close
+// the cited risk currently is — even though `FocalLevel.distancePct` was already computed and
+// sitting right there on the matched level, unused. Pins the fix for the real (non-flip-fallback)
+// LONG case: spot 100, put wall 90 -> (90-100)/100 = -10% -> "10.0% away".
+test("tradeManagerNarrativeSection: LONG Break watch states how far the structural support level is from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        gexWalls: { callWalls: [], putWalls: [{ strike: 90, gex: 1 }] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch\*\* — lose \*\*90\.00\*\* \(10\.0% away\) on a closing basis/i);
+});
+
+// SHORT sibling: spot 100, GEX king 103 -> (103-100)/100 = +3% -> "3.0% away".
+test("tradeManagerNarrativeSection: SHORT Break watch states how far the structural resistance level is from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "SHORT" }),
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 103, isKing: true }] },
+        gexWalls: { callWalls: [{ strike: 120, gex: 1 }], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch\*\* — reclaim \*\*103\.00\*\* \(3\.0% away\)/i);
+});
+
+// The LONG gamma-flip FALLBACK (no put_wall/dark_pool/king candidate exists below spot at all)
+// must get the same treatment, not just the primary wall/king/dark-pool path — the flip's own
+// `FocalLevel` entry (collectFocalLevels always derives one when a flip is known) carries the
+// identical `distancePct` field. Spot 100, flip 95 -> (95-100)/100 = -5% -> "5.0% away".
+test("tradeManagerNarrativeSection: LONG Break watch states distance for the gamma-flip fallback too, not just the primary wall/king/dark-pool path (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        gammaFlip: 95,
+        gexWalls: { callWalls: [], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch\*\* — lose \*\*95\.00\*\* \(5\.0% away\) on a closing basis/i);
+});
+
 // FINDING (Ask Largo standing mandate, 2026-10-16, live repro SWING:GOOGL:58): an OPEN position's
 // real, committed structural stop (`play.invalidationUnderlyingPx`, pinned at commit from
 // `thesis_invalidation_px` — manage.ts's own PRECEDENCE RANK #1 exit trigger, "fires at ANY
@@ -611,6 +692,24 @@ test("tradeManagerNarrativeSection: SHORT Break watch considers the GEX king str
   assert.ok(section);
   assert.match(section!.body, /Break watch.*103\.00/i, "must cite the nearer GEX king strike, not the farther call wall");
   assert.doesNotMatch(section!.body, /Break watch.*120\.00/i);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24): same omission as the dark-pool one above --
+// narrateKing never stated its distance from spot either. Spot 100, king 103 -> +3.0% from spot.
+test("tradeManagerNarrativeSection: GEX king narration states its distance from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 103, isKing: true }] },
+        gexWalls: { callWalls: [], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /\*\*GEX king 103\.00\*\* \(\+3\.0% from spot\) — largest gamma concentration/i);
 });
 
 test("tradeManagerNarrativeSection: dead-but-not-closed WATCH (extended past entry) suppresses 'Vector spot not wired' — matches #5620's dataFreshnessSection fix, blast radius", () => {
@@ -1108,6 +1207,29 @@ test("tradeManagerNarrativeSection: Gamma flip narration — LONG with spot ABOV
   );
   assert.ok(section);
   assert.match(section!.body, /Lose \*\*98\.00\*\* → dealer posture turns against longs/);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24): same omission as the dark-pool/GEX-king
+// ones above -- narrateFlip never stated its distance from spot either. Spot 100, flip 98 ->
+// -2.0% from spot.
+test("tradeManagerNarrativeSection: gamma flip narration states its distance from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: { spot: 100, flip: 98 },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Gamma flip 98\.00\*\* \(-2\.0% from spot\) — regime line\./);
 });
 
 test("tradeManagerNarrativeSection: Gamma flip narration — LONG with spot BELOW flip says 'Reclaim', not 'Lose' an already-lost level", () => {

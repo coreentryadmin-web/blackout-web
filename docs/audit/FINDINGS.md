@@ -38,6 +38,899 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-25 — [FINDING, P2 Thermal] GEX heatmap's Net GEX delta chip colors by the metric's absolute-level tone, not the delta's own direction — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | Thermal GEX heatmap intelligence strip (`src/features/thermal/lib/thermal-regime-strip.ts`, `src/features/thermal/components/ThermalRegimeStrip.tsx`) |
+| **Found by** | DISCOVERY-lane standing audit mandate, fresh-angle sweep on 2026-10-25 |
+
+### Symptom
+
+The Net GEX chip in the GEX-lens intelligence strip shows a "vs prior close" delta arrow next to
+the current value (e.g. `+$12.3B ↓$17.7B`). The delta arrow's color is supposed to signal whether
+the metric moved up (green) or down (red) since prior close. Instead it was colored by the
+metric's own absolute-level sign: a net-positive (long-gamma) reading that fell sharply vs prior
+close rendered its down-arrow in **green**, implying improvement on an actual decrease; the
+symmetric case (net-negative GEX that rose) would render an up-arrow in **red**.
+
+### Root cause
+
+`buildThermalRegimeStrip` (`thermal-regime-strip.ts`) received both the absolute level (`netTotal`)
+and the delta's own direction (`netDeltaTone`, computed upstream in `GexHeatmap.tsx` from
+`net_gex_delta`'s sign) as separate inputs. `netDeltaTone` was used only to decide **whether** to
+render the delta chip at all (`netDeltaChip` gating, lines ~188-195) — the direction itself was
+then discarded. The segment's `tone` field (consumed by `ThermalRegimeStrip.tsx` to color both the
+value AND the delta chip) was set purely from `netTotal >= 0 ? "bull" : "bear"`, i.e. the absolute
+level's sign. `ThermalRegimeStrip.tsx:62` then colored the delta chip off that same `seg.tone`:
+`seg.tone === "bear" ? "text-rose-300" : "text-emerald-300"` — level color, not delta color.
+
+No existing test caught this because every fixture in `thermal-regime-strip.test.ts` used a
+`netDelta`/`netDeltaTone` whose sign happened to match `netTotal`'s sign, so level-tone and
+delta-tone divergence was never exercised.
+
+### Fix
+
+Added a `deltaTone?: "bull" | "bear" | "neutral" | null` field to `RegimeStripSegment`, threaded
+`netDeltaTone` through into it at all four net-metric segment sites (`netGex`, `netVex`, `netDex`,
+`netCharm` — only `netGex` is wired with a live delta today, but the other three share the same
+chip-rendering path, so the fix is applied uniformly rather than special-cased to avoid the same
+bug reappearing silently once those lenses' deltas are wired up). `ThermalRegimeStrip.tsx`'s delta
+chip now colors off `(seg.deltaTone ?? seg.tone)` instead of `seg.tone` alone — falling back to the
+level tone only when no delta-specific tone was supplied, preserving existing behavior for every
+segment that has no delta chip at all.
+
+### Blast radius
+
+One shared rendering path (`RegimeSegment` in `ThermalRegimeStrip.tsx`) serves all four lens strips
+(GEX/VEX/DEX/CHARM); fixed once at the type + render layer rather than per-lens. Only GEX currently
+has a populated `netDeltaTone` (`GexHeatmap.tsx`'s `gexTileDeltas.netGex`), so this was the only
+lens where the bug could manifest today, but VEX/DEX/CHARM segments now carry the same correct
+`deltaTone` field defensively.
+
+### Evidence
+
+- RED→GREEN: new test "net-positive GEX with a down delta carries a bear deltaTone independent of
+  the bull level tone" in `thermal-regime-strip.test.ts` — asserts `netGex.tone === "bull"` AND
+  `netGex.deltaTone === "bear"` for `netTotal: 12_300_000_000, netDelta: "-$17.7B", netDeltaTone:
+  "bear"`. Verified RED against pre-fix source (reverted the two source files only, kept the test):
+  `1 subtest failed` (8 pass / 1 fail). Re-applied the fix: `9/9 pass`.
+- `npx tsx --experimental-test-module-mocks --test src/features/thermal/lib/thermal-regime-strip.test.ts src/features/thermal/components/*.test.ts* src/features/thermal/lib/*.test.ts` → 88/88 pass (full Thermal lib + component suite, no regressions).
+- `npx tsc --noEmit` → clean (after adding `deltaTone` to the `segment()` helper's `Pick<...>` opts type).
+
+## Night Hawk Swings: play-brief resolution silently substitutes a WRONG, unrelated position when the requested positionId doesn't exist in that ticker's one remaining candidate — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED
+
+### Root cause
+
+Live repro, 2026-10-24 5-engine Ask Largo cycle: `bookContextSection`'s own rendered text on
+`SWING:PANW:67`'s brief cites a sibling banger-origin position by its real id — "already holding
+PANW LONG (separate, cross-engine position #2103)". That id is genuine: `loadOpenBook()`
+(`play-brief-context.ts`) reads `banger_positions` live and finds a real, currently-open row with
+that id on PANW. But `GET /api/market/swing/play-brief?playId=SWING:PANW:2103` does **not** serve
+that position — it returns `playId: "SWING:PANW:67"`, a completely different, unrelated position
+(different contract, different entry, different P&L), with no error and no indication the
+requested id was never found.
+
+Two call sites share the identical defect shape — a "this ticker has exactly one candidate, so it
+must be the one asked about" shortcut that never checks whether a caller-supplied `positionId`
+hint actually matches that sole candidate:
+
+1. `pickLanePlayForBrief` (`play-brief-resolve-pure.ts`): `if (forTicker.length === 1) return
+   forTicker[0]!;` ran before the function's own `hints.positionId` exact-match logic (which only
+   exists further down, reached only when `forTicker.length > 1`).
+2. `loadOpenTerminalPlay` (`play-brief-resolve.ts`): `if (!row && matches.length === 1) row =
+   matches[0];` — same shape, against `swing_positions` rows.
+
+The PANW#2103 banger-origin row is excluded from both functions' input arrays entirely —
+`mergeBangerPositionsIntoSwingPlays` (`banger-lane-merge.ts`, deliberately, per its own test
+"keeps canonical swing OPEN when banger also open on ticker") drops a banger row from board
+display whenever a native swing position already manages that ticker, and `loadOpenTerminalPlay`
+only ever queries `swing_positions` (banger lives in a separate table/id-space). So by the time
+either function runs, PANW's ticker-filtered candidate list has exactly one entry — the *unrelated*
+native position — and the stale/unmatched `positionId:2103` hint was silently discarded by the
+single-candidate shortcut instead of being treated as "not found."
+
+This is the same failure class play-brief-resolve.ts's own 2026-10-20 `closedFallback` fix already
+named and fixed for a different trigger (a stale positionId past `loadClosedPlay`'s 90-day window):
+"an explicit, unresolvable positionId must surface as absence, never as an unrelated substitute."
+That fix's guard lived on a different fallback a few lines down and never covered these two
+single-candidate shortcuts.
+
+### Evidence
+
+Live, reproducible (not a timing race — re-fetched `/horizons?view=swings` and the brief twice,
+~2 minutes apart, both confirming the same state): PANW's `committed` list carries exactly one row
+(`positionId: 67`), total committed count unchanged at 93 across both fetches. `GET
+/api/market/swing/play-brief?playId=SWING:PANW:2103&expandIntel=1` returns HTTP 200 with
+`"playId": "SWING:PANW:67"` and PANW:67's real entry/mark/P&L data — not an error, not a 404, not
+the requested position.
+
+### Fix
+
+Added an identity guard to both single-candidate shortcuts: only take the "ticker has exactly one
+candidate" shortcut when either no `positionId` hint was supplied, or the sole candidate's own id
+actually matches it. Otherwise return `null`/leave the row unresolved, letting the caller's
+existing fallback chain (already present and already handling exactly this "surface as absence"
+case elsewhere in `resolveSwingPlayForBrief`) report the honest outcome instead.
+
+### Blast radius
+
+Two functions, one guard each, no other logic touched:
+- `pickLanePlayForBrief` (`play-brief-resolve-pure.ts`) — guarded the `forTicker.length === 1`
+  branch; the existing `forTicker.length > 1` exact-positionId-match logic a few lines below is
+  unaffected and untouched.
+- `loadOpenTerminalPlay` (`play-brief-resolve.ts`) — guarded the `matches.length === 1` branch;
+  the positionId exact-match attempt immediately above it, and the strike/right/status fallbacks
+  below it, are unaffected and untouched.
+
+Checked both functions' existing test suites for any case relying on the old "blind single-
+candidate substitution" behavior with a genuinely mismatched positionId hint — none exists; every
+existing passing test either supplies no positionId, or supplies one that already matches its
+sole/target row via the pre-existing exact-match paths.
+
+### Fix rationale
+
+Minimal, symmetric fix at the two sites that share the defect — not a redesign of either
+resolution function, and not a change to `mergeBangerPositionsIntoSwingPlays`'s own (separately
+intentional, tested) one-row-per-ticker display precedence. Deliberately did **not** attempt to
+make the suppressed banger sibling independently browsable on the board (that is a genuine, real
+product question — "should Engine B's own capital on a ticker the swing ledger also manages get
+its own row/affordance somewhere" — worth raising with Cursor on the standing collaboration
+thread, not a one-line correctness fix) — this fix only stops the resolver from silently lying
+about *which* position a specific, explicit request actually returned.
+
+### Tests
+
+- RED: confirmed via `git stash` of only `play-brief-resolve-pure.ts` + `play-brief-resolve.ts` —
+  the two new regression tests fail against the old code (both assert `null`, old code returned
+  the unrelated PANW:67 play).
+- GREEN: restored the fix — `src/lib/swing/play-brief-resolve.test.ts` 30/30 pass (3 new tests: the
+  mismatch-must-return-null case, the no-hint-still-works case, and the matching-hint-still-works
+  case, covering both `pickLanePlayForBrief` and `loadOpenTerminalPlay`).
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/*.test.ts` — 2028/2028 pass.
+- `npx tsx --experimental-test-module-mocks --test src/features/nighthawk/command-deck/*.test.ts` —
+  458/458 pass.
+- `npx tsc --noEmit` — clean.
+- Full `npm test` — run and confirmed green before opening the PR.
+
+## 2026-10-25 — [FINDING, stale-OPEN correction, Audit tooling/GEX-CHARM] "No CHARM depth validator sibling to `gex-depth-validate.mjs`" (2026-09-05) is already fixed on `main` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **The stale entry** | `docs/audit/FINDINGS.md`'s 2026-09-05 entry (CLQ-017), *"No CHARM depth validator sibling to `gex-depth-validate.mjs`"*, is still marked **OPEN — P2, observability**. It names the exact gap: *"GEX has `scripts/gex-depth-validate.mjs`; grep finds no `charm-depth-validate` or equivalent."* Recommended fix: *"Add CHARM validator script + CI hook mirroring GEX depth audit pattern."* That script has existed on `main` for a while. |
+| **Verification** | `scripts/audit/charm-depth-validate.mjs` (93 lines) + `scripts/audit/charm-depth-validate.test.mjs` (26 lines) both exist. `git log --oneline --diff-filter=A -- scripts/audit/charm-depth-validate.mjs` → `14629db4c feat(audit): add charm-depth-validate offline script (CLQ-017) (#3970)` — the commit message cites CLQ-017 by name, confirming this is the intentional fix for this exact finding, not a coincidental script. The script's own header comment states the parallel explicitly: *"GEX has `gex-depth-validate.mjs` (live ladder vs provider gamma). CHARM had no sibling audit script (CLQ-017). This harness validates `charmPerShare()` in polygon-options-gex.ts against an independent Black-Scholes call-delta finite-difference route."* It imports `__test_charmPerShare` from `src/lib/providers/polygon-options-gex.ts` and `normCdf` from `src/lib/gex-depth.ts`, computing an independent closed-form delta-decay cross-check — read-only, no Polygon/DB calls, same operating profile as its GEX sibling. Neither `gex-depth-validate.mjs` nor `charm-depth-validate.mjs` has an `npm run` wrapper in `package.json` — both are invoked directly via `node --import tsx scripts/audit/<name>.mjs`, so the new script matches its sibling's own invocation convention exactly, not an inconsistent partial fix. |
+| **Why this was missed** | The fix (#3970) landed after the 2026-09-05 finding was written and nobody revisited the OPEN status once it shipped — same "drifts out of sync with reality after the underlying fix ships" pattern as this week's ECS-deploy-deadlock, Thermal/shared-cache, mobile-sticky-CTA, and Meridian estimate-revision-timeline corrections. |
+| **What was NOT touched** | No code change — this is a documentation-only correction restamping the stale status. |
+| **Status** | FIXED — the observability gap was already closed by #3970; this entry only corrects the stale OPEN status left over from before that fix landed. |
+
+## Night Hawk Swings: the "Watch levels" gamma-flip line — a separate, duplicate implementation of narrateFlip — had the same missing-distance gap — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED
+
+### Root cause
+
+`watchForSection` (`play-brief-intel.ts`) carries its own inline "Lose/Reclaim gamma flip $X" line
+for the "Watch levels"/"What to watch" section — a separate implementation from `narrateFlip`
+(`play-brief-narrative.ts`), which renders the conceptually identical fact for the sibling "Trade
+manager read" section. Both exist because this codebase already has a documented history of
+duplicate near-identical implementations (see this file's own dedup-fix comments), and both carried
+the same gap this session already found and fixed twice elsewhere this hour: neither stated how
+close spot currently is to the cited flip, even though both values needed to compute that distance
+(`spot`, `flip`) were already resolved a few lines above the line itself.
+
+4th instance of the exact same omission class found this session: #6641 (Entry trigger, this same
+function), #6648 (Break watch, `play-brief-narrative.ts`), #6651 (narrateDarkPool/narrateKing/
+narrateFlip, `play-brief-narrative.ts`), now this one.
+
+### Evidence
+
+Direct reading of the `watchForSection` gamma-flip branch (~line 2010) confirmed `spot`/`flip` are
+both in scope and the sentence construction discarded them after the `spotAboveFlip` sign check.
+Confirmed via `grep` that four existing tests in `play-brief-intel.test.ts` pin all four (direction
+× spot-side) combinations with exact-string assertions, giving known, checkable expected values for
+the fix.
+
+### Fix
+
+Added `` `(${Math.abs(((spot - flip) / spot) * 100).toFixed(1)}% away)` `` — matching THIS function's
+own established "(X% away)" convention (the same one the Entry trigger fix used earlier this hour),
+not `narrateFlip`'s "(X% from spot)" phrasing from the other file — each file keeps its own existing
+wording rather than introducing a third variant. Scoped to the live watch/open branches only; the
+`bucket === "closed"` branch already states both raw numbers side by side
+("Now trades X vs gamma flip Y") and was left unchanged.
+
+### Blast radius
+
+Single branch inside `watchForSection`. Updated the four existing exact-string tests that pin each
+direction × spot-side combination (COIN repro: LONG spot 174.98/flip 183.49 → 4.9% away; LONG spot
+190/flip 183.49 → 3.4%; SHORT spot 103/flip 99.31 → 3.6%; SHORT spot 95.8/flip 99.31 → 3.7%) — each
+value cross-checked arithmetically before being pinned. Two sibling absence-only tests
+(`doesNotMatch(/Lose gamma flip/i)`) and the CLOSED-bucket test were unaffected.
+
+### Fix rationale
+
+Same rationale as the three earlier fixes this hour: reuse the exact convention already established
+in the same file, add nothing new to compute, touch nothing outside the one branch responsible.
+
+### Tests
+
+- RED: confirmed via `git stash` of only `play-brief-intel.ts` that all four updated tests fail
+  against the old code (bare price, no suffix).
+- GREEN: restored the fix — all four tests pass with their newly-computed percentages; full
+  `play-brief*.test.ts` (1157 tests) and full `npm test` (16709/16712 pass, 3 skipped, 0 fail)
+  green; `npx tsc --noEmit` clean.
+
+## 2026-10-24 — [FINDING, stale-OPEN correction, Meridian] "Estimate-revision timeline is momentary, not cumulative" (2026-08-18) is already fixed on `main` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **The stale entry** | `docs/audit/FINDINGS.md`'s 2026-08-18 entry, *"Estimate-revision timeline is momentary, not cumulative"*, is still marked **OPEN — queued as the remaining half of the estimate-revision work**. It names the exact fix needed: *"The emitted entries need persisting (the `meridian_report_snapshots` pattern) so the event page can show the full run-up to a print rather than a momentary sample."* That fix has been live on `main` for weeks. |
+| **Verification** | `git log --oneline -S "mergeEstimateRevisionTimeline" -- src/lib/meridian/meridian-benzinga-earnings.ts` → `e83b354d8 fix(meridian): persist estimate-revision timeline instead of one-shot emission (#3037)`. `src/lib/meridian/meridian-benzinga-analytics.ts` now exports `mergeEstimateRevisionTimeline(live, persisted, limit)`, whose own doc comment cites this exact FINDINGS.md entry by name ("measured 2026-08-18: 4 entries at 14:52 UTC, 0 at 14:57 UTC — see FINDINGS.md 'Estimate-revision timeline is momentary, not cumulative'") and explains the fix: dedupe key `(ticker, date, change_kind, last_updated)` merges this build's live diff with persisted history, live winning on collision. Confirmed end-to-end wired, not just defined: `meridian-benzinga-earnings.ts:12` imports `recordMeridianEstimateRevision`/`readRecentMeridianEstimateRevisions` from `@/lib/db` (the actual DB read/write pair, `db.ts:11506`), line 133 calls `readRecentMeridianEstimateRevisions(since, 24)`, and line 134 merges it with the live diff via `mergeEstimateRevisionTimeline(liveRevisions, persistedRevisions, 24)` before it reaches `estimate_revision_timeline`. |
+| **Why this was missed** | The fix (#3037) landed after the 2026-08-18 finding was written and nobody revisited the OPEN status once it shipped — same "drifts out of sync with reality after the underlying fix ships" pattern as this week's ECS-deploy-deadlock, Thermal/shared-cache, and mobile-sticky-CTA corrections. |
+| **What was NOT touched** | No code change — this is a documentation-only correction restamping the stale status. |
+| **Status** | FIXED — the underlying feature gap was already closed by #3037; this entry only corrects the stale OPEN status left over from before that fix landed. |
+
+## 2026-10-24 — [FINDING, stale-OPEN correction, Marketing/public site] "Mobile sticky CTA bar overlaps FAQ answer" (2026-08-23) is already fixed on `main` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **The stale entry** | `docs/audit/FINDINGS.md`'s 2026-08-23 entry, *"Home page's mobile sticky CTA bar physically overlaps and blocks taps on a FAQ answer once the reader has opened a couple of questions above it"*, is still marked **OPEN — routed to the owning lane (public/marketing site)**. It is not open — the fix has been live on `main` for weeks. |
+| **Verification** | `git log --oneline --diff-filter=A -- src/lib/marketing/mobile-sticky-cta.ts` → `5ea5ef133 fix(marketing): suppress mobile sticky CTA over FAQ taps (#2799) (#3007)`. The module exports `rectsOverlap`/`mobileStickyBlockedByContent`/`shouldShowMobileStickyCta` with its own `mobile-sticky-cta.test.ts`, and `src/components/landing/LandingRedesignFx.tsx:2314-2362` wires them in exactly as the original finding's "plausible fix shape" suggested: a `syncSticky()` helper reads the sticky bar's rect plus every `.sec-faq .faq-item` rect and the footer rect on each `IntersectionObserver` hero-exit event, each FAQ `toggle` event, and each scroll tick, and toggles the `.visible` class only when `shouldShowMobileStickyCta(heroPast, blocked)` is true — i.e. the bar is suppressed the instant it would overlap an expanded FAQ row or the footer, not just hidden once near the top of the page. The code comment at the wiring site even cites the original finding by number (`FINDINGS P2 #2799`), confirming this is the intentional fix, not a coincidental rewrite. |
+| **Why this was missed** | The fix (PR #2799, landed via #3007) shipped after the 2026-08-23 finding was written, and nobody revisited the OPEN status once it landed — the same "drifts out of sync with reality after the underlying fix ships" pattern this file's own ECS-deploy-deadlock and Thermal/shared-cache corrections already describe this week. |
+| **What was NOT touched** | No code change — this is a documentation-only correction restamping the stale status. |
+| **Status** | FIXED — the underlying bug was already resolved by #2799/#3007; this entry only corrects the stale OPEN status left over from before that fix landed. |
+
+## Night Hawk Swings: half the "Trade manager read" level narrations never stated their distance from spot — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED
+
+### Root cause
+
+`play-brief-narrative.ts` narrates each structural level (`FocalLevel`, carrying an already-computed
+signed `distancePct`) through one of six small functions called from `tradeManagerNarrativeSection`'s
+focal-level loop: `narrateWall`, `narrateMaxPain`, `narrateMagnet`, `narrateKing`, `narrateDarkPool`,
+`narrateFlip`. Three of the six (`narrateWall`, `narrateMaxPain`, `narrateMagnet`) already state
+`"(X% from spot)"` next to the cited price — the other three (`narrateKing`, `narrateDarkPool`,
+`narrateFlip`) never did, even though they read `level.distancePct`/`level.price` off the exact same
+`FocalLevel` shape and the value was sitting right there.
+
+Found this cycle by re-checking sibling level-rendering call sites for the same omission class after
+two earlier fixes this session (#6641 "Entry trigger", #6648 "Break watch") each found an instance of
+it. This is the third and, on inspection, most systemic instance — not one line but half of a whole
+family of sibling functions sharing one convention inconsistently.
+
+### Evidence
+
+Direct reading of all six narration functions confirmed the split: `narrateWall` → `` `(${fmtPct(level.distancePct)} from spot)` ``;
+`narrateMaxPain` → `` `(${fmtPct(level.distancePct)} ${pull} spot)` ``; `narrateMagnet` → `` `(${fmtPct(level.distancePct)} from spot)` ``;
+`narrateKing`/`narrateDarkPool`/`narrateFlip` → none. Confirmed all three missing functions are live,
+reachable call sites (`tradeManagerNarrativeSection`'s focal loop, lines ~1558–1580; `narrateDarkPool`
+also called directly at line ~1712), not dead code.
+
+### Fix
+
+Added `` `(${fmtPct(level.distancePct)} from spot)` `` to all three missing functions, matching the
+exact phrasing `narrateWall`/`narrateMagnet` already use (the plurality convention of the three that
+already had it). No new computation — `level.distancePct` was already being read by each function for
+its other branches (`narrateDarkPool`'s side/hold logic, `narrateFlip`'s lose/reclaim logic); this just
+stops discarding it before the sentence is built.
+
+### Blast radius
+
+Three functions, one file, all called from the same narration loop plus `narrateDarkPool`'s second
+call site (`watchForSection`'s own separate dark-pool mention — confirmed unaffected, it calls a
+different code path). No test needed updating for exact-string matches: checked every existing
+assertion touching these three functions' output and all used loose regexes (`.*`/`i`-flag matches)
+that tolerate the inserted text; the three `Gamma flip narration` sign-correctness tests specifically
+assert only the `longBreak` clause (`Lose **X** → ...`), which is untouched by this fix.
+
+### Fix rationale
+
+Reused the exact phrasing already shipped twice over (`narrateWall`, `narrateMagnet`) rather than
+inventing a third convention — this file already has two slightly different spellings
+(`"from spot"` vs `"{pull} spot"`); matched the more common one rather than adding a fourth variant.
+
+### Tests
+
+- RED: confirmed via `git stash` of only `play-brief-narrative.ts` that three new tests fail against
+  the old code (bare level, no distance) — cross-checked the expected percentages against each
+  fixture's own "Break watch" line in the same output (e.g. dark pool test's own Break-watch bullet
+  independently showed "0.5% away", confirming the -0.5% expectation).
+- GREEN: restored the fix — all three new tests pass; full `play-brief*.test.ts` (1157 tests) and
+  full `npm test` (16709/16712 pass, 3 skipped, 0 fail) green; `npx tsc --noEmit` clean.
+- Added `tradeManagerNarrativeSection: dark pool narration states its distance from spot`, `...: GEX
+  king narration states its distance from spot`, `...: gamma flip narration states its distance from
+  spot` (all 2026-10-24).
+
+## Vector gamma-magnet callout: whole-dollar level paired with an unrounded-strike percent — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Vector gamma magnet (`src/features/vector/lib/vector-gamma-magnet.ts`) |
+| **Found by** | Ask Largo fan-out audit (8-ticker parallel workflow, adversarially verified), 2026-10-24, live repro BMNR |
+
+### Symptom
+
+BMNR's live swing play-brief `structureLadder` rung (`kind: "magnet"`) carried `price: 30.67`, `distancePct: 36.9`, but its own `meta` string (the `GammaMagnet.callout`) read `"gamma pivot 31 (+36.86%) — short gamma amplifies a move away, won't hold"`. The level named (31) and the percent quoted beside it (+36.86%) describe two *different* numbers: `(31-22.41)/22.41 = +38.33%`, not +36.86%; +36.86% is the real percent for the real strike, 30.67 — which is exactly what the rung's own `price`/`distancePct` fields (and the swing narrative's `fmtPriceLevel(m.strike)` line) already render correctly.
+
+### Root cause
+
+`deriveGammaMagnet()` computes `distancePct` from the unrounded, cents-precision `strike` (a weighted mean of call+put wall strikes — rarely near-integer), then called `buildCallout(Math.round(strike), distancePct, ...)` — passing a WHOLE-DOLLAR rounding of the level into the same sentence as a percent computed from the cents-precision one. Whenever the weighted strike wasn't already near-integer (the ordinary case), the two numbers in one sentence described different levels.
+
+### Blast radius
+
+`GammaMagnet.callout` is a single string consumed by `VectorChart.tsx`, `VectorPageShell.tsx`, `VectorPlayAnalyticsDrawer.tsx`, `vector-play-bootstrap.ts`, `vector-play-desk-snapshot.ts`, `vector-pulse.ts`, `src/lib/bie/vector-full-state.ts` (Largo's BIE narrative layers), and swing's `play-brief-narrative.ts` (`collectFocalLevels`, feeding the `structureLadder` rung's `meta`). All render the same self-inconsistent sentence whenever the magnet strike isn't near-integer.
+
+### Fix
+
+Pass the SAME cents-precision strike (`round2(strike)`, matching the already-correct `GammaMagnet.strike` field) into `buildCallout`, and format it via the shared `fmtPriceLevel()` helper (matching every narrative consumer's own formatting of `m.strike`) instead of raw number interpolation.
+
+### Evidence
+
+- RED→GREEN: new test reproduces the exact BMNR numbers (spot 22.41, weighted strike 30.67) via a 2-wall fixture; fails against pre-fix source (`git stash`), passes after.
+- `npx tsx --experimental-test-module-mocks --test src/features/vector/lib/*.test.ts src/lib/swing/play-brief*.test.ts` → 2454/2454 pass.
+- `npx tsx --experimental-test-module-mocks --test src/lib/bie/*.test.ts` → 787/787 pass.
+- `npx tsc --noEmit` → clean.
+
+## 2026-10-24 — [FINDING, P1 Night Hawk Swings] Command Deck AND the Largo swing play-brief both leak the internal Banger-ledger sentinel as a fabricated live regime read — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Night Hawk Swings — Command Deck (`PlayTerminal.tsx`, `SwingCockpitStrip.tsx`) AND the Largo swing play-brief narrative (`whyThisSetupSection`, `play-brief-intel.ts`) |
+| **Found by** | Ask Largo standing mandate — deferred BMNR finding from the 2026-10-24 Largo fan-out audit, investigated and confirmed this cycle |
+
+**Confirmed live** (pulled `GET /api/market/swing/play-brief?playId=SWING:BMNR:1974&expandIntel=1`
+against prod, 2026-10-24 ~21:15 UTC — the real BMNR position, before this fix deployed): the
+envelope's own markdown narrative read, verbatim, `**Today's regime read:** BREAKOUT · BANGER` —
+the exact live repro the deferred finding named. This is a SECOND, independent rendering of the
+same sentinel, in the Largo play-brief pipeline rather than the Command Deck UI. Also confirmed
+via `GET /api/market/nighthawk/horizons?view=swings`: of 93 currently-committed Swing rows, 90
+carry this exact sentinel as their `regime` field (see the PR's own comment thread for the full
+count).
+
+### Symptom
+
+Live repro BMNR: the Command Deck's Swing cockpit header showed a top-level "Regime" stat
+reading `BREAKOUT · BANGER`, which reads as a current market-regime characterization for the
+whole Swing lane. The same literal string also rendered under "Regime" in the per-position
+play-detail panel (`PlayTerminal.tsx`) for any Banger-origin position.
+
+`BREAKOUT · BANGER` is not a market regime at all — it is `BANGER_LEDGER_REGIME_LABEL`
+(`banger-lane-merge.ts`), an internal sentinel `horizonPlayFromBangerPosition` stamps on every
+Banger-origin ledger row to mean "no real per-position dossier exists for this play." Per
+CLAUDE.md's own count, 78/81 of the live committed Swing book is Banger-origin, so this was the
+dominant rendered state of both surfaces, not an edge case.
+
+### Root cause
+
+Every OTHER consumer of this exact sentinel already treats it as an internal fingerprint, never
+a display value:
+- `thesisHealthUncalibrated()` (`thesis-health.ts`) withholds the aggregate Thesis Health score.
+- `watchForSection` (`play-brief-intel.ts`) suppresses a fabricated "Thesis intact" line.
+- `attachThesisExplanation` (`serving-lane.ts`) refuses to let a fresh ticker-keyed dossier
+  overwrite the sentinel.
+- `terminalPlayFromHorizon`'s own `thesisBreakResolved` (`adapters.ts`) suppresses the derived
+  thesis-break level to `"unknown"`.
+
+`TerminalPlay.regime` itself was the one field that never got this treatment:
+`regime: src.regime ?? null` forwarded the raw sentinel straight through with no guard. From
+there:
+- `PlayTerminal.tsx:575` renders `play.regime` verbatim under the label "Regime".
+- `SwingCockpitStrip.tsx:42` picks `plays.find((p) => p.regime)?.regime` — the first play in the
+  WHOLE Swing book with any truthy `regime` — and renders it as a single lane-level "Regime"
+  cockpit stat. With the book dominated by Banger-origin rows, this arbitrary pick is very likely
+  to resolve to the sentinel, mischaracterizing the entire lane's regime read.
+
+A sibling test (`adapters.test.ts`, "horizon adapter: Banger-origin thesisLevel:'intact' is
+suppressed...") already constructed a Banger-origin fixture with `regime: "BREAKOUT · BANGER"`
+and asserted the derived `thesisBreak` was suppressed — but never asserted what `TerminalPlay.regime`
+itself resolved to, leaving this exact gap uncovered.
+
+### Fix
+
+`terminalPlayFromHorizon` now computes a `regimeForDisplay` value immediately beside the
+existing `thesisBreakResolved` guard: `src.regime === BANGER_LEDGER_REGIME_LABEL ? null :
+(src.regime ?? null)`. The returned `TerminalPlay.regime` uses `regimeForDisplay`; the raw
+`src.regime` (still carrying the sentinel) is passed unchanged into `computeSwingThesisHealth`
+a few lines above, which needs to see the sentinel to correctly withhold its own aggregate score.
+
+With the fix: a Banger-origin row's `TerminalPlay.regime` is `null` (nothing renders under
+"Regime" in the play-detail panel), and `SwingCockpitStrip`'s lane-level pick skips past it to
+the first row with a real regime value, or renders nothing if none exists — an honest omission
+instead of a fabricated characterization.
+
+The swing play-brief pipeline (`play-brief-resolve.ts`) always builds its `TerminalPlay` via the
+SAME `terminalPlayFromHorizon`, so this one fix also closes the Largo narrative leak end-to-end —
+confirmed with a direct unit-level repro (`terminalPlayFromHorizon` → `whyThisSetupSection`)
+before writing the second fix below. `whyThisSetupSection`'s own `**Today's regime read:**` line
+(`play-brief-intel.ts:266`) additionally gets its own explicit sentinel guard, defense-in-depth,
+matching every other consumer of this exact sentinel already in that file
+(`bangerOriginNoRealThesis`/`reviewedIsBangerOrigin`) — this file's own `attachThesisExplanation`
+double-call history (serving-lane.ts) already proved an upstream-only fix point can be bypassed
+by a future caller that doesn't route through the adapter.
+
+### Blast radius
+
+Two fix points, one root cause:
+- `terminalPlayFromHorizon` (`adapters.ts`) feeds both Command Deck display consumers
+  (`PlayTerminal.tsx`, `SwingCockpitStrip.tsx`) AND the swing play-brief pipeline's `play` object
+  (`play-brief-resolve.ts`) — no separate fix needed in any of the three.
+- `whyThisSetupSection` (`play-brief-intel.ts`) gets its own redundant guard as defense-in-depth.
+
+Confirmed via grep that no other `TerminalPlay.regime` consumer exists. 0DTE/Legacy/LEAPS
+adapters never produce the Banger sentinel, so they are unaffected.
+
+### Evidence
+
+- RED→GREEN (Command Deck adapter): new regression test in `adapters.test.ts` fails against
+  pre-fix source (`banger.regime` returns `"BREAKOUT · BANGER"` instead of `null`), passes after.
+- RED→GREEN (Largo narrative): new regression test in `play-brief-intel.test.ts` fails against
+  pre-fix source with the EXACT live repro string (`**Today's regime read:** BREAKOUT · BANGER`
+  present in the rendered section body), passes after.
+- Live confirmation: `GET /api/market/swing/play-brief?playId=SWING:BMNR:1974&expandIntel=1`
+  against prod showed this exact string in the live markdown before the fix; `GET
+  /api/market/nighthawk/horizons?view=swings` showed 90/93 currently-committed Swing rows
+  carrying the sentinel as their raw `regime` field.
+- `npx tsx --experimental-test-module-mocks --test src/features/nighthawk/command-deck/adapters.test.ts`
+  → 158/158 pass.
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief*.test.ts src/features/nighthawk/command-deck/*.test.ts`
+  → 1609/1609 pass.
+- `npx tsc --noEmit` → clean.
+
+## Night Hawk Swings: "Break watch" — the single most safety-critical, always-shown line in the whole brief — never stated how close its cited risk is — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED
+
+### Root cause
+
+`breakTrigger` (`play-brief-narrative.ts`) builds the "Break watch" bullet — explicitly documented
+in this file's own history as reserved, always shown, and bypassing `MAX_BULLETS` specifically
+because "safety-critical break coaching must not starve." It is shared by both
+`tradeManagerNarrativeSection`'s own bullet and `resolveBreakInvalidation` (the headline
+`envelope.invalidation` field `play-brief.ts` exposes), so both call sites carried the same gap.
+
+The level selection (`resolveInvalidationFocalLevel`) already returns a full `FocalLevel` object
+with a `distancePct` field (`(price - spot) / spot * 100`, signed, documented inline as needing "no
+extra spot plumbing" because it's already computed) — but `breakTrigger` only ever read `.price`
+off that object into `support`/`resist`, discarding `.distancePct` before constructing the final
+sentence. Every sibling "key level" line elsewhere in the same brief (GEX call/put wall, gamma
+flip, max pain, the committed structural stop) states `"(X% away)"`; the one line a member is told
+is the single most important thing to watch did not.
+
+Found during this session's own static audit (fixed `watchForSection`'s "Entry trigger" line for
+the identical gap minutes earlier, PR #6641 — re-checking sibling level-rendering call sites for
+the same class of omission surfaced this one, a materially higher-stakes instance of the same
+pattern).
+
+### Evidence
+
+Confirmed via direct reading of `breakTrigger`/`resolveInvalidationFocalLevel`
+(`play-brief-narrative.ts`) that `distancePct` is computed and attached to every `FocalLevel`
+(including the `gamma_flip` fallback entry) but never read past level *selection*. Confirmed via
+`grep` that two existing exact-string tests in `play-brief.test.ts` (fixture: spot 24.5, put wall
+22) asserted the bare-distance string, which the fix's RED proof then changed in lockstep.
+
+### Fix
+
+Added a small `distAwaySuffix(level)` helper that renders `Math.abs(level.distancePct).toFixed(1)`
+as `" (X.X% away)"` (or `""` when no level), applied to all three branches:
+
+1. LONG, primary wall/dark-pool/king candidate (`invalidationLevel`).
+2. SHORT, primary candidate (`invalidationLevel`).
+3. LONG, the gamma-flip fallback (no wall/dark-pool/king below spot at all) — changed the
+   existing `.some()` existence check to `.find()` so the matched `FocalLevel`'s own
+   `distancePct` is available too, rather than just a boolean.
+
+No new spot plumbing, no new computation — the value was already there and already correct
+(verified against the SAME formula every sibling line in this file uses); this just stops
+discarding it before the sentence is built.
+
+### Blast radius
+
+Single function (`breakTrigger`), both its call sites (`tradeManagerNarrativeSection`'s bullet,
+`resolveBreakInvalidation`'s `envelope.invalidation`) pick up the fix automatically since both route
+through it. Two exact-string tests in `play-brief.test.ts` updated to match (fixture: spot 24.5,
+put wall 22 → 10.2% away) — every other existing assertion on this output used a loose `.*` regex
+and needed no change (confirmed: full `play-brief*.test.ts`, 1153/1153 green unchanged).
+
+### Fix rationale
+
+Reused the exact `Math.abs()`/`toFixed(1)` convention this file already uses everywhere else for
+the identical "(X% away)" phrasing, rather than inventing new formatting. Scoped to the three
+branches that already select a real `FocalLevel`/flip candidate — did not touch the separate
+premium-stop fallback branches (`lose premium stop $X`) a few hundred lines below, which construct
+their own, unrelated strings off option mark/execStop, not an underlying structural level, and are
+untouched by this change.
+
+### Tests
+
+- RED: confirmed via `git stash` of only `play-brief-narrative.ts` that three new tests fail
+  against the old code (bare price, no suffix) — verified the exact expected percentages against
+  the brief's own sibling "Put wall 90.00 (-10.0% from spot)" line in the same test's output.
+- GREEN: restored the fix — all three new tests pass; full `play-brief*.test.ts` (1153 tests) and
+  full `npm test` (16701/16704, 3 skipped, 0 fail) green; `npx tsc --noEmit` clean.
+- Added `tradeManagerNarrativeSection: LONG Break watch states how far the structural support level
+  is from spot`, the SHORT sibling, and the LONG gamma-flip-fallback sibling (all 2026-10-24).
+
+## Largo swing play-brief: duplicate "Vector desk state"/"Vector state" unavailable-source entries — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Ask Largo swing play-brief (`src/lib/swing/play-brief-absence.ts`) |
+| **Found by** | Ask Largo fan-out audit (8-ticker parallel workflow, adversarially verified), 2026-10-24, live repro UMAC |
+
+### Symptom
+
+UMAC's live swing play-brief envelope's `confidence.why` read "9 sources unavailable this cycle (..., Vector desk state, ..., Vector state, ...)" — `unavailableSources[]` carried BOTH entries, both `reason: "fetch failed"`, with near-synonymous `what_is_missing` wording ("a Vector desk-state snapshot from the vector service" vs "the standalone Vector desk-state read for this ticker"). Both describe the exact same single fact (no live Vector read succeeded, from either the standalone fetch or the `ecosystem.vector_full_state` fallback) — the true distinct-gap count was 8, not 9.
+
+### Root cause
+
+`collectBriefUnavailableSources()` had two independent pushes keyed off the same `ctx.vectorFetchFailed` flag:
+- An unconditional one (added 2026-10-18, PR #6145, "CLOSED-brief GEX/Vector race fix"): `if (ctx.vectorFetchFailed) { push "Vector desk state" }` — no check for the ecosystem fallback.
+- An earlier, fallback-aware one (added 2026-09-06): `if (ctx.vectorFetchFailed === true && !ctx.vector && !ctx.ecosystem?.vector_full_state) { push "Vector state" }`.
+
+The second condition is a strict subset of the first — every time it fires, the first fires too — so whenever the standalone fetch failed with no fallback, both pushed. The 2026-10-18 addition was made without noticing the pre-existing, more precisely-gated check covering the identical scenario.
+
+### Fix
+
+Added the same fallback guard (`!ctx.vector && !ctx.ecosystem?.vector_full_state`) to the "Vector desk state"/"fetch failed" push, and removed the now-fully-redundant standalone "Vector state" push entirely. "Vector desk state" is now the single source label for this absence, with two distinguishable `reason` values depending on which underlying condition caused it ("snapshot unavailable" when the ecosystem read succeeded but carried no live spot, vs "fetch failed" when the fetch itself failed with no fallback).
+
+### Blast radius
+
+Single file (`play-brief-absence.ts`), two existing tests updated to expect the surviving label (`"Vector desk state"` instead of `"Vector state"`), one new regression test asserting exactly one "fetch failed" entry for this scenario. No other call site referenced the `"Vector state"` label (confirmed by grep).
+
+### Evidence
+
+- RED→GREEN: `git stash` of only `play-brief-absence.ts` fails 2 tests (the updated-label assertion and the new exactly-one-entry regression test); both pass after the fix.
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief*.test.ts` → 1147/1147 pass (Node 20).
+- `npx tsc --noEmit` → clean.
+
+## Night Hawk Swings: "Entry trigger" was the one price level in the whole Ask Largo WATCH brief with no distance-from-spot context — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED
+
+### Root cause
+
+Every other price level `watchForSection`/`play-brief-narrative.ts` narrates in a swing play-brief
+states how far current spot sits from it, as `"(X% away)"`:
+
+- GEX call/put wall, gamma flip — `nearestWallOrFlipLine` (`play-brief-intel.ts`)
+- committed structural stop — `committedStructuralStopLine` (`play-brief-narrative.ts`), fixed
+  2026-10-17 specifically to correct the denominator of this exact convention
+  (`(spot - level) / spot`, never `/ level`)
+
+The "Entry trigger" line in `watchForSection` (`play-brief-intel.ts`, ~line 1900) is arguably the
+single most actionable number in a WATCH brief — the exact price a trader is waiting to see broken
+or reclaimed — and it never carried this annotation. It rendered a bare price plus a causal verb
+("Break/reclaim above ... this is what actually fires the setup") with no sense of proximity,
+while every sibling level line in the same document quantified exactly that.
+
+This was not caught by any existing test because no prior test supplied a resolved `spot` (via
+`ctx.vector`/`ctx.ecosystem.gex_positioning`) to a WATCH-bucket `entryTriggerUnderlyingPx` test —
+every existing fixture for this line used `vector: null, ecosystem: null`, so the gap was
+invisible to the suite until a spot was actually wired in.
+
+### Evidence
+
+Static audit (this cycle's board was weekend-frozen, no live repro available) — confirmed via
+`grep` that `(X% away)` is used for call wall, put wall, gamma flip, max pain, and the committed
+structural stop line everywhere else in `play-brief-intel.ts`/`play-brief-narrative.ts`, but never
+for `entryTriggerUnderlyingPx`. Confirmed via the `BieLevel` type (`src/lib/bie/answer-envelope.ts`)
+that there's no structured distance field either — the fact, if present anywhere, has to live in
+prose, same as every sibling level.
+
+### Fix
+
+Added the identical `(spot - trigger) / spot` convention (matching `committedStructuralStopLine`'s
+corrected denominator, not the wrong one it replaced) to the "Entry trigger" line, **only** when:
+
+1. `spot` is actually known this cycle (never guessed), and
+2. spot is still on the not-yet-triggered side of the level in the entry direction.
+
+When spot has already moved through the trigger in the entry direction, the distance suffix is
+omitted entirely rather than stating a now-nonsensical "N% away" for a level that's already been
+crossed — that's a materially different fact (a crossing that already happened), which belongs to
+`entryStatus`/`entryTriggerDeadReason`, not something this fix should invent or guess at. This
+avoids the exact "two sections of one brief disagreeing about the same fact" failure class this
+file's own history is full of (see the 2026-10-20 TSLA/UNH/MU fixes in the same section).
+
+### Blast radius
+
+Single call site (`watchForSection`'s WATCH-bucket branch, `play-brief-intel.ts`). No other
+renderer narrates `entryTriggerUnderlyingPx` with a distance figure (confirmed via repo-wide grep —
+`play-brief.ts`'s structured `levels[]` array and `play-brief-narrative-coaching.ts`'s two uses of
+the field compute unrelated distances: trigger-vs-wall collision and trigger-vs-invalidation
+cushion, neither of which is spot-vs-trigger).
+
+### Fix rationale
+
+Reused the file's own established convention exactly (same formula, same "(X% away)" phrasing,
+same denominator correction already proven right elsewhere) rather than inventing a new one.
+Deliberately did NOT attempt to classify "already through" with its own explanatory text (e.g.
+"already through this level") — that would require reasoning about `entryStatus`/live triggering
+semantics this fix has no need to touch, and the file's history shows exactly that kind of
+over-reach causing contradictions between sections. Omission is the safe, honest choice per the
+Largo product contract's absence principle.
+
+### Tests
+
+- RED: confirmed via `git stash` of only `play-brief-intel.ts` that the new "states how far spot
+  is" test fails (bare price, no suffix) against the old code.
+- GREEN: restored the fix — same test passes; all 323 tests in `play-brief-intel.test.ts` and all
+  1148 across `play-brief*.test.ts` pass; `npx tsc --noEmit` clean.
+- Added `watchForSection: entry trigger states how far spot is from firing it, when spot is known
+  and still approaching` and `watchForSection: entry trigger distance is omitted (never guessed)
+  once spot has already moved through it in the entry direction`.
+
+## SPX Slayer `resolveLeanDirection()` fabricates a "Puts lean" from an unknown VWAP — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | SPX Slayer play system (`src/features/spx/lib/spx-play-intel.ts`) |
+| **Found by** | Ask Largo / 5-engine standing monitor, 2026-10-24 ~20:11 UTC cycle, live GET `/api/market/spx/play` |
+
+### Symptom
+
+During a closed-market session (Saturday, `session_phase: "closed"`), the SPX Slayer play payload's `play_idea` text read:
+
+> "Tape's mixed, but Puts lean — 7625 Put on watch · Into 0DTE resistance 7625 (−1 pts)"
+
+— despite the underlying confluence being **completely neutral**: `score: 0` (10 factors summing to exactly zero, independently verified), `direction: null`, `bias: "neutral"`. There was no real directional evidence behind the "Puts lean" wording at all.
+
+### Root cause
+
+`resolveLeanDirection()` (`spx-play-intel.ts`) is the final tiebreaker `buildPlayIdea()` falls through to when the confluence score carries literally no lean information (exactly zero, after the score-sign preference fixed on 2026-09-09). The old final line was:
+
+```ts
+return desk.above_vwap ? "long" : "short";
+```
+
+`desk.above_vwap` is typed `boolean`, not tri-state. Every writer of it (`spx-desk.ts`'s `vwap != null ? price >= vwap : false`, mirrored in `spx-desk-merge.ts`'s pulse fallback and `usePulseStream.ts`) defaults it to the literal `false` whenever `desk.vwap` itself is unknown (off-hours, pre-open, no sticky/base VWAP to fall back to either) — `false` there means "we have no idea," not "price sat below VWAP." Live confirmed: at the time of the repro, `desk.vwap: null` and `desk.above_vwap: false` on the SAME payload.
+
+Reading that `false` unconditionally as a real signal turned "we don't know" into a confident "short" pick — the exact same failure class this codebase has fixed repeatedly elsewhere (task history: "VWAP side fabricating 'below' when spot unknown," play-brief-intel.ts, swing lane) — just not yet at this particular SPX-lane call site.
+
+### Blast radius
+
+Checked every other read site of `desk.above_vwap` (`grep -rn "\.above_vwap\b"`): `anchorPhrase` (two functions below, in the same file), `spx-play-terminal-lines.ts`, `spx-play-intel.ts`'s own `anchorPhrase`, `spx-play-confirmations.ts`'s gated sites, `SpxIosMarketStrip.tsx`'s UI chip, and `spx-signals.ts`'s scoring factor are all already gated on `desk.vwap != null` before trusting the boolean — `resolveLeanDirection`'s final fallback was the one unguarded consumer.
+
+### Fix
+
+Gate the fallback on `desk.vwap != null` (mirroring `anchorPhrase`'s own convention two functions down), computing the comparison directly from `desk.price`/`desk.vwap` rather than trusting the possibly-fabricated `above_vwap` field. When VWAP is *also* unknown, fall back to the day's real price change (`desk.spx_change_pct`) — a genuinely computed number, never a coerced placeholder — before a final, explicitly-commented last-resort default for the (extremely degenerate) case where neither is available.
+
+### Evidence
+
+- RED→GREEN: new test `"buildPlayIdea does not fabricate a short/Puts lean from a null VWAP's coerced above_vwap=false (live repro 2026-10-24)"` in `spx-play-intel.test.ts` fails against the pre-fix source (`git stash` of only `spx-play-intel.ts`) with `actual: 'short'` vs `expected: 'long'`, passes after the fix.
+- `npx tsx --experimental-test-module-mocks --test src/features/spx/lib/*.test.ts` → 864/864 pass (Node 20).
+- `npx tsc --noEmit` → clean.
+
+## Largo swing play-brief adapter: evidence_numbers level price uses raw `toFixed` instead of `fmtPriceLevel` — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Ask Largo swing play-brief adapter (`src/lib/swing/play-brief-adapter.ts`) |
+| **Found by** | Ask Largo fan-out audit (8-ticker parallel workflow, adversarially verified), 2026-10-24, live repro SOXX |
+
+### Symptom
+
+SOXX's live swing play-brief: top-level `evidence_numbers` read `"flag anchor: $479.20"` while `envelope.levels[0].price` was `479.21` and the "Watch levels" section body text read `"Flag anchor: **479.21**"` — the same underlying value (`play.flagUnderlyingPx`) rendered as two different numbers in the same response.
+
+### Root cause
+
+`extractEvidence()` (`play-brief-adapter.ts:84`) called `level.price.toFixed(2)` directly on the raw, pre-rounded float from `envelope.levels`. The API route rounds that same field via `roundFloats`'s `Math.round(n*100)/100` at the response boundary, and every other renderer in this codebase (`play-brief.ts`, `play-brief-narrative.ts`, `play-brief-narrative-coaching.ts`, `play-brief-intel.ts`) already migrated to the shared `fmtPriceLevel()` helper specifically to avoid this class of disagreement (documented at length in `fmt-money.ts`'s own header, citing a prior live repro). `play-brief-adapter.ts` was never migrated — this is the 8th known call site of the same bug class, not a new pattern. Mechanism: `(479.205).toFixed(2)` → `"479.20"`, `Math.round(479.205*100)/100` → `479.21`.
+
+### Fix
+
+Switched the levels loop to `fmtPriceLevel(level.price)`, matching every sibling renderer.
+
+### Evidence
+
+- RED→GREEN: new test injects a level price on the exact half-cent boundary (`479.205`); fails against pre-fix source (`git stash`), passes after.
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief*.test.ts` → 1149/1149 pass (Node 20).
+- `npx tsc --noEmit` → clean.
+
+## 2026-10-24 — [FINDING, stale-OPEN correction, infra] A third sibling entry from the 2026-10-18 ECS deploy-deadlock incident was also still stale-OPEN
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED — corrected (same underlying fix as the 2026-10-24 batch-53 correction; this restamps the remaining third sibling entry that pass missed) |
+|---|---|
+
+### What was stale
+
+Follow-up to this same DISCOVERY-lane cycle's "ECS web deploy-deadlock incident — Idea 1
+shipped, incident resolved" correction. That pass covered two of the three FINDINGS.md entries
+from this incident chain (the enhancement-ideas "OPEN, not implemented" entry and the ~8h-later
+"STILL UNRESOLVED" escalation) but missed the third, earliest sibling:
+
+`## 2026-10-18 — [FINDING, infra] \`blackout-production-web\` deploy stuck for the FULL 36-min
+budget — service's real desiredCount appears to have drifted back below 5, re-triggering the
+exact deployment-arithmetic deadlock...` — `**Status** | NEEDS OPERATOR ACTION (AWS creds
+required — this sandbox's own creds are invalid)`, severity P1. This is the original first report
+of the exact same incident the other two entries escalate and propose fixes for — same root
+cause (`desiredCount` drifted below the autoscaling floor of 5, deadlocking
+`minimumHealthyPercent=100`/`maximumPercent=120` arithmetic), same resolution (PR #6302's
+pre-flight `desiredCount` restore, now live in `.github/workflows/ecr-push-production.yml` and
+`scripts/deploy/ensure-web-deploy-capacity.mjs`, as already verified in the sibling correction).
+
+### Fix
+
+No code change — documentation correction only, same as the sibling correction this one
+follows. Restamping avoids a future session finding this still-P1-looking entry standalone
+(without having also read the other two, now-corrected siblings) and treating it as a live,
+unaddressed incident.
+
+### Verify
+
+Same verification as the sibling correction already covers: `grep -n
+"ensure-web-deploy-capacity\|desired-count\|desiredCount"
+.github/workflows/ecr-push-production.yml` shows the live fix; every ECR push observed live this
+DISCOVERY-lane session has completed normally with no recurrence of the `running=0/1` frozen
+pattern this entry originally reported.
+
+## 2026-10-24 — [FINDING, stale-OPEN correction, infra] ECS web deploy-deadlock incident (2026-10-18/19) — Idea 1 shipped, incident resolved, two FINDINGS.md entries were stale-OPEN
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED — corrected (the underlying work was already shipped; this entry only restamps two stale FINDINGS.md statuses) |
+|---|---|
+
+### What was stale
+
+DISCOVERY-lane re-verification sweep (per the standing "re-verify old FINDINGS.md claims"
+brief). Two FINDINGS.md entries from the 2026-10-18/19 `blackout-production-web` ECS deploy
+deadlock incident were still reading as open/unimplemented, even though the incident was fully
+resolved days ago:
+
+1. **`## 2026-10-19 — [ENHANCEMENT IDEAS, P2 infra] Two proposals for the recurring ECS web
+   deploy deadlock (#6255) — OPEN, not implemented`** — proposed two remediation ideas and
+   explicitly deferred both ("Neither idea was implemented this cycle"). **Idea 1** (a pre-flight
+   check: read `desiredCount` via `describe-services` before `update-service`, and restore it to
+   the autoscaling floor of 5 if it has drifted below) is now live in
+   `.github/workflows/ecr-push-production.yml` in two places — an inline pre-flight check (lines
+   ~132-147: `::warning::desiredCount=... < ... — rolling deploy would deadlock. Restoring
+   autoscaling floor.`) and a second pre-scale step (lines ~312-328) — plus a dedicated helper
+   script, `node scripts/deploy/ensure-web-deploy-capacity.mjs`, invoked from the same workflow
+   (line ~251). This matches PR #6302 ("pre-scale ECS web to floor 5 when desiredCount deadlocks
+   roll", merged 2026-10-19) and the later consolidation in PR #6577/#6496 lineage
+   (`scripts/deploy/lib/taskdef-rewrite.mjs`'s `minDesiredCountForZeroLossRoll`, covered by
+   `scripts/deploy/roll-ecs.test.ts`). **Idea 2** (fail-fast on a `runningCount`-frozen rollout
+   instead of burning the full 36-minute wait budget) was NOT found anywhere in the current
+   workflow (`grep -n "stuck\|stall\|IDENTICAL" .github/workflows/ecr-push-production.yml` turns
+   up only the pre-existing incident comment, no new early-exit logic) — genuinely still open.
+2. **`## 2026-10-19 — [FINDING, infra] \`blackout-production-web\` deploy deadlock STILL
+   UNRESOLVED ~8h after it first appeared...`** — status `NEEDS OPERATOR ACTION`, severity P1.
+   Same incident, same root cause, now resolved by the same Idea-1 fix above (deployed the same
+   day per #6302's own commit timestamp, 2026-10-19 20:14 PT). Every ECR push observed live this
+   session (several per hour across this entire DISCOVERY-lane window) has completed normally with
+   no deadlock, confirming the fix holds in production, not just in the workflow source.
+
+### Fix
+
+No code change — this is a documentation correction only. Both entries' claims were overtaken by
+work that already shipped; restamping avoids a future session re-discovering the same "still
+open" status and either re-doing already-done work or re-escalating a resolved P1.
+
+### Verify
+
+- `grep -n "ensure-web-deploy-capacity\|desired-count\|desiredCount" .github/workflows/ecr-push-production.yml` shows the live pre-flight/pre-scale logic described above.
+- `git log --oneline -- scripts/deploy/lib/taskdef-rewrite.mjs scripts/deploy/roll-ecs.test.ts` shows `minDesiredCountForZeroLossRoll` and its test landed and is still present.
+- Idea 2 remains genuinely open (no code implements it) — worth a future standalone write-up if the recurring-deadlock pattern reappears, but it has not recurred since the Idea-1 fix landed.
+
+## Night Hawk Legacy — an already-PUBLISHED edition's BACKFILL contract could stay dead forever; `republishBackfilledEdition` only ever appended plays, never re-validated an existing one
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|------------|-------|
+
+**Symptom:** standing Ask Largo × Night Hawk Swings ownership mandate (extends to the whole Night
+Hawk product — 0DTE, Swings, Legacy). `GET /api/market/nighthawk/edition` on 2026-10-24, roughly an
+hour after PR #6631 (the same-day expiry-floor fix for `pickAffordableChainContract`) merged to
+`main`, still returned `edition_for: "2026-10-26"` carrying the *exact* BACKFILL PLTR play #6631's
+own finding cites — **"PLTR $197.5 Call 2026-10-23"**, 3 calendar days before the edition's own
+target trading day, already expired at read time. #6631's fix is real and correct, but it only runs
+at edition-*generation* time; this specific edition had already been published (`published_at`
+2026-10-23T21:40Z) *before* that fix deployed, so the dead contract was already frozen into its
+`plays` JSON and nothing re-validates it after the fact. The admin repair endpoint that exists for
+exactly this kind of after-the-fact fix, `POST /api/admin/nighthawk/republish-backfill` →
+`republishBackfilledEdition`, no-ops: its own doc comment states it "never touches an already-
+published QUALIFIED play; only ever appends real, chain-grounded BACKFILL plays," and this edition
+already had 3 plays (at `effectiveMinPublishPlays()`), so calling it would return
+`noop_already_at_minimum` without inspecting the existing PLTR play at all. Nothing else in the
+pipeline catches this either — `morning-confirm-verdict.ts`'s 9:15am ET cron checks entry-trigger
+*geometry* (has price crossed the flagged level), never contract *liveness*, so a BACKFILL play
+whose own options contract is already dead sails through to market open looking identical to a live
+pick.
+
+**Root cause:** `republishBackfilledEdition` (`src/features/nighthawk/lib/post-publish-backfill.ts`)
+reads `existing.plays` from the DB, treats every play in it as correct-by-construction, and only
+ever has two things it can do with that list: sync missing `nighthawk_play_outcomes` rows
+(`syncOutcomeRows`, an existing repair pass), and — only when `finalPlays.length < minPlays` —
+append *new* BACKFILL plays from the frozen `rank_governor` candidate pool. There was no code path
+that re-examined an *existing* BACKFILL play's own contract for staleness, so a play that was wrong
+at publish time (whether from the #6631 bug before it was fixed, or any other cause) stayed wrong
+for the rest of that edition's life, including every subsequent call to the one admin endpoint
+built to fix exactly this class of problem.
+
+**Fix:** added a second unconditional repair pass, `repairStaleBackfillContracts`
+(`post-publish-backfill.ts`), run at the same placement as the existing `syncOutcomeRows` pass —
+*before* the `minPlays` early-return, so it fires on every call regardless of whether the edition
+also needs new plays appended. It scans `existing.plays` for any `selection_tier: "BACKFILL"` play
+whose own contract has expired relative to `editionFor` (parsed via the existing
+`parseOptionsContract`), fetches fresh chains for just those tickers, and hands off to a new pure
+function, `repairStaleBackfillPlays` (`play-backfill.ts`, sibling to `selectBackfillPlays` — chains
+are an input, same "no network inside the testable function" split every function in that file
+already uses). For each stale play it either re-picks a live replacement contract via the
+already-fixed `pickAffordableChainContract` (same #6631 expiry floor, so a repaired pick can never
+itself be stale) or drops the play entirely when nothing qualifies — the same skip-rather-than-
+placeholder discipline `selectBackfillPlays` already applies when backfilling a thin edition in the
+first place, never a fabricated contract. If a drop pushes the edition back below `minPlays`, the
+existing append-new-plays logic (fed the now-repaired `finalPlays`) picks up the slack exactly as it
+already does for a genuinely thin edition — the two repair mechanisms compose without any special-
+casing. `RepublishBackfillResult`'s `noop_already_at_minimum` and `backfilled` variants both now
+carry `repairedTickers`/`droppedTickers` so a caller or log line can see a repair happened even on
+an otherwise-unremarkable "noop" response — previously that information had nowhere to go.
+
+**Blast radius:** scoped entirely to `republishBackfilledEdition`'s own already-published-edition
+repair path. `backfillThinEditionPlays` (the live evening-edition build's own 3 backfill call
+sites) is untouched — it builds a fresh edition from scratch every time, so there is no
+"already-published-and-now-stale" state for it to repair; the gap only exists for an edition that
+has *already* been persisted and is being revisited later, which only `republishBackfilledEdition`
+does.
+
+**Fix rationale — what was deliberately left unchanged:** the repair is BACKFILL-only, mirroring
+the admin route's own existing scope boundary ("never touches an already-published QUALIFIED
+play") — an organically-QUALIFIED play went through the real discovery/scoring pipeline and its
+contract is the pipeline's actual pick, not backfill's synthetic one; if that ever goes stale too
+it is a different, unaudited failure mode, not this one, and conflating the two would widen this
+fix well beyond what the live repro demonstrated. The repair also does not attempt to re-validate
+anything besides contract expiry (e.g. it does not re-check liquidity/affordability against the
+*original* publish-time snapshot) — `pickAffordableChainContract` already re-applies every one of
+its own filters (ask ceiling, OI floor, expiry floor) against the *fresh* chain fetch, so a repaired
+pick is fully re-validated on every dimension that function checks, not just expiry.
+
+**Evidence:** 5 new regression tests in `play-backfill.test.ts` reproduce the exact live PLTR shape
+(re-pick from a fresh chain), plus: drop-when-unresolvable, untouched-when-still-live,
+QUALIFIED-plays-out-of-scope, and SHORT/put-side repair. RED confirmed via `git stash` of
+`play-backfill.ts` (the 5 new tests fail with `repairStaleBackfillPlays is not a function`; all 25
+pre-existing tests in the file still pass), GREEN restored after `git stash pop`. Full suite on
+Node 20: 16695/16698 pass, 0 fail, 3 skipped. `tsc --noEmit` clean.
+
 ## 2026-10-24 — [FINDING, P2 Night Hawk Swings] Swing play-brief/horizons "Spread" line could render a nonsensical percentage from an unguarded backstop ask — FIXED
 
 > **kind:** `FINDING`

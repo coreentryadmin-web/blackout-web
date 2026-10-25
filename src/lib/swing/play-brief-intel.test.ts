@@ -956,6 +956,23 @@ test("whyThisSetupSection: 'Today's regime read' always stays its own separate l
   assert.match(section.body, /\*\*Today's regime read:\*\* Event-driven directional · regime 0\.6/);
 });
 
+// BUG FIX (2026-10-24, Ask Largo standing mandate, live repro BMNR): defense-in-depth guard — see
+// the comment above the `if (play.regime...)` line in play-brief-intel.ts for the full root cause
+// (the same BANGER_LEDGER_REGIME_LABEL sentinel the Command Deck's TerminalPlay.regime leak was
+// fixed for). The live production fix point is the shared adapter (terminalPlayFromHorizon,
+// adapters.ts), which the play-brief pipeline always routes through — but this test constructs the
+// fixture directly (bypassing the adapter) to prove this section ALSO never renders the sentinel,
+// independent of whether an upstream caller remembered to scrub it first.
+test("whyThisSetupSection: never renders 'Today's regime read' when regime carries the Banger-ledger sentinel, even if the caller bypassed the adapter's own guard", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["BANGER"],
+    archetype: "BREAKOUT",
+    regime: BANGER_LEDGER_REGIME_LABEL,
+  });
+  const section = whyThisSetupSection(play);
+  assert.doesNotMatch(section.body, /Today's regime read/, "the internal sentinel must never surface as a displayed regime read");
+});
+
 test("whyThisSetupSection: lede stands down (falls back to flat lines) on a near-tie classification — that disclosure must not be smoothed over", () => {
   const play = fixturePlay({
     discoveryOrigin: ["FLOW"],
@@ -5384,6 +5401,62 @@ test("watchForSection: a live, still-enterable trigger keeps the unqualified cau
   assert.match(section.body, /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24, static audit of the Largo deep-dive): every
+// OTHER price level this brief narrates (GEX walls, gamma flip, committed structural stop) states
+// its distance from spot as "(X% away)" — this entry trigger line, arguably the single most
+// actionable number in a WATCH brief, never did. Pins the fix: once spot is known and still on the
+// not-yet-triggered side, the line now quantifies how close the setup actually is.
+test("watchForSection: entry trigger states how far spot is from firing it, when spot is known and still approaching", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 182.5,
+        setupState: "TRIGGERED",
+        watchEntryExpired: false,
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 180.0 } } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  // (180 - 182.5) / 180 = -1.389% -> 1.4% away.
+  assert.match(
+    section.body,
+    /Entry trigger: \*\*182\.50\*\* \(1\.4% away\) — Break\/reclaim above this is what actually fires the setup/,
+  );
+});
+
+test("watchForSection: entry trigger distance is omitted (never guessed) once spot has already moved through it in the entry direction", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 182.5,
+        setupState: "TRIGGERED",
+        watchEntryExpired: false,
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 185.0 } } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/);
+  assert.doesNotMatch(section.body, /% away/);
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-10-18): entryTriggerDeadReason() used to call only
 // the narrow deadPlayReason (4 cases: INVALIDATED/expired-window/contract-expired/EXTENDED), which
 // returns null for a TRIGGERED/AT_TRIGGER play that is merely below the lane score floor — so this
@@ -7501,7 +7574,7 @@ test("watchForSection: watch/open buckets are unchanged — still show live thes
     "watch",
   );
   assert.match(section.body, /Thesis \*\*unknown\*\*/);
-  assert.match(section.body, /Reclaim gamma flip \*\*99\.31\*\* — invalidates short thesis/);
+  assert.match(section.body, /Reclaim gamma flip \*\*99\.31\*\* \(3\.7% away\) — invalidates short thesis/);
   assert.equal(section.title, "Watch levels");
 });
 
@@ -7527,7 +7600,7 @@ test("watchForSection: LONG with spot ABOVE flip — still 'Lose', the level has
     },
     "watch",
   );
-  assert.match(section.body, /Lose gamma flip \*\*183\.49\*\* — dealer posture turns against longs/);
+  assert.match(section.body, /Lose gamma flip \*\*183\.49\*\* \(3\.4% away\) — dealer posture turns against longs/);
 });
 
 test("watchForSection: LONG with spot BELOW flip (live COIN repro) — 'Reclaim', not 'Lose' an already-lost level", () => {
@@ -7550,7 +7623,7 @@ test("watchForSection: LONG with spot BELOW flip (live COIN repro) — 'Reclaim'
   assert.doesNotMatch(section.body, /Lose gamma flip/);
   assert.match(
     section.body,
-    /Reclaim gamma flip \*\*183\.49\*\* — needed to restore dealer support for longs/,
+    /Reclaim gamma flip \*\*183\.49\*\* \(4\.9% away\) — needed to restore dealer support for longs/,
   );
 });
 
@@ -7572,7 +7645,7 @@ test("watchForSection: SHORT with spot ABOVE flip — 'Lose', needs to confirm t
     "watch",
   );
   assert.doesNotMatch(section.body, /Reclaim gamma flip/);
-  assert.match(section.body, /Lose gamma flip \*\*99\.31\*\* — needed to confirm the short thesis/);
+  assert.match(section.body, /Lose gamma flip \*\*99\.31\*\* \(3\.6% away\) — needed to confirm the short thesis/);
 });
 
 // Premium stop rail showed only the absolute dollar level ("thesis breaks if mark closes below
@@ -8649,4 +8722,39 @@ test("watchForSection: Structural support node matches breakTrigger's nearest-le
   // second, independently-selected number for what both sections call "the" structural support.
   assert.match(watch.body, /Structural support node: GEX king \*\*97\.00\*\*/);
   assert.doesNotMatch(watch.body, /put wall \*\*90\.00\*\*/);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-25): "Structural support/resistance node" never
+// stated its distance from spot either, even though it cites the identical `invalidationLevel`
+// object the sibling "Break watch" bullet (fixed #6648) already reads `.distancePct` off. Same
+// fixture as the test above: spot 100, GEX king 97 -> (97-100)/100 = -3% -> "3.0% away".
+test("watchForSection: Structural support node states its distance from spot (2026-10-25)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ direction: "LONG", status: "OPEN" }),
+    asOf: "2026-10-08 20:44 ET",
+    sessionDate: "2026-10-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gex_king_strike: 102,
+        put_wall: 90,
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: {
+      spot: 100,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      gexWalls: { putWalls: [{ strike: 90 }], callWalls: [] },
+      ladder: { rows: [{ strike: 97, isKing: true }] },
+    } as unknown as VectorFullState,
+  };
+
+  const watch = watchForSection(ctx, "open");
+  assert.match(watch.body, /Structural support node: GEX king \*\*97\.00\*\* \(3\.0% away\)/);
 });

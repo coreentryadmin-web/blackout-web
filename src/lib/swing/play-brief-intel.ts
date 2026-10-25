@@ -263,7 +263,22 @@ export function whyThisSetupSection(
   // Archetype "Breakout continuation" next to a fresh regime read of "Event-driven directional" with
   // no framing — read as an internal contradiction in the same document). The label now states which
   // one is current, so two different labels read as "thesis has evolved," not "this brief is broken."
-  if (play.regime) lines.push(`**Today's regime read:** ${play.regime}`);
+  //
+  // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro BMNR): the live production repro of
+  // this exact line was literally "**Today's regime read:** BREAKOUT · BANGER" — `play.regime` here
+  // carries `BANGER_LEDGER_REGIME_LABEL`, the internal "no real per-position dossier" sentinel
+  // (banger-lane-merge.ts), not a real fresh classifier read. The Command Deck's own `TerminalPlay.regime`
+  // leak of this same sentinel (terminalPlayFromHorizon, adapters.ts) was fixed separately and already
+  // closes this specific live repro end-to-end (the swing play-brief pipeline's `play` is always built
+  // via that same adapter — play-brief-resolve.ts), but this line gets its own explicit guard too,
+  // defense-in-depth, matching every OTHER consumer of this exact sentinel in this file
+  // (`bangerOriginNoRealThesis`/`reviewedIsBangerOrigin` below) — relying solely on an upstream
+  // adapter to scrub an internal sentinel before it reaches display logic is exactly the kind of
+  // single point of failure this file's own `attachThesisExplanation` double-call bug (serving-
+  // lane.ts) already proved can be bypassed by a future caller.
+  if (play.regime && play.regime !== BANGER_LEDGER_REGIME_LABEL) {
+    lines.push(`**Today's regime read:** ${play.regime}`);
+  }
   if (play.sectorLeadershipFacts) {
     const f = play.sectorLeadershipFacts;
     // BUG FOUND (Ask Largo standing mandate, 2026-09-22, follow-up to #5446): `sectorLeadershipFacts`
@@ -1900,10 +1915,28 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     if (play.entryTriggerUnderlyingPx != null) {
       const verb = play.direction === "SHORT" ? "Break/reclaim below" : "Break/reclaim above";
       const deadReason = entryTriggerDeadReason(play);
+      const trigger = play.entryTriggerUnderlyingPx;
+      // GAP FOUND (Ask Largo standing mandate, 2026-10-24): every OTHER price level this brief
+      // narrates (GEX call/put wall, gamma flip, committed structural stop — play-brief-narrative.ts's
+      // own `distPct` convention: `(spot - level) / spot`) states how far spot currently sits from
+      // it, "(X% away)". This line — arguably the single most actionable number in a WATCH brief,
+      // the exact price a trader is waiting to see broken — never did, reading as a bare price with
+      // no sense of proximity next to siblings that all quantify it. Added using the SAME convention
+      // (divides by spot, not the level, matching the 2026-10-17 fix to committedStructuralStopLine
+      // that caught the opposite, wrong denominator). Only shown while spot is still on the
+      // not-yet-triggered side of the level — once spot has moved through it in the entry direction,
+      // "N% away" would misstate a crossing that has already happened as still-pending; that distinct
+      // fact belongs to entryStatus/entryTriggerDeadReason, not invented here, so the suffix is simply
+      // omitted (never guessed) in that case and whenever spot itself is unknown this cycle.
+      const stillApproaching =
+        spot != null && (play.direction === "SHORT" ? spot > trigger : spot < trigger);
+      const distSuffix = stillApproaching
+        ? ` (${Math.abs(((spot - trigger) / spot) * 100).toFixed(1)}% away)`
+        : "";
       lines.push(
         deadReason
-          ? `Entry trigger: **${fmtPriceLevel(play.entryTriggerUnderlyingPx)}** — ${verb}, but ${deadReason}`
-          : `Entry trigger: **${fmtPriceLevel(play.entryTriggerUnderlyingPx)}** — ${verb} this is what actually fires the setup`,
+          ? `Entry trigger: **${fmtPriceLevel(trigger)}**${distSuffix} — ${verb}, but ${deadReason}`
+          : `Entry trigger: **${fmtPriceLevel(trigger)}**${distSuffix} — ${verb} this is what actually fires the setup`,
       );
     }
   }
@@ -1984,16 +2017,27 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     // (see play-brief-narrative.ts's own comment on the live RDDT repro, 2026-09-11) — comparing
     // spot to the level itself, not inferring posture from trade direction alone.
     const spotAboveFlip = spot > flip;
+    // GAP FOUND (Ask Largo standing mandate, 2026-10-24): same omission class already fixed this
+    // cycle for "Entry trigger" (this same function) and for narrateFlip's own gamma-flip bullet
+    // in the sibling "Trade manager read" narration (play-brief-narrative.ts) — this inline
+    // gamma-flip line (a separate, duplicate implementation for "Watch levels"/"What to watch")
+    // never stated how close spot is to the cited flip either, even though both values needed to
+    // compute it are already resolved a few lines above. Matches this function's own "(X% away)"
+    // convention (Math.abs((spot-level)/spot), same as the Entry trigger fix a few lines up), not
+    // narrateFlip's "(X% from spot)" phrasing — each file keeps its own established wording.
+    // Scoped to the live watch/open branches only — the CLOSED branch already states both raw
+    // numbers side by side ("Now trades X vs gamma flip Y") and is left as-is.
+    const distAway = ` (${Math.abs(((spot - flip) / spot) * 100).toFixed(1)}% away)`;
     const watch =
       bucket === "closed"
         ? `Now trades **${fmtPriceLevel(spot)}** vs gamma flip **${fmtPriceLevel(flip)}** — where the dealer regime sits since this play closed`
         : play.direction === "LONG"
           ? spotAboveFlip
-            ? `Lose gamma flip **${fmtPriceLevel(flip)}** — dealer posture turns against longs`
-            : `Reclaim gamma flip **${fmtPriceLevel(flip)}** — needed to restore dealer support for longs`
+            ? `Lose gamma flip **${fmtPriceLevel(flip)}**${distAway} — dealer posture turns against longs`
+            : `Reclaim gamma flip **${fmtPriceLevel(flip)}**${distAway} — needed to restore dealer support for longs`
           : spotAboveFlip
-            ? `Lose gamma flip **${fmtPriceLevel(flip)}** — needed to confirm the short thesis`
-            : `Reclaim gamma flip **${fmtPriceLevel(flip)}** — invalidates short thesis`;
+            ? `Lose gamma flip **${fmtPriceLevel(flip)}**${distAway} — needed to confirm the short thesis`
+            : `Reclaim gamma flip **${fmtPriceLevel(flip)}**${distAway} — invalidates short thesis`;
     lines.push(watch);
   }
 
@@ -2010,11 +2054,22 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // re-deriving a put-wall-only version) means the two can never again disagree.
   const invalidationLevel =
     spot != null ? resolveInvalidationFocalLevel(play, collectFocalLevels(ctx, spot)) : undefined;
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-25): 6th instance of the same omission class
+  // fixed this session (Entry trigger, Break watch, narrateDarkPool/King/Flip, Watch-levels
+  // gamma-flip) — this line cites the identical `invalidationLevel` object `distAway` (a few
+  // lines above, "Break watch") already reads `.distancePct` off, yet never did here. Same "(X%
+  // away)" convention as this function's own siblings.
+  const invalidationDistAway =
+    invalidationLevel != null ? ` (${Math.abs(invalidationLevel.distancePct).toFixed(1)}% away)` : "";
   if (play.direction === "LONG" && invalidationLevel != null) {
-    lines.push(`Structural support node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
+    lines.push(
+      `Structural support node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**${invalidationDistAway}`,
+    );
   }
   if (play.direction === "SHORT" && invalidationLevel != null) {
-    lines.push(`Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
+    lines.push(
+      `Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**${invalidationDistAway}`,
+    );
   }
 
   // DEDUP FIX (Ask Largo standing mandate, 2026-10-18, live repro SWING:TSLA:60): this block used
