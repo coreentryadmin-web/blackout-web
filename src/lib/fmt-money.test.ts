@@ -35,6 +35,21 @@ describe("fmt-money", () => {
     assert.equal(fmtPremium(500), "$500");
     assert.equal(fmtPremium(0), "$0");
   });
+
+  it(
+    "promotes a value that ROUNDS to 1000 of a unit into the next unit, never an " +
+      "overflowed four-digit label — same bug class/shape as thermal-compact-matrix.ts's " +
+      "fmtCompactHeatMoney (fixed 2026-10-25, PR #6686): abs/1e6 or abs/1e3 landing in " +
+      "[999.95, 1000) rounds to '1000.0' at 1dp / 1000 at 0dp, which read as e.g. '$1000.0M' " +
+      "or '$1000K' instead of promoting to the next unit",
+    () => {
+      assert.equal(fmtPremium(999_950_000), "$1.0B");
+      assert.equal(fmtPremium(999_999_999), "$1.0B");
+      assert.equal(fmtPremium(-999_960_000), "-$1.0B");
+      assert.equal(fmtPremium(999_700), "$1.0M");
+      assert.equal(fmtPremium(-999_700), "-$1.0M");
+    },
+  );
 });
 
 describe("fmtOptionUsd", () => {
