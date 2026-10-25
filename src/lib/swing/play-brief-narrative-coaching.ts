@@ -339,8 +339,21 @@ export function magnetCoaching(
   if (vectorSnapshotStale(vec, readMs, ctx.sessionDate)) return null;
   const m = vec?.magnet;
   if (!m?.strike) return null;
+  // BUG FIX (Ask Largo standing mandate, live repro MSTR 2026-10-25): `m.distancePct` is the raw
+  // upstream Vector-computed distance, baked in against VECTOR'S OWN spot snapshot at write time —
+  // which can differ fractionally from this brief's canonical `spot` param. collectFocalLevels
+  // (play-brief-narrative.ts) recomputes the identical magnet's distance fresh via its own
+  // `distPct(spot, magnet)`, and that recomputed value is what feeds both the "Why this setup"
+  // narration and the structureLadder widget (play-brief-ladder.ts's own header comment: this
+  // widget "can never disagree with 'Trade manager read' about where ... the gamma flip sits").
+  // This bullet trusted `m.distancePct` verbatim instead, so the two could — and live, did —
+  // disagree after rounding: 10.3% here vs 10.2% in the ladder for the identical 161.56 magnet at
+  // the identical 146.54 spot, same brief, same read. Recompute from `spot`, the one canonical
+  // source every other level in this brief uses, instead of trusting the upstream snapshot's own
+  // baked-in distance.
+  const distancePct = ((m.strike - spot) / spot) * 100;
   const lead = m.pull === "at" ? "pinned at" : `pull **${m.pull}** toward`;
-  const near = Math.abs(m.distancePct) < 1.2;
+  const near = Math.abs(distancePct) < 1.2;
   const posture = resolveGammaPosture(ctx, vec, readMs);
   // BUG FIX (2026-09-20, Ask Largo standing mandate): resolveGammaPosture is a real FOUR-value
   // regime — "long"/"short"/"transition"/"unknown" — and "transition" (verdict.ts: spot within
@@ -357,7 +370,7 @@ export function magnetCoaching(
       : posture === "transition"
         ? "Dealers sitting at the gamma flip here — this node's pull is unsettled until the regime resolves."
         : "Pivot node — acceleration risk if the magnet fails to hold.";
-  return `**Gamma magnet ${fmtPriceLevel(m.strike)}** (${fmtPct(m.distancePct)} from spot) — ${lead} this node. ${pin}`;
+  return `**Gamma magnet ${fmtPriceLevel(m.strike)}** (${fmtPct(distancePct)} from spot) — ${lead} this node. ${pin}`;
 }
 
 /** Options-implied move envelope — don't chase outside bands. */

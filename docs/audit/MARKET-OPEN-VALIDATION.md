@@ -8528,3 +8528,19 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
   `unavailableSources` for GEX/Vector absence) and confirm `envelope.invalidation` reads `null`
   (omitted from the markdown's "**Invalidation:**" line) rather than a gate-provenance sentence,
   and that a genuinely TRIGGERED/above-floor WATCH play still shows a real gate reason there.
+
+## WATCH LIST — 2026-10-25 (swing magnetCoaching distance not spot-anchored fix, fix/swing-magnet-coaching-distance-not-spot-anchored)
+- **What was broken:** `magnetCoaching` (the "Trade manager read" gamma-magnet bullet) displayed
+  `vec.magnet.distancePct` verbatim off the raw Vector snapshot instead of recomputing from this
+  brief's own canonical `spot` — a parameter the function accepted but never used. Live-reproduced
+  on MSTR WATCH (2026-10-25, off-hours): the bullet read "+10.3% from spot" for the gamma magnet at
+  161.56 while the SAME brief's `envelope.structureLadder.rungs` reported 10.2% for the identical
+  level (the mathematically correct rounding of `(161.56-146.54)/146.54*100 = 10.2498%`).
+- **What the fix changed:** `magnetCoaching` now recomputes `distancePct` from `spot`/`m.strike`
+  for both the displayed percentage and the `<1.2%` "sitting on the magnet" near-threshold check,
+  matching `collectFocalLevels`'s formula exactly (the same one feeding the ladder widget).
+- **What to re-check once the market opens:** pull `GET /api/market/swing/play-brief` for a live
+  WATCH/OPEN swing candidate whose Vector snapshot carries an active gamma magnet, and confirm the
+  "Trade manager read" magnet bullet's percentage matches `envelope.structureLadder.rungs`'s
+  `magnet` rung's `distancePct` exactly (same rounded value), and that the "sitting on the magnet"
+  vs. generic pivot-node framing agrees with the real distance rather than a stale upstream one.
