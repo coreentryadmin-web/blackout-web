@@ -38,6 +38,320 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Swing play-brief: a committed OPEN position's own entry price and exit-policy stop/target rails never reached `envelope.evidence[]` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED (PR #6735, merged to `main`) |
+
+### Root cause
+
+`evidenceFromContext()` in `src/lib/swing/play-brief.ts` is the sole feeder of the typed,
+provenance-bearing `envelope.evidence[]` array (and, downstream, `evidence_numbers`, derived 1:1
+from it) — confirmed repeatedly by this lane's own prior fixes for the identical bug class (the
+peers/`arsenal.related` gap fixed in PR #6480 and the `play.score`/`play.factors` gap fixed in PR
+#6481, both in this same function).
+
+For a committed, OPEN swing position, two more numbers are rendered prominently in brief prose but
+never mirrored into that function:
+
+- `pnlSection()` (`play-brief.ts`, the "Position" section) renders `` `Entry: **${fmtUsd(play.entry)}**` ``
+  off `play.entry`.
+- `managementSection()` (`play-brief.ts`, the "Management" section) renders
+  `` `Rails: stop ${stopLabel} · target ${targetLabel}` `` off `play.exitPolicy.stop_premium` /
+  `play.exitPolicy.target_premium`.
+
+`evidenceFromContext()` never read `play.entry` or `play.exitPolicy.stop_premium`/`target_premium`
+at all (confirmed by grep: the only other call sites of `stop_premium`/`target_premium` in the
+file are inside `managementSection()` itself). So a structured/machine consumer of the brief —
+exactly the audience `evidence[]`/`evidence_numbers` exist to serve — had no typed, citable way to
+learn the position's own entry price or its stop/target rails, even though a member reading the
+rendered markdown sees both prominently. Same "rendered-in-prose-but-never-mirrored-to-evidence[]"
+defect class as the peers/score fixes above.
+
+### Evidence
+
+Live repro (per the audit that raised this finding): `GET /api/market/swing/play-brief?playId=
+SWING:FLY&ticker=FLY&expandIntel=1` —
+
+- "Position" section: `"Entry: **$0.55**\nMark: **unknown**..."`
+- "Management" section: `"...Rails: stop $0.22 · target $1.10"`
+- `envelope.evidence[]` (7 items) carried no entry/stop/target fact; `evidence_numbers` (derived
+  1:1 from `envelope.evidence`) likewise carried none.
+
+RED→GREEN proof via a temporary local revert of the source change alone (test file left in place,
+the fix then restored via `git checkout` — this worktree's git history is private to this branch,
+so no shared stash was used): reverting just the `evidenceFromContext()` addition in `play-brief.ts`
+made the new positive-case test fail (`not ok 49`, "expected a citable entry-price evidence
+entry"), while the rest of `play-brief.test.ts` passed 176/177; restoring the fix brought the suite
+back to 177/177. `npx tsc --noEmit` clean. The broader swing play-brief suite
+(`play-brief.test.ts` + `play-brief-intel.test.ts` + `play-brief-narrative.test.ts` +
+`play-brief-narrative-coaching.test.ts` + `play-brief-absence.test.ts`, 778 tests combined) is
+778/778 green post-fix.
+
+### Blast radius
+
+Single call site: `evidenceFromContext()` in `play-brief.ts` is the only consumer of
+`play.entry`/`play.exitPolicy` that needed a new mirror. `pnlSection()`'s and
+`managementSection()`'s own prose rendering are untouched and correct — they were always the
+source of truth this fix mirrors, not the defect. No other function in the swing play-brief lane
+independently renders these two fields from scratch.
+
+### Fix rationale
+
+Added two new, additive evidence facts at the end of `evidenceFromContext()`, gated on
+`statusBucket(ctx.play) === "open"` — the EXACT bucket `managementSection()`/`pnlSection()`
+themselves are built under in `composeSwingPlayBrief()` (the `bucket === "open"` branch). This
+means the new facts can never cite a number for a WATCH or CLOSED bucket whose brief carries no
+matching Management/Position section to back it: `play.entry` is `null` for every WATCH candidate
+until commit (per `siblingPositionsNote()`'s own doc comment — "a WATCH row is never itself
+committed"), and a CLOSED play gets an "Outcome" section instead (`closedSection()`), never
+Position/Management. Each fact is only pushed when its own field is genuinely present (`entry`
+finite, and at least one of `stop_premium`/`target_premium` non-null) — never fabricated for a
+degraded row. Provenance source is `"Swing ledger"` (matches the sibling book-overlap/sibling-count
+facts a few lines above in the same function, the correct source label for ledger-resident
+position state), `freshness: "recent"` (these are live position fields refreshed on every tick by
+`swing-active-refresh`, not a commit-time snapshot like the score fact above it — so they do not
+need the `committedAt`-anchored freshness treatment that fact required). Deliberately left
+unchanged: `pnlSection()`/`managementSection()`'s own rendering, the trim-ladder/runner-trail
+disclosure logic inside `managementSection()`, and every other evidence fact in the function.
+
+### Tests
+
+Added to `src/lib/swing/play-brief.test.ts`: a positive-case test (OPEN position with a real
+`entry`/`exitPolicy.stop_premium`/`target_premium` — proves both new facts are emitted with the
+exact rendered dollar values and `"Swing ledger"` provenance) and a negative-case test (WATCH with
+no entry/exitPolicy, and CLOSED with both present — proves neither fact is fabricated outside the
+`open` bucket). RED→GREEN confirmed (1 new failure pre-fix on the positive-case test, 177/177 green
+post-fix). `npx tsc --noEmit` clean. Broader swing play-brief suite (778 tests across 5 files)
+green post-fix.
+
+## Ask Largo swing play-brief: "entry trigger" level falsely inherits the flag anchor's pinned provenance once the two prices have diverged (live MSTR repro) — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED (PR #6737, merged to `main`) |
+
+### Root cause
+
+`levelsFromContext()` (`src/lib/swing/play-brief.ts`, WATCH-bucket branch) builds ONE
+`pinnedProvenance` object off `play.detectedAt` (the flag anchor's own pin moment) and stamped it
+unconditionally onto BOTH structured `envelope.levels[]` entries it emits for a WATCH play: "flag
+anchor" (correct — that price is genuinely pinned at `detectedAt` and never moves) and "entry
+trigger" (incorrect once the two prices disagree).
+
+`entryTriggerUnderlyingPx`'s own field doc (`src/lib/horizon-plays.ts`) states the mechanism
+directly: it is "the CURRENT live level a break/reclaim of would flip PRE_TRIGGER/FORMING to
+AT_TRIGGER/TRIGGERED ... the two [flag anchor and entry trigger] can diverge once a dossier
+refreshes its plan on a later scan pass." `deriveSwingPlanLevels()`
+(`src/lib/swing/structure-levels.ts`) sets `entryUnderlyingPx` to whatever price is current the
+instant a plan is (re)built — it is recomputed on every dossier refresh, not pinned the way the
+flag anchor is. So once a later scan rebuilds the dossier, `entryTriggerUnderlyingPx` moves away
+from `flagUnderlyingPx`, but `levelsFromContext()` kept stamping the trigger level with the flag's
+old `detectedAt`-derived asOf/freshness regardless — falsely claiming the (now-fresher) trigger
+price was pinned at the same instant as the flag anchor.
+
+This silently defeated the sibling staleness discriminator already living in the same product
+surface: `entryTriggerDeadReason()`'s `legacyPinnedStale` (`src/lib/swing/play-brief-intel.ts`)
+already uses the exact equality test `play.flagUnderlyingPx === play.entryTriggerUnderlyingPx` to
+detect "is the entry trigger genuinely still pinned to the flag's moment" (scoped there to
+Legacy-promoted rows specifically, since an organic row's trigger is only pinned-equal
+*coincidentally*, on the very scan tick it was first flagged) — `levelsFromContext()` simply never
+consulted that same equality signal when deciding what provenance to stamp.
+
+### Evidence
+
+Live MSTR WATCH play: `flagUnderlyingPx: 163.30`, `entryTriggerUnderlyingPx: 147.47` — two
+genuinely different prices — yet both structured `envelope.levels[]` entries ("flag anchor" and
+"entry trigger") carried byte-identical provenance, `asOf: "2026-10-21 09:15 ET"` / the same
+`freshness` bucket, implying the entry-trigger price was pinned at the exact same instant as the
+flag anchor. It was not: the divergence itself proves the trigger was recomputed on a later scan
+pass, at an unrecorded later time.
+
+### Fix
+
+In `levelsFromContext()`, before pushing the "entry trigger" level, compute
+`entryTriggerStillPinnedToFlag = play.flagUnderlyingPx != null && play.entryTriggerUnderlyingPx !=
+null && play.flagUnderlyingPx === play.entryTriggerUnderlyingPx` — the same bare equality
+`entryTriggerDeadReason`'s `legacyPinnedStale` already relies on, applied here without the
+Legacy-only scoping (the equality itself, not the discovery origin, is what tells us whether the
+dossier was rebuilt). When it holds, the entry-trigger level keeps reusing `pinnedProvenance`
+exactly as before (unchanged behavior — a freshly-flagged or still-unrebuilt play still gets the
+honest flag-anchor asOf/freshness). When it does not hold, the entry-trigger level instead gets
+`{ source: "Swing lane", asOf: null, freshness: "unknown" }` — this file's existing honest-absence
+convention (mirrors `gexFreshness`/`vectorFreshness` returning `"unknown"` when a reliable age
+can't be established) — rather than fabricate a timestamp. There is no separate "dossier last
+rebuilt" timestamp anywhere on `TerminalPlay`/`HorizonPlay` to stamp instead once diverged, so
+`"unknown"` is the honest answer, not a placeholder pending a better one.
+
+### Blast radius
+
+`pinnedProvenance` has exactly two consumers in `levelsFromContext()` — the "flag anchor" push
+(unchanged: it is the one level genuinely anchored to `detectedAt`) and the "entry trigger" push
+(fixed here). No other call site in the repo stamps `entryTriggerUnderlyingPx` with
+`pinnedProvenance`; `entryTriggerDeadReason`'s own `legacyPinnedStale` check (which this fix reuses
+the equality shape of, not the function itself) is untouched — it governs the level's `note` text,
+a separate, already-correct concern from its `provenance`.
+
+### Tests
+
+- `composeSwingPlayBrief: entry trigger reuses the flag anchor's pinned provenance when the price
+  still matches it` (`play-brief.test.ts`) — new, asserts unchanged behavior for the
+  still-genuinely-pinned case (equal prices).
+- `composeSwingPlayBrief: entry trigger gets honest unknown provenance once its price has diverged
+  from the flag anchor's (MSTR repro)` (`play-brief.test.ts`) — new, RED pre-fix (asserted
+  `entryTrigger.provenance.asOf !== flagAnchor.provenance.asOf`, which failed because both were
+  identical pre-fix), GREEN post-fix.
+- Confirmed RED→GREEN via `git checkout -- src/lib/swing/play-brief.ts` (reverting only the source
+  change, keeping the new tests) → 176/177 pass, 1 fail (the new diverged-price test, exact
+  expected failure) → restored the fix → 177/177 pass.
+- Full `play-brief.test.ts` (177 tests), `play-brief-intel.test.ts` + `entry-enterability.test.ts`
+  (357 tests combined) re-run clean after the fix — no regression in any sibling consumer of
+  `pinnedProvenance`, `entryTriggerDeadReason`, or the two pre-existing tests that already use
+  divergent flag/trigger prices without asserting on `entryTrigger.provenance` (left unaffected by
+  design, confirmed by inspection and by the clean re-run).
+- `npx tsc --noEmit` clean.
+
+### What was deliberately left unchanged
+
+- `entryTriggerDeadReason()` itself (the `note` text / "this level no longer fires the setup"
+  disclosure) — this finding is about `provenance` (asOf/freshness), a structurally separate field
+  on the same `BieLevel` entry; `legacyPinnedStale`'s own Legacy-only scoping for that purpose is
+  correct as-is and untouched.
+- The "flag anchor" level's provenance — it is the one correctly-always-pinned level.
+- No new shared equality helper was extracted — the fix inlines the same bare equality
+  `legacyPinnedStale` already uses, per the finding's own instruction to reuse the exact
+  condition rather than invent a new one; a shared export was judged out of scope for a surgical
+  fix.
+
+## 2026-10-25 — [FINDING, P2 Night Hawk Swings / Ask Largo] Four more play-brief render sites display a stale/closed-market snapshot with no disclosure caveat, while a sibling line on the identical snapshot already carries one — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | Swing play-brief "Position" section (`pnlSection`, `src/lib/swing/play-brief.ts`); "What to watch" section (`watchForSection`, `src/lib/swing/play-brief-intel.ts`); "Trade manager read" (`actionNarrative`, `src/lib/swing/play-brief-narrative.ts`) and "Hold plan" (`holdPlanSection`, `src/lib/swing/play-brief-intel.ts`) |
+| **Found by** | Ask Largo × Night Hawk Swings standing ownership mandate — adversarially-verified parallel correctness sweep, 2026-10-25 (same bug CLASS as the previously-shipped PR #6726 Exec P&L fix and PR #6731 structural-node fix — this batch is three further, independently-reachable instances) |
+| **Status** | FIXED (PR #6736, merged to `main`) |
+
+### Shared pattern
+
+All three findings below are the identical defect shape: a rendered value sits directly beside a
+sibling value that already carries a staleness/market-closed disclosure caveat for the exact same
+underlying data snapshot, but the first value's own render path never threads the already-computed
+caveat through. Each is fixed by reusing the shared helper the sibling line already calls
+(`optionMarkStaleCaveat`/`closedMarketSessionNote`, both `play-brief-absence.ts`), not by
+re-deriving a second copy of the staleness logic.
+
+### Finding 1 — PANW: Peak/Trough premium-watermark lines render with zero staleness disclosure
+
+**Symptom.** Live repro, a real PANW swing play-brief (`GET /api/market/swing/play-brief?playId=
+SWING:PANW&ticker=PANW&expandIntel=1`), "Position" section:
+
+```
+Mark: **$19.45** (2026-10-23 16:00 ET) _(stale)_
+P&L: **+9.9%** _(stale — same quote Mark flagged above)_
+Peak: **+9.9%**
+Trough: **-5.2%**
+Greeks: ... _(stale — same quote Mark flagged above)_
+Spread: ... _(stale — same quote Mark flagged above)_
+Exec P&L: **+4.0%** _(stale — same quote Mark flagged above)_
+```
+
+Peak/Trough are the only two quote-derived lines in the block with no staleness qualifier.
+
+**Root cause.** `peak_premium`/`trough_premium` are DB watermarks ratcheted `GREATEST`/`LEAST` on
+the same live-tick cadence as `last_mark` (`db.ts`), so whenever the mark freezes/goes stale,
+Peak/Trough are equally frozen/unverified. `pnlSection` already computes `const staleCaveat =
+optionMarkStaleCaveat(play, readMs);` and appends it to the P&L line (and, per the prior PR #6726
+fix, to Greeks/Spread/Exec P&L) — but the Peak (`fmtPct(peakForDisplay)`) and Trough
+(`fmtPct(troughForDisplay)`) lines a few lines later never consulted it, only the
+`markGenuinelyUnknown` gate deciding between "—" and a value.
+
+**Fix.** Appended the same `staleCaveat` to the Peak and Trough lines, guarded the same way the
+existing lines are: only in the non-`markGenuinelyUnknown` branch, so this never doubles up with
+the distinct "(no live tick yet)" wording that branch already renders for a position that has never
+received a live tick.
+
+### Finding 2 — CRWD: "Reclaim/Lose gamma flip" bullet renders with no market-closed caveat
+
+**Symptom.** Live repro, a real CRWD swing play-brief, "What to watch" section: `Reclaim gamma flip
+**265.76** (2.8% away) — needed to restore dealer support for longs` — no caveat, even though
+`envelope.levels[]` tags that same 265.76 gamma-flip level's provenance with `market_session_note:
+"Computed 8s ago, but the market is CLOSED..."`.
+
+**Root cause.** `watchForSection`'s gamma-flip bullet and its "Structural support/resistance node"
+sibling bullet both resolve off the identical `vec`/`gexForLevels` Vector/GEX positioning snapshot.
+PR #6731 (commit `3d571c919`, merged earlier the same day) added the market-closed
+`closedMarketSessionNote(vec, gexForLevels, readMs)` disclosure to the structural-node bullet, for
+every bucket — but the gamma-flip bullet, a few lines above it in the same function, never got the
+equivalent treatment.
+
+**Fix.** Moved the `sessionNote`/`sessionNoteSuffix` computation up (it only depends on `vec`/
+`gexForLevels`/`readMs`, all already in scope earlier in the function) so the gamma-flip bullet can
+use it too, and appended `sessionNoteSuffix` to all four gamma-flip wording branches (LONG/SHORT ×
+above/below the flip) plus the CLOSED-bucket neutral-framing branch. The "Structural support/
+resistance node" bullet now reads the shared `sessionNote`/`sessionNoteSuffix` computed once,
+instead of its own now-redundant local declaration — byte-identical output, one definition instead
+of two.
+
+### Finding 3 — DKNG: "Gave back X% of peak" / round-trip giveback bullets carry no staleness caveat, at TWO independent call sites
+
+**Symptom.** The "Position" section correctly flags a stale live P&L (`play.pnlPct`), but the
+"Trade manager read" section's "Gave back X% of peak" / round-trip giveback bullet — computed from
+that exact same stale `play.pnlPct` via `mfeCaptureOutcome(play.pnlPct, play.peak, null)` — renders
+with zero staleness caveat.
+
+**Root cause.** `actionNarrative(play, bucket)` (`play-brief-narrative.ts`) had **no**
+`readMs`/staleness parameter in its signature at all, so it structurally could not call the shared
+`optionMarkStaleCaveat()` helper that `pnlSection` already uses for the identical field. The call
+site (`tradeManagerNarrativeSection`) already has `ctx.readMs` in scope two lines after the call
+(for vectorStale/gexStale checks) but never threaded it into `actionNarrative`.
+
+A **second, independent** call site has the same gap: `holdPlanSection`'s (`play-brief-intel.ts`)
+"Hold plan" expandIntel giveback block (`const giveback = mfeCaptureOutcome(play.pnlPct, play.peak,
+null);`) is only deduped against `actionNarrative`'s output via `narrativeAlreadyNoted?.capture`, so
+it is live-reachable on its own whenever `actionNarrative`'s capture threshold (75) isn't crossed
+but this section's own (70) is — not merely a redundant copy of the same bug.
+
+**Fix.** Threaded `readMs` (default `Date.now()`, matching the convention every other staleness-
+aware helper in these files already uses) into `actionNarrative()`'s signature, imported
+`optionMarkStaleCaveat` into `play-brief-narrative.ts`, computed it once (`giveStaleCaveat`) and
+appended it to both the `round_trip` and `capture` giveback bullets. Updated the one call site
+(`tradeManagerNarrativeSection`) to pass its already-in-scope `readMs`. Applied the identical fix
+to `holdPlanSection` in `play-brief-intel.ts`: added a local `const readMs = ctx.readMs ?? Date.now()`
+(this function had none before), imported `optionMarkStaleCaveat`, and appended the caveat to both
+of its own giveback bullets.
+
+### Blast radius
+
+Checked every other reader of `peakForDisplay`/`troughForDisplay` (Finding 1), of the gamma-flip
+`flip`/`distAway` values (Finding 2), and of `mfeCaptureOutcome(play.pnlPct, ...)` (Finding 3) —
+no other call site exists repo-wide besides the ones fixed above and the ones already fixed by
+PR #6726/#6731. `actionNarrative` has exactly one caller, so widening its signature with a
+defaulted parameter is a non-breaking change.
+
+### Tests
+
+- `play-brief.test.ts` — two new tests: Peak/Trough carry the same stale caveat as P&L/Greeks/
+  Spread/Exec P&L when the mark is stale-but-known; a second test pins that the distinct "(no live
+  tick yet)" wording is NOT doubled up with the stale caveat when the mark is genuinely unknown.
+- `play-brief-intel.test.ts` — one new test: the gamma-flip bullet carries the market-closed
+  session note (mirroring the existing structural-node test for the same fixture shape); one new
+  test: `holdPlanSection`'s capture-branch giveback note carries the same stale-quote caveat.
+- `play-brief-narrative.test.ts` — two new tests: the round-trip and capture-branch giveback
+  bullets in `tradeManagerNarrativeSection` each carry the same stale-quote caveat as the Position
+  section's P&L line.
+
+All five new tests confirmed RED on pre-fix source (via `git apply -R` of the source-only diff,
+tests kept in place) — the Peak/Trough/gamma-flip/round-trip/capture-branch assertions each failed
+exactly as the live repros describe — then GREEN after restoring the fix. Full `src/lib/swing/
+*.test.ts` (2072 tests) and `npx tsc --noEmit` both pass clean.
+
 ## Ask Largo swing play-brief: two more stale/absence-disclosure gaps (mark-unknown reason text, structural-node market-closed caveat) — FIXED
 
 > **kind:** `FINDING`
