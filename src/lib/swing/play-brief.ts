@@ -1117,11 +1117,38 @@ function levelsFromContext(
     if (play.entryTriggerUnderlyingPx != null && Number.isFinite(play.entryTriggerUnderlyingPx)) {
       const deadReason = entryTriggerDeadReason(play);
       const verb = play.direction === "SHORT" ? "break/reclaim below fires entry" : "break/reclaim above fires entry";
+      // BUG FIX (Ask Largo standing mandate, 2026-10-25 — live MSTR repro): this used to reuse
+      // `pinnedProvenance` (built from `play.detectedAt`, the FLAG anchor's own pin moment)
+      // unconditionally for the entry-trigger level too — correct only when the two prices still
+      // agree. `entryTriggerUnderlyingPx`'s own field doc (horizon-plays.ts) is explicit that it is
+      // NOT pinned like the flag anchor: "the two can diverge once a dossier refreshes its plan on
+      // a later scan pass" (deriveSwingPlanLevels/structure-levels.ts sets `entryUnderlyingPx` to
+      // whatever price is current the moment the plan is (re)built, not `detectedAt`). Once they
+      // diverge, the entry-trigger price was recomputed at some LATER, unrecorded instant — stamping
+      // `play.detectedAt`'s asOf/freshness on it falsely claims it is as old (or as fresh) as the
+      // flag anchor. Live repro, MSTR: flagUnderlyingPx 163.30 vs entryTriggerUnderlyingPx 147.47,
+      // both stamped identical provenance ("2026-10-21 09:15 ET"). Reuses the exact equality test
+      // `entryTriggerDeadReason`'s own `legacyPinnedStale` already relies on (play-brief-intel.ts)
+      // to detect "still genuinely pinned to the flag's moment" — that check additionally requires
+      // Legacy-promoted origin (an organic row only *coincidentally* matches the instant it's first
+      // flagged, never earlier), but the bare equality is exactly the discriminator THIS decision
+      // needs regardless of origin: the dossier was rebuilt (and the trigger price recomputed) iff
+      // the two numbers no longer match. There is no separate "dossier last rebuilt" timestamp
+      // anywhere on `TerminalPlay` to stamp instead once diverged, so this degrades to the file's
+      // own honest-absence convention (`asOf: null`/`freshness: "unknown"`, same shape `gexFreshness`
+      // /`vectorFreshness` above use) rather than fabricate one.
+      const entryTriggerStillPinnedToFlag =
+        play.flagUnderlyingPx != null &&
+        play.entryTriggerUnderlyingPx != null &&
+        play.flagUnderlyingPx === play.entryTriggerUnderlyingPx;
+      const entryTriggerProvenance = entryTriggerStillPinnedToFlag
+        ? pinnedProvenance
+        : { source: "Swing lane", asOf: null, freshness: "unknown" as const };
       levels.push({
         label: "entry trigger",
         price: play.entryTriggerUnderlyingPx,
         note: deadReason ?? verb,
-        provenance: pinnedProvenance,
+        provenance: entryTriggerProvenance,
       });
     }
   }
