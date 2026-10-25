@@ -8407,3 +8407,21 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
 - **What was broken:** Ask Largo × Night Hawk Swings ownership mandate. Largo product-contract C7 requires `evidence: string[]` to be "the specific numbers behind the claim, not a restatement of it." `extractEvidence()` (`src/lib/swing/play-brief-adapter.ts`) never read `envelope.evidence` at all — the real, sourced evidence array `evidenceFromContext` (`play-brief.ts`) builds for exactly this purpose (dealer-posture strike/γ reads, HELIX flow $ premiums/print counts, earnings dates, peer lists). Instead it manufactured its own list out of exactly what C7 disclaims: the headline+bias repeated verbatim, each section's bare bias word, and confidence prose — a model reading the structured `evidence` field saw zero of the brief's real sourced numbers, only a paraphrase of the claim those numbers are supposed to back up.
 - **What changed:** `extractEvidence` now leads with `envelope.evidence[].text` (every real evidence-kind entry). Levels/scenarios/invalidation stay (real price/target numbers too); the pure-restatement bits (headline+bias, section bias words, confidence prose) are dropped. The bare headline+bias fallback is kept only for the genuine-emptiness case, so the contract's non-empty-array requirement is never satisfied by fabrication.
 - **RTH check:** once deployed, during RTH pull `GET /api/market/swing/play-brief` for a position with real sourced evidence (e.g. one with a known upcoming earnings date, or a live dealer-posture/GEX read) and confirm the Largo-facing `evidence[]` (via the swing adapter's `ProductRead<SwingPlayBriefSignal>` output) carries actual numbers from the brief's own "Data freshness"/dealer-posture/earnings sections, not just a restated headline+bias pair. Cross-check against `envelope.evidence` in the same response to confirm the two agree.
+
+## WATCH LIST — 2026-10-25 (stale-positionId silent substitution fix, PR #6656)
+- **What was broken:** `GET /api/market/swing/play-brief?playId=SWING:<ticker>:<positionId>` silently
+  substituted an unrelated position's data whenever the requested positionId didn't exist among the
+  ticker's remaining resolvable candidates (live repro: `SWING:PANW:2103` returned PANW:67's data
+  under the wrong `playId`). Root cause: `pickLanePlayForBrief`/`loadOpenTerminalPlay`'s
+  single-candidate shortcuts never checked the hint against that sole candidate.
+- **What the fix changed:** both shortcuts now only fire when no positionId was requested or it
+  matches; otherwise the resolver returns absence (404/`available:false`) instead of a false
+  substitute.
+- **Live-verified post-deploy (2026-10-25 00:33 UTC, web tier rolled 00:29:26):**
+  `SWING:PANW:2103` → `404 available:false` (correct, was previously a silent 200 with PANW:67's
+  data); `SWING:PANW:67` → `200 playId:SWING:PANW:67` (native resolution unaffected).
+- **What to re-check once RTH opens:** confirm no legitimate play-brief request (a real, resolvable
+  positionId on a ticker with multiple live candidates — e.g. the ZS/FTNT/LQDA-style banger-origin
+  duplicate-ticker cases) now spuriously 404s. The fix is scoped to the single-candidate path only
+  and was unit-tested against the multi-candidate exact-match path, but a live RTH check against a
+  real duplicate-ticker position is the strongest confirmation.
