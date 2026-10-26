@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T13:15:21.890Z",
+  "updated_at": "2026-10-26T14:04:15.235Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,49 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7d58e8d4f6d50c4853957ccb7d6bf410aba8d663",
+    "last_main_sha": "4a693c88b2213583d5b5d2c9a6279bed3f30e348",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-20T15:34:40.667Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-20T15:34:44.997Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-20T17:27:10.731Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-20T17:27:17.078Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-20T17:27:22.977Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-20T17:54:17.449Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 10
-    },
     {
       "at": "2026-10-20T17:54:25.258Z",
       "type": "context_sync",
@@ -1271,39 +1235,45 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-26T13:54:14.660Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-26T13:54:19.771Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-26T13:54:24.755Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-26T14:04:05.808Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-26T14:04:10.701Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-26T14:04:15.235Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 6839,
-      "title": "feat(swing): Ask Largo news headlines carry their own publish-age",
-      "branch": "feat/largo-headline-publish-age",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T13:13:18Z"
-    },
-    {
-      "number": 6838,
-      "title": "fix(swing): round4 grade.entry_premium/exit_mark at /record API boundary",
-      "branch": "fix/swing-record-grade-premium-precision",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T13:11:24Z"
-    },
-    {
-      "number": 6837,
-      "title": "fix: validate ticker format on vector/helix alert-rules routes",
-      "branch": "fix/alert-rules-ticker-validation",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T13:02:50Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
