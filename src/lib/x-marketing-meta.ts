@@ -175,17 +175,72 @@ export interface XAnalyticsSnapshot {
   }>;
 }
 
+// Lock key for the read-modify-write below. Same shape/rationale as HOOKS_WRITE_LOCK above and
+// x-rate-budget.ts's BUDGET_WRITE_LOCK (round 111): the critical section is a single
+// load+append+save against the shared ANALYTICS_HISTORY_KEY row, not a per-snapshot lock, so a
+// global key just serializes that. x-analytics is a once-daily cron (cron-registry.ts,
+// `30 23 * * *`), but it is NOT the only caller of collectXAnalyticsSnapshot/saveAnalyticsSnapshot
+// — scripts/x-marketing-audit.mjs hits `GET /api/cron/x-analytics` (no `?dry=1`) directly against
+// the SAME cron-authorized route to pull a fresh snapshot for its own audit output, so a manual
+// audit run overlapping the scheduled fire (or two overlapping manual audit runs) is a real,
+// demonstrated interleaving, not a hypothetical one.
+const ANALYTICS_HISTORY_WRITE_LOCK = "x-marketing-analytics-history-write";
+const ANALYTICS_HISTORY_LOCK_MAX_ATTEMPTS = 30;
+const ANALYTICS_HISTORY_LOCK_RETRY_MS = 60;
+
+function parseAnalyticsHistory(raw: string | null): XAnalyticsSnapshot[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) ? (v as XAnalyticsSnapshot[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Save the latest X analytics snapshot + append it to the rolling history.
+ *
+ * The `ANALYTICS_KEY` ("latest") write is a pure overwrite — it never depends on the prior
+ * value, so it needs no lock. The `ANALYTICS_HISTORY_KEY` append is a genuine unlocked
+ * read-modify-write (`readMeta` then `writeMeta`, two separate Postgres round-trips): two
+ * overlapping calls can both read the same base history array before either writes, so the
+ * second write clobbers the first and one whole snapshot is silently dropped from history —
+ * the classic lost-update shape already fixed for `recordPostHook`/`recordBudgetUse` in this
+ * codebase. Lower stakes than those (history is a trend/debugging aid, not a safety budget),
+ * but the same real correctness bug, so it gets the same `tryAdvisoryLock`/`releaseAdvisoryLock`
+ * serialization with a short bounded retry.
+ */
 export async function saveAnalyticsSnapshot(
   snap: XAnalyticsSnapshot,
 ): Promise<void> {
   await writeMeta(ANALYTICS_KEY, JSON.stringify(snap));
-  const raw = await readMeta(ANALYTICS_HISTORY_KEY);
-  let history: XAnalyticsSnapshot[] = [];
-  try {
-    history = raw ? (JSON.parse(raw) as XAnalyticsSnapshot[]) : [];
-  } catch {
-    history = [];
+
+  for (let attempt = 0; attempt < ANALYTICS_HISTORY_LOCK_MAX_ATTEMPTS; attempt += 1) {
+    const acquired = await tryAdvisoryLock(ANALYTICS_HISTORY_WRITE_LOCK);
+    if (!acquired) {
+      await new Promise((r) => setTimeout(r, ANALYTICS_HISTORY_LOCK_RETRY_MS));
+      continue;
+    }
+    try {
+      const history = parseAnalyticsHistory(await readMeta(ANALYTICS_HISTORY_KEY));
+      history.push(snap);
+      await writeMeta(
+        ANALYTICS_HISTORY_KEY,
+        JSON.stringify(history.slice(-MAX_HISTORY)),
+      );
+    } finally {
+      await releaseAdvisoryLock(ANALYTICS_HISTORY_WRITE_LOCK);
+    }
+    return;
   }
+  // Could not get the lock after bounded retries (e.g. a stuck holder) — fall back to the old
+  // unlocked behavior rather than silently dropping this snapshot forever. Worse than the
+  // locked path, but no worse than before this fix, and logged so it's visible if it ever fires.
+  console.warn(
+    `[x-marketing-meta] could not acquire ${ANALYTICS_HISTORY_WRITE_LOCK} after ${ANALYTICS_HISTORY_LOCK_MAX_ATTEMPTS} attempts — appending analytics history unlocked`,
+  );
+  const history = parseAnalyticsHistory(await readMeta(ANALYTICS_HISTORY_KEY));
   history.push(snap);
   await writeMeta(
     ANALYTICS_HISTORY_KEY,
