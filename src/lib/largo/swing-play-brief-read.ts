@@ -15,6 +15,17 @@ export type SwingPlayBriefLargoHints = {
   status?: string | null;
   strike?: number | null;
   right?: string | null;
+  /**
+   * When true, composes the brief with every intel section uncollapsed (full flow anomalies
+   * list, itemized notable prints, raw GEX/VEX/DEX/CHARM, full wall/macro detail) instead of the
+   * default compact narrative-only read — the same `composeSwingPlayBrief` option the Command
+   * Deck UI's own `?expandIntel=1` query param already threads through
+   * `src/app/api/market/swing/play-brief/route.ts`. Before this field existed, Largo's tool-
+   * calling surface had NO way to reach that option at all (`swingPlayBriefForLargo` always called
+   * `composeSwingPlayBrief(ctx)` with no options, so `collapseIntel` was unconditionally forced
+   * true) — see docs/audit/findings-staging for the full trace.
+   */
+  expandIntel?: boolean | null;
 };
 
 export async function swingPlayBriefForLargo(ticker: string, hints?: SwingPlayBriefLargoHints) {
@@ -60,7 +71,7 @@ export async function swingPlayBriefForLargo(ticker: string, hints?: SwingPlayBr
         },
       };
     }
-    const brief = composeSwingPlayBrief(ctx);
+    const brief = composeSwingPlayBrief(ctx, { expandIntel: hints?.expandIntel ?? false });
     return roundFloats({ available: true, ...brief });
   } catch (e) {
     const message = e instanceof Error ? e.message : "swing_play_brief_failed";

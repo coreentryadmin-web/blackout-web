@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 // ONCE in before().
 
 type LoadCtxFn = (input: unknown) => Promise<unknown>;
-type ComposeFn = (ctx: unknown) => unknown;
+type ComposeFn = (ctx: unknown, opts?: unknown) => unknown;
 
 const state: { loadCtx: LoadCtxFn; compose: ComposeFn } = {
   loadCtx: async () => {
@@ -35,7 +35,9 @@ mock.module("../swing/play-brief-context", {
 });
 mock.module("../swing/play-brief", {
   namedExports: {
-    composeSwingPlayBrief: (ctx: unknown) => state.compose(ctx),
+    // Threads `opts` through too (not just `ctx`) — this is what proves/would-catch the
+    // `expandIntel` tool parameter (2026-10-26) actually reaching `composeSwingPlayBrief`.
+    composeSwingPlayBrief: (ctx: unknown, opts?: unknown) => state.compose(ctx, opts),
   },
 });
 
@@ -77,6 +79,38 @@ test("resolves with the ticker uppercased and forwards optional hints to the con
     strike: 90,
     right: "call",
   });
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-26): before this fix, `swingPlayBriefForLargo`
+// always called `composeSwingPlayBrief(ctx)` with no second argument, so `opts?.expandIntel` was
+// unconditionally undefined and `collapseIntel` (play-brief.ts) was unconditionally forced true —
+// Largo's tool-calling surface had no way to reach the uncollapsed read the Command Deck UI's own
+// `?expandIntel=1` toggle already could. These two tests pin that `expandIntel` now actually
+// reaches `composeSwingPlayBrief`'s options in both directions.
+test("expandIntel:true is forwarded to composeSwingPlayBrief's options — Largo can now request the uncollapsed read", async () => {
+  let capturedOpts: unknown = null;
+  state.loadCtx = async () => ({ play: { ticker: "NRG" }, asOf: "2026-09-12T00:00:00Z" });
+  state.compose = (_ctx, opts) => {
+    capturedOpts = opts;
+    return { verdict: ["stub"] };
+  };
+
+  const v = await swingPlayBriefForLargo("nrg", { expandIntel: true });
+  assert.equal(v.available, true);
+  assert.deepEqual(capturedOpts, { expandIntel: true });
+});
+
+test("expandIntel omitted defaults to false — the default tool answer stays the collapsed narrative read", async () => {
+  let capturedOpts: unknown = null;
+  state.loadCtx = async () => ({ play: { ticker: "NRG" }, asOf: "2026-09-12T00:00:00Z" });
+  state.compose = (_ctx, opts) => {
+    capturedOpts = opts;
+    return { verdict: ["stub"] };
+  };
+
+  const v = await swingPlayBriefForLargo("nrg");
+  assert.equal(v.available, true);
+  assert.deepEqual(capturedOpts, { expandIntel: false });
 });
 
 test("returns available:false with error:play_not_found rather than fabricating a brief when nothing resolves", async () => {

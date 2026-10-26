@@ -242,6 +242,114 @@ test("tradeManagerNarrativeSection: stale GEX matrix suppresses net GEX $ and se
   assert.doesNotMatch(section!.body, /session \*\*\+2\.3%\*\*/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-26): same bug class/fix shape as the VEX/DEX/CHARM
+// and net-GEX/session-change% parity fixes above, for "Flow & positioning" instead of "GEX
+// posture". collapseRedundantIntelSections (play-brief-intel-collapse.ts) drops the whole "Flow &
+// positioning" section for OPEN/WATCH buckets with a "folded into Trade manager read above" note,
+// but flowNarrative (this bullet) previously surfaced only the FIRST deduped anomaly and NO
+// notable prints at all -- live-confirmed across 7 real OPEN positions (PANW/CRML/FLY/OUST/RDW/
+// ASTS/FTNT), each collapsing to "aggregate + at most 1 anomaly, zero notable prints" vs the full
+// section's real itemized lists under expandIntel=1.
+test("tradeManagerNarrativeSection: HELIX tape bullet carries ALL deduped flow anomalies (not just the first) and itemized notable prints (2026-10-26)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: { spot: 100, gexWalls: { callWalls: [], putWalls: [] } } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        recent_flow: {
+          window_hours: 6,
+          print_count: 15,
+          call_premium: 2_100_000,
+          put_premium: 800_000,
+          unknown_premium: 0,
+        },
+        flow_feed_fresh: true,
+        recent_anomalies: [
+          {
+            anomaly_type: "CONCENTRATION",
+            detail: "NRG: call flow concentrated in weekly 110s",
+            detected_at: "2026-09-05T19:00:00.000Z",
+            severity: "high",
+            direction: "bullish",
+          },
+          {
+            anomaly_type: "COORDINATED_SWEEP",
+            detail: "NRG: three sweeps within 2 minutes",
+            detected_at: "2026-09-05T18:30:00.000Z",
+            severity: "high",
+            direction: "bullish",
+          },
+          {
+            anomaly_type: "PREMIUM_SPIKE",
+            detail: "NRG: premium 4x the 20-day average",
+            detected_at: "2026-09-05T17:00:00.000Z",
+            severity: "medium",
+            direction: null,
+          },
+        ],
+        flow_full_state: {
+          count: 15,
+          total_premium: 2_900_000,
+          top_tickers: [],
+          recent: [
+            { ticker: "NRG", option_type: "CALL", strike: 110, premium: 518_000, alerted_at: "2026-09-05T19:40:00.000Z" },
+            { ticker: "NRG", option_type: "PUT", strike: 105, premium: 296_000, alerted_at: "2026-09-05T19:30:00.000Z" },
+          ],
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  // All three anomalies present, not just the first (the pre-fix behavior).
+  assert.match(section!.body, /CONCENTRATION/);
+  assert.match(section!.body, /COORDINATED_SWEEP/);
+  assert.match(section!.body, /PREMIUM_SPIKE/);
+  // Notable prints now reach the collapsed narrative at all.
+  assert.match(section!.body, /Notable prints/);
+  assert.match(section!.body, /CALL 110\.00 \$518K/);
+  assert.match(section!.body, /PUT 105\.00 \$296K/);
+});
+
+test("tradeManagerNarrativeSection: HELIX tape bullet dedupes a persisting anomaly rewritten across two cron cycles (mirrors flowIntelSection's own dedup, 2026-10-26)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: { spot: 100, gexWalls: { callWalls: [], putWalls: [] } } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        recent_flow: {
+          window_hours: 6,
+          print_count: 10,
+          call_premium: 700_000,
+          put_premium: 0,
+          unknown_premium: 0,
+        },
+        flow_feed_fresh: true,
+        recent_anomalies: [
+          {
+            anomaly_type: "DIRECTIONAL_FLOW_SKEW",
+            detail: "NRG: one-sided call flow — $0.7M calls vs no put premium",
+            detected_at: "2026-09-05T19:30:00.000Z",
+            severity: "medium",
+            direction: "bullish",
+          },
+          {
+            anomaly_type: "DIRECTIONAL_FLOW_SKEW",
+            detail: "NRG: one-sided call flow — $0.7M calls vs no put premium",
+            detected_at: "2026-09-05T19:00:00.000Z",
+            severity: "medium",
+            direction: "bullish",
+          },
+        ],
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  const occurrences = section!.body.split("DIRECTIONAL_FLOW_SKEW").length - 1;
+  assert.equal(occurrences, 1, "identical anomaly_type+detail must render once, not once per write cycle");
+});
+
 // Largo deep-dive follow-up (2026-10-15, PR #4076 comment 6175832614): gex-positioning.ts computes
 // flip_crossings/flip_nearest/distance_to_nearest_flip_pct unconditionally for every brief, and a
 // crossings count > 1 means the regime is more fragile than the single stable `flip` implies -- but

@@ -1159,6 +1159,13 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         status: input.status ? String(input.status) : null,
         strike: input.strike != null ? Number(input.strike) : null,
         right: input.right ? String(input.right) : null,
+        // Ask Largo standing mandate (2026-10-26): lets Largo itself act on the collapsed
+        // narrative's own "expand via follow-up chips or Open Largo" note — previously there was
+        // no mechanism to reach `composeSwingPlayBrief`'s existing `expandIntel` option from the
+        // tool-calling surface at all (only the Command Deck UI's `?expandIntel=1` query param
+        // could). `Boolean(...)` tolerates a string "true" the same defensive way `status`/`right`
+        // above coerce input, since tool-call JSON can arrive loosely typed.
+        expandIntel: input.expandIntel === true || input.expandIntel === "true",
       });
     }
     case "get_nighthawk_horizons": {

@@ -286,13 +286,18 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
   t(
     "get_swing_play_brief",
-    "Full Ask Largo intelligence brief for ONE specific Night Hawk Swings position or candidate — the same composed read the Command Deck panel shows: verdict, entry/management/position, why this setup, book-context concentration (does this overlap the member's other open positions), dealer & dark-pool read, flow & positioning, catalysts, hold plan/watch levels, and data freshness. Use this (not get_swing_horizon, which only returns board counts) whenever a member asks about a SPECIFIC ticker's swing thesis, position, or trade management — e.g. 'what's your read on my NRG position', 'is the thesis still good on CRWD', 'why did we pick this swing trade'. Requires `ticker`. Optional `positionId`/`strike`/`right`/`status` disambiguate when a ticker has more than one live position or candidate (e.g. an open position AND a separate watch candidate) — omit them for the single obvious match. Returns `available:false` with `error:\"play_not_found\"` when no open, watch, or recently closed position exists for the ticker — never fabricate a brief when this happens.",
+    "Full Ask Largo intelligence brief for ONE specific Night Hawk Swings position or candidate — the same composed read the Command Deck panel shows: verdict, entry/management/position, why this setup, book-context concentration (does this overlap the member's other open positions), dealer & dark-pool read, flow & positioning, catalysts, hold plan/watch levels, and data freshness. Use this (not get_swing_horizon, which only returns board counts) whenever a member asks about a SPECIFIC ticker's swing thesis, position, or trade management — e.g. 'what's your read on my NRG position', 'is the thesis still good on CRWD', 'why did we pick this swing trade'. Requires `ticker`. Optional `positionId`/`strike`/`right`/`status` disambiguate when a ticker has more than one live position or candidate (e.g. an open position AND a separate watch candidate) — omit them for the single obvious match. Returns `available:false` with `error:\"play_not_found\"` when no open, watch, or recently closed position exists for the ticker — never fabricate a brief when this happens. For an OPEN/WATCH position the default answer COLLAPSES several intel sections (GEX posture, flow & positioning, wall dynamics, macro tape, hold plan) into the compact 'Trade manager read' narrative, trading some itemized detail for brevity — a note on that narrative says exactly this ('folded into Trade manager read above — expand via follow-up chips or Open Largo'). Pass `expandIntel: true` to get the FULL, uncollapsed sections instead (every deduped flow anomaly, itemized notable prints with strike/right/premium/age, the raw GEX/VEX/DEX/CHARM figures, full wall/macro detail) — use it whenever a member's question needs that level of detail (e.g. 'what are the actual flow prints', 'show me every anomaly', 'give me the full breakdown'), or whenever you yourself judge the collapsed read insufficient to answer well.",
     {
       ticker: { type: "string", description: "e.g. NRG, CRWD" },
       positionId: { type: "integer", description: "Disambiguates when a ticker has more than one position or candidate." },
       strike: { type: "number" },
       right: { type: "string", description: "call or put" },
       status: { type: "string", description: "e.g. OPEN, WATCH, CLOSED" },
+      expandIntel: {
+        type: "boolean",
+        description:
+          "true returns every intel section uncollapsed (full flow anomalies list, itemized notable prints, raw GEX/VEX/DEX/CHARM, full wall/macro detail) instead of the default compact narrative-only read. Same mechanism the Command Deck UI's own 'Show detail' toggle uses (?expandIntel=1).",
+      },
     },
     ["ticker"]
   ),
