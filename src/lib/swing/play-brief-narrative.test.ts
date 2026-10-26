@@ -2224,6 +2224,75 @@ test("tradeManagerNarrativeSection: Break watch already-breached bullet carries 
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro PANW SWING:PANW:67): degradedReadLine
+// (the "Live read" fallback bullet, fires only when Vector/GEX spot isn't wired this tick) built
+// its markBit by guarding ONLY the TRUE entry-fallback case (`optionMarkGenuinelyUnknown`, fixed
+// 2026-09-14 above) -- it never called the shared `optionMarkStaleCaveat` helper for the far more
+// common "real mark, but its `markAsOf` timestamp is old" case, even though every OTHER
+// quote-derived line in the identical brief/section already does (Position section's own Mark/
+// P&L lines; this same "Trade manager read" section's "Manage plan"/"Executable P&L" bullets; the
+// "Break watch" already-breached bullet the test directly above this one pins for the exact same
+// root cause at a sibling call site, #6756). Live PANW repro: Position section correctly flagged
+// "Mark: **$19.45** ... _(stale)_" for a `markAsOf` 64+ hours old, and the same brief's "Manage
+// plan"/"Executable P&L" bullets both carried the stale caveat for the identical $19.45 figure --
+// but this "Live read" bullet rendered "mark **$19.45**" with no caveat at all.
+test("tradeManagerNarrativeSection: degraded-read 'Live read' mark bullet carries the same stale-quote caveat as its sibling lines (live PANW repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      readMs: Date.parse("2026-10-26T12:24:00.000Z"), // 64+ hours after markAsOf below
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 19.45,
+        markAsOf: "2026-10-23T20:00:00.000Z", // 2026-10-23 16:00 ET, well past the 18-min stale bar
+        markIsSync: false,
+        pnlPct: 9.9, // a real P&L basis -- not the entry-fallback echo case
+        peak: 15,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 12,
+          target_premium: 35.4,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Live read.*mark \*\*\$19\.45\*\*\s*_\(stale — same quote Mark flagged above\)_/i,
+    `degraded-read mark must carry the same staleness caveat its sibling lines carry, got: ${section!.body}`,
+  );
+});
+
+// A fresh (non-stale) mark must render with no caveat at all -- optionMarkStaleCaveat returns ""
+// when the mark isn't actually stale, so threading readMs through must be a no-op here.
+test("tradeManagerNarrativeSection: degraded-read 'Live read' mark bullet carries no caveat when the mark is fresh", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      readMs: Date.parse("2026-10-26T12:24:00.000Z"),
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 19.45,
+        markAsOf: "2026-10-26T12:20:00.000Z", // 4 minutes old -- well within the fresh window
+        markIsSync: false,
+        pnlPct: 9.9,
+        peak: 15,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 12,
+          target_premium: 35.4,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Live read.*mark \*\*\$19\.45\*\*\. Levels refresh on next poll\./i);
+  assert.doesNotMatch(section!.body, /Live read.*mark.*stale/i);
+});
+
 test("tradeManagerNarrativeSection: Break watch keeps the forward-looking framing when the executable bid is still above the stop", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
