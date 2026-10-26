@@ -142,7 +142,12 @@ test("board route rounds member-visible floats at the API boundary (sim frames b
   // import list, which broke the moment a second helper from the same module was added.
   assert.match(route, /import \{[^}]*\broundFloats\b[^}]*\} from "@\/lib\/round-floats"/);
   assert.match(route, /roundFloats\(await getSimBoardPayload\(\)\)/);
-  assert.match(route, /roundFloats\(await getZeroDteBoardPayload\(\)\)/);
+  // Tolerate an optional dp/keyDp tail on the member-path call (2026-10-26: a keyDp override
+  // was added here — ZERODTE_BOARD_GREEKS_WIRE_DP — so setups[].plan.greeks/ledger[].greeks
+  // keep real gamma/vega precision instead of quantizing to 0.00 at the flat 2dp default; see
+  // round-floats.test.ts and this route's own doc comment). The load-bearing assertion is
+  // still that the MEMBER path calls roundFloats on the real payload at all.
+  assert.match(route, /roundFloats\(await getZeroDteBoardPayload\(\)(?:,[^)]*)?\)/);
 });
 
 test("ingest endpoint is admin-gated and writes ONLY the sim key", () => {
