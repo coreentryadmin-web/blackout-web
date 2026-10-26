@@ -4,6 +4,17 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { autoReloadOnceOnChunkError } from "@/lib/chunk-load-error";
 
+export const ERROR_PAGE_TITLE = "Something went wrong — BlackOut";
+
+/** Next.js requires an `error.tsx` boundary to be a client component, so unlike `not-found.tsx`
+ *  it can't export a static `metadata.title` — the tab keeps whatever title the crashed page had
+ *  before the error, never reflecting the error state itself. Exported (with an injectable `doc`)
+ *  so the title-setting logic is directly testable without a DOM-rendering library this repo
+ *  doesn't carry. */
+export function setErrorPageTitle(doc: Pick<Document, "title"> = document): void {
+  doc.title = ERROR_PAGE_TITLE;
+}
+
 /** Shared App Router error UI — dependency-light for use in segment error boundaries. */
 export default function RouteErrorBoundary({
   error,
@@ -14,6 +25,7 @@ export default function RouteErrorBoundary({
 }) {
   useEffect(() => {
     console.error(error);
+    setErrorPageTitle();
     // Stale-chunk error from a deploy mid-rollout — self-heal with a hard reload rather than
     // leaving the member stuck on a manual "Try again" for a problem their own next load clears.
     autoReloadOnceOnChunkError(error);
