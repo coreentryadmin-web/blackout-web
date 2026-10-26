@@ -9,6 +9,7 @@ import {
   computeSafePgPoolMaxDefault,
   guardCheckedOutClient,
   parseZeroDteRejectionCounterfactual,
+  deleteFromOptionalTable,
 } from "./db";
 
 test("mapAlertAuditTrailRow: converts NUMERIC confidence_score (a string from node-pg) to a real number", () => {
@@ -922,4 +923,128 @@ test("ensureSchema: the banger_positions watermark backfill only ever WIDENS the
   // NEVER fabricates: a row with no entry premium has no observed mark to bracket around, so it is
   // left entirely alone rather than seeded from a mark it never traded at.
   assert.doesNotMatch(stmt, /entry_premium IS NULL/);
+});
+
+// ─── 2026-10-26 (DISCOVERY-lane audit): deleteUserDataForClerkId (Clerk `user.deleted` GDPR
+// cleanup) was missing several tables that store real per-user content keyed by clerk_user_id —
+// bie_interactions (Largo chat question text), welcome_sequence_state (email/first_name),
+// helix_alert_rules and vector_alert_rules (per-ticker alert configs) — plus the PRE-EXISTING
+// push_subscriptions delete used a bare try/catch that cannot actually contain a missing-table
+// error inside a Postgres transaction (see deleteFromOptionalTable's own doc comment). Minimal
+// fake PoolClient below enforces the REAL Postgres invariant this bug depends on: once any
+// statement in a transaction errors, every later statement on that client — except ROLLBACK or
+// ROLLBACK TO SAVEPOINT — throws "current transaction is aborted" regardless of whether the
+// JS-level error was caught. ───
+
+/** A fake PoolClient enforcing the one Postgres invariant this bug/fix depends on. */
+function makeAbortAwarePgClient(opts: { missingTables: Set<string> }) {
+  let aborted = false;
+  const calls: string[] = [];
+  const client: Pick<PoolClient, "query"> = {
+    async query(text: unknown, values?: unknown[]) {
+      const sql = String(text).trim();
+      calls.push(sql);
+      if (/^BEGIN\b/i.test(sql)) {
+        aborted = false;
+        return { rowCount: 0, rows: [] } as never;
+      }
+      if (/^ROLLBACK TO SAVEPOINT\b/i.test(sql)) {
+        aborted = false;
+        return { rowCount: 0, rows: [] } as never;
+      }
+      if (/^ROLLBACK\b/i.test(sql)) {
+        aborted = false;
+        return { rowCount: 0, rows: [] } as never;
+      }
+      // Any OTHER statement — including SAVEPOINT/RELEASE SAVEPOINT/COMMIT — fails outright
+      // while the transaction is aborted. This is the exact real-world behavior: Postgres
+      // rejects every statement but ROLLBACK (to a savepoint or the whole transaction).
+      if (aborted) {
+        throw new Error("current transaction is aborted, commands ignored until end of transaction block");
+      }
+      const tableMatch = /DELETE FROM (\w+)/i.exec(sql);
+      const table = tableMatch?.[1];
+      if (table && opts.missingTables.has(table)) {
+        aborted = true;
+        throw new Error(`relation "${table}" does not exist`);
+      }
+      return { rowCount: 1, rows: [] } as never;
+    },
+  };
+  return { client: client as PoolClient, calls: () => calls.slice() };
+}
+
+test("RED (pre-fix pattern): a bare try/catch around a missing optional table does NOT contain the failure — the transaction stays aborted and every later statement throws", async () => {
+  const { client } = makeAbortAwarePgClient({ missingTables: new Set(["push_subscriptions"]) });
+  await client.query("BEGIN");
+  await client.query(`DELETE FROM largo_sessions WHERE user_id = $1`, ["u1"]);
+  // The OLD code's shape: catch the error and keep going on the same client.
+  try {
+    await client.query(`DELETE FROM push_subscriptions WHERE user_id = $1`, ["u1"]);
+  } catch {
+    // swallowed, exactly like the old code — but this does NOT un-abort the transaction.
+  }
+  // Proves the bug: the next statement on the SAME client throws even though its own table
+  // (`users`) exists and its own JS-level try/catch around push_subscriptions "succeeded".
+  await assert.rejects(
+    () => client.query(`DELETE FROM users WHERE clerk_user_id = $1`, ["u1"]),
+    /current transaction is aborted/
+  );
+});
+
+test("deleteFromOptionalTable: a missing table is contained via SAVEPOINT — the surrounding transaction stays usable and later statements succeed", async () => {
+  const { client, calls } = makeAbortAwarePgClient({ missingTables: new Set(["push_subscriptions"]) });
+  await client.query("BEGIN");
+  await client.query(`DELETE FROM largo_sessions WHERE user_id = $1`, ["u1"]);
+  const deleted = await deleteFromOptionalTable(client, "push_subscriptions", "user_id", "u1");
+  assert.equal(deleted, 0, "missing table reports 0 rows deleted, never throws");
+  // The statement that was aborted-and-doomed in the RED test above now succeeds.
+  const users = await client.query(`DELETE FROM users WHERE clerk_user_id = $1`, ["u1"]);
+  assert.equal((users as { rowCount: number }).rowCount, 1);
+  await client.query("COMMIT");
+  assert.ok(calls().includes("SAVEPOINT optional_table_delete"));
+  assert.ok(calls().includes("ROLLBACK TO SAVEPOINT optional_table_delete"));
+});
+
+test("deleteFromOptionalTable: an EXISTING table's rows are deleted and the savepoint is released (no rollback)", async () => {
+  const { client, calls } = makeAbortAwarePgClient({ missingTables: new Set() });
+  await client.query("BEGIN");
+  const deleted = await deleteFromOptionalTable(client, "push_subscriptions", "user_id", "u1");
+  assert.equal(deleted, 1);
+  assert.ok(calls().includes("RELEASE SAVEPOINT optional_table_delete"));
+  assert.ok(!calls().includes("ROLLBACK TO SAVEPOINT optional_table_delete"));
+});
+
+// Regression for the 2026-10-26 audit finding: deleteUserDataForClerkId must actually delete
+// every table that stores real per-user content keyed by the Clerk user id, not just the four it
+// originally shipped with — and the lazily-created ones must go through deleteFromOptionalTable
+// (SAVEPOINT-safe), never a bare try/catch, so adding a new optional table here can't silently
+// re-introduce the abandoned-transaction bug proven above.
+test("deleteUserDataForClerkId: deletes every table keyed by clerk_user_id, and routes lazily-created tables through deleteFromOptionalTable", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function deleteUserDataForClerkId");
+  const end = src.indexOf("\nexport async function", start + 1);
+  assert.ok(start > 0 && end > start, "deleteUserDataForClerkId must exist");
+  const body = src.slice(start, end);
+
+  // Unconditionally-migrated tables (always exist) — plain DELETE is safe.
+  assert.match(body, /DELETE FROM largo_sessions WHERE user_id = \$1/);
+  assert.match(body, /DELETE FROM user_journal WHERE user_id = \$1/);
+  assert.match(body, /DELETE FROM welcome_sequence_state WHERE user_id = \$1/);
+  assert.match(body, /DELETE FROM bie_interactions WHERE user_id = \$1/);
+  assert.match(body, /DELETE FROM users WHERE clerk_user_id = \$1/);
+
+  // Lazily-created tables must go through the SAVEPOINT-safe helper, not a bare try/catch.
+  for (const table of ["push_subscriptions", "helix_alert_rules", "vector_alert_rules"]) {
+    assert.match(
+      body,
+      new RegExp(`deleteFromOptionalTable\\(\\s*client,\\s*"${table}"`),
+      `${table} must be deleted via deleteFromOptionalTable`
+    );
+  }
+  assert.doesNotMatch(
+    body,
+    /catch\s*\{\s*\/\/ push_subscriptions/,
+    "must not regress to the old bare try/catch pattern that cannot contain an aborted transaction"
+  );
 });

@@ -2939,15 +2939,81 @@ export async function dbQuery<T extends QueryResultRow = QueryResultRow>(
   throw lastError;
 }
 
-/** GDPR cleanup when Clerk sends user.deleted — removes all rows keyed by clerk_user_id. */
+/**
+ * Deletes rows from a table that may not exist yet — because it is created LAZILY by a
+ * different route/module on first use (push_subscriptions, helix_alert_rules,
+ * vector_alert_rules — none of them are part of the unconditional runMigrations() set) —
+ * from WITHIN an already-open transaction, without aborting that transaction when the table
+ * is missing.
+ *
+ * A bare `try { await client.query(...) } catch {}` around one statement in a Postgres
+ * transaction is NOT enough to contain the failure: once ANY statement in a transaction block
+ * errors, Postgres marks the whole transaction ABORTED, and every subsequent statement on that
+ * same client — other than ROLLBACK — throws `current transaction is aborted, commands ignored
+ * until end of transaction block`, regardless of whether the JS-level error was caught. So
+ * catching the error here and continuing to issue more queries on the same client (as this
+ * function used to) silently dooms every later statement in the surrounding BEGIN/COMMIT,
+ * including the row the caller actually needs to commit (e.g. the `users` row below) — it
+ * surfaces as the WHOLE deletion throwing and rolling back, not as "one optional table was
+ * skipped". SAVEPOINT/ROLLBACK TO SAVEPOINT is the actual fix: it contains the failure to just
+ * this one statement and leaves the surrounding transaction usable.
+ */
+export async function deleteFromOptionalTable(
+  client: PoolClient,
+  table: string,
+  column: string,
+  value: string
+): Promise<number> {
+  await client.query("SAVEPOINT optional_table_delete");
+  try {
+    const res = await client.query(`DELETE FROM ${table} WHERE ${column} = $1`, [value]);
+    await client.query("RELEASE SAVEPOINT optional_table_delete");
+    return res.rowCount ?? 0;
+  } catch {
+    // Table doesn't exist (or some other transient issue) — roll back to the savepoint so the
+    // surrounding transaction stays usable, instead of leaving it ABORTED.
+    await client.query("ROLLBACK TO SAVEPOINT optional_table_delete");
+    return 0;
+  }
+}
+
+/**
+ * GDPR cleanup when Clerk sends user.deleted — removes all rows keyed by clerk_user_id.
+ *
+ * Covers every table that stores data keyed by the Clerk user id (verified against every
+ * `CREATE TABLE` in this file plus the lazily-created `helix_alert_rules`/`vector_alert_rules`/
+ * `push_subscriptions` tables each feature creates on first use):
+ * - `users` (keyed by `clerk_user_id`)
+ * - `largo_sessions`, `user_journal`, `welcome_sequence_state` (unconditionally migrated —
+ *   always exist, so a straight DELETE is safe)
+ * - `bie_interactions` (unconditionally migrated — `question`/`user_id` are real per-user
+ *   content, not just an aggregate counter, so this is in scope for deletion, not just the
+ *   time-based retention `db-cleanup-targets.ts` already applies to it)
+ * - `push_subscriptions`, `helix_alert_rules`, `vector_alert_rules` (lazily created elsewhere —
+ *   go through `deleteFromOptionalTable` so a fresh environment where the table was never
+ *   created can't abort this whole deletion)
+ */
 export async function deleteUserDataForClerkId(clerkUserId: string): Promise<{
   users: number;
   largo_sessions: number;
   user_journal: number;
+  welcome_sequence_state: number;
+  bie_interactions: number;
   push_subscriptions: number;
+  helix_alert_rules: number;
+  vector_alert_rules: number;
 }> {
   if (!clerkUserId) {
-    return { users: 0, largo_sessions: 0, user_journal: 0, push_subscriptions: 0 };
+    return {
+      users: 0,
+      largo_sessions: 0,
+      user_journal: 0,
+      welcome_sequence_state: 0,
+      bie_interactions: 0,
+      push_subscriptions: 0,
+      helix_alert_rules: 0,
+      vector_alert_rules: 0,
+    };
   }
   await ensureSchema();
   const client = guardCheckedOutClient(await (await getPool()).connect());
@@ -2961,16 +3027,32 @@ export async function deleteUserDataForClerkId(clerkUserId: string): Promise<{
       `DELETE FROM user_journal WHERE user_id = $1`,
       [clerkUserId]
     );
-    let pushDeleted = 0;
-    try {
-      const push = await client.query(
-        `DELETE FROM push_subscriptions WHERE user_id = $1`,
-        [clerkUserId]
-      );
-      pushDeleted = push.rowCount ?? 0;
-    } catch {
-      // push_subscriptions is lazily created — table may not exist yet.
-    }
+    const welcome = await client.query(
+      `DELETE FROM welcome_sequence_state WHERE user_id = $1`,
+      [clerkUserId]
+    );
+    const bie = await client.query(
+      `DELETE FROM bie_interactions WHERE user_id = $1`,
+      [clerkUserId]
+    );
+    const pushDeleted = await deleteFromOptionalTable(
+      client,
+      "push_subscriptions",
+      "user_id",
+      clerkUserId
+    );
+    const helixDeleted = await deleteFromOptionalTable(
+      client,
+      "helix_alert_rules",
+      "user_id",
+      clerkUserId
+    );
+    const vectorDeleted = await deleteFromOptionalTable(
+      client,
+      "vector_alert_rules",
+      "user_id",
+      clerkUserId
+    );
     const users = await client.query(
       `DELETE FROM users WHERE clerk_user_id = $1`,
       [clerkUserId]
@@ -2980,7 +3062,11 @@ export async function deleteUserDataForClerkId(clerkUserId: string): Promise<{
       users: users.rowCount ?? 0,
       largo_sessions: largo.rowCount ?? 0,
       user_journal: journal.rowCount ?? 0,
+      welcome_sequence_state: welcome.rowCount ?? 0,
+      bie_interactions: bie.rowCount ?? 0,
       push_subscriptions: pushDeleted,
+      helix_alert_rules: helixDeleted,
+      vector_alert_rules: vectorDeleted,
     };
   } catch (err) {
     await client.query("ROLLBACK");
