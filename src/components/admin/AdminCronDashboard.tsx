@@ -311,6 +311,20 @@ function RecentRunsFeed({ events }: { events: CronHealthPayload["recent_events"]
   );
 }
 
+/**
+ * What fraction of jobs have logged at least one run in the last 24h. A pure, bounded 0-1 ratio
+ * (unlike `logged_runs_total`, the all-time cumulative count the "Telemetry" ring used to divide
+ * by a hardcoded 50 — that saturates to 100% within hours of launch and stays pinned there
+ * forever after, even during a real telemetry outage, since the cumulative counter only grows).
+ */
+export function computeTelemetryCoveragePct(
+  jobs: Array<{ runs_24h: { ok: number; failed: number; skipped: number } }>
+): number {
+  if (jobs.length === 0) return 0;
+  const active = jobs.filter((j) => j.runs_24h.ok + j.runs_24h.failed + j.runs_24h.skipped > 0).length;
+  return active / jobs.length;
+}
+
 export function AdminCronDashboard() {
   // Shared (SWR, keyed by URL) with every other admin panel reading /api/admin/cron-health —
   // this dashboard no longer runs its own independent poll loop.
@@ -339,6 +353,11 @@ export function AdminCronDashboard() {
 
   const healthyPct = useMemo(
     () => (data?.summary.total ? data.summary.healthy / data.summary.total : 0),
+    [data]
+  );
+
+  const telemetryPct = useMemo(
+    () => computeTelemetryCoveragePct(data?.jobs ?? []),
     [data]
   );
 
@@ -401,7 +420,7 @@ export function AdminCronDashboard() {
               size={118}
             />
             <WinRateRing
-              value={Math.min(1, data.logged_runs_total / 50)}
+              value={telemetryPct}
               label="Telemetry"
               sub={`${data.logged_runs_total} events`}
               tone="cyan"
