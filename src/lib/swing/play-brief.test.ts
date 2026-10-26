@@ -1989,6 +1989,56 @@ test("composeSwingPlayBrief: entry price and exit-policy stop/target rails surfa
   assert.equal(railsEvidence!.provenance?.source, "Swing ledger");
 });
 
+// BUG FIX (2026-10-26, Ask Largo standing mandate, live-production audit): the test above only
+// ever fixtured a NOT-yet-fired trim rung (`fired: false`), so it could never catch the evidence[]
+// feeder citing a dead rail as live. Once a trim has fired (the position has scaled out), the
+// pre-scale hard stop is permanently disabled by the live exit engine and the real governing floor
+// becomes the runner's trailing stop off its peak — and once a fired trim's own banked premium is
+// at/above `target_premium`, the target has already been reached, not a fresh objective still
+// ahead. `managementSection` ("Rails: ..." line) and `watchForSection` ("Premium stop/target rail"
+// bullets) both already guard this; this evidence[] fact did not, citing the raw dollar levels with
+// no annotation regardless of scale-out/target-reached state.
+test("composeSwingPlayBrief: Exit-policy rails evidence[] reflects already-scaled stop and already-reached target", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.55,
+      mark: 0.65,
+      peak: 130,
+      pnlPct: 18.2,
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 1.1, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: 0.22,
+        target_premium: 1.1,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-10-26 16:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+  const railsEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Exit-policy rails:"));
+  assert.ok(railsEvidence, "expected a citable exit-policy rails evidence entry");
+  // peakPremiumDollar = 0.55 * (1 + 130/100) = 1.265; runnerTrail = round2(1.265 * 0.5) = 0.63
+  assert.equal(
+    railsEvidence!.text,
+    "Exit-policy rails: stop $0.22 (no longer applies — already scaled; runner trail now $0.63) · target $1.10 (already reached).",
+  );
+  assert.equal(railsEvidence!.provenance?.source, "Swing ledger");
+});
+
 // Same fix: a WATCH candidate (pre-entry, no exitPolicy pinned) and a CLOSED play (Outcome
 // section, not Position/Management) must never fabricate an entry/rails evidence fact — matching
 // the exact bucket Management/Position are themselves gated on in composeSwingPlayBrief.
