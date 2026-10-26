@@ -7,6 +7,7 @@ import { hasScaledOut, runnerTrailingStopPremium } from "@/lib/zerodte/terminal-
 import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel, roundOptionUsd } from "@/lib/fmt-money";
 import { watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { parseOccSymbol } from "@/lib/largo/core/entities";
+import { bookRiskLine } from "@/lib/swing/swing-portfolio-budget";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
@@ -357,6 +358,15 @@ export function whyThisSetupSection(
     }
     if (play.setupState && !lede) lines.push(`Setup maturity: **${play.setupState}**`);
   }
+
+  // Ask Largo standing mandate, 2026-10-26 (#4076 comment 6410025245): `evaluateSwingCommitBudget`
+  // already computes real per-dimension loss-at-risk numbers at commit time, but only a thin
+  // blocked/blockedDimensions summary ever reached entry_context — this position's own sizing
+  // relative to the engine's book-heat caps was computed and then discarded. `bookRiskLine` is
+  // null (never fabricated) for a WATCH candidate (no commit-time budget evaluation yet), an
+  // advisory-only read, or a pre-this-fix historical row — honest absence on all three.
+  const bookRisk = bookRiskLine(play.budgetVerdict ?? null);
+  if (bookRisk) lines.push(bookRisk);
 
   return { title: "Why this setup", body: lines.join("\n\n") };
 }

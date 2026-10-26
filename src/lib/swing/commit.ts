@@ -63,6 +63,7 @@ import type { SwingPillarSignals } from "./swing-pillars";
 import { buildSwingFeatureVector } from "./feature-vector";
 import {
   evaluateSwingCommitBudget,
+  budgetVerdictStamp,
   DEFAULT_PORTFOLIO_BUDGET,
   type PortfolioBudget,
   type BudgetPosition,
@@ -579,7 +580,12 @@ function buildCommitInsert(
         overnightCap: budget.overnightCap,
         enforce: budget.enforce,
       },
-      budget_verdict: budgetVerdict ? { blocked: budgetVerdict.blocked, blockedDimensions: budgetVerdict.blockedDimensions } : null,
+      // Ask Largo standing mandate, 2026-10-26 (#4076 comment 6410025245): this used to stamp only
+      // {blocked, blockedDimensions} — `budgetVerdictStamp` additionally persists the per-position/
+      // portfolio limits + candidateRiskUsd/portfolioObservedUsd already computed one call above,
+      // so the brief can finally cite real "X% of the reference cap" numbers (`bookRiskLine`)
+      // instead of the data being computed and discarded. No new computation, no sizing change.
+      budget_verdict: budgetVerdict ? budgetVerdictStamp(budgetVerdict) : null,
       cortex: cortexEntryContextFor(cand.cortexAssessment ?? null),
       // Pin the SAME discovery-provenance kinds already computed for the G-S6 confluence gate
       // (`discoveryPathsForConfluence`, assembled onto `cand.discoveryPaths` in discovery.ts) so

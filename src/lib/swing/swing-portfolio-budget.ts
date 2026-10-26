@@ -298,3 +298,113 @@ export function evaluateSwingCommitBudget(
   });
   return { ...base, blocked: blockedDimensions.length > 0, blockedDimensions };
 }
+
+/**
+ * The durable shape stamped into `entry_context.budget_verdict` at commit (`commit.ts`'s
+ * `buildCommitInsert`) — just enough for a member-facing "book risk" disclosure later, without
+ * persisting anything `evaluateSwingCommitBudget` doesn't already compute.
+ *
+ * Ask Largo standing mandate, 2026-10-26 (#4076 comment 6410025245): `evaluateSwingCommitBudget`
+ * already computes rich per-dimension `observedUsd`/`limitUsd` numbers at commit time, but only a
+ * thin `{blocked, blockedDimensions}` summary ever reached `entry_context` — the brief had no way
+ * to say "X% of the per-position cap used" even though the number was sitting one line above the
+ * stamp the whole time.
+ *
+ * `perPositionLimitUsd` is deliberately the resolved per-position DOLLAR CAP, not the
+ * `per_position_loss` dimension's own `observedUsd` — that field is the LARGEST single position
+ * across the WHOLE book (book + candidate), which can be dominated by a DIFFERENT, bigger position
+ * than the one this stamp is attached to. The correct numerator for "this position's own share of
+ * the per-position cap" is always `candidateRiskUsd` (already on `SwingCommitBudgetVerdict`), never
+ * the dimension's `observedUsd`.
+ *
+ * `portfolioObservedUsd` is the one place the dimension's own `observedUsd` IS the right number to
+ * keep — the aggregate `portfolio_loss` dimension's `observedUsd` genuinely is "total book risk
+ * after adding this candidate," a whole-book fact worth citing (distinct from, and never mislabeled
+ * as, the member's own personal account risk — see `bookRiskLine`'s doc comment).
+ */
+export interface SwingBudgetVerdictStamp {
+  blocked: boolean;
+  blockedDimensions: BudgetDimension[];
+  enforce: boolean;
+  candidateRiskUsd: number;
+  perPositionConstrained: boolean;
+  perPositionLimitUsd: number | null;
+  portfolioConstrained: boolean;
+  portfolioLimitUsd: number | null;
+  portfolioObservedUsd: number | null;
+}
+
+/** Build the stamp from a real `SwingCommitBudgetVerdict` — pure, no new computation. */
+export function budgetVerdictStamp(v: SwingCommitBudgetVerdict): SwingBudgetVerdictStamp {
+  const perPosition = v.verdict.verdicts.find((d) => d.dimension === "per_position_loss") ?? null;
+  const portfolio = v.verdict.verdicts.find((d) => d.dimension === "portfolio_loss") ?? null;
+  return {
+    blocked: v.blocked,
+    blockedDimensions: v.blockedDimensions,
+    enforce: v.enforce,
+    candidateRiskUsd: v.candidateRiskUsd,
+    perPositionConstrained: perPosition?.constrained === true,
+    perPositionLimitUsd: perPosition?.limitUsd ?? null,
+    portfolioConstrained: portfolio?.constrained === true,
+    portfolioLimitUsd: portfolio?.limitUsd ?? null,
+    portfolioObservedUsd: portfolio ? portfolio.observedUsd : null,
+  };
+}
+
+/** Parse a `SwingBudgetVerdictStamp` back out of the raw JSONB `entry_context.budget_verdict`
+ *  value (whatever shape it happens to be — an older row, a corrupt blob, or a genuinely absent
+ *  one). Honest-null on anything that doesn't structurally match; never fabricates a stamp. */
+export function parseBudgetVerdictStamp(raw: unknown): SwingBudgetVerdictStamp | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const candidateRiskUsd = r.candidateRiskUsd;
+  if (typeof candidateRiskUsd !== "number" || !Number.isFinite(candidateRiskUsd)) return null;
+  const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  return {
+    blocked: r.blocked === true,
+    blockedDimensions: Array.isArray(r.blockedDimensions) ? (r.blockedDimensions as BudgetDimension[]) : [],
+    enforce: r.enforce === true,
+    candidateRiskUsd,
+    perPositionConstrained: r.perPositionConstrained === true,
+    perPositionLimitUsd: numOrNull(r.perPositionLimitUsd),
+    portfolioConstrained: r.portfolioConstrained === true,
+    portfolioLimitUsd: numOrNull(r.portfolioLimitUsd),
+    portfolioObservedUsd: numOrNull(r.portfolioObservedUsd),
+  };
+}
+
+/**
+ * Member-facing "book risk" narrative line for the Ask Largo play-brief. Deliberately frames this
+ * as the ENGINE's own internal book-heat discipline against its $100k REFERENCE book — never as
+ * the member's own personal account risk. The original enhancement idea (#4076 comment
+ * 5556239866) phrased this as "N% of YOUR session risk budget," which would mislead a member into
+ * thinking the percentage is about their own capital; `PRODUCTION_PORTFOLIO_BUDGET`'s own header
+ * is explicit that `capitalUsd` is a reference account, not a member's real size.
+ *
+ * Returns null (never a fabricated line) when: the stamp is absent (pre-this-fix historical rows,
+ * or a candidate the budget never evaluated), the budget was advisory-only (`enforce:false` — the
+ * same absence-honesty the rest of this module already applies), or neither dimension is
+ * constrained (nothing to report).
+ */
+export function bookRiskLine(stamp: SwingBudgetVerdictStamp | null): string | null {
+  if (!stamp || !stamp.enforce) return null;
+  const parts: string[] = [];
+  if (stamp.perPositionConstrained && stamp.perPositionLimitUsd != null && stamp.perPositionLimitUsd > 0) {
+    const pct = Math.round((stamp.candidateRiskUsd / stamp.perPositionLimitUsd) * 100);
+    parts.push(`${pct}% of the per-position reference cap`);
+  }
+  if (
+    stamp.portfolioConstrained &&
+    stamp.portfolioLimitUsd != null &&
+    stamp.portfolioLimitUsd > 0 &&
+    stamp.portfolioObservedUsd != null
+  ) {
+    const pct = Math.round((stamp.portfolioObservedUsd / stamp.portfolioLimitUsd) * 100);
+    parts.push(`${pct}% of the total-book reference cap`);
+  }
+  if (!parts.length) return null;
+  return (
+    `Entry sizing cleared the engine's own book-heat discipline — ${parts.join(", ")} ` +
+    `(measured against the engine's reference book, not your own account size).`
+  );
+}

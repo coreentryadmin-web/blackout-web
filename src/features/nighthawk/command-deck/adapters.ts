@@ -43,6 +43,7 @@ import type {
   ThesisLevel,
 } from "./types";
 import { readCortexView } from "@/lib/zerodte/pane";
+import { parseBudgetVerdictStamp } from "@/lib/swing/swing-portfolio-budget";
 import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
 import type { ThesisPipelineResult } from "@/lib/zerodte/thesis/types";
@@ -789,6 +790,12 @@ export interface HorizonDeckSource {
    *  pre-commit WATCH/lane candidate (Cortex only runs on committed rows), a pre-wire-in row,
    *  or a non-SWING caller — honest absence, never fabricated (Largo contract §3 absence). */
   cortex?: unknown;
+  /** Raw entry_context.budget_verdict JSONB (swing commit.ts's `budgetVerdictStamp`) — parsed
+   *  structurally via `parseBudgetVerdictStamp`/`bookRiskLine` below, never trusted raw. Undefined/
+   *  null on a pre-commit WATCH/lane candidate (the budget gate only runs on committed rows), a
+   *  pre-wire-in row, or a non-SWING caller — honest absence, never fabricated (Ask Largo standing
+   *  mandate, 2026-10-26, #4076 comment 6410025245). */
+  budgetVerdict?: unknown;
   /** CLOSED SWING only: whether a real scale-out trim was ENFORCED on this leg at any point before
    *  it closed — see `SwingClosedDeckSource`'s own field (closed-plays.ts) for the full history of
    *  why `status`/`liveStatus` alone can never answer this for a closed row. Null/absent = not
@@ -1236,6 +1243,10 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     // Pinned Cortex evidence from entry_context.cortex — parsed structurally, honestly null
     // when absent (pre-commit candidate, pre-wire-in row, or a malformed/foreign blob).
     cortex: readCortexView(src.cortex ?? null),
+    // Pinned book-risk budget verdict from entry_context.budget_verdict — parsed structurally,
+    // honestly null when absent (pre-commit candidate, pre-this-fix historical row, or a
+    // malformed/foreign blob). Ask Largo standing mandate, 2026-10-26, #4076 comment 6410025245.
+    budgetVerdict: parseBudgetVerdictStamp(src.budgetVerdict ?? null),
   };
 }
 
@@ -1525,6 +1536,7 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     exitPnlPct: src.exitPnlPct ?? null,
     closedReason: src.closedReason ?? null,
     cortex: src.cortex ?? null,
+    budgetVerdict: src.budgetVerdict ?? null,
     entryTriggerUnderlyingPx: src.entryTriggerUnderlyingPx ?? null,
     invalidationUnderlyingPx: src.invalidationUnderlyingPx ?? null,
     trimEnforcedBeforeClose: src.trimEnforcedBeforeClose ?? null,
