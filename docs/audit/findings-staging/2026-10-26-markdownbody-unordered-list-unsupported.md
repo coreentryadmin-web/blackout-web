@@ -69,5 +69,5 @@ works exactly as it already does for ordered-list items and plain paragraphs. No
 behavior changed; the fallback `<p>` branch is now reached only by content that was never a list
 to begin with, confirmed by the added false-positive guard test.
 
-| **Status** | Fixed in PR #TBD (branch `fix/markdownbody-unordered-list-support`) |
+| **Status** | Fixed in PR #6829 (branch `fix/markdownbody-unordered-list-support`) |
 |---|---|
