@@ -56,5 +56,5 @@ intent ("skip this provider's readiness requirement when the provider isn't conf
 now pointed at the provider the check is actually about. No behavior change for `uwOk`, no change
 to the socket-health functions themselves.
 
-| **Status** | Fixed in PR #TBD (branch `fix/worker-ready-indices-polygon-gate`) |
+| **Status** | Fixed in PR #6804 (branch `fix/worker-ready-indices-polygon-gate`) |
 |---|---|
