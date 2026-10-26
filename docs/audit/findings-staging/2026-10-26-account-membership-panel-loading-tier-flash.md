@@ -60,5 +60,5 @@ did NOT change `resolveDisplayTier`/`parseTier` themselves (both are also used b
 for conversion-event detection and are documented as intentionally never returning an "unknown"
 state) — the fix stays local to this one component's own consumption of them.
 
-| **Status** | Fixed in PR #TBD (branch `fix/account-membership-panel-loading-flash`) |
+| **Status** | Fixed in PR #6811 (branch `fix/account-membership-panel-loading-flash`) |
 |---|---|
