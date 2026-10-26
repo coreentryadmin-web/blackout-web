@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import type { ApiDashboardPayload } from "@/lib/admin-api-dashboard";
 import type { RegistryEndpointRow, RegistryProbeStatus } from "@/lib/admin-endpoint-registry";
@@ -16,6 +16,7 @@ import { useAdminHealth } from "@/hooks/use-admin-data";
 import { AdminApiLiveFeed } from "@/components/admin/AdminApiLiveFeed";
 import { AdminApiEventDetail } from "@/components/admin/AdminApiEventDetail";
 import { AdminApiCallTimeline } from "@/components/admin/AdminApiCallTimeline";
+import { runGuardedDashboardLoad } from "@/components/admin/admin-api-dashboard-request-guard";
 
 type ViewTab = "overview" | "registry" | "internal";
 type UsageFilter = "all" | "used" | "unused" | "candidates" | "risks";
@@ -152,6 +153,16 @@ export function AdminApiDashboard() {
   const [sortField, setSortField] = useState<SortField>("ms");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
+  // `load()` is triggered from FOUR independent sources that can overlap: an 8s telemetry
+  // poll, a 120s probe poll, the manual "Probe providers" button, and "Rescan codebase"
+  // (which POSTs then calls load() itself). Without tracking which call was issued LAST, an
+  // earlier call that resolves slower than a later one (e.g. a poll already in flight when
+  // the admin clicks Rescan) can land after it and silently revert the screen to stale
+  // pre-rescan data — see admin-api-dashboard-request-guard.ts for the full writeup and
+  // AdminApiEventDetail.tsx (#6926) / UserManagement.tsx (#6927) for the same bug shape
+  // elsewhere in this admin surface.
+  const loadRequestIdRef = useRef(0);
+
   useEffect(() => {
     const tick = () => setClock(fmtClock());
     tick();
@@ -163,16 +174,30 @@ export function AdminApiDashboard() {
     if (withProbe) setProbing(true);
     else if (!data) setLoading(true);
     setError(null);
+    const requestId = ++loadRequestIdRef.current;
     try {
       const qs = withProbe ? "?probe=1" : "";
-      const res = await fetch(`/api/admin/apis/dashboard${qs}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(res.status === 403 ? "Not authorized" : `HTTP ${res.status}`);
-      setData(await res.json());
+      await runGuardedDashboardLoad(
+        requestId,
+        () => loadRequestIdRef.current,
+        async () => {
+          const res = await fetch(`/api/admin/apis/dashboard${qs}`, { cache: "no-store" });
+          if (!res.ok) throw new Error(res.status === 403 ? "Not authorized" : `HTTP ${res.status}`);
+          return (await res.json()) as ApiDashboardPayload;
+        },
+        (payload) => setData(payload)
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      // A superseded request's own failure must not clobber a newer, already-applied
+      // success — only surface the error if this call is still the latest one.
+      if (loadRequestIdRef.current === requestId) {
+        setError(e instanceof Error ? e.message : "Failed to load");
+      }
     } finally {
-      setLoading(false);
-      setProbing(false);
+      if (loadRequestIdRef.current === requestId) {
+        setLoading(false);
+        setProbing(false);
+      }
     }
   }, [data]);
 
