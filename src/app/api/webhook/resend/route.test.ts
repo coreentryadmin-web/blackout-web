@@ -144,4 +144,14 @@ describe("POST /api/webhook/resend — idempotency on redelivery", () => {
     assert.equal(retriedJson.duplicate, undefined, "retry-after-failure must not read as a duplicate");
     assert.equal(insertCalls.length, 2, "the retry must insert the row the failed attempt never persisted");
   });
+
+  test("a bad-signature delivery is rejected with 400 and never inserted (verifyShouldThrow path)", async () => {
+    verifyShouldThrow = true;
+
+    const res = await postWebhook("svix_bad_sig_1");
+    assert.equal(res.status, 400, "signature verification failure must surface as 400, not a crash");
+    const json = (await res.json()) as { error?: string };
+    assert.equal(json.error, "invalid_signature");
+    assert.equal(insertCalls.length, 0, "a rejected signature must never reach the insert path");
+  });
 });
