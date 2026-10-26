@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import {
   absolutizeLinks, canonicalUrl, coverImageUrl, syndicatedBody,
   eligibleArticles, pickToSyndicate, parseLimitArg, productShotFor, DEVTO_TAGS, HASHNODE_TAGS,
+  devtoAlreadyPosted, hashnodePosted,
 } from "./syndicate-articles.mjs";
 
 const SITE = "https://blackouttrades.com";
@@ -95,5 +96,53 @@ describe("syndication helpers", () => {
 
   it("parseLimitArg still parses a normal positive --limit", () => {
     assert.equal(parseLimitArg(["--limit=5"]), 5);
+  });
+});
+
+describe("already-posted fetch must fail CLOSED, not silently return a partial set", () => {
+  let originalFetch: typeof fetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(() => { globalThis.fetch = originalFetch; });
+
+  // THE BUG THIS GUARDS AGAINST: a transient page-1 failure (rate limit, 5xx, auth hiccup) used to
+  // `break` the pagination loop and return whatever had accumulated so far — for a page-1 failure,
+  // an EMPTY set, i.e. "nothing has ever been posted". `pickToSyndicate` then trusted that empty set
+  // and the daily cron re-posted an already-live article to the real Dev.to/Hashnode account: a
+  // genuine duplicate, the exact thing the idempotency design is supposed to prevent. The fix is to
+  // throw on a failed fetch so `main()`'s existing per-platform try/catch skips the run instead.
+
+  it("devtoAlreadyPosted throws (not resolves to an empty set) when the Dev.to API 500s", async () => {
+    globalThis.fetch = (async () => new Response("server error", { status: 500 })) as typeof fetch;
+    await assert.rejects(() => devtoAlreadyPosted("fake-key"), /Dev\.to .* 500/);
+  });
+
+  it("devtoAlreadyPosted keeps page-1 results AND throws when a later page fails mid-pagination", async () => {
+    let call = 0;
+    globalThis.fetch = (async () => {
+      call += 1;
+      if (call === 1) {
+        // A full page of 100 rows forces a page-2 request.
+        const rows = Array.from({ length: 100 }, (_, i) => ({ canonical_url: `https://blackouttrades.com/learn/x${i}` }));
+        return new Response(JSON.stringify(rows), { status: 200 });
+      }
+      return new Response("rate limited", { status: 429 });
+    }) as typeof fetch;
+    await assert.rejects(() => devtoAlreadyPosted("fake-key"), /Dev\.to .* page 2.* 429/);
+  });
+
+  it("hashnodePosted throws (not resolves to an empty set) on a malformed/errored GraphQL response", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ errors: [{ message: "not authorized" }] }), { status: 200 })) as typeof fetch;
+    await assert.rejects(() => hashnodePosted("fake-key", "pub-id"), /Hashnode[\s\S]*not authorized/);
+  });
+
+  it("hashnodePosted does NOT throw on a genuinely empty publication (real zero-posts case)", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ data: { publication: { posts: { edges: [], pageInfo: { hasNextPage: false, endCursor: null } } } } }),
+        { status: 200 }
+      )) as typeof fetch;
+    const posted = await hashnodePosted("fake-key", "pub-id");
+    assert.equal(posted.size, 0);
   });
 });
