@@ -50,5 +50,5 @@ the codebase and the component that actually proves the claim. No change to the 
 wording itself (it remains accurate — both wins and losses are genuinely public at that URL) or
 to any other step in the sequence.
 
-| **Status** | Fixed in PR #TBD (branch `fix/welcome-sequence-stale-track-record-link`) |
+| **Status** | Fixed in PR #6819 (branch `fix/welcome-sequence-stale-track-record-link`) |
 |---|---|
