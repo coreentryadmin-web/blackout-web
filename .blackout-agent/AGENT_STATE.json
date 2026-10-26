@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T05:32:45.807Z",
+  "updated_at": "2026-10-26T06:07:48.033Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "2b94eb5feb284fad7bd86f4d83e10ae02b18f291",
+    "last_main_sha": "da8805d7214d2b77df2451337a9ceef6a54bbb2c",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-20T13:23:41.441Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-20T13:23:45.826Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-20T13:39:01.970Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-20T13:39:07.872Z",
       "type": "context_sync",
@@ -1271,29 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-26T06:07:39.287Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-26T06:07:43.813Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-26T06:07:48.033Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 6781,
-      "title": "fix(swing): Legacy-carried WATCH reason string kept citing a stale delta after staleDte nulled it",
-      "branch": "fix/swing-legacy-carried-reason-stale-delta",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T05:26:36Z"
-    },
-    {
-      "number": 6780,
-      "title": "fix(spx): closed-market confluence computed off degraded bootstrap shell, assessed:true with empty factors",
-      "branch": "fix/spx-play-assessed-bootstrap-shell",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T05:24:59Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
