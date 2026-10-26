@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T10:44:20.176Z",
+  "updated_at": "2026-10-26T11:10:18.228Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "2d02aae6e0b7ffd9c71a12c58d17038f22d69d0a",
+    "last_main_sha": "7a3436e3637a2b1b246b5c78e88d10f6f567b172",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
@@ -1255,19 +1255,19 @@
       "open_pr_count": 5
     },
     {
-      "at": "2026-10-26T10:44:12.063Z",
+      "at": "2026-10-26T11:10:10.222Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
     },
     {
-      "at": "2026-10-26T10:44:16.148Z",
+      "at": "2026-10-26T11:10:14.492Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
     },
     {
-      "at": "2026-10-26T10:44:20.176Z",
+      "at": "2026-10-26T11:10:18.227Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
@@ -1320,7 +1320,7 @@
       "last_event": "sweep",
       "last_head": "fcde84548d0e91171e164389bf1311c8dfec64c8",
       "last_feedback_at": "2026-09-06T09:43:03.489Z",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -1328,7 +1328,7 @@
       "last_event": "sweep",
       "last_head": "97db344dcd3ac2a83568690dae5cd293acbf5f48",
       "last_feedback_at": "2026-09-06T09:43:06.278Z",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -1336,7 +1336,7 @@
       "last_event": "sweep",
       "last_head": "656b59005d206131a85ea51a1f2a2765d767a1ef",
       "last_feedback_at": "2026-09-06T09:43:08.803Z",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -1344,7 +1344,7 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
       "directive": "WAIT",
       "comment_action": "created"
     }
