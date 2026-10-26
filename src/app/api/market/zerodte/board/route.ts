@@ -20,6 +20,32 @@ import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Per-key wire precision for this route's two option-greeks blocks — `setups[].plan.greeks`
+ * (plan.ts's buildContractPlan: `greeks: input.greeks`, never rounded upstream) and
+ * `ledger[].greeks` (zerodte-service.ts: `greeks: liveMark?.greeks ?? null`, straight off the
+ * raw 1s live-mark store). Both are genuinely unrounded all the way up the pipeline, so the
+ * flat 2dp default this route applied via a bare `roundFloats(payload)` call would silently
+ * DESTROY a real small greek to 0.00 (round-floats.ts's own header: "gamma is routinely
+ * 0.0008-0.05 ... the 2dp default would quantize it to 0.00"). Found live 2026-10-26 (Ask
+ * Largo standing audit mandate): this is the SAME `ZeroDteGreeks`/`ContractGreeks` field set
+ * (Δ Γ Θ V IV) the sibling GET /api/market/zerodte/marks route already protects with
+ * live-marks.ts's `ZERODTE_MARKS_WIRE_DP` — this route never got the matching override, even
+ * though it serves the exact same 0DTE instrument. Values copied verbatim from that constant
+ * (not imported — live-marks.ts pulls in the WS/Redis mark-poller import graph this route's
+ * tests deliberately stay free of, same discipline zerodte-service.ts's own lazy dynamic
+ * import of live-marks.ts documents) so a board/record read and a marks read of the same
+ * contract always render identically: gamma/vega 6dp (SPY 0DTE gamma is commonly ~0.0008, so
+ * even 4dp would collapse it to one significant figure), delta/theta/iv 4dp.
+ */
+const ZERODTE_BOARD_GREEKS_WIRE_DP = {
+  delta: 4,
+  theta: 4,
+  iv: 4,
+  gamma: 6,
+  vega: 6,
+};
+
 export async function GET(req: NextRequest) {
   const authResult = await authorizeCronOrTierApi(req, "premium");
   if (authResult instanceof Response) return authResult;
@@ -59,7 +85,7 @@ export async function GET(req: NextRequest) {
 
   ensureDataSockets();
   try {
-    const payload = roundFloats(await getZeroDteBoardPayload());
+    const payload = roundFloats(await getZeroDteBoardPayload(), 2, ZERODTE_BOARD_GREEKS_WIRE_DP);
     // Same rounding-composition bug + fix as the record route's entry_context.executable.tranches
     // reconciliation (round-floats.ts's reconcileTrancheFractions doc comment has the full
     // write-up): `ledger[].timeline_tranches` is the SAME WS-11 per-leg array
