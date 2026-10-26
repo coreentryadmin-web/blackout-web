@@ -24,14 +24,25 @@ type Props = {
   initial?: JournalEntry | null;
 };
 
-function readLocal(userId: string): JournalMap {
+export function readLocal(userId: string): JournalMap {
   if (typeof window === "undefined") return {};
-  return parseJournalMap(window.localStorage.getItem(journalStorageKey(userId)));
+  try {
+    return parseJournalMap(window.localStorage.getItem(journalStorageKey(userId)));
+  } catch {
+    // Blocked/unavailable storage (private mode, sandboxed iframe, quota) — treat as empty
+    // rather than throwing. `readLocal` runs inside `useMemo` at render time, so an uncaught
+    // throw here would crash the whole editor instead of just losing the local-only cache.
+    return {};
+  }
 }
 
-function writeLocal(userId: string, map: JournalMap) {
+export function writeLocal(userId: string, map: JournalMap) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(journalStorageKey(userId), serializeJournalMap(map));
+  try {
+    window.localStorage.setItem(journalStorageKey(userId), serializeJournalMap(map));
+  } catch {
+    // Best-effort local cache only — the server POST in save() is the real persistence path.
+  }
 }
 
 export function JournalEditor({ openPlayId, userId, initial }: Props) {
