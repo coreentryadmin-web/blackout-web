@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T19:08:57.698Z",
+  "updated_at": "2026-10-26T19:37:56.886Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f6244a924fec3907dc4e31de7bb738514d99728b",
+    "last_main_sha": "06eea370bf660ab68030e2572c4e527bbd02406b",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-20T21:29:52.073Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-20T21:29:58.004Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-20T22:53:27.887Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 9
-    },
     {
       "at": "2026-10-20T22:53:34.831Z",
       "type": "context_sync",
@@ -1271,9 +1253,57 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-26T19:37:43.053Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-26T19:37:50.407Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-26T19:37:56.886Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
+    {
+      "number": 6902,
+      "title": "fix(webhook): dedupe Resend/Svix webhook redeliveries, matching the Whop pattern",
+      "branch": "fix/resend-webhook-idempotency",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-26T19:35:25Z"
+    },
+    {
+      "number": 6901,
+      "title": "docs(findings): fold 13 staged findings into FINDINGS.md (batch-120)",
+      "branch": "docs/findings-fold-batch-120",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-26T19:33:10Z"
+    },
+    {
+      "number": 6900,
+      "title": "fix(telemetry): persist queue_wait_ms/cancel_reason on api_telemetry_events",
+      "branch": "fix/telemetry-persist-missing-fields",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-26T19:25:44Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
