@@ -29,13 +29,22 @@ export function parseToolAccessMap(raw: unknown): ToolAccessMap {
  */
 export function parseAdminToolAccessPatch(raw: unknown): ToolAccessMap | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
-  const out: ToolAccessMap = {};
+  // Object.create(null) for the accumulator only: CodeQL's property-injection query flags
+  // `out[k] = v` for any loop-derived key even when `VALID_KEYS.has(k)` already restricts it
+  // to a fixed, hardcoded tool-key allowlist (same convention as discordPerExpiryExtremes's
+  // "fail-closed key gate" in thermal-discord-card.ts) — a prototype-less object has no
+  // Object.prototype to pollute even in principle, which the query does recognize as safe.
+  // Spread into a plain object before returning: by then every key has already cleared the
+  // allowlist, so the spread copies only known-safe keys, and callers/tests get back an
+  // ordinary object (a null-prototype one fails Node's `assert.deepStrictEqual` against a
+  // `{...}` literal even with identical own properties, since prototype identity counts).
+  const out: ToolAccessMap = Object.create(null);
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (!VALID_KEYS.has(k as ToolKey)) return undefined;
     if (v !== "grant" && v !== "block" && v !== "inherit") return undefined;
     out[k as ToolKey] = v;
   }
-  return out;
+  return { ...out };
 }
 
 /** Effective tool access for a non-admin user (admin callers should bypass before this). */
