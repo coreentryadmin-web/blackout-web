@@ -1005,7 +1005,7 @@ UW-sweep tag) still 3/3 pass, unaffected. `npx tsc --noEmit -p .` clean.
 
 > **kind:** `FINDING`
 
-**Status.** FIXED (branch `fix/public-gex-snapshot-stale-regime-read`, PR pending).
+**Status.** FIXED in PR #6797 (branch `fix/public-gex-snapshot-stale-regime-read`).
 
 ### Area
 
