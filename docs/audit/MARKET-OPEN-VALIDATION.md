@@ -1,3 +1,19 @@
+## WATCH LIST — 2026-10-26 `GET /api/market/swing/record`'s `closedDeck` now shows a position that closed today even if entered before the `days` window (PR #6864, merged `9af62d888`)
+
+**What was shipped:** `fetchRecentlyClosedSwingPositions(sinceDate)` (`src/lib/db.ts`) — filters
+on `closed_at` (unbounded by entry date), unioned into `/record`'s `rootIds` alongside the
+existing entry-date-windowed and currently-open unions. Live repro: MRNA (positionId 65, entered
+2026-10-22, closed 2026-10-26T13:46:15Z, real -34.47% stop) was completely absent from
+`closedDeck` under `?days=1/2/3` before this fix. Full suite 17087/0/3-skipped green, `tsc` clean
+before merge.
+
+**Specific thing to check at next RTH open:** pull `GET /api/market/swing/record?days=1` the
+morning after any native swing position closes, and confirm it appears in `closedDeck` without
+needing a wider `days` window — this is exactly the scenario (a position entered days ago,
+closing same-day) that was previously invisible. The member-facing Command Deck CLOSED tab and
+any Ask Largo "what closed today" read both source from this same endpoint, so a live
+confirmation here validates both surfaces at once.
+
 ## WATCH LIST — 2026-10-26 Ask Largo news headlines carry their own publish-age (PR #6839, merged `d645872cf`) — LIVE-CONFIRMED 14:05 UTC
 
 **What was shipped:** `arsenal.news.headlines` widened from a bare `string[]` to

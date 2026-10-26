@@ -1228,5 +1228,11 @@
     "what": "While auditing WATCH candidate MRNA (score 41.8, blocked by G-S6/G-S14 cortex_veto), noticed its committed LONG EVENT_DRIVEN sibling (positionId 65) had vanished from the committed lane with no corresponding Book context overlap flag. Traced it: MRNA#65 was a REAL native swing close today (13:46:15Z, -34.47% stop), not a Banger-side close -- but GET /api/market/swing/record?days=1/2/3 all returned closedDeck empty for it, only days=5+ revealed it.",
     "finding": "Real bug, same class as the already-fixed 2026-10-25 OPEN-side gap: fetchSwingPositionsRange/fetchClosedSwingPositionsRange filter on session_date (ENTRY date), never closed_at, so a position entered before the days window but CLOSED inside it was invisible to BOTH the entry-date-windowed query AND the OPEN-rows rescue union (since it is no longer open). A member or Largo asking what closed today via the natural ?days=1 query saw nothing despite a real, same-day stop-out.",
     "status": "FIXED, PR #6864 (draft, CI running). Added fetchRecentlyClosedSwingPositions (filters on closed_at, unbounded by entry date), unioned into /record routes rootIds. RED->GREEN regression test proven (git stash). Full suite 17087/0/3-skipped clean, tsc clean. Staged finding filed. Will merge once CI green per CARVE-OUT."
+  },
+  "swing_record_closed_outside_window_6864_merged_2026_10_26": {
+    "ts": "2026-10-26T16:03:17Z",
+    "what": "PR #6864 (closedDeck invisible-if-entered-outside-window fix) merged cleanly myself (9af62d888, no mirror-failure race this time) once CI went green. Folded the staged finding into FINDINGS.md (batch-119, PR #6867, draft, docs-only) and fixed the findings-hygiene idempotency test via findings-reconcile.mjs --apply. Added a MARKET-OPEN-VALIDATION.md entry for next-session confirmation.",
+    "finding": "Live re-check at 16:03 UTC (~17min post-merge): GET /api/market/swing/record?days=1 still shows closedDeck empty, MRNA still absent -- deploy has not landed yet, same lag pattern already seen for PR #6839 (confirmed live ~34min post-merge). Not a concern, just pending -- will re-check next cycle.",
+    "status": "MERGED, pending live-deploy confirmation (re-check next cycle, expect ~30+ min post-merge per the #6839 precedent)."
   }
 }
