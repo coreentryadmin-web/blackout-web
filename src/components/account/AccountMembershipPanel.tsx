@@ -1,8 +1,27 @@
 "use client";
 
 import { useAppAuth } from "@/lib/auth-client";
-import { resolveDisplayTier, TIER_LABELS } from "@/lib/tiers";
+import { resolveDisplayTier, TIER_LABELS, type Tier } from "@/lib/tiers";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
+
+/**
+ * `useAppAuth().tier` defaults to `null` until Clerk finishes loading, and
+ * `resolveDisplayTier(null)` resolves that to `"free"` — so reading tier
+ * straight off `useAppAuth()` without checking `isLoaded` first flashes the
+ * FREE-tier UI (an "Upgrade" CTA) for every member, including already-paying
+ * ones, during the load window. Returning `tier: null` while loading (instead
+ * of resolving a tier at all) is what lets the component render nothing
+ * tier-dependent until the real value is known.
+ */
+export function resolveMembershipPanelView(
+  rawTier: string | null,
+  isLoaded: boolean
+): { tier: Tier | null } {
+  if (!isLoaded) return { tier: null };
+  // resolveDisplayTier (not parseTier): an admin member's rawTier is the synthetic "admin"
+  // string, which parseTier doesn't recognize and falls through to "free" — see tiers.ts.
+  return { tier: resolveDisplayTier(rawTier) };
+}
 
 /**
  * Billing lives entirely with our checkout partner — there is no in-app
@@ -12,9 +31,7 @@ import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
  */
 export function AccountMembershipPanel() {
   const { tier: rawTier, isLoaded } = useAppAuth();
-  // resolveDisplayTier (not parseTier): an admin member's rawTier is the synthetic "admin"
-  // string, which parseTier doesn't recognize and falls through to "free" — see tiers.ts.
-  const tier = resolveDisplayTier(rawTier);
+  const { tier } = resolveMembershipPanelView(rawTier, isLoaded);
   const manageHref = WHOP_CHECKOUT.store || WHOP_CHECKOUT.monthly || WHOP_CHECKOUT.community;
 
   return (
@@ -30,7 +47,7 @@ export function AccountMembershipPanel() {
             Current plan
           </p>
           <p className="text-white font-semibold mt-1">
-            {isLoaded ? TIER_LABELS[tier] : "Loading…"}
+            {tier ? TIER_LABELS[tier] : "Loading…"}
           </p>
         </div>
 
@@ -38,7 +55,7 @@ export function AccountMembershipPanel() {
           <a href="/upgrade" className="btn-primary-bull">
             Upgrade
           </a>
-        ) : manageHref ? (
+        ) : tier && manageHref ? (
           <a
             href={manageHref}
             target="_blank"
@@ -50,7 +67,7 @@ export function AccountMembershipPanel() {
         ) : null}
       </div>
 
-      {tier !== "free" && (
+      {tier && tier !== "free" && (
         <p className="font-mono text-[11px] text-sky-300/60 mt-3 leading-relaxed">
           Billing is handled by our secure checkout partner. &quot;Manage subscription&quot;
           opens your billing portal — update your card, switch plans, or
