@@ -1384,7 +1384,11 @@ function rollHistoryLine(ctx: SwingPlayBriefContext): string | null {
   return `${rollSentence} Full chain result: **${compoundedStr} compounded** (${composite.outcome}, worst leg ${worstStr}) — this leg's own exit P&L above is only part of the story.`;
 }
 
-function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
+function degradedReadLine(
+  play: TerminalPlay,
+  bucket: "watch" | "open" | "closed",
+  readMs: number = Date.now(),
+): string | null {
   if (bucket === "closed") return null;
   // BUG FIX (Ask Largo standing mandate, 2026-10-07, blast radius of #5620): #5620 fixed the
   // identical narrative-vs-chip disagreement for dataFreshnessSection (play-brief-intel.ts) and
@@ -1489,8 +1493,32 @@ function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed
   // the same guard. Fix: omit the markBit entirely (never fabricate a "not shown" placeholder —
   // this whole line only fires when Vector spot isn't wired, so a missing markBit alongside a
   // present healthBit/givebackBit is expected, not a gap).
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro PANW SWING:PANW:67): the TRUE
+  // entry-fallback case above is guarded, but the far more common "real mark, aged `markAsOf`"
+  // case (`optionMarkIsStale`) was never disclosed here — this bullet never called the shared
+  // `optionMarkStaleCaveat` helper every OTHER quote-derived line in the identical brief/section
+  // already does (Position section's Mark/P&L/Peak/Trough/Greeks/Spread/Exec P&L lines; this same
+  // "Trade manager read" section's own "Manage plan" and "Executable P&L" bullets; the "Break
+  // watch" already-breached bullet fixed in #6756 for this exact root cause at a sibling call
+  // site). Live PANW repro (2026-10-26 ~08:24 ET): Position section correctly flagged "Mark:
+  // **$19.45** ... _(stale)_" and the same brief's "Manage plan"/"Executable P&L" bullets both
+  // carried " _(stale — same quote Mark flagged above)_" for the identical $19.45 figure, but THIS
+  // bullet ("Live read" — the one reserved fallback fired whenever Vector/GEX spot isn't wired, the
+  // only branch that ever calls this function) rendered "mark **$19.45**" with no caveat at all,
+  // even though the quote was 64+ hours stale (`markAsOf` 2026-10-23 16:00 ET vs the read at
+  // 2026-10-26 08:24 ET). `readMs` is already the canonical "now" every sibling call in this file
+  // threads through (see `actionNarrative`'s own `readMs` param a few hundred lines above, and the
+  // `optionMarkStaleCaveat(play, readMs)` call on the Break-watch bullet below) — this function's
+  // signature just never had the parameter added, so it silently fell back to the helper's own
+  // `Date.now()` default, computing staleness correctly in isolation but never actually being
+  // called to compute it. Threading `ctx.readMs` through (one extra default-valued parameter, one
+  // appended call) makes this bullet agree with every sibling line in the same response instead of
+  // contradicting them on the exact same dollar figure.
   const markBit =
-    play.mark != null && !optionMarkGenuinelyUnknown(play) ? ` · mark **${fmtOptionUsd(play.mark)}**` : "";
+    play.mark != null && !optionMarkGenuinelyUnknown(play)
+      ? ` · mark **${fmtOptionUsd(play.mark)}**${optionMarkStaleCaveat(play, readMs)}`
+      : "";
   return `**Live read** — Vector spot not wired on this tick; desk still says **${rec}**${healthBit}${markBit}${givebackBit}. Levels refresh on next poll.`;
 }
 
@@ -1547,7 +1575,7 @@ export function tradeManagerNarrativeSection(
     const posture = dealerPostureLine(ctx, spot, bucket);
     if (posture) add(posture);
   } else {
-    const degraded = degradedReadLine(play, bucket);
+    const degraded = degradedReadLine(play, bucket, readMs);
     if (degraded) add(degraded);
     // railsFallback is written as OPEN-position exit management ("bank trims into strength",
     // "honor stops on closing basis") -- it exists to cover the rare case where manageLifecycleCoaching
