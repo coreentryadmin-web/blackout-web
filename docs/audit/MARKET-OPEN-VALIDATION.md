@@ -1,3 +1,26 @@
+## WATCH LIST — 2026-10-26 Swing Ask Largo book-risk sizing feedback + structure-ladder reward:risk evidence (PR #6789 merged `9464fdada`, PR #6790 merged `f75c261bb`) — shipped, deploy not yet observable live (needs a FRESH native commit post-deploy; market closed at ship time)
+
+**What was shipped:** two additive enhancements to the swing play-brief. #6789: a "Book risk" bullet
+in "Why this setup" citing this position's own share of the engine's $100k-reference-book budget
+caps (`bookRiskLine`, correctly framed as the engine's own discipline, never the member's personal
+account risk). #6790: `evidence_numbers` now cites each favorable-side structure-ladder rung's own
+reward:risk (`R:R to <rung> ($<price>): N.NR`), already rendered visually in the UI but never
+reaching the plain-text evidence array.
+
+**Why not yet live-verified:** checked two real committed positions (CRML — BANGER-origin,
+correctly never has a budget_verdict at all since BANGER positions don't go through commit.ts's
+budget gate; PANW:67 — a genuine NATIVE swing commit, but committed well before this fix deployed,
+so its `entry_context.budget_verdict` still carries the OLD thin `{blocked, blockedDimensions}`
+shape, which `parseBudgetVerdictStamp` correctly reads as null — honest absence on a pre-fix
+historical row, exactly as designed, not a bug). Verifying the bullet actually renders needs a
+BRAND NEW native swing commit made AFTER the deploy, which can't happen before the market opens.
+
+**Specific thing to check at next RTH open:** once a fresh native swing position commits today,
+pull its play-brief and confirm the "Why this setup" section shows a "Book risk" bullet with real
+percentages (not absent); separately, pull any WATCH/OPEN/CLOSED play whose structure ladder has at
+least one favorable-side rung and confirm `evidence_numbers` (or the admin/debug envelope view)
+carries an "R:R to ..." line matching the UI's own "X.XR" chip.
+
 ## WATCH LIST — 2026-10-26 SPX Slayer closed-market confluence computed off degraded bootstrap shell (PR #6780, merged + deployed `06021c2b`) — fixed, deploy validated green but exact repro condition not yet live-observed
 
 **What was fixed:** the closed-market `SCANNING` branch of `evaluateSpxPlayCore`
