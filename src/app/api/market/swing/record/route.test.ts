@@ -106,6 +106,78 @@ describe("/api/market/swing/record folds Engine B (Banger) opens into summary.op
     }
   });
 
+  test("a sub-$1-premium leg's served grade.entry_premium/exit_mark reproduce its own grade.realized_pnl_pct (2026-10-26, Ask Largo standing mandate)", async () => {
+    // BUG: grade_json is written full-precision by roll-plan.ts's gradeParentFromMark
+    // (entry_premium/exit_mark/realized_pnl_pct all derived from the SAME unrounded raw mark/
+    // entry) and reaches this route untouched (record.ts: "grade: r.grade_json ... passed
+    // through untouched"). The route's own roundFloats(responseObj) call rounds the whole
+    // payload to 2dp with NO keyDp override, unlike the sibling horizons route (which overrides
+    // entryPremium/peakPremium/troughPremium/etc at 4dp specifically to avoid destroying
+    // sub-$1-option precision). So grade.entry_premium and grade.exit_mark get independently
+    // flattened to 2dp, and recomputing (exit_mark-entry_premium)/entry_premium*100 from the two
+    // DISPLAYED numbers no longer reproduces the DISPLAYED grade.realized_pnl_pct sitting right
+    // next to them in the same object — a self-contradictory payload for any consumer reading
+    // the grade sub-object directly. Live-measured EWZ repro: entry_premium 0.58 (2dp) vs the
+    // true ~0.581 is enough, at an ~439% return, to swing the recompute by ~0.87pp.
+    const entry = 0.581;
+    const mark = 3.13;
+    const rawRealizedPnlPct = ((mark - entry) / entry) * 100; // ~438.7263%, full precision
+    swingPositionChainById = {
+      777: [
+        {
+          id: 777,
+          root_position_id: 777,
+          parent_position_id: null,
+          roll_seq: 0,
+          ticker: "EWZ",
+          direction: "long",
+          status: "CLOSED",
+          realized_pnl_pct: rawRealizedPnlPct,
+          graded_at: "2026-10-26T12:00:00Z",
+          grade_json: {
+            methodology: "swing.roll.markfreeze.v1",
+            basis: "live_option_mark_vs_entry_premium",
+            entry_premium: entry,
+            exit_mark: mark,
+            realized_pnl_pct: rawRealizedPnlPct,
+          },
+        },
+      ],
+    };
+    openSwingPositionsRows = [
+      {
+        id: 777,
+        root_position_id: 777,
+        parent_position_id: null,
+        roll_seq: 0,
+        ticker: "EWZ",
+        direction: "long",
+        status: "CLOSED",
+        realized_pnl_pct: rawRealizedPnlPct,
+        graded_at: "2026-10-26T12:00:00Z",
+        grade_json: null,
+        session_date: "2026-10-26",
+      },
+    ];
+    try {
+      const res = await GET(new NextRequest("http://localhost/api/market/swing/record?days=90"));
+      const body = await res.json();
+      const record = body.records.find((r: { composite: { rootPositionId: number } }) => r.composite.rootPositionId === 777);
+      assert.ok(record, "EWZ chain must be present in records");
+      const grade = record.legs[0].grade as { entry_premium: number; exit_mark: number; realized_pnl_pct: number };
+      const recomputed = ((grade.exit_mark - grade.entry_premium) / grade.entry_premium) * 100;
+      const gap = Math.abs(recomputed - grade.realized_pnl_pct);
+      assert.ok(
+        gap < 0.05,
+        `served grade.entry_premium (${grade.entry_premium}) / grade.exit_mark (${grade.exit_mark}) must reproduce ` +
+          `grade.realized_pnl_pct (${grade.realized_pnl_pct}) within 0.05pp — recomputed ${recomputed}, gap ${gap}`,
+      );
+    } finally {
+      openSwingPositionsRows = [];
+      swingPositionChainById = {};
+    }
+  });
+
   test("banger fetch is skipped and contributes 0 when the Engine B kill-switch is off", async () => {
     bangerEnabled = false;
     bangerOpenCountCalls = 0;
