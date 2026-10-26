@@ -1,3 +1,48 @@
+## WATCH LIST — 2026-10-26 SPX Slayer closed-market confluence computed off degraded bootstrap shell (PR #6780, merged + deployed `06021c2b`) — fixed, deploy validated green but exact repro condition not yet live-observed
+
+**What was fixed:** the closed-market `SCANNING` branch of `evaluateSpxPlayCore`
+(`spx-play-engine.ts`) gated computing a closing confluence read on `desk.price > 0` alone. A
+cold-cache bootstrap shell (`buildBootstrapFastLane`/`deskShellFromPulse`, built whenever the
+merged-desk cache misses right after the per-day `spx-merged:${date}` key rolls over at ET
+midnight) has a real price and `available: true` but no GEX/flow layer merged in — `source`
+stays at its documented `"none"` degraded-shell marker. `computeSpxConfluence`'s own
+`!desk.available` guard never caught that shape, so it returned a non-null, empty-`factors`
+object instead of `null`, and `assessed: closedConfluence != null` read `true` off it — the
+dashboard reported "session assessed, grade D" for a tick the desk never actually built a real
+read on. Fixed by also gating on `desk.source !== "none"`.
+
+**Post-deploy check performed:** `GET /api/market/spx/play` + `/desk` immediately after deploy
+(05:52 ET pre-market) showed a genuinely healthy, real `polygon+uw-flow` read with 11 real
+factors — confirms no regression on the normal path. The bootstrap-shell repro condition itself
+(cold cache right after ET-midnight rollover) did not naturally occur during this check, so the
+FIXED behavior (`assessed:false` on a `source:"none"` shell) was not directly observed live —
+only unit-tested (RED→GREEN).
+
+**Specific thing to check at next opportunity (ideally right after an ET-midnight cache
+rollover, or any genuine cold-start):** `GET /api/market/spx/desk` for `source: "none"` with
+`market_open: false` and a real `price` — if caught, confirm the SAME-moment `GET
+/api/market/spx/play` now shows `assessed: false` (not `true`) and `factors: []`, instead of the
+pre-fix behavior of reporting a fabricated `grade: "D"`/`score: 0` as if it were a real
+assessment.
+
+## WATCH LIST — 2026-10-26 0DTE record.ts served historical pre-2026-10-06 rows' raw unrounded tranche_fraction float (PR #6782, CI running at time of writing — confirm merged before relying on this entry) — fixed, deploy pending validation
+
+**What was fixed:** `record.ts`'s `toPlay()` served `entry_context` verbatim to
+`GET /api/market/zerodte/record` (and `get_zerodte_record`), so any row **committed before
+2026-10-06** still leaked its frozen `exit_policy_snapshot.trailing_rule`'s raw unrounded
+`tranche_fraction=0.3333333333333333` float — the write-time fix in `buildResolvedExitPolicy()`
+only cleans FRESH commits, never an already-frozen historical blob. Fixed with a read-time-only
+`withRoundedTrailingRuleDisplay()` that rounds just the display string, leaving `config_hash`
+byte-identical (verified explicitly in the new test) and never mutating the DB row.
+
+**Specific thing to check at next RTH open:** `GET /api/market/zerodte/record?days=90` (or
+wider) for any `trim_scale`-policy row committed before 2026-10-06 — confirm its
+`entry_context.exit_policy_snapshot.trailing_rule` now reads `tranche_fraction=0.33` (2dp), not
+the raw 16-digit float; confirm a FRESH (post-2026-10-06) row's `trailing_rule` is unchanged
+(already clean); confirm `config_hash` on any checked historical row is unchanged from before
+this PR (same value the row has always carried — a regression here would mean the fix
+accidentally forked a calibration cohort, the one invariant that must never move).
+
 ## WATCH LIST — 2026-10-26 Swing Legacy-carried WATCH reason string kept citing a stale delta after staleDte nulled it (PR #6781, merged `44f1388ca`) — fixed, deploy pending validation
 
 **What was fixed:** `refreshCarriedLegacyPlay`'s (`legacy-confirm-promote.ts`) `staleDte` branch
