@@ -29,6 +29,7 @@ import {
   optionMarkIsStale,
   optionMarkStaleCaveat,
   resolveGammaPosture,
+  SWING_OPTION_MARK_STALE_MS,
   vectorAgeStale,
   vectorSnapshotStale,
 } from "./play-brief-absence";
@@ -3443,19 +3444,51 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
  * field was a hardcoded `null` on all six responses regardless, so a model reading the structured
  * field saw no age at all for an answer whose own prose, a few lines below it in the SAME response,
  * discloses a multi-hour-stale Vector read.
+ *
+ * RESIDUAL BUG FOUND AND FIXED (Ask Largo standing mandate, 2026-10-26, live repro
+ * SWING:CLF:2116): the option-mark branch above only ever contributed an age in the ORDINARY aged-
+ * `markAsOf` shape (`markIsSync !== true`) — it silently excluded the `markIsSync === true` case
+ * entirely, INCLUDING the specific sub-case this file already has a named helper for,
+ * `optionMarkGenuinelyUnknown` (play-brief-absence.ts): a committed row whose option mark has
+ * LITERALLY NEVER synced a live quote (`markIsSync:true`, `pnlPct:null` — the true entry-fallback
+ * case, `mid = last_mark ?? entry_premium`). When that genuinely-unknown mark is the only stale/
+ * unknown source on a brief and Vector/GEX happen to be fresh this cycle (routine for a position
+ * freshly committed by `banger-discovery`/`swing-discovery`, before its first `swing-active-refresh`
+ * tick ever runs), this function fell through to just the fresh Vector/GEX ages — so the Largo-
+ * contract `freshness`/`age_seconds` fields reported "live, ~N seconds old" while the SAME brief's
+ * own Position section said "Mark: **unknown** _(sync quote, no live price yet — do not read as
+ * flat)_" and `unavailableSources` carried `{source:"option mark", reason:"no live price yet..."}" —
+ * the exact narrative-vs-structured mismatch this C2 surface exists to prevent, and the same class
+ * the fix just above this comment already fixed for the hardcoded-null case.
+ *
+ * Fix: treat `optionMarkGenuinelyUnknown` as its own branch, pushing `SWING_OPTION_MARK_STALE_MS`
+ * (the option mark's own "too stale to trust" bound, play-brief-absence.ts) as a sentinel age
+ * rather than inventing a second constant or leaving it silently uncounted. There is no real
+ * elapsed duration to report here (unlike an aged `markAsOf`, where `readMs - markMs` is a genuine
+ * measurement) — reusing the existing bound guarantees `freshnessFromAgeSeconds`
+ * (play-brief-adapter.ts) buckets this "stale" (the bound sits exactly at that function's own
+ * stale cutoff) without fabricating a number that looks more precise than it is, mirroring how
+ * `optionMarkGenuinelyUnknown` is already treated as the worst case everywhere else this file reads
+ * it (`collectOptionMarkStalenessAbsence`, the confidence tier, the Data-freshness prose).
  */
 export function worstKnownSwingDataAgeMs(ctx: SwingPlayBriefContext): number | null {
   const { play } = ctx;
   const readMs = ctx.readMs ?? Date.now();
   const ages: number[] = [];
 
-  // Option mark — only meaningful for a live committed row with a real synced timestamp, mirroring
-  // optionMarkIsStale's own relevance gate (a WATCH candidate's static chain mid has no sync age).
-  if (playExpectsLiveOptionMark(play.status) && play.markIsSync !== true && play.markAsOf) {
-    const markMs = Date.parse(play.markAsOf);
-    if (Number.isFinite(markMs)) {
-      const ageMs = readMs - markMs;
-      if (ageMs >= 0) ages.push(ageMs);
+  // Option mark — only meaningful for a live committed row, mirroring optionMarkIsStale's own
+  // relevance gate (a WATCH candidate's static chain mid has no sync age).
+  if (playExpectsLiveOptionMark(play.status)) {
+    if (optionMarkGenuinelyUnknown(play)) {
+      // No live tick has EVER synced — strictly worse than an ordinary aged markAsOf below, and
+      // there's no timestamp to measure a real age from. See this function's own header.
+      ages.push(SWING_OPTION_MARK_STALE_MS);
+    } else if (play.markIsSync !== true && play.markAsOf) {
+      const markMs = Date.parse(play.markAsOf);
+      if (Number.isFinite(markMs)) {
+        const ageMs = readMs - markMs;
+        if (ageMs >= 0) ages.push(ageMs);
+      }
     }
   }
 
