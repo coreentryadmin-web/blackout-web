@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isPaidTierForReconcileDowngradeCheck } from "./membership";
+import { isPaidTierForReconcileDowngradeCheck, reconcileStatsBucket } from "./membership";
 
 // reconcileAllMemberships' step 2 ("emails of Clerk users currently marked <paid tier> →
 // re-checks Whop and downgrades once the membership has actually lapsed") used to test
@@ -35,4 +35,16 @@ test("free and unknown/empty tier strings are not re-checked (nothing to downgra
 test("legacy 'pro'/'elite' tier aliases are also eligible for the reconcile downgrade re-check", () => {
   assert.equal(isPaidTierForReconcileDowngradeCheck("pro"), true);
   assert.equal(isPaidTierForReconcileDowngradeCheck("elite"), true);
+});
+
+// Regression (2026-10-26): reconcileAllMemberships' syncOne() summarized every resolved tier as
+// `tier === "premium" ? "premium" : "free"`, so a real, distinct `community` resolution (SPX
+// Slayer, $49/mo) was silently counted as `free` in the function's own return stats (and
+// therefore in the membership-reconcile cron's logged run + cron_job_runs.meta_json row) even
+// though the member's actual Clerk tier was correctly written as `community`. This pins the
+// three-way split reconcileAllMemberships now uses so that regression can't come back silently.
+test("reconcileStatsBucket keeps community distinct from free — it must not collapse to free", () => {
+  assert.equal(reconcileStatsBucket("premium"), "premium");
+  assert.equal(reconcileStatsBucket("community"), "community");
+  assert.equal(reconcileStatsBucket("free"), "free");
 });
