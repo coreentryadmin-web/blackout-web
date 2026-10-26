@@ -466,8 +466,12 @@ export function playExpectsLiveOptionMark(status: string | null | undefined): bo
  * active-refresh's own `stale_after_min: 25` is more generous still, since that alert also has to
  * tolerate an outright missed run — this constant only needs to cover normal jitter within one
  * on-schedule cycle).
+ *
+ * Exported (not module-private) so `worstKnownSwingDataAgeMs` (play-brief-intel.ts) can reuse it as
+ * the sentinel age for the `optionMarkGenuinelyUnknown` case — see that function's own comment for
+ * why reusing this exact bound, rather than inventing a second one, is the right call there too.
  */
-const SWING_OPTION_MARK_STALE_MS = 18 * 60_000;
+export const SWING_OPTION_MARK_STALE_MS = 18 * 60_000;
 
 /** True when an OPEN/HOLD/TRIM row carries an aged markAsOf (not the markIsSync no-timestamp case). */
 export function optionMarkIsStale(play: TerminalPlay, readMs: number = Date.now()): boolean {

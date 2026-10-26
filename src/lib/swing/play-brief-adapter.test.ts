@@ -264,6 +264,68 @@ test("adaptSwingBriefToLargo: evidence_numbers cites each favorable-side structu
   );
 });
 
+// BUG FIX (Largo C2, 2026-10-26, Ask Largo standing mandate — live repro
+// SWING:CLF:2116): worstKnownSwingDataAgeMs's option-mark branch only contributed an age when
+// `play.markIsSync !== true && play.markAsOf` — the ordinary "aged timestamp" case. It silently
+// skipped the `markIsSync === true` case entirely, INCLUDING the specific sub-case
+// `optionMarkGenuinelyUnknown` already names elsewhere in this file: a committed row whose option
+// mark has LITERALLY NEVER synced a live quote (`markIsSync:true`, `pnlPct:null`). When that's the
+// only genuinely-unknown source on a brief and Vector/GEX happen to be fresh, the function fell
+// through to just the Vector/GEX ages, so the Largo-contract `freshness`/`age_seconds` fields
+// reported "live" even though the brief's own Position section said "Mark: unknown ... do not read
+// as current" — the exact narrative-vs-structured mismatch this C2 surface exists to prevent. A
+// freshly Banger-committed OPEN/HOLD/TRIM position before its first `swing-active-refresh` tick is
+// in exactly this state.
+test("adaptSwingBriefToLargo: a genuinely-unknown option mark (never synced a live quote) must not read freshness:'live' even when Vector/GEX are fresh this cycle (Largo C2)", () => {
+  const ctx = fixtureCtx({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      markIsSync: true,
+      pnlPct: null,
+    }),
+    sessionDate: "2026-10-26",
+    ecosystem: null,
+    vector: {
+      asOf: "2026-10-26T16:30:00.000Z",
+      asOfEt: "2026-10-26 12:30 ET",
+      sessionDate: "2026-10-26",
+      spot: 24.5,
+      // Deliberately FRESH — well under freshnessFromAgeSeconds' 120s "live" cutoff. If the fix
+      // regresses, this fresh Vector age is the only thing the function sees and the test fails by
+      // reading "live" instead of "stale".
+      dataAgeMs: 5_000,
+      freshness: "live",
+      regime: { posture: "long" },
+      gexWalls: { callWalls: [{ strike: 26, pct: 8 }], putWalls: [{ strike: 22, pct: 7 }] },
+      gammaFlip: 24,
+      maxPain: 23.5,
+      confluenceZones: [],
+      magnet: null,
+    } as SwingPlayBriefContext["vector"],
+  });
+  const brief = composeSwingPlayBrief(ctx);
+  // Sanity: the brief's own Position prose must actually say the mark is unknown — otherwise this
+  // test would pass for the wrong reason (no genuine genuinely-unknown mark in play at all).
+  const positionSection = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(positionSection, "expected a Position section");
+  assert.match(positionSection!.body, /Mark: \*\*unknown\*\*/);
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.notEqual(
+    largoRead.freshness,
+    "live",
+    `freshness must not read "live" when the option mark has never synced a quote, got age_seconds=${largoRead.age_seconds}`
+  );
+  assert.equal(
+    largoRead.freshness,
+    "stale",
+    "a genuinely-unknown option mark is the worst known case this cycle and must bucket as stale"
+  );
+});
+
 // Sibling case: the pre-existing honest-omission behavior must survive this fix — a brief with
 // genuinely NO knowable per-source age (a fresh WATCH candidate, no Vector/GEX/option-mark read at
 // all this cycle) must still fall back to "cached"/null rather than fabricating an age of 0.
