@@ -1,4 +1,4 @@
-import { getMeta, setMeta } from "@/lib/db";
+import { getMeta, setMeta, tryAdvisoryLock, releaseAdvisoryLock } from "@/lib/db";
 import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const REPLIED_KEY = "x_marketing_replied_ids";
@@ -45,7 +45,56 @@ export async function getRepliedTweetIds(): Promise<Set<string>> {
   return new Set(ids);
 }
 
+// Lock key for the read-modify-write below. Same shape/rationale as x-rate-budget.ts's
+// BUDGET_WRITE_LOCK (round 111): one global key is deliberate — contention is already rare
+// (actions are jittered 2-4.5s apart per caller, see engagementJitterMs), and the critical
+// section is a single load+save, not a per-tweet lock, so a global key just serializes that.
+const REPLIED_WRITE_LOCK = "x-marketing-replied-ids-write";
+const REPLIED_LOCK_MAX_ATTEMPTS = 30;
+const REPLIED_LOCK_RETRY_MS = 60;
+
+/**
+ * Record that we've already replied to / quote-tweeted a tweet.
+ *
+ * MUST be atomic across processes: `x-growth` and `x-engage` are SEPARATE cron routes that
+ * both call `runEngagementSweep` (x-growth-engine.ts's `runGrowthSweep` is a thin wrapper
+ * around the exact same function x-engage's route calls directly), and `x-replies`
+ * (x-mention-replies.ts) calls this too — all three read/write the SAME `REPLIED_KEY` row.
+ * Before this fix, `getRepliedTweetIds()` (read) then `writeMeta()` (write) were two
+ * separate, unlocked Postgres round-trips: if two processes interleave — both read the same
+ * base set, each adds its OWN tweet id, both write — the second write clobbers the first and
+ * the first caller's tweet id is silently dropped from the dedup set (a classic
+ * read-modify-write "lost update", same shape as recordBudgetUse before round 111's fix).
+ * Unlike the budget counter (which only undercounts a soft cap), losing an id here means a
+ * LATER run no longer sees that tweet as already-replied-to and can reply or quote-tweet it
+ * AGAIN — a visible, public duplicate action from the brand account, not just a bookkeeping
+ * drift. Serialize the critical section with the same `tryAdvisoryLock`/`releaseAdvisoryLock`
+ * primitive `recordBudgetUse` uses, with the same short bounded retry (tryAdvisoryLock is
+ * non-blocking "try", not a queue — the holder releases within one round-trip).
+ */
 export async function markTweetReplied(tweetId: string): Promise<void> {
+  for (let attempt = 0; attempt < REPLIED_LOCK_MAX_ATTEMPTS; attempt += 1) {
+    const acquired = await tryAdvisoryLock(REPLIED_WRITE_LOCK);
+    if (!acquired) {
+      await new Promise((r) => setTimeout(r, REPLIED_LOCK_RETRY_MS));
+      continue;
+    }
+    try {
+      const set = await getRepliedTweetIds();
+      set.add(tweetId);
+      const arr = [...set].slice(-MAX_REPLIED);
+      await writeMeta(REPLIED_KEY, JSON.stringify(arr));
+    } finally {
+      await releaseAdvisoryLock(REPLIED_WRITE_LOCK);
+    }
+    return;
+  }
+  // Could not get the lock after bounded retries (e.g. a stuck holder) — fall back to the old
+  // unlocked behavior rather than silently dropping this tweet id forever. Worse than the
+  // locked path, but no worse than before this fix, and logged so it's visible if it ever fires.
+  console.warn(
+    `[x-marketing-meta] could not acquire ${REPLIED_WRITE_LOCK} after ${REPLIED_LOCK_MAX_ATTEMPTS} attempts — marking ${tweetId} replied unlocked`,
+  );
   const set = await getRepliedTweetIds();
   set.add(tweetId);
   const arr = [...set].slice(-MAX_REPLIED);
