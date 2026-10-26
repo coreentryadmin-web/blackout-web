@@ -181,9 +181,13 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       return { subject: personalize(subject, ctx), html: layout.html, attachments: [...layout.attachments, vectorShot], headers: unsubHeaders };
     },
   },
-  // Day 6 — trust/honesty angle (track record itself is member/admin-only, not public — see
-  // docs/marketing/SEO-GROWTH.md finding #2; this deliberately does NOT link to a public
-  // track-record page, it points at /pricing and /vs/others).
+  // Day 6 — trust/honesty angle. The `/track-record` URL itself redirects to
+  // `/admin?tab=track-record`, guarded by requireAdmin() (src/app/(site)/track-record) — a
+  // non-admin member can never reach it. The genuinely public win/loss record lives at
+  // `/methodology` (buildPublicTrackRecord — same route RedesignHome.tsx links as "Public track
+  // record"). This caption's "full record ... is public" claim must point there, not at
+  // `/track-record` — the strongest trust claim in this whole sequence was pointing at a page
+  // its own reader could never open.
   {
     step: 4,
     delayDays: 6,
@@ -211,7 +215,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
         // otherwise the strongest claim in the sequence rests on a screenshot that happens to be
         // all green, which is precisely the "highlight reel" the copy is arguing against.
         caption(
-          `Recent closed plays. The <a href="${SITE.url}/track-record" style="color:${EMAIL_BRAND.muted};">full record</a> — every win and every loss, with the grade each play was given before the outcome — is public.`
+          `Recent closed plays. The <a href="${SITE.url}/methodology" style="color:${EMAIL_BRAND.muted};">full record</a> — every win and every loss, with the grade each play was given before the outcome — is public.`
         ) +
         p("That's not a tagline — that's the whole build. No revision history, no highlight reel, no do-overs. Go pull up the receipts and see how that holds up against the way everyone else keeps score.") +
         emailCta(`${SITE.url}/vs/others`, "See How We Stack Up") +
