@@ -19,7 +19,7 @@ export function welcomeCommunityEmail(ctx: WelcomeCommunityContext): {
     "{{firstName}}, you're in. SPX Slayer just went live on your account — the full 0DTE desk, live and running the second you log in.",
     "Here's what's on it: a live SPX regime read, real-time dealer gamma exposure (GEX), strike-level call/put walls. And every 0DTE setup gets graded A through F — before the outcome, not after. No hindsight, no cherry-picking. Win or lose, it gets logged against the grade it got walking in.",
     "That's the whole desk in one sentence: the grade posts before the bell, and it stays on the record no matter what happens next. Wins and losses, side by side, forever.",
-    "First move: don't just stare at the tape. Take five minutes on the walkthrough and the whole board clicks — where the gamma flip sits, how to read GEX against price, how grades update as 0DTE decay compresses through the session. Down the road, if you ever want the wider desk — Thermal, HELIX, Night Hawk, Largo AI, Vector — Premium's there. Not today's problem. Today's problem is 0DTE, and you've already got the tools for it.",
+    "First move: don't just stare at the tape. Take five minutes on the walkthrough and the whole board clicks — where the gamma flip sits, how to read GEX against price, how grades update as 0DTE decay compresses through the session. Down the road, if you ever want the wider desk — Thermal, HELIX, Night Hawk, Largo AI, Vector, Meridian — Premium's there. Not today's problem. Today's problem is 0DTE, and you've already got the tools for it.",
   ].map((p) => `<p style="margin:0 0 18px;color:${EMAIL_BRAND.body};">${t(p)}</p>`).join("");
 
   const body = `
