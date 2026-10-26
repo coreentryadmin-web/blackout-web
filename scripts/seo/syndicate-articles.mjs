@@ -118,6 +118,24 @@ export function pickToSyndicate(articles, alreadyPostedCanonicals, limit = 1) {
     .slice(0, limit);
 }
 
+/**
+ * Parse `--limit=N` out of the CLI args. Falls back to `defaultLimit` only when the flag is
+ * ABSENT or its value doesn't parse to a finite number — never on a legitimately-parsed `0`.
+ *
+ * `Number(...) || 1` (the previous implementation) is wrong here because `0` is falsy in JS:
+ * an operator deliberately passing `--limit=0` (e.g. a manual `workflow_dispatch` meant to pause
+ * posting without disabling the schedule) would silently fall back to `1` and post anyway — the
+ * exact opposite of what `--limit=0` is supposed to do.
+ */
+export function parseLimitArg(args, defaultLimit = 1) {
+  const raw = args.find((a) => a.startsWith("--limit="));
+  if (raw === undefined) return defaultLimit;
+  const value = raw.slice("--limit=".length);
+  if (value === "") return defaultLimit; // `--limit=` with no value — nothing to parse, use default.
+  const n = Number(value);
+  return Number.isFinite(n) ? n : defaultLimit;
+}
+
 /* ── LIVE (only runs when invoked directly) ────────────────────────────────────────────────── */
 
 async function readSecret(name) {
@@ -208,7 +226,7 @@ async function postToHashnode(apiKey, publicationId, article, dryRun) {
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
-  const limit = Number((args.find((a) => a.startsWith("--limit=")) || "").split("=")[1]) || 1;
+  const limit = parseLimitArg(args);
   const platform = (args.find((a) => a.startsWith("--platform=")) || "--platform=both").split("=")[1];
 
   const log = (m) => console.log(m);
