@@ -9052,3 +9052,24 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   `?playId=SWING:<ticker>&positionId=<banger_id>` now resolves to that banger-origin position
   instead of 404ing or substituting the unrelated native row; confirm a ticker with only a native
   row still resolves exactly as before (no regression).
+
+## WATCH LIST — 2026-10-26 (swing "Earnings peer lens" pure-duplicate-section fix, PR #6796)
+
+- **TEM-style — "Earnings peer lens" rendered as a byte-for-byte duplicate of "Trade manager
+  read" when no Meridian peer cohort resolved (PR #6796, merged `333cd31a8`).** Live TEM 71C
+  brief (contract expiry 2026-10-30, earnings 2026-11-02, no resolvable Meridian sector peer
+  cohort) showed "Trade manager read" say "this contract expires 2026-10-30, on/before the
+  print, so no earnings-gap exposure from this position (...)" and, two sections later,
+  "Earnings peer lens" say the exact same sentence verbatim with zero peer-specific content —
+  a section occupying a full slot in the brief for no new information. Fixed:
+  `meridianPeerSection()` now returns `null` (suppressing the section entirely) when the brief's
+  own contract has no earnings-gap exposure AND the Meridian peer cohort itself is unavailable;
+  a resolved cohort with real beat-rate stats, or a contract still genuinely exposed to the
+  print, both still render exactly as before. **Re-check once the market opens:** find a live
+  swing position (OPEN/HOLD/WATCH) whose contract expires before its own next earnings print
+  AND whose `unavailableSources` lists "Meridian peer cohort"/"peers" as absent (common for
+  Banger-origin small-caps — CRML/AMPX/AVAV/FLY-style) and confirm the brief's "Earnings peer
+  lens" section is now absent entirely rather than repeating "Trade manager read"'s own
+  no-gap-exposure sentence; separately confirm a position WITH a resolved peer cohort (real
+  sector/beat-rate stats, e.g. a liquid large-cap like PLTR/TEM's own large-cap peers) still
+  renders "Earnings peer lens" with its real peer-beat-rate content unchanged (no regression).
