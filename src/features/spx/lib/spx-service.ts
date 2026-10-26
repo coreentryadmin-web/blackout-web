@@ -23,7 +23,10 @@ import {
   isSpxPlaySnapshotFreshEnough,
   isSpxPlaySnapshotShareable,
 } from "@/features/spx/lib/spx-play-freshness";
-import { playMemberReadMaxBlockMs } from "@/lib/providers/config";
+import {
+  playMemberReadMaxBlockMs,
+  spxMergedDeskOffHoursRefreshIntervalSec,
+} from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { roundFloats } from "@/lib/round-floats";
@@ -103,6 +106,41 @@ async function closedMarketPlaySnapshot(
   return play;
 }
 
+const SPX_MERGED_DESK_BG_REFRESH_LOCK_PREFIX = "spx-merged-desk-bg-refresh";
+
+/**
+ * BUG FIX (2026-10-26, Ask Largo/5-engine standing mandate, live repro): the off-hours shortcut
+ * below only ever PEEKS `spx-merged:<date>` (Redis/L1, never a real rebuild) with a 24h staleness
+ * tolerance. Outside isSpxEngineCronWindow(), NOTHING else calls the real loadMergedSpxDesk()
+ * either, so once the key's own short TTL (deskCacheTtlMs()) lapses in Redis, each ECS replica
+ * falls back to its OWN independently-aged per-process copy (peekServerCache, server-cache.ts) —
+ * and those copies can disagree by many minutes depending on when each replica last happened to
+ * run a real load. Live-reproduced 2026-10-26 (pre-7am ET): GET /api/market/spx/play polled 20s
+ * apart returned `as_of` jumping BACKWARD (2026-10-26T10:36:47Z → 10:19:08Z) with two DIFFERENT
+ * computed scores (4, then 6) for what should be one "current" read — different replicas serving
+ * different frozen desk vintages, non-monotonically, to the same member.
+ *
+ * Fix: kick a non-blocking background loadMergedSpxDesk() so `spx-merged:<date>` never goes fully
+ * cold for the whole off-hours window — bounding how far any replica's local copy can drift from
+ * the shared Redis value, and keeping that Redis value itself refreshed often enough that a
+ * replica's own short-TTL local entry reliably re-syncs from it instead of falling through to its
+ * stale local fallback. Throttled via sharedCacheSetNx (fails open/closed to "skip" on a Redis
+ * error — this is a best-effort consistency aid, not a correctness-critical lock) so only one
+ * replica actually performs the refresh per spxMergedDeskOffHoursRefreshIntervalSec() window, not
+ * every single poll — this intentionally does NOT restore trading-hours (10s) refresh cadence
+ * off-hours, only bounds the worst-case divergence window.
+ */
+export async function maybeRefreshMergedSpxDeskOffHours(): Promise<void> {
+  const lockKey = `${SPX_MERGED_DESK_BG_REFRESH_LOCK_PREFIX}:${todayEtYmd()}`;
+  const won = await sharedCacheSetNx(
+    lockKey,
+    Date.now(),
+    spxMergedDeskOffHoursRefreshIntervalSec()
+  ).catch(() => false);
+  if (!won) return;
+  await loadMergedSpxDesk().catch(() => undefined);
+}
+
 async function evaluateSpxPlayState() {
   // MEASURED LIVE 2026-10-18: even after the 2026-10-17 fix below skipped
   // buildPlayTechnicals/refreshOrBreakMemory/resolveGuardedPlaybookMatch on a closed-market read,
@@ -127,6 +165,10 @@ async function evaluateSpxPlayState() {
   if (!isSpxEngineCronWindow()) {
     const peeked = await peekMergedSpxDesk({ maxStaleMs: 24 * 60 * 60 * 1000 });
     if (peeked && !peeked.merged.market_open && !isPremarketPlanningWindow()) {
+      // Non-blocking — see maybeRefreshMergedSpxDeskOffHours's own comment for the live
+      // cross-replica divergence bug this guards against. Fires at most once per
+      // spxMergedDeskOffHoursRefreshIntervalSec() window regardless of poll volume.
+      void maybeRefreshMergedSpxDeskOffHours();
       const play = await closedMarketPlaySnapshot(peeked.merged);
       if (play) return roundFloats({ ...play, playbook_shadow: null });
     }
