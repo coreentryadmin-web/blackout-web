@@ -33,6 +33,11 @@
 import type { SwingPositionRow, SwingSnapshotInsert } from "../db";
 import type { SwingLiveQuote } from "./live-plays";
 import { structuralBreakFromSpot } from "./live-plays";
+// Moved out of this file 2026-10-26 (see that module's own header) so live-plays.ts's serve-time
+// fold-in can share the identical math without a circular import (this file already imports
+// `structuralBreakFromSpot` FROM live-plays.ts).
+import { signedExcursionPct } from "./underlying-excursion";
+export { signedExcursionPct } from "./underlying-excursion";
 import { underlyingPriceForStructuralStop } from "./ex-dividend-adjustment";
 import type { PlayDirection } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
@@ -259,40 +264,6 @@ function snapshotWithVerdict(snapshot: SwingSnapshotInsert, verdict: SwingManage
       roll_intent: verdict.rollIntent,
     },
   };
-}
-
-/**
- * Signed favorable/adverse excursion (% vs entry), direction-aware, from the ratcheted price extremes plus
- * this tick's spot. The ledger keeps underlying_mfe/underlying_mae as PRICE high/low-water marks; this turns
- * those into the excursion the snapshot's running_mfe/running_mae must carry (feature-store.ts's trajectory
- * studies read them as PERCENTS — `studyTwoStagnantSessions` compares running_mfe across sessions, and
- * `studyIvKillsGoodSetups` compares running_mae to a −3% threshold; both are meaningless against raw prices).
- *
- * Seeded with `entry` on both extremes so a fresh position starts at MFE ≥ 0 / MAE ≤ 0 (the documented sign
- * convention), and includes `spot` so this tick counts even before the ledger ratchet runs. Honest-null when
- * entry or spot is missing/invalid — never a fabricated 0.
- */
-export function signedExcursionPct(args: {
-  direction: "long" | "short";
-  entryPx: number | null;
-  spot: number | null;
-  /** Prior ratcheted high-water PRICE (row.underlying_mfe) — optional; seeded from entry/spot when absent. */
-  priorMfePx?: number | null;
-  /** Prior ratcheted low-water PRICE (row.underlying_mae) — optional; seeded from entry/spot when absent. */
-  priorMaePx?: number | null;
-}): { mfePct: number | null; maePct: number | null } {
-  const { entryPx: entry, spot } = args;
-  if (entry == null || !Number.isFinite(entry) || entry <= 0 || spot == null || !Number.isFinite(spot)) {
-    return { mfePct: null, maePct: null };
-  }
-  const fin = (n: number | null | undefined): n is number => n != null && Number.isFinite(n);
-  const hi = Math.max(...[args.priorMfePx, spot, entry].filter(fin)); // favorable extreme (highest price)
-  const lo = Math.min(...[args.priorMaePx, spot, entry].filter(fin)); // adverse extreme (lowest price)
-  const pct = (px: number) => Math.round(((px - entry) / entry) * 100 * 1e4) / 1e4; // round — no unrounded floats
-  // SHORT profits when price FALLS, so its favorable/adverse extremes are the mirror of a LONG's.
-  return args.direction === "short"
-    ? { mfePct: -pct(lo), maePct: -pct(hi) }
-    : { mfePct: pct(hi), maePct: pct(lo) };
 }
 
 /**

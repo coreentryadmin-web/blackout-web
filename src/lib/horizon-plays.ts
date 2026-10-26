@@ -320,6 +320,16 @@ export interface HorizonPlay {
    * serving/brief layer for a single open position. Null whenever the latest snapshot hasn't
    * computed a usable excursion yet (fresh position, missing entry/spot) — never a fabricated 0%
    * (signedExcursionPct's own honest-null convention, mirrored here).
+   *
+   * BUG FIX (2026-10-26, Ask Largo x Night Hawk Swings standing mandate): the value above the
+   * snapshot persisted (every 15 min during RTH — `swing-active-refresh`'s own `stale_after_min:
+   * 25`) could go visibly stale relative to this SAME play's own `liveSpot` (independently
+   * refreshed) with no reconciling timestamp — e.g. `maePct:0` ("never traded below entry")
+   * served alongside a `liveSpot` that was, right then, clearly below `entryTriggerUnderlyingPx`.
+   * `live-plays.ts`'s `livePlayFromSwingPosition` now folds the request's own `liveSpot` into this
+   * field at serve time (via the shared `signedExcursionPct`, same math the cron itself uses) so it
+   * is never staler than `liveSpot` served on the very same object — see that call site's own
+   * comment for the full live repro.
    */
   underlyingExcursion?: { mfePct: number; maePct: number } | null;
   /**
