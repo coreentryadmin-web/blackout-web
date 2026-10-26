@@ -5,6 +5,7 @@ import {
   buildAdminUserFilterSql,
   computeAdminUserListStats,
   parseAdminUserRole,
+  parseAdminUserTier,
   shouldUseDbAdminUserList,
 } from "./admin-users";
 
@@ -14,6 +15,20 @@ test("parseAdminUserRole accepts admin and member", () => {
   assert.equal(parseAdminUserRole(""), "member");
   assert.equal(parseAdminUserRole(undefined), "member");
   assert.equal(parseAdminUserRole("superuser"), undefined);
+});
+
+test("parseAdminUserTier accepts only the three canonical tiers, rejects everything else", () => {
+  assert.equal(parseAdminUserTier("free"), "free");
+  assert.equal(parseAdminUserTier("community"), "community");
+  assert.equal(parseAdminUserTier("premium"), "premium");
+  // Unlike parseTier (lib/tiers.ts), this must REJECT rather than silently coerce to "free" —
+  // it gates an admin mutation, where a typo/alias should 400, not quietly demote the member.
+  assert.equal(parseAdminUserTier("pro"), undefined);
+  assert.equal(parseAdminUserTier("elite"), undefined);
+  assert.equal(parseAdminUserTier("Premium"), undefined);
+  assert.equal(parseAdminUserTier(""), undefined);
+  assert.equal(parseAdminUserTier(undefined), undefined);
+  assert.equal(parseAdminUserTier(null), undefined);
 });
 
 test("assertAdminSelfGuard blocks self ban and demote", () => {

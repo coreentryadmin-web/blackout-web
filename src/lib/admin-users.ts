@@ -27,6 +27,17 @@ export function parseAdminUserRole(value: unknown): AdminUserRole | undefined {
   return undefined;
 }
 
+/**
+ * Strict allowlist for the admin tier-edit PATCH — unlike `parseTier` (which silently
+ * coerces any unrecognized value to "free" for callers that need a best-effort default,
+ * e.g. a Whop webhook payload), an admin mutation must REJECT a malformed/mistyped tier
+ * rather than silently demote the member to free with a 200 success response.
+ */
+export function parseAdminUserTier(value: unknown): Tier | undefined {
+  if (value === "free" || value === "community" || value === "premium") return value;
+  return undefined;
+}
+
 /** Prevent admins from locking themselves out via ban, demotion, or delete. */
 export function assertAdminSelfGuard(
   actorUserId: string,
