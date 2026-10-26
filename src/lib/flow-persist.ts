@@ -4,7 +4,7 @@ import { publishFlowEvent } from "@/lib/flow-events";
 import type { MarketFlowAlert } from "@/lib/providers/unusual-whales";
 import { shouldFanOut } from "@/lib/flow-fanout";
 import { flowFallbackAlertId } from "@/lib/flow-alert-id";
-import { markFlowFrameDelivered } from "@/lib/flow-liveness";
+import { markFlowFrameDeliveredForTicker } from "@/lib/flow-liveness";
 import { extractChainFieldsFromRaw } from "@/lib/flow-raw-fields";
 import { dteFromExpiry } from "@/lib/flow-dte";
 import { notifyHelixAlertSubscribers } from "@/lib/helix-alert-notify";
@@ -235,7 +235,12 @@ export async function persistAndPublishFlowAlert(
     // cron can tell the cluster already has a live WS and skip redundant REST.
     // Throttled + best-effort + tagged with this process's id (the cron excludes
     // its own writes), so it can never silence the cron that owns this process.
-    markFlowFrameDelivered();
+    // ALSO stamps the narrower SPX/SPXW cohort heartbeat when this print is for
+    // that cohort (spx-flow-staleness-market-wide-signal fix, 2026-10-26) — see
+    // markFlowFrameDeliveredForTicker's own doc for why a per-ticker signal
+    // matters: the market-wide heartbeat alone cannot tell "SPX's own tape is
+    // live" apart from "some unrelated ticker's flow is live".
+    markFlowFrameDeliveredForTicker(flow.ticker);
     void notifyDiscord(event);
     // Per-member push alerts (task: HELIX-scoped alerts) — inert by default, see
     // helix-alert-notify.ts's header for why this is the choke point rather than a cron.

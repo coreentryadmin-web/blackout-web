@@ -33,7 +33,7 @@ import {
 import { gexPositioningFromHeatmap } from "@/lib/providers/gex-positioning";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { markFlowDataFromBriefs, resolveFlowDataAgeMs } from "@/lib/flow-data-freshness";
-import { isFlowFrameFreshAnywhere } from "@/lib/flow-liveness";
+import { isFlowFreshForSpxCohort } from "@/lib/flow-liveness";
 import {
   computeFlowStrikeStacks,
   type FlowStrikeStack,
@@ -941,8 +941,17 @@ export type SpxFlowBrief = {
   ask_pct?: number | null;
 };
 
-/** Honest flow age for desk payloads — caps sparse-tape age when cluster WS is live. */
-function deskFlowDataAgeMs(flows: SpxFlowBrief[], flowClusterLive: boolean): number | null {
+/**
+ * Honest flow age for desk payloads — caps sparse-tape age when SPX's OWN flow cohort
+ * (SPX/SPXW) is corroborated live, not merely when SOME ticker anywhere in the market is
+ * being delivered. `flowClusterLive` must come from `isFlowFreshForSpxCohort`
+ * (@/lib/flow-liveness), never the market-wide `isFlowFrameFreshAnywhere` — see that
+ * function's doc for the spx-flow-staleness-market-wide-signal fix this guards against
+ * (2026-10-26): using the market-wide signal here silently disabled both the stale-flow
+ * BUY-block and warning in spx-play-gates.ts, because options flow is delivered somewhere
+ * in the market almost continuously during RTH regardless of whether SPX's own tape is.
+ */
+export function deskFlowDataAgeMs(flows: SpxFlowBrief[], flowClusterLive: boolean): number | null {
   markFlowDataFromBriefs(flows);
   let age = resolveFlowDataAgeMs(flows);
   if (flowClusterLive && age != null && age > 120_000) age = 120_000;
@@ -1058,7 +1067,10 @@ export type SpxDeskPayload = {
   data_quality?: DeskDataQuality;
   /** Milliseconds since last UW flow alert (WS or REST). Null if unknown. */
   flow_data_age_ms?: number | null;
-  /** True when ANY replica delivered a UW flow WS frame within ~2m (cluster heartbeat). */
+  /** True when the SPX/SPXW flow cohort SPECIFICALLY delivered a UW flow WS frame within
+   *  ~2m (scoped cohort heartbeat — NOT "any ticker anywhere in the market", see
+   *  isFlowFreshForSpxCohort, @/lib/flow-liveness, spx-flow-staleness-market-wide-signal
+   *  fix 2026-10-26). */
   flow_cluster_live?: boolean;
   /**
    * Age (ms) of the live SPX index tick backing `price` (gap #11). Null when no tick has
@@ -1675,7 +1687,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
 
   const spxFlows: SpxFlowBrief[] = freshFlowsRaw.length ? freshFlowsRaw : lastGoodSpxFlowBriefs;
   if (freshFlowsRaw.length) lastGoodSpxFlowBriefs = freshFlowsRaw;
-  const flowClusterLive = await isFlowFrameFreshAnywhere(120_000).catch(() => false);
+  const flowClusterLive = await isFlowFreshForSpxCohort(120_000).catch(() => false);
   const flowDataAgeMs = deskFlowDataAgeMs(spxFlows, flowClusterLive);
   const freshTape = buildUnifiedTape(spxFlows, darkPool);
   if (freshTape.length) lastGoodUnifiedTape = mergeTapeBuffer(lastGoodUnifiedTape, freshTape);
@@ -2486,7 +2498,7 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
 
   const spxFlows: SpxFlowBrief[] = spxFlowsRaw ?? [];
   if (spxFlows.length) lastGoodSpxFlowBriefs = spxFlows;
-  const flowClusterLive = await isFlowFrameFreshAnywhere(120_000).catch(() => false);
+  const flowClusterLive = await isFlowFreshForSpxCohort(120_000).catch(() => false);
   const flowDataAgeMs = deskFlowDataAgeMs(spxFlows, flowClusterLive);
   const strike_stacks = computeFlowStrikeStacks(spxFlows);
 
