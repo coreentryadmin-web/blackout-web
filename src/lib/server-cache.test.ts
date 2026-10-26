@@ -408,6 +408,54 @@ test("maxBlockMs bounds a slow fallback on the COLD-START path too, when the pri
 // occasions where the underlying data source had live data at the exact same instant. Both throw
 // sites below (the "already inflight" cold path and the cold-start path) must reject with
 // ServerCacheTimeoutError specifically, not a bare Error, so a caller can tell the two apart.
+// Regression for the SPX desk loader-path stale-cache ceiling gap (found live 2026-10-26, Ask
+// Largo/5-engine standing mandate): the SWR branch (`hit && hit.expiresAt <= now && swr &&
+// !inflight.has(key)`, `staleAge > maxStaleAgeMs`, NOT-yet-degraded) was the one remaining
+// `return refreshCache(...)` site in this file with NO race against `opts.maxBlockMs` — every
+// other maxBlockMs-configured branch (fast lane, already-inflight, cold-start) already races it,
+// per the PR #5061/#5065/#6090 fixes documented elsewhere in this file. A caller that configures
+// maxBlockMs (e.g. spx-desk-loader.ts's three loader call sites, all of which already pass
+// `maxBlockMs: deskBootstrapMaxBlockMs()`) expects a hard bound on how long a cold/slow refresh can
+// block it; this branch silently ignored that budget. This matters NOW specifically because
+// tightening `maxStaleAgeMs` for those callers (the companion fix in spx-desk-loader.ts) makes this
+// exact branch fire far more often — without this race guard landing FIRST, that tightening alone
+// would reintroduce the unbounded-block regression PR #5061/#5065 already had to fix once.
+test("SWR branch (stale past maxStaleAgeMs, not yet degraded) honors maxBlockMs — bounded, serves the stale value instead of blocking unboundedly on a slow refresh", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:swr-ceiling-maxblock:${Math.random()}`;
+  const ttl = 5;
+
+  await withServerCache(key, ttl, async () => ({ n: 1 }));
+  // Age the hit well past a tiny maxStaleAgeMs test ceiling (simulating the real ~40s desk ceiling
+  // without a real 40s wait).
+  await new Promise((r) => setTimeout(r, 40));
+
+  let invoked = 0;
+  const start = Date.now();
+  const value = await Promise.race([
+    withServerCache(
+      key,
+      ttl,
+      async () => {
+        invoked += 1;
+        // Deliberately much slower than maxBlockMs — before the fix, this branch awaited the
+        // refresh fully regardless of maxBlockMs, so the caller would block for the full 500ms.
+        await new Promise((r) => setTimeout(r, 500));
+        return { n: 2 };
+      },
+      { maxBlockMs: 20, maxStaleAgeMs: 10 }
+    ),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("harness-timeout: SWR branch blocked past its own maxBlockMs budget")), 150)
+    ),
+  ]);
+  const elapsed = Date.now() - start;
+
+  assert.deepEqual(value, { n: 1 }, "must serve the stale value once the raced refresh exceeds maxBlockMs, not hang on it");
+  assert.ok(elapsed < 150, `must be bounded near maxBlockMs (20ms), took ${elapsed}ms`);
+  assert.equal(invoked, 1, "the raced refresh must still have started exactly once (it keeps running in the background, just not awaited by the caller)");
+});
+
 test("both maxBlockMs-exhausted throw sites reject with ServerCacheTimeoutError, not a bare Error", async () => {
   const { withServerCache } = await import("./server-cache");
 

@@ -9211,3 +9211,24 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   genuinely open); separately confirm the SPX Slayer board badge tooltip
   (`spx-slayer-badge-map.ts`'s `unavailable_reason`) and the Play Verdict Bar's status line show
   the same honest text during any such window, never the stale "cold desk" claim.
+
+## WATCH LIST — 2026-10-26 (SPX desk loader-path stale-cache ceiling fix, fix/spx-desk-loader-stale-ceiling)
+
+- **SPX Slayer — `loadSpxDesk()`/`loadMergedSpxDesk()`/`loadBootstrapBundle()` had no staleness
+  ceiling of their own, falling back to the generic 10-minute `MAX_STALE_AGE_MS` (4th instance of
+  this same cache-key's staleness-ceiling bug class — see `docs/audit/FINDINGS.md`'s 2026-10-16
+  last-writer-wins fix, PR #6822's off-hours fix, and PR #6882's peek-ceiling fix for the first
+  three).** Live-reproduced pre-fix: `GET /api/market/spx/desk`'s `as_of` 52.4s–76.0s stale across
+  10 consecutive polls with two backward jumps. Fixed in two required steps: (1)
+  `server-cache.ts`'s SWR branch now races its refresh against `opts.maxBlockMs` instead of
+  blocking unboundedly once a key's stale age exceeds `maxStaleAgeMs`; (2) all three loader call
+  sites now pass `maxStaleAgeMs: deskLoaderMaxStaleAgeMs()` (same 40s ceiling `peekSpxDesk()`
+  already uses, PR #6882). **Re-check once the market opens:** poll `GET /api/market/spx/desk`
+  repeatedly during RTH (a dozen or so calls a few seconds apart) and confirm `as_of` only ever
+  advances (never jumps backward) and never lags more than roughly 40-50s behind the poll's own
+  wall-clock time, even across requests that land on different ECS replicas (ALB round-robin);
+  separately confirm no new ALB `TargetResponseTime` p99/Max spike shows up for this route
+  post-deploy (the race-guard fix changes behavior for any `withServerCache` caller combining SWR +
+  a not-yet-degraded key + a stale age past ceiling + an explicit `maxBlockMs` — a regression here
+  would most likely surface as a brief post-deploy tail-latency blip on `/api/market/spx/desk` or
+  `/api/market/spx/play`, not a correctness error).

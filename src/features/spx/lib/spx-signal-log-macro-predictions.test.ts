@@ -92,6 +92,7 @@ mock.module("../../../lib/providers/config", {
     deskCacheTtlMs: () => 20_000,
     deskPulseCacheTtlMs: () => 1_000,
     deskFlowCacheTtlMs: () => 2_000,
+    deskLoaderMaxStaleAgeMs: () => 40_000,
   },
 });
 mock.module("../../../lib/providers/unusual-whales", {
