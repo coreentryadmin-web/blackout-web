@@ -20,3 +20,19 @@ test("free and unknown/empty tier strings are not re-checked (nothing to downgra
   assert.equal(isPaidTierForReconcileDowngradeCheck(""), false);
   assert.equal(isPaidTierForReconcileDowngradeCheck("admin"), false);
 });
+
+// Regression (2026-10-26): `parseTier` (src/lib/tiers.ts) has always coerced the legacy tier
+// aliases "pro" and "elite" to "premium" for every OTHER consumer of publicMetadata.tier
+// (resolveUserTier/tier-cache.ts grants real desk access for them right now), but this
+// predicate did a raw literal `tier === "premium"` comparison instead of normalizing through
+// parseTier first — so a Clerk user whose publicMetadata.tier is still the literal string
+// "pro" or "elite" (pre-dating the "premium" literal; parseTier's own comment documents these
+// as real legacy aliases) was invisible to this downgrade-check sweep. A churned/refunded
+// legacy "pro"/"elite" subscriber whose membership.deactivated webhook dropped — the exact
+// case this cron exists to self-heal, per the function's own doc-comment — would keep full
+// desk access FOREVER: nothing else in the system ever re-resolves them, exactly the same
+// shape as the already-fixed "community" omission documented above.
+test("legacy 'pro'/'elite' tier aliases are also eligible for the reconcile downgrade re-check", () => {
+  assert.equal(isPaidTierForReconcileDowngradeCheck("pro"), true);
+  assert.equal(isPaidTierForReconcileDowngradeCheck("elite"), true);
+});
