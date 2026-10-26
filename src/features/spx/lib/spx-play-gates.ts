@@ -86,6 +86,34 @@ export const GATE_BLOCK = {
   MIXED_TAPE: "Tape's mixed",
 } as const;
 
+/**
+ * Mixed-tape sub-check as a standalone, pure verdict — the exact "weighted_conflicts has
+ * crossed the grade-scaled hard-block threshold" condition `evaluatePlayGates` below applies,
+ * extracted so a caller that cannot run the FULL gate stack (trade governor, halt checks,
+ * session-entry counters, playbook live-gate — all meaningless when no entry is possible at
+ * all, e.g. market closed) can still get the identical mixed-tape verdict instead of silently
+ * skipping it. Returns the block/warning text, or null when the tape isn't mixed enough to
+ * flag. `evaluatePlayGates` itself calls this (see below) so the two can never drift apart —
+ * extracting the shared math once up front, rather than hand-rolling two copies, is the point.
+ *
+ * Added 2026-10-26: this was the missing link behind a confirmed desk_context/gates
+ * incoherence — `spx-play-context.ts`'s `buildSpxPlayDeskContext` independently recomputes
+ * `desk_context.mixed_tape_blocked` off this same condition unconditionally (every response,
+ * gates evaluated or not), while `spx-play-engine.ts`'s closed-market branch hand-built a
+ * `{blocks:["Session closed"], warnings:[]}` gate result without ever calling this check — so a
+ * real closed-market response could show `mixed_tape_blocked:true` with no "Tape's mixed" text
+ * anywhere in `gates`. See `spx-play-engine.ts`'s closed-market branch for the consumer.
+ */
+export function mixedTapeGateMessage(
+  confluence: Pick<SpxConfluence, "weighted_conflicts" | "grade" | "score">
+): string | null {
+  const abs = Math.abs(confluence.score);
+  if (confluence.weighted_conflicts >= mixedTapeBlockThreshold(confluence.grade, abs)) {
+    return `${GATE_BLOCK.MIXED_TAPE} — too many conflicting signals for clean entry`;
+  }
+  return null;
+}
+
 /** Grade-scaled mixed-tape hard block — A setups tolerate one extra soft counter-trend signal. */
 export function mixedTapeBlockThreshold(grade: string, absScore?: number): number {
   const base = playWeightedConflictBlockMin();
@@ -311,8 +339,8 @@ export function evaluatePlayGates(
     blocks.push(`Desk data stale (${Math.round(deskStaleSec)}s)`);
   }
 
-  const mixedTapeMsg = `${GATE_BLOCK.MIXED_TAPE} — too many conflicting signals for clean entry`;
-  if (confluence.weighted_conflicts >= mixedTapeBlockThreshold(confluence.grade, abs)) {
+  const mixedTapeMsg = mixedTapeGateMessage(confluence);
+  if (mixedTapeMsg) {
     if (buyIntent) {
       blocks.push(mixedTapeMsg);
     } else {
