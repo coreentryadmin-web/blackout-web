@@ -76,3 +76,61 @@ test("hasPendingSignUp is false off the browser (SSR) and never throws", async (
     Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
   }
 });
+
+function withFakeLocalStorage<T>(run: () => T): T {
+  const store = new Map<string, string>();
+  const fakeLocalStorage: Pick<Storage, "getItem" | "setItem" | "removeItem"> = {
+    getItem: (key: string) => (store.has(key) ? (store.get(key) as string) : null),
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key),
+  };
+  const originalWindow = globalThis.window;
+  const originalLocalStorage = (globalThis as { localStorage?: unknown }).localStorage;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {} });
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: fakeLocalStorage,
+  });
+  try {
+    return run();
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: originalLocalStorage,
+    });
+  }
+}
+
+test("hasPurchaseFired is false until markPurchaseFired, and the check itself never writes", async () => {
+  const { hasPurchaseFired, markPurchaseFired } = await import("./ga4-client.ts");
+  withFakeLocalStorage(() => {
+    assert.equal(hasPurchaseFired("user_1"), false);
+    // Peeking repeatedly before marking must never persist anything — this is the whole point of
+    // the fix: a caller that isn't ready to dispatch yet (gtag not loaded) can check and recheck
+    // across separate mounts (e.g. a page refresh) without the flag ever being set behind it.
+    assert.equal(hasPurchaseFired("user_1"), false);
+    markPurchaseFired("user_1");
+    assert.equal(hasPurchaseFired("user_1"), true);
+  });
+});
+
+test("hasPurchaseFired is scoped per user — one user's flag never shadows another's", async () => {
+  const { hasPurchaseFired, markPurchaseFired } = await import("./ga4-client.ts");
+  withFakeLocalStorage(() => {
+    markPurchaseFired("user_1");
+    assert.equal(hasPurchaseFired("user_1"), true);
+    assert.equal(hasPurchaseFired("user_2"), false);
+  });
+});
+
+test("hasPurchaseFired is false off the browser (SSR) and never throws", async () => {
+  const { hasPurchaseFired } = await import("./ga4-client.ts");
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: undefined });
+  try {
+    assert.equal(hasPurchaseFired("user_1"), false);
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
+});

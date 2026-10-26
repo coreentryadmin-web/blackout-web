@@ -98,3 +98,32 @@ export function consumePendingSignUp(): boolean {
     return false;
   }
 }
+
+/**
+ * Same shape of bug, same fix, a different call site: `Ga4ConversionTracker`'s purchase-fired
+ * flag used to be written to localStorage unconditionally, before confirming gtag was ready to
+ * accept the call — so a lost gtag-not-ready race on this flag was WORSE than the sign-up one,
+ * because localStorage (unlike sessionStorage) survives a refresh/new tab, permanently blocking
+ * every future attempt for that user. `hasPurchaseFired` is the non-destructive peek; the caller
+ * must check `ga4Available()` before calling `markPurchaseFired`, mirroring `hasPendingSignUp`.
+ */
+export function hasPurchaseFired(userId: string): boolean {
+  if (!isBrowser()) return false;
+  try {
+    return localStorage.getItem(`bo_ga4_purchase_fired:${userId}`) === "1";
+  } catch {
+    // Private mode (or storage blocked): we can't persist a flag either way, so there is
+    // nothing to dedupe against — treat as "not yet fired" and let the caller fire once per
+    // mount, matching the pre-existing "still fire once this session" fallback behavior.
+    return false;
+  }
+}
+
+export function markPurchaseFired(userId: string): void {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(`bo_ga4_purchase_fired:${userId}`, "1");
+  } catch {
+    /* private mode — best-effort only, matches hasPurchaseFired's fallback */
+  }
+}

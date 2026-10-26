@@ -1,4 +1,4 @@
-## `/upgrade`'s GA4 sign-up conversion fire could be permanently lost on a fresh page load, before gtag had finished loading
+## GA4/Google-Ads sign-up AND purchase conversions could be permanently lost on a fresh page load, before gtag had finished loading
 
 > **kind:** `FINDING`
 
@@ -40,11 +40,13 @@ config gap.
 
 ### Evidence
 
-Added `src/lib/analytics/ga4-client.test.ts` (3 tests) pinning the new non-destructive
-`hasPendingSignUp()` peek: confirmed it reports the flag without ever clearing it, that
-`consumePendingSignUp()` still clears (for the one call site that needs the destructive version),
-and that it's SSR-safe. Confirmed RED pre-fix via `git stash` (`hasPendingSignUp is not a
-function`, 3/3 fail) → GREEN post-fix (3/3 pass). `tsc --noEmit` clean.
+Added `src/lib/analytics/ga4-client.test.ts` (6 tests total) pinning the new non-destructive
+`hasPendingSignUp()`/`hasPurchaseFired()` peeks: confirmed each reports the flag without ever
+clearing/writing it, that the destructive halves (`consumePendingSignUp`, `markPurchaseFired`)
+still work for the one call site each that needs them, per-user scoping for the purchase flag, and
+SSR-safety. Confirmed RED pre-fix via `git stash` on each pair of files (`hasPendingSignUp`/
+`hasPurchaseFired` is not a function, 3/3 then 3/3 fail) → GREEN post-fix (6/6 pass). Full
+`src/lib/analytics/*.test.ts` suite: 33/33 pass. `tsc --noEmit` and `eslint` both clean.
 
 The component-level timing race itself isn't unit-testable in this repo (no React/jsdom rendering
 tests exist anywhere in the codebase for "use client" components), so the fix is scoped to the
@@ -53,9 +55,17 @@ provably correct independent of the exact script-load timing on any given page l
 
 ### Blast radius
 
-Single call site — the `/upgrade` signup block in `Ga4Attribution.tsx` is the only caller of
-`consumePendingSignUp()`. `markPendingSignUp()`'s own call site (`/sign-up`) is unaffected. No
-other code reads `bo_ga4_pending_signup_v1`.
+A second call site shares the identical root cause: `src/components/analytics/Ga4ConversionTracker.tsx`'s
+`purchase` conversion (the highest-revenue GA4/Google-Ads event — fired on return from the Whop
+checkout round-trip, another hard-redirect page load with the same gtag-not-ready exposure) wrote
+its `bo_ga4_purchase_fired:<userId>` flag to **localStorage** unconditionally, before confirming
+gtag was ready — worse than the sign-up flag, because localStorage survives a refresh/new tab
+(sessionStorage doesn't), so a lost race there permanently blocked every future attempt for that
+user, with no retry path at all. Fixed the same way: added `hasPurchaseFired`/`markPurchaseFired`
+to `ga4-client.ts` (mirroring `hasPendingSignUp`/`markPendingSignUp`/`consumePendingSignUp`), and
+reordered `Ga4ConversionTracker` to mark fired only after confirming `ga4Available()`.
+
+No other call site reads `bo_ga4_pending_signup_v1` or `bo_ga4_purchase_fired:*`.
 
 ### Fix rationale
 
