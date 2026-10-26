@@ -84013,7 +84013,7 @@ same stale-AH-anchor symptom is ever reported on those surfaces.
 
 | | |
 |---|---|
-| **Status** | FIXED (PR #TBD) |
+| **Status** | FIXED (PR #4780, merge commit `2a2fda8ff`, merged to `main`). Corrected 2026-10-26 — the `#TBD` placeholder had never been filled in since this entry was written (2026-09-11); re-verified live on `main` as part of a standing DISCOVERY-lane re-verification sweep: the code fix (`peekServerCache`'s `maxStaleMs` ceiling) is genuinely still present. |
 | **Severity** | P2 — member-visible, cross-replica-dependent, no error surfaced |
 | **Found** | 2026-09-11, standing 5-engine live monitor + Ask Largo mandate cycle |
 | **Files** | `src/lib/server-cache.ts` (`peekServerCache`), regression in `src/lib/server-cache.test.ts` |
