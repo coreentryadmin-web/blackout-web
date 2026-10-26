@@ -1900,9 +1900,48 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     }
     const ep = ctx.play.exitPolicy;
     if (ep && (ep.stop_premium != null || ep.target_premium != null)) {
+      // BUG FIX (Ask Largo standing mandate, 2026-10-26, live-production audit): this fact was
+      // built directly off the raw `stop_premium`/`target_premium` numbers with no check for
+      // whether the position has already scaled out of the stop or already reached the target —
+      // the exact state the SAME file's `managementSection` ("Rails: ..." line, above) and
+      // play-brief-intel.ts's `watchForSection` ("Premium stop/target rail" bullets) both already
+      // guard, via `hasScaledOut`/`runnerTrailingStopPremium` (imported here since the original
+      // 2026-10-25 fix but never applied to this evidence[] fact) and the same
+      // fired-trim-at-or-above-target test those two sections use. Once a trim has fired, the
+      // pre-scale hard stop is permanently disabled by the live exit engine
+      // (deriveScaleOutAction/computeScaleOutTriggerInfo, scale-out.ts — "the hard stop no longer
+      // applies") and the real governing floor becomes the runner's trailing stop off its peak; a
+      // bare "stop $X" cites a dead trigger as if it were still live. Likewise once a trim priced
+      // at/above `target_premium` has fired, "target $Y" reads as a fresh, unmet objective for a
+      // level the position already reached and pulled back from. `evidence_numbers` (the Largo
+      // contract's C7 "specific numbers" field) is this function's own stated purpose — citing a
+      // dead rail as live there is a correctness defect, not a cosmetic one. Mirrors
+      // `managementSection`'s exact wording/gating rather than inventing new phrasing, so the two
+      // can't independently drift into disagreement over the same fact a second time.
+      const scaledAlready = hasScaledOut(ep);
+      const targetAlreadyFired =
+        ep.target_premium != null &&
+        ep.trim_levels.some((t) => t.fired === true && t.premium != null && t.premium >= ep.target_premium!);
+      const peakPremiumDollar =
+        ctx.play.entry != null && ctx.play.entry > 0 && ctx.play.peak != null && Number.isFinite(ctx.play.peak)
+          ? ctx.play.entry * (1 + ctx.play.peak / 100)
+          : null;
+      const runnerTrail = scaledAlready ? runnerTrailingStopPremium(peakPremiumDollar) : null;
       const railParts: string[] = [];
-      if (ep.stop_premium != null) railParts.push(`stop ${fmtUsd(ep.stop_premium)}`);
-      if (ep.target_premium != null) railParts.push(`target ${fmtUsd(ep.target_premium)}`);
+      if (ep.stop_premium != null) {
+        railParts.push(
+          scaledAlready
+            ? `stop ${fmtUsd(ep.stop_premium)} (no longer applies — already scaled${runnerTrail != null ? `; runner trail now ${fmtUsd(runnerTrail)}` : ""})`
+            : `stop ${fmtUsd(ep.stop_premium)}`,
+        );
+      }
+      if (ep.target_premium != null) {
+        railParts.push(
+          targetAlreadyFired
+            ? `target ${fmtUsd(ep.target_premium)} (already reached)`
+            : `target ${fmtUsd(ep.target_premium)}`,
+        );
+      }
       out.push({
         kind: "fact",
         text: `Exit-policy rails: ${railParts.join(" · ")}.`,
