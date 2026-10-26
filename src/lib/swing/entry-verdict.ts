@@ -175,9 +175,24 @@ export function commitGateBlocksForVerdict(
           };
         }
         if (b.includes("cortex_veto")) {
+          // BUG FIX (2026-10-26, Ask Largo standing mandate, live repro MRNA WATCH): the persisted
+          // token is `gate:G-S14:cortex_veto:<source>` (stamped by `swingCortexBlockedByFromAssessment`
+          // in v2/cortex-swing.ts straight off cortex-gate.ts's own `cortex_veto:${v.source}` code,
+          // one of the 8 CORTEX_SOURCES in nighthawk/cortex/types.ts) — the specific source that
+          // vetoed is already sitting in the exact string this branch is matching against, but was
+          // discarded in favor of a flat, source-less sentence. No new persisted field or extra
+          // Cortex read needed (unlike the fuller per-instance evidence sentence the 2026-10-25 fix
+          // explicitly deferred) — this is a one-line split on data already present. `last` guards
+          // against the no-source shape (`gate:G-S14:cortex_veto` with nothing after it, which
+          // `split(":").pop()` would otherwise read back as the literal "cortex_veto" itself) by
+          // falling back to the prior generic sentence rather than naming a fake source.
+          const last = b.split(":").pop();
+          const source = last && last !== "cortex_veto" ? last : null;
           return {
             code: "g_s14_cortex",
-            reason: "Cortex preflight vetoed this setup — desk will not open.",
+            reason: source
+              ? `Cortex preflight vetoed this setup (${source}) — desk will not open.`
+              : "Cortex preflight vetoed this setup — desk will not open.",
           };
         }
         if (b.includes("cortex_net_negative")) {
