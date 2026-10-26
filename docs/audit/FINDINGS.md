@@ -4,6 +4,1101 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## `clearMembershipDunningGrace` silently swallows a Postgres delete failure — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Billing lifecycle — Whop dunning grace (`src/lib/whop-dunning.ts`) |
+| **Status** | FIXED |
+| **Severity** | P3 (narrow, low-probability, but a real unintended-grace path with no test coverage) |
+
+### Root cause
+
+`markMembershipDunningGrace` (start-grace) tracks whether each store (Postgres, Redis)
+succeeded and throws only when **both** fail — the documented "webhook retry path": throwing
+makes the webhook handler return a 500, Whop redelivers the event, and the write gets another
+chance. Its sibling, `clearMembershipDunningGrace` (end-grace, called on
+`membership.deactivated`, `invoice.marked_uncollectible`/`voided`, and `invoice.paid`/
+`payment.succeeded`), did **not** follow the same pattern: it caught and logged a Postgres
+`DELETE` failure but never tracked that failure or re-threw, always returning successfully
+after only clearing the Redis key.
+
+```ts
+// before
+if (dbConfigured()) {
+  try {
+    await dbQuery(`DELETE FROM whop_dunning_grace WHERE membership_id = $1`, [membershipId]);
+  } catch (err) {
+    console.error(`[whop-dunning] Postgres delete failed for ${membershipId}:`, err);
+  }
+}
+await sharedCacheDel(DUNNING_PREFIX + membershipId);
+// falls through to a normal return even if the DELETE above threw
+```
+
+### Failure scenario
+
+1. A membership is in dunning grace (`whop_dunning_grace` row + Redis key both present).
+2. A `payment.succeeded`/`invoice.paid`/`membership.deactivated`/invoice-voided webhook fires.
+   Redis is healthy; Postgres has a transient failure on the `DELETE`.
+3. `clearMembershipDunningGrace` logs the error, clears the Redis key, and returns normally
+   (no exception) — so the webhook handler proceeds, the idempotency claim is kept, and Whop
+   never redelivers this event (nothing told it there was a failure).
+4. The stale, not-yet-expired Postgres row for that membership is now permanently orphaned
+   until it naturally expires (up to the full `WHOP_DUNNING_GRACE_SEC`, 7 days by default).
+5. If that same membership re-enters `past_due` before the row expires,
+   `isMembershipInDunningGrace` hits a Redis miss, falls through to Postgres (by design — this
+   is the documented durability path for exactly this situation), finds the stale row, and
+   wrongly reports "still in grace" — granting the member extra premium access they should not
+   have, past the point an intervening successful-payment or deactivation event should have
+   cleared it.
+
+This is the mirror image of the bug `markMembershipDunningGrace` already guards against
+(a silent partial failure that leaves one store out of sync with the other), on the opposite
+function. Confirmed via code read that `sharedCacheDel` (`shared-cache.ts`) internally swallows
+all Redis errors and never throws, so the only real failure vector here is specifically the
+Postgres `DELETE`.
+
+### Evidence
+
+- `src/lib/__tests__/whop-dunning-grace.test.ts` had comprehensive partial-failure coverage for
+  `markMembershipDunningGrace` but **zero** test for "Postgres delete fails during clear" —
+  confirmed by reading the file end-to-end before writing the fix.
+- Added a regression test (`clear: throws when Postgres delete fails...`) that is RED on the
+  pre-fix code (1 failing test when the fix's 12-line diff is reverted, confirmed by swapping in
+  the pre-fix file content and re-running the suite) and GREEN on the fix (11/11 pass).
+- Confirmed via a full read of `src/app/api/webhook/whop/route.ts` lines 253-474 that all three
+  `clearMembershipDunningGrace` call sites (membership.deactivated ~L300,
+  invoice.marked_uncollectible/voided ~L435, invoice.paid/payment.succeeded ~L451) sit directly
+  inside the route's single outer `try` with no intervening try/catch — a thrown exception
+  correctly propagates to the outer `catch (error)` at L474, which releases the webhook
+  idempotency claim (so Whop's retry isn't silently acked as a duplicate) and returns
+  `{ status: 500 }`, triggering Whop's own redelivery mechanism.
+
+### Fix
+
+Mirror `markMembershipDunningGrace`'s existing `pgOk` pattern: track whether the Postgres
+`DELETE` succeeded, still clear the Redis key unconditionally (no reason to leave the hot cache
+stale just because the durable delete failed), and throw if the Postgres delete failed. The
+`DELETE` is naturally idempotent, so a Whop-triggered retry is safe and will heal the stale row
+once Postgres recovers.
+
+### Blast radius
+
+Only `clearMembershipDunningGrace` itself; the three call sites in the webhook route needed no
+changes — the outer try/catch already propagates correctly. No other caller exists
+(`grep -rn clearMembershipDunningGrace src/` confirms exactly 3 call sites, all inside the same
+handler). `markMembershipDunningGrace` was already correct and untouched.
+
+### Tests
+
+`src/lib/__tests__/whop-dunning-grace.test.ts`:
+- `clear: throws when Postgres delete fails, so the webhook caller can retry` — new, proves the
+  fix (and is RED on the pre-fix code).
+- `clear: does not throw when Postgres succeeds (or is not configured)` — new, guards against a
+  regression that makes `clearMembershipDunningGrace` throw unconditionally.
+
+`npx tsx --experimental-test-module-mocks --test src/lib/__tests__/whop-dunning-grace.test.ts`:
+11/11 pass. `npx tsc --noEmit` and `npx eslint src/lib/whop-dunning.ts
+src/lib/__tests__/whop-dunning-grace.test.ts` both clean.
+
+## welcomeCommunityEmail's Premium-upsell paragraph omitted Meridian from the six engines a community (SPX Slayer) member would gain by upgrading
+
+> **kind:** `FINDING`
+
+`welcomeCommunityEmail()` (`src/lib/email/templates/welcome-community.ts`), sent the moment a
+member subscribes to SPX Slayer for the first time, closes with an upsell paragraph naming the
+other products waiting behind a Premium upgrade: *"Down the road, if you ever want the wider
+desk — Thermal, HELIX, Night Hawk, Largo AI, Vector — Premium's there."* That list names only five
+of the six other live products — Meridian (the catalyst/earnings desk, shipped 2026-10-11, commit
+`5103e7f8d`) was missing.
+
+**Same bug class already fixed in three sibling templates** —
+`welcome-premium-downgrade-product-count.test.ts` (welcome-premium.ts / downgrade.ts) and
+`scheduled-cancel-engine-list.test.ts` (scheduled-cancel.ts) all caught and fixed the identical
+"hardcoded engine list drifted behind the real 7-product lineup" defect. `welcome-community.ts`
+was the one sibling template with this exact hardcoded-list shape that none of those prior passes
+had re-checked.
+
+**Blast radius:** every brand-new SPX-Slayer-only (community tier) member reads this as their
+first introduction to what Premium actually contains. Undercounting the upsell by one full
+product (Meridian — a materially differentiated catalyst/earnings desk, not a minor feature)
+understates the value of upgrading and is a direct, if small, revenue-adjacent correctness bug —
+the exact concern `welcome-premium-downgrade-product-count.test.ts`'s own comment already names
+for this bug class.
+
+**Fix:** added `, Meridian` to the hardcoded list in the Day-4-style upsell paragraph. No other
+copy needed to change — the surrounding sentence ("the wider desk ... Premium's there") already
+reads correctly with six names instead of five.
+
+**Evidence (RED → GREEN):** new test `welcomeCommunityEmail: Premium upsell paragraph names all
+six other live products, including Meridian` in
+`src/lib/email/templates/welcome-community-engine-list.test.ts`. Pre-fix: fails asserting on
+`Meridian` (confirmed via `git stash` on the fix commit, full failure output captured). Post-fix:
+passes. Ran all 15 tests across `src/lib/email/templates/*.test.ts` — all green, including the
+three sibling engine-list/product-count regression tests, confirming no cross-template drift was
+introduced. `tsc --noEmit` and `eslint` clean on both touched files.
+
+| **Status** | FIXED (PR #TBD) |
+
+## Admin-set `tool_access: block` override silently bypassed for every already-launched tool once the session JWT carries tier/role — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P1 (access control — a moderation action an admin took had no effect) |
+| **Surface** | `src/lib/tool-access-server.ts` — `userCanAccessTool`, the server-side gate behind `canAccessTool`/`requireToolApi`/`requireAnyToolApi`, which every desk page and desk API route (`/dashboard`, `/flows`, `/heatmap`, `/nighthawk`, `/vector`, `/meridian`) calls to decide whether a signed-in user may use a tool. |
+| **Status** | FIXED |
+
+### Root cause
+
+`userCanAccessTool` has three paths, in order: (1) admin bypass, (2) a fast path that trusts a
+`tool_access` claim in the session JWT when present, (3) a fallback that reads the real stored
+override via a cached `getUser` call. Between (2) and (3), a prior commit (`#2344`, "JWT tool gate
+fast path") added a shortcut:
+
+```ts
+if (global && sessionClaimsHaveAuthFields(sessionClaims)) {
+  return true;
+}
+```
+
+`global` is `isToolLaunched(key)` — `true` for every tool except Largo (`spx`, `flows`, `heatmap`,
+`nighthawk`, `vector`, `meridian` are all `defaultLaunched: true` in `src/lib/tool-access.ts`).
+`sessionClaimsHaveAuthFields` is true whenever the JWT carries a `tier` or `role` claim — which,
+per `docs/clerk/SESSION-TOKEN-CLAIMS.md`'s own documented (and actual production) Dashboard setup,
+is every ordinary signed-in session (the Dashboard claims editor is configured with `tier` and
+`role` only; `tool_access` is never added to the token). So in practice this shortcut fired, and
+returned `true`, for essentially every request against every already-launched tool —
+**unconditionally, without ever consulting the real `tool_access` override stored in Clerk
+`publicMetadata`.**
+
+That override is a real, actively-supported admin feature, not a theoretical one:
+`POST /api/admin/users/tools/bulk` and the single-user `PATCH /api/admin/users/[id]` route both
+let an admin set `block`/`grant` on any of the 7 tool keys, including the 6 already-launched
+ones (`VALID_TOOLS`/`TOOLS` in both routes carry no exclusion for launched tools). An admin who
+blocked a user from, say, Vector or Night Hawk because of abuse, and then confirmed it from the
+admin UI, would see the block recorded — but the user kept full access to that tool on every
+ordinary request, because the gate never looked at the override once their session JWT carried
+the normal tier/role claims.
+
+The only tool this did NOT silently break was Largo (`defaultLaunched: false`): since `global` is
+false there, the shortcut's `global && ...` condition never holds, so Largo always correctly fell
+through to the real override check — which is presumably why this went unnoticed; the one tool
+whose gate is exercised constantly in practice (Largo access requests) never hit the bug.
+
+### Evidence
+
+New behavioral test (`src/lib/tool-access-server-block-override.test.ts`) imports the real
+`userCanAccessTool` (with `server-only`/`react`/`next/navigation` stubbed just enough to let the
+real module load under `tsx --test` — none of those stubs touch the logic under test) and a mocked
+`getClerkUserCached` backing a real stored `{ vector: "block" }` override:
+
+- Before the fix: `userCanAccessTool(userId, "vector", { tier: "premium", role: "member" })`
+  returns `true` — the block is ignored outright, and `getClerkUserCached` is never even called
+  (confirmed via a call counter), proving the stored override was never consulted at all.
+- After the fix: the same call returns `false`, and `getClerkUserCached` is called exactly as
+  expected.
+
+RED→GREEN confirmed via `git stash` on `src/lib/tool-access-server.ts` alone (test file
+untouched): the behavioral test and the existing `tool-access-server.latency.test.ts` source-text
+guard both fail against the pre-fix source and both pass against the fix.
+
+### Blast radius
+
+Every already-launched tool (`spx`, `flows`, `heatmap`, `nighthawk`, `vector`, `meridian`) via
+every call site that reaches `userCanAccessTool`: `canAccessTool` (page gate), `requireToolApi`,
+`requireToolApiForDeskCaller`, `requireAnyToolApi` (API gates). Largo (`defaultLaunched: false`)
+was never affected — its gate always consulted the real override, since the buggy shortcut's
+`global` condition never held for it. No other file needed to change; the bug was entirely
+contained to the one shortcut in `tool-access-server.ts`.
+
+### Fix
+
+Removed the `global && sessionClaimsHaveAuthFields(sessionClaims)` shortcut entirely. The function
+now always either (a) trusts a real `tool_access` claim when the JWT carries one, or (b) falls
+through to the cached `getClerkUserCached` read (same 5s-TTL cross-request dedupe cache
+`isAdminUser`'s own slow path already uses) to read the actual stored override — restoring the
+pre-`#2344` correctness guarantee while keeping the genuine latency win from `#2344` intact for the
+case that win was actually cheap for (a per-tool JWT claim, when configured). Removed the
+now-unused `sessionClaimsHaveAuthFields` import from this file (the function itself is untouched
+and still independently unit-tested in `clerk-session-claims.test.ts`).
+
+### Fix rationale
+
+The alternative of leaving the shortcut and instead telling operators to add a `tool_access` claim
+to the Clerk Dashboard JWT template would require an out-of-band, unenforced manual step that the
+documented setup (`docs/clerk/SESSION-TOKEN-CLAIMS.md`) never asks for today — leaving the gap live
+in the current, real production configuration until someone remembered to go do that. Removing the
+unsafe assumption in code fixes the gap unconditionally, with no dependency on a Dashboard change
+nobody is currently told to make. The remaining cost is one more `getClerkUserCached` call (cached
+5s cross-request) for a signed-in, non-admin request against an already-launched tool when no
+`tool_access` JWT claim is present — not a regression to the pre-`#1225`/`#2344` "3-5 Clerk calls
+per render" problem those PRs fixed, since `getClerkUserCached`'s cache is shared and already paid
+for by other call sites on the same request/short window.
+
+### Tests
+
+`src/lib/tool-access-server-block-override.test.ts` (new, 3 cases: a real block on an
+already-launched tool is honored; an ordinary member with no override still gets the tool; a real
+grant override still unlocks Largo). `src/lib/tool-access-server.latency.test.ts` updated — its
+assertion that the removed shortcut's source text is present is replaced with a `doesNotMatch`
+regression guard so the bypass can't silently come back. Both files run clean under
+`npx tsx --experimental-test-module-mocks --test` on Node 20, alongside the existing
+`clerk-session-claims.test.ts`, `tool-user-access.test.ts`, `sse-stream-entitlement-revalidate.test.ts`,
+`gated-route-redirects.test.ts`, and the admin users/bulk route tests (all green, unaffected).
+`npx tsc --noEmit` clean. `npx eslint` clean on all changed files.
+
+## Ask Largo / Night Hawk Swings: the "thesis_invalidated" gate claimed price "CLOSED through the structural invalidation level" when the check is actually a live intraday read — the state can genuinely revert within the same session, which the wording never disclosed
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #TBD) |
+| **Found by** | Live-production audit agent, Ask Largo × Night Hawk Swings standing ownership mandate, 2026-10-26 |
+| **Scope** | `src/lib/swing/entry-verdict.ts` (`researchGateBlocks`'s `thesis_invalidated` reason), `src/lib/swing/setup-state.ts` (doc comments) |
+
+### Root cause
+
+`deriveSetupState` (`setup-state.ts`) derives the `INVALIDATED` setup state by comparing the
+dossier's underlying price against the structural invalidation level: `price <= invalidationPx`
+for LONG, `price >= invalidationPx` for SHORT. That `price` is sourced from
+`swingServingReadsFromPlan`'s own `spot` parameter, whose doc comment is explicit: "a live (or
+last-known) spot." This is an **intraday, live read, re-evaluated on every scan** — never a
+settled end-of-day close.
+
+Despite that, every piece of surfaced text describing this state said "closed":
+`entry-verdict.ts`'s `thesis_invalidated` gate reason read *"Structure invalidated — price
+**closed** through the structural invalidation level."* — this exact string reaches the member
+via the swing play-brief's "Trade manager read" section (`play-brief-intel.ts`'s
+`catalystCoaching`-adjacent gate-block rendering) whenever a WATCH candidate's thesis breaks
+pre-entry. `setup-state.ts`'s own doc comment made the identical claim internally.
+
+"Closed through" asserts a stable, settled fact — the kind of thing that, once true, stays true
+for the rest of the session. The real check has no such property: it is re-run on every board
+read and can genuinely flip back to `FORMING` if the underlying price reclaims the level before
+any session close. Saying "closed" when the read is intraday overstates how final the break is —
+the exact precision violation `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s "precision" point exists to
+catch, and the same class of bug this repo has already fixed once for earnings BMO/AMC timing
+(never claim more certainty than what was actually measured).
+
+### Evidence
+
+Live repro, 2026-10-26, same RTH session, no session close in between: `GET
+/api/market/nighthawk/horizons?view=swings`'s SWING WATCH lane showed **SOXX** (SHORT, score
+68.6) with `setupState: "FORMING"` and gate blocks `[gate:G-S4:regime_degraded,
+gate:G-S6:confluence, gate:G-S14:cortex_net_negative]` at 17:17 UTC. By 17:32 UTC it dropped off
+the WATCH lane entirely; its play-brief (`GET /api/market/swing/play-brief?...&status=WATCH`)
+showed `setupState: "INVALIDATED"`, headline `PASSED`, and the exact reason text under audit:
+*"Structure invalidated — price closed through the structural invalidation level."* By 19:02 UTC
+(under an hour later, same session), SOXX reappeared on the WATCH lane with `setupState:
+"FORMING"` and the **identical** three gate blocks as the 17:17 read — the thesis had reverted,
+contradicting the "closed" framing's implied finality.
+
+Traced the mechanism: `swingServingReadsFromPlan`'s own doc comment ("a live (or last-known)
+spot") and `deriveSetupState`'s direct `price`-vs-`invalidationPx` comparison confirm this is an
+intraday check with no close-anchoring anywhere in the call chain.
+
+### Fix
+
+Corrected the `thesis_invalidated` gate reason (`entry-verdict.ts`) to describe what is actually
+measured: *"Structure invalidated — price is through the structural invalidation level (live
+read; can still revert if price reclaims before the thesis window closes)."* Updated
+`setup-state.ts`'s two doc comments (the `invalidationPx` field doc and `deriveSetupState`'s own
+precedence-list doc) to the same effect, so a future maintainer reading the pure derivation
+function isn't misled either.
+
+Deliberately left unchanged: the GATING BEHAVIOR itself (comparing live price against the level,
+dominating every other state) — this is a wording-precision fix, not a mechanism change.
+Requiring a settled close before flagging INVALIDATED would be a real behavioral change (delaying
+a legitimate pre-entry thesis-break signal until end-of-day, by which point acting on it is
+largely moot for a pre-entry WATCH candidate) and is out of scope here; the problem being fixed is
+that the TEXT claimed more finality than the mechanism provides, not that the mechanism itself is
+wrong. A separate, unreachable legacy calibration module
+(`src/lib/swing/legacy-calibration/gates-pr5.ts`, explicitly documented "NOT production... unit
+tests and calibration evidence only") carries the same stale wording but was left untouched since
+it's dead code on the real commit path.
+
+### Regression test
+
+`src/lib/swing/entry-verdict.test.ts`: *"thesis_invalidated gate reason describes a LIVE price
+read, never claims a settled close (the state can revert intraday)"* — asserts the reason text
+does not match `/closed through/i` and does match `/live read/i`.
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/entry-verdict.test.ts` — RED
+  pre-fix (25 pass / 1 fail, `git stash` of `entry-verdict.ts`+`setup-state.ts` with the test kept
+  in place), GREEN post-fix (26 pass / 0 fail).
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/entry-verdict.test.ts src/lib/swing/setup-state.test.ts src/lib/swing/entry-enterability.test.ts src/lib/swing/serving-ingest.test.ts src/lib/swing/serving.test.ts src/lib/swing/play-brief-intel.test.ts` — 440/440 pass.
+- Full suite (`npm test`, Node 20) — pass, 0 fail.
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+
+## Swing `commitGateBlocksForVerdict()`'s genuine-G-S14-veto branch discarded the already-known Cortex source, rendering a generic sentence instead of naming which source vetoed
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #TBD) |
+| **Found by** | Live-production audit, Ask Largo × Night Hawk Swings standing ownership mandate (0DTE/Night Hawk Command "keep digging" sub-mandate), 2026-10-26 |
+| **Scope** | `src/lib/swing/entry-verdict.ts` (`commitGateBlocksForVerdict`, the `b.includes("cortex_veto")` branch) — member/Largo-facing gate-block text on `ZeroDteCommandPanel`, the swing play-brief, and `entry-enterability.ts` |
+
+### Root cause
+
+`commitGateBlocksForVerdict()` turns persisted `commitGateBlockedBy` tokens into the member-facing
+gate-block sentence. For a genuine Cortex veto, the persisted token is
+`gate:G-S14:cortex_veto:<source>` — stamped by `swingCortexBlockedByFromAssessment`
+(`src/lib/swing/v2/cortex-swing.ts`) directly off `cortex-gate.ts`'s own `cortexGateBlocks()`
+code, `` `cortex_veto:${v.source}` ``, where `source` is one of the 8 `CORTEX_SOURCES`
+(`src/lib/nighthawk/cortex/types.ts`: `gex-walls`, `wall-trend`, `flow-quality`, `sector-heat`,
+`catalyst-news`, `vex-charm`, `darkpool-confluence`, `opening-harvest`).
+
+The specific source that vetoed is therefore already embedded in the exact string the branch
+pattern-matches against (`b.includes("cortex_veto")`), but the branch discarded it in favor of a
+flat, source-less sentence: `"Cortex preflight vetoed this setup — desk will not open."`
+
+This is narrower than the gap the 2026-10-25 fix (PR #6673, commit `381f1f803`) deliberately
+deferred — that fix's follow-up is about recovering the FULL per-instance evidence sentence
+(opposing sources, net score, etc.), which genuinely needs a schema change to persist
+`pre.reason` from `discovery.ts` (not done, by design, to keep that PR single-issue). Naming just
+the source requires no such change — it is a one-line string-split on data already present in the
+token the function already branches on. PR #6673 correctly gave every OTHER G-S14 branch
+(`cortex_net_negative`, `cortex_thin_evidence`, `cortex_contested`,
+`cortex_gex_walls_oppose_unresolved`, `cortex_veto_blind`) its own specific, honest sentence —
+only this one, the genuine-veto branch, was left generic.
+
+The sibling 0DTE board (`src/lib/zerodte/cortex-gate.ts`'s own `cortexGateBlocks()` rendering,
+shared by both engines) already preserves full source+detail text for its own veto rendering
+(`` `Cortex veto [${v.source}]: ${v.detail}` ``) — only swing's `discovery.ts` persistence
+(`blocked.set(key, pre.blockedBy)`, `pre.reason` never kept) plus this generic branch in
+`entry-verdict.ts` lose the source specifically for the genuine-veto case.
+
+Confirmed live 2026-10-26: `GET /api/market/nighthawk/horizons?view=swings` (authenticated via
+`scripts/audit/lib/audit-auth-fetch.mjs` against `https://blackouttrades.com`) served MRNA in the
+SWING lane's WATCH section with `commitGateBlockedBy: ["gate:G-S6:confluence",
+"gate:G-S14:cortex_veto:gex-walls"]`. Tracing `commitGateBlocksForVerdict`'s G-S14 branch against
+that exact token confirmed it returned only `{code: "g_s14_cortex", reason: "Cortex preflight
+vetoed this setup — desk will not open."}` — the `gex-walls` substring sitting right after the
+final colon in the string the branch was already testing (`b.includes("cortex_veto")`) was never
+read out.
+
+The existing regression coverage (`src/lib/swing/entry-verdict.test.ts`, the 2026-10-25 SOXX-repro
+test) only asserted the genuine-veto case still contains the word "vetoed" — it asserted nothing
+about naming the source, so this gap was never caught.
+
+### Fix
+
+In the `b.includes("cortex_veto")` branch (after the `cortex_veto_blind` check, which must stay
+first since `"cortex_veto_blind"` also contains the substring `"cortex_veto"`), parse the source
+out of the token itself: `` const last = b.split(":").pop(); const source = last &&
+last !== "cortex_veto" ? last : null; `` — guarding against the no-source token shape
+(`gate:G-S14:cortex_veto` with nothing after it, which `split(":").pop()` would otherwise read
+back as the literal string `"cortex_veto"` itself) by falling back to the prior generic sentence
+rather than naming a fake source. When a source is present: `` `Cortex preflight vetoed this
+setup (${source}) — desk will not open.` ``.
+
+This needs no new persisted field and no extra Cortex read — it only reads data already in the
+string being matched, unlike the fuller per-instance evidence sentence the 2026-10-25 fix
+explicitly deferred as a separate, larger follow-up.
+
+### Regression test
+
+Added a new test to the existing 2026-10-25 SOXX-repro block in `src/lib/swing/entry-verdict.test.ts`:
+asserts `gate:G-S14:cortex_veto:gex-walls` renders a reason containing `gex-walls` (not just the
+word "vetoed"), asserts a different source (`darkpool-confluence`) renders correctly too (not a
+hardcoded single source), and asserts the no-source token shape (`gate:G-S14:cortex_veto`, which
+should not happen in production but must not render a garbage source name if it ever does) still
+falls back to the honest generic sentence.
+
+### Verification
+
+- RED→GREEN proof: added the new test first against the un-fixed branch — it failed (`Cortex
+  preflight vetoed this setup — desk will not open.` does not match `/gex-walls/`). Applying the
+  fix turned it GREEN with no other test regressed.
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/entry-verdict.test.ts` (Node 20)
+  — 26/26 pass (25 pre-existing + 1 new).
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+- Full suite `npm test` (Node 20) — 17150 pass / 0 fail / 3 skipped (pre-existing skips,
+  unrelated).
+
+## Ask Largo swing play-brief: "Flow & positioning" collapse dropped all notable prints and 3 of 4 anomalies for OPEN/WATCH briefs, and Largo's own tool had no way to request the uncollapsed read — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Found by** | Live-production audit, Ask Largo × Night Hawk Swings standing ownership mandate, 2026-10-26 |
+| **Scope** | `src/lib/swing/play-brief-narrative.ts` (`flowNarrative`), `src/lib/largo/tool-defs.ts` (`get_swing_play_brief` schema), `src/lib/largo/run-tool.ts` (dispatch), `src/lib/largo/swing-play-brief-read.ts` (`swingPlayBriefForLargo`) |
+
+### Root cause
+
+`composeSwingPlayBrief` (`play-brief.ts`) collapses several intel sections into the "Trade manager
+read" narrative for OPEN/WATCH buckets (`collapseRedundantIntelSections`,
+`play-brief-intel-collapse.ts` — `NARRATIVE_COVERED_TITLES` includes `"Flow & positioning"`;
+collapse is skipped only for `bucket === "closed"`). The full `flowIntelSection`
+(`play-brief-intel.ts:1410-1517`) renders up to 4 deduped flow anomalies ("**Flow anomalies:**")
+and up to 5 itemized notable prints with strike/right/premium/age ("**Notable prints (48h, largest
+premium first):**"). The collapsed replacement, `flowNarrative` (`play-brief-narrative.ts:541-571`),
+rendered only the one-line HELIX tape aggregate plus **at most the single first anomaly**
+(`ctx.ecosystem?.recent_anomalies?.[0]`) — anomalies 2-4 were silently dropped, and zero notable
+prints ever reached the collapsed narrative, even though `collapseRedundantIntelSections`'s own
+auto-generated note tells the reader the content was "folded into Trade manager read above."
+
+This is the same bug class FINDINGS.md's "VEX/DEX/CHARM content silently dropped for OPEN/WATCH
+swing briefs" entry already fixed once for `dealerPostureLine`/"GEX posture" — a collapse-note
+claim that was false for specific fields the narrative bullet never actually carried. This finding
+is the same shape for "Flow & positioning"'s notable-prints/multi-anomaly content, which that
+earlier fix did not touch.
+
+Separately, Largo's own `get_swing_play_brief` tool had no mechanism to request the uncollapsed
+read at all: its input schema took only `ticker`/`positionId`/`strike`/`right`/`status` (no
+`expandIntel`), `swingPlayBriefForLargo` always called `composeSwingPlayBrief(ctx)` with no second
+argument, so `opts?.expandIntel` was unconditionally `undefined` and `collapseIntel` was
+unconditionally forced `true` (`play-brief.ts:2151`, `{ collapseIntel: !opts?.expandIntel }`). The
+Command Deck UI's own "Show detail" toggle flips `?expandIntel=1` directly on the HTTP route
+(`src/app/api/market/swing/play-brief/route.ts`) — a mechanism the tool-calling surface structurally
+could not reach, so every chat-surfaced Largo answer was permanently stuck on the collapsed read's
+own "expand via follow-up chips or Open Largo" note with no way to actually act on it.
+
+### Evidence
+
+Live-verified this session: `GET /api/market/swing/play-brief?playId=SWING:ASTS&ticker=ASTS&positionId=2111&status=COMMIT`
+(the default call, exactly what Largo's tool uses) returned a Trade-manager bullet with just the
+aggregate line + 1 anomaly, while the SAME instant's `...&expandIntel=1` call showed the full
+section: 3 real prints (CALL 105.00 $518K [21m ago], PUT 22.50 $296K [11m ago], PUT 45.00 $254K
+[4h ago]) and more anomaly detail. This reproduced across 7 real OPEN positions (PANW, CRML, FLY,
+OUST, RDW, ASTS, FTNT) — all showed the same "aggregate + at most 1 anomaly, zero notable prints"
+shape when collapsed, while 5 real CLOSED briefs (which bypass collapse) showed the full itemized
+lists.
+
+### Blast radius
+
+Single call site for part 1 — `flowNarrative`'s return string, the only "Flow & positioning"
+content surviving collapse for OPEN/WATCH. No other section or consumer reads
+`recent_anomalies`/`flow_full_state.recent` for the collapsed narrative; `flowIntelSection` itself
+(the CLOSED-bucket / narrative-absent path) is untouched. For part 2, the new `expandIntel`
+parameter is additive and optional everywhere it threads (`tool-defs.ts` schema,
+`run-tool.ts` dispatch, `SwingPlayBriefLargoHints`) — every existing call site that never set it
+(the Command Deck UI goes through its own HTTP route, unaffected; the cross-product fan-out in
+`cross-product-read.ts` calls `get_swing_play_brief` with `{ ticker: t }` only) keeps defaulting to
+the collapsed read exactly as before.
+
+### Fix
+
+1. Extended `flowNarrative` to append ALL deduped anomalies (same `(anomaly_type, detail)` dedup as
+   `flowIntelSection`, capped at 4 — the market-regime-detector cron only dedups within a 15-minute
+   window at write time, so a persisting pattern can write a second byte-identical row) and the top
+   3 notable prints from `ctx.ecosystem?.flow_full_state?.recent` (same `fmtPremium`/
+   `relativeAgeLabel`/`fmtPriceLevel` strike-rounding helpers `flowIntelSection` uses, same
+   ordering/caption — "(48h, largest premium first)" — so the two can never drift into reporting
+   different facts off the identical underlying data). No separate `flow_feed_fresh` gate was
+   needed: `flow` (the HELIX tape aggregate) is already `trustedHelixFlow(ctx.ecosystem)`, which
+   returns `null` whenever the feed is stale, so reaching this code already proves freshness.
+2. Added an optional `expandIntel: boolean` property to `get_swing_play_brief`'s tool schema
+   (`tool-defs.ts`), threaded it through `run-tool.ts`'s dispatch into
+   `SwingPlayBriefLargoHints.expandIntel` (`swing-play-brief-read.ts`), and into
+   `composeSwingPlayBrief(ctx, { expandIntel: hints?.expandIntel ?? false })` — the same option the
+   HTTP route's `?expandIntel=1` already threads, now reachable from Largo's own tool-calling
+   surface for the first time. Updated the tool's description to document the collapse behavior and
+   the new parameter.
+
+### Fix rationale
+
+Mirrors the VEX/DEX/CHARM fix's own rationale: special-casing `collapseRedundantIntelSections` to
+keep "Flow & positioning" rendered whenever it carries anomalies/prints would leave the "folded
+into Trade manager read" note literally false in the kept-but-partial case and complicate the
+collapse function's single title-match rule. Threading the content into the narrative itself makes
+the existing claim true instead of carving an exception to it. For the tool parameter, reusing the
+existing `composeSwingPlayBrief`/`ComposeSwingPlayBriefOptions.expandIntel` plumbing (already built
+and used by the HTTP route) rather than inventing a second mechanism keeps the chat-answer and
+Command-Deck-panel reads identical through identical logic, per this file's existing pipeline
+discipline.
+
+### Regression test
+
+- `src/lib/swing/play-brief-narrative.test.ts` gained 2 tests: one proving all 3 fixture anomalies
+  and 2 itemized notable prints now appear in the collapsed narrative body (live-repro shape); one
+  proving a persisting anomaly rewritten across two cron cycles still dedupes to one occurrence
+  (mirrors `flowIntelSection`'s own existing dedup test).
+- `src/lib/largo/swing-play-brief-read.test.ts` gained 2 tests: `expandIntel: true` forwards
+  `{ expandIntel: true }` to `composeSwingPlayBrief`'s options; omitting it forwards
+  `{ expandIntel: false }` (the default stays the collapsed read).
+- `src/lib/largo/tool-defs.test.ts` gained 1 test: `get_swing_play_brief`'s schema declares an
+  optional `expandIntel` boolean property.
+
+### Verification
+
+- RED→GREEN proof: reverted the 4 implementation files (`play-brief-narrative.ts`, `tool-defs.ts`,
+  `run-tool.ts`, `swing-play-brief-read.ts`) to their pre-fix state with the new tests left in
+  place — exactly 4 of 221 tests failed (the 3 new positive-content/plumbing assertions plus the
+  tool-defs schema assertion; the dedup test passed vacuously either way, as expected for a
+  dedup-only guard, same as the sibling VEX/DEX/CHARM fix's own staleness-suppression test).
+  Restoring the fix brought all 221 back to green.
+- `node --experimental-test-module-mocks --test src/lib/swing/play-brief-narrative.test.ts
+  src/lib/largo/swing-play-brief-read.test.ts src/lib/largo/tool-defs.test.ts` (Node 20) —
+  221/221 pass, 0 fail.
+- `node --experimental-test-module-mocks --test src/lib/largo/run-tool.test.ts` (Node 20) —
+  14/14 pass (dispatch change unaffected other tool cases).
+- Full `npm test` (Node 20) — pass, 0 fail (see PR for exact count).
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+
+## Night Hawk Swings: `counterThesisLine()`'s HELIX put-led/call-led reason has no dedup against `crossDeskCoaching()`'s "Cross-desk friction" bullet — the same flow fact gets cited twice in one brief
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #TBD) |
+| **Found by** | Live-production audit, Ask Largo × Night Hawk Swings standing ownership mandate, 2026-10-26 |
+| **Scope** | `src/lib/swing/play-brief-narrative.ts` (`counterThesisLine()`, ~lines 1111-1172 and its caller at ~line 1762); `src/lib/swing/play-brief-narrative-coaching.ts` (`crossDeskCoaching()`, ~lines 832-905) — both feed `tradeManagerNarrativeSection`'s "Trade manager read" section |
+
+### Root cause
+
+`counterThesisLine()`'s sibling Vector-bias check (the previous `#5351`/2026-09-09-fixed case) is
+gated by a `vectorConflictAlreadyNoted` flag threaded in from the caller specifically because
+`crossDeskCoaching()` (`play-brief-narrative-coaching.ts`) independently derives the same
+Vector-vs-swing-direction misalignment earlier in the same bullet list and already names it in its
+own "Cross-desk friction" bullet. The caller's dedup check, however, was a bare regex —
+`bullets.some((b) => /Vector (?:also reads )?(bearish|bullish)/.test(b))` — that only ever matched
+the literal word "Vector".
+
+`crossDeskCoaching()` checks **four** desks for conflicts, not just Vector — Night Hawk, 0DTE,
+Vector, and HELIX (`play-brief-narrative-coaching.ts` lines ~878-879: `if (play.direction ===
+"LONG" && putHeavy) conflict("HELIX", "put-led", "flow"); if (play.direction === "SHORT" &&
+callHeavy) conflict("HELIX", "call-led", "flow")`), using the exact same `trustedHelixFlow()` input
+and 1.3x call/put-premium ratio threshold `counterThesisLine()`'s own HELIX check (a few lines
+below the Vector check, ungated) uses. `renderCrossDeskConflict()` renders this as `"HELIX
+put-led"`/`"HELIX call-led"` when HELIX is the lead conflict, or `"HELIX also reads
+put-led"`/`"...call-led"` when demoted to a `rest` entry — neither form contains the word "Vector",
+so the existing dedup regex never matched it. Whenever `crossDeskCoaching()` named HELIX as a
+conflict, `counterThesisLine()`'s separate, ungated HELIX push re-cited the identical flow numbers
+as a second, independent-sounding "corroborating read" a few bullets later in the same "Trade
+manager read" section — the same double-citation shape the 2026-09-09 NRG repro fixed for Vector,
+just on the sibling desk that fix never covered.
+
+Reproduced directly against the current source with a regression test before the fix (RED): a
+LONG play with put-heavy HELIX flow (1.5x ratio, clearing the shared 1.3x gate on both sides) and
+no Vector/Night-Hawk/0DTE data produced:
+
+```
+Cross-desk friction — HELIX put-led. ...
+...
+Counter-thesis (bear case) — corroborated across 3 independent reads — HELIX put-led ($1.5M vs
+$1.0M calls) · call wall 101.00 overhead (1.0%) · dealer long-gamma pins rallies. ...
+```
+
+"HELIX put-led" / the identical `$1.5M vs $1.0M` figures appear in both bullets of the same
+document.
+
+### Fix
+
+Added a sibling `helixConflictAlreadyNoted` flag to `counterThesisLine()`, gating its HELIX
+put-led/call-led push exactly the way the existing `vectorConflictAlreadyNoted` flag already gates
+the Vector push. The caller now also computes `bullets.some((b) => /HELIX (?:also reads
+)?(call|put)-led/.test(b))` — covering both the lead-conflict phrasing (`"HELIX put-led"`) and the
+demoted "rest" phrasing (`"HELIX also reads put-led"`), matching the same lead/demoted distinction
+the existing Vector regex already handles — and passes it through as the new 5th argument. The
+other counter-thesis reasons (Night Hawk, 0DTE, GEX walls, EMA/MACD/structure, dealer posture,
+fading pillar) are independent evidence and stay untouched — only the HELIX-specific reason is
+omitted when `crossDeskCoaching()` already named it.
+
+### Regression test
+
+Added `tradeManagerNarrativeSection: Counter-thesis omits the HELIX reason when crossDeskCoaching
+already named it, but keeps other reasons` to `src/lib/swing/play-brief-narrative.test.ts`,
+directly beside the existing Vector-dedup test it mirrors. Feeds a LONG play with put-heavy HELIX
+flow (1.5x ratio) plus an independent call-wall reason (GEX fallback, no Vector data) and asserts:
+exactly one "Cross-desk friction" bullet (naming "HELIX put-led"), exactly one "Counter-thesis"
+bullet, the Counter-thesis bullet does **not** re-cite "HELIX put-led", but **does** keep the
+independent call-wall reason — proving this isn't a blanket suppression.
+
+### Verification
+
+- RED→GREEN proof: the new test failed against the unfixed source (`doesNotMatch(counter[0],
+  /HELIX put-led/)` failed — "HELIX put-led" present in both the Cross-desk-friction and
+  Counter-thesis bullets, byte-identical flow figures `$1.5M vs $1.0M calls` in both). Applying the
+  fix (gate + regex extension) turned it GREEN with no other test affected.
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-narrative.test.ts`
+  (Node 20) — 159/159 pass (158 pre-existing + 1 new).
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+
+## Billing lifecycle: `scheduledCancelEmail` told a community ($49/mo SPX Slayer-only) member that six premium-only engines "stay live" through their grace period
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #TBD) |
+| **Found by** | Round 105 autonomous bug-hunting sweep (billing/email templates area), 2026-10-26 |
+| **Scope** | `src/lib/email/templates/scheduled-cancel.ts`, `src/lib/billing-lifecycle-email.ts` (`notifyScheduledCancellation`), `src/app/api/webhook/whop/route.ts` (`membership.cancel_at_period_end_changed` dispatch) |
+
+### Root cause
+
+`scheduledCancelEmail`'s second body paragraph hardcoded the full seven-product engine list —
+*"Every engine you're paying for stays live — SPX Slayer, Thermal, HELIX, Night Hawk, Largo AI,
+Vector, Meridian"* — with no awareness of which plan the recipient is actually on. The email
+fires from `app/api/webhook/whop/route.ts` on every `membership.cancel_at_period_end_changed`
+event with `cancel_at_period_end=true`, regardless of `billingKind`: both a Premium ($199/mo,
+all seven engines) member AND a community/SPX-Slayer-only ($49/mo, ONE engine) member scheduling
+a cancellation get the identical copy.
+
+A community member was therefore told, by name, that Thermal, HELIX, Night Hawk, Largo AI,
+Vector and Meridian "stay live" through their grace period — six products they have never had
+access to and are not paying for. This is not merely an upsell miss (the "missing Meridian"
+product-count bug class already fixed twice elsewhere, in `welcome-premium.ts`/`downgrade.ts` and
+`scheduled-cancel.ts`'s own earlier count fix) — it is an affirmatively false billing
+communication: it reads as either "you're about to lose access you thought you had" or "you
+always had free access to six premium products," neither of which is true, sent during the one
+interaction (a cancellation) where a member is already re-evaluating what they pay for and what
+they get.
+
+`notifyScheduledCancellation` had everything needed to avoid this already in scope one call up —
+the webhook route resolves `billingKind` from `syncWhopMembershipForEmail(email)` on the very
+same event (used two lines later to gate the `complete-signup` nudge on
+`billingKind === "premium" || billingKind === "community"`) — but never threaded it into the
+email call.
+
+### Blast radius
+
+Checked every sibling billing-lifecycle template for the same tier-blindness:
+`welcomePremiumEmail`/`downgradeEmail`/`accessEndedEmail`/`completeSignupEmail` all already
+discriminate their copy by `previousTier`/`billingKind`. `scheduledCancelEmail` was the one
+template in this family that didn't — `cancelReversedEmail` is unaffected (it names no engines
+at all, just "the desk").
+
+### Fix
+
+Added an optional `billingKind?: Extract<BillingKind, "premium" | "community">` field to
+`ScheduledCancelContext`. When `billingKind === "community"`, the "stays live" paragraph now
+names only SPX Slayer and describes its own scope (SPX regime read, GEX, A-F grading) instead of
+the six-engine list; any other value (including the pre-existing omitted case, for backward
+compatibility with the one existing test/call site) keeps the original full seven-engine
+paragraph. Threaded the real value through:
+`notifyScheduledCancellation` now requires `billingKind`, and
+`app/api/webhook/whop/route.ts` passes the `billingKind` it already resolved from
+`syncWhopMembershipForEmail`, narrowing the defensive `"free"` case (shouldn't occur alongside an
+active membership triggering this event, but not provably impossible) to the narrower
+`"community"` copy rather than ever overstating access.
+
+Deliberately left unchanged: the subject line, preheader, opening/closing paragraphs (none name
+specific engines), and every other billing-lifecycle template.
+
+### Regression test
+
+New file `src/lib/email/templates/scheduled-cancel-tier-blind.test.ts`:
+1. `billingKind: "community"` → asserts `SPX Slayer` appears and NONE of Thermal/HELIX/Night
+   Hawk/Largo AI/Vector/Meridian appear.
+2. `billingKind: "premium"` → asserts all seven names still appear (no regression).
+3. Omitted `billingKind` → asserts the full list still renders (backward-compatible default,
+   matches the pre-existing `scheduled-cancel-engine-list.test.ts`).
+
+### Verification
+
+- RED→GREEN: `git stash push -- src/lib/email/templates/scheduled-cancel.ts
+  src/lib/billing-lifecycle-email.ts src/app/api/webhook/whop/route.ts` (keeping the new test),
+  ran `npx tsx --experimental-test-module-mocks --test
+  src/lib/email/templates/scheduled-cancel-tier-blind.test.ts` — test 1 failed (`community-tier
+  cancellation email must not claim Thermal "stays live"`), tests 2-3 passed trivially pre-fix.
+  `git stash pop` restored the fix; all 3 new tests plus the pre-existing
+  `scheduled-cancel-engine-list.test.ts` passed (4/4).
+- `npx tsx --experimental-test-module-mocks --test src/lib/billing-lifecycle-email.test.ts
+  src/lib/email/templates/*.test.ts src/lib/email/*.test.ts` (Node 20) — 40/40 pass.
+- `npx tsx --experimental-test-module-mocks --test src/app/api/webhook/whop/route.test.ts`
+  (Node 20) — 5/5 pass (the existing `notifyScheduledCancellation` mock is a bare
+  `async () => {}`, unaffected by the new required field).
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+- `npx eslint` on all four changed/added files — clean.
+
+## Night Hawk (Legacy): BACKFILL-tier `gate_warnings` cited the governor-penalized `effectiveMeritScore` while every other "score" on the same play card cites the raw `scored.score` — contradictory numbers, unreconciled
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #TBD) |
+| **Found by** | Live-production audit, Ask Largo × Night Hawk Swings standing ownership mandate ("Add the complete Night Hawk product like everything.. 0dte, Swings, Legacy into your hourly items"), 2026-10-26 |
+| **Scope** | `src/features/nighthawk/lib/play-backfill.ts` (`selectBackfillPlays`, the only `gate_warnings`-producing call site across `play-backfill.ts`/`deterministic-edition.ts`/`edition-builder.ts` that embeds a numeric score at all) |
+
+### Root cause
+
+`effectiveMeritScore(scored)` (`edition-quality.ts:130`, `scored.score - (scored.govPenalty ?? 0)`)
+is the cross-edition sector-concentration-governor-adjusted score — used ONLY for ranking/
+selection order (`selectBackfillPlays`'s own pool sort, `countRankedClearingMerit`, etc.). Every
+other place a play's score reaches the member cites the RAW, un-penalized `scored.score`:
+
+- `play.score` itself (`mapClaudePlayToEdition`'s `pinnedScore`, from `claude-edition.ts:49`, which
+  reads `dossier?.scored?.score` — the raw field).
+- `nhTierInputFromScored` (`nighthawk-tiers.ts:215`) — feeds `tier.factors` prose, e.g. "Score 39
+  is under 40 — below the measured viability threshold."
+- `PlaybookBriefingPanel.tsx` — both the "Desk score" `BriefingScoreBar` section (line 112-117,
+  `score` prop) and the "Raw score" section (line 239-244, `Desk score {play.score}`) render
+  `play.score` (raw).
+- `play-explainer.ts:84` (`` `Score: ${play.score}` ``) — fed to the Largo/AI play-explainer LLM
+  prompt.
+
+`play-backfill.ts:296` was the lone exception: it built its `gate_warnings` entry as
+`` `Ranked-pool merit fill (#N by score ${Math.round(effectiveMeritScore(scored))}) — verify entry
+geometry before acting` `` — citing the penalized number, unlabeled as anything other than "score".
+
+**Live repro** (`GET /api/market/nighthawk/edition`, `edition_for=2026-10-26`): PLTR
+(`selection_tier: "BACKFILL"`, `gate_promoted: true`) carried `score: 39` and
+`tier.factors: [{detail: "Score 39 is under 40 — below the measured viability threshold."}]`, but
+`gate_warnings: ["Ranked-pool merit fill (#3 by score 24) — verify entry geometry before acting"]`.
+39 vs 24 is a real 15-point governor penalty (confirmed against the formula, not a rounding
+artifact) — nothing anywhere on the play card told the reader these are two different numbers
+measuring two different things.
+
+**Both are member-facing in the same panel**: `PlaybookBriefingPanel.tsx` renders "Desk score 39"
+in one `BriefingSection` and `play.gate_warnings` verbatim ("...by score 24...") in the adjacent
+"Gate caveats" section, so a member reading top-to-bottom sees two contradicting scores for the
+identical play with no reconciliation. The same raw score (39) also feeds the Largo/AI
+play-explainer prompt ("Score: 39"), so the LLM-generated narrative and the gate-caveat text could
+disagree too.
+
+Blast radius checked: `deterministic-edition.ts` and `edition-builder.ts`'s own `gate_warnings`
+sites (rescue-play hedge warnings, critic-rejection warning) were inspected and confirmed to embed
+no numeric score at all — the contradiction was isolated to this one call site.
+
+### Fix
+
+`play-backfill.ts:296` now always cites the raw `scored.score` first (matching every other
+"score" display for the same play, never disagreeing with it), and — only when the governor
+actually demoted the candidate (`govPenalty > 0`) — appends a separately-labeled "effective N
+after an M-pt sector-concentration penalty, used only for ranking order" clause. This preserves
+the genuinely useful governor-rank information (why this candidate, not a higher-raw-scored one,
+was chosen) without ever presenting it as a second, unreconciled "score". When there is no
+penalty, the note is just the bare raw score (identical to the pre-fix text in the common case,
+since `effectiveMeritScore === scored.score` when `govPenalty` is 0/undefined).
+
+Deliberately left unchanged: the ranking logic itself (`selectBackfillPlays`'s pool sort still
+sorts by `effectiveMeritScore`, respecting the governor exactly as before) — this is a display-only
+fix, not a ranking-behavior change.
+
+### Regression test
+
+Added 2 tests to `src/features/nighthawk/lib/play-backfill.test.ts`:
+- `selectBackfillPlays: gate_warnings cites the SAME raw score as play.score, never the bare
+  governor-penalized effectiveMeritScore unlabeled` — reproduces the exact live PLTR shape (raw 39,
+  govPenalty 15 → effective 24) and asserts the warning cites "score 39" (matching `play.score`),
+  never bare "by score 24", and explicitly labels the effective/ranking number with its
+  sector-concentration-penalty reason.
+- `selectBackfillPlays: gate_warnings shows only the bare raw score (no 'effective' clause) when
+  the governor never demoted the candidate` — the no-penalty case stays a plain "score N" note.
+
+### Verification
+
+- RED→GREEN proof: temporarily reverted the fix in `play-backfill.ts` (restored the bare
+  `effectiveMeritScore`-only warning text) with the new tests left in place —
+  `selectBackfillPlays: gate_warnings cites the SAME raw score...` failed with
+  `actual: 'Ranked-pool merit fill (#1 by score 24) — verify entry geometry before acting'`,
+  byte-for-byte matching the originating live-production repro. Restoring the fix turned it GREEN.
+- `node --experimental-test-module-mocks --test src/features/nighthawk/lib/play-backfill.test.ts`
+  (Node 20) — 35/35 pass (33 pre-existing + 2 new).
+- `node --experimental-test-module-mocks --test src/features/nighthawk/lib/*.test.ts` (Node 20) —
+  1545/1545 pass, 0 fail (full Night Hawk feature suite — no other consumer of `gate_warnings` or
+  `effectiveMeritScore` regressed).
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+
+## Membership self-heal + admin dashboard both missed the legacy `publicMetadata.tier` aliases "pro"/"elite" — raw literal comparison instead of `parseTier` normalization
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #TBD) |
+| **Found by** | Discovery-lane audit sweep, round 103, 2026-10-26 — Clerk `publicMetadata` read/write surface review outside owned lanes |
+| **Scope** | `src/lib/membership.ts` (`isPaidTierForReconcileDowngradeCheck`, consumed by `reconcileAllMemberships`'s downgrade-direction sweep, which `GET /api/cron/membership-reconcile` runs on a schedule); `src/lib/admin-user-access.ts` (`classifyAdminUserAccess`, consumed by `GET /api/admin/users`, `GET /api/admin/users/[id]`, and the client `UserManagement.tsx` admin dashboard) |
+
+### Root cause
+
+`src/lib/tiers.ts`'s `parseTier` has always coerced the legacy tier literals `"pro"` and
+`"elite"` to `"premium"` — its own doc-comment and `tiers.test.ts` both confirm these are real,
+intentionally-supported aliases, pre-dating the current `"premium"` literal, for
+`publicMetadata.tier`. Every member-facing desk gate goes through `parseTier`
+(`tier-cache.ts`'s `resolveUserTier` calls `parseTier(user.publicMetadata?.tier)` directly), so a
+Clerk user whose metadata still carries one of these legacy values has REAL premium desk access
+on the live site today.
+
+Two separate, non-owned-lane functions instead compared the raw metadata string literally,
+bypassing `parseTier`'s alias normalization entirely:
+
+1. **`isPaidTierForReconcileDowngradeCheck`** (`membership.ts`) — the predicate
+   `reconcileAllMemberships`'s step 2 uses to decide which currently-paid Clerk users get
+   re-checked against Whop and downgraded once their membership has actually lapsed. It did
+   `tier === "premium" || tier === "community"` on the raw string. A churned/refunded subscriber
+   whose Clerk metadata still says `"pro"` or `"elite"` (never rewritten to the literal
+   `"premium"` because nothing has touched their metadata since before that literal existed) was
+   **invisible to this sweep** — exactly the same failure shape as the already-documented bug
+   this same function fixed for the `"community"` tier (a dropped `membership.deactivated`
+   webhook leaves them paid forever, because this hourly/daily self-heal is the ONLY backstop and
+   it never looked at them). This is a real revenue-leak risk, not a cosmetic one: the very
+   purpose of `reconcileAllMemberships` is to catch exactly this class of drift, and this
+   predicate silently excluded one alias family from "exactly this class."
+
+2. **`classifyAdminUserAccess`** (`admin-user-access.ts`) — the admin-dashboard-only access
+   classifier, same root cause: `input.tier === "premium" ? "premium" : input.tier === "community"
+   ? "community" : "free"`. A legacy `"pro"`/`"elite"` member would show up on the admin Users
+   list/detail page bucketed as `"free"` with `deskAccess: false` ("Free signup — marketing site +
+   /upgrade only"), even though `resolveUserTier` grants them full premium desk access right now.
+   This misleads an operator checking a real paying member's access — the admin dashboard is the
+   one place a human would look to answer "does this person have premium," and it answered wrong
+   for this alias class. Three call sites share the fix: `GET /api/admin/users`,
+   `GET /api/admin/users/[id]`, and the client-side mirror in `UserManagement.tsx` (which imports
+   the same shared function, so no separate change was needed there).
+
+### Fix
+
+Normalized both functions through `parseTier` instead of a raw literal comparison:
+
+```ts
+// membership.ts
+export function isPaidTierForReconcileDowngradeCheck(tier: string): boolean {
+  const normalized = parseTier(tier);
+  return normalized === "premium" || normalized === "community";
+}
+```
+
+```ts
+// admin-user-access.ts
+const tier = parseTier(input.tier);
+```
+
+Deliberately minimal — reuses the exact normalization function every other consumer of
+`publicMetadata.tier` already trusts, rather than inventing a second alias list that could drift
+from `parseTier`'s own. As a side effect, once `reconcileAllMemberships` picks up a legacy
+`"pro"`/`"elite"` user, `syncWhopMembershipForEmail`'s write-back (`updateClerkMembershipMetadata`)
+always writes the normalized `Tier` literal (`"free"`/`"community"`/`"premium"`), so running the
+cron also permanently migrates that user's metadata off the legacy alias — no separate migration
+script needed.
+
+Left unchanged: `parseTier` itself (already correct), every other call site that already used
+`parseTier`/`resolveUserTier` (already correct), and the raw `String(meta.tier ?? "free")` display
+values in `src/app/api/admin/users/[id]/route.ts`'s JSON response (`tier`, audit-log `detail.tier`)
+— those surface the literal stored string for debugging/audit-trail purposes, which is a
+different, deliberate use case from the access-bucket classification this finding targets.
+
+### Regression tests
+
+- `src/lib/membership-reconcile-downgrade.test.ts`: new test asserting
+  `isPaidTierForReconcileDowngradeCheck("pro")` and `("elite")` both return `true`.
+- `src/lib/admin-user-access.test.ts`: new test asserting `classifyAdminUserAccess({ tier: "pro" })`
+  and `({ tier: "elite" })` both resolve to `accessLabel: "premium"`, `deskAccess: true`.
+
+### Verification
+
+- RED→GREEN: both new tests failed (`false !== true` / `'free' !== 'premium'`) against the
+  pre-fix code, confirmed via direct run before the fix was applied; both pass after.
+- `npx tsx --experimental-test-module-mocks --test src/lib/membership-reconcile-downgrade.test.ts
+  src/lib/admin-user-access.test.ts src/lib/membership-activating.test.ts
+  src/lib/membership-sync-limit.test.ts src/lib/membership-tiebreak.test.ts src/lib/tiers.test.ts`
+  (Node 20) — 37/37 pass.
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+- `npx eslint src/lib/membership.ts src/lib/admin-user-access.ts
+  src/lib/membership-reconcile-downgrade.test.ts src/lib/admin-user-access.test.ts` — clean.
+- Full `npm test` suite run (Node 20) before pushing.
+
+## `deleteUserDataForClerkId` (Clerk `user.deleted` GDPR cleanup): missing 4 tables of real per-user content, and the pre-existing optional-table delete could abandon the WHOLE deletion mid-transaction
+
+> **kind:** `FINDING`
+
+`deleteUserDataForClerkId` (`src/lib/db.ts`) is the GDPR cleanup both the Clerk `user.deleted`
+webhook (`src/app/api/webhooks/clerk/route.ts`) and the admin delete-user route
+(`src/app/api/admin/users/[id]/route.ts`) call to purge a departing member's data. Its own doc
+comment claims it "removes all rows keyed by clerk_user_id," but it only ever deleted from four
+tables (`users`, `largo_sessions`, `user_journal`, `push_subscriptions`). Four more tables store
+real per-user content keyed by the same Clerk user id and were never touched:
+
+- `bie_interactions` — `user_id` + the member's own Largo chat **question text** (unconditionally
+  migrated in `runMigrations()`, so it always exists). Only ever pruned by `db-cleanup-targets.ts`
+  on a **time-based retention window** — not on a GDPR deletion request, which must be immediate.
+- `welcome_sequence_state` — `user_id`, `email`, `first_name` (unconditionally migrated). Not even
+  in `db-cleanup-targets.ts`'s retention allowlist, so nothing ever deletes it, ever.
+- `helix_alert_rules` (`src/features/helix/lib/helix-alert-rules-db.ts`) — `user_id` + per-ticker
+  alert config, lazily created on first use.
+- `vector_alert_rules` (`src/features/vector/lib/vector-alert-rules-db.ts`) — same shape, lazily
+  created.
+
+**A second, independent bug in the existing code**, found while fixing the first: the original
+`push_subscriptions` delete used a bare `try { ... } catch { /* lazily created */ }` inside the
+surrounding `BEGIN`/`COMMIT` transaction. That does not actually contain the failure — once ANY
+statement in a Postgres transaction errors, the whole transaction is marked **ABORTED**, and every
+later statement on that same client (other than `ROLLBACK`) throws `current transaction is
+aborted, commands ignored until end of transaction block`, regardless of whether the JS-level
+error was caught. So on any environment where `push_subscriptions` had not yet been lazily
+created (a fresh DB, or — going forward — any new optional table), the very next statement
+(`DELETE FROM users...`) would throw, the outer `catch` would `ROLLBACK`, and the **entire**
+deletion would fail and re-throw to the webhook handler — not "skip one optional table," but "the
+member's `users` row never gets deleted either, and Clerk retries the webhook forever against the
+same failure." This was latent (in production the table has existed since the first ever push
+subscription), but adding `helix_alert_rules`/`vector_alert_rules` — both genuinely absent until a
+member first sets up an alert for that specific engine — would have reintroduced it immediately
+had the fix kept the same pattern.
+
+**Fix:** added `DELETE FROM bie_interactions`/`welcome_sequence_state` (plain deletes — both
+tables are unconditionally migrated, so they always exist) and a new exported
+`deleteFromOptionalTable(client, table, column, value)` helper that wraps a single optional-table
+delete in `SAVEPOINT` / `RELEASE SAVEPOINT` / `ROLLBACK TO SAVEPOINT` — the actual way to contain
+a single statement's failure without aborting the surrounding transaction. `push_subscriptions`,
+`helix_alert_rules`, and `vector_alert_rules` all now go through it. Table/column names are always
+internal literal strings (never user input) at every call site, same identifier-can't-be-
+parameterized precedent `db-cleanup-targets.ts`'s allowlist already documents.
+
+**Evidence (RED → GREEN):** `src/lib/db.test.ts` adds a minimal fake `PoolClient` that enforces
+the one real Postgres invariant this bug depends on (any statement failure aborts the transaction
+until `ROLLBACK`/`ROLLBACK TO SAVEPOINT`). One test reproduces the OLD bare-try/catch pattern and
+proves the next statement on the same client throws `current transaction is aborted` even though
+its own JS-level catch "succeeded." A second test proves `deleteFromOptionalTable` contains the
+same failure via `SAVEPOINT` and the next statement succeeds normally. A third, source-level test
+asserts `deleteUserDataForClerkId`'s body deletes all 5 tables and routes every lazily-created one
+through `deleteFromOptionalTable`, not a bare `try/catch`. `git stash` of only `src/lib/db.ts`
+(keeping the new test file) reproduces 3 real failures against the pre-fix source; restoring the
+fix brings the suite to 46/46 pass. `npx tsc --noEmit` and `npx eslint src/lib/db.ts
+src/lib/db.test.ts` both clean. Sibling tests that import `deleteUserDataForClerkId`
+(`src/app/api/webhooks/clerk/route.test.ts`) re-run clean — that file's own mock of the function
+is untyped (`mock.module`), so the widened return shape is backward compatible; both real callers
+only log the whole `deleted` object, never destructure individual fields.
+
+| **Status** | FIXED (PR #TBD) |
+
+## `counterThesisLine` never gates its 0DTE directional check on `is_condor` — same bug class as #4788, third call site — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Ask Largo — swing play-brief (`src/lib/swing/play-brief-narrative.ts`, `counterThesisLine`) |
+| **Status** | FIXED |
+| **Severity** | P2 (fabricates a directional counter-thesis reason from a delta-neutral structure — misleads the trader-facing "why the other side might win" read) |
+
+### Root cause
+
+`EcosystemZeroDteTake.is_condor` (`src/lib/bie/ecosystem-context.ts`) carries an explicit doc
+comment: a committed iron condor's `direction` column is **nominal provenance only** (the fade
+side of the pin it came from) — the structure itself is delta-neutral, so a directional-alignment
+claim built off it is meaningless. The comment names one consumer that must gate on it
+(`flowIntelSection`), but by the time this bug was found there were already two real gated call
+sites:
+
+- `flowIntelSection` (`play-brief-intel.ts:1539`) — `if (z.is_condor === true) { ... }`
+- `crossDeskCoaching` (`play-brief-narrative-coaching.ts:849-850`) — `zLong =
+  z?.direction === "long" && z?.is_condor !== true` (fixed under #4788, whose own comment records
+  it as a second call site the original fix missed)
+- `ticker-verdict.ts:37/89` — `if (z && z.is_condor !== true) { ... }` / `z.is_condor === true`
+
+`counterThesisLine` (`play-brief-narrative.ts`, lines ~1159-1163 before this fix) read the
+identical `z.direction` field for the identical "does 0DTE oppose the swing's own direction"
+comparison, with **no `is_condor` check at all**:
+
+```ts
+// before
+if (play.direction === "LONG" && z?.direction === "short") {
+  reasons.push(`0DTE short bias (score ${z.score ?? "—"})`);
+} else if (play.direction === "SHORT" && z?.direction === "long") {
+  reasons.push(`0DTE long bias (score ${z.score ?? "—"})`);
+}
+```
+
+So a committed iron condor's nominal fade-side `direction` could be pushed into the swing brief's
+"Counter-thesis" bullet list as if it were a genuine opposing directional read from the 0DTE desk
+— the exact misrepresentation the `is_condor` field exists to prevent, on a fourth call site the
+field's own doc comment did not anticipate when it was written.
+
+### Failure scenario
+
+1. Today's 0DTE take for a ticker is a committed iron condor whose nominal fade side is `"short"`
+   (`z.direction === "short"`, `z.is_condor === true`).
+2. A swing play on the same ticker is `LONG`.
+3. `counterThesisLine` pushes `"0DTE short bias (score N)"` into the counter-thesis reasons list,
+   and the rendered brief tells the trader the 0DTE desk is bearish — when in fact 0DTE holds a
+   delta-neutral condor with no directional view at all. The trader reads a fabricated opposing
+   signal into their risk assessment.
+
+### Evidence
+
+- Confirmed live by reading current `main` (`src/lib/swing/play-brief-narrative.ts` lines
+  1152-1163, `src/lib/bie/ecosystem-context.ts` lines 40-58) before writing any fix — the
+  `is_condor` field and its doc comment exist exactly as described, and `counterThesisLine` read
+  `z.direction` with no guard.
+- Added a regression test (`counterThesisLine: condor 0DTE take must not steelman a directional
+  counter-thesis reason`) and confirmed **RED on the pre-fix code**:
+  ```
+  + "**Counter-thesis (bear case)** — a single, uncorroborated signal — 0DTE short bias (score 78). ..."
+  - null
+  ```
+- Confirmed **GREEN** after the fix: `npx tsx --experimental-test-module-mocks --test
+  src/lib/swing/play-brief-narrative.test.ts` → 159/159 pass.
+
+### Fix
+
+Mirror `crossDeskCoaching`'s exact guard shape: compute `zCondorSafe = z?.is_condor !== true`
+once and require it alongside the existing direction comparison before pushing either 0DTE
+reason. No other reason in `counterThesisLine` (HELIX flow, Night Hawk, Vector bias, GEX walls)
+reads `is_condor` — only the 0DTE-direction comparison needed the guard, since it is the only
+reason in this function sourced from a type that can carry a delta-neutral structure.
+
+### Blast radius
+
+Single call site inside `counterThesisLine`. Full repo grep (`grep -rn is_condor src/lib/`)
+confirms the three already-gated call sites (`flowIntelSection`, `crossDeskCoaching`,
+`ticker-verdict.ts`) are unaffected and unchanged — this fix adds the missing fourth gate, it
+does not touch any of the others. `zerodteLiveForSession`/`EcosystemZeroDteTake` themselves are
+untouched (read-only consumers).
+
+### Tests
+
+`src/lib/swing/play-brief-narrative.test.ts`:
+- `counterThesisLine: condor 0DTE take must not steelman a directional counter-thesis reason
+  (same bug class as #4788)` — new, proves the fix (RED pre-fix, GREEN post-fix).
+
+`npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-narrative.test.ts`:
+159/159 pass. Broader regression sweep `npx tsx --experimental-test-module-mocks --test
+src/lib/swing/*.test.ts src/lib/bie/*.test.ts`: 2926/2926 pass. `npx tsc --noEmit` clean.
+
+## accessEndedEmail accepted `previousTier` but never read it — every full-cancellation email used community-shaped wording even for Premium members losing six more engines
+
+> **kind:** `FINDING`
+
+`AccessEndedContext` (`src/lib/email/templates/access-ended.ts`) has required a `previousTier:
+Tier` field since this template first shipped (#1901, 2026-08-07), and
+`billing-lifecycle-email.ts`'s `dispatchTransitionEmail()` has always correctly resolved and
+passed the real previous tier (`"premium"` or `"community"`) through to it whenever a membership
+fully cancels to `"free"`. But the template body never referenced `ctx.previousTier` anywhere —
+every full cancellation, regardless of which paid tier the member was actually leaving, rendered
+identical copy that only ever mentioned losing "the live reads, the GEX/flow feeds, the graded
+0DTE setups" (community/SPX-Slayer-shaped wording).
+
+**Real-world effect:** a Premium member who fully cancels (skipping the intermediate
+premium→community downgrade path) is told they're losing the 0DTE desk and nothing else — the
+email never mentions the other six engines (Thermal, HELIX, Night Hawk, Largo AI, Vector,
+Meridian) that member is also losing at the same moment. Same "email copy doesn't match the
+recipient's real tier/entitlements" bug class already fixed in `welcomePremiumEmail`'s
+previousTier-driven dual-opener and `downgradeEmail`'s explicit six-engine "what's gone dark"
+paragraph — this was the one sibling template in the same file family where the personalization
+field existed but was silently dead.
+
+**Fix:** branch the opening paragraph on `ctx.previousTier === "premium"` — the Premium path now
+explicitly names the other six engines lost alongside the 0DTE desk; the community path keeps the
+original, correctly-scoped wording unchanged (a community/SPX-Slayer member never had those six
+engines to lose, so naming them there would itself be false).
+
+**Evidence (RED → GREEN):** new test file
+`src/lib/email/templates/access-ended-previous-tier.test.ts`, 3 cases. Pre-fix (via `git stash` on
+just the source change): 2/3 fail — Premium cancellation copy doesn't name any of the six engines,
+and Premium vs. community output is byte-identical. Post-fix: 3/3 pass. Ran the full
+`src/lib/email/templates/*.test.ts` suite (17/17 pass, no cross-template drift) and
+`src/lib/billing-lifecycle-email.test.ts` (2/2 pass, the dispatch path that supplies
+`previousTier` is unaffected). `tsc --noEmit` and `eslint` clean on both touched files. Confirmed
+`accessEndedEmail`'s only real call site (`billing-lifecycle-email.ts:163`) already passes the
+correct, real `previousTier` — no caller-side change needed.
+
+| **Status** | FIXED (PR #TBD) |
+
 ## Night Hawk 0DTE: `exit-engine.ts` exit-narrative `detail` strings embedded the raw, unrounded live option mark (3+ decimals) instead of the product's standard 2dp premium formatting
 
 > **kind:** `FINDING`
