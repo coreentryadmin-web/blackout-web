@@ -262,6 +262,55 @@ export function readCodebaseScannedAt(): string {
   }
 }
 
+/**
+ * Per-provider rollup. `usedTotal`/`unusedTotal` must only count DOCUMENTED rows, matching the
+ * "{usedTotal}/{documentedTotal} used" label the UI renders — a row discovered only via a
+ * codebase scan (`documented: false`, always `usedInCode: true`) is real signal (surfaced
+ * separately via `codeOnlyPaths`), but folding it into `usedTotal` here let a provider with zero
+ * documented endpoints and one code-only call site render as "1/0 used", and inflated the
+ * top-level Coverage ring the same way (previously 213/265 = 80.4%, honestly 192/265 = 72.5%).
+ */
+export function aggregateProviderHealth(
+  rows: readonly RegistryEndpointRow[],
+  configuredFn: (id: string) => boolean
+): RegistryProviderHealth[] {
+  const providerMap = new Map<string, RegistryProviderHealth>();
+  for (const row of rows) {
+    const prev = providerMap.get(row.provider) ?? {
+      id: row.provider,
+      name: row.providerLabel,
+      configured: configuredFn(row.provider),
+      documentedTotal: 0,
+      usedTotal: 0,
+      unusedTotal: 0,
+      probeOk: 0,
+      probeFail: 0,
+      telemetryCalls: 0,
+      telemetryErrors: 0,
+    };
+    if (row.documented) {
+      prev.documentedTotal += 1;
+      if (row.usedInCode) prev.usedTotal += 1;
+      else prev.unusedTotal += 1;
+    }
+    if (row.probeStatus === "ok") prev.probeOk += 1;
+    if (row.probeStatus === "fail" || row.probeStatus === "blocked") prev.probeFail += 1;
+    providerMap.set(row.provider, prev);
+  }
+  return Array.from(providerMap.values());
+}
+
+/** Same documented-only gate as {@link aggregateProviderHealth}, for the top-level Coverage ring. */
+export function summarizeDocumentationCoverage(rows: readonly RegistryEndpointRow[]): {
+  documentedTotal: number;
+  usedInCode: number;
+} {
+  return {
+    documentedTotal: rows.filter((r) => r.documented).length,
+    usedInCode: rows.filter((r) => r.documented && r.usedInCode).length,
+  };
+}
+
 export function buildEndpointRegistry(windowMs = 5 * 60_000): EndpointRegistryPayload {
   const telemetry = getApiTelemetrySnapshot(windowMs);
   const codebase = loadCodebasePaths();
@@ -359,25 +408,8 @@ export function buildEndpointRegistry(windowMs = 5 * 60_000): EndpointRegistryPa
   });
 
   const providerMap = new Map<string, RegistryProviderHealth>();
-  for (const row of rows) {
-    const prev = providerMap.get(row.provider) ?? {
-      id: row.provider,
-      name: row.providerLabel,
-      configured: isProviderConfigured(row.provider),
-      documentedTotal: 0,
-      usedTotal: 0,
-      unusedTotal: 0,
-      probeOk: 0,
-      probeFail: 0,
-      telemetryCalls: 0,
-      telemetryErrors: 0,
-    };
-    if (row.documented) prev.documentedTotal += 1;
-    if (row.usedInCode) prev.usedTotal += 1;
-    else prev.unusedTotal += 1;
-    if (row.probeStatus === "ok") prev.probeOk += 1;
-    if (row.probeStatus === "fail" || row.probeStatus === "blocked") prev.probeFail += 1;
-    providerMap.set(row.provider, prev);
+  for (const health of aggregateProviderHealth(rows, isProviderConfigured)) {
+    providerMap.set(health.id, health);
   }
 
   for (const [id, tel] of Object.entries(telemetry.by_provider)) {
@@ -388,8 +420,7 @@ export function buildEndpointRegistry(windowMs = 5 * 60_000): EndpointRegistryPa
     }
   }
 
-  const documentedTotal = rows.filter((r) => r.documented).length;
-  const usedInCode = rows.filter((r) => r.usedInCode).length;
+  const { documentedTotal, usedInCode } = summarizeDocumentationCoverage(rows);
 
   return {
     generated_at: new Date().toISOString(),
