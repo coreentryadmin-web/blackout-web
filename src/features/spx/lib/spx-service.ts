@@ -17,7 +17,11 @@ import { refreshOrBreakMemory } from "@/features/spx/lib/playbook-break-memory-s
 import { maybeLogPlaybookShadowMatch } from "@/features/spx/lib/playbook-shadow-log";
 import { isPremarketPlanningWindow, isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import { loadOpenPlay } from "@/features/spx/lib/spx-play-store";
-import { degradedPlayPayload, currentSessionPhase } from "@/features/spx/lib/spx-play-payload";
+import {
+  degradedPlayPayload,
+  degradedPlayCatchingUpMessage,
+  currentSessionPhase,
+} from "@/features/spx/lib/spx-play-payload";
 import { playMemberReadCacheSec, playMemberPeekMaxAgeSec } from "@/features/spx/lib/spx-play-config";
 import {
   isSpxPlaySnapshotFreshEnough,
@@ -352,10 +356,28 @@ export async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<Return
  * is already proven fast/non-blocking even when the expensive play-eval path times out or loses
  * its cross-replica lock (see `docs/audit/MARKET-OPEN-VALIDATION.md` #398), so peek it here and
  * derive the real phase via the same `currentSessionPhase()` every non-degraded path already uses.
+ *
+ * BUG FIX (2026-10-26, Ask Largo/5-engine standing mandate, live repro during RTH): the fix above
+ * only ever touched `session_phase` here. This function still fell straight through to
+ * `degradedPlayPayload()`'s bare `headline`/`idle_message` default ("Desk warming — play state
+ * unavailable") — the exact same false "the DESK is cold" claim the 2026-10-16 fix removed from
+ * route.ts's catch block, just never carried over to this sibling call site. Confirmed live
+ * 2026-10-26T13:37:52Z: `GET /api/market/spx/play` returned that literal headline with
+ * `session_phase:"cash"` (the field above DID get corrected) while a parallel `GET
+ * /api/market/spx/desk` call showed the real desk fully live (`market_open:true`, a ~45s-old
+ * poll). This path is reached on every ORDINARY lock-loss-with-no-stale/peer-snapshot outcome —
+ * the file's own top-of-function comment calls it routine, not rare — so, same as route.ts's
+ * ServerCacheTimeoutError branch, the honest "pipeline didn't finish in time" message always
+ * applies here, not only when the desk peek happens to succeed. `degradedPlayCatchingUpMessage()`
+ * is the SAME shared helper route.ts's catch block now also pulls from, so the two call sites
+ * cannot independently drift again.
  */
 async function spxPlayReadDegraded(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {
   const peeked = await peekMergedSpxDesk().catch(() => null);
-  const extras = peeked ? { session_phase: currentSessionPhase(peeked.merged) } : undefined;
+  const extras = {
+    ...degradedPlayCatchingUpMessage(),
+    ...(peeked ? { session_phase: currentSessionPhase(peeked.merged) } : {}),
+  };
   return degradedPlayPayload(extras) as Awaited<ReturnType<typeof evaluateSpxPlayState>>;
 }
 
