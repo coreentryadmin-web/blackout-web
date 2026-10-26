@@ -54,7 +54,21 @@ export function roundFloats<T>(value: T, dp = 2, keyDp?: RoundFloatsKeyDp): T {
       if (!Number.isFinite(v) || Number.isInteger(v)) return v;
       const override = overrides && key != null ? overrides.get(key) : undefined;
       const f = override === undefined ? factor : 10 ** override;
-      return Math.round(v * f) / f;
+      // Round by MAGNITUDE, then reapply sign (fixed 2026-10-26) — plain `Math.round(v*f)/f` ties
+      // toward +Infinity (`Math.round(-13.5) === -13` vs `Math.round(13.5) === 14`), so a negative
+      // value sitting exactly on a display-precision tie rounds to a SMALLER magnitude than the
+      // identical positive value — the same sign-biased asymmetry `fmt-money.ts`'s `fmtPct` carried
+      // (its header has the full live repro). `Number.isInteger(v)` above already short-circuited
+      // v===0, so only a genuine fraction reaches here. At a REAL tie the magnitude rounds UP (away
+      // from zero, never to exactly 0 — Math.round(0.5) is 1, not 0), so this can never newly
+      // produce a `-0` this function didn't already produce before the fix: a negative fraction
+      // whose magnitude is simply < 0.5 at this precision (e.g. -0.003 at dp=2, not a tie at all)
+      // rounded to `-0` under the OLD `Math.round(v*f)/f` too (JS: `Math.round` of any value in
+      // (-0.5, 0) returns `-0`), and still does here (`Math.sign(v) * Math.round(small) === -1 * 0
+      // === -0`, IEEE-754 sign-of-product) — unchanged, pre-existing behavior, harmless on the wire
+      // (`JSON.stringify(-0) === "0"`) and intentionally left as-is rather than papered over, so
+      // this fix touches ONLY the tie-breaking direction, nothing else about near-zero rounding.
+      return (Math.sign(v) * Math.round(Math.abs(v) * f)) / f;
     }
     if (Array.isArray(v)) return v.map((el) => walk(el, key));
     // A `Date` has no own enumerable properties (its value lives in an internal slot, read

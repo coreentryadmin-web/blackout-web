@@ -109,11 +109,30 @@ export function fmtPriceLevel(n: number | null | undefined): string {
  * Sign is read off the ROUNDED value, not the raw one (mirrors `rail-levels.ts`'s own
  * `formatDistance`): a raw value that rounds to exactly 0 at the requested precision (e.g. 0.04 at
  * 1dp) must read "0.0%", never the misleading "+0.0%" a raw-value sign check would produce.
+ *
+ * ROUNDS BY MAGNITUDE, THEN REAPPLIES SIGN (fixed 2026-10-26) — plain `Math.round(n*factor)/factor`
+ * ties toward +Infinity (`Math.round(-13.5) === -13`, `Math.round(13.5) === 14`), which is a
+ * direction-biased asymmetry: a NEGATIVE value sitting exactly on a display-precision tie rounds to
+ * a SMALLER magnitude than the IDENTICAL positive magnitude would. Live repro: an Exec P&L line
+ * computed as entry $14.80 / bid $14.60 → raw -1.35% → old `fmtPct(-1.35, 1)` rendered "-1.3%"
+ * while `fmtPct(+1.35, 1)` rendered "+1.4%" for the same magnitude — a losing position's percentage
+ * silently read as smaller (looked less bad) than the mirror-image winning one. Rounding
+ * `Math.abs(n)` then reapplying `Math.sign(n)` makes both signs tie the same direction (away from
+ * zero), matching how humans round signed percentages and how `roundFloats()` now rounds (this
+ * module's own `.toFixed(2)` round-trip docs above describe the companion half-cent-boundary bug —
+ * this is the companion SIGN bug at the same tie boundaries).
  */
 export function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
   const factor = 10 ** digits;
-  const rounded = Math.round(n * factor) / factor;
+  // Math.sign(0) is 0, so n===0 harmlessly produces 0 below — verified, not assumed (see the
+  // symmetric-pair tests). A negative n whose MAGNITUDE rounds to exactly 0 at this precision
+  // (e.g. -0.03 at 1dp, not a tie — only a real tie like -0.05 reaches the ±0.5-away-from-zero
+  // branch this fix changes) can leave `rounded` as a `-0` (Math.sign(-0.03) is -1, times a
+  // Math.round() of 0, is -0 by IEEE-754 sign-of-product) — checked for a display artifact and
+  // there isn't one: `(-0).toFixed(1)` is `"0.0"`, no stray minus, and `rounded > 0` is `false`
+  // for both `-0` and `0`, so the `sign` branch below can't double up either. Nothing to guard.
+  const rounded = (Math.sign(n) * Math.round(Math.abs(n) * factor)) / factor;
   const sign = rounded > 0 ? "+" : "";
   return `${sign}${rounded.toFixed(digits)}%`;
 }
