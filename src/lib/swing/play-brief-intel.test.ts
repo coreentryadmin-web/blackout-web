@@ -893,6 +893,55 @@ test("whyThisSetupSection: still reports pillar/signal content when present", ()
   assert.match(section.body, /Momentum/);
 });
 
+// Ask Largo standing mandate, 2026-10-26 (#4076 comment 6410025245): evaluateSwingCommitBudget
+// already computes real per-dimension loss-at-risk numbers at commit, but only a thin
+// blocked/blockedDimensions summary ever reached entry_context — this position's own sizing
+// relative to the engine's book-heat caps was computed and then discarded.
+test("whyThisSetupSection: cites the book-risk line when a real, armed budgetVerdict is present", () => {
+  const play = fixturePlay({
+    status: "OPEN",
+    budgetVerdict: {
+      blocked: false,
+      blockedDimensions: [],
+      enforce: true,
+      candidateRiskUsd: 500,
+      perPositionConstrained: true,
+      perPositionLimitUsd: 2000,
+      portfolioConstrained: true,
+      portfolioLimitUsd: 6000,
+      portfolioObservedUsd: 1500,
+    },
+  });
+  const section = whyThisSetupSection(play);
+  assert.match(section.body, /25% of the per-position reference cap/);
+  assert.match(section.body, /25% of the total-book reference cap/);
+  assert.match(section.body, /not your own account size/);
+});
+
+test("whyThisSetupSection: omits the book-risk line when budgetVerdict is absent (WATCH candidate, pre-wire-in row)", () => {
+  const section = whyThisSetupSection(fixturePlay({ status: "OPEN" }));
+  assert.doesNotMatch(section.body, /book-heat discipline/);
+});
+
+test("whyThisSetupSection: omits the book-risk line when the budget was advisory-only (enforce:false)", () => {
+  const play = fixturePlay({
+    status: "OPEN",
+    budgetVerdict: {
+      blocked: false,
+      blockedDimensions: [],
+      enforce: false,
+      candidateRiskUsd: 500,
+      perPositionConstrained: false,
+      perPositionLimitUsd: null,
+      portfolioConstrained: false,
+      portfolioLimitUsd: null,
+      portfolioObservedUsd: null,
+    },
+  });
+  const section = whyThisSetupSection(play);
+  assert.doesNotMatch(section.body, /book-heat discipline/);
+});
+
 // PR #4076 comment 6107462205 (Ask Largo standing mandate, 2026-10-11): "Why this setup" read as a
 // flat key:value dump next to "Trade manager read"'s narrated voice. Fix (additive only — see
 // synthesizedSetupLede's own doc comment): a synthesized opening sentence for the simple, common

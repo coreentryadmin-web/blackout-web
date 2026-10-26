@@ -129,6 +129,43 @@ test("horizon adapter: scoreWithheld threads through from HorizonDeckSource to T
   assert.equal(real.scoreWithheld, undefined, "a genuinely-scored 0 must not be flagged withheld");
 });
 
+// Ask Largo standing mandate, 2026-10-26 (#4076 comment 6410025245): entry_context.budget_verdict
+// (swing commit.ts's budgetVerdictStamp) threads through terminalPlayFromHorizon the same way
+// entry_context.cortex already does — parsed structurally via parseBudgetVerdictStamp, never
+// trusted raw, honestly null/undefined when absent.
+test("horizon adapter: budgetVerdict threads through from HorizonDeckSource to TerminalPlay, parsed structurally", () => {
+  const raw = {
+    blocked: false,
+    blockedDimensions: [],
+    enforce: true,
+    candidateRiskUsd: 500,
+    perPositionConstrained: true,
+    perPositionLimitUsd: 2000,
+    portfolioConstrained: true,
+    portfolioLimitUsd: 6000,
+    portfolioObservedUsd: 1500,
+  };
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 70, status: "OPEN",
+    contract: { strike: 140, right: "C", expiry: "2026-11-06", dte: 14, mid: 5.5 },
+    budgetVerdict: raw,
+  });
+  assert.deepEqual(play.budgetVerdict, raw);
+
+  const noVerdict = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 70, status: "WATCH",
+    contract: { strike: 140, right: "C", expiry: "2026-11-06", dte: 14, mid: 5.5 },
+  });
+  assert.equal(noVerdict.budgetVerdict, null, "a WATCH candidate has no commit-time budget read — honest absence");
+
+  const malformed = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 70, status: "OPEN",
+    contract: { strike: 140, right: "C", expiry: "2026-11-06", dte: 14, mid: 5.5 },
+    budgetVerdict: { garbage: true },
+  });
+  assert.equal(malformed.budgetVerdict, null, "a malformed/foreign blob must never be trusted raw");
+});
+
 // Live repro (GET /api/market/swing/record, 2026-10-16): AMZN positionId 48 (rootPositionId 44)
 // and AAPL positionId 40 (rootPositionId 37) — both ROLLED chains — served a fabricated literal
 // `"score": 0` on the CLOSED tab because closed-plays.ts's closedDeckSourceFromRow never flagged

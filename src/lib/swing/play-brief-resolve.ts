@@ -60,6 +60,7 @@ export function horizonRowToDeckSource(
   positionId?: number | null,
   cortex?: unknown,
   occ?: string | null,
+  budgetVerdict?: unknown,
 ): HorizonDeckSource {
   return {
     ticker: p.ticker,
@@ -129,6 +130,10 @@ export function horizonRowToDeckSource(
     // row.entry_context?.cortex for an open position; a WATCH/lane-only candidate has no row
     // yet, so this stays undefined there (honest absence, never fabricated).
     cortex,
+    // Same shape as cortex above — the budget gate only runs at commit, so this stays undefined
+    // for a WATCH/lane-only candidate (Ask Largo standing mandate, 2026-10-26, #4076 comment
+    // 6410025245).
+    budgetVerdict,
   };
 }
 
@@ -296,7 +301,13 @@ async function loadOpenBangerTerminalPlay(
   const horizonPlay = horizonPlayFromBangerPosition(row);
   if (!horizonPlay) return null;
   return terminalPlayFromHorizon(
-    horizonRowToDeckSource(horizonPlay, row.id, row.entry_context?.cortex ?? null, row.contract_occ),
+    horizonRowToDeckSource(
+      horizonPlay,
+      row.id,
+      row.entry_context?.cortex ?? null,
+      row.contract_occ,
+      row.entry_context?.budget_verdict ?? null,
+    ),
   );
 }
 
@@ -363,6 +374,7 @@ export async function loadOpenTerminalPlay(
       row.id,
       row.entry_context?.cortex ?? null,
       occSymbolFromSwingRow(row),
+      row.entry_context?.budget_verdict ?? null,
     ),
   );
   const ivRank = resolveBriefIvRank({ dossierIvRank: dossier?.ivRank, featureVector: row.feature_vector });

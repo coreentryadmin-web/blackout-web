@@ -14,6 +14,7 @@ import type { WhyNow } from "@/lib/zerodte/why-now";
 import type { ThesisHealthPayload } from "@/lib/zerodte/thesis-health";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
 import type { PaneCortexView } from "@/lib/zerodte/pane";
+import type { SwingBudgetVerdictStamp } from "@/lib/swing/swing-portfolio-budget";
 
 export type DeckDirection = "LONG" | "SHORT";
 export type DeckStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED" | "WATCH" | "SKIP";
@@ -234,6 +235,16 @@ export interface TerminalPlay {
    *  pre-wire-in row, a WATCH/lane-only candidate that hasn't committed yet, or any non-SWING
    *  horizon — never fabricated. Largo product-contract absence principle: omitted, not guessed. */
   cortex?: PaneCortexView | null;
+
+  /** SWING only: the book-heat budget verdict pinned at commit (`entry_context.budget_verdict`,
+   *  `swing-portfolio-budget.ts`'s `budgetVerdictStamp`), parsed structurally via
+   *  `parseBudgetVerdictStamp` — never trusts the raw JSONB blob. Present ONLY on a SWING row that
+   *  actually cleared the armed budget gate at commit; absent/null on a pre-wire-in row, a
+   *  WATCH/lane-only candidate that hasn't committed yet, an advisory-only (`enforce:false`) read,
+   *  or any non-SWING horizon — never fabricated. Render via `bookRiskLine()`, which already
+   *  frames this as the engine's own reference-book discipline, never the member's personal
+   *  account risk (Ask Largo standing mandate, 2026-10-26, #4076 comment 6410025245). */
+  budgetVerdict?: SwingBudgetVerdictStamp | null;
 
   /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal (benchmark
    *  ETF/label, the name's and the group's own %-returns, and the delta) — echoed off the live/

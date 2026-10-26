@@ -84,6 +84,10 @@ export type SwingClosedDeckSource = {
   /** Raw entry_context.cortex JSONB — parsed structurally by the adapter (readCortexView),
    *  never trusted here. Carries the Cortex evidence pinned at commit, when one exists. */
   cortex?: unknown;
+  /** Raw entry_context.budget_verdict JSONB (swing commit.ts's `budgetVerdictStamp`) — parsed
+   *  structurally by the adapter (`parseBudgetVerdictStamp`/`bookRiskLine`), never trusted here.
+   *  Ask Largo standing mandate, 2026-10-26, #4076 comment 6410025245. */
+  budgetVerdict?: unknown;
   /** Whether a real scale-out trim was ENFORCED on this leg at any point before it closed —
    *  persisted into `scale_out_grade` at grade time (db.ts's `gradeSwingPosition`) from the row's
    *  own pre-update `status`, since a closed row's `status` is always CLOSED/ROLLED and can never
@@ -256,6 +260,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     exitPnlPct: exitPnl,
     closedReason: closedReasonFromRow(row),
     cortex: row.entry_context?.cortex ?? null,
+    budgetVerdict: row.entry_context?.budget_verdict ?? null,
     entryTriggerUnderlyingPx: fin(row.entry_underlying_px),
     invalidationUnderlyingPx: fin(row.thesis_invalidation_px),
     trimEnforcedBeforeClose: trimEnforcedBeforeCloseFromScaleOutGrade(row.scale_out_grade),
