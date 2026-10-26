@@ -556,15 +556,83 @@ function flowNarrative(ctx: SwingPlayBriefContext, play: TerminalPlay): string |
   else if (alignedShort) tape += " Put flow **aligns** with the short thesis.";
   else if (conflict) tape += " Flow **conflicts** with swing direction — size down until tape agrees.";
 
-  const anomaly = ctx.ecosystem?.recent_anomalies?.[0];
-  if (anomaly) {
-    // Time-label this — recent_anomalies is a last-24h feed while the tape above is a 6h read,
-    // so an anomaly can point the opposite direction from the tape's own bias without either
-    // read being wrong. Undated, the two sentences read as a flat contradiction (see
-    // relativeAgeLabel's own doc comment, live CRWD repro 2026-09-16).
-    const ageLabel = relativeAgeLabel(anomaly.detected_at);
-    const agePart = ageLabel ? ` (${ageLabel})` : "";
-    tape += ` Earlier anomaly${agePart}: **${anomaly.anomaly_type}** — ${anomaly.detail}.`;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-26): this bullet is the ONLY flow content that
+  // survives `collapseRedundantIntelSections` for OPEN/WATCH buckets —
+  // `play-brief-intel-collapse.ts`'s `NARRATIVE_COVERED_TITLES` includes "Flow & positioning", so
+  // the full `flowIntelSection` (play-brief-intel.ts) with its "Flow anomalies" (up to 4) and
+  // "Notable prints" (up to 5, itemized strike/right/premium/age) lists is dropped entirely for
+  // those buckets, replaced by a note claiming the detail "folded into Trade manager read above."
+  // That claim was false for almost everything: this function previously read only
+  // `recent_anomalies?.[0]` (silently dropping anomalies 2-4) and never read
+  // `flow_full_state.recent` (notable prints) at all — live-confirmed on 7 real OPEN positions
+  // (PANW/CRML/FLY/OUST/RDW/ASTS/FTNT), each collapsing to "aggregate + at most 1 anomaly, zero
+  // notable prints" vs the full section's real itemized lists under `expandIntel=1`.
+  //
+  // Same bug class and same fix shape as `dealerPostureLine`'s VEX/DEX/CHARM parity fix above
+  // (FINDINGS.md "VEX/DEX/CHARM content silently dropped for OPEN/WATCH swing briefs") — thread
+  // the previously-dropped fields into THIS bullet so the collapse note's claim becomes true
+  // instead of carving a special case into `collapseRedundantIntelSections`. Formatting is
+  // deliberately copied from `flowIntelSection` field-for-field (same (anomaly_type, detail)
+  // dedup, same `relativeAgeLabel`/`fmtPremium`/strike-rounding helpers, same ordering/caption)
+  // so the two can never drift into reporting different facts off the identical underlying data.
+  //
+  // No separate `flow_feed_fresh`/`helixFresh` gate is needed here (unlike flowIntelSection's own
+  // explicit check): `flow` above is already `trustedHelixFlow(ctx.ecosystem)`, which returns null
+  // whenever `flow_feed_fresh === false` — so reaching this point already proves the feed is
+  // fresh, by the same early return the HELIX tape line above depends on.
+  const rawAnomalies = ctx.ecosystem?.recent_anomalies ?? [];
+  if (rawAnomalies.length) {
+    // recent_anomalies is a last-24h feed while the tape above is a 6h read, so an anomaly can
+    // point the opposite direction from the tape's own bias without either read being wrong —
+    // each line below carries its own age label rather than relying on one shared sentence.
+    //
+    // Dedup on (anomaly_type, detail), identical to flowIntelSection: the market-regime-detector
+    // cron only dedups within a 15-minute window at write time, so a pattern persisting across
+    // two 30-min cron cycles writes a second, byte-identical row with only a newer detected_at.
+    // recent_anomalies is already ORDER BY detected_at DESC, so the first occurrence kept here is
+    // the most recent one.
+    const seen = new Set<string>();
+    const deduped = rawAnomalies.filter((a) => {
+      const key = `${a.anomaly_type} ${a.detail}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const anomalyLines = deduped
+      .slice(0, 4)
+      .map((a) => {
+        const ageLabel = relativeAgeLabel(a.detected_at);
+        const dirPart = a.direction ? ` (${a.direction})` : "";
+        const agePart = ageLabel ? ` [${ageLabel}]` : "";
+        return `• **${a.anomaly_type}** — ${a.detail}${dirPart}${agePart}`;
+      })
+      .join("\n");
+    tape += `\n\n**Flow anomalies:**\n${anomalyLines}`;
+  }
+
+  // Top notable prints (biggest premium first, matching flow_full_state.recent's own default
+  // order and flowIntelSection's "(48h, largest premium first)" caption — see that section's own
+  // header comment for why this is NOT the same 6h window as the HELIX tape line above, and why
+  // mislabeling it "recent" would be a precision/freshness contract violation). Capped at 3 here
+  // (vs flowIntelSection's 5) — this is a narrative bullet, not the full itemized section.
+  const recentPrints = ctx.ecosystem?.flow_full_state?.recent ?? [];
+  if (recentPrints.length) {
+    const printLines = recentPrints
+      .slice(0, 3)
+      .map((p) => {
+        const prem = p.premium != null ? fmtPremium(p.premium) : "—";
+        const gexBit = p.gex_proximity ? ` @ ${p.gex_proximity.replace(/_/g, " ")}` : "";
+        const ageLabel = relativeAgeLabel(p.alerted_at || p.event_at || null);
+        const agePart = ageLabel ? ` [${ageLabel}]` : "";
+        // Same C9 precision fix as flowIntelSection: strike is a Postgres NUMERIC round-tripped
+        // through Number(), which can carry more than 2 decimal digits — round at this
+        // presentation boundary like every sibling level in the brief, rather than rendering raw.
+        const strikeLabel =
+          typeof p.strike === "number" && Number.isFinite(p.strike) ? fmtPriceLevel(p.strike) : "—";
+        return `• ${p.option_type ?? "—"} ${strikeLabel} ${prem}${gexBit}${agePart}`;
+      })
+      .join("\n");
+    tape += `\n\n**Notable prints (48h, largest premium first):**\n${printLines}`;
   }
 
   return tape;
