@@ -507,7 +507,19 @@ export function refreshCarriedLegacyPlay(
 
   const reason =
     play.reason && staleDte
-      ? play.reason.replace(/\b\d+DTE\b/g, `${dte}DTE`)
+      ? play.reason
+          .replace(/\b\d+DTE\b/g, `${dte}DTE`)
+          // BUG FIX (2026-10-26, Ask Largo standing mandate — live MSTR/PLTR/MDB repro): the
+          // staleDte branch above already nulls contract.delta (and gamma/theta/vega/iv) for
+          // exactly this reason — "serving confidently-formatted greeks with zero staleness
+          // indication... is the exact inconsistency this comment already argues against" — but
+          // this regex only ever rewrote the DTE count. The human-readable `reason` string a
+          // member/Largo actually reads still baked in the ORIGINAL, now-stale delta figure
+          // ("Δ0.62") as plain fact, a visible self-contradiction sitting right next to
+          // contract.delta:null in the same payload. Blank it to the same "—" fallback
+          // contract-ranker.ts already uses when delta genuinely isn't known at generation time,
+          // rather than leaving a number nothing currently backs.
+          .replace(/Δ-?\d+(?:\.\d+)?/g, "Δ—")
       : play.reason;
 
   return { ...play, contract: mergedContract, reason };
