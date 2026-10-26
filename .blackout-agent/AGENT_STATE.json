@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T16:18:23.945Z",
+  "updated_at": "2026-10-26T18:14:00.632Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "8fbc1a5e936391fd9b2cd79978f246809eb9a9fc",
+    "last_main_sha": "fc311b0b04514837740d6383372a4da96567ad38",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-20T20:07:43.345Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-20T20:07:47.549Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-20T20:51:35.426Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
     {
       "at": "2026-10-20T20:51:44.310Z",
       "type": "context_sync",
@@ -1271,58 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 9
+    },
+    {
+      "at": "2026-10-26T18:13:46.240Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-26T18:13:52.716Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-26T18:14:00.632Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 6871,
-      "title": "fix: use next/link for the internal /upgrade CTA on /account",
-      "branch": "fix/account-upgrade-link-next-link",
+      "number": 6887,
+      "title": "fix(swing): G-S14 genuine Cortex veto block drops the already-known source name",
+      "branch": "fix/swing-g-s14-genuine-veto-source-name",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T16:15:55Z"
+      "updated_at": "2026-10-26T18:07:58Z"
     },
     {
-      "number": 6870,
-      "title": "fix: force a fresh request on bfcache-restored authenticated pages",
-      "branch": "fix/bfcache-stale-auth-page-restore",
+      "number": 6886,
+      "title": "fix(membership): recognize legacy pro/elite tier aliases via parseTier",
+      "branch": "fix/membership-reconcile-legacy-tier-alias",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T16:12:03Z"
-    },
-    {
-      "number": 6869,
-      "title": "fix(swing): surface GEX evidence/absence disclosure when gamma_posture is unresolved",
-      "branch": "fix/largo-gex-absence-gamma-posture",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T16:11:34Z"
-    },
-    {
-      "number": 6868,
-      "title": "fix: set a dedicated tab title when the route error boundary renders",
-      "branch": "fix/error-boundary-stale-document-title",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T16:06:58Z"
-    },
-    {
-      "number": 6867,
-      "title": "docs(findings): fold 24 staged findings into FINDINGS.md (batch-119)",
-      "branch": "docs/findings-fold-batch-119",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "completed/success",
-      "updated_at": "2026-10-26T16:04:54Z"
+      "updated_at": "2026-10-26T18:05:43Z"
     },
     {
       "number": 5547,
