@@ -309,6 +309,82 @@ describe("computeSwingThesisHealth", () => {
     assert.equal(theta!.commitLabel, theta!.currentLabel);
   });
 
+  // BUG FIX (2026-10-26, Ask Largo x Night Hawk Swings standing mandate): regimeScore() used to
+  // take `factors?.[0]` — the HIGHEST-POINT factor in the array (contributionsToFactors in
+  // swing-pillars.ts sorts descending before this ever sees it) — and treat it as if it were the
+  // "Regime" pillar's own read whenever `regime` itself was null. Live repro: a position with
+  // `regime: null` and a real `{label:"Regime", points:10.4}` entry present in `factors[]` (never
+  // actually consulted) instead produced a fabricated-looking calibrated "Regime fit" read sourced
+  // from whichever OTHER pillar happened to score highest (e.g. "Structure") — a green, partially-
+  // filled bar showing the wrong pillar's label under the "Regime fit" heading.
+  describe("regimeScore() consults the factor actually labeled \"Regime\", never factors[0] by array position", () => {
+    test("regime:null, a real \"Regime\" factor exists but is NOT the highest-point entry — must use it, not the higher-scoring pillar's label", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        signalKinds: ["FLOW"],
+        regime: null,
+        factors: [
+          { label: "Structure", points: 20.5 },
+          { label: "Regime", points: 10.4 },
+        ],
+        dte: 9,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      const regimePillar = h!.pillars.find((p) => p.id === "market");
+      assert.ok(regimePillar);
+      assert.notEqual(
+        regimePillar!.currentLabel,
+        "Structure",
+        "must never borrow a different pillar's label just because it scored higher",
+      );
+      assert.equal(
+        regimePillar!.currentLabel,
+        "Regime",
+        "the real factor actually labeled \"Regime\" must be consulted even though it isn't factors[0]",
+      );
+    });
+
+    test("regime:null, factors[] present but NONE labeled \"Regime\" — must fall through to the honest uncalibrated \"unread\" state", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        signalKinds: ["FLOW"],
+        regime: null,
+        factors: [
+          { label: "Structure", points: 25.5 },
+          { label: "Flow", points: 15.2 },
+        ],
+        dte: 9,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      const regimePillar = h!.pillars.find((p) => p.id === "market");
+      assert.ok(regimePillar);
+      assert.notEqual(
+        regimePillar!.currentLabel,
+        "Structure",
+        "must never substitute the top-scoring pillar's label when no real \"Regime\" factor exists",
+      );
+      assert.equal(
+        regimePillar!.currentLabel,
+        "unread",
+        "with no real \"Regime\" factor present, the honest uncalibrated default must render instead",
+      );
+      assert.ok(
+        thesisHealthUncalibrated(h),
+        "an \"unread\" regime pillar must trip the aggregate-withhold guard",
+      );
+    });
+  });
+
   describe("Banger-origin ledger rows must not render a fabricated-precision pillar breakdown (found 2026-09-15)", () => {
     // Mirrors exactly what horizonPlayFromBangerPosition (banger-lane-merge.ts) stamps on EVERY
     // banger_positions row: setupState/entryStatus/regime are fixed constants, signalKinds is

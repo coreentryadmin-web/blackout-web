@@ -18,6 +18,7 @@ import { SWING_SUBLANE_MANAGE } from "./manage";
 import type { SwingSubLane } from "./taxonomy";
 import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 import { mfeCaptureOutcome } from "./mfe-capture";
+import { SWING_PILLAR_LABELS } from "./swing-pillars";
 
 export type SwingThesisPillarId =
   | "persistence"
@@ -255,8 +256,24 @@ function signalScore(kinds: string[] | null | undefined): { commit: number; curr
   return { commit: score, current: score, label };
 }
 
+// BUG FIX (2026-10-26, Ask Largo x Night Hawk Swings standing mandate): `factors` arrives sorted
+// by POINTS DESCENDING (`contributionsToFactors` in swing-pillars.ts sorts
+// `.sort((a, b) => b.points - a.points)` before this ever sees it), so `factors?.[0]` is whichever
+// pillar happened to score highest for THIS position — e.g. "Structure" or "Flow" — not
+// necessarily the one actually labeled "Regime". When `regime` is null, the old code took that
+// top-scoring factor's label/points and rendered them under the "Regime fit" heading regardless of
+// which pillar they belonged to. Live repro: a position with `regime: null` and a real
+// `{label:"Regime", points:10.4}` entry present in `factors[]` (which this function never even
+// looked at) instead produced a green, 65%-filled "Regime fit" bar reading `currentLabel:
+// "Structure"` — a different pillar's identity fabricated as a calibrated regime read. Fixed by
+// finding the factor ACTUALLY labeled "Regime" (`SWING_PILLAR_LABELS.REGIME`, the same constant
+// `swing-pillars.ts` stamps on it, imported rather than a second hardcoded "Regime" literal that
+// could drift from it) instead of trusting array position. If no such factor exists, this falls
+// through to the honest "unread" sentinel exactly as before — `UNCALIBRATED_PILLAR_LABELS["regime"]`
+// already recognizes "unread" and withholds this pillar from the calibrated blend, so the fix never
+// needs its own new sentinel, only a correct lookup.
 function regimeScore(regime: string | null | undefined, factors: DeckFactor[] | undefined): { commit: number; current: number; label: string } {
-  const top = factors?.[0];
+  const top = factors?.find((f) => f.label === SWING_PILLAR_LABELS.REGIME);
   const base = regime ? 0.75 : 0.45;
   const factorBoost = top && top.points > 0 ? Math.min(0.2, top.points / 100) : 0;
   const score = clamp01(base + factorBoost);
