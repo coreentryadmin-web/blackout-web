@@ -10,6 +10,18 @@
  * a second row. This is why the DB primary key is (user_id, ticker), not (user_id, id).
  */
 
+// Same shape as Vector's TICKER_RE (features/vector/lib/vector-ticker.ts) and the
+// mobile-ticker-detail route's own guard — kept as a local copy rather than a cross-feature
+// import so this module stays the plain, dependency-free one its own header documents. Route.ts
+// previously accepted ANY trimmed/uppercased string here (no format or length check) before this
+// was added, letting an arbitrary-length value reach the `(user_id, ticker)` primary key.
+const HELIX_TICKER_RE = /^[A-Z0-9.\-]{1,8}$/;
+
+/** True when a raw symbol is well-formed enough to persist as a HELIX alert-rule ticker. */
+export function isHelixTickerAllowed(raw: string | null | undefined): boolean {
+  return HELIX_TICKER_RE.test(String(raw ?? "").trim().toUpperCase());
+}
+
 export type HelixAlertSide = "CALL" | "PUT" | null;
 
 export type HelixAlertRule = {

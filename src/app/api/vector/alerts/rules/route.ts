@@ -8,6 +8,7 @@ import {
   sanitizeIncomingRules,
   type VectorAlertRuleRow,
 } from "@/features/vector/lib/vector-alert-rules-db";
+import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
@@ -23,10 +24,6 @@ export const dynamic = "force-dynamic";
  * Auth pattern mirrors `src/app/api/push/subscribe/route.ts` exactly (Clerk `auth()`, 401 when
  * signed out, 503 when the DB isn't configured, lazy `ensureVectorAlertRulesTable()`).
  */
-
-function normalizeTicker(raw: string | null | undefined): string {
-  return String(raw ?? "").trim().toUpperCase();
-}
 
 /** GET ?ticker=SPY → that ticker's rules only. GET with no ticker → every rule for the account
  *  (used by the cron's "which tickers does this user care about" fan-out, and available to any
@@ -49,7 +46,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ rules: [] }, { headers: NO_STORE_HEADERS });
   }
 
-  const ticker = normalizeTicker(req.nextUrl.searchParams.get("ticker"));
+  // Ticker is optional here (absent = "every rule on the account"), but when present it must be
+  // well-formed — same `isVectorTickerAllowed` guard every other Vector route applies before a
+  // caller-supplied symbol reaches a query or a provider call. This route is the one place in
+  // the Vector family that was rolling its own unchecked trim/uppercase instead, letting an
+  // arbitrary-length, arbitrary-character string reach `vector_alert_rules.ticker` (unbounded
+  // TEXT column) via this same filter param or the PUT/DELETE body below.
+  const rawGetTicker = req.nextUrl.searchParams.get("ticker")?.trim() ?? "";
+  if (rawGetTicker && !isVectorTickerAllowed(rawGetTicker)) {
+    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  }
+  const ticker = rawGetTicker ? normalizeVectorTicker(rawGetTicker) : "";
 
   try {
     await ensureVectorAlertRulesTable();
@@ -92,8 +99,12 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
-  const ticker = normalizeTicker(body.ticker);
-  if (!ticker) return NextResponse.json({ error: "Missing ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  const rawTicker = body.ticker?.trim() ?? "";
+  if (!rawTicker) return NextResponse.json({ error: "Missing ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  if (!isVectorTickerAllowed(rawTicker)) {
+    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  }
+  const ticker = normalizeVectorTicker(rawTicker);
 
   const clean = sanitizeIncomingRules(ticker, body.rules);
 
@@ -135,13 +146,17 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503, headers: NO_STORE_HEADERS });
   }
 
-  let ticker: string;
+  let rawTicker: string;
   try {
-    ticker = normalizeTicker((await req.json())?.ticker);
+    rawTicker = ((await req.json())?.ticker ?? "").trim();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400, headers: NO_STORE_HEADERS });
   }
-  if (!ticker) return NextResponse.json({ error: "Missing ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  if (!rawTicker) return NextResponse.json({ error: "Missing ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  if (!isVectorTickerAllowed(rawTicker)) {
+    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  }
+  const ticker = normalizeVectorTicker(rawTicker);
 
   try {
     await ensureVectorAlertRulesTable();
