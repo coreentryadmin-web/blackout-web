@@ -5,6 +5,7 @@ import { buildGammaLevelsResearch, type ResearchSessionInput } from "./gamma-lev
 import {
   coverageSentence,
   flipSentence,
+  flipSideLabel,
   formatLevel,
   formatRate,
   formatSessionLabel,
@@ -100,6 +101,15 @@ test("the flip sentence splits into three honest regimes", () => {
     { session: "2026-08-18", samples: [sample(7700, 7600, 9000)], bar: BAR },
   ]);
   assert.match(flipSentence(mixed), /no settled regime/);
+});
+
+test("the per-session flip-side label states a side directly, never a number a reader must compare", () => {
+  // The bug this guards: `close`/`gammaFlip` both round to whole dollars at $100+ via formatLevel,
+  // so a genuinely-above session (e.g. close=348.3 vs flip=347.6) can display as a tie. The label
+  // must read off the raw boolean, not off anything a reader could derive from the rounded table.
+  assert.equal(flipSideLabel(true), "Above");
+  assert.equal(flipSideLabel(false), "Below");
+  assert.equal(flipSideLabel(null), "—");
 });
 
 test("no recorded flip produces an absence, not a fabricated regime", () => {
