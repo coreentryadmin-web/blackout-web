@@ -344,6 +344,78 @@ test("SEV-3: a row with no live-managed exit at all still falls back to the mech
   assert.equal(snap.session_pnl_pct, -30);
 });
 
+// ── Live bug, 2026-10-26: ledgerRowStopped — the STOP TALLY feeding G-5's hard-halt
+// (GOVERNOR_MAX_SESSION_STOPS) — must ALSO read the AS-MANAGED exit, not the raw mechanical
+// plan_outcome column. This is the sibling fix to the 2026-10-20 HOOD finding directly above:
+// that fix covered the realized-P&L channel (ledgerRowRealizedPnlPct) and was EXPLICITLY left
+// out of scope for the STOP channel at the time. A genuinely profitable ratchet-exit close
+// (exit_reason:"ratchet", exit_pnl_pct:+7.87%) can still carry a mechanical plan_outcome of
+// "stopped" -- the naive, unmanaged bar-walk the mechanical column grades would have later
+// traded through the plan's -50% stop AFTER the real engine had already exited profitably, even
+// though the position's trough genuinely dipped -8.66% off entry at some point along the way.
+// The pre-fix code checked `plan_outcome === "stopped"` FIRST and counted that real WIN as a
+// stop, feeding it straight into governor.stops -- which evaluateZeroDteGovernor's G-5 hard-halt
+// enforces live, so a winning session could trip the halt on phantom stops.
+test("ledgerRowStopped: a genuine ratchet-exit WIN is never counted as a governor stop, even though the mechanical plan_outcome says 'stopped'", () => {
+  const ratchetWin = row({
+    ticker: "AAPL",
+    status: "CLOSED",
+    plan_outcome: "stopped", // mechanical bar-walk grade: a naive hold would have been stopped out
+    plan_pnl_pct: -50, // ... at -50% -- but this is NOT what actually happened live
+    entry_premium: 2.0,
+    trough_premium: 1.83, // trough dipped ~-8.5% off entry at some point -- never near the -50% stop level either
+    entry_context: {
+      exit: { reason: "ratchet_profit_floor", pnl_pct: 7.87, peak_pnl_pct: 20 }, // the REAL, live-managed exit
+    },
+  });
+  const snap = deriveGovernorFromLedger([ratchetWin]);
+  assert.deepEqual(snap.stops, [], "a genuinely profitable ratchet exit must never count as a governor stop");
+  // The halt gate itself must stay clear too -- this is the live-enforced consumer the bug reaches.
+  assert.deepEqual(
+    evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW),
+    [],
+    "a winning ratchet exit must never contribute toward the G-5 session-stop halt"
+  );
+});
+
+test("ledgerRowStopped: a genuine as-managed thesis/flat exit is also never counted as a stop, regardless of the mechanical plan_outcome", () => {
+  const thesisLoss = row({
+    ticker: "META",
+    status: "CLOSED",
+    plan_outcome: "stopped", // mechanical column again disagrees with the real exit
+    plan_pnl_pct: -50,
+    entry_premium: 4.0,
+    trough_premium: 1.9, // would independently read as a hard stop under the OLD trough-latch fallback
+    entry_context: {
+      exit: { reason: "thesis_break_veto", pnl_pct: -12.43, peak_pnl_pct: 3.0 }, // real, live-only exit
+    },
+  });
+  const snap = deriveGovernorFromLedger([thesisLoss]);
+  assert.deepEqual(snap.stops, [], "a thesis-break exit is a real loss but not a hard STOP");
+});
+
+test("ledgerRowStopped: a genuine as-managed STOP still counts, matching scan.ts's own real-time check (exit reason 'plan_stop')", () => {
+  const realStop = row({
+    ticker: "TSLA",
+    status: "CLOSED",
+    plan_outcome: "time_stop", // mechanical column disagrees in LABEL -- the as-managed reason still wins
+    plan_pnl_pct: -22,
+    entry_premium: 4.0,
+    trough_premium: 2.0,
+    entry_context: {
+      exit: { reason: "plan_stop", pnl_pct: -50, peak_pnl_pct: 2 }, // the real engine hit the hard stop
+    },
+  });
+  const snap = deriveGovernorFromLedger([realStop]);
+  assert.deepEqual(snap.stops.map((s) => s.ticker), ["TSLA"], "a genuine plan_stop exit must still count as a stop");
+});
+
+test("ledgerRowStopped: a row with no live-managed exit at all still falls back to the mechanical plan_outcome/trough (legacy rows unaffected)", () => {
+  const legacyStop = row({ ticker: "MU", status: "CLOSED", plan_outcome: "stopped" }); // no entry_context.exit
+  const snap = deriveGovernorFromLedger([legacyStop]);
+  assert.deepEqual(snap.stops.map((s) => s.ticker), ["MU"], "unchanged behavior for a row with no as-managed exit stamp");
+});
+
 test("SEV-3: a session of WINNERS does not halt (only losing exits count)", () => {
   const rows = ["A", "B", "C", "D"].map((t) =>
     row({ ticker: t, status: "CLOSED", plan_outcome: "doubled", plan_pnl_pct: 100, trough_premium: 3.5 })
