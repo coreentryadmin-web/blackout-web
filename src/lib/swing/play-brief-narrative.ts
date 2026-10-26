@@ -33,6 +33,7 @@ import { thesisHealthUncalibrated } from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { swingVerdictVerb } from "./play-brief";
+import { hasScaledOut, runnerTrailingStopPremium } from "@/lib/zerodte/terminal-ladder";
 
 const MAX_BULLETS = 14;
 
@@ -1774,6 +1775,44 @@ export function tradeManagerNarrativeSection(
   // always-surfaced bullet that IS the brief's actual risk headline. A member trusting "HOLD" at
   // the top could easily miss that their real exit is already past the intended risk line.
   const execStop = play.exitPolicy?.stop_premium;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repros NN#2133 false-alarm / AI#2128
+  // silent-miss): once a trim tranche has fired, the live exit engine's own state machine
+  // (deriveScaleOutAction/computeScaleOutTriggerInfo, scale-out.ts) PERMANENTLY disables the
+  // pre-scale `stop_premium` — the real governing floor becomes the runner's trailing stop off its
+  // peak (`runnerTrailingStopPremium`, terminal-ladder.ts). THREE sibling call sites in this exact
+  // subsystem already apply this substitution: play-brief.ts's `managementSection` ("Rails: ..."
+  // line), play-brief.ts's evidence-fact builder (`evidence_numbers`, fixed earlier the same day as
+  // this comment), and play-brief-intel.ts's `watchForSection` ("Premium stop rail" bullet). This
+  // "Break watch — stop already breached" bullet — this function's own doc comment above calls it
+  // "the single most action-driving line in the brief" — was the ONE remaining call site reading
+  // the raw, possibly-dead `execStop` with no such substitution (confirmed by grep: zero hits for
+  // either helper name anywhere in this file before this fix). Two confirmed live failure
+  // directions: (1) a FALSE ALARM once scaled out — this bullet fired off the dead pre-scale stop
+  // ("bid $0.05 is at/through your premium stop $0.22 right now -> exit or cut size") while the
+  // SAME response's Management section correctly said "$0.22 (no longer applies — already scaled;
+  // runner trail now $1.20)" — two sections of one brief flatly contradicting each other about
+  // whether $0.22 is live (NN, positionId 2133); (2) a SILENT MISS, the dangerous direction — a bid
+  // sitting EXACTLY at the real, live runner-trailing floor never fired this bullet at all, because
+  // the comparison was made against the lower, dead stop instead (AI, positionId 2128, bid $0.19 ==
+  // the real trail, but $0.19 > the dead $0.07 stop so `execBreached` read false). This is
+  // SYSTEMIC, not a one-off: `runnerTrailingStopPremium` (peak*0.5) is structurally always >= the
+  // original pre-scale stop once a position has scaled out (scaling requires peak >= 2x entry, so
+  // trail >= entry > the original sub-entry stop) — so ANY TRIM/RUNNER position whose bid sits
+  // between the dead stop and the live trail gets NO stop-breach alert at all, even though it has
+  // genuinely hit its real managed floor.
+  const scaledAlready = play.exitPolicy != null && hasScaledOut(play.exitPolicy);
+  const peakPremiumDollarForStop =
+    play.entry != null && play.entry > 0 && play.peak != null && Number.isFinite(play.peak)
+      ? play.entry * (1 + play.peak / 100)
+      : null;
+  const runnerTrail = scaledAlready ? runnerTrailingStopPremium(peakPremiumDollarForStop) : null;
+  // The REAL governing floor: the runner trail once scaled out (never the dead stop — if the trail
+  // itself can't be priced for lack of a usable peak, this correctly reads as "no live floor to
+  // compare against" rather than silently falling back to a confirmed-dead number), otherwise the
+  // original pre-scale stop. `stopRailLabel` relabels the bullet so it can never again disagree
+  // with Management/evidence_numbers/What-to-watch's own labeling of the same fact.
+  const effectiveStop = scaledAlready ? runnerTrail : (execStop ?? null);
+  const stopRailLabel = scaledAlready ? "runner trailing stop" : "premium stop";
   // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: bid $0.00 / ask $1.20, a
   // real two-sided quote, not a missing one): `play.execMark` is null both when there is no bid at
   // all and when the bid is a confirmed $0.00 — `play.execBidZero` (adapters.ts) distinguishes the
@@ -1783,7 +1822,8 @@ export function tradeManagerNarrativeSection(
   // MOST severe case getting WEAKER disclosure than a comparable nonzero-but-low bid (e.g. a bid
   // of $0.10 already through the same stop correctly fires this bullet).
   const execMarkForBreach = play.execBidZero === true ? 0 : play.execMark;
-  const execBreached = execStop != null && execMarkForBreach != null && execMarkForBreach <= execStop;
+  const execBreached =
+    effectiveStop != null && execMarkForBreach != null && execMarkForBreach <= effectiveStop;
   // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro SWING:GTLB): the 2026-09-15 fix
   // above only surfaced "stop already breached on the executable side" when `breakLine` was still
   // null, i.e. when `breakTrigger()` found no structural GEX level to cite. Live on GTLB
@@ -1807,12 +1847,16 @@ export function tradeManagerNarrativeSection(
   // #6731/#6736 already swept through every other call site in this file; this one was missed.
   if (execBreached && (play.direction === "LONG" || play.direction === "SHORT")) {
     add(
-      `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(execMarkForBreach)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.${optionMarkStaleCaveat(play, readMs)}`,
+      `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(execMarkForBreach)}** is at/through your ${stopRailLabel} **${fmtOptionUsd(effectiveStop)}** right now → exit or cut size.${optionMarkStaleCaveat(play, readMs)}`,
       { reserved: true },
     );
-  } else if (!breakLine && play.direction === "LONG" && execStop != null) {
-    breakLine = `**Break watch** — lose premium stop **${fmtOptionUsd(execStop)}** → cut size or exit.`;
-  } else if (!breakLine && play.direction === "SHORT" && execStop != null) {
+  } else if (!breakLine && play.direction === "LONG" && effectiveStop != null) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-26): this forward-looking fallback reads from
+    // the same unguarded `execStop` the "already breached" bullet above used to — same root cause,
+    // same fix: cite `effectiveStop`/`stopRailLabel` (the runner trail once scaled out) so this
+    // bullet can't independently drift back into naming a dead pre-scale stop as the live risk.
+    breakLine = `**Break watch** — lose ${stopRailLabel} **${fmtOptionUsd(effectiveStop)}** → cut size or exit.`;
+  } else if (!breakLine && play.direction === "SHORT" && effectiveStop != null) {
     // BUG FIX (Ask Largo standing mandate, 2026-10-20): this used to say "reclaim $X -> cover
     // shorts", implying the trigger is the premium RISING back up to X. But a swing play is always
     // LONG PREMIUM regardless of direction (see the 2026-09-15 comment above this block) — execStop
@@ -1822,7 +1866,7 @@ export function tradeManagerNarrativeSection(
     // correctly for exactly that) — it is backwards for a premium floor, which can only be breached
     // by a fall. The LONG branch above already says "lose" for the identical kind of value; this
     // branch must match it.
-    breakLine = `**Break watch** — lose premium stop **${fmtOptionUsd(execStop)}** → cover shorts.`;
+    breakLine = `**Break watch** — lose ${stopRailLabel} **${fmtOptionUsd(effectiveStop)}** → cover shorts.`;
   }
   if (breakLine) add(breakLine, { reserved: true });
 
