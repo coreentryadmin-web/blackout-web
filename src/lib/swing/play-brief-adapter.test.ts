@@ -172,7 +172,7 @@ test("adaptSwingBriefToLargo: evidence[] surfaces the brief's REAL sourced evide
         earnings: { earnings_date: "2026-09-12", days_until: 7, report_time: "AMC", is_confirmed: true },
         fundamentals: { days_to_cover: 2.1, short_volume_ratio: 0.35, price_target: null, as_of: "2026-09-05" },
         related: ["AMD", "NVDA"],
-        news: { count: 2, newest: "2026-09-05", headlines: ["INTC restructures fab unit"] },
+        news: { count: 2, newest: "2026-09-05", headlines: [{ headline: "INTC restructures fab unit", publishedAt: null }] },
         macro: null,
         breadth: null,
         unavailable_sources: [],

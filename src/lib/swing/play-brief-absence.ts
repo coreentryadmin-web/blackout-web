@@ -268,6 +268,35 @@ export function relativeAgeLabel(
 }
 
 /**
+ * Per-headline relative-age label ("3h ago" / "2d ago") for a ticker-news item's own PUBLISH
+ * time — distinct from the batch-level "Last snapshot" framing `newsCatalystStale`/
+ * `newsCatalystAgeMs` drive, which only discloses when the FETCH ran, not when each cited
+ * article was actually published (Largo C2 gap found 2026-10-26, Ask Largo standing mandate,
+ * #4076 comment 6409186033): Benzinga's news pool can hold up to 20 items
+ * (`ecosystem-context.ts`), so a fresh fetch can still legitimately quote a week-old headline
+ * with nothing disclosing that to the reader. Mirrors `relativeAgeLabel`'s minute/hour tiers but
+ * adds a day tier beyond 36h — unlike the 24h-window `recent_anomalies` feed `relativeAgeLabel`
+ * was built for, a headline can legitimately be days old, and an hour-scale label there would
+ * read as absurd precision ("240h ago"), the same reasoning `ageDaysLabel` already applies to
+ * short-interest's own biweekly cadence. Returns `null` for a missing/unparseable timestamp so
+ * callers can omit the suffix rather than fabricate an age — never invent a date Benzinga itself
+ * didn't supply.
+ */
+export function headlineAgeLabel(isoTimestamp: string | null | undefined, nowMs: number = Date.now()): string | null {
+  if (!isoTimestamp) return null;
+  const observedMs = Date.parse(isoTimestamp);
+  if (!Number.isFinite(observedMs)) return null;
+  const ageMs = nowMs - observedMs;
+  if (!Number.isFinite(ageMs) || ageMs < 0) return "clock-skewed";
+  const ageMin = Math.round(ageMs / 60_000);
+  if (ageMin < 60) return `${Math.max(ageMin, 0)}m ago`;
+  const ageHr = Math.round(ageMin / 60);
+  if (ageHr < 36) return `${ageHr}h ago`;
+  const ageDay = Math.round(ageHr / 24);
+  return `${ageDay}d ago`;
+}
+
+/**
  * Meridian catalyst timeline staleness (Largo C2). `slice.as_of` is stamped once, at the moment
  * `loadMeridianTimelineResponse` actually ran inside `withServerCache` — under that cache's
  * stale-while-revalidate path a degraded Benzinga upstream can legitimately keep serving the same

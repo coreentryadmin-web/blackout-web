@@ -7,6 +7,7 @@ import {
   darkPoolStale,
   gexMarketSessionNote,
   gexMatrixStale,
+  headlineAgeLabel,
   archetypeTrackRecordIsStale,
   meridianCatalystAgeMs,
   meridianCatalystStale,
@@ -1577,4 +1578,37 @@ test("relativeAgeLabel: a future (clock-skewed) timestamp renders 'clock-skewed'
   const now = Date.parse("2026-09-16T15:00:00Z");
   const future = new Date(now + 500_000).toISOString();
   assert.equal(relativeAgeLabel(future, now), "clock-skewed");
+});
+
+test("headlineAgeLabel: null/undefined/unparseable timestamp returns null", () => {
+  const now = Date.parse("2026-10-26T15:00:00Z");
+  assert.equal(headlineAgeLabel(null, now), null);
+  assert.equal(headlineAgeLabel(undefined, now), null);
+  assert.equal(headlineAgeLabel("not-a-date", now), null);
+});
+
+test("headlineAgeLabel: sub-hour age renders 'Nm ago'", () => {
+  const now = Date.parse("2026-10-26T15:00:00Z");
+  const fourteenMinAgo = new Date(now - 14 * 60_000).toISOString();
+  assert.equal(headlineAgeLabel(fourteenMinAgo, now), "14m ago");
+});
+
+test("headlineAgeLabel: sub-36h age renders 'Nh ago', unlike relativeAgeLabel's uncapped hour scale", () => {
+  const now = Date.parse("2026-10-26T15:00:00Z");
+  const twentyHoursAgo = new Date(now - 20 * 60 * 60_000).toISOString();
+  assert.equal(headlineAgeLabel(twentyHoursAgo, now), "20h ago");
+});
+
+test("headlineAgeLabel: age at/beyond 36h switches to day-scale 'Nd ago' (a headline, unlike the 24h recent_anomalies feed, can legitimately be days old)", () => {
+  const now = Date.parse("2026-10-26T15:00:00Z");
+  const fortyHoursAgo = new Date(now - 40 * 60 * 60_000).toISOString();
+  assert.equal(headlineAgeLabel(fortyHoursAgo, now), "2d ago");
+  const oneWeekAgo = new Date(now - 7 * 24 * 60 * 60_000).toISOString();
+  assert.equal(headlineAgeLabel(oneWeekAgo, now), "7d ago");
+});
+
+test("headlineAgeLabel: a future (clock-skewed) publish timestamp renders 'clock-skewed', never a negative age", () => {
+  const now = Date.parse("2026-10-26T15:00:00Z");
+  const future = new Date(now + 500_000).toISOString();
+  assert.equal(headlineAgeLabel(future, now), "clock-skewed");
 });

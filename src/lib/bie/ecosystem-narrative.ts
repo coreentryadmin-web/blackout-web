@@ -93,7 +93,7 @@ export function formatEcosystemNarrative(ctx: EcosystemContext): string {
     watch.push(`high days-to-cover ${fmt(ars.fundamentals.days_to_cover, 1)} (squeeze fuel)`);
   }
   if (ars.news && ars.news.count > 0) {
-    watch.push(`${ars.news.count} recent ${ctx.arsenal.scope === "index" ? "catalyst" : "news"}${ars.news.count === 1 ? "" : "s"}${ars.news.headlines[0] ? ` — "${ars.news.headlines[0]}"` : ""}`);
+    watch.push(`${ars.news.count} recent ${ctx.arsenal.scope === "index" ? "catalyst" : "news"}${ars.news.count === 1 ? "" : "s"}${ars.news.headlines[0] ? ` — "${ars.news.headlines[0].headline}"` : ""}`);
   }
   if (ars.related && ars.related.length) {
     watch.push(`peers ${ars.related.slice(0, 4).join(", ")}`);
