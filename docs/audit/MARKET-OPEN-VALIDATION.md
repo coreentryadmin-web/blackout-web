@@ -1,3 +1,28 @@
+## WATCH LIST — 2026-10-26 Swing executable-stop-breach stale-caveat fix (PR #6756, merged) — fixed, deploy pending validation
+
+**What was fixed:** the "Break watch — stop already breached on the executable side ... right now
+→ exit or cut size" bullet (`play-brief-narrative.ts`'s `tradeManagerNarrativeSection`) — the
+single most action-driving line in a swing play-brief — asserted a live "right now" read off the
+same bid/ask/`markAsOf` snapshot every sibling line in the same brief correctly discloses as stale
+when it's old. Live repro PHM: a `2026-10-23 16:00 ET` quote still said "right now" when read on
+`2026-10-25/26` (2+ days stale), while 20 other occurrences of `_(stale — same quote Mark flagged
+above)_` sat in the identical response. Added `optionMarkStaleCaveat(play, readMs)` to the bullet,
+matching the pattern already used at the sibling giveback bullet and PRs #6726/#6731/#6736.
+Surfaced by a background adversarial-verification Workflow (3/3 independent confirmations); a
+second candidate from the same run (TTD, a claimed Vector-desk-state false-absence contradiction)
+was unanimously refuted as already fixed (PR #6643) and non-reproducing live.
+
+**Specific thing to check at next RTH open:** pull a live swing `play-brief` for any committed
+position whose executable bid has fallen to/through its premium stop while the option mark is
+genuinely stale (a position with no recent live sync, e.g. one that's been idle a few sessions)
+and confirm the "stop already breached on the executable side" bullet now carries the
+`_(stale — same quote Mark flagged above)_` caveat, consistent with every other quote-derived line
+in the same response. Also confirm a FRESH breach (quote synced within the staleness window)
+correctly omits the caveat — the fix only appends it when the helper determines the quote is
+actually stale, never unconditionally.
+
+---
+
 ## WATCH LIST — 2026-10-26 Swing room%/cushion% unrounded-basis fix (PR #6753, merged) — fixed, deploy pending validation
 
 **What was fixed:** three swing Largo play-brief sites (`distanceSuffix` in
