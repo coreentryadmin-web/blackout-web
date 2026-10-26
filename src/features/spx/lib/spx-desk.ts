@@ -2401,7 +2401,19 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
         ema20: structure.ema20,
         ema50: structure.ema50,
         market_open: rthOpenNow,
-        market_status: "open",
+        // BUG FIX (live repro 2026-10-26, Ask Largo/5-engine standing mandate): this was a bare
+        // `"open"` literal, independent of `rthOpenNow` directly above — so outside RTH (e.g. the
+        // 4-7 AM ET pre-market dead zone, or after-hours/overnight) this cold-replica fallback
+        // served `market_open: false` paired with `market_status: "open"` in the SAME object, a
+        // direct self-contradiction. Confirmed live via GET /api/market/spx/desk at 09:09 UTC
+        // (~5 AM ET): the bootstrap-shell fallback (deskShellFromPulse -> mergePulseIntoDesk,
+        // which carries `pulse.market_status` through unchanged) served exactly that pair, also
+        // surfaced verbatim on the admin SPX dashboard's `desk.market.status` field
+        // (admin-spx-dashboard.ts). Every other market_status fallback in this file (the
+        // "closed"-market pulse builders, and the two RTH/premarket ternaries in
+        // buildSpxDesk/deskShellFromPulse) already keeps market_status consistent with
+        // market_open/rthOpen when the live provider is unavailable — this was the one outlier.
+        market_status: rthOpenNow ? "open" : "closed",
         market_label: marketStatusLabel(new Date(), null),
       } satisfies SpxDeskPulse;
     })(),

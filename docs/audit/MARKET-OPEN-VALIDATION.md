@@ -1,3 +1,25 @@
+## WATCH LIST — 2026-10-26 SPX Slayer cold-replica pulse `market_status: "open"` literal regardless of `market_open` — fixed, not yet live-reproduced on fresh (post-deploy) traffic
+
+**What was fixed:** `buildSpxDeskPulseMinimal()` (`src/features/spx/lib/spx-desk.ts`), the
+cold-replica/bootstrap fallback for `GET /api/market/spx/desk`, hardcoded `market_status: "open"`
+as a bare literal regardless of the real `rthOpenNow` boolean it assigns to the sibling
+`market_open` field. Live-caught 2026-10-26 ~09:09 UTC (pre-RTH, `source: "none"` degraded shell):
+`market_open: false` paired with `market_status: "open"` in the same payload — a direct
+self-contradiction also surfaced verbatim on the admin SPX dashboard's `desk.market.status`
+field. Fixed to `market_status: rthOpenNow ? "open" : "closed"`, matching every other
+`market_status` fallback in the same file.
+
+**Why not yet live-verified post-fix:** the bug only fires when the degraded cold-replica path is
+actually served (source: "none"), which happens on a cache miss/slow full-desk build — not
+something to force on demand without risking a real desk read. Confirmed via a source-level
+regression test (RED pre-fix, GREEN post-fix) rather than a forced live repro.
+
+**Specific thing to check at next pre-market open (before 9:30 AM ET, ideally the 4:00-7:00 AM ET
+dead zone where this was originally caught) or next time `/desk` serves `source: "none"`:** pull
+`GET /api/market/spx/desk` and confirm `market_open`/`market_status` always agree (`market_open:
+false` never paired with `market_status: "open"`, and vice versa) — check the admin SPX
+dashboard's `desk.market` block too, since it surfaces the same two fields raw.
+
 ## WATCH LIST — 2026-10-26 Swing Ask Largo book-risk sizing feedback + structure-ladder reward:risk evidence (PR #6789 merged `9464fdada`, PR #6790 merged `f75c261bb`) — shipped, deploy not yet observable live (needs a FRESH native commit post-deploy; market closed at ship time)
 
 **What was shipped:** two additive enhancements to the swing play-brief. #6789: a "Book risk" bullet
