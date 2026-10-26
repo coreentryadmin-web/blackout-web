@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
 import {
   absolutizeLinks, canonicalUrl, coverImageUrl, syndicatedBody,
-  eligibleArticles, pickToSyndicate, productShotFor, DEVTO_TAGS, HASHNODE_TAGS,
+  eligibleArticles, pickToSyndicate, parseLimitArg, productShotFor, DEVTO_TAGS, HASHNODE_TAGS,
   devtoAlreadyPosted, hashnodePosted,
 } from "./syndicate-articles.mjs";
 
@@ -75,6 +75,27 @@ describe("syndication helpers", () => {
     assert.ok(DEVTO_TAGS.length <= 4);
     for (const t of DEVTO_TAGS) assert.match(t, /^[a-z0-9]+$/);
     for (const t of HASHNODE_TAGS) { assert.ok(t.slug && t.name); }
+  });
+
+  it("parseLimitArg honors an explicit --limit=0 (operator pause) instead of falling back to 1", () => {
+    // `0` is falsy in JS — `Number(...) || 1` previously turned a deliberate `--limit=0` into `1`
+    // and posted an article anyway, the opposite of what the flag was meant to do.
+    assert.equal(parseLimitArg(["--limit=0"]), 0);
+    // and that 0 actually limits pickToSyndicate's selection to nothing, not just that the
+    // parsed number reads as 0 in isolation.
+    const arts = [art({ slug: "a", path: "/learn/a", type: "article" })] as never;
+    assert.deepEqual(pickToSyndicate(arts, new Set(), parseLimitArg(["--limit=0"])), []);
+  });
+
+  it("parseLimitArg falls back to the default for a missing or unparseable --limit", () => {
+    assert.equal(parseLimitArg([]), 1);
+    assert.equal(parseLimitArg(["--dry-run"]), 1);
+    assert.equal(parseLimitArg(["--limit=abc"]), 1);
+    assert.equal(parseLimitArg(["--limit="]), 1);
+  });
+
+  it("parseLimitArg still parses a normal positive --limit", () => {
+    assert.equal(parseLimitArg(["--limit=5"]), 5);
   });
 });
 
