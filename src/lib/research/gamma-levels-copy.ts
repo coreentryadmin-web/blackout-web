@@ -49,6 +49,22 @@ export function wallSentence(stat: WallStat, label: "call wall" | "put wall", ti
   return `On the ${stat.tested} ${stat.tested === 1 ? "session" : "sessions"} where price actually reached ${ticker}'s ${label}, it ${verb} ${stat.held} ${stat.held === 1 ? "time" : "times"} — ${formatRate(stat.holdRate)}.`;
 }
 
+/**
+ * The per-session label for close vs. gamma flip — "Above" or "Below", never a number.
+ *
+ * WHY THIS EXISTS. The session table renders `close` and `gammaFlip` through `formatLevel`, which
+ * rounds any price at or above $100 to whole dollars for readability. At that price level, a close
+ * genuinely above its flip (say $348.30 vs. $347.60) can round to the SAME displayed number for
+ * both columns — the table then looks tied while `flipSentence`'s own header count (computed from
+ * the raw, unrounded `closedAboveFlip` boolean) still counts that session as "above". A reader has
+ * no way to tell which side a tied-looking row actually landed on without this label spelling it
+ * out from the same unrounded boolean the header sentence already uses.
+ */
+export function flipSideLabel(closedAboveFlip: boolean | null): "Above" | "Below" | "—" {
+  if (closedAboveFlip === null) return "—";
+  return closedAboveFlip ? "Above" : "Below";
+}
+
 /** The regime read: which side of the gamma flip this name has been closing on. */
 export function flipSentence(research: GammaLevelsResearch): string {
   const { sessions, closedAbove, aboveRate } = research.flip;
