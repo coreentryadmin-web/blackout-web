@@ -69,5 +69,5 @@ real script loads) so it isn't at the same risk — gating the whole block on `g
 the minimal change that protects the two gtag-routed calls without touching the X-pixel call's own
 independent availability check.
 
-| **Status** | Fixed in PR TBD (branch `fix/ga4-signup-conversion-lost-before-gtag-ready`) |
+| **Status** | Fixed in PR #6806 (branch `fix/ga4-signup-conversion-lost-before-gtag-ready`) |
 |---|---|
