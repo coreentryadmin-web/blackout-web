@@ -241,7 +241,18 @@ function researchGateBlocks(input: SwingEntryVerdictInput): SwingEntryGateBlock[
     return [
       {
         code: "thesis_invalidated",
-        reason: "Structure invalidated — price closed through the structural invalidation level.",
+        // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro SOXX): this used to say "price
+        // CLOSED through the structural invalidation level" — but deriveSetupState (setup-state.ts)
+        // compares the dossier's live (or last-known) INTRADAY spot against the level, never a
+        // settled end-of-day close. "Closed through" claims a stable, settled fact; the real check is
+        // re-evaluated on every scan and can genuinely flip back to FORMING minutes later if price
+        // reclaims the level intraday — live-measured same session: SOXX read INVALIDATED at one
+        // scan, then FORMING again (identical gate blocks otherwise) under an hour later, with no
+        // session close in between. Saying "closed" when the read is intraday overstates how settled
+        // the break is — exactly the precision violation the Largo product contract's "precision"
+        // point exists to catch (same class of bug as this repo's BMO/AMC earnings-timing fixes:
+        // never claim more finality than what was actually measured).
+        reason: "Structure invalidated — price is through the structural invalidation level (live read; can still revert if price reclaims before the thesis window closes).",
       },
     ];
   }
