@@ -71,5 +71,5 @@ still only need one copy, and `SharedSigilDefs` rendering twice on a page that s
 shells would just be two identical, inert, non-conflicting `<defs>` blocks — ids are the same so
 there's no collision risk even in that edge case, only redundant markup).
 
-| **Status** | Fixed in PR #TBD (branch `fix/marketing-sigil-defs-missing`) |
+| **Status** | Fixed in PR #6808 (branch `fix/marketing-sigil-defs-missing`) |
 |---|---|
