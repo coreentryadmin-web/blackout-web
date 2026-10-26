@@ -4,6 +4,7 @@ import { before, describe, it, mock } from "node:test";
 import type { HorizonPlay } from "@/lib/horizon-plays";
 import {
   pickLanePlayForBrief,
+  pickOpenBangerPositionForBrief,
   parseSwingPlayId,
   resolveBriefIvRank,
   rightFromContractType,
@@ -257,6 +258,61 @@ test("pickLanePlayForBrief: the lone-row shortcut still fires when the positionI
   ];
   const picked = pickLanePlayForBrief(rows, "PANW", { positionId: 67 });
   assert.equal(picked?.positionId, 67, "a positionId hint that matches the sole candidate must still resolve it");
+});
+
+// ── pickOpenBangerPositionForBrief: banger-origin fallback for loadOpenTerminalPlay ──
+//
+// BUG FIX (2026-10-26, Ask Largo standing mandate, live repro PANW positionId=2103). PANW carries
+// a native swing_positions COMMIT row (id 67) AND a separate, fully live banger_positions OPEN row
+// (id 2103) — `getSwingServingLane` drops the banger row from its merge because the native row
+// already covers the ticker, so `?playId=SWING:PANW&ticker=PANW&positionId=2103` 404'd even though
+// the member is actually holding that exact position. `loadOpenTerminalPlay` now falls through to
+// a direct `banger_positions` lookup (via this pure selector) whenever the native-table lookup
+// finds nothing. Same fail-closed discipline as `pickLanePlayForBrief`'s own 2026-10-24 PANW fix
+// just above: an explicit, unresolvable positionId must surface as absence, never an unrelated
+// substitute.
+type FakeBangerRow = { id: number; ticker: string };
+
+test("pickOpenBangerPositionForBrief: resolves the exact positionId among several same-ticker rows", () => {
+  const rows: FakeBangerRow[] = [
+    { id: 2103, ticker: "PANW" },
+    { id: 2200, ticker: "PANW" },
+  ];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", 2103);
+  assert.equal(picked?.id, 2103);
+});
+
+test("pickOpenBangerPositionForBrief: a positionId that does not match the ticker's one row must not silently substitute that row", () => {
+  const rows: FakeBangerRow[] = [{ id: 2103, ticker: "PANW" }];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", 9999);
+  assert.equal(picked, null, "an unresolvable positionId must surface as absence, never the ticker's unrelated lone row");
+});
+
+test("pickOpenBangerPositionForBrief: no positionId hint resolves the ticker's sole candidate (live PANW repro)", () => {
+  const rows: FakeBangerRow[] = [{ id: 2103, ticker: "PANW" }];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", null);
+  assert.equal(picked?.id, 2103);
+});
+
+test("pickOpenBangerPositionForBrief: no positionId hint with multiple same-ticker rows must not guess — surfaces absence", () => {
+  const rows: FakeBangerRow[] = [
+    { id: 2103, ticker: "PANW" },
+    { id: 2200, ticker: "PANW" },
+  ];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", null);
+  assert.equal(picked, null, "an ambiguous ticker with no positionId hint must not guess which open banger row was meant");
+});
+
+test("pickOpenBangerPositionForBrief: no rows for the ticker at all returns null", () => {
+  const rows: FakeBangerRow[] = [{ id: 2103, ticker: "NET" }];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", 2103);
+  assert.equal(picked, null);
+});
+
+test("pickOpenBangerPositionForBrief: ticker match is case-insensitive", () => {
+  const rows: FakeBangerRow[] = [{ id: 2103, ticker: "panw" }];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", 2103);
+  assert.equal(picked?.id, 2103);
 });
 
 // ── loadOpenTerminalPlay: Ask Largo must restore factors/regime the same way the main board does ──
