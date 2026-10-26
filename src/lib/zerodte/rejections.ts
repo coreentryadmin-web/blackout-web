@@ -32,7 +32,15 @@
 // helper, kept import-light the same way spx-signal-log.ts is for SPX — so a test
 // of this file's throttle logic doesn't need to mock any of scan.ts's provider
 // imports, only @/lib/db.
-import { dbConfigured, getMeta, setMeta, insertZeroDteScanRejection, fetchZeroDteScanRejections } from "@/lib/db";
+import {
+  dbConfigured,
+  getMeta,
+  setMeta,
+  insertZeroDteScanRejection,
+  fetchZeroDteScanRejections,
+  tryAdvisoryLock,
+  releaseAdvisoryLock,
+} from "@/lib/db";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import type { ZeroDteGateRejection } from "./board";
 import { currentZerodteSessionAnchor } from "./session-phase";
@@ -79,20 +87,38 @@ async function saveRejectionCursor(today: string, map: Map<string, string>): Pro
   await setMeta(ZERODTE_REJECTION_CURSOR_KEY, JSON.stringify(obj));
 }
 
-/**
- * Persist this scan cycle's near-misses — throttled to one row per ticker per
- * DISTINCT (gate_failed, direction) state, not one row per scan cycle. Called from
- * warmZeroDteBoard (./scan.ts) on the ~2-min grid-warm cron — the SAME cadence
- * persistZeroDteScan already uses for committed setups — never from the member-poll
- * board route, so this never runs on the hot request path. Even at that cadence,
- * unthrottled writes would flood Postgres with a near-duplicate row per candidate
- * on every tick while a name idles in an unchanged rejected state; hence the cursor
- * above. Best-effort: never throws into the caller (mirrors persistZeroDteScan's
- * own `.catch(() => 0)` contract at its one call site).
- */
-export async function persistZeroDteRejections(rejections: ZeroDteGateRejection[]): Promise<number> {
-  if (!dbConfigured() || rejections.length === 0) return 0;
-  const today = todayEtYmd();
+// Lock key for the read-modify-write below. One global key (not per-ticker) is deliberate —
+// the critical section is "read the WHOLE cursor blob -> mutate -> write the WHOLE blob back",
+// so any two writers touching this key at all must serialize against each other regardless of
+// which ticker(s) they're adding. Same shape/rationale as x-rate-budget.ts's BUDGET_WRITE_LOCK
+// and x-marketing-meta.ts's HOOKS_WRITE_LOCK.
+//
+// MUST be atomic across callers: persistZeroDteRejections is called from THREE separate
+// fire-and-forget (`void ... .catch(...)`) sites within a single warmZeroDteBoard cycle
+// (scan.ts's persistZeroDteScan — twice, for the initial-commit and atomic-commit-recount
+// rejection populations — and warmZeroDteBoard itself for the top-level evidence-gate
+// rejections), all of which can be in flight concurrently since none of their callers await
+// them. Before this fix, loadRejectionCursor (read) then saveRejectionCursor (write) were two
+// separate unlocked Postgres round-trips: if two calls interleave — both read the SAME base
+// map before either writes, both mutate their own in-memory copy, both write — whichever
+// setMeta resolves LAST silently clobbers the other's additions, losing not just the new
+// ticker it was adding but the dedup history for every OTHER ticker already in the blob it
+// read before the race. That defeats the cursor's whole purpose (one row per ticker per
+// DISTINCT state transition) and causes duplicate zerodte_scan_rejections rows immediately
+// (this tick) and on subsequent ticks (a clobbered ticker reads as "never logged" again, so an
+// unchanged rejection re-logs next cycle too). Pure observability data — never gates a live
+// trade — but a genuine, confirmed lost-update bug. Serialize the whole read+mutate+write with
+// the same tryAdvisoryLock/releaseAdvisoryLock primitive other crons/writers in this repo use
+// for the identical shape, with the same bounded retry (tryAdvisoryLock is non-blocking "try",
+// not a queue) since the holder releases within a couple of Postgres round-trips.
+const REJECTION_CURSOR_WRITE_LOCK = "zerodte-rejection-cursor-write";
+const REJECTION_CURSOR_LOCK_MAX_ATTEMPTS = 30;
+const REJECTION_CURSOR_LOCK_RETRY_MS = 60;
+
+async function writeRejectionsLocked(
+  today: string,
+  rejections: ZeroDteGateRejection[]
+): Promise<number> {
   const cursor = await loadRejectionCursor(today);
 
   const toWrite: ZeroDteGateRejection[] = [];
@@ -128,6 +154,47 @@ export async function persistZeroDteRejections(rejections: ZeroDteGateRejection[
   }
   await saveRejectionCursor(today, cursor);
   return toWrite.length;
+}
+
+/**
+ * Persist this scan cycle's near-misses — throttled to one row per ticker per
+ * DISTINCT (gate_failed, direction) state, not one row per scan cycle. Called from
+ * warmZeroDteBoard (./scan.ts) on the ~2-min grid-warm cron — the SAME cadence
+ * persistZeroDteScan already uses for committed setups — never from the member-poll
+ * board route, so this never runs on the hot request path. Even at that cadence,
+ * unthrottled writes would flood Postgres with a near-duplicate row per candidate
+ * on every tick while a name idles in an unchanged rejected state; hence the cursor
+ * above. Best-effort: never throws into the caller (mirrors persistZeroDteScan's
+ * own `.catch(() => 0)` contract at its one call site).
+ *
+ * The whole read+mutate+write critical section runs under REJECTION_CURSOR_WRITE_LOCK
+ * (see its doc above) so the three concurrent call sites in scan.ts can never clobber
+ * each other's cursor additions.
+ */
+export async function persistZeroDteRejections(rejections: ZeroDteGateRejection[]): Promise<number> {
+  if (!dbConfigured() || rejections.length === 0) return 0;
+  const today = todayEtYmd();
+
+  for (let attempt = 0; attempt < REJECTION_CURSOR_LOCK_MAX_ATTEMPTS; attempt += 1) {
+    const acquired = await tryAdvisoryLock(REJECTION_CURSOR_WRITE_LOCK);
+    if (!acquired) {
+      await new Promise((r) => setTimeout(r, REJECTION_CURSOR_LOCK_RETRY_MS));
+      continue;
+    }
+    try {
+      return await writeRejectionsLocked(today, rejections);
+    } finally {
+      await releaseAdvisoryLock(REJECTION_CURSOR_WRITE_LOCK);
+    }
+  }
+  // Could not get the lock after bounded retries (e.g. a stuck holder) — fall back to the old
+  // unlocked behavior rather than silently dropping this cycle's rejections forever. Worse than
+  // the locked path (the race this whole fix addresses), but no worse than before this fix, and
+  // logged so it's visible if it ever fires.
+  console.warn(
+    `[zerodte-rejections] could not acquire ${REJECTION_CURSOR_WRITE_LOCK} after ${REJECTION_CURSOR_LOCK_MAX_ATTEMPTS} attempts — writing unlocked`
+  );
+  return writeRejectionsLocked(today, rejections);
 }
 
 export type ZeroDteRejectionRow = {

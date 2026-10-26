@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T21:43:14.286Z",
+  "updated_at": "2026-10-26T22:45:35.082Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4ff4fcc109a90a2f79c08dd3bfd4c08ef0631363",
+    "last_main_sha": "5206e5b7342b3a883e74bc769a6581748926f0ff",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-21T02:07:59.862Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-21T02:08:05.116Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-21T02:37:06.875Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-21T02:37:10.431Z",
       "type": "context_sync",
@@ -1271,28 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-26T22:45:24.365Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-26T22:45:29.877Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-26T22:45:35.081Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 6925,
-      "title": "fix: close a write-then-invalidate race in resolveUserTier/invalidateTierCache",
-      "branch": "fix/tier-cache-invalidate-race",
+      "number": 6935,
+      "title": "fix: provider-health-reconcile rate-limit incident text hardcoded \"last hour\"",
+      "branch": "fix/provider-health-rate-limit-window-text",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T21:31:50Z"
+      "updated_at": "2026-10-26T22:41:32Z"
     },
     {
-      "number": 6923,
-      "title": "fix(seo): --limit=0 on syndicate-articles.mjs no longer silently falls back to 1",
-      "branch": "fix/syndicate-limit-zero",
+      "number": 6929,
+      "title": "fix(email): escape firstName in welcome-sequence's local personalize()",
+      "branch": "fix/welcome-sequence-firstname-xss",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T21:39:32Z"
+      "verify": "completed/success",
+      "updated_at": "2026-10-26T22:20:02Z"
     },
     {
       "number": 6921,
@@ -1300,19 +1300,9 @@
       "branch": "fix/zerodte-discovery-rejection-cursor-race",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": true,
+      "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T21:22:50Z"
-    },
-    {
-      "number": 6919,
-      "title": "chore: sync ambient agent-state/heartbeat/creative-rotation files",
-      "branch": "chore/ambient-heartbeat-sync-1793048971",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T21:30:04Z"
+      "updated_at": "2026-10-26T22:40:51Z"
     },
     {
       "number": 5547,

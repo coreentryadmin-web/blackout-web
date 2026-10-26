@@ -36,6 +36,46 @@ test("supports a custom decimal-place count", () => {
   assert.equal(roundFloats(1.23456, 4), 1.2346);
 });
 
+// ── Sign-asymmetry fix (2026-10-26) ────────────────────────────────────────────────
+//
+// Plain `Math.round(v*f)/f` ties toward +Infinity (`Math.round(-13.5) === -13` vs
+// `Math.round(13.5) === 14`), which is a direction-biased asymmetry: a NEGATIVE value sitting
+// exactly on a display-precision tie rounds to a SMALLER magnitude than the IDENTICAL positive
+// value. See `fmt-money.ts`'s `fmtPct` sibling comment for the full live repro (an Exec P&L line
+// computed from entry $14.80 / bid $14.60 -> raw -1.35% rendered "-1.3%", looking less bad, while
+// the identical +1.35% magnitude rendered "+1.4%"). Fixed by rounding `Math.abs(v)` then
+// reapplying `Math.sign(v)`, so both signs tie the same direction (away from zero) instead of the
+// same direction in absolute terms (toward +Infinity).
+
+test("rounds a negative tie to the SAME magnitude as its positive mirror image, not a smaller one", () => {
+  // Each pair below is a floating-point tie VERIFIED (not assumed) to land exactly on .5 after
+  // scaling by its own dp — a value that merely LOOKS like a tie in decimal (e.g. 1.005 at 2dp)
+  // can actually sit slightly UNDER .5 in double precision (1.005 is really
+  // 1.00499999999999989341...) and would not exercise this bug at all.
+  const tiePairs: Array<[number, number]> = [
+    [1.05, 1], // -> ±1.1
+    [1.35, 1], // -> ±1.4 (the exact live Exec P&L repro magnitude)
+    [0.25, 1], // -> ±0.3 (sub-1 tie)
+    [2.5, 0], // -> ±3 (whole-number dp)
+    [12.345, 2], // -> ±12.35
+  ];
+  for (const [v, dp] of tiePairs) {
+    const pos = roundFloats(v, dp);
+    const neg = roundFloats(-v, dp);
+    assert.equal(
+      neg,
+      -pos,
+      `roundFloats(${v}, ${dp})=${pos} vs roundFloats(${-v}, ${dp})=${neg} diverged in magnitude`
+    );
+  }
+
+  // Pinned explicitly, not just via the loop above — this is the exact bug: -1.05 used to round
+  // to -1.0 (old, biased toward a smaller magnitude) instead of -1.1 (fixed, symmetric with
+  // +1.05 -> +1.1).
+  assert.equal(roundFloats(1.05, 1), 1.1);
+  assert.equal(roundFloats(-1.05, 1), -1.1);
+});
+
 test("passes through non-numeric leaves unchanged", () => {
   assert.deepEqual(roundFloats({ a: "text", b: true, c: null, d: undefined }), {
     a: "text",

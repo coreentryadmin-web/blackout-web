@@ -171,13 +171,54 @@ describe("fmtPct", () => {
   );
 
   it("matches src/lib/round-floats.ts's roundFloats() byte-for-byte on the same raw number at 1dp", () => {
+    // STALE FIXTURE, UPDATED 2026-10-26: this helper used to be a literal copy of the OLD, biased
+    // `Math.round(n*factor)/factor` — which meant the `-1.05` entry below only ever asserted
+    // self-consistency (fmtPct and this local copy shared the identical bug, so they agreed with
+    // each other while BOTH were wrong) and never caught the real defect: -1.05 rounded to "-1.0%"
+    // here while +1.05 rounded to "+1.1%", a magnitude asymmetry no test in this file ever
+    // compared against the positive case directly. Now mirrors the FIXED production algorithm
+    // (round by magnitude, then reapply sign) — see the dedicated symmetric-pair test below for
+    // the explicit positive-vs-negative comparison this fixture alone could never catch.
     const roundFloatsStyle = (n: number) => {
-      const r = Math.round(n * 10) / 10;
+      const r = (Math.sign(n) * Math.round(Math.abs(n) * 10)) / 10;
       const sign = r > 0 ? "+" : "";
       return `${sign}${r.toFixed(1)}%`;
     };
     for (const n of [2.347, -4.94999, 0.04, -0.03, 7499.36, 1.05, -1.05]) {
       assert.equal(fmtPct(n), roundFloatsStyle(n));
     }
+  });
+
+  // ── Sign-asymmetry fix (2026-10-26) — see this function's own header comment for the full
+  // mechanism and live repro (Exec P&L entry $14.80/bid $14.60 -> raw -1.35% rendered "-1.3%"
+  // while the identical +1.35% magnitude rendered "+1.4%"). The fixture above only ever compared
+  // fmtPct against an equally-biased local copy of the old algorithm — it could never catch a
+  // POSITIVE-vs-NEGATIVE magnitude mismatch. These tests do exactly that comparison directly.
+  it("rounds a negative tie to the SAME magnitude as its positive mirror image, not a smaller one", () => {
+    // Each pair verified (not assumed) to land on an exact floating-point tie at its own precision
+    // — a value that merely LOOKS like a tie in decimal (e.g. 1.005 at 2dp) can actually sit
+    // slightly UNDER .5 in double precision (1.005 is really 1.00499999999999989341...) and would
+    // not exercise this bug at all.
+    const tiePairs: Array<[number, number]> = [
+      [1.05, 1], // -> ±1.1%
+      [1.35, 1], // -> ±1.4% (the exact live Exec P&L repro magnitude)
+      [0.25, 1], // -> ±0.3% (sub-1 tie)
+      [2.5, 0], // -> ±3% (whole-number digits)
+      [12.345, 2], // -> ±12.35%
+    ];
+    for (const [v, digits] of tiePairs) {
+      const pos = fmtPct(v, digits);
+      const neg = fmtPct(-v, digits);
+      // pos is "+X", neg must be "-X" — same digits, opposite sign, never a smaller magnitude.
+      assert.equal(neg, `-${pos.slice(1)}`, `fmtPct(${v}, ${digits})=${pos} vs fmtPct(${-v}, ${digits})=${neg} diverged in magnitude`);
+    }
+
+    // Pinned explicitly, not just via the loop above — this is the exact bug: fmtPct(-1.35, 1)
+    // used to render "-1.3%" (old, biased toward a smaller magnitude) instead of "-1.4%" (fixed,
+    // symmetric with fmtPct(1.35, 1) -> "+1.4%").
+    assert.equal(fmtPct(1.35, 1), "+1.4%");
+    assert.equal(fmtPct(-1.35, 1), "-1.4%");
+    assert.equal(fmtPct(1.05, 1), "+1.1%");
+    assert.equal(fmtPct(-1.05, 1), "-1.1%");
   });
 });

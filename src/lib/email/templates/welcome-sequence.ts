@@ -1,7 +1,7 @@
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 import { manifestProductCount, PRODUCT_MANIFEST } from "@/lib/marketing/product-manifest";
-import { emailLayout, emailCta, emailHighlight, emailScreenshot, ENGINE_ACCENT, EMAIL_BRAND } from "@/lib/email/layout";
+import { emailLayout, emailCta, emailHighlight, emailScreenshot, ENGINE_ACCENT, EMAIL_BRAND, substituteTokens } from "@/lib/email/layout";
 import { spxDeskHeroAsset, thermalKeyLevelsAsset, vectorChartAsset, nighthawkPlaysAsset } from "@/lib/email/inline-assets";
 import { marketingUnsubscribe } from "@/lib/email/unsubscribe-token";
 import type { EmailAttachment } from "@/lib/email/resend-client";
@@ -18,10 +18,22 @@ export type WelcomeEmailStep = {
 
 /** Substitutes the {{firstName}} token used throughout this file's copy.
  *  "Trader" (capitalized — it doubles as a direct-address nickname, not just
- *  a noun) covers members Clerk didn't capture a first name for. */
+ *  a noun) covers members Clerk didn't capture a first name for.
+ *
+ *  Routed through layout.ts's `substituteTokens` (HTML-escaped) rather than a bare
+ *  `.replace()` — this file's `ctx.firstName` comes straight off the Clerk
+ *  `user.created` webhook's `data.first_name` (src/app/api/webhooks/clerk/route.ts), a
+ *  member's own self-settable Clerk profile field. Every sibling billing-lifecycle
+ *  template (welcome-premium.ts, downgrade.ts, scheduled-cancel.ts, payment-failed.ts,
+ *  access-ended.ts, welcome-community.ts, cancel-reversed.ts, trial-ending-soon.ts)
+ *  already routes firstName through `substituteTokens` for exactly this reason — this
+ *  file had its own hand-rolled, unescaped substitution instead, so a Clerk first name
+ *  of `<script>...</script>` or an `onerror=` payload rendered live, unescaped, into
+ *  every one of this 5-step drip's HTML bodies (the highest-volume template of the
+ *  bunch — it fires on every signup). See welcome-sequence-firstname-xss.test.ts. */
 function personalize(text: string, ctx: WelcomeEmailContext): string {
   const name = ctx.firstName?.trim() || "Trader";
-  return text.replace(/\{\{firstName\}\}/g, name);
+  return substituteTokens(text, { firstName: name });
 }
 
 function h1(text: string): string {

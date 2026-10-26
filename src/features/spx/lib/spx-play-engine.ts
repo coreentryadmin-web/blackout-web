@@ -1611,6 +1611,39 @@ export async function evaluateSpxPlay(
   return enrichPlayPayload(payload, desk, session);
 }
 
+/**
+ * Labels of the `SpxSignalFactor`s computeSpxConfluence()/buildLevels() (spx-signals.ts) build
+ * directly from `desk.gex_walls`/`desk.gex_king` — i.e. the factors whose own `detail` text cites
+ * a specific GEX strike/node. Kept as one named list so the closed-market staleness disclosure
+ * below and any future caller agree on exactly which factors are "GEX-derived" rather than
+ * re-deriving the same judgment call ad hoc at each call site.
+ */
+const GEX_DERIVED_FACTOR_LABELS = new Set(["GEX support", "GEX resistance", "King node · GEX anchor"]);
+
+/**
+ * BUG FIX (2026-10-26, Ask Largo/5-engine standing mandate, live repro): the closed-market
+ * branch of evaluateSpxPlayCore below serves a GEX-derived factor/play-idea built from
+ * `desk.gex_walls` via peekMergedSpxDesk()'s deliberate 24h closed-market staleness tolerance
+ * (spx-desk-loader.ts — "once the market is genuinely closed, stale and correct are the same
+ * thing", NOT changed by this fix) — but never consulted `desk.gex_stale`/`gex_age_ms`
+ * (SpxDeskPayload, spx-desk.ts) before presenting it, so a member could see a specific "At 0DTE
+ * support node 7675 (+2 pts)" factor sourced from hours-old walls with zero staleness disclosure
+ * anywhere in the response. Confirmed live: the sibling GET /api/market/spx/desk route
+ * (peekSpxDesk(), NOT 24h-tolerant) reported gex_walls:[]/gex_stale:true/gex_age_ms:null at
+ * virtually the same instant /play served this exact idea undisclosed.
+ *
+ * Appends the same "stale, not live" disclosure idiom this codebase already uses elsewhere for
+ * stale GEX (spx-invalidation.ts's "Data stale — GEX/feed lagging", spx-desk-brief.ts's "GEX/feed
+ * stale — lighter size until refresh") to each GEX-derived factor's own `detail` text, rather than
+ * inventing a new phrasing. Non-GEX factors (VWAP, γ regime, max pain, …) are left untouched —
+ * their own data freshness is a separate concern this fix does not touch.
+ */
+function discloseStaleGexFactors(factors: SpxSignalFactor[]): SpxSignalFactor[] {
+  return factors.map((f) =>
+    GEX_DERIVED_FACTOR_LABELS.has(f.label) ? { ...f, detail: `${f.detail} — GEX stale, not live` } : f
+  );
+}
+
 async function evaluateSpxPlayCore(
   desk: SpxDeskPayload,
   prefetchedTechnicals?: PlayTechnicals | null,
@@ -1656,6 +1689,24 @@ async function evaluateSpxPlayCore(
           : entry - playIdealTargetPts()
         : null;
 
+    // See discloseStaleGexFactors()'s own doc comment above for the full bug account. Short
+    // version: `closedConfluence` above was built off `desk.gex_walls`, which on THIS path can
+    // legitimately be up to 24h old (peekMergedSpxDesk's deliberate closed-market tolerance,
+    // unchanged here) — gate disclosure on whether a GEX-derived factor actually fired, not on
+    // `gex_stale` alone, so a closed-market read with no GEX factor present (e.g. only VWAP/max-
+    // pain fired) never grows a confusing "stale" clause about data it never showed.
+    const closedGexFactorStale =
+      desk.gex_stale === true &&
+      (closedConfluence?.factors.some((f) => GEX_DERIVED_FACTOR_LABELS.has(f.label)) ?? false);
+    const closedFactors = closedGexFactorStale
+      ? discloseStaleGexFactors(closedConfluence!.factors)
+      : (closedConfluence?.factors ?? []);
+    const closedPlayIdea =
+      closedGexFactorStale && playIdea ? `${playIdea} · GEX stale, not live` : playIdea;
+    const closedThesis = closedGexFactorStale
+      ? `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT · GEX stale, not live`
+      : `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT`;
+
     return {
       available: false,
       phase: "SCANNING",
@@ -1674,9 +1725,9 @@ async function evaluateSpxPlayCore(
       // rather than reading assessed:true off a confluence object with an empty factors: [].
       assessed: closedConfluence != null,
       headline: "Session closed",
-      thesis: `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT`,
+      thesis: closedThesis,
       idle_message: null,
-      factors: closedConfluence?.factors ?? [],
+      factors: closedFactors,
       levels: {
         entry,
         stop: closedConfluence?.levels.stop ?? null,
@@ -1690,7 +1741,7 @@ async function evaluateSpxPlayCore(
         first_block_category: firstGateBlockCategory(["Session closed"]),
         warnings: mixedTapeMsg != null ? [mixedTapeMsg] : [],
         entry_mode: "none",
-        play_idea: playIdea,
+        play_idea: closedPlayIdea,
       },
       claude: null,
       cortex: null,
