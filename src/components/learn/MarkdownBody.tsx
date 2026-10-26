@@ -166,6 +166,22 @@ export function MarkdownBody({ content }: { content: string }) {
           ))}
         </ol>,
       );
+    } else if (
+      trimmed
+        .split(/\n/)
+        .every((line) => /^[-*]\s/.test(line.trim()))
+    ) {
+      // Unordered list: every line in the block opens with a `- `/`* ` marker. Checked against
+      // ALL lines (not just the first) so a prose paragraph that merely contains a bare hyphen or
+      // an em dash ("—", a different character) never false-positives into a list.
+      const items = trimmed.split(/\n/).map((line) => line.trim().replace(/^[-*]\s+/, ""));
+      elements.push(
+        <ul key={key++} className="my-4 list-disc space-y-2 pl-6">
+          {items.map((item, i) => (
+            <li key={i}>{parseInline(item)}</li>
+          ))}
+        </ul>,
+      );
     } else {
       elements.push(
         <p key={key++} className="mb-5">
