@@ -8039,6 +8039,45 @@ test("watchForSection: Premium stop rail shows the live cushion percentage above
   assert.match(section.body, /Premium stop rail: \*\*\$6\.66\*\* — 66% cushion from current mark/);
 });
 
+// ROUNDING-CONSISTENCY regression (Ask Largo standing mandate, 2026-10-26, sibling to the
+// Premium target rail regression above — same root cause, same live WEN repro shape): a
+// sub-cent mark ($0.025, displayed as "Mark: $0.03") must have its cushion% computed from the
+// ROUNDED $0.03, not the raw float — otherwise this line disagrees with the dollar figure a
+// member can see for themselves a few lines above in the Position section.
+test("watchForSection: Premium stop rail cushion percentage is computed from the rounded (displayed) mark, not the raw sub-cent float", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 0.025,
+        execMark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.02,
+        },
+      }),
+      asOf: "2026-10-26 00:18 ET",
+      sessionDate: "2026-10-25",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (0.03 - 0.02) / 0.03 * 100 = 33.3% -> 33%, matching the displayed $0.03 mark — not the
+  // raw-float (0.025-0.02)/0.025*100 = 20%.
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.02\*\* — 33% cushion from current mark/);
+  assert.doesNotMatch(section.body, /20% cushion/);
+});
+
 test("watchForSection: Premium stop rail omits the cushion note when mark is unavailable (never fabricated)", () => {
   const section = watchForSection(
     {
@@ -8398,6 +8437,49 @@ test("watchForSection: Premium target rail shows the live room percentage to the
   );
 });
 
+// ROUNDING-CONSISTENCY regression (Ask Largo standing mandate, 2026-10-26, live repro WEN
+// SWING:WEN:2098 HOLD brief): real contract mid $0.025 displays as "Mark: $0.03" (fmtUsd rounds
+// to 2dp), but the room% below used the RAW 0.025, printing "380% move still needed" when the
+// two dollar figures AS DISPLAYED ($0.03 mark, $0.12 target) imply 300%. Basis must be rounded
+// the same way fmtUsd rounds it before the percentage math, so the two agree.
+test("watchForSection: Premium target rail room percentage is computed from the rounded (displayed) mark, not the raw sub-cent float", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 0.025,
+        execMark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.02,
+          target_premium: 0.12,
+        },
+      }),
+      asOf: "2026-10-26 00:18 ET",
+      sessionDate: "2026-10-25",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (0.12 - 0.03) / 0.03 * 100 = 300%, matching the two dollar figures as printed — not the
+  // raw-float (0.12-0.025)/0.025*100 = 380%.
+  assert.match(
+    section.body,
+    /Premium target rail: \*\*\$0\.12\*\* — \*\*300%\*\* move still needed from current mark to reach target/,
+  );
+  assert.doesNotMatch(section.body, /380%/);
+});
+
 test("watchForSection: Premium target rail omits the room note when mark is unavailable (never fabricated)", () => {
   const section = watchForSection(
     {
@@ -8566,10 +8648,13 @@ test("watchForSection: Premium target rail still shows the room% for a target no
     },
     "open",
   );
-  // (2.40 - 2.025) / 2.025 * 100 = 18.5% -> 19%
+  // ROUNDING-CONSISTENCY FIX (2026-10-26): basis is now rounded to the displayed 2dp value
+  // before the percentage math — $2.025 displays (and is now computed) as $2.03, not the raw
+  // 2.025 — matching the "round the basis the same way fmtUsd rounds it" fix two tests below.
+  // (2.40 - 2.03) / 2.03 * 100 = 18.2% -> 18% (was 19% pre-fix, off the raw unrounded 2.025).
   assert.match(
     section.body,
-    /Premium target rail: \*\*\$2\.40\*\* — \*\*19%\*\* move still needed from current mark to reach target/,
+    /Premium target rail: \*\*\$2\.40\*\* — \*\*18%\*\* move still needed from current mark to reach target/,
   );
 });
 

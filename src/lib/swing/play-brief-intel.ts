@@ -4,7 +4,7 @@
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import { hasScaledOut, runnerTrailingStopPremium } from "@/lib/zerodte/terminal-ladder";
-import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel, roundOptionUsd } from "@/lib/fmt-money";
 import { watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { parseOccSymbol } from "@/lib/largo/core/entities";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
@@ -2247,8 +2247,14 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
       // through to the `cushionPct` branch below and rendered a falsely-reassuring mid-based
       // cushion despite having zero real executable value.
       const executableCushionGone = play.execBidZero === true || (execMark != null && execMark <= stop);
-      const cushionBasis = execMark != null && execMark > 0 ? execMark : play.mark;
+      const cushionBasisRaw = execMark != null && execMark > 0 ? execMark : play.mark;
       const cushionBasisIsExec = execMark != null && execMark > 0;
+      // ROUNDING-CONSISTENCY FIX (Ask Largo standing mandate, 2026-10-26, sibling to the
+      // targetRoomPct fix below and play-brief-narrative-coaching.ts's distanceSuffix fix —
+      // same bug, same cause): round the mark/execMark basis with the same algorithm the
+      // Position section's "Mark: $X.XX" display uses BEFORE computing the cushion%, so a member
+      // doing the subtraction on the displayed dollar figures gets this same percentage.
+      const cushionBasis = typeof cushionBasisRaw === "number" ? roundOptionUsd(cushionBasisRaw) : cushionBasisRaw;
       const cushionPct =
         cushionBasis != null &&
         cushionBasis > 0 &&
@@ -2301,8 +2307,16 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
       (t) => t.fired === true && t.premium != null && t.premium >= target,
     );
     const execMarkForTarget = play.execMark;
-    const targetBasis = execMarkForTarget != null && execMarkForTarget > 0 ? execMarkForTarget : play.mark;
+    const targetBasisRaw = execMarkForTarget != null && execMarkForTarget > 0 ? execMarkForTarget : play.mark;
     const targetBasisIsExec = execMarkForTarget != null && execMarkForTarget > 0;
+    // ROUNDING-CONSISTENCY FIX (Ask Largo standing mandate, 2026-10-26, live repro WEN
+    // SWING:WEN:2098 HOLD brief): round the mark/execMark basis with the same algorithm the
+    // Position section's "Mark: $X.XX" display uses BEFORE computing the room% — the raw
+    // unrounded mid ($0.025 for WEN) produced "380% move still needed" while the two dollar
+    // figures a member actually sees ($0.03 mark, $0.12 target) imply 300%. Same bug, same fix
+    // shape as the sibling cushionPct block above and play-brief-narrative-coaching.ts's
+    // distanceSuffix.
+    const targetBasis = typeof targetBasisRaw === "number" ? roundOptionUsd(targetBasisRaw) : targetBasisRaw;
     const targetRoomPct =
       !targetAlreadyFired &&
       targetBasis != null &&
