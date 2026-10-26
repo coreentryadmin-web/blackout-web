@@ -12,7 +12,7 @@ import { updateClerkMembershipMetadata } from "@/lib/membership";
 import { parseTier } from "@/lib/tiers";
 import { publishTierChanged } from "@/lib/tier-cache";
 import { isToolLaunched } from "@/lib/tool-access";
-import { buildToolAccessRows, parseToolAccessMap } from "@/lib/tool-user-access";
+import { buildToolAccessRows } from "@/lib/tool-user-access";
 import { getToolAccessForUserId } from "@/lib/tool-access-server";
 import { isAdminEmail } from "@/lib/admin-emails";
 import { classifyAdminUserAccess } from "@/lib/admin-user-access";
@@ -154,11 +154,19 @@ export async function PATCH(
   }
 
   if ("toolAccess" in body && body.toolAccess != null) {
-    const { mergeToolAccessMap, parseToolAccessMap } = await import("@/lib/tool-user-access");
+    const { mergeToolAccessMap, parseAdminToolAccessPatch } = await import(
+      "@/lib/tool-user-access"
+    );
     const { setToolAccessForUserId, getToolAccessForUserId } = await import(
       "@/lib/tool-access-server"
     );
-    const patch = parseToolAccessMap(body.toolAccess);
+    const patch = parseAdminToolAccessPatch(body.toolAccess);
+    if (patch === undefined) {
+      return NextResponse.json(
+        { error: "Invalid toolAccess — unrecognized tool key or mode" },
+        { status: 400 }
+      );
+    }
     const current = await getToolAccessForUserId(id);
     await setToolAccessForUserId(id, mergeToolAccessMap(current, patch));
   }

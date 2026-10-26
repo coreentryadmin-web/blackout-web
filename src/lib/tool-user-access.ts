@@ -20,6 +20,24 @@ export function parseToolAccessMap(raw: unknown): ToolAccessMap {
   return out;
 }
 
+/**
+ * Strict allowlist for the admin tool-access PATCH — unlike `parseToolAccessMap` (which
+ * silently drops an unrecognized tool key or mode, by design, since it also reads back
+ * already-persisted Clerk metadata this app itself wrote), an admin mutation must REJECT a
+ * malformed/mistyped entry rather than silently no-op it with a 200 success response. Mirrors
+ * `parseAdminUserTier`'s reasoning in `admin-users.ts`.
+ */
+export function parseAdminToolAccessPatch(raw: unknown): ToolAccessMap | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: ToolAccessMap = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!VALID_KEYS.has(k as ToolKey)) return undefined;
+    if (v !== "grant" && v !== "block" && v !== "inherit") return undefined;
+    out[k as ToolKey] = v;
+  }
+  return out;
+}
+
 /** Effective tool access for a non-admin user (admin callers should bypass before this). */
 export function resolveToolAccessForUser(
   key: ToolKey,
