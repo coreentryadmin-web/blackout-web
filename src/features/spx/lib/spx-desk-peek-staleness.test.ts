@@ -38,6 +38,13 @@ mock.module("../../../lib/providers/config", {
     deskPeekMaxAgeSec: () => 0.02, // 20ms ceiling for this test only (real default is 40s)
     deskPulseCacheTtlMs: () => 5,
     deskPulseMaxBlockMs: () => 500,
+    // spx-desk-loader.ts's loader call sites (loadSpxDesk/loadMergedSpxDesk/loadBootstrapBundle,
+    // exercised indirectly below via loadSpxDesk()/loadMergedSpxDesk()) now also import this —
+    // every export spx-desk-loader.ts imports from config must be stubbed, even ones this
+    // peek-focused test file doesn't directly assert on. A generous value here (well above every
+    // wait this file uses) keeps the loader's own SWR ceiling out of the way of what this test is
+    // actually checking (the PEEK path's ceiling, deskPeekMaxAgeSec() above).
+    deskLoaderMaxStaleAgeMs: () => 60_000,
   },
 });
 

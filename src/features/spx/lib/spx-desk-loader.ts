@@ -2,6 +2,7 @@ import {
   deskBootstrapMaxBlockMs,
   deskCacheTtlMs,
   deskFlowCacheTtlMs,
+  deskLoaderMaxStaleAgeMs,
   deskPeekMaxAgeSec,
   deskPulseCacheTtlMs,
   deskPulseMaxBlockMs,
@@ -42,6 +43,17 @@ const deskCacheOpts = {
   staleWhileRevalidate: true as const,
   staleOnInflight: true,
   maxBlockMs: deskBootstrapMaxBlockMs(),
+  // FIX (found live 2026-10-26, SPX desk loader-path stale-cache ceiling gap): previously unset,
+  // so withServerCache's SWR branch fell back to the generic 10-minute MAX_STALE_AGE_MS — far
+  // looser than peekSpxDesk()'s own already-tightened ~40s ceiling (PR #6882), letting a replica
+  // whose background refresh kept losing the (now-fixed) maxBlockMs race keep serving its own
+  // stale local copy for up to 10 minutes. Reuses the SAME value peekSpxDesk() uses
+  // (deskLoaderMaxStaleAgeMs(), src/lib/providers/config.ts) so the peek and loader ceilings for
+  // this cache key can never drift apart again. Safe only because server-cache.ts's SWR branch
+  // now races its refresh against maxBlockMs (see that file's own fix) — without that race landing
+  // first, tightening this ceiling would make the (previously unbounded) blocking-refresh branch
+  // fire far more often.
+  maxStaleAgeMs: deskLoaderMaxStaleAgeMs(),
   fallback: async () => deskShellFromPulse(await loadSpxDeskPulse()),
 };
 
@@ -174,6 +186,8 @@ export async function loadMergedSpxDesk(): Promise<MergedSpxDeskBundle> {
     staleWhileRevalidate: true,
     staleOnInflight: true,
     maxBlockMs: deskBootstrapMaxBlockMs(),
+    // Same fix as deskCacheOpts above — see that comment for the full rationale.
+    maxStaleAgeMs: deskLoaderMaxStaleAgeMs(),
     fallback: buildBootstrapFastLane,
   });
   void observeSpxDeskVoiceTransitions(bundle.merged, date).catch(() => {});
@@ -255,6 +269,8 @@ export async function loadBootstrapBundle(): Promise<MergedSpxDeskBundle> {
     staleWhileRevalidate: true,
     staleOnInflight: true,
     maxBlockMs: deskBootstrapMaxBlockMs(),
+    // Same fix as deskCacheOpts above — see that comment for the full rationale.
+    maxStaleAgeMs: deskLoaderMaxStaleAgeMs(),
     fallback: buildBootstrapFastLane,
   });
 }

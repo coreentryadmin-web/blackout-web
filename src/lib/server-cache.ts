@@ -304,6 +304,33 @@ export async function withServerCache<T>(
         refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
         return hit.value;
       }
+      // FIX (found live 2026-10-26, SPX desk loader-path stale-cache ceiling gap): this was the
+      // one remaining `return refreshCache(...)` site in this function with NO race against
+      // opts.maxBlockMs — every other maxBlockMs-configured branch (the fast lane above, the
+      // already-inflight branch, both cold-start branches) already races it, per the PR
+      // #5061/#5065/#6090 fixes documented elsewhere in this file. A caller that configures
+      // maxBlockMs (e.g. spx-desk-loader.ts's loadSpxDesk()/loadMergedSpxDesk()/
+      // loadBootstrapBundle(), all of which pass `maxBlockMs: deskBootstrapMaxBlockMs()`) expects a
+      // hard bound on how long it can be blocked; this not-yet-degraded branch silently ignored
+      // that budget once a key's stale age exceeded maxStaleAgeMs, fully awaiting the refresh
+      // regardless of how slow the upstream was. Race it the same way the branches above do:
+      // refreshCache() registers its promise in `inflight` BEFORE returning, so the loser of the
+      // race keeps running in the background and still populates the cache/Redis on success —
+      // nothing is cancelled, only the caller stops waiting on it.
+      const maxBlock = opts.maxBlockMs;
+      if (maxBlock != null && Number.isFinite(maxBlock) && maxBlock > 0) {
+        const refresh = refreshCache(key, ttlMs, loader, localOnly, shouldCache);
+        const raced = await Promise.race([
+          refresh,
+          new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+        ]);
+        if (raced !== "timeout") return raced;
+        // The refresh lost the race but is still running (registered in `inflight`) — serve the
+        // stale value instead of blocking the caller further, the same race-losing behavior every
+        // other maxBlockMs branch in this file falls back to. `hit` is guaranteed non-null here
+        // (this whole block is inside `if (hit && ...)`).
+        return hit.value;
+      }
       return refreshCache(key, ttlMs, loader, localOnly, shouldCache);
     }
     if (!localOnly) {
