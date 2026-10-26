@@ -49,6 +49,16 @@ function fingerprintFor(issue: SpxAdminIssue): string {
   return `${issue.category}:${issue.title}`;
 }
 
+/** Pure: a genuine "time to acknowledge" in ms, or null when no acknowledgment
+ *  has happened yet. Deliberately NEVER falls back to "time elapsed since open"
+ *  for a still-unacked incident — that would fabricate an ack latency for an
+ *  incident nobody has acked, which is exactly what both the dashboard's
+ *  aggregate "Avg MTTA" KPI and the per-row "MTTA" badge would otherwise
+ *  silently display as a real measurement. */
+export function computeMttaMs(ackedAtMs: number | null, openedAtMs: number): number | null {
+  return ackedAtMs != null ? ackedAtMs - openedAtMs : null;
+}
+
 /** Pure: which currently open/acked fingerprints should be auto-resolved, given
  *  the active issue set and (optional) namespace-ownership scope. Split out from
  *  syncAdminIncidents so the filtering logic — the part most likely to grow an
@@ -160,7 +170,6 @@ export async function listOpenAdminIncidents(limit = 20): Promise<AdminIncidentR
     [limit]
   );
 
-  const now = Date.now();
   return res.rows.map((row) => {
     const openedMs = new Date(row.opened_at).getTime();
     const ackedMs = row.acked_at ? new Date(row.acked_at).getTime() : null;
@@ -176,7 +185,7 @@ export async function listOpenAdminIncidents(limit = 20): Promise<AdminIncidentR
       acked_at: row.acked_at?.toISOString() ?? null,
       resolved_at: row.resolved_at?.toISOString() ?? null,
       acked_by: row.acked_by,
-      mtta_ms: ackedMs != null ? ackedMs - openedMs : row.status === "open" ? now - openedMs : null,
+      mtta_ms: computeMttaMs(ackedMs, openedMs),
     };
   });
 }
