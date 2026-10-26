@@ -277,6 +277,47 @@ const fmtPct = (n: number | null) => (n == null ? "?" : `${n > 0 ? "+" : ""}${ro
 const fmtMark = (n: number) => n.toFixed(2);
 
 /**
+ * Re-interpolate a floor/stop-HONORED exit's leading "Mark X (+Y%)" clause with the
+ * HONORED mark/pnl — the exact values `buildExitContext` persists as `mark`/`pnl_pct` —
+ * instead of leaving the RAW pre-honoring numbers `evaluateExitState`/`decideTrimScale`
+ * baked into `decision.detail` at decision time, before `resolveExitMark` (which runs
+ * AFTERWARD, inside `buildExitContext`) has decided whether the floor/stop mark wins.
+ *
+ * FINDING (2026-10-26, live SPXW/SPY/TSLA): on every `mark_honored:true` exit, the
+ * persisted `pnl_pct` prices off the HONORED mark (better — honoring, by construction,
+ * can only improve on the raw print: `resolveExitMark`'s `Math.max(observedMark,
+ * floorMark)`) while `exit_detail` — the SAME string `ZeroDteBoard.tsx` renders as the
+ * member-facing tooltip and Largo quotes verbatim — kept the RAW, worse percentage
+ * forever, because `detail: decision.detail` was passed through unchanged. A member
+ * could read "Mark 14.1 (+17.5%) is at/below the +18.33% floor" right beside a +18.33%
+ * credited P&L chip for the SAME exit — and 17.5 < 18.33 make the sentence read as
+ * self-contradictory ("at/below" a floor the quoted number is actually below the floor
+ * it's being compared to only because the quoted number itself is stale).
+ *
+ * SCOPE: only the exits `resolveExitMark` can ever honor — `action === "EXIT"` with a
+ * reason starting with "ratchet"/"runner_floor", or exactly "trim_scale_dead_zone_floor"
+ * — share this exact leading "Mark <fmtMark> (<fmtPct>)" template at their one call site
+ * each (the floor-breach branches in `evaluateExitState` and `decideTrimScale`). No other
+ * decision shape (thesis break, plan_stop, plan_target, flat_theta_bleed, HOLD/RAISE_FLOOR)
+ * is ever `honored`, so gating on the caller's own `honored` flag — already computed from
+ * the same reason allowlist — is sufficient; no separate reason check is needed here.
+ * A detail that doesn't start with the expected clause (should never happen given the
+ * scope above) is returned unchanged rather than mangled.
+ */
+function regenerateExitDetailForHonoredMark(
+  detail: string,
+  honored: boolean,
+  honoredMark: number,
+  honoredPnlPct: number | null
+): string {
+  if (!honored) return detail;
+  return detail.replace(
+    /^Mark [\d.]+ \([+-]?[\d.]+%\)/,
+    `Mark ${fmtMark(honoredMark)} (${fmtPct(honoredPnlPct)})`
+  );
+}
+
+/**
  * The flat_theta_bleed exit detail — shared by both exit modes (2026-09-17 fix). The
  * exit condition only checks peak (upside) and the CURRENT mark (downside), so a play
  * that dipped below -flat_band_pct and recovered before the timeout fired used to get
@@ -1091,29 +1132,34 @@ export function buildExitContext(
     entryPremium != null && entryPremium > 0
       ? resolveExitMark(decision, entryPremium, observedMark)
       : { mark: markObserved, honored: false };
+  // BUG FIX (2026-09-04): pnl_pct must NOT be computed from the cent-rounded `mark` on a
+  // non-honored (thesis/plan_stop/flat) exit. `observedMark` is a raw mid ((bid+ask)/2 kept
+  // to 4dp by zeroDteMidOf) and routinely lands on a half-cent (e.g. bid 2.26/ask 2.27 → mid
+  // 2.265) — legitimate live-quote precision, the exact input `evaluateExitState` used a few
+  // lines up to compute the `pnlPct` baked verbatim into `decision.detail`. Rounding that mid
+  // to the nearest cent BEFORE the percentage division (what `mark` does here for the
+  // non-honored branch, via resolveExitMark's `round2(observedMark)`) can erase up to
+  // `0.5¢ / entryPremium` of real P&L — on a $2.27 0DTE premium that's up to ±0.22 points, and
+  // on a sub-$1 lotto premium it can be several points. Measured live 2026-09-04: a CRCL
+  // thesis-break stamped `exit_detail: "Thesis broken (veto) at -0.22%"` (the honest,
+  // full-precision figure) right beside `exit_pnl_pct: 0` (recomputed from the rounded mark,
+  // which happened to round back up to the pinned entry premium) — two numbers for the same
+  // exit event disagreeing inside the same payload. A floor/stop-HONORED exit is unaffected
+  // and keeps using `mark` (the constructed floor/stop price IS the assumed fill, so its
+  // percentage is supposed to reflect that synthetic price, not the raw print it improved on
+  // — see the floor-breach test above, which relies on exactly that behavior).
+  const pnlPct = pinnedLivePnlPct(entryPremium, markHonored ? mark : observedMark);
   return {
     reason: decision.reason,
-    detail: decision.detail,
+    // FIX (2026-10-26): on a mark_honored exit, re-interpolate the leading "Mark X (+Y%)"
+    // clause with the SAME honored mark/pnlPct persisted below — see
+    // regenerateExitDetailForHonoredMark's own doc for the full finding. `decision.detail`
+    // is otherwise passed through verbatim (non-honored exits are untouched).
+    detail: regenerateExitDetailForHonoredMark(decision.detail, markHonored, mark, pnlPct),
     mark,
     mark_observed: markObserved,
     mark_honored: markHonored,
-    // BUG FIX (2026-09-04): pnl_pct must NOT be computed from the cent-rounded `mark` on a
-    // non-honored (thesis/plan_stop/flat) exit. `observedMark` is a raw mid ((bid+ask)/2 kept
-    // to 4dp by zeroDteMidOf) and routinely lands on a half-cent (e.g. bid 2.26/ask 2.27 → mid
-    // 2.265) — legitimate live-quote precision, the exact input `evaluateExitState` used a few
-    // lines up to compute the `pnlPct` baked verbatim into `decision.detail`. Rounding that mid
-    // to the nearest cent BEFORE the percentage division (what `mark` does here for the
-    // non-honored branch, via resolveExitMark's `round2(observedMark)`) can erase up to
-    // `0.5¢ / entryPremium` of real P&L — on a $2.27 0DTE premium that's up to ±0.22 points, and
-    // on a sub-$1 lotto premium it can be several points. Measured live 2026-09-04: a CRCL
-    // thesis-break stamped `exit_detail: "Thesis broken (veto) at -0.22%"` (the honest,
-    // full-precision figure) right beside `exit_pnl_pct: 0` (recomputed from the rounded mark,
-    // which happened to round back up to the pinned entry premium) — two numbers for the same
-    // exit event disagreeing inside the same payload. A floor/stop-HONORED exit is unaffected
-    // and keeps using `mark` (the constructed floor/stop price IS the assumed fill, so its
-    // percentage is supposed to reflect that synthetic price, not the raw print it improved on
-    // — see the floor-breach test above, which relies on exactly that behavior).
-    pnl_pct: pinnedLivePnlPct(entryPremium, markHonored ? mark : observedMark),
+    pnl_pct: pnlPct,
     peak_pnl_pct: pinnedLivePnlPct(entryPremium, peakPremium),
     at: new Date(nowMs).toISOString(),
   };
