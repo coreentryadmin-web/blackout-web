@@ -30,7 +30,7 @@ export function accessEndedEmail(ctx: AccessEndedContext): { subject: string; ht
   const paragraphs = [
     openingParagraph,
     "Here's what that access bought you while it lasted: every setup graded A through F before anyone knew how it ended, every closed play — win or loss — logged against that original grade. No hindsight edits, no quiet deletions. That's the standard, and it's the first thing that goes dark when the sub ends.",
-    "No guilt trip coming. You made a call — it's yours to make, and we respect it. That's the whole email. If the itch comes back someday, nothing resets: same grading standard, same live reads, same door, wide open — SPX Slayer for the 0DTE desk, Premium for the full six-engine stack.",
+    "No guilt trip coming. You made a call — it's yours to make, and we respect it. That's the whole email. If the itch comes back someday, nothing resets: same grading standard, same live reads, same door, wide open — SPX Slayer for the 0DTE desk, Premium for the full seven-engine stack.",
   ]
     .map((p) => `<p style="margin:0 0 18px;color:${EMAIL_BRAND.body};">${t(p)}</p>`)
     .join("");
