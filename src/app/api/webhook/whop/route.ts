@@ -309,7 +309,11 @@ export async function POST(req: NextRequest) {
           if (!alreadyNotified) {
             if (cancelAtPeriodEnd) {
               const accessUntil = event.data.renewal_period_end ? new Date(event.data.renewal_period_end) : null;
-              void notifyScheduledCancellation({ email, accessUntil }).catch((err) =>
+              // Narrow "free" (shouldn't occur alongside an active membership triggering this
+              // event, but never seen that guaranteed) to the narrower "community" engine list
+              // rather than the wider "premium" one — never overstate what stays live.
+              const scheduledCancelBillingKind = billingKind === "premium" ? "premium" : "community";
+              void notifyScheduledCancellation({ email, accessUntil, billingKind: scheduledCancelBillingKind }).catch((err) =>
                 console.warn("[whop webhook] notifyScheduledCancellation failed", err)
               );
             } else {
