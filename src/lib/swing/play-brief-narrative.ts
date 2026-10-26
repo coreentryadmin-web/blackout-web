@@ -1156,9 +1156,17 @@ export function counterThesisLine(
   } else if (play.direction === "SHORT" && nh?.direction?.toLowerCase() === "long") {
     reasons.push(`Night Hawk bullish (${nh.conviction ?? "recent take"})`);
   }
-  if (play.direction === "LONG" && z?.direction === "short") {
+  // BUG FIX (same bug class as #4788, third call site): `z.direction` is NOMINAL provenance only
+  // for a committed iron condor (`z.is_condor`) — the structure is delta-neutral, so comparing its
+  // "direction" against the swing's own direction is meaningless (see EcosystemZeroDteTake.is_condor's
+  // own doc comment in ecosystem-context.ts). crossDeskCoaching (play-brief-narrative-coaching.ts,
+  // `zLong`/`zShort`) and flowIntelSection (play-brief-intel.ts) already gate this comparison on
+  // `!is_condor`; this call site read the identical field for the identical comparison without the
+  // guard, so a condor fade could render as a fabricated "0DTE short/long bias" counter-thesis reason.
+  const zCondorSafe = z?.is_condor !== true;
+  if (play.direction === "LONG" && zCondorSafe && z?.direction === "short") {
     reasons.push(`0DTE short bias (score ${z.score ?? "—"})`);
-  } else if (play.direction === "SHORT" && z?.direction === "long") {
+  } else if (play.direction === "SHORT" && zCondorSafe && z?.direction === "long") {
     reasons.push(`0DTE long bias (score ${z.score ?? "—"})`);
   }
 

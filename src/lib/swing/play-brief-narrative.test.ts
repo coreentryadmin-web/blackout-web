@@ -2798,6 +2798,36 @@ test("counterThesisLine: prior-session 0DTE must not steelman desk friction (Lar
   assert.equal(line, null, "yesterday's 0DTE short must not appear in counter-thesis");
 });
 
+// BUG FIX (same bug class as #4788, third call site): a committed iron condor's `direction` is
+// NOMINAL provenance only (the fade side of the pin it came from, per EcosystemZeroDteTake's own
+// doc comment) — the structure itself is delta-neutral, so comparing it against the swing's own
+// direction is meaningless. crossDeskCoaching (play-brief-narrative-coaching.ts) and
+// flowIntelSection (play-brief-intel.ts) already gate on `is_condor` before making this exact
+// comparison; counterThesisLine did not, so a condor fade could render as a fabricated directional
+// "0DTE short/long bias" counter-thesis reason.
+test("counterThesisLine: condor 0DTE take must not steelman a directional counter-thesis reason (same bug class as #4788)", () => {
+  const line = counterThesisLine(
+    ctx({
+      sessionDate: "2026-09-05",
+      ecosystem: {
+        ticker: "NRG",
+        zerodte_today: {
+          session_date: "2026-09-05",
+          direction: "short",
+          score: 78,
+          conviction: "high",
+          status: "flagged",
+          first_flagged_at: "2026-09-05T14:00:00Z",
+          is_condor: true,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    118,
+  );
+  assert.equal(line, null, "a condor's nominal fade-side direction must not appear in counter-thesis");
+});
+
 test("counterThesisLine: prior-session Night Hawk must not steelman desk friction (Largo C2)", () => {
   const line = counterThesisLine(
     ctx({
