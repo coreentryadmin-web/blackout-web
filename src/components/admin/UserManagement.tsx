@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import {
   GlassPanel,
@@ -13,6 +13,7 @@ import {
   ConfirmModal,
 } from "@/components/admin/AdminUi";
 import { AdminToolsPanel, UserToolAccessEditor } from "@/components/admin/AdminToolsPanel";
+import { runGuardedUsersFetch } from "@/components/admin/user-management-request-guard";
 import { Modal } from "@/components/ui";
 import type { ToolKey } from "@/lib/tool-access";
 import type { ToolAccessMode, ToolAccessRow } from "@/lib/tool-user-access";
@@ -89,7 +90,16 @@ export function UserManagement() {
   const [globalStats, setGlobalStats] = useState<UsersResponse["stats"]>(null);
   const [section, setSection] = useState<"users" | "tools">("users");
 
+  // Bumped once per fetchUsers() call so a response can tell whether a newer
+  // request has superseded it before applying its data — see
+  // user-management-request-guard.ts for why this exists (the un-debounced
+  // search box can fire several overlapping requests, and without this an
+  // earlier, slower response could resolve after a later one and overwrite
+  // the screen with stale results).
+  const latestUsersRequestIdRef = useRef(0);
+
   const fetchUsers = useCallback(async () => {
+    const requestId = ++latestUsersRequestIdRef.current;
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
     if (query) params.set("q", query);
@@ -97,16 +107,28 @@ export function UserManagement() {
     if (roleFilter) params.set("role", roleFilter);
 
     try {
-      const res = await fetch(`/api/admin/users?${params}`);
-      if (!res.ok) return;
-      const data: UsersResponse = await res.json();
-      setUsers(data.users);
-      setTotal(data.total);
-      setPages(data.pages);
-      setFilterNote(data.filterNote ?? null);
-      setGlobalStats(data.stats ?? null);
+      await runGuardedUsersFetch(
+        requestId,
+        () => latestUsersRequestIdRef.current,
+        async () => {
+          const res = await fetch(`/api/admin/users?${params}`);
+          if (!res.ok) return null;
+          return (await res.json()) as UsersResponse;
+        },
+        (data) => {
+          if (!data) return;
+          setUsers(data.users);
+          setTotal(data.total);
+          setPages(data.pages);
+          setFilterNote(data.filterNote ?? null);
+          setGlobalStats(data.stats ?? null);
+        }
+      );
     } finally {
-      setLoading(false);
+      // Only the still-current request gets to clear the spinner — a
+      // superseded request's `finally` must not flip `loading` back to
+      // false while the request that replaced it is still in flight.
+      if (latestUsersRequestIdRef.current === requestId) setLoading(false);
     }
   }, [page, pageLimit, query, accessFilter, roleFilter]);
 
