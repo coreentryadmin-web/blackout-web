@@ -245,6 +245,30 @@ export function HorzBar({
   );
 }
 
+/** Thrown storage access (sandboxed admin-tool iframe, blocked cookies/storage, private-mode
+ *  edge cases beyond quota) must not break the panel — it just stops remembering open/closed. */
+export function readDeckPanelState(storageKey: string): "open" | "closed" | null {
+  // The `typeof sessionStorage` check itself must live inside the try — some sandboxed
+  // contexts throw a SecurityError on merely accessing the global getter, not just on
+  // calling a method on it.
+  try {
+    if (typeof sessionStorage === "undefined") return null;
+    const stored = sessionStorage.getItem(`admin-deck:${storageKey}`);
+    return stored === "open" || stored === "closed" ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeDeckPanelState(storageKey: string, state: "open" | "closed"): void {
+  try {
+    if (typeof sessionStorage === "undefined") return;
+    sessionStorage.setItem(`admin-deck:${storageKey}`, state);
+  } catch {
+    /* best-effort — the panel still toggles for this render, just doesn't persist */
+  }
+}
+
 export function DeckPanel({
   title,
   defaultOpen = false,
@@ -263,8 +287,8 @@ export function DeckPanel({
   const [open, setOpen] = useState(defaultOpen);
 
   useEffect(() => {
-    if (!storageKey || typeof window === "undefined") return;
-    const stored = sessionStorage.getItem(`admin-deck:${storageKey}`);
+    if (!storageKey) return;
+    const stored = readDeckPanelState(storageKey);
     if (stored === "open") setOpen(true);
     if (stored === "closed") setOpen(false);
   }, [storageKey]);
@@ -272,9 +296,7 @@ export function DeckPanel({
   const toggle = () => {
     setOpen((v) => {
       const next = !v;
-      if (storageKey && typeof window !== "undefined") {
-        sessionStorage.setItem(`admin-deck:${storageKey}`, next ? "open" : "closed");
-      }
+      if (storageKey) writeDeckPanelState(storageKey, next ? "open" : "closed");
       return next;
     });
   };
