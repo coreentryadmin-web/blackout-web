@@ -1,4 +1,22 @@
-## WATCH LIST — 2026-10-26 Swing play-brief diff narrator dropped one side of a HELIX call/put flow move when both moved in the same refresh (PR #6777, CI running at time of writing — confirm merged before relying on this entry) — fixed, deploy pending validation
+## WATCH LIST — 2026-10-26 Swing Legacy-carried WATCH reason string kept citing a stale delta after staleDte nulled it (PR #6781, CI running at time of writing — confirm merged before relying on this entry) — fixed, deploy pending validation
+
+**What was fixed:** `refreshCarriedLegacyPlay`'s (`legacy-confirm-promote.ts`) `staleDte` branch
+correctly nulls `contract.delta`/`gamma`/`theta`/`vega`/`iv` on a Legacy-carried WATCH play when no
+fresh same-contract quote is available and the DTE label has drifted — but it only ever rewrote
+the DTE count inside the play's human-readable `reason` string, never the delta figure baked into
+the same string at generation time. Live-confirmed on MSTR/PLTR/MDB: `contract.delta: null` sitting
+right next to `reason` text still asserting `"Δ0.62"`/`"Δ0.59"`/`"Δ0.60"` as current fact. Fixed by
+extending the same rewrite to blank the delta too, falling back to the `"—"` convention
+`contract-ranker.ts` already uses for unknown delta.
+
+**Specific thing to check at next RTH open:** find a live Legacy-promoted SWING WATCH candidate
+whose carried contract has drifted (no matching fresh same-day organic-scan quote, DTE recomputed
+from the original promotion date) and confirm its `reason` string shows `"Δ—"` rather than a
+specific stale delta number, consistent with `contract.delta: null` in the same row; confirm a
+WATCH candidate with a genuinely fresh, matching contract (`sameContract` true) still shows its
+real, current delta in both the contract object and the reason string (no regression).
+
+## WATCH LIST — 2026-10-26 Swing play-brief diff narrator dropped one side of a HELIX call/put flow move when both moved in the same refresh (PR #6777, merged `7d92996f2`) — fixed, deploy pending validation
 
 **What was fixed:** `diffBriefSnapshots`'s (`play-brief-diff.ts`) HELIX call/put flow narration used
 a single `if`/`else-if`/`else-if` chain instead of two independent `if`s like every other field in
