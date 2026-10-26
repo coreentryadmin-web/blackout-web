@@ -140,6 +140,10 @@ export function HelixTickerAlertToggle({ ticker }: { ticker: string }) {
                 step={10000}
                 value={minPremiumInput}
                 onChange={(e) => setMinPremiumInput(e.target.value)}
+                // A number input captures the wheel event by default — scrolling this
+                // popover while the cursor sits over it silently changes the threshold
+                // instead of scrolling. Blur on wheel so a scroll always scrolls.
+                onWheel={(e) => e.currentTarget.blur()}
                 className="w-full rounded border border-white/10 bg-black/40 px-2 py-1 font-mono text-[12px] text-white"
                 aria-label="Minimum premium"
               />
