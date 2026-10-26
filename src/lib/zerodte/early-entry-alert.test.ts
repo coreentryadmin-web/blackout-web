@@ -33,7 +33,7 @@ function candidate(overrides: Partial<EarlyEntryCandidate> = {}): EarlyEntryCand
   return {
     strike: 112, side: "call", ask: 1.8, bid: 1.7, mid: 1.75, spread_pct: 5.7, oi: 400, iv: 0.35,
     distance_pct: 1.8, expected_move_pct: 2.5, reachability_prob: 0.4, captured_fraction: 0.1,
-    rank_score: 0.35, ...overrides,
+    rank_score: 0.35, target10: null, target20: null, ...overrides,
   };
 }
 
