@@ -9140,3 +9140,21 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   no-gap-exposure sentence; separately confirm a position WITH a resolved peer cohort (real
   sector/beat-rate stats, e.g. a liquid large-cap like PLTR/TEM's own large-cap peers) still
   renders "Earnings peer lens" with its real peer-beat-rate content unchanged (no regression).
+
+## WATCH LIST — 2026-10-26 (SPX degraded-headline second call site fix, PR #6846)
+
+- **SPX Slayer — degraded play fallback served "Desk warming" mid-RTH on a fully live desk (PR
+  #6846, merged `1c88b8b34`).** A 2026-10-16 fix overrode `degradedPlayPayload()`'s hardcoded
+  `headline`/`idle_message` default at route.ts's catch block only; a live audit on 2026-10-26
+  found the sibling call site, `spx-service.ts`'s `spxPlayReadDegraded()` (the routine
+  cross-replica-lock-loss fallback, not a rare error path), still falling through to the bare
+  "Desk warming — play state unavailable" default while `GET /api/market/spx/desk` showed the
+  real desk fully live (`market_open:true`, ~45s-old poll) at the identical instant. Fixed: both
+  call sites now spread a shared `degradedPlayCatchingUpMessage()` helper instead of one carrying
+  an inline literal and the other nothing. **Re-check once the market opens:** poll
+  `GET /api/market/spx/play` repeatedly during RTH looking for a response with `degraded:true` —
+  confirm its `headline`/`idle_message` read "Play scan still catching up — retry shortly" (never
+  "Desk warming — play state unavailable") whenever `session_phase` is `"cash"` (i.e. the market is
+  genuinely open); separately confirm the SPX Slayer board badge tooltip
+  (`spx-slayer-badge-map.ts`'s `unavailable_reason`) and the Play Verdict Bar's status line show
+  the same honest text during any such window, never the stale "cold desk" claim.
