@@ -8482,6 +8482,38 @@ export async function fetchSwingPositionsRange(sinceDate: string, limit = 1000):
 }
 
 /**
+ * Terminal (CLOSED/ROLLED) legs that CLOSED on/after `sinceDate`, unbounded by how long ago the
+ * position was ENTERED — the `/record` route's CLOSED-side sibling to `fetchOpenSwingPositions`'s
+ * BUG FIX comment above (Ask Largo standing mandate, 2026-10-26, live repro MRNA#65): that fix
+ * made "is this position currently open" a present-tense fact, independent of `days`, by unioning
+ * in `fetchOpenSwingPositions()`'s unbounded rows — but "did this position close recently" was
+ * left exactly as exposed as the original bug, because `fetchSwingPositionsRange`/
+ * `fetchClosedSwingPositionsRange` both filter on `session_date` (ENTRY date), never `closed_at`.
+ * Live-measured on prod: MRNA#65 (entered 2026-10-22, closed 2026-10-26T13:46:15Z, a real -34.47%
+ * stop) was completely ABSENT from `closedDeck` under `?days=1/2/3` (whose `since` cutoff,
+ * 2026-10-23..25, postdates the entry) and only appeared once `?days=5+` widened `since` back
+ * past the entry date — so a member or Largo asking "what closed today" via the route's own
+ * default/short-window path saw nothing, even though a real position had just stopped out.
+ * Filters on `closed_at`, the column that actually answers "did this close in the window" —
+ * `session_date`/`committed_at` answer a different question (when was it entered) that happens to
+ * coincide for same-day round trips but diverges for anything held across sessions, which is most
+ * of this product's real population (multi-day swings, not 0DTE).
+ */
+export async function fetchRecentlyClosedSwingPositions(sinceDate: string, limit = 500): Promise<SwingPositionRow[]> {
+  await ensureSchema();
+  const normalized = normalizeIsoDateInput(sinceDate);
+  if (!normalized) return [];
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM swing_positions
+      WHERE status IN ('CLOSED','ROLLED') AND closed_at >= $1::date
+      ORDER BY closed_at DESC, id DESC
+      LIMIT $2`,
+    [normalized, limit]
+  );
+  return res.rows.map(mapSwingPositionRow);
+}
+
+/**
  * Terminal (CLOSED/ROLLED) legs only, for the multi-truth-grade retrace (`swing/grade.ts`'s real
  * `gradeSwingPosition` — see grade-retrace.ts / the admin multi-truth-grade route). `grade_json` on
  * these rows is ALWAYS the markfreeze P&L snapshot (`gradeParentFromMark`, roll-plan.ts) — this
