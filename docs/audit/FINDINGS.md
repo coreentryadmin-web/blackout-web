@@ -38,6 +38,174 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo / Night Hawk Swings: `worstKnownSwingDataAgeMs` silently drops the `optionMarkGenuinelyUnknown` case, so a freshly-committed position with a never-synced mark reports Largo-contract `freshness:"live"`
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #TBD) |
+| **Found by** | Ask Largo × Night Hawk Swings standing ownership mandate — live audit cycle against `GET /api/market/swing/play-brief` (authenticated prod session), 2026-10-26, 3 fresh tickers (PONY/SKHY/CLF) |
+| **Scope** | `src/lib/swing/play-brief-intel.ts` (`worstKnownSwingDataAgeMs`), `src/lib/swing/play-brief-absence.ts` (`SWING_OPTION_MARK_STALE_MS` exported for reuse) |
+
+### Root cause
+
+`worstKnownSwingDataAgeMs` (play-brief-intel.ts, ~line 3447) feeds the Largo-contract top-level
+`freshness`/`age_seconds` fields (`adaptSwingBriefToLargo`, play-brief-adapter.ts) — the fix for the
+2026-10-21 FINDING that replaced those fields' prior hardcoded `null`/`"cached"` constants with a
+real computed "worst known per-source age."
+
+That replacement computation itself has a residual gap: its option-mark branch only contributed an
+age when `playExpectsLiveOptionMark(play.status) && play.markIsSync !== true && play.markAsOf` all
+held — the ordinary "aged timestamp" shape. It silently excluded every `play.markIsSync === true`
+case, including the specific sub-case this same file already has a named helper for,
+`optionMarkGenuinelyUnknown` (play-brief-absence.ts): `markIsSync===true && playExpectsLiveOptionMark
+(status) && pnlPct==null` — a committed position whose option mark has **literally never synced a
+live quote** (`mid = last_mark ?? entry_premium`, the true entry-fallback case).
+
+When that genuinely-unknown mark is the only stale/unknown source on a brief and Vector/GEX happen
+to be fresh this cycle — routine for a position freshly committed by `banger-discovery`/
+`swing-discovery`, before its first `swing-active-refresh` tick ever runs — the function fell
+through to just the fresh Vector/GEX ages. The Largo-contract `freshness`/`age_seconds` fields then
+reported "live, N seconds old" while the SAME response's own Position section said "Mark:
+**unknown** _(sync quote, no live price yet — do not read as flat)_" and `unavailableSources`
+carried `{source:"option mark", reason:"no live price yet — sync quote, no real quote value has
+ever landed"}` — the exact narrative-vs-structured mismatch the 2026-10-21 fix was built to
+prevent, slipped through at the one sub-case it didn't thread the existing absence signal into.
+
+### Evidence
+
+Live `GET /api/market/swing/play-brief?playId=SWING:CLF:2116&ticker=CLF&positionId=2116&status=OPEN&expandIntel=1`
+(prod, authenticated temp Clerk session, 2026-10-26): top-level response carried
+`"dataAgeMs":2453,"freshness":"live","age_seconds":2`. In the SAME response: `envelope.sections`
+'Position' says `Mark: **unknown** _(sync quote, no live price yet — do not read as flat)_`; `P&L:
+**—** _(entry-time read — no live tick since commit, do not read as current)_`;
+`envelope.unavailableSources` lists `{source:"option mark", reason:"no live price yet — sync quote,
+no real quote value has ever landed"}`; `confidence` is downgraded to "moderate — 5 sources
+unavailable this cycle (HELIX flow, option mark, Vector dark pool, Night Hawk Legacy, thesis
+health)". So the structured C2 field said "live, 2 seconds old" while the body of the exact same
+answer said the core field it would be fresh *about* has never had a value.
+
+Reproduced locally with a regression test (`src/lib/swing/play-brief-adapter.test.ts`): a fixture
+with `markIsSync:true`, `status:"OPEN"`, `pnlPct:null`, and a deliberately FRESH Vector snapshot
+(`dataAgeMs:5000`, well under the 120s "live" cutoff) reproduced `freshness:"live"`,
+`age_seconds:5` pre-fix — confirmed RED via `git stash` (fix stashed, test kept) before applying the
+fix, then GREEN after.
+
+### Fix
+
+In `worstKnownSwingDataAgeMs`, split the option-mark branch: when `optionMarkGenuinelyUnknown(play)`
+holds, push `SWING_OPTION_MARK_STALE_MS` (the option mark's own existing "too stale to trust" bound,
+newly exported from play-brief-absence.ts for this reuse) into the `ages` array as a sentinel,
+rather than silently contributing nothing. There is no real elapsed duration to report here (unlike
+an aged `markAsOf`, where `readMs - markMs` is a genuine measurement) — reusing the existing bound
+guarantees `freshnessFromAgeSeconds` (play-brief-adapter.ts) buckets the answer "stale" (the bound
+sits exactly at that function's own stale cutoff, 1080s) without fabricating a number that looks
+more precise than it is. This mirrors how `optionMarkGenuinelyUnknown` is already treated as the
+worst case everywhere else this file reads it (`collectOptionMarkStalenessAbsence`, the confidence
+tier, the Data-freshness prose) — the fix brings the Largo-contract age computation into agreement
+with every other consumer of this same signal, rather than inventing a second, independent notion of
+"how bad is this."
+
+Deliberately NOT used: `Number.POSITIVE_INFINITY` as the sentinel (a precedent that exists elsewhere
+in this codebase for an unrelated "future clock skew" case, `vec.dataAgeMs`) — that value is
+explicitly documented elsewhere in this file as something callers must guard against leaking into
+display strings ("Vector data **Infinitys** old"), and would silently degrade to `age_seconds:null`
+on JSON serialization (`JSON.stringify(Infinity) → null`), decoupling the wire value from the
+in-memory one for no benefit over a concrete, already-meaningful constant.
+
+### Regression test
+
+`src/lib/swing/play-brief-adapter.test.ts`: *"adaptSwingBriefToLargo: a genuinely-unknown option
+mark (never synced a live quote) must not read freshness:'live' even when Vector/GEX are fresh this
+cycle (Largo C2)"* — fixture has `markIsSync:true`/`pnlPct:null`/`status:"OPEN"` plus a fresh Vector
+snapshot; asserts the brief's own Position prose actually says "Mark: **unknown**" (sanity that the
+genuinely-unknown condition is really in play), then asserts `largoRead.freshness === "stale"` (not
+"live").
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-adapter.test.ts` — RED
+  pre-fix (8 pass / 1 fail, `git stash` of the two source files with the test kept in place), GREEN
+  post-fix (9 pass / 0 fail).
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-absence.test.ts src/lib/swing/play-brief-intel.test.ts src/lib/swing/play-brief.test.ts`
+  — 629 pass / 0 fail (full suite covering these three files, Node 20).
+- `npx tsc --noEmit` — clean, exit 0 (Node 20).
+
+## MarkdownBody had no support for `- ` unordered lists — the entire Learn article library and /about rendered literal markdown dashes instead of a real list
+
+> **kind:** `FINDING`
+
+### Root cause
+
+`src/components/learn/MarkdownBody.tsx` is a small, hand-rolled markdown renderer (no remark/MDX
+dependency) backing every marketing/learn content page that uses it: `/about`
+(`src/app/(marketing)/about/page.tsx`), `WhyBlackoutContent.tsx`, `MethodologyContent.tsx`, and
+every `/learn/*` article via `LearnArticleView.tsx` reading from `src/lib/learn/articles.ts`.
+
+Its block-level dispatcher handled `## `/`### ` headings, `> ` blockquotes, image blocks, GFM pipe
+tables, and `\d+\. ` **ordered** lists — but had no branch at all for `-`/`*` **unordered** lists.
+A block whose lines all start with `- ` (the single most common list style in this content —
+`- **Term** — definition`) fell through to the final `else` and rendered as one plain `<p>`, with
+the literal leading `- ` characters shown as part of the paragraph text instead of becoming a
+`<ul><li>` list.
+
+Confirmed live via a `proxy-browser.cjs` screenshot sweep (this session's standing live-UI
+method) at both desktop (1440×900) and mobile (430×932) on `/about`: the "The Tools" section
+rendered as one run-on paragraph — `- SPX Slayer — The 0DTE command center. ... - Thermal — GEX,
+VEX, DEX... - HELIX — ...` — with every one of the 7 products' list markers showing as literal
+text instead of a bulleted list.
+
+### Evidence
+
+Grep for the literal pattern across every file `MarkdownBody` renders content from:
+
+```
+grep -rcE "^\s*- " "src/app/(marketing)/about/page.tsx" src/lib/learn/articles.ts
+src/app/(marketing)/about/page.tsx:7
+src/lib/learn/articles.ts:187
+```
+
+187 separate list-item lines in the Learn article corpus alone (the site's entire educational
+content library) plus the 7-item product list on `/about` were affected — every single one
+rendered as broken run-on prose, not a defect limited to one page.
+
+Added `src/components/learn/MarkdownBody.unordered-list.test.ts`: confirmed RED pre-fix (`git
+stash` isolating the source change) — the real `/about` TOOLS content reproduced exactly as a
+`<p>` containing literal `- <strong>SPX Slayer</strong> — ...` text, matching the live screenshot
+byte-for-byte in shape. GREEN post-fix (3/3): real `<ul><li>` markup, bold terms preserved, and a
+companion test confirms a plain paragraph containing a bare em dash (a different Unicode
+character, `—`, not a hyphen-minus) is never misdetected as a list. Full related-suite run
+(`MarkdownBody.table.test.tsx`, `MarkdownBody.image.test.ts`, every `src/lib/learn/*.test.ts`,
+`WhyBlackoutContent.test.ts`, `methodology-lane-nav.test.ts`, `breadcrumbs-placement.test.ts`,
+`about-taxonomy.test.ts`, `legal-sections.test.ts`, `homepage-gamma-seed.test.ts`): 55/55 pass.
+`tsc --noEmit` and `eslint` both clean.
+
+### Blast radius
+
+Every content string ever passed through `MarkdownBody` that uses a `-`/`*` list — which, per the
+grep above, is the majority of the Learn Academy's substantive reference content (glossary-style
+`- **Term** — definition` lists are the dominant explanatory pattern used throughout
+`src/lib/learn/articles.ts`) plus `/about`'s product list. `WhyBlackoutContent.tsx` and
+`MethodologyContent.tsx` currently contain zero `- ` blocks (confirmed via the same grep), so they
+were not visibly broken today, but any future edit adding a bulleted list to either would have hit
+the identical defect — the fix is in the shared renderer, so it protects all current and future
+callers at once, not just the one page that surfaced it.
+
+### Fix rationale
+
+Added a new block-dispatch branch, structurally mirroring the existing ordered-list (`\d+\. `)
+branch exactly: detect a block where **every** line (not just the first, to avoid false-positives
+on a paragraph that merely contains a bare hyphen) matches `/^[-*]\s/` after trimming, strip the
+marker, and render a real `<ul className="my-4 list-disc space-y-2 pl-6">` with `parseInline()`
+applied per item — so bold/italic/link formatting inside each bullet (`**SPX Slayer**`) still
+works exactly as it already does for ordered-list items and plain paragraphs. No other branch's
+behavior changed; the fallback `<p>` branch is now reached only by content that was never a list
+to begin with, confirmed by the added false-positive guard test.
+
+| **Status** | Fixed in PR #6829 (branch `fix/markdownbody-unordered-list-support`) |
+|---|---|
+
 ## SPX Slayer off-hours play read: `spx-merged:<date>` goes fully cold overnight, so different ECS replicas serve non-monotonic, diverging "current" scores
 
 > **kind:** `FINDING`
