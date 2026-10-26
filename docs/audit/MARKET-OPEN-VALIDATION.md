@@ -114,7 +114,7 @@ the raw 16-digit float; confirm a FRESH (post-2026-10-06) row's `trailing_rule` 
 this PR (same value the row has always carried — a regression here would mean the fix
 accidentally forked a calibration cohort, the one invariant that must never move).
 
-## WATCH LIST — 2026-10-26 Swing Legacy-carried WATCH reason string kept citing a stale delta after staleDte nulled it (PR #6781, merged `44f1388ca`) — fixed, deploy pending validation
+## WATCH LIST — 2026-10-26 Swing Legacy-carried WATCH reason string kept citing a stale delta after staleDte nulled it (PR #6781, merged `44f1388ca`) — fixed, **LIVE-CONFIRMED 10:20 UTC**: PLTR (Legacy-carried, staleDte) now shows "Δ—" in its reason string; SOXX (native, not stale) still correctly shows its real delta — validated once swing-discovery's cron phase ticked post-deploy
 
 **What was fixed:** `refreshCarriedLegacyPlay`'s (`legacy-confirm-promote.ts`) `staleDte` branch
 correctly nulls `contract.delta`/`gamma`/`theta`/`vega`/`iv` on a Legacy-carried WATCH play when no
