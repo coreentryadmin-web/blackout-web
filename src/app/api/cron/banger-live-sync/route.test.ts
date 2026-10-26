@@ -80,3 +80,34 @@ test("the prospective quote-tick log persist is fire-and-forget -- never awaited
   assert.match(callSite, /void persistBangerQuoteTick/, "must be fired with `void`, never `await`ed");
   assert.match(callSite, /\.catch\(/, "must attach its own .catch() -- a rejected persist must never surface as an unhandled rejection");
 });
+
+// BUG FIX (2026-10-26, Ask Largo x Night Hawk Swings standing mandate — live repro, WEN/ASO/LMND
+// positions): `updateBangerQuoteFields` carried `ask: snap.ask` straight off the raw provider
+// snapshot while the resolved MARK a few lines above is already guarded against a dead-bid
+// backstop-ask artifact via `reliableMarkFromSnapshot` -- the identical gap already found and
+// fixed on swing-active-refresh's `loadOptionQuote` (its own route.test.ts carries the mirror of
+// this exact test) for the organic-swing live-refresh cron, but never extended to this sibling
+// Banger-lane committed-position live-sync cron. The raw ask flows unchanged through
+// banger-lane-merge.ts's `horizonPlayFromBangerPosition` into adapters.ts's `liquidityFromContract`
+// (`(ask - bid) / mid`), so a guarded (tiny) mark next to an unguarded backstop ask produced a
+// nonsensical Spread line (e.g. "10000.0%") on live, committed Banger-origin swing positions.
+// Regex-asserted against raw source (matching this file's own convention above for route.ts's
+// DB/provider-heavy wiring) -- the guard's own divergence logic is unit-tested directly in
+// options-snapshot.test.ts.
+test("banger-live-sync's fetchMarks guards the persisted ask through reliableAskFromSnapshot, not the raw snapshot ask", () => {
+  assert.match(
+    routeSrc,
+    /import \{\s*fetchOptionsUnifiedSnapshot,\s*reliableAskFromSnapshot,\s*reliableMarkFromSnapshot,\s*\} from "@\/lib\/providers\/options-snapshot"/,
+    "must import the ask-side guard alongside the existing mark-side guard"
+  );
+  assert.match(
+    routeSrc,
+    /ask:\s*reliableAskFromSnapshot\(snap\)/,
+    "the persisted ask must be resolved through the same divergence guard as the mark, not read raw off snap.ask"
+  );
+  assert.doesNotMatch(
+    routeSrc,
+    /ask:\s*snap\.ask,/,
+    "the raw, unguarded snap.ask must never be assigned directly into updateBangerQuoteFields again"
+  );
+});
