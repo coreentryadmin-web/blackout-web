@@ -1,3 +1,19 @@
+## WATCH LIST — 2026-10-26 `thesis_invalidated` gate reason no longer claims a settled close (PR #6899, merged `3e0ccc805`)
+
+**What was shipped:** Corrected the swing `thesis_invalidated` gate reason (`entry-verdict.ts`) and
+two `setup-state.ts` doc comments from "price **CLOSED** through the structural invalidation
+level" to accurate wording describing a **live, intraday** read that can revert if price reclaims
+the level before the session closes. No gating-behavior change — wording/precision fix only. Full
+suite 17128/0/3-skipped green, `tsc` clean before merge.
+
+**Specific thing to check next cycle:** pull a swing WATCH play-brief for any candidate whose
+thesis has broken pre-entry (`GET /api/market/swing/play-brief?...&status=WATCH`, look for
+`setupState: "INVALIDATED"`) and confirm the "Trade manager read" section's gate text now reads
+"price is through the structural invalidation level (live read; can still revert...)" rather than
+the old "closed through" phrasing. No live repro needed beyond this — it's a pure text change,
+and the regression test (`entry-verdict.test.ts`) already locks in the corrected wording
+mechanically; this is just a courtesy live spot-check, not a required re-verification.
+
 ## WATCH LIST — 2026-10-26 `GET /api/market/swing/record`'s `closedDeck` now shows a position that closed today even if entered before the `days` window (PR #6864, merged `9af62d888`) — LIVE-CONFIRMED 16:31 UTC
 
 **What was shipped:** `fetchRecentlyClosedSwingPositions(sinceDate)` (`src/lib/db.ts`) — filters
