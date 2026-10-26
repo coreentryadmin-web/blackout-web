@@ -166,3 +166,24 @@ export function pickLanePlayForBrief(
   if (live.length) return live[0]!;
   return forTicker.sort((a, b) => b.score - a.score)[0]!;
 }
+
+/**
+ * Pure selector for `loadOpenBangerTerminalPlay` (play-brief-resolve.ts) — extracted so it's
+ * testable despite that file's server-only DB import chain (same reason every other pure helper
+ * in this module lives here rather than there). Mirrors the SAME fail-closed rule
+ * `loadOpenTerminalPlay`'s "lone candidate" guard already applies to the native-engine table
+ * (2026-10-24 fix, same file): an explicit, unresolvable positionId must surface as absence,
+ * never as an unrelated substitute — so a wrong/stale id on a ticker with exactly one open
+ * banger row still returns null, not that one row.
+ */
+export function pickOpenBangerPositionForBrief<T extends { id: number; ticker: string }>(
+  rows: T[],
+  ticker: string,
+  positionId: number | null,
+): T | null {
+  const upper = ticker.toUpperCase();
+  const matches = rows.filter((r) => r.ticker.toUpperCase() === upper);
+  if (!matches.length) return null;
+  if (positionId != null) return matches.find((r) => r.id === positionId) ?? null;
+  return matches.length === 1 ? matches[0]! : null;
+}

@@ -15,9 +15,10 @@ import {
   discoverSwingFromPersisted,
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
-import { fetchBangerOpenBookRowsSettled } from "@/lib/banger/positions-db";
+import { fetchBangerOpenBookRowsSettled, fetchOpenBangerPositions } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { readBangerWatchSnapshot } from "@/lib/banger/watch-cache";
+import { horizonPlayFromBangerPosition } from "./banger-lane-merge";
 import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
 import { isSwingEngineV2Enabled } from "@/lib/swing/v2/config";
 import { todayEt } from "@/lib/et-date";
@@ -34,6 +35,7 @@ import { livePlayFromSwingPosition } from "@/lib/swing/live-plays";
 import {
   parseSwingPlayId,
   pickLanePlayForBrief,
+  pickOpenBangerPositionForBrief,
   resolveBriefIvRank,
   rightFromContractType,
   type ParsedSwingPlayId,
@@ -267,13 +269,46 @@ async function loadLaneRows(ticker: string): Promise<{
   };
 }
 
+// BUG FIX (2026-10-26, Ask Largo standing mandate, live repro PANW positionId=2103). The
+// 2026-10-24 fix just above (the "lone candidate" guard) correctly stopped this function from
+// substituting an UNRELATED row when a caller's requested `positionId` failed to match — but it
+// left the resulting "no match" case returning bare absence even when the requested id genuinely
+// IS a live, open position, just one that lives in `banger_positions`, not `swing_positions`.
+// `getSwingServingLane` (serving-lane.ts, fed via this file's own `loadLaneRows`) merges BOTH
+// origins per ticker but keeps only one row when a native-engine row and a banger-origin row
+// share the same ticker — so once a banger-origin position's OWN lane/discovery candidate entry
+// ages out of that merge, its ONLY surviving path to a brief was this function, which never
+// queried `banger_positions` at all. Live-confirmed: PANW carries a native swing_positions COMMIT
+// row (id 67) AND a separate, fully live banger_positions OPEN row (id 2103, confirmed via
+// `GET /api/market/banger/board`) — `?playId=SWING:PANW&ticker=PANW&positionId=2103` resolved to
+// a flat 404 "play not found" for a position a member is actually holding right now. Fixed by
+// falling through to a banger-origin lookup whenever the native lookup (above) found nothing —
+// additive, so a ticker that only ever lives in `swing_positions` behaves byte-identically to
+// before.
+async function loadOpenBangerTerminalPlay(
+  ticker: string,
+  hints: { positionId?: number | null },
+): Promise<TerminalPlay | null> {
+  const bangerRows = await fetchOpenBangerPositions().catch(() => []);
+  const row = pickOpenBangerPositionForBrief(bangerRows, ticker, hints.positionId ?? null);
+  if (!row) return null;
+
+  const horizonPlay = horizonPlayFromBangerPosition(row);
+  if (!horizonPlay) return null;
+  return terminalPlayFromHorizon(
+    horizonRowToDeckSource(horizonPlay, row.id, row.entry_context?.cortex ?? null, row.contract_occ),
+  );
+}
+
 export async function loadOpenTerminalPlay(
   ticker: string,
   hints: { positionId?: number | null; strike?: number | null; right?: "C" | "P" | null; status?: string | null },
 ): Promise<TerminalPlay | null> {
   const openRows = await fetchOpenSwingPositions().catch(() => []);
   const matches = openRows.filter((r) => r.ticker.toUpperCase() === ticker.toUpperCase());
-  if (!matches.length) return null;
+  if (!matches.length) {
+    return isBangerEngineEnabled() ? loadOpenBangerTerminalPlay(ticker, hints) : null;
+  }
 
   let row: SwingPositionRow | undefined;
   if (hints.positionId != null) {
@@ -306,7 +341,9 @@ export async function loadOpenTerminalPlay(
     }
     if (!row) row = matches[0];
   }
-  if (!row) return null;
+  if (!row) {
+    return isBangerEngineEnabled() ? loadOpenBangerTerminalPlay(ticker, hints) : null;
+  }
 
   const snap = await readSwingServingSnapshot().catch(() => null);
   const spot = snap?.spotsByTicker?.[ticker.toUpperCase()] ?? null;
