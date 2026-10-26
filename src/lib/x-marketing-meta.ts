@@ -1,4 +1,4 @@
-import { getMeta, setMeta } from "@/lib/db";
+import { getMeta, setMeta, tryAdvisoryLock, releaseAdvisoryLock } from "@/lib/db";
 import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const REPLIED_KEY = "x_marketing_replied_ids";
@@ -56,9 +56,56 @@ export async function getRecentPostHooks(): Promise<string[]> {
   return parseJsonArray(await readMeta(HOOKS_KEY));
 }
 
+// Lock key for the read-modify-write below. Same shape/rationale as x-rate-budget.ts's
+// BUDGET_WRITE_LOCK (round 111) and REPLIED_WRITE_LOCK above (round 112): one global key is
+// deliberate — the critical section is a single load+save, not a per-hook lock, so a global
+// key just serializes that, and contention is rare (recordPostHook has exactly one call site,
+// x-autopost/route.ts's post-success path, so the only realistic interleaving is two overlapping
+// invocations of that SAME route — e.g. two manual `?force=1` triggers, or a manual run racing a
+// re-enabled scheduled fire — not the cross-cron races REPLIED_WRITE_LOCK/BUDGET_WRITE_LOCK guard
+// against. Still a real lost-update shape, so it gets the same fix.
+const HOOKS_WRITE_LOCK = "x-marketing-recent-hooks-write";
+const HOOKS_LOCK_MAX_ATTEMPTS = 30;
+const HOOKS_LOCK_RETRY_MS = 60;
+
+/**
+ * Record a posted tweet's first line (its "hook") so `x-content-dedup.ts`'s
+ * `getRecentPostHooks()` can steer future generations away from near-duplicate content.
+ *
+ * MUST be atomic across processes for the same reason `markTweetReplied` above is: this is an
+ * unlocked read-modify-write (`getRecentPostHooks()` then `writeMeta()`, two separate Postgres
+ * round-trips) against the shared `HOOKS_KEY` row. Two overlapping `recordPostHook` calls can
+ * both read the same base array before either writes, so the second write clobbers the first
+ * and one hook is silently dropped — the content-similarity dedup hint loses an entry it should
+ * have, which weakens (not disables) the near-duplicate check the next post runs. Lower stakes
+ * than the REPLIED_KEY race (a dropped hook doesn't cause a duplicate PUBLIC action by itself,
+ * just a weaker dedup signal), but the same real correctness bug. Serialize the critical section
+ * with the same `tryAdvisoryLock`/`releaseAdvisoryLock` primitive, same bounded retry.
+ */
 export async function recordPostHook(body: string): Promise<void> {
   const hook = body.trim().slice(0, 200);
   if (!hook) return;
+  for (let attempt = 0; attempt < HOOKS_LOCK_MAX_ATTEMPTS; attempt += 1) {
+    const acquired = await tryAdvisoryLock(HOOKS_WRITE_LOCK);
+    if (!acquired) {
+      await new Promise((r) => setTimeout(r, HOOKS_LOCK_RETRY_MS));
+      continue;
+    }
+    try {
+      const prev = await getRecentPostHooks();
+      prev.push(hook);
+      await writeMeta(HOOKS_KEY, JSON.stringify(prev.slice(-MAX_HOOKS)));
+    } finally {
+      await releaseAdvisoryLock(HOOKS_WRITE_LOCK);
+    }
+    return;
+  }
+  // Could not get the lock after bounded retries (e.g. a stuck holder) — fall back to the old
+  // unlocked behavior rather than silently dropping this hook forever. Worse than the locked
+  // path, but no worse than before this fix, and logged so it's visible if it ever fires.
+  console.warn(
+    `[x-marketing-meta] could not acquire ${HOOKS_WRITE_LOCK} after ${HOOKS_LOCK_MAX_ATTEMPTS} attempts — recording hook unlocked`,
+  );
   const prev = await getRecentPostHooks();
   prev.push(hook);
   await writeMeta(HOOKS_KEY, JSON.stringify(prev.slice(-MAX_HOOKS)));
