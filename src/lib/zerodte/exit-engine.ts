@@ -263,6 +263,18 @@ export type ExitEngineInput = {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const fmtPct = (n: number | null) => (n == null ? "?" : `${n > 0 ? "+" : ""}${round2(n)}%`);
+// The live option mark legitimately lands on a half-cent (mid=(bid+ask)/2, see
+// live-marks.ts) or carries more float noise than that — `pnlPct`/`fmtPct` above are
+// computed from the RAW mark on purpose (rounding the mark before dividing can erase
+// real P&L on a low-priced 0DTE premium, see the `buildExitContext` cent-rounding test
+// in exit-engine.test.ts). But every OTHER dollar premium this product shows a member —
+// entry_premium, last_mark, peak_premium, trough_premium, plan stop/target — is 2dp,
+// both at the data layer and in the UI (ZeroDteBoard.tsx's own `.toFixed(2)`). This
+// narrative `detail` string is the one place `currentMark` was interpolated RAW with no
+// formatting at all, so a half-cent/float mark (e.g. 1.355) rendered as a 3+-decimal
+// figure beside an already-2dp plan stop/target in the very same sentence. `fmtMark`
+// rounds ONLY the displayed text — it never touches `pnlPct`'s own computation.
+const fmtMark = (n: number) => n.toFixed(2);
 
 /**
  * The flat_theta_bleed exit detail — shared by both exit modes (2026-09-17 fix). The
@@ -740,7 +752,7 @@ function decideTrimScale(
         action: "EXIT",
         floorPnlPct: null,
         reason: "plan_stop",
-        detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — the printed stop is authoritative.`,
+        detail: `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — the printed stop is authoritative.`,
       };
     }
   }
@@ -757,7 +769,7 @@ function decideTrimScale(
       floorPnlPct: sharedFloor,
       reason,
       detail:
-        `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(sharedFloor)} floor armed by a ` +
+        `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(sharedFloor)} floor armed by a ` +
         `${fmtPct(peakPnlPct)} peak — the protective floor exits so the green trade cannot finish red.` +
         (bankedTranchesClause ? ` This is the runner only — ${bankedTranchesClause}.` : ""),
     };
@@ -805,8 +817,8 @@ function decideTrimScale(
       floorPnlPct: null,
       reason: "trim_scale_runner_target",
       detail: genuinelyBanked
-        ? `Mark ${currentMark} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} after both trims — the last third is banked in full.`
-        : `Mark ${currentMark} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} — exiting the full position at target.`,
+        ? `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} after both trims — the last third is banked in full.`
+        : `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} — exiting the full position at target.`,
     };
   }
 
@@ -923,7 +935,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
         floorPnlPct: floor,
         reason,
         detail:
-          `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(floor)} floor armed by a ` +
+          `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(floor)} floor armed by a ` +
           `${fmtPct(peakPnlPct)} peak — the ratchet exits so the green trade cannot finish red.`,
       };
     }
@@ -931,7 +943,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       action: "EXIT",
       floorPnlPct: floor,
       reason: "plan_stop",
-      detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — the printed stop is authoritative.`,
+      detail: `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — the printed stop is authoritative.`,
     };
   }
 
@@ -957,7 +969,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
         action: "EXIT",
         floorPnlPct: floor,
         reason: "plan_target_final",
-        detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} again after the trim — runner banked in full.`,
+        detail: `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} again after the trim — runner banked in full.`,
       };
     }
     return {
@@ -965,7 +977,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       floorPnlPct: EXIT_RULES.runner_floor_pct,
       reason: "plan_target_trim",
       detail:
-        `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/above the target ${input.planTarget} — bank half; ` +
+        `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) is at/above the target ${input.planTarget} — bank half; ` +
         `the runner's floor is now ${fmtPct(EXIT_RULES.runner_floor_pct)}.`,
     };
   }
