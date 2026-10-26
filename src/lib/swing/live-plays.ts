@@ -22,6 +22,7 @@ import {
   type SwingPillarSignals,
   type SwingScoreFactor,
 } from "./swing-pillars";
+import { signedExcursionPct } from "./underlying-excursion";
 
 const LIVE: ReadonlySet<string> = new Set(["OPEN", "HOLD", "TRIM"]);
 
@@ -585,8 +586,50 @@ export function livePlayFromSwingPosition(
     manageAction: broken ? "EXIT" : liveStatus === "TRIM" ? "TAKE_PARTIAL" : undefined,
     thesisLevel: broken ? "break" : "intact",
   });
-  const { manageAction, thesisLevel, manageReason, manageReasonDetail, manageEnforced, rollCandidate, underlyingExcursion } =
-    manageObservablesFromEvent(manageEvent, spotObs);
+  const {
+    manageAction,
+    thesisLevel,
+    manageReason,
+    manageReasonDetail,
+    manageEnforced,
+    rollCandidate,
+    underlyingExcursion: snapshotExcursion,
+  } = manageObservablesFromEvent(manageEvent, spotObs);
+
+  // BUG FIX (live repro 2026-10-26, Ask Largo x Night Hawk Swings standing mandate): `snapshotExcursion`
+  // above is whatever `running_mfe`/`running_mae` the LAST successful swing-active-refresh cron tick
+  // persisted (every 15 min during RTH, `stale_after_min: 25` — cron-registry.ts) — but `spot` (below,
+  // served as `liveSpot`) is read from the independently-refreshed serving-snapshot cache and can be
+  // newer. The two were served with no reconciling timestamp and could flatly disagree: MRNA
+  // (positionId 65, LONG, entry 185.5) served liveSpot 177.29 (-4.43% adverse) alongside
+  // underlyingExcursion.maePct:0 — i.e. "never traded below entry" next to a live spot that says it
+  // currently is; PANW (positionId 67) showed the mirror case, mfePct understating a GREATER live
+  // favorable move. Recompute at SERVE TIME instead of echoing the stale snapshot value verbatim:
+  // `signedExcursionPct` (now shared via underlying-excursion.ts — see that module's own header for
+  // why this isn't a direct import from manage-sync.ts) was always designed to fold a fresh spot in
+  // ("includes spot so this tick counts even before the ledger ratchet runs" — its own doc comment),
+  // the cron itself already calls it this exact way every tick; this just runs the identical call
+  // again, now, with the request's own `spot` and the row's own ratcheted PRICE extremes
+  // (`underlying_mfe`/`underlying_mae` — continuously updated by the SAME cron, so they are never
+  // staler than `snapshotExcursion` and typically at least as fresh). Scoped narrowly: only OVERRIDES
+  // `snapshotExcursion` when it was already non-null (a real snapshot excursion exists to freshen) AND
+  // the live recompute itself produced a finite result — an absent snapshot or a missing/invalid
+  // entry price still degrades to the pre-existing honest-null behavior, never inventing a new data
+  // source where there deliberately was none (see HorizonPlay.underlyingExcursion's own doc comment).
+  const liveExcursion =
+    snapshotExcursion != null
+      ? signedExcursionPct({
+          direction: dirLc,
+          entryPx: row.entry_underlying_px,
+          spot: spot ?? null,
+          priorMfePx: row.underlying_mfe,
+          priorMaePx: row.underlying_mae,
+        })
+      : null;
+  const underlyingExcursion =
+    liveExcursion != null && liveExcursion.mfePct != null && liveExcursion.maePct != null
+      ? { mfePct: liveExcursion.mfePct, maePct: liveExcursion.maePct }
+      : snapshotExcursion;
 
   const evidenceScore =
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"

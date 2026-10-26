@@ -495,7 +495,11 @@ test("livePlayFromSwingPosition: no manage snapshot yet, or dte_migration/roll_i
 // merges into the same event blob `manageObservablesFromEvent` reads. See
 // HorizonPlay.underlyingExcursion's own doc comment for the full gap this closes.
 
-test("livePlayFromSwingPosition: running_mfe/running_mae on the snapshot -> underlyingExcursion surfaces both", () => {
+test("livePlayFromSwingPosition: running_mfe/running_mae on the snapshot is RECOMPUTED against the live spot, not echoed verbatim", () => {
+  // Fixture defaults: entry_underlying_px 175, underlying_mfe (ratcheted high) 178, underlying_mae
+  // (ratcheted low) 174. A live spot of 178 ties the recorded high and sits above the recorded low,
+  // so the correct served excursion is derived from THOSE price extremes, not from whatever the
+  // (here deliberately stale/inconsistent) snapshot percentages say.
   const p = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
     rung: "hold",
     action: "HOLD",
@@ -503,7 +507,38 @@ test("livePlayFromSwingPosition: running_mfe/running_mae on the snapshot -> unde
     running_mae: -3.11,
   });
   assert.ok(p);
-  assert.deepEqual(p!.underlyingExcursion, { mfePct: 8.24, maePct: -3.11 });
+  assert.deepEqual(p!.underlyingExcursion, { mfePct: 1.7143, maePct: -0.5714 });
+});
+
+// BUG FIX (live repro 2026-10-26, Ask Largo x Night Hawk Swings standing mandate): production
+// served MRNA (positionId 65, LONG, entry 185.5) with liveSpot 177.29 (-4.43% adverse right now)
+// alongside underlyingExcursion.maePct:0 — i.e. the API claimed the position had NEVER traded
+// below entry in the SAME response where liveSpot said it currently is. Root cause: the snapshot's
+// running_mfe/running_mae is only as fresh as the LAST swing-active-refresh cron tick (every 15 min
+// during RTH), while liveSpot is independently refreshed and can be newer, with no reconciling
+// timestamp between the two. Reproduced below with clean numbers: a cron tick recorded a ratchet
+// that has NEVER captured a price below entry (underlying_mae pinned at entry, running_mae: 0 on
+// the snapshot) while the live spot is already 5% below entry.
+test("livePlayFromSwingPosition: stale snapshot maePct:0 next to an adverse live spot — RED pre-fix, GREEN post-fix", () => {
+  const p = livePlayFromSwingPosition(
+    row({
+      status: "HOLD",
+      entry_underlying_px: 100,
+      underlying_mfe: 110, // ratchet already recorded +10% favorable at some point
+      underlying_mae: 100, // ratchet has NEVER recorded anything below entry
+    }),
+    95, // liveSpot: -5% vs entry, served on the SAME object
+    { rung: "hold", action: "HOLD", running_mfe: 10, running_mae: 0 }, // stale cron-tick snapshot
+  );
+  assert.ok(p);
+  assert.equal(p!.liveSpot, 95, "liveSpot itself is untouched by this fix");
+  // Before the fix this read `{ mfePct: 10, maePct: 0 }` — a direct echo of the stale snapshot,
+  // mathematically contradicting the -5% liveSpot served one field over on the same object.
+  assert.deepEqual(
+    p!.underlyingExcursion,
+    { mfePct: 10, maePct: -5 },
+    "maePct must reflect the live -5% spot, never a stale 'never adverse' snapshot value",
+  );
 });
 
 test("livePlayFromSwingPosition: no manage snapshot, or running_mfe/running_mae absent/non-finite -> underlyingExcursion stays honestly null", () => {
