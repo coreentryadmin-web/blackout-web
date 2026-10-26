@@ -58,6 +58,35 @@ export function deskBootstrapMaxBlockMs(): number {
   return Math.round(ms);
 }
 
+/**
+ * How often (seconds) the off-hours SPX play shortcut (evaluateSpxPlayState(), spx-service.ts)
+ * may kick a non-blocking background refresh of the merged desk cache (`spx-merged:<date>`).
+ *
+ * WHY THIS EXISTS: that shortcut answers "is the market closed" via peekMergedSpxDesk() — a
+ * Redis/L1-only peek, deliberately never calling the real loader — with a 24h staleness
+ * tolerance. Outside isSpxEngineCronWindow() (before 7am / after 4:15pm ET / weekends) NOTHING
+ * else in the app calls the real loadMergedSpxDesk() either, so `spx-merged:<date>` can go cold
+ * for the entire off-hours window once its own short TTL (deskCacheTtlMs(), 10s default) lapses
+ * in Redis. peekServerCache then falls back to each ECS replica's own per-process in-memory copy
+ * (server-cache.ts), which is independently aged per replica — one replica may have refreshed
+ * recently (e.g. served /api/market/spx/merged traffic) while a sibling hasn't in 20+ minutes.
+ * Live-reproduced 2026-10-26 (pre-7am ET): two polls of GET /api/market/spx/play 20s apart came
+ * back with `as_of` jumping BACKWARD (a fresher generation, then an older one) and two different
+ * computed scores (4, then 6) for what should be one "current" read — different replicas serving
+ * different frozen desk vintages, non-monotonically, to the same member.
+ *
+ * Default 5 min: frequent enough to bound cross-replica divergence to a few minutes instead of
+ * many hours/the ~23-minute gap measured live, but far below the 10s trading-hours cadence so it
+ * does not meaningfully add off-hours provider load. A sharedCacheSetNx throttle (spx-service.ts)
+ * ensures only one replica actually fires the refresh per interval, not every poll.
+ */
+export function spxMergedDeskOffHoursRefreshIntervalSec(): number {
+  const raw = process.env.SPX_MERGED_DESK_OFF_HOURS_REFRESH_SEC?.trim();
+  const sec = raw ? Number(raw) : 300;
+  if (!Number.isFinite(sec) || sec < 30) return 300;
+  return Math.round(sec);
+}
+
 /** Max ms 0DTE board cold build may block before serving stale Redis snapshot. Default 3s. */
 export function zerodteBoardMaxBlockMs(): number {
   const raw = process.env.ZERODTE_BOARD_MAX_BLOCK_MS?.trim();
