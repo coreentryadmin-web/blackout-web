@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T19:37:56.886Z",
+  "updated_at": "2026-10-26T20:08:24.670Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "06eea370bf660ab68030e2572c4e527bbd02406b",
+    "last_main_sha": "d12992d55b440a586f3eec0ce359546be016ba5c",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-20T22:53:34.831Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 9
-    },
-    {
-      "at": "2026-10-20T22:53:41.297Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 9
-    },
-    {
-      "at": "2026-10-20T23:15:55.816Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-20T23:16:02.309Z",
       "type": "context_sync",
@@ -1271,38 +1253,66 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-26T20:08:09.742Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-26T20:08:17.585Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-26T20:08:24.670Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
     }
   ],
   "open_prs": [
     {
-      "number": 6902,
-      "title": "fix(webhook): dedupe Resend/Svix webhook redeliveries, matching the Whop pattern",
-      "branch": "fix/resend-webhook-idempotency",
+      "number": 6909,
+      "title": "fix(spx): disclose permanent oi_changes/iv_term_structure absence in data_quality",
+      "branch": "fix/spx-oi-changes-absence-disclosure",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T19:35:25Z"
+      "updated_at": "2026-10-26T20:06:37Z"
     },
     {
-      "number": 6901,
-      "title": "docs(findings): fold 13 staged findings into FINDINGS.md (batch-120)",
-      "branch": "docs/findings-fold-batch-120",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T19:33:10Z"
-    },
-    {
-      "number": 6900,
-      "title": "fix(telemetry): persist queue_wait_ms/cancel_reason on api_telemetry_events",
-      "branch": "fix/telemetry-persist-missing-fields",
+      "number": 6908,
+      "title": "fix(x-marketing): lock markTweetReplied read-modify-write to stop lost updates",
+      "branch": "fix/x-marketing-meta-replied-race",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T19:25:44Z"
+      "updated_at": "2026-10-26T20:01:09Z"
+    },
+    {
+      "number": 6907,
+      "title": "fix(swing): meridianPeerSection leaves live sizing directive unchanged on CLOSED positions genuinely exposed to the print",
+      "branch": "fix/swing-meridian-peer-closed-sizing-directive",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-26T20:00:43Z"
+    },
+    {
+      "number": 6906,
+      "title": "fix(x-marketing): serialize recordBudgetUse to stop a lost-update race",
+      "branch": "fix/x-rate-budget-lost-update-race",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-10-26T19:53:26Z"
     },
     {
       "number": 5547,
