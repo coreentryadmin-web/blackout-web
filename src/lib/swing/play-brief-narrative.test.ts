@@ -3374,6 +3374,53 @@ test("tradeManagerNarrativeSection: Counter-thesis omits the Vector reason when 
   assert.match(counter[0]!, /bear EMA stack/);
 });
 
+// Sibling gap to the Vector dedup above: crossDeskCoaching checks FOUR desks for conflicts (Night
+// Hawk, 0DTE, Vector, HELIX — play-brief-narrative-coaching.ts lines ~878-879 push a HELIX
+// put-led/call-led conflict off the exact same `trustedHelixFlow` input and 1.3x ratio
+// counterThesisLine's own HELIX check uses), but the caller's dedup regex at this file's own
+// `vectorConflictAlreadyNoted` call site only ever matched the literal word "Vector" — never
+// "HELIX" — so counterThesisLine's separate, ungated HELIX push re-cited the identical flow
+// numbers as a second, independent-sounding "corroborating read" whenever crossDeskCoaching named
+// HELIX as the conflict (lead or demoted "rest"). Same NRG-class double-citation as the Vector
+// case above, just on the sibling desk the original fix didn't cover.
+test("tradeManagerNarrativeSection: Counter-thesis omits the HELIX reason when crossDeskCoaching already named it, but keeps other reasons", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      ecosystem: {
+        ticker: "NRG",
+        flow_feed_fresh: true,
+        recent_flow: {
+          window_hours: 24,
+          print_count: 10,
+          // put/call ratio = 1.5 -- clears the shared 1.3x gate both crossDeskCoaching's "HELIX
+          // put-led" conflict check and counterThesisLine's own HELIX reason use.
+          call_premium: 1_000_000,
+          put_premium: 1_500_000,
+          unknown_premium: 0,
+        },
+        nighthawk_recent: null,
+        zerodte_today: null,
+        gex_positioning: { spot: 100, flip: 98, gamma_posture: "long", gex_king_strike: 100, call_wall: 101 },
+        arsenal: null,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  const friction = (section!.body.match(/Cross-desk friction[^\n]*/g) ?? []);
+  const counter = (section!.body.match(/Counter-thesis[^\n]*/g) ?? []);
+  assert.equal(friction.length, 1, `expected one Cross-desk friction bullet, got: ${section!.body}`);
+  assert.match(friction[0]!, /HELIX put-led/);
+  assert.equal(counter.length, 1, `expected one Counter-thesis bullet, got: ${section!.body}`);
+  // The HELIX-specific reason is dropped from Counter-thesis (already stated above in
+  // "Cross-desk friction")...
+  assert.doesNotMatch(counter[0]!, /HELIX put-led/);
+  // ...but the independent call-wall reason survives, proving this isn't a blanket suppression.
+  assert.match(counter[0]!, /call wall/);
+});
+
 test("tradeManagerNarrativeSection: Break watch + Counter-thesis survive MAX_BULLETS on rich Vector data", () => {
   const richVector = {
     spot: 100,
