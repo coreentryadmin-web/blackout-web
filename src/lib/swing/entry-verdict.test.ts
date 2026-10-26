@@ -75,6 +75,24 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.equal(v?.gateBlocks?.[0]?.code, "thesis_invalidated");
   });
 
+  // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro SOXX): the thesis_invalidated gate
+  // reason used to say "price CLOSED through the structural invalidation level" — but
+  // deriveSetupState (setup-state.ts) compares the dossier's live (or last-known) INTRADAY spot
+  // against the level, never a settled end-of-day close, so the state can genuinely flip back to
+  // FORMING on a later read within the same session. Live-measured: SOXX read INVALIDATED at one
+  // scan, then FORMING again (identical gate blocks otherwise) under an hour later, with no session
+  // close in between. "Closed through" overstates how settled the break is. Locks in the corrected,
+  // honest wording.
+  it("thesis_invalidated gate reason describes a LIVE price read, never claims a settled close (the state can revert intraday)", () => {
+    const v = swingEntryVerdict({
+      servingSection: "RESEARCH",
+      setupState: "INVALIDATED",
+    });
+    const reason = v?.gateBlocks?.[0]?.reason ?? "";
+    assert.doesNotMatch(reason, /closed through/i, "must never claim a settled close — the check is intraday");
+    assert.match(reason, /live read/i);
+  });
+
   it("stamped non-RESEARCH section + INVALIDATED → SKIP with thesis block AND the real, already-computed gate blocks (live-shape repro, 2026-10-25)", () => {
     // Same defect class as the "past entry deadline + active commit gate blocks" test below and the
     // RESEARCH-section fix in swingEntryVerdict itself: a stamped `servingSection` that predates a
