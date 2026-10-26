@@ -7311,6 +7311,103 @@ test("meridianPeerSection: imminent (<=3d) print the position is still exposed t
   assert.doesNotMatch(section!.body, /no earnings-gap exposure/i);
 });
 
+// FINDING (Ask Largo standing mandate, 2026-10-26, live repro TEM 71C / CRML 6.5C / AMPX 8.5C /
+// AVAV 130C — Banger-origin positions with no resolvable Meridian sector peer cohort). The
+// 2026-10-25 OUST fix swapped the trailing sizing instruction for the identical no-gap-exposure
+// sentence `catalystCoaching` already renders in "Trade manager read" -- correct when a peer
+// cohort resolved and real beat-rate stats survive alongside it, but when the cohort itself is
+// unavailable (`meridianPeer.available !== true`), nothing survives the swap except the baseline
+// "reports in Nd" line plus that identical sentence -- a byte-for-byte restatement of a fact the
+// SAME brief already states elsewhere, occupying its own section slot for zero new information.
+test("meridianPeerSection: no peer cohort + contract expiring before the print returns null instead of a pure-duplicate section (live repro TEM 71C)", () => {
+  const meridian = {
+    as_of: "2026-10-26 09:00 ET",
+    items: [
+      {
+        id: "earnings:TEM:2026-11-02",
+        kind: "earnings" as const,
+        title: "TEM earnings",
+        subtitle: null,
+        date: "2026-11-02",
+        time: null,
+        impact: "high" as const,
+        days_until: 7,
+        ticker: "TEM",
+        date_status: null,
+        importance: 3,
+        is_printed: false,
+        expected_move_pct: null,
+        sector_label: null,
+      },
+    ],
+    total_matched: 1,
+  };
+
+  const section = meridianPeerSection({
+    // Own contract expires 2026-10-30 -- strictly BEFORE the 2026-11-02 print.
+    play: fixturePlay({ ticker: "TEM", status: "HOLD", occ: "O:TEM261030C00071000" }),
+    asOf: "2026-10-26 09:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian,
+    // No resolvable sector peer cohort -- the real live shape for a Banger-lane small-cap.
+    meridianPeer: { available: false, error: "unclassified_sector" },
+    ecosystem: null,
+    vector: null,
+  });
+
+  assert.equal(section, null);
+});
+
+// Sibling no-regression case: no peer cohort, but the contract IS genuinely exposed to the print
+// (noGapExposure false) -- the section must still render, since "Peers that beat often gap
+// through implied" is then distinct advice from Trade manager read's own earnings bullet, not a
+// duplicate of it.
+test("meridianPeerSection: no peer cohort but contract still exposed to the print still renders (no regression)", () => {
+  const meridian = {
+    as_of: "2026-10-26 09:00 ET",
+    items: [
+      {
+        id: "earnings:TEM:2026-11-02",
+        kind: "earnings" as const,
+        title: "TEM earnings",
+        subtitle: null,
+        date: "2026-11-02",
+        time: null,
+        impact: "high" as const,
+        days_until: 7,
+        ticker: "TEM",
+        date_status: null,
+        importance: 3,
+        is_printed: false,
+        expected_move_pct: null,
+        sector_label: null,
+      },
+    ],
+    total_matched: 1,
+  };
+
+  const section = meridianPeerSection({
+    // Own contract expires 2026-11-07 -- AFTER the 2026-11-02 print, genuinely exposed.
+    play: fixturePlay({ ticker: "TEM", status: "HOLD", occ: "O:TEM261107C00071000" }),
+    asOf: "2026-10-26 09:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian,
+    meridianPeer: { available: false, error: "unclassified_sector" },
+    ecosystem: null,
+    vector: null,
+  });
+
+  assert.ok(section);
+  assert.match(section!.body, /size down or hedge vol unless thesis is the print/i);
+  assert.doesNotMatch(section!.body, /no earnings-gap exposure/i);
+});
+
 test("meridianPeerSection: dedicated section — coaching bullets must not duplicate peer lens", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ ticker: "BBWI" }),

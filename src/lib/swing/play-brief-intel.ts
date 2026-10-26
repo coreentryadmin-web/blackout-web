@@ -2860,6 +2860,35 @@ export function meridianPeerSection(ctx: SwingPlayBriefContext): RichSection | n
           `its own brief).`,
       )
     : body;
+  // BUG FIX (2026-10-26, Ask Largo standing mandate, live repro TEM 71C / CRML 6.5C / AMPX 8.5C /
+  // AVAV 130C — Banger-origin positions with no resolvable Meridian sector peer cohort, confirmed
+  // live: `unavailableSources` already carries "Meridian peer cohort: unclassified_sector" for all
+  // four). `meridianPeerEarningsCoaching` only reaches its `peer && peer.available` branch (sector
+  // label, interpretation, subject print history, peer beat-rate snippets, thin-cohort
+  // disclosure) when a cohort actually resolved; when it did not, `parts` never grows past the
+  // baseline "reports in Nd" line. Once the swap above (2026-10-25 fix) ALSO replaces the trailing
+  // sizing instruction with the identical no-earnings-gap-exposure sentence `catalystCoaching`
+  // already renders in "Trade manager read", this section's entire surviving content is "reports
+  // in Nd. <that exact sentence>" — a byte-for-byte restatement of a fact the same brief already
+  // states elsewhere, occupying its own section slot for zero peer-specific information. Live
+  // repro (TEM 71C, 2026-10-26): "Trade manager read" said "Earnings in 7d (2026-11-02
+  // (premarket)) — this contract expires 2026-10-30, on/before the print, so no earnings-gap
+  // exposure from this position (a concurrent sibling with a later expiry may still be exposed —
+  // check its own brief)."; two sections later, "Earnings peer lens" said "reports in 7d. This
+  // contract expires 2026-10-30, on/before the print, so no earnings-gap exposure from this
+  // position (a concurrent sibling with a later expiry may still be exposed — check its own
+  // brief)." verbatim. The 2026-10-25 fix deliberately kept real peer-beat-rate stats alongside
+  // the swapped sentence ("they remain useful context even for a position that is not itself
+  // exposed to the gap") — correct when a cohort resolved, but it never considered the case (the
+  // common one for Banger-lane small-caps with no resolvable sector) where there is no peer
+  // content to keep. Scoped to exactly that combination: a resolved cohort with real content is
+  // untouched (matches the 2026-10-25 fix's own stated rationale and its regression tests), and
+  // an EXPOSED contract (`noGapExposure` false) still renders even with no cohort, since "Peers
+  // that beat often gap through implied — size down or hedge vol" is then genuinely distinct
+  // advice from Trade manager read's own earnings bullet, not a duplicate. Suppressing the whole
+  // section here loses no C3 disclosure — the cohort's own absence is already carried separately
+  // in `unavailableSources` ("Meridian peer cohort").
+  if (noGapExposure && ctx.meridianPeer?.available !== true) return null;
   return { title: "Earnings peer lens", body: prefix + adjustedBody };
 }
 
