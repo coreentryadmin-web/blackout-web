@@ -296,6 +296,42 @@ test("evaluateOpenPlay closed-market SCANNING, bootstrap-shell desk (source:none
   assert.deepEqual(payload.factors, []);
 });
 
+// BUG FIX (2026-10-26): the closed-market branch hand-built `gates: {blocks:["Session
+// closed"], warnings:[]}` and never ran the mixed-tape sub-check that `evaluatePlayGates`
+// applies on every other path — so a real closed-market response could show
+// `desk_context.mixed_tape_blocked:true` (computed independently and unconditionally by
+// buildSpxPlayDeskContext, spx-play-context.ts) alongside `gates.warnings:[]`, no "Tape's
+// mixed" text anywhere. Confirmed live via GET /api/market/spx/play.
+//
+// Driving this end-to-end through the real signal engine (computeSpxConfluence) would make
+// the test depend on wall-clock ET time (computeSpxConfluence's own session-quality/live-tape
+// factors shift with time of day) — see spx-play-context.test.ts's "mixed-tape coherence"
+// test for the deterministic behavioral proof that buildSpxPlayDeskContext and
+// mixedTapeGateMessage agree on the SAME confluence-shaped data. This is the narrower,
+// source-text companion (same idiom as getNhConfluenceBonus below): it pins that the
+// closed-market branch actually WIRES mixedTapeGateMessage's result into gates.warnings,
+// which that behavioral test alone cannot catch — it only exercises the two shared
+// functions in isolation, not whether spx-play-engine.ts's closed-market branch still calls
+// either of them.
+test("evaluateSpxPlayCore closed-market branch runs the shared mixed-tape check and wires it into gates.warnings", () => {
+  const src = readFileSync(fileURLToPath(new URL("./spx-play-engine.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("if (!desk.market_open && !premarket) {");
+  assert.ok(start > 0, "closed-market branch exists");
+  const end = src.indexOf("\n  const technicals =", start);
+  assert.ok(end > start, "closed-market branch's early-return block ends before the open-market path resumes");
+  const body = src.slice(start, end);
+  assert.match(
+    body,
+    /mixedTapeGateMessage\(closedConfluence\)/,
+    "closed-market branch must run the shared mixed-tape sub-check, not skip it entirely"
+  );
+  assert.match(
+    body,
+    /warnings:\s*mixedTapeMsg\s*!=\s*null\s*\?\s*\[mixedTapeMsg\]\s*:\s*\[\]/,
+    "gates.warnings must surface the mixed-tape message instead of being hardcoded to []"
+  );
+});
+
 // BUG FIX (2026-09-03): getNhConfluenceBonus's staleness check used a raw
 // `(Date.now() - publishedAt.getTime()) / 3_600_000 > 20` comparison. published_at is written by a
 // SEPARATE Night Hawk cron process, so cross-process clock skew is real — a future-dated edition

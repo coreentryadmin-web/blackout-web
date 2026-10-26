@@ -21,7 +21,12 @@ import {
   type SpxPlayDirection,
   type SpxSignalFactor,
 } from "@/features/spx/lib/spx-signals";
-import { evaluatePlayGates, GATE_BLOCK, type PlayGateResult } from "@/features/spx/lib/spx-play-gates";
+import {
+  evaluatePlayGates,
+  mixedTapeGateMessage,
+  GATE_BLOCK,
+  type PlayGateResult,
+} from "@/features/spx/lib/spx-play-gates";
 import {
   categorizeGateBlocks,
   emptyCategorizedGateBlocks,
@@ -1625,6 +1630,23 @@ async function evaluateSpxPlayCore(
       desk.price > 0 && desk.source !== "none" ? computeSpxConfluence(desk) : null;
     const playIdea =
       closedConfluence != null ? buildPlayIdeaIntel(desk, closedConfluence) : null;
+    // BUG FIX (2026-10-26): this closed-market branch hand-builds `gates` instead of calling
+    // evaluatePlayGates — it never ran the trade-governor/halt/playbook machinery that's
+    // meaningless with no entry possible at all, which is correct. But `evaluatePlayGates` is
+    // ALSO the only place that applies the mixed-tape sub-check, and `spx-play-context.ts`'s
+    // `buildSpxPlayDeskContext` independently recomputes `desk_context.mixed_tape_blocked` off
+    // the identical weighted_conflicts/threshold condition UNCONDITIONALLY, regardless of
+    // whether gates ever ran — so a real closed-market response could show
+    // `mixed_tape_blocked:true` in desk_context with no "Tape's mixed" text anywhere in
+    // `gates.blocks`/`warnings`. Confirmed live via GET /api/market/spx/play.
+    // Fix: run the shared, extracted mixed-tape sub-check here too (mixedTapeGateMessage —
+    // the exact condition evaluatePlayGates applies, factored out so the two can never drift
+    // apart) and surface it in `warnings`, not `blocks` — "Session closed" already fully
+    // explains why no new entry is possible, so the mixed-tape read isn't an ADDITIONAL block,
+    // it's the same informational-only treatment evaluatePlayGates itself gives this check on
+    // its non-buy (entry_intent:"watch") path, which is the closer analogue here (no BUY is
+    // ever being evaluated once the market is closed).
+    const mixedTapeMsg = closedConfluence != null ? mixedTapeGateMessage(closedConfluence) : null;
     const dir = closedConfluence?.direction;
     const entry = desk.price > 0 ? desk.price : null;
     const idealTarget =
@@ -1666,7 +1688,7 @@ async function evaluateSpxPlayCore(
         blocks: ["Session closed"],
         blocks_by_category: categorizeGateBlocks(["Session closed"]),
         first_block_category: firstGateBlockCategory(["Session closed"]),
-        warnings: [],
+        warnings: mixedTapeMsg != null ? [mixedTapeMsg] : [],
         entry_mode: "none",
         play_idea: playIdea,
       },
