@@ -1,4 +1,9 @@
-import { getMeta, setMeta } from "@/lib/db";
+import {
+  getMeta,
+  setMeta,
+  tryAdvisoryLock,
+  releaseAdvisoryLock,
+} from "@/lib/db";
 import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const REPLIED_KEY = "x_marketing_replied_ids";
@@ -124,7 +129,56 @@ export async function getEngageRotationIndex(): Promise<number> {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Lock key for the read-modify-write below. Same shape/rationale as BUDGET_WRITE_LOCK (round
+// 111) and REPLIED_WRITE_LOCK (round 112): a DISTINCT global key per guarded field, so this
+// critical section never serializes against the unrelated budget/replied-ids ones.
+const ENGAGE_ROTATION_WRITE_LOCK = "x-marketing-engage-rotation-write";
+const ENGAGE_ROTATION_LOCK_MAX_ATTEMPTS = 30;
+const ENGAGE_ROTATION_LOCK_RETRY_MS = 60;
+
+/**
+ * Advance the engagement target-rotation index and return the new value.
+ *
+ * MUST be atomic across processes: `x-growth` and `x-engage` are SEPARATE cron routes that
+ * both call `runEngagementSweep` (x-growth-engine.ts's `runGrowthSweep` is a thin wrapper
+ * around the exact same function x-engage's route calls directly), and each call bumps this
+ * SAME `ENGAGE_ROTATION_KEY` row once per sweep to rotate which engagement targets get
+ * picked next. Before this fix, `getEngageRotationIndex()` (read) then `writeMeta()` (write)
+ * were two separate, unlocked Postgres round-trips: if two processes interleave — both read
+ * the same base value, both compute `base + 1`, both write — the second write clobbers the
+ * first and one whole rotation step is silently lost (the same read-modify-write "lost
+ * update" shape as `recordBudgetUse`/`markTweetReplied` before rounds 111/112's fixes).
+ * Lower-stakes than those two (worst case is a repeated/skipped rotation offset, not a
+ * double-spend or a duplicate public tweet), but the fix is identical and just as cheap:
+ * serialize the critical section with the same `tryAdvisoryLock`/`releaseAdvisoryLock`
+ * primitive, same short bounded retry (tryAdvisoryLock is non-blocking "try", not a queue —
+ * the holder releases within one round-trip).
+ */
 export async function bumpEngageRotation(): Promise<number> {
+  for (
+    let attempt = 0;
+    attempt < ENGAGE_ROTATION_LOCK_MAX_ATTEMPTS;
+    attempt += 1
+  ) {
+    const acquired = await tryAdvisoryLock(ENGAGE_ROTATION_WRITE_LOCK);
+    if (!acquired) {
+      await new Promise((r) => setTimeout(r, ENGAGE_ROTATION_LOCK_RETRY_MS));
+      continue;
+    }
+    try {
+      const next = ((await getEngageRotationIndex()) + 1) % 1000;
+      await writeMeta(ENGAGE_ROTATION_KEY, String(next));
+      return next;
+    } finally {
+      await releaseAdvisoryLock(ENGAGE_ROTATION_WRITE_LOCK);
+    }
+  }
+  // Could not get the lock after bounded retries (e.g. a stuck holder) — fall back to the old
+  // unlocked behavior rather than stalling the rotation forever. Worse than the locked path,
+  // but no worse than before this fix, and logged so it's visible if it ever fires.
+  console.warn(
+    `[x-marketing-meta] could not acquire ${ENGAGE_ROTATION_WRITE_LOCK} after ${ENGAGE_ROTATION_LOCK_MAX_ATTEMPTS} attempts — bumping engage rotation unlocked`,
+  );
   const next = ((await getEngageRotationIndex()) + 1) % 1000;
   await writeMeta(ENGAGE_ROTATION_KEY, String(next));
   return next;
