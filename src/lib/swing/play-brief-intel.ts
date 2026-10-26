@@ -21,6 +21,7 @@ import {
   fundamentalsFreshnessTag,
   gexMatrixAgeMs,
   gexMatrixStale,
+  headlineAgeLabel,
   meridianCatalystAgeMs,
   meridianCatalystStale,
   newsCatalystAgeMs,
@@ -1666,7 +1667,7 @@ export function catalystsSection(
     // and are unaffected either way.
     const seenHeadlines = new Set<string>();
     const dedupedHeadlines = arsenal.news.headlines.filter((h) => {
-      const key = h.trim().toLowerCase();
+      const key = h.headline.trim().toLowerCase();
       if (seenHeadlines.has(key)) return false;
       seenHeadlines.add(key);
       return true;
@@ -1692,7 +1693,16 @@ export function catalystsSection(
         "**Headlines:**\n" +
         dedupedHeadlines
           .slice(0, 4)
-          .map((h) => `• ${h}`)
+          .map((h) => {
+            // Largo C2 (2026-10-26, Ask Largo standing mandate, #4076 comment 6409186033):
+            // `staleLead` above discloses only when the BATCH fetch ran — this per-item age is
+            // the article's own publish time, so a fresh fetch can still honestly show a stale
+            // headline. Anchored to `readMs` (not wall-clock) for the same reason every other
+            // freshness check in this function is; omitted entirely when `publishedAt` is null
+            // rather than fabricating a date Benzinga itself didn't supply.
+            const age = headlineAgeLabel(h.publishedAt, readMs);
+            return `• ${h.headline}${age ? ` (${age})` : ""}`;
+          })
           .join("\n"),
     );
   } else if (arsenal.news?.count === 0) {

@@ -2595,7 +2595,7 @@ test("catalystsSection: headlines from a stale news read carry a staleness discl
       earnings: null,
       fundamentals: null,
       related: null,
-      news: { count: 1, newest: staleAsOf, headlines: ["CrowdStrike stock moves higher"], as_of: staleAsOf },
+      news: { count: 1, newest: staleAsOf, headlines: [{ headline: "CrowdStrike stock moves higher", publishedAt: null }], as_of: staleAsOf },
       macro: null,
       breadth: null,
       unavailable_sources: [],
@@ -2626,7 +2626,7 @@ test("catalystsSection: headlines from a fresh news read carry NO staleness disc
       earnings: null,
       fundamentals: null,
       related: null,
-      news: { count: 1, newest: freshAsOf, headlines: ["CrowdStrike stock moves higher"], as_of: freshAsOf },
+      news: { count: 1, newest: freshAsOf, headlines: [{ headline: "CrowdStrike stock moves higher", publishedAt: null }], as_of: freshAsOf },
       macro: null,
       breadth: null,
       unavailable_sources: [],
@@ -2667,10 +2667,10 @@ test("catalystsSection: imminent earnings + headlines get a connecting sentence 
         count: 4,
         newest: freshAsOf,
         headlines: [
-          "Tesla teases new Roadster reveal",
-          "Tesla Roadster: what we know so far",
-          "Analysts weigh in on the Roadster timeline",
-          "Tesla stock ticks up on Roadster buzz",
+          { headline: "Tesla teases new Roadster reveal", publishedAt: null },
+          { headline: "Tesla Roadster: what we know so far", publishedAt: null },
+          { headline: "Analysts weigh in on the Roadster timeline", publishedAt: null },
+          { headline: "Tesla stock ticks up on Roadster buzz", publishedAt: null },
         ],
         as_of: freshAsOf,
       },
@@ -2708,7 +2708,7 @@ test("catalystsSection: NO connecting sentence when earnings is well outside the
       earnings: { earnings_date: "2027-01-20", days_until: 60, report_time: "afterhours", is_confirmed: true },
       fundamentals: null,
       related: null,
-      news: { count: 1, newest: freshAsOf, headlines: ["Tesla teases new Roadster reveal"], as_of: freshAsOf },
+      news: { count: 1, newest: freshAsOf, headlines: [{ headline: "Tesla teases new Roadster reveal", publishedAt: null }], as_of: freshAsOf },
       macro: null,
       breadth: null,
       unavailable_sources: [],
@@ -2739,7 +2739,7 @@ test("catalystsSection: NO connecting sentence when there is no earnings date at
       earnings: null,
       fundamentals: null,
       related: null,
-      news: { count: 1, newest: freshAsOf, headlines: ["CrowdStrike stock moves higher"], as_of: freshAsOf },
+      news: { count: 1, newest: freshAsOf, headlines: [{ headline: "CrowdStrike stock moves higher", publishedAt: null }], as_of: freshAsOf },
       macro: null,
       breadth: null,
       unavailable_sources: [],
@@ -2882,11 +2882,11 @@ test("catalystsSection: duplicate headline text is deduped, never burning one of
         count: 5,
         newest: freshAsOf,
         headlines: [
-          "10 Information Technology Stocks Whale Activity In Today's Session",
-          "10 Information Technology Stocks With Whale Alerts In Today's Session",
-          "10 Information Technology Stocks Whale Activity In Today's Session",
-          "Is Fortnite Down? Here's Why Servers Are Offline",
-          "A genuinely distinct fifth headline",
+          { headline: "10 Information Technology Stocks Whale Activity In Today's Session", publishedAt: null },
+          { headline: "10 Information Technology Stocks With Whale Alerts In Today's Session", publishedAt: null },
+          { headline: "10 Information Technology Stocks Whale Activity In Today's Session", publishedAt: null },
+          { headline: "Is Fortnite Down? Here's Why Servers Are Offline", publishedAt: null },
+          { headline: "A genuinely distinct fifth headline", publishedAt: null },
         ],
         as_of: freshAsOf,
       },
@@ -2907,6 +2907,61 @@ test("catalystsSection: duplicate headline text is deduped, never burning one of
     /A genuinely distinct fifth headline/,
     "dedup happens BEFORE the top-4 slice, so the real 4th distinct headline still makes the cut",
   );
+});
+
+// Largo C2 (2026-10-26, Ask Largo standing mandate, #4076 comment 6409186033): `staleLead`
+// discloses only when the BATCH fetch ran, never when each cited article was PUBLISHED, so a
+// fresh fetch can still legitimately quote a stale headline with nothing disclosing that. This
+// proves the per-headline age now renders, is anchored to ctx.readMs (not the real wall clock,
+// same discipline as the staleness-anchor test just below), and is omitted — never fabricated —
+// for a headline with no publishedAt at all.
+test("catalystsSection: each headline carries its own publish-age label, anchored to ctx.readMs, and omits the suffix when publishedAt is unknown", () => {
+  const readMs = Date.parse("2026-10-26T20:00:00.000Z");
+  const freshAsOf = new Date(readMs - 5_000).toISOString();
+  const section = catalystsSection(
+    {
+      ticker: "CRWD",
+      zerodte_today: null,
+      nighthawk_recent: null,
+      recent_audit_entries: [],
+      recent_flow: null,
+      recent_anomalies: [],
+      flow_full_state: null,
+      spx_play: null,
+      spx_full_state: null,
+      vector_full_state: null,
+      gex_positioning: null,
+      flow_feed_fresh: true,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: null,
+        related: null,
+        news: {
+          count: 2,
+          newest: freshAsOf,
+          headlines: [
+            // 3h old — published well before this batch's own fetch time, which the OLD,
+            // batch-only `as_of` disclosure could never reveal since the fetch itself is fresh.
+            { headline: "CrowdStrike stock moves higher", publishedAt: new Date(readMs - 3 * 60 * 60_000).toISOString() },
+            // No publishedAt at all (hand-built fixture / older upstream shape) — must render
+            // with no age suffix rather than inventing one.
+            { headline: "CrowdStrike announces new product", publishedAt: null },
+          ],
+          as_of: freshAsOf,
+        },
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as import("@/lib/bie/ecosystem-context").EcosystemContext,
+    { readMs } as unknown as import("./play-brief-types").SwingPlayBriefContext,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /CrowdStrike stock moves higher \(3h ago\)/);
+  const noPublishedAtLine = section!.body.split("\n").find((l) => l.includes("new product"));
+  assert.ok(noPublishedAtLine, "expected the no-publishedAt headline to render");
+  assert.doesNotMatch(noPublishedAtLine!, /\(.*ago\)/, "must never fabricate an age for a headline with no publishedAt");
 });
 
 // Ask Largo standing mandate, same #5351/#5392-class readMs-anchor sweep — catalystsSection was
@@ -2980,7 +3035,7 @@ test("catalystsSection: uses ctx.readMs as the staleness anchor for news headlin
       earnings: null,
       fundamentals: null,
       related: null,
-      news: { count: 1, newest: freshAsOf, headlines: ["CrowdStrike stock moves higher"], as_of: freshAsOf },
+      news: { count: 1, newest: freshAsOf, headlines: [{ headline: "CrowdStrike stock moves higher", publishedAt: null }], as_of: freshAsOf },
       macro: null,
       breadth: null,
       unavailable_sources: [],

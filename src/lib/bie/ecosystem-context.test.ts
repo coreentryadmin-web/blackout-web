@@ -914,7 +914,14 @@ test("assembleEcosystemArsenal(single_name): earnings/fundamentals/peers/news po
     earnings: { earnings_date: "2026-07-20", days_until: 5, report_time: "afterhours", is_confirmed: true } as NextEarnings,
     fundamentals: { as_of: "2026-07-10", short_interest: { days_to_cover: 6.1 }, short_volume_ratio: 0.42, price_target: null } as unknown as TickerFundamentalsBundle,
     related: { ticker: "NVDA", related: ["AMD", "AVGO", "MU"], as_of: "2026-07-10" } as unknown as RelatedCompanies,
-    news: { items: [{ headline: "NVDA guidance raised" }, { headline: "new GPU" }], asOf: "2026-07-13T00:00:00Z", newest: "2026-07-12T00:00:00Z" } as unknown as NewsResult,
+    news: {
+      items: [
+        { headline: "NVDA guidance raised", publishedAt: "2026-07-13T00:00:00Z" },
+        { headline: "new GPU" },
+      ],
+      asOf: "2026-07-13T00:00:00Z",
+      newest: "2026-07-12T00:00:00Z",
+    } as unknown as NewsResult,
     macro: null,
     breadth: null,
   });
@@ -924,7 +931,12 @@ test("assembleEcosystemArsenal(single_name): earnings/fundamentals/peers/news po
   assert.equal(ars.fundamentals?.short_volume_ratio, 0.42);
   assert.deepEqual(ars.related, ["AMD", "AVGO", "MU"]);
   assert.equal(ars.news?.count, 2);
-  assert.deepEqual(ars.news?.headlines, ["NVDA guidance raised", "new GPU"]);
+  // Largo C2 (2026-10-26): each headline must carry its own `publishedAt` through the fold,
+  // never fabricated — a second item with none at all stays `null`, not dropped.
+  assert.deepEqual(ars.news?.headlines, [
+    { headline: "NVDA guidance raised", publishedAt: "2026-07-13T00:00:00Z" },
+    { headline: "new GPU", publishedAt: null },
+  ]);
   // Largo C2 (2026-09-18): `NewsResult.asOf` (the real fetch-time stamp) must reach the arsenal
   // summary, not be dropped at this fold — see EcosystemArsenalNews.as_of's own doc comment.
   assert.equal(ars.news?.as_of, "2026-07-13T00:00:00Z");
@@ -955,8 +967,8 @@ test("assembleEcosystemArsenal: Benzinga headline HTML entities are decoded for 
     breadth: null,
   });
   assert.deepEqual(ars.news?.headlines, [
-    "12 Information Technology Stocks Moving In Tuesday's Intraday Session",
-    "Safran Electronics & Defense agreement",
+    { headline: "12 Information Technology Stocks Moving In Tuesday's Intraday Session", publishedAt: null },
+    { headline: "Safran Electronics & Defense agreement", publishedAt: null },
   ]);
 });
 
@@ -1006,10 +1018,10 @@ test("rankNewsItemsBySpecificity: ascending tag-count, stable on recency within 
     breadth: null,
   });
   assert.deepEqual(ars.news?.headlines, [
-    specificAws.headline,
-    specificAlexa.headline,
-    broadClaudeDocs.headline,
-    broadCyberMission.headline,
+    { headline: specificAws.headline, publishedAt: null },
+    { headline: specificAlexa.headline, publishedAt: null },
+    { headline: broadClaudeDocs.headline, publishedAt: null },
+    { headline: broadCyberMission.headline, publishedAt: null },
   ]);
   // Total count is unaffected by the re-rank — still every item the provider returned.
   assert.equal(ars.news?.count, 5);
@@ -1072,7 +1084,11 @@ test("rankNewsItemsBySpecificity: within a tied tag-count tier, a genuinely on-t
     macro: null,
     breadth: null,
   });
-  assert.deepEqual(ars.news?.headlines, [bloomFuelCell.headline, cnnPartnership.headline, xCorpOffTopic.headline]);
+  assert.deepEqual(ars.news?.headlines, [
+    { headline: bloomFuelCell.headline, publishedAt: null },
+    { headline: cnnPartnership.headline, publishedAt: null },
+    { headline: xCorpOffTopic.headline, publishedAt: null },
+  ]);
 });
 
 test("rankNewsItemsBySpecificity: an untracked ticker (no alias-map entry) falls back to the pre-existing recency-only tiebreak, unchanged", () => {
@@ -1105,7 +1121,10 @@ test("assembleEcosystemArsenal(single_name): market catalysts (no single ticker)
     macro: null,
     breadth: null,
   });
-  assert.deepEqual(ars.news?.headlines, ["narrow by chance", "broad macro story"]);
+  assert.deepEqual(ars.news?.headlines, [
+    { headline: "narrow by chance", publishedAt: null },
+    { headline: "broad macro story", publishedAt: null },
+  ]);
 });
 
 test("assembleEcosystemArsenal(single_name): percent-scale short_volume_ratio normalizes to 0–1 fraction (audit #12)", () => {
