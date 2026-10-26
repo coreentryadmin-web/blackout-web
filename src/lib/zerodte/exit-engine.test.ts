@@ -464,6 +464,38 @@ test("buildExitContext: floor breach honors the floor mark — never persists a 
   assert.equal(ctx.mark_honored, true, "a floor-honored fill is flagged as inferred, not observed");
 });
 
+// Live finding, 2026-10-26 (SPXW/SPY/TSLA, GET /api/market/zerodte/record?days=1): on every
+// mark_honored:true exit, `exit_detail` embedded the RAW pre-honoring percentage (baked by
+// evaluateExitState/decideTrimScale BEFORE resolveExitMark ever runs) while the persisted
+// `pnl_pct` priced off the HONORED (better) mark — e.g. a real SPXW row read "Mark 14.1
+// (+17.5%) is at/below the +18.33% floor..." right beside a credited +18.33%, a narrative
+// that UNDERSTATES the truth AND reads self-contradictory (17.5 < 18.33 is literally what
+// "at/below the floor" means, not evidence the floor failed to protect the full 18.33%).
+// `detail: decision.detail` passed the stale string through unchanged forever. This is the
+// same SPXW/ENTRY=4/−13%-observed/+8%-honored fixture as the test directly above — the only
+// thing new here is asserting `ctx.detail` instead of stopping at `ctx.pnl_pct`.
+test("buildExitContext: a floor-honored exit's detail narrative must embed the SAME percentage as its own persisted pnl_pct (2026-10-26 finding)", () => {
+  const decision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.48 }));
+  assert.equal(decision.reason, "ratchet_breakeven_floor");
+  // Sanity on the RAW, pre-honoring narrative the engine bakes at decision time — this is
+  // the stale number the bug used to leave frozen in the persisted record.
+  assert.match(decision.detail, /Mark 3\.48 \(-13%\)/, "the engine's own raw detail states the worse observed move, before honoring is known");
+
+  const ctx = buildExitContext(decision, ENTRY, 3.48, 4.8, Date.UTC(2026, 6, 14, 15, 0, 0));
+  assert.equal(ctx.mark_honored, true);
+  assert.equal(ctx.pnl_pct, 8, "persisted pnl_pct prices off the honored floor mark");
+  assert.match(
+    ctx.detail,
+    /Mark 4\.32 \(\+8%\)/,
+    "the regenerated detail must quote the HONORED mark/pct — matching ctx.mark (4.32) and ctx.pnl_pct (8) — not the raw observed print"
+  );
+  assert.doesNotMatch(
+    ctx.detail,
+    /-13%/,
+    "the stale raw -13% must not survive into the persisted, member-facing narrative"
+  );
+});
+
 test("buildExitContext: a thesis exit uses the observed mark verbatim — mark_honored is false", () => {
   const decision = evaluateExitState(
     input({
@@ -476,6 +508,11 @@ test("buildExitContext: a thesis exit uses the observed mark verbatim — mark_h
   assert.equal(ctx.mark, 3.2, "thesis exit takes the observed mark, no floor honoring");
   assert.equal(ctx.mark_observed, 3.2);
   assert.equal(ctx.mark_honored, false, "an observed fill is NOT flagged as inferred");
+  assert.equal(
+    ctx.detail,
+    decision.detail,
+    "a non-honored exit's detail is passed through byte-for-byte — only a mark_honored exit is ever regenerated"
+  );
 });
 
 // Live-monitor finding, 2026-09-04: a real CRCL thesis-break stamped
@@ -644,6 +681,16 @@ test("buildExitContext: trim_scale dead-zone floor exit HONORS its own floor (20
     12.25,
     "persisted pnl_pct must price off the honored floor mark, not the raw +9.33% print that lost to it"
   );
+  // 2026-10-26 finding (the decideTrimScale-branch sibling of the ratchet-mode test above):
+  // this reason's raw, pre-honoring detail embeds the worse +9.33% observed print — assert
+  // the regenerated detail instead quotes the SAME honored 12.25% the row is credited with.
+  assert.match(decision.detail, /\(\+9\.33%\)/, "the raw detail states the worse observed move");
+  assert.match(
+    ctx.detail,
+    /Mark 4\.49 \(\+12\.25%\)/,
+    "the regenerated detail must quote the honored mark/pct, matching ctx.mark/ctx.pnl_pct"
+  );
+  assert.doesNotMatch(ctx.detail, /\+9\.33%/, "the stale raw percentage must not survive into the persisted narrative");
 });
 
 test("protectiveFloorMark: entry-scaled floor premium", () => {
