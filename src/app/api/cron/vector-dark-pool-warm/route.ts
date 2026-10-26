@@ -5,7 +5,7 @@ import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { warmVectorDarkPool, type WarmVectorDarkPoolResult } from "@/features/vector/lib/vector-dark-pool-cache";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { runUwPool, runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
-import { sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
+import { sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { halfBatchSize, selectDarkPoolWarmBatch } from "./rotation";
 import { acquireHeavyCronSlot, type HeavyCronSlot } from "@/lib/cron/heavy-cron-concurrency-guard";
 
@@ -124,6 +124,12 @@ export async function GET(req: NextRequest) {
   // heavy-cron-concurrency-guard.ts's header for the full evidence.
   const slot = await acquireHeavyCronSlot("vector-dark-pool-warm", 610);
   if (!slot) {
+    // A lost race here releases the self-overlap lock immediately so the NEXT scheduled fire (not
+    // this one) gets a clean shot — same fix already applied to vector-pick-sweep (#5975). Without
+    // this, the self-overlap lock acquired above sits for its full 610s TTL even though no work
+    // ever ran, causing the next scheduled fire (~600s later, before the lock expires) to also be
+    // skipped as "prior run still executing" when nothing was actually running.
+    await sharedCacheDel("cron:vector-dark-pool-warm:lock").catch(() => undefined);
     const payload = { ok: true, skipped: true, reason: "heavy-cron concurrency slot unavailable (idempotent skip)" };
     await logCronRun("vector-dark-pool-warm", started, payload);
     return NextResponse.json(payload);
