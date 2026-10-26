@@ -12,11 +12,28 @@ const fetchAdminMe = async (url: string): Promise<AdminMeResponse> => {
   return res.json() as Promise<AdminMeResponse>;
 };
 
-function readSessionAdminFlag(userId: string | null | undefined): boolean | null {
+/** Reads the cached admin flag. SSR/private-mode/blocked-storage safe — storage access can throw
+ * a SecurityError (sandboxed embed, "Block All Cookies") and every other storage read in this repo
+ * degrades to a safe default on that rather than crashing; this one didn't, so it's brought in line. */
+export function readSessionAdminFlag(userId: string | null | undefined): boolean | null {
   if (!userId || typeof sessionStorage === "undefined") return null;
-  const cached = sessionStorage.getItem(`__admin_flag:${userId}`);
-  if (cached === null) return null;
-  return cached === "1";
+  try {
+    const cached = sessionStorage.getItem(`__admin_flag:${userId}`);
+    if (cached === null) return null;
+    return cached === "1";
+  } catch {
+    return null;
+  }
+}
+
+/** Persists the cached admin flag. Silent no-op on SSR / blocked storage — best effort only. */
+export function writeSessionAdminFlag(userId: string, admin: boolean): void {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.setItem(`__admin_flag:${userId}`, admin ? "1" : "0");
+  } catch {
+    /* quota / private-mode / blocked storage — best effort */
+  }
 }
 
 /** Shared admin flag — one SWR poll for Nav + iOS chrome (was duplicate fetch per mount). */
@@ -35,7 +52,7 @@ export function useAdminFlag(): boolean {
 
   useEffect(() => {
     if (!userId || !data) return;
-    sessionStorage.setItem(`__admin_flag:${userId}`, data.admin ? "1" : "0");
+    writeSessionAdminFlag(userId, Boolean(data.admin));
   }, [userId, data]);
 
   if (!isLoaded || !isSignedIn) return false;
