@@ -211,10 +211,53 @@ describe("diagnoseDirectionFailures — aggregate report", () => {
     assert.ok(regimeCause);
     assert.equal(regimeCause!.n, 2);
     assert.equal(regimeCause!.pct_of_wrong_direction, 100);
+    // regime_conflict never fires for the single winner (C: LONG+BULLISH, aligned) -> 0%, not null,
+    // since the winner cohort here is non-empty (n=1).
+    assert.equal(regimeCause!.pct_of_comparison_winners, 0);
     assert.equal(report.wrong_direction_cohort.n, 2);
     assert.equal(report.winner_cohort.n, 1);
     assert.equal(report.wrong_direction_cohort.regime_conflict_rate_pct, 100);
     assert.equal(report.winner_cohort.regime_conflict_rate_pct, 0);
+  });
+
+  test("cause_breakdown carries a comparison-winner baseline so a non-discriminating cause is visible inline", () => {
+    // Both wrong-direction rows AND the one winner carry earnings_risk=true -> the cause fires
+    // for 100% of each cohort. Reading pct_of_wrong_direction alone (100%) would wrongly read as
+    // "this explains the failures"; pct_of_comparison_winners must show it's equally common among
+    // winners, i.e. non-discriminating.
+    const rows: DebriefAggregateRow[] = [
+      row({
+        ticker: "A",
+        debrief: debrief("wrong_direction"),
+        publish_context: pc({ confluence: { total_score: 40, flow_score: 20, tech_score: 10, pos_score: 5, smart_money_score: 5, earnings_risk: true, catalyst_flags: [], fundamental_block: false, fundamental_flags: [] } }),
+      }),
+      row({
+        ticker: "B",
+        debrief: debrief("wrong_direction"),
+        publish_context: pc({ confluence: { total_score: 40, flow_score: 20, tech_score: 10, pos_score: 5, smart_money_score: 5, earnings_risk: true, catalyst_flags: [], fundamental_block: false, fundamental_flags: [] } }),
+      }),
+      row({
+        ticker: "C",
+        debrief: debrief("clean_win"),
+        publish_context: pc({ confluence: { total_score: 55, flow_score: 20, tech_score: 20, pos_score: 8, smart_money_score: 7, earnings_risk: true, catalyst_flags: [], fundamental_block: false, fundamental_flags: [] } }),
+      }),
+    ];
+    const report = diagnoseDirectionFailures(rows, 90);
+    const catalystCause = report.cause_breakdown.find((c) => c.cause === "catalyst_or_fundamental_conflict");
+    assert.ok(catalystCause);
+    assert.equal(catalystCause!.pct_of_wrong_direction, 100);
+    assert.equal(catalystCause!.pct_of_comparison_winners, 100);
+  });
+
+  test("cause_breakdown reports null comparison baseline when the winner cohort is empty, never 0 or NaN", () => {
+    const rows: DebriefAggregateRow[] = [
+      row({ ticker: "A", debrief: debrief("wrong_direction"), publish_context: pc({ market: { tide_bias: "BEARISH", composite_regime: "NEUTRAL" } }) }),
+    ];
+    const report = diagnoseDirectionFailures(rows, 90);
+    assert.equal(report.winner_cohort.n, 0);
+    const regimeCause = report.cause_breakdown.find((c) => c.cause === "regime_conflict");
+    assert.ok(regimeCause);
+    assert.equal(regimeCause!.pct_of_comparison_winners, null);
   });
 
   test("empty input -> zeroed report, never throws", () => {
