@@ -1622,6 +1622,24 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  the index-ETF measured-table estimate (exact for SPY/QQQ/IWM, approximate for a
    *  single name — the honest number comes from the ledger). Null when spot is unknown. */
   condor: IronCondorLegs | null;
+  /**
+   * The underlying price (+ as-of) `condor`'s strikes/width_pct/est_win_rate were actually
+   * DERIVED FROM — captured here, in enrichSetup, at the exact same instant `condor` itself is
+   * built. Same root cause as `qualification_underlying_price` above: enrichSetup runs BEFORE
+   * scan.ts's attachContractPlans ever calls refreshUnderlyingFromLiveSpot, and that refresh
+   * mutates `underlying_price`/`underlying_price_as_of` IN PLACE afterward — but nothing ever
+   * recomputes `condor` to match. So by serve time `underlying_price` can be the live-refreshed
+   * mark while `condor` is still geometry built from the earlier, now-stale price, with no field
+   * anywhere disclosing that the two are on different clocks. A consumer who re-derives the
+   * condor width against the setup's own (refreshed) `underlying_price` gets a DIFFERENT number
+   * than `condor.est_win_rate` actually reports — live-confirmed 2026-10-26 (SPXW: re-deriving
+   * from the live price implied 77% vs the served 92%). `condor_basis_price` is always the exact
+   * `price` fed into `selectIronCondor` (never fabricated); `condor_basis_as_of` mirrors it ONLY
+   * when that price came from `setup.underlying_price` (the branch that can later be refreshed) —
+   * the `tech?.price` fallback carries no as-of stamp of its own, so that case is honestly null
+   * rather than borrowing an unrelated timestamp. Both null when `condor` itself is null. */
+  condor_basis_price?: number | null;
+  condor_basis_as_of?: string | null;
   /** PRICED, tradeable condor plan (Phase 4) — present ONLY on a `play_type: "CONDOR"` setup
    *  built by the flag-gated condor router (condor.ts): the four legs off the live chain, the
    *  net credit, defined max loss, and the breach (short-strike) levels the grader scores. This
@@ -1988,6 +2006,12 @@ export function enrichSetup(
     gex_king_strike: gexKing,
     gamma_regime: dossier?.positioning?.gamma_regime ?? null,
     condor,
+    // See the condor_basis_price/_as_of field doc above — the exact price `condor` was derived
+    // from, frozen HERE before any later live-spot refresh can move `underlying_price` out from
+    // under it. as_of only travels when `price` actually came from setup.underlying_price (the
+    // mutable branch); the tech-fallback branch has no as-of of its own to honestly report.
+    condor_basis_price: condor ? price : null,
+    condor_basis_as_of: condor && setup.underlying_price != null ? (setup.underlying_price_as_of ?? null) : null,
     intraday: null,
     intraday_conflict: false,
     market_aligned: null,
