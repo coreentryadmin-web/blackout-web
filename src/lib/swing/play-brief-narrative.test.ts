@@ -2185,6 +2185,45 @@ test("tradeManagerNarrativeSection: Break watch says the stop is ALREADY breache
   assert.doesNotMatch(section!.body, /Break watch.*lose premium stop/i, "must not use the forward-looking framing once a confirmed zero bid is already through the stop");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro PHM, adversarially verified via
+// background workflow): the already-breached bullet says the breach is happening "right now",
+// priced off the exact same bid/ask/markAsOf snapshot every sibling quote-derived line in this
+// brief discloses as stale when it's old -- but this one bullet never called
+// optionMarkStaleCaveat, so it kept asserting freshness regardless of how stale the underlying
+// quote actually was. Live PHM repro: a 2026-10-23 16:00 ET quote read on 2026-10-25/26 (2+ days
+// stale) still said "right now" on the single most action-driving line in the brief ("exit or cut
+// size"), while every other bullet in the same section/response correctly said "stale".
+test("tradeManagerNarrativeSection: Break watch already-breached bullet carries the same stale-quote caveat as its sibling lines (live PHM repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      readMs: Date.parse("2026-10-26T01:00:00.000Z"), // 2+ days after markAsOf below
+      play: play({
+        direction: "LONG",
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 0.6,
+        execMark: null,
+        execBidZero: true,
+        markAsOf: "2026-10-23T20:00:00.000Z", // well past the stale bar
+        markIsSync: false,
+        pnlPct: -100,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.4,
+          target_premium: 2.0,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.00\*\*.*through your premium stop \*\*\$0\.40\*\* right now → exit or cut size\.\s*_\(stale — same quote Mark flagged above\)_/i,
+    `already-breached bullet must carry the same staleness caveat its sibling lines carry, got: ${section!.body}`,
+  );
+});
+
 test("tradeManagerNarrativeSection: Break watch keeps the forward-looking framing when the executable bid is still above the stop", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

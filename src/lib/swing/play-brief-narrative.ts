@@ -1680,9 +1680,17 @@ export function tradeManagerNarrativeSection(
   // (never replacing) any structural breakLine — the two are independent, equally real risks and
   // the Largo contract's additive principle says keep both rather than letting one eclipse the
   // other.
+  // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro PHM): this bullet says the breach
+  // is happening "right now" off `execMarkForBreach`/`execStop`, priced from the exact same
+  // bid/ask/markAsOf snapshot every sibling line in this function (the giveback bullet via
+  // `giveStaleCaveat` above, and pnlSection/the manage-plan distance clause elsewhere in this
+  // brief) already flags as stale via `optionMarkStaleCaveat`. Left unqualified, this is the one
+  // bullet in the section that asserts freshness ("right now") instead of disclosing it — on the
+  // single most action-driving line in the brief ("exit or cut size"). Same bug class PRs #6726/
+  // #6731/#6736 already swept through every other call site in this file; this one was missed.
   if (execBreached && (play.direction === "LONG" || play.direction === "SHORT")) {
     add(
-      `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(execMarkForBreach)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.`,
+      `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(execMarkForBreach)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.${optionMarkStaleCaveat(play, readMs)}`,
       { reserved: true },
     );
   } else if (!breakLine && play.direction === "LONG" && execStop != null) {
