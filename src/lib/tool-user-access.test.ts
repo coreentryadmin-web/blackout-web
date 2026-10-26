@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildToolAccessRows,
   compactToolAccessMap,
+  parseAdminToolAccessPatch,
   parseToolAccessMap,
   resolveToolAccessForUser,
 } from "./tool-user-access";
@@ -19,6 +20,27 @@ test("parseToolAccessMap ignores unknown keys and bad values", () => {
   assert.deepEqual(parseToolAccessMap({ largo: "grant", bogus: "grant", vector: "nope" }), {
     largo: "grant",
   });
+});
+
+test("parseAdminToolAccessPatch accepts a fully valid patch", () => {
+  assert.deepEqual(parseAdminToolAccessPatch({ largo: "grant", vector: "block" }), {
+    largo: "grant",
+    vector: "block",
+  });
+});
+
+test("parseAdminToolAccessPatch rejects an unrecognized tool key", () => {
+  assert.equal(parseAdminToolAccessPatch({ largo: "grant", bogus: "grant" }), undefined);
+});
+
+test("parseAdminToolAccessPatch rejects an unrecognized mode", () => {
+  assert.equal(parseAdminToolAccessPatch({ vector: "nope" }), undefined);
+});
+
+test("parseAdminToolAccessPatch rejects a non-object payload", () => {
+  assert.equal(parseAdminToolAccessPatch("grant"), undefined);
+  assert.equal(parseAdminToolAccessPatch(null), undefined);
+  assert.equal(parseAdminToolAccessPatch(["largo"]), undefined);
 });
 
 test("compactToolAccessMap drops inherit", () => {
