@@ -1,4 +1,4 @@
-## WATCH LIST — 2026-10-26 Swing Legacy-carried WATCH reason string kept citing a stale delta after staleDte nulled it (PR #6781, CI running at time of writing — confirm merged before relying on this entry) — fixed, deploy pending validation
+## WATCH LIST — 2026-10-26 Swing Legacy-carried WATCH reason string kept citing a stale delta after staleDte nulled it (PR #6781, merged `44f1388ca`) — fixed, deploy pending validation
 
 **What was fixed:** `refreshCarriedLegacyPlay`'s (`legacy-confirm-promote.ts`) `staleDte` branch
 correctly nulls `contract.delta`/`gamma`/`theta`/`vega`/`iv` on a Legacy-carried WATCH play when no
