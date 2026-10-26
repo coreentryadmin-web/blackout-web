@@ -72,6 +72,21 @@ export function markPendingSignUp(): void {
   }
 }
 
+/**
+ * Non-destructive check: is a sign-up still pending? Callers that might not be able to actually
+ * dispatch the event yet (e.g. gtag hasn't loaded) must check this BEFORE calling
+ * `consumePendingSignUp`, so a dropped fire leaves the flag in place for a retry (a page refresh
+ * re-runs the whole script-load race) instead of the event being silently and permanently lost.
+ */
+export function hasPendingSignUp(): boolean {
+  if (!isBrowser()) return false;
+  try {
+    return sessionStorage.getItem("bo_ga4_pending_signup_v1") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function consumePendingSignUp(): boolean {
   if (!isBrowser()) return false;
   try {
@@ -81,5 +96,34 @@ export function consumePendingSignUp(): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Same shape of bug, same fix, a different call site: `Ga4ConversionTracker`'s purchase-fired
+ * flag used to be written to localStorage unconditionally, before confirming gtag was ready to
+ * accept the call — so a lost gtag-not-ready race on this flag was WORSE than the sign-up one,
+ * because localStorage (unlike sessionStorage) survives a refresh/new tab, permanently blocking
+ * every future attempt for that user. `hasPurchaseFired` is the non-destructive peek; the caller
+ * must check `ga4Available()` before calling `markPurchaseFired`, mirroring `hasPendingSignUp`.
+ */
+export function hasPurchaseFired(userId: string): boolean {
+  if (!isBrowser()) return false;
+  try {
+    return localStorage.getItem(`bo_ga4_purchase_fired:${userId}`) === "1";
+  } catch {
+    // Private mode (or storage blocked): we can't persist a flag either way, so there is
+    // nothing to dedupe against — treat as "not yet fired" and let the caller fire once per
+    // mount, matching the pre-existing "still fire once this session" fallback behavior.
+    return false;
+  }
+}
+
+export function markPurchaseFired(userId: string): void {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(`bo_ga4_purchase_fired:${userId}`, "1");
+  } catch {
+    /* private mode — best-effort only, matches hasPurchaseFired's fallback */
   }
 }
