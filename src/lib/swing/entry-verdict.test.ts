@@ -198,6 +198,34 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.match(genuineVeto[0].reason, /vetoed/i);
   });
 
+  // BUG FIX (2026-10-26, Ask Largo standing mandate, live repro MRNA WATCH): the genuine-veto
+  // branch above (`b.includes("cortex_veto")`) is the ONE branch in this G-S14 block that the
+  // 2026-10-25 fix (#6673) left untouched — it still collapses to a flat, source-less sentence
+  // even though the persisted token itself (`gate:G-S14:cortex_veto:<source>`, stamped by
+  // `swingCortexBlockedByFromAssessment` in v2/cortex-swing.ts off cortex-gate.ts's own
+  // `cortex_veto:${v.source}` code) already names exactly which of the 8 CORTEX_SOURCES vetoed.
+  // Live repro: GET /api/market/nighthawk/horizons?view=swings on 2026-10-26 served MRNA with
+  // `commitGateBlockedBy: ["gate:G-S6:confluence", "gate:G-S14:cortex_veto:gex-walls"]`, yet the
+  // rendered reason named no source. The sibling 0DTE board (zerodte/cortex-gate.ts's own
+  // `cortexGateBlocks()` rendering, `Cortex veto [${v.source}]: ${v.detail}`) already preserves
+  // this; only swing's member-facing text discarded it.
+  it("commitGateBlocksForVerdict: genuine G-S14 veto names the specific Cortex source (live MRNA repro)", () => {
+    const gexWallsVeto = commitGateBlocksForVerdict(["gate:G-S14:cortex_veto:gex-walls"]);
+    assert.match(gexWallsVeto[0].reason, /gex-walls/, "must name which Cortex source vetoed, not a generic sentence");
+
+    const darkpoolVeto = commitGateBlocksForVerdict(["gate:G-S14:cortex_veto:darkpool-confluence"]);
+    assert.match(
+      darkpoolVeto[0].reason,
+      /darkpool-confluence/,
+      "must name a different source correctly too, not hardcode one",
+    );
+
+    // No source present (shouldn't happen in production — the token always carries one — but the
+    // fallback must stay honest/generic rather than render a garbage/empty source name).
+    const noSource = commitGateBlocksForVerdict(["gate:G-S14:cortex_veto"]);
+    assert.match(noSource[0].reason, /vetoed this setup/i);
+  });
+
   it("RESEARCH with no expiry/persistence/invalidation signal still falls through to the generic reason", () => {
     const v = swingEntryVerdict({
       servingSection: "RESEARCH",
