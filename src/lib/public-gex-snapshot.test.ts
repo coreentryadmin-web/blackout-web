@@ -146,6 +146,42 @@ test("applyPublicReadFreshnessGate: an unknown session is gated too — absence 
   assert.ok(/^Prior-session structural reference/.test(out), out);
 });
 
+// Regression: a last-good snapshot's `read` can be re-gated against a DIFFERENT market session
+// than the one it was originally gated/built for (see degradedFromLastGood in
+// public-gex-snapshot.ts, which re-applies this gate to a snapshot served from the 24h last-good
+// cache). The gate must therefore be idempotent/reversible — applying it twice for the same
+// session is a no-op, and re-applying it for a different session correctly transitions, rather
+// than stacking a second "Prior-session structural reference —" prefix or leaving stale wording.
+test("applyPublicReadFreshnessGate: re-gating an already-gated read for the same session is a no-op", () => {
+  const read = "Spot 7,631.47 is below the gamma flip (7,800.2) → short gamma: momentum / vol expansion, moves accelerate. Resistance 7,675, support 7,500.";
+  const gatedOnce = applyPublicReadFreshnessGate(read, "CLOSED");
+  const gatedTwice = applyPublicReadFreshnessGate(gatedOnce, "CLOSED");
+  assert.equal(gatedTwice, gatedOnce, "re-gating for the same session must not stack another prefix");
+  assert.equal(
+    gatedOnce.match(/Prior-session structural reference/g)?.length,
+    1,
+    `prefix must appear exactly once: ${gatedOnce}`
+  );
+});
+
+test("applyPublicReadFreshnessGate: re-gating for a DIFFERENT session transitions cleanly, not additively", () => {
+  const read = "Spot 7,631.47 is below the gamma flip (7,800.2) → short gamma: momentum / vol expansion, moves accelerate. Resistance 7,675, support 7,500.";
+  const gatedClosed = applyPublicReadFreshnessGate(read, "CLOSED");
+  assert.match(gatedClosed, /^Prior-session structural reference/, gatedClosed);
+  assert.ok(!/moves accelerate/i.test(gatedClosed), gatedClosed);
+
+  // Market reopens — re-gating the already-closed-gated text for OPEN must restore the live,
+  // ungated, actionable claim exactly, not leave stale "structurally" wording or a stray prefix.
+  const reGatedOpen = applyPublicReadFreshnessGate(gatedClosed, "OPEN");
+  assert.equal(reGatedOpen, read, `OPEN must fully restore the original live read: ${reGatedOpen}`);
+
+  // And the long-gamma clause transitions the same way.
+  const longRead = "Spot 7,900 is above the gamma flip (7,800.2) → long gamma: range-bound, fade extremes. Resistance 7,950, support 7,850.";
+  const longGatedClosed = applyPublicReadFreshnessGate(longRead, "CLOSED");
+  const longReGatedOpen = applyPublicReadFreshnessGate(longGatedClosed, "OPEN");
+  assert.equal(longReGatedOpen, longRead, longReGatedOpen);
+});
+
 test("correctPublicRead: unmatched wording passes through — can only remove a false claim", () => {
   const read = "Spot 100 is above the gamma flip (95) → long gamma.";
   assert.equal(correctPublicRead(read, { spot: 100, call_wall: 90, put_wall: 110 }), read);
