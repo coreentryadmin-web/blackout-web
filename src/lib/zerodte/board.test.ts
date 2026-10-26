@@ -932,6 +932,69 @@ test("enrich: condor is null when spot is unknown (no fabricated geometry)", () 
   assert.equal(e.condor, null);
 });
 
+// ── condor_basis_price/_as_of (stale-spot disclosure) ────────────────────────────────
+// Root cause: enrichSetup runs BEFORE scan.ts's attachContractPlans ever calls
+// refreshUnderlyingFromLiveSpot, and that refresh mutates underlying_price/_as_of IN PLACE
+// afterward — but nothing ever recomputes `condor` to match. These prove condor_basis_price/
+// _as_of freeze the exact price condor was built from and survive that later mutation, so a
+// consumer can always tell whether condor.est_win_rate is on the same clock as the setup's own
+// (possibly refreshed) underlying_price.
+test("enrich: condor_basis_price/_as_of freeze the EXACT price+as-of condor was built from", () => {
+  const e = enrichSetup(
+    baseSetup({ underlying_price: 188.2, underlying_price_as_of: "2026-10-26T13:30:00Z" }),
+    fakeDossier()
+  );
+  assert.ok(e.condor);
+  assert.equal(e.condor_basis_price, 188.2);
+  assert.equal(e.condor_basis_as_of, "2026-10-26T13:30:00Z");
+});
+
+test("enrich: condor_basis_price survives a LATER live-spot refresh that mutates underlying_price out from under it", () => {
+  // Reproduces the live bug end-to-end: enrichSetup runs first (condor built off 188.2), then
+  // scan.ts's attachContractPlans calls refreshUnderlyingFromLiveSpot and Object.assigns the
+  // patch onto the SAME setup object — the exact in-place mutation that moves underlying_price
+  // to a fresh live mark. Before this fix, nothing on the setup recorded which price condor's
+  // own strikes/win-rate actually came from, so a consumer re-deriving condor width from the
+  // setup's (now live) underlying_price would silently compute a different number than
+  // condor.est_win_rate actually reports.
+  const e = enrichSetup(
+    baseSetup({ underlying_price: 188.2, underlying_price_as_of: "2026-10-26T13:30:00Z" }),
+    fakeDossier()
+  );
+  const refreshed = refreshUnderlyingFromLiveSpot({
+    livePrice: 192.8, // moved materially since qualification
+    liveObservedAtMs: Date.parse("2026-10-26T13:41:00Z"),
+    direction: e.direction,
+    topStrike: e.top_strike,
+    hasSingleStrikeMoneyness: true,
+  });
+  assert.ok(refreshed);
+  Object.assign(e, refreshed); // exactly what attachContractPlans does to the live setup object
+  assert.equal(e.underlying_price, 192.8); // live-refreshed, as the board actually serves it
+  // condor's OWN basis must not silently follow along — it is still the 188.2 geometry, and
+  // condor_basis_price proves that fact rather than leaving it undisclosed.
+  assert.equal(e.condor_basis_price, 188.2);
+  assert.equal(e.condor_basis_as_of, "2026-10-26T13:30:00Z");
+  assert.notEqual(e.condor_basis_price, e.underlying_price);
+});
+
+test("enrich: condor_basis_as_of is honestly null when price came from the tech fallback (no as-of to report)", () => {
+  // underlying_price absent → price falls back to tech.price (188.2 in fakeDossier), which
+  // carries no as-of stamp of its own — must not borrow setup.underlying_price_as_of (absent
+  // here anyway) or fabricate one.
+  const e = enrichSetup(baseSetup({ underlying_price: null }), fakeDossier());
+  assert.ok(e.condor);
+  assert.equal(e.condor_basis_price, 188.2);
+  assert.equal(e.condor_basis_as_of, null);
+});
+
+test("enrich: condor_basis_price/_as_of are null when condor itself is null", () => {
+  const e = enrichSetup(baseSetup({ underlying_price: null }), null);
+  assert.equal(e.condor, null);
+  assert.equal(e.condor_basis_price, null);
+  assert.equal(e.condor_basis_as_of, null);
+});
+
 // ── contract plans ───────────────────────────────────────────────────────────────
 
 import { buildContractPlan, gradePlanFromBars, resolveLedgerEntryPremium } from "./plan";
