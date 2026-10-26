@@ -9,7 +9,7 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readSessionAdminFlag, writeSessionAdminFlag } from "./use-admin-flag";
+import { adminMeSwrKey, readSessionAdminFlag, writeSessionAdminFlag } from "./use-admin-flag";
 
 function withThrowingSessionStorage<T>(run: () => T): T {
   const original = (globalThis as { sessionStorage?: unknown }).sessionStorage;
@@ -88,4 +88,23 @@ test("readSessionAdminFlag: a getter-level sessionStorage throw degrades to null
 
 test("writeSessionAdminFlag: a getter-level sessionStorage throw is swallowed, not an uncaught throw", () => {
   assert.doesNotThrow(() => withGetterThrowingSessionStorage(() => writeSessionAdminFlag("user_789", true)));
+});
+
+test("adminMeSwrKey: two different signed-in users get different SWR cache keys", () => {
+  const keyA = adminMeSwrKey(true, true, "user_A");
+  const keyB = adminMeSwrKey(true, true, "user_B");
+  assert.notEqual(JSON.stringify(keyA), JSON.stringify(keyB));
+});
+
+test("adminMeSwrKey: the SAME user re-rendering gets the SAME key (dedupingInterval still applies)", () => {
+  const first = adminMeSwrKey(true, true, "user_A");
+  const second = adminMeSwrKey(true, true, "user_A");
+  assert.equal(JSON.stringify(first), JSON.stringify(second));
+});
+
+test("adminMeSwrKey: null while signed out, or not yet loaded — never fetches/serves stale data", () => {
+  assert.equal(adminMeSwrKey(true, false, "user_A"), null);
+  assert.equal(adminMeSwrKey(false, true, "user_A"), null);
+  assert.equal(adminMeSwrKey(true, true, null), null);
+  assert.equal(adminMeSwrKey(true, true, undefined), null);
 });
