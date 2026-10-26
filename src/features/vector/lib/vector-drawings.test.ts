@@ -57,6 +57,30 @@ describe("vector-drawings", () => {
     assert.equal(hitTestDrawing(drawings, 1000, 500, 60, 2), null);
   });
 
+  test("hitTestDrawing: fib hit test is bounded by the drawn [t1,t2] range, not infinite", () => {
+    // vector-drawings-primitive.ts renders a fib's levels as horizontal segments spanning only
+    // [tLo, tHi] (the drawing's own anchor times) — NOT full-chart-width like an hline. The hit
+    // test must match that rendered extent; before this fix it scored a fib purely on price,
+    // so a click thousands of seconds away in time — far outside the drawn segment, on empty
+    // chart — would still "hit" the fib if the price happened to line up with one of its levels.
+    const fib = {
+      id: "fib-1",
+      kind: "fib" as const,
+      color: "cyan" as const,
+      createdAt: 1,
+      t1: 1000,
+      p1: 100,
+      t2: 1100,
+      p2: 200,
+    };
+    // Inside the drawn time range, right on the 0% level (price 100) — a real hit.
+    assert.equal(hitTestDrawing([fib], 1050, 100, 60, 2), "fib-1");
+    // Price matches the 0% level exactly, but the click is ~65 minutes (3900s) past the fib's
+    // own t2=1100, way outside both the rendered segment and the 60s time tolerance — must not
+    // register as a hit.
+    assert.equal(hitTestDrawing([fib], 5000, 100, 60, 2), null);
+  });
+
   test("newDrawingId: unique strings", () => {
     const a = newDrawingId();
     const b = newDrawingId();
