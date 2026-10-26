@@ -274,3 +274,15 @@ export async function upsertAdminUserRow(input: {
     console.warn("[admin-users] Postgres upsert failed:", err);
   }
 }
+
+/**
+ * Strict allowlist for the admin user-CREATE route's `tier` field — unlike `parseTier`
+ * (which silently coerces any unrecognized value to "free" for callers that need a
+ * best-effort default, e.g. a Whop webhook payload or legacy "pro"/"elite" aliases), an
+ * admin-initiated account creation must REJECT a malformed/mistyped tier rather than
+ * silently creating the member on "free" with a 201 success response that gives no
+ * indication anything was wrong.
+ */
+export function isValidCreateUserTier(value: unknown): boolean {
+  return value === "free" || value === "community" || value === "premium";
+}
