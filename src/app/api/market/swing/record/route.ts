@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
   fetchOpenSwingPositions,
+  fetchRecentlyClosedSwingPositions,
   fetchSwingPositionChain,
   fetchSwingPositionsRange,
   requireDatabaseInProduction,
@@ -61,10 +62,24 @@ export async function GET(req: NextRequest) {
     // just below), so a DB hiccup on this extra read degrades to the pre-fix behavior rather than
     // failing the whole route.
     const openRows = await fetchOpenSwingPositions().catch(() => []);
-    const rootIds = [...new Set([...selectSwingRecordRootIds(rows), ...selectSwingRecordRootIds(openRows)])].slice(
-      0,
-      MAX_CHAINS,
-    );
+    // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro MRNA#65): the sibling gap to the
+    // 2026-10-25 fix just above — `fetchSwingPositionsRange` filters on `session_date` (ENTRY
+    // date), so a position entered BEFORE the window but CLOSED inside it is invisible to `rows`,
+    // and `openRows` can't rescue it either since it's no longer open. Measured live: MRNA#65
+    // (entered 2026-10-22, closed 2026-10-26T13:46:15Z, real -34.47% stop) was absent from
+    // `closedDeck` under `?days=1/2/3` and only appeared once `?days=5+` widened `since` back
+    // past the entry date — "what closed today" silently returned nothing despite a real closed
+    // position. Fixed the same way: union in `fetchRecentlyClosedSwingPositions(since)`'s rows
+    // (filtered on `closed_at`, unbounded by entry date), fail-soft to `[]` matching this file's
+    // existing per-source discipline.
+    const recentlyClosedRows = await fetchRecentlyClosedSwingPositions(since).catch(() => []);
+    const rootIds = [
+      ...new Set([
+        ...selectSwingRecordRootIds(rows),
+        ...selectSwingRecordRootIds(openRows),
+        ...selectSwingRecordRootIds(recentlyClosedRows),
+      ]),
+    ].slice(0, MAX_CHAINS);
     const chains = await Promise.all(rootIds.map((id) => fetchSwingPositionChain(id)));
     const records = chains.map((chain) => buildSwingRecord(chain));
     const nativeSummary = buildSwingRecordSummary(records, { since, through, days });

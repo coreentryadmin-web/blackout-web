@@ -20,12 +20,14 @@ import { NextRequest } from "next/server";
 mock.module("server-only", { namedExports: {} });
 
 let openSwingPositionsRows: unknown[] = [];
+let recentlyClosedSwingPositionsRows: unknown[] = [];
 let swingPositionChainById: Record<number, unknown[]> = {};
 mock.module("../../../../../lib/db", {
   namedExports: {
     requireDatabaseInProduction: () => null,
     fetchSwingPositionsRange: async () => [],
     fetchOpenSwingPositions: async () => openSwingPositionsRows,
+    fetchRecentlyClosedSwingPositions: async () => recentlyClosedSwingPositionsRows,
     fetchSwingPositionChain: async (id: number) => swingPositionChainById[id] ?? [],
   },
 });
@@ -102,6 +104,61 @@ describe("/api/market/swing/record folds Engine B (Banger) opens into summary.op
       );
     } finally {
       openSwingPositionsRows = [];
+      swingPositionChainById = {};
+    }
+  });
+
+  test("a position that CLOSED inside the days window but was ENTERED before it still appears in closedDeck (2026-10-26, Ask Largo standing mandate, live repro MRNA#65)", async () => {
+    // BUG: the sibling gap to the OLDOPEN fix above. fetchSwingPositionsRange(since, ...) filters
+    // on `session_date` (ENTRY date) — a position entered before the window but CLOSED inside it
+    // is invisible to `rows`, and `fetchOpenSwingPositions()` can't rescue it either since it's no
+    // longer open. Live-measured on prod: MRNA#65 (entered 2026-10-22, closed
+    // 2026-10-26T13:46:15Z, a real -34.47% stop) was absent from closedDeck under
+    // ?days=1/2/3 and only appeared once days=5+ widened `since` back past the entry date — a
+    // member or Largo asking "what closed today" saw nothing despite a real closed position.
+    // Fixed by unioning in fetchRecentlyClosedSwingPositions(since)'s rows (filtered on
+    // closed_at, unbounded by entry date).
+    recentlyClosedSwingPositionsRows = [
+      {
+        id: 65,
+        root_position_id: null,
+        parent_position_id: null,
+        roll_seq: 0,
+        ticker: "MRNA",
+        direction: "long",
+        status: "CLOSED",
+        realized_pnl_pct: -34.47,
+        graded_at: "2026-10-26T13:46:15.000Z",
+        grade_json: null,
+        session_date: "2026-10-22", // entered 4 days before a days=1..3 window's `since` cutoff
+        closed_at: "2026-10-26T13:46:15.000Z",
+        contract_strike: 185,
+        contract_expiry: "2026-10-30",
+        contract_type: "call",
+        contract_occ: "MRNA261030C00185000",
+        contract_delta: 0.62,
+        first_seen_at: "2026-10-22T19:13:51.000Z",
+        committed_at: "2026-10-22T19:13:51.000Z",
+        entry_premium: 17.63,
+        peak_premium: 25.75,
+        trough_premium: 11.55,
+        top_flow_strike: 185,
+        archetype: "EVENT_DRIVEN",
+        sub_lane: "STANDARD",
+      },
+    ];
+    swingPositionChainById = { 65: recentlyClosedSwingPositionsRows };
+    try {
+      const res = await GET(new NextRequest("http://localhost/api/market/swing/record?days=1"));
+      const body = await res.json();
+      const closedRow = body.closedDeck.find((c: { positionId: number }) => c.positionId === 65);
+      assert.ok(
+        closedRow,
+        `expected MRNA#65 in closedDeck under ?days=1 despite its entry predating the window — got: ${JSON.stringify(body.closedDeck)}`,
+      );
+      assert.equal(closedRow.ticker, "MRNA");
+    } finally {
+      recentlyClosedSwingPositionsRows = [];
       swingPositionChainById = {};
     }
   });
