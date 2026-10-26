@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { resolveAdminApi } from "@/lib/admin-access";
 import { logAdminAction } from "@/lib/admin-audit";
-import { parseAdminUserRole, upsertAdminUserRow } from "@/lib/admin-users";
+import { isValidCreateUserTier, parseAdminUserRole, upsertAdminUserRow } from "@/lib/admin-users";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { parseTier } from "@/lib/tiers";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -30,6 +30,12 @@ export async function POST(req: NextRequest) {
   if (role != null && role !== "" && parsedRole === undefined) {
     return NextResponse.json(
       { error: "Invalid role — use admin or member" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
+  if (tier != null && tier !== "" && !isValidCreateUserTier(tier)) {
+    return NextResponse.json(
+      { error: "Invalid tier — use free, community, or premium" },
       { status: 400, headers: NO_STORE_HEADERS },
     );
   }

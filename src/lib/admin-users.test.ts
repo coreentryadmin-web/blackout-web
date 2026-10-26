@@ -4,6 +4,7 @@ import {
   assertAdminSelfGuard,
   buildAdminUserFilterSql,
   computeAdminUserListStats,
+  isValidCreateUserTier,
   parseAdminUserRole,
   shouldUseDbAdminUserList,
 } from "./admin-users";
@@ -14,6 +15,21 @@ test("parseAdminUserRole accepts admin and member", () => {
   assert.equal(parseAdminUserRole(""), "member");
   assert.equal(parseAdminUserRole(undefined), "member");
   assert.equal(parseAdminUserRole("superuser"), undefined);
+});
+
+test("isValidCreateUserTier accepts only the canonical tiers", () => {
+  assert.equal(isValidCreateUserTier("free"), true);
+  assert.equal(isValidCreateUserTier("community"), true);
+  assert.equal(isValidCreateUserTier("premium"), true);
+});
+
+test("isValidCreateUserTier rejects legacy aliases and malformed values", () => {
+  assert.equal(isValidCreateUserTier("pro"), false);
+  assert.equal(isValidCreateUserTier("elite"), false);
+  assert.equal(isValidCreateUserTier("Premium"), false);
+  assert.equal(isValidCreateUserTier("superuser"), false);
+  assert.equal(isValidCreateUserTier(123), false);
+  assert.equal(isValidCreateUserTier(null), false);
 });
 
 test("assertAdminSelfGuard blocks self ban and demote", () => {
