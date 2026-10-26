@@ -317,9 +317,33 @@ export function horizonPlayFromBangerWatch(
 }
 
 /**
- * Merge banger open-book rows into an existing SWING play list. Banger rows win on ticker collision only
- * against pre-entry WATCH/SKIP rows — a live swing ledger OPEN/HOLD/TRIM position is canonical and must
- * not be evicted when Engine B also has capital on the same symbol.
+ * Merge banger open-book rows into an existing SWING play list. A live swing ledger OPEN/HOLD/TRIM
+ * position is always canonical and is never evicted — but a genuinely separate, already-open Engine B
+ * (Banger) position on the SAME ticker is ALSO real member capital, entered independently with its own
+ * contract/strike/premium, and must not be dropped just because the native engine happens to manage a
+ * (different) position in that name too. The only row a banger OPEN play legitimately replaces is a
+ * PRE-ENTRY one (WATCH, or a discovery COMMIT with no real ledger capital yet) on the same ticker —
+ * that row never held any capital, so nothing is lost by retiring it in favor of the real position.
+ *
+ * BUG FIX (Ask Largo standing mandate, live repro 2026-10-26): the pre-fix version built
+ * `managingTickers` from every already-live NATIVE play and used it to EXCLUDE any banger play sharing
+ * that ticker from ever being added — so once a native position existed on a name, EVERY banger-origin
+ * row on that same name was dropped outright, even a genuinely different, separately-entered position.
+ * Live repro: PANW carried a native `swing_positions` COMMIT row (id 67, 370-strike call, entry 17.70,
+ * committed 16:46Z) and a separate, fully live `banger_positions` OPEN row (id 2103, 400-strike call,
+ * entry 5.90, committed 20:15Z the same day) — two real, independently-sized option positions on the
+ * same underlying, confirmed via `GET /api/market/banger/board`. `GET
+ * /api/market/nighthawk/horizons?view=swings` showed only id 67 in `committed[]`/`watch[]`; id 2103
+ * never appeared anywhere on the board, while `GET /api/market/swing/record`'s `summary.bangerOpens`
+ * correctly counted it as one of 91 real open Banger positions — a real, open position with real member
+ * capital that had zero visibility on the live Swing Command board. Two prior PRs (#6656, #6767) treated
+ * this merge's per-ticker drop as a given and worked around its DOWNSTREAM symptom (the play-brief
+ * resolver 404ing on the hidden row's positionId) without revisiting the drop itself; this fix addresses
+ * the root cause those two PRs scoped around. The "two banger-origin plays on the same ticker get
+ * distinct positionIds" test below already proves the rest of the pipeline (CommandDeck row identity,
+ * `pickLanePlayForBrief`'s positionId-exact-match path) handles multiple same-ticker rows correctly once
+ * they are BOTH actually present — this function was the one place still silently discarding the second
+ * one.
  */
 /** True when the row represents live swing ledger capital (not discovery-only pre-entry). */
 export function isLiveManagingSwingPlay(play: HorizonPlay): boolean {
@@ -340,18 +364,18 @@ export function mergeBangerPositionsIntoSwingPlays(
   bangerRows: readonly BangerPositionRow[],
   now = new Date(),
 ): HorizonPlay[] {
-  const bangerPlays = bangerRows
+  // Every real, open banger row is added — a banger play is never excluded just because the native
+  // engine already manages a (different) position on the same ticker (see header: that used to drop
+  // real member capital, PANW id 2103 being the live repro).
+  const bangerToAdd = bangerRows
     .map((r) => horizonPlayFromBangerPosition(r, now))
     .filter((p): p is HorizonPlay => p != null);
-  if (bangerPlays.length === 0) return [...plays];
+  if (bangerToAdd.length === 0) return [...plays];
 
-  const managingTickers = new Set(
-    plays
-      .filter((p) => !isPreEntrySwingPlay(p))
-      .map((p) => p.ticker.toUpperCase()),
-  );
-  const bangerToAdd = bangerPlays.filter((p) => !managingTickers.has(p.ticker.toUpperCase()));
   const bangerTickers = new Set(bangerToAdd.map((p) => p.ticker.toUpperCase()));
+  // Eviction only ever removes a PRE-ENTRY native row (WATCH, or a discovery COMMIT with no ledger
+  // capital) on a ticker a banger OPEN row now covers — that pre-entry row held no capital, so nothing
+  // real is lost. An already-live native row is never evicted, exactly as before this fix.
   const kept = plays.filter(
     (p) => !bangerTickers.has(p.ticker.toUpperCase()) || !isPreEntrySwingPlay(p),
   );
