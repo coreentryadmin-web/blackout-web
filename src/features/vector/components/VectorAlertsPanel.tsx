@@ -105,6 +105,10 @@ export const VectorAlertsPanel = memo(function VectorAlertsPanel({
               step="0.05"
               value={tol}
               onChange={(e) => setTol(e.target.value)}
+              // A number input captures the wheel event by default — scrolling the page
+              // while the cursor happens to sit over it silently changes the value instead
+              // of scrolling. Blur on wheel so a scroll always scrolls, never mutates.
+              onWheel={(e) => e.currentTarget.blur()}
               aria-label="Tolerance percent"
             />
             <span className="vector-alerts-tol-unit">%</span>
