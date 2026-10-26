@@ -85,12 +85,32 @@ export async function GET(req: NextRequest) {
     };
     const closedDeck = closedDeckSourcesFromChains(chains);
     return NextResponse.json(
-      roundFloats({
-        available: true,
-        summary,
-        records,
-        closedDeck,
-      }),
+      roundFloats(
+        {
+          available: true,
+          summary,
+          records,
+          closedDeck,
+        },
+        2,
+        // keyDp override for sub-$1-option-premium fields, mirroring the sibling horizons route
+        // (src/app/api/market/nighthawk/horizons/route.ts) which added this exact override for
+        // the identical reason: the plain 2dp default destroys precision for sub-$1 contracts.
+        // `entry_premium`/`exit_mark` are the embedded grade_json's own fields (roll-plan.ts's
+        // gradeParentFromMark — entry_premium/exit_mark/realized_pnl_pct all derived from the
+        // SAME unrounded raw mark/entry, written full-precision and passed through this route
+        // untouched per record.ts). Rounding them independently to 2dp at this boundary let a
+        // leg's own DISPLAYED entry_premium/exit_mark stop reproducing its own DISPLAYED
+        // realized_pnl_pct sitting right next to them in the same grade object — a
+        // self-contradictory payload for any consumer reading the grade sub-object directly
+        // (Largo tool, dev, or member). Live repro 2026-10-26: EWZ entry_premium 0.58 (2dp, true
+        // ~0.581) vs exit_mark 3.13 recomputed to 439.66% vs the displayed realized_pnl_pct of
+        // 438.79% — a 0.87pp gap. `entryPremium`/`peakPremium`/`troughPremium` are included too,
+        // for parity with the horizons route and closedDeck's own fields (already round2()'d at
+        // the source in closed-plays.ts, so this override is a no-op there — included so the one
+        // override list covers both the grade sub-object and closedDeck regardless of casing).
+        { entry_premium: 4, exit_mark: 4, entryPremium: 4, peakPremium: 4, troughPremium: 4 },
+      ),
       { headers: NO_STORE_HEADERS },
     );
   } catch (error) {
