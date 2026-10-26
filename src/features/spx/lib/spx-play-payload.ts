@@ -181,6 +181,32 @@ export function intelGates(
   };
 }
 
+/**
+ * Honest headline/idle_message for a degraded play-eval payload reached via one of the known
+ * "the EVAL PIPELINE failed to produce a timely result" paths — route.ts's
+ * ServerCacheTimeoutError catch block, and spx-service.ts's spxPlayReadDegraded() (the routine
+ * cross-replica-lock-loss-with-no-stale/peer-snapshot fallback). NEVER use
+ * degradedPlayPayload()'s bare default instead: that default's "Desk warming — play state
+ * unavailable" asserts the DESK itself is cold, which is a claim neither of these paths ever
+ * actually checks — both are reached purely because the eval/cache/lock chain didn't finish in
+ * time, which says nothing about whether the underlying desk/session is live.
+ *
+ * BUG FIX (2026-10-26, Ask Largo/5-engine standing mandate, live repro during RTH): the
+ * 2026-10-16 fix corrected this text ONLY at the route.ts call site (inline literals). A live
+ * audit on 2026-10-26 found spxPlayReadDegraded() in spx-service.ts — reached on every ordinary
+ * lock-loss-with-no-peer outcome, not a rare error — still falling through to the bare "Desk
+ * warming" default, mid-RTH, while a parallel GET /api/market/spx/desk call at the same instant
+ * showed the real desk fully live. This is the SECOND time one call site got fixed while a
+ * sibling kept the stale default (the first time was `session_phase`, fixed 2026-10-21 at both
+ * sites independently). Centralizing the message here — one definition, both call sites import
+ * it — removes the ability for a third call site, or a future edit to either existing one, to
+ * drift the same way again.
+ */
+export function degradedPlayCatchingUpMessage(): Pick<SpxPlayPayload, "headline" | "idle_message"> {
+  const message = "Play scan still catching up — retry shortly";
+  return { headline: message, idle_message: message };
+}
+
 /** Safe fallback when play eval times out or the route errors — must satisfy SpxPlayPayload so UI never crashes on missing `levels`. */
 export function degradedPlayPayload(
   extras?: Partial<SpxPlayPayload>
