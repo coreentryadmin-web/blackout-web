@@ -81,6 +81,7 @@ import {
 } from "./calibration-cache";
 import type { SwingTickerTrackRecord } from "./play-brief-ticker-history";
 import {
+  EARNINGS_PEER_PRINT_IMMINENT_BULLET,
   EARNINGS_PEER_SIZING_INSTRUCTION,
   meridianPeerEarningsCoaching,
   pickEarningsForSwingPeer,
@@ -2827,8 +2828,22 @@ export function meridianPeerSection(ctx: SwingPlayBriefContext): RichSection | n
   // honest-absence discipline of never guessing a timing fact it cannot see.
   const expiry = ownContractExpiry(ctx);
   const noGapExposure = expiry != null && expiry < earningsItem.date;
+  // BUG FIX (2026-10-26, Ask Largo standing mandate, live repro MSFT CLOSED #47): the swap above
+  // only ever touched the TRAILING sizing instruction. But `meridianPeerEarningsCoaching` also
+  // pushes an earlier, unconditional "print imminent — vol crush risk elevated" bullet whenever
+  // `earningsItem.days_until <= 3` — the exact same live-vol-crush-risk framing the trailing swap
+  // exists to retract, just stated two clauses earlier. Confirmed live: a `days_until<=3` print
+  // with the reviewed contract already expired reads "print imminent — vol crush risk elevated"
+  // immediately followed by "no earnings-gap exposure from this position" about the SAME print —
+  // the prior fix's own regression test used `days_until:9`, so it never exercised this `<=3`
+  // branch. The bullet always has a preceding "reports in Nd"/"reports today" part ahead of it
+  // (pushed unconditionally, one line above the `days_until<=3` gate in the pure helper), so it is
+  // never the first joined part — stripping its leading " · " separator along with it is safe.
+  const withoutPrintImminent = noGapExposure
+    ? body.replace(` · ${EARNINGS_PEER_PRINT_IMMINENT_BULLET}`, "")
+    : body;
   const adjustedBody = noGapExposure
-    ? body.replace(
+    ? withoutPrintImminent.replace(
         EARNINGS_PEER_SIZING_INSTRUCTION,
         `This contract expires ${expiry}, on/before the print, so no earnings-gap exposure from ` +
           `this position (a concurrent sibling with a later expiry may still be exposed — check ` +

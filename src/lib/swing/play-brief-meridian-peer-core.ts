@@ -63,6 +63,19 @@ export type SwingMeridianPeerSlice = SwingMeridianPeerAvailable | SwingMeridianP
 export const EARNINGS_PEER_SIZING_INSTRUCTION =
   "Peers that beat often gap through implied — size down or hedge vol unless thesis is the print.";
 
+/**
+ * Exported as a literal constant for the same reason as `EARNINGS_PEER_SIZING_INSTRUCTION` above
+ * (2026-10-26, Ask Largo standing mandate, live repro MSFT CLOSED #47): this bullet is an active,
+ * live vol-crush risk warning, but it fires purely off `item.days_until <= 3` with no awareness of
+ * whether THIS brief's own contract is still exposed to that print. `meridianPeerSection`
+ * (play-brief-intel.ts) needs to strip it, not just the trailing sizing instruction, when its own
+ * `noGapExposure` check is true — otherwise the body reads "print imminent — vol crush risk
+ * elevated" immediately followed by "no earnings-gap exposure from this position" about the
+ * identical print, the same contradiction class the sizing-instruction swap already closed for its
+ * half of this sentence.
+ */
+export const EARNINGS_PEER_PRINT_IMMINENT_BULLET = "**print imminent** — vol crush risk elevated";
+
 /** Pure coaching line from peer cohort + catalyst item. */
 export function meridianPeerEarningsCoaching(
   peer: SwingMeridianPeerSlice | null | undefined,
@@ -83,7 +96,7 @@ export function meridianPeerEarningsCoaching(
   // already entered for (days_until 0-14); `days_until <= 3` still adds the extra urgency bullet.
   parts.push(item.days_until <= 0 ? "reports **today**" : `reports in **${item.days_until}d**`);
   if (item.days_until <= 3) {
-    parts.push("**print imminent** — vol crush risk elevated");
+    parts.push(EARNINGS_PEER_PRINT_IMMINENT_BULLET);
   }
 
   if (peer && peer.available) {
