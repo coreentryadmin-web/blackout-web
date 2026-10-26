@@ -23,7 +23,7 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import { computeLaneRank } from "./play-brief-lane-rank";
-import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel, roundOptionUsd } from "@/lib/fmt-money";
 import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated, thesisHealthUnchangedSinceCommit } from "./thesis-health";
@@ -240,15 +240,25 @@ export function manageLifecycleCoaching(
         // that DOES carry the caveat for the identical snapshot. `markBasisIsFabricated` already
         // excludes the genuinely-unknown case from rendering `distanceSuffix` at all, so appending
         // here only ever surfaces the "stale"/"no freshness timestamp" branches of the shared helper.
+        // ROUNDING-CONSISTENCY FIX (Ask Largo standing mandate, 2026-10-26, live repro WEN
+        // SWING:WEN:2098 HOLD brief): the % math below used the raw unrounded `distanceBasis`
+        // while `fmtOptionUsd(distanceBasis)` displays it rounded to 2dp right beside the result —
+        // for a sub-cent mid (WEN's real mid was $0.025) the two disagree visibly: "mark **$0.03**,
+        // needs **$0.12** (+380% from here)" when the two dollar figures as PRINTED imply +300%
+        // ((0.12-0.03)/0.03). Round the basis with the same algorithm `fmtOptionUsd` uses BEFORE
+        // the percentage math, so the number matches what a member doing the subtraction themselves
+        // on the two printed dollar figures actually gets — same "reconcile to the rounded display"
+        // principle as `round-floats.ts`'s `reconcileTrancheFractions`/`reconcileStrikeTotal`.
+        const roundedDistanceBasis = typeof distanceBasis === "number" ? roundOptionUsd(distanceBasis) : distanceBasis;
         const distanceSuffix =
           !alreadyCrossed &&
           !markBasisIsFabricated &&
           next.premium != null &&
-          typeof distanceBasis === "number" &&
-          Number.isFinite(distanceBasis) &&
-          distanceBasis > 0
-            ? ` — ${distanceBasisIsExec ? "bid" : "mark"} **${fmtOptionUsd(distanceBasis)}**, needs **${fmtOptionUsd(next.premium)}** (+${(
-                ((next.premium - distanceBasis) / distanceBasis) *
+          typeof roundedDistanceBasis === "number" &&
+          Number.isFinite(roundedDistanceBasis) &&
+          roundedDistanceBasis > 0
+            ? ` — ${distanceBasisIsExec ? "bid" : "mark"} **${fmtOptionUsd(roundedDistanceBasis)}**, needs **${fmtOptionUsd(next.premium)}** (+${(
+                ((next.premium - roundedDistanceBasis) / roundedDistanceBasis) *
                 100
               ).toFixed(0)}% from here)${optionMarkStaleCaveat(play, readMs ?? Date.now())}`
             : "";

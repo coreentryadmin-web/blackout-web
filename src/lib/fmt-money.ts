@@ -43,6 +43,21 @@ export function fmtOptionUsd(n: number | null | undefined): string {
 }
 
 /**
+ * Numeric sibling of fmtOptionUsd: same `Math.round(n * 100) / 100` rounding, returned as a
+ * number rather than a formatted string. Use this to round a mark/execMark BASIS before feeding
+ * it into percentage/distance math that is rendered next to that same basis's `fmtOptionUsd`
+ * string — otherwise the percentage is computed from a raw sub-cent float the member never sees
+ * (e.g. a true mid of $0.025 displays as "$0.03" but a room% computed from 0.025 against a $0.12
+ * target reads +380%, while the two displayed dollar figures imply +300%). Live repro (Ask Largo
+ * standing mandate, 2026-10-26, WEN SWING:WEN:2098 HOLD brief): "mark **$0.03**, needs **$0.12**
+ * (+380% from here)" — a member doing the mental-math subtraction on the two numbers actually
+ * printed gets a materially different, lower answer than the one stated.
+ */
+export function roundOptionUsd(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
  * Bare (no `$`) price-LEVEL at 2dp, e.g. "152.04" — for underlying spot/wall/flip/pin levels,
  * never a dollar amount (those are `fmtOptionUsd` above). Same rounding-consistency requirement,
  * same fix: `Math.round(n * 100) / 100` THEN `.toFixed(2)`, matching `roundFloats` exactly,

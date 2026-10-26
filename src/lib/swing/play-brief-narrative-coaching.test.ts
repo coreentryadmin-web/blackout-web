@@ -619,6 +619,40 @@ test("manageLifecycleCoaching: 'next trim' distance clause carries the same stal
   );
 });
 
+// ROUNDING-CONSISTENCY regression (Ask Largo standing mandate, 2026-10-26, live repro WEN
+// SWING:WEN:2098 HOLD brief): the real contract mid was $0.025 — the Position section displays
+// it rounded as "Mark: $0.03" (fmtOptionUsd), but this bullet's distance % used the RAW 0.025,
+// giving "mark $0.03, needs $0.12 (+380% from here)" when the two dollar figures as PRINTED
+// imply +300% ((0.12-0.03)/0.03). Pre-fix this asserted /\+380% from here/; post-fix the basis is
+// rounded to $0.03 BEFORE the percentage math, so it must agree with the displayed dollar figures.
+test("manageLifecycleCoaching: 'next trim' distance percentage is computed from the rounded (displayed) mark, not the raw sub-cent float", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: -58.3,
+      mark: 0.025,
+      execMark: null,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 0.12, fired: false }],
+        stop_premium: 0.02,
+        target_premium: 0.12,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(
+    line!,
+    /mark \*\*\$0\.03\*\*, needs \*\*\$0\.12\*\* \(\+300% from here\)/,
+    `must agree with the two printed dollar figures (0.12-0.03)/0.03=300%, not the raw-float 380%, got: ${line}`,
+  );
+  assert.doesNotMatch(line!, /\+380% from here/);
+});
+
 // readMs not passed (undefined) falls back to Date.now() inside the function — a fresh markAsOf
 // relative to "now" must not spuriously trigger the stale caveat when the caller omits readMs.
 test("manageLifecycleCoaching: 'next trim' distance clause omits the stale caveat when the quote is fresh", () => {
