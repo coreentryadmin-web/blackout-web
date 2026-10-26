@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   assertAdminSelfGuard,
   buildAdminUserFilterSql,
+  computeAdminUserListStats,
   parseAdminUserRole,
   shouldUseDbAdminUserList,
 } from "./admin-users";
@@ -51,6 +52,28 @@ test("buildAdminUserFilterSql maps tier and role filters", () => {
   const accessFree = buildAdminUserFilterSql({ access: "free" });
   assert.match(accessFree.whereSql, /tier = 'free'/);
   assert.match(accessFree.whereSql, /NOT IN \('community', 'premium'\)/);
+});
+
+test("computeAdminUserListStats excludes internal audit/test-harness accounts from every bucket", () => {
+  // Live repro (2026-10-26): an audit harness's default publicMetadata is
+  // {role:"admin", tier:"premium"} — without the exclusion these rows inflate "admins" and
+  // leave Premium/Free/Community at 0 even when real members of those tiers exist.
+  const rows = [
+    { email: "claude-audit-temp+jiadd@blackouttrades.com", tier: "premium", role: "admin", membership_kind: null },
+    { email: "real.premium.member@gmail.com", tier: "premium", role: null, membership_kind: null },
+    { email: "real.free.member@gmail.com", tier: "free", role: null, membership_kind: "free" },
+  ];
+  const stats = computeAdminUserListStats(rows, []);
+  assert.deepEqual(stats, { total: 2, premium: 1, admins: 0, community: 0, free: 1 });
+});
+
+test("computeAdminUserListStats: admin bucket wins over premium/community/free, allowlisted email also counts as admin", () => {
+  const rows = [
+    { email: "staff@blackouttrades.com", tier: "premium", role: null, membership_kind: null },
+    { email: "role-admin@blackouttrades.com", tier: "free", role: "admin", membership_kind: "community" },
+  ];
+  const stats = computeAdminUserListStats(rows, ["staff@blackouttrades.com"]);
+  assert.deepEqual(stats, { total: 2, premium: 0, admins: 2, community: 0, free: 0 });
 });
 
 test("buildAdminUserFilterSql community clauses exclude premium-tier users, matching classifyAdminUserAccess's priority order", () => {
