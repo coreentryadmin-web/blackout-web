@@ -2332,6 +2332,96 @@ test("tradeManagerNarrativeSection: Break watch already-breached bullet carries 
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-26, live repros NN#2133 (false-alarm/mislabel) and
+// AI#2128 (silent miss), confirmed by live production repro + independent code verification): once
+// a trim tranche has fired, the live exit engine (scale-out.ts) permanently disables the pre-scale
+// `stop_premium` -- the real governing floor becomes the runner's trailing stop off its peak
+// (runnerTrailingStopPremium, peak x 0.5). Three sibling call sites (play-brief.ts's
+// managementSection + evidence-fact builder, play-brief-intel.ts's watchForSection) already
+// substitute the runner trail for the dead stop once scaled; this "Break watch -- stop already
+// breached" bullet was the one remaining call site that never did, so it could (a) fire off the
+// dead stop and cite the WRONG dollar figure/label even when the live trail also agrees a breach is
+// real (NN), or (b) never fire at all when the bid sits between the dead stop and the live trail --
+// the dangerous silent-miss direction (AI). Because runnerTrailingStopPremium (peak*0.5) is
+// structurally always >= the original pre-scale stop once scaled (scaling requires peak >= 2x
+// entry, so trail >= entry > the original sub-entry stop), case (b) is the systemic blind spot:
+// ANY TRIM/RUNNER position whose bid sits between the dead stop and the live trail got NO
+// stop-breach alert at all before this fix.
+test("tradeManagerNarrativeSection: Break watch fires off the LIVE runner trail (not the dead pre-scale stop) once scaled out -- silent-miss repro (live AI#2128 shape)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "LONG",
+        status: "HOLD",
+        recommendation: "HOLD",
+        entry: 0.19,
+        peak: 100, // +100% peak -> peakPremiumDollar 0.38 -> runner trail 0.38*0.5 = 0.19
+        mark: 0.19,
+        execMark: 0.19, // bid sits EXACTLY at the real runner trail...
+        pnlPct: 0,
+        exitPolicy: {
+          // ...which is well ABOVE the dead pre-scale stop (0.07) -- the old code compared
+          // against 0.07 (0.19 <= 0.07 is false) and silently rendered no breach alert at all.
+          trim_levels: [{ trigger_pct: 100, fired: true }],
+          stop_premium: 0.07,
+          target_premium: 0.38,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.19\*\*.*through your runner trailing stop \*\*\$0\.19\*\*/i,
+    `must fire off the live runner trail once the bid reaches it, even though the bid never touched the dead pre-scale stop -- got: ${section!.body}`,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /Break watch.*lose premium stop/i,
+    "must not fall through to the soft forward-looking 'lose premium stop' framing once the live runner trail has genuinely been breached",
+  );
+});
+
+test("tradeManagerNarrativeSection: Break watch cites the LIVE runner trail, not the dead pre-scale stop, once scaled out -- false-alarm/mislabel repro (live NN#2133 shape)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "LONG",
+        status: "HOLD",
+        recommendation: "HOLD",
+        entry: 0.5,
+        peak: 380, // +380% peak -> peakPremiumDollar 2.40 -> runner trail 2.40*0.5 = 1.20
+        mark: 0.05,
+        execMark: 0.05, // bid is below BOTH the dead stop (0.22) and the live trail (1.20)
+        pnlPct: -90,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: true }],
+          stop_premium: 0.22,
+          target_premium: 2.0,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  // The bullet must still fire (the bid really did breach the live floor too) but must cite the
+  // REAL governing floor ($1.20, "runner trailing stop") rather than the dead, no-longer-live
+  // $0.22 "premium stop" the Management section (for the same position) already labels as "no
+  // longer applies" -- the exact contradiction the live NN repro caught between two sections of
+  // the same brief.
+  assert.match(
+    section!.body,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.05\*\*.*through your runner trailing stop \*\*\$1\.20\*\*/i,
+    `must cite the live runner trail, not the dead stop -- got: ${section!.body}`,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /premium stop \*\*\$0\.22\*\*/i,
+    "must not cite the dead pre-scale stop's dollar figure once scaled out, even though it would also read as 'breached'",
+  );
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro PANW SWING:PANW:67): degradedReadLine
 // (the "Live read" fallback bullet, fires only when Vector/GEX spot isn't wired this tick) built
 // its markBit by guarding ONLY the TRUE entry-fallback case (`optionMarkGenuinelyUnknown`, fixed
