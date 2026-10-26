@@ -427,8 +427,14 @@ export function evaluatePlayGates(
   // Post-stop / re-entry locks enforced by Trade Governor
 
   // Flow staleness: if the UW flow feed has been silent > 5 min, entries are blocked —
-  // unless the cluster heartbeat confirms another replica is delivering live WS frames
-  // (this replica's in-memory stamp can lag even when the tape rows are current).
+  // unless the SPX/SPXW flow-cohort heartbeat confirms another replica is delivering a
+  // live WS frame for SPX's OWN tape specifically (this replica's in-memory stamp can lag
+  // even when SPX's own tape rows are current). `desk.flow_cluster_live` is sourced from
+  // isFlowFreshForSpxCohort (@/lib/flow-liveness), NOT the market-wide
+  // isFlowFrameFreshAnywhere — the latter is true whenever ANY ticker anywhere in the
+  // market delivered a frame recently and cannot tell "SPX is live" apart from "something
+  // unrelated is live", which silently disabled both gates below until the
+  // spx-flow-staleness-market-wide-signal fix (2026-10-26).
   const flowAgeMs = desk.flow_data_age_ms;
   const clusterLive = desk.flow_cluster_live === true;
   if (buyIntent && flowAgeMs != null && flowAgeMs > 300_000 && !clusterLive) {

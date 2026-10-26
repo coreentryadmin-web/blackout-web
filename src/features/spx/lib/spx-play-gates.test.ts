@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { before, mock, test } from "node:test";
 import type { SpxConfluence } from "@/features/spx/lib/spx-signals";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
+import {
+  isFlowFrameFreshAnywhere,
+  isFlowFreshForSpxCohort,
+  markFlowFrameDeliveredForTicker,
+} from "@/lib/flow-liveness";
 
 let mockHaltBlock = { block: false as boolean, reason: null as string | null };
 let mockBeforeCashOpen = false;
@@ -448,4 +453,82 @@ test("evaluatePlayGates: correct long geometry (stop below, target above) is NOT
     { entry_intent: "buy", playbook_primary_id: "PB-03", playbook_primary_direction: "long" }
   );
   assert.equal(result.blocks.some((b) => /Invalid geometry/i.test(b)), false);
+});
+
+// Regression for spx-flow-staleness-market-wide-signal (2026-10-26): desk.flow_cluster_live
+// must be sourced from isFlowFreshForSpxCohort (SPX/SPXW only), never the market-wide
+// isFlowFrameFreshAnywhere (true whenever ANY ticker anywhere in the market delivered a
+// flow frame recently). These tests drive the REAL flow-liveness functions (no mocks —
+// Redis is unconfigured in this sandbox, so sharedCacheGet/Set run their real in-memory
+// fallback) through the exact live scenario from the bug report: some OTHER ticker's flow
+// is genuinely live while SPX's own tape is genuinely stale (>300s), and confirm the
+// stale-flow BUY-block/warning in evaluatePlayGates actually fires once flow_cluster_live
+// is computed correctly scoped — and does NOT fire when (as before the fix) the
+// market-wide signal is used instead, demonstrating exactly why the bug mattered.
+test("evaluatePlayGates: SPX-scoped-correct flow_cluster_live lets the stale-flow BUY-block fire even though some OTHER ticker's flow is market-wide live", async () => {
+  mockHaltBlock = { block: false, reason: null };
+
+  // Some OTHER ticker (not SPX/SPXW) delivered a flow alert moments ago — the market-wide
+  // pipe is genuinely alive, exactly like the live bug report (confirmed via the UW tape).
+  const now = Date.now();
+  markFlowFrameDeliveredForTicker("AAPL", now);
+
+  // Sanity: the OLD, buggy signal reads market-wide live (this consumer is intentionally
+  // unscoped elsewhere — cluster health, admin dashboards — and must be unaffected).
+  assert.equal(await isFlowFrameFreshAnywhere(120_000), true);
+
+  // The FIXED, SPX-cohort-scoped signal correctly reports NOT live — SPX's own tape has no
+  // real corroboration from this AAPL print.
+  const spxCohortLive = await isFlowFreshForSpxCohort(120_000);
+  assert.equal(spxCohortLive, false);
+
+  // SPX's own real flow age is genuinely old (>300s) — this is what deskFlowDataAgeMs would
+  // report once `flowClusterLive` is correctly false and the clamp therefore never fires.
+  const genuinelyStaleFlowAgeMs = 310_000;
+
+  const result = evaluatePlayGates(
+    baseDesk({ flow_data_age_ms: genuinelyStaleFlowAgeMs, flow_cluster_live: spxCohortLive }),
+    baseConfluence(),
+    emptySession,
+    passingConfirmations,
+    { entry_intent: "buy", playbook_primary_id: "PB-03", playbook_primary_direction: "long" }
+  );
+  assert.match(result.blocks.join(" "), /Flow data stale/i);
+});
+
+test("evaluatePlayGates: feeding the OLD market-wide signal into the same stale-SPX scenario would have (wrongly) suppressed the block — this is the exact bug", async () => {
+  mockHaltBlock = { block: false, reason: null };
+  const now = Date.now();
+  markFlowFrameDeliveredForTicker("TSLA", now);
+
+  const marketWideLive = await isFlowFrameFreshAnywhere(120_000);
+  assert.equal(marketWideLive, true);
+
+  const genuinelyStaleFlowAgeMs = 310_000;
+  const result = evaluatePlayGates(
+    baseDesk({ flow_data_age_ms: genuinelyStaleFlowAgeMs, flow_cluster_live: marketWideLive }),
+    baseConfluence(),
+    emptySession,
+    passingConfirmations,
+    { entry_intent: "buy", playbook_primary_id: "PB-03", playbook_primary_direction: "long" }
+  );
+  assert.equal(result.blocks.some((b) => /Flow data stale/i.test(b)), false);
+});
+
+test("evaluatePlayGates: warning-tier (120s-300s) stale flow also respects the SPX-scoped signal", async () => {
+  mockHaltBlock = { block: false, reason: null };
+  const now = Date.now();
+  markFlowFrameDeliveredForTicker("NVDA", now);
+  const spxCohortLive = await isFlowFreshForSpxCohort(120_000);
+  assert.equal(spxCohortLive, false);
+
+  const result = evaluatePlayGates(
+    baseDesk({ flow_data_age_ms: 150_000, flow_cluster_live: spxCohortLive }),
+    baseConfluence(),
+    emptySession,
+    passingConfirmations,
+    { entry_intent: "buy", playbook_primary_id: "PB-03", playbook_primary_direction: "long" }
+  );
+  assert.equal(result.blocks.some((b) => /Flow data stale/i.test(b)), false);
+  assert.match(result.warnings.join(" "), /old — tape signal may lag/i);
 });
