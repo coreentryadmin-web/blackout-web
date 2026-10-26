@@ -1,6 +1,6 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import type { MembershipListResponse } from "@whop/sdk/resources/memberships.js";
-import { type Tier } from "@/lib/tiers";
+import { parseTier, type Tier } from "@/lib/tiers";
 import {
   getWhopClient,
   PREMIUM_MEMBERSHIP_STATUSES,
@@ -35,9 +35,17 @@ export function isAdminManagedTier(meta: Record<string, unknown> | undefined): b
  * (step 2) must re-check against Whop. Extracted to a pure predicate so the "which tiers get
  * self-healed on churn" question is unit-testable without standing up Clerk/Whop clients —
  * see the bug this fixes in the reconcile function's own comment.
+ *
+ * Normalizes through `parseTier` (not a raw literal comparison) so the legacy tier aliases
+ * "pro"/"elite" are included too — `parseTier` has always coerced those to "premium" for every
+ * OTHER consumer of `publicMetadata.tier` (tier-cache.ts's `resolveUserTier` grants real desk
+ * access off them right now), but this predicate previously compared the raw string, so a Clerk
+ * user whose metadata still carries the pre-"premium"-literal alias was invisible to this sweep —
+ * the same shape as the "community" omission fixed below, just one alias layer earlier.
  */
 export function isPaidTierForReconcileDowngradeCheck(tier: string): boolean {
-  return tier === "premium" || tier === "community";
+  const normalized = parseTier(tier);
+  return normalized === "premium" || normalized === "community";
 }
 
 export async function findClerkUsersByEmail(email: string) {

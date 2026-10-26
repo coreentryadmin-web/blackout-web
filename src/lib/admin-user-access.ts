@@ -1,3 +1,5 @@
+import { parseTier } from "@/lib/tiers";
+
 /** Admin directory access bucket — how the user experiences the product. */
 export type AdminUserAccessLabel = "admin" | "premium" | "community" | "free";
 
@@ -15,8 +17,12 @@ export function classifyAdminUserAccess(input: {
   role?: string | null;
   emailAdmin?: boolean;
 }): AdminUserAccessInfo {
-  const tier =
-    input.tier === "premium" ? "premium" : input.tier === "community" ? "community" : "free";
+  // Normalize through parseTier (not a raw literal comparison) so the legacy tier aliases
+  // "pro"/"elite" land as "premium" here too — parseTier has always coerced those for the
+  // member-facing desk gate (tier-cache.ts's resolveUserTier), so a legacy member has REAL
+  // premium access on the live site right now; this label must agree, or the admin dashboard
+  // is the one place that misreports a real paying member as "free" with no desk access.
+  const tier = parseTier(input.tier);
   const kind = input.membershipKind ?? "";
   const isAdmin = input.role === "admin" || Boolean(input.emailAdmin);
 
