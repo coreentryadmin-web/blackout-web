@@ -48,7 +48,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     const url = new URL(req.url);
-    const limit = Math.min(100, parseInt(url.searchParams.get("limit") ?? "50", 10));
+    // parseInt("abc", 10) (or a negative/zero value) must not reach the LIMIT parameter below
+    // unchecked — Postgres rejects a non-integer or negative LIMIT outright, turning a typo in
+    // the query string into a 502 instead of the sane default every sibling limit param in this
+    // repo falls back to (e.g. market/vector/pick-closures/board, market/ticker-search).
+    const rawLimit = Number(url.searchParams.get("limit") ?? "50");
+    const limit = Number.isFinite(rawLimit) ? Math.min(100, Math.max(1, Math.round(rawLimit))) : 50;
     const actionFilter = url.searchParams.get("action")?.trim() || null;
     const actorFilter  = url.searchParams.get("actor")?.trim()  || null;
 
