@@ -19,13 +19,15 @@ function findClerkErrorElement(node: Node): HTMLElement | null {
   return match ?? null;
 }
 
-function reportAuthFailure(message: string, mode: "signin" | "signup") {
+export function reportAuthFailure(message: string, mode: "signin" | "signup") {
   try {
     const body = JSON.stringify({ message, mode });
     if (navigator.sendBeacon) {
       navigator.sendBeacon("/api/telemetry/auth-failure", new Blob([body], { type: "application/json" }));
     } else {
-      void fetch("/api/telemetry/auth-failure", { method: "POST", body, keepalive: true });
+      void fetch("/api/telemetry/auth-failure", { method: "POST", body, keepalive: true }).catch(
+        () => undefined
+      );
     }
   } catch {
     // Best-effort only — a reporting failure must never surface to the user
