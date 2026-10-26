@@ -72,6 +72,21 @@ export function markPendingSignUp(): void {
   }
 }
 
+/**
+ * Non-destructive check: is a sign-up still pending? Callers that might not be able to actually
+ * dispatch the event yet (e.g. gtag hasn't loaded) must check this BEFORE calling
+ * `consumePendingSignUp`, so a dropped fire leaves the flag in place for a retry (a page refresh
+ * re-runs the whole script-load race) instead of the event being silently and permanently lost.
+ */
+export function hasPendingSignUp(): boolean {
+  if (!isBrowser()) return false;
+  try {
+    return sessionStorage.getItem("bo_ga4_pending_signup_v1") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function consumePendingSignUp(): boolean {
   if (!isBrowser()) return false;
   try {
