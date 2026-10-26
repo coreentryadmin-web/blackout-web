@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T18:14:00.632Z",
+  "updated_at": "2026-10-26T18:36:59.996Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "fc311b0b04514837740d6383372a4da96567ad38",
+    "last_main_sha": "e29ce1c3fec86b6210880a95c05a1822b21b3228",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-20T20:51:44.310Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-20T20:51:50.180Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-20T21:08:30.461Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-20T21:08:34.923Z",
       "type": "context_sync",
@@ -1271,28 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-26T18:36:47.258Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-26T18:36:54.163Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-26T18:36:59.996Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 6887,
-      "title": "fix(swing): G-S14 genuine Cortex veto block drops the already-known source name",
-      "branch": "fix/swing-g-s14-genuine-veto-source-name",
+      "number": 6893,
+      "title": "fix(email): add missing Meridian to welcome-community's Premium upsell list",
+      "branch": "fix/welcome-community-missing-meridian",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T18:07:58Z"
+      "updated_at": "2026-10-26T18:36:23Z"
     },
     {
-      "number": 6886,
-      "title": "fix(membership): recognize legacy pro/elite tier aliases via parseTier",
-      "branch": "fix/membership-reconcile-legacy-tier-alias",
+      "number": 6892,
+      "title": "fix(billing): scheduledCancelEmail no longer tells community members 6 premium engines \"stay live\"",
+      "branch": "fix/scheduled-cancel-tier-blind-engine-list",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T18:05:43Z"
+      "updated_at": "2026-10-26T18:31:46Z"
     },
     {
       "number": 5547,
