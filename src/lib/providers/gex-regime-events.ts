@@ -40,7 +40,15 @@
 // path reads or writes the other's keys, so a durable-history write can never
 // suppress a live push and a live-push dedup can never suppress a durable row —
 // verified in gex-regime-events.test.ts.
-import { dbConfigured, getMeta, setMeta, insertGexRegimeEvent, fetchGexRegimeEventRows } from "@/lib/db";
+import {
+  dbConfigured,
+  getMeta,
+  setMeta,
+  insertGexRegimeEvent,
+  fetchGexRegimeEventRows,
+  tryAdvisoryLock,
+  releaseAdvisoryLock,
+} from "@/lib/db";
 import { todayEtYmd } from "./spx-session";
 
 const GEX_REGIME_EVENT_CURSOR_KEY = "gex_regime_event_cursor";
@@ -120,6 +128,16 @@ async function saveCursor(today: string, map: Map<string, string>): Promise<void
   await setMeta(GEX_REGIME_EVENT_CURSOR_KEY, JSON.stringify(obj));
 }
 
+// Lock key for the load+diff+save critical section below. One GLOBAL key is deliberate, same
+// reasoning as X-marketing's BUDGET_WRITE_LOCK/REPLIED_WRITE_LOCK/ENGAGE_ROTATION_WRITE_LOCK:
+// GEX_REGIME_EVENT_CURSOR_KEY is a single Postgres row shared across EVERY ticker (the cursor
+// map is keyed by `${ticker}|${type}:${direction}` inside one JSON blob), not one row per
+// ticker — so a per-ticker lock key would miss the actual race, which is cross-ticker, not
+// cross-caller-for-the-same-ticker (see the doc comment on persistGexRegimeEvents below).
+const CURSOR_WRITE_LOCK = "gex-regime-event-cursor-write";
+const CURSOR_LOCK_MAX_ATTEMPTS = 30;
+const CURSOR_LOCK_RETRY_MS = 60;
+
 /**
  * Persist this sample's regime-transition events — throttled to one row per
  * (ticker, event type+direction) DISTINCT state, not one row per matrix
@@ -128,6 +146,23 @@ async function saveCursor(today: string, map: Map<string, string>): Promise<void
  * the matrix build — see that file's call site) so a slow/unavailable Postgres
  * can never add latency to the live heatmap response. Best-effort: never throws
  * into the caller.
+ *
+ * MUST be atomic across processes: the per-ticker cluster build lock in
+ * polygon-options-gex.ts (`gex:heatmap:build-lock:${inflightKey}`) only serializes concurrent
+ * builds of the SAME ticker — it does nothing for two DIFFERENT tickers (e.g. SPY and NVDA)
+ * whose cache-miss builds land on two different replicas at the same moment, each calling this
+ * function concurrently against the ONE shared GEX_REGIME_EVENT_CURSOR_KEY row. Before this
+ * fix, `loadCursor()` (read) then `saveCursor()` (write) were two separate, unlocked Postgres
+ * round-trips: if ticker A's and ticker B's calls interleave — both load the same base cursor
+ * map before either saves — whichever write lands LAST overwrites the whole row, silently
+ * dropping the OTHER ticker's newly-recorded slot(s) (a classic read-modify-write "lost
+ * update", same shape as the X-marketing races in x-rate-budget.ts/x-marketing-meta.ts).
+ * Consequence here isn't a dropped write so much as a DUPLICATE one: the clobbered ticker's
+ * slot never actually reached the cursor, so the next sample sees that same transition as
+ * "new" again and inserts a second durable row for it — inflating "how many times has X's
+ * wall moved today" history. Serialize with the same `tryAdvisoryLock`/`releaseAdvisoryLock`
+ * primitive, same short bounded retry (tryAdvisoryLock is non-blocking "try", not a queue —
+ * the holder releases within one load+insert(s)+save).
  */
 export async function persistGexRegimeEvents(
   ticker: string,
@@ -135,6 +170,36 @@ export async function persistGexRegimeEvents(
 ): Promise<number> {
   if (!dbConfigured() || events.length === 0) return 0;
   const today = todayEtYmd();
+
+  for (let attempt = 0; attempt < CURSOR_LOCK_MAX_ATTEMPTS; attempt += 1) {
+    const acquired = await tryAdvisoryLock(CURSOR_WRITE_LOCK);
+    if (!acquired) {
+      await new Promise((r) => setTimeout(r, CURSOR_LOCK_RETRY_MS));
+      continue;
+    }
+    try {
+      return await writeGexRegimeEvents(ticker, today, events);
+    } finally {
+      await releaseAdvisoryLock(CURSOR_WRITE_LOCK);
+    }
+  }
+  // Could not get the lock after bounded retries (e.g. a stuck holder) — fall back to the old
+  // unlocked behavior rather than silently dropping this sample's events forever. Worse than
+  // the locked path, but no worse than before this fix, and logged so it's visible if it ever
+  // fires.
+  console.warn(
+    `[gex-regime-events] could not acquire ${CURSOR_WRITE_LOCK} after ${CURSOR_LOCK_MAX_ATTEMPTS} attempts — persisting ${ticker} events unlocked`
+  );
+  return writeGexRegimeEvents(ticker, today, events);
+}
+
+/** The actual load+diff+insert+save critical section, factored out so both the locked and the
+ * unlocked-fallback path in persistGexRegimeEvents above call the exact same logic. */
+async function writeGexRegimeEvents(
+  ticker: string,
+  today: string,
+  events: GexRegimeEventInput[]
+): Promise<number> {
   const cursor = await loadCursor(today);
 
   const toWrite: GexRegimeEventInput[] = [];
