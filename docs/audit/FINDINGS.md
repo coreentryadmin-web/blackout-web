@@ -4,6 +4,1038 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## Night Hawk 0DTE: `exit-engine.ts` exit-narrative `detail` strings embedded the raw, unrounded live option mark (3+ decimals) instead of the product's standard 2dp premium formatting
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #TBD) |
+| **Found by** | Live-production audit, Ask Largo × Night Hawk Swings standing ownership mandate (0DTE/Night Hawk Command "keep digging" sub-mandate on the 0DTE/Largo surface), 2026-10-26 |
+| **Scope** | `src/lib/zerodte/exit-engine.ts` (8 `detail:` template-string call sites across `decideTrimScale`/`evaluateExitState`); consumed by `src/lib/platform/zerodte-service.ts` (`ledger[].exit_detail` on `GET /api/market/zerodte/board`) and `src/lib/zerodte/play-timeline.ts` (`entry_context.exit.detail` on `GET /api/market/zerodte/record`, which Largo/Ask Largo narrative tools read) |
+
+### Root cause
+
+Every EXIT/TRIM decision's member-facing `detail` string is built via a template like
+`` `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — ...` ``.
+`fmtPct` explicitly `round2()`s the percentage, and `input.planStop`/`input.planTarget` are already
+2dp (rounded at commit time) — but `currentMark`, the live option mark, was interpolated with **no
+rounding or formatting at all**. The live mark legitimately lands on a half-cent
+(`mid=(bid+ask)/2`, per `live-marks.ts`'s own documented rationale: "2dp would silently destroy
+real half-cent mids") or carries ordinary live-quote float noise, so a mark like `1.355` or
+`0.465` rendered verbatim — a 3-decimal dollar figure sitting beside an already-2dp plan stop/
+target in the very same sentence. Every OTHER premium field this product shows a member
+(`entry_premium`, `last_mark`, `peak_premium`, `trough_premium`, the plan stop/target themselves)
+is consistently 2dp both at the data layer and in the UI (`ZeroDteBoard.tsx` calls `.toFixed(2)`
+on each) — this narrative string was the one place that convention was never applied.
+
+Confirmed live in production 2026-10-26: TSLA board ledger row — `exit_detail` `"Mark 1.355
+(+6.69%) is at/below the +8.03% floor..."` sits beside the SAME row's `entry_premium` 1.27 /
+`last_mark` 1.37 / `peak_premium` (all clean 2dp). A record play (SPXW, 2026-10-23) —
+`exit.detail` `"Mark 0.465 (-51.56%) is at/below the plan stop 0.48 — the printed stop is
+authoritative."` shows the inconsistency within one sentence: the live-mark half is raw/3-decimal
+while the printed plan-stop half (already rounded at commit) is clean 2dp.
+
+There are 8 near-identical call sites across `decideTrimScale` (trim_scale mode) and
+`evaluateExitState` (ratchet mode) — plan-stop exit (×2, byte-identical wording), shared/ratchet
+protective-floor exit (×2, different wording per mode but the same raw-mark bug), plan-target
+trim/final (×2 each mode) — all sharing the same root cause: none rounded `currentMark` before
+interpolation.
+
+This is a **different** defect from PR #6858 (which fixed GREEK fields via `board/route.ts`'s
+top-level `roundFloats()` `keyDp` map): this text is assembled directly in `exit-engine.ts` as a
+pre-built string, never passing through `roundFloats()` at all.
+
+### Fix
+
+Added a local `fmtMark` helper mirroring `fmtPct`'s pattern (`const fmtMark = (n: number) =>
+n.toFixed(2);`, same `.toFixed(2)` convention already used elsewhere in this file, e.g.
+`intel.ts`'s `$${n.toFixed(2)}`) and replaced every `${currentMark}` interpolation inside a
+`detail:` string with `${fmtMark(currentMark)}` across all 8 call sites. Deliberately scoped to
+ONLY the displayed text: `pnlPct` (and every other P&L computation) still divides the **raw**,
+unrounded `currentMark` exactly as before — this file's own existing tests
+(`buildExitContext: a thesis exit's pnl_pct must not be erased by cent-rounding the observed mid`)
+already lock in why rounding the mark before computing P&L would be wrong (it can erase real P&L
+on a low-priced 0DTE premium). The fix never touches that computation, only how the mark is
+*displayed* in the narrative sentence.
+
+### Regression test
+
+Added 6 new tests to `src/lib/zerodte/exit-engine.test.ts`, one per distinct narrative wording,
+each feeding a realistic 3-decimal live mark (`1.355`, `0.465`, `5.355`, `8.005`, `4.317`) and
+asserting the rendered `detail` string shows the 2dp form and never the raw multi-decimal value:
+plan_stop (trim_scale + ratchet), the shared/ratchet protective floor, and the plan-target trim/
+final pair (both modes).
+
+### Verification
+
+- RED→GREEN proof: `git stash push -- src/lib/zerodte/exit-engine.ts` (keeping the new tests in
+  the working tree) reproduced the exact live-production bug — all 6 new tests failed with the raw
+  3-decimal mark in the `detail` string (e.g. `'Mark 1.355 (-66.12%) is at/below the plan stop 2 —
+  ...'`), byte-for-byte matching the originating report's TSLA/SPXW examples. Restoring the fix
+  (`git stash pop`) turned all 6 GREEN.
+- `node --import tsx --experimental-test-module-mocks --test src/lib/zerodte/exit-engine.test.ts`
+  (Node 20) — 113/113 pass (107 pre-existing + 6 new).
+- `node --import tsx --experimental-test-module-mocks --test src/lib/zerodte/exit-policy-snapshot.test.ts
+  src/lib/zerodte/exit-sync.test.ts src/lib/zerodte/record.test.ts src/lib/zerodte/scan.test.ts
+  src/lib/zerodte/strategy-version.test.ts src/lib/platform/zerodte-service.test.ts` (Node 20) —
+  158/158 pass (every consumer of `exit-engine.ts`'s decision/detail output).
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+
+## Night Hawk 0DTE: `exit_detail`'s embedded P&L percentage disagrees with the row's own persisted `pnl_pct`/`managed_pnl_pct` whenever a protective floor/stop is honored (`mark_honored:true`)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #TBD) |
+| **Found by** | Live-production audit, Ask Largo × Night Hawk Swings standing ownership mandate (0DTE/Night Hawk Command "keep digging" sub-mandate on the 0DTE/Largo surface), 2026-10-26 |
+| **Scope** | `src/lib/zerodte/exit-engine.ts` (`buildExitContext`); consumed by `src/lib/platform/zerodte-service.ts` (`ledger[].exit_detail` on `GET /api/market/zerodte/board`, rendered verbatim as a tooltip by `ZeroDteBoard.tsx`) and `src/lib/zerodte/record.ts`/`play-timeline.ts` (`entry_context.exit.detail` on `GET /api/market/zerodte/record`, which Largo's `get_zerodte_record`/`get_zerodte_plays` tools quote as the play's narrative) |
+
+### Root cause
+
+`evaluateExitState`/`decideTrimScale` compute a decision's `detail` narrative string — e.g.
+`` `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(floor)} floor...` ``
+— at DECISION time, from the RAW observed mark/`pnlPct` (`currentMark`, `pinnedLivePnlPct(entryPremium,
+currentMark)`). This happens **before** `resolveExitMark`/`buildExitContext` ever run.
+
+Separately, `buildExitContext` (which persists the row's official `pnl_pct`/`mark`) calls
+`resolveExitMark`, which — for a ratchet/runner-floor/trim-scale-dead-zone-floor EXIT — takes
+`mark = max(observedMark, floorMark)`: when the floor price beats a worse real print
+(`mark_honored: true`), the OFFICIALLY RECORDED `pnl_pct` is computed off this better, HONORED mark,
+not the raw observed one. But `detail: decision.detail` was passed through **unchanged** — never
+regenerated to reflect the honored mark/pnl — so the frozen, member-facing narrative and the
+persisted numeric record disagree for the exact same exit event, and the narrative *always*
+understates the truth (honoring, by construction via `Math.max`, can only improve on the raw print).
+
+Confirmed live in production, 2026-10-26, `GET /api/market/zerodte/record?days=1` (3 of 4 graded
+plays that session carried `mark_honored:true`):
+- **SPXW**: `detail` "Mark 14.1 (+17.5%) is at/below the +18.33% floor..." vs the row's own
+  `pnl_pct`/`managed_pnl_pct` **18.33%** (0.83pp understatement) — and the sentence reads
+  self-contradictory: it names the +18.33% floor right next to a +17.5% that is supposedly
+  "at/below" it, when 17.5 < 18.33 is literally the trigger condition, not the credited result.
+- **SPY**: `detail` "Mark 1.275 (+12.83%)..." vs recorded **15.04%** (2.21pp understatement).
+- **TSLA**: `detail` "Mark 1.355 (+6.69%)..." vs recorded **7.87%** (1.18pp understatement).
+- Control row **QQQ** (`mark_honored:false` — the observed print never gapped past the floor):
+  `detail` "+7.25%" = recorded 7.25%, no divergence — confirming the bug is specific to the
+  honored-floor path, not a generic formatting issue.
+
+This is a **different** defect from PR #6873 (`fix: round live option mark to 2dp in exit-narrative
+detail strings`, merged 2026-10-26) — that PR only wraps the *displayed* `currentMark` in
+`.toFixed(2)` (`fmtMark`) and its own write-up explicitly states `fmtPct(pnlPct)`'s computation is
+untouched. It fixed a cosmetic precision issue, not this percentage-disagreement bug: the embedded
+PERCENTAGE itself is stale/wrong whenever `mark_honored` is true, independent of how many decimals
+it is displayed with.
+
+It is also the honored-branch counterpart of the 2026-09-04 CRCL finding (`docs/audit/FINDINGS.md`)
+that fixed the same shape of disagreement for the NON-honored branch (`pnl_pct` must not be computed
+from the cent-rounded `mark`) — that fix's own write-up says the floor-honored branch was "unaffected
+by design," which was true only for the NUMERIC field (`pnl_pct`); the `detail` string's own embedded
+number was never checked against it, which is exactly the gap this finding closes.
+
+### Fix
+
+Added `regenerateExitDetailForHonoredMark(detail, honored, mark, pnlPct)` in `exit-engine.ts`: when
+`buildExitContext` resolves `markHonored === true`, it re-interpolates the leading
+`` `Mark <fmtMark> (<fmtPct>)` `` clause of `decision.detail` with the SAME honored `mark`/`pnlPct`
+values it persists as `ctx.mark`/`ctx.pnl_pct` — a targeted regex substitution on the one leading
+clause, leaving the rest of the sentence (the floor/peak values, the banked-tranches clause, etc.)
+untouched. Scoped safely: `resolveExitMark`'s own reason allowlist (`ratchet*`/`runner_floor`/
+`trim_scale_dead_zone_floor`, both of which share this exact leading-clause template at their one
+EXIT call site each, in `decideTrimScale` and `evaluateExitState`) is the only set of reasons that
+can ever be `honored`, so gating on the caller's own `honored` boolean is sufficient — no separate
+reason check is needed, and no other decision shape (thesis break, plan_stop, plan_target,
+flat_theta_bleed, HOLD/RAISE_FLOOR) is ever touched. A non-honored exit's `detail` is passed through
+byte-for-byte, exactly as before.
+
+### Regression test
+
+Extended `src/lib/zerodte/exit-engine.test.ts`:
+- New test asserting a ratchet-mode floor-honored exit's regenerated `detail` embeds the SAME
+  percentage as the persisted `ctx.pnl_pct` (not the raw observed one baked into
+  `decision.detail`).
+- Extended the existing `trim_scale_dead_zone_floor` honored-exit test (the `decideTrimScale`
+  sibling code path) with the same detail-vs-pnl_pct assertion.
+- Extended the existing non-honored thesis-exit test with an explicit `ctx.detail === decision.detail`
+  byte-equality assertion, locking in that only a `mark_honored` exit is ever regenerated.
+
+### Verification
+
+- RED→GREEN proof: reverted only `src/lib/zerodte/exit-engine.ts` to its pre-fix state (keeping the
+  new/extended test assertions), re-ran the test file — exactly the 2 new/extended assertions failed
+  (`not ok 42`, `not ok 53`), all 112 other tests still passed. Restored the fix — all 114 tests pass.
+- `node --import tsx --experimental-test-module-mocks --test src/lib/zerodte/exit-engine.test.ts`
+  (Node 20) — 114/114 pass.
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+- Full `npm test` (Node 20) — see PR for the run's final tally.
+
+## Welcome-sequence cron: a single row's thrown error aborted every row still queued behind it in the same batch, up to 200 rows
+
+> **kind:** `FINDING`
+
+`processDueWelcomeSequenceSteps()` (`src/lib/welcome-sequence.ts`, run hourly by
+`src/app/api/cron/welcome-sequence/route.ts`, up to `limit=200` due rows per invocation) looped
+over every due row with no per-row error isolation — the entire `for (const row of due.rows)`
+loop body ran inside one `try` wrapping the whole batch. A transient failure on a SINGLE row's
+state-advance `UPDATE` (e.g. a dropped DB connection right after a successful send — the kind of
+blip the file's own `MAX_STEP_LATENESS_DAYS` comment already treats as expected and recoverable)
+threw out of the loop entirely: the `catch` at the bottom logged it and returned, but every row
+still queued behind the failing one in that batch was silently skipped for that run, not just the
+one row that actually had the problem.
+
+**Blast radius:** on a backlog (the file's own comments describe exactly this scenario — the cron
+was unscheduled in production for a stretch before 2026-08-08), a single flaky row near the front
+of a 200-row batch could silently suppress sending to every member queued behind it that hour.
+Those rows aren't lost permanently (`next_send_at` stays in the past, so the next hourly run picks
+them up again), but each such event delayed an arbitrary number of real members' welcome emails by
+at least one cron cycle with zero visibility beyond a single `console.warn`.
+
+**Fix:** wrap each row's processing in its own `try/catch` so one row's failure increments
+`result.failed` and is logged with its `user_id`, while every other row in the batch is still
+processed normally. Moved `result.sent++` to fire only after the state-advance `UPDATE` actually
+commits (not right after a successful `sendEmail()` call) — a send whose follow-up `UPDATE` throws
+now correctly counts as `failed` (its `next_send_at` never advanced, so the next run retries the
+same step) rather than being double-counted as both sent and silently dropped.
+
+**Evidence (RED → GREEN):** new test `"a thrown error advancing one row's state does not abort
+the rest of the batch"` in `src/lib/welcome-sequence.test.ts` — 2 due rows, row 1's state-advance
+`UPDATE` throws. Pre-fix: only 1 email sent (row 2 never processed), result `{processed: 2, sent:
+1, failed: 0}` with the second row silently missing. Post-fix: both rows send,
+`{processed: 2, sent: 1, failed: 1}` — row 1 correctly counted as failed (will retry next run),
+row 2 unaffected. Full suite 14/14 pass post-fix; `tsc --noEmit` and `eslint` clean on both
+touched files; sibling test files that import this module (`webhooks/clerk/route.test.ts`,
+`email-captures.test.ts`) re-run clean.
+
+| **Status** | FIXED (PR #TBD) |
+
+## Vector standalone desk: `VectorChart` rendered with no per-pane error boundary — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED — PR (this branch), `fix/vector-pageshell-chart-error-boundary`.
+
+### Root cause
+
+`VectorPageShell.tsx`'s standalone `/vector` desk (`chartBlock`) rendered `<VectorChart>`
+completely bare — no error boundary around it. A render-time throw inside `VectorChart` (a
+malformed live payload reaching an overlay that assumes a shape, a charting-library edge case)
+propagates up uncaught and is only caught by the app-level route error boundary
+(`src/components/route-error-boundary.tsx`, wired via `app/(site)/error.tsx`), which unmounts the
+**entire** `(site)` route segment — toolbar, side rails, everything — not just the chart.
+
+This exact failure mode is already solved, and documented, for Vector's Compare mode:
+`VectorCompareDesk.tsx` wraps each pane in `VectorPaneErrorBoundary`
+(`src/features/vector/components/VectorPaneErrorBoundary.tsx`), whose own header comment states
+the problem plainly: *"Without this, an uncaught render error thrown by ANY one pane … unmounts
+the entire `(site)` route segment via the app-level error boundary, taking the other (working)
+panes and the desk chrome down with it."* The boundary's `onRemove` prop is explicitly typed
+optional with the comment *"the single-pane desk has nothing to remove"* — the component was
+designed with dual-use (Compare mode AND the standalone desk) in mind from the start, but was
+only ever actually wired into Compare mode. The standalone desk — Vector's primary, highest-
+traffic view — never got it.
+
+### Evidence
+
+Confirmed via direct inspection: `VectorPageShell.tsx`'s `chartBlock` (the JSX block rendered on
+the standalone page) rendered `<VectorChart ... />` with zero wrapping, while
+`VectorCompareDesk.tsx`'s per-seed render wraps `VectorComparePane` in
+`<VectorPaneErrorBoundary key={seed.ticker} ticker={seed.ticker} onRemove={...}>`. Grepped every
+`VectorPaneErrorBoundary` import repo-wide — exactly one consumer (`VectorCompareDesk.tsx`) before
+this fix.
+
+### Blast radius
+
+Only the standalone desk's `chartBlock` (line ~853) was fixed. `VectorPageShell.tsx` has a
+**second** bare `<VectorChart>` call site — the `chartOnly` embed branch (line ~729), used by the
+SPX Slayer flagship desk (`src/features/spx/`, an owned lane). That embed shares the identical gap
+but was deliberately left untouched in this PR to keep the change small and avoid touching
+anything that renders on an owned-lane page without that lane's own sign-off — flagging it here so
+a future pass (ideally coordinated with the SPX/owned lane) can apply the same fix there.
+
+### Fix rationale
+
+Reused the existing, already-proven `VectorPaneErrorBoundary` component exactly as designed —
+no new component, no new pattern, purely wiring an existing safety net into its second intended
+call site. `onRemove` is omitted (matches the component's own documented single-pane case).
+Added a source-level regression test (`VectorPageShell-chart-error-boundary.test.ts`) following
+this repo's established convention for structural guarantees that don't need a full render
+(no React Testing Library here) — asserts the import exists and `chartBlock`'s `VectorChart` is
+wrapped. RED→GREEN proven via a temp-file swap of the pre-fix source (not `git stash`, per this
+session's own standing avoidance of stash on the shared sandbox): the pre-fix shape fails the new
+test, the fix passes it. Full Vector component suite (94/94) passes unchanged; lint and
+`tsc --noEmit` clean.
+
+## collectGexFlipAbsence's gamma-flip absence disclosure never fires for CLOSED/dead-WATCH plays, even though their sections render the exact 'Current dealer posture' content it exists to explain — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Where:** `src/lib/swing/play-brief-absence.ts`, `collectBriefUnavailableSources()` (~line
+844-952).
+
+**Root cause:** The only disclosure mechanism for a null `gex.flip` —
+`collectGexFlipAbsence` (~line 822-841), which looks up `gex.flip_reason` in the
+`GEX_FLIP_REASON_DISCLOSURE` table (~807-820) to distinguish a genuine data gap
+(`insufficient_strikes`/`crossings_far_from_spot`, retryable) from the honest structural fact
+`net_short_everywhere` (non-retryable) — was called only inside `if (!isNotLive) { ... }`
+(`isNotLive = isClosed || isDeadWatch`, ~line 893), alongside `collectGexStalenessAbsence`. The
+surrounding comment block (~858-867) justifies suppressing live-desk-freshness checks for a
+historical CLOSED play ("today's live desk state is current" doesn't apply to it) — correct for
+pure STALENESS checks, but `collectGexFlipAbsence` is a different kind of check: it answers "is
+there a structural/computational reason the matrix has no flip," and it already internally returns
+`null` on a stale or missing matrix (`if (gexMatrixStale(gex, readMs)) return null;`,
+`if (!gex || gex.flip != null) return null;`) — bucket status adds nothing to its own correctness,
+it only ever suppresses it.
+
+But `gexPostureSection`/`chartLevelsSection` (`play-brief-intel.ts`) explicitly DO render "Current
+dealer posture"/"Current levels" content for CLOSED plays (prefixed "_Current ... — not what this
+trade traded under._"), gated only on `!stale`, and can hit the identical null-flip/null-gamma_posture
+case the live-bucket disclosure was built for — with nothing in `unavailableSources` flagging it
+when that happens on a CLOSED/dead-WATCH play.
+
+**Evidence:** same live repro as the companion finding below — CLOSED MRNA (positionId 65),
+2026-10-26: "Levels on chart" section has Call wall/Put wall/GEX king lines but no "Gamma flip:"
+line; "GEX posture" section has Net GEX/VEX/DEX/CHARM/Nearest-wall lines but no "Gamma posture:
+dealers X gamma" line; "Chart technicals" has no "Dealer gamma regime:" line. The brief's own
+"Unavailable this turn" list names only "Meridian peer cohort (unclassified_sector)" — nothing
+about GEX flip or gamma posture. Contrast: a live/WATCH brief hitting the same null-flip case
+already surfaces a "GEX gamma flip" chip (existing coverage in `play-brief-absence.test.ts`,
+`net_short_everywhere`/`insufficient_strikes`/`crossings_far_from_spot` cases, all written for the
+non-CLOSED bucket) — it simply never runs for CLOSED/dead-WATCH.
+
+**Blast radius:** one function, one gate — `collectGexFlipAbsence` has exactly one call site in the
+whole repo (this function). No other consumer of `unavailableSources` duplicates this logic.
+
+**Fix rationale:** narrowed the `isNotLive` gate so it still suppresses the pure staleness check
+(`collectGexStalenessAbsence`, left exactly as before — genuinely inapplicable to a closed trade's
+historical facts, same reasoning as every sibling check in this function) but lets
+`collectGexFlipAbsence` run unconditionally, independent of bucket status — it is gated on "is the
+GEX matrix fresh and present" (which it already checks internally) rather than "is this play still
+live." This cannot change behavior for the live/non-closed bucket (previously gated the same way,
+now simply ungated by bucket — identical result there) and only adds disclosure coverage for
+CLOSED/dead-WATCH. Deliberately left unchanged: `collectGexStalenessAbsence`'s own `!isNotLive` gate
+(a CLOSED play's "GEX matrix stale" chip would be exactly the "permanent once any time has passed"
+noise the original CLOSED-bucket fix (2026-09-07) suppressed), and every other check in this
+function (HELIX flow, Vector desk state, discovery/0DTE/Legacy prior-session, etc.) — none of those
+are structural/computational absences the way flip-reason is.
+
+**Companion finding:** shares its root cause (null `gamma_posture`/`flip` while `net_gex`/walls are
+live) with `2026-10-26-swing-dealer-posture-evidence-gated-on-gamma-posture.md`, fixed in the same
+PR. The two interact: fixing only the evidence-array finding would have made the CALC evidence line
+appear in `evidence[]` with a missing posture token while this disclosure STILL never explained why
+on a CLOSED brief; fixing only this one would have left `evidence[]` silently empty regardless. Fixing both together leaves a CLOSED brief in a strictly better state on this
+shared root cause: the evidence array keeps whatever did resolve (net GEX/wall), and
+`unavailableSources`/the UI's `UnavailableChip` now explains why the posture word itself did not.
+
+**Test:** `play-brief-absence.test.ts` — two new regression tests: (1)
+`collectBriefUnavailableSources: a CLOSED play with a fresh, flip-absent GEX matrix still surfaces
+WHY (companion to evidenceFromContext fix)` — asserts the "GEX gamma flip" chip now fires for
+`play: { status: "CLOSED" }`; (2) `collectBriefUnavailableSources: a CLOSED play's STALE GEX matrix
+still does not surface the generic staleness chip` — a control proving the narrowing didn't
+accidentally un-suppress `collectGexStalenessAbsence` too. Verified RED→GREEN via `git stash` on the
+source fix alone (new test 1 fails pre-fix: `fail 1` out of 111 in `play-brief-absence.test.ts`;
+both pass with the fix restored). Full `play-brief-absence.test.ts`: 113/113 pass.
+`src/lib/swing/*.test.ts` (whole directory): 2135/2135 pass. `tsc --noEmit`: clean.
+
+## evidenceFromContext's "Exit-policy rails" evidence[] fact goes dead-stale once a trim fires or the target is reached — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Where:** `src/lib/swing/play-brief.ts`, `evidenceFromContext()` (~line 1893-1912, the
+`statusBucket(ctx.play) === "open"` block's `Exit-policy rails: ...` fact).
+
+**Root cause:** `evidenceFromContext` — the sole feeder of `envelope.evidence[]`, which the API
+route surfaces at top level as `evidence_numbers` (the Largo contract's C7 "specific numbers"
+field) — built the "Exit-policy rails: stop $X · target $Y" fact directly off the raw
+`ctx.play.exitPolicy.stop_premium`/`target_premium` numbers, with no check for whether the position
+has already scaled out of the stop or already reached the target.
+
+Both prose renderers in the same response already guard this exact state, and this evidence fact
+was the one place that never got the equivalent fix:
+- `managementSection` (same file, the "Rails: ..." line, ~line 272-321) computes
+  `scaledAlready = hasScaledOut(ep)` and annotates the stop as `"$X _(no longer applies — already
+  scaled; runner trail now $Y)_"` once a trim has fired (fixed 2026-10-21, live repro MRNA), and
+  separately computes `targetAlreadyFired` and annotates the target as `"$Y ✓ (reached)"` once a
+  fired trim's own banked premium is at/above the target level (fixed 2026-10-08, live repro
+  EXTR).
+- `play-brief-intel.ts`'s `watchForSection` ("Premium stop rail"/"Premium target rail" bullets,
+  ~line 2197-2355) independently derives and applies the identical two guards.
+
+Why this matters mechanically, not just cosmetically: once a trim tranche fires, the live exit
+engine (`deriveScaleOutAction`/`computeScaleOutTriggerInfo`, `scale-out.ts`) permanently disables
+the pre-scale hard stop — it returns `hard_stop_price: null`, "the hard stop no longer applies" —
+and the real governing floor becomes the runner's trailing stop off its peak
+(`runnerTrailingStopPremium`, `terminal-ladder.ts`). A bare "stop $X" after that point cites a
+trigger that structurally cannot fire anymore as if it were still live. Symmetrically, once a fired
+trim's premium is at/above `target_premium` (swing's single-rung `SWING_SCALE_OUT_POLICY` prices
+`target_pct` identically to its one trim rung's `trigger_pct`, so this is the common case, not an
+edge case), "target $Y" reads as a fresh, unmet objective for a level the position already reached
+and pulled back from.
+
+Both `hasScaledOut` and `runnerTrailingStopPremium` were already imported in `play-brief.ts` (line
+53, from `@/lib/zerodte/terminal-ladder`) for `managementSection`'s own use — the evidence feeder,
+added in the same file later (2026-10-25, per its own "BUG FIX" comment, which only addressed the
+feeder never mirroring entry/rails into `evidence[]` at all before — it did not address the
+scale-out/target-reached override), simply never adopted them.
+
+**Evidence:** confirmed directly in source (not inference) by reading `evidenceFromContext`
+(play-brief.ts:1893-1912 as of `main`) against `managementSection` (play-brief.ts:272-321) and
+`watchForSection` (play-brief-intel.ts:2197-2355) side by side — the latter two both branch on
+`hasScaledOut(ep)`/a fired-trim-at-or-above-target test before rendering the stop/target dollar
+figures; the evidence feeder did neither. The existing regression test
+(`play-brief.test.ts`, "entry price and exit-policy stop/target rails surface as citable evidence[]
+entries for an OPEN position") only fixtured a not-yet-fired trim rung
+(`trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 1.1, fired: false }]`), so the
+already-fired/scaled-out case was untested — confirmed via `git diff`-free revert-and-rerun: with
+`play-brief.ts` reverted to the unfixed `origin/main` version and only the new test added, the new
+test fails with
+`actual: 'Exit-policy rails: stop $0.22 · target $1.10.'` vs
+`expected: 'Exit-policy rails: stop $0.22 (no longer applies — already scaled; runner trail now
+$0.63) · target $1.10 (already reached).'` — i.e. the bare, un-annotated text the live-production
+audit flagged, reproduced exactly from source rather than merely asserted.
+
+**Blast radius:** one function, one evidence fact (`Exit-policy rails: ...`) — grepped the repo;
+`evidenceFromContext` is the only producer of this fact in `envelope.evidence[]`, and no other
+consumer independently re-derives `stop_premium`/`target_premium` into a citable fact. The prose
+sections (`managementSection`, `watchForSection`) already had the correct guard and are untouched.
+
+**Fix rationale:** mirror `managementSection`'s exact gating/wording (same `hasScaledOut`/
+`runnerTrailingStopPremium` helpers, same fired-trim-at-or-above-target test) rather than inventing
+new phrasing, so the evidence fact and the prose line describing the identical rail state can't
+independently drift into disagreement over the same fact a second time — the same discipline this
+file's own 2026-10-21/2026-10-08 fixes already established for the prose side. Deliberately left
+unchanged: the gate that only emits this fact for `statusBucket === "open"` (WATCH/CLOSED still
+correctly carry no rails fact), and the never-fabricate-when-absent discipline (`railParts` is still
+only populated per-field when that field is genuinely present).
+
+**Test:** `play-brief.test.ts` — one new regression test,
+`composeSwingPlayBrief: Exit-policy rails evidence[] reflects already-scaled stop and
+already-reached target`: an OPEN play with `peak: 130` and a fired trim rung priced at the same
+level as `target_premium`, asserting the evidence text carries both the "no longer applies —
+already scaled; runner trail now $X" stop annotation and the "already reached" target annotation.
+Verified RED→GREEN: with `src/lib/swing/play-brief.ts` reverted to the unfixed `origin/main` content
+(test file left with the fix applied), the new test fails exactly as described above; with the fix
+restored, full `play-brief.test.ts` is 185/185 pass. `tsc --noEmit`: clean.
+
+## evidenceFromContext drops the entire Dealer-posture evidence item whenever gamma_posture is unresolved, even though net GEX/nearest wall are live — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Where:** `src/lib/swing/play-brief.ts`, `evidenceFromContext()` (~line 1360, the `if (gammaPosture)`
+block ~line 1440-1515).
+
+**Root cause:** The net-GEX dollar figure, the nearest-wall/flip distance, AND the whole CALC
+evidence item were all computed and pushed only *inside* `if (gammaPosture) { ... }`, where
+`gammaPosture = resolveGammaPosture(ctx, vec, readMs)`. `resolveGammaPosture`
+(`play-brief-absence.ts:461-474`) returns `null` whenever the GEX matrix's own `gamma_posture` is
+`null` (and Vector's regime posture doesn't independently resolve it) — a real, common case:
+`buildGexRegime` (`gex-cross-validation-core.ts`) sets `posture: null` whenever the flip itself is
+null for a genuine structural reason (`insufficient_strikes`/`crossings_far_from_spot`; the third
+null-flip reason, `net_short_everywhere`, resolves posture to `"short"`, not null). So a null
+`gamma_posture` silently dropped the ENTIRE evidence item — not just the posture word — even though
+net GEX / nearest wall are computed from different, independent fields (`gex.net_gex`,
+`gex.call_wall`/`gex.put_wall`) that are unaffected by the flip being null.
+
+Meanwhile the human-facing `gexPostureSection` (`play-brief-intel.ts` ~3072-3158) renders Net
+GEX/VEX/DEX/CHARM/Nearest-wall each gated only on `!stale`, never on `gamma_posture` resolving — so
+the model-facing `envelope.evidence[]`/`evidence_numbers` (Largo contract C7) saw strictly less than
+the member-facing markdown for the identical brief.
+
+**Evidence:** live-reproduced 2026-10-26 via a temp Clerk premium session against
+`GET /api/market/swing/play-brief` for CLOSED MRNA (positionId 65): the brief's markdown "GEX
+posture" section rendered "Net GEX: +9.6M", "Net VEX (vanna): 889.7M...", "Net DEX (delta):
+-3.2B...", "Net CHARM (pinning): -12.3B...", "Nearest wall: 210.00 (resistance, 13.0 pts from spot
+197.03)" — all live — yet `envelope.evidence[]` for that exact brief contained zero
+[CALC]/dealer-posture entries (only 5 [FACT] items: HELIX flow, earnings, peers, short interest,
+setup score). Sibling CLOSED briefs fetched the same run (GOOG:64, NVDA:62) both DID carry a
+`[CALC] Dealer posture: γ short · net GEX ... · nearest wall ... (GEX · <timestamp>)` evidence line
+matching their own prose — confirming the drop is conditional on `gammaPosture` resolving to null,
+not a universal CLOSED-bucket omission. Confirmed in source (not just inference from the live
+repro): `resolveGammaPosture`'s own `if (gex?.gamma_posture == null) return null;` guard, and
+`buildGexRegime`'s `posture` derivation, both read directly off `main`.
+
+**Blast radius:** one function, one evidence item — `evidenceFromContext` has no other call site
+building this item, and no other consumer of `envelope.evidence` duplicates this derivation
+(grepped the repo for other `Dealer posture:` producers; only `gexPostureSection`'s
+narrative-markdown sibling exists, and it was already correct).
+
+**Fix rationale:** decoupled the net-GEX/nearest-wall computation from the `if (gammaPosture)` gate.
+`parts` now starts empty and only gets `γ ${gammaPosture}` pushed when `gammaPosture` is non-null —
+mirroring how `gexPostureSection` already treats its own posture line as one optional line among
+several independent ones, not a gate on the whole section. The evidence item itself is now pushed
+whenever `parts.length > 0` (posture, net GEX, or nearest wall/flip — any one of the three), so the
+old silent-omission behavior (Largo C6: omit, never fabricate) is preserved exactly for the case
+where ALL THREE are absent (gex missing/stale and no vector fallback), while no longer collapsing
+"posture unresolved" into "nothing to report." Deliberately left unchanged: the provenance/source
+tagging logic (`sourceIsVector`/`netGexFromGex`), the Vector-preferred wall/flip precedence, and the
+false-zero-safe `formatDealerDollars` formatting — none of those are implicated by this bug.
+
+**Companion finding:** this shares its root cause (a null `gamma_posture`/`flip` while other GEX
+fields are live) with `2026-10-26-swing-gex-flip-absence-closed-gate.md`, filed and fixed in the
+same PR — see that file for why both were addressed together.
+
+**Test:** `play-brief.test.ts` — two new regression tests: (1)
+`composeSwingPlayBrief: Dealer posture evidence still surfaces net GEX/nearest wall when
+gamma_posture itself is unresolved (Largo, live repro MRNA)` — a CLOSED play with
+`gamma_posture: null`, `flip: null`, live `net_gex`/`call_wall`/`put_wall`, asserts the evidence
+item exists, omits the `γ` token, and still carries "net GEX" and "nearest wall"; (2)
+`composeSwingPlayBrief: Dealer posture evidence omits cleanly when gamma_posture, net GEX, and
+nearest wall all fail to resolve` — a sibling control proving the old silent-omission behavior still
+holds when there is genuinely nothing to report. Verified RED→GREEN via `git stash` on the source
+fix alone (new test 1 fails pre-fix: `fail 1` out of 184 in `play-brief.test.ts`; both pass with the
+fix restored). Full `play-brief.test.ts`: 186/186 pass. `src/lib/swing/*.test.ts` (whole directory):
+2135/2135 pass. `tsc --noEmit`: clean.
+
+## SPX desk/merged-desk peek paths had no per-key staleness ceiling, letting replicas serve divergent, non-monotonic snapshots across consecutive member polls — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **PR** | (this branch) |
+
+### Root cause
+
+`peekSpxDesk()`/`peekMergedSpxDesk()` (`src/features/spx/lib/spx-desk-loader.ts`) are the
+non-blocking "instant read" peeks `GET /api/market/spx/desk` and the SPX play-eval path
+(`evaluateSpxPlayStateCrossReplica`/`spxPlayReadDegraded`, `spx-service.ts`) call first, before
+falling through to a real, `maxBlockMs`-bounded load. Both called `peekServerCache()`
+(`src/lib/server-cache.ts`) with **no per-key `maxStaleMs` override**, so both fell back to the
+generic `MAX_STALE_AGE_MS` (10 minutes) — a backstop against truly unbounded staleness, not a real
+freshness contract for this specific pair of keys.
+
+The real contracts these keys actually need to satisfy are much tighter: `deskCacheTtlMs()` (the
+desk/merged refresh cadence, 10s default) and, downstream, `playGexStaleMaxSec()`'s "Desk data
+stale" play-gate (`spx-play-gates.ts`, 90s default) that reads whatever desk snapshot these peeks
+hand back. Each ECS replica keeps its own in-process `store` Map (`server-cache.ts`); Redis backs
+it with the SAME short TTL as the in-memory entry. Once that short TTL elapses fleet-wide with no
+fresh write (a lull in traffic hitting this exact key on every replica), a replica whose own local
+copy has gone stale has nothing fresher to pull from Redis either — and, before this fix, was free
+to keep serving its own up-to-10-minute-old local copy indefinitely, with no mechanism to force a
+real refresh (the peek path never invokes a loader; the *caller* is responsible for falling through
+to one when the peek returns `null`).
+
+This is a narrower recurrence of the identical bug class already fixed for the sibling
+`spx-play-read` cache key (`playMemberPeekMaxAgeSec()`, 20s against a 5s TTL — PRs #4780/#4912/
+#6085/#6719/#6743/#6822) — that fix tightened `peekSpxPlayState()`'s ceiling and matched
+`getSpxPlayState()`'s own fast-lane bound to it, but never touched the DESK/merged-desk cache keys
+that `evaluateSpxPlayState()` itself reads to compute the play's score/direction/gate verdicts.
+Live RTH polling of `GET /api/market/spx/desk` and `GET /api/market/spx/play` from one session
+showed `as_of` jumping backward and forward non-monotonically across consecutive ~35-40s polls,
+`play.score` repeating an earlier poll's exact value on that poll's exact timestamp, and the hard
+"Desk data stale (Ns)" gate block flickering on and off between polls with comparable or worse
+measured desk ages going unblocked elsewhere — consistent with different replicas (or the same
+replica at different lulls) answering from desk snapshots of very different vintage, all "fresh
+enough" under the generic 10-minute ceiling even though one was well past the gate's own 90s bar.
+
+### Fix
+
+Added `deskPeekMaxAgeSec()` (`src/lib/providers/config.ts`, env-overridable via
+`SPX_DESK_PEEK_MAX_AGE_SEC`, default 40s — 4x the desk/merged 10s TTL, the same ratio already used
+for `playMemberPeekMaxAgeSec()`, and comfortably under the 90s gate threshold). Wired it as the
+`maxStaleMs` passed to `peekServerCache()` in:
+- `peekSpxDesk()` — previously called with no options at all.
+- `peekMergedSpxDesk()` — previously passed the caller's `opts` through unconditionally; now
+  defaults to `deskPeekMaxAgeSec()` when the caller passes no explicit `maxStaleMs`, while still
+  honoring an explicit override unchanged (`spx-service.ts`'s deliberate 24h closed-market read,
+  `peekMergedSpxDesk({ maxStaleMs: 24 * 60 * 60 * 1000 })`, is untouched by this change).
+
+Once a replica's locally-cached desk/merged entry exceeds this tightened ceiling (and Redis has
+nothing fresher either), the peek now returns `null` instead of the stale value, so the caller
+falls through to its existing, already `maxBlockMs`-bounded real load (`loadSpxDesk()`/
+`loadMergedSpxDesk()`) instead of silently disagreeing with a fresher peer for minutes at a time.
+
+**Deliberately NOT changed:** `loadSpxDesk()`'s/`loadMergedSpxDesk()`'s own SWR `maxStaleAgeMs`
+option (the blocking-loader path, not the peek path). `withServerCache`'s SWR branch
+(`server-cache.ts`) falls through to an **unbounded** `refreshCache()` call (no `maxBlockMs` race)
+once `staleAge > maxStaleAgeMs` on a not-yet-degraded key — tightening that ceiling for an
+actively-SWR'd key like `spx-desk`/`spx-merged` would make that unbounded-block branch fire far
+more often, reintroducing exactly the unbounded-block failure class PRs #5061/#5065/#6090 already
+fixed elsewhere in this same file. Fixing that branch's own missing `maxBlockMs` race is a
+separate, broader change to the shared cache layer, out of scope here. Also deliberately NOT
+changed: the generic `MAX_STALE_AGE_MS` default, or the pulse/flow desk sub-lanes (not implicated
+by the live evidence, and not named in scope).
+
+### Evidence
+
+New test `src/features/spx/lib/spx-desk-peek-staleness.test.ts` — exercises the real
+`peekSpxDesk()`/`peekMergedSpxDesk()`/`peekServerCache()` code paths with a mocked
+`deskPeekMaxAgeSec()` returning a tiny fractional-second ceiling, so the real staleness math is
+proven with milliseconds of real wait instead of a real 40s one. RED on pre-fix code (both
+assertions failed — the stale entry was served instead of self-invalidating); GREEN post-fix
+(2/2), confirmed via `git stash` of the two source-file changes with the test left in place.
+
+Full `src/features/spx/lib/**/*.test.ts` + `src/lib/server-cache.test.ts` suite (944 tests): pass,
+0 failures, on Node 20. `tsc --noEmit` and `eslint` on the touched files: clean.
+
+### Blast radius
+
+- `peekSpxDesk()` — one caller, `GET /api/market/spx/desk` (`src/app/api/market/spx/desk/route.ts`).
+- `peekMergedSpxDesk()`'s two DEFAULT-usage call sites — `GET /api/market/spx/play`'s
+  `ServerCacheTimeoutError` catch branch, and `spx-service.ts`'s `spxPlayReadDegraded()` (both only
+  use the peeked bundle to derive `session_phase` for an already-degraded/error payload — a `null`
+  result here was already handled via `.catch(() => null)` before this change, so a peek that now
+  self-invalidates slightly more often just omits that one field more often, never a new failure
+  mode). The one EXPLICIT-override call site (`spx-service.ts`'s 24h off-hours closed-market read)
+  is unaffected by design.
+- No other consumer of `spx-desk:<date>`/`spx-merged:<date>` reads through these two peek
+  functions; `loadSpxDesk()`/`loadMergedSpxDesk()`/`loadBootstrapBundle()` (and every route that
+  calls them directly) are unchanged.
+
+## PWA manifest's "maskable" icon reused the edge-to-edge "any" bitmap, with no safe-zone padding — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 (PWA install/home-screen polish — no runtime crash, no data-correctness impact) |
+| **Found by** | DISCOVERY-lane round 90, PWA manifest correctness check |
+| **Scope** | `public/manifest.webmanifest`, new `public/icon-192-maskable.png`, new `src/lib/pwa-manifest.test.ts` |
+
+### Root cause
+
+`public/manifest.webmanifest` declared two icon entries at 192×192 — one `purpose: "any"`, one
+`purpose: "maskable"` — but both pointed at the SAME file, `/icon-192.png`. That bitmap is a square
+green-bordered "B" logo drawn edge-to-edge (the border frame sits within a few pixels of the image
+boundary on all four sides).
+
+The W3C maskable-icon spec requires a maskable icon's meaningful content to sit inside a centered
+"safe zone" — an inner circle at roughly 80% of the icon's width/height — because platforms that
+honor `purpose: "maskable"` (primarily Android home-screen launchers applying an adaptive-icon
+mask: circle, squircle, rounded-square, etc. depending on the device's icon pack) crop everything
+outside that safe zone. An icon authored edge-to-edge and declared maskable gets its border frame
+(and, depending on the mask shape, part of the "B" glyph) silently clipped on install — the "any"
+variant is fine as-is (nothing masks it), but reusing it as the maskable variant was never correct.
+
+### Fix
+
+Generated a properly safe-zoned maskable icon via `sharp` (already a repo dependency): scaled the
+existing `icon-192.png` content down to 80% (154×154) and centered it on a new 192×192 canvas
+filled with the manifest's own `background_color` (`#040407`), producing `public/icon-192-maskable.png`
+— so a circular/squircle OS mask now crops only the background padding, never the logo. Updated
+the manifest's `maskable`-purpose entry to point at the new file, leaving the `any`-purpose entry
+unchanged (it was always correct).
+
+### Regression guard
+
+New `src/lib/pwa-manifest.test.ts`:
+- every icon `src` in the manifest resolves to a real file under `public/` (catches a future typo'd
+  or deleted icon path going unnoticed, since a broken manifest icon fails silently — no browser
+  console error, no build failure, only a missing icon on an actual install attempt)
+- the `any` and `maskable` icons are required to be **different files**, specifically to prevent
+  this exact regression (reusing one edge-to-edge bitmap for both purposes) from being reintroduced
+  without a test catching it
+
+RED→GREEN confirmed via a temp-file swap of the manifest back to the pre-fix shape (both icons
+pointing at `/icon-192.png`): the distinct-file assertion fails as expected; restoring the fix
+passes both tests. `tsc --noEmit` and `eslint` clean on the new test file.
+
+### Blast radius
+
+Two static assets (`public/manifest.webmanifest`, new `public/icon-192-maskable.png`) and one new
+test file. No application code changed; the `any`-purpose icon (used by browser tab/bookmark UI,
+which does not apply a mask) is untouched.
+
+## `error.tsx` never updates the tab title to reflect the error state — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED — PR #TBD, merged pending CI.
+
+### Root cause
+
+`src/app/error.tsx` is a required client component (`"use client"`) — Next.js App Router
+mandates error boundaries be client components, so unlike `not-found.tsx` (a server component
+that exports a static `metadata` object with its own title) `error.tsx` has no way to declare a
+title for the error state. The shared `RouteErrorBoundary` component it renders
+(`src/components/route-error-boundary.tsx`) never set `document.title` either, so when a route
+segment crashes, the browser tab keeps whatever title the page had a moment before the crash
+(or, on an initial-load crash, the root layout's default homepage title) — never anything that
+tells the viewer, at a glance from the tab bar, that the page is in an error state.
+
+### Evidence
+
+Read `src/app/not-found.tsx` (has `metadata.title = "Page not found — BlackOut"` plus explicit
+`robots: { index: false }`) and compared against `src/app/error.tsx` (`export { default } from
+"@/components/route-error-boundary"` — a bare re-export, no metadata of any kind) and
+`route-error-boundary.tsx` itself (no `document.title` write anywhere in the file before this
+fix).
+
+### Blast radius
+
+Every route segment in the app uses this one shared error boundary (`error.tsx` at the app root,
+re-exporting the same component) — a single fix covers the whole site.
+
+### Fix
+
+Added `setErrorPageTitle(doc = document)` (exported, with an injectable `doc` param so the logic
+is directly testable without React Testing Library, which this repo doesn't carry) that sets
+`document.title = ERROR_PAGE_TITLE` ("Something went wrong — BlackOut"), called from the existing
+`useEffect` in `RouteErrorBoundary` alongside its existing `console.error`/chunk-reload logic.
+RED→GREEN proven via a temp-file swap of the pre-fix source (not `git stash`, per this session's
+standing avoidance of stash on the shared sandbox working directory): 2/2 new tests fail against
+the original file, 2/2 pass against the fix. Lint and `tsc --noEmit` clean.
+
+### Why this fix and not an alternative
+
+A full per-error-type title (e.g. distinguishing a 500 from a chunk-load error) was considered
+and rejected as over-scoped for what is, in every case, the same generic "something broke, try
+again or go home" UI the component already renders — one title matching the one UI is
+proportionate. `not-found.tsx`'s `robots: { index: false }` pattern doesn't apply here since a
+runtime error boundary has no stable URL of its own to index in the first place (it renders in
+place of whatever route actually crashed).
+
+## Authenticated pages could reappear from bfcache after sign-out — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED — `src/components/BfcacheAuthGuard.tsx` wired into `AppShellProviders` |
+
+### Root cause
+
+Every authenticated route (`/account`, `/dashboard`, `/nighthawk`, `/vector`, `/meridian`,
+`/admin`, etc.) gets `Cache-Control: private, no-cache, no-store, must-revalidate, max-age=0`
+from `withNoEdgeCache` in `src/middleware-clerk.ts`. That header stops an HTTP cache (CDN,
+browser disk cache) from serving a stale copy, but it does **not** reliably stop the browser's
+back/forward cache (bfcache): Chrome stopped excluding `Cache-Control: no-store` pages from
+bfcache starting with Chrome 109 (bfcache is deliberately a separate mechanism from HTTP caching,
+per Chrome's own bfcache documentation), and Firefox/Safari have long applied their own
+fastback/page-cache aggressively regardless of cache headers.
+
+A bfcache restore freezes and later replays the entire JS heap exactly as it was at the moment of
+navigating away — DOM, React fiber tree, and all in-memory state, with **no** React effect
+re-running and no network request. `SessionCacheGuard` (`src/components/SessionCacheGuard.tsx`)
+already clears `sessionStorage` on sign-out, but only as a reaction to a *live* `isSignedIn`
+state transition inside a mounted, running React tree — a bfcache restore has no such transition
+to react to, since nothing re-executes.
+
+Repo-wide grep confirmed no `pageshow`/`persisted` handling existed anywhere before this fix.
+
+### Evidence
+
+- `src/middleware-clerk.ts`: `isProtectedRoute` matches `/dashboard`, `/flows`, `/terminal`,
+  `/heatmap`, `/nighthawk`, `/vector`, `/meridian`, `/admin`, `/account`; matched requests get
+  `withNoEdgeCache(NextResponse.next())`.
+- `src/middleware-shared.ts`: `withNoEdgeCache` sets only `Cache-Control`/`CDN-Cache-Control`/
+  `Cloudflare-CDN-Cache-Control` headers — nothing that targets bfcache specifically (there is no
+  bfcache-specific HTTP signal browsers currently honor besides avoiding `unload` listeners,
+  which this app also doesn't register).
+- `grep -rn "pageshow\|persisted" src/` (pre-fix): zero matches tied to the Page Visibility/
+  bfcache API anywhere in non-owned or owned code.
+
+### Blast radius
+
+Every route inside `AppShellProviders`' `DeskShell` (i.e. every authenticated page) was exposed
+to the same gap, since the guard that was missing (`SessionCacheGuard`) is itself shared across
+all of them. Not route-specific.
+
+### Fix rationale
+
+Added `BfcacheAuthGuard` (`src/components/BfcacheAuthGuard.tsx`): a `pageshow` listener that
+calls `window.location.reload()` whenever `event.persisted === true`. A reload forces a real
+server round-trip, which re-runs Clerk's middleware and `auth.protect()` — the same check that
+already correctly redirects a signed-out visitor away from a protected route on a normal
+navigation. This is the standard, minimal fix for this exact browser behavior (reload-on-bfcache-
+restore for sensitive/authenticated pages), rather than a heavier client-side re-validation
+scheme. Wired into `AppShellProviders`' `DeskShell` alongside the existing `SessionCacheGuard`,
+so it covers every authenticated page the same way. `shouldReloadOnBfcacheRestore` is exported
+and unit-tested directly (2/2 passing) rather than requiring a full browser-level repro, which
+this sandbox's live-UI tooling (`proxy-browser.cjs`) is not built to drive (it screenshots a
+single navigation, not a multi-step back-button gesture).
+
+Deliberately did **not** build a lighter-weight "just re-check `isSignedIn` and redirect"
+alternative: a bfcache restore can leave arbitrary other React/SWR state (not just the auth flag)
+frozen and stale, so a full reload is the only fix that is actually complete, and it is cheap —
+this only fires on the rare bfcache-restore path, never on a normal page load.
+
+## Admin tool-access PATCH silently dropped an invalid tool key/mode instead of rejecting it — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED — PR TBD |
+
+### Root cause
+
+`PATCH /api/admin/users/[id]` parsed `body.toolAccess` with `parseToolAccessMap()`
+(`src/lib/tool-user-access.ts`), whose contract is deliberately lenient: any unrecognized tool
+key or mode value is silently dropped rather than rejected, because that same function also
+reads back already-persisted Clerk `tool_access` metadata this app itself wrote (lenient-by-design
+there, documented and tested in `tool-user-access.test.ts`: "parseToolAccessMap ignores unknown
+keys and bad values").
+
+The admin PATCH route is a different context — it receives operator-typed input and should
+reject a malformed entry, not silently no-op it with a `200 ok` success response. This is the
+same bug shape the immediately-preceding session round fixed for `body.tier` on the same route
+(`parseTier`'s free-fallback is correct for Whop webhook data, wrong for admin-typed input —
+`parseAdminUserTier` was added as the strict counterpart). The sibling route
+`POST /api/admin/users/tools/bulk` already validates `tool`/`mode` strictly with explicit 400s
+(and has its own detailed comment about a related NaN-limit footgun), which is what exposed the
+asymmetry: the bulk route rejects a malformed tool key or mode, the single-user PATCH route
+silently drops it.
+
+### Evidence
+
+Before the fix, `parseToolAccessMap({ larg0: "grant", vector: "nope" })` returns `{}` — every
+entry silently discarded, no error surfaced, route returns `200 ok` as if the toolAccess patch
+had been applied. A UI typo in a tool key, or a malformed direct API call, would read as success
+while changing nothing.
+
+### Blast radius
+
+Only `PATCH /api/admin/users/[id]`'s `toolAccess` handling. `GET /api/admin/users/[id]` and
+`POST /api/admin/users/tools/bulk` are unaffected (the GET path reads back already-stored
+metadata via `getToolAccessForUserId`/`parseToolAccessMap`, correctly lenient there; the bulk
+route already validates strictly).
+
+### Fix
+
+Added `parseAdminToolAccessPatch(raw): ToolAccessMap | undefined` (`src/lib/tool-user-access.ts`)
+— returns `undefined` if the payload isn't a plain object, or if ANY key/value pair is
+unrecognized, rather than silently filtering bad entries. Wired into the PATCH route: returns
+`400 { error: "Invalid toolAccess — unrecognized tool key or mode" }` when validation fails,
+matching the existing `role`/`tier` 400 pattern on the same route. `parseToolAccessMap` itself is
+unchanged — its lenient contract is correct for its other (read-back) callers.
+
+### Tests
+
+`src/lib/tool-user-access.test.ts`: 4 new cases (accepts a fully valid patch; rejects an
+unrecognized tool key; rejects an unrecognized mode; rejects a non-object payload).
+RED→GREEN confirmed via temp-file swap. Full suite: `tool-user-access.test.ts` (8/8),
+`admin-users.test.ts` + `admin/users/route.test.ts` + `admin/users/tools/bulk/route.test.ts`
+(19/19 combined). Lint + `tsc --noEmit` clean.
+
+## Admin user PATCH silently coerced an invalid `tier` to "free" instead of rejecting it — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **PR** | (this branch) |
+
+### Root cause
+
+`PATCH /api/admin/users/[id]` (`src/app/api/admin/users/[id]/route.ts`) validates `body.role`
+against an explicit allowlist (`parseAdminUserRole`, returns `undefined` on an unrecognized
+value, route 400s) but had no equivalent check for `body.tier` — it passed the raw value straight
+into `parseTier()` (`src/lib/tiers.ts`).
+
+`parseTier`'s contract is deliberately lenient: it coerces ANY unrecognized string to `"free"`
+rather than erroring, because its other callers (e.g. a Whop webhook payload) need a safe default
+for external data they can't fully control. That contract is wrong for an admin mutation: a typo,
+a stale/removed alias, or a malformed request body would silently set the target member's tier to
+`"free"` and the route would still return 200 success — an admin editing a member's tier could
+unknowingly demote them with no error surfaced anywhere.
+
+The existing admin UI (`UserManagement.tsx`) only ever sends one of the three canonical values via
+a `<select>`, so this was never reachable through the shipped UI — but the API route itself is the
+real trust boundary (any direct API call, future UI change, or script hitting this endpoint is not
+constrained by that one component's markup), and CLAUDE.md's own `parseTier` doc comment already
+flags one prior, confirmed incident of exactly this "lenient-coercion contract used somewhere that
+needed strict validation" bug shape (the `useAppAuth().tier === "admin"` case) — this is the same
+root cause recurring in a second, more consequential call site (an admin write, not a client read).
+
+### Fix
+
+Added `parseAdminUserTier()` (`src/lib/admin-users.ts`), mirroring `parseAdminUserRole`'s shape:
+accepts only `"free" | "community" | "premium"`, returns `undefined` on anything else. Wired into
+the PATCH route right next to the existing role check — `"tier" in body` with an invalid value now
+400s with `"Invalid tier — use free, community, or premium"`, matching the role check's pattern
+exactly. The GET handler's own `parseTier(meta.tier)` (reading already-trusted Clerk metadata, not
+user input) is untouched — only the user-input write path changed.
+
+### Evidence
+
+New test `parseAdminUserTier accepts only the three canonical tiers, rejects everything else`
+(`src/lib/admin-users.test.ts`) — RED on pre-fix code (export didn't exist), GREEN post-fix (8/8).
+Full admin-users + admin/users route test suite: 13/13 pass. Lint + `tsc --noEmit` clean.
+
+### Blast radius
+
+Single call site (`PATCH /api/admin/users/[id]`). No other route reads `body.tier` without going
+through this same handler.
+
+## `useAdminFlag`'s SWR cache key isn't scoped by `userId` — a rapid sign-out→sign-in can flash the previous user's cached admin flag — FIXED
+
+> **kind:** `FINDING`
+
+**Status**: FIXED — `src/hooks/use-admin-flag.ts` (PR #TBD)
+
+### Root cause
+
+`useAdminFlag()` (`src/hooks/use-admin-flag.ts`) backs the shared admin flag used by global `Nav`
+and the iOS chrome. Its SWR key was the bare literal string `"/api/admin/me"`:
+
+```ts
+const { data } = useSWR<AdminMeResponse>(
+  isLoaded && isSignedIn && userId ? "/api/admin/me" : null,
+  fetchAdminMe,
+  { revalidateOnFocus: false, dedupingInterval: 60_000, ... }
+);
+```
+
+SWR's cache is global and keyed purely by this string — it has no awareness of *which* signed-in
+user is asking. Clerk's `UserButton` (`AuthUserMenu.tsx`) performs a client-side SPA sign-out
+(`clerk.signOut()`, no forced page reload — confirmed by reading `src/lib/auth-client.tsx`), and
+the subsequent sign-in (`/sign-in`, a client-side Next.js route) keeps the same JS runtime alive,
+so the module-level SWR cache survives across a sign-out→sign-in in the same tab. Combined with
+`dedupingInterval: 60_000`, this means: User A signs in (cache populated under
+`"/api/admin/me"` → `{admin: <A's value>}`), signs out, and User B signs in within that same
+60-second window — SWR immediately serves User A's stale cached `admin` flag to User B's render
+(synchronously, before the background revalidation fetch resolves), briefly showing or hiding the
+admin nav affordance based on the *wrong* user's permission.
+
+Confirmed no sign-out handler anywhere in the app clears SWR's cache (`grep -rn "SWRConfig\|cache.clear\|mutate("`
+found no `mutate()`/cache-clear call tied to sign-out) — the only thing preventing a leak while
+actually signed-out is the hook's own `if (!isLoaded || !isSignedIn) return false;` guard, which
+does nothing once User B is signed back in under the same cache key.
+
+### Evidence
+
+Added `adminMeSwrKey(isLoaded, isSignedIn, userId)` as an exported, directly-unit-tested pure
+function. RED→GREEN via a temp-file swap (not `git stash`): against the pre-fix file, the new test
+file fails to even load (`adminMeSwrKey is not a function` — the helper didn't exist, confirming
+the old code had no per-user key isolation at all); against the fix, all 9 tests in
+`use-admin-flag.test.ts` pass, including:
+- two different signed-in users produce different cache keys (`JSON.stringify` inequality),
+- the *same* user re-rendering still produces the *same* key (so `dedupingInterval` still
+  correctly avoids refetching on every render for one user — the fix doesn't regress the original
+  dedup optimization),
+- signed-out / not-yet-loaded / no-userId all still correctly resolve to `null` (no fetch, no
+  stale serve).
+
+Sibling test files that import this module (`JournalEditor.test.ts`, `admin-health-cache.test.ts`)
+re-run clean: 18/18 total. Lint + `tsc --noEmit` clean.
+
+### Blast radius
+
+Single hook (`useAdminFlag`), consumed by `Nav.tsx` (desktop + mobile nav) and the iOS chrome —
+both get the fix automatically since they go through this one shared hook (the file's own comment:
+"was duplicate fetch per mount" before being centralized here). No other `useSWR` call site in
+non-owned code keys by a fixed, non-per-user string while gated on `isSignedIn`/`userId` (checked
+via repo-wide grep) — this was the only instance of the pattern.
+
+### Fix rationale
+
+Changed the SWR key to an array `[url, userId] as const` and adjusted the fetcher to a thin
+`([url]) => fetchAdminMe(url)` wrapper so the actual network request is unchanged — only the SWR
+cache's own internal key (which is independent of what URL the fetcher ultimately calls) now
+includes `userId`, giving each signed-in user their own cache bucket. This is the standard SWR
+idiom for "same endpoint, cache-scoped by an extra dimension" and requires no change to the
+`/api/admin/me` route itself. Left the existing `dedupingInterval: 60_000` and
+`revalidateOnFocus: false` untouched — those are correct per-user behavior, the bug was purely the
+missing per-user dimension on the cache key.
+
+## Admin "create user" route silently falls back an invalid `tier` to `"free"` instead of rejecting it — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED — PR TBD (same cycle this finding was staged) |
+|---|---|
+
+### Root cause
+
+`POST /api/admin/users/create` (`src/app/api/admin/users/create/route.ts`) already validates
+`body.role` against an explicit allowlist (`parseAdminUserRole`, rejecting an unrecognized
+value with a 400) but passed `body.tier` straight into `parseTier()` (`src/lib/tiers.ts`) at
+three call sites (the Clerk `publicMetadata.tier`, the Postgres `upsertAdminUserRow` call, and
+the audit-log `detail.tier` field).
+
+`parseTier`'s contract is deliberately lenient: it coerces any unrecognized string — including a
+simple typo — to `"free"` rather than erroring, because its other callers (e.g. a Whop webhook
+payload, or legacy `"pro"`/`"elite"` aliases) need a safe default for external data they can't
+fully control. That contract is correct for those callers and wrong here: an admin typing
+`tier: "Premium"` (wrong case) or any other malformed value while creating a new member account
+got a 201 success response and a brand-new account silently created on `"free"`, with zero
+indication anything was wrong — the operator would only discover it later when the new member
+reports they aren't getting premium access.
+
+This is the same bug shape found twice already this cycle on the SIBLING `PATCH
+/api/admin/users/[id]` route (`parseTier` on the tier field, `parseToolAccessMap` on the
+tool-access field) — this is a third instance of the identical class, on the user-CREATE route
+this time.
+
+### Evidence
+
+RED→GREEN via `node:test`, confirmed locally:
+- Pre-fix: no `isValidCreateUserTier` export existed; the equivalent test failed with
+  `TypeError: ... is not a function`.
+- Post-fix: `src/lib/admin-users.test.ts` — 9/9 pass (7 pre-existing + 2 new:
+  "isValidCreateUserTier accepts only the canonical tiers",
+  "isValidCreateUserTier rejects legacy aliases and malformed values").
+- `npx tsc --noEmit` clean, `npx eslint` clean on all three touched files.
+
+### Blast radius
+
+Single route, single field (`tier`) — `role` on this same route was already strict; no other
+field on this route accepts an enum-like value.
+
+### Fix rationale
+
+Added `isValidCreateUserTier()` to `src/lib/admin-users.ts` (not `src/lib/tiers.ts`, to avoid
+widening `parseTier`'s own intentionally-lenient contract for its other callers), mirroring the
+`role` field's existing validation shape in the same route: `tier` is optional (unset ⇒ default
+to `"free"` via the existing `parseTier(tier)` calls, unchanged), but if a value IS supplied it
+must be one of the three canonical tiers or the route 400s with
+`"Invalid tier — use free, community, or premium"` before any Clerk/Postgres write happens.
+
+Named `isValidCreateUserTier` (not `parseAdminUserTier`) and appended at the end of
+`admin-users.ts` rather than near `parseAdminUserRole`, specifically to avoid colliding with the
+similarly-named, same-cycle, still-unmerged `parseAdminUserTier` fix on the sibling PATCH route —
+a deliberate naming/placement choice to keep the two fixes mergeable independently of merge
+order. A future cleanup pass could consolidate both into one shared strict-tier validator once
+both are on `main`, but that consolidation is out of scope for this fix.
+
+Did not add a route-local export: Next.js's generated route-handler types reject any export from
+a `route.ts` file other than the recognized HTTP-verb handlers and a small fixed set of config
+exports (confirmed via a real `tsc` error: `Property 'isValidCreateUserTier' is incompatible with
+index signature`), so the validator lives in the shared lib file per the repo's existing
+convention (matching where `parseAdminUserRole` already lives).
+
+## /account's Upgrade CTA used a plain `<a>` instead of `next/link` — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED — `src/components/account/AccountMembershipPanel.tsx` now uses `next/link` |
+
+### Root cause
+
+`AccountMembershipPanel`'s free-tier "Upgrade" CTA was a plain `<a href="/upgrade">`. `/upgrade`
+is an internal route in the same Next.js app, so a plain anchor forces a full page reload
+(re-fetching every asset, re-running the whole client bootstrap) instead of the client-side SPA
+navigation the rest of the app uses via `next/link`. Repo-wide grep for `<a href="/` found this
+as the only internal-route anchor outside the component's own correctly-external `manageHref`
+link (Whop's billing portal — genuinely external, correctly kept as `<a target="_blank"
+rel="noopener noreferrer">`).
+
+### Evidence
+
+`grep -rn '<a href="/' src --include="*.tsx"` returned exactly one match before this fix:
+`AccountMembershipPanel.tsx:55`.
+
+### Blast radius
+
+Single call site, single component, one route (`/account` → `/upgrade`).
+
+### Fix rationale
+
+Swapped the one internal anchor for `next/link`'s `Link`, matching the pattern used everywhere
+else in the app for internal navigation. Zero behavior change for the external Whop link. Added
+a source-level regression test (`AccountMembershipPanel.test.tsx`) asserting the import and JSX
+tag, since rendered HTML markup is identical between `<a>` and `<Link>` (both resolve to an
+`<a>` tag) and can't distinguish the two — a plain `renderToStaticMarkup` assertion on the
+output wouldn't catch a regression back to a bare anchor, so the test instead checks the source.
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
