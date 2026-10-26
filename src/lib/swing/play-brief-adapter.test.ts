@@ -221,6 +221,49 @@ test("adaptSwingBriefToLargo: evidence_numbers' level prices use the same roundi
   );
 });
 
+// Ask Largo standing mandate, 2026-10-26 (follow-up to #4076 comment 6324494558's enhancement idea
+// #1): buildStructureLadder already computes a real reward:risk per favorable-side rung and
+// BieStructureLadder.tsx already renders it visually ("X.XR" chip), but it never reached the
+// plain-text evidence array a trader (or Largo's own answer-engine context) actually cites numbers
+// from.
+test("adaptSwingBriefToLargo: evidence_numbers cites each favorable-side structure-ladder rung's own reward:risk, not just its price", () => {
+  const ctx = fixtureCtx();
+  const brief = composeSwingPlayBrief(ctx);
+  brief.envelope.structureLadder = {
+    spot: 100,
+    direction: "long",
+    stop: 95,
+    stopIsCommitted: false,
+    atr: 5,
+    positionState: "watch",
+    rungs: [
+      {
+        kind: "call_wall",
+        label: "call wall",
+        price: 110,
+        distancePct: 10,
+        role: "resistance",
+        target: { rewardRisk: 2, horizon: "swing", gatekeeper: false },
+      },
+      // Unfavorable-side rung (behind spot for a LONG) — correctly carries no `target`, so it
+      // must contribute a plain level-style absence here, never a fabricated R:R.
+      { kind: "put_wall", label: "put wall", price: 90, distancePct: -10, role: "support" },
+    ],
+  };
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.ok(
+    largoRead.data.evidence.some((e) => e === "R:R to call wall ($110.00): 2.0R"),
+    `expected the favorable-side rung's own reward:risk cited, got: ${JSON.stringify(largoRead.data.evidence)}`
+  );
+  assert.ok(
+    !largoRead.data.evidence.some((e) => e.includes("put wall") && e.includes("R:R")),
+    "the unfavorable-side rung (no target) must never get a fabricated R:R line"
+  );
+});
+
 // Sibling case: the pre-existing honest-omission behavior must survive this fix — a brief with
 // genuinely NO knowable per-source age (a fresh WATCH candidate, no Vector/GEX/option-mark read at
 // all this cycle) must still fall back to "cached"/null rather than fabricating an age of 0.

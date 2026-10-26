@@ -97,6 +97,23 @@ function extractEvidence(envelope: BieAnswerEnvelope): string[] {
     }
   }
 
+  // Structure-ladder reward:risk per favorable-side rung — already computed by
+  // buildStructureLadder (play-brief-ladder.ts) and already rendered VISUALLY in the UI's
+  // BieStructureLadder.tsx ("X.XR" chip), but never reached this plain-text evidence array, so a
+  // trader citing "specific numbers" for a hold/trim call (or Largo's own answer-engine context,
+  // which reads evidence_numbers rather than the rendered widget) had to re-derive it by hand from
+  // the raw entry/stop/target prices. Ask Largo standing mandate, 2026-10-26 (follow-up to #4076
+  // comment 6324494558's enhancement idea #1). `target` is present ONLY on the favorable side of
+  // spot (StructureLadderTarget's own doc comment) — unfavorable-side rungs correctly contribute
+  // nothing here, same as they contribute no "R" chip in the UI.
+  if (envelope.structureLadder?.rungs.length) {
+    for (const rung of envelope.structureLadder.rungs) {
+      if (rung.target) {
+        evidence.push(`R:R to ${rung.label} ($${fmtPriceLevel(rung.price)}): ${rung.target.rewardRisk.toFixed(1)}R`);
+      }
+    }
+  }
+
   // Scenarios — bull/base/bear theses carry their own numbers (targets), not a bare restatement.
   if (envelope.scenarios && envelope.scenarios.length > 0) {
     for (const scenario of envelope.scenarios) {
