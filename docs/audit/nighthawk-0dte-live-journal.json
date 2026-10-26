@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing — never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 — no prior continuity existed before this file.",
-  "updated_at": "2026-10-26T15:15:00Z",
+  "updated_at": "2026-10-26T15:25:10Z",
   "watch_stage_tracking": {
     "2026-10-22T00:35:00Z_SWIFT_BANGER_MANDATE_CHECKPOINT_2_PR_6549_OPEN": {
       "note": "PR #6549 open (docs/code-free, undrafted, CI pending), subscribed. Full detail in docs/audit/0DTE-RESEARCH.md E7 section. THIS ROUND'S FINAL RESULTS: (1) min_dominance real-cost A/B re-run TWICE MORE at increasing power (--days=24: REJECT n=13/half, both halves agreed REJECT>PASS; --days=40: REJECT n=23/half, clears the n=20 trust bar both halves, but TRAIN says gate backwards (REJECT graded BETTER than PASS) while VALIDATION says gate correct -- UNSTABLE across day-windows, not just under-powered, extreme max_dd outliers in every cell. Per the operator's own 'do not manufacture bangers via hindsight' rule this does NOT clear the bar to touch the gate -- correctly held, no change made. (2) Found the strongest lead this round: pickAtmZeroDteContract (breakout-source.ts) is an ALREADY-LIVE, real ATM-seeking contract selector for BREAKOUT-origin setups -- confirmed in board.ts's own doc comments (mergeSameTickerDiscovery/stampFlowEvidenceFromIncoming) that on a same-direction FLOW+BREAKOUT merge 'contract geometry stays with the kept setup' -- the losing origin's (potentially more-leveraged/ATM) strike pick is silently discarded, only its score boosts corroboration. Different code branch than the existing merge-precedence-ab.mjs (which only covers OPPOSING-direction disagreement). NOT YET CHECKED: whether BREAKOUT actually co-flagged SPY/NVDA/AAPL on 2026-10-21 (the committed rows show origin=[FLOW] only -- could mean BREAKOUT never saw them, or saw them and lost silently). This is the precise, bounded next step before any code/backtest work on this thread. STATUS: NOT SOLVED, multi-session program per the operator's own instruction. Will continue picking this up each standing 0DTE cycle: next action is checking BREAKOUT co-discovery for the known Swift tickers, then (if it co-fired) building a real-cost same-direction-merge A/B (new tool, doesn't exist yet). Also still queued, not started: AMD's score_floor/thesis_rank_reject cluster (connects to the existing, separate score_floor INVERTED finding, E6)."
@@ -581,5 +581,10 @@
     "confirms_not_duplicates_prior_finding": "Directly confirmed GOOGL's rel_volume=null (vs TSLA=0.7, QQQ=0.33, both FLOW-origin with real dossiers) -- this is the exact mechanism already traced and logged at 14:15Z (null-dossier origin -> no rel_volume -> starved MOMENTUM rail -> momentum_abs_floor). Folding as confirming evidence on the existing thread, not a new entry.",
     "session_state": "governor.session_pnl_pct=48.49%, 0 realized losers, 4 winners (QQQ/SPXW/SPY/TSLA), clean session.",
     "status": "CLEAN -- two plausible new leads checked and ruled out, no new escalation. Staying quiet in chat."
+  },
+  "2026-10-26T15:25Z_check": {
+    "trigger": "15-min-offset lane, trigger 2 of 4 (:15 offset), ~115min into RTH",
+    "summary": "No material change. GOOGL's block persists a 4th consecutive check (further confirms durability). Same 4 closed trades, 0 new OPEN/condor activity, session still clean (48.49% pnl, 0 losers).",
+    "status": "CLEAN, nothing new -- staying quiet."
   }
 }
