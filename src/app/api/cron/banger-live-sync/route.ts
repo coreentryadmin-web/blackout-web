@@ -19,7 +19,11 @@ import {
   updateBangerLiveState,
   updateBangerQuoteFields,
 } from "@/lib/banger/positions-db";
-import { fetchOptionsUnifiedSnapshot, reliableMarkFromSnapshot } from "@/lib/providers/options-snapshot";
+import {
+  fetchOptionsUnifiedSnapshot,
+  reliableAskFromSnapshot,
+  reliableMarkFromSnapshot,
+} from "@/lib/providers/options-snapshot";
 import { fetchOpenClose } from "@/lib/providers/polygon-largo";
 import { buildBangerQuoteTickRow, persistBangerQuoteTick } from "@/lib/banger/quote-tick-log";
 import { occToPositionIds } from "./occ-to-position-ids";
@@ -96,11 +100,24 @@ export async function GET(req: NextRequest) {
           // a missing occToIds entry (shouldn't happen — occToIds is populated from the exact
           // `rows` this `occs` list was derived from) is a silent no-op rather than a thrown error.
           // Writes to EVERY position sharing this occ (FINDINGS 2026-10-14) — not just one.
+          //
+          // BUG FIX (2026-10-26, Ask Largo x Night Hawk Swings standing mandate): `ask` used to be
+          // carried straight off the raw snapshot while `resolved` (the mark) above is already
+          // guarded against a dead-bid backstop-ask artifact via `reliableMarkFromSnapshot` — the
+          // identical gap already found and fixed on swing-active-refresh's `loadOptionQuote`
+          // (route.ts there, same FINDINGS entry) for the organic-swing live-refresh cron, but never
+          // extended to this sibling Banger-lane cron. The raw ask flows unchanged into
+          // `banger-lane-merge.ts`'s `horizonPlayFromBangerPosition` (bid/ask straight off this row)
+          // and from there into `liquidityFromContract`'s `(ask - bid) / mid`, so a guarded (tiny)
+          // mark sitting next to an unguarded backstop ask produced the same nonsensical Spread
+          // line (e.g. "10000.0%") on committed Banger-origin swing positions. `reliableAskFromSnapshot`
+          // reuses the exact same divergence guard as the mark (never reimplements it), so a
+          // backstop ask nulls out here exactly when the mark guard already rejected it.
           const positionIds = occToIds.get(occ) ?? [];
           for (const positionId of positionIds) {
             void updateBangerQuoteFields(positionId, {
               bid: snap.bid,
-              ask: snap.ask,
+              ask: reliableAskFromSnapshot(snap),
               openInterest: snap.openInterest,
               delta: snap.delta,
               gamma: snap.gamma,
