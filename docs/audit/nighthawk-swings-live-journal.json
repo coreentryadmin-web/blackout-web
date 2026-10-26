@@ -1240,5 +1240,11 @@
     "what": "Closing the loop on PR #6864 (also folded, PR #6867) -- re-checked GET /api/market/swing/record?days=1 ~28 min post-merge.",
     "finding": "CONFIRMED LIVE, WORKING CORRECTLY. closedDeck now correctly contains MRNA (positionId 65), the exact row that was invisible under ?days=1/2/3 before the fix. Also re-confirmed the docs fold (PR #6867, batch-119, 24 findings) merged clean -- findings-hygiene 9/9 pass on real origin/main post-merge, no corruption despite the base having moved between branch and merge.",
     "status": "VERIFIED CLEAN, no further action needed. Closes both #6864 and #6867 deploy-validation loops definitively."
+  },
+  "swing_thesis_invalidated_live_not_closed_6899_2026_10_26": {
+    "ts": "2026-10-26T19:02:30Z",
+    "what": "Fresh-eyes WATCH spot-check over several cycles noticed SOXX flip FORMING->INVALIDATED->FORMING (identical gate blocks) within one RTH session, no close in between. Traced the thesis_invalidated gate reason (play-brief Trade manager read: \"price closed through the structural invalidation level\") against deriveSetupState (setup-state.ts) -- confirmed its underlying price check is live/intraday (swingServingReadsFromPlan doc comment: \"a live (or last-known) spot\"), never a settled close, despite the gate text and the pure functions own doc comments uniformly claiming closed.",
+    "finding": "Real, member-facing precision violation (Largo product contract precision point) -- the wording overstated how settled a pre-entry thesis break was, which is exactly how I caught the live flip-flop reading as a bug before realizing it was the LABEL, not the mechanism, that was wrong.",
+    "status": "FIXED, PR #6899 (draft, CI running). Corrected the gate reason + two setup-state.ts doc comments to describe a live read that can revert, left the gating mechanism itself unchanged (deliberate -- requiring a settled close would delay a legitimate pre-entry signal, a real behavioral question out of scope here). RED->GREEN regression test proven (git stash). Full suite 17128/0/3-skipped clean, tsc clean. Staged finding filed. Will merge once CI green per CARVE-OUT."
   }
 }
