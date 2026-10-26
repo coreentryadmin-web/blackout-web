@@ -1,3 +1,26 @@
+## WATCH LIST — 2026-10-26 SPX Slayer discloses `oi_changes`/`iv_term_structure` as permanently missing (PR pending at time of writing — see commit for the merged SHA)
+
+**What was shipped:** `buildDeskDataQuality()` (`spx-desk.ts`) now names `oi_changes` and
+`iv_term_structure` in `data_quality.missing` **unconditionally, every call** — those two
+`SpxDeskPayload` fields are structurally dead (no function anywhere computes them; the canonical
+build hardcodes `[]`), so before this fix nothing distinguished "never computed" from "genuinely
+zero today". Also closed two wiring gaps found while verifying the disclosure actually reaches
+consumers: `SpxDeskSummary` (the object Largo's `get_spx_structure`/`get_market_context`/
+`get_platform_snapshot` return to the model) never carried `data_quality` at all — now populated
+via `summarizeSpxDesk()` — and the admin dashboard's issue surfacer only read `data_quality` inside
+a block gated on an unrelated `vix_term_partial` flag — now has its own always-evaluated, `info`-
+severity check. No real OI-change/IV-term-structure computation was added (disclosure fix only, per
+scope). Full suite + `tsc --noEmit` clean before merge (see PR for exact counts).
+
+**Specific thing to check next cycle:** ask Largo a question that would normally pull
+`get_spx_structure` (e.g. "what's SPX dealer positioning and OI changes look like right now") and
+confirm the tool result's `data_quality.missing` array includes `"oi_changes"` and
+`"iv_term_structure"` — this is new; before this PR the field didn't exist on that object at all.
+Separately, open the admin SPX dashboard's issues panel and confirm an `info`-severity "OI-change /
+IV-term-structure not computed" item is present (it should be present on EVERY load, not
+conditionally) — this is a disclosure-only change, so there is no behavior difference to spot in
+the board/UI itself beyond these two new visible facts.
+
 ## WATCH LIST — 2026-10-26 `thesis_invalidated` gate reason no longer claims a settled close (PR #6899, merged `3e0ccc805`)
 
 **What was shipped:** Corrected the swing `thesis_invalidated` gate reason (`entry-verdict.ts`) and

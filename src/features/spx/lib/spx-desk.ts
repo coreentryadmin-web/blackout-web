@@ -882,7 +882,7 @@ const TRIN = "I:TRIN";
 const ADD = "I:ADD";
 const LEADER_TICKERS = new Set(["AAPL", "NVDA", "MSFT", "GOOG", "TSLA", "META"]);
 
-function buildDeskDataQuality(
+export function buildDeskDataQuality(
   snaps: Awaited<ReturnType<typeof fetchIndexSnapshots>>,
   vixTerm: ReturnType<typeof computeVixTermStructure>
 ): DeskDataQuality {
@@ -890,6 +890,18 @@ function buildDeskDataQuality(
   if ((snaps[VIX]?.price ?? 0) <= 0) missing.push("VIX");
   if ((snaps[VIX9D]?.price ?? 0) <= 0) missing.push("VIX9D");
   if ((snaps[VIX3M]?.price ?? 0) <= 0) missing.push("VIX3M");
+  // `oi_changes`/`iv_term_structure` on `SpxDeskPayload` are PERMANENTLY, structurally absent —
+  // not conditionally stale like the VIX legs above. No function anywhere in this module (or
+  // `spx-desk-merge.ts`'s shell-default stubs) ever computes a real `OiChangeItem[]`/
+  // `IvTermPoint[]` for the SPX desk; `buildSpxDesk()`'s return object hardcodes them as bare
+  // `[]` literals, unlike every sibling array field, which is built from a named computed
+  // variable with a `?? []` fallback (e.g. `flow_by_expiry: enrichment?.flow_by_expiry ?? []`).
+  // Disclose that unconditionally, every call, so a consumer (admin dashboard, Ask Largo) can
+  // tell "never computed" apart from "genuinely zero today" — the exact absence-vs-silence
+  // failure `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s absence principle exists to prevent. Do
+  // NOT gate this behind `vix_term_partial` below — that flag is about the VIX curve only, and
+  // these two fields are missing regardless of VIX feed health.
+  missing.push("oi_changes", "iv_term_structure");
   const vix_term_partial =
     Boolean(vixTerm.partial) || (missing.includes("VIX9D") && !missing.includes("VIX3M"));
   return { vix_term_partial, missing };
