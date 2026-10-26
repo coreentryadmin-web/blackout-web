@@ -90,7 +90,14 @@ export function Modal({
       {open && (
         <div
           className={clsx(
-            "fixed inset-0 z-[100] flex",
+            // z-[106]: strictly above `.nav-bar` (z-100, globals.css) and the membership-activating
+            // banner (z-105) — NOT merely tied with nav. A tie currently resolves correctly only
+            // because this portal mounts to document.body AFTER the already-hydrated app root (nav
+            // included), which is fragile to rely on (DOM-order paint-priority, not an explicit
+            // ordering) and would silently flip if a future refactor ever portals/reorders the nav.
+            // Below the 110 "full takeover" tier (vector focus-mode, nighthawk deck sheet) and the
+            // 120 onboarding-overlay — a dialog shouldn't outrank either of those.
+            "fixed inset-0 z-[106] flex",
             isDrawer
               ? side === "right"
                 ? "justify-end"
