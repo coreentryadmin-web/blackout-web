@@ -758,6 +758,78 @@ test("commit latch: unknowable committed set (ledger read failed, no same-sessio
   assert.equal(board.upstream_ok, false, "the freshness badge must say degraded, not impersonate a live empty board");
 });
 
+// ── condor calibration-bucket width precision (Ask Largo standing audit mandate, 2026-10-26) ──
+// CORRECTED ROOT CAUSE: an earlier pass believed board/route.ts's own roundFloats(payload, 2,
+// keyDp) call was where put_width_pct/call_width_pct got flattened to a flat 2dp default,
+// collapsing CONDOR_WINRATE_BY_WIDTH's 0.006/0.008/0.010 (77%/92%/96% win-rate) buckets onto the
+// identical served 0.01. The real destructive rounding happens HERE, one layer up: this file's
+// `buildZeroDteBoardPayload()` has its OWN internal `roundFloats({...})` call that used to run
+// with NO dp/keyDp override at all, and its result is what gets cached into the shared Redis
+// board snapshot every reader (including board/route.ts) converges on — roundFloats() is
+// idempotent on an already-rounded value, so a correctly-configured override one layer
+// downstream, after this has already run, can never recover the lost precision. This test
+// exercises the REAL buildZeroDteBoardPayload() (not a route-level mock of its return value, the
+// way board/route.test.ts does) so it actually reproduces the bug at its true origin.
+test("setups[].condor put_width_pct/call_width_pct keep their calibration-bucket precision instead of collapsing to a flat 2dp (Ask Largo audit, 2026-10-26 — buildZeroDteBoardPayload's own roundFloats was unguarded)", async () => {
+  state.ledgerRead = { rows: [], committed_known: true };
+  // Two real CONDOR_WINRATE_BY_WIDTH buckets (iron-condor.ts) that the OLD flat-2dp default
+  // collapses onto the identical served 0.01: 0.006 (77% WR) and 0.008 (92% WR) — plus a third,
+  // 0.01 itself (96% WR), to prove a genuinely-0.01 bucket is still served correctly (not just
+  // that the bug happens to under-round everything).
+  state.setups = [
+    freshFind("SPY", {
+      condor: {
+        short_put: 668, long_put: 665, short_call: 672, long_call: 675,
+        put_width_pct: 0.006, call_width_pct: 0.006,
+        wing_pts: 3, est_win_rate: 77, est_win_rate_small_sample: false,
+        est_intraday_breach_pct: null, skew: "negative", gross_wing_risk_per_side: 300,
+      },
+    }),
+    freshFind("QQQ", {
+      condor: {
+        short_put: 598, long_put: 595, short_call: 602, long_call: 605,
+        put_width_pct: 0.008, call_width_pct: 0.008,
+        wing_pts: 3, est_win_rate: 92, est_win_rate_small_sample: false,
+        est_intraday_breach_pct: null, skew: "negative", gross_wing_risk_per_side: 300,
+      },
+    }),
+    freshFind("IWM", {
+      condor: {
+        short_put: 198, long_put: 195, short_call: 202, long_call: 205,
+        put_width_pct: 0.01, call_width_pct: 0.01,
+        wing_pts: 3, est_win_rate: 96, est_win_rate_small_sample: false,
+        est_intraday_breach_pct: null, skew: "negative", gross_wing_risk_per_side: 300,
+      },
+    }),
+  ];
+
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+
+  const spy = board.setups.find((s) => s.ticker === "SPY")!;
+  const qqq = board.setups.find((s) => s.ticker === "QQQ")!;
+  const iwm = board.setups.find((s) => s.ticker === "IWM")!;
+
+  assert.equal(spy.condor!.put_width_pct, 0.006, "77% WR bucket destroyed by the flat 2dp default");
+  assert.equal(spy.condor!.call_width_pct, 0.006);
+  assert.equal(qqq.condor!.put_width_pct, 0.008, "92% WR bucket destroyed by the flat 2dp default");
+  assert.equal(qqq.condor!.call_width_pct, 0.008);
+  assert.equal(iwm.condor!.put_width_pct, 0.01, "96% WR bucket still serves correctly");
+
+  // The actual regression: three DISTINCT calibration buckets must serve as three DISTINCT wire
+  // values — the bug collapsed ALL THREE onto the identical 0.01.
+  assert.notEqual(
+    spy.condor!.put_width_pct,
+    qqq.condor!.put_width_pct,
+    "77%/92% win-rate condor buckets collapsed to the same served width"
+  );
+  assert.notEqual(
+    qqq.condor!.put_width_pct,
+    iwm.condor!.put_width_pct,
+    "92%/96% win-rate condor buckets collapsed to the same served width"
+  );
+});
+
 // Terminal v2 — assert mapLedgerRow emits the additive terminal fields (the source of the
 // RTH-real render), resolved from the row's OWN frozen policy/live-marks store, not fabricated.
 test("mapLedgerRow emits the Terminal v2 additive fields (exit ladder, greeks, book, executable, origin)", () => {
