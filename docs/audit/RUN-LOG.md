@@ -4,6 +4,38 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-26 — [GREEN] Night Hawk Swings fresh-ticker Largo audit sweep, batches 5-13 (~80 committed positions), zero new findings
+
+Continuation of the standing Ask Largo × Night Hawk Swings ownership mandate's "keep digging"
+discipline, post-#6767 (PANW banger-origin fix). Pulled real `GET /api/market/swing/play-brief`
+envelopes for ~80 distinct committed/WATCH positions (one temp Clerk session, batched 8 at a time)
+spanning a wide mix of archetypes, sectors and liquidity profiles — PTON/HOG/ASO/TTD/KSS/CAG/
+GDDY/BBY/OWL/ARES/EXPE/PHM/EL/DHI/KKR/LUV/KMB/HPQ/LEN/BIIB/IBM/SOXS/INOD/TDOC plus the batches
+already logged in earlier sessions' FINDINGS/MARKET-OPEN-VALIDATION entries. For each: verified
+P&L/Exec P&L/Peak/Trough/Spread internal arithmetic, target/stop rail derivation (`entry*2` /
+`entry-based cushion`), manage-plan "+N% from here" math, gamma-flip/wall percentage-distance
+calcs, earnings-peer-lens contract-expiry-vs-print-date branching, and giveback/round-trip
+narrative rounding.
+
+**Methodology note worth keeping**: several P&L figures initially looked inconsistent with a
+naive recompute off the displayed 2-decimal Entry/Mark/bid (e.g. OWL: naive `(0.13-0.22)/0.22
+=-40.9%` vs displayed `-43.2%`). Built a small numeric solver
+(`/tmp/.../batch12-check.mjs`-style, not committed — a scratch tool) that searches the full
+sub-cent space consistent with each displayed 2-decimal value and checks whether ANY point
+reconciles P&L *and* Exec P&L simultaneously. Every single case this sweep flagged reconciled
+cleanly (hit counts ranging from a few hundred at the tightest — OWL's bid/ask midpoint landed
+exactly on `$0.125`, the knife-edge between rounding to `$0.12`/`$0.13` — up to hundreds of
+thousands for cases with more slack), confirming display-precision rounding rather than a
+computation bug in every instance. **Zero cases this sweep found an empty reconciliation set**
+(which would indicate a genuine arithmetic bug, as #6753/#6763/#6767 earlier this cycle were).
+This solver approach is faster and more reliable than hand arithmetic for this specific class of
+"does the displayed P&L match the displayed Entry/Mark" question and is worth reusing in future
+sweeps rather than re-deriving sub-cent bounds by hand each time.
+
+No PR opened — nothing to fix. Continuing the fresh-ticker rotation into the remaining unchecked
+committed positions (OWL.../LUV already covered above; LMND/LASR/BLSH/RARE/SEDG/RUN/TMDX/QXO/
+DKNG/TNA/AGNC/BMNR still pending) per the standing task list.
+
 ## 2026-10-26 (00:16 UTC / Sun 20:16 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Sunday evening, market closed. Resynced to `origin/main` (`d168f9189` → `f9694b69f`, other-lane
