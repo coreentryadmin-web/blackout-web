@@ -49,5 +49,5 @@ server's guess exactly, for hydration reasons that don't apply here). A `null` r
 absent — genuinely signed-out, or SSR) is treated as "proceed as normal," only an explicit `true`
 suppresses arming.
 
-| **Status** | Fixed in PR #TBD (branch `fix/exit-intent-signed-in-member`) |
+| **Status** | Fixed in PR #6813 (branch `fix/exit-intent-signed-in-member`) |
 |---|---|
