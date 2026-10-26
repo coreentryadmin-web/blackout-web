@@ -4,6 +4,484 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## Swing Legacy-carried WATCH reason string kept citing a stale delta after its backing quote was nulled
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Surface** | Night Hawk Swings — Legacy-promoted WATCH candidates (`legacy-confirm-promote.ts`) |
+| **Severity** | P3 — member-visible self-contradiction, not an engine/gate defect |
+
+### Root cause
+
+`refreshCarriedLegacyPlay` (`src/lib/swing/legacy-confirm-promote.ts`) recomputes a Legacy-carried
+WATCH play's calendar DTE each session. When no same-contract fresh quote is available from
+today's organic scan and the DTE label has drifted (`staleDte`), a 2026-10-20 fix (same file)
+correctly nulls `mid`/`bid`/`ask`/`delta`/`gamma`/`theta`/`vega`/`iv` on the `contract` object — the
+documented reasoning being "a stale quote too — drop it honestly... serving confidently-formatted
+greeks with zero staleness indication right next to a sibling field the system itself flagged as
+untrustworthy was the exact inconsistency this comment already argues against."
+
+That fix only touched the `contract` object. The same function also rewrites the play's
+human-readable `reason` string on `staleDte` — but only the DTE count
+(`play.reason.replace(/\b\d+DTE\b/g, ...)`). The `reason` string's own delta mention (baked in at
+generation time by `contract-ranker.ts`'s `Δ${c.delta.toFixed(2)}` template, e.g. `"C 145 exp
+2026-10-30 (7DTE, Δ0.62, OI 1014)"`) was never touched — so after the DTE label updated to reflect
+today's real calendar DTE, the delta figure right next to it kept asserting the **original, now
+nulled** value as current fact, in the same payload, right next to `contract.delta: null`.
+
+### Evidence
+
+Live repro via `GET /api/market/nighthawk/horizons?view=swings` (2026-10-26, outside RTH):
+`board.lanes.SWING.watch` carried three Legacy-promoted candidates with this exact contradiction:
+
+- **MSTR**: `contract.delta: null` (and `gamma`/`theta`/`vega`/`iv`/`mid`/`bid`/`ask` all `null`),
+  yet `reason: "C 145 exp 2026-10-30 (7DTE, Δ0.62, OI 1014) · Legacy morning confirm (2026-10-21)"`.
+- **PLTR**: same shape — `contract.delta: null`, `reason` still says `"Δ0.59"`.
+- **MDB**: same shape — `contract.delta: null`, `reason` still says `"Δ0.60"`.
+
+`openInterest` is correctly NOT part of the stale-null set (it isn't a live quote field the same
+way — it's a slower-moving, still-reasonably-current number), so the `OI` figure in `reason` is not
+part of this bug; only the `Δ` figure is.
+
+### Fix
+
+Extended the same `staleDte` rewrite to blank the stale delta out of `reason`, falling back to the
+same `"—"` convention `contract-ranker.ts` already uses when delta genuinely isn't known at
+generation time (`Δ${isNum(c.delta) ? c.delta.toFixed(2) : "—"}`) — consistent vocabulary, not a
+fabricated placeholder:
+
+```ts
+const reason =
+  play.reason && staleDte
+    ? play.reason
+        .replace(/\b\d+DTE\b/g, `${dte}DTE`)
+        .replace(/Δ-?\d+(?:\.\d+)?/g, "Δ—")
+    : play.reason;
+```
+
+### Blast radius
+
+Single call site — `refreshCarriedLegacyPlay` is the only function in the swing lane that rewrites
+a carried play's DTE label in its `reason` string (confirmed: `grep -rn "\\d+DTE\\\\b/g"
+src/lib/swing/*.ts` returns exactly one production call site, plus one unrelated strip-not-replace
+use in `play-brief-diff.ts` that drops the DTE suffix entirely rather than rewriting it).
+
+### Evidence of fix (RED→GREEN)
+
+New test `refreshCarriedLegacyPlay: a drifted DTE label also blanks the stale delta baked into the
+reason string, not just the contract field` (`legacy-confirm-promote.test.ts`), sibling fixture to
+the existing EWY staleDte test but with a `Δ`-bearing reason string matching the real live shape.
+Confirmed RED pre-fix (temporarily stashed the `legacy-confirm-promote.ts` change, kept the test —
+1 failure), GREEN post-fix (34/34 pass in the file's own suite).
+
+`npx tsc --noEmit` clean. Full `npm test` (Node 20) run in progress at time of writing.
+
+### What was deliberately left unchanged
+
+The `OI` figure in `reason` is untouched — openInterest is not part of the staleDte null-set on the
+`contract` object either, so leaving it in the text matches the contract object's own treatment.
+
+## 0DTE record.ts served historical pre-2026-10-06 rows' raw unrounded `tranche_fraction` float through `GET /api/market/zerodte/record` / `get_zerodte_record`, even after the 2026-10-06 write-time fix — FIXED
+
+> **kind:** `FINDING`
+
+**Status.** FIXED (this PR).
+
+### Area
+
+`src/lib/zerodte/record.ts` (`toPlay()`), `src/lib/zerodte/strategy-version.ts`
+(`buildResolvedExitPolicy()`). 0DTE / Night Hawk lane.
+
+### Background — the 2026-10-06 fix and its scope boundary
+
+On 2026-10-06 a live audit found `buildResolvedExitPolicy()`'s `trailing_rule` string embeds
+`TRIM_SCALE_RULES.tranche_fraction` (exactly 1/3) via raw template-literal interpolation, so the
+string served to members/Largo read `tranche_fraction=0.3333333333333333` — a 16-digit
+IEEE-754 float leaking straight past the shared `roundFloats()` response-boundary fix (which only
+walks genuine JSON *number* values and can't reach a float baked into a *string*). That fix
+rounds the **display** copy of `trailing_rule` to 2dp, applied strictly *after* `config_hash` is
+computed from the unrounded core object — `config_hash` fingerprints the calibration cohort, so a
+display-only rounding fix must never move it (the file's own comment on this is explicit: moving
+it would silently fork a calibration cohort).
+
+That fix only runs when `buildResolvedExitPolicy()` is called **fresh** — i.e. at commit time
+(`scan.ts`, which freezes the result into `entry_context.exit_policy_snapshot`, an immutable
+per-row blob `readFrozenExitPolicy` later reads back verbatim so graders replay a row under the
+exact numbers it committed with, never under current code). Any row **committed before
+2026-10-06** froze its OWN `exit_policy_snapshot.trailing_rule` string at commit time with the
+OLD, unrounded raw float baked in — that string is immutable and is never rebuilt.
+
+### Root cause (the gap this PR closes)
+
+`src/lib/zerodte/record.ts`'s `toPlay()` served `entry_context` **verbatim** —
+`entry_context: r.entry_context` — to `ZeroDteRecordPlay`, which is what
+`GET /api/market/zerodte/record` (and therefore the `get_zerodte_record` Largo tool) returns.
+Because this is a straight passthrough of the DB row's own frozen blob, every historical row
+committed before 2026-10-06 whose policy resolved to `trim_scale` still leaked
+`tranche_fraction=0.3333333333333333` through this read path, even though every FRESH commit
+after 2026-10-06 was already clean. Roughly 30 historical rows were affected.
+
+### Fix
+
+1. **`src/lib/zerodte/strategy-version.ts`** — extracted the existing inline rounding regex out
+   of `buildResolvedExitPolicy()` into a new exported, pure, idempotent function
+   `roundTrailingRuleDisplay(trailingRule: string): string`. `buildResolvedExitPolicy()` now calls
+   it instead of duplicating the regex inline — single source of truth, byte-identical behavior
+   (its own existing tests in `exit-policy-snapshot.test.ts` pass unchanged, unmodified).
+2. **`src/lib/zerodte/record.ts`** — added `withRoundedTrailingRuleDisplay()`, applied at the one
+   serialization point in `toPlay()` (`entry_context: withRoundedTrailingRuleDisplay(r.entry_context)`
+   in place of the old verbatim `r.entry_context`). It shallow-clones `entry_context` and its
+   `exit_policy_snapshot` ONLY when a string `trailing_rule` is present and rounding actually
+   changes it; otherwise it returns the exact same object reference, so the common case (fresh
+   rows, condor rows, pre-WS-02 rows with no snapshot at all) allocates nothing. `config_hash` is
+   never touched — not read, not recomputed, not present anywhere in the new function's write
+   path — preserving the exact invariant the 2026-10-06 fix's own comment establishes. The
+   original `r.entry_context` object (and its DB row) is never mutated in place.
+
+Nothing writes to the database, nothing recomputes `config_hash`, and nothing changes what a
+fresh commit stamps — this is a display-only fix on the read path for historical data, the
+2026-10-06 fix's own documented discipline applied to the one call site it didn't yet cover.
+
+### Evidence (RED → GREEN)
+
+New regression test in `src/lib/zerodte/record.test.ts`: a fixture row whose
+`entry_context.exit_policy_snapshot.trailing_rule` is byte-identical to a real pre-2026-10-06
+frozen string (`tranche_fraction=0.3333333333333333`), with an arbitrary realistic
+`config_hash`. Asserts (a) the served play's `trailing_rule` reads
+`tranche_fraction=0.33` (rounded), (b) `config_hash` is **byte-identical** to the fixture's
+original value — the critical invariant, checked explicitly — and (c) the original fixture
+object is unmutated.
+
+- **RED** (fix stashed via `git stash push -- src/lib/zerodte/record.ts
+  src/lib/zerodte/strategy-version.ts`, test kept): 41/42 pass, 1 fail — the new test, with the
+  exact unrounded string as `actual` vs the rounded string as `expected`.
+- **GREEN** (fix restored, `git stash pop`): 42/42 pass in `record.test.ts`; 57/57 pass running
+  `record.test.ts` + `exit-policy-snapshot.test.ts` together; `strategy-version.test.ts` (35
+  tests incl. `tier-export.test.ts`/`terminal-frozen-policy.test.ts`/`terminal-ladder.test.ts`)
+  unaffected, all green.
+- `npx tsc --noEmit` (full repo): clean, no errors.
+- Full suite (`npm test`, Node 20.20.2): see this PR's description for the exact pass/fail count.
+
+### Blast radius
+
+- **`src/lib/zerodte/board.ts`** (the live board path) calls `buildResolvedExitPolicy()` FRESH on
+  every read — already covered by the 2026-10-06 fix, untouched here, not affected by this gap.
+- **`src/lib/zerodte/tier-export.ts`**'s `buildTierExportRow()` has the **exact same
+  verbatim-passthrough shape** for `exit_policy_snapshot` — it calls `readFrozenExitPolicy(ctx)`
+  and returns the result (`frozen`) as-is, with no rounding applied, so the admin
+  `GET /api/admin/zerodte/tier-export` route (and anything reading it, e.g.
+  `tier-exit-mode-ab.mjs`) can serve the same raw historical float for the same ~30 rows.
+  **Deliberately NOT fixed here** — admin-only surface, out of scope for this PR per the task's
+  own instruction to avoid widening scope unprompted; noting it so it can be triaged/assigned
+  separately (same shape, same one-line fix: `exit_policy_snapshot: frozen ? { ...frozen,
+  trailing_rule: roundTrailingRuleDisplay(frozen.trailing_rule) } : null}`).
+- No other call site reads `entry_context.exit_policy_snapshot.trailing_rule` directly (confirmed
+  via `grep -rn "exit_policy_snapshot" src/lib/zerodte/*.ts`, excluding tests) besides
+  `exit-sync.ts`'s `readFrozenExitPolicy` (the shared reader, untouched — it must keep returning
+  the raw frozen numbers so the grader replays rows under the committed numbers, never a
+  display-rounded copy) and `terminal-ladder.ts` (reads numeric fields only, never
+  `trailing_rule`).
+
+## Vector expected-move cone hardcoded EDT's 16:00 ET close as 20:00 UTC — marked today's live 0DTE expiry "settled" an hour early under EST — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+### Area
+
+Vector desk — expected-move engine (`src/features/vector/lib/vector-expected-move-atm.ts`),
+consumed by the expected-move cone shown on `/vector` and by swing/Largo callers that read
+Vector's expected-move inputs.
+
+### Root cause
+
+`remainingYearsToExpiry` and `isExpirySettled` both computed the 4:00 PM ET market close via
+a hardcoded `Date.parse(\`${expiry}T20:00:00Z\`)`. 20:00 UTC is 4:00 PM ET only under EDT
+(UTC-4). Under EST (UTC-5, in effect from 2026-11-01), 4:00 PM ET is 21:00 UTC — so the old
+constant read as 3:00 PM ET, an hour before the real close.
+
+Found while auditing the codebase for the same bug class as the just-fixed
+`src/lib/discord-eod-recap.ts` DST bug (hardcoded `T13:30:00Z` for 9:30 AM ET, same root
+cause). Grepped for other hardcoded ET/UTC-offset time literals in non-owned code;
+`polygon-options-gex.ts`/`gex-depth.ts`'s own `yearsToExpiry` use a fixed `-04:00` offset for
+BOTH the expiry close and the "now" anchor, so the DST error cancels in the subtraction — not
+a bug. This file's `remainingYearsToExpiry`/`isExpirySettled` compare a hardcoded-offset expiry
+close against a REAL wall-clock `nowMs` (threaded from `Date.now()` in production), so the
+error does NOT cancel.
+
+### Impact
+
+During the last hour of the regular trading session under EST (3:00–4:00 PM ET), the engine
+would mark today's own still-live 0DTE expiry as "settled" and roll `nearestLiveExpiry` forward
+to the next weekly/monthly contract — quoting the wrong front expiry's IV and a materially
+different expected-move band during real, actionable trading hours, exactly the failure mode
+the file's own `nearestLiveExpiry` doc comment already describes for the *evening-after-close*
+case (the 2026-10-07 INTC bug, PR #5644) — this is the same bug shape triggered an hour early by
+the EDT→EST flip instead of by hours-after-close. Dormant all EDT season; would have started
+firing for real within days (DST ends 2026-11-01).
+
+### Fix
+
+Added `etUtcOffsetHours(dateYmd)` (reads America/New_York's actual UTC offset at noon UTC on
+that calendar date via `Intl.DateTimeFormat`'s `shortOffset`, mirroring the identical helper
+just added to `discord-eod-recap.ts` for the sibling bug) and a `marketCloseMs(expiry)` that
+derives the correct UTC hour for the 4:00 PM ET close from that offset, replacing the hardcoded
+`"T20:00:00Z"` in both `remainingYearsToExpiry` and `isExpirySettled`.
+
+### Blast radius
+
+Both functions are module-local (not exported) with two call sites, both in this same file
+(`deriveExpectedMoveInputs`, `deriveExpectedMoveInputsForEarningsDate`). Confirmed via `grep -rn`
+that `src/lib/providers/expiry-liveness.ts`'s own, unrelated `isExpirySettled` already derives
+the ET hour correctly via `Intl.DateTimeFormat` with the real timezone (no hardcoded offset) —
+not affected by this bug class, not touched. `vector-gex-reconstruct.ts`'s sibling
+`yearsToExpiry` (anchored at session OPEN, for GEX gamma stability) also uses a fixed
+`T13:30:00Z`/`T20:00:00Z` pair, but both ends are equally wrong together under EST and the
+function only ever takes their *difference*, so the error cancels — a genuine near-miss, not a
+live bug, left as-is per the DISCOVERY lane's own scope discipline (no observable effect to
+fix).
+
+### Evidence the fix works
+
+RED→GREEN via `git stash` on the lib-only change: new regression test
+(`src/features/vector/lib/vector-expected-move-atm.test.ts`, EST session date `2026-11-16`,
+`nowMs` = 3:30 PM ET under EST) fails pre-fix (rolls forward to the wrong expiry/IV) and passes
+post-fix (correctly quotes today's own still-live 0DTE). `npx tsc --noEmit` clean. Full suite
+run alongside this change.
+
+## Swing play-brief "What changed" diff: HELIX call/put flow narration was mutually exclusive — a real move on one side could silently drop an equally real move on the other — FIXED
+
+> **kind:** `FINDING`
+
+**Lane:** Night Hawk Swings (Ask Largo × Night Hawk Swings standing mandate)
+**Date found/fixed:** 2026-10-26
+
+### Root cause
+
+`src/lib/swing/play-brief-diff.ts`'s `diffBriefSnapshots()` narrated HELIX call/put flow premium
+shifts via an if/else-if/else-if chain:
+
+```ts
+if (callMoved && next.flowCallPremium! > prev.flowCallPremium! * 1.2) {
+  lines.push("HELIX tape: call flow building");
+} else if (putMoved && next.flowPutPremium! > (prev.flowPutPremium ?? 0) * 1.2) {
+  lines.push("HELIX tape: put flow building");
+} else if (callMoved || putMoved) {
+  lines.push("HELIX tape: flow shifted");
+}
+```
+
+Call and put flow premium are independent sentiment signals — a trader can see call flow collapse
+while put flow builds in the same refresh window (a genuine reversal), and vice versa. But because
+this was a single if/else-if chain, only the FIRST matching branch ever fired: whichever side the
+chain reached first got narrated, and an equally material move on the other side was silently
+dropped from the "What changed" pulse. This is the exact same "a real, material change goes
+unnarrated" shape already fixed multiple times in this same file for other fields (missed section
+removals, missed roll-watch clears, missed entry-gate-set shifts, missed diff overflow disclosure)
+— every one of those every OTHER field (gamma flip, call wall, put wall, trims fired, roll watch,
+gate blocks, section titles) is narrated via its own independent, unconditional `if` block; HELIX
+call/put flow was the one field pair coupled into a single-slot chain.
+
+### Blast radius
+
+Single function, single call site inside `diffBriefSnapshots()`. No other consumer reads the
+call/put-flow branch of this logic independently.
+
+### Fix
+
+Split the if/else-if/else-if chain into two independent `if` blocks — one for call flow, one for
+put flow — each pushing its own "building" or "shifted" line exactly as before, but now able to
+fire in the same pulse when both sides genuinely moved. Preserves byte-identical output for every
+existing single-side-moved case (verified: both pre-existing tests for call-only and put-only
+flow shifts still pass unchanged).
+
+### Evidence
+
+RED→GREEN: `src/lib/swing/play-brief-diff.test.ts` — new test constructs a refresh where call
+premium collapses ($500k→$100k, -80%) while put premium builds ($400k→$900k, +125%) in the same
+tick, and asserts BOTH a call-side and a put-side HELIX line appear. Failed pre-fix (only the
+put-side line appeared, call collapse silently dropped — confirmed via the actual assertion
+failure: `got: ["HELIX tape: put flow building"]`), passes post-fix (45/45 in the file). `tsc
+--noEmit` clean; full suite running before PR.
+
+| **Status** | FIXED |
+
+## SPX Slayer closed-market SCANNING card computed confluence off a cold-cache bootstrap shell — `assessed:true` with an empty `factors: []`, no real grade behind it — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+### Area
+
+SPX Slayer — closed-market (`!market_open`) `SCANNING` branch of `evaluateSpxPlayCore`
+(`src/features/spx/lib/spx-play-engine.ts`), the member-facing dashboard's "session closed"
+card.
+
+### Root cause
+
+The branch gated computing a closing confluence read on `desk.price > 0` alone:
+
+```ts
+const closedConfluence = desk.price > 0 ? computeSpxConfluence(desk) : null;
+...
+assessed: closedConfluence != null,
+```
+
+`computeSpxConfluence` (`spx-signals.ts`) only refuses with `null` on `!price || price<=0 ||
+!desk.available` — otherwise it builds `factors[]` from a sequence of independent
+`if (desk.X != null)` checks and always returns a non-null object, even with `factors: []` and
+`score: 0`, when every signal field is absent.
+
+A cold-cache **bootstrap shell** — built by `buildBootstrapFastLane()` /
+`deskShellFromPulse()` (`spx-desk-loader.ts` / `spx-desk.ts`) whenever the merged-desk cache
+misses right after the per-day `spx-merged:${date}` key rolls over at ET midnight — is exactly
+this shape: a real `price` from the lightweight pulse layer, `available: true` (`mergePulseIntoDesk`
+reassigns `available: pulse.available || base.available`, fixed earlier under task #145/PR
+#6711), but **no GEX/flow layer ever merged in**, and `source` left at its documented `"none"`
+degraded-shell marker (see the comment block in `spx-desk-merge.ts`'s `mergePulseIntoDesk`/
+`mergeDeskLayers` — `mergePulseIntoDesk` never reassigns `source`). `computeSpxConfluence`'s
+`!desk.available` guard doesn't catch this shape at all, so it returned an empty-but-non-null
+confluence object instead of `null`.
+
+### Impact
+
+`assessed: closedConfluence != null` then read `true` off that empty object, and the three `??`
+fallbacks (`grade`, `score`, `rawScore`) rendered their *placeholder* defaults (`"D"`, `0`, `0`)
+as if they were a real closing grade. The dashboard's own existing code comment already warns
+these three fields are placeholders "off-hours the desk may have no confluence to close out
+on" — but `assessed` was the one field claiming otherwise, telling the member the session had
+actually been graded when the desk never built a real read on it at all.
+
+### Fix
+
+Gate `closedConfluence` on `desk.source !== "none"` as well as `desk.price > 0`, so the
+bootstrap/degraded shell correctly falls through to `assessed: false` (and the `??` fallbacks
+render as the acknowledged placeholders they already are) instead of fabricating an empty-factor
+grade.
+
+### Blast radius
+
+Single call site — this is the only place in `spx-play-engine.ts` that calls
+`computeSpxConfluence` directly off a desk without first checking it came from a real merged
+build. The live-open-market `evaluateOpenPlay` path (`market_open: true`) is unaffected: a
+`market_open: true` desk is never served by `buildBootstrapFastLane` once a real merge
+completes, and that whole branch is gated on `!desk.market_open && !premarket` before this code
+even runs.
+
+### Evidence the fix works
+
+Found via the `five-engine-largo-cycle-24` Workflow's correctness sweep (6-agent Check phase +
+2-vote adversarial Verify phase) against the live source, then traced end-to-end by hand through
+the real `buildBootstrapFastLane`/`deskShellFromPulse`/`mergePulseIntoDesk`/`mergeDeskLayers`/
+`computeSpxConfluence` implementations before writing the fix, to confirm the exact mechanism
+rather than trusting the workflow's prose summary.
+
+RED→GREEN, new regression test in `src/features/spx/lib/spx-play-engine.test.ts`
+("`evaluateOpenPlay closed-market SCANNING, bootstrap-shell desk (source:none): assessed is
+false, not a confluence computed off an empty shell`"): constructs a `desk()` fixture with
+`market_open: false, source: "none"`, a real price, no open play seeded, and every GEX/flow
+signal field left null — confirmed it fails pre-fix (`assessed === true`, the exact reported
+bug) and passes post-fix (`assessed === false`, `factors: []`). Full suite + `npx tsc --noEmit`
+run clean on Node 20 alongside this change.
+
+## Meridian earnings "calendar feed did not respond" banner fires falsely on a guidance-only outage, claiming print history/estimates are unavailable when they are live — FIXED
+
+> **kind:** `FINDING`
+
+**Status.** FIXED (this PR).
+
+### Area
+
+`src/lib/meridian/meridian-earnings-enrich.ts` (`loadMeridianEarningsEnrichment`),
+`src/features/meridian/components/MeridianEarningsTabs.tsx` (the banner that reads the field).
+Non-owned lane.
+
+### Found by
+
+DISCOVERY-lane live-UI sweep (`proxy-browser.cjs` against prod `/meridian`, desktop viewport),
+2026-10-26.
+
+### Symptom (live repro, NE earnings, 2026-10-26 ~12:59 AM ET)
+
+The Summary tab rendered a banner: *"Earnings calendar feed did not respond — estimates and
+print history are unavailable for this refresh. Everything else on this page is live."*
+Simultaneously, the SAME page rendered real print-history-derived content directly below it:
+`3/7 of this name's last prints reacted up` (call side), `4/7 of this name's last prints reacted
+down` (put side), both with `n=7` — not zero, not a placeholder. The "PRINT HISTORY" evidence
+pillar was lit (filled) as one of the three pillars behind "Evidence leans bearish." Print
+history was plainly present and rendering correctly while the banner claimed it was unavailable.
+
+### Root cause
+
+`calendar_error` (type doc: *"Non-null when the earnings-calendar fetch failed — empty panels
+must say WHY"*) was built from THREE independent fetches' errors, not one:
+
+```ts
+calendar_error:
+  history.history_error ??
+  (benzingaRes as { error?: string | null }).error ??
+  guidanceRes.error ??
+  null,
+```
+
+`history.history_error` (print-history fetch) and `benzingaRes.error` (calendar/estimates fetch)
+are exactly what the banner's wording is about — both legitimate. But `guidanceRes.error` (the
+corporate-guidance fetch) was ALSO folded in, even though guidance has nothing to do with the
+calendar, estimates, or print history. The original intent (per the code's own comment) was
+good: an outage must be distinguishable from "this company filed no guidance" — but the
+mechanism used made a guidance-only failure set the SAME flag that drives a banner specifically
+claiming print history and estimates are unavailable, which is false whenever only guidance
+failed and the other two fetches succeeded (exactly the NE repro: `print_history` was populated,
+`calendar_error` was still non-null from `guidanceRes.error` alone).
+
+`print_history: history.print_history` is assigned unconditionally in the same return object,
+independent of which of the three sources produced `calendar_error` — confirming the Summary
+tab's "N/7 reacted" stats (`src/lib/meridian/meridian-summary-core.ts`'s `reactionStats`, fed
+`prints: enrichment?.print_history ?? null`) can be fully populated at the exact moment the
+banner claims print history is unavailable.
+
+### Fix
+
+Added `deriveMeridianEarningsErrors(historyError, calendarError, guidanceError)` to
+`src/lib/meridian/meridian-benzinga-earnings-core.ts` — a pure helper returning two separate
+fields: `calendar_error` narrowed to only `history.history_error ?? calendarError` (what the
+banner is actually about), and a new `guidance_error` carrying the guidance fetch's own failure,
+preserving the original absence-vs-outage goal for a guidance-specific error without conflating
+it into an unrelated claim. Wired into `loadMeridianEarningsEnrichment` via a spread. Added
+`guidance_error?: string | null` to `MeridianEarningsEnrichment`
+(`src/features/meridian/lib/meridian-types.ts`) with a doc comment cross-referencing
+`calendar_error`'s own updated doc comment.
+
+No UI currently renders `guidance_entitled`/`guidance_on_file`/the new `guidance_error` directly
+(confirmed via `grep -rln "guidance_entitled\|guidance_on_file" src/features/meridian/` — only
+the type file references them) — out of scope here; this fix only stops the existing banner from
+making a false claim, it does not add a new guidance-outage UI surface.
+
+### Evidence
+
+RED→GREEN: 5 new unit tests for `deriveMeridianEarningsErrors` in
+`meridian-benzinga-earnings-core.test.ts`, including the exact regression case (a guidance-only
+failure must not set `calendar_error`). Confirmed RED via `git stash` on the lib-only change
+(5/5 new tests fail, `is not a function`), GREEN restored (32/32 pass in that file).
+`npx tsc --noEmit` clean. Full suite: 16984 pass / 0 fail / 3 pre-existing skips.
+
+### Blast radius
+
+`calendar_error` has exactly one other producer in the repo
+(`src/lib/largo/run-tool.ts:898`), a structurally different, independently-built object for a
+Largo tool response — **Largo-owned, not touched**. The only consumer of the Meridian
+`calendar_error` field is the one banner in `MeridianEarningsTabs.tsx` (confirmed via
+`grep -rn "calendar_error" src/features/meridian/ src/lib/meridian/`). `print_history`,
+`street_estimates`, `guidance_entitled`, `guidance_on_file`, `corporate_guidance` and every other
+field in the enrichment object are unchanged — only the two error-flag fields were touched.
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
