@@ -64,3 +64,28 @@ test("readSessionAdminFlag/writeSessionAdminFlag: round-trip through a working s
     Object.defineProperty(globalThis, "sessionStorage", { value: undefined, configurable: true });
   }
 });
+
+function withGetterThrowingSessionStorage<T>(fn: () => T): T {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    get() {
+      throw new DOMException("blocked", "SecurityError");
+    },
+  });
+  try {
+    return fn();
+  } finally {
+    if (original) Object.defineProperty(globalThis, "sessionStorage", original);
+    else delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+  }
+}
+
+test("readSessionAdminFlag: a getter-level sessionStorage throw degrades to null, not an uncaught throw", () => {
+  const result = withGetterThrowingSessionStorage(() => readSessionAdminFlag("user_789"));
+  assert.equal(result, null);
+});
+
+test("writeSessionAdminFlag: a getter-level sessionStorage throw is swallowed, not an uncaught throw", () => {
+  assert.doesNotThrow(() => withGetterThrowingSessionStorage(() => writeSessionAdminFlag("user_789", true)));
+});

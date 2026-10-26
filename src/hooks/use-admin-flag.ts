@@ -14,10 +14,13 @@ const fetchAdminMe = async (url: string): Promise<AdminMeResponse> => {
 
 /** Reads the cached admin flag. SSR/private-mode/blocked-storage safe — storage access can throw
  * a SecurityError (sandboxed embed, "Block All Cookies") and every other storage read in this repo
- * degrades to a safe default on that rather than crashing; this one didn't, so it's brought in line. */
+ * degrades to a safe default on that rather than crashing; this one didn't, so it's brought in line.
+ * The `typeof sessionStorage` check itself lives inside the try — some sandboxed contexts throw on
+ * merely accessing the global getter, not just on calling a method on it. */
 export function readSessionAdminFlag(userId: string | null | undefined): boolean | null {
-  if (!userId || typeof sessionStorage === "undefined") return null;
+  if (!userId) return null;
   try {
+    if (typeof sessionStorage === "undefined") return null;
     const cached = sessionStorage.getItem(`__admin_flag:${userId}`);
     if (cached === null) return null;
     return cached === "1";
@@ -28,8 +31,8 @@ export function readSessionAdminFlag(userId: string | null | undefined): boolean
 
 /** Persists the cached admin flag. Silent no-op on SSR / blocked storage — best effort only. */
 export function writeSessionAdminFlag(userId: string, admin: boolean): void {
-  if (typeof sessionStorage === "undefined") return;
   try {
+    if (typeof sessionStorage === "undefined") return;
     sessionStorage.setItem(`__admin_flag:${userId}`, admin ? "1" : "0");
   } catch {
     /* quota / private-mode / blocked storage — best effort */
