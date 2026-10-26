@@ -22,3 +22,21 @@ test("page and limit fall back to their defaults on malformed (non-numeric) inpu
     "limit must be guarded with a second `|| 50` so a non-numeric param can't survive as NaN"
   );
 });
+
+// Regression (2026-10-26, DISCOVERY-lane round 64): a FRACTIONAL page/limit (e.g. `page=1.5`,
+// `limit=50.7`) is finite, so it survives the NaN guard above untouched and reaches
+// `listClerkUserIdsByDbFilters`'s raw `LIMIT $N OFFSET $N` as a non-integer bound param —
+// Postgres' bigint input parser rejects any decimal point, throwing uncaught instead of
+// rounding to the nearest page/limit the same way the NaN case degrades.
+test("page and limit are truncated to integers before they can reach the raw SQL LIMIT/OFFSET bind", () => {
+  assert.match(
+    src,
+    /Math\.trunc\(Number\(url\.searchParams\.get\("page"\) \|\| "1"\) \|\| 1\)/,
+    "page must be truncated to an integer so a fractional param can't reach the DB as a decimal"
+  );
+  assert.match(
+    src,
+    /Math\.trunc\(Number\(url\.searchParams\.get\("limit"\) \|\| "50"\) \|\| 50\)/,
+    "limit must be truncated to an integer so a fractional param can't reach the DB as a decimal"
+  );
+});
