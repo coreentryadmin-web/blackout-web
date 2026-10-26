@@ -368,8 +368,13 @@ export type MeridianEarningsEnrichment = {
   } | null;
   print_history: MeridianEarningsPrint[];
   print_history_summary: string | null;
-  /** Non-null when the earnings-calendar fetch failed — empty panels must say WHY. */
+  /** Non-null when the earnings-calendar/print-history fetch failed — empty panels must say WHY.
+   *  Deliberately does NOT cover a corporate-guidance-only failure; see `guidance_error`. */
   calendar_error?: string | null;
+  /** Non-null when the corporate-guidance fetch itself failed — distinguishes "guidance outage"
+   *  from "this company filed no guidance" (`guidance_on_file: false`) without claiming the
+   *  earnings calendar, estimates, or print history (covered by `calendar_error`) are affected. */
+  guidance_error?: string | null;
   beat_rates: {
     eps_beat_rate: number | null;
     revenue_beat_rate: number | null;
