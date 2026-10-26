@@ -271,6 +271,72 @@ test("toPlay: a real dossier conviction (FLOW origin) is NEVER overridden by the
   assert.equal(rec.plays[0]!.conviction, "B");
 });
 
+// ── Fix (2026-10-26): historical pre-2026-10-06 rows still leaked the raw unrounded
+// tranche_fraction float through the READ path (follow-up to the 2026-10-06 write-time fix
+// in strategy-version.ts's buildResolvedExitPolicy) ───────────────────────────────────────
+test("toPlay: a historical row's frozen exit_policy_snapshot.trailing_rule (pre-2026-10-06, raw unrounded float) is rounded for display WITHOUT touching config_hash", () => {
+  // This is byte-for-byte what a row committed BEFORE 2026-10-06 froze into
+  // entry_context.exit_policy_snapshot at commit time (scan.ts) — immutable, never rebuilt —
+  // carrying the exact raw 16-digit IEEE-754 float the 2026-10-06 fix found
+  // (tranche_fraction=0.3333333333333333). config_hash here is an arbitrary but REALISTIC
+  // frozen fingerprint; the test's whole point is that this exact string must survive
+  // byte-identical through the read path no matter what display fix runs alongside it.
+  const staleSnapshot = {
+    policy: "trim_scale",
+    version: "ws02-v1",
+    hard_stop_pct: -50,
+    target_pct: 100,
+    trim_levels: [
+      { trigger_pct: 25, fraction: 0.3333333333333333 },
+      { trigger_pct: 50, fraction: 0.3333333333333333 },
+    ],
+    runner_fraction: 0.3333333333333333,
+    trailing_rule:
+      "trim_scale:no_trailing_stop;active_regime=neutral;tranche_fraction=0.3333333333333333;" +
+      "tranches trend=[25,50] neutral=[25,50] range=[25,50]",
+    time_stop_et: "15:50",
+    collision_rule: "stop_before_target_same_bar",
+    config_hash: "exitcfg-deadbeef12",
+  };
+  const entryContext = {
+    score: 70,
+    exit_policy_at_commit: "trim_scale",
+    exit_policy_snapshot: staleSnapshot,
+  };
+
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "STALEHIST", entry_context: entryContext })],
+    WINDOW
+  );
+  const play = rec.plays[0]!;
+  const servedSnapshot = (play.entry_context as Record<string, unknown>)
+    .exit_policy_snapshot as Record<string, unknown>;
+
+  assert.equal(
+    servedSnapshot.trailing_rule,
+    "trim_scale:no_trailing_stop;active_regime=neutral;tranche_fraction=0.33;" +
+      "tranches trend=[25,50] neutral=[25,50] range=[25,50]",
+    "the served display copy must round tranche_fraction to 2dp, same as a fresh commit"
+  );
+  // THE critical invariant: config_hash fingerprints the calibration cohort — a display-only
+  // read-time fix must never move it, or a historical row would silently fork into a
+  // different cohort than the one it actually graded under.
+  assert.equal(
+    servedSnapshot.config_hash,
+    staleSnapshot.config_hash,
+    "config_hash must be byte-identical to the frozen fixture value — this fix is display-only"
+  );
+  // And the original fixture object itself must be untouched (no in-place mutation of the
+  // row's own entry_context — a sibling consumer of the SAME row object must never see this
+  // read path's rounding bleed into its own, unrelated read).
+  assert.equal(
+    staleSnapshot.trailing_rule,
+    "trim_scale:no_trailing_stop;active_regime=neutral;tranche_fraction=0.3333333333333333;" +
+      "tranches trend=[25,50] neutral=[25,50] range=[25,50]",
+    "the original fixture's trailing_rule must be unmutated"
+  );
+});
+
 test("toPlay: a row with genuinely no pinned evidence stays honestly null (never fabricated)", () => {
   const rec = buildZeroDteRecord(
     [row({ ticker: "PRECTX", conviction: null, entry_context: null })],

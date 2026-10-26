@@ -14,6 +14,7 @@ import type { ZeroDteSetupLogRow } from "@/lib/db";
 import { buildCondorRecord, isCondorRow, type CondorRecord } from "./condor-record";
 import { categorizeExitReason } from "./exit-engine";
 import { etMinutesOf, PLAN_RULES, PLAN_RULES_TIME_STOP_ET_LABEL } from "./plan";
+import { roundTrailingRuleDisplay } from "./strategy-version";
 import { tierFromEntryContext, type ZeroDteTier } from "./tiers";
 
 /** Methodology label served with every payload built here — the honest-record rule.
@@ -654,6 +655,44 @@ function rollup(graded: GradedRow[]): ZeroDteRecordRollup {
   };
 }
 
+/**
+ * Read-time-only display fix (2026-10-26, follow-up to the 2026-10-06 fix in
+ * strategy-version.ts's buildResolvedExitPolicy — see its own BUG comment for the full
+ * story). Any row COMMITTED BEFORE 2026-10-06 froze the OLD, unrounded
+ * `tranche_fraction=0.3333333333333333` string into ITS OWN immutable
+ * entry_context.exit_policy_snapshot.trailing_rule at commit time (scan.ts freezes this
+ * blob per-row — see scan.ts's "readFrozenExitPolicy reads it... graders replay this row
+ * under the numbers it COMMITTED with" comment; it is never rebuilt after commit). toPlay()
+ * used to serve `entry_context` verbatim, so those ~30 historical rows kept leaking the raw
+ * 16-digit float through `/api/market/zerodte/record` (and therefore `get_zerodte_record`)
+ * even after the write-time fix made every FRESH commit clean.
+ *
+ * Rounds ONLY the display copy of `trailing_rule`, on a shallow clone — `config_hash` (and
+ * every other field, on `entry_context` or `exit_policy_snapshot`) is left byte-identical.
+ * Mutating config_hash here would silently fork a calibration cohort on a row that has
+ * already graded, exactly what the write-time fix's own comment warns against — this
+ * function touches strictly fewer fields than that one line of risk. Returns the SAME `ctx`
+ * reference when there is nothing to round (no snapshot, no string, or already-rounded), so
+ * the common case (fresh rows, condor rows, pre-WS-02 rows) allocates nothing and is
+ * provably untouched.
+ */
+function withRoundedTrailingRuleDisplay(
+  ctx: Record<string, unknown> | null
+): Record<string, unknown> | null {
+  if (!ctx) return ctx;
+  const snap = ctx.exit_policy_snapshot;
+  if (!snap || typeof snap !== "object") return ctx;
+  const snapObj = snap as Record<string, unknown>;
+  const trailingRule = snapObj.trailing_rule;
+  if (typeof trailingRule !== "string") return ctx;
+  const rounded = roundTrailingRuleDisplay(trailingRule);
+  if (rounded === trailingRule) return ctx;
+  return {
+    ...ctx,
+    exit_policy_snapshot: { ...snapObj, trailing_rule: rounded },
+  };
+}
+
 function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
   const flaggedMs = Date.parse(r.first_flagged_at);
   const m = Number.isFinite(flaggedMs) ? etMinutesOf(flaggedMs) : null;
@@ -712,7 +751,7 @@ function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
     max_favorable_pct: extractMaxFavorablePct(r.entry_context) != null ? round2(extractMaxFavorablePct(r.entry_context) as number) : null,
     direction_hit: r.direction_hit,
     move_pct: r.move_pct != null ? round2(r.move_pct) : null,
-    entry_context: r.entry_context,
+    entry_context: withRoundedTrailingRuleDisplay(r.entry_context),
     tier: tierAssignment?.tier ?? null,
   };
 }
