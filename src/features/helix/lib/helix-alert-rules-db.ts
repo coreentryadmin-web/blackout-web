@@ -19,6 +19,7 @@ import { dbQuery } from "@/lib/db";
 export {
   rowToHelixAlertRule,
   sanitizeIncomingHelixAlertRule,
+  isHelixTickerAllowed,
   matchesHelixAlertRule,
   type HelixAlertRule,
   type HelixAlertRuleRow,
