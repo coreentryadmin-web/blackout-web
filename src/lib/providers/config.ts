@@ -18,6 +18,47 @@ export function deskCacheTtlMs(): number {
   return Math.round(sec * 1000);
 }
 
+/**
+ * Staleness ceiling (seconds) for the SPX desk/merged-desk cache keys' NON-BLOCKING peek paths
+ * (`peekSpxDesk`/`peekMergedSpxDesk`'s default usage, spx-desk-loader.ts).
+ *
+ * BUG (found live 2026-10-26, Ask Largo/5-engine standing mandate, cross-replica RTH repro): these
+ * two peek functions had no per-key override, so they fell back to server-cache.ts's generic
+ * `MAX_STALE_AGE_MS` (10 minutes) — a backstop against UNBOUNDED staleness, not a real freshness
+ * contract for this specific pair of keys. Once Redis's own short TTL for `spx-desk:<date>` /
+ * `spx-merged:<date>` (`deskCacheTtlMs()`, 10s default) lapsed fleet-wide with no fresher write,
+ * each ECS replica was free to keep silently serving its OWN up-to-10-minute-old local copy — the
+ * exact snapshot that feeds `playGexStaleMaxSec()`'s "Desk data stale" play-gate (90s default,
+ * spx-play-gates.ts) and the member-facing desk `as_of`. Two replicas disagreeing on "is this
+ * desk snapshot usable" (one serving a 30s-old copy, a sibling serving a 200s+-old one — both
+ * "fresh enough" under the generic 10-minute ceiling) is precisely the non-monotonic
+ * as_of/score/gate-flicker this was observed producing live during RTH.
+ *
+ * Fix mirrors the IDENTICAL pattern already shipped for the sibling `spx-play-read` cache key
+ * (`playMemberPeekMaxAgeSec()`, 20s against a 5s TTL — a 4x ratio): a per-key override, well under
+ * the real downstream freshness contract (`playGexStaleMaxSec()`, 90s), so a replica that has
+ * fallen materially behind its peers self-invalidates (peek returns null) and the caller falls
+ * through to a REAL, already maxBlockMs-bounded load (`loadSpxDesk()`/`loadMergedSpxDesk()`)
+ * instead of silently disagreeing with a fresher peer for minutes at a time. Default 40s (4x the
+ * desk/merged 10s TTL) — comfortably below the 90s gate threshold, so a lagging replica corrects
+ * itself well before the gate would ever read two replicas' answers as contradictory.
+ *
+ * Deliberately NOT applied to `loadSpxDesk()`/`loadMergedSpxDesk()`'s own SWR `maxStaleAgeMs` (the
+ * blocking-loader path, not the peek path) — `withServerCache`'s SWR branch falls through to an
+ * UNBOUNDED `refreshCache()` call (no `maxBlockMs` race) once `staleAge > maxStaleAgeMs` on a
+ * not-yet-degraded key, so shrinking that ceiling for an actively-SWR'd key would make that
+ * unbounded-block branch fire far more often — a real regression risk needing its own fix to
+ * `server-cache.ts`'s SWR branch, out of scope for this change. The peek path has no such hazard:
+ * `peekServerCache` never invokes a loader at all, so returning null just hands the caller to its
+ * already-safe fallback.
+ */
+export function deskPeekMaxAgeSec(): number {
+  const raw = process.env.SPX_DESK_PEEK_MAX_AGE_SEC?.trim();
+  const sec = raw ? Number(raw) : 40;
+  if (!Number.isFinite(sec) || sec <= 0) return 40;
+  return Math.round(sec);
+}
+
 /** Hard cap on UW flow-alerts fetch during cold desk build (sticky tape covers gaps). */
 export function deskFlowRaceMs(): number {
   const raw = process.env.SPX_DESK_FLOW_RACE_MS?.trim();
