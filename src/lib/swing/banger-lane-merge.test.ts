@@ -321,7 +321,15 @@ test("mergeBangerPositionsIntoSwingPlays replaces pre-entry row on same ticker",
   assert.equal(merged[0]!.signalKinds?.[0], "BANGER");
 });
 
-test("mergeBangerPositionsIntoSwingPlays keeps canonical swing OPEN when banger also open on ticker", () => {
+// BUG FIX (Ask Largo standing mandate, live repro 2026-10-26, PANW native id=67 + banger id=2103 —
+// see mergeBangerPositionsIntoSwingPlays' own header comment for the full account). This test used to
+// assert `merged.length === 1` — i.e. that the banger row was SILENTLY DROPPED once a native position
+// existed on the same ticker. That was the bug, not the spec: the native row and the banger row here
+// are two genuinely separate, independently-capitalized positions (confirmed live on PANW: different
+// strike, different entry premium, committed ~3.5h apart), and both must survive the merge. The native
+// row stays canonical (never evicted, same invariant as before) and the banger row is now ALSO present
+// as its own row rather than discarded.
+test("mergeBangerPositionsIntoSwingPlays keeps BOTH the native OPEN and the banger OPEN as separate positions on the same ticker", () => {
   const managing: HorizonPlay = {
     ticker: "ANET",
     direction: "LONG",
@@ -330,6 +338,7 @@ test("mergeBangerPositionsIntoSwingPlays keeps canonical swing OPEN when banger 
     status: "COMMIT",
     scoreFloor: 60,
     reason: "swing ledger open",
+    positionId: 67,
     liveStatus: "OPEN",
     serving: "MANAGING",
     contract: { strike: 145, expiry: "2026-09-12", right: "C", dte: 8, mid: 5.1 },
@@ -339,10 +348,60 @@ test("mergeBangerPositionsIntoSwingPlays keeps canonical swing OPEN when banger 
     [bangerRow()],
     new Date("2026-09-04T16:00:00-04:00"),
   );
-  assert.equal(merged.length, 1);
-  assert.equal(merged[0]!.liveStatus, "OPEN");
-  assert.equal(merged[0]!.reason, "swing ledger open");
-  assert.notEqual(merged[0]!.signalKinds?.[0], "BANGER");
+  assert.equal(merged.length, 2);
+  const native = merged.find((p) => p.positionId === 67);
+  const banger = merged.find((p) => p.signalKinds?.[0] === "BANGER");
+  assert.ok(native, "the native ledger OPEN position must survive, never evicted");
+  assert.equal(native!.liveStatus, "OPEN");
+  assert.equal(native!.reason, "swing ledger open");
+  assert.ok(banger, "the separate banger OPEN position must ALSO survive — it is real capital too");
+  assert.notEqual(banger!.positionId, native!.positionId);
+});
+
+// Same scenario as the live PANW repro itself: two option contracts on the SAME ticker (different
+// strike/entry premium/positionId — one via the native swing ledger, one via Engine B), both OPEN at
+// once. Locks in the exact shape that was invisible on `GET /api/market/nighthawk/horizons?view=swings`
+// pre-fix (PANW id=2103 absent from `committed[]`/`watch[]` entirely despite being one of
+// `GET /api/market/swing/record`'s real `summary.bangerOpens` count).
+test("mergeBangerPositionsIntoSwingPlays — two independently-entered real option positions on the same ticker (PANW shape) both survive", () => {
+  const nativePanw: HorizonPlay = {
+    ticker: "PANW",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 40.9,
+    status: "COMMIT",
+    scoreFloor: 60,
+    reason: "live hold — BREAKOUT thesis",
+    positionId: 67,
+    liveStatus: "HOLD",
+    serving: "MANAGING",
+    entryPremium: 17.7,
+    contract: { strike: 370, expiry: "2026-10-30", right: "C", dte: 4, mid: 19.45 },
+  };
+  const bangerPanw = bangerRow({
+    id: 2103,
+    ticker: "PANW",
+    contract_strike: 400,
+    contract_expiry: "2026-10-30",
+    entry_premium: 5.9,
+    last_mark: null,
+    last_mark_at: null,
+    peak_premium: 5.9,
+    trough_premium: null,
+  });
+  const merged = mergeBangerPositionsIntoSwingPlays(
+    [nativePanw],
+    [bangerPanw],
+    new Date("2026-10-26T09:00:00-04:00"),
+  );
+  assert.equal(merged.length, 2, "both the 370C native position and the 400C banger position must be visible");
+  const native = merged.find((p) => p.positionId === 67);
+  const banger = merged.find((p) => p.positionId === 2103);
+  assert.ok(native, "native PANW:67 must still be present");
+  assert.ok(banger, "banger PANW:2103 must no longer be silently dropped");
+  assert.equal(native!.entryPremium, 17.7);
+  assert.equal(banger!.entryPremium, 5.9);
+  assert.equal(banger!.contract.strike, 400);
 });
 
 test("mergeBangerPositionsIntoSwingPlays replaces discovery COMMIT (no ledger) with open banger", () => {

@@ -1,3 +1,29 @@
+## WATCH LIST — 2026-10-26 Swing banger-same-ticker position silently hidden from the board (PR pending at time of writing — see commit for the merged SHA)
+
+**What was shipped:** `mergeBangerPositionsIntoSwingPlays` (`src/lib/swing/banger-lane-merge.ts`)
+used to drop EVERY Engine B (Banger) open position from `GET
+/api/market/nighthawk/horizons?view=swings`'s SWING lane whenever the native swing engine already
+managed a (possibly completely different) position on the same ticker — not just protect the
+native row from eviction, but silently discard the banger row too, even when it was a genuinely
+separate, independently-capitalized position. Live-confirmed on PANW: native COMMIT row `id=67`
+(370-strike call) + banger OPEN row `id=2103` (400-strike call, confirmed via `GET
+/api/market/banger/board`) — `id=2103` never appeared in `committed[]`/`watch[]` anywhere, while
+`GET /api/market/swing/record`'s `summary.bangerOpens` correctly counted it as real. Fixed: a
+banger OPEN row is now always added to the merged lane; eviction only ever removes a PRE-ENTRY
+native row (WATCH/no-ledger-capital) on the same ticker, never an already-live one, exactly
+matching the invariant the function's own doc comment already stated for the native side.
+
+**Specific thing to check at next RTH open:** find (or wait for) a ticker that carries BOTH a
+native `swing_positions` OPEN/HOLD/TRIM position and a separate `banger_positions` OPEN/PARTIAL
+position at the same time — cross-check `GET /api/market/banger/board`'s `open[]` array against
+`GET /api/market/nighthawk/horizons?view=swings`'s `board.lanes.SWING.committed[]`
+`positionId`s — and confirm BOTH positionIds now appear as separate rows on the board (not just
+the native one). Separately, confirm `board.lanes.SWING.committedCount` plus `watchCount`
+reconciles with `GET /api/market/swing/record`'s `summary.opens` (native + banger) without an
+unexplained gap, the way 92-vs-93 did pre-fix. Also confirm the ordinary single-position-per-ticker
+case (the overwhelming majority of the book) is completely unchanged — no duplicate rows for a
+ticker that only ever has one real open position.
+
 ## WATCH LIST — 2026-10-26 SPX Slayer cold-replica pulse `market_status: "open"` literal regardless of `market_open` — fixed, not yet live-reproduced on fresh (post-deploy) traffic
 
 **What was fixed:** `buildSpxDeskPulseMinimal()` (`src/features/spx/lib/spx-desk.ts`), the
