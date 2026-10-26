@@ -1621,7 +1621,8 @@ async function evaluateSpxPlayCore(
     // settle. No open play → plain closed-session SCANNING as before.
     const openAfterClose = desk.price > 0 ? await loadOpenPlay() : null;
     if (!openAfterClose) {
-    const closedConfluence = desk.price > 0 ? computeSpxConfluence(desk) : null;
+    const closedConfluence =
+      desk.price > 0 && desk.source !== "none" ? computeSpxConfluence(desk) : null;
     const playIdea =
       closedConfluence != null ? buildPlayIdeaIntel(desk, closedConfluence) : null;
     const dir = closedConfluence?.direction;
@@ -1643,6 +1644,12 @@ async function evaluateSpxPlayCore(
       rawScore: closedConfluence?.rawScore ?? 0,
       // Off-hours the desk may have no confluence to close out on; when it doesn't, the three
       // `??` fallbacks above are placeholders and must not be read as a grade of the session.
+      // A cold-cache bootstrap shell (buildBootstrapFastLane/deskShellFromPulse,
+      // spx-desk-loader.ts/spx-desk.ts) has a real price and available:true but no GEX/flow
+      // layer ever merged in — `source` stays at its documented "none" degraded-shell marker
+      // (spx-desk-merge.ts). computeSpxConfluence's own `!desk.available` guard doesn't catch
+      // that shape, so closedConfluence is gated on `desk.source !== "none"` above as well,
+      // rather than reading assessed:true off a confluence object with an empty factors: [].
       assessed: closedConfluence != null,
       headline: "Session closed",
       thesis: `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT`,
