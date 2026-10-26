@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T11:10:18.228Z",
+  "updated_at": "2026-10-26T12:14:38.348Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7a3436e3637a2b1b246b5c78e88d10f6f567b172",
+    "last_main_sha": "082a11831dc1e61fc6e6667e9f226a23785ccda0",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-20T14:44:18.333Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-20T14:44:23.491Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-20T15:07:41.983Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-20T15:07:47.087Z",
       "type": "context_sync",
@@ -1271,9 +1253,37 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-26T12:14:29.356Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-26T12:14:33.897Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-26T12:14:38.348Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
+    {
+      "number": 6831,
+      "title": "docs(findings): fold PR #6829's and swing's staged findings (batch-117)",
+      "branch": "docs/fold-batch-117",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-26T12:14:02Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
@@ -1320,7 +1330,7 @@
       "last_event": "sweep",
       "last_head": "fcde84548d0e91171e164389bf1311c8dfec64c8",
       "last_feedback_at": "2026-09-06T09:43:03.489Z",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -1328,7 +1338,7 @@
       "last_event": "sweep",
       "last_head": "97db344dcd3ac2a83568690dae5cd293acbf5f48",
       "last_feedback_at": "2026-09-06T09:43:06.278Z",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -1336,7 +1346,7 @@
       "last_event": "sweep",
       "last_head": "656b59005d206131a85ea51a1f2a2765d767a1ef",
       "last_feedback_at": "2026-09-06T09:43:08.803Z",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     },
@@ -1344,7 +1354,7 @@
       "last_event": "sweep",
       "last_head": "86aff8fc854866dd11db13747eaa55594afc99ff",
       "last_feedback_at": "2026-09-06T09:43:11.445Z",
-      "verdict": "\u23f8\ufe0f **WAIT** \u2014 still draft",
+      "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "created"
     }
