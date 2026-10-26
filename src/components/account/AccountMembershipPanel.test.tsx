@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -42,4 +44,11 @@ test("AccountMembershipPanel does not render the free-tier Upgrade CTA while aut
     /Manage subscription/,
     "must not flash the paid-tier Manage CTA before the real tier is known"
   );
+});
+
+test("the internal /upgrade link uses next/link, not a plain anchor (SPA navigation, not a full reload)", () => {
+  const source = readFileSync(fileURLToPath(new URL("./AccountMembershipPanel.tsx", import.meta.url)), "utf8");
+  assert.match(source, /import Link from "next\/link"/);
+  assert.match(source, /<Link href="\/upgrade"/);
+  assert.doesNotMatch(source, /<a href="\/upgrade"/);
 });
