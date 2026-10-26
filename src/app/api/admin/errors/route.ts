@@ -15,8 +15,10 @@ export async function GET(req: Request) {
 
   try {
     const url = new URL(req.url);
+    // `fetchRecentErrorEvents`'s own `clampErrorEventsLimit` now owns the full guard (NaN
+    // fallback + fractional truncation + [1,500] clamp) — pass the raw parsed value through.
     const limit = Number(url.searchParams.get("limit") ?? "100");
-    const events = await fetchRecentErrorEvents(Number.isFinite(limit) ? limit : 100);
+    const events = await fetchRecentErrorEvents(limit);
     return NextResponse.json({ ok: true, events }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     recordAdminRouteError("admin/errors", error);
