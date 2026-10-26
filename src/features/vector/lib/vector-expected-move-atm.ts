@@ -20,18 +20,46 @@ import type { ExpectedMoveInput } from "./vector-expected-move";
 
 const DAYS_PER_YEAR = 365;
 
-/** Remaining wall-clock time to expiry in ACT/365 years — options expire ~16:00 ET (20:00 UTC).
+/**
+ * UTC offset (whole hours, negative) America/New_York observes on `dateYmd` — -4 under EDT,
+ * -5 under EST. Read at noon UTC on that calendar date, safely past the 2 AM local DST
+ * transition, so the one date-dependent read never straddles the flip itself.
+ */
+function etUtcOffsetHours(dateYmd: string): number {
+  const noonUtc = new Date(`${dateYmd}T12:00:00.000Z`);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    timeZoneName: "shortOffset",
+  }).formatToParts(noonUtc);
+  const raw = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT-5";
+  const match = raw.match(/GMT([+-]\d+)/);
+  return match ? Number(match[1]) : -5;
+}
+
+/**
+ * 4:00 PM ET close in UTC ms for `expiry` — DST-correct (was a hardcoded "T20:00:00Z", which
+ * is only 4:00 PM ET under EDT; under EST, 4:00 PM ET is 21:00 UTC, so the old constant read
+ * as 3:00 PM ET and marked today's still-live 0DTE expiry "settled" an hour before the real
+ * close, during the last hour of regular trading).
+ */
+function marketCloseMs(expiry: string): number {
+  const offsetHours = etUtcOffsetHours(expiry);
+  const utcHour = String(16 - offsetHours).padStart(2, "0");
+  return Date.parse(`${expiry}T${utcHour}:00:00Z`);
+}
+
+/** Remaining wall-clock time to expiry in ACT/365 years — options expire ~16:00 ET.
  *  Unlike yearsToExpiry (anchored at session open for stable GEX gamma), this shrinks through the
  *  trading day so 0DTE expected-move bands narrow as expiry approaches. */
 function remainingYearsToExpiry(expiry: string, nowMs: number): number {
-  const exp = Date.parse(`${expiry}T20:00:00Z`);
+  const exp = marketCloseMs(expiry);
   if (!Number.isFinite(exp)) return 0;
   return Math.max((exp - nowMs) / (365 * 86_400_000), 1 / (365 * 24 * 60));
 }
 
-/** True once an expiry's ~16:00 ET (20:00 UTC) close has passed, relative to `nowMs`. */
+/** True once an expiry's ~16:00 ET close has passed, relative to `nowMs`. */
 function isExpirySettled(expiry: string, nowMs: number): boolean {
-  const close = Date.parse(`${expiry}T20:00:00Z`);
+  const close = marketCloseMs(expiry);
   return Number.isFinite(close) && close <= nowMs;
 }
 
