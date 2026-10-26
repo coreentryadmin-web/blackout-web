@@ -38,6 +38,234 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## The welcome-drip's day-6 trust claim linked to an admin-gated page it claimed was public
+
+> **kind:** `FINDING`
+
+### Root cause
+
+`src/lib/email/templates/welcome-sequence.ts`'s Day 6 ("Graded blind. Logged forever.") step
+builds its entire argument around one claim: every setup is graded before the outcome, win or
+loss, and the full record of both is public. The screenshot caption backing that claim read:
+
+```ts
+`Recent closed plays. The <a href="${SITE.url}/track-record" ...>full record</a> — every win and
+every loss, with the grade each play was given before the outcome — is public.`
+```
+
+`/track-record` is not public. `src/app/(site)/track-record/page.tsx` is a bare
+`redirect("/admin?tab=track-record")`, and `src/app/(site)/admin/layout.tsx` guards every admin
+route with `await requireAdmin()`. A non-admin member — i.e. every recipient of this email —
+clicking the single link backing the sequence's strongest trust claim lands on a page they are
+immediately redirected away from, never seeing any track record at all.
+
+The genuinely public win/loss record lives at `/methodology` (`buildPublicTrackRecord` /
+`buildTrackRecordPagePayload`, rendered under the `(marketing)` route group with no admin gate),
+confirmed to expose both `wins` and `losses` (`src/lib/track-record-public.ts`). `RedesignHome.tsx`
+already links this same route under the label "Public track record" — this email was the one
+place still pointing at the old, now admin-only URL.
+
+### Evidence
+
+Added `src/lib/email/templates/welcome-sequence-day6-track-record-link.test.ts`: builds the real
+Day 6 (`step: 4`) email via `WELCOME_SEQUENCE[...].build(...)` and asserts the rendered HTML links
+to `/methodology`, never to `/track-record`. Confirmed RED against the pre-fix source (`git stash`
+isolating `welcome-sequence.ts`) — both assertions failed (2/2), the HTML contained
+`href="https://blackouttrades.com/track-record"` — then GREEN (4/4, including the pre-existing
+Day 4 product-count regression test) after the fix. `tsc --noEmit` and `eslint` both clean.
+
+### Blast radius
+
+Single call site: this is the only email template (of the full welcome/billing/lifecycle set
+already swept this session) that references `/track-record` directly — every other transparency
+reference in the codebase (`RedesignHome.tsx`'s hero-creds link) already points at `/methodology`.
+The stale, now-misleading code comment above this step (claiming the email "deliberately does NOT
+link to a public track-record page" — written before the link was added, never updated after) is
+also corrected to describe the current, verified state.
+
+### Fix rationale
+
+Point the caption's link at `/methodology`, matching the already-correct reference elsewhere in
+the codebase and the component that actually proves the claim. No change to the trust claim's
+wording itself (it remains accurate — both wins and losses are genuinely public at that URL) or
+to any other step in the sequence.
+
+| **Status** | Fixed in PR #6819 (branch `fix/welcome-sequence-stale-track-record-link`) |
+|---|---|
+
+## Ask Largo swing play-brief could silently substitute an unrelated, weeks-old CLOSED trade for a live WATCH candidate
+
+> **kind:** `FINDING`
+
+### Root cause
+
+`resolveSwingPlayForBrief` (`src/lib/swing/play-brief-resolve.ts`) ends with a ticker-wide
+"best guess" fallback for when every targeted lookup above (open ledger, lane rows, the
+positionId-based closed checks) comes back empty:
+
+```ts
+if (positionId == null) {
+  const closedFallback = await loadClosedPlay(ticker, null);
+  if (closedFallback) return { play: closedFallback, ... };
+}
+```
+
+`loadClosedPlay(ticker, null)` ignores everything except the ticker and returns whichever graded
+row has the most recent `graded_at` — a completely different trade than whatever the caller
+actually asked about. The 2026-10-20 fix already scoped this fallback to fire only when the
+caller never supplied a specific **positionId** ("an explicit, unresolvable positionId must
+surface as absence, never as an unrelated substitute"). It never considered the mirror case: a
+caller that names a specific **live-lane status** instead.
+
+A WATCH-bucket (or COMMIT-blocked-shown-as-WATCH) swing candidate has no DB row and therefore no
+positionId at all — `horizonRowToDeckSource`'s own comment says so explicitly ("A WATCH/lane-only
+candidate has no ledger row yet, so this stays null there"). So the real production request for
+one of these never carries a positionId, only a `status` hint:
+
+- `useSwingPlayBrief`'s `briefUrl()` (`src/hooks/useSwingPlayBrief.ts`) builds
+  `?playId=SWING:<ticker>&ticker=<ticker>&status=<play.status>` for every WATCH-bucket
+  `TerminalPlay` it renders, with no `positionId` param (there is no numeric suffix on `play.id`
+  to extract one from).
+- Largo's own `get_swing_play_brief` tool (`src/lib/largo/tool-defs.ts`) is documented to accept
+  an optional `status` hint ("e.g. OPEN, WATCH, CLOSED") to disambiguate, and `run-tool.ts` passes
+  it straight through with no positionId either.
+
+When the live serving lane (`getSwingServingLane`, read fresh inside `loadLaneRows` on every
+request — a **separate** computation from the `/horizons` board endpoint's own snapshot) happens
+to carry no row for that ticker at the exact instant this route runs — which happens routinely as
+the swing discovery scan rotates candidates in and out every few minutes — `pickLanePlayForBrief`
+legitimately returns nothing. With `positionId` always null for this request shape, the code fell
+straight through to the unconditional ticker-wide fallback and silently served the ticker's most
+recent CLOSED trade instead, with `available:true` and no absence/retryable signal of any kind.
+
+### Evidence
+
+Live-reproduced against production (`https://blackouttrades.com`, 2026-10-26, authenticated via
+`scripts/audit/lib/prod-clerk-session.mjs`):
+
+1. `GET /api/market/nighthawk/horizons?view=swings` showed MSTR as a live WATCH candidate under
+   `board.lanes.SWING.watch[]` (`status: "WATCH"`, `commitGateBlockedBy: ["legacy:exempt"]`, no
+   `positionId`).
+2. `GET /api/market/swing/play-brief?playId=SWING:MSTR&ticker=MSTR&status=WATCH` — the **exact**
+   request shape `useSwingPlayBrief` builds for that row — returned `available:true` with
+   `briefContentKey.headline: "STOPPED — MSTR 160C 4DTE"`, `pnlPct: -62.31`, and section titles
+   (`Outcome`, `Since it closed`, `Lessons`) that only ever render for a CLOSED play — not the
+   WATCH candidate that was actually on the board.
+3. A second `/horizons?view=swings` read a few minutes later confirmed MSTR had genuinely rotated
+   out of the live WATCH list by then (replaced by a different ticker) — the live-lane lookup
+   failing was real, not a fetch error, which is exactly the condition this fallback needs to
+   guard against rather than paper over.
+
+Regression test added to `src/lib/swing/play-brief-resolve.test.ts` (3 new cases): confirmed
+**RED** pre-fix via `git checkout -- src/lib/swing/play-brief-resolve.ts` (the "must return
+absence" case failed, resolving to the MSTR-shaped CLOSED fixture instead of `null`) → **GREEN**
+post-fix (all 3 new cases + the existing 36 in the file pass). Full `src/lib/swing/*.test.ts`
+suite: 2119/2119 pass. `src/lib/largo/swing-play-brief-read.test.ts`: 4/4 pass. `tsc --noEmit`:
+clean.
+
+### Blast radius
+
+Any WATCH-bucket (or COMMIT-blocked, shown-as-WATCH) swing candidate with a prior closed trade
+under the same ticker is exposed, through both read paths that share this resolver:
+
+- The Command Deck panel itself (`useSwingPlayBrief` polls every 8-20s during RTH via
+  `briefRefreshMs`) — a member with a WATCH candidate's brief open could have it silently swap to
+  an unrelated closed trade's headline/P&L on an ordinary auto-refresh, with no error state to
+  explain the change.
+- Largo chat answers via `get_swing_play_brief` — the model could narrate the substituted closed
+  trade's P&L/outcome as the current read on a ticker a member is actually asking about as a live
+  WATCH candidate.
+
+No other call site of `resolveSwingPlayForBrief` or `loadClosedPlay` was touched — the fix is
+isolated to the one fallback branch.
+
+### Fix rationale
+
+Reused the `wantsClosed` boolean already computed a few lines above (it already encodes "the
+caller explicitly asked for CLOSED") to derive `explicitlyWantsLiveState = status != null &&
+!wantsClosed`, and skip the ticker-wide fallback when that's true:
+
+```ts
+const explicitlyWantsLiveState = status != null && !wantsClosed;
+if (positionId == null && !explicitlyWantsLiveState) {
+  const closedFallback = await loadClosedPlay(ticker, null);
+  ...
+}
+```
+
+This preserves every existing behavior:
+- No status supplied at all (the ambiguous ticker-only query both the route and Largo's own tool
+  doc describe as the common case) — fallback still fires, unchanged.
+- `status=CLOSED` explicitly supplied with no positionId — fallback still fires (this is exactly
+  what it's for).
+- A real live-lane match exists for the requested status — unaffected, returns that match as
+  before; this fix only changes the **no-match** case.
+
+Deliberately left unchanged: whether a mismatched-but-resolvable request (e.g. a stale
+client-cached `status=OPEN` whose position has since genuinely closed) should fall back to the
+closed trade — it should, and already does, because that case always carries a real `positionId`
+(threaded through by `horizonRowToDeckSource` whenever a DB row exists) and is handled by the
+earlier, positionId-scoped closed-lookup in this same function, never reaching this fallback at
+all.
+
+| **Status** | Fixed in PR #6818 (branch `fix/swing-play-brief-watch-closed-fallback`) |
+|---|---|
+
+## `/pricing`'s yearly tile bypassed the canonical `usd()` formatter for two derived prices
+
+> **kind:** `FINDING`
+
+### Root cause
+
+`src/lib/pricing.ts` exports `MEMBERSHIP_PRICING` and a single `usd()` formatter specifically so
+every marketing surface that shows a price formats it identically ("the SINGLE source of truth
+... so the three pricing displays could silently drift apart", per the file's own header comment).
+Every price on `src/components/landing/RedesignPricing.tsx`'s pricing tiers went through `usd()`
+— except one line, the "Premium · Yearly" tile's secondary line, which built its string with a raw
+template literal and a hand-typed `$`:
+
+```tsx
+<div className="save">≈ ${MEMBERSHIP_PRICING.yearlyEffectiveMonthly}/mo · save ${MEMBERSHIP_PRICING.yearlySavingsVsMonthly} vs monthly</div>
+```
+
+`usd()` exists to add thousands separators (`1999 → "$1,999"`); the raw template literal cannot.
+The sibling line in `src/components/landing/RedesignHome.tsx` (the homepage's own pricing cards)
+renders the exact same two fields correctly: `{usd(MEMBERSHIP_PRICING.yearlyEffectiveMonthly)}/mo
+· save {usd(MEMBERSHIP_PRICING.yearlySavingsVsMonthly)} vs monthly` — so `/pricing` and the
+homepage were already capable of disagreeing on how this one number formats, exactly the failure
+mode the shared helper was built to make structurally impossible. It stayed invisible today only
+because `MEMBERSHIP_PRICING.yearlyEffectiveMonthly` (167) and `.yearlySavingsVsMonthly` (389) both
+happen to be under 1,000 — the day either grows past it (a price increase, or the membership tier
+restructuring), `/pricing` would silently render `$1234` while every other price on the same page,
+and the homepage's equivalent line, show `$1,234`.
+
+### Evidence
+
+Added `src/components/landing/RedesignPricing.test.tsx`: `mock.module`s `@/lib/pricing` to supply
+`yearlyEffectiveMonthly: 1234` / `yearlySavingsVsMonthly: 5678` (values chosen specifically to
+cross the 1,000 threshold the real constants don't yet reach), renders `<RedesignPricing/>` via
+`renderToStaticMarkup`, and asserts the output contains the comma-formatted `$1,234`/`$5,678` and
+NOT the raw `$1234`/`$5678`. Confirmed RED against the pre-fix source (`git stash` isolating
+`RedesignPricing.tsx`) — the stashed version rendered `<div class="save">≈ $1234/mo · save $5678
+vs monthly</div>` verbatim — then GREEN (1/1) after the fix. `tsc --noEmit` and `eslint` both
+clean on the changed files.
+
+### Blast radius
+
+Single call site: this is the only line anywhere in the codebase that interpolates
+`MEMBERSHIP_PRICING.yearlyEffectiveMonthly`/`.yearlySavingsVsMonthly` outside of `usd()`
+(`RedesignHome.tsx`'s equivalent line was already correct, confirmed by reading it directly).
+No other price display is affected.
+
+### Fix rationale
+
+Wrap both values in `usd()`, matching the already-correct sibling line in `RedesignHome.tsx`
+exactly. No change to `MEMBERSHIP_PRICING`'s values or `usd()`'s own behavior — purely closing the
+one place that skipped the shared formatter.
+
+| **Status** | Fixed in PR #6817 (branch `fix/redesign-pricing-usd-bypass`) |
+|---|---|
+
 ## Marketing-group pages render `<ProductMark>` with dangling `url(#bo-glow)`/`url(#bo-accent-*)` references — the shared `<defs>` block never mounts there — FIXED
 
 > **kind:** `FINDING`
