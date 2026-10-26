@@ -50,5 +50,5 @@ Wrap both values in `usd()`, matching the already-correct sibling line in `Redes
 exactly. No change to `MEMBERSHIP_PRICING`'s values or `usd()`'s own behavior — purely closing the
 one place that skipped the shared formatter.
 
-| **Status** | Fixed in PR #TBD (branch `fix/redesign-pricing-usd-bypass`) |
+| **Status** | Fixed in PR #6817 (branch `fix/redesign-pricing-usd-bypass`) |
 |---|---|
