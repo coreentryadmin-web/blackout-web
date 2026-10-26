@@ -23,9 +23,30 @@ function firstRedirectParam(raw: string | string[] | undefined | null): string |
   return raw ?? undefined;
 }
 
-/** True for `/dashboard`, `/flows?x=1`; false for `https://…`, `//evil.com`, bare paths. */
+/**
+ * True for `/dashboard`, `/flows?x=1`; false for `https://…`, `//evil.com`, bare paths.
+ *
+ * A literal prefix check alone (`startsWith("/") && !startsWith("//")`) is not enough: per the
+ * WHATWG URL spec, a backslash is treated the same as a forward slash when resolving a relative
+ * reference against a "special" (http/https) base — so `/\evil.com` and `/\/evil.com` both START
+ * an authority (host) component exactly like `//evil.com` does, even though neither begins with
+ * two literal `/` characters. Confirmed live: `new URL("/\\evil.com", "https://blackouttrades.com")`
+ * resolves to origin `https://evil.com`, not `https://blackouttrades.com`. Every current caller of
+ * this function happens to be shielded anyway (`clerkStagingReturnPath` always re-derives
+ * `pathname + search` from the parsed URL, discarding whatever host the parser landed on) — but
+ * that is a second, incidental layer, not something this function's own contract relies on, and
+ * it is exported as a general-purpose "is this safe to redirect to" check. Resolve against a
+ * sentinel base and require the host to be unchanged, so a backslash can never smuggle a new host
+ * past this check regardless of what a future caller does with the result.
+ */
 export function isSafeAppRelativePath(raw: string): boolean {
-  return raw.startsWith("/") && !raw.startsWith("//");
+  if (!raw.startsWith("/") || raw.startsWith("//")) return false;
+  try {
+    const probe = new URL(raw, "http://same-origin.invalid");
+    return probe.host === "same-origin.invalid";
+  } catch {
+    return false;
+  }
 }
 
 /** Strip failed-sync noise; only allow returns to staging. */
