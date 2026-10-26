@@ -8907,3 +8907,43 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   and confirm the brief's "Desk context" section is absent (not citing itself); find an older,
   genuinely-independent Legacy pick on an unrelated ticker and confirm that section still renders
   with its original wording.
+
+## WATCH LIST — 2026-10-26 (swing earnings-peer "print imminent" contradiction fix, PR #6763; swing banger-origin positionId-unresolvable fix, PR #6767)
+
+- **MSFT-style — earnings-peer-lens "print imminent" bullet survived a no-gap-exposure contract
+  (PR #6763, merged `ee8df01f6`).** `meridianPeerEarningsCoaching()`'s unconditional
+  `"**print imminent** — vol crush risk elevated"` bullet (fires whenever `days_until <= 3`) is
+  pushed BEFORE the pure function ever sees which contract is being reviewed, so a 2026-10-25 fix
+  that correctly swapped the TRAILING sizing-instruction sentence for an honest no-exposure
+  sentence (when the reviewed contract expires on/before the print) never touched this earlier
+  bullet — live MSFT CLOSED #47 showed both halves in one sentence group: "reports in 3d ·
+  **print imminent** — vol crush risk elevated. This contract expires 2026-10-09, on/before the
+  print, so no earnings-gap exposure..." Fixed: `meridianPeerSection()` now strips the
+  `EARNINGS_PEER_PRINT_IMMINENT_BULLET` (plus its leading separator) in the same `noGapExposure`
+  branch that already swaps the sizing instruction. **Re-check once the market opens:** find a
+  live swing position whose contract expiry is on/before an earnings print landing within 3 days
+  (`days_until <= 3`) and confirm the Earnings peer lens / Trade manager read no longer shows
+  "print imminent — vol crush risk elevated" alongside "no earnings-gap exposure from this
+  position" in the same brief; confirm a position still genuinely exposed through an imminent
+  print (contract expiry AFTER the print) still shows both the "print imminent" bullet and the
+  sizing/hedging instruction unchanged (no regression — RKT, live-checked same day, contract
+  expiring 2026-10-30 against a 2026-10-29 print, correctly keeps the full sizing instruction with
+  no false no-exposure claim).
+
+- **PANW-style — banger-origin position unresolvable by `positionId` via Ask Largo play-brief
+  (PR #6767, merged `f6eb80f65`).** `loadOpenTerminalPlay()` only ever queries the native
+  `swing_positions` table; a banger-origin position lives in a separate `banger_positions` table
+  with its own id space, and the merged lane view (`getSwingServingLane`) drops a banger-origin
+  row entirely once a native-engine row already exists for the same ticker. Live-confirmed:
+  PANW carried both a native COMMIT row (`id=67`) and a separate, fully live banger OPEN row
+  (`id=2103`, confirmed via `/api/market/banger/board`) — `?playId=SWING:PANW&positionId=2103`
+  404'd for a position the member is actually holding. Fixed: `loadOpenTerminalPlay`'s two
+  failure exits now fall through to a new `loadOpenBangerTerminalPlay` (direct `banger_positions`
+  lookup via the pure `pickOpenBangerPositionForBrief` selector), additive — a ticker that only
+  ever lives in `swing_positions` is unaffected. **Re-check once the market opens:** find a live
+  ticker that carries BOTH a native `swing_positions` row and a separate `banger_positions` row
+  (check `/api/market/banger/board` against `/api/market/nighthawk/horizons?view=swings` for a
+  ticker where the banger id is absent from the merged view) and confirm
+  `?playId=SWING:<ticker>&positionId=<banger_id>` now resolves to that banger-origin position
+  instead of 404ing or substituting the unrelated native row; confirm a ticker with only a native
+  row still resolves exactly as before (no regression).
