@@ -1234,5 +1234,11 @@
     "what": "PR #6864 (closedDeck invisible-if-entered-outside-window fix) merged cleanly myself (9af62d888, no mirror-failure race this time) once CI went green. Folded the staged finding into FINDINGS.md (batch-119, PR #6867, draft, docs-only) and fixed the findings-hygiene idempotency test via findings-reconcile.mjs --apply. Added a MARKET-OPEN-VALIDATION.md entry for next-session confirmation.",
     "finding": "Live re-check at 16:03 UTC (~17min post-merge): GET /api/market/swing/record?days=1 still shows closedDeck empty, MRNA still absent -- deploy has not landed yet, same lag pattern already seen for PR #6839 (confirmed live ~34min post-merge). Not a concern, just pending -- will re-check next cycle.",
     "status": "MERGED, pending live-deploy confirmation (re-check next cycle, expect ~30+ min post-merge per the #6839 precedent)."
+  },
+  "swing_record_closed_outside_window_6864_live_confirmed_2026_10_26": {
+    "ts": "2026-10-26T16:31:45Z",
+    "what": "Closing the loop on PR #6864 (also folded, PR #6867) -- re-checked GET /api/market/swing/record?days=1 ~28 min post-merge.",
+    "finding": "CONFIRMED LIVE, WORKING CORRECTLY. closedDeck now correctly contains MRNA (positionId 65), the exact row that was invisible under ?days=1/2/3 before the fix. Also re-confirmed the docs fold (PR #6867, batch-119, 24 findings) merged clean -- findings-hygiene 9/9 pass on real origin/main post-merge, no corruption despite the base having moved between branch and merge.",
+    "status": "VERIFIED CLEAN, no further action needed. Closes both #6864 and #6867 deploy-validation loops definitively."
   }
 }
