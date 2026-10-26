@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T04:41:16.501Z",
+  "updated_at": "2026-10-26T05:05:58.773Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "33d70c7a14bfb9aeee7131c358be521ffa18070d",
+    "last_main_sha": "4966e54307fdbc65f9a143a7adfabfb393dc2179",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
@@ -1255,19 +1255,19 @@
       "open_pr_count": 4
     },
     {
-      "at": "2026-10-26T04:41:07.058Z",
+      "at": "2026-10-26T05:05:49.216Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
     },
     {
-      "at": "2026-10-26T04:41:12.024Z",
+      "at": "2026-10-26T05:05:54.114Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
     },
     {
-      "at": "2026-10-26T04:41:16.501Z",
+      "at": "2026-10-26T05:05:58.773Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
@@ -1275,14 +1275,14 @@
   ],
   "open_prs": [
     {
-      "number": 6773,
-      "title": "fix(discord): EOD recap session-open filter was EDT-only, leaked pre-market flow under EST",
-      "branch": "fix/discord-eod-recap-session-open-dst",
+      "number": 6775,
+      "title": "docs(audit): fold batch-96 — 1 staged finding into FINDINGS.md",
+      "branch": "docs/fold-batch-96",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T04:34:11Z"
+      "verify": "completed/success",
+      "updated_at": "2026-10-26T04:53:26Z"
     },
     {
       "number": 5547,
