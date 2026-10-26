@@ -1107,12 +1107,25 @@ function railsFallback(play: TerminalPlay): string | null {
  *  headline as three separate facts in one document — live repro: NRG brief 2026-09-09, "Cross-desk
  *  friction — Vector bearish (...)" and "Counter-thesis (bear case) — Vector bearish (...)" both
  *  present. The other counter-thesis reasons (EMA stack, fading pillar, GEX walls) are independent
- *  evidence and stay untouched — only the Vector-specific reason is omitted when redundant. */
+ *  evidence and stay untouched — only the Vector-specific reason is omitted when redundant.
+ *
+ *  `helixConflictAlreadyNoted` — BUG FIX (Ask Largo standing mandate, 2026-10-26): the identical
+ *  double-citation shape as the Vector flag above, on the sibling desk the original 2026-09-09 fix
+ *  didn't cover. `crossDeskCoaching` checks FOUR desks for conflicts — Night Hawk, 0DTE, Vector,
+ *  and HELIX — off the exact same `trustedHelixFlow()` input and 1.3x call/put-premium ratio this
+ *  function's own HELIX reason (a few lines below) uses, and names it in its own "Cross-desk
+ *  friction" bullet (as lead: "HELIX put-led"/"HELIX call-led"; demoted: "HELIX also reads
+ *  put-led/call-led"). But the caller's dedup check only ever matched the literal word "Vector" —
+ *  never "HELIX" — so whenever crossDeskCoaching named HELIX as a conflict, this function's
+ *  separate, ungated HELIX push re-cited the identical flow numbers as a second,
+ *  independent-sounding "corroborating read" in the same document. Gated here exactly the way the
+ *  Vector reason already is. */
 export function counterThesisLine(
   ctx: SwingPlayBriefContext,
   play: TerminalPlay,
   spot: number | null,
   vectorConflictAlreadyNoted?: boolean,
+  helixConflictAlreadyNoted?: boolean,
 ): string | null {
   const vec = vectorOf(ctx);
   const eco = ctx.ecosystem;
@@ -1131,7 +1144,7 @@ export function counterThesisLine(
   const readMs = ctx.readMs ?? Date.now();
 
   const flow = trustedHelixFlow(eco);
-  if (flow) {
+  if (flow && !helixConflictAlreadyNoted) {
     // BUG FIX (Ask Largo standing mandate, 2026-10-15): this was the only HELIX call/put-heavy
     // gate in this file (or its play-brief-intel.ts/play-brief.ts/play-brief-narrative-coaching.ts
     // siblings) using 1.2x — every other one (flowNarrative two screens up in this same file,
@@ -1759,7 +1772,14 @@ export function tradeManagerNarrativeSection(
   // Vector's own weight. See that file's matching fix comment for the full mechanism + regression
   // test.
   const vectorConflictAlreadyNoted = bullets.some((b) => /Vector (?:also reads )?(bearish|bullish)/.test(b));
-  const counter = counterThesisLine(ctx, play, spot, vectorConflictAlreadyNoted);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-26): same dedup shape as the Vector flag above,
+  // for the sibling desk crossDeskCoaching also checks — HELIX. Without this, counterThesisLine's
+  // own ungated HELIX push re-cited the same flow numbers as a second, independent-sounding
+  // "corroborating read" whenever crossDeskCoaching named HELIX as a conflict (lead: "HELIX
+  // put-led/call-led"; demoted "rest": "HELIX also reads put-led/call-led"). See
+  // counterThesisLine's own doc comment for the full mechanism + regression test.
+  const helixConflictAlreadyNoted = bullets.some((b) => /HELIX (?:also reads )?(call|put)-led/.test(b));
+  const counter = counterThesisLine(ctx, play, spot, vectorConflictAlreadyNoted, helixConflictAlreadyNoted);
   if (counter) add(counter, { reserved: true });
 
   if (!bullets.length) return null;
