@@ -149,68 +149,83 @@ export async function processDueWelcomeSequenceSteps(
     for (const row of due.rows) {
       result.processed++;
 
-      // `startWelcomeSequence`'s caller (the Clerk webhook) skips this INSERT for a recognized
-      // audit/test-harness account, but that gate only covers rows created AFTER it shipped
-      // (2026-08-28) — rows from the ~30 ad-hoc harnesses that predate it are already sitting in
-      // this table. Left unchecked, this cron retries them EVERY hour for up to
-      // MAX_STEP_LATENESS_DAYS (Resend rejects `@example.com` etc. with a 422, and a failed send
-      // deliberately leaves next_send_at untouched so the next run retries the SAME step) — see
-      // this file's own MAX_STEP_LATENESS_DAYS comment on why a high bounce rate on a
-      // transactional template is a sender-reputation risk, not just wasted send volume. Marking
-      // complete here (not deleted, not retried) matches the retirement/defensive-branch pattern
-      // below rather than inventing a third way to exit the drip.
-      if (isInternalAuditEmail(row.email)) {
+      // Isolate each row: a transient failure (e.g. a dropped DB connection on the
+      // state-advance UPDATE right after a successful send) must not abort every row still
+      // queued behind it in this batch (up to `limit`, default 200) — that row's email may
+      // already be sent for real, so losing the rest of the batch to one row's hiccup is
+      // strictly worse than counting that one row as failed and letting the next cron run
+      // retry it (the retry is safe either way: a failed/aborted row's next_send_at is never
+      // advanced, so it's picked up again, not skipped or double-scheduled).
+      try {
+        // `startWelcomeSequence`'s caller (the Clerk webhook) skips this INSERT for a recognized
+        // audit/test-harness account, but that gate only covers rows created AFTER it shipped
+        // (2026-08-28) — rows from the ~30 ad-hoc harnesses that predate it are already sitting in
+        // this table. Left unchecked, this cron retries them EVERY hour for up to
+        // MAX_STEP_LATENESS_DAYS (Resend rejects `@example.com` etc. with a 422, and a failed send
+        // deliberately leaves next_send_at untouched so the next run retries the SAME step) — see
+        // this file's own MAX_STEP_LATENESS_DAYS comment on why a high bounce rate on a
+        // transactional template is a sender-reputation risk, not just wasted send volume. Marking
+        // complete here (not deleted, not retried) matches the retirement/defensive-branch pattern
+        // below rather than inventing a third way to exit the drip.
+        if (isInternalAuditEmail(row.email)) {
+          await deps.dbQuery(
+            `UPDATE welcome_sequence_state SET completed_at = NOW(), next_send_at = NULL WHERE user_id = $1`,
+            [row.user_id]
+          );
+          continue;
+        }
+
+        const nextIndex = row.steps_sent; // 0-based: steps_sent=1 means step 1 done, next is index 1 (step 2)
+        const step = WELCOME_SEQUENCE[nextIndex];
+        if (!step) {
+          // Defensive — steps_sent somehow exceeded the sequence length. Mark complete
+          // rather than looping on a row that can never match a real step again.
+          await deps.dbQuery(
+            `UPDATE welcome_sequence_state SET completed_at = NOW(), next_send_at = NULL WHERE user_id = $1`,
+            [row.user_id]
+          );
+          continue;
+        }
+
+        const { subject, html, attachments, headers } = step.build({ email: row.email, firstName: row.first_name });
+        const sendResult = await deps.sendEmail({
+          to: row.email,
+          subject,
+          html,
+          attachments,
+          headers,
+          tag: `welcome-step-${step.step}`,
+          topicId: process.env.RESEND_TOPIC_MARKETING_ID,
+        });
+
+        if (!sendResult.ok) {
+          result.failed++;
+          // Leave next_send_at as-is (in the past) so the NEXT cron run retries this
+          // same step rather than silently skipping it or advancing past a failure.
+          continue;
+        }
+
+        const newStepsSent = row.steps_sent + 1;
+        const nextStep = WELCOME_SEQUENCE[newStepsSent];
         await deps.dbQuery(
-          `UPDATE welcome_sequence_state SET completed_at = NOW(), next_send_at = NULL WHERE user_id = $1`,
-          [row.user_id]
+          `UPDATE welcome_sequence_state
+           SET steps_sent = $2, next_send_at = $3, completed_at = $4
+           WHERE user_id = $1`,
+          [
+            row.user_id,
+            newStepsSent,
+            nextStep ? daysFromNow(STEP_GAP_DAYS) : null,
+            nextStep ? null : new Date(),
+          ]
         );
-        continue;
-      }
-
-      const nextIndex = row.steps_sent; // 0-based: steps_sent=1 means step 1 done, next is index 1 (step 2)
-      const step = WELCOME_SEQUENCE[nextIndex];
-      if (!step) {
-        // Defensive — steps_sent somehow exceeded the sequence length. Mark complete
-        // rather than looping on a row that can never match a real step again.
-        await deps.dbQuery(
-          `UPDATE welcome_sequence_state SET completed_at = NOW(), next_send_at = NULL WHERE user_id = $1`,
-          [row.user_id]
-        );
-        continue;
-      }
-
-      const { subject, html, attachments, headers } = step.build({ email: row.email, firstName: row.first_name });
-      const sendResult = await deps.sendEmail({
-        to: row.email,
-        subject,
-        html,
-        attachments,
-        headers,
-        tag: `welcome-step-${step.step}`,
-        topicId: process.env.RESEND_TOPIC_MARKETING_ID,
-      });
-
-      if (!sendResult.ok) {
+        // Counted only once the state-advance itself has committed — a send whose
+        // follow-up UPDATE throws is counted as failed (below), not sent, since its
+        // next_send_at never advanced and the next run will retry the same step.
+        result.sent++;
+      } catch (err) {
         result.failed++;
-        // Leave next_send_at as-is (in the past) so the NEXT cron run retries this
-        // same step rather than silently skipping it or advancing past a failure.
-        continue;
+        console.warn(`[welcome-sequence] row ${row.user_id} failed, isolated from the rest of the batch`, err);
       }
-
-      result.sent++;
-      const newStepsSent = row.steps_sent + 1;
-      const nextStep = WELCOME_SEQUENCE[newStepsSent];
-      await deps.dbQuery(
-        `UPDATE welcome_sequence_state
-         SET steps_sent = $2, next_send_at = $3, completed_at = $4
-         WHERE user_id = $1`,
-        [
-          row.user_id,
-          newStepsSent,
-          nextStep ? daysFromNow(STEP_GAP_DAYS) : null,
-          nextStep ? null : new Date(),
-        ]
-      );
     }
   } catch (err) {
     console.warn("[welcome-sequence] processDueWelcomeSequenceSteps failed", err);
