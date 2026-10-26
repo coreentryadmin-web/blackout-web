@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Status** | FIXED (PR #TBD) |
+| **Status** | FIXED (PR #6922) |
 | **Found by** | Two independent live-audit passes, Ask Largo × Night Hawk standing performance/correctness mandate, 2026-10-26 |
 | **Scope** | `src/features/spx/lib/spx-desk.ts` (`deskFlowDataAgeMs`, both `flow_cluster_live` call sites), `src/features/spx/lib/spx-play-gates.ts` (the consuming stale-flow BUY-block/warning gate), `src/lib/flow-liveness.ts` (new scoped signal), `src/lib/flow-persist.ts` (write site) |
 
