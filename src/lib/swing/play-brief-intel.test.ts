@@ -7179,8 +7179,17 @@ test("meridianPeerSection: CLOSED bucket prefixes a current-not-as-traded disclo
     insufficient_reason: null,
   };
 
+  // GAP FOUND (Ask Largo standing mandate, cycle-34, live repro GOOGL #64/#59 CLOSED briefs,
+  // 2026-10-26): this fixture originally carried NO contract/expiry data at all (no `occ`
+  // override), so `ownContractExpiry(ctx)` always resolved null here and `noGapExposure` was
+  // always false — meaning this test could assert the disclaimer prefix was present without ever
+  // exercising whether the TRAILING sizing instruction survived alongside it. Give the CLOSED play
+  // a real contract whose expiry is AFTER the print (2026-11-05, after the 2026-10-28 print) — the
+  // common real case: a position stopped out early, not simply time-decayed past the print, so
+  // `noGapExposure` is false and the live sizing directive was previously left completely
+  // unmodified next to the "not what this trade traded under" disclaimer.
   const closedSection = meridianPeerSection({
-    play: fixturePlay({ ticker: "GOOGL", status: "CLOSED" }),
+    play: fixturePlay({ ticker: "GOOGL", status: "CLOSED", occ: "O:GOOGL261105C00180000" }),
     asOf: "2026-10-24 09:00 ET",
     sessionDate: "2026-10-24",
     scanAsOf: null,
@@ -7193,9 +7202,15 @@ test("meridianPeerSection: CLOSED bucket prefixes a current-not-as-traded disclo
   });
   assert.ok(closedSection);
   assert.match(closedSection!.body, /Current earnings peer lens — not what this trade traded under/);
+  // The trailing live directive must no longer survive unmodified next to the disclaimer — this
+  // was the exact self-contradicting paragraph the live GOOGL #64/#59 repro showed.
+  assert.doesNotMatch(closedSection!.body, /size down or hedge vol/i);
+  assert.match(closedSection!.body, /already closed before this print/i);
+  // Real peer stats remain -- only the contradictory sizing instruction is swapped out.
+  assert.match(closedSection!.body, /META/);
 
   const openSection = meridianPeerSection({
-    play: fixturePlay({ ticker: "GOOGL", status: "OPEN" }),
+    play: fixturePlay({ ticker: "GOOGL", status: "OPEN", occ: "O:GOOGL261105C00180000" }),
     asOf: "2026-10-24 09:00 ET",
     sessionDate: "2026-10-24",
     scanAsOf: null,
@@ -7208,6 +7223,9 @@ test("meridianPeerSection: CLOSED bucket prefixes a current-not-as-traded disclo
   });
   assert.ok(openSection);
   assert.doesNotMatch(openSection!.body, /not what this trade traded under/);
+  // No regression: the identical contract, still OPEN, keeps the real live sizing instruction.
+  assert.match(openSection!.body, /size down or hedge vol unless thesis is the print/i);
+  assert.doesNotMatch(openSection!.body, /already closed before this print/i);
 });
 
 // FINDING (OUST, SWING:OUST:2127 — Ask Largo standing mandate, 2026-10-25). Live OUST 31C brief
@@ -7352,6 +7370,35 @@ test("meridianPeerSection: contract still alive through the print keeps the sizi
   assert.ok(section);
   assert.match(section!.body, /size down or hedge vol unless thesis is the print/i);
   assert.doesNotMatch(section!.body, /no earnings-gap exposure/i);
+
+  // GAP FOUND (Ask Largo standing mandate, cycle-34, live repro GOOGL #64/#59, 2026-10-26): the
+  // IDENTICAL genuinely-exposed contract (expiry AFTER the print — `noGapExposure` false), but now
+  // CLOSED, must NOT leave the live sizing/hedging directive "unchanged" the way the OPEN case
+  // above correctly does — the position no longer exists, so "size down or hedge vol" is a dead
+  // instruction about a trade that's already over. `noGapExposure` is the OPEN/WATCH-only
+  // mechanism and must stay exactly that (verified above and by the OUST/MSFT noGapExposure tests
+  // elsewhere in this file) -- this is the independent, bucket-driven swap the live repro showed
+  // was missing entirely.
+  const closedSection = meridianPeerSection({
+    // Same contract/expiry as above -- only the bucket changes.
+    play: fixturePlay({ ticker: "OUST", status: "CLOSED", occ: "O:OUST261107C00031000" }),
+    asOf: "2026-10-25 09:00 ET",
+    sessionDate: "2026-10-25",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian,
+    meridianPeer,
+    ecosystem: null,
+    vector: null,
+  });
+
+  assert.ok(closedSection);
+  assert.doesNotMatch(closedSection!.body, /size down or hedge vol/i);
+  assert.doesNotMatch(closedSection!.body, /no earnings-gap exposure/i);
+  assert.match(closedSection!.body, /already closed before this print/i);
+  // Real peer stats remain -- only the contradictory sizing instruction is swapped out.
+  assert.match(closedSection!.body, /KTOS/);
 });
 
 // FINDING (MSFT CLOSED #47 — Ask Largo standing mandate, 2026-10-26, surfaced by a background
@@ -7500,6 +7547,34 @@ test("meridianPeerSection: imminent (<=3d) print the position is still exposed t
   assert.match(section!.body, /vol crush risk elevated/i);
   assert.match(section!.body, /size down or hedge vol unless thesis is the print/i);
   assert.doesNotMatch(section!.body, /no earnings-gap exposure/i);
+
+  // GAP FOUND (Ask Largo standing mandate, cycle-34, live repro GOOGL #64/#59, 2026-10-26): same
+  // genuinely-exposed, imminent-print contract, but CLOSED -- both the "print imminent" bullet AND
+  // the trailing sizing instruction must be neutralized, not just the trailing one. Before this
+  // fix, a CLOSED brief in exactly this shape rendered "print imminent — vol crush risk elevated"
+  // immediately followed by direct second-person risk-management advice about a position the
+  // member no longer holds, right next to the CLOSED disclaimer -- the self-contradicting
+  // paragraph this fix closes.
+  const closedSection = meridianPeerSection({
+    play: fixturePlay({ ticker: "MSFT", status: "CLOSED", occ: "O:MSFT261030C00450000" }),
+    asOf: "2026-10-26 09:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian,
+    meridianPeer,
+    ecosystem: null,
+    vector: null,
+  });
+
+  assert.ok(closedSection);
+  assert.doesNotMatch(closedSection!.body, /print imminent/i);
+  assert.doesNotMatch(closedSection!.body, /vol crush risk elevated/i);
+  assert.doesNotMatch(closedSection!.body, /size down or hedge vol/i);
+  assert.doesNotMatch(closedSection!.body, /no earnings-gap exposure/i);
+  assert.match(closedSection!.body, /already closed before this print/i);
+  assert.match(closedSection!.body, /GOOGL/);
 });
 
 // FINDING (Ask Largo standing mandate, 2026-10-26, live repro TEM 71C / CRML 6.5C / AMPX 8.5C /
