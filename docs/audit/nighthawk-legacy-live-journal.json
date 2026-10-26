@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-26T03:24:00Z",
+  "lastUpdated": "2026-10-26T13:42:30Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -817,6 +817,11 @@
       "ts": "2026-10-26T03:24:00Z",
       "cycle": "03:21 offset (plus 02:07/02:21/02:36/02:51/03:06 healthchecks this session, all byte-identical AMBER B_marks-only, no entry needed per noise discipline)",
       "summary": "AGGRESSIVE MODE enhancement SHIPPED, real fix merged (PR #6765, fix/direction-failure-diagnosis-winner-baseline): picked up the 2026-10-24 journal's own recommended next step ('item 7, wrong_direction root-cause taxonomy') and found that recommendation ITSELF was stale -- the taxonomy already shipped 2026-09-23 (direction-failure-diagnosis.ts + its admin route). Verified the already-shipped tool LIVE instead of re-building it (GET /api/admin/nighthawk/direction-failure-diagnosis?days=90, temp admin Clerk session, released): n=83 wrong_direction / n=21 comparison winners, well above low_n=10. Real defect found in the shipped tool's own output: cause_breakdown's top-ranked cause (catalyst_or_fundamental_conflict, 98.8% of wrong_direction rows) is EQUALLY common among winners (95.2%) -- non-discriminating, not an explanation of failure despite ranking #1 by n. Worse: regime_conflict (3.6% losers vs 9.5% winners) and gate_promoted_marginal (1.2% vs 4.8%) are MORE common among winners -- backwards from what their names as failure causes imply. Only overreaching_target showed a real, directionally-consistent gap (15.7% vs 4.8%, 3.3x). Fixed: added pct_of_comparison_winners to each DirectionFailureCauseCount entry (null only when winner cohort empty), tallied from winners' own already-computed .causes (diagnoseDirectionRow runs unconditionally per row, no new classification logic needed). Pure/read-only/diagnosis-only, zero effect on live scoring. RED->GREEN via git stash (19/22 pass without fix, 22/22 with it), tsc clean, full npm test on Node 20 clean (16960 pass/0 fail/3 skipped). Staged finding filed, draft PR opened+subscribed, verify green, merged squash 03:24Z. Branch cleaned up, local main synced to origin, confirmed fix present on HEAD."
+    },
+    {
+      "ts": "2026-10-26T13:42:30Z",
+      "cycle": "13:36 offset (first RTH-open cycle today; 02:07 through 13:21 all steady AMBER B_marks-only pre-market, no entries needed per noise discipline)",
+      "summary": "MARKET-OPEN TRANSITION, no bug -- expected, healthy state change at RTH open (9:30 ET / 13:30Z). D_pull_status flipped SKIPPED->GREEN (morning confirmation ran now that the trading day has started; was SKIPPED all weekend/overnight for the documented reason, 'morning confirmation not yet run for this date'). B_marks: 2 of 3 OCCs resolved to live, in-range marks (CRWD261030C00260000 mark=8.15 within [7.8,8.5]; NET261030C00345000 mark=4.8 within [3.7,5.9]); PLTR261023C00197500 still AMBER 'no live quote yet' -- expected lag, first few minutes of RTH don't always have every OCC quoted immediately. Overall AMBER (unchanged label) but the AMBER's own cause materially improved -- correctly distinguishing a real transition from noise rather than treating 'still AMBER' as no-change. Will watch next 1-2 cycles for PLTR to clear; if it's still unresolved after 3 cycles post-open that becomes a genuine pattern worth investigating per the 3-instance threshold."
     }
   ],
   "knownOpenItems": {
