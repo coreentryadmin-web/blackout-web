@@ -287,13 +287,31 @@ export function selectBackfillPlays(params: {
       console.warn(`[nighthawk/backfill] skipped ${ticker} — levels fail geometry gate`);
       continue;
     }
+    // Every OTHER place a BACKFILL play's "score" reaches the member (play.score itself,
+    // nhTierInputFromScored's tier.factors text, PlaybookBriefingPanel's "Desk score"/"Raw
+    // score" sections, the play-explainer LLM prompt) cites the raw scored.score — only this
+    // ranking note used to cite effectiveMeritScore (raw minus the cross-edition sector-
+    // concentration governor's penalty), unlabeled as a different number. That produced two
+    // contradicting "score" values on the same play card (e.g. live PLTR 2026-10-26: "Desk
+    // score 39" next to a gate caveat reading "by score 24" for the identical play, no
+    // reconciliation anywhere). Fix: always cite the raw score here too (so it never disagrees
+    // with any other field), and when the governor actually demoted this candidate, name the
+    // effective/ranking score explicitly as a labeled adjustment rather than a second bare
+    // "score" — preserving the genuinely useful governor-rank information without silently
+    // contradicting the raw number shown everywhere else.
+    const rawScore = Math.round(scored.score);
+    const govPenalty = Math.round(scored.govPenalty ?? 0);
+    const scoreNote =
+      govPenalty > 0
+        ? `score ${rawScore} — effective ${Math.round(effectiveMeritScore(scored))} after a ${govPenalty}-pt sector-concentration penalty, used only for ranking order`
+        : `score ${rawScore}`;
     backfilled.push(
       capGatePromotedConviction({
         ...play,
         gate_promoted: true,
         selection_tier: "BACKFILL",
         gate_warnings: [
-          `Ranked-pool merit fill (#${backfilled.length + 1} by score ${Math.round(effectiveMeritScore(scored))}) — verify entry geometry before acting`,
+          `Ranked-pool merit fill (#${backfilled.length + 1} by ${scoreNote}) — verify entry geometry before acting`,
         ],
       }),
     );

@@ -529,6 +529,47 @@ test("selectBackfillPlays: respects the cross-edition sector-concentration gover
   assert.equal(plays[0]!.ticker, "WAT", "governor-demoted BB (effective 31) ranks behind undemoted WAT (32)");
 });
 
+test("selectBackfillPlays: gate_warnings cites the SAME raw score as play.score, never the bare governor-penalized effectiveMeritScore unlabeled (regression — live PLTR 2026-10-26 defect: 'Desk score 39' next to a gate caveat reading 'by score 24' for the identical play, no reconciliation anywhere)", () => {
+  // Raw score 39, governor-demoted -15 to an effective 24 for ranking purposes only — the exact
+  // live shape from the finding.
+  const pltr = bfScored("PLTR", 39, { govPenalty: 15 });
+  const dossiers = { PLTR: bfDossier("PLTR", 100) };
+  const chains = { PLTR: bfChain(100) };
+
+  const { plays } = selectBackfillPlays({
+    finalPlays: [],
+    pool: [pltr],
+    dossiers,
+    chains,
+    minPlays: 1,
+  });
+
+  assert.equal(plays.length, 1);
+  const play = plays[0]!;
+  assert.equal(play.score, 39, "play.score (what 'Desk score'/'Raw score' render) stays the raw score");
+  const warning = play.gate_warnings?.[0] ?? "";
+  // The raw score — the SAME number every other score display on this play card uses — must
+  // appear in the gate caveat too, never only the governor-penalized one.
+  assert.match(warning, /\bscore 39\b/, "gate_warnings must cite the same raw score shown elsewhere on the card");
+  assert.ok(!/by score 24\b/.test(warning), "must never cite the bare penalized score unlabeled as if it were THE score");
+  // The effective/ranking score is still surfaced (it's genuinely useful), but explicitly
+  // labeled as a governor adjustment so it can never read as a second, contradicting "score".
+  assert.match(warning, /effective 24/, "the governor-adjusted ranking score is still shown, but labeled as an adjustment");
+  assert.match(warning, /sector-concentration penalty/, "must explain WHY the two numbers differ");
+});
+
+test("selectBackfillPlays: gate_warnings shows only the bare raw score (no 'effective' clause) when the governor never demoted the candidate", () => {
+  const wat = bfScored("WAT", 32); // no govPenalty
+  const dossiers = { WAT: bfDossier("WAT", 100) };
+  const chains = { WAT: bfChain(100) };
+
+  const { plays } = selectBackfillPlays({ finalPlays: [], pool: [wat], dossiers, chains, minPlays: 1 });
+
+  const warning = plays[0]!.gate_warnings?.[0] ?? "";
+  assert.match(warning, /\bscore 32\b/);
+  assert.ok(!/effective/.test(warning), "no governor penalty means no 'effective ...' clause to reconcile");
+});
+
 test("selectBackfillPlays: never exceeds minPlays even when more eligible candidates exist", () => {
   const pool = [bfScored("A", 30), bfScored("B", 29), bfScored("C", 28), bfScored("D", 27)];
   const dossiers = Object.fromEntries(pool.map((s) => [s.ticker, bfDossier(s.ticker, 100)]));
