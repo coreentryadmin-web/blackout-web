@@ -1103,6 +1103,22 @@ async function runMigrations(): Promise<void> {
       at TIMESTAMPTZ NOT NULL
     );
   `);
+  // Phase 1 instrumentation (queue-wait vs. HTTP-execution split, cancel reason —
+  // api-telemetry-types.ts's ApiCallEvent.queue_wait_ms/cancel_reason) was added to the
+  // live in-memory ring buffer (recordApiCall) and to api-tracked-fetch.ts's callers, but
+  // the CREATE TABLE above was never updated and persistApiTelemetryEvent's INSERT never
+  // carried the two new columns — so every persisted row silently dropped both fields, and
+  // any admin event-detail lookup that falls back to the DB (an event aged out of the
+  // 800-entry in-memory buffer, which fills fast across 5 ECS replicas) showed a bare
+  // `cancel_reason: null` / missing `queue_wait_ms` even though the live call genuinely
+  // captured both — exactly the UW/Anthropic rate-limiter queue-wait diagnosis these fields
+  // exist for (see unusual-whales.ts/anthropic.ts's own queue_wait_ms incident comments).
+  await p.query(`
+    ALTER TABLE api_telemetry_events ADD COLUMN IF NOT EXISTS queue_wait_ms INT;
+  `);
+  await p.query(`
+    ALTER TABLE api_telemetry_events ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
+  `);
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_api_telemetry_events_at
     ON api_telemetry_events(at DESC);
