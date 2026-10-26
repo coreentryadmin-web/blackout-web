@@ -447,7 +447,17 @@ export async function runEngagementSweep(opts: {
     for (const t of candidates.slice(0, likeCap + (cronMode ? 1 : 2) + followCap)) {
       if (stats.rateLimited) break;
       stats.scanned.push(`search:@${t.author_username}`);
-      if (!(await tryLike(t.id))) break;
+      // tryLike() returns false both when it was rate-limited/out of budget AND when
+      // likeTweet() hit an ORDINARY per-tweet failure (deleted tweet, blocked/suspended
+      // author, a one-off 4xx/5xx) — likeTweet() collapses every non-200/429 response into
+      // the same generic "failed" value, so the two cases are indistinguishable from the
+      // boolean alone. Only the first is a real reason to give up on the rest of this
+      // batch; the second is a fact about ONE candidate and must not cost every candidate
+      // behind it the follow/retweet/like budget that is still available.
+      if (!(await tryLike(t.id))) {
+        if (stats.rateLimited || likeCap <= 0) break;
+        continue;
+      }
       if (followCap > 0 && t.author_id && isNewDiscoveryAuthor(t)) {
         const followed = await tryFollow(t.author_id, t.author_username!, true);
         if (followed) followingIds.add(t.author_id);
