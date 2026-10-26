@@ -2,6 +2,7 @@ import "server-only";
 import { dbConfigured, dbQuery } from "@/lib/db";
 import {
   buildProviderHealthIssues,
+  clampProviderHealthWindowMinutes,
   type ProviderTelemetryRollup,
 } from "@/lib/provider-health-issues";
 
@@ -16,7 +17,7 @@ export async function fetchProviderTelemetryRollups(
   windowMinutes = 10
 ): Promise<ProviderTelemetryRollup[]> {
   if (!dbConfigured()) return [];
-  const mins = Math.min(Math.max(1, Math.round(windowMinutes)), 60);
+  const mins = clampProviderHealthWindowMinutes(windowMinutes);
   try {
     const { rows } = await dbQuery<{
       provider: string;
@@ -79,7 +80,12 @@ export async function runProviderHealthReconcile(windowMinutes = 10): Promise<{
   rollups: ProviderTelemetryRollup[];
   issues: ReturnType<typeof buildProviderHealthIssues>;
 }> {
+  // Reuse the SAME clamped value the rollup query actually applied (not the
+  // raw, possibly out-of-range `windowMinutes` argument) — otherwise an env
+  // override outside [1, 60] (e.g. PROVIDER_HEALTH_WINDOW_MIN=120) would make
+  // the issue text claim a window the SQL query never used.
+  const effectiveWindowMinutes = clampProviderHealthWindowMinutes(windowMinutes);
   const rollups = await fetchProviderTelemetryRollups(windowMinutes);
-  const issues = buildProviderHealthIssues(rollups);
+  const issues = buildProviderHealthIssues(rollups, undefined, effectiveWindowMinutes);
   return { rollups, issues };
 }
