@@ -4,6 +4,84 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## Admin X intel queue status chips contradicted the fixture cards they sat above — FIXED
+
+> **kind:** `FINDING`
+
+**Status.** FIXED (PR #6792).
+
+### Area
+
+`src/components/admin/AdminXIntelQueuePanel.tsx` — the Admin console's "X intel queue" tab
+(non-owned). Backed by `src/lib/x-intel/queue-fixtures-gate.ts`'s `shouldShowXIntelFixtures` and
+`src/lib/x-intel/queue-fixtures.ts`'s `X_INTEL_QUEUE_FIXTURES`.
+
+### Found by
+
+Code-correctness read, DISCOVERY-lane sweep, 2026-10-26.
+
+### Root cause
+
+The status chip bar ("ready N · review N · skip N") and the cards rendered directly below it read
+from two different arrays. `counts` was computed via `const src = rows ?? []` — the raw API
+response — while the rendered cards used `display = showFixtures ? X_INTEL_QUEUE_FIXTURES :
+(rows ?? [])`. `shouldShowXIntelFixtures` returns `true` whenever the real queue is genuinely
+empty under the `ALL` filter — an ordinary, expected state before the X-intel generator has ever
+produced a row. In that exact state the chip bar read `ready 0 · review 0 · skip 0` while the four
+hand-written fixture cards (2 READY, 1 REVIEW, 1 SKIP) rendered immediately underneath with their
+own real status badges — a direct, user-visible contradiction on the same panel.
+
+### Fix
+
+Extracted `computeXIntelStatusCounts(display)` (`src/lib/x-intel/queue-status-counts.ts`) and
+counted over `display` — the exact array actually rendered — instead of `rows`. No behavior
+change once the queue has real data; only the empty/fixture state is affected.
+
+### Blast radius
+
+`counts` had no other consumers; `AdminXIntelQueuePanel` is the sole caller of the new helper. No
+change to `shouldShowXIntelFixtures`, `X_INTEL_QUEUE_FIXTURES`, or any API route.
+
+### Tests
+
+3 new unit tests in `queue-status-counts.test.ts` (fixture-mix match, never-all-zero-with-rows,
+genuinely-zero-when-empty). RED→GREEN via `git stash` on the two source files. `tsc --noEmit`
+clean. Full suite: 17002 pass / 0 fail / 3 pre-existing skips (unrelated).
+
 ## Admin console Crons tab "Telemetry" ring was permanently saturated at 100% — FIXED
 
 > **kind:** `FINDING`
@@ -818,40 +896,6 @@ Largo tool response — **Largo-owned, not touched**. The only consumer of the M
 `grep -rn "calendar_error" src/features/meridian/ src/lib/meridian/`). `print_history`,
 `street_estimates`, `guidance_entitled`, `guidance_on_file`, `corporate_guidance` and every other
 field in the enrichment object are unchanged — only the two error-flag fields were touched.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## HELIX + dark pool Discord EOD recap filtered the session window from a hardcoded EDT-only "9:30 AM ET" constant — leaked an hour of pre-market flow into the recap under EST — FIXED
 
