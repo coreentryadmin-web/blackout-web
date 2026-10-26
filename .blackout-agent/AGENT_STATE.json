@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T05:23:56.810Z",
+  "updated_at": "2026-10-26T05:41:04.002Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1925f9f628a8404e97f76546e71a5b34298395aa",
+    "last_main_sha": "f37e2382aaaaf13222370403177a6ce193ca7d55",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-20T12:35:04.755Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-20T12:35:09.291Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-20T13:23:36.925Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-20T13:23:41.441Z",
       "type": "context_sync",
@@ -1271,39 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-26T05:40:55.972Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-26T05:40:59.965Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-26T05:41:04.002Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 6779,
-      "title": "chore(state): sync autopilot heartbeat state",
-      "branch": "chore/state-sync-heartbeat-2",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T05:18:20Z"
-    },
-    {
-      "number": 6778,
-      "title": "fix(meridian): calendar_error no longer conflates a guidance-only outage with print-history/estimates unavailability",
-      "branch": "fix/meridian-calendar-error-guidance-conflation",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T05:17:00Z"
-    },
-    {
-      "number": 6777,
-      "title": "fix(swing): HELIX call/put flow narration was mutually exclusive in the diff pulse",
-      "branch": "fix/swing-helix-flow-mutual-exclusion",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T05:16:20Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
