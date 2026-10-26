@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { readStoredAttribution } from "@/lib/analytics/utm";
+import { readClientSignedIn } from "@/lib/client-signed-in";
 
 const SHOWN_FLAG_KEY = "bo_exit_intent_shown_v1";
 // Don't arm detection for the first few seconds — a cursor that merely starts
@@ -33,6 +34,13 @@ type FormState = "idle" | "submitting" | "success" | "degraded" | "error";
  * Site-wide exit-intent lead capture (docs/marketing/SEO-GROWTH.md finding #7).
  * Mounted once in MarketingPageShell so it applies to every marketing page
  * (not the authenticated desk). Fires at most once per browser session.
+ *
+ * Skipped for already-signed-in visitors (`readClientSignedIn()`, the same
+ * `__client_uat`-cookie signal `useMarketingSignedIn`/`NavAuthLinks` use): a
+ * member who already has an account — paying or not — has no use for a lead
+ * magnet pitching them to sign up, and MarketingPageShell mounts this on every
+ * (marketing) route (including /pricing, /faq, /about) a signed-in member can
+ * freely browse, not just signed-out landing pages.
  */
 export function ExitIntentCapture() {
   const pathname = usePathname() ?? "/";
@@ -44,6 +52,7 @@ export function ExitIntentCapture() {
 
   useEffect(() => {
     if (alreadyShownThisSession()) return;
+    if (readClientSignedIn() === true) return;
     const armTimer = setTimeout(() => {
       armedRef.current = true;
     }, ARM_DELAY_MS);

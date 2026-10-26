@@ -25,3 +25,23 @@ test("the exit-intent email input has an accessible name (aria-label)", () => {
     "the email input must carry an aria-label (or an equivalent label) so screen readers announce its purpose"
   );
 });
+
+// Regression (2026-10-26, DISCOVERY-lane sweep): MarketingPageShell mounts this on EVERY
+// (marketing) route, including /pricing, /faq, /about — pages a signed-in member (paying or not)
+// browses freely, not just signed-out landing pages. Nothing here checked auth state, so a member
+// could get pitched a "free GEX cheat sheet" lead magnet they have no use for. Fixed by gating on
+// `readClientSignedIn()` (the same `__client_uat`-cookie signal NavAuthLinks/useMarketingSignedIn
+// already use) before the detector is ever armed.
+test("readClientSignedIn is imported and checked before the exit-intent detector is armed", () => {
+  assert.match(
+    src,
+    /import\s*\{\s*readClientSignedIn\s*\}\s*from\s*["']@\/lib\/client-signed-in["']/,
+    "must import the shared signed-in signal rather than reinventing one"
+  );
+  const effectBody = src.slice(src.indexOf("useEffect(() => {"), src.indexOf("document.addEventListener"));
+  assert.match(
+    effectBody,
+    /readClientSignedIn\(\)\s*===\s*true/,
+    "the arming effect must bail out for an already-signed-in visitor before scheduling the arm timer"
+  );
+});
