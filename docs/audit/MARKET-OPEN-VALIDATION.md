@@ -1,4 +1,4 @@
-## WATCH LIST — 2026-10-26 Ask Largo news headlines carry their own publish-age (PR #6839, merged `d645872cf`)
+## WATCH LIST — 2026-10-26 Ask Largo news headlines carry their own publish-age (PR #6839, merged `d645872cf`) — LIVE-CONFIRMED 14:05 UTC
 
 **What was shipped:** `arsenal.news.headlines` widened from a bare `string[]` to
 `{headline, publishedAt}[]` — `catalystsSection` (swing play-brief's "Catalysts & news") now
@@ -6,17 +6,16 @@ renders each headline with its own age suffix (e.g. "(3h ago)" / "(2d ago)") ins
 disclosing the batch-level fetch time. Full suite 17047/0/3-skipped green, `tsc` clean before
 merge.
 
-**Specific thing to check at next RTH live read:** pull a real single-name swing play-brief with
-recent ticker news (e.g. `GET /api/market/swing/play-brief?playId=SWING:<T>&ticker=<T>...`) and
-confirm the "Catalysts & news" headline bullets show an age suffix. Checked once already at
-13:4x UTC, ~12 min post-merge (PLTR WATCH brief) — headlines rendered with NO age suffix yet,
-most likely because the production deploy (`ecr-push-production.yml`, fires on merge to `main`)
-hadn't rolled out yet, not a bug in the fix itself (unit tests already prove the render logic
-works for a non-null `publishedAt`). Re-check once ECS has had time to deploy; if headlines still
-carry no age suffix after a confirmed deploy, check whether Benzinga's own feed is actually
-supplying `publishedAt` for those items (the fix was designed to omit the suffix, never fabricate
-one, when `publishedAt` is null — that's correct behavior, not a bug, if Benzinga genuinely omits
-it for some items).
+**CONFIRMED LIVE, WORKING CORRECTLY, 14:05 UTC** — re-pulled the same PLTR WATCH brief
+(`GET /api/market/swing/play-brief?playId=SWING:PLTR&ticker=PLTR&status=WATCH&right=C&strike=195`)
+~34 min after merge, once the production deploy had time to land. Headlines now render with real
+age suffixes: "Piper Sandler Maintains Overweight on Palantir Technologies... (3d ago)",
+"Citigroup Maintains Buy on Palantir Technologies... (4d ago)", "Palantir Announces Sovereign AI
+Work... (5d ago)" — exactly the gap the fix closed: these items are genuinely days old and were
+previously invisible under the old batch-only `as_of` disclosure (which only showed when the
+FETCH ran, same-cycle-fresh regardless of each article's real age). Confirms the earlier 13:4x
+check (no age suffix yet) was the deploy-lag explanation, not a defect. No further re-check
+needed on this item.
 
 ## WATCH LIST — 2026-10-26 Swing banger-same-ticker position silently hidden from the board (PR pending at time of writing — see commit for the merged SHA)
 
