@@ -7114,6 +7114,154 @@ test("meridianPeerSection: contract still alive through the print keeps the sizi
   assert.doesNotMatch(section!.body, /no earnings-gap exposure/i);
 });
 
+// FINDING (MSFT CLOSED #47 — Ask Largo standing mandate, 2026-10-26, surfaced by a background
+// adversarial-verification workflow, 3/3 independent confirmations). The OUST fix above only ever
+// swapped the TRAILING sizing instruction; it never exercised `days_until <= 3`, so the EARLIER
+// "print imminent — vol crush risk elevated" bullet (same function, same gate value, two parts
+// before the one the OUST test covers) still fires unconditionally. Live MSFT brief showed both
+// at once: "print imminent — vol crush risk elevated" immediately followed, in the same sentence
+// group, by "no earnings-gap exposure from this position" about the identical print/contract.
+test("meridianPeerSection: contract expiring BEFORE an imminent (<=3d) print strips the 'print imminent' bullet too, not just the trailing sizing instruction (live repro MSFT CLOSED #47)", () => {
+  const meridian = {
+    as_of: "2026-10-26 09:00 ET",
+    items: [
+      {
+        id: "earnings:MSFT:2026-10-28",
+        kind: "earnings" as const,
+        title: "MSFT earnings",
+        subtitle: null,
+        date: "2026-10-28",
+        time: null,
+        impact: "high" as const,
+        days_until: 2,
+        ticker: "MSFT",
+        date_status: null,
+        importance: 3,
+        is_printed: false,
+        expected_move_pct: 6.0,
+        sector_label: "Technology",
+      },
+    ],
+    total_matched: 1,
+  };
+  const meridianPeer = {
+    available: true as const,
+    id: "earnings:MSFT:2026-10-28",
+    subject_ticker: "MSFT",
+    position_summary: null,
+    members: [
+      {
+        ticker: "GOOGL",
+        report_date: "2026-10-27",
+        expected_move_pct: 5,
+        avg_reaction_pct: 2,
+        reaction_sample_n: 4,
+        beat_rate: 0.75,
+        beat_rate_n: 4,
+        is_subject: false,
+      },
+    ],
+    interpretation: "",
+    sector_label: "Technology",
+    major_group: "45",
+    distribution: null,
+    insufficient_reason: null,
+  };
+
+  const section = meridianPeerSection({
+    // Own contract already expired 2026-10-09 -- strictly BEFORE the 2026-10-28 print.
+    play: fixturePlay({ ticker: "MSFT", status: "CLOSED", occ: "O:MSFT261009C00450000" }),
+    asOf: "2026-10-26 09:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian,
+    meridianPeer,
+    ecosystem: null,
+    vector: null,
+  });
+
+  assert.ok(section);
+  assert.match(section!.body, /expires 2026-10-09/);
+  assert.match(section!.body, /no earnings-gap exposure from this position/i);
+  assert.doesNotMatch(section!.body, /print imminent/i);
+  assert.doesNotMatch(section!.body, /vol crush risk elevated/i);
+  assert.doesNotMatch(section!.body, /size down or hedge vol/i);
+  // Peer stats remain -- only the contradictory risk bullets are swapped/stripped.
+  assert.match(section!.body, /GOOGL/);
+});
+
+// Sibling no-regression case: an imminent (<=3d) print the position IS still exposed to must
+// keep the "print imminent" bullet -- this fix must not silently suppress a real warning.
+test("meridianPeerSection: imminent (<=3d) print the position is still exposed to keeps the 'print imminent' bullet (no regression)", () => {
+  const meridian = {
+    as_of: "2026-10-26 09:00 ET",
+    items: [
+      {
+        id: "earnings:MSFT:2026-10-28",
+        kind: "earnings" as const,
+        title: "MSFT earnings",
+        subtitle: null,
+        date: "2026-10-28",
+        time: null,
+        impact: "high" as const,
+        days_until: 2,
+        ticker: "MSFT",
+        date_status: null,
+        importance: 3,
+        is_printed: false,
+        expected_move_pct: 6.0,
+        sector_label: "Technology",
+      },
+    ],
+    total_matched: 1,
+  };
+  const meridianPeer = {
+    available: true as const,
+    id: "earnings:MSFT:2026-10-28",
+    subject_ticker: "MSFT",
+    position_summary: null,
+    members: [
+      {
+        ticker: "GOOGL",
+        report_date: "2026-10-27",
+        expected_move_pct: 5,
+        avg_reaction_pct: 2,
+        reaction_sample_n: 4,
+        beat_rate: 0.75,
+        beat_rate_n: 4,
+        is_subject: false,
+      },
+    ],
+    interpretation: "",
+    sector_label: "Technology",
+    major_group: "45",
+    distribution: null,
+    insufficient_reason: null,
+  };
+
+  const section = meridianPeerSection({
+    // Own contract expires 2026-10-30 -- AFTER the 2026-10-28 print, genuinely exposed.
+    play: fixturePlay({ ticker: "MSFT", status: "HOLD", occ: "O:MSFT261030C00450000" }),
+    asOf: "2026-10-26 09:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian,
+    meridianPeer,
+    ecosystem: null,
+    vector: null,
+  });
+
+  assert.ok(section);
+  assert.match(section!.body, /print imminent/i);
+  assert.match(section!.body, /vol crush risk elevated/i);
+  assert.match(section!.body, /size down or hedge vol unless thesis is the print/i);
+  assert.doesNotMatch(section!.body, /no earnings-gap exposure/i);
+});
+
 test("meridianPeerSection: dedicated section — coaching bullets must not duplicate peer lens", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ ticker: "BBWI" }),
