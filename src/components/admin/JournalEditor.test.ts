@@ -82,3 +82,34 @@ test("readLocal: off the browser (SSR) returns an empty map and never throws", a
     Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
   }
 });
+
+// `dirty` was tracked on every textarea/tags edit and reset on save/seed, but nothing ever read
+// it — an admin could type a note, navigate away or close the tab, and lose it with zero warning.
+// These prove the gate logic directly, without needing to render the component.
+test("createJournalBeforeUnloadHandler: dirty draft blocks the unload (preventDefault + returnValue set)", async () => {
+  const { createJournalBeforeUnloadHandler } = await import("./JournalEditor.tsx");
+  let prevented = false;
+  const event = {
+    preventDefault: () => {
+      prevented = true;
+    },
+    returnValue: "",
+  } as unknown as BeforeUnloadEvent;
+  createJournalBeforeUnloadHandler({ current: true })(event);
+  assert.equal(prevented, true);
+  assert.equal(event.returnValue, "");
+});
+
+test("createJournalBeforeUnloadHandler: a clean (saved/untouched) draft lets the unload proceed untouched", async () => {
+  const { createJournalBeforeUnloadHandler } = await import("./JournalEditor.tsx");
+  let prevented = false;
+  const event = {
+    preventDefault: () => {
+      prevented = true;
+    },
+    returnValue: "untouched",
+  } as unknown as BeforeUnloadEvent;
+  createJournalBeforeUnloadHandler({ current: false })(event);
+  assert.equal(prevented, false);
+  assert.equal(event.returnValue, "untouched");
+});

@@ -45,6 +45,16 @@ export function writeLocal(userId: string, map: JournalMap) {
   }
 }
 
+/** Warns on tab-close/navigation only while an edit hasn't been saved yet. Exported so the
+ *  gate logic (not just the DOM wiring) is directly testable without rendering the component. */
+export function createJournalBeforeUnloadHandler(dirty: { current: boolean }) {
+  return (event: BeforeUnloadEvent) => {
+    if (!dirty.current) return;
+    event.preventDefault();
+    event.returnValue = "";
+  };
+}
+
 export function JournalEditor({ openPlayId, userId, initial }: Props) {
   const seeded = useMemo(() => {
     if (initial) return initial;
@@ -64,6 +74,14 @@ export function JournalEditor({ openPlayId, userId, initial }: Props) {
     setStatus("idle");
     dirty.current = false;
   }, [seeded]);
+
+  // `dirty` was tracked on every edit and reset on save/seed, but nothing ever read it — an
+  // admin could type a note, navigate away or close the tab, and lose it with zero warning.
+  useEffect(() => {
+    const handler = createJournalBeforeUnloadHandler(dirty);
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   async function save() {
     setStatus("saving");
