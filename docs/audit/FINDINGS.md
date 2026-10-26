@@ -38,6 +38,393 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Swing play-brief: a confirmed $0.00 bid silently collapsed to the same shape as "no quote at all," getting WEAKER risk disclosure than a comparable nonzero-low-bid position — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (PR #6748, merged to `main`) |
+|---|---|
+
+### Root cause
+
+`executableFill()` (`src/lib/zerodte/terminal-ladder.ts`) is the single source of truth every
+swing play's executable (bid-based) exit fill is derived from. Its gate —
+
+```ts
+const fill = validBook && bid > 0 ? round2(bid) : null;
+```
+
+— treats a genuine, confirmed **zero bid** (a real two-sided quote where the bid happens to be
+exactly `$0.00` — no buyer at any price) IDENTICALLY to **no quote at all** (missing bid/ask,
+one-sided book, or a crossed book). Both produce `fill: null`, `pnl_pct: null`. That collapse is
+correct for `executableFill()` in isolation (there genuinely is no honest nonzero price to report
+for either case, and the existing `terminal-ladder.test.ts` "one-sided / no book" test already
+locks this null-for-zero-bid behavior in — this fix does not change it), but every downstream
+consumer treated `execMark == null` / `execPnlPct == null` as pure absence ("we don't have a
+quote, say nothing"), with no way to tell "we don't know" apart from "we know, and it's worthless."
+
+Live repro: `GET /api/market/swing/play-brief?playId=SWING:EXPE:2071` — a real, live two-sided
+quote (`bid: 0.00`, `ask: 1.20`, `mid: 0.60 = (0 + 1.20) / 2`, which passes the brief's own
+"is this a real quote" backstop check and renders normally elsewhere in the same brief). Because
+`exec.fill`/`exec.pnl_pct` were both `null`, three separate consumers all silently treated EXPE as
+if it had no quote, when in fact it has the single WORST real executable state a position can be
+in:
+
+1. **`src/lib/swing/play-brief.ts` (~line 824, the "Exec P&L" line in `pnlSection()`)** —
+   `if (play.execPnlPct != null) lines.push(...)` — null means the entire line vanishes with zero
+   caveat. A member reading the brief sees no "Exec P&L" line at all, identical to a position with
+   no live quote yet.
+2. **`src/lib/swing/play-brief-intel.ts` (~line 2224, the Premium stop rail cushion logic in
+   `watchForSection()`)** — `const executableCushionGone = execMark != null && execMark <= stop;`
+   — null `execMark` makes this `false`, so the rail fell through to the `cushionBasis = play.mark`
+   branch and rendered a falsely-reassuring **mid-based** cushion percentage, despite the position
+   having zero real executable value.
+3. **`src/lib/swing/play-brief-narrative.ts` (~line 1660, the "Break watch — stop already
+   breached" bullet in `tradeManagerNarrativeSection()`)** — `const execBreached = execStop != null
+   && play.execMark != null && play.execMark <= execStop;` — null `execMark` means this never
+   fires, so the brief fell through to the softer, forward-looking "Break watch — lose premium
+   stop $X → cut size or exit" framing instead of the reserved, always-surfaced "already breached"
+   headline this exact bullet exists for (added via three prior historical fixes, 2026-09-15/
+   2026-10-17, specifically to surface this severity).
+
+Net effect: EXPE (bid $0.00, no buyer exists at any price) rendered **weaker** disclosure than a
+comparable position with a nonzero-but-low bid — e.g. BLSH (bid $0.32), which correctly gets all
+three: an "Exec P&L" line, a "no real cushion on the executable side" rail caveat, and the
+"stop already breached on the executable side" bullet — despite EXPE being strictly worse.
+
+### Evidence
+
+Live repro: `GET /api/market/swing/play-brief?playId=SWING:EXPE:2071` — `bid: 0.00`, `ask: 1.20`,
+`mid: 0.60`. Before this fix: no "Exec P&L" line in the Position section; Premium stop rail
+rendered a mid-based cushion percentage with no "no real cushion" caveat; no "Break watch —
+already breached" bullet in "Trade manager read," despite the executable side being worth nothing.
+
+RED→GREEN proof (temporary local revert of the six source-only files — `terminal-ladder.ts`,
+`types.ts`, `adapters.ts`, `play-brief-intel.ts`, `play-brief-narrative.ts`, `play-brief.ts` — back
+to `HEAD`, test files left in place, byte-exact restore afterward confirmed via `diff`): the four
+new regression tests (one per file below) each failed exactly as expected (`not ok`, 1 failure
+each, every pre-existing test in each file still passing), then passed 13/13, 182/182, 331/331,
+155/155 respectively once the fix was restored.
+
+### Blast radius
+
+- `src/lib/zerodte/terminal-ladder.ts` — `executableFill()`'s return type gains one new additive
+  field, `bidConfirmedZero: boolean`. `fill`/`pnl_pct`/`mid` are byte-identical to before for every
+  existing caller (confirmed: the only other call sites, `zerodte-service.ts` ×2, destructure only
+  `.pnl_pct` and are unaffected by an added field).
+- `src/features/nighthawk/command-deck/types.ts` — `TerminalPlay` gains one new optional field,
+  `execBidZero?: boolean | null`.
+- `src/features/nighthawk/command-deck/adapters.ts` — only the **swing/LEAPS adapter**
+  (`terminalPlayFromHorizon`, the one the finding's live repro traced to) is wired to populate
+  `execBidZero`, gated identically to the existing `execMark`/`execPnlPct` null-out
+  (`WATCH`/`SKIP`/`CLOSED` → `null`). The sibling **0DTE adapter** (`terminalPlayFromZeroDte`) is
+  deliberately left untouched — its `executableFill()` call site has no narrative/rail consumer
+  that reads this distinction today, and widening it there is out of scope for this finding (the
+  0DTE condor/ladder code reads `.fill`/`.pnl_pct` only, unaffected either way).
+- Three narrative/rail consumers in the swing lane (`play-brief.ts`, `play-brief-intel.ts`,
+  `play-brief-narrative.ts`) each gained a minimal, additive branch keyed on `play.execBidZero`,
+  described above. No existing branch's condition or output changed for any play where
+  `execBidZero` is `false`/`null` (confirmed: all pre-existing tests in all three files still pass
+  unmodified).
+
+### Fix rationale
+
+`executableFill()` already had the one fact that distinguishes the two null-shaped cases —
+`validBook` (a confirmed, valid two-sided quote) combined with `bid === 0` — it just never
+surfaced it. Added `bidConfirmedZero: validBook && bid === 0` to its return value rather than
+changing `fill`/`pnl_pct`, which stay `null` exactly as `terminal-ladder.test.ts`'s existing
+"one-sided / no book" test already locks in (a long genuinely cannot be SOLD at $0, so there is
+still no honest nonzero fill price to report — fabricating one, e.g. setting `execMark: 0`, would
+make the stop/target-rail "basis" math downstream subtly wrong in a different way). Threaded the
+new field through `TerminalPlay`/the swing adapter the same way `execMark`/`execPnlPct` already
+are, then updated each of the three consumers to treat a confirmed zero bid as the **most severe**
+state rather than an absence:
+
+- `play-brief.ts`: a new `else if (play.execBidZero === true)` branch renders
+  `"Exec P&L: **-100.0%** _(bid is $0.00 — no real buyer at any price; the executable exit is a
+  total loss)_"` — mathematically exact regardless of entry price (`(0 − entry) / entry = -100%`
+  for any positive entry), and carries the same open-runner/stale-quote qualifiers the normal
+  branch already does.
+- `play-brief-intel.ts`: `executableCushionGone` now also fires on `play.execBidZero === true`,
+  routing EXPE into the exact same "no real cushion on the executable side" message a nonzero
+  at/through-stop bid already produces — no new message string, just a wider trigger condition.
+- `play-brief-narrative.ts`: introduced `execMarkForBreach = play.execBidZero === true ? 0 :
+  play.execMark` so the existing `execBreached` check and its rendered bid value both treat a
+  confirmed zero bid as `$0.00`, at/through any positive stop — again reusing the existing bullet,
+  not inventing new copy.
+
+Deliberately left unchanged: `executableFill()`'s own `fill`/`pnl_pct`/`mid` computation (locked in
+by the existing zero-bid test); the 0DTE adapter call site (no consumer reads this distinction
+there today); the "Premium target rail" room% block in `play-brief-intel.ts` (the finding's quoted
+defect is specifically the stop-side cushion logic — the target-side room% block shares the same
+`execMark`-preferred-over-mid shape but was not named in the finding's reproduction, so it is left
+for a separate pass rather than widened here without its own live repro).
+
+### Tests
+
+- `src/lib/zerodte/terminal-ladder.test.ts` — extended the existing "one-sided / no book" test with
+  two new assertions: `executableFill(0, 0.1, 2.0).bidConfirmedZero === true` (a real two-sided
+  book with `bid === 0` is a CONFIRMED zero) and `executableFill(null, 2.6, 2.0).bidConfirmedZero
+  === false` (no book at all must not be confused with a confirmed zero bid). 13/13 green.
+- `src/lib/swing/play-brief.test.ts` — new test reproducing the exact EXPE shape
+  (`entry: 0.95, mark: 0.6, execMark: null, execPnlPct: null, execBidZero: true`), asserting the
+  Position section renders the `-100.0%` total-loss disclosure instead of silently omitting the
+  Exec P&L line. 182/182 green.
+- `src/lib/swing/play-brief-intel.test.ts` — new test (sibling of the existing NN#32 "no real
+  cushion" regression test) with `execMark: null, execBidZero: true`, asserting the Premium stop
+  rail still renders "no real cushion on the executable side" and never falls back to "cushion from
+  current mark." 331/331 green.
+- `src/lib/swing/play-brief-narrative.test.ts` — new test (sibling of the existing NN#32
+  "already breached" regression test) with `execMark: null, execBidZero: true`, asserting the
+  "Break watch — stop already breached on the executable side" bullet fires with `bid **$0.00**`
+  rather than falling through to the forward-looking "lose premium stop" framing. 155/155 green.
+
+RED→GREEN confirmed for all four files (one new failure pre-fix each, zero pre-existing
+regressions, full green post-fix — exact counts above). `npx tsc --noEmit` clean (no errors).
+
+## 2026-10-25 — [FINDING, P2 Night Hawk Swings / Ask Largo] `formatOverlapPosition()` never disclosed a genuinely cross-engine book-overlap position when the REVIEWED play is Banger-origin and the sibling is swing-native — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #6750, merged to `main`) |
+| **Found by** | Adversarially-verified live audit (Ask Largo standing mandate, CLAUDE.md "ASK LARGO × NIGHT HAWK SWINGS" section), live repro SWING:SNDQ:2120 |
+| **Scope** | `src/lib/swing/play-brief-intel.ts` (`formatOverlapPosition`) |
+
+### Root cause
+
+`bookContextSection`'s `formatOverlapPosition()` (src/lib/swing/play-brief-intel.ts) annotates an
+overlapping book position with whether it is a genuine CROSS-ENGINE sibling (independently committed
+by the OTHER engine — Banger vs native swing) or a same-engine duplicate, because the former is a
+stronger, independently-corroborated signal than the latter (two independent systems both like this
+ticker, vs one system committing to it twice).
+
+For the `isReviewedTicker` branch (a sibling position on the SAME ticker as the play being reviewed),
+the function had an unconditional early return for any native sibling, reached BEFORE the
+`isCrossEngine` check further down was ever computed:
+
+```ts
+const isReviewedTicker = p.ticker.toUpperCase() === reviewedTicker.toUpperCase();
+const isDuplicateOtherTicker = !isReviewedTicker && dupTickers.has(p.ticker.toUpperCase());
+if (!isReviewedTicker && !isDuplicateOtherTicker) return base;
+if (p.positionId != null) return `${base} (separate position #${p.positionId})`;   // <-- fires for ANY native sibling, unconditionally
+...
+const isCrossEngine = isReviewedTicker
+  ? !reviewedIsBangerOrigin
+  : crossEngineDupTickers.has(p.ticker.toUpperCase());
+```
+
+`isCrossEngine`'s formula for the `isReviewedTicker` case (`!reviewedIsBangerOrigin`) is only correct
+when it is reached with the sibling's engine already known to be Banger-origin (`p.positionId ==
+null`, having fallen through the early return above it) — at that point, "cross-engine" reduces to
+"is the REVIEWED play NOT also Banger-origin." That is exactly the shape the 2026-10-20 fix (the
+LABD/RNG repro, locked in by the "a same-ticker sibling is NOT labeled cross-engine when the REVIEWED
+play is itself Banger-origin" test) and its sibling regression test ("cross-engine label still fires
+for a swing-native reviewed play with a Banger sibling") both exercise. But because the native-sibling
+early return sits BEFORE this check, the formula never got a chance to apply in the MIRROR direction:
+reviewed play is Banger-origin, sibling is native (`p.positionId != null`). That pairing is just as
+genuinely cross-engine (Banger engine independently committed the reviewed play; the native swing
+engine independently committed the sibling) — but the function silently rendered it as a same-engine-
+looking `"(separate position #N)"`, with no "cross-engine" wording at all.
+
+Only ONE of the two possible directions had a locked-in regression test before this fix (reviewed=
+native, sibling=Banger-origin); the reverse direction (reviewed=Banger-origin, sibling=native) had
+none, and was broken.
+
+### Evidence
+
+Live repro: `SWING:SNDQ:2120` — confirmed Banger-origin via its "Banger breakout +5.4% · 21C
+2026-10-30" management-section wording (the unique template only `horizonPlayFromBangerPosition` in
+`banger-lane-merge.ts` produces) — under-disclosed its swing-native sibling `SNDQ:2077` (a real
+`swing_positions` row with its own `positionId`) as plain `"(separate position #2077)"`, with no
+"cross-engine" wording, even though the Banger engine (2120) and the native swing engine (2077)
+independently committed LONG SNDQ.
+
+Direct fixture reproduction (matches the finding's own repro shape exactly):
+```ts
+bookContextSection(
+  fixturePlay({ id: "SWING:SNDQ:2120", ticker: "SNDQ", direction: "LONG", status: "OPEN", bangerOrigin: true }),
+  [{ ticker: "SNDQ", direction: "LONG", positionId: 2077 }],
+)
+```
+Pre-fix: body contained `"...already holding SNDQ LONG (separate position #2077) on SNDQ itself..."`
+— no "cross-engine" wording. New regression test
+(`src/lib/swing/play-brief-intel.test.ts`, "a native sibling on the reviewed play's OWN ticker is
+labeled cross-engine when the REVIEWED play is itself Banger-origin (2026-10-25 fix, live repro
+SNDQ:2120/2077)") asserts `/SNDQ LONG \(separate, cross-engine position #2077\)/`. Confirmed RED
+pre-fix (ran against the test-only change, source reverted to `origin/main`): `AssertionError`, actual
+body carried `"(separate position #2077)"` with no "cross-engine" text. Confirmed GREEN post-fix: full
+`src/lib/swing/play-brief-intel.test.ts` (331/331), plus `portfolio.test.ts` + `play-brief.test.ts` +
+`play-brief-adapter.test.ts` (205/205) all pass. `npx tsc --noEmit -p .` clean (no new errors).
+
+### Blast radius
+
+Single function, `formatOverlapPosition` — its only caller is `bookContextSection`, and every one of
+that function's four call sites (same-ticker same-direction, other-ticker same-direction, same-ticker
+opposed, other-ticker opposed) routes through the same `formatOverlapPosition` and is covered by the
+same fix, since the bug lived in the shared helper, not in any one call site. No other file in the
+repo independently reimplements this cross-engine-disclosure logic (checked via grep for
+`reviewedIsBangerOrigin`/`crossEngineDupTickers` usage — both are private to this file and consumed
+only here).
+
+### Fix rationale
+
+Added a dedicated branch, checked BEFORE the general `p.positionId != null` early return, that
+special-cases exactly `isReviewedTicker && p.positionId != null` (the previously-unreached
+combination): it returns the cross-engine-labeled string when `reviewedIsBangerOrigin` is true, and
+the existing plain label otherwise (preserving the already-correct "two native positions, same
+ticker, same engine" and "reviewed is native, sibling is native" cases, both still exercised by
+existing tests). The alternative considered — moving `isCrossEngine`'s computation above the general
+early return and reusing its existing formula unconditionally — was rejected: that formula
+(`!reviewedIsBangerOrigin`) is only valid once the sibling's engine is known to be Banger-origin (i.e.
+in the already-fallen-through `p.positionId == null` case); naively reusing it for a native sibling
+would have required deriving a different, more general formula and risked touching the
+`isDuplicateOtherTicker` branch's native-sibling shape too, which is explicitly out of scope for this
+finding (that branch's existing behavior — and its own locked-in test, "a genuinely mixed-origin
+duplicate OTHER ticker is still labeled cross-engine... even when the reviewed play is itself
+Banger-origin", which deliberately does NOT require the native-side row of that pair to also carry the
+label — is left completely untouched here). The targeted, minimal branch fixes exactly the missing
+direction without touching anything else.
+
+### Deliberately left unchanged
+
+- The already-tested mirror direction (reviewed=native, sibling=Banger-origin) — same code path,
+  same formula, unaffected.
+- The `isDuplicateOtherTicker` branch's native-sibling shape (a native row that is part of a
+  duplicate-OTHER-ticker pair still falls through to the general, unconditional
+  `p.positionId != null` early return exactly as before) — out of scope for this finding, which is
+  specifically about the reviewed play's OWN ticker.
+- `tickersWithMixedOriginDuplicates`/`crossEngineDupTickers` and everything else in
+  `bookContextSection` — untouched.
+
+## 2026-10-25 — [FINDING, P2 Night Hawk Swings / Ask Largo] "Earnings peer lens" ignores the SAME brief's own "no earnings-gap exposure" computation and issues contradictory risk-management guidance for a contract that already expires before the print — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #6747, merged to `main`) |
+| **Found by** | Adversarially-verified live audit (Ask Largo standing mandate, CLAUDE.md "ASK LARGO × NIGHT HAWK SWINGS" section) |
+| **Finding ID** | OUST, SWING:OUST:2127 |
+| **Scope** | `src/lib/swing/play-brief-meridian-peer-core.ts`, `src/lib/swing/play-brief-intel.ts`, `src/lib/swing/play-brief-narrative-coaching.ts` |
+
+### Root cause
+
+Live OUST 31C play-brief (expiry 2026-10-30, entry $0.78, HOLD bucket) gave OPPOSITE risk
+conclusions about the SAME 2026-11-03 earnings print from two sections of the SAME brief:
+
+- **"Trade manager read"** (`catalystCoaching`, `play-brief-narrative-coaching.ts`): *"Earnings in
+  9d (2026-11-03 (afterhours)) — this contract expires 2026-10-30, on/before the print, so no
+  earnings-gap exposure from this position..."* — correct.
+- **"Earnings peer lens"** (`meridianPeerSection`/`meridianPeerEarningsCoaching`, a separate,
+  standalone section, NOT folded into Trade manager read): *"Earnings peer lens — reports in 9d.
+  Peers that beat often gap through implied — size down or hedge vol unless thesis is the
+  print."* — contradicts the first section about the identical print on the identical contract.
+
+`catalystCoaching` already resolves THIS brief's own contract expiry via `ownContractExpiry(ctx)`
+(parses `play.occ`, falling back to a `laneRows` entry-premium match) and compares it against the
+earnings date before deciding whether the position has real earnings-gap exposure — this is the
+already-fixed path (that same file's own 2026-09-11 fix comment documents an identical prior bug
+in THIS exact function: "both briefs printed the identical 'size down or exit before report'
+instruction — nonsensical for the position that will already be closed/expired before the print
+ever lands").
+
+`meridianPeerEarningsCoaching` (`play-brief-meridian-peer-core.ts`) gates only on
+`item.days_until <= 14` and unconditionally appends the literal sizing/hedging instruction
+("Peers that beat often gap through implied — size down or hedge vol unless thesis is the
+print.") — it never checks the brief's own contract expiry at all, so it structurally cannot
+distinguish "this contract is exposed to the print" from "this contract already expired before
+the print." The section-assembly wrapper, `meridianPeerSection` (`play-brief-intel.ts`), only
+special-cased the CLOSED status bucket (a 2026-10-24 fix prepending a "not what this trade traded
+under" disclosure) — there was no analogous guard for an OPEN/HOLD position whose own contract
+expires on/before the earnings date.
+
+### Evidence
+
+Live repro: OUST 31C, expiry 2026-10-30, earnings 2026-11-03 (afterhours), HOLD bucket — the two
+quoted bullets above, verbatim, from the same rendered brief.
+
+RED→GREEN (`src/lib/swing/play-brief-intel.test.ts`): new test
+"meridianPeerSection: contract expiring BEFORE the earnings print discloses no-exposure instead
+of telling the trader to size down (live repro OUST 31C, SWING:OUST:2127)" builds the exact live
+shape (Meridian earnings item dated 2026-11-03, `play.occ` resolving to a 2026-10-30 expiry) and
+asserts the section states "no earnings-gap exposure from this position" and does **not** contain
+"size down or hedge vol." Reverting only the three source files to `origin/main` (keeping the new
+test) and running `npx tsx --experimental-test-module-mocks --test
+src/lib/swing/play-brief-intel.test.ts` reproduced the exact live contradiction and failed with:
+
+```
+not ok 264 - meridianPeerSection: contract expiring BEFORE the earnings print discloses
+no-exposure instead of telling the trader to size down (live repro OUST 31C, SWING:OUST:2127)
+  error: The input did not match the regular expression /expires 2026-10-30/. Input:
+  '**Earnings peer lens** — implied move **12.0%** · reports in **9d** · sector **Industrials** ·
+  peer history: **KTOS** 75% beat (n=4). Peers that beat often gap through implied — size down or
+  hedge vol unless thesis is the print.'
+```
+
+(331/332 passed; only the new contradiction-reproducing test failed.) Restoring the fix made the
+full suite pass again: `src/lib/swing/play-brief-intel.test.ts` 332/332,
+`src/lib/swing/play-brief-meridian-peer.test.ts` + `play-brief-narrative-coaching.test.ts` +
+`play-brief.test.ts` combined 389/389, and the full `src/lib/swing/*.test.ts` sweep 2082/2082.
+A sibling regression test ("contract still alive through the print keeps the sizing/hedging
+instruction unchanged (no regression)") proves the ordinary, correct case (contract expiry AFTER
+the print date) is untouched — it still renders the real "size down or hedge vol" instruction.
+`npx tsc --noEmit` across the whole project: 0 errors.
+
+### Blast radius
+
+- `meridianPeerEarningsCoaching` (`play-brief-meridian-peer-core.ts`) is the only producer of the
+  literal sizing/hedging instruction text; it is now exported as
+  `EARNINGS_PEER_SIZING_INSTRUCTION` so the assembly layer can detect/replace it without
+  re-deriving the string. No other call site renders this exact instruction.
+- `ownContractExpiry` (`play-brief-narrative-coaching.ts`) was previously module-private; it is now
+  exported so `meridianPeerSection` can reuse the EXACT same expiry resolution `catalystCoaching`
+  already uses, rather than re-deriving a second, potentially-drifting copy of the same logic (the
+  same "reuse, don't re-derive" discipline this repo's other fixes in this area already follow).
+  No behavior of `ownContractExpiry` itself changed.
+- `meridianPeerSection` is the only section-assembly call site for
+  `meridianPeerEarningsCoaching`/`pickEarningsForSwingPeer` (confirmed via `grep -rn
+  "meridianPeerEarningsCoaching\|pickEarningsForSwingPeer" src/lib/swing/*.ts` outside
+  `play-brief-meridian-peer-core.ts`/`play-brief-meridian-peer.ts`) — no other renderer needed the
+  same guard.
+- `play-brief-meridian-peer.ts` only re-exports `meridianPeerEarningsCoaching`/
+  `pickEarningsForSwingPeer` from the core file untouched; it carries no logic of its own and did
+  not need a change.
+
+### Fix rationale
+
+Added the guard at the **section-assembly layer** (`meridianPeerSection`, `play-brief-intel.ts`),
+not inside the pure `meridianPeerEarningsCoaching` helper — matching the precedent this exact
+function already established on 2026-10-24 for its CLOSED-bucket disclosure fix ("stays
+pure/play-unaware — the disclosure is prepended here... rather than threading bucket into the
+pure helper"). The guard computes `ownContractExpiry(ctx)` (reused, not re-derived) and compares it
+against the Meridian catalyst item's own `date`; when the brief's own contract expires strictly
+before the print's calendar date, the trailing sizing/hedging instruction is swapped for a
+clarifying no-exposure caveat using the identical wording `catalystCoaching` already renders for
+the same fact, while the informative peer-beat-rate statistics earlier in the body are left
+untouched (they remain useful context even for a position that is not itself exposed to the gap).
+
+Deliberately scoped **narrower** than `catalystCoaching`'s own `noGapExposure` check: that check
+also treats a same-day expiry as safe when the UW-sourced `arsenal.earnings.report_time` bucket
+confirms the print is afterhours. The Meridian `LargoTimelineItem` this section reads carries only
+an ET release `time` string (`HH:mm` or `null`), not a report_time bucket, so there is no reliable
+way to resolve the same-day-but-confirmed-after-close case here without guessing. Per this file's
+existing honest-absence discipline (unknown timing never claims safety), only the unambiguous case
+— contract expiry strictly BEFORE the earnings print's calendar date, safe regardless of intraday
+timing — is handled; a same-day expiry falls through unchanged (still renders the original
+instruction), exactly as it did before this fix, rather than fabricating a timing fact this data
+source cannot confirm.
+
+### Deliberately left unchanged
+
+- `catalystCoaching` itself (`play-brief-narrative-coaching.ts`) — already correct; not modified.
+- The 2026-10-24 CLOSED-bucket guard in `meridianPeerSection` — already correct for its own case;
+  this fix is additive alongside it (both guards can fire independently and are tested together).
+- The same-day-expiry edge case for the peer-earnings path (expiry equals the print's calendar
+  date) — genuinely unresolvable from the data this section has available; left as a disclosed,
+  narrower scope than `catalystCoaching`'s own check rather than guessing.
+
 ## 2026-10-25 — [FINDING, P2 0DTE / Night Hawk] WS-11 `tranches[].fraction` audit trail rounds independently and sums to 0.99 instead of 1.00 — FIXED
 
 > **kind:** `FINDING`
