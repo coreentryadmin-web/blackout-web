@@ -95,8 +95,22 @@ function setTierCache(userId: string, tier: Tier): void {
   tierCache.set(userId, { tier, at: Date.now() });
 }
 
+// Bumped by every invalidateTierCache() call. Guards the same write-then-invalidate race
+// clerk-user-cache.ts's own invalidationSeq fixes (docs/audit/findings-staging/
+// 2026-10-26-clerk-user-cache-invalidate-race.md): publishTierChanged() is called right after a
+// confirmed Clerk metadata write (Whop webhook, admin tool-access edit, membership sync) so the
+// NEXT read sees the new tier immediately — but invalidateTierCache can only clear what is
+// ALREADY sitting in tierCache. It cannot reach back and stop a resolveUserTier() call that
+// started EARLIER (and is therefore mid-flight reading Clerk's PRE-write state) from completing
+// afterward. Without this guard, that in-flight call's setTierCache(userId, tier) resurrects the
+// exact pre-write staleness the invalidation was called to clear — e.g. a just-processed Whop
+// downgrade (premium -> free) reads as premium again for up to another TIER_CACHE_TTL_MS (60s)
+// even though publishTierChanged was called specifically to make the downgrade visible instantly.
+let tierInvalidationSeq = 0;
+
 /** Evict a single user from the local in-memory tier cache (no-op if not present). */
 export function invalidateTierCache(userId: string): void {
+  tierInvalidationSeq++;
   tierCache.delete(userId);
   // Also clear any failure backoff — an explicit invalidation (e.g. publishTierChanged after
   // a Whop resync) means the caller has reason to believe the next Clerk read is worth trying
@@ -186,17 +200,26 @@ export async function resolveUserTier(
     // here: the real attempt below already logged once when the failure actually happened.
     return staleTierOrUnavailable(cached);
   }
+  // Captured BEFORE the Clerk fetch below so the write below can detect whether something
+  // invalidated this user (or the whole cache) while the fetch was in flight — see
+  // tierInvalidationSeq's comment above invalidateTierCache.
+  const seqAtFetchStart = tierInvalidationSeq;
   try {
     // Always resolve paid tier from Clerk on cache miss — JWT session claims can lag Whop
     // downgrade webhooks by minutes (CQ-003 / CCQ-007). publishTierChanged evicts cache;
     // the next request must not re-grant premium from stale JWT alone.
     const user = await getClerkUserCached(userId);
     const tier = parseTier(user.publicMetadata?.tier);
-    setTierCache(userId, tier);
-    tierFailCache.delete(userId);
+    // Only cache this result if nothing invalidated tier-cache while this fetch was in
+    // flight — otherwise this fetch read Clerk's PRE-write state and writing it now would
+    // resurrect the exact staleness the invalidation was called to clear.
+    if (tierInvalidationSeq === seqAtFetchStart) {
+      setTierCache(userId, tier);
+      tierFailCache.delete(userId);
+    }
     return tier;
   } catch (err) {
-    setTierFailCache(userId);
+    if (tierInvalidationSeq === seqAtFetchStart) setTierFailCache(userId);
     if (cached && isWsUpdatedAtFresh(cached.at, TIER_STALE_MAX_MS)) {
       console.warn("[tier-cache] Clerk getUser failed; using last-known tier:", err);
       return cached.tier;
