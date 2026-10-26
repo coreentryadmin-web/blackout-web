@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Status** | FIXED (PR #TBD) |
+| **Status** | FIXED (PR #6924) |
 | **Found by** | Live production repro + independent code verification, Ask Largo × Night Hawk Swings standing ownership mandate, 2026-10-26 |
 | **Scope** | `src/lib/swing/play-brief-narrative.ts` (`tradeManagerNarrativeSection`) |
 
