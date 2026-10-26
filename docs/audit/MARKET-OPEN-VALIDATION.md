@@ -1,3 +1,28 @@
+## WATCH LIST — 2026-10-26 Swing room%/cushion% unrounded-basis fix (PR #6753, merged) — fixed, deploy pending validation
+
+**What was fixed:** three swing Largo play-brief sites (`distanceSuffix` in
+`play-brief-narrative-coaching.ts`; `targetRoomPct`/`cushionPct` in `play-brief-intel.ts`) computed
+a room%/cushion% percentage by dividing by the raw, unrounded `mark`/`execMark` float, while
+displaying that same basis rounded to 2dp (`fmtOptionUsd`) right beside the result — invisible for
+normal-priced contracts, visibly wrong for cheap sub-$0.10 swing contracts. Live repro WEN
+(`SWING:WEN:2098`): real mid `$0.025` displayed as `Mark: $0.03`, but "Trade manager read" and
+"What to watch" both printed `+380% from here`/`380% move still needed` — the raw-float math —
+while the two dollar figures literally printed (`$0.03` mark, `$0.12` target) imply `+300%`.
+Added `roundOptionUsd()` to `fmt-money.ts`, rounds the basis before the percentage math at all 3
+sites. Also live-checked PTON/HOG/ASO/NAIL/UVIX/BYND this cycle for the same shape — all had
+already-clean 2dp bases (so the bug never fired for them), confirming the fix is additive and does
+not change any already-correct number.
+
+**Specific thing to check at next RTH open:** pull a live swing `play-brief` for any committed
+position trading a sub-$0.10 contract (cheap weekly OTM calls/puts on a Banger/breakout origin are
+the most likely candidates — check the swing board's committed list for the lowest `contract.mid`
+values) and confirm the room%/cushion% figures now agree with manual arithmetic on the two dollar
+figures printed beside them (e.g. `(target - displayed_mark) / displayed_mark`). Also confirm no
+regression on the ALREADY-correct clean-2dp cases (e.g. re-check HOG/UVIX, which had 2dp-clean
+bases pre-fix) — their numbers should be byte-identical to before.
+
+---
+
 ## WATCH LIST — 2026-10-25 Five-engine sweep + Ask Largo fix batch (7 PRs, all merged) — fixed, deploy pending validation
 
 **What was fixed (7 independent findings, one cycle):**
