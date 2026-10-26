@@ -172,18 +172,34 @@ export function correctPublicRead(
  * accelerate" beside a spot explicitly marked stale by `priceNote` — a fresh RECOMPUTE timestamp
  * making a stale INPUT look actionable.
  */
+const GATE_PREFIX = "Prior-session structural reference — ";
+const SHORT_LIVE = "→ short gamma: momentum / vol expansion, moves accelerate";
+const SHORT_GATED = "→ short gamma structurally (not a live actionable read)";
+const LONG_LIVE = "→ long gamma: range-bound, fade extremes";
+const LONG_GATED = "→ long gamma structurally (not a live actionable read)";
+
+/**
+ * Undo a PRIOR application of the gate, so re-gating a read that was already gated (or was never
+ * gated) is always safe. Needed because a last-good snapshot's `read` can be re-served across a
+ * session boundary it was never computed for — see `degradedFromLastGood` in public-gex-snapshot.ts
+ * — and gating it again without first reversing a stale gate would either leave the wrong
+ * (session-mismatched) wording in place or double up the "Prior-session structural reference —"
+ * prefix.
+ */
+function ungatePublicRead(read: string): string {
+  const base = read.startsWith(GATE_PREFIX) ? read.slice(GATE_PREFIX.length) : read;
+  return base
+    .replace(new RegExp(SHORT_GATED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), SHORT_LIVE)
+    .replace(new RegExp(LONG_GATED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), LONG_LIVE);
+}
+
 export function applyPublicReadFreshnessGate(read: string, marketSession: MarketPhase | null): string {
-  if (marketSession === "OPEN") return read;
-  const structural = read
-    .replace(
-      /→\s*short gamma:\s*momentum \/ vol expansion, moves accelerate/i,
-      "→ short gamma structurally (not a live actionable read)"
-    )
-    .replace(
-      /→\s*long gamma:\s*range-bound, fade extremes/i,
-      "→ long gamma structurally (not a live actionable read)"
-    );
-  return `Prior-session structural reference — ${structural}`;
+  const base = ungatePublicRead(read);
+  if (marketSession === "OPEN") return base;
+  const structural = base
+    .replace(/→\s*short gamma:\s*momentum \/ vol expansion, moves accelerate/i, SHORT_GATED)
+    .replace(/→\s*long gamma:\s*range-bound, fade extremes/i, LONG_GATED);
+  return `${GATE_PREFIX}${structural}`;
 }
 
 
