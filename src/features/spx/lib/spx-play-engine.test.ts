@@ -260,6 +260,42 @@ test("evaluateOpenPlay TARGET hit, mutate:true: SELL is real — signal_committe
   assert.equal(stillOpen, null, "mutate:true must actually close the play");
 });
 
+// BUG FIX (2026-10-26): the closed-market SCANNING branch computed confluence off
+// `desk.price > 0` alone. A cold-cache bootstrap shell (buildBootstrapFastLane() /
+// deskShellFromPulse() in spx-desk-loader.ts / spx-desk.ts — a real price from the
+// pulse layer, but no GEX/flow layer ever merged in, `source` left at its
+// documented "none" degraded-shell marker — see the comment block in
+// spx-desk-merge.ts's mergePulseIntoDesk/mergeDeskLayers) still has `available:
+// true` (mergePulseIntoDesk reassigns `available: pulse.available || base
+// .available`, but never reassigns `source`), so computeSpxConfluence's own
+// `!desk.available` guard never fires and it returns a non-null object with
+// `factors: []`/`score: 0` instead of null. `assessed: closedConfluence != null`
+// then read true off that empty object — the dashboard reported "session
+// assessed, grade D" for a tick the desk never actually built a real read on.
+test("evaluateOpenPlay closed-market SCANNING, bootstrap-shell desk (source:none): assessed is false, not a confluence computed off an empty shell", async () => {
+  const shellDesk = desk(5000, {
+    market_open: false,
+    source: "none",
+    vwap: null,
+    gamma_flip: null,
+    gex_king: null,
+    gex_net: null,
+    tick: null,
+    trin: null,
+    add: null,
+  });
+
+  const payload = await evaluateSpxPlay(shellDesk, EMPTY_TECHNICALS, { mutate: false });
+
+  assert.equal(payload.phase, "SCANNING");
+  assert.equal(
+    payload.assessed,
+    false,
+    "a source:none bootstrap shell has no real confluence to close out on — must not report assessed:true off an empty factors:[] object"
+  );
+  assert.deepEqual(payload.factors, []);
+});
+
 // BUG FIX (2026-09-03): getNhConfluenceBonus's staleness check used a raw
 // `(Date.now() - publishedAt.getTime()) / 3_600_000 > 20` comparison. published_at is written by a
 // SEPARATE Night Hawk cron process, so cross-process clock skew is real — a future-dated edition
