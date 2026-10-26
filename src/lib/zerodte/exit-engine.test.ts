@@ -535,6 +535,70 @@ test("buildExitContext: a floor mark that rounds to the same cent as the raw obs
   );
 });
 
+// Live finding, 2026-10-26 (TSLA board ledger / SPXW record play): every exit `detail`
+// string interpolated the live `currentMark` RAW — no rounding/formatting at all — while
+// every other dollar figure in the SAME sentence (fmtPct's %, the plan stop, the plan
+// target) was already clean. A half-cent/float mark (e.g. a 3-decimal `1.355` or
+// `0.465`) rendered as a 3+-decimal figure beside an already-2dp plan stop/target in one
+// sentence ("Mark 1.355 ... is at/below the plan stop 0.48"). Every OTHER premium field
+// this product shows a member (entry_premium, last_mark, peak_premium, trough_premium,
+// plan stop/target) is 2dp both at the data layer and in the UI (ZeroDteBoard.tsx's own
+// `.toFixed(2)`), so the narrative owed the same convention. The fix only reformats the
+// DISPLAYED mark text (`fmtMark`) — it must never touch `pnlPct`'s own computation,
+// which stays deliberately RAW per the cent-rounding tests just above.
+test("exit detail: a 3-decimal live mark renders at 2dp in every narrative template (trim_scale, plan_stop)", () => {
+  const d = evaluateExitState(
+    input({ entryPremium: 0.96, currentMark: 0.465, planStop: 0.48, peakPremium: 0.96 })
+  );
+  assert.equal(d.reason, "plan_stop");
+  assert.match(d.detail, /^Mark 0\.47 \(/, "the live mark renders 2dp, matching the already-2dp plan stop");
+  assert.doesNotMatch(d.detail, /0\.465/, "the raw 3-decimal mark must never reach the member-facing detail");
+});
+
+test("exit detail: a 3-decimal live mark renders at 2dp (trim_scale, shared protective floor)", () => {
+  const d = evaluateExitState(
+    input({ peakPremium: 10.0, currentMark: 5.355, planStop: 1.0, trimsTaken: 2 }) // peak +150% (locked tier), both trims banked
+  );
+  assert.equal(d.reason, "runner_floor");
+  assert.match(d.detail, /^Mark 5\.36 \(/);
+  assert.doesNotMatch(d.detail, /5\.355/);
+});
+
+test("exit detail: a 3-decimal live mark renders at 2dp (trim_scale, runner target after both trims)", () => {
+  const d = evaluateExitState(input({ peakPremium: 8.0, currentMark: 8.005, trimsTaken: 2 }));
+  assert.equal(d.reason, "trim_scale_runner_target");
+  assert.match(d.detail, /^Mark 8\.01 \(/);
+  assert.doesNotMatch(d.detail, /8\.005/);
+});
+
+test("exit detail: a 3-decimal live mark renders at 2dp in every narrative template (ratchet, plan_stop)", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "ratchet", currentMark: 1.355, planStop: 2.0, peakPremium: 4.0 })
+  );
+  assert.equal(d.reason, "plan_stop");
+  assert.match(d.detail, /^Mark 1\.35 \(/);
+  assert.doesNotMatch(d.detail, /1\.355/);
+});
+
+test("exit detail: a 3-decimal live mark renders at 2dp (ratchet, breakeven floor)", () => {
+  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 4.317, planStop: 0.5 }));
+  assert.equal(d.reason, "ratchet_breakeven_floor");
+  assert.match(d.detail, /^Mark 4\.32 \(/);
+  assert.doesNotMatch(d.detail, /4\.317/);
+});
+
+test("exit detail: a 3-decimal live mark renders at 2dp (ratchet, plan-target trim/final)", () => {
+  const trim = evaluateExitState(input({ exitMode: "ratchet", currentMark: 8.005, planTarget: 8.0, trimmed: false }));
+  assert.equal(trim.reason, "plan_target_trim");
+  assert.match(trim.detail, /^Mark 8\.01 \(/);
+  assert.doesNotMatch(trim.detail, /8\.005/);
+
+  const final = evaluateExitState(input({ exitMode: "ratchet", currentMark: 8.005, planTarget: 8.0, trimmed: true }));
+  assert.equal(final.reason, "plan_target_final");
+  assert.match(final.detail, /^Mark 8\.01 \(/);
+  assert.doesNotMatch(final.detail, /8\.005/);
+});
+
 test("resolveExitMark: ratchet floor caps at floor premium; thesis uses observed", () => {
   const floorDecision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.5 }));
   const floorResolved = resolveExitMark(floorDecision, ENTRY, 3.5);
