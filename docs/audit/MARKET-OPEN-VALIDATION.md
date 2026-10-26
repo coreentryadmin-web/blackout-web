@@ -1,3 +1,22 @@
+## WATCH LIST — 2026-10-26 Swing play-brief diff narrator dropped one side of a HELIX call/put flow move when both moved in the same refresh (PR #6777, CI running at time of writing — confirm merged before relying on this entry) — fixed, deploy pending validation
+
+**What was fixed:** `diffBriefSnapshots`'s (`play-brief-diff.ts`) HELIX call/put flow narration used
+a single `if`/`else-if`/`else-if` chain instead of two independent `if`s like every other field in
+the file. Call flow and put flow are independent sentiment signals — one side can collapse while
+the other builds in the same refresh (e.g. call-side profit-taking while puts build into a hedge)
+— but the chain meant only whichever branch it reached first was ever narrated in the brief's "What
+changed" diff pulse; the other equally real move was silently dropped. Fixed by splitting into two
+independent `if` blocks so both `callMoved` and `putMoved` can each push their own line in the same
+pulse. RED→GREEN confirmed with a new test (call premium collapsing 500k→100k while put premium
+builds 400k→900k in the same `diffBriefSnapshots` call).
+
+**Specific thing to check at next RTH open:** find a live swing WATCH/OPEN position whose Ask Largo
+play-brief "What changed" diff pulse fires across a refresh where BOTH call premium and put
+premium moved materially (≥1.2x either direction) versus the prior snapshot — confirm the pulse
+shows BOTH a call-side and a put-side "HELIX tape:" line, not just one; confirm a refresh where only
+one side moved still shows exactly one line (no regression, no spurious second line fabricated for
+an unmoved side).
+
 ## WATCH LIST — 2026-10-26 Swing executable-stop-breach stale-caveat fix (PR #6756, merged) — fixed, deploy pending validation
 
 **What was fixed:** the "Break watch — stop already breached on the executable side ... right now
