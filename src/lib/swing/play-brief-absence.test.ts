@@ -849,6 +849,54 @@ test("collectBriefUnavailableSources: a real flip value never trips the absence 
   assert.ok(!sources.some((s) => s.source === "GEX gamma flip"));
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro MRNA:65 CLOSED): `collectGexFlipAbsence`
+// used to be folded into the SAME `!isNotLive` block as every other live-desk-staleness check in
+// this function — so a CLOSED (or dead-WATCH) play could never get this chip, even though
+// `gexPostureSection`/`chartLevelsSection` (play-brief-intel.ts) both render a "Current dealer
+// posture"/"Current levels" read for CLOSED plays gated only on `!stale`, not on bucket status, and
+// can hit the exact null-flip case this chip exists to explain. Companion fix to the
+// `evidenceFromContext` one in play-brief.ts (play-brief.test.ts) — same root cause.
+test("collectBriefUnavailableSources: a CLOSED play with a fresh, flip-absent GEX matrix still surfaces WHY (companion to evidenceFromContext fix)", () => {
+  const ctx = {
+    play: { status: "CLOSED" },
+    ecosystem: {
+      gex_positioning: { spot: 197.03, flip: null, flip_reason: "insufficient_strikes", gamma_posture: null },
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const chip = sources.find((s) => s.source === "GEX gamma flip");
+  assert.ok(chip, "expected a GEX gamma flip absence chip on a CLOSED play too");
+  assert.equal(chip!.retryable, true);
+});
+
+// Sibling of the test above: a CLOSED play's own pure-staleness chip must still be suppressed —
+// this fix narrows ONLY `collectGexFlipAbsence`'s gate, not `collectGexStalenessAbsence`'s.
+test("collectBriefUnavailableSources: a CLOSED play's STALE GEX matrix still does not surface the generic staleness chip", () => {
+  const ctx = {
+    play: { status: "CLOSED" },
+    ecosystem: {
+      gex_positioning: {
+        spot: 197.03,
+        flip: null,
+        flip_reason: "insufficient_strikes",
+        gamma_posture: null,
+        matrix_age_sec: 99_999,
+      },
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    !sources.some((s) => s.source === "GEX matrix"),
+    "pure staleness checks remain suppressed for CLOSED plays",
+  );
+  assert.ok(
+    !sources.some((s) => s.source === "GEX gamma flip"),
+    "collectGexFlipAbsence itself already returns null on a stale matrix, independent of bucket status",
+  );
+});
+
 test("collectBriefUnavailableSources: missing Vector desk state surfaces in envelope", () => {
   const ctx = {
     ecosystem: {

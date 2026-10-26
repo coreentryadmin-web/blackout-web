@@ -2370,6 +2370,85 @@ test("composeSwingPlayBrief: Dealer posture evidence falls through to fresh GEX 
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro MRNA:65 CLOSED): evidenceFromContext
+// used to gate the ENTIRE "Dealer posture" evidence item on `if (gammaPosture)` — so whenever
+// `resolveGammaPosture` returned null (a real, common case: the GEX matrix's own `gamma_posture`
+// is null, which `buildGexRegime` produces whenever the flip is null for a genuine structural
+// reason such as `insufficient_strikes`/`crossings_far_from_spot`), net GEX and nearest-wall — both
+// independently live and non-stale — were silently dropped too, even though the human-facing
+// `gexPostureSection` (play-brief-intel.ts) renders those same figures gated only on `!stale`,
+// never on `gamma_posture`. Live-reproduced: MRNA's own CLOSED brief showed "Net GEX: +9.6M" /
+// "Nearest wall: 210.00 (resistance, 13.0 pts...)" in its markdown "GEX posture" section while
+// `envelope.evidence[]` carried zero [CALC]/dealer-posture entries for the identical read.
+test("composeSwingPlayBrief: Dealer posture evidence still surfaces net GEX/nearest wall when gamma_posture itself is unresolved (Largo, live repro MRNA)", () => {
+  const nowIso = new Date().toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-10-26 10:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "MRNA",
+      gex_positioning: {
+        ticker: "MRNA",
+        spot: 197.03,
+        flip: null,
+        flip_reason: "insufficient_strikes",
+        call_wall: 210,
+        put_wall: 150,
+        gamma_posture: null,
+        net_gex: 9_600_000,
+        asof: nowIso,
+        as_of_et: "2026-10-26 10:00 ET",
+        matrix_age_sec: 60,
+        freshness: "live",
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(
+    postureEvidence,
+    "expected a Dealer posture evidence item even though gamma_posture itself is unresolved",
+  );
+  assert.doesNotMatch(
+    postureEvidence!.text,
+    /γ/,
+    "must omit the posture token (never fabricate one) when gamma_posture is null",
+  );
+  assert.match(postureEvidence!.text, /net GEX \+9\.6M/, "net GEX figure must still surface");
+  assert.match(
+    postureEvidence!.text,
+    /nearest wall 210\.00/,
+    "nearest wall must still surface from the live call/put walls",
+  );
+  assert.equal(postureEvidence!.provenance?.source, "GEX");
+});
+
+// Sibling of the test above: when NOTHING resolves (gex stale or absent, no vector), the old
+// silent-omission behavior must be preserved — Largo C6 says omit, never fabricate a "Dealer
+// posture:" line with nothing after the colon.
+test("composeSwingPlayBrief: Dealer posture evidence omits cleanly when gamma_posture, net GEX, and nearest wall all fail to resolve", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-10-26 10:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.equal(postureEvidence, undefined, "must omit the item entirely, not push an empty one");
+});
+
 // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro GOOGL-closed): provenance.source
 // here was tagged purely off `postureFromVec` (whether the DIRECTIONAL WORD resolved from Vector's
 // regime.posture) — but the net-GEX dollar figure in the SAME line is unconditionally read from

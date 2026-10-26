@@ -1437,8 +1437,23 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     vec?.regime?.posture != null && vec.regime.posture !== "unknown" && !vectorStale
       ? gammaPosture
       : null;
-  if (gammaPosture) {
-    const parts: string[] = [`γ ${gammaPosture}`];
+  {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro MRNA:65 CLOSED): this whole
+    // evidence item used to be gated on `if (gammaPosture)` — so a null `gammaPosture` (a real,
+    // common case: `resolveGammaPosture` returns null whenever the matrix's own `gamma_posture`
+    // is null, which `buildGexRegime` (gex-cross-validation-core.ts) produces whenever the flip
+    // itself is null for a genuine structural reason, e.g. `insufficient_strikes`/
+    // `crossings_far_from_spot`) silently dropped the ENTIRE item — not just the posture word —
+    // even though net GEX / nearest-wall are independently live and non-stale. Meanwhile the
+    // human-facing `gexPostureSection` (play-brief-intel.ts) renders Net GEX/VEX/DEX/CHARM/
+    // Nearest-wall each gated only on `!stale`, never on `gamma_posture` being resolved — so the
+    // model-facing `envelope.evidence[]` saw strictly less than the member-facing markdown for the
+    // identical brief. The posture token (`γ long`/`γ short`) is now just one optional part among
+    // several, mirroring how `gexPostureSection` already treats its own posture line as one
+    // independent line among others, not a gate on the whole section; the item is pushed whenever
+    // ANY part resolved (posture, net GEX, or nearest wall/flip), never when all three are absent.
+    const parts: string[] = [];
+    if (gammaPosture) parts.push(`γ ${gammaPosture}`);
     // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro GOOGL-closed): the net-GEX dollar
     // figure pushed just below has no Vector equivalent anywhere in this file — it is ALWAYS read
     // from `gex.net_gex`. Tracked here so the provenance tag below can't say "Vector" for a line
@@ -1498,20 +1513,26 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     // AND no GEX-only figure (net GEX, which has no Vector equivalent) got appended above — else
     // the line is genuinely GEX-matrix content even when the posture word happens to agree.
     const sourceIsVector = postureFromVec && !netGexFromGex;
-    out.push({
-      kind: "calc",
-      text: `Dealer posture: ${parts.join(" · ")}`,
-      provenance: {
-        source: sourceIsVector ? "Vector" : "GEX",
-        asOf:
-          (sourceIsVector ? vec?.asOfEt ?? etStampFromIso(vec?.asOf) : null) ??
-          gex?.as_of_et ??
-          etStampFromIso(gex?.asof) ??
-          ctx.asOf,
-        freshness: sourceIsVector ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
-        market_session_note: sourceIsVector ? vecSessionNote : gexSessionNote,
-      },
-    });
+    // Only push when something actually resolved — an unresolved posture with no net GEX and no
+    // nearest wall/flip (gex absent or stale) means `parts` is empty, same silent-omission
+    // behavior the old `if (gammaPosture)` gate had for that case (Largo C6: omit, never fabricate
+    // a "Dealer posture:" line with nothing after the colon).
+    if (parts.length) {
+      out.push({
+        kind: "calc",
+        text: `Dealer posture: ${parts.join(" · ")}`,
+        provenance: {
+          source: sourceIsVector ? "Vector" : "GEX",
+          asOf:
+            (sourceIsVector ? vec?.asOfEt ?? etStampFromIso(vec?.asOf) : null) ??
+            gex?.as_of_et ??
+            etStampFromIso(gex?.asof) ??
+            ctx.asOf,
+          freshness: sourceIsVector ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
+          market_session_note: sourceIsVector ? vecSessionNote : gexSessionNote,
+        },
+      });
+    }
   }
   // Fast-follow to PR #5306 (Ask Largo standing mandate, 2026-09-20): #5306 shipped
   // `market_session_note` on the shared freshness block but deliberately stopped short of wiring

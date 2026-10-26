@@ -947,6 +947,27 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     const gex = ctx.ecosystem?.gex_positioning;
     const gexStale = collectGexStalenessAbsence(gex, readMs);
     if (gexStale) out.push(gexStale);
+  }
+  // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro MRNA:65 CLOSED): `collectGexFlipAbsence`
+  // was folded into the same `!isNotLive` block as `collectGexStalenessAbsence` above, but the two
+  // are different KINDS of check. `collectGexStalenessAbsence` answers "is today's live desk state
+  // current" — genuinely inapplicable to a closed trade's historical facts, same reasoning as every
+  // other check in this `!isNotLive` family. `collectGexFlipAbsence` answers a different question —
+  // "is there a structural/computational reason the matrix has no flip" (insufficient_strikes,
+  // crossings_far_from_spot, or the honest net_short_everywhere structural fact) — and it already
+  // internally gates on the matrix being FRESH and PRESENT (`gexMatrixStale`/`!gex` both return
+  // null), so bucket status adds nothing to its own correctness. Gating it on `!isNotLive` anyway
+  // meant a CLOSED (or dead-WATCH) brief could never disclose this, even though
+  // `gexPostureSection`/`chartLevelsSection` (play-brief-intel.ts) both render a "Current dealer
+  // posture"/"Current levels" read for CLOSED plays — prefixed "_Current ... — not what this trade
+  // traded under._" — gated only on `!stale`, not on bucket status. A CLOSED play can hit the exact
+  // null-flip case this disclosure exists for, with the prose rendering no "Gamma flip:"/"Gamma
+  // posture:" line and nothing in unavailableSources explaining why (the companion gap to the
+  // `evidenceFromContext` fix in play-brief.ts, same root cause: `gamma_posture`/`flip` both null
+  // while net_gex/vex/dex/charm/walls are all live). So this one check is scoped independently of
+  // `isNotLive` — "is the GEX matrix fresh and present" rather than "is this play still live".
+  {
+    const gex = ctx.ecosystem?.gex_positioning;
     const flipAbsence = collectGexFlipAbsence(gex, readMs);
     if (flipAbsence) out.push(flipAbsence);
   }
