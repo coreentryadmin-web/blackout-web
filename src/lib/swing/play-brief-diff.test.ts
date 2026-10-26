@@ -563,6 +563,31 @@ test("diffBriefSnapshots: detects HELIX put-only flow build when call premium is
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-26): the HELIX call/put flow narration used an
+// if/else-if/else-if chain, so when BOTH sides move materially in the SAME refresh (one side
+// collapsing while the other builds — a real, independent sentiment shift, not a coupled one),
+// only whichever branch the chain reached first ever got narrated; the other equally material
+// move was silently dropped, identical in shape to every other "a real change goes unnarrated"
+// bug already fixed in this file (missed section removals, missed roll-watch clears, missed
+// gate-set shifts). Call flow collapsing 80% while put flow builds 125% in the same tick must
+// produce BOTH lines, not just the put one.
+test("diffBriefSnapshots: HELIX call collapsing AND put building in the SAME refresh must both be narrated, not just one", () => {
+  const baseEnvelope = env();
+  const prevResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 500_000, putPremium: 400_000 } };
+  const nextResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 100_000, putPremium: 900_000 } };
+  const prevSnap = snapshotFromBrief(baseEnvelope, play(), extrasFromBriefResponse(prevResponse));
+  const nextSnap = snapshotFromBrief(baseEnvelope, play(), extrasFromBriefResponse(nextResponse));
+  const lines = diffBriefSnapshots(prevSnap, nextSnap);
+  assert.ok(
+    lines.some((l) => l.includes("HELIX tape") && l.toLowerCase().includes("call")),
+    `expected a call-side HELIX line (call premium collapsed 500k -> 100k), got: ${JSON.stringify(lines)}`,
+  );
+  assert.ok(
+    lines.some((l) => l.includes("HELIX tape") && l.toLowerCase().includes("put")),
+    `expected a put-side HELIX line (put premium built 400k -> 900k), got: ${JSON.stringify(lines)}`,
+  );
+});
+
 test("diffBriefSnapshots: narrates a WATCH-candidate direction flip (same play.id, reversed net flow)", () => {
   // Same ticker/play.id as a WATCH candidate would keep across discovery cycles (no positionId
   // suffix pre-commit) — only `direction` differs, exactly what a real net-flow reversal produces.
