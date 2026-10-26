@@ -56,5 +56,5 @@ contents changing, the same guard pattern already used in this file's `commit`/`
 handlers' call sites and in `Tabs.tsx`'s `TabList` rail-indicator `measure()`). No other
 behavior changed — initial mount, open/close, and keyboard navigation while open are untouched.
 
-| **Status** | Fixed in PR #TBD (branch `fix/select-active-index-stale-on-value-change`) |
+| **Status** | Fixed in PR #6809 (branch `fix/select-active-index-stale-on-value-change`) |
 |---|---|
