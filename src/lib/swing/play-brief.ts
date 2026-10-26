@@ -471,12 +471,46 @@ function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
     return Math.abs(r.entryPremium - play.entry!) > 0.005;
   });
   if (!siblings.length) return null;
+  // BUG FIX (Ask Largo standing mandate, live repro SWING:MRNA:68, 2026-10-26): `r.livePnlPct ==
+  // null` used to render a bare "—" with zero disclosure of WHY — the exact C3 absence-without-
+  // reason violation `pnlSection`'s own P&L line (a few hundred lines up) already guards against
+  // for the PRIMARY play via `optionMarkStaleCaveat`/`optionMarkGenuinelyUnknown`
+  // (play-brief-absence.ts). Live repro: a position opened 5 minutes after the prior close showed
+  // "P&L —" 3+ hours later with no hint that no live tick had synced yet vs. the quote being
+  // stale vs. anything else — a member reading this sibling line alone had no way to tell "no
+  // data yet" from "flat" from "we lost the feed".
+  //
+  // `r` here is a `HorizonPlay` (horizon-plays.ts), not the `TerminalPlay` those two helpers were
+  // originally typed against — it carries `markAsOf`/`livePnlPct` but has no `markIsSync` field of
+  // its own (that flag only exists once `terminalPlayFromHorizon`, adapters.ts, builds the PRIMARY
+  // play from its own HorizonPlay source). Rather than re-deriving the stale/unknown wording a
+  // second time (and risking it drifting from pnlSection's, the exact trap this file's own header
+  // warns about), widened the two helpers' parameter type to `OptionMarkFreshnessSource` (the
+  // minimal shape they actually read) so this call site can share them via a small adapter.
+  //
+  // The adapter's `markIsSync` is derived from `r.livePnlPct == null` itself, not from
+  // `r.markAsOf == null` (the rule `adapters.ts` uses for the PRIMARY play) — because
+  // `livePnlPct(entry, mark)` (live-plays.ts / banger-lane-merge.ts) is null EXACTLY when no real
+  // `mark` has ever landed (entry is already guaranteed non-null by the `siblings` filter above),
+  // so for this lane `pnlPct == null` IS the "no live tick yet" signal, independent of whether a
+  // `markAsOf` timestamp happens to be stamped. This also means a sibling with a real P&L but an
+  // aged `markAsOf` now gets the same "_(stale)_" disclosure pnlSection already gives the primary
+  // play, for free, from the identical shared logic — not a new format, the same one.
   const lines = siblings.map((r) => {
     const strike = r.contract?.strike;
     const right = r.contract?.right ?? "C";
     const expiry = r.contract?.expiry ?? "—";
     const entered = r.committedAt ? etStampFromIso(r.committedAt) : null;
-    const pnl = r.livePnlPct != null ? fmtPct(r.livePnlPct) : "—";
+    const pnlCaveat = optionMarkStaleCaveat(
+      {
+        status: r.liveStatus ?? null,
+        markIsSync: r.livePnlPct == null,
+        markAsOf: r.markAsOf ?? null,
+        pnlPct: r.livePnlPct ?? null,
+      },
+      ctx.readMs ?? Date.now(),
+    );
+    const pnl = `${fmtPct(r.livePnlPct ?? null)}${pnlCaveat}`;
     return `• **${strike ?? "?"}${right} ${expiry}** — entered ${entered ?? "unknown date"}, entry ${fmtUsd(r.entryPremium ?? null)}, P&L ${pnl}`;
   });
   // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA WATCH SHORT): the count below

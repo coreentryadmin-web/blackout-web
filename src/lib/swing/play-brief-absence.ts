@@ -479,6 +479,26 @@ export function playExpectsLiveOptionMark(status: string | null | undefined): bo
 }
 
 /**
+ * The minimal shape `optionMarkIsStale`/`optionMarkStaleCaveat`/`optionMarkGenuinelyUnknown`
+ * actually read off a play — narrower than the full `TerminalPlay` those three were originally
+ * typed against, so a caller holding something OTHER than a `TerminalPlay` can still share the
+ * exact same disclosure logic instead of re-deriving it (and risking drift) a second time.
+ *
+ * Added for `siblingPositionsNote` (play-brief.ts): it reads `HorizonPlay` rows off
+ * `ctx.laneRows`, which carries the swing-live/banger-lane fields these three functions need
+ * (`markAsOf`, `livePnlPct` — see `horizon-plays.ts`) but has NO `markIsSync` field of its own
+ * (that flag only exists on the already-adapted `TerminalPlay` the PRIMARY play of a brief is).
+ * `TerminalPlay` itself already satisfies this interface structurally, so every existing caller
+ * (which passes a real `TerminalPlay`) is unaffected by this widening.
+ */
+export interface OptionMarkFreshnessSource {
+  status?: string | null;
+  markIsSync?: boolean | null;
+  markAsOf?: string | null;
+  pnlPct?: number | null;
+}
+
+/**
  * A swing option mark's ONLY writer is `swing-active-refresh` (cron-registry.ts), which runs
  * every 15 minutes during market hours — unlike 0DTE/Vector, there is no faster "live-marks"
  * writer for the persisted `last_mark_at` column (the shared ~1s live-marks lane feeds an
@@ -503,7 +523,7 @@ export function playExpectsLiveOptionMark(status: string | null | undefined): bo
 export const SWING_OPTION_MARK_STALE_MS = 18 * 60_000;
 
 /** True when an OPEN/HOLD/TRIM row carries an aged markAsOf (not the markIsSync no-timestamp case). */
-export function optionMarkIsStale(play: TerminalPlay, readMs: number = Date.now()): boolean {
+export function optionMarkIsStale(play: OptionMarkFreshnessSource, readMs: number = Date.now()): boolean {
   if (!playExpectsLiveOptionMark(play.status)) return false;
   if (play.markIsSync === true || !play.markAsOf) return false;
   const markMs = Date.parse(play.markAsOf);
@@ -523,7 +543,7 @@ export function optionMarkIsStale(play: TerminalPlay, readMs: number = Date.now(
  * independent re-derivation of this exact ternary would have been the same "three readers, one of
  * them drifts" risk every other sentinel-leak fix in this codebase has already hit once.
  */
-export function optionMarkStaleCaveat(play: TerminalPlay, readMs: number = Date.now()): string {
+export function optionMarkStaleCaveat(play: OptionMarkFreshnessSource, readMs: number = Date.now()): string {
   if (optionMarkGenuinelyUnknown(play)) {
     return " _(entry-time read — no live tick since commit, do not read as current)_";
   }
@@ -584,7 +604,7 @@ export function archetypeTrackRecordIsStale(asOfIso: string | null | undefined, 
  * known. Same self-contradiction class play-brief.ts's own comment already documents for its Mark
  * line (2026-09-11, live repro SWING:ALAB) — this is a second, previously-unchecked instance of it.
  */
-export function optionMarkGenuinelyUnknown(play: TerminalPlay): boolean {
+export function optionMarkGenuinelyUnknown(play: OptionMarkFreshnessSource): boolean {
   return play.markIsSync === true && playExpectsLiveOptionMark(play.status) && play.pnlPct == null;
 }
 

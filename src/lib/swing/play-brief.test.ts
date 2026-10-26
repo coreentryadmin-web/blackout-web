@@ -402,6 +402,151 @@ test("composeSwingPlayBrief: a WATCH candidate (no entry premium yet) with a sam
   assert.match(sibEvidence!.text, /1 concurrent live position/);
 });
 
+// BUG FIX (Ask Largo standing mandate, live repro SWING:MRNA:68, 2026-10-26): `siblingPositionsNote`
+// used to render a bare "P&L: —" with ZERO disclosure of why whenever a sibling row's
+// `livePnlPct` was null — even though every other quote-derived line in this same file (the
+// PRIMARY play's own Mark/P&L/Peak/Trough in `pnlSection`) already distinguishes "no live tick has
+// synced yet since commit" from "the quote is stale" via `optionMarkGenuinelyUnknown`/
+// `optionMarkStaleCaveat` (play-brief-absence.ts). Live repro: a position opened 5 minutes after
+// the prior close still showed "P&L —" 3+ hours later with no caveat at all. Every sibling fixture
+// before this one sets a real numeric `livePnlPct`, so none of them exercised this path.
+test("composeSwingPlayBrief: a same-ticker sibling with no live P&L yet discloses WHY, not a bare dash", () => {
+  const siblingRow: HorizonPlay = {
+    ticker: "MRNA",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 61,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:MRNA261030C00210000",
+      strike: 210,
+      expiry: "2026-10-30",
+      right: "C",
+      dte: 4,
+      mid: 3.85,
+      bid: null,
+      ask: null,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: 0,
+    },
+    scoreFloor: 60,
+    reason: "live hold — BREAKOUT thesis",
+    archetype: "BREAKOUT",
+    entryPremium: 3.85,
+    // No live tick has synced since commit (same shape live-plays.ts/banger-lane-merge.ts produce
+    // for a just-opened position: `livePnlPct(entry, mark)` is null exactly when `mark` is null).
+    livePnlPct: null,
+    liveStatus: "OPEN",
+    committedAt: "2026-10-26T16:15:00.000Z",
+    markAsOf: null,
+    positionId: 68,
+  };
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      id: "SWING:MRNA:70",
+      ticker: "MRNA",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 2.1,
+      mark: 2.05,
+      pnlPct: -2.4,
+    }),
+    asOf: "2026-10-26T19:22:00.000Z",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [siblingRow],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(sib, "must disclose the concurrent sibling position");
+  assert.doesNotMatch(
+    sib!.body,
+    /P&L —\s*$/m,
+    `a null livePnlPct must never render as a bare, unexplained dash — got "${sib!.body}"`,
+  );
+  assert.match(
+    sib!.body,
+    /P&L —.*no live tick since commit/,
+    `expected the same "entry-time read, no live tick since commit" disclosure pnlSection already uses for the primary play — got "${sib!.body}"`,
+  );
+});
+
+// A sibling row with a real, non-null P&L but an aged `markAsOf` must get the SAME stale-quote
+// disclosure `pnlSection` already gives the primary play — proving the fix reuses the shared
+// helper (and its exact wording) rather than only covering the null-P&L branch.
+test("composeSwingPlayBrief: a same-ticker sibling with a real P&L but a stale quote discloses staleness", () => {
+  const siblingRow: HorizonPlay = {
+    ticker: "NRG",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 66,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:NRG261030C00150000",
+      strike: 150,
+      expiry: "2026-10-30",
+      right: "C",
+      dte: 4,
+      mid: 4.2,
+      bid: 4.1,
+      ask: 4.3,
+      delta: 0.5,
+      gamma: 0.02,
+      theta: -0.8,
+      vega: 0.3,
+      iv: 0.45,
+      openInterest: 300,
+    },
+    scoreFloor: 60,
+    reason: "live hold — BREAKOUT thesis",
+    archetype: "BREAKOUT",
+    entryPremium: 3.0,
+    livePnlPct: 40.0,
+    liveStatus: "OPEN",
+    committedAt: "2026-10-25T14:00:00.000Z",
+    // 3+ hours stale against the brief's own 19:22 ET "now" below — well past the 18-minute
+    // SWING_OPTION_MARK_STALE_MS cadence-aware threshold (play-brief-absence.ts).
+    markAsOf: "2026-10-26T16:00:00.000Z",
+    positionId: 71,
+  };
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      id: "SWING:NRG:72",
+      ticker: "NRG",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 2.1,
+      mark: 2.05,
+      pnlPct: -2.4,
+    }),
+    asOf: "2026-10-26T19:22:00.000Z",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    readMs: new Date("2026-10-26T19:22:00.000Z").getTime(),
+    laneRows: [siblingRow],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(sib, "must disclose the concurrent sibling position");
+  assert.match(
+    sib!.body,
+    /P&L \+40\.0%.*stale — same quote Mark flagged above/,
+    `a real but aged sibling P&L must carry the same stale-quote caveat pnlSection uses — got "${sib!.body}"`,
+  );
+});
+
 // BUG FOUND (Ask Largo standing mandate, 2026-09-20): sibling of PR #5288's buildIntelSections
 // error boundary, in THIS file's own top-level composition instead. `managementSection`'s
 // `ep.trim_levels.map(...)` AND `blendedPnlPct`'s (called from `pnlSection`) `ep.trim_levels.
