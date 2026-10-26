@@ -6890,6 +6890,142 @@ test("meridianCatalystSection: does not restate the same earnings date catalysts
   }
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-26): every sibling "live read" section this file
+// renders off a fresh-every-request ctx read (chartLevelsSection, flowIntelSection,
+// catalystsSection, gexPostureSection, wallDynamicsSection, and meridianPeerSection itself, fixed
+// 2026-10-24) unshifts a "_Current ... — not what this trade traded under._" disclaimer when
+// statusBucket(ctx.play) === "closed" — meridianCatalystSection reads ctx.meridian, populated
+// every request by fetchMeridianForTicker regardless of the play's bucket, structurally identical
+// to its 6 fixed siblings, but never carried the same guard at any of its 4 return sites
+// (unavailable / no-items / dedup-emptied / normal-items). Modeled directly on
+// meridianPeerSection's own 2026-10-24 regression test below.
+test("meridianCatalystSection: CLOSED bucket prefixes a current-not-as-traded disclosure (all 4 return sites)", () => {
+  const baseCtx = (status: "CLOSED" | "OPEN"): SwingPlayBriefContext => ({
+    play: fixturePlay({ ticker: "GOOGL", status }),
+    asOf: "2026-10-26 09:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    ecosystem: null,
+    vector: null,
+    meridian: null,
+  });
+
+  // Return site 1: unavailable.
+  const unavailableClosed = meridianCatalystSection({
+    ...baseCtx("CLOSED"),
+    meridian: { unavailable: true } as unknown as SwingPlayBriefContext["meridian"],
+  });
+  assert.ok(unavailableClosed);
+  assert.match(unavailableClosed!.body, /Current catalysts — not what this trade traded under/);
+  const unavailableOpen = meridianCatalystSection({
+    ...baseCtx("OPEN"),
+    meridian: { unavailable: true } as unknown as SwingPlayBriefContext["meridian"],
+  });
+  assert.ok(unavailableOpen);
+  assert.doesNotMatch(unavailableOpen!.body, /not what this trade traded under/);
+
+  // Return site 2: quiet calendar (no items).
+  const noItemsClosed = meridianCatalystSection({
+    ...baseCtx("CLOSED"),
+    meridian: { as_of: "2026-10-26 09:00 ET", items: [], total_matched: 0 },
+  });
+  assert.ok(noItemsClosed);
+  assert.match(noItemsClosed!.body, /Current catalysts — not what this trade traded under/);
+  assert.match(noItemsClosed!.body, /calendar is quiet, not missing/);
+
+  // Return site 3: every item deduped away by the catalystsSection-overlap filter (audit #16).
+  const dedupCtx = baseCtx("CLOSED");
+  const dedupClosed = meridianCatalystSection({
+    ...dedupCtx,
+    ecosystem: {
+      arsenal: { earnings: { earnings_date: "2026-11-03", days_until: 5 } },
+    } as unknown as EcosystemContext,
+    meridian: {
+      as_of: "2026-10-26 09:00 ET",
+      items: [
+        {
+          id: "earnings:GOOGL:2026-11-03",
+          kind: "earnings",
+          title: "GOOGL earnings",
+          subtitle: null,
+          date: "2026-11-03",
+          time: null,
+          impact: "high",
+          days_until: 5,
+          ticker: "GOOGL",
+          date_status: null,
+          importance: 3,
+          is_printed: false,
+          expected_move_pct: 6.5,
+          sector_label: "Tech",
+        },
+      ],
+      total_matched: 1,
+    },
+  });
+  assert.ok(dedupClosed);
+  assert.match(dedupClosed!.body, /Current catalysts — not what this trade traded under/);
+  assert.match(dedupClosed!.body, /already covered above/);
+
+  // Return site 4: normal non-deduped items.
+  const normalClosed = meridianCatalystSection({
+    ...baseCtx("CLOSED"),
+    meridian: {
+      as_of: "2026-10-26 09:00 ET",
+      items: [
+        {
+          id: "fda:GOOGL:2026-10-30",
+          kind: "fda" as const,
+          title: "FDA decision",
+          subtitle: null,
+          date: "2026-10-30",
+          time: null,
+          impact: "high" as const,
+          days_until: 4,
+          ticker: "GOOGL",
+          date_status: null,
+          importance: 3,
+          is_printed: false,
+          expected_move_pct: null,
+          sector_label: "Tech",
+        },
+      ],
+      total_matched: 1,
+    },
+  });
+  assert.ok(normalClosed);
+  assert.match(normalClosed!.body, /Current catalysts — not what this trade traded under/);
+  const normalOpen = meridianCatalystSection({
+    ...baseCtx("OPEN"),
+    meridian: {
+      as_of: "2026-10-26 09:00 ET",
+      items: [
+        {
+          id: "fda:GOOGL:2026-10-30",
+          kind: "fda" as const,
+          title: "FDA decision",
+          subtitle: null,
+          date: "2026-10-30",
+          time: null,
+          impact: "high" as const,
+          days_until: 4,
+          ticker: "GOOGL",
+          date_status: null,
+          importance: 3,
+          is_printed: false,
+          expected_move_pct: null,
+          sector_label: "Tech",
+        },
+      ],
+      total_matched: 1,
+    },
+  });
+  assert.ok(normalOpen);
+  assert.doesNotMatch(normalOpen!.body, /not what this trade traded under/);
+});
+
 test("meridianPeerSection: surfaces peer beat rates as dedicated section (not coaching-cap dependent)", () => {
   const section = meridianPeerSection({
     play: fixturePlay({ ticker: "BBWI" }),

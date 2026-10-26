@@ -2748,10 +2748,22 @@ function formatMeridianItem(i: LargoTimelineItem): string {
  */
 export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection | null {
   const slice = ctx.meridian;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-26): every sibling "live read" section in this
+  // file that renders ctx data re-fetched fresh at request time (not pinned to the trade's own
+  // era) unshifts this exact "_Current ... — not what this trade traded under._" disclaimer when
+  // statusBucket(ctx.play) === "closed" — chartLevelsSection, flowIntelSection, catalystsSection,
+  // gexPostureSection, wallDynamicsSection, and meridianPeerSection itself (fixed 2026-10-24).
+  // meridianCatalystSection reads ctx.meridian, populated every request by fetchMeridianForTicker
+  // regardless of the play's bucket — structurally identical to its 6 fixed siblings — but never
+  // carried the same guard at any of its 4 return sites. Computed once, prepended everywhere.
+  const closedPrefix =
+    statusBucket(ctx.play) === "closed"
+      ? "_Current catalysts — not what this trade traded under._\n\n"
+      : "";
   if (slice?.unavailable) {
     return {
       title: "Meridian catalysts",
-      body: "Catalyst calendar unavailable on this read — not evidence of a quiet calendar.",
+      body: closedPrefix + "Catalyst calendar unavailable on this read — not evidence of a quiet calendar.",
     };
   }
   // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351: ctx is a required param
@@ -2766,6 +2778,7 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
     return {
       title: "Meridian catalysts",
       body:
+        closedPrefix +
         staleLead +
         "No catalysts in the **14-day** Meridian window on this read — calendar is quiet, not missing.",
     };
@@ -2791,6 +2804,7 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
     return {
       title: "Meridian catalysts",
       body:
+        closedPrefix +
         staleLead +
         "This ticker's only catalyst in the **14-day** Meridian window is the earnings print already covered above.",
     };
@@ -2801,7 +2815,7 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
   if (droppedForWindow > 0) {
     lines.push(`_${droppedForWindow} more in window — open Meridian desk for full lane._`);
   }
-  return { title: "Meridian catalysts", body: staleLead + lines.join("\n") };
+  return { title: "Meridian catalysts", body: closedPrefix + staleLead + lines.join("\n") };
 }
 
 /**
