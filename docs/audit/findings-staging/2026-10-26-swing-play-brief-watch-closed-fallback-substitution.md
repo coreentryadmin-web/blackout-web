@@ -113,5 +113,5 @@ closed trade — it should, and already does, because that case always carries a
 earlier, positionId-scoped closed-lookup in this same function, never reaching this fallback at
 all.
 
-| **Status** | Fixed in PR #6817 (branch `fix/swing-play-brief-watch-closed-fallback`) |
+| **Status** | Fixed in PR #6818 (branch `fix/swing-play-brief-watch-closed-fallback`) |
 |---|---|
