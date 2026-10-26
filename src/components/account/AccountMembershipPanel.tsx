@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAppAuth } from "@/lib/auth-client";
 import { resolveDisplayTier, TIER_LABELS, type Tier } from "@/lib/tiers";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
@@ -52,9 +53,9 @@ export function AccountMembershipPanel() {
         </div>
 
         {tier === "free" ? (
-          <a href="/upgrade" className="btn-primary-bull">
+          <Link href="/upgrade" className="btn-primary-bull">
             Upgrade
-          </a>
+          </Link>
         ) : tier && manageHref ? (
           <a
             href={manageHref}
