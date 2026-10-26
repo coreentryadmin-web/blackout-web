@@ -15,9 +15,7 @@ test("MarketingPageShell mounts SharedSigilDefs so ProductMark's url(#...) refer
   const { ProductMark } = await import("@/components/marks/ProductMark");
 
   const html = renderToStaticMarkup(
-    React.createElement(MarketingPageShell, {
-      children: React.createElement(ProductMark, { product: "vector" }),
-    })
+    React.createElement(MarketingPageShell, null, React.createElement(ProductMark, { product: "vector" }))
   );
 
   assert.match(html, /url\(#bo-glow\)/, "fixture must actually reference #bo-glow (else this test is vacuous)");
