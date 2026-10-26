@@ -518,7 +518,35 @@ export async function resolveSwingPlayForBrief(
   // ticker-wide "whichever is most recent" guess when the caller never asked about a specific
   // position in the first place — an explicit, unresolvable positionId must surface as absence,
   // never as an unrelated substitute.
-  if (positionId == null) {
+  // BUG FIX (2026-10-26, Ask Largo standing mandate, live repro MSTR — same failure CLASS as the
+  // 2026-10-20 fix just above, caught by a different trigger). That fix stopped this fallback from
+  // substituting an unrelated trade when a caller named a specific POSITION that failed to resolve.
+  // It left untouched the mirror case: a caller that names a specific LIVE-LANE STATE instead (the
+  // route's own documented `status=WATCH|COMMIT|OPEN|...` hint, used with NO positionId because a
+  // WATCH/lane-only candidate has no ledger row to embed one — see `horizonRowToDeckSource`'s own
+  // comment above). `wantsClosed` (used for the lane-lookup skip a few lines up) already encodes
+  // exactly this distinction; this fallback just never consulted it.
+  //
+  // Live-confirmed 2026-10-26: `GET /api/market/swing/play-brief?playId=SWING:MSTR&ticker=MSTR&
+  // status=WATCH` — the EXACT request shape `useSwingPlayBrief`'s `briefUrl()` builds for a WATCH-
+  // bucket TerminalPlay (no embedded positionId; `status` set from `play.status`) and the EXACT
+  // shape Largo's own `get_swing_play_brief` tool sends when it passes a `status` hint read off an
+  // earlier `get_swing_horizon` call — returned `available:true` with a `STOPPED — MSTR 160C
+  // 4DTE` CLOSED brief (-62.31% realized) while MSTR was a live, currently-listed WATCH candidate
+  // on the SAME session's board (`/horizons?view=swings`). Root cause: the live WATCH lane had
+  // (very briefly, confirmed via two `/horizons` reads minutes apart) no MSTR row at the instant
+  // this route ran, so `pickLanePlayForBrief` legitimately found nothing — but with `positionId`
+  // always null for a lane-only candidate, this fallback ran anyway and silently handed back MSTR's
+  // unrelated, weeks-old, heavily-losing closed trade AS IF it answered the WATCH request, with no
+  // absence/retryable signal of any kind. `useSwingPlayBrief` polls every 8-20s during RTH
+  // (`briefRefreshMs`), so a member with this exact panel open could have it silently swap from a
+  // live WATCH view to a -62% STOPPED headline on an ordinary auto-refresh — and Largo could narrate
+  // the same substitution as fact in a chat answer. Only take the ticker-wide "whichever is most
+  // recent" guess when the caller either never named a status at all (the ambiguous ticker-only
+  // query both the route and Largo's tool doc describe as the common case) or explicitly asked for
+  // CLOSED — never when they named a specific live-lane state that this lookup failed to honor.
+  const explicitlyWantsLiveState = status != null && !wantsClosed;
+  if (positionId == null && !explicitlyWantsLiveState) {
     const closedFallback = await loadClosedPlay(ticker, null);
     if (closedFallback) return { play: closedFallback, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
   }

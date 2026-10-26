@@ -895,3 +895,87 @@ describe("resolveSwingPlayForBrief: a lane-resolved play (banger-origin or swing
 // directly, no recompute) and `play-brief-context.test.ts`'s
 // "pnlPct is the canonical livePnlPct, never a cent-rounded-mark recompute" block for the
 // regression coverage that replaced this one.
+
+// BUG FOUND 2026-10-26 (Ask Largo standing mandate, live repro MSTR). Same failure CLASS as the
+// 2026-10-20 "ticker-wide closedFallback" fix above, caught by a different trigger: that fix
+// guards against an unresolvable POSITION id silently substituting an unrelated closed trade; it
+// never considered a caller that names a specific LIVE-LANE STATE (`status=WATCH`, the route's own
+// documented hint, sent with NO positionId because a WATCH/lane-only candidate has none to embed —
+// the exact shape `useSwingPlayBrief`'s `briefUrl()` builds for every WATCH-bucket play, and the
+// exact shape Largo's own `get_swing_play_brief` tool sends when it carries a `status` hint). Live
+// repro: `GET /api/market/swing/play-brief?playId=SWING:MSTR&ticker=MSTR&status=WATCH` returned a
+// `STOPPED — MSTR 160C 4DTE` CLOSED brief (-62.31%) while MSTR was a live, currently-listed WATCH
+// candidate on the same session's board — because the live lane lookup legitimately found nothing
+// for that instant (confirmed via two `/horizons` reads minutes apart) and, with positionId always
+// null for a lane-only candidate, the unconditional ticker-wide fallback below fired anyway.
+describe("resolveSwingPlayForBrief: an explicit live-lane status (WATCH/etc.) with no positionId must return absence, never an UNRELATED closed trade for the same ticker", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("status=WATCH with no positionId and no current lane match returns null, not the ticker's unrelated closed trade", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      {
+        ...openRow("MSTR", 45),
+        status: "CLOSED",
+        graded_at: "2026-10-20T20:00:00.000Z",
+        closed_at: "2026-10-20T20:00:00.000Z",
+        realized_pnl_pct: -62.31,
+      },
+    ];
+    // The live lane legitimately carries NO row for this ticker right now (it rotated out between
+    // scans) — exactly the shape that silently fell through to the closed trade before this fix.
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:MSTR", // no embedded position id — a WATCH-lane candidate never has one
+      ticker: "MSTR",
+      status: "WATCH", // explicit live-lane hint, exactly what the UI/Largo send for a WATCH play
+    });
+
+    assert.equal(
+      resolved,
+      null,
+      "an explicit live-lane status with no current lane match must surface as honest absence, " +
+        "never silently substitute the ticker's unrelated closed trade",
+    );
+  });
+
+  test("no status hint at all still falls back to the ticker's closed trade (unchanged ambiguous-query behavior)", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      {
+        ...openRow("MSTR", 45),
+        status: "CLOSED",
+        graded_at: "2026-10-20T20:00:00.000Z",
+        closed_at: "2026-10-20T20:00:00.000Z",
+        realized_pnl_pct: -62.31,
+      },
+    ];
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({ playId: "SWING:MSTR", ticker: "MSTR" });
+
+    assert.ok(resolved, "with no status hint at all, the ticker-wide fallback must still fire");
+    assert.equal(resolved!.play.status, "CLOSED");
+  });
+
+  test("a live lane match for the requested status still wins (unchanged — this fix only touches the no-match fallback)", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      { ...openRow("MSTR", 45), status: "CLOSED", graded_at: "2026-10-20T20:00:00.000Z", closed_at: "2026-10-20T20:00:00.000Z" },
+    ];
+    mockLaneRows = [laneRow({ ticker: "MSTR", status: "WATCH" })];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({ playId: "SWING:MSTR", ticker: "MSTR", status: "WATCH" });
+
+    assert.ok(resolved, "must resolve to something");
+    assert.notEqual(resolved!.play.status, "CLOSED", "a real live lane match must still win over the closed trade");
+  });
+});
