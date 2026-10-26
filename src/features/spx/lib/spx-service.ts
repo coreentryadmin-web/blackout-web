@@ -88,6 +88,7 @@ export function summarizeSpxDesk(merged: SpxDeskPayload): SpxDeskSummary {
     mag7_greek_flow: merged.mag7_greek_flow,
     macro_indicators: merged.macro_indicators,
     strike_stacks: computeFlowStrikeStacks(spx_flows ?? []),
+    data_quality: merged.data_quality ?? null,
   };
 }
 
