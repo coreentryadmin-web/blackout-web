@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-26T07:30:18.733Z",
+  "updated_at": "2026-10-26T10:44:20.176Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "9464fdada4b3f1ce3f8026dfe43130cc0eee1027",
+    "last_main_sha": "2d02aae6e0b7ffd9c71a12c58d17038f22d69d0a",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-20T14:29:08.744Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-20T14:29:13.958Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-20T14:44:12.991Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-20T14:44:18.333Z",
       "type": "context_sync",
@@ -1271,19 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-26T10:44:12.063Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-26T10:44:16.148Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-26T10:44:20.176Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 6790,
-      "title": "feat(swing): Largo evidence_numbers cites each structure-ladder rung's own reward:risk",
-      "branch": "feat/swing-largo-structure-ladder-reward-risk-evidence",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-26T07:28:48Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
