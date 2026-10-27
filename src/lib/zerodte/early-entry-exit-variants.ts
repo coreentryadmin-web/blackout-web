@@ -66,6 +66,21 @@ function pxFromPnlPct(pct: number, entry: number): number {
   return entry * (1 + pct / 100);
 }
 
+/** First timestamp (if any) each real bar's HIGH reaches $10 / $20 — a pure property of the
+ *  underlying path, scanned over the WHOLE walk regardless of what any exit rule later decides
+ *  to do with it. Shared by every variant below so "did it ever get there" can never depend on
+ *  which rule asked. */
+function scanHitTimes(walk: ExitBar[]): { timeToHit10Ms: number | null; timeToHit20Ms: number | null } {
+  let timeToHit10Ms: number | null = null;
+  let timeToHit20Ms: number | null = null;
+  for (const b of walk) {
+    if (timeToHit10Ms == null && b.h >= 10) timeToHit10Ms = b.t;
+    if (timeToHit20Ms == null && b.h >= 20) timeToHit20Ms = b.t;
+    if (timeToHit10Ms != null && timeToHit20Ms != null) break;
+  }
+  return { timeToHit10Ms, timeToHit20Ms };
+}
+
 /**
  * Replay the mechanical, bar-walkable core of the shipped ratchet (exit-engine.ts): a hard
  * stop, then a trailing floor that arms once peak P&L clears `armPnlPct` and sits at
@@ -83,19 +98,20 @@ export function replayRatchetExit(
   const cfg = { ...DEFAULTS, ...config };
   const walk = bars.filter((b) => b.t > entryAtMs && b.t <= timeStopMs).sort((a, b) => a.t - b.t);
 
+  // Computed over the FULL real path, independent of where/whether this rule's own exit
+  // logic terminates early below — "did the underlying ever get there" is a path property,
+  // never truncated by one particular rule choosing to exit sooner (a tighter-exiting rule
+  // must never read as having a LOWER hit rate purely because it stopped looking sooner).
+  const { timeToHit10Ms, timeToHit20Ms } = scanHitTimes(walk);
+
   let peakPx = entryAsk;
   let troughPx = entryAsk;
   let armedFloorPx: number | null = null;
-  let timeToHit10Ms: number | null = null;
-  let timeToHit20Ms: number | null = null;
   let ageMs = 0;
 
   for (const b of walk) {
     ageMs = b.t - entryAtMs;
     const ageMin = ageMs / 60_000;
-
-    if (timeToHit10Ms == null && b.h >= 10) timeToHit10Ms = b.t;
-    if (timeToHit20Ms == null && b.h >= 20) timeToHit20Ms = b.t;
 
     // 1. Hard stop — highest precedence, checked against the bar's low.
     const stopPx = pxFromPnlPct(cfg.stopPct, entryAsk);
@@ -189,16 +205,15 @@ export function replayPartialProfitRunner(
   const cfg = { ...PARTIAL_DEFAULTS, ...config };
   const walk = bars.filter((b) => b.t > entryAtMs && b.t <= timeStopMs).sort((a, b) => a.t - b.t);
 
+  // Same full-path, rule-independent scan as replayRatchetExit — see scanHitTimes's own doc.
+  const { timeToHit10Ms, timeToHit20Ms } = scanHitTimes(walk);
+
   let peakPx = entryAsk;
   let troughPx = entryAsk;
   let tranche1Px: number | null = null;
   let tranche2Px: number | null = null;
-  let timeToHit10Ms: number | null = null;
-  let timeToHit20Ms: number | null = null;
 
   for (const b of walk) {
-    if (timeToHit10Ms == null && b.h >= 10) timeToHit10Ms = b.t;
-    if (timeToHit20Ms == null && b.h >= 20) timeToHit20Ms = b.t;
     if (b.h > peakPx) peakPx = b.h;
     if (b.l < troughPx) troughPx = b.l;
 

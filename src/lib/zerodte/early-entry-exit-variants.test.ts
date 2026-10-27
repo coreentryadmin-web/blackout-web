@@ -60,6 +60,17 @@ test("replayRatchetExit: hit10/hit20 are upper-bound peak-touch, independent of 
   assert.equal(r.exitCleared10, false);
 });
 
+test("replayRatchetExit: hit10 is computed over the FULL path even when the hard stop fires BEFORE the bar that touches $10 -- a tight-exiting rule must never undercount a later real touch it stopped looking for", () => {
+  // Bar 1 drops straight to the hard stop (-50%); bar 2, which the rule never "reaches" in its
+  // own decision walk, is where price actually touches $11. The regression this guards: an
+  // early `return` inside the decision loop must not also truncate the hit-detection scan.
+  const bars = [bar(1, 2.1, 1.0, 1.0), bar(2, 11, 10.5, 11)];
+  const r = replayRatchetExit(2.0, bars, T0, TIME_STOP);
+  assert.equal(r.exitReason, "stopped");
+  assert.equal(r.hit10, true);
+  assert.equal(r.timeToHit10Ms, bars[1].t);
+});
+
 test("replayRatchetExit: never reaching 10 leaves hit10/timeToHit10Ms honestly null/false", () => {
   const bars = [bar(1, 3.0, 2.8, 2.9)];
   const r = replayRatchetExit(2.0, bars, T0, TIME_STOP);
@@ -74,6 +85,14 @@ test("replayPartialProfitRunner: banks 1/3 at $5, 1/3 at $10, runner continues u
   // blended = 1/3*5 + 1/3*10 + 1/3*15 = 5 + 3.333 + 5 = 10
   assert.ok(Math.abs(r.blendedExitPx - 10) < 0.02);
   assert.equal(r.exitReason, "tranche_then_time_stop");
+});
+
+test("replayPartialProfitRunner: hit10/hit20 are computed over the FULL path even when the hard stop fires BEFORE the bar that touches $10 (same regression as the ratchet replay)", () => {
+  const bars = [bar(1, 2.1, 1.0, 1.0), bar(2, 11, 10.5, 11)];
+  const r = replayPartialProfitRunner(2.0, bars, T0, TIME_STOP);
+  assert.equal(r.exitReason, "stopped");
+  assert.equal(r.hit10, true);
+  assert.equal(r.timeToHit10Ms, bars[1].t);
 });
 
 test("replayPartialProfitRunner: hard stop before ANY tranche takes the whole position at the stop", () => {
