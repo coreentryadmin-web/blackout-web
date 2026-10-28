@@ -32,3 +32,9 @@ test("concept_read answers may explain without inventing numbers (calendar sprea
   );
   assert.notEqual(scored.verdict, "BAD", scored.issues.join(", "));
 });
+
+test("largo-stress askLive maps fetch failures to transport SKIP (not process crash)", () => {
+  const src = readFileSync(join(import.meta.dirname, "..", "scripts", "largo-stress-run.mjs"), "utf8");
+  assert.match(src, /catch \(err\)[\s\S]*transport_error/, "askLive must catch fetchRetry throws");
+  assert.match(src, /transport_error[\s\S]*transportIssue/, "worker must label transport skips separately from http status");
+});
