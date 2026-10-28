@@ -19,6 +19,12 @@ test("largo-stress routeQuestion: nonsense before compound (??? → clarify_read
   assert.equal(scored.verdict, "OK", scored.issues.join(", "));
 });
 
+test("largo-stress askLive: fetch transport errors become SKIP, not uncaught throws", () => {
+  const src = readFileSync(join(import.meta.dirname, "..", "scripts", "largo-stress-run.mjs"), "utf8");
+  assert.match(src, /transport_error/, "live worker must classify network failures as transport SKIP");
+  assert.match(src, /catch \(err\)/, "askLive must catch fetchRetry failures");
+});
+
 test("concept_read answers may explain without inventing numbers (calendar spread)", () => {
   const route = { intent: "concept_read" as const, ticker: null };
   const answer =
