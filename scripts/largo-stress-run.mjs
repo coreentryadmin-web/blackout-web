@@ -95,37 +95,49 @@ async function askLive(cookieHeader, question) {
   const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
   const BASE = liveBaseUrl();
   const t0 = Date.now();
-  const res = await fetchRetry(
-    `${BASE}/api/market/largo/query`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookieHeader },
-      body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
-    },
-    { retries: 1, timeoutMs: 120_000 }
-  );
-  const body = await res.json().catch(() => ({}));
-
-  // Capture rate-limit headers on 429 to identify the upstream source
-  const result = { status: res.status, answer: body?.answer ?? "", source: body?.source, ms: Date.now() - t0 };
-  if (res.status === 429) {
-    const rateLimitHeaders = {
-      "retry-after": res.headers.get("retry-after"),
-      "x-ratelimit-limit": res.headers.get("x-ratelimit-limit"),
-      "x-ratelimit-remaining": res.headers.get("x-ratelimit-remaining"),
-      "x-ratelimit-reset": res.headers.get("x-ratelimit-reset"),
-      "ratelimit-limit": res.headers.get("ratelimit-limit"),
-      "ratelimit-remaining": res.headers.get("ratelimit-remaining"),
-      "ratelimit-reset": res.headers.get("ratelimit-reset"),
-      "cf-ray": res.headers.get("cf-ray"),
-      "cf-error-details": res.headers.get("cf-error-details"),
-    };
-    result.rate_limit_headers = Object.fromEntries(
-      Object.entries(rateLimitHeaders).filter(([, v]) => v != null)
+  try {
+    const res = await fetchRetry(
+      `${BASE}/api/market/largo/query`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
+      },
+      { retries: 3, timeoutMs: 120_000 }
     );
-  }
+    const body = await res.json().catch(() => ({}));
 
-  return result;
+    // Capture rate-limit headers on 429 to identify the upstream source
+    const result = { status: res.status, answer: body?.answer ?? "", source: body?.source, ms: Date.now() - t0 };
+    if (res.status === 429) {
+      const rateLimitHeaders = {
+        "retry-after": res.headers.get("retry-after"),
+        "x-ratelimit-limit": res.headers.get("x-ratelimit-limit"),
+        "x-ratelimit-remaining": res.headers.get("x-ratelimit-remaining"),
+        "x-ratelimit-reset": res.headers.get("x-ratelimit-reset"),
+        "ratelimit-limit": res.headers.get("ratelimit-limit"),
+        "ratelimit-remaining": res.headers.get("ratelimit-remaining"),
+        "ratelimit-reset": res.headers.get("ratelimit-reset"),
+        "cf-ray": res.headers.get("cf-ray"),
+        "cf-error-details": res.headers.get("cf-error-details"),
+      };
+      result.rate_limit_headers = Object.fromEntries(
+        Object.entries(rateLimitHeaders).filter(([, v]) => v != null)
+      );
+    }
+
+    return result;
+  } catch (err) {
+    // After a burst of edge 429s the next fetch can ECONNRESET; transport, not Largo quality.
+    const code = err?.cause?.code ?? err?.code ?? "fetch_failed";
+    return {
+      status: 0,
+      answer: "",
+      source: undefined,
+      ms: Date.now() - t0,
+      transportError: String(code),
+    };
+  }
 }
 
 /**
@@ -254,12 +266,19 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
             console.log(`[largo-stress] refresh ${ok ? "succeeded, retrying" : "unavailable"}`);
             if (ok) res = await askLiveThrottleAware(live.cookieHeader, entry.q);
           }
-          const { status, answer, source, ms, throttled, rate_limit_headers } = res;
+          const { status, answer, source, ms, throttled, rate_limit_headers, transportError } = res;
           const route = { intent: rows[i].intent };
           // ONLY A 200 IS SCORED FOR QUALITY — everything else is a transport outcome.
+          const transportDetail =
+            transportError && status === 0 ? ` (${transportError})` : "";
           const scored =
             throttled || status !== 200
-              ? { verdict: "SKIP", issues: [`http-${status} — transport, excluded from the quality tally`] }
+              ? {
+                  verdict: "SKIP",
+                  issues: [
+                    `http-${status}${transportDetail} — transport, excluded from the quality tally`,
+                  ],
+                }
               : scoreAnswer(entry, route, answer, status);
           liveRows.push({
             ...entry,
