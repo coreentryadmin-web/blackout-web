@@ -234,7 +234,17 @@ export type EcosystemArsenalBreadth = { tone: string; summary: string; as_of: st
 export type EcosystemArsenalNews = {
   count: number;
   newest: string | null;
-  headlines: string[];
+  /**
+   * Each headline paired with its own publish time (Benzinga's `publishedAt`, already carried
+   * all the way through `NewsItem` — see `polygon-news.ts` — and discarded at exactly this fold
+   * site until the gap below was fixed). Widened from a bare `string[]` (Largo C2 gap found
+   * 2026-10-26, Ask Largo standing mandate, #4076 comment 6409186033): `as_of` only discloses
+   * when the batch FETCH ran, not when each cited article was PUBLISHED, and Benzinga's news
+   * pool can hold up to 20 items (see `rankNewsItemsBySpecificity` below), so a fresh fetch can
+   * still legitimately quote a week-old headline with no way for a consumer to disclose that.
+   * `publishedAt` is `null`, never fabricated, when the upstream item didn't carry one.
+   */
+  headlines: { headline: string; publishedAt: string | null }[];
   /**
    * When this news read was actually performed (ISO) — `NewsResult.asOf`, stamped ONCE inside
    * `serverCache`'s cached builder (polygon-news.ts) at the moment the upstream Benzinga fetch
@@ -564,7 +574,7 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           // — see that function's own doc for the full tiebreak order and graceful fallback.
           headlines: (single ? rankNewsItemsBySpecificity(reads.news.items, reads.ticker) : reads.news.items)
             .slice(0, 4)
-            .map((i) => sanitizeFeedText(i.headline)),
+            .map((i) => ({ headline: sanitizeFeedText(i.headline), publishedAt: i.publishedAt ?? null })),
           as_of: reads.news.asOf ?? null,
         }
     : (unavailable.push({

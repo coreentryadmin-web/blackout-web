@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test, mock } from "node:test";
 import {
   buildSwingTradePayload,
+  notifySwingThesisBreak,
+  swingAlertWebhookUrl,
   swingChiefTradeChannelId,
   swingDiscordAlertsEnabled,
   swingInputFromInsert,
@@ -116,5 +118,78 @@ describe("swing discord-trade-notify", () => {
     const payload = buildSwingTradePayload(input, "STC", 1.8, { idempotencySuffix: "roll:2:stc" });
     assert.equal(payload?.action, "STC");
     assert.equal(payload?.idempotency_key, "swing:42:roll:2:stc");
+  });
+
+  test("notifySwingThesisBreak is a no-op (no fetch) when SWING_ALERT_WEBHOOK_URL is unset", async () => {
+    const prev = process.env.SWING_ALERT_WEBHOOK_URL;
+    delete process.env.SWING_ALERT_WEBHOOK_URL;
+    const fetchMock = mock.method(globalThis, "fetch", async () => {
+      throw new Error("fetch must not be called without a configured webhook");
+    });
+    try {
+      assert.equal(swingAlertWebhookUrl(), null);
+      const input = swingInputFromRow(sampleRow())!;
+      const ok = await notifySwingThesisBreak(input, "underlying broke its structural stop");
+      assert.equal(ok, false);
+      assert.equal(fetchMock.mock.calls.length, 0);
+    } finally {
+      fetchMock.mock.restore();
+      if (prev === undefined) delete process.env.SWING_ALERT_WEBHOOK_URL;
+      else process.env.SWING_ALERT_WEBHOOK_URL = prev;
+    }
+  });
+
+  test("notifySwingThesisBreak posts a non-FIFO embed (not a BTO/STC chief-trade payload) with the break reason and contract facts", async () => {
+    const prev = process.env.SWING_ALERT_WEBHOOK_URL;
+    process.env.SWING_ALERT_WEBHOOK_URL = "https://discord.com/api/webhooks/swing-alerts/tok";
+    let capturedUrl: string | undefined;
+    let capturedBody: Record<string, unknown> | undefined;
+    const fetchMock = mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+      capturedUrl = url;
+      capturedBody = JSON.parse(String(init?.body));
+      return new Response(null, { status: 204 });
+    });
+    try {
+      assert.equal(swingAlertWebhookUrl(), "https://discord.com/api/webhooks/swing-alerts/tok");
+      const input = swingInputFromRow(sampleRow({ direction: "short", ticker: "nvda" }))!;
+      const ok = await notifySwingThesisBreak(input, "underlying broke its structural stop");
+      assert.equal(ok, true);
+      assert.equal(capturedUrl, "https://discord.com/api/webhooks/swing-alerts/tok");
+
+      const embeds = capturedBody?.embeds as Array<Record<string, unknown>> | undefined;
+      assert.ok(embeds?.length === 1, "must post exactly one embed");
+      const embed = embeds![0];
+      // Must read as a desk alert, not a BTO/STC chief-trade action — the position is still open.
+      assert.ok(!("action" in (capturedBody ?? {})), "must never carry a BTO/STC action field");
+      assert.match(String(embed.title), /Thesis Break/);
+      assert.match(String(embed.title), /NVDA/);
+      assert.match(String(embed.description), /underlying broke its structural stop/);
+      const fields = embed.fields as Array<{ name: string; value: string }> | undefined;
+      assert.ok(fields?.some((f) => f.name === "Contract" && f.value === "200P 10/17"));
+    } finally {
+      fetchMock.mock.restore();
+      if (prev === undefined) delete process.env.SWING_ALERT_WEBHOOK_URL;
+      else process.env.SWING_ALERT_WEBHOOK_URL = prev;
+    }
+  });
+
+  test("notifySwingThesisBreak falls back to a generic reason when none is supplied", async () => {
+    const prev = process.env.SWING_ALERT_WEBHOOK_URL;
+    process.env.SWING_ALERT_WEBHOOK_URL = "https://discord.com/api/webhooks/swing-alerts/tok";
+    let capturedBody: Record<string, unknown> | undefined;
+    const fetchMock = mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body));
+      return new Response(null, { status: 204 });
+    });
+    try {
+      const input = swingInputFromRow(sampleRow())!;
+      await notifySwingThesisBreak(input, null);
+      const embeds = capturedBody?.embeds as Array<Record<string, unknown>> | undefined;
+      assert.match(String(embeds![0].description), /Structural\/thesis stop triggered/);
+    } finally {
+      fetchMock.mock.restore();
+      if (prev === undefined) delete process.env.SWING_ALERT_WEBHOOK_URL;
+      else process.env.SWING_ALERT_WEBHOOK_URL = prev;
+    }
   });
 });

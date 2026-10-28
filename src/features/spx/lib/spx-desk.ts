@@ -33,7 +33,7 @@ import {
 import { gexPositioningFromHeatmap } from "@/lib/providers/gex-positioning";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { markFlowDataFromBriefs, resolveFlowDataAgeMs } from "@/lib/flow-data-freshness";
-import { isFlowFrameFreshAnywhere } from "@/lib/flow-liveness";
+import { isFlowFreshForSpxCohort } from "@/lib/flow-liveness";
 import {
   computeFlowStrikeStacks,
   type FlowStrikeStack,
@@ -882,7 +882,7 @@ const TRIN = "I:TRIN";
 const ADD = "I:ADD";
 const LEADER_TICKERS = new Set(["AAPL", "NVDA", "MSFT", "GOOG", "TSLA", "META"]);
 
-function buildDeskDataQuality(
+export function buildDeskDataQuality(
   snaps: Awaited<ReturnType<typeof fetchIndexSnapshots>>,
   vixTerm: ReturnType<typeof computeVixTermStructure>
 ): DeskDataQuality {
@@ -890,6 +890,18 @@ function buildDeskDataQuality(
   if ((snaps[VIX]?.price ?? 0) <= 0) missing.push("VIX");
   if ((snaps[VIX9D]?.price ?? 0) <= 0) missing.push("VIX9D");
   if ((snaps[VIX3M]?.price ?? 0) <= 0) missing.push("VIX3M");
+  // `oi_changes`/`iv_term_structure` on `SpxDeskPayload` are PERMANENTLY, structurally absent —
+  // not conditionally stale like the VIX legs above. No function anywhere in this module (or
+  // `spx-desk-merge.ts`'s shell-default stubs) ever computes a real `OiChangeItem[]`/
+  // `IvTermPoint[]` for the SPX desk; `buildSpxDesk()`'s return object hardcodes them as bare
+  // `[]` literals, unlike every sibling array field, which is built from a named computed
+  // variable with a `?? []` fallback (e.g. `flow_by_expiry: enrichment?.flow_by_expiry ?? []`).
+  // Disclose that unconditionally, every call, so a consumer (admin dashboard, Ask Largo) can
+  // tell "never computed" apart from "genuinely zero today" — the exact absence-vs-silence
+  // failure `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s absence principle exists to prevent. Do
+  // NOT gate this behind `vix_term_partial` below — that flag is about the VIX curve only, and
+  // these two fields are missing regardless of VIX feed health.
+  missing.push("oi_changes", "iv_term_structure");
   const vix_term_partial =
     Boolean(vixTerm.partial) || (missing.includes("VIX9D") && !missing.includes("VIX3M"));
   return { vix_term_partial, missing };
@@ -929,8 +941,17 @@ export type SpxFlowBrief = {
   ask_pct?: number | null;
 };
 
-/** Honest flow age for desk payloads — caps sparse-tape age when cluster WS is live. */
-function deskFlowDataAgeMs(flows: SpxFlowBrief[], flowClusterLive: boolean): number | null {
+/**
+ * Honest flow age for desk payloads — caps sparse-tape age when SPX's OWN flow cohort
+ * (SPX/SPXW) is corroborated live, not merely when SOME ticker anywhere in the market is
+ * being delivered. `flowClusterLive` must come from `isFlowFreshForSpxCohort`
+ * (@/lib/flow-liveness), never the market-wide `isFlowFrameFreshAnywhere` — see that
+ * function's doc for the spx-flow-staleness-market-wide-signal fix this guards against
+ * (2026-10-26): using the market-wide signal here silently disabled both the stale-flow
+ * BUY-block and warning in spx-play-gates.ts, because options flow is delivered somewhere
+ * in the market almost continuously during RTH regardless of whether SPX's own tape is.
+ */
+export function deskFlowDataAgeMs(flows: SpxFlowBrief[], flowClusterLive: boolean): number | null {
   markFlowDataFromBriefs(flows);
   let age = resolveFlowDataAgeMs(flows);
   if (flowClusterLive && age != null && age > 120_000) age = 120_000;
@@ -1046,7 +1067,10 @@ export type SpxDeskPayload = {
   data_quality?: DeskDataQuality;
   /** Milliseconds since last UW flow alert (WS or REST). Null if unknown. */
   flow_data_age_ms?: number | null;
-  /** True when ANY replica delivered a UW flow WS frame within ~2m (cluster heartbeat). */
+  /** True when the SPX/SPXW flow cohort SPECIFICALLY delivered a UW flow WS frame within
+   *  ~2m (scoped cohort heartbeat — NOT "any ticker anywhere in the market", see
+   *  isFlowFreshForSpxCohort, @/lib/flow-liveness, spx-flow-staleness-market-wide-signal
+   *  fix 2026-10-26). */
   flow_cluster_live?: boolean;
   /**
    * Age (ms) of the live SPX index tick backing `price` (gap #11). Null when no tick has
@@ -1663,7 +1687,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
 
   const spxFlows: SpxFlowBrief[] = freshFlowsRaw.length ? freshFlowsRaw : lastGoodSpxFlowBriefs;
   if (freshFlowsRaw.length) lastGoodSpxFlowBriefs = freshFlowsRaw;
-  const flowClusterLive = await isFlowFrameFreshAnywhere(120_000).catch(() => false);
+  const flowClusterLive = await isFlowFreshForSpxCohort(120_000).catch(() => false);
   const flowDataAgeMs = deskFlowDataAgeMs(spxFlows, flowClusterLive);
   const freshTape = buildUnifiedTape(spxFlows, darkPool);
   if (freshTape.length) lastGoodUnifiedTape = mergeTapeBuffer(lastGoodUnifiedTape, freshTape);
@@ -2401,7 +2425,19 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
         ema20: structure.ema20,
         ema50: structure.ema50,
         market_open: rthOpenNow,
-        market_status: "open",
+        // BUG FIX (live repro 2026-10-26, Ask Largo/5-engine standing mandate): this was a bare
+        // `"open"` literal, independent of `rthOpenNow` directly above — so outside RTH (e.g. the
+        // 4-7 AM ET pre-market dead zone, or after-hours/overnight) this cold-replica fallback
+        // served `market_open: false` paired with `market_status: "open"` in the SAME object, a
+        // direct self-contradiction. Confirmed live via GET /api/market/spx/desk at 09:09 UTC
+        // (~5 AM ET): the bootstrap-shell fallback (deskShellFromPulse -> mergePulseIntoDesk,
+        // which carries `pulse.market_status` through unchanged) served exactly that pair, also
+        // surfaced verbatim on the admin SPX dashboard's `desk.market.status` field
+        // (admin-spx-dashboard.ts). Every other market_status fallback in this file (the
+        // "closed"-market pulse builders, and the two RTH/premarket ternaries in
+        // buildSpxDesk/deskShellFromPulse) already keeps market_status consistent with
+        // market_open/rthOpen when the live provider is unavailable — this was the one outlier.
+        market_status: rthOpenNow ? "open" : "closed",
         market_label: marketStatusLabel(new Date(), null),
       } satisfies SpxDeskPulse;
     })(),
@@ -2462,7 +2498,7 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
 
   const spxFlows: SpxFlowBrief[] = spxFlowsRaw ?? [];
   if (spxFlows.length) lastGoodSpxFlowBriefs = spxFlows;
-  const flowClusterLive = await isFlowFrameFreshAnywhere(120_000).catch(() => false);
+  const flowClusterLive = await isFlowFreshForSpxCohort(120_000).catch(() => false);
   const flowDataAgeMs = deskFlowDataAgeMs(spxFlows, flowClusterLive);
   const strike_stacks = computeFlowStrikeStacks(spxFlows);
 

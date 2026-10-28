@@ -12,6 +12,19 @@ function getResendClient(): Resend | null {
 
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL?.trim() || "BlackOut Trades <hello@send.blackouttrades.com>";
 
+// resend.emails.send() has no built-in timeout — the SDK's fetchRequest() just does a plain
+// fetch(url, options) with whatever `options` the caller passes (node_modules/resend/dist/
+// index.cjs's Emails.send/create -> Resend.post -> fetchRequest chain), so a hung upstream
+// connection (slow TLS handshake, dead socket) left this call pending indefinitely. That
+// mattered most for email-capture/route.ts, which `await`s sendEmail() before responding to an
+// UNAUTHENTICATED caller — a hung Resend call stalled a live HTTP response with no auth gate to
+// limit who could trigger it. Every other sendEmail() caller is fire-and-forget (`void ...
+// .catch()`), where this would "only" leak a pending request rather than block a response, but
+// the bound applies uniformly since it's set in the one shared client. 10s matches the order of
+// magnitude of this codebase's other external-API timeouts (polygon-news.ts's
+// NEWS_TIMEOUT_MS=8000) with a little extra margin for attachment payloads.
+const SEND_TIMEOUT_MS = 10_000;
+
 export type SendEmailResult = { ok: boolean; id?: string; error?: string };
 
 /** Real inline (CID) attachment — see lib/email/inline-assets.ts for how these
@@ -57,16 +70,23 @@ export async function sendEmail(input: {
     return { ok: false, error: "not_configured" };
   }
   try {
-    const result = await resend.emails.send({
-      from: input.from ?? DEFAULT_FROM,
-      to: input.to,
-      subject: input.subject,
-      html: input.html,
-      attachments: input.attachments,
-      headers: input.headers,
-      tags: input.tag ? [{ name: "template", value: input.tag }] : undefined,
-      topicId: input.topicId ?? undefined,
-    });
+    const result = await resend.emails.send(
+      {
+        from: input.from ?? DEFAULT_FROM,
+        to: input.to,
+        subject: input.subject,
+        html: input.html,
+        attachments: input.attachments,
+        headers: input.headers,
+        tags: input.tag ? [{ name: "template", value: input.tag }] : undefined,
+        topicId: input.topicId ?? undefined,
+      },
+      // The SDK's CreateEmailRequestOptions type only declares `query`/`headers` (PostOptions),
+      // but its runtime Resend.post() spreads this whole object straight into fetch()'s options
+      // (node_modules/resend/dist/index.cjs) — `signal` is honored, it's just untyped. Cast past
+      // the gap rather than widening the SDK's own types.
+      { signal: AbortSignal.timeout(SEND_TIMEOUT_MS) } as Parameters<typeof resend.emails.send>[1]
+    );
     if (result.error) {
       console.warn("[resend] send failed", result.error);
       return { ok: false, error: result.error.message };

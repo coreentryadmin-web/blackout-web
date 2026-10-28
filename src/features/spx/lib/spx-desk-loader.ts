@@ -2,6 +2,8 @@ import {
   deskBootstrapMaxBlockMs,
   deskCacheTtlMs,
   deskFlowCacheTtlMs,
+  deskLoaderMaxStaleAgeMs,
+  deskPeekMaxAgeSec,
   deskPulseCacheTtlMs,
   deskPulseMaxBlockMs,
 } from "@/lib/providers/config";
@@ -41,6 +43,17 @@ const deskCacheOpts = {
   staleWhileRevalidate: true as const,
   staleOnInflight: true,
   maxBlockMs: deskBootstrapMaxBlockMs(),
+  // FIX (found live 2026-10-26, SPX desk loader-path stale-cache ceiling gap): previously unset,
+  // so withServerCache's SWR branch fell back to the generic 10-minute MAX_STALE_AGE_MS — far
+  // looser than peekSpxDesk()'s own already-tightened ~40s ceiling (PR #6882), letting a replica
+  // whose background refresh kept losing the (now-fixed) maxBlockMs race keep serving its own
+  // stale local copy for up to 10 minutes. Reuses the SAME value peekSpxDesk() uses
+  // (deskLoaderMaxStaleAgeMs(), src/lib/providers/config.ts) so the peek and loader ceilings for
+  // this cache key can never drift apart again. Safe only because server-cache.ts's SWR branch
+  // now races its refresh against maxBlockMs (see that file's own fix) — without that race landing
+  // first, tightening this ceiling would make the (previously unbounded) blocking-refresh branch
+  // fire far more often.
+  maxStaleAgeMs: deskLoaderMaxStaleAgeMs(),
   fallback: async () => deskShellFromPulse(await loadSpxDeskPulse()),
 };
 
@@ -98,10 +111,23 @@ export async function loadSpxDesk(): Promise<SpxDeskPayload> {
   return withServerCache(`spx-desk:${date}`, deskCacheTtlMs(), buildSpxDesk, deskCacheOpts);
 }
 
-/** Instant desk read — Redis/L1 only, never invokes buildSpxDesk. */
+/**
+ * Instant desk read — Redis/L1 only, never invokes buildSpxDesk.
+ *
+ * BUG FIX (found live 2026-10-26, Ask Largo/5-engine standing mandate): previously called
+ * `peekServerCache` with no staleness override, so it fell back to the generic 10-minute
+ * `MAX_STALE_AGE_MS` ceiling — far looser than this key's real ~10s refresh cadence
+ * (`deskCacheTtlMs()`) or the 90s "Desk data stale" play-gate (`playGexStaleMaxSec()`,
+ * spx-play-gates.ts) that reads whatever desk snapshot this peek hands back. A replica whose
+ * local copy (and Redis's own short-TTL copy) had both gone cold was free to keep serving an
+ * up-to-10-minute-old snapshot while a fresher sibling replica served a current one — the
+ * cross-replica divergence `deskPeekMaxAgeSec()`'s own doc comment traces in full. Passing it
+ * here makes a materially-behind replica self-invalidate (return null) so the route's own
+ * `loadSpxDesk()` fallback (already maxBlockMs-bounded) does a real, bounded refresh instead.
+ */
 export async function peekSpxDesk(): Promise<SpxDeskPayload | null> {
   const date = todayEtYmd();
-  return peekServerCache<SpxDeskPayload>(`spx-desk:${date}`);
+  return peekServerCache<SpxDeskPayload>(`spx-desk:${date}`, { maxStaleMs: deskPeekMaxAgeSec() * 1000 });
 }
 
 /**
@@ -160,6 +186,8 @@ export async function loadMergedSpxDesk(): Promise<MergedSpxDeskBundle> {
     staleWhileRevalidate: true,
     staleOnInflight: true,
     maxBlockMs: deskBootstrapMaxBlockMs(),
+    // Same fix as deskCacheOpts above — see that comment for the full rationale.
+    maxStaleAgeMs: deskLoaderMaxStaleAgeMs(),
     fallback: buildBootstrapFastLane,
   });
   void observeSpxDeskVoiceTransitions(bundle.merged, date).catch(() => {});
@@ -176,16 +204,25 @@ export async function loadMergedSpxDesk(): Promise<MergedSpxDeskBundle> {
  * playMemberReadMaxBlockMs() budget (800ms) wrapping the whole SPX-play read on a cold desk
  * cache, causing every closed-market/off-hours member read to time out before the 2026-10-17
  * closed-market fast path (which depends on `merged` already being loaded) is ever reached. A
- * generous default maxStaleMs (vs peekSpxDesk()'s implicit 10-minute MAX_STALE_AGE_MS) is
+ * generous EXPLICIT maxStaleMs override (vs the tightened `deskPeekMaxAgeSec()` default below) is
  * deliberate and safe ONLY for this specific caller's closed-market use: once the market is
  * genuinely closed, "stale" and "correct" are the same thing (nothing changes), so a Friday-close
  * snapshot read on a quiet Sunday is accurate, not wrong. The caller is still responsible for
  * never trusting this peek during/near real trading hours (see spx-service.ts's own
  * isSpxEngineCronWindow guard) — this function makes no such guarantee on its own.
+ *
+ * BUG FIX (found live 2026-10-26, Ask Largo/5-engine standing mandate): when called with NO
+ * `opts.maxStaleMs` (every caller except spx-service.ts's deliberate 24h off-hours override
+ * above), this fell back to the generic 10-minute `MAX_STALE_AGE_MS` — the same cross-replica
+ * divergence gap `peekSpxDesk()`'s own fix (and `deskPeekMaxAgeSec()`'s doc comment) describes in
+ * full, just for the merged bundle. An explicit `opts.maxStaleMs` (the 24h closed-market case)
+ * still wins unchanged; only the DEFAULT tightens.
  */
 export async function peekMergedSpxDesk(opts?: { maxStaleMs?: number }): Promise<MergedSpxDeskBundle | null> {
   const date = todayEtYmd();
-  return peekServerCache<MergedSpxDeskBundle>(`spx-merged:${date}`, opts);
+  return peekServerCache<MergedSpxDeskBundle>(`spx-merged:${date}`, {
+    maxStaleMs: opts?.maxStaleMs ?? deskPeekMaxAgeSec() * 1000,
+  });
 }
 
 async function buildMergedBundle(): Promise<MergedSpxDeskBundle> {
@@ -232,6 +269,8 @@ export async function loadBootstrapBundle(): Promise<MergedSpxDeskBundle> {
     staleWhileRevalidate: true,
     staleOnInflight: true,
     maxBlockMs: deskBootstrapMaxBlockMs(),
+    // Same fix as deskCacheOpts above — see that comment for the full rationale.
+    maxStaleAgeMs: deskLoaderMaxStaleAgeMs(),
     fallback: buildBootstrapFastLane,
   });
 }

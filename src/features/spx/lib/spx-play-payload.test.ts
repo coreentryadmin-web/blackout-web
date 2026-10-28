@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { confirmationsForAction, degradedPlayPayload, intelGates, scanningPayload } from "./spx-play-payload";
+import {
+  confirmationsForAction,
+  degradedPlayCatchingUpMessage,
+  degradedPlayPayload,
+  intelGates,
+  scanningPayload,
+} from "./spx-play-payload";
 import type { SpxDeskPayload } from "./spx-desk";
 import type { SpxConfluence } from "./spx-signals";
 import type { PlayGateResult } from "./spx-play-gates";
@@ -20,6 +26,30 @@ test("confirmationsForAction strips checks on SCANNING", () => {
 test("confirmationsForAction keeps checks on WATCHING and BUY", () => {
   assert.equal(confirmationsForAction("WATCHING", sampleConfirmations), sampleConfirmations);
   assert.equal(confirmationsForAction("BUY", sampleConfirmations), sampleConfirmations);
+});
+
+// ---------------------------------------------------------------------------
+// degradedPlayCatchingUpMessage — the shared, honest override BOTH degraded-path call sites
+// (route.ts's catch block, spx-service.ts's spxPlayReadDegraded()) must use instead of
+// degradedPlayPayload()'s bare "Desk warming" default (2026-10-26 fix).
+// ---------------------------------------------------------------------------
+
+test("degradedPlayCatchingUpMessage never asserts the desk itself is cold", () => {
+  const extras = degradedPlayCatchingUpMessage();
+  assert.equal(extras.headline, "Play scan still catching up — retry shortly");
+  assert.equal(extras.idle_message, "Play scan still catching up — retry shortly");
+  assert.doesNotMatch(extras.headline, /Desk warming/);
+  assert.doesNotMatch(String(extras.idle_message), /Desk warming/);
+});
+
+test("degradedPlayPayload(degradedPlayCatchingUpMessage()) overrides BOTH fields away from the bare 'Desk warming' default", () => {
+  const bare = degradedPlayPayload();
+  assert.equal(bare.headline, "Desk warming — play state unavailable");
+  assert.equal(bare.idle_message, "Desk warming — play state unavailable");
+
+  const overridden = degradedPlayPayload(degradedPlayCatchingUpMessage());
+  assert.equal(overridden.headline, "Play scan still catching up — retry shortly");
+  assert.equal(overridden.idle_message, "Play scan still catching up — retry shortly");
 });
 
 test("degradedPlayPayload includes levels so UI never reads undefined.entry", () => {

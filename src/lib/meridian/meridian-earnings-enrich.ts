@@ -7,6 +7,7 @@ import { loadMeridianCatalystBundle } from "@/lib/meridian/meridian-catalyst-enr
 import { buildExpectedVsRealized } from "@/lib/meridian/meridian-analytics-core";
 import {
   computeEarningsYoY,
+  deriveMeridianEarningsErrors,
   dualBeatRateFromPrints,
   guidanceToMeridianRow,
   mergeStreetEstimates,
@@ -116,12 +117,16 @@ export async function loadMeridianEarningsEnrichment(
     // this Promise.all that still swallowed its own error into a generic "cache_error" string
     // (fixed in loadBenzingaTickerGuidance) without ever surfacing it here — a corporate-guidance
     // fetch failure rendered as guidance_entitled:false/guidance_on_file:false, indistinguishable
-    // from "this company gave no guidance."
-    calendar_error:
-      history.history_error ??
-      (benzingaRes as { error?: string | null }).error ??
-      guidanceRes.error ??
-      null,
+    // from "this company gave no guidance." `deriveMeridianEarningsErrors` keeps that goal but no
+    // longer folds the guidance fetch's error into `calendar_error` — that field drives a banner
+    // which specifically claims "estimates and print history are unavailable", a claim guidance
+    // failing alone does not make true (see its own doc comment for the live false-positive this
+    // fixed).
+    ...deriveMeridianEarningsErrors(
+      history.history_error,
+      (benzingaRes as { error?: string | null }).error,
+      guidanceRes.error
+    ),
     beat_rates,
     analyst_revisions: catalystBundle.analyst_revisions,
     price_targets: catalystBundle.price_targets,

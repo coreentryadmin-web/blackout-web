@@ -4,6 +4,7 @@ import { before, describe, it, mock } from "node:test";
 import type { HorizonPlay } from "@/lib/horizon-plays";
 import {
   pickLanePlayForBrief,
+  pickOpenBangerPositionForBrief,
   parseSwingPlayId,
   resolveBriefIvRank,
   rightFromContractType,
@@ -145,6 +146,33 @@ test("pickLanePlayForBrief: contract strike disambiguates same ticker", () => {
   assert.equal(picked?.contract.strike, 580);
 });
 
+// BUG FIX (2026-10-20, Ask Largo standing mandate — live-reproduced two-leg repro, found by the
+// 5-engine/Largo fresh-angle audit). `contractMatches` (play-brief-resolve-pure.ts) used to
+// short-circuit `if (strike == null) return true;` BEFORE ever checking `right`, so a caller
+// supplying only `right` (no `strike`) matched EVERY same-ticker contract regardless of call/put —
+// exactly the Largo tool's own documented call shape ("Optional positionId/strike/right/status
+// disambiguate ... omit them for the single obvious match," any subset, including right alone).
+test("pickLanePlayForBrief: right-only hint (no strike) picks the matching side, not the higher-scored one", () => {
+  // Scores deliberately favor the WRONG (call) leg so the old buggy code's score-tiebreak
+  // (byContract.sort((a,b)=>b.score-a.score)[0] over an unfiltered-by-right byContract) cannot
+  // accidentally land on the right answer — only an actual right-filter can pick the put here.
+  const rows = [
+    laneRow({
+      ticker: "XYZ",
+      score: 90,
+      contract: { ticker: "XYZ", strike: 100, right: "C", expiry: "x", dte: 14, mid: 5, bid: null, ask: null, delta: 0.5, openInterest: 0 },
+    }),
+    laneRow({
+      ticker: "XYZ",
+      score: 50,
+      contract: { ticker: "XYZ", strike: 90, right: "P", expiry: "x", dte: 14, mid: 5, bid: null, ask: null, delta: -0.5, openInterest: 0 },
+    }),
+  ];
+  const picked = pickLanePlayForBrief(rows, "XYZ", { right: "P" });
+  assert.equal(picked?.contract.right, "P", "a right=P request must never resolve to the call leg");
+  assert.equal(picked?.contract.strike, 90);
+});
+
 // BANGER-ORIGIN IDENTITY FIX (Ask Largo standing mandate, 2026-09-21). Live-repro'd on ABTC
 // 2026-09-21: two concurrent banger-origin swing positions (9.5C TRIM +200%, 10.5C OPEN +25%),
 // each carrying its own real `positionId` (banger_positions.id — see banger-lane-merge.ts).
@@ -181,6 +209,110 @@ test("pickLanePlayForBrief: exact positionId hint resolves the SPECIFIC banger-o
   const pickedHigherPnl = pickLanePlayForBrief(rows, "ABTC", { positionId: 1185 });
   assert.equal(pickedHigherPnl?.positionId, 1185);
   assert.equal(pickedHigherPnl?.contract.strike, 9.5);
+});
+
+// BUG FIX (2026-10-24, Ask Largo standing mandate, live repro PANW: `GET
+// /api/market/swing/play-brief?playId=SWING:PANW:2103` returned a 200 whose own `playId` field
+// read back "SWING:PANW:67" — a completely different, unrelated position). `#2103` is a real,
+// open banger_positions row on PANW that `mergeBangerPositionsIntoSwingPlays` deliberately excludes
+// from the board's `rows` (a native swing ledger position already manages this ticker), so `rows`
+// here carries only the ONE unrelated native row. The old `forTicker.length === 1` shortcut
+// returned that lone row unconditionally — even though the caller asked for a SPECIFIC positionId
+// this row does not carry. Must now surface as absence (null) so the caller's broader fallback
+// chain gets a chance to report "not found" honestly, instead of being told the request succeeded
+// under a different play's id.
+test("pickLanePlayForBrief: a positionId hint that does not match the ticker's one lane row must not silently substitute that row", () => {
+  const rows = [
+    laneRow({
+      ticker: "PANW",
+      positionId: 67,
+      liveStatus: "HOLD",
+      contract: { ticker: "PANW", strike: 370, right: "C", expiry: "2026-10-30", dte: 6, mid: 19.45, bid: null, ask: null, delta: 0.65, openInterest: 258 },
+    }),
+  ];
+  const picked = pickLanePlayForBrief(rows, "PANW", { positionId: 2103 });
+  assert.equal(picked, null, "an unresolvable positionId must surface as absence, never the ticker's unrelated lone row");
+});
+
+test("pickLanePlayForBrief: the lone-row shortcut still fires normally when no positionId was requested", () => {
+  const rows = [
+    laneRow({
+      ticker: "PANW",
+      positionId: 67,
+      liveStatus: "HOLD",
+      contract: { ticker: "PANW", strike: 370, right: "C", expiry: "2026-10-30", dte: 6, mid: 19.45, bid: null, ask: null, delta: 0.65, openInterest: 258 },
+    }),
+  ];
+  const picked = pickLanePlayForBrief(rows, "PANW", {});
+  assert.equal(picked?.positionId, 67, "a ticker-only lookup with no positionId hint must still resolve the sole candidate");
+});
+
+test("pickLanePlayForBrief: the lone-row shortcut still fires when the positionId hint actually matches", () => {
+  const rows = [
+    laneRow({
+      ticker: "PANW",
+      positionId: 67,
+      liveStatus: "HOLD",
+      contract: { ticker: "PANW", strike: 370, right: "C", expiry: "2026-10-30", dte: 6, mid: 19.45, bid: null, ask: null, delta: 0.65, openInterest: 258 },
+    }),
+  ];
+  const picked = pickLanePlayForBrief(rows, "PANW", { positionId: 67 });
+  assert.equal(picked?.positionId, 67, "a positionId hint that matches the sole candidate must still resolve it");
+});
+
+// ── pickOpenBangerPositionForBrief: banger-origin fallback for loadOpenTerminalPlay ──
+//
+// BUG FIX (2026-10-26, Ask Largo standing mandate, live repro PANW positionId=2103). PANW carries
+// a native swing_positions COMMIT row (id 67) AND a separate, fully live banger_positions OPEN row
+// (id 2103) — `getSwingServingLane` drops the banger row from its merge because the native row
+// already covers the ticker, so `?playId=SWING:PANW&ticker=PANW&positionId=2103` 404'd even though
+// the member is actually holding that exact position. `loadOpenTerminalPlay` now falls through to
+// a direct `banger_positions` lookup (via this pure selector) whenever the native-table lookup
+// finds nothing. Same fail-closed discipline as `pickLanePlayForBrief`'s own 2026-10-24 PANW fix
+// just above: an explicit, unresolvable positionId must surface as absence, never an unrelated
+// substitute.
+type FakeBangerRow = { id: number; ticker: string };
+
+test("pickOpenBangerPositionForBrief: resolves the exact positionId among several same-ticker rows", () => {
+  const rows: FakeBangerRow[] = [
+    { id: 2103, ticker: "PANW" },
+    { id: 2200, ticker: "PANW" },
+  ];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", 2103);
+  assert.equal(picked?.id, 2103);
+});
+
+test("pickOpenBangerPositionForBrief: a positionId that does not match the ticker's one row must not silently substitute that row", () => {
+  const rows: FakeBangerRow[] = [{ id: 2103, ticker: "PANW" }];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", 9999);
+  assert.equal(picked, null, "an unresolvable positionId must surface as absence, never the ticker's unrelated lone row");
+});
+
+test("pickOpenBangerPositionForBrief: no positionId hint resolves the ticker's sole candidate (live PANW repro)", () => {
+  const rows: FakeBangerRow[] = [{ id: 2103, ticker: "PANW" }];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", null);
+  assert.equal(picked?.id, 2103);
+});
+
+test("pickOpenBangerPositionForBrief: no positionId hint with multiple same-ticker rows must not guess — surfaces absence", () => {
+  const rows: FakeBangerRow[] = [
+    { id: 2103, ticker: "PANW" },
+    { id: 2200, ticker: "PANW" },
+  ];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", null);
+  assert.equal(picked, null, "an ambiguous ticker with no positionId hint must not guess which open banger row was meant");
+});
+
+test("pickOpenBangerPositionForBrief: no rows for the ticker at all returns null", () => {
+  const rows: FakeBangerRow[] = [{ id: 2103, ticker: "NET" }];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", 2103);
+  assert.equal(picked, null);
+});
+
+test("pickOpenBangerPositionForBrief: ticker match is case-insensitive", () => {
+  const rows: FakeBangerRow[] = [{ id: 2103, ticker: "panw" }];
+  const picked = pickOpenBangerPositionForBrief(rows, "PANW", 2103);
+  assert.equal(picked?.id, 2103);
 });
 
 // ── loadOpenTerminalPlay: Ask Largo must restore factors/regime the same way the main board does ──
@@ -370,6 +502,49 @@ describe("loadOpenTerminalPlay: restores factors/regime for a committed row (Lar
       "a committed row's stored contract_occ must win over a strike/expiry/right reconstruction, normalized O:-prefixed",
     );
   });
+
+  // BUG FIX (2026-10-20, Ask Largo standing mandate — same defect class as pickLanePlayForBrief's
+  // sibling fix above, found the same cycle). `rowContractMatches` had the identical short-circuit:
+  // `if (strike == null) return true;` ran before `right` was ever checked, so a right-only hint
+  // matched every open row for the ticker regardless of call/put.
+  test("BUG FIX: right-only hint (no strike, no positionId) resolves the matching side, not just the first row", async () => {
+    const callRow = { ...openRow("DUAL", 10), contract_strike: 100, contract_type: "call" };
+    const putRow = { ...openRow("DUAL", 11), contract_strike: 95, contract_type: "put" };
+    mockOpenRows = [callRow, putRow];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const play = await mod.loadOpenTerminalPlay("DUAL", { right: "P" });
+    assert.ok(play, "the committed play must resolve");
+    assert.ok(
+      play!.contract.includes("95"),
+      `a right=P request must resolve the put leg (strike 95), not the call — got contract "${play!.contract}"`,
+    );
+  });
+
+  // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro PANW — same defect class as
+  // pickLanePlayForBrief's sibling fix, found the same cycle). `fetchOpenSwingPositions()` only
+  // ever carries `swing_positions` rows, so a request for a banger-origin sibling's REAL id (e.g.
+  // the live PANW #2103 case: a genuinely open banger_positions row this ticker's native position
+  // already won the board's single display slot against) can NEVER match here — `matches` holds
+  // only the one unrelated native row. The old `matches.length === 1` fallback took that lone row
+  // anyway, so `loadOpenTerminalPlay("PANW", { positionId: 2103 })` silently returned the NATIVE
+  // #67 row's full data under the requested #2103 id. Must now return null so the caller's broader
+  // fallback chain gets an honest chance to report "not found" instead of a false substitute.
+  test("BUG FIX: a positionId hint that matches no open row must not fall back to the ticker's one other row", async () => {
+    mockOpenRows = [openRow("PANW", 67)];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const play = await mod.loadOpenTerminalPlay("PANW", { positionId: 2103 });
+    assert.equal(play, null, "an unresolvable positionId must surface as absence, never the ticker's unrelated lone row");
+  });
+
+  test("the lone-row fallback still fires normally when no positionId was requested", async () => {
+    mockOpenRows = [openRow("PANW", 67)];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const play = await mod.loadOpenTerminalPlay("PANW", {});
+    assert.ok(play, "a ticker-only lookup with no positionId hint must still resolve the sole open row");
+  });
 });
 
 describe("resolveSwingPlayForBrief: WATCH lane restores factors/regime (parity with open path)", () => {
@@ -446,6 +621,72 @@ describe("resolveSwingPlayForBrief: a separately-supplied positionId must resolv
       "CLOSED",
       `must resolve the CLOSED position (id 30), not the live WATCH row — got status "${resolved!.play.status}"`,
     );
+  });
+});
+
+// BUG FIX (2026-10-20, Ask Largo standing mandate, adversarially verified, Workflow static sweep
+// batch 17). A caller that supplies a specific positionId which fails to resolve through EVERY
+// targeted lookup (open ledger, both positionId-based closed checks, the chain-root retry) used to
+// fall through to the unconditional `loadClosedPlay(ticker, null)` fallback, which ignores
+// positionId entirely and returns whichever graded row for the ticker is most recently closed — a
+// completely different trade than the one asked about, with no absence/error signal at all.
+describe("resolveSwingPlayForBrief: a positionId that fails to resolve anywhere must return absence, never an UNRELATED closed position for the same ticker", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("positionId outside every lookup's fetch window resolves to null, not the only other closed row for this ticker", async () => {
+    mockOpenRows = [];
+    // The requested positionId (501) is NOT present anywhere the fetch covers — simulating it
+    // falling outside loadClosedPlay/resolveChainRootId's shared 90-day window. A DIFFERENT,
+    // more-recently-closed position for the SAME ticker is the only row returned — exactly the
+    // shape that silently won before this fix, because the final fallback never checked positionId.
+    mockClosedRows = [
+      {
+        ...openRow("ABC", 777),
+        status: "CLOSED",
+        graded_at: "2026-10-18T20:00:00.000Z",
+        closed_at: "2026-10-18T20:00:00.000Z",
+        realized_pnl_pct: 41.2,
+      },
+    ];
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:ABC",
+      ticker: "ABC",
+      positionId: 501, // not id 777, not root_position_id 777 — genuinely unresolvable here
+    });
+
+    assert.equal(
+      resolved,
+      null,
+      "an unresolvable positionId must surface as honest absence, never silently substitute the " +
+        "unrelated closed position (id 777) that happens to exist for this ticker",
+    );
+  });
+
+  test("with NO positionId supplied at all, the ticker-wide closed fallback is unchanged (still resolves the most recent closed row)", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      {
+        ...openRow("ABC", 777),
+        status: "CLOSED",
+        graded_at: "2026-10-18T20:00:00.000Z",
+        closed_at: "2026-10-18T20:00:00.000Z",
+        realized_pnl_pct: 41.2,
+      },
+    ];
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({ playId: "SWING:ABC", ticker: "ABC" });
+
+    assert.ok(resolved, "with no specific position asked about, the ticker-wide fallback must still fire");
+    assert.equal(resolved!.play.status, "CLOSED");
   });
 });
 
@@ -654,3 +895,87 @@ describe("resolveSwingPlayForBrief: a lane-resolved play (banger-origin or swing
 // directly, no recompute) and `play-brief-context.test.ts`'s
 // "pnlPct is the canonical livePnlPct, never a cent-rounded-mark recompute" block for the
 // regression coverage that replaced this one.
+
+// BUG FOUND 2026-10-26 (Ask Largo standing mandate, live repro MSTR). Same failure CLASS as the
+// 2026-10-20 "ticker-wide closedFallback" fix above, caught by a different trigger: that fix
+// guards against an unresolvable POSITION id silently substituting an unrelated closed trade; it
+// never considered a caller that names a specific LIVE-LANE STATE (`status=WATCH`, the route's own
+// documented hint, sent with NO positionId because a WATCH/lane-only candidate has none to embed —
+// the exact shape `useSwingPlayBrief`'s `briefUrl()` builds for every WATCH-bucket play, and the
+// exact shape Largo's own `get_swing_play_brief` tool sends when it carries a `status` hint). Live
+// repro: `GET /api/market/swing/play-brief?playId=SWING:MSTR&ticker=MSTR&status=WATCH` returned a
+// `STOPPED — MSTR 160C 4DTE` CLOSED brief (-62.31%) while MSTR was a live, currently-listed WATCH
+// candidate on the same session's board — because the live lane lookup legitimately found nothing
+// for that instant (confirmed via two `/horizons` reads minutes apart) and, with positionId always
+// null for a lane-only candidate, the unconditional ticker-wide fallback below fired anyway.
+describe("resolveSwingPlayForBrief: an explicit live-lane status (WATCH/etc.) with no positionId must return absence, never an UNRELATED closed trade for the same ticker", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("status=WATCH with no positionId and no current lane match returns null, not the ticker's unrelated closed trade", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      {
+        ...openRow("MSTR", 45),
+        status: "CLOSED",
+        graded_at: "2026-10-20T20:00:00.000Z",
+        closed_at: "2026-10-20T20:00:00.000Z",
+        realized_pnl_pct: -62.31,
+      },
+    ];
+    // The live lane legitimately carries NO row for this ticker right now (it rotated out between
+    // scans) — exactly the shape that silently fell through to the closed trade before this fix.
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:MSTR", // no embedded position id — a WATCH-lane candidate never has one
+      ticker: "MSTR",
+      status: "WATCH", // explicit live-lane hint, exactly what the UI/Largo send for a WATCH play
+    });
+
+    assert.equal(
+      resolved,
+      null,
+      "an explicit live-lane status with no current lane match must surface as honest absence, " +
+        "never silently substitute the ticker's unrelated closed trade",
+    );
+  });
+
+  test("no status hint at all still falls back to the ticker's closed trade (unchanged ambiguous-query behavior)", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      {
+        ...openRow("MSTR", 45),
+        status: "CLOSED",
+        graded_at: "2026-10-20T20:00:00.000Z",
+        closed_at: "2026-10-20T20:00:00.000Z",
+        realized_pnl_pct: -62.31,
+      },
+    ];
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({ playId: "SWING:MSTR", ticker: "MSTR" });
+
+    assert.ok(resolved, "with no status hint at all, the ticker-wide fallback must still fire");
+    assert.equal(resolved!.play.status, "CLOSED");
+  });
+
+  test("a live lane match for the requested status still wins (unchanged — this fix only touches the no-match fallback)", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      { ...openRow("MSTR", 45), status: "CLOSED", graded_at: "2026-10-20T20:00:00.000Z", closed_at: "2026-10-20T20:00:00.000Z" },
+    ];
+    mockLaneRows = [laneRow({ ticker: "MSTR", status: "WATCH" })];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({ playId: "SWING:MSTR", ticker: "MSTR", status: "WATCH" });
+
+    assert.ok(resolved, "must resolve to something");
+    assert.notEqual(resolved!.play.status, "CLOSED", "a real live lane match must still win over the closed trade");
+  });
+});

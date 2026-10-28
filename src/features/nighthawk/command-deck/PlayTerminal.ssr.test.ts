@@ -292,6 +292,30 @@ test("pre-entry (not-yet-committed), PnL tab: R:R display floors instead of roun
   assert.doesNotMatch(html, /2\.0:1/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-24): PnlPanel's "Live P&L" headline used to read
+// bare `play.pnlPct` unconditionally — for a CLOSED play with a real recorded `exitPnlPct` that
+// disagrees with the last live mid (stale -50% mid vs a +42% actual exit fill), the headline
+// showed the stale number instead of the real outcome. LEAPS is the only horizon that reaches
+// this branch (see the reachability comment a few tests above).
+test("PnL tab, CLOSED LEAPS play: Live P&L headline prefers the recorded exitPnlPct over a stale pnlPct mid", async () => {
+  const html = await render(
+    play({ horizon: "LEAPS", status: "CLOSED", pnlPct: -50, exitPnlPct: 42 }),
+    { initialTab: "pnl" },
+  );
+  assert.match(html, /\+42\.0%/, `expected the real exit fill +42.0%, got: ${html}`);
+  assert.doesNotMatch(html, />-50\.0%</, `must not show the stale mechanical mid as the headline, got: ${html}`);
+});
+
+// Sibling case: an OPEN (not yet closed) LEAPS play must still show the live mid unchanged —
+// exitPnlPct is only ever meaningful once the play has actually closed.
+test("PnL tab, OPEN LEAPS play: Live P&L headline still shows the live pnlPct mid, unaffected by this fix", async () => {
+  const html = await render(
+    play({ horizon: "LEAPS", status: "OPEN", pnlPct: 18, exitPnlPct: null }),
+    { initialTab: "pnl" },
+  );
+  assert.match(html, /\+18\.0%/, `expected the live mid +18.0%, got: ${html}`);
+});
+
 test("OCC copy: absent OCC → no control rendered (graceful, no dead button)", async () => {
   const html = await render(play({ occ: null }));
   assert.doesNotMatch(html, /nh-deck-occcopy/);
@@ -430,4 +454,29 @@ test("0DTE play: no mobile Largo fallback mounted (Swing-only feature)", async (
 test("Legacy play: no mobile Largo fallback mounted (Swing-only feature)", async () => {
   const html = await render(legacyPlay());
   assert.doesNotMatch(html, /nh-deck-right-largo-mobile/);
+});
+
+// DEAD-CODE REMOVAL (Ask Largo standing mandate, 2026-10-24): `legacySinglePanel` unconditionally
+// routes every Legacy play to LegacyPlayDetailPanel, even when `initialTab="pnl"` asks for the
+// tab bar explicitly — that is exactly why the now-deleted `LegacyPnlPanel` (PnlPanel's old
+// LEGACY branch) could never render in production. Pins that behavior: no tab bar markup, and
+// the single-panel's own excursion bar (sourced from legacyPrimaryPeakPct/TroughPct, matching
+// TradeExcursionGraphic's existing fix from PR #6619) still renders correctly with pnlPct/peak/
+// trough null and only the stock* fields populated — proving the deletion changed nothing a real
+// Legacy play ever showed.
+test("Legacy play: initialTab='pnl' still renders the single-panel view, never a tab bar — stock-fallback excursion bar renders correctly", async () => {
+  const html = await render(
+    legacyPlay({
+      pnlPct: null,
+      peak: null,
+      trough: null,
+      stockMovePct: 6.4,
+      stockPeakPct: 11.2,
+      stockTroughPct: -3.5,
+    }),
+    { initialTab: "pnl" },
+  );
+  assert.doesNotMatch(html, /nh-deck-tabs/);
+  assert.match(html, /nh-deck-excursion-graphic/);
+  assert.match(html, /\+6\.4%/);
 });

@@ -116,7 +116,7 @@ test("a cross-cron concurrency slot is acquired after the self-overlap lock, bef
 test("a lost cross-cron concurrency race skips the run instead of dispatching a second heavy warm", () => {
   assert.match(
     routeSrc,
-    /if \(!slot\) \{\s*const payload = \{ ok: true, skipped: true, reason: "heavy-cron concurrency slot unavailable \(idempotent skip\)" \};/,
+    /if \(!slot\) \{[\s\S]*?const payload = \{ ok: true, skipped: true, reason: "heavy-cron concurrency slot unavailable \(idempotent skip\)" \};/,
     "a lost race must skip honestly, not silently proceed without a slot"
   );
 });
@@ -126,5 +126,33 @@ test("the heavy-cron slot is released alongside the background warm, in the inne
     routeSrc,
     /async function runVectorDarkPoolWarm\(started: number, slot: HeavyCronSlot\): Promise<void> \{\s*try \{\s*await runVectorDarkPoolWarmInner\(started\);\s*\} finally \{\s*await slot\.release\(\);\s*\}\s*\}/,
     "release must run on both the success and error paths, wrapping the real work rather than inlined into it"
+  );
+});
+
+// Regression (2026-10-26): a lost cross-cron concurrency race left the self-overlap lock
+// (`cron:vector-dark-pool-warm:lock`, 610s TTL) standing for its full lifetime even though no
+// work ever ran. The schedule is every 10 minutes (600s), so the NEXT scheduled fire landed
+// before that lock expired and was ALSO skipped — as "prior run still executing", even though
+// nothing was actually running. vector-pick-sweep (the sibling file using the exact same
+// self-overlap-lock + heavy-cron-slot pattern) already fixed this shape in #5975 by releasing
+// its own overlap lock immediately on a lost race, with the explicit comment "so the NEXT
+// scheduled fire (not this one) gets a clean shot" — this route never got the matching fix.
+test("a lost cross-cron concurrency race releases the self-overlap lock before skipping", () => {
+  assert.match(
+    routeSrc,
+    /import \{ sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx \} from "@\/lib\/shared-cache"/,
+    "must import sharedCacheDel to release the self-overlap lock on a lost race"
+  );
+  const slotCheckIdx = routeSrc.indexOf("if (!slot) {");
+  const dispatchDefIdx = routeSrc.indexOf("const dispatchWarm = () => {");
+  const releaseInLostRaceIdx = routeSrc.indexOf(
+    'await sharedCacheDel("cron:vector-dark-pool-warm:lock").catch(() => undefined);'
+  );
+  assert.ok(
+    slotCheckIdx > 0 &&
+      releaseInLostRaceIdx > slotCheckIdx &&
+      releaseInLostRaceIdx < dispatchDefIdx,
+    "a lost heavy-cron-slot race must release the self-overlap lock inside the `if (!slot)` branch, " +
+      "before the lock's 610s TTL would otherwise block the next scheduled fire too"
   );
 });

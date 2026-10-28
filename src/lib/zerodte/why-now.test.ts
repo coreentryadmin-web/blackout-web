@@ -24,6 +24,12 @@ test("why-now: PIN origin → gamma-wall pin", () => {
   assert.match(wn!.label, /pin/i);
 });
 
+test("why-now: MOMENTUM origin → momentum + volume breakout", () => {
+  const wn = deriveWhyNow({ discovery_origin: ["MOMENTUM"] });
+  assert.equal(wn?.reason, "momentum");
+  assert.match(wn!.label, /momentum/i);
+});
+
 test("why-now: swept flow over the threshold → sweep (before the generic flow fallback)", () => {
   assert.equal(deriveWhyNow({ discovery_origin: ["FLOW"], sweep_pct: 0.7 })?.reason, "sweep");
 });
@@ -60,4 +66,9 @@ test("readPinnedWhyNow: absent / malformed → null (never a fabricated reason)"
   assert.equal(readPinnedWhyNow({ why_now: { reason: "unknown_x", label: "x" } }), null); // bad reason
   assert.equal(readPinnedWhyNow({ why_now: { reason: "sweep" } }), null); // no label
   assert.equal(readPinnedWhyNow({ why_now: { reason: "sweep", label: "" } }), null); // empty label
+});
+
+test("readPinnedWhyNow: a pinned MOMENTUM reason round-trips (the REASONS allowlist admits it)", () => {
+  const wn = deriveWhyNow({ discovery_origin: ["MOMENTUM"] })!;
+  assert.deepEqual(readPinnedWhyNow({ why_now: wn }), wn);
 });

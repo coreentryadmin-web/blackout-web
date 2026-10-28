@@ -39,7 +39,11 @@ import {
 } from "@/lib/db";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
 import { spotFromLastTradeResult } from "@/lib/swing/underlying-spot-freshness";
-import { fetchOptionsUnifiedSnapshot, reliableMarkFromSnapshot } from "@/lib/providers/options-snapshot";
+import {
+  fetchOptionsUnifiedSnapshot,
+  reliableAskFromSnapshot,
+  reliableMarkFromSnapshot,
+} from "@/lib/providers/options-snapshot";
 import { fetchUwIvRank } from "@/lib/providers/unusual-whales";
 import { todayEt } from "@/lib/et-date";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
@@ -55,7 +59,7 @@ import {
   distillSwingCalibrationReport,
   persistSwingArchetypeTrackRecord,
 } from "@/lib/swing/calibration-cache";
-import type { SwingManageRung } from "@/lib/swing/manage";
+import { THESIS_BREAK_RUNGS, type SwingManageRung } from "@/lib/swing/manage";
 import type { ParentGradeFreeze } from "@/lib/swing/roll";
 import type { SwingArchetype } from "@/lib/swing/taxonomy";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
@@ -150,9 +154,22 @@ async function loadOptionQuote(
     const mark = typeof resolved === "number" && Number.isFinite(resolved) && resolved > 0 ? resolved : null;
     // Every field passes through as-is — the provider mapper already normalised each to a finite
     // number or null, so nothing here can invent a greek the provider did not send.
+    //
+    // BUG FIX (2026-10-24, Ask Largo x Night Hawk Swings standing mandate — live CAG repro,
+    // positionId 2082): `mark` above is already guarded against a dead-bid backstop-ask artifact
+    // (reliableMarkFromSnapshot), but `ask` below used to pass through RAW from the same snapshot —
+    // so a backstop quote (bid:0, ask:3.90) produced a guarded mid of $0.03 sitting next to an
+    // unguarded $3.90 ask on the SAME ChainContract. live-plays.ts's `contractFromRow` sets
+    // `mid: row.last_mark` (this guarded mark) and `bid`/`ask` straight off this quote, and
+    // adapters.ts's `liquidityFromContract` then computes `(ask - bid) / mid` from that mismatched
+    // pair — `(3.90 - 0) / 0.03 = 13000%`, rendered verbatim on the swing play-brief's Spread line.
+    // `reliableAskFromSnapshot` reuses the exact same divergence guard (never reimplements it) to
+    // null the ask in the identical case the mark guard already rejected, so a backstop ask reads as
+    // an honest one-sided/absent quote (play-brief.ts's existing "spread not priceable" branch)
+    // instead of asserting a false precise spread.
     const quote: SwingLiveQuote = {
       bid: snap.bid,
-      ask: snap.ask,
+      ask: reliableAskFromSnapshot(snap),
       openInterest: snap.openInterest,
       delta: snap.delta,
       gamma: snap.gamma,
@@ -409,6 +426,42 @@ async function runSwingActiveRefreshCron(started: number, slot: HeavyCronSlot): 
         .catch((err) => {
           console.warn(
             `[swing-discord] terminal notify failed for position ${o.positionId} (${parentRow.ticker}):`,
+            err
+          );
+        });
+    }
+
+    // Ask Largo standing mandate — scoped slice of PR #4076's "alerting only bookends the trade"
+    // gap (comment 6303734681): a THESIS_BREAK_RUNGS gate can fire while the position is STILL
+    // OPEN (roll executor didn't run this tick, or buildRollPlan couldn't produce a plan — no
+    // forward bars, chain fetch failed, budget/cap gate). Those positions already got the STC
+    // alert above via the roll-executed path; this covers the rest: fire a ONE-SHOT, non-trade
+    // "thesis broke" alert the first tick a thesis gate is detected, independent of execution.
+    // Fail-open on the dedup claim (`.catch(() => true)`) — a Redis hiccup should cost at most a
+    // duplicate alert, never a silently dropped one, matching notifySwingThesisBreak's own
+    // fire-and-forget contract.
+    const freshThesisBreaks = result.outcomes.filter(
+      (o) => o.verdict && THESIS_BREAK_RUNGS.has(o.verdict.rung) && !o.roll?.parentGraded
+    );
+    for (const o of freshThesisBreaks) {
+      const parentRow = openRows.find((r) => r.id === o.positionId);
+      if (!parentRow) continue;
+      const dedupeKey = `swing:thesis-break-alerted:v1:${o.positionId}`;
+      void sharedCacheSetNx(dedupeKey, { at: nowMs }, 90 * 86_400)
+        .catch(() => true)
+        .then((claimed) => {
+          if (!claimed) return;
+          return import("@/lib/swing/discord-trade-notify").then(
+            ({ notifySwingThesisBreak, swingInputFromRow }) => {
+              const input = swingInputFromRow(parentRow);
+              if (!input) return;
+              return notifySwingThesisBreak(input, o.verdict.reason);
+            }
+          );
+        })
+        .catch((err) => {
+          console.warn(
+            `[swing-discord] thesis-break notify failed for position ${o.positionId} (${parentRow.ticker}):`,
             err
           );
         });

@@ -358,11 +358,28 @@ export function buildResolvedExitPolicy(
   // `get_zerodte_record` read whose policy resolves to trim_scale. Fixed by rounding display-only
   // copies to 2dp (matching roundFloats' own default) — applied AFTER config_hash is computed
   // above, so no committed row's `strategy_config_hash`/calibration cohort moves.
-  const displayTrailingRule = trailing_rule.replace(
+  //
+  // EXPORTED (2026-10-26, follow-up audit) so record.ts's read-time serialization of ALREADY-
+  // COMMITTED rows can reuse this exact regex instead of duplicating it — rows committed before
+  // 2026-10-06 froze the OLD, unrounded string into entry_context.exit_policy_snapshot.trailing_rule
+  // at commit time (immutable, never rebuilt), so the fix above only cleans FRESH commits; the
+  // historical ~30 rows still leak the raw float through record.ts's verbatim passthrough. Single
+  // source of truth keeps both call sites byte-identical and this file's own drift-guard tests the
+  // one regex both paths depend on.
+  return { ...core, trailing_rule: roundTrailingRuleDisplay(trailing_rule), config_hash };
+}
+
+/** Round a `trailing_rule` string's embedded `tranche_fraction=<raw float>` to 2dp for display,
+ *  leaving every other character (including any OTHER numeric field in the string) untouched.
+ *  Pure, idempotent (already-rounded input matches nothing and passes through unchanged) — safe
+ *  to apply at read time to an already-frozen historical string, never only at build time. See
+ *  the BUG comment in `buildResolvedExitPolicy` above for the full story of why this exists and
+ *  why it must never touch `config_hash`. */
+export function roundTrailingRuleDisplay(trailingRule: string): string {
+  return trailingRule.replace(
     /tranche_fraction=(\d+\.\d{3,})/g,
     (_m, raw: string) => `tranche_fraction=${Math.round(Number(raw) * 100) / 100}`,
   );
-  return { ...core, trailing_rule: displayTrailingRule, config_hash };
 }
 
 /** The grader-facing numeric subset of a resolved policy — stop/target %, and the ET

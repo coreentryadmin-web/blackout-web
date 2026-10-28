@@ -14,6 +14,7 @@ import type { WhyNow } from "@/lib/zerodte/why-now";
 import type { ThesisHealthPayload } from "@/lib/zerodte/thesis-health";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
 import type { PaneCortexView } from "@/lib/zerodte/pane";
+import type { SwingBudgetVerdictStamp } from "@/lib/swing/swing-portfolio-budget";
 
 export type DeckDirection = "LONG" | "SHORT";
 export type DeckStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED" | "WATCH" | "SKIP";
@@ -105,6 +106,16 @@ export interface TerminalPlay {
   factors: DeckFactor[];
   gates: Array<{ label: string; ok: boolean }>;
   regime?: string | null;
+  /**
+   * True when this row's source is the Banger-ledger merge (`horizonPlayFromBangerPosition`/
+   * `horizonPlayFromBangerWatch`, banger-lane-merge.ts) — a stamped-constant merge path with no
+   * real per-position dossier, distinct from `regime`, which `terminalPlayFromHorizon` (adapters.ts)
+   * always nulls for display regardless of origin once it has read this flag. Downstream Largo/
+   * book-context logic that needs to detect Banger origin (play-brief-intel.ts's
+   * `bangerOriginNoRealThesis`/`reviewedIsBangerOrigin`) must read THIS field, not `regime` —
+   * `regime` is unconditionally null for a Banger-origin row by the time it reaches them.
+   */
+  bangerOrigin?: boolean;
   confidence?: number | null; // 0–1
   allocation?: { role: string; sizing: string; reason?: string } | null;
   thesisBreak?: { level: ThesisLevel; note?: string } | null;
@@ -172,6 +183,13 @@ export interface TerminalPlay {
    *  number beside the mid `mark`/`pnlPct`. Null without a live two-sided book (mid-only). */
   execMark?: number | null;
   execPnlPct?: number | null;
+  /** True when the executable book is REAL (a valid two-sided quote) and the bid is a genuine
+   *  $0.00 — no buyer at any price. Distinct from `execMark == null`, which also covers "no quote
+   *  at all": both null-shaped the same way downstream before this field existed (Ask Largo
+   *  standing mandate, 2026-10-25, live repro EXPE), so a confirmed-worthless bid silently read as
+   *  an absent quote and got WEAKER risk disclosure than a comparable position with a nonzero low
+   *  bid. Swing play-brief consumers must treat this as the single most severe executable state. */
+  execBidZero?: boolean | null;
 
   // ── live-mark honesty (Terminal v2) ──
   /** ISO instant of the quote behind `mark` — the terminal shows its age. */
@@ -217,6 +235,16 @@ export interface TerminalPlay {
    *  pre-wire-in row, a WATCH/lane-only candidate that hasn't committed yet, or any non-SWING
    *  horizon — never fabricated. Largo product-contract absence principle: omitted, not guessed. */
   cortex?: PaneCortexView | null;
+
+  /** SWING only: the book-heat budget verdict pinned at commit (`entry_context.budget_verdict`,
+   *  `swing-portfolio-budget.ts`'s `budgetVerdictStamp`), parsed structurally via
+   *  `parseBudgetVerdictStamp` — never trusts the raw JSONB blob. Present ONLY on a SWING row that
+   *  actually cleared the armed budget gate at commit; absent/null on a pre-wire-in row, a
+   *  WATCH/lane-only candidate that hasn't committed yet, an advisory-only (`enforce:false`) read,
+   *  or any non-SWING horizon — never fabricated. Render via `bookRiskLine()`, which already
+   *  frames this as the engine's own reference-book discipline, never the member's personal
+   *  account risk (Ask Largo standing mandate, 2026-10-26, #4076 comment 6410025245). */
+  budgetVerdict?: SwingBudgetVerdictStamp | null;
 
   /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal (benchmark
    *  ETF/label, the name's and the group's own %-returns, and the delta) — echoed off the live/

@@ -11,6 +11,8 @@ import {
   noteOriginDirectionConflict,
   mergeSameTickerDiscovery,
   summarizeDiscoveryRailMix,
+  unionDiscoveryOrigins,
+  discoveryOriginLabel,
   type EnrichedZeroDteSetup,
   matchEarnings,
   matchHotNews,
@@ -350,6 +352,24 @@ test("setups: excluded tickers (SPX handled by its own engines) are skipped", ()
   assert.equal(deriveZeroDteSetups(rows, { excludeTickers: new Set(["SPY"]) }).length, 0);
 });
 
+test("setups: includeTickers restricts to an explicit allowlist — a ticker outside it is skipped even with a strong tape", () => {
+  const rows = [row({ ticker: "AMD", premium: 2_000_000 })];
+  assert.equal(deriveZeroDteSetups(rows, { includeTickers: new Set(["NVDA", "SPY"]) }).length, 0);
+});
+
+test("setups: includeTickers lets a listed ticker through unaffected", () => {
+  const rows = [row({ ticker: "NVDA", premium: 2_000_000 })];
+  const out = deriveZeroDteSetups(rows, { includeTickers: new Set(["NVDA", "SPY"]) });
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.ticker, "NVDA");
+});
+
+test("setups: includeTickers omitted (null/undefined) is unrestricted — unchanged prior behavior", () => {
+  const rows = [row({ ticker: "AMD", premium: 2_000_000 })];
+  assert.equal(deriveZeroDteSetups(rows, { includeTickers: null }).length, 1);
+  assert.equal(deriveZeroDteSetups(rows).length, 1);
+});
+
 test("setups: sudden flow spike flagged when ≥half the tape lands in the last 30m", () => {
   const now = Date.parse("2026-07-06T15:00:00Z");
   const spiky = [
@@ -669,6 +689,26 @@ test("enrich: full dossier merges score, factors, technicals, streak, dark pool"
   assert.equal(e.news_hot, null);
 });
 
+// Live repro 2026-10-21: QQQ key_supports=[707.23, 707.23], AMD key_supports=[524.6, 524.6] —
+// technicals.ts's support_levels/resistance_levels concatenate THREE independent sources
+// (swing/weekly/monthly) that can legitimately coincide at the same round-number price, and
+// enrichSetup's top-2 slice had no dedup before it, so a coincidence showed one real level
+// twice and silently dropped the actual second-best level. Fixture: weekly support resolves
+// to the SAME price as the nearest swing support (both 186.5); a real, distinct second-best
+// support (184.1) must still surface instead of a duplicated 186.5.
+test("enrich: duplicate support/resistance levels from coincident sources are deduped before top-2", () => {
+  const dossier = fakeDossier({
+    tech: {
+      ...fakeDossier().tech!,
+      support_levels: [186.5, 186.5, 184.1, 179.9],
+      resistance_levels: [190.2, 190.2, 193.5, 175.0],
+    },
+  });
+  const e = enrichSetup(baseSetup(), dossier);
+  assert.deepEqual(e.key_supports, [186.5, 184.1]);
+  assert.deepEqual(e.key_resistances, [190.2, 193.5]);
+});
+
 // 9-8: scoreCandidate (scorer.ts) always folds fundamental/catalyst/short_interest/
 // wall_proximity/vex_alignment/skew into `score` alongside the original five — enrichSetup
 // dropped all six when building factor_breakdown, so the "Why this play was picked" panel
@@ -890,6 +930,69 @@ test("enrich: with no chart walls the condor falls back to the target-width floo
 test("enrich: condor is null when spot is unknown (no fabricated geometry)", () => {
   const e = enrichSetup(baseSetup({ underlying_price: null }), null);
   assert.equal(e.condor, null);
+});
+
+// ── condor_basis_price/_as_of (stale-spot disclosure) ────────────────────────────────
+// Root cause: enrichSetup runs BEFORE scan.ts's attachContractPlans ever calls
+// refreshUnderlyingFromLiveSpot, and that refresh mutates underlying_price/_as_of IN PLACE
+// afterward — but nothing ever recomputes `condor` to match. These prove condor_basis_price/
+// _as_of freeze the exact price condor was built from and survive that later mutation, so a
+// consumer can always tell whether condor.est_win_rate is on the same clock as the setup's own
+// (possibly refreshed) underlying_price.
+test("enrich: condor_basis_price/_as_of freeze the EXACT price+as-of condor was built from", () => {
+  const e = enrichSetup(
+    baseSetup({ underlying_price: 188.2, underlying_price_as_of: "2026-10-26T13:30:00Z" }),
+    fakeDossier()
+  );
+  assert.ok(e.condor);
+  assert.equal(e.condor_basis_price, 188.2);
+  assert.equal(e.condor_basis_as_of, "2026-10-26T13:30:00Z");
+});
+
+test("enrich: condor_basis_price survives a LATER live-spot refresh that mutates underlying_price out from under it", () => {
+  // Reproduces the live bug end-to-end: enrichSetup runs first (condor built off 188.2), then
+  // scan.ts's attachContractPlans calls refreshUnderlyingFromLiveSpot and Object.assigns the
+  // patch onto the SAME setup object — the exact in-place mutation that moves underlying_price
+  // to a fresh live mark. Before this fix, nothing on the setup recorded which price condor's
+  // own strikes/win-rate actually came from, so a consumer re-deriving condor width from the
+  // setup's (now live) underlying_price would silently compute a different number than
+  // condor.est_win_rate actually reports.
+  const e = enrichSetup(
+    baseSetup({ underlying_price: 188.2, underlying_price_as_of: "2026-10-26T13:30:00Z" }),
+    fakeDossier()
+  );
+  const refreshed = refreshUnderlyingFromLiveSpot({
+    livePrice: 192.8, // moved materially since qualification
+    liveObservedAtMs: Date.parse("2026-10-26T13:41:00Z"),
+    direction: e.direction,
+    topStrike: e.top_strike,
+    hasSingleStrikeMoneyness: true,
+  });
+  assert.ok(refreshed);
+  Object.assign(e, refreshed); // exactly what attachContractPlans does to the live setup object
+  assert.equal(e.underlying_price, 192.8); // live-refreshed, as the board actually serves it
+  // condor's OWN basis must not silently follow along — it is still the 188.2 geometry, and
+  // condor_basis_price proves that fact rather than leaving it undisclosed.
+  assert.equal(e.condor_basis_price, 188.2);
+  assert.equal(e.condor_basis_as_of, "2026-10-26T13:30:00Z");
+  assert.notEqual(e.condor_basis_price, e.underlying_price);
+});
+
+test("enrich: condor_basis_as_of is honestly null when price came from the tech fallback (no as-of to report)", () => {
+  // underlying_price absent → price falls back to tech.price (188.2 in fakeDossier), which
+  // carries no as-of stamp of its own — must not borrow setup.underlying_price_as_of (absent
+  // here anyway) or fabricate one.
+  const e = enrichSetup(baseSetup({ underlying_price: null }), fakeDossier());
+  assert.ok(e.condor);
+  assert.equal(e.condor_basis_price, 188.2);
+  assert.equal(e.condor_basis_as_of, null);
+});
+
+test("enrich: condor_basis_price/_as_of are null when condor itself is null", () => {
+  const e = enrichSetup(baseSetup({ underlying_price: null }), null);
+  assert.equal(e.condor, null);
+  assert.equal(e.condor_basis_price, null);
+  assert.equal(e.condor_basis_as_of, null);
 });
 
 // ── contract plans ───────────────────────────────────────────────────────────────
@@ -1919,7 +2022,27 @@ test("summarizeDiscoveryRailMix counts per-rail presence and multi-rail rows", (
     { discovery_origin: ["PIN"] },
     { discovery_origin: ["BREAKOUT"] },
   ] as EnrichedZeroDteSetup[]);
-  assert.deepEqual(mix, { FLOW: 2, BREAKOUT: 2, PIN: 1, multi: 1, total: 4 });
+  assert.deepEqual(mix, { FLOW: 2, BREAKOUT: 2, PIN: 1, MOMENTUM: 0, multi: 1, total: 4 });
+});
+
+test("summarizeDiscoveryRailMix counts a MOMENTUM-origin setup", () => {
+  const mix = summarizeDiscoveryRailMix([
+    { discovery_origin: ["FLOW"] },
+    { discovery_origin: ["MOMENTUM"] },
+  ] as EnrichedZeroDteSetup[]);
+  assert.deepEqual(mix, { FLOW: 1, BREAKOUT: 0, PIN: 0, MOMENTUM: 1, multi: 0, total: 2 });
+});
+
+test("unionDiscoveryOrigins: MOMENTUM survives a union with another origin, never silently dropped", () => {
+  assert.deepEqual(unionDiscoveryOrigins(["FLOW"], ["MOMENTUM"]), ["FLOW", "MOMENTUM"]);
+  assert.deepEqual(unionDiscoveryOrigins(["MOMENTUM"], ["MOMENTUM"]), ["MOMENTUM"]);
+  assert.deepEqual(unionDiscoveryOrigins(["BREAKOUT", "PIN"], ["MOMENTUM"]), ["BREAKOUT", "PIN", "MOMENTUM"]);
+});
+
+test("discoveryOriginLabel: a pure-MOMENTUM origin set labels as \"MOMENTUM\", never \"no_origin\"", () => {
+  assert.equal(discoveryOriginLabel(["MOMENTUM"]), "MOMENTUM");
+  assert.equal(discoveryOriginLabel(["FLOW", "MOMENTUM"]), "FLOW+MOMENTUM");
+  assert.equal(discoveryOriginLabel([]), "no_origin");
 });
 
 test("mergeSameTickerDiscovery: same-dir FLOW + CONDOR keeps CONDOR structure (never drops condor_plan)", () => {

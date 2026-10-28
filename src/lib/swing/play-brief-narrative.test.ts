@@ -7,6 +7,8 @@ import {
   counterThesisLine,
   tradeManagerNarrativeSection,
   rollRunwayExtensionDays,
+  resolveInvalidationFocalLevel,
+  type FocalLevel,
 } from "./play-brief-narrative";
 import { computeSwingThesisHealth, thesisHealthUncalibrated } from "./thesis-health";
 
@@ -82,6 +84,27 @@ test("tradeManagerNarrativeSection: narrates dark pool + dealer posture", () => 
   assert.match(section!.body, /long gamma/i);
   assert.match(section!.body, /HELIX tape/i);
   assert.match(section!.body, /Break watch/i);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24): every narrated level in this file states its
+// distance from spot, "(X% from spot)" -- narrateWall/narrateMaxPain/narrateMagnet already do, but
+// narrateDarkPool, narrateKing and narrateFlip silently did not, even though `level.distancePct`
+// is the identical already-computed field. Pins the dark-pool fix: spot 100, dark pool 99.5 ->
+// (99.5-100)/100 = -0.5% -> "-0.5% from spot".
+test("tradeManagerNarrativeSection: dark pool narration states its distance from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        darkPoolLevels: [{ strike: 99.5, premium: 12_000_000, pct: 42 }],
+        gexWalls: { callWalls: [], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Watch 99\.50\*\* \(-0\.5% from spot\) — major \*\*dark pool\*\* print/i);
 });
 
 // PR #5994 added net_vex/net_dex/net_charm + their regime-read strings to gexPostureSection
@@ -217,6 +240,114 @@ test("tradeManagerNarrativeSection: stale GEX matrix suppresses net GEX $ and se
   assert.ok(section);
   assert.doesNotMatch(section!.body, /net GEX/i);
   assert.doesNotMatch(section!.body, /session \*\*\+2\.3%\*\*/i);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-26): same bug class/fix shape as the VEX/DEX/CHARM
+// and net-GEX/session-change% parity fixes above, for "Flow & positioning" instead of "GEX
+// posture". collapseRedundantIntelSections (play-brief-intel-collapse.ts) drops the whole "Flow &
+// positioning" section for OPEN/WATCH buckets with a "folded into Trade manager read above" note,
+// but flowNarrative (this bullet) previously surfaced only the FIRST deduped anomaly and NO
+// notable prints at all -- live-confirmed across 7 real OPEN positions (PANW/CRML/FLY/OUST/RDW/
+// ASTS/FTNT), each collapsing to "aggregate + at most 1 anomaly, zero notable prints" vs the full
+// section's real itemized lists under expandIntel=1.
+test("tradeManagerNarrativeSection: HELIX tape bullet carries ALL deduped flow anomalies (not just the first) and itemized notable prints (2026-10-26)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: { spot: 100, gexWalls: { callWalls: [], putWalls: [] } } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        recent_flow: {
+          window_hours: 6,
+          print_count: 15,
+          call_premium: 2_100_000,
+          put_premium: 800_000,
+          unknown_premium: 0,
+        },
+        flow_feed_fresh: true,
+        recent_anomalies: [
+          {
+            anomaly_type: "CONCENTRATION",
+            detail: "NRG: call flow concentrated in weekly 110s",
+            detected_at: "2026-09-05T19:00:00.000Z",
+            severity: "high",
+            direction: "bullish",
+          },
+          {
+            anomaly_type: "COORDINATED_SWEEP",
+            detail: "NRG: three sweeps within 2 minutes",
+            detected_at: "2026-09-05T18:30:00.000Z",
+            severity: "high",
+            direction: "bullish",
+          },
+          {
+            anomaly_type: "PREMIUM_SPIKE",
+            detail: "NRG: premium 4x the 20-day average",
+            detected_at: "2026-09-05T17:00:00.000Z",
+            severity: "medium",
+            direction: null,
+          },
+        ],
+        flow_full_state: {
+          count: 15,
+          total_premium: 2_900_000,
+          top_tickers: [],
+          recent: [
+            { ticker: "NRG", option_type: "CALL", strike: 110, premium: 518_000, alerted_at: "2026-09-05T19:40:00.000Z" },
+            { ticker: "NRG", option_type: "PUT", strike: 105, premium: 296_000, alerted_at: "2026-09-05T19:30:00.000Z" },
+          ],
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  // All three anomalies present, not just the first (the pre-fix behavior).
+  assert.match(section!.body, /CONCENTRATION/);
+  assert.match(section!.body, /COORDINATED_SWEEP/);
+  assert.match(section!.body, /PREMIUM_SPIKE/);
+  // Notable prints now reach the collapsed narrative at all.
+  assert.match(section!.body, /Notable prints/);
+  assert.match(section!.body, /CALL 110\.00 \$518K/);
+  assert.match(section!.body, /PUT 105\.00 \$296K/);
+});
+
+test("tradeManagerNarrativeSection: HELIX tape bullet dedupes a persisting anomaly rewritten across two cron cycles (mirrors flowIntelSection's own dedup, 2026-10-26)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: { spot: 100, gexWalls: { callWalls: [], putWalls: [] } } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        recent_flow: {
+          window_hours: 6,
+          print_count: 10,
+          call_premium: 700_000,
+          put_premium: 0,
+          unknown_premium: 0,
+        },
+        flow_feed_fresh: true,
+        recent_anomalies: [
+          {
+            anomaly_type: "DIRECTIONAL_FLOW_SKEW",
+            detail: "NRG: one-sided call flow — $0.7M calls vs no put premium",
+            detected_at: "2026-09-05T19:30:00.000Z",
+            severity: "medium",
+            direction: "bullish",
+          },
+          {
+            anomaly_type: "DIRECTIONAL_FLOW_SKEW",
+            detail: "NRG: one-sided call flow — $0.7M calls vs no put premium",
+            detected_at: "2026-09-05T19:00:00.000Z",
+            severity: "medium",
+            direction: "bullish",
+          },
+        ],
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  const occurrences = section!.body.split("DIRECTIONAL_FLOW_SKEW").length - 1;
+  assert.equal(occurrences, 1, "identical anomaly_type+detail must render once, not once per write cycle");
 });
 
 // Largo deep-dive follow-up (2026-10-15, PR #4076 comment 6175832614): gex-positioning.ts computes
@@ -388,6 +519,66 @@ test("tradeManagerNarrativeSection: LONG Break watch never cites a level ABOVE s
   assert.match(section!.body, /Break watch.*90\.00/i);
   assert.doesNotMatch(section!.body, /Break watch.*101\.00/i);
   assert.doesNotMatch(section!.body, /Break watch.*105\.00/i);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24): "Break watch" is the single most
+// safety-critical, reserved, always-shown line in the whole brief, yet it never stated how close
+// the cited risk currently is — even though `FocalLevel.distancePct` was already computed and
+// sitting right there on the matched level, unused. Pins the fix for the real (non-flip-fallback)
+// LONG case: spot 100, put wall 90 -> (90-100)/100 = -10% -> "10.0% away".
+test("tradeManagerNarrativeSection: LONG Break watch states how far the structural support level is from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        gexWalls: { callWalls: [], putWalls: [{ strike: 90, gex: 1 }] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch\*\* — lose \*\*90\.00\*\* \(10\.0% away\) on a closing basis/i);
+});
+
+// SHORT sibling: spot 100, GEX king 103 -> (103-100)/100 = +3% -> "3.0% away".
+test("tradeManagerNarrativeSection: SHORT Break watch states how far the structural resistance level is from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "SHORT" }),
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 103, isKing: true }] },
+        gexWalls: { callWalls: [{ strike: 120, gex: 1 }], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch\*\* — reclaim \*\*103\.00\*\* \(3\.0% away\)/i);
+});
+
+// The LONG gamma-flip FALLBACK (no put_wall/dark_pool/king candidate exists below spot at all)
+// must get the same treatment, not just the primary wall/king/dark-pool path — the flip's own
+// `FocalLevel` entry (collectFocalLevels always derives one when a flip is known) carries the
+// identical `distancePct` field. Spot 100, flip 95 -> (95-100)/100 = -5% -> "5.0% away".
+test("tradeManagerNarrativeSection: LONG Break watch states distance for the gamma-flip fallback too, not just the primary wall/king/dark-pool path (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        gammaFlip: 95,
+        gexWalls: { callWalls: [], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch\*\* — lose \*\*95\.00\*\* \(5\.0% away\) on a closing basis/i);
 });
 
 // FINDING (Ask Largo standing mandate, 2026-10-16, live repro SWING:GOOGL:58): an OPEN position's
@@ -611,6 +802,24 @@ test("tradeManagerNarrativeSection: SHORT Break watch considers the GEX king str
   assert.doesNotMatch(section!.body, /Break watch.*120\.00/i);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24): same omission as the dark-pool one above --
+// narrateKing never stated its distance from spot either. Spot 100, king 103 -> +3.0% from spot.
+test("tradeManagerNarrativeSection: GEX king narration states its distance from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 103, isKing: true }] },
+        gexWalls: { callWalls: [], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /\*\*GEX king 103\.00\*\* \(\+3\.0% from spot\) — largest gamma concentration/i);
+});
+
 test("tradeManagerNarrativeSection: dead-but-not-closed WATCH (extended past entry) suppresses 'Vector spot not wired' — matches #5620's dataFreshnessSection fix, blast radius", () => {
   // Live repro: SWING:NTAP, entryStatus EXTENDED_CHASE, status COMMIT (bucket "watch"). Without a
   // live spot this function used to fall through to degradedReadLine's "Live read — Vector spot
@@ -702,12 +911,19 @@ test("tradeManagerNarrativeSection: stale Vector with live GEX fallback uses Las
 
   assert.ok(section);
   assert.match(section!.body, /Last snapshot/i);
-  assert.match(section!.body, /180s old/i);
+  // BUG FIX (2026-10-21, Ask Largo standing mandate): this used to assert /180s old/ — Vector's
+  // OWN dataAgeMs — even though every field this bullet actually renders (posture, flip, "short
+  // gamma") is GEX-sourced here (Vector is stale, so resolveGammaPosture/flip both fell through to
+  // the GEX fallback). That assertion encoded the exact bug a live TSLA repro caught: the caption
+  // ages itself off a source (Vector) that contributed nothing to the content on screen. The
+  // correct age is GEX's own `matrix_age_sec` (30s), not Vector's 180s.
+  assert.match(section!.body, /30s old/i);
+  assert.doesNotMatch(section!.body, /180s old/i);
   assert.match(section!.body, /short gamma/i);
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 
-test("tradeManagerNarrativeSection: future-skewed Vector dataAgeMs (Infinity) renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+test("tradeManagerNarrativeSection: future-skewed GEX matrix age renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16; re-scoped 2026-10-21 to GEX's own age, the field this caption now sources from)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
       vector: {
@@ -723,7 +939,11 @@ test("tradeManagerNarrativeSection: future-skewed Vector dataAgeMs (Infinity) re
           spot: 100,
           flip: 98,
           gamma_posture: "short",
-          matrix_age_sec: 30,
+          // A small future-skew (within WS_TIMESTAMP_FUTURE_TOLERANCE_MS=5s) keeps gexMatrixStale
+          // false (so the GEX fallback content this bullet renders is unaffected) while still
+          // producing a negative ageMs for ageSecondsLabel's own "clock-skewed" guard — the shape
+          // this test exists to cover, now exercised through the field the caption actually reads.
+          matrix_age_sec: -2,
           freshness: "cached",
         },
       } as SwingPlayBriefContext["ecosystem"],
@@ -735,6 +955,103 @@ test("tradeManagerNarrativeSection: future-skewed Vector dataAgeMs (Infinity) re
   assert.match(section!.body, /Last snapshot/i);
   assert.match(section!.body, /\(~clock-skewed old\)/i);
   assert.doesNotMatch(section!.body, /Infinitys/i);
+  assert.match(section!.body, /short gamma/i, "a slightly future-skewed-but-in-tolerance GEX read must still be usable content, not suppressed as stale");
+});
+
+// Live repro (2026-10-21, Ask Largo standing mandate): TSLA WATCH showed "Last snapshot
+// (~10659s old) ... net GEX 422.1M · session +1.8%" while the SAME envelope's evidence[] array
+// attributed that identical GEX reading to an 80s-old read -- dealerPostureLine captioned
+// GEX-sourced content (regime/net-GEX/session bits, all gated on `!gexStale`) with Vector's own,
+// much older, unrelated age. Vector and GEX ages are deliberately ~133x apart here so any
+// regression (falling back to Vector's age) fails loudly rather than by a rounding coincidence.
+test("tradeManagerNarrativeSection: dealer-posture caption ages itself off GEX, not Vector, when the rendered content is GEX-sourced (2026-10-21, live TSLA repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 380.45,
+        dataAgeMs: 10_659_000,
+        freshness: "stale",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "TSLA",
+        gex_positioning: {
+          spot: 380.45,
+          flip: 379.17,
+          gamma_posture: "long",
+          net_gex: 422_100_000,
+          change_pct: 0.018,
+          matrix_age_sec: 80,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "watch",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /\(~80s old\)/i, "must caption with GEX's own age (80s), the actual source of the content");
+  assert.doesNotMatch(section!.body, /10659s old/i, "must never caption GEX-sourced content with Vector's unrelated, far-older age");
+  assert.match(section!.body, /long gamma/i);
+  assert.match(section!.body, /net GEX/i);
+});
+
+// Live repro (2026-10-21, Ask Largo standing mandate): TSLA:60 and CRWV:63 "Trade manager read"
+// briefs each showed a "Data caveat — Vector Ns stale..." bullet immediately followed by a
+// "Last snapshot (~Ns old) — spot ... dealers ... gamma ..." bullet with no label telling the
+// reader the second bullet's content comes from a DIFFERENT feed (GEX, not Vector) -- reading as
+// a contradiction ("Vector mysteriously refreshed from 8642s to 72s between two adjacent
+// bullets"). The prior fix (#6437) corrected the AGE NUMBER the GEX-substitution branch captions
+// itself with but never named GEX as the source. Assert the disambiguating clause is present on
+// the GEX-substitution (Vector-stale) branch and ABSENT on the normal Vector-fresh branch, proving
+// the fix is scoped to exactly the branch that needed it.
+test("tradeManagerNarrativeSection: dealer-posture bullet names GEX as the source when substituting for stale Vector (2026-10-21, live TSLA/CRWV repro)", () => {
+  const staleVectorSection = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 387.18,
+        dataAgeMs: 8_642_000,
+        freshness: "stale",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "TSLA",
+        gex_positioning: {
+          spot: 387.18,
+          gamma_posture: "long",
+          matrix_age_sec: 72,
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(staleVectorSection);
+  assert.match(staleVectorSection!.body, /Last snapshot/i);
+  assert.match(
+    staleVectorSection!.body,
+    /dealer posture may lag spot/i,
+    "the GEX-substitution branch must name GEX as the source, matching play-brief-intel.ts's established clause",
+  );
+
+  const freshVectorSection = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 387.18,
+        gammaFlip: 380,
+        dataAgeMs: 5_000,
+        freshness: "live",
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(freshVectorSection);
+  assert.match(freshVectorSection!.body, /Right now/i);
+  assert.doesNotMatch(
+    freshVectorSection!.body,
+    /dealer posture may lag spot/i,
+    "the normal Vector-fresh branch must not gain the GEX-substitution clause",
+  );
 });
 
 test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now (Largo C2)", () => {
@@ -998,6 +1315,29 @@ test("tradeManagerNarrativeSection: Gamma flip narration — LONG with spot ABOV
   );
   assert.ok(section);
   assert.match(section!.body, /Lose \*\*98\.00\*\* → dealer posture turns against longs/);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-24): same omission as the dark-pool/GEX-king
+// ones above -- narrateFlip never stated its distance from spot either. Spot 100, flip 98 ->
+// -2.0% from spot.
+test("tradeManagerNarrativeSection: gamma flip narration states its distance from spot (2026-10-24)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: { spot: 100, flip: 98 },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Gamma flip 98\.00\*\* \(-2\.0% from spot\) — regime line\./);
 });
 
 test("tradeManagerNarrativeSection: Gamma flip narration — LONG with spot BELOW flip says 'Reclaim', not 'Lose' an already-lost level", () => {
@@ -1330,8 +1670,13 @@ test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not targ
   // stop_premium is an absolute price, never a signed delta; see the fmtOptionUsd regression
   // tests below) — not rounded to a whole dollar, which previously made this contradict the
   // Management section's "Rails: stop $3.50" rendered from the same stop_premium value.
-  assert.match(section!.body, /Break watch.*reclaim \*\*\$3\.50\*\*/i);
-  assert.doesNotMatch(section!.body, /reclaim \*\*\+?\$1/);
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): this test used to pin "reclaim **$3.50**",
+  // which was itself the bug — a premium stop is breached by the premium FALLING to it, not rising
+  // back to it, for both directions alike (see the LONG branch a few lines above this block, which
+  // already says "lose"). Updated to assert the corrected wording.
+  assert.match(section!.body, /Break watch.*lose premium stop \*\*\$3\.50\*\*/i);
+  assert.doesNotMatch(section!.body, /lose premium stop \*\*\+?\$1/);
 });
 
 // FINDINGS 2026-09-10 (live NRG repro): actionNarrative's peak-giveback bullet used to compute
@@ -1377,6 +1722,59 @@ test("tradeManagerNarrativeSection: round-tripped-past-breakeven bullet fires wh
   assert.match(
     section!.body,
     /Round-tripped past breakeven.*was up \*\*133%\*\* at peak, now \*\*-10%\*\*/,
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:DKNG): the giveback bullets
+// above (`mfeCaptureOutcome(play.pnlPct, play.peak, null)`) are computed from the identical
+// `play.pnlPct` the Position section's "P&L:" line already flags via `optionMarkStaleCaveat` when
+// the underlying bid/ask quote is aged — but `actionNarrative` had no `readMs`/staleness parameter
+// at all, so neither giveback bullet ever carried the caveat. A member could read "P&L: -9.8%
+// (stale ...)" in Position and, a few sections later, an unqualified "Round-tripped past
+// breakeven ... was up X% at peak, now -9.8%" built off that exact same stale quote.
+test("tradeManagerNarrativeSection: round-trip giveback bullet carries the same stale-quote caveat as the Position section's P&L line", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        pnlPct: -10,
+        peak: 132.7,
+        markAsOf: "2026-09-05T18:00:00.000Z", // well before readMs below — past the stale bar
+        markIsSync: false,
+      }),
+      readMs: Date.parse("2026-09-05T20:00:00.000Z"),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Round-tripped past breakeven.*was up \*\*133%\*\* at peak, now \*\*-10%\*\*.*_\(stale — same quote Mark flagged above\)_/,
+    `expected the round-trip bullet to carry the same stale-quote caveat as Position's P&L line, got: ${section!.body}`,
+  );
+});
+
+test("tradeManagerNarrativeSection: capture-branch giveback bullet carries the same stale-quote caveat as the Position section's P&L line", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        pnlPct: 39.8,
+        peak: 132.7,
+        markAsOf: "2026-09-05T18:00:00.000Z",
+        markIsSync: false,
+      }),
+      readMs: Date.parse("2026-09-05T20:00:00.000Z"),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Gave back \*\*70%\*\* of peak — consider protecting runner\.\s*_\(stale — same quote Mark flagged above\)_/,
+    `expected the capture-branch bullet to carry the same stale-quote caveat, got: ${section!.body}`,
   );
 });
 
@@ -1856,6 +2254,243 @@ test("tradeManagerNarrativeSection: Break watch says the stop is ALREADY breache
   assert.doesNotMatch(section!.body, /Break watch.*lose premium stop/i, "must not use the forward-looking framing once the stop is already breached");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: GET
+// /api/market/swing/play-brief?playId=SWING:EXPE:2071 -- bid $0.00, ask $1.20, a real two-sided
+// quote, not a missing one). `play.execMark` is null both when there's no bid at all AND when the
+// bid is a confirmed genuine $0.00 -- executableFill() (terminal-ladder.ts) correctly never
+// fabricates a fill at $0, so this bullet's `play.execMark != null` guard used to read a confirmed
+// worthless bid identically to "we don't know the bid at all" and fell through to the softer
+// forward-looking "Break watch -- lose premium stop" framing instead of this reserved
+// already-breached bullet -- the single WORST real executable state getting WEAKER disclosure than
+// the $0.70-bid NN case the test above pins. `play.execBidZero: true` (adapters.ts) distinguishes
+// the two null-shaped cases.
+test("tradeManagerNarrativeSection: Break watch says the stop is ALREADY breached for a CONFIRMED zero bid even though execMark itself is null (live EXPE repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "LONG",
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 0.6, // mid = (0 + 1.2) / 2 -- a real, live quote
+        execMark: null, // executableFill() correctly never fabricates a fill at a zero bid
+        execBidZero: true, // but the book IS real and the bid IS a confirmed $0.00
+        pnlPct: -36.8,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.38,
+          target_premium: 1.9,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.00\*\*.*through your premium stop \*\*\$0\.38\*\*/i,
+    `confirmed $0.00 bid must render as already-breached, not the softer forward-looking framing -- got: ${section!.body}`,
+  );
+  assert.doesNotMatch(section!.body, /Break watch.*lose premium stop/i, "must not use the forward-looking framing once a confirmed zero bid is already through the stop");
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro PHM, adversarially verified via
+// background workflow): the already-breached bullet says the breach is happening "right now",
+// priced off the exact same bid/ask/markAsOf snapshot every sibling quote-derived line in this
+// brief discloses as stale when it's old -- but this one bullet never called
+// optionMarkStaleCaveat, so it kept asserting freshness regardless of how stale the underlying
+// quote actually was. Live PHM repro: a 2026-10-23 16:00 ET quote read on 2026-10-25/26 (2+ days
+// stale) still said "right now" on the single most action-driving line in the brief ("exit or cut
+// size"), while every other bullet in the same section/response correctly said "stale".
+test("tradeManagerNarrativeSection: Break watch already-breached bullet carries the same stale-quote caveat as its sibling lines (live PHM repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      readMs: Date.parse("2026-10-26T01:00:00.000Z"), // 2+ days after markAsOf below
+      play: play({
+        direction: "LONG",
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 0.6,
+        execMark: null,
+        execBidZero: true,
+        markAsOf: "2026-10-23T20:00:00.000Z", // well past the stale bar
+        markIsSync: false,
+        pnlPct: -100,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.4,
+          target_premium: 2.0,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.00\*\*.*through your premium stop \*\*\$0\.40\*\* right now → exit or cut size\.\s*_\(stale — same quote Mark flagged above\)_/i,
+    `already-breached bullet must carry the same staleness caveat its sibling lines carry, got: ${section!.body}`,
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-26, live repros NN#2133 (false-alarm/mislabel) and
+// AI#2128 (silent miss), confirmed by live production repro + independent code verification): once
+// a trim tranche has fired, the live exit engine (scale-out.ts) permanently disables the pre-scale
+// `stop_premium` -- the real governing floor becomes the runner's trailing stop off its peak
+// (runnerTrailingStopPremium, peak x 0.5). Three sibling call sites (play-brief.ts's
+// managementSection + evidence-fact builder, play-brief-intel.ts's watchForSection) already
+// substitute the runner trail for the dead stop once scaled; this "Break watch -- stop already
+// breached" bullet was the one remaining call site that never did, so it could (a) fire off the
+// dead stop and cite the WRONG dollar figure/label even when the live trail also agrees a breach is
+// real (NN), or (b) never fire at all when the bid sits between the dead stop and the live trail --
+// the dangerous silent-miss direction (AI). Because runnerTrailingStopPremium (peak*0.5) is
+// structurally always >= the original pre-scale stop once scaled (scaling requires peak >= 2x
+// entry, so trail >= entry > the original sub-entry stop), case (b) is the systemic blind spot:
+// ANY TRIM/RUNNER position whose bid sits between the dead stop and the live trail got NO
+// stop-breach alert at all before this fix.
+test("tradeManagerNarrativeSection: Break watch fires off the LIVE runner trail (not the dead pre-scale stop) once scaled out -- silent-miss repro (live AI#2128 shape)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "LONG",
+        status: "HOLD",
+        recommendation: "HOLD",
+        entry: 0.19,
+        peak: 100, // +100% peak -> peakPremiumDollar 0.38 -> runner trail 0.38*0.5 = 0.19
+        mark: 0.19,
+        execMark: 0.19, // bid sits EXACTLY at the real runner trail...
+        pnlPct: 0,
+        exitPolicy: {
+          // ...which is well ABOVE the dead pre-scale stop (0.07) -- the old code compared
+          // against 0.07 (0.19 <= 0.07 is false) and silently rendered no breach alert at all.
+          trim_levels: [{ trigger_pct: 100, fired: true }],
+          stop_premium: 0.07,
+          target_premium: 0.38,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.19\*\*.*through your runner trailing stop \*\*\$0\.19\*\*/i,
+    `must fire off the live runner trail once the bid reaches it, even though the bid never touched the dead pre-scale stop -- got: ${section!.body}`,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /Break watch.*lose premium stop/i,
+    "must not fall through to the soft forward-looking 'lose premium stop' framing once the live runner trail has genuinely been breached",
+  );
+});
+
+test("tradeManagerNarrativeSection: Break watch cites the LIVE runner trail, not the dead pre-scale stop, once scaled out -- false-alarm/mislabel repro (live NN#2133 shape)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "LONG",
+        status: "HOLD",
+        recommendation: "HOLD",
+        entry: 0.5,
+        peak: 380, // +380% peak -> peakPremiumDollar 2.40 -> runner trail 2.40*0.5 = 1.20
+        mark: 0.05,
+        execMark: 0.05, // bid is below BOTH the dead stop (0.22) and the live trail (1.20)
+        pnlPct: -90,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: true }],
+          stop_premium: 0.22,
+          target_premium: 2.0,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  // The bullet must still fire (the bid really did breach the live floor too) but must cite the
+  // REAL governing floor ($1.20, "runner trailing stop") rather than the dead, no-longer-live
+  // $0.22 "premium stop" the Management section (for the same position) already labels as "no
+  // longer applies" -- the exact contradiction the live NN repro caught between two sections of
+  // the same brief.
+  assert.match(
+    section!.body,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.05\*\*.*through your runner trailing stop \*\*\$1\.20\*\*/i,
+    `must cite the live runner trail, not the dead stop -- got: ${section!.body}`,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /premium stop \*\*\$0\.22\*\*/i,
+    "must not cite the dead pre-scale stop's dollar figure once scaled out, even though it would also read as 'breached'",
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro PANW SWING:PANW:67): degradedReadLine
+// (the "Live read" fallback bullet, fires only when Vector/GEX spot isn't wired this tick) built
+// its markBit by guarding ONLY the TRUE entry-fallback case (`optionMarkGenuinelyUnknown`, fixed
+// 2026-09-14 above) -- it never called the shared `optionMarkStaleCaveat` helper for the far more
+// common "real mark, but its `markAsOf` timestamp is old" case, even though every OTHER
+// quote-derived line in the identical brief/section already does (Position section's own Mark/
+// P&L lines; this same "Trade manager read" section's "Manage plan"/"Executable P&L" bullets; the
+// "Break watch" already-breached bullet the test directly above this one pins for the exact same
+// root cause at a sibling call site, #6756). Live PANW repro: Position section correctly flagged
+// "Mark: **$19.45** ... _(stale)_" for a `markAsOf` 64+ hours old, and the same brief's "Manage
+// plan"/"Executable P&L" bullets both carried the stale caveat for the identical $19.45 figure --
+// but this "Live read" bullet rendered "mark **$19.45**" with no caveat at all.
+test("tradeManagerNarrativeSection: degraded-read 'Live read' mark bullet carries the same stale-quote caveat as its sibling lines (live PANW repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      readMs: Date.parse("2026-10-26T12:24:00.000Z"), // 64+ hours after markAsOf below
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 19.45,
+        markAsOf: "2026-10-23T20:00:00.000Z", // 2026-10-23 16:00 ET, well past the 18-min stale bar
+        markIsSync: false,
+        pnlPct: 9.9, // a real P&L basis -- not the entry-fallback echo case
+        peak: 15,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 12,
+          target_premium: 35.4,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Live read.*mark \*\*\$19\.45\*\*\s*_\(stale — same quote Mark flagged above\)_/i,
+    `degraded-read mark must carry the same staleness caveat its sibling lines carry, got: ${section!.body}`,
+  );
+});
+
+// A fresh (non-stale) mark must render with no caveat at all -- optionMarkStaleCaveat returns ""
+// when the mark isn't actually stale, so threading readMs through must be a no-op here.
+test("tradeManagerNarrativeSection: degraded-read 'Live read' mark bullet carries no caveat when the mark is fresh", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      readMs: Date.parse("2026-10-26T12:24:00.000Z"),
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 19.45,
+        markAsOf: "2026-10-26T12:20:00.000Z", // 4 minutes old -- well within the fresh window
+        markIsSync: false,
+        pnlPct: 9.9,
+        peak: 15,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 12,
+          target_premium: 35.4,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Live read.*mark \*\*\$19\.45\*\*\. Levels refresh on next poll\./i);
+  assert.doesNotMatch(section!.body, /Live read.*mark.*stale/i);
+});
+
 test("tradeManagerNarrativeSection: Break watch keeps the forward-looking framing when the executable bid is still above the stop", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
@@ -1905,6 +2540,38 @@ test("tradeManagerNarrativeSection: SHORT Break watch also flags an already-brea
     /Break watch — stop already breached on the executable side.*bid \*\*\$0\.70\*\*.*through your premium stop \*\*\$0\.78\*\*/i,
   );
   assert.doesNotMatch(section!.body, /Break watch.*reclaim/i);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): the SHORT forward-looking premium-stop
+// fallback (no structural GEX level found, stop not yet breached) used to say "reclaim $X -> cover
+// shorts", implying the trigger is the premium RISING back to X -- backwards. execBreached (used by
+// the sibling test above) fires on a FALL to or through the stop, for both directions alike -- a
+// swing play is always long premium regardless of direction. The LONG branch already says "lose"
+// for the identical kind of value; this fixture (bid still above the stop, no vector/ecosystem spot
+// data so breakTrigger finds no structural level) exercises the SHORT branch and pins the fix.
+test("tradeManagerNarrativeSection: SHORT Break watch premium-stop fallback says 'lose', not 'reclaim' (the trigger is a fall, not a rise)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "SHORT",
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 1.13,
+        execMark: 0.85, // above the 0.78 stop -- not yet breached
+        pnlPct: -12,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.78,
+          target_premium: 3.9,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*lose premium stop \*\*\$0\.78\*\*.*cover shorts/i);
+  assert.doesNotMatch(section!.body, /Break watch.*reclaim/i);
+  assert.doesNotMatch(section!.body, /already breached/i);
 });
 
 // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro SWING:GTLB): every test above for
@@ -2329,6 +2996,36 @@ test("counterThesisLine: prior-session 0DTE must not steelman desk friction (Lar
   assert.equal(line, null, "yesterday's 0DTE short must not appear in counter-thesis");
 });
 
+// BUG FIX (same bug class as #4788, third call site): a committed iron condor's `direction` is
+// NOMINAL provenance only (the fade side of the pin it came from, per EcosystemZeroDteTake's own
+// doc comment) — the structure itself is delta-neutral, so comparing it against the swing's own
+// direction is meaningless. crossDeskCoaching (play-brief-narrative-coaching.ts) and
+// flowIntelSection (play-brief-intel.ts) already gate on `is_condor` before making this exact
+// comparison; counterThesisLine did not, so a condor fade could render as a fabricated directional
+// "0DTE short/long bias" counter-thesis reason.
+test("counterThesisLine: condor 0DTE take must not steelman a directional counter-thesis reason (same bug class as #4788)", () => {
+  const line = counterThesisLine(
+    ctx({
+      sessionDate: "2026-09-05",
+      ecosystem: {
+        ticker: "NRG",
+        zerodte_today: {
+          session_date: "2026-09-05",
+          direction: "short",
+          score: 78,
+          conviction: "high",
+          status: "flagged",
+          first_flagged_at: "2026-09-05T14:00:00Z",
+          is_condor: true,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    118,
+  );
+  assert.equal(line, null, "a condor's nominal fade-side direction must not appear in counter-thesis");
+});
+
 test("counterThesisLine: prior-session Night Hawk must not steelman desk friction (Largo C2)", () => {
   const line = counterThesisLine(
     ctx({
@@ -2645,6 +3342,50 @@ test("counterThesisLine: calibrated thesisHealth with a genuinely faded pillar s
   assert.match(line!, /fading pillar \*\*Persistence\*\*/);
 });
 
+// BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA): Theta budget transitions
+// PURELY off DTE vs a fixed cliff/migration threshold (thetaBudgetScore, thesis-health.ts — "time
+// decay is the whole point of the pillar"), with zero dependence on price, flow, or any other market
+// signal. counterThesisLine used to push its fade into the SAME reasons[] array the "corroborated
+// across N independent reads" weight label counts, so a position with exactly ONE real opposing
+// signal (dealer long-gamma) plus a mechanically-expiring Theta pillar read as "corroborated across
+// 2 independent reads" — inflating conviction with a fact that fires on the calendar alone, whether
+// the position is winning or losing.
+test("counterThesisLine: a mechanical, DTE-driven Theta budget fade no longer inflates 'corroborated across N independent reads'", () => {
+  const thesisHealth = computeSwingThesisHealth({
+    direction: "LONG",
+    status: "HOLD",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    signalKinds: ["FLOW", "VECTOR"],
+    regime: "momentum long",
+    dte: 2,
+    subLane: "TACTICAL",
+    computedAtEt: "10:00:00",
+  });
+  assert.ok(thesisHealth);
+  assert.equal(thesisHealthUncalibrated(thesisHealth), false, "sanity: real commit inputs wired means this IS calibrated");
+  const thetaPillar = thesisHealth!.pillars.find((p) => p.label === "Theta budget");
+  assert.equal(thetaPillar?.status, "faded", "sanity: dte=2 on TACTICAL genuinely fades the theta pillar");
+
+  // ONE genuine market-side push (dealer long-gamma) alongside the mechanical theta fade above.
+  const line = counterThesisLine(
+    ctx({
+      vector: { spot: 100, regime: { posture: "long", label: "LONG GAMMA" } } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", thesisHealth }),
+    100,
+  );
+  assert.ok(line);
+  assert.match(line!, /fading pillar \*\*Theta budget\*\*/, "the mechanical fact must still be shown");
+  assert.match(line!, /dealer long-gamma pins rallies/, "the one genuine market read must still be shown");
+  assert.match(
+    line!,
+    /a single, uncorroborated signal/i,
+    `theta-budget fade must not count toward corroboration weight — got: ${line}`,
+  );
+  assert.doesNotMatch(line!, /corroborated across/i);
+});
+
 // A single-reason counter-thesis and a 3-reason one rendered with identical prose weight —
 // "Counter-thesis (bear case) — <reason(s)>" either way — live-confirmed both shapes exist today
 // (AAPL: 3 corroborating reasons; NRG/NN/META: exactly 1 each), so a member had no way to tell an
@@ -2829,6 +3570,53 @@ test("tradeManagerNarrativeSection: Counter-thesis omits the Vector reason when 
   assert.doesNotMatch(counter[0]!, /Vector bearish/);
   // ...but the independent EMA-stack reason survives, proving this isn't a blanket suppression.
   assert.match(counter[0]!, /bear EMA stack/);
+});
+
+// Sibling gap to the Vector dedup above: crossDeskCoaching checks FOUR desks for conflicts (Night
+// Hawk, 0DTE, Vector, HELIX — play-brief-narrative-coaching.ts lines ~878-879 push a HELIX
+// put-led/call-led conflict off the exact same `trustedHelixFlow` input and 1.3x ratio
+// counterThesisLine's own HELIX check uses), but the caller's dedup regex at this file's own
+// `vectorConflictAlreadyNoted` call site only ever matched the literal word "Vector" — never
+// "HELIX" — so counterThesisLine's separate, ungated HELIX push re-cited the identical flow
+// numbers as a second, independent-sounding "corroborating read" whenever crossDeskCoaching named
+// HELIX as the conflict (lead or demoted "rest"). Same NRG-class double-citation as the Vector
+// case above, just on the sibling desk the original fix didn't cover.
+test("tradeManagerNarrativeSection: Counter-thesis omits the HELIX reason when crossDeskCoaching already named it, but keeps other reasons", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      ecosystem: {
+        ticker: "NRG",
+        flow_feed_fresh: true,
+        recent_flow: {
+          window_hours: 24,
+          print_count: 10,
+          // put/call ratio = 1.5 -- clears the shared 1.3x gate both crossDeskCoaching's "HELIX
+          // put-led" conflict check and counterThesisLine's own HELIX reason use.
+          call_premium: 1_000_000,
+          put_premium: 1_500_000,
+          unknown_premium: 0,
+        },
+        nighthawk_recent: null,
+        zerodte_today: null,
+        gex_positioning: { spot: 100, flip: 98, gamma_posture: "long", gex_king_strike: 100, call_wall: 101 },
+        arsenal: null,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  const friction = (section!.body.match(/Cross-desk friction[^\n]*/g) ?? []);
+  const counter = (section!.body.match(/Counter-thesis[^\n]*/g) ?? []);
+  assert.equal(friction.length, 1, `expected one Cross-desk friction bullet, got: ${section!.body}`);
+  assert.match(friction[0]!, /HELIX put-led/);
+  assert.equal(counter.length, 1, `expected one Counter-thesis bullet, got: ${section!.body}`);
+  // The HELIX-specific reason is dropped from Counter-thesis (already stated above in
+  // "Cross-desk friction")...
+  assert.doesNotMatch(counter[0]!, /HELIX put-led/);
+  // ...but the independent call-wall reason survives, proving this isn't a blanket suppression.
+  assert.match(counter[0]!, /call wall/);
 });
 
 test("tradeManagerNarrativeSection: Break watch + Counter-thesis survive MAX_BULLETS on rich Vector data", () => {
@@ -3711,5 +4499,126 @@ test("tradeManagerNarrativeSection: SHORT put wall ABOVE spot reads as already b
     wallLine!,
     /already broke|broken|cleared/i,
     "an above-spot put wall on a SHORT must read as already-cleared downside, not a future invalidation risk",
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): the LONG branch of resolveInvalidationFocalLevel
+// treats put_wall, dark_pool, AND king as candidate invalidation levels; the SHORT branch omitted
+// dark_pool entirely, breaking this function's own documented guarantee ("every section quoting the
+// one structural level that matters routes through here so they can never disagree") for any SHORT
+// play whose nearest real structure above spot happens to be a dark-pool print rather than a call
+// wall or GEX king.
+test("resolveInvalidationFocalLevel: a SHORT candidate now includes a resistance-side dark_pool level, matching the LONG branch's treatment", () => {
+  const focal: FocalLevel[] = [
+    { price: 106, kind: "dark_pool", label: "Dark pool 106.00", distancePct: 0.8 },
+    { price: 112, kind: "call_wall", label: "Call wall 112.00", distancePct: 6.0 },
+  ];
+  const level = resolveInvalidationFocalLevel(play({ direction: "SHORT" }), focal);
+  assert.ok(level, "a resistance-side dark_pool print must be selectable for a SHORT candidate");
+  assert.equal(level?.kind, "dark_pool");
+  assert.equal(level?.price, 106);
+});
+
+test("resolveInvalidationFocalLevel: a SHORT candidate still ignores a dark_pool level on the support side (below spot)", () => {
+  const focal: FocalLevel[] = [
+    { price: 95, kind: "dark_pool", label: "Dark pool 95.00", distancePct: -5.0 },
+    { price: 112, kind: "call_wall", label: "Call wall 112.00", distancePct: 6.0 },
+  ];
+  const level = resolveInvalidationFocalLevel(play({ direction: "SHORT" }), focal);
+  assert.equal(level?.kind, "call_wall", "a below-spot dark_pool print is not a SHORT's invalidation risk");
+});
+
+// BUG FIX (2026-10-21, Ask Largo x Night Hawk Swings standing mandate — deferred follow-up to
+// #6532, named explicitly in that PR's own staged finding
+// docs/audit/findings-staging/2026-10-21-swing-skip-hold-headline-leak.md). #6532 fixed the
+// IDENTICAL root cause in play-brief.ts's headline/Verdict copy via the new, exported
+// `swingVerdictVerb(play, action)` helper: a RESEARCH/SKIP candidate's `swingActionDisplay`
+// deliberately returns null (play-card-lifecycle.ts's own "SKIP deliberately returns null so the
+// honest PASSED lifecycle pill shows" comment) and `swingEntryAction` is always null too (never
+// enterable), so any fallback chain shaped `action?.label ?? play.recommendation ?? ...` falls
+// through to `play.recommendation` — the literal string "HOLD" entry-verdict.ts's RESEARCH branch
+// always stamps for a SKIP row, even though nothing was ever entered. This file's own
+// `actionNarrative` ("Entry stance" bullet, bucket==="watch") carries the exact same chain shape
+// and was never touched by #6532 — confirmed by reading it before writing this test (it still
+// read `swingActionDisplay(play)?.label ?? play.swingEntryAction?.toUpperCase() ?? rec`, `rec`
+// being `play.recommendation ?? "HOLD"`).
+test("tradeManagerNarrativeSection: SKIP/RESEARCH candidate's 'Entry stance' line reads PASSED, not the overloaded HOLD recommendation (2026-10-21, follow-up to #6532)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "SKIP",
+        recommendation: "HOLD",
+        swingEntryAction: undefined,
+        recNote: "Desk is passing this setup — no entry recommended.",
+      }),
+    }),
+    "watch",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Entry stance\*\* — PASSED\./,
+    `expected "Entry stance — PASSED.", got: ${section!.body}`,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /Entry stance\*\* — HOLD/,
+    "a declined RESEARCH/SKIP candidate must never read HOLD in the Entry stance bullet — nothing was ever entered, so nothing is being held",
+  );
+});
+
+// Second call site named by the same #6532 follow-up: `degradedReadLine` ("Live read" bullet),
+// which only fires when Vector/GEX spot isn't wired this tick (`tradeManagerNarrativeSection`'s
+// `spot == null` branch — the ctx below supplies no vector/ecosystem, so spot stays null and this
+// fallback fires in place of dealerPostureLine). Confirmed before writing this test: the function
+// read `swingActionDisplay(play)?.label ?? play.recommendation ?? play.swingEntryAction?.toUpperCase()
+// ?? "HOLD"` — the identical shape, same bug.
+test("tradeManagerNarrativeSection: SKIP/RESEARCH candidate's degraded 'Live read' line reads PASSED, not HOLD (2026-10-21, follow-up to #6532)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "SKIP",
+        recommendation: "HOLD",
+        swingEntryAction: undefined,
+      }),
+      vector: null,
+      ecosystem: null,
+    }),
+    "watch",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Live read\*\* — Vector spot not wired on this tick; desk still says \*\*PASSED\*\*/,
+    `expected the Live read bullet to say PASSED, got: ${section!.body}`,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /desk still says \*\*HOLD\*\*/,
+    "a declined RESEARCH/SKIP candidate must never read HOLD in the Live read bullet",
+  );
+});
+
+// Scoping proof for BOTH call sites above: a genuine OPEN/HOLD position (an existing live
+// position the desk is actively telling a member to hold — not a declined candidate) must keep
+// reading HOLD verbatim, completely unaffected by the SKIP-only special case.
+test("tradeManagerNarrativeSection: a genuine OPEN/HOLD position's 'Live read' line still reads HOLD, unaffected by the SKIP fix (2026-10-21)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        swingEntryAction: undefined,
+      }),
+      vector: null,
+      ecosystem: null,
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Live read\*\* — Vector spot not wired on this tick; desk still says \*\*HOLD\*\*/,
+    `expected the Live read bullet to still say HOLD for a real open position, got: ${section!.body}`,
   );
 });

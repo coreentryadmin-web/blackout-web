@@ -7,6 +7,7 @@ import {
   dedupeEarningsRowsByEvent,
   buildRecentEarningsRevisions,
   computeEarningsYoY,
+  deriveMeridianEarningsErrors,
   dualBeatRateFromPrints,
   earningsWhenFromTime,
   impactFromEarningsImportance,
@@ -406,4 +407,42 @@ test("benzingaTickerWindow: clamps a nonsense count instead of requesting the wo
   }
   assert.ok(benzingaTickerWindow(9999).limit <= 200, "cap must stay inside Benzinga's own ceiling");
   assert.ok(benzingaTickerWindow(9999).lookbackDays <= 24 * 95 + 60);
+});
+
+test("deriveMeridianEarningsErrors: THE REGRESSION — a guidance-only failure must not claim print history/estimates are unavailable", () => {
+  // Live-reproduced 2026-10-26, NE earnings: the UI banner ("Earnings calendar feed did not
+  // respond — estimates and print history are unavailable for this refresh") rendered while the
+  // Summary tab simultaneously showed a populated, real print-history base rate ("3/7 of this
+  // name's last prints reacted up", n=7) — the banner's own claim was false for that refresh.
+  const result = deriveMeridianEarningsErrors(null, null, "guidance fetch failed");
+  assert.equal(
+    result.calendar_error,
+    null,
+    "a guidance-only failure must not set calendar_error — the UI banner it drives specifically claims estimates/print history are unavailable, which is untrue here"
+  );
+  assert.equal(result.guidance_error, "guidance fetch failed");
+});
+
+test("deriveMeridianEarningsErrors: a real print-history failure still sets calendar_error", () => {
+  const result = deriveMeridianEarningsErrors("history fetch failed", null, null);
+  assert.equal(result.calendar_error, "history fetch failed");
+  assert.equal(result.guidance_error, null);
+});
+
+test("deriveMeridianEarningsErrors: a real calendar/estimates failure still sets calendar_error", () => {
+  const result = deriveMeridianEarningsErrors(null, "benzinga calendar fetch failed", null);
+  assert.equal(result.calendar_error, "benzinga calendar fetch failed");
+  assert.equal(result.guidance_error, null);
+});
+
+test("deriveMeridianEarningsErrors: history error takes precedence over calendar error when both fire", () => {
+  const result = deriveMeridianEarningsErrors("history failed", "calendar failed", "guidance failed");
+  assert.equal(result.calendar_error, "history failed");
+  assert.equal(result.guidance_error, "guidance failed");
+});
+
+test("deriveMeridianEarningsErrors: all clean returns both null", () => {
+  const result = deriveMeridianEarningsErrors(null, null, null);
+  assert.equal(result.calendar_error, null);
+  assert.equal(result.guidance_error, null);
 });

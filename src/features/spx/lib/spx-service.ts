@@ -17,10 +17,20 @@ import { refreshOrBreakMemory } from "@/features/spx/lib/playbook-break-memory-s
 import { maybeLogPlaybookShadowMatch } from "@/features/spx/lib/playbook-shadow-log";
 import { isPremarketPlanningWindow, isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import { loadOpenPlay } from "@/features/spx/lib/spx-play-store";
-import { degradedPlayPayload } from "@/features/spx/lib/spx-play-payload";
+import {
+  degradedPlayPayload,
+  degradedPlayCatchingUpMessage,
+  currentSessionPhase,
+} from "@/features/spx/lib/spx-play-payload";
 import { playMemberReadCacheSec, playMemberPeekMaxAgeSec } from "@/features/spx/lib/spx-play-config";
-import { isSpxPlaySnapshotFreshEnough } from "@/features/spx/lib/spx-play-freshness";
-import { playMemberReadMaxBlockMs } from "@/lib/providers/config";
+import {
+  isSpxPlaySnapshotFreshEnough,
+  isSpxPlaySnapshotShareable,
+} from "@/features/spx/lib/spx-play-freshness";
+import {
+  playMemberReadMaxBlockMs,
+  spxMergedDeskOffHoursRefreshIntervalSec,
+} from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { roundFloats } from "@/lib/round-floats";
@@ -78,6 +88,7 @@ export function summarizeSpxDesk(merged: SpxDeskPayload): SpxDeskSummary {
     mag7_greek_flow: merged.mag7_greek_flow,
     macro_indicators: merged.macro_indicators,
     strike_stacks: computeFlowStrikeStacks(spx_flows ?? []),
+    data_quality: merged.data_quality ?? null,
   };
 }
 
@@ -98,6 +109,41 @@ async function closedMarketPlaySnapshot(
   const play = await readSpxPlaySnapshot(merged, null, {});
   void observeSpxPlayVoiceTransitions(play, todayEtYmd()).catch(() => {});
   return play;
+}
+
+const SPX_MERGED_DESK_BG_REFRESH_LOCK_PREFIX = "spx-merged-desk-bg-refresh";
+
+/**
+ * BUG FIX (2026-10-26, Ask Largo/5-engine standing mandate, live repro): the off-hours shortcut
+ * below only ever PEEKS `spx-merged:<date>` (Redis/L1, never a real rebuild) with a 24h staleness
+ * tolerance. Outside isSpxEngineCronWindow(), NOTHING else calls the real loadMergedSpxDesk()
+ * either, so once the key's own short TTL (deskCacheTtlMs()) lapses in Redis, each ECS replica
+ * falls back to its OWN independently-aged per-process copy (peekServerCache, server-cache.ts) —
+ * and those copies can disagree by many minutes depending on when each replica last happened to
+ * run a real load. Live-reproduced 2026-10-26 (pre-7am ET): GET /api/market/spx/play polled 20s
+ * apart returned `as_of` jumping BACKWARD (2026-10-26T10:36:47Z → 10:19:08Z) with two DIFFERENT
+ * computed scores (4, then 6) for what should be one "current" read — different replicas serving
+ * different frozen desk vintages, non-monotonically, to the same member.
+ *
+ * Fix: kick a non-blocking background loadMergedSpxDesk() so `spx-merged:<date>` never goes fully
+ * cold for the whole off-hours window — bounding how far any replica's local copy can drift from
+ * the shared Redis value, and keeping that Redis value itself refreshed often enough that a
+ * replica's own short-TTL local entry reliably re-syncs from it instead of falling through to its
+ * stale local fallback. Throttled via sharedCacheSetNx (fails open/closed to "skip" on a Redis
+ * error — this is a best-effort consistency aid, not a correctness-critical lock) so only one
+ * replica actually performs the refresh per spxMergedDeskOffHoursRefreshIntervalSec() window, not
+ * every single poll — this intentionally does NOT restore trading-hours (10s) refresh cadence
+ * off-hours, only bounds the worst-case divergence window.
+ */
+export async function maybeRefreshMergedSpxDeskOffHours(): Promise<void> {
+  const lockKey = `${SPX_MERGED_DESK_BG_REFRESH_LOCK_PREFIX}:${todayEtYmd()}`;
+  const won = await sharedCacheSetNx(
+    lockKey,
+    Date.now(),
+    spxMergedDeskOffHoursRefreshIntervalSec()
+  ).catch(() => false);
+  if (!won) return;
+  await loadMergedSpxDesk().catch(() => undefined);
 }
 
 async function evaluateSpxPlayState() {
@@ -124,6 +170,10 @@ async function evaluateSpxPlayState() {
   if (!isSpxEngineCronWindow()) {
     const peeked = await peekMergedSpxDesk({ maxStaleMs: 24 * 60 * 60 * 1000 });
     if (peeked && !peeked.merged.market_open && !isPremarketPlanningWindow()) {
+      // Non-blocking — see maybeRefreshMergedSpxDeskOffHours's own comment for the live
+      // cross-replica divergence bug this guards against. Fires at most once per
+      // spxMergedDeskOffHoursRefreshIntervalSec() window regardless of poll volume.
+      void maybeRefreshMergedSpxDeskOffHours();
       const play = await closedMarketPlaySnapshot(peeked.merged);
       if (play) return roundFloats({ ...play, playbook_shadow: null });
     }
@@ -206,17 +256,26 @@ function spxPlayServerCacheKey(date: string): string {
   return `server:spx-play-read:${date}`;
 }
 
-/** When another replica holds the eval lock, poll Redis for its published snapshot. */
+/** When another replica holds the eval lock, poll Redis for its published snapshot.
+ *
+ * Uses `isSpxPlaySnapshotShareable` (not the plain freshness bound) so a closed-market
+ * snapshot — whose `as_of` is the desk snapshot's own timestamp by design, not eval time — is
+ * trusted regardless of age; a live-market snapshot still has to clear the real bound. See
+ * spx-play-freshness.ts's doc comment for why (fix for a same-day regression in PR #6719).
+ */
 async function waitForPeerSpxPlaySnapshot(
   date: string,
   maxMs = 800
 ): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>> | null> {
+  const maxAgeMs = playMemberPeekMaxAgeSec() * 1000;
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
     const hit = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
       spxPlayServerCacheKey(date)
     );
-    if (hit?.value) return hit.value;
+    if (hit?.value && isSpxPlaySnapshotShareable(hit.value, Date.now(), maxAgeMs)) {
+      return hit.value;
+    }
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
   return null;
@@ -238,10 +297,34 @@ export async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<Return
   // single-flight optimization, not a guard against a stuck background job.
   const won = await sharedCacheSetNx(lockKey, Date.now(), SPX_PLAY_EVAL_LOCK_TTL_SEC).catch(() => false);
   if (!won) {
+    // BUG FIX (2026-10-25, Ask Largo/5-engine standing mandate, live repro): this read the shared
+    // spxPlayServerCacheKey hit unconditionally the instant it was non-null, trusting
+    // sharedCacheGetWithTtl's Redis-native `ttl > 0` gate alone. Live polling of
+    // GET /api/market/spx/play caught snapshots up to ~24 minutes stale served non-monotonically
+    // (a later poll returning an OLDER as_of than an earlier one, with genuinely different
+    // score/direction/factors) -- the exact "divergent grade/score/direction across replicas"
+    // failure this cross-replica lock exists to prevent (see comment above). peekSpxPlayState,
+    // the only other reader of this same key, already bounds it with
+    // isSpxPlaySnapshotFreshEnough; apply the same bound here instead of trusting the TTL alone.
+    //
+    // BUG FIX #2 (2026-10-25, same day, found live immediately after the fix above shipped):
+    // a plain freshness bound over-corrected for the CLOSED-MARKET case. Once the market is
+    // genuinely closed, evaluateSpxPlayState's closed-market branch (spx-play-engine.ts)
+    // deliberately stamps `as_of` from the desk snapshot's own timestamp, not eval time -- a
+    // 20s bound can never pass against that legitimately-old stamp, so every closed-market read
+    // here was rejecting the just-published snapshot and falling through to a redundant
+    // re-evaluation on every single contended request (defeating the single-flight cache this
+    // lock exists to provide), without fixing anything -- the re-eval reads the same stale desk
+    // peek and produces an identical answer. isSpxPlaySnapshotShareable trusts a
+    // `session_phase: "closed"` snapshot regardless of age while still applying the real bound
+    // to a live-market one, so PR #6719's live-market fix above is unchanged.
+    const maxAgeMs = playMemberPeekMaxAgeSec() * 1000;
     const stale = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
       spxPlayServerCacheKey(date)
     );
-    if (stale?.value) return stale.value;
+    if (stale?.value && isSpxPlaySnapshotShareable(stale.value, Date.now(), maxAgeMs)) {
+      return stale.value;
+    }
     const peer = await waitForPeerSpxPlaySnapshot(date);
     if (peer) return peer;
     return spxPlayReadDegraded();
@@ -263,17 +346,54 @@ export async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<Return
  * Single derivation for member `/api/market/spx/play`, BIE `spx_full_state`, and Largo
  * `get_spx_play`. Collapses member polls into one eval per cache window — no
  * stale-while-revalidate so BIE/Largo and the dashboard never disagree on grade/score.
+ *
+ * BUG FIX (2026-10-21, Ask Largo/5-engine standing mandate, live repro): this used to call
+ * `degradedPlayPayload()` bare, which defaults `session_phase: "closed"` — a flat, false claim
+ * about the DESK (not just the play-eval pipeline that actually failed/lost the lock). That
+ * field feeds `spx-play-verdict-bar.ts`'s `resolveMode()` (`session_phase === "closed"` ⇒ show
+ * the member-facing CLOSED badge) regardless of whether the real market session is open. Same
+ * root cause the 2026-10-16 headline fix (route.ts, see that comment) addressed for a different
+ * field — the pipeline failing is not evidence the desk/session is closed. `peekMergedSpxDesk()`
+ * is already proven fast/non-blocking even when the expensive play-eval path times out or loses
+ * its cross-replica lock (see `docs/audit/MARKET-OPEN-VALIDATION.md` #398), so peek it here and
+ * derive the real phase via the same `currentSessionPhase()` every non-degraded path already uses.
+ *
+ * BUG FIX (2026-10-26, Ask Largo/5-engine standing mandate, live repro during RTH): the fix above
+ * only ever touched `session_phase` here. This function still fell straight through to
+ * `degradedPlayPayload()`'s bare `headline`/`idle_message` default ("Desk warming — play state
+ * unavailable") — the exact same false "the DESK is cold" claim the 2026-10-16 fix removed from
+ * route.ts's catch block, just never carried over to this sibling call site. Confirmed live
+ * 2026-10-26T13:37:52Z: `GET /api/market/spx/play` returned that literal headline with
+ * `session_phase:"cash"` (the field above DID get corrected) while a parallel `GET
+ * /api/market/spx/desk` call showed the real desk fully live (`market_open:true`, a ~45s-old
+ * poll). This path is reached on every ORDINARY lock-loss-with-no-stale/peer-snapshot outcome —
+ * the file's own top-of-function comment calls it routine, not rare — so, same as route.ts's
+ * ServerCacheTimeoutError branch, the honest "pipeline didn't finish in time" message always
+ * applies here, not only when the desk peek happens to succeed. `degradedPlayCatchingUpMessage()`
+ * is the SAME shared helper route.ts's catch block now also pulls from, so the two call sites
+ * cannot independently drift again.
  */
-function spxPlayReadDegraded(): Awaited<ReturnType<typeof evaluateSpxPlayState>> {
-  return degradedPlayPayload() as Awaited<ReturnType<typeof evaluateSpxPlayState>>;
+async function spxPlayReadDegraded(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {
+  const peeked = await peekMergedSpxDesk().catch(() => null);
+  const extras = {
+    ...degradedPlayCatchingUpMessage(),
+    ...(peeked ? { session_phase: currentSessionPhase(peeked.merged) } : {}),
+  };
+  return degradedPlayPayload(extras) as Awaited<ReturnType<typeof evaluateSpxPlayState>>;
 }
 
 async function spxPlayReadFallback(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {
   const date = todayEtYmd();
+  const maxAgeMs = playMemberPeekMaxAgeSec() * 1000;
   const hit = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
     spxPlayServerCacheKey(date)
   );
-  if (hit?.value) return hit.value;
+  // isSpxPlaySnapshotShareable (not the plain freshness bound) — see waitForPeerSpxPlaySnapshot's
+  // comment above: a closed-market snapshot's as_of is desk time by design, so it's trusted
+  // regardless of age, while a live-market snapshot still has to clear the real bound.
+  if (hit?.value && isSpxPlaySnapshotShareable(hit.value, Date.now(), maxAgeMs)) {
+    return hit.value;
+  }
   const peer = await waitForPeerSpxPlaySnapshot(date, 800);
   if (peer) return peer;
   return spxPlayReadDegraded();

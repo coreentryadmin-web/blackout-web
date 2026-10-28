@@ -47,8 +47,17 @@ const OPEN_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
  *  Excluded from the named leader/comparison pointer below (found live 2026-09-12: CRWD sat #1 by
  *  score at 86.5 while its own manage engine said EXIT_RUNNER, round-tripped from +129.7% peak to
  *  -9.5%; NN's brief still named it "Leader: CRWD @ 86.5 — confirm before adding size", which reads
- *  as "put money here" about a position the desk is actively telling members to exit). */
-const EXITING_MANAGE_ACTIONS = new Set(["EXIT", "EXIT_RUNNER"]);
+ *  as "put money here" about a position the desk is actively telling members to exit).
+ *
+ *  BUG FIX (2026-10-20, Ask Largo standing mandate, static-code sweep): this set omitted
+ *  `STOP_OUT` — a position that just hit its own hard −60% capital-preservation stop
+ *  (`manage.ts`, `scale-out.ts`'s `"not yet scaled and the mark hit the −60% hard stop → exit
+ *  everything"`) is exactly as much a "get out" verdict as EXIT/EXIT_RUNNER, the same severity
+ *  class this set exists to filter — yet it was missing, so a STOP_OUT peer could still be named
+ *  "Desk leader" to follow, the identical CRWD-shaped bug this set was built to prevent. The
+ *  sibling `REDUCE_MANAGE_ACTIONS` set two lines below already includes `STOP_OUT` for its own
+ *  (different) purpose — this set never got the same addition. */
+const EXITING_MANAGE_ACTIONS = new Set(["EXIT", "EXIT_RUNNER", "STOP_OUT"]);
 
 /** A WATCH-bucket peer whose own setup already broke is excluded from the named leader pointer for
  *  the same reason as EXITING_MANAGE_ACTIONS above (found live 2026-09-12: SKHY sat #1 of 8 on WATCH
@@ -240,8 +249,17 @@ export function laneRankSection(
     snap.deltaFromMedian >= 0
       ? `**+${snap.deltaFromMedian}** vs median`
       : `**${snap.deltaFromMedian}** vs median`;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SOXX): `snap.playScore` is
+  // deliberately kept at laneRows' raw one-decimal precision (2026-09-17 fix, so deltaFromMedian
+  // stays comparable to medianScore at the same precision — see computeLaneRank's own doc
+  // comment) — but rendering that raw value directly duplicates the SAME underlying fact
+  // `whyThisSetupSection`'s lede already shows, rounded, a few sections earlier ("...scoring 74."
+  // vs this section's "score 73.7"), reading as two disagreeing numbers for one measurement.
+  // Rounds ONLY the displayed score here to match that convention — deltaFromMedian/medianScore
+  // (computed from the raw value, untouched) still carry their own honest one-decimal precision.
+  const displayScore = Math.round(snap.playScore);
   const lines = [
-    `**#${snap.rank} of ${snap.total}** on ${label} · score **${snap.playScore}** (${delta})`,
+    `**#${snap.rank} of ${snap.total}** on ${label} · score **${displayScore}** (${delta})`,
     `Lane median: **${snap.medianScore}**`,
   ];
   // Ask Largo standing mandate, live repro 2026-10-11: `laneRows` (and therefore every number

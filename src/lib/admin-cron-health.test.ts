@@ -246,6 +246,17 @@ test("buildCronHealthSnapshot sources its runs_24h aggregate from the time-bound
 // nothing read it until this fix. Unlike spx-evaluate's heartbeat cross-check (which only
 // escalates when the cron_job_runs handshake ALSO looks stale), zerodte-warm's must not gate on
 // that handshake first, since that signal is the known-unreliable one here.
+test("buildCronHealthSnapshot can override swing-discovery failed handshakes when serving snapshot probe is fresh", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(src, /"swing-discovery"/);
+  assert.match(
+    src,
+    /health\.key === "swing-discovery" && health\.status === "failed"/,
+    "failed swing-discovery handshakes must be eligible for writer-target override"
+  );
+  assert.match(src, /isSwingDiscoveryScanInFlight/);
+});
+
 test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan heartbeat, not just cron_job_runs", () => {
   const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
   assert.match(
@@ -262,4 +273,9 @@ test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan hea
   // cron_job_runs age (that would never fire for this specific blind spot).
   assert.match(block, /zeroDteScanHb\.stale \|\| zeroDteScanHb\.critical_stale/);
   assert.doesNotMatch(block, /cronStale/);
+  assert.match(
+    block,
+    /zerodteWarmInFlight/,
+    "long in-flight scans must not trip market_hours_stale before the overlap lock TTL"
+  );
 });

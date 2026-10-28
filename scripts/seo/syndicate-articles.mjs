@@ -118,6 +118,24 @@ export function pickToSyndicate(articles, alreadyPostedCanonicals, limit = 1) {
     .slice(0, limit);
 }
 
+/**
+ * Parse `--limit=N` out of the CLI args. Falls back to `defaultLimit` only when the flag is
+ * ABSENT or its value doesn't parse to a finite number — never on a legitimately-parsed `0`.
+ *
+ * `Number(...) || 1` (the previous implementation) is wrong here because `0` is falsy in JS:
+ * an operator deliberately passing `--limit=0` (e.g. a manual `workflow_dispatch` meant to pause
+ * posting without disabling the schedule) would silently fall back to `1` and post anyway — the
+ * exact opposite of what `--limit=0` is supposed to do.
+ */
+export function parseLimitArg(args, defaultLimit = 1) {
+  const raw = args.find((a) => a.startsWith("--limit="));
+  if (raw === undefined) return defaultLimit;
+  const value = raw.slice("--limit=".length);
+  if (value === "") return defaultLimit; // `--limit=` with no value — nothing to parse, use default.
+  const n = Number(value);
+  return Number.isFinite(n) ? n : defaultLimit;
+}
+
 /* ── LIVE (only runs when invoked directly) ────────────────────────────────────────────────── */
 
 async function readSecret(name) {
@@ -126,13 +144,27 @@ async function readSecret(name) {
   return JSON.parse(raw);
 }
 
-async function devtoAlreadyPosted(apiKey) {
+/**
+ * Fetch the FULL set of canonical URLs already syndicated to this Dev.to account.
+ *
+ * MUST THROW ON A PARTIAL FETCH RATHER THAN RETURN WHAT IT HAS SO FAR. The caller treats this
+ * set as authoritative truth for "already posted" — `pickToSyndicate` only skips an article whose
+ * canonical is IN this set. A transient failure mid-pagination (rate limit, 5xx, auth hiccup) used
+ * to `break` the loop silently and return whatever had accumulated, which for a page-1 failure is
+ * an EMPTY set — i.e. "nothing has ever been posted". The daily cron then picked the top-ranked
+ * eligible article (same one as yesterday, since nothing advanced) and re-posted it: a genuine
+ * duplicate on the live Dev.to account, the exact failure the idempotency design (see file header)
+ * exists to prevent. Throwing here instead propagates to `main()`'s existing per-platform try/catch
+ * (`Dev.to SKIP: ...`), which already does the right thing — skip this run's post entirely — so the
+ * fix is "stop swallowing the failure", not new error-handling.
+ */
+export async function devtoAlreadyPosted(apiKey) {
   const canonicals = new Set();
   for (let page = 1; page <= 10; page++) {
     const res = await fetch(`https://dev.to/api/articles/me/all?per_page=100&page=${page}`, {
       headers: { "api-key": apiKey, "User-Agent": "BlackOut-SEO/1.0" },
     });
-    if (!res.ok) break;
+    if (!res.ok) throw new Error(`Dev.to "already posted" fetch failed on page ${page}: HTTP ${res.status}`);
     const rows = await res.json();
     if (!rows.length) break;
     for (const r of rows) if (r.canonical_url) canonicals.add(r.canonical_url);
@@ -164,7 +196,18 @@ async function postToDevto(apiKey, article, dryRun) {
   return { url: body.url, id: body.id };
 }
 
-async function hashnodePosted(apiKey, publicationId) {
+/**
+ * Fetch the FULL set of canonical URLs already syndicated to this Hashnode publication.
+ *
+ * Same "must throw, not fail-open" invariant as `devtoAlreadyPosted` right above (see its
+ * comment for the full incident this guards against) — a malformed/errored GraphQL response
+ * (auth failure, rate limit, wrong `publicationId`) used to silently `break` and hand back
+ * whatever partial set had accumulated, which `pickToSyndicate` then trusted as complete.
+ * `posts` missing is a GENUINE failure signal (a real empty publication still returns a `posts`
+ * object with `edges: []`), so it is distinguished from the normal end-of-pagination case
+ * (`!posts.pageInfo.hasNextPage`) and throws instead of breaking.
+ */
+export async function hashnodePosted(apiKey, publicationId) {
   const canonicals = new Set();
   const q = `query($id:ObjectId!,$after:String){ publication(id:$id){ posts(first:50, after:$after){ edges{ node{ canonicalUrl } cursor } pageInfo{ hasNextPage endCursor } } } } `;
   let after = null;
@@ -176,7 +219,13 @@ async function hashnodePosted(apiKey, publicationId) {
     });
     const j = await res.json().catch(() => ({}));
     const posts = j?.data?.publication?.posts;
-    if (!posts) break;
+    if (!posts) {
+      throw new Error(
+        `Hashnode "already posted" fetch failed on page ${i + 1}: HTTP ${res.status} ${
+          j.errors ? JSON.stringify(j.errors).slice(0, 200) : "(malformed response)"
+        }`
+      );
+    }
     for (const e of posts.edges) if (e.node.canonicalUrl) canonicals.add(e.node.canonicalUrl);
     if (!posts.pageInfo.hasNextPage) break;
     after = posts.pageInfo.endCursor;
@@ -208,7 +257,7 @@ async function postToHashnode(apiKey, publicationId, article, dryRun) {
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
-  const limit = Number((args.find((a) => a.startsWith("--limit=")) || "").split("=")[1]) || 1;
+  const limit = parseLimitArg(args);
   const platform = (args.find((a) => a.startsWith("--platform=")) || "--platform=both").split("=")[1];
 
   const log = (m) => console.log(m);

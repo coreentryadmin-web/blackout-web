@@ -527,3 +527,32 @@ export function benzingaTickerWindow(prints: number): { lookbackDays: number; li
     limit: Math.min(200, wanted + 12),
   };
 }
+
+/**
+ * `calendar_error` (consumed by `MeridianEarningsTabs`'s banner: "Earnings calendar feed did not
+ * respond — estimates and print history are unavailable for this refresh") must mean exactly
+ * what it says: the earnings-CALENDAR read failed. `loadMeridianEarningsEnrichment` used to fold
+ * THREE independent fetches' errors into this one field — `history.history_error` (print
+ * history), `benzingaRes.error` (the calendar/estimates), and `guidanceRes.error` (corporate
+ * guidance) — so a corporate-guidance-only outage made the banner falsely claim estimates and
+ * print history were unavailable even when both were genuinely populated and rendering.
+ *
+ * Live-reproduced 2026-10-26: NE earnings showed the banner AND a populated Summary tab
+ * ("3/7 of this name's last prints reacted up", n=7) — print history was plainly present, so the
+ * banner's own claim about it was false for that refresh.
+ *
+ * Returns two SEPARATE fields: `calendar_error` narrowed to only the two fetches the banner text
+ * is actually about, and `guidance_error` carrying the guidance fetch's own failure (preserving
+ * the original absence-vs-outage distinguishability goal for guidance, just without smuggling it
+ * into a claim about unrelated data).
+ */
+export function deriveMeridianEarningsErrors(
+  historyError: string | null | undefined,
+  calendarError: string | null | undefined,
+  guidanceError: string | null | undefined
+): { calendar_error: string | null; guidance_error: string | null } {
+  return {
+    calendar_error: historyError ?? calendarError ?? null,
+    guidance_error: guidanceError ?? null,
+  };
+}

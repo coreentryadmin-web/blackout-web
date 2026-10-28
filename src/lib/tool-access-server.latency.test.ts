@@ -33,8 +33,14 @@ test("userCanAccessTool accepts sessionClaims for JWT admin short-circuit", () =
   assert.match(src, /isAdminUser\(userId, sessionClaims\)/);
 });
 
-test("userCanAccessTool JWT fast path skips getUser for launched tools when tier/role in token", () => {
+test("userCanAccessTool JWT fast path uses the real tool_access claim, not a tier/role-only guess", () => {
   const src = readFileSync(join(root, "tool-access-server.ts"), "utf8");
-  assert.match(src, /sessionClaimsHaveAuthFields/);
   assert.match(src, /toolAccessModeFromSessionClaims/);
+  // Regression guard for the fast-path bypass fixed in fix/tool-access-jwt-block-bypass:
+  // "global launched + tier/role in token → true" treated "no tool_access claim" as "no
+  // override", which silently ignored a real admin `block` override on an already-launched
+  // tool (every tool except Largo). `sessionClaimsHaveAuthFields` must not gate a bare
+  // `return true` in this function any more — the real override must always be consulted
+  // (via the JWT claim when present, else the cached getUser read).
+  assert.doesNotMatch(src, /sessionClaimsHaveAuthFields/);
 });

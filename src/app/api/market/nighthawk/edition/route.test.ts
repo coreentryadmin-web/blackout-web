@@ -20,10 +20,15 @@ test("edition route: carry_until_close only when date param is omitted (not hist
 });
 
 test("edition route: latest fallback marks stale when served edition_for !== requested", () => {
+  // UPDATED 2026-10-20 (Ask Largo standing mandate): the guarded `if` now also carves out a
+  // recap-only edition still within its own trading day (see resolve-edition.ts's own BUG FIX
+  // comment above this line) — a deliberate, tested behavior change, not a regression. The regex
+  // is widened to allow that extra clause while still requiring the core
+  // `edition_for !== editionFor` -> `stale = true` shape this guard exists to protect.
   const src = read("src/features/nighthawk/lib/resolve-edition.ts");
   assert.match(
     src,
-    /if \(edition\.edition_for && edition\.edition_for !== editionFor\) \{\s*edition\.stale = true;/,
+    /if \(\s*edition\.edition_for &&\s*edition\.edition_for !== editionFor[\s\S]*?\)\s*\{\s*edition\.stale = true;/,
     "prior session plays must not masquerade as tonight's live board"
   );
 });

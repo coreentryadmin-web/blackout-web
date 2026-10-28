@@ -1,0 +1,28 @@
+# Railway config for the NightHawk Backfill Repair cron service.
+# Fires at 13:00 AND 14:00 UTC Mon-Fri — one of the two always lands inside the
+# route's 9:00 ET repair window (inEtWindow in et-window.ts) regardless of DST,
+# same dual-band shape as railway.nighthawk-morning-confirm.toml: 13:00 UTC =
+# 9:00 ET during EDT (in-window) but only 8:00 ET during EST (before the window,
+# so that firing silently no-ops); 14:00 UTC is the mirror — 10:00 ET during EDT
+# (after the window, no-ops) but 9:00 ET during EST (in-window). Scheduled 15
+# minutes BEFORE nighthawk-morning-confirm's own dual-band so any repair this
+# cron makes is already persisted by the time morning-confirm reads the edition
+# row.
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+# Only redeploy this trigger service when its OWN driver/config changes — NOT on docs/src/
+# log commits. Mirrors railway.nighthawk-morning-confirm.toml's proven watchPatterns.
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.nighthawk-backfill-repair.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "node scripts/hit-cron.mjs /api/cron/nighthawk-backfill-repair"
+# Dual UTC band so one firing always lands in the 9:00-9:10 ET window across both
+# EDT (13:00 UTC = 9:00 ET) and EST (14:00 UTC = 9:00 ET) — see comment above.
+cronSchedule = "0 13,14 * * 1-5"
+restartPolicyType = "never"
+numReplicas = 1

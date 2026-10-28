@@ -98,6 +98,11 @@ export function VectorTimeframeSelect({
             data-testid="vector-tf-custom"
             value={customDraft}
             onChange={(e) => setCustomDraft(e.target.value)}
+            // A number input captures the wheel event by default — scrolling the page
+            // while the cursor happens to sit over it silently changes the interval instead
+            // of scrolling. Blur on wheel so a scroll always scrolls, never mutates (the
+            // existing onBlur below still commits whatever draft value was there).
+            onWheel={(e) => e.currentTarget.blur()}
             onBlur={() => {
               const parsed = normalizeVectorIntervalMinutes(Number(customDraft));
               setCustomDraft(String(parsed));

@@ -172,9 +172,30 @@ export function emailScreenshot(asset: InlineAsset, alt: string): string {
   </td></tr></table>`;
 }
 
+/** Escapes a plain-text value for safe interpolation into HTML markup.
+ *  Every current `substituteTokens` value (firstName, email, planLabel, ...)
+ *  is display text, never intentional markup — see substituteTokens' own
+ *  comment for why every value is escaped unconditionally. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /** Simple {{token}} substitution shared by the billing-lifecycle templates
  *  (firstName, accessUntil, graceDays, ...) — same idea as welcome-sequence's
- *  local personalize(), pulled out here so new templates don't each redefine it. */
+ *  local personalize(), pulled out here so new templates don't each redefine it.
+ *  Every value is HTML-escaped before substitution: `firstName` is read from
+ *  the member's own self-settable Clerk profile, so an unescaped value would
+ *  let `<script>`/`onerror=` markup in a display name reach rendered email
+ *  HTML. Today every caller sends the resulting email back to that same
+ *  member (self-XSS at most — see FINDINGS.md), but substituteTokens has no
+ *  way to know that invariant holds for every future caller, so it escapes
+ *  defensively rather than relying on it. None of the current tokens are
+ *  meant to carry real markup, so this never needs to be selective. */
 export function substituteTokens(text: string, tokens: Record<string, string>): string {
-  return Object.entries(tokens).reduce((acc, [key, value]) => acc.split(`{{${key}}}`).join(value), text);
+  return Object.entries(tokens).reduce((acc, [key, value]) => acc.split(`{{${key}}}`).join(escapeHtml(value)), text);
 }

@@ -382,6 +382,37 @@ export function stampCommitGateBlocksOnPlays(
   });
 }
 
+/**
+ * Stamp the SCAN-SCOPED signal kinds G-S6 confluence actually evaluated this scan
+ * (`SwingCommitCandidate.discoveryPaths`, assembled by `discoveryPathsForConfluence` above when the
+ * commit candidates are built) onto SWING plays — alongside the existing LIFETIME-accreted
+ * `signalKinds` the serving layer already shows from the accumulation store. WHY (Ask Largo standing
+ * mandate, live SOXX repro 2026-10-25): `signalKinds` is a union across every session day a thesis
+ * has ever been observed, so a row can display enough kinds to satisfy an archetype's required
+ * confluence count while `commitGateBlockedBy` (stamped by `stampCommitGateBlocksOnPlays` just above)
+ * still carries `gate:G-S6:confluence` — because the gate reads ONLY this scan's discovery paths, not
+ * the lifetime set — with nothing in the payload explaining the contradiction. `thisScanSignalKinds`
+ * closes that gap so a reader can reconcile the two fields, mirroring the existing
+ * `last_session_signal_kinds`/`sessionSignalKinds` precedent built for the persistence check
+ * (accumulation-store.ts, fixed 2026-07-24) — same idea, applied to the gate this board's BUY/WAIT
+ * verdict actually reflects. Joined by the SAME thesis key `stampCommitGateBlocksOnPlays` uses, so the
+ * two stamps always agree on which play they describe.
+ */
+export function stampScanSignalKindsOnPlays(
+  plays: readonly HorizonPlay[],
+  candidates: readonly SwingCommitCandidate[],
+): HorizonPlay[] {
+  const kindsByKey = new Map<string, string[]>();
+  for (const c of candidates) {
+    if (!c.direction) continue;
+    kindsByKey.set(swingThesisKey(c.ticker, c.direction, c.archetype), [...(c.discoveryPaths ?? [])]);
+  }
+  return plays.map((p) => {
+    const kinds = kindsByKey.get(swingThesisKey(p.ticker, p.direction, p.archetype ?? null));
+    return kinds ? { ...p, thisScanSignalKinds: kinds } : p;
+  });
+}
+
 /** After live commits, drop opened theses from WATCH and stamp plays opened this scan (Q3). */
 export function reconcileDiscoveryAfterCommit(args: {
   playSet: HorizonPlaySet;
@@ -1088,9 +1119,15 @@ export async function runSwingDiscoveryScan(
     // on a ticker|direction collision: an organic screen already found independent evidence, so the
     // Legacy row would only ever duplicate — never override — a thesis already under evaluation.
     if (isSwingLegacyCommitBridgeEnabled() && deps.legacyTriples?.length) {
+      // BUG FIX (2026-10-25, Ask Largo standing mandate): `haltActive`/`grouped` are already real,
+      // computed for this exact scan pass a few lines up (and already wired into every ORGANIC
+      // candidate above) — pass them through so the bridge stops fabricating `halted: false` /
+      // `dailyBarComplete: true` for every Legacy-sourced candidate regardless of the real state.
       const legacyCandidates = legacyCommitCandidatesFromSnapshot(deps.legacyTriples, {
         sessionDate: deps.sessionDay,
         pathsByTicker,
+        haltActive,
+        grouped,
       });
       const organicKeys = new Set(commitCandidates.map((c) => `${c.ticker.toUpperCase()}|${c.direction}`));
       for (const lc of legacyCandidates) {
@@ -1155,10 +1192,16 @@ export async function runSwingDiscoveryScan(
     commitEligibleCount = plan.commitEligibleCount;
 
     // Stamp G-S6/G-S14 blocks onto produced plays so the desk BUY/WAIT verdict matches commit reality.
+    // Stamp the scan-scoped signal kinds alongside it so a reader can see WHY (see the function's own
+    // doc comment) — the two stamps are joined by the same thesis key, so they always describe the
+    // same play.
     if (engineV2 && playSet.SWING.length > 0) {
       playSet = {
         ...playSet,
-        SWING: stampCommitGateBlocksOnPlays(playSet.SWING, plan.decisions),
+        SWING: stampScanSignalKindsOnPlays(
+          stampCommitGateBlocksOnPlays(playSet.SWING, plan.decisions),
+          commitCandidates,
+        ),
       };
     }
 

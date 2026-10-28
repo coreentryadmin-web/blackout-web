@@ -1103,6 +1103,22 @@ async function runMigrations(): Promise<void> {
       at TIMESTAMPTZ NOT NULL
     );
   `);
+  // Phase 1 instrumentation (queue-wait vs. HTTP-execution split, cancel reason —
+  // api-telemetry-types.ts's ApiCallEvent.queue_wait_ms/cancel_reason) was added to the
+  // live in-memory ring buffer (recordApiCall) and to api-tracked-fetch.ts's callers, but
+  // the CREATE TABLE above was never updated and persistApiTelemetryEvent's INSERT never
+  // carried the two new columns — so every persisted row silently dropped both fields, and
+  // any admin event-detail lookup that falls back to the DB (an event aged out of the
+  // 800-entry in-memory buffer, which fills fast across 5 ECS replicas) showed a bare
+  // `cancel_reason: null` / missing `queue_wait_ms` even though the live call genuinely
+  // captured both — exactly the UW/Anthropic rate-limiter queue-wait diagnosis these fields
+  // exist for (see unusual-whales.ts/anthropic.ts's own queue_wait_ms incident comments).
+  await p.query(`
+    ALTER TABLE api_telemetry_events ADD COLUMN IF NOT EXISTS queue_wait_ms INT;
+  `);
+  await p.query(`
+    ALTER TABLE api_telemetry_events ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
+  `);
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_api_telemetry_events_at
     ON api_telemetry_events(at DESC);
@@ -2939,15 +2955,81 @@ export async function dbQuery<T extends QueryResultRow = QueryResultRow>(
   throw lastError;
 }
 
-/** GDPR cleanup when Clerk sends user.deleted — removes all rows keyed by clerk_user_id. */
+/**
+ * Deletes rows from a table that may not exist yet — because it is created LAZILY by a
+ * different route/module on first use (push_subscriptions, helix_alert_rules,
+ * vector_alert_rules — none of them are part of the unconditional runMigrations() set) —
+ * from WITHIN an already-open transaction, without aborting that transaction when the table
+ * is missing.
+ *
+ * A bare `try { await client.query(...) } catch {}` around one statement in a Postgres
+ * transaction is NOT enough to contain the failure: once ANY statement in a transaction block
+ * errors, Postgres marks the whole transaction ABORTED, and every subsequent statement on that
+ * same client — other than ROLLBACK — throws `current transaction is aborted, commands ignored
+ * until end of transaction block`, regardless of whether the JS-level error was caught. So
+ * catching the error here and continuing to issue more queries on the same client (as this
+ * function used to) silently dooms every later statement in the surrounding BEGIN/COMMIT,
+ * including the row the caller actually needs to commit (e.g. the `users` row below) — it
+ * surfaces as the WHOLE deletion throwing and rolling back, not as "one optional table was
+ * skipped". SAVEPOINT/ROLLBACK TO SAVEPOINT is the actual fix: it contains the failure to just
+ * this one statement and leaves the surrounding transaction usable.
+ */
+export async function deleteFromOptionalTable(
+  client: PoolClient,
+  table: string,
+  column: string,
+  value: string
+): Promise<number> {
+  await client.query("SAVEPOINT optional_table_delete");
+  try {
+    const res = await client.query(`DELETE FROM ${table} WHERE ${column} = $1`, [value]);
+    await client.query("RELEASE SAVEPOINT optional_table_delete");
+    return res.rowCount ?? 0;
+  } catch {
+    // Table doesn't exist (or some other transient issue) — roll back to the savepoint so the
+    // surrounding transaction stays usable, instead of leaving it ABORTED.
+    await client.query("ROLLBACK TO SAVEPOINT optional_table_delete");
+    return 0;
+  }
+}
+
+/**
+ * GDPR cleanup when Clerk sends user.deleted — removes all rows keyed by clerk_user_id.
+ *
+ * Covers every table that stores data keyed by the Clerk user id (verified against every
+ * `CREATE TABLE` in this file plus the lazily-created `helix_alert_rules`/`vector_alert_rules`/
+ * `push_subscriptions` tables each feature creates on first use):
+ * - `users` (keyed by `clerk_user_id`)
+ * - `largo_sessions`, `user_journal`, `welcome_sequence_state` (unconditionally migrated —
+ *   always exist, so a straight DELETE is safe)
+ * - `bie_interactions` (unconditionally migrated — `question`/`user_id` are real per-user
+ *   content, not just an aggregate counter, so this is in scope for deletion, not just the
+ *   time-based retention `db-cleanup-targets.ts` already applies to it)
+ * - `push_subscriptions`, `helix_alert_rules`, `vector_alert_rules` (lazily created elsewhere —
+ *   go through `deleteFromOptionalTable` so a fresh environment where the table was never
+ *   created can't abort this whole deletion)
+ */
 export async function deleteUserDataForClerkId(clerkUserId: string): Promise<{
   users: number;
   largo_sessions: number;
   user_journal: number;
+  welcome_sequence_state: number;
+  bie_interactions: number;
   push_subscriptions: number;
+  helix_alert_rules: number;
+  vector_alert_rules: number;
 }> {
   if (!clerkUserId) {
-    return { users: 0, largo_sessions: 0, user_journal: 0, push_subscriptions: 0 };
+    return {
+      users: 0,
+      largo_sessions: 0,
+      user_journal: 0,
+      welcome_sequence_state: 0,
+      bie_interactions: 0,
+      push_subscriptions: 0,
+      helix_alert_rules: 0,
+      vector_alert_rules: 0,
+    };
   }
   await ensureSchema();
   const client = guardCheckedOutClient(await (await getPool()).connect());
@@ -2961,16 +3043,32 @@ export async function deleteUserDataForClerkId(clerkUserId: string): Promise<{
       `DELETE FROM user_journal WHERE user_id = $1`,
       [clerkUserId]
     );
-    let pushDeleted = 0;
-    try {
-      const push = await client.query(
-        `DELETE FROM push_subscriptions WHERE user_id = $1`,
-        [clerkUserId]
-      );
-      pushDeleted = push.rowCount ?? 0;
-    } catch {
-      // push_subscriptions is lazily created — table may not exist yet.
-    }
+    const welcome = await client.query(
+      `DELETE FROM welcome_sequence_state WHERE user_id = $1`,
+      [clerkUserId]
+    );
+    const bie = await client.query(
+      `DELETE FROM bie_interactions WHERE user_id = $1`,
+      [clerkUserId]
+    );
+    const pushDeleted = await deleteFromOptionalTable(
+      client,
+      "push_subscriptions",
+      "user_id",
+      clerkUserId
+    );
+    const helixDeleted = await deleteFromOptionalTable(
+      client,
+      "helix_alert_rules",
+      "user_id",
+      clerkUserId
+    );
+    const vectorDeleted = await deleteFromOptionalTable(
+      client,
+      "vector_alert_rules",
+      "user_id",
+      clerkUserId
+    );
     const users = await client.query(
       `DELETE FROM users WHERE clerk_user_id = $1`,
       [clerkUserId]
@@ -2980,7 +3078,11 @@ export async function deleteUserDataForClerkId(clerkUserId: string): Promise<{
       users: users.rowCount ?? 0,
       largo_sessions: largo.rowCount ?? 0,
       user_journal: journal.rowCount ?? 0,
+      welcome_sequence_state: welcome.rowCount ?? 0,
+      bie_interactions: bie.rowCount ?? 0,
       push_subscriptions: pushDeleted,
+      helix_alert_rules: helixDeleted,
+      vector_alert_rules: vectorDeleted,
     };
   } catch (err) {
     await client.query("ROLLBACK");
@@ -8476,6 +8578,38 @@ export async function fetchSwingPositionsRange(sinceDate: string, limit = 1000):
   if (!normalized) return [];
   const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM swing_positions WHERE session_date >= $1::date ORDER BY session_date DESC, id DESC LIMIT $2`,
+    [normalized, limit]
+  );
+  return res.rows.map(mapSwingPositionRow);
+}
+
+/**
+ * Terminal (CLOSED/ROLLED) legs that CLOSED on/after `sinceDate`, unbounded by how long ago the
+ * position was ENTERED — the `/record` route's CLOSED-side sibling to `fetchOpenSwingPositions`'s
+ * BUG FIX comment above (Ask Largo standing mandate, 2026-10-26, live repro MRNA#65): that fix
+ * made "is this position currently open" a present-tense fact, independent of `days`, by unioning
+ * in `fetchOpenSwingPositions()`'s unbounded rows — but "did this position close recently" was
+ * left exactly as exposed as the original bug, because `fetchSwingPositionsRange`/
+ * `fetchClosedSwingPositionsRange` both filter on `session_date` (ENTRY date), never `closed_at`.
+ * Live-measured on prod: MRNA#65 (entered 2026-10-22, closed 2026-10-26T13:46:15Z, a real -34.47%
+ * stop) was completely ABSENT from `closedDeck` under `?days=1/2/3` (whose `since` cutoff,
+ * 2026-10-23..25, postdates the entry) and only appeared once `?days=5+` widened `since` back
+ * past the entry date — so a member or Largo asking "what closed today" via the route's own
+ * default/short-window path saw nothing, even though a real position had just stopped out.
+ * Filters on `closed_at`, the column that actually answers "did this close in the window" —
+ * `session_date`/`committed_at` answer a different question (when was it entered) that happens to
+ * coincide for same-day round trips but diverges for anything held across sessions, which is most
+ * of this product's real population (multi-day swings, not 0DTE).
+ */
+export async function fetchRecentlyClosedSwingPositions(sinceDate: string, limit = 500): Promise<SwingPositionRow[]> {
+  await ensureSchema();
+  const normalized = normalizeIsoDateInput(sinceDate);
+  if (!normalized) return [];
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM swing_positions
+      WHERE status IN ('CLOSED','ROLLED') AND closed_at >= $1::date
+      ORDER BY closed_at DESC, id DESC
+      LIMIT $2`,
     [normalized, limit]
   );
   return res.rows.map(mapSwingPositionRow);

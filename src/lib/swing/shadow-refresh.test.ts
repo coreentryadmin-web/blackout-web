@@ -51,6 +51,17 @@ test("shadowRealizedPnlPct matches roll-plan convention", () => {
   assert.equal(shadowRealizedPnlPct(5, 3), -40);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25): this used to return a fabricated 0 (a flat
+// "breakeven" close) for an invalid entryPremium instead of null — this function is wired into
+// production (swing-active-refresh cron -> closeSwingShadowPosition), so a corrupted entry_premium
+// would have been graded a fake 0% close and marked CLOSED, polluting the calibration feed.
+test("shadowRealizedPnlPct returns null (never a fabricated 0) for an invalid entryPremium", () => {
+  assert.equal(shadowRealizedPnlPct(0, 12.5), null);
+  assert.equal(shadowRealizedPnlPct(-5, 12.5), null);
+  assert.equal(shadowRealizedPnlPct(NaN, 12.5), null);
+  assert.equal(shadowRealizedPnlPct(5, NaN), null);
+});
+
 test("shadowStructuralStopBroken fires for LONG below stop", () => {
   const hit = shadowStructuralStopBroken("long", 189, 190);
   assert.equal(hit.broken, true);
@@ -142,4 +153,28 @@ test("runSwingShadowRefresh marks and closes fail-soft per row", async () => {
   assert.equal(res.closed, 1);
   assert.deepEqual(marks, [2]);
   assert.deepEqual(closed, [7]);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25): a row that would otherwise close+grade on a
+// structural stop, but carries a corrupted entry_premium (0, here), must be SKIPPED, never closed
+// with a fabricated realized_pnl_pct — the row stays OPEN for re-evaluation next pass.
+test("runSwingShadowRefresh skips (never closes/grades) a row with an invalid entry_premium", async () => {
+  let closeAndGradeCalled = false;
+  const res = await runSwingShadowRefresh({
+    fetchOpen: async () => [shadowRow({ id: 11, entry_premium: 0 })],
+    loadReads: async () => ({
+      underlyingPrice: 188, // structural stop would otherwise fire (row's thesis_invalidation_px: 190)
+      mark: 4,
+      dte: 10,
+      nowMs: Date.now(),
+    }),
+    updateMarks: async () => 1,
+    closeAndGrade: async () => {
+      closeAndGradeCalled = true;
+      return 1;
+    },
+  });
+  assert.equal(closeAndGradeCalled, false, "must never close+grade on a fabricated realized_pnl_pct");
+  assert.equal(res.closed, 0);
+  assert.equal(res.skipped, 1);
 });

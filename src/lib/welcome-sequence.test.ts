@@ -198,3 +198,51 @@ test("rows inside the window still send normally", async () => {
   assert.equal(sent.length, 1);
   assert.equal(sent[0].subject, WELCOME_SEQUENCE[1].build({ email: "trader@gmail.com", firstName: "Sam" }).subject);
 });
+
+// ── Per-row isolation ───────────────────────────────────────────────────────────────────────
+// The loop processes up to `limit` (200) due rows per cron invocation. A transient failure on
+// ONE row's state-advance UPDATE (e.g. a dropped DB connection right after a successful send)
+// must not abort every row still queued behind it in the same batch — that email was already
+// sent, so losing the rest of the batch to one row's DB hiccup is strictly worse than isolating it.
+
+test("a thrown error advancing one row's state does not abort the rest of the batch", async () => {
+  const sent: { to: string }[] = [];
+  const queries: { sql: string; params: unknown[] }[] = [];
+  const deps = {
+    dbConfigured: () => true,
+    dbQuery: (async (sql: string, params?: unknown[]) => {
+      queries.push({ sql, params: params ?? [] });
+      if (sql.includes("SET steps_sent") && params?.[0] === "user_1") {
+        throw new Error("connection reset");
+      }
+      return { rows: [], rowCount: 1 };
+    }) as never,
+    sendEmail: (async (input: { to: string }) => {
+      sent.push({ to: input.to });
+      return { ok: true, id: "email_1" };
+    }) as never,
+    syncResendContact: (async () => undefined) as never,
+  };
+
+  const result = await processDueWelcomeSequenceSteps(200, {
+    ...deps,
+    dbQuery: (async (sql: string, params?: unknown[]) => {
+      if (sql.includes("SELECT user_id, email, first_name, steps_sent")) {
+        return {
+          rows: [
+            { user_id: "user_1", email: "a@gmail.com", first_name: null, steps_sent: 0 },
+            { user_id: "user_2", email: "b@gmail.com", first_name: null, steps_sent: 0 },
+          ],
+        };
+      }
+      return deps.dbQuery(sql, params);
+    }) as never,
+  });
+
+  assert.equal(sent.length, 2, "both rows must still be sent even though row 1's own state-advance threw");
+  assert.deepEqual(
+    result,
+    { processed: 2, sent: 1, failed: 1 },
+    "row 1 counts as failed (its state never advanced, so the next run retries it safely); row 2 still counts as sent"
+  );
+});

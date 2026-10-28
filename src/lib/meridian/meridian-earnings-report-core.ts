@@ -144,10 +144,45 @@ function thermalLean(input: ReportInput): { lean: MeridianEarningsReportSignal["
 
 function bestPlayHint(
   verdict: MeridianEarningsReport["verdict"],
+  printed: boolean,
   input: ReportInput
 ): MeridianEarningsReport["best_play"] {
   const em = input.expected_move_pct;
   const emLabel = em != null ? `~${em}% implied band` : "options-implied band";
+  // The print has already landed — "wait for it" is the same forward-looking claim `headline`
+  // and `confidence` were fixed not to make (see the `printed` comment above). Mirrors their
+  // post-print framing (beat/miss/mixed) instead of falling into the pre-print branches below,
+  // which would otherwise say "...into earnings" about a day that already happened.
+  if (printed) {
+    if (verdict === "bullish") {
+      return {
+        headline: "Beat — the reaction is the read now",
+        structure:
+          input.king_strike != null && Number.isFinite(input.king_strike)
+            ? `Reaction trade above king ${input.king_strike.toLocaleString()} — keep risk inside ${emLabel}`
+            : `Reaction-trade call-side structures inside ${emLabel}`,
+        risk: "Gaps can exceed implied move — this is context, not a ticket",
+      };
+    }
+    if (verdict === "bearish") {
+      return {
+        headline: "Miss — the reaction is the read now",
+        structure:
+          input.put_wall != null && Number.isFinite(input.call_wall ?? 0)
+            ? `Reaction-trade put-side or fade setups below call wall ${input.call_wall?.toLocaleString() ?? "—"} · ${emLabel}`
+            : `Reaction-trade put-side structures inside ${emLabel}`,
+        risk: "Short squeezes on beats are common — respect the band",
+      };
+    }
+    return {
+      headline: "Mixed print — no clean directional edge",
+      structure:
+        em != null
+          ? `Vol structures inside ${emLabel} if playing the reaction`
+          : "Stand aside or play vol only with defined risk",
+      risk: "Mixed pillars — avoid forcing a directional read",
+    };
+  }
   if (input.days_until != null && input.days_until <= 1) {
     return {
       headline: "Wait for the print — gap risk dominates",
@@ -456,7 +491,7 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
     headline,
     summary,
     signals,
-    best_play: bestPlayHint(verdict, input),
+    best_play: bestPlayHint(verdict, printed, input),
     risk_note:
       "BlackOut earnings report synthesizes live flow, structure, and fundamentals. Not financial advice.",
   };

@@ -131,7 +131,7 @@ export async function synthesizeTickerVerdict(
   if (ars.news && ars.news.count > 0) {
     // "news" is a mass noun (never "newss"); only "catalyst" pluralizes.
     const noun = ars.scope === "index" ? `catalyst${ars.news.count === 1 ? "" : "s"}` : "news";
-    context.push(`${ars.news.count} recent ${noun}${ars.news.headlines[0] ? ` ("${ars.news.headlines[0]}")` : ""}`);
+    context.push(`${ars.news.count} recent ${noun}${ars.news.headlines[0] ? ` ("${ars.news.headlines[0].headline}")` : ""}`);
   }
   if (ars.related && ars.related.length) context.push(`peers ${ars.related.slice(0, 4).join(", ")}`);
   if (context.length) lines.push(`CONTEXT  ${context.join(" · ")}.`);

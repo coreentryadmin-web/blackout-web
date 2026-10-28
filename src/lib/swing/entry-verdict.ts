@@ -151,9 +151,81 @@ export function commitGateBlocksForVerdict(
             reason: "Cortex preflight could not complete — desk will not open until evidence recovers.",
           };
         }
+        // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro SOXX WATCH): this used to
+        // collapse EVERY non-`cortex_unavailable` G-S14 code to "Cortex preflight vetoed this
+        // setup" — but cortex-gate.ts's own decision table (see its header comment) distinguishes
+        // a genuine VETO from four materially weaker, explicitly non-veto outcomes
+        // (`cortex_net_negative`, `cortex_thin_evidence`, `cortex_contested`,
+        // `cortex_gex_walls_oppose_unresolved`) and a fail-closed "could not verify either way"
+        // outcome (`cortex_veto_blind`) — each already carries its own specific, honest reason
+        // sentence in `cortexGateBlocks()` (cortex-gate.ts), but that text is discarded at the
+        // point this gate's bare code gets persisted (discovery.ts only keeps
+        // `pre.blockedBy`, never `pre.reason`), so by the time a brief/panel renders this gate it
+        // has only the bare code to go on. Rather than re-derive the exact evidence sentence (that
+        // needs a fresh, expensive Cortex read, not available at display time — unlike G-S6's
+        // cheap confluence recompute above), this at least stops telling a member a hard veto fired
+        // when the real decision was a materially weaker one. `code` is left as the existing
+        // `g_s14_cortex` for every branch here (nothing downstream keys off a more granular code
+        // yet) — only the member-facing reason text changes.
+        if (b.includes("cortex_veto_blind")) {
+          return {
+            code: "g_s14_cortex",
+            reason:
+              "Cortex's veto-capable sources (dealer walls, flow) both failed to read — desk will not open until evidence recovers (fail-closed; not a confirmed veto).",
+          };
+        }
+        if (b.includes("cortex_veto")) {
+          // BUG FIX (2026-10-26, Ask Largo standing mandate, live repro MRNA WATCH): the persisted
+          // token is `gate:G-S14:cortex_veto:<source>` (stamped by `swingCortexBlockedByFromAssessment`
+          // in v2/cortex-swing.ts straight off cortex-gate.ts's own `cortex_veto:${v.source}` code,
+          // one of the 8 CORTEX_SOURCES in nighthawk/cortex/types.ts) — the specific source that
+          // vetoed is already sitting in the exact string this branch is matching against, but was
+          // discarded in favor of a flat, source-less sentence. No new persisted field or extra
+          // Cortex read needed (unlike the fuller per-instance evidence sentence the 2026-10-25 fix
+          // explicitly deferred) — this is a one-line split on data already present. `last` guards
+          // against the no-source shape (`gate:G-S14:cortex_veto` with nothing after it, which
+          // `split(":").pop()` would otherwise read back as the literal "cortex_veto" itself) by
+          // falling back to the prior generic sentence rather than naming a fake source.
+          const last = b.split(":").pop();
+          const source = last && last !== "cortex_veto" ? last : null;
+          return {
+            code: "g_s14_cortex",
+            reason: source
+              ? `Cortex preflight vetoed this setup (${source}) — desk will not open.`
+              : "Cortex preflight vetoed this setup — desk will not open.",
+          };
+        }
+        if (b.includes("cortex_net_negative")) {
+          return {
+            code: "g_s14_cortex",
+            reason:
+              "Cortex evidence nets negative against this setup — desk will not open (no veto; the weight of evidence itself argues against it).",
+          };
+        }
+        if (b.includes("cortex_thin_evidence")) {
+          return {
+            code: "g_s14_cortex",
+            reason:
+              "Cortex evidence is too thinly corroborated to trust — desk will not open (no veto; too few sources answered).",
+          };
+        }
+        if (b.includes("cortex_gex_walls_oppose_unresolved")) {
+          return {
+            code: "g_s14_cortex",
+            reason:
+              "An active dealer-wall opposition is unresolved against this setup — desk will not open (no veto; the conviction floor wasn't cleared).",
+          };
+        }
+        if (b.includes("cortex_contested")) {
+          return {
+            code: "g_s14_cortex",
+            reason:
+              "Cortex evidence is contested — real support and real opposition are both present — desk will not open (no veto; the read isn't clean either way).",
+          };
+        }
         return {
           code: "g_s14_cortex",
-          reason: "Cortex preflight vetoed this setup — desk will not open.",
+          reason: "Cortex preflight blocked this setup — desk will not open.",
         };
       }
       return { code: b.replace(/[^a-z0-9_]+/gi, "_").toLowerCase(), reason: `Commit gate blocked (${b}).` };
@@ -184,7 +256,18 @@ function researchGateBlocks(input: SwingEntryVerdictInput): SwingEntryGateBlock[
     return [
       {
         code: "thesis_invalidated",
-        reason: "Structure invalidated — price closed through the structural invalidation level.",
+        // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro SOXX): this used to say "price
+        // CLOSED through the structural invalidation level" — but deriveSetupState (setup-state.ts)
+        // compares the dossier's live (or last-known) INTRADAY spot against the level, never a
+        // settled end-of-day close. "Closed through" claims a stable, settled fact; the real check is
+        // re-evaluated on every scan and can genuinely flip back to FORMING minutes later if price
+        // reclaims the level intraday — live-measured same session: SOXX read INVALIDATED at one
+        // scan, then FORMING again (identical gate blocks otherwise) under an hour later, with no
+        // session close in between. Saying "closed" when the read is intraday overstates how settled
+        // the break is — exactly the precision violation the Largo product contract's "precision"
+        // point exists to catch (same class of bug as this repo's BMO/AMC earnings-timing fixes:
+        // never claim more finality than what was actually measured).
+        reason: "Structure invalidated — price is through the structural invalidation level (live read; can still revert if price reclaims before the thesis window closes).",
       },
     ];
   }
@@ -318,11 +401,27 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
       };
     case "dont_buy":
       if (input.setupState === "INVALIDATED" || input.persistenceObserved === true) {
+        // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro: servingSection stamped
+        // "WATCH" while a freshly-read setupState already reads INVALIDATED): same defect class
+        // as the two sibling fixes in this file (the RESEARCH-section early return above, and the
+        // deadline-expired dont_buy branch below) — `commitGateBlockedBy` is computed once, above
+        // the switch, regardless of which branch fires, but this branch was the one case that
+        // still unconditionally discarded it. Reachable whenever `resolveSwingServingSection`
+        // trusts a stamped `servingSection` that predates a newer setupState/persistenceObserved
+        // read: `sectionForSwingPlay` would route straight to RESEARCH for either condition (which
+        // DOES append the real gate evidence), but a caller that already stamped a non-RESEARCH
+        // section on the row bypasses that recompute entirely (see this file's own
+        // `resolveSwingServingSection`), landing here instead with the live gate codes already in
+        // scope and silently dropped. Same fix: append the real, mapped gate evidence after the
+        // primary thesis-invalidated/persistence-gap reason, never replacing it.
+        const realGateBlocks = commitGateBlockedBy.length
+          ? commitGateBlocksForVerdict(commitGateBlockedBy, gateDiagnostics)
+          : [];
         return {
           deckStatus: "SKIP",
           recommendation: "HOLD",
           recNote: enter.reason,
-          gateBlocks: researchGateBlocks(input),
+          gateBlocks: [...researchGateBlocks(input), ...realGateBlocks],
           actionLabel: null,
           entryAction: "dont_buy",
         };

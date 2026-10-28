@@ -659,3 +659,17 @@ test("new product tools are registered in LARGO_TOOL_DEFS", () => {
     assert.ok(names.has(tool), `${tool} missing from LARGO_TOOL_DEFS`);
   }
 });
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-26): before this fix, `get_swing_play_brief`'s
+// schema had no way for Largo to request the uncollapsed read (no `expandIntel` property existed
+// at all) — the collapsed narrative's own "expand via follow-up chips or Open Largo" note had
+// nothing for Largo itself to call. Pins the new optional boolean parameter exists and is wired.
+test("get_swing_play_brief: exposes an optional expandIntel boolean so Largo can request the uncollapsed read", () => {
+  const def = LARGO_TOOL_DEFS.find((t) => t.name === "get_swing_play_brief");
+  assert.ok(def, "get_swing_play_brief must be registered");
+  const props = def!.input_schema.properties as Record<string, { type?: string }>;
+  assert.ok(props.expandIntel, "expandIntel must be a declared property");
+  assert.equal(props.expandIntel.type, "boolean");
+  // Still optional — omitting it must not break every existing call site that never set it.
+  assert.ok(!(def!.input_schema.required as string[]).includes("expandIntel"));
+});

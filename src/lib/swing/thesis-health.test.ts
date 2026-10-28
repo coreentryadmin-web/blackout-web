@@ -1,6 +1,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { calibratedThesisPillars, computeSwingThesisHealth, thesisHealthUncalibrated } from "./thesis-health.ts";
+import {
+  calibratedThesisPillars,
+  computeSwingThesisHealth,
+  thesisHealthUncalibrated,
+  thesisHealthUnchangedSinceCommit,
+} from "./thesis-health.ts";
 
 describe("computeSwingThesisHealth", () => {
   test("returns null for WATCH rows", () => {
@@ -30,6 +35,51 @@ describe("computeSwingThesisHealth", () => {
     assert.ok(h!.health >= 50);
     assert.equal(h!.pillars.length, 5);
     assert.equal(h!.thesisBreakLevel, "intact");
+  });
+
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro CRWV:63): signalScore()'s label
+  // used to silently drop any signal kind past the first 3, with no "+N more" disclosure, so a
+  // 4-kind setup's "Signal stack" pillar disagreed with the same envelope's "Why this setup"
+  // section (which lists every kind). Only the LABEL was lossy — the blended score already
+  // accounts for every kind via hasFlow/hasVector/hasBanger/count>=3.
+  test("signal stack label discloses truncation past 3 kinds instead of silently dropping one", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: ["FLOW", "STRUCTURE", "CATALYST", "BANGER"],
+      regime: "momentum long",
+      dte: 12,
+      subLane: "STANDARD",
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    const flow = h!.pillars.find((p) => p.id === "flow");
+    assert.ok(flow, "flow_corroboration pillar must be present");
+    assert.match(
+      flow!.currentLabel,
+      /\+1 more$/,
+      `label must disclose the 1 hidden kind instead of silently dropping it — got "${flow!.currentLabel}"`,
+    );
+  });
+
+  test("signal stack label is unchanged (no '+N more') when 3 or fewer kinds are present", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: ["FLOW", "VECTOR"],
+      regime: "momentum long",
+      dte: 12,
+      subLane: "STANDARD",
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    const flow = h!.pillars.find((p) => p.id === "flow");
+    assert.ok(flow);
+    assert.equal(flow!.currentLabel, "FLOW+VECTOR");
   });
 
   test("EXIT manage action degrades persistence pillar", () => {
@@ -257,6 +307,82 @@ describe("computeSwingThesisHealth", () => {
     assert.ok(theta);
     assert.equal(theta!.status, "intact");
     assert.equal(theta!.commitLabel, theta!.currentLabel);
+  });
+
+  // BUG FIX (2026-10-26, Ask Largo x Night Hawk Swings standing mandate): regimeScore() used to
+  // take `factors?.[0]` — the HIGHEST-POINT factor in the array (contributionsToFactors in
+  // swing-pillars.ts sorts descending before this ever sees it) — and treat it as if it were the
+  // "Regime" pillar's own read whenever `regime` itself was null. Live repro: a position with
+  // `regime: null` and a real `{label:"Regime", points:10.4}` entry present in `factors[]` (never
+  // actually consulted) instead produced a fabricated-looking calibrated "Regime fit" read sourced
+  // from whichever OTHER pillar happened to score highest (e.g. "Structure") — a green, partially-
+  // filled bar showing the wrong pillar's label under the "Regime fit" heading.
+  describe("regimeScore() consults the factor actually labeled \"Regime\", never factors[0] by array position", () => {
+    test("regime:null, a real \"Regime\" factor exists but is NOT the highest-point entry — must use it, not the higher-scoring pillar's label", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        signalKinds: ["FLOW"],
+        regime: null,
+        factors: [
+          { label: "Structure", points: 20.5 },
+          { label: "Regime", points: 10.4 },
+        ],
+        dte: 9,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      const regimePillar = h!.pillars.find((p) => p.id === "market");
+      assert.ok(regimePillar);
+      assert.notEqual(
+        regimePillar!.currentLabel,
+        "Structure",
+        "must never borrow a different pillar's label just because it scored higher",
+      );
+      assert.equal(
+        regimePillar!.currentLabel,
+        "Regime",
+        "the real factor actually labeled \"Regime\" must be consulted even though it isn't factors[0]",
+      );
+    });
+
+    test("regime:null, factors[] present but NONE labeled \"Regime\" — must fall through to the honest uncalibrated \"unread\" state", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        signalKinds: ["FLOW"],
+        regime: null,
+        factors: [
+          { label: "Structure", points: 25.5 },
+          { label: "Flow", points: 15.2 },
+        ],
+        dte: 9,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      const regimePillar = h!.pillars.find((p) => p.id === "market");
+      assert.ok(regimePillar);
+      assert.notEqual(
+        regimePillar!.currentLabel,
+        "Structure",
+        "must never substitute the top-scoring pillar's label when no real \"Regime\" factor exists",
+      );
+      assert.equal(
+        regimePillar!.currentLabel,
+        "unread",
+        "with no real \"Regime\" factor present, the honest uncalibrated default must render instead",
+      );
+      assert.ok(
+        thesisHealthUncalibrated(h),
+        "an \"unread\" regime pillar must trip the aggregate-withhold guard",
+      );
+    });
   });
 
   describe("Banger-origin ledger rows must not render a fabricated-precision pillar breakdown (found 2026-09-15)", () => {
@@ -504,6 +630,72 @@ describe("computeSwingThesisHealth", () => {
       });
       assert.ok(h);
       assert.equal(h!.materialGivebackSinceCommit, false);
+    });
+  });
+
+  // BUG FIX (Ask Largo standing mandate, 2026-10-22): the shared predicate behind the 2026-10-07
+  // play-brief.ts fix — pulled out so play-brief-narrative-coaching.ts and play-brief-intel.ts can
+  // apply the identical "has this actually moved since commit" check their own rungLabel/advisory
+  // renders were missing (live-shape repro: a position whose low health reflects imperfect ENTRY
+  // geometry, never a decline, rendering "Weakening"/"Degraded" + "tighten risk" advice as if a
+  // real deterioration had occurred).
+  describe("thesisHealthUnchangedSinceCommit", () => {
+    test("true when no pillar moved and no giveback occurred (the default commit==current case)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        signalKinds: ["FLOW"],
+        regime: "momentum long",
+        dte: 12,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.moves[0], "All swing pillars unchanged since commit.");
+      assert.equal(thesisHealthUnchangedSinceCommit(h!), true);
+    });
+
+    test("false when moves reports a real pillar fade, even phrased as 'unchanged' never applying", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        manageAction: "STOP_OUT",
+        signalKinds: ["FLOW"],
+        regime: "momentum long",
+        dte: 12,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.notEqual(h!.moves[0], "All swing pillars unchanged since commit.");
+      assert.equal(thesisHealthUnchangedSinceCommit(h!), false);
+    });
+
+    test("false when moves is the fallback sentinel BUT a material giveback has still occurred (round-trip hidden from the 4 non-theta pillars)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        thesisBreak: { level: "intact" },
+        dte: 12,
+        subLane: "STANDARD",
+        pnlPct: 1.4,
+        peak: 9.2,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.moves[0], "All swing pillars unchanged since commit.", "moves itself can't see this kind of giveback");
+      assert.equal(h!.materialGivebackSinceCommit, true);
+      assert.equal(
+        thesisHealthUnchangedSinceCommit(h!),
+        false,
+        "a real giveback happened even though the other 4 pillars never flagged it -- must not read as unchanged",
+      );
     });
   });
 });

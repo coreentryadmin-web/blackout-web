@@ -2,6 +2,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
+  fetchOpenSwingPositions,
+  fetchRecentlyClosedSwingPositions,
   fetchSwingPositionChain,
   fetchSwingPositionsRange,
   requireDatabaseInProduction,
@@ -45,7 +47,39 @@ export async function GET(req: NextRequest) {
 
   try {
     const rows = await fetchSwingPositionsRange(since, Math.min(MAX_ROWS, days * 40));
-    const rootIds = selectSwingRecordRootIds(rows).slice(0, MAX_CHAINS);
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25): `fetchSwingPositionsRange` filters on
+    // `session_date >= since` — a currently OPEN/HOLD/TRIM position whose own session_date (entry
+    // date) predates the window is invisible to that query, so `selectSwingRecordRootIds` never
+    // seeds its root and the whole chain silently drops out of `records`, undercounting
+    // `summary.opens`/`nativeOpens`. "Is this position currently open" is a PRESENT-TENSE fact,
+    // not a historical one bounded by how far back `days` happens to look — this file's own
+    // `selectSwingRecordRootIds` doc comment already states the intent ("currently OPEN/HOLD/TRIM
+    // ... a live, committed position"), the gap was only ever in which rows got handed to it.
+    // Live-measured on prod: `?days=1` reported `nativeOpens:0` while `?days=7/30/90` all reported
+    // `nativeOpens:2` for the SAME two real positions. Fixed by independently unioning in
+    // `fetchOpenSwingPositions()`'s rows (status-filtered, unbounded by date) — fail-soft to `[]`,
+    // matching this route's existing per-source fail-soft discipline (see the banger-opens fetch
+    // just below), so a DB hiccup on this extra read degrades to the pre-fix behavior rather than
+    // failing the whole route.
+    const openRows = await fetchOpenSwingPositions().catch(() => []);
+    // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro MRNA#65): the sibling gap to the
+    // 2026-10-25 fix just above — `fetchSwingPositionsRange` filters on `session_date` (ENTRY
+    // date), so a position entered BEFORE the window but CLOSED inside it is invisible to `rows`,
+    // and `openRows` can't rescue it either since it's no longer open. Measured live: MRNA#65
+    // (entered 2026-10-22, closed 2026-10-26T13:46:15Z, real -34.47% stop) was absent from
+    // `closedDeck` under `?days=1/2/3` and only appeared once `?days=5+` widened `since` back
+    // past the entry date — "what closed today" silently returned nothing despite a real closed
+    // position. Fixed the same way: union in `fetchRecentlyClosedSwingPositions(since)`'s rows
+    // (filtered on `closed_at`, unbounded by entry date), fail-soft to `[]` matching this file's
+    // existing per-source discipline.
+    const recentlyClosedRows = await fetchRecentlyClosedSwingPositions(since).catch(() => []);
+    const rootIds = [
+      ...new Set([
+        ...selectSwingRecordRootIds(rows),
+        ...selectSwingRecordRootIds(openRows),
+        ...selectSwingRecordRootIds(recentlyClosedRows),
+      ]),
+    ].slice(0, MAX_CHAINS);
     const chains = await Promise.all(rootIds.map((id) => fetchSwingPositionChain(id)));
     const records = chains.map((chain) => buildSwingRecord(chain));
     const nativeSummary = buildSwingRecordSummary(records, { since, through, days });
@@ -66,12 +100,32 @@ export async function GET(req: NextRequest) {
     };
     const closedDeck = closedDeckSourcesFromChains(chains);
     return NextResponse.json(
-      roundFloats({
-        available: true,
-        summary,
-        records,
-        closedDeck,
-      }),
+      roundFloats(
+        {
+          available: true,
+          summary,
+          records,
+          closedDeck,
+        },
+        2,
+        // keyDp override for sub-$1-option-premium fields, mirroring the sibling horizons route
+        // (src/app/api/market/nighthawk/horizons/route.ts) which added this exact override for
+        // the identical reason: the plain 2dp default destroys precision for sub-$1 contracts.
+        // `entry_premium`/`exit_mark` are the embedded grade_json's own fields (roll-plan.ts's
+        // gradeParentFromMark — entry_premium/exit_mark/realized_pnl_pct all derived from the
+        // SAME unrounded raw mark/entry, written full-precision and passed through this route
+        // untouched per record.ts). Rounding them independently to 2dp at this boundary let a
+        // leg's own DISPLAYED entry_premium/exit_mark stop reproducing its own DISPLAYED
+        // realized_pnl_pct sitting right next to them in the same grade object — a
+        // self-contradictory payload for any consumer reading the grade sub-object directly
+        // (Largo tool, dev, or member). Live repro 2026-10-26: EWZ entry_premium 0.58 (2dp, true
+        // ~0.581) vs exit_mark 3.13 recomputed to 439.66% vs the displayed realized_pnl_pct of
+        // 438.79% — a 0.87pp gap. `entryPremium`/`peakPremium`/`troughPremium` are included too,
+        // for parity with the horizons route and closedDeck's own fields (already round2()'d at
+        // the source in closed-plays.ts, so this override is a no-op there — included so the one
+        // override list covers both the grade sub-object and closedDeck regardless of casing).
+        { entry_premium: 4, exit_mark: 4, entryPremium: 4, peakPremium: 4, troughPremium: 4 },
+      ),
       { headers: NO_STORE_HEADERS },
     );
   } catch (error) {

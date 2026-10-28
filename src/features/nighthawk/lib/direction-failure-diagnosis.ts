@@ -215,7 +215,17 @@ export function diagnoseDirectionRow(row: DebriefAggregateRow): DirectionDiagnos
   };
 }
 
-export type DirectionFailureCauseCount = { cause: DirectionFailureCause; n: number; pct_of_wrong_direction: number };
+export type DirectionFailureCauseCount = {
+  cause: DirectionFailureCause;
+  n: number;
+  pct_of_wrong_direction: number;
+  /** Same cause, tallied against the comparison-winner cohort instead. Null only when that
+   *  cohort is empty. Without this, a cause reads as "the" explanation for 98%+ of failures
+   *  when it is just as common among winners (e.g. catalyst_or_fundamental_conflict) — the
+   *  breakdown alone can't show that, since CohortMeans only tracks a handful of these rates
+   *  and a reader would have to notice the gap themselves. */
+  pct_of_comparison_winners: number | null;
+};
 
 export type CohortMeans = {
   n: number;
@@ -287,11 +297,17 @@ export function diagnoseDirectionFailures(rows: DebriefAggregateRow[], days: num
   for (const r of wrongDirection) {
     for (const c of r.causes) causeCounts.set(c, (causeCounts.get(c) ?? 0) + 1);
   }
+  const winnerCauseCounts = new Map<DirectionFailureCause, number>();
+  for (const r of winners) {
+    for (const c of r.causes) winnerCauseCounts.set(c, (winnerCauseCounts.get(c) ?? 0) + 1);
+  }
   const causeBreakdown: DirectionFailureCauseCount[] = Array.from(causeCounts.entries())
     .map(([cause, n]) => ({
       cause,
       n,
       pct_of_wrong_direction: wrongDirection.length > 0 ? Math.round((n / wrongDirection.length) * 1000) / 10 : 0,
+      pct_of_comparison_winners:
+        winners.length > 0 ? Math.round(((winnerCauseCounts.get(cause) ?? 0) / winners.length) * 1000) / 10 : null,
     }))
     .sort((a, b) => b.n - a.n);
 

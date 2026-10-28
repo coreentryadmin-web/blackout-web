@@ -129,6 +129,22 @@ test("computeLaneRank: named leader skips a peer whose own manage engine says EX
   assert.equal(snap!.total, 3);
 });
 
+// BUG FIX (2026-10-20, Ask Largo standing mandate, static-code sweep): EXITING_MANAGE_ACTIONS
+// omitted STOP_OUT (a position that just hit its own hard -60% capital-preservation stop) even
+// though it is exactly as much a "get out" verdict as EXIT/EXIT_RUNNER — the sibling
+// REDUCE_MANAGE_ACTIONS two lines below already included it. Mirrors the EXIT_RUNNER test above.
+test("computeLaneRank: named leader skips a peer whose own manage engine says STOP_OUT", () => {
+  const lanes = [
+    row("CRWD", 86.5, "COMMIT", undefined, "STOP_OUT"),
+    row("AAPL", 84.4, "COMMIT", undefined, "HOLD"),
+    row("NN", 23, "COMMIT", undefined, "HOLD"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "NN", score: 23 }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "AAPL", "the raw #1 (CRWD) just stopped out — the named leader must skip it");
+  assert.equal(snap!.topScore, 84.4);
+});
+
 test("computeLaneRank: named leader falls back to the raw #1 when every peer is exiting", () => {
   const lanes = [
     row("CRWD", 86.5, "COMMIT", undefined, "EXIT_RUNNER"),
@@ -316,6 +332,25 @@ test("computeLaneRank: playScore uses the raw laneRows precision, not a pre-roun
   assert.equal(snap!.playScore, 25.5, "must read the raw laneRows score (25.5), not the rounded TerminalPlay.score (26)");
   assert.equal(snap!.medianScore, 49.6);
   assert.equal(snap!.deltaFromMedian, -24.1, "delta must be computed from the raw score (25.5 - 49.6), not the rounded one (26 - 49.6 = -23.6)");
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SOXX): the test above confirms
+// computeLaneRank's INTERNAL playScore/deltaFromMedian math correctly uses raw laneRows
+// precision — but laneRankSection's RENDERED text used to print that same raw value directly,
+// which still disagreed with "Why this setup"'s rounded display of the identical score three
+// sections earlier (e.g. "scoring 74." vs "score 73.7"). This proves the rendered line now
+// rounds to match, while deltaFromMedian (never duplicated elsewhere in the brief) stays at its
+// own honest one-decimal precision.
+test("laneRankSection: renders the score rounded to match whyThisSetupSection's display, while deltaFromMedian keeps raw precision", () => {
+  const sec = laneRankSection(play({ ticker: "AAPL", score: 26, status: "WATCH" }), [
+    row("XOM", 52.7, "WATCH"),
+    row("TSM", 49.6, "WATCH"),
+    row("AAPL", 25.5, "WATCH"),
+  ]);
+  assert.ok(sec);
+  assert.match(sec!.body, /score \*\*26\*\*/, "must round the raw 25.5 to 26 to match the 'Why this setup' lede's Math.round(play.score)");
+  assert.doesNotMatch(sec!.body, /score \*\*25\.5\*\*/, "must never show the raw, unrounded score in the member-facing line");
+  assert.match(sec!.body, /-24\.1\*\* vs median/, "deltaFromMedian itself must stay at its own honest raw-precision value, untouched by the display rounding");
 });
 
 test("computeLaneRank: playScore falls back to TerminalPlay.score when the play's own row is absent from laneRows", () => {

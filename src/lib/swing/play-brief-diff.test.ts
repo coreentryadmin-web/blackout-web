@@ -563,6 +563,31 @@ test("diffBriefSnapshots: detects HELIX put-only flow build when call premium is
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-26): the HELIX call/put flow narration used an
+// if/else-if/else-if chain, so when BOTH sides move materially in the SAME refresh (one side
+// collapsing while the other builds — a real, independent sentiment shift, not a coupled one),
+// only whichever branch the chain reached first ever got narrated; the other equally material
+// move was silently dropped, identical in shape to every other "a real change goes unnarrated"
+// bug already fixed in this file (missed section removals, missed roll-watch clears, missed
+// gate-set shifts). Call flow collapsing 80% while put flow builds 125% in the same tick must
+// produce BOTH lines, not just the put one.
+test("diffBriefSnapshots: HELIX call collapsing AND put building in the SAME refresh must both be narrated, not just one", () => {
+  const baseEnvelope = env();
+  const prevResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 500_000, putPremium: 400_000 } };
+  const nextResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 100_000, putPremium: 900_000 } };
+  const prevSnap = snapshotFromBrief(baseEnvelope, play(), extrasFromBriefResponse(prevResponse));
+  const nextSnap = snapshotFromBrief(baseEnvelope, play(), extrasFromBriefResponse(nextResponse));
+  const lines = diffBriefSnapshots(prevSnap, nextSnap);
+  assert.ok(
+    lines.some((l) => l.includes("HELIX tape") && l.toLowerCase().includes("call")),
+    `expected a call-side HELIX line (call premium collapsed 500k -> 100k), got: ${JSON.stringify(lines)}`,
+  );
+  assert.ok(
+    lines.some((l) => l.includes("HELIX tape") && l.toLowerCase().includes("put")),
+    `expected a put-side HELIX line (put premium built 400k -> 900k), got: ${JSON.stringify(lines)}`,
+  );
+});
+
 test("diffBriefSnapshots: narrates a WATCH-candidate direction flip (same play.id, reversed net flow)", () => {
   // Same ticker/play.id as a WATCH candidate would keep across discovery cycles (no positionId
   // suffix pre-commit) — only `direction` differs, exactly what a real net-flow reversal produces.
@@ -764,6 +789,58 @@ test("diffBriefSnapshots: detects a section disappearing (was silently unnarrate
     lines.some((l) => l === "No longer showing: Book context"),
     `expected a "No longer showing" line, got: ${JSON.stringify(lines)}`,
   );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, Largo C3 absence violation): diffBriefSnapshots
+// used to be a bare `lines.slice(0, 8)` with no disclosure when more than 8 real changes fired in
+// one pulse. A refresh after a long gap (overnight, multi-hour stall) can legitimately produce more
+// than 8 independent facts at once, and the lowest-priority ones were silently dropped with zero
+// indication to the member — the exact silent-truncation shape `largo-truncation-probe.mjs` exists
+// to catch on other Largo surfaces (three real shipped bugs: #2433, #2436, #2480).
+test("diffBriefSnapshots: more than 8 simultaneous changes discloses the overflow instead of silently dropping it", () => {
+  const calibratedThesis = (health: number) => ({
+    health,
+    rungLabel: "ok",
+    pillars: [],
+    moves: [],
+    advisory: "",
+    entryIndex: health,
+    currentIndex: health,
+    delta: 0,
+    rung: "OK" as const,
+    committedAtEt: "",
+    computedAtEt: "",
+  });
+  const prev = snapshotFromBrief(
+    env("HOLD — TEST"),
+    play({
+      recommendation: "HOLD",
+      thesisHealth: calibratedThesis(60),
+      pnlPct: 10,
+      mark: 1.0,
+      gateBlocks: [{ code: "gate_a", reason: "x" }],
+      rollCandidate: null,
+    }),
+    { gammaFlip: 100, callWall: 110, putWall: 90, flowCallPremium: 100_000, flowPutPremium: 50_000, trimsFired: 0 },
+  );
+  const next = snapshotFromBrief(
+    env("TRIM — TEST"),
+    play({
+      recommendation: "TRIM",
+      thesisHealth: calibratedThesis(50),
+      pnlPct: 5,
+      mark: 1.3,
+      gateBlocks: [{ code: "gate_b", reason: "y" }],
+      rollCandidate: { reason: "theta outpacing thesis" },
+    }),
+    { gammaFlip: 105, callWall: 120, putWall: 80, flowCallPremium: 200_000, flowPutPremium: 50_000, trimsFired: 1 },
+  );
+
+  const lines = diffBriefSnapshots(prev, next);
+  assert.equal(lines.length, 9, "capped array must be exactly 8 real lines + 1 disclosure line");
+  const disclosure = lines[8]!;
+  assert.match(disclosure, /^\+\d+ more changes? this refresh/, `last line must disclose the overflow count, got: ${disclosure}`);
+  assert.doesNotMatch(disclosure, /^\+0 /, "disclosure must never claim zero overflow");
 });
 
 test("loadPersistedBriefSnapshot: still accepts a well-formed stored snapshot", () => {

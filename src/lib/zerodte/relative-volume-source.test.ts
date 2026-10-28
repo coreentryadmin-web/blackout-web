@@ -15,6 +15,7 @@ let dailyBarsCallCount = 0;
 let minuteBarsCallCount = 0;
 let dailyBarsShouldThrow = false;
 let minuteBarsShouldThrow = false;
+let minuteBarsHang = false;
 
 mock.module("../providers/polygon", {
   namedExports: {
@@ -26,6 +27,11 @@ mock.module("../providers/polygon", {
     fetchStockMinuteBars: async (ticker: string, from: string, to: string) => {
       minuteBarsCallCount++;
       if (minuteBarsShouldThrow) throw new Error("polygon minute bars failed");
+      if (minuteBarsHang) {
+        await new Promise(() => {
+          /* hang — RVOL shadow timeout must win */
+        });
+      }
       return minuteBarsResponses[`${ticker}:${from}:${to}`] ?? minuteBarsResponses[ticker] ?? [];
     },
   },
@@ -66,6 +72,7 @@ beforeEach(() => {
   minuteBarsCallCount = 0;
   dailyBarsShouldThrow = false;
   minuteBarsShouldThrow = false;
+  minuteBarsHang = false;
   cacheStore.clear();
 });
 
@@ -123,4 +130,17 @@ test("computeRelativeVolumeShadow: returns null when today's cumulative-volume f
   minuteBarsShouldThrow = true;
   const result = await computeRelativeVolumeShadow("QQQ", etMs("2026-10-19", 11, 0));
   assert.equal(result, null);
+});
+
+test("computeRelativeVolumeShadow: returns null when Polygon hangs (does not block the scan path)", async () => {
+  const prev = process.env.RVOL_SHADOW_TIMEOUT_MS;
+  process.env.RVOL_SHADOW_TIMEOUT_MS = "80";
+  dailyBarsResponse = new Array(20).fill({ v: 1_000_000 });
+  minuteBarsHang = true;
+  const started = Date.now();
+  const result = await computeRelativeVolumeShadow("HANG", etMs("2026-10-19", 11, 0));
+  if (prev === undefined) delete process.env.RVOL_SHADOW_TIMEOUT_MS;
+  else process.env.RVOL_SHADOW_TIMEOUT_MS = prev;
+  assert.equal(result, null);
+  assert.ok(Date.now() - started < 500, "hung RVOL shadow fetch must time out quickly");
 });

@@ -24,10 +24,14 @@ const state = {
       call_wall: 5600,
       put_wall: 5400,
       flip: 5480,
-      regime: { posture: "long" as const, read: "Long gamma regime." },
+      regime: {
+        posture: "short" as const,
+        read: "Spot 5,500 is below the gamma flip (5,480) → short gamma: momentum / vol expansion, moves accelerate. Resistance 5,600, support 5,400.",
+      },
     },
   } as const,
   failLive: false,
+  marketSession: "OPEN" as "OPEN" | "PRE-MARKET" | "AFTER-HOURS" | "CLOSED",
 };
 
 mock.module("./shared-cache", {
@@ -46,6 +50,21 @@ mock.module("./shared-cache", {
 mock.module("./providers/polygon-options-gex", {
   namedExports: {
     fetchGexHeatmap: async () => (state.failLive ? null : state.heatmap),
+  },
+});
+
+// So the degraded-from-last-good tests below can move the clock to a different session than the
+// one the live snapshot was built under, deterministically rather than depending on the real
+// wall-clock time the suite happens to run at.
+mock.module("./et-session-facts", {
+  namedExports: {
+    etSessionFacts: () => ({
+      market_session: state.marketSession,
+      session_date: "2026-09-01",
+      et_time: "12:00 ET",
+      as_of_et: `2026-09-01 12:00 ET`,
+      is_trading_day: true,
+    }),
   },
 });
 
@@ -87,10 +106,43 @@ test("buildPublicGexSnapshot serves last-good with degraded badge when live fetc
   assert.ok(degraded.degraded_note);
 });
 
+// Regression: a last-good snapshot can be re-served across a session boundary it was never
+// computed for (that is the explicit point of the 24h LAST_GOOD_TTL_SEC cache). Before this fix,
+// `degradedFromLastGood` overrode `market_session` to whatever session is in effect NOW but left
+// the carried-over `read` untouched — so a read built while OPEN (an actionable, un-gated "momentum
+// / vol expansion, moves accelerate" claim) kept asserting live momentum even while `market_session`
+// correctly reported CLOSED. That is exactly the contradiction `applyPublicReadFreshnessGate` exists
+// to prevent for a live compute; the degraded/last-good fallback path bypassed it entirely.
+test("buildPublicGexSnapshot re-gates the carried-over regime read when a last-good snapshot crosses a session boundary", async () => {
+  const { buildPublicGexSnapshot } = await mod();
+  state.cache.clear();
+  state.failLive = false;
+  state.marketSession = "OPEN";
+
+  const live = await buildPublicGexSnapshot("SPX");
+  assert.equal(live.degraded, false);
+  assert.match(live.read, /moves accelerate/i, "sanity: the live OPEN read is the actionable claim");
+
+  // Market closes; live upstream also goes down, forcing the last-good fallback path.
+  state.marketSession = "CLOSED";
+  state.failLive = true;
+  state.cache.delete("public-gex-snapshot:SPX");
+
+  const degraded = await buildPublicGexSnapshot("SPX");
+  assert.equal(degraded.degraded, true);
+  assert.equal(degraded.market_session, "CLOSED");
+  assert.ok(
+    !/moves accelerate/i.test(degraded.read),
+    `degraded read must not keep asserting live momentum once market_session is CLOSED: ${degraded.read}`
+  );
+  assert.match(degraded.read, /^Prior-session structural reference/, degraded.read);
+});
+
 test("buildPublicGexSnapshot returns warming only when no last-good exists", async () => {
   const { buildPublicGexSnapshot } = await mod();
   state.cache.clear();
   state.failLive = true;
+  state.marketSession = "OPEN";
 
   const empty = await buildPublicGexSnapshot("SPY");
   assert.equal(empty.available, false);
@@ -109,6 +161,7 @@ test("buildPublicGexSnapshot marks a snapshot degraded once it is older than the
   const { buildPublicGexSnapshot } = await mod();
   state.cache.clear();
   state.failLive = false;
+  state.marketSession = "OPEN";
 
   const staleAsof = new Date(Date.now() - 5 * 60_000).toISOString(); // 5 min old
   state.cache.set("public-gex-snapshot:SPX", {

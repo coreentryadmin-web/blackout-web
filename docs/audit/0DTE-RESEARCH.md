@@ -249,6 +249,210 @@ than 0-3 real trend samples. **Re-run `npm run ab:regime-dead-zone -- --days=90`
 `session_regime`-stamped trend rows have accumulated — the script is built, live-auth-tested, and ready;
 it just needs a population that doesn't exist yet.
 
+### Live trim_scale tranche-banking never fires in production — CONFIRMED, severity P1, operator decision pending (2026-10-20)
+
+**WHY THIS EXISTS.** Member live-book audit directive: "Verify whether Night Hawk's intended
+trim ladder is +25%, +50%, and +100%... Explain which rules closed today's winners before the
+first trim, especially the ratchet exits. Check whether those rules conflict with the
+intended ladder, and test any correction before changing production."
+
+**The intended ladder, verified against the real shipped constants** (`TRIM_SCALE_RULES`,
+`exit-engine.ts`): tranche_fraction = **1/3** (not half), banked at TWO regime-conditioned peak
+thresholds — `neutral: [20%, 50%]`, `trend: [40%, 80%]`, `range: [15%, 40%]` — then the last
+third runs to the **+100%** target (`PLAN_RULES.target_pct`) or the plan stop/time-stop. The
+module's own doc comment describes the E5-measured recommendation as "⅓@+25% / ⅓@+50%" — the
+SHIPPED neutral constant is actually **+20%**, not +25%; a minor, separate discrepancy between
+the documented recommendation and the live constant, flagged here but not itself the main
+finding. Between tranches, the remaining position is protected by the SAME peak-scaled shared
+floor the ratchet mode uses (`0.4 x peak`, via `trimScaleFloorPct`/`ratchetFloorPct`); once both
+thirds are banked (or peak clears target), a flat **+50%** "runner floor" protects the last
+third.
+
+**What's actually closing today's (and every day's) trim_scale-committed winners: the SAME
+shared floor the ratchet path uses — never a trim.** Checked every one of today's 19 closed
+trades: 13 were frozen at commit as `exit_policy_at_commit: "trim_scale"` (A/B-tier, which
+SHOULD get the ⅓/⅓/run ladder). **Every one of the 13 exited via a `categorizeExitReason`
+"ratchet" bucket** (`ratchet_early_profit_floor`/`ratchet_breakeven_floor`/etc.), `timeline_tranches: null`
+(no partial bank ever recorded), `mfe_capture_pct` consistently ~35-46% of peak — the exact
+signature of a pure `peak*0.4` floor dump, not a banked-then-run ladder. Cross-checked against
+the AUTHORITATIVE (not display-only) `managed_outcome`/`managed_source` fields on
+`GET /api/market/zerodte/record` across a real 14-day window (109 trim_scale rows with a WS-11
+reconstruction present): **every single one** shows `managed_source: "engine"` with a single,
+whole-position exit as the REAL, as-managed outcome — never a genuine partial scale-out —
+while several of those SAME rows' own WS-11 bar-walk reconstruction (`entry_context.executable.tranches`)
+independently shows a real, achievable first-tranche trigger price the underlying genuinely
+reached during the position's real holding window (e.g. MSTR 2026-10-16: reconstruction shows
+a real tranche at 12:35 ET banking 1/3 at +16.13%, a second at 13:06 ET banking another 1/3 at
++45.16% — real price levels that really occurred — yet the row's REAL, live-managed outcome was
+a single "ratchet" exit at +5%, zero tranches ever actually banked). `managedGradeView`
+(record.ts) correctly does NOT substitute the reconstruction's number for the real outcome
+here (its own documented precedence rule: a real exit whose reason needs live state a bar-walk
+can't replay — a ratchet-style floor, thesis-break, flat-timeout — always wins, because
+continuing the bar-walk past an already-closed position is a FICTITIOUS continuation, not a
+correction) — so this is NOT a case of members being shown a wrong number. It IS a case of the
+real, live position management never doing what its own frozen policy promises.
+
+**The mechanism this is consistent with** (`exit-sync.ts`): `resolveTrimBankLive()`/
+`resolveTrimRegimeLive()` gate whether the live engine reads a REAL persisted `trims_taken`
+count, or instead RECOMPUTES it fresh every tick via `trimTranchesArmed(peak, regime)` — the
+EXACT SAME function `decideTrimScale` (exit-engine.ts) calls to compute its own `armed`
+variable, on the SAME inputs. When effectively off, `trimsTaken === armed` by construction on
+every call, so `trimAvailable = armed > taken` can never be true — the trim-ladder's own TRIM
+action is structurally unreachable, and every position instead falls straight through to the
+shared floor-breach EXIT, indistinguishable from a true ratchet row. This exact failure mode
+is independently documented in `FINDINGS.md`'s own history (`ZERODTE_TRIM_BANK_LIVE` "merged
+disarmed... flipping it live is a deliberate operator follow-up" — and `ZERODTE_TRIM_REGIME_LIVE`
+"stays off") as the KNOWN, NAMED bug this exact flag was built to fix. Separately, EVERY
+`exit_policy_snapshot.trailing_rule` checked today shows `active_regime=neutral` regardless of
+the row's own `session_regime` column (`range` in several cases) — directly, observably
+confirming `resolveTrimRegimeLive` is NOT honoring the stamped regime live, consistent with it
+being off. **This sandbox has no access to the live `ZERODTE_TRIM_BANK_LIVE`/
+`ZERODTE_TRIM_REGIME_LIVE` env values** (no AWS creds this session) — the inline code comments
+next to each function's `return true` fallback claim "ON by default (2026-09-03)," which
+directly contradicts both FINDINGS.md's own account and 14+ real days of observed production
+behavior. Whether that is a stale comment describing a flag that was later reverted, or an
+explicit env override in the deployed secret, is NOT resolved here — only the OBSERVED,
+EMPIRICAL production behavior (zero genuine tranche banks across the entire sample) is a
+confirmed fact.
+
+**Test run before any change (per the member's own instruction — "test any correction before
+changing production"):** `scripts/audit/zerodte-trim-bank-live-ab.mjs` replays the real
+historical trim_scale-committed population on real Polygon minute bars through the REAL,
+imported `exit-engine.ts` functions, comparing `broken_live` (today's real shipped mechanics —
+`trimsTaken` forced equal to `armed`) against `fixed` (a genuine, monotonic `trims_taken`
+latch). First run, 45-day window, capped samples: **most real trim_scale rows never reach a
+peak high enough to arm even one tranche at all** (median real peak across 249 real rows:
++5.5%, well under the neutral regime's +20% first trigger; only 45/249, 18%, ever reach
++20%+) — so a capped random sample thins the population this question actually has power over.
+First pass (n=23/25 per half, cap 25): mean_delta TRAIN +0.82% (CI [-0.84, +2.48]), VALIDATION
+-0.01% (CI [-0.43, +0.40]) — thin (3/23, 2/25 rows ever armed a tranche). Re-run with cap 100
+(n=96/90 graded, 8/96 and 19/90 rows now arming a tranche): mean_delta TRAIN -0.39% (CI
+[-1.31, +0.53]), VALIDATION -0.61% (CI [-1.55, +0.34]) — still INCONCLUSIVE (CI straddles zero
+both times), but now consistently slightly NEGATIVE in both halves.
+
+**v2 (member follow-up — "verify the effective flags... test each flag separately and
+together, using realistic fills, costs, and out-of-sample results"):** rewrote the script to
+test all FOUR flag combinations (`neither`/`bank_only`/`regime_only`/`both`) plus a fifth cell
+substituting the member's literal +25% first trigger for the shipped +20%, and switched from a
+bar-derived mechanical fill to a REAL point-in-time NBBO quote at each fill's own bar timestamp,
+filled at the bid (the same conservative, executable-side convention `executableFill`/
+`live_pnl_pct_exec` already use) — a genuinely more realistic cost model than v1's. Also
+directly verified the two flags' EFFECTIVE production state via two independent, non-inferred
+signatures rather than the raw env values (unreadable from this sandbox, no AWS creds): (1)
+every real `exit_policy_snapshot.trailing_rule` checked shows `active_regime=neutral` even for
+rows whose own `session_regime` column says `range` — REGIME_LIVE is off, directly observed,
+not guessed; (2) zero genuine partial-tranche banks across 122 real rows checked (109
+reconstructed + 13 live), despite ~18% of the population clearing a high-enough peak —
+statistically implausible if BANK_LIVE were genuinely on. Both signatures agree: **both flags
+are confirmed off in production today.**
+
+Result, 45-day window, n=57/55 graded per half (cap 60):
+
+```
+TRAIN      BANK_LIVE only: delta +0.74% CI[-0.27,+1.74]   REGIME_LIVE only: delta -0.03% CI[-0.09,+0.03]
+           BOTH:           delta +0.77% CI[-0.19,+1.74]   LITERAL (+25% trigger): delta +0.77% (identical to BOTH)
+VALIDATION BANK_LIVE only: delta -0.21% CI[-2.32,+1.89]   REGIME_LIVE only: delta  0.00% CI[ 0.00, 0.00]
+           BOTH:           delta -0.09% CI[-1.94,+1.75]   LITERAL (+25% trigger): delta -0.09% (identical to BOTH)
+```
+
+Every cell INCONCLUSIVE (CI straddles zero), and — unlike the v1 result — the point estimate
+now **flips sign between TRAIN and VALIDATION** for both BANK_LIVE and BOTH, a weaker and more
+honest "no evidence of benefit either way" result than v1's consistent-negative read; the
+realistic bid-side fill appears to erase most of what looked like a mild edge under v1's
+frictionless mechanical fill. REGIME_LIVE alone never banks anything (expected — its effect
+runs entirely through the shared floor's trend-regime dead-zone branch, a rare case in this
+sample) and its own delta is statistically zero in both halves. The LITERAL +25%-trigger cell
+produced byte-identical results to the shipped +20% cell in both halves (same rows banked, same
+count) — in this sample, the 5-point gap between the member's stated intent and the shipped
+constant never actually changed which bar a tranche armed on, so it does not appear to be the
+source of any of this question's uncertainty.
+
+**No gate, exit rule, or env flag changed by this investigation (either round).** This is a
+confirmed, high-severity (every A/B-tier play, every session, for at least 14 real days)
+finding that the live trim ladder's protective/partial-profit-taking mechanism does not fire —
+but fixing it is an env-var flip, not a code change, and the codebase's own calibration-first
+discipline (FINDINGS.md) explicitly reserves that decision for a deliberate operator review once
+the economic case is clear. Two independent real-cost backtests (v1 and v2, different fill
+models) now agree the economic case is NOT clear on current evidence: v1 leaned mildly negative,
+v2 (the more realistic fill model) is a coin flip with the sign depending on which half of the
+data is looked at. **Protective and time exits (hard stop, thesis-break, flat-timeout, the
+shared floor itself) are all independently verified intact and firing correctly, and are checked
+on every single bar in every cell before any trim/floor logic — a position is never forced to
+wait for a profit target** — this finding is specifically about the MISSING partial-profit-taking
+step, not about any of the capital-protection rules.
+
+**Recommendation:** do not flip `ZERODTE_TRIM_BANK_LIVE`/`ZERODTE_TRIM_REGIME_LIVE` on the
+evidence gathered so far. The mechanism genuinely not firing live is a real, confirmed defect
+relative to the documented design — but "the ladder doesn't run" and "running the ladder would
+make money" are two different claims, and only the first is established. Two rounds of
+real-cost, held-out testing have not found a reliable edge either way. If the flags are flipped
+anyway (an operator call this investigation does not make), do so as a small, monitored,
+reversible rollout — not a blind flip — given the sign instability between TRAIN and VALIDATION
+in the one real-cost model built so far.
+### Loss-side early de-risk A/B — the exit ladder's missing symmetric half, MEASURED, no gate changed (2026-10-20)
+
+**WHY THIS EXISTS.** A live member audit of today's open book (2026-10-20) flagged a real,
+visible asymmetry: closed winners averaging ~+8% (ratchet/trim_scale arming off peaks as low
+as +5-20%) while numerous OPEN positions sat at -20% to -34% with nothing between -10% and
+the -50% hard stop able to touch them. Reading `exit-engine.ts` confirms this is structural,
+not an artifact: the shipped profit ladder (both modes) actively de-risks winners early and
+often; the ONLY loss-side protections are the -50% hard stop, thesis-break (evidence-based —
+a Cortex veto or >=2 clustered opposes exceeding the entry's own margin), and
+`flat_theta_bleed` (unreachable once a position has moved past -10%, i.e. unreachable for
+exactly the population sitting at -20% to -34%). E5 above already measured and documented
+the PROFIT side's own cost (the ratchet "buys win-rate, not EV — scratches runners"); the
+LOSS side had never been measured at all. Member directive: "test proposed improvements on
+separate historical sessions with realistic costs before changing production rules."
+
+**THE CANDIDATE.** `scripts/audit/zerodte-loss-side-exit-ab.mjs`: a LOSS-side tranche,
+symmetric in spirit to the existing profit ladder, layered ONLY onto the still-fully-open
+loser population (never touching a row that already banked a profit tranche, never touching
+the winner side) — once peak-to-current drawdown reaches a trigger threshold AND the
+position has aged past a minimum, exit the whole remainder immediately rather than holding
+to the hard stop/thesis-break. Pulls the REAL historical committed population (`GET
+/api/admin/zerodte/tier-export`, same source `tier-exit-mode-ab.mjs` uses), replays each
+row's REAL contract minute bars under its OWN frozen `exit_policy_at_commit` using the REAL,
+imported `exit-engine.ts` functions (`ratchetFloorPct`/`trimTranchesArmed`/
+`trimScaleFloorPct`/`ratchetTargetReached`/`TRIM_SCALE_RULES` — never reimplemented), with
+real point-in-time NBBO entry/exit quotes and the same $100-multiplier-correct fee model this
+toolkit's sibling real-cost scripts already use. Thesis-break/`flat_theta_bleed` are NOT
+replayed (no point-in-time Cortex evidence to reconstruct them from historical bars alone —
+same disclosed simplification `swing-early-trim-ab.mjs` uses for its own sibling question) —
+this measures the mechanical profit-ladder + hard-stop + time-stop skeleton only. Chronological
+TRAIN/VALIDATION split, held out.
+
+**First live run, 45-day window, n=29 graded per half (capped), 4 candidate thresholds
+(-15%/age>=10min, -20%/age>=15min, -25%/age>=15min, -30%/age>=20min):**
+
+```
+TRAIN:      all 4 thresholds mean_delta NEGATIVE (-2.48pp .. -0.08pp), all CI95 straddle zero
+VALIDATION: all 4 thresholds mean_delta NEGATIVE (-3.39pp .. -2.37pp), all CI95 straddle zero
+```
+
+No single threshold's CI clears zero in either half (every cell reads INCONCLUSIVE by the
+strict bar), but the DIRECTION is consistent across all 8 cells (4 thresholds × 2 halves):
+the candidate loss-side cut underperforms the baseline every time, and the effect is LARGER,
+not smaller, in the held-out validation half. **This is the opposite of a confirming result**
+— a naive, context-free P&L-triggered early loss cut is not supported by real data, and the
+trend argues against it rather than toward it. The likely mechanism is the same one E5 already
+documents for the profit side: 0DTE intraday moves are noisy enough that a fixed threshold cuts
+real chop that would have mean-reverted before the actual time-stop, exactly as a tight
+trailing stop on the profit side was already shown to scratch real runners. This is also a
+coherent (if unmeasured-until-now) justification for why the existing design relies on
+EVIDENCE (thesis-break) rather than raw P&L to cut a loser early — evidence can distinguish a
+real breakdown from noise; a P&L threshold alone cannot.
+
+**No gate/exit rule changed.** The asymmetry is real and now measured on both sides (E5:
+profit side costs EV; this: a naive loss-side fix doesn't clearly help either) — this closes
+the "is the obvious fix actually a fix" question for the P&L-threshold shape specifically,
+without claiming the asymmetry is optimal or closing the broader question. A SMARTER
+loss-side candidate — e.g., a looser EVIDENCE-weighted margin specifically for the loss
+direction (symmetric to thesis-break's own cluster+margin design, not a bare % trigger), or
+conditioning the trigger on regime/age differently — remains open and unmeasured; this run
+only rules out the simplest, most obvious shape. Re-run with a larger population (today's
+45-day/n=29-per-half cap was chosen for a reasonable API budget) before concluding the
+direction is final.
+
 ### Range-regime sub-+15%-peak dead zone — live same-day observation, 2026-09-17, NOT YET MEASURED
 
 Distinct from the trend-regime dead zone above (that one is about peaks in [20%, 40%) that armed
@@ -886,7 +1090,370 @@ on the specific cohort that matters is not enough to act on unilaterally. Flaggi
 grows (`--since=2026-08-25 --json`, no flags needed — it re-derives the window from live data
 every run) before treating either number as settled.
 
-## Edge cases / scenarios still to simulate
+## E7 — "catch bangers like Swift" — operator mandate 2026-10-22, continuing/in-progress
+
+**Context.** Operator directive after seeing a Discord #-swiftx recap (2026-10-21, 22-0 claimed,
+`$XSP 776P +2140%`, `$SPY 771C +414.81%`, `$NVDA 220C +361.54%`, etc.): "Make catching setups
+like these a priority... investigate, implement, test, and keep improving... Do not manufacture
+bangers by loosening risk controls, cherry-picking winners, or using hindsight." This continues
+the 2026-10-20 Swift-comparison work (`zerodte-swift-comparison.mjs`,
+`docs/audit/history/swift-trades/`) on a SECOND, independent real session day — not a restart.
+
+### Step 1 — transcribed + classified a second real session (2026-10-21)
+
+`docs/audit/history/swift-trades/2026-10-21.json` — 21 of the stated 22 trades (the screenshot
+shows a horizontal rule directly above its header suggesting one row was cropped off top; the
+missing 22nd trade is NOT fabricated/guessed, flagged in the file's own `note`). No exact
+alert/exit timestamps exist in this data source (same disclosed limitation as 2026-10-19) — the
+existing script's price-match-window proxy is used instead of a guess.
+
+Ran the existing `zerodte-swift-comparison.mjs` (no changes needed — same tool, second real day):
+
+| Classification | n (18 0DTE trades, 3 out-of-scope non-0DTE excluded) |
+|---|---|
+| COMMITTED (NH traded the same ticker/direction, real timing at/before Swift's window) | 7 |
+| GATE_REJECT (real candidate, rejected by a named gate) | 9 |
+| DISCOVERY_MISS | 2 (both XSP) |
+
+Matches the 2026-10-19 session's core conclusion on a second, independent day: **discovery and
+timing are essentially never the problem** (DISCOVERY_MISS 0/13 then 2/18, and the 2 here are a
+single root cause, see below). The mix of COMMITTED vs GATE_REJECT shifted (39%/50% here vs
+15%/85% on 10-19) — both real, both legitimate, different days.
+
+### Step 2 — XSP DISCOVERY_MISS run to ground: a real data absence, not a code gap
+
+Checked (not guessed) whether XSP is excluded from Night Hawk's scan universe: it is NOT — no
+ticker allowlist gates FLOW discovery, and XSP appears in the local flow-history archive on 3 of
+5 recently-sampled days (10-14, 10-15, 10-16). Collected the previously-missing 2026-10-19/20/21
+flow-history archives (`zerodte-history-collect.mjs --restart`, 71 real UW pages, 5180 new rows)
+and checked 2026-10-21 directly: **UW emitted exactly ONE XSP alert all session — a 29-DTE,
+$800-strike call, nothing resembling the 0DTE 776-strike Swift traded.** No 0DTE XSP flow signal
+existed that day for any discovery pipeline to find. Closed, not actionable from this side.
+
+### Step 3 — gate-rejection pattern: `min_dominance` and `score_floor`/`thesis_rank_reject` recur
+
+Gate codes across the 9 GATE_REJECT trades (SPX ×6, AMD ×3): `min_dominance` appears on both
+tickers (SPX 5-8x per cluster, AMD 2x); AMD's dominant codes are actually `score_floor`×9 and
+`thesis_rank_reject`×9 (plus `max_itm_pct`×5), a different profile than SPX's min_dominance-heavy
+one. `min_dominance` was already identified as the single highest-raw-count gate on 2026-10-19
+(QQQ/SPX/SPY) and real-cost A/B tested then as **INCONCLUSIVE** (TRAIN confirmed the gate,
+VALIDATION n=19 — one short of the n=20 trust bar — pointed the opposite direction;
+`zerodte-min-dominance-real-cost-ab.mjs`, FINDINGS.md 2026-10-20). Re-ran that same script
+(unmodified) with the newly-collected 10-20/10-21 archives in the window, `--days=24`:
+
+| | TRAIN (n=40 PASS / 13 REJECT) | VALIDATION — held out (n=40 PASS / 13 REJECT) |
+|---|---|---|
+| PASS: win rate / net expectancy | 50.0% / +6.13% | 35.0% / -0.75% |
+| REJECT_MIN_DOMINANCE: win rate / net expectancy | 23.1% / +0.97% | 15.4% / **-12.10%** |
+| Verdict | INSUFFICIENT DATA (REJECT n=13 < 20) | INSUFFICIENT DATA (REJECT n=13 < 20) |
+
+This was a real shift from the 2026-10-20 result (the TRAIN/VALIDATION *disagreement* that made
+that run inconclusive was gone — REJECT graded worse than PASS in both halves) but REJECT's own
+population (n=13/half) was still below the n=20 trust bar. Relaunched with
+`--days=40 --max-per-half=60` to try to clear it on real additional history:
+
+| | TRAIN (n=60 PASS / **23** REJECT) | VALIDATION — held out (n=60 PASS / **23** REJECT) |
+|---|---|---|
+| PASS: win rate / net expectancy | 33.3% / -7.30% | 38.3% / -2.19% |
+| REJECT_MIN_DOMINANCE: win rate / net expectancy | 17.4% / **-4.98%** | 21.7% / -5.58% |
+| Verdict | ⚠ REJECT graded BETTER than PASS net of real costs | gate correctly separating (REJECT worse) |
+
+**Now properly powered (REJECT n=23 clears the n=20 bar in both halves) — and the two halves
+DISAGREE again, this time with real statistical weight behind each side, not a thin-sample
+artifact.** TRAIN says the gate is backwards (it rejected setups that would have graded better).
+VALIDATION says the gate is correctly separating. Combined with the smaller `--days=24` run
+above (which showed REJECT beating PASS in BOTH halves), the full picture across three
+independent re-cuts of overlapping-but-different day windows is: **unstable, not just
+"inconclusive for lack of data."** The verdict flips with which days are in the window, and the
+`max_dd` figures are extreme in every cell (-576.67% to -125.72%) — a small number of outlier
+trades plausibly dominate the net-expectancy averages. **Per the operator's own standing
+instruction ("do not manufacture bangers by loosening risk controls... using hindsight"), this
+does NOT clear the bar for touching `min_dominance` either direction.** No gate changed. The
+honest next step on this specific gate is isolating and naming the outlier-driven trades before
+trusting any aggregate number from this population, not re-running the same test a fourth time
+with yet another day-window.
+
+### Step 4 — contract-selection on COMMITTED trades: NOT a tunable "be more aggressive" knob
+
+On the 7 COMMITTED trades (SPY×5, NVDA, AAPL), Night Hawk traded the SAME ticker/direction but a
+materially different, less-leveraged strike (e.g. SPY 775C vs Swift's 771/772/773C; NVDA 217.5C
+vs Swift's 220C) and closed for single-digit/teens % via the ratchet/trim_scale floor instead of
+riding to 200-400%+. Traced WHY: `board.ts`'s FLOW-origin `top_strike` is the strike with the
+MAXIMUM aggression-weighted real premium among the dominant side's own options-flow prints
+(`board.ts` ~line 1264-1277) — it is literally "trade where the real institutional flow money
+concentrated," not a deliberate conservative/ITM preference. Swift's strikes landed at DIFFERENT
+levels than where the flow concentrated that day. This means "pick a cheaper/more-OTM strike" is
+not a parameter to tune on the existing FLOW engine — it would require a genuinely separate
+strategy (e.g. an always-ATM 0DTE lane independent of flow concentration), a materially bigger
+build than a threshold change, and — per the operator's own "do not manufacture bangers" rule —
+one that must be proven across many real days (most 0DTE ATM lottos expire near worthless) before
+shipping, not inferred from these 7 winning examples. Also note: `SETUP_MAX_ITM_PCT=2`/
+`RUNNER_SETUP_MAX_OTM_PCT` already bound the FLOW strike pick on BOTH sides (reject too-deep-ITM
+AND too-far-OTM) — the engine already avoids the most boring, lowest-leverage contracts; it is
+not unconstrained toward conservatism.
+
+**CORRECTION / sharper finding (same investigation, a few hours later): an ATM selector for 0DTE
+already EXISTS and already ships — this is not a build-from-scratch question.**
+`pickAtmZeroDteContract` (`breakout-source.ts` ~line 234) is the REAL, live contract-selector for
+BREAKOUT-origin setups: nearest expiry first, then strike CLOSEST TO SPOT net of a small
+liquidity tie-break — genuinely ATM-seeking, unlike FLOW's "wherever the real premium
+concentrated" pick. The open question is narrower than "build an ATM lane": **when a ticker
+qualifies through BOTH FLOW and BREAKOUT on the SAME direction the same day, which origin's
+contract wins?** Read `mergeSameTickerDiscovery`/`stampFlowEvidenceFromIncoming` (`board.ts`
+~line 448-543) directly — confirmed in the code's OWN doc comments, not inferred: on a
+same-direction merge, "**contract geometry stays with the kept setup**" and "seating order wins
+ties (kept was seated first...)" — i.e. whichever origin seats first (FLOW, per the existing,
+separately-documented FLOW-first-precedence design) keeps its OWN strike pick, and the other
+origin's candidate contract (BREAKOUT's ATM pick, when BREAKOUT also flagged the same
+ticker/direction) is discarded outright — only its score contributes a corroboration boost.
+**This is the single most concrete, already-partially-built lead from this round.** Two real
+unknowns, not yet answered: (1) did BREAKOUT actually ALSO flag SPY/NVDA/AAPL that day (unknown —
+not checked this round; the committed rows show `origin=["FLOW"]` only, meaning either BREAKOUT
+never flagged them, or it did and its origin label was never unioned in because of a timing/order
+detail — needs a real historical check), and (2) if it did, would BREAKOUT's ATM pick have graded
+better across many real days (not just these cherry-picked Swift winners) once real costs are
+applied — NOT the already-existing `merge-precedence-ab.mjs` (that tool tests OPPOSING-direction
+disagreement rows specifically, a different code branch than the same-direction case found here)
+— a genuinely new, not-yet-built real-cost A/B is needed.
+
+### Step 5 — consolidated the two Swift sessions into one verified, machine-readable dataset
+
+`docs/audit/history/swift-trades/consolidated-verified.json` merges the 2026-10-19 (14 trades) and
+2026-10-21 (21 trades) files into one 35-trade dataset, per-trade, with explicit structured
+completeness flags rather than only prose notes: `is_0dte` (computed, not guessed, from
+`expiry === session_date`), `missing_fields` (`alert_ts`/`entry_ts`/`exit_ts` — neither source
+screenshot carries exact timestamps, a property of the source material disclosed per-trade here,
+not an extraction gap), and `verified_fields` (the fields that ARE real/transcribed:
+ticker/side/expiry/strike/entry_px/exit_px/pct/swift_marked). Totals tie out exactly against the
+two source files (35 trades, 31 0DTE, 1 loss — the ambiguous SPX 7695C row).
+
+**Explicit, disclosed limitation this step surfaces rather than papers over**: the operator asked
+to "study all examples, including losses — not just the biggest winners," but this Swift-sourced
+dataset is, by construction, almost entirely a winner population (2026-10-21 is 22-0 per the
+channel's own stated record; 2026-10-19 has exactly one ambiguously-classified loss). Swift's
+recap channel is a highlight feed — it structurally cannot supply a real losing-trade population.
+The dataset's own `dataset_bias_disclosure` field says this plainly: the loss side of this study
+has to come from Night Hawk's OWN real historical losing 0DTE commits, not from manufacturing or
+assuming a loss shape out of Swift's winners. That cross-reference (pulling our own real closed
+0DTE losers via `GET /api/market/zerodte/record` and reconstructing the same pre-entry signals for
+them) is the natural next step before any pre-entry-signal reconstruction (Step 7 below) can honestly
+claim to cover "including losses," not just winners.
+
+### Step 6 — the BREAKOUT co-flag question (Step 4's open item) — answered: NO, and it's decisive
+
+Ran the REAL `screenBreakoutMovers` (`src/features/nighthawk/lib/candidates.ts`) against REAL
+Polygon grouped-daily bars for 2026-10-21 — the session the 7 COMMITTED trades (SPY×5, NVDA, AAPL)
+came from — at a generous `maxKeep=5000` (not production's `top-40`) so a near-miss would still
+show up as "qualifies but ranked low," not just "absent."
+
+| Ticker | real o→c gain | real close_strength | BREAKOUT_MIN_GAIN (2%) | BREAKOUT_MIN_CLOSE_STRENGTH (0.5) | Cleared screen? |
+|---|---|---|---|---|---|
+| SPY | +0.25% | 0.776 | **FAIL** | pass | NO |
+| NVDA | +0.46% | 0.951 | **FAIL** | pass | NO |
+| AAPL | +1.36% | 0.804 | **FAIL** | pass | NO |
+| AMD | +1.25% | 0.791 | **FAIL** | pass | NO |
+
+**None of the four cleared the screen, and all four failed on the SAME single variable** — the
+2% intraday gain floor — while comfortably passing close-strength (0.78–0.95, well above the 0.5
+floor). This is not a close call: AAPL's 1.36% is the nearest of the four and still under half the
+threshold. **This closes Step 4's open question as a real, decisive NO**: BREAKOUT never had a
+candidate for SPY/NVDA/AAPL/AMD on 2026-10-21 to merge with FLOW's, so the
+`mergeSameTickerDiscovery`/"contract geometry stays with the kept setup" mechanism never had an
+opportunity to act on these specific trades — it is a dead end for THIS session's contract-pick
+gap, not the explanation. (It may still matter on a different day where BREAKOUT *does* clear 2%
+gain on a flow-corroborated ticker — that general question stays open; only this session's
+specific trades are resolved.)
+
+**This sharpens the diagnosis back to Step 4's ORIGINAL finding, not its correction**: Swift's own
+strikes that day were within 0.01%–1.9% of the session's close (SPY 771/772/773 vs close 773.09;
+NVDA 220 vs close 221.97; AAPL 337.5 vs close 343.99) — i.e. genuinely near-ATM/slightly-ITM picks
+on underlyings that barely moved (sub-1.5% gain in 3 of 4 cases). The outsized option returns
+(+193% to +415% on the SPY/NVDA calls) are 0DTE leverage/convexity doing the work on a small real
+move, not a big underlying breakout — which is exactly why BREAKOUT (calibrated to find *big*
+moves) was silent. Night Hawk's own committed contract on this cluster (SPY 775C, further from the
+close than any of Swift's three SPY strikes) being less leveraged is therefore, as Step 4
+originally found before the merge-mechanism correction, a direct consequence of FLOW's
+`top_strike` picking "where the real premium concentrated" rather than "nearest to spot" — not a
+contract-geometry-merge issue. No gate/selector changed by this step; it is a negative result on
+the specific lead, reported honestly per the operator's own "report honestly if the evidence
+doesn't support an improvement" instruction, not a reason to keep re-testing the same mechanism.
+
+### Step 7 — reconstructed pre-entry signals on the COMMITTED cluster with the new shadow modules — a real, disclosed limitation, not a win
+
+Task #7 of the mandate: "Reconstruct what was observable before each entry" using the new
+shadow-only `momentum-acceleration.ts`/`relative-volume.ts`/`strike-reachability.ts` modules
+(PR #6614). Ran this on the 7 COMMITTED-cluster trades (SPY×5, NVDA, AAPL, 2026-10-21) using ONLY
+real Polygon minute bars strictly BEFORE each trade's option price-match window (no lookahead), a
+30-minute opening-range as the key level, and a flat-proration RVOL read against each ticker's
+real trailing-20-day average volume.
+
+**First, an honest methodology check that mattered**: of the 7 trades, only 2 (SPY 771C, NVDA
+220C) have exactly ONE price-match window for the session — the other 5 have 3–6 candidate
+windows spanning most of the trading day (e.g. SPY 773C @ $0.56 matches 6 separate times, from
+09:32 to 16:14 ET). A cheap 0DTE option's premium revisits the same price repeatedly across a
+session, so "the first (or last) window" is NOT a reliable single-point entry-time proxy for
+those 5 — reporting a pre-entry signal reconstruction from an arbitrarily-chosen window among 3–6
+real candidates would be false precision, not evidence. Only the 2 unambiguous trades are reported
+below; the other 5 are a genuine data-availability ceiling (exact timestamps don't exist in the
+source, as already disclosed in `consolidated-verified.json`), not something this step can resolve.
+
+| Trade | Pre-entry momentum read | RVOL | What really happened (real bars) |
+|---|---|---|---|
+| SPY 771C @ $0.68 (window 10:09 ET) | `accelerating:false, confirmed:false` (flat/no signal) | 1.09 (normal) | momentum-discovery would NOT have detected a setup here — consistent with a quiet moment, not a miss. |
+| NVDA 220C @ $0.46 (window 10:11–10:30 ET) | `direction:"down", accelerating:true, confirmed:true` | 1.84 (high) | Real minute bars show NVDA genuinely bottomed near $218.0–218.3 in this exact window (strike was $220, so OTM) after opening at $220.96 — a real intraday DIP, not a continuation. NVDA went on to rally hard later that session (Swift's exit premium $2.10, +361.54%, per the Swift recap). |
+
+**The NVDA read is the important, honestly-reported result, not a success.** The new
+`momentum-acceleration.ts` module is deliberately built to detect CONTINUATION (an accelerating
+move confirmed by a same-direction key-level break) — by design it is structurally incapable of
+flagging a contrarian dip-buy as a long setup, and it didn't: it correctly read the real, genuine
+down-move in progress at that moment and reported `direction:"down"`. If `momentum-discovery.ts`'s
+`detected`/`direction` output were (hypothetically) used as a hard long/short signal at that exact
+timestamp, it would have pointed to a PUT, the opposite of Swift's profitable call. **This is not
+a bug in the new modules — it is a real, now-evidenced boundary on what a continuation-style
+momentum signal can ever explain**: at least one of Swift's two cleanly-reconstructable winners was
+a contrarian/mean-reversion entry, a different trade shape entirely from "catch the breakout
+early." Per the operator's own "report honestly if the evidence doesn't support an improvement"
+instruction, this is logged as exactly that — a real limitation, not downplayed or explained away.
+No code changed by this step. The implication for Task #3/#4: any real-cost validation of the new
+discovery path should expect it to catch continuation-shaped setups (if any exist in Swift's
+population) and should NOT be judged a failure for missing contrarian/dip-buy setups like this
+NVDA trade — those need a structurally different signal (e.g. a mean-reversion/exhaustion read),
+which is out of scope for what was built this round and not fabricated here to cover this gap.
+
+### Step 8 — the real-cost A/B for an ATM-biased FLOW selector: genuinely unstable, same shape as `min_dominance`
+
+Step 6's sharpened hypothesis (FLOW's `top_strike` premium-concentration pick, not a merge-
+precedence question, is the real locus of the contract-leverage gap) is now tested directly, not
+just argued. Built `scripts/audit/zerodte-flow-atm-selector-real-cost-ab.mjs` (+
+`lib/flow-atm-selector-eval.mjs`, 11 unit tests): pulls the REAL FLOW-origin committed population
+via `GET /api/admin/zerodte/tier-export`, and for each row grades BOTH the real traded contract
+(`top_strike`, real recorded `entry_premium`) AND a counterfactual nearest-to-spot ("ATM") contract
+through the IDENTICAL real `evaluateExitState`/`TRIM_SCALE_RULES`/`resolveExitModeForTier` exit
+engine, same real time-stop, same regime. Paired design (same commit instant, two strikes), same
+statistical discipline as `swing-early-trim-ab.mjs`'s `comparePolicies()` — mean paired delta with a
+normal-approx 95% CI, chronological TRAIN/VALIDATION split.
+
+**Disclosed approximation** (can't be avoided, not papered over): the ATM counterfactual strike is
+picked by pure distance-to-spot from the real listed-strike universe — it does NOT reproduce
+`pickAtmZeroDteContract`'s full liquidity-quality scoring (spread + OI), which needs a real
+NBBO+OI snapshot for every listed strike at the exact historical commit instant, unavailable
+offline. Its entry premium is therefore the real contract's own first traded bar's open at/after
+the commit timestamp (a real print), not a recorded fill — asymmetric with the actual side's real
+recorded `entry_premium`, disclosed rather than smoothed over.
+
+**First live run, 90-day window (the tool's own max), 144 FLOW-origin rows, ALL 144 paired-graded
+(zero drops in any category — actual-bars/spot/chain/ATM-bars all resolved cleanly), 37/144 (25.7%)
+where the ATM pick happened to equal the real `top_strike`:**
+
+| | TRAIN (n=72) | VALIDATION (n=72) |
+|---|---|---|
+| win rate: actual / ATM | 30.6% / 41.7% | 38.9% / 40.3% |
+| mean P&L: actual / ATM | -16.38% / -11.61% | -4.37% / -5.68% |
+| mean paired delta (ATM − actual) | +4.78pp [-4.81, 14.37] | -1.31pp [-12.45, 9.83] |
+| verdict | INCONCLUSIVE | INCONCLUSIVE |
+
+**Same shape as the `min_dominance` result (Step 3), not a coincidence worth ignoring**: both CIs
+straddle zero, AND the two halves disagree on sign (TRAIN leans ATM, VALIDATION leans actual) —
+genuinely unstable, not merely under-powered (n=72/half is a real, reasonably-powered sample by
+this file's own n≥20 convention). One consistent thread across both halves worth naming, not
+over-reading: ATM's win RATE is higher in both (41.7% vs 30.6%; 40.3% vs 38.9%) even though the
+P&L sign flips — a higher hit rate on smaller average moves is a different trade shape than a lower
+hit rate with occasional large winners, not necessarily a better one net of variance, and this
+script does not have the power to separate those explanations. **Per the operator's own "do not
+manufacture bangers by loosening risk controls... or using hindsight" instruction, this does NOT
+clear the bar to touch `top_strike`'s premium-concentration selection.** No gate/selector changed.
+The win-rate thread (ATM consistently higher hit rate) is the one loose end worth a future look —
+with a larger population once more FLOW-origin history accumulates, not from re-running the same
+90-day window again.
+
+### Status / next checkpoint
+
+**Not solved — six real results this round, none of them a ship:**
+1. `min_dominance` real-cost A/B, run THREE times now at increasing statistical power
+   (n=19/13/23 REJECT per half across the runs) — genuinely **UNSTABLE across day-windows**, not
+   just under-powered. Per the operator's own "do not manufacture bangers... using hindsight"
+   rule, this does not clear the bar to touch the gate. Next step on this thread specifically:
+   isolate the outlier trades driving the extreme `max_dd` figures before trusting any more
+   aggregate runs of the same test.
+2. AMD's `score_floor`/`thesis_rank_reject`/`max_itm_pct` cluster not yet investigated this
+   round — connects to the SEPARATE, already-documented `score_floor` INVERTED finding (E6
+   below, 28 real sessions, 2026-09-17) and is a candidate for the SAME kind of real-cost re-test
+   just run on `min_dominance`.
+3. **CLOSED, negative result (Step 6 above): the FLOW-vs-BREAKOUT same-direction contract-geometry
+   merge mechanism is a dead end for the 2026-10-21 COMMITTED trades** — BREAKOUT never co-flagged
+   SPY/NVDA/AAPL/AMD that day (all four failed the 2% gain floor cleanly; close-strength was never
+   the limiting factor). The real locus of the contract-leverage gap on this cluster is FLOW's own
+   `top_strike` premium-concentration pick (Step 4's original finding), not a merge-precedence
+   question. The genuinely ATM-biased FLOW-origin selector this pointed to WAS built and
+   real-cost/out-of-sample tested — see item 5 below (Step 8): also inconclusive, same shape as
+   `min_dominance`.
+4. **Step 7 above — the new shadow momentum-discovery modules cannot, by design, catch a
+   contrarian/dip-buy entry** (the NVDA 220C reconstruction). Only 2 of the 7 COMMITTED-cluster
+   trades had an unambiguous price-match window at all; of those, one showed a flat/no-signal
+   read (SPY 771C) and the other showed the module correctly reading a real down-move that was
+   actually a dip Swift bought before a later reversal (NVDA 220C). A real, disclosed boundary on
+   what this signal family can explain — not fixed this round, and not something to paper over
+   when Task #3/#4's real-cost validation runs.
+5. **Step 8 above — the ATM-biased FLOW selector real-cost A/B is INCONCLUSIVE and genuinely
+   UNSTABLE, same shape as `min_dominance`** (144 FLOW-origin rows, 90-day window, n=72/half — both
+   CIs straddle zero AND the two halves disagree on sign). Per the same "do not manufacture
+   bangers... using hindsight" discipline, `top_strike`'s premium-concentration selection is NOT
+   touched on this evidence. One loose thread worth a future look, not acted on now: ATM's win rate
+   was higher in BOTH halves even though the P&L sign flipped — needs a larger population before
+   it means anything, not a re-run of the same window.
+
+Checkpoints continue in `docs/audit/nighthawk-0dte-live-journal.json` across the standing Night
+Hawk 0DTE trigger cadence — this is a multi-session research program, not a single-turn task.
+
+### E7 continuation — MOMENTUM origin rebuilt as a WATCH/ENTRY early-entry pipeline (2026-10-25)
+
+**Operator's 2nd-iteration spec, same day as the first MOMENTUM shipment:** catch the setup
+BEFORE the major move, $1.00-$3.00 premium, WATCH vs ENTRY separated with invalidation/expiry,
+contracts selected by room-to-run (never by raw cheapness), estimated value scenarios labeled as
+estimates, and a real historical validation with no look-ahead. Full build: `early-entry-
+pressure.ts` / `early-entry-state.ts` / `early-entry-contract-select.ts` / `early-entry-value-
+scenarios.ts` / `early-entry-alert.ts` / `early-entry-source.ts`, wired live into
+`momentum-signal-discovery.ts` (replacing that file's internals; `discovery_origin` stays
+`["MOMENTUM"]`). 54 new unit tests + 16 rewired integration tests, all passing; full suite 16855
+pass / 0 fail / 3 skipped (pre-existing); `tsc` clean.
+
+**Real historical backtest** (`scripts/audit/early-entry-backtest.mjs` — real Polygon minute
+bars, real listed same-day strikes via `/v3/reference/options/contracts?expired=true`, real
+point-in-time NBBO quotes, real option minute-bar walk, no look-ahead by construction — see the
+script's own header for the full REAL vs. APPROXIMATED disclosure, chiefly: no point-in-time IV,
+so ranking among several qualifying strikes falls back to spread/room-to-run; "reached the money"
+is a bar-touch, not a guaranteed fill; the graded P&L uses a simple mechanical -50%-stop-else-
+hold rule, not the live board's full exit machinery).
+
+**15-session run (2026-10-05…2026-10-23), chronological TRAIN/VALIDATION split:**
+
+| Split | n (ticker-day attempts) | GRADED (real $1-$3 ENTRY) | reached the money | win rate (mechanical rule) | avg P&L | max DD |
+|---|---|---|---|---|---|---|
+| TRAIN | 80 | 19 | **100.0%** | 42.1% | **+32.12%** | -253.33% |
+| VALIDATION (held out, unseen) | 70 | 25 | 88.0% | **12.0%** | **-30.53%** | -763.16% |
+
+Status breakdown (both splits): `NO_SETUP` (no coil ever formed) is the single largest bucket
+(33 + 12 = 45/150); `NO_SAME_DAY_LISTING` (confirmed real — several Mag-7 names list options only
+Mon/Wed/Fri) accounts for 25/150; `INVALIDATED` (coil broke the wrong way) 21/150; `EXPIRED`
+(watch went stale, never triggered) 11/150; `NO_QUALIFYING_CONTRACT` (ENTRY triggered, no listed
+$1-$3 strike survived the hard-reject stage) 4/150; zero `WATCH`-only attempts reached end-of-day
+still watching in this window.
+
+**Read this honestly, per the operator's own "don't optimize around a few spectacular winners...
+validate on separate, unseen dates" instruction:** the DETECTION half of the claim is strongly
+supported — the underlying reached the strike 88-100% of the time after a real WATCH→ENTRY
+trigger, in BOTH halves, which is the core premise ("catch the setup before it runs") actually
+holding up out of sample. The TRADE-MANAGEMENT half is NOT yet supported — TRAIN's apparently
+healthy +32% avg P&L / 42% win rate reversed hard on the genuinely unseen VALIDATION half (-31%
+avg P&L / 12% win rate, a materially WORSE max drawdown), the classic signature of a result that
+looked good on the sample it was shaped by and did not hold up. The most likely driver, visible in
+the per-row backtest output: a flat -50% hard stop keeps getting hit on ordinary intraday
+drawdown (avg MAE -64% to -73% of entry premium) well before the underlying's own later move to
+the strike pays off — not a GEX-wall-ignorant exit, no vol-adjustment, no partial scale-out. **No
+gate/threshold shipped on this evidence; this is the known, disclosed, correctly-separated-from-
+implementation performance question** — a GEX-wall-aware or vol-adjusted stop (or simply a wider
+stop given the measured MAE) is the natural next real-cost experiment, run the same TRAIN/
+VALIDATION way, before any live-sizing claim is made about this origin's edge.
 VIX-regime buckets; trend-day vs range-day; fade-the-open vs follow; gamma-regime (trade toward the
 flip / avoid pinned-to-wall); exit-engine replication vs hold-to-close; SPX/NDX index 0DTE; whole-market
 banger with a realistic scale-out exit rule (quantify realized vs maxRet); news/catalyst-day conditioning;

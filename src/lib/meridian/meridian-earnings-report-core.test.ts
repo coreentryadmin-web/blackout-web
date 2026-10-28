@@ -184,3 +184,30 @@ test("the verdict branch is untouched — an inline print does not get re-routed
   const inline = reportFor({ days_until: 0, post_print: { lean: "inline", headline: "Mixed" } });
   assert.equal(inline.verdict, "neutral", "an inline print stays neutral, not scored off anticipation");
 });
+
+test("best_play is never headlined 'Wait for the print' once the print has landed", () => {
+  // Same forward-looking-claim defect `headline`/`confidence` were fixed for above, surviving in
+  // `best_play`: live repro showed a BEKE report whose headline correctly read "printed — beat;
+  // the reaction is the read now" while best_play directly beneath it still said "Wait for the
+  // print — gap risk dominates" / "Size down or skip directional bets into the release" — a
+  // direct contradiction on the same panel.
+  for (const c of PRINTED_TODAY) {
+    const r = reportFor({
+      ticker: c.ticker,
+      days_until: 0,
+      post_print: { lean: c.lean, headline: "Beat · EPS +50%" },
+    });
+    assert.doesNotMatch(
+      r.best_play.headline,
+      /wait for the print/i,
+      `${c.ticker}: the numbers are out; best_play must not tell a member to wait for them`
+    );
+    assert.doesNotMatch(r.best_play.structure, /only after guidance/i, `${c.ticker}: this phrasing presumes the print hasn't landed`);
+  }
+});
+
+test("best_play keeps the wait-for-print hint for an actually-upcoming print", () => {
+  // The guard must not swallow the case the sentence exists for.
+  const r = reportFor({ days_until: 0, post_print: null });
+  assert.match(r.best_play.headline, /Wait for the print — gap risk dominates/);
+});

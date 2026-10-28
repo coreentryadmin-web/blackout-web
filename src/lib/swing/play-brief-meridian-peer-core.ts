@@ -49,6 +49,33 @@ export type SwingMeridianPeerUnavailable = {
 
 export type SwingMeridianPeerSlice = SwingMeridianPeerAvailable | SwingMeridianPeerUnavailable;
 
+/**
+ * Trailing sizing/hedging instruction this function always appends to a rendered peer-lens
+ * bullet. Exported as a literal constant (2026-10-25, Ask Largo standing mandate, live repro
+ * OUST 31C) so `meridianPeerSection` (play-brief-intel.ts) can detect and replace it, at the
+ * section-assembly layer, for the one case this function itself cannot see: the REVIEWED
+ * position's own contract already expiring on/before the print (no earnings-gap exposure from
+ * THIS position specifically) — see that call site's own comment (SWING:OUST:2127) for the full
+ * contradiction this closes. This function stays pure/play-unaware (it has no `ctx`/`play` to
+ * check an expiry against), the same discipline the 2026-10-24 CLOSED-bucket fix already
+ * established for this exact function.
+ */
+export const EARNINGS_PEER_SIZING_INSTRUCTION =
+  "Peers that beat often gap through implied — size down or hedge vol unless thesis is the print.";
+
+/**
+ * Exported as a literal constant for the same reason as `EARNINGS_PEER_SIZING_INSTRUCTION` above
+ * (2026-10-26, Ask Largo standing mandate, live repro MSFT CLOSED #47): this bullet is an active,
+ * live vol-crush risk warning, but it fires purely off `item.days_until <= 3` with no awareness of
+ * whether THIS brief's own contract is still exposed to that print. `meridianPeerSection`
+ * (play-brief-intel.ts) needs to strip it, not just the trailing sizing instruction, when its own
+ * `noGapExposure` check is true — otherwise the body reads "print imminent — vol crush risk
+ * elevated" immediately followed by "no earnings-gap exposure from this position" about the
+ * identical print, the same contradiction class the sizing-instruction swap already closed for its
+ * half of this sentence.
+ */
+export const EARNINGS_PEER_PRINT_IMMINENT_BULLET = "**print imminent** — vol crush risk elevated";
+
 /** Pure coaching line from peer cohort + catalyst item. */
 export function meridianPeerEarningsCoaching(
   peer: SwingMeridianPeerSlice | null | undefined,
@@ -60,19 +87,29 @@ export function meridianPeerEarningsCoaching(
   if (item.expected_move_pct != null) {
     parts.push(`implied move **${item.expected_move_pct.toFixed(1)}%**`);
   }
-  if (item.days_until <= 7) {
-    parts.push(
-      item.days_until <= 0 ? "reports **today**" : `reports in **${item.days_until}d**`,
-    );
-  }
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SHOP): this baseline line used to
+  // gate on `days_until <= 7` — a narrower sub-window left over from before this function's own
+  // entry gate (above) was widened to 14 days. For an item 8-14 days out with no expected_move_pct
+  // quoted and an unavailable peer cohort, that left `parts` empty and the WHOLE section silently
+  // omitted — while a sibling ticker 7 days out, with the identical unavailable-cohort reason, got
+  // the thin "reports in Nd" fallback. Always push the baseline line for any item the function was
+  // already entered for (days_until 0-14); `days_until <= 3` still adds the extra urgency bullet.
+  parts.push(item.days_until <= 0 ? "reports **today**" : `reports in **${item.days_until}d**`);
   if (item.days_until <= 3) {
-    parts.push("**print imminent** — vol crush risk elevated");
+    parts.push(EARNINGS_PEER_PRINT_IMMINENT_BULLET);
   }
 
   if (peer && peer.available) {
     if (peer.sector_label) parts.push(`sector **${peer.sector_label}**`);
     if (peer.interpretation?.trim()) parts.push(peer.interpretation.trim());
-    if (peer.position_summary) parts.push(peer.position_summary);
+    // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA): whenever the cohort is
+    // thin (distribution === null), describeCohortPosition() (meridian-sector-core.ts) returns
+    // `${label} — ${insufficientReason}` for position_summary — the SAME reason string that also
+    // lands on insufficient_reason below, verbatim. Pushing both unconditionally stated the
+    // identical "no peers reporting..." clause twice in one rendered bullet. position_summary is
+    // only worth stating here when it carries a real ranking (distribution present); the thin-
+    // cohort case is already covered once, by the insufficient_reason caveat below.
+    if (peer.position_summary && peer.distribution) parts.push(peer.position_summary);
     // GAP FOUND (2026-09-21, Ask Largo standing mandate): `shapeMeridianPeerCohortForLargo`
     // (meridian-peer-cohort-for-largo-core.ts) tags the subject ticker's OWN historical print
     // record onto `peer.members` as `is_subject: true` — carrying its own `beat_rate`/
@@ -99,15 +136,27 @@ export function meridianPeerEarningsCoaching(
     }
     const peers = (peer.members ?? []).filter((m) => !m.is_subject && m.beat_rate_n >= 3);
     if (peers.length) {
-      const snippets = peers
-        .slice(0, 3)
+      // BUG FIX (2026-10-20, Ask Largo standing mandate — same Largo C3 absence-disclosure shape
+      // already fixed today in play-brief-diff.ts/envelopeWithDiffSection and already correctly
+      // handled by the sibling meridianCatalystsSection, play-brief-intel.ts). Up to
+      // MAX_PEER_REACTION_TICKERS=6 non-subject peers can qualify with beat_rate_n>=3, but only
+      // the first 3 were ever shown — silently, with no "+N more" note, so a trader had no way to
+      // know the real cohort was larger than the 3 names rendered.
+      const PEER_SNIPPET_LIMIT = 3;
+      const shown = peers.slice(0, PEER_SNIPPET_LIMIT);
+      const snippets = shown
         .map((m) => {
           const beat =
             m.beat_rate != null ? `${Math.round(m.beat_rate * 100)}% beat` : "beat n/a";
           return `**${m.ticker}** ${beat} (n=${m.beat_rate_n})`;
         })
         .join(" · ");
-      parts.push(`peer history: ${snippets}`);
+      const overflow = peers.length - shown.length;
+      parts.push(
+        overflow > 0
+          ? `peer history: ${snippets} (+${overflow} more peer${overflow === 1 ? "" : "s"} not shown)`
+          : `peer history: ${snippets}`,
+      );
     }
     if (peer.insufficient_reason?.trim()) {
       parts.push(
@@ -117,8 +166,5 @@ export function meridianPeerEarningsCoaching(
   }
 
   if (!parts.length) return null;
-  return (
-    `**Earnings peer lens** — ${parts.join(" · ")}. ` +
-    `Peers that beat often gap through implied — size down or hedge vol unless thesis is the print.`
-  );
+  return `**Earnings peer lens** — ${parts.join(" · ")}. ${EARNINGS_PEER_SIZING_INSTRUCTION}`;
 }

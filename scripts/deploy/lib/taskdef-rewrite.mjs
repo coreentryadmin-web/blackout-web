@@ -310,6 +310,56 @@ export function assertDeploymentConfigSane(service) {
   return { ok: failures.length === 0, failures, notes, config: dc };
 }
 
+/** Application Auto Scaling MinCapacity on blackout-production-web (keep in sync with ecs-deploy-config.test.ts). */
+export const WEB_AUTOSCALE_MIN_TASKS = 5;
+
+/**
+ * Smallest desiredCount where a minHealthy>=100 roll gets a spare slot:
+ * floor(desired × maxPercent / 100) >= desired + 1. Returns null if none found in range.
+ */
+export function minDesiredForRollHeadroom(minimumHealthyPercent, maximumPercent, searchMax = 64) {
+  if (minimumHealthyPercent < 100) return 1;
+  for (let d = 1; d <= searchMax; d += 1) {
+    if (d === 1) {
+      if (minimumHealthyPercent === 0) return 1;
+      continue;
+    }
+    const ceiling = Math.floor((d * maximumPercent) / 100);
+    if (ceiling >= d + 1) return d;
+  }
+  return null;
+}
+
+/**
+ * Target desiredCount before a web roll: never below autoscaling floor or roll headroom minimum.
+ * Only scales UP — never lowers a healthy larger fleet.
+ */
+export function targetDesiredBeforeWebRoll(service, autoscaleMin = WEB_AUTOSCALE_MIN_TASKS) {
+  const dc = service?.deploymentConfiguration ?? {};
+  const min = Number(dc.minimumHealthyPercent);
+  const max = Number(dc.maximumPercent);
+  const desired = Number(service?.desiredCount);
+  const headroomMin = minDesiredForRollHeadroom(min, max) ?? autoscaleMin;
+  const floor = Math.max(autoscaleMin, headroomMin);
+  const current = Number.isFinite(desired) ? desired : floor;
+  return Math.max(current, floor);
+}
+
+/**
+ * Smallest desiredCount where minHealthy>=100 rolls can start a replacement task.
+ * Matches WEB_MIN_TASKS in src/lib/ecs-deploy-config.test.ts (autoscaling floor = 5).
+ */
+export function minDesiredCountForZeroLossRoll(minimumHealthyPercent, maximumPercent) {
+  const min = Number(minimumHealthyPercent);
+  const max = Number(maximumPercent);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min < 100) return 1;
+  for (let desired = 1; desired <= 64; desired++) {
+    const ceiling = Math.floor((desired * max) / 100);
+    if (ceiling >= desired + 1) return desired;
+  }
+  throw new Error(`no desiredCount satisfies min=${min} max=${max}`);
+}
+
 /**
  * Verdict for one poll of the PRIMARY deployment. Ported VERBATIM from the workflow's poll loop:
  * `rolloutState == COMPLETED` → done; `FAILED` → fail; `running == desired && desired != 0` → done.

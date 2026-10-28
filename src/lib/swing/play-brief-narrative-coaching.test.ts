@@ -16,6 +16,7 @@ import {
   ivLeverageDivergenceCoaching,
   ivRankCoaching,
   laneRankCoaching,
+  macroTapeCoaching,
   magnetCoaching,
   manageLifecycleCoaching,
   rangeBiasEntryCollisionCoaching,
@@ -170,6 +171,86 @@ test("thesisBreakCoaching: silent when thesis health is uncalibrated (extends #4
 
 test("thesisPillarCoaching: silent when thesis health is uncalibrated (extends #4318)", () => {
   assert.equal(thesisPillarCoaching(play({ thesisHealth: uncalibratedThesisHealth() })), null);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-22, sibling of the 2026-10-07 play-brief.ts fix at
+// this exact gap): low-health fallback reached this branch with NO pillar lost/faded and moves at
+// its "unchanged" sentinel — a position that has sat in a low health band since commit, never
+// having declined — but still rendered the decay-presupposing `advisory` sentence ("Thesis fading
+// — tighten risk..."). Live-shape repro: a position committed at health 50 with imperfect entry
+// geometry, never having moved.
+test("thesisPillarCoaching: low-health fallback reads 'unchanged since commit', not the decay advisory, when nothing actually moved", () => {
+  const line = thesisPillarCoaching(
+    play({
+      thesisHealth: {
+        health: 50,
+        entryIndex: 50,
+        currentIndex: 50,
+        delta: 0,
+        rung: "DEGRADED",
+        rungLabel: "Degraded",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        moves: ["All swing pillars unchanged since commit."],
+        committedAtEt: null,
+        computedAtEt: "20:00",
+        thesisBreakLevel: "warn",
+        thesisBreakNote: "pillars fading",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.3,
+            commitScore: 0.5,
+            currentScore: 0.5,
+            commitLabel: "mature",
+            currentLabel: "mature",
+            status: "intact",
+            contributionPts: 15,
+            deltaPts: 0,
+          },
+        ],
+      } as any,
+    }),
+  );
+  assert.match(line!, /Thesis Degraded.*\(50%\).*unchanged since commit/i);
+  assert.doesNotMatch(line!, /fading|tighten risk/i, "must not assert decay advice for a position that hasn't moved since commit");
+});
+
+test("thesisPillarCoaching: low-health fallback keeps the real advisory when a material giveback DID happen, even though moves itself reports 'unchanged'", () => {
+  const line = thesisPillarCoaching(
+    play({
+      thesisHealth: {
+        health: 50,
+        entryIndex: 50,
+        currentIndex: 50,
+        delta: 0,
+        rung: "DEGRADED",
+        rungLabel: "Degraded",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        moves: ["All swing pillars unchanged since commit."],
+        materialGivebackSinceCommit: true,
+        committedAtEt: null,
+        computedAtEt: "20:00",
+        thesisBreakLevel: "warn",
+        thesisBreakNote: "pillars fading",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.3,
+            commitScore: 0.5,
+            currentScore: 0.5,
+            commitLabel: "mature",
+            currentLabel: "mature",
+            status: "intact",
+            contributionPts: 15,
+            deltaPts: 0,
+          },
+        ],
+      } as any,
+    }),
+  );
+  assert.match(line!, /Thesis Degraded.*\(50%\).*fading.*tighten risk/i);
 });
 
 // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, forensic batch 33): play.trough was
@@ -498,6 +579,106 @@ test("manageLifecycleCoaching: 'next trim' distance prefers execMark (the live b
   // "Premium target rail" line's own room% for the same dollar target — not the mark-basis 94%.
   assert.match(line!, /bid \*\*\$5\.60\*\*, needs \*\*\$11\.30\*\* \(\+102% from here\)/);
   assert.doesNotMatch(line!, /mark \*\*\$5\.83\*\*/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro BLSH — sibling gap to the
+// pnlSection "P&L:" line fix the same day, and the identical shape execSlippageCoaching was fixed
+// for earlier that same day): the "next trim ... bid $X, needs $Y" distance clause is priced off
+// the exact same `contract.bid`/`markAsOf` snapshot the Position section's Mark/Greeks/Spread/P&L
+// lines already disclose staleness for, but this bullet had no `readMs` parameter at all and never
+// referenced it — a stale quote rendered an unqualified dollar figure right next to a sibling
+// "Executable P&L" bullet that DOES carry the caveat for the identical snapshot.
+test("manageLifecycleCoaching: 'next trim' distance clause carries the same stale-quote caveat as the Position section", () => {
+  const readMs = Date.parse("2026-10-25T21:00:00.000Z"); // 1 hour after markAsOf below
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: -49.1,
+      mark: 0.56,
+      execMark: 0.32,
+      markAsOf: "2026-10-25T20:00:00.000Z", // well past the stale bar
+      markIsSync: false,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 2.2, fired: false }],
+        stop_premium: 0.44,
+        target_premium: 2.2,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+    readMs,
+  );
+  assert.match(
+    line!,
+    /bid \*\*\$0\.32\*\*, needs \*\*\$2\.20\*\* \(\+588% from here\)\s*_\(stale — same quote Mark flagged above\)_/,
+    `distance clause must carry the same staleness caveat Position's Exec P&L line carries, got: ${line}`,
+  );
+});
+
+// ROUNDING-CONSISTENCY regression (Ask Largo standing mandate, 2026-10-26, live repro WEN
+// SWING:WEN:2098 HOLD brief): the real contract mid was $0.025 — the Position section displays
+// it rounded as "Mark: $0.03" (fmtOptionUsd), but this bullet's distance % used the RAW 0.025,
+// giving "mark $0.03, needs $0.12 (+380% from here)" when the two dollar figures as PRINTED
+// imply +300% ((0.12-0.03)/0.03). Pre-fix this asserted /\+380% from here/; post-fix the basis is
+// rounded to $0.03 BEFORE the percentage math, so it must agree with the displayed dollar figures.
+test("manageLifecycleCoaching: 'next trim' distance percentage is computed from the rounded (displayed) mark, not the raw sub-cent float", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: -58.3,
+      mark: 0.025,
+      execMark: null,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 0.12, fired: false }],
+        stop_premium: 0.02,
+        target_premium: 0.12,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(
+    line!,
+    /mark \*\*\$0\.03\*\*, needs \*\*\$0\.12\*\* \(\+300% from here\)/,
+    `must agree with the two printed dollar figures (0.12-0.03)/0.03=300%, not the raw-float 380%, got: ${line}`,
+  );
+  assert.doesNotMatch(line!, /\+380% from here/);
+});
+
+// readMs not passed (undefined) falls back to Date.now() inside the function — a fresh markAsOf
+// relative to "now" must not spuriously trigger the stale caveat when the caller omits readMs.
+test("manageLifecycleCoaching: 'next trim' distance clause omits the stale caveat when the quote is fresh", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 3,
+      mark: 5.825,
+      execMark: 5.6,
+      markAsOf: new Date().toISOString(),
+      markIsSync: false,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 11.3, fired: false }],
+        stop_premium: 2.26,
+        target_premium: 11.3,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /needs \*\*\$11\.30\*\* \(\+102% from here\)/);
+  assert.doesNotMatch(line!, /stale/);
 });
 
 // Sibling: once the trigger is already crossed (mark math aside), the "already cleared" framing
@@ -873,6 +1054,75 @@ test("shortInterestCoaching: uses ctx.readMs, not the real wall clock, to judge 
     play({ direction: "LONG" }),
   );
   assert.match(line!, /Short interest/i, "ctx.readMs-fresh DTC read must render, not be withheld as ancient");
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): macroTapeCoaching's hint used to key ONLY off
+// breadth tone, so a genuinely inverted yield curve (its own distinct risk-off signal, same
+// "spread < 0" convention as verdict-core.ts/ecosystem-narrative.ts) was silently dropped whenever
+// breadth read risk-on. These four tests pin: the new disagreement framing fires when the two
+// signals conflict, the curve bullet itself now marks "(inverted)" (previously a bare number), and
+// the pre-existing single-signal branches are untouched when the two signals don't conflict.
+test("macroTapeCoaching: inverted curve + risk-on breadth surfaces the disagreement, not a clean risk-on read", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          macro: { yield_10_year: 4.1, curve_10y_1y_spread: -0.25, cpi: null, as_of: "2026-10-19" },
+          breadth: { tone: "risk-on", summary: null, as_of: "2026-10-19" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "SHORT" }),
+    }),
+  );
+  assert.match(line!, /curve \*\*-0\.25 \(inverted\)\*\*/);
+  assert.match(line!, /disagree/i);
+  assert.doesNotMatch(line!, /shorts face headwind/i, "the conflict framing must replace the single-signal SHORT hint, not append to it");
+});
+
+test("macroTapeCoaching: non-inverted curve + risk-on breadth keeps the existing SHORT headwind framing", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          macro: { yield_10_year: 4.1, curve_10y_1y_spread: 0.3, cpi: null, as_of: "2026-10-19" },
+          breadth: { tone: "risk-on", summary: null, as_of: "2026-10-19" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "SHORT" }),
+    }),
+  );
+  assert.match(line!, /curve \*\*0\.30\*\*/);
+  assert.doesNotMatch(line!, /\(inverted\)/);
+  assert.match(line!, /shorts face headwind/i);
+});
+
+test("macroTapeCoaching: inverted curve + risk-off breadth (agreeing signals) keeps the existing LONG tighter-stops framing", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          macro: { yield_10_year: 4.1, curve_10y_1y_spread: -0.1, cpi: null, as_of: "2026-10-19" },
+          breadth: { tone: "risk-off", summary: null, as_of: "2026-10-19" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      play: play({ direction: "LONG" }),
+    }),
+  );
+  assert.match(line!, /curve \*\*-0\.10 \(inverted\)\*\*/);
+  assert.match(line!, /tighter stops/i);
+  assert.doesNotMatch(line!, /disagree/i);
+});
+
+test("macroTapeCoaching: no macro/breadth data at all returns null", () => {
+  const line = macroTapeCoaching(
+    ctx({
+      ecosystem: { ticker: "NRG", arsenal: { macro: null, breadth: null } } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.equal(line, null);
 });
 
 test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led friction", () => {
@@ -1809,6 +2059,83 @@ test("closedCoaching: stopped SHORT with entry/invalidation levels reports the r
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro CRWV:61/MSFT:49): the cushion
+// line used to unconditionally conclude "not that the stop was wrong" — a verdict watchForSection's
+// own "Since it closed" section (play-brief-intel.ts) directly contradicts whenever spot has since
+// reclaimed the exact same invalidation level ("the exit may have been early"). Both sections render
+// in the same envelope for every closed+stopped play, so a member reading a reclaimed position saw
+// the stop both cleared and implicated for the identical event. closedCoaching now defers to
+// "Since it closed" instead of asserting a verdict that section can contradict.
+test("closedCoaching: stopped LONG whose spot has since reclaimed invalidation defers to 'Since it closed' instead of asserting the stop wasn't wrong", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "LONG",
+      peak: 0,
+      exitPnlPct: -55.1,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 90,
+    }),
+    95, // spot back above the 90 invalidation level — reclaimed
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line!, /not that the stop was wrong/i);
+  assert.match(line!, /see "Since it closed" below/i);
+});
+
+test("closedCoaching: stopped SHORT whose spot has since reclaimed invalidation (dropped back below it) defers to 'Since it closed'", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "SHORT",
+      peak: 0,
+      exitPnlPct: -40,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 110,
+    }),
+    105, // spot back below the 110 invalidation level — reclaimed for a SHORT
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line!, /not that the stop was wrong/i);
+  assert.match(line!, /see "Since it closed" below/i);
+});
+
+test("closedCoaching: stopped LONG whose spot remains through invalidation keeps the original 'not that the stop was wrong' framing (no regression)", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "LONG",
+      peak: 0,
+      exitPnlPct: -55.1,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 90,
+    }),
+    85, // spot still below the 90 invalidation level — not reclaimed
+  );
+  assert.ok(line);
+  assert.match(line!, /not that the stop was wrong/i);
+  assert.doesNotMatch(line!, /Since it closed/i);
+});
+
+test("closedCoaching: stopped play with no spot argument (caller omitted it) keeps the original framing (safe default)", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "LONG",
+      peak: 0,
+      exitPnlPct: -55.1,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 90,
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /not that the stop was wrong/i);
+});
+
 test("closedCoaching: stopped play missing either level falls back to the generic prompt", () => {
   const line = closedCoaching(
     play({
@@ -1976,7 +2303,9 @@ test("magnetCoaching: uses ctx.readMs, not the real wall clock, to judge Vector 
   const readMs = Date.parse("2026-09-05T20:00:00.000Z");
   const vec = {
     asOf: "2026-09-05T20:00:00.000Z",
-    magnet: { strike: 100, distancePct: 3, pull: "up" },
+    // strike/distancePct kept self-consistent with spot=100 below (distance is recomputed from
+    // spot/strike, not trusted off this field verbatim — see the dedicated recompute tests above).
+    magnet: { strike: 103, distancePct: 3, pull: "up" },
     regime: { posture: "long", label: "LONG GAMMA" },
   } as unknown as Parameters<typeof magnetCoaching>[1];
   const line = magnetCoaching(ctx({ readMs }), vec, 100);
@@ -2003,6 +2332,48 @@ test("magnetCoaching: strike matches roundFloats' rounding, not plain toFixed(2)
   assert.ok(line);
   assert.match(line!, /\*\*Gamma magnet 152\.04\*\*/, "must round like roundFloats (152.04), not plain toFixed(2) (152.03)");
   assert.doesNotMatch(line!, /152\.03/);
+});
+
+// BUG FIX (Ask Largo standing mandate, live repro MSTR 2026-10-25): `m.distancePct` is the raw
+// upstream Vector-computed distance, baked in against Vector's OWN spot snapshot at write time —
+// which can differ fractionally from this brief's canonical `spot` param. collectFocalLevels
+// (play-brief-narrative.ts) recomputes the identical magnet's distance fresh from `spot`, and that
+// recomputed value is what feeds both the "Why this setup" narration and the structureLadder widget
+// (play-brief-ladder.ts's own header comment: that widget "can never disagree with 'Trade manager
+// read' about where ... the gamma flip sits"). Live repro: MSTR, magnet strike 161.56, spot 146.54
+// — spot-derived distance is 10.2498...% (rounds to 10.2%), but the live response's Trade manager
+// read bullet showed 10.3%, meaning `vec.magnet.distancePct` disagreed with spot/strike by itself.
+test("magnetCoaching: distance is recomputed from spot/strike, not trusted verbatim off the upstream snapshot (Ask Largo, live MSTR repro)", () => {
+  const readMs = Date.parse("2026-09-05T20:00:00.000Z");
+  const vec = {
+    asOf: "2026-09-05T20:00:00.000Z",
+    // Deliberately WRONG relative to strike=161.56/spot=146.54 (true distance ~10.25%, i.e. "10.2%"
+    // once rounded) — simulates the upstream Vector snapshot having baked in a slightly different
+    // spot at write time than this brief's own canonical spot.
+    magnet: { strike: 161.56, distancePct: 10.8, pull: "up" },
+    regime: { posture: "long", label: "LONG GAMMA" },
+  } as unknown as Parameters<typeof magnetCoaching>[1];
+  const line = magnetCoaching(ctx({ readMs }), vec, 146.54);
+  assert.ok(line);
+  assert.match(line!, /\+10\.2% from spot/, "must show the spot/strike-derived 10.2%, matching the ladder/focal-level reading elsewhere in the same brief");
+  assert.doesNotMatch(line!, /10\.8%/, "must not surface the upstream snapshot's own stale-relative-to-spot distance verbatim");
+});
+
+// Same root fix, the OTHER failure direction: a stale upstream distancePct that reads "far" while
+// the true spot/strike distance is actually inside the 1.2% "sitting on the magnet" band must still
+// get the near-magnet framing, not the generic pivot-node framing.
+test("magnetCoaching: near-magnet threshold also uses the recomputed distance, not the upstream snapshot's", () => {
+  const readMs = Date.parse("2026-09-05T20:00:00.000Z");
+  const vec = {
+    asOf: "2026-09-05T20:00:00.000Z",
+    // Upstream says "5% away" (would NOT trip the near-magnet framing), but strike=101/spot=100 is
+    // genuinely only 1% away — inside the <1.2% "near" band.
+    magnet: { strike: 101, distancePct: 5, pull: "at" },
+    regime: { posture: "long", label: "LONG GAMMA" },
+  } as unknown as Parameters<typeof magnetCoaching>[1];
+  const line = magnetCoaching(ctx({ readMs }), vec, 100);
+  assert.ok(line);
+  assert.match(line!, /You're sitting on the magnet/, "near framing must follow the real spot/strike distance (1%), not the stale upstream 5%");
 });
 
 test("flowPrintsCoaching: stale Vector returns null (Largo C2)", () => {
@@ -2787,6 +3158,39 @@ test("dataHonestyCoaching: stale GEX matrix warns dealer posture may lag (Largo 
   assert.match(line!, /dealer posture may lag spot/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, static-code sweep): this GEX-staleness check
+// (and its sibling age-label call) used to omit ctx.readMs entirely, defaulting
+// gexMatrixStale/gexMatrixAgeMs to a FRESH Date.now() sample instead of the request-wide anchor
+// every other staleness check in this same function already uses (vectorAgeStale above it,
+// gexMatrixStale again below it for closedMarketNote) — the same #5351/#5353/#5355/#5356-class
+// gap play-brief-types.ts's own `readMs` field doc comment names as a documented, not-yet-done
+// follow-up sweep. `asof` is set FRESH relative to `readMs` (age 0, well under
+// GEX_MATRIX_STALE_MS) but `readMs` itself is a fixed historical instant far from the real
+// wall-clock "now" this test actually runs at — proving the verdict follows `ctx.readMs`, not the
+// real clock (same proof shape as the file's existing "an explicit readMs anchor" tests for
+// confluenceCoaching/magnetCoaching/vexCoaching etc.).
+test("dataHonestyCoaching: GEX-staleness check uses ctx.readMs, not the real wall clock (2026-10-20 fix)", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z");
+  const line = dataHonestyCoaching(
+    ctx({
+      readMs,
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          asof: new Date(readMs).toISOString(),
+          gamma_posture: "long",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.doesNotMatch(
+    line!,
+    /GEX matrix \*\*\d/,
+    `a gex read fresh relative to ctx.readMs must not warn stale just because the real wall clock has moved on, got: ${line}`,
+  );
+});
+
 // GAP FOUND 2026-10-08 (Ask Largo standing mandate): neither staleness check above fires for the
 // orthogonal "compute is fresh but the MARKET is CLOSED" case `market_session_note` exists to
 // catch (vector-state-freshness.ts, PR #5306) — live repro INTC SWING:INTC:50 HOLD brief,
@@ -2985,6 +3389,24 @@ test("dataHonestyCoaching: uses ctx.readMs, not the real wall clock, to judge Ve
 test("execSlippageCoaching: flags wide mid vs fill gap", () => {
   const line = execSlippageCoaching(play({ pnlPct: 50, execPnlPct: 30 }));
   assert.match(line!, /slippage/i);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro MRNA): execPnlPct is priced off the
+// identical bid/ask snapshot pnlSection's Greeks/Spread lines (play-brief.ts) already flag stale —
+// this bullet must carry the same caveat rather than reading as a freshly-measured fill.
+test("execSlippageCoaching: appends the stale-quote caveat when the mark/quote snapshot is aged", () => {
+  const readMs = Date.parse("2026-09-05T21:00:00.000Z");
+  const stale = execSlippageCoaching(
+    play({ status: "OPEN", pnlPct: 50, execPnlPct: 30, markAsOf: "2026-09-05T20:00:00.000Z", markIsSync: false }),
+    readMs,
+  );
+  assert.match(stale!, /stale — same quote Mark flagged above/, `got: ${stale}`);
+
+  const fresh = execSlippageCoaching(
+    play({ status: "OPEN", pnlPct: 50, execPnlPct: 30, markAsOf: "2026-09-05T20:58:00.000Z", markIsSync: false }),
+    readMs,
+  );
+  assert.doesNotMatch(fresh!, /stale/, `a fresh quote must not carry a staleness caveat, got: ${fresh}`);
 });
 
 test("ivRankCoaching: fires when play carries ivRank", () => {
@@ -3427,6 +3849,34 @@ test("laneRankCoaching: still names the real leader for a healthy rank-1 WATCH s
   );
   assert.match(line!, /Lane leader/);
   assert.match(line!, /#1 of 2/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SOXX): laneRankCoaching's "Lane
+// leader" bullet used to print `snap.playScore` verbatim — laneRows' own raw one-decimal
+// precision — which disagreed with the SAME play's score as shown rounded by "Why this setup"'s
+// lede a few sections earlier in the brief. Proves the rank-1 leader line now rounds to match.
+test("laneRankCoaching: rounds the rank-1 leader's score to match whyThisSetupSection's display", () => {
+  const lanes = [
+    laneRow({ ticker: "SOXX", score: 73.7, status: "WATCH", setupState: "TRIGGERED" }),
+    laneRow({ ticker: "GOOGL", score: 51, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "SOXX", score: 74, status: "WATCH", setupState: "TRIGGERED" }),
+    lanes,
+  );
+  assert.match(line!, /score \*\*74\*\*/, "must round the raw 73.7 to 74 to match the rounded score shown elsewhere in the brief");
+  assert.doesNotMatch(line!, /\*\*73\.7\*\*/, "must never show the raw, unrounded score in the member-facing line");
+});
+
+// Same fix, the "below lane median" branch (a distinct call site in the same function).
+test("laneRankCoaching: rounds the below-median score to match whyThisSetupSection's display too", () => {
+  const lanes = [
+    laneRow({ ticker: "XOM", score: 90, status: "WATCH", setupState: "TRIGGERED" }),
+    laneRow({ ticker: "NN", score: 25.5, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(play({ ticker: "NN", score: 26, status: "WATCH" }), lanes);
+  assert.match(line!, /score \*\*26\*\*/, "must round the raw 25.5 to 26 to match the rounded score shown elsewhere in the brief");
+  assert.doesNotMatch(line!, /\*\*25\.5\*\*/, "must never show the raw, unrounded score in the member-facing line");
 });
 
 // Live repro 2026-09-12: CG sat #90/90 by raw entry-time score (3) — a real +169.2%/+134.6% exec

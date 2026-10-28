@@ -1,3 +1,359 @@
+## WATCH LIST — 2026-10-26 SPX Slayer discloses `oi_changes`/`iv_term_structure` as permanently missing (PR pending at time of writing — see commit for the merged SHA)
+
+**What was shipped:** `buildDeskDataQuality()` (`spx-desk.ts`) now names `oi_changes` and
+`iv_term_structure` in `data_quality.missing` **unconditionally, every call** — those two
+`SpxDeskPayload` fields are structurally dead (no function anywhere computes them; the canonical
+build hardcodes `[]`), so before this fix nothing distinguished "never computed" from "genuinely
+zero today". Also closed two wiring gaps found while verifying the disclosure actually reaches
+consumers: `SpxDeskSummary` (the object Largo's `get_spx_structure`/`get_market_context`/
+`get_platform_snapshot` return to the model) never carried `data_quality` at all — now populated
+via `summarizeSpxDesk()` — and the admin dashboard's issue surfacer only read `data_quality` inside
+a block gated on an unrelated `vix_term_partial` flag — now has its own always-evaluated, `info`-
+severity check. No real OI-change/IV-term-structure computation was added (disclosure fix only, per
+scope). Full suite + `tsc --noEmit` clean before merge (see PR for exact counts).
+
+**Specific thing to check next cycle:** ask Largo a question that would normally pull
+`get_spx_structure` (e.g. "what's SPX dealer positioning and OI changes look like right now") and
+confirm the tool result's `data_quality.missing` array includes `"oi_changes"` and
+`"iv_term_structure"` — this is new; before this PR the field didn't exist on that object at all.
+Separately, open the admin SPX dashboard's issues panel and confirm an `info`-severity "OI-change /
+IV-term-structure not computed" item is present (it should be present on EVERY load, not
+conditionally) — this is a disclosure-only change, so there is no behavior difference to spot in
+the board/UI itself beyond these two new visible facts.
+
+## WATCH LIST — 2026-10-26 `thesis_invalidated` gate reason no longer claims a settled close (PR #6899, merged `3e0ccc805`)
+
+**What was shipped:** Corrected the swing `thesis_invalidated` gate reason (`entry-verdict.ts`) and
+two `setup-state.ts` doc comments from "price **CLOSED** through the structural invalidation
+level" to accurate wording describing a **live, intraday** read that can revert if price reclaims
+the level before the session closes. No gating-behavior change — wording/precision fix only. Full
+suite 17128/0/3-skipped green, `tsc` clean before merge.
+
+**Specific thing to check next cycle:** pull a swing WATCH play-brief for any candidate whose
+thesis has broken pre-entry (`GET /api/market/swing/play-brief?...&status=WATCH`, look for
+`setupState: "INVALIDATED"`) and confirm the "Trade manager read" section's gate text now reads
+"price is through the structural invalidation level (live read; can still revert...)" rather than
+the old "closed through" phrasing. No live repro needed beyond this — it's a pure text change,
+and the regression test (`entry-verdict.test.ts`) already locks in the corrected wording
+mechanically; this is just a courtesy live spot-check, not a required re-verification.
+
+## WATCH LIST — 2026-10-26 `GET /api/market/swing/record`'s `closedDeck` now shows a position that closed today even if entered before the `days` window (PR #6864, merged `9af62d888`) — LIVE-CONFIRMED 16:31 UTC
+
+**What was shipped:** `fetchRecentlyClosedSwingPositions(sinceDate)` (`src/lib/db.ts`) — filters
+on `closed_at` (unbounded by entry date), unioned into `/record`'s `rootIds` alongside the
+existing entry-date-windowed and currently-open unions. Live repro: MRNA (positionId 65, entered
+2026-10-22, closed 2026-10-26T13:46:15Z, real -34.47% stop) was completely absent from
+`closedDeck` under `?days=1/2/3` before this fix. Full suite 17087/0/3-skipped green, `tsc` clean
+before merge.
+
+**CONFIRMED LIVE, WORKING CORRECTLY, 16:31 UTC** — re-pulled `GET /api/market/swing/record?days=1`
+~28 min post-merge, once the production deploy had time to land: `closedDeck` now correctly
+contains MRNA (positionId 65), the exact row that was invisible before the fix. No further
+re-check needed on this item.
+
+## WATCH LIST — 2026-10-26 Ask Largo news headlines carry their own publish-age (PR #6839, merged `d645872cf`) — LIVE-CONFIRMED 14:05 UTC
+
+**What was shipped:** `arsenal.news.headlines` widened from a bare `string[]` to
+`{headline, publishedAt}[]` — `catalystsSection` (swing play-brief's "Catalysts & news") now
+renders each headline with its own age suffix (e.g. "(3h ago)" / "(2d ago)") instead of only
+disclosing the batch-level fetch time. Full suite 17047/0/3-skipped green, `tsc` clean before
+merge.
+
+**CONFIRMED LIVE, WORKING CORRECTLY, 14:05 UTC** — re-pulled the same PLTR WATCH brief
+(`GET /api/market/swing/play-brief?playId=SWING:PLTR&ticker=PLTR&status=WATCH&right=C&strike=195`)
+~34 min after merge, once the production deploy had time to land. Headlines now render with real
+age suffixes: "Piper Sandler Maintains Overweight on Palantir Technologies... (3d ago)",
+"Citigroup Maintains Buy on Palantir Technologies... (4d ago)", "Palantir Announces Sovereign AI
+Work... (5d ago)" — exactly the gap the fix closed: these items are genuinely days old and were
+previously invisible under the old batch-only `as_of` disclosure (which only showed when the
+FETCH ran, same-cycle-fresh regardless of each article's real age). Confirms the earlier 13:4x
+check (no age suffix yet) was the deploy-lag explanation, not a defect. No further re-check
+needed on this item.
+
+## WATCH LIST — 2026-10-26 Swing banger-same-ticker position silently hidden from the board (PR pending at time of writing — see commit for the merged SHA)
+
+**What was shipped:** `mergeBangerPositionsIntoSwingPlays` (`src/lib/swing/banger-lane-merge.ts`)
+used to drop EVERY Engine B (Banger) open position from `GET
+/api/market/nighthawk/horizons?view=swings`'s SWING lane whenever the native swing engine already
+managed a (possibly completely different) position on the same ticker — not just protect the
+native row from eviction, but silently discard the banger row too, even when it was a genuinely
+separate, independently-capitalized position. Live-confirmed on PANW: native COMMIT row `id=67`
+(370-strike call) + banger OPEN row `id=2103` (400-strike call, confirmed via `GET
+/api/market/banger/board`) — `id=2103` never appeared in `committed[]`/`watch[]` anywhere, while
+`GET /api/market/swing/record`'s `summary.bangerOpens` correctly counted it as real. Fixed: a
+banger OPEN row is now always added to the merged lane; eviction only ever removes a PRE-ENTRY
+native row (WATCH/no-ledger-capital) on the same ticker, never an already-live one, exactly
+matching the invariant the function's own doc comment already stated for the native side.
+
+**Specific thing to check at next RTH open:** find (or wait for) a ticker that carries BOTH a
+native `swing_positions` OPEN/HOLD/TRIM position and a separate `banger_positions` OPEN/PARTIAL
+position at the same time — cross-check `GET /api/market/banger/board`'s `open[]` array against
+`GET /api/market/nighthawk/horizons?view=swings`'s `board.lanes.SWING.committed[]`
+`positionId`s — and confirm BOTH positionIds now appear as separate rows on the board (not just
+the native one). Separately, confirm `board.lanes.SWING.committedCount` plus `watchCount`
+reconciles with `GET /api/market/swing/record`'s `summary.opens` (native + banger) without an
+unexplained gap, the way 92-vs-93 did pre-fix. Also confirm the ordinary single-position-per-ticker
+case (the overwhelming majority of the book) is completely unchanged — no duplicate rows for a
+ticker that only ever has one real open position.
+
+## WATCH LIST — 2026-10-26 SPX Slayer cold-replica pulse `market_status: "open"` literal regardless of `market_open` — fixed, not yet live-reproduced on fresh (post-deploy) traffic
+
+**What was fixed:** `buildSpxDeskPulseMinimal()` (`src/features/spx/lib/spx-desk.ts`), the
+cold-replica/bootstrap fallback for `GET /api/market/spx/desk`, hardcoded `market_status: "open"`
+as a bare literal regardless of the real `rthOpenNow` boolean it assigns to the sibling
+`market_open` field. Live-caught 2026-10-26 ~09:09 UTC (pre-RTH, `source: "none"` degraded shell):
+`market_open: false` paired with `market_status: "open"` in the same payload — a direct
+self-contradiction also surfaced verbatim on the admin SPX dashboard's `desk.market.status`
+field. Fixed to `market_status: rthOpenNow ? "open" : "closed"`, matching every other
+`market_status` fallback in the same file.
+
+**Why not yet live-verified post-fix:** the bug only fires when the degraded cold-replica path is
+actually served (source: "none"), which happens on a cache miss/slow full-desk build — not
+something to force on demand without risking a real desk read. Confirmed via a source-level
+regression test (RED pre-fix, GREEN post-fix) rather than a forced live repro.
+
+**Specific thing to check at next pre-market open (before 9:30 AM ET, ideally the 4:00-7:00 AM ET
+dead zone where this was originally caught) or next time `/desk` serves `source: "none"`:** pull
+`GET /api/market/spx/desk` and confirm `market_open`/`market_status` always agree (`market_open:
+false` never paired with `market_status: "open"`, and vice versa) — check the admin SPX
+dashboard's `desk.market` block too, since it surfaces the same two fields raw.
+
+## WATCH LIST — 2026-10-26 Swing Ask Largo book-risk sizing feedback + structure-ladder reward:risk evidence (PR #6789 merged `9464fdada`, PR #6790 merged `f75c261bb`) — shipped, deploy not yet observable live (needs a FRESH native commit post-deploy; market closed at ship time)
+
+**What was shipped:** two additive enhancements to the swing play-brief. #6789: a "Book risk" bullet
+in "Why this setup" citing this position's own share of the engine's $100k-reference-book budget
+caps (`bookRiskLine`, correctly framed as the engine's own discipline, never the member's personal
+account risk). #6790: `evidence_numbers` now cites each favorable-side structure-ladder rung's own
+reward:risk (`R:R to <rung> ($<price>): N.NR`), already rendered visually in the UI but never
+reaching the plain-text evidence array.
+
+**Why not yet live-verified:** checked two real committed positions (CRML — BANGER-origin,
+correctly never has a budget_verdict at all since BANGER positions don't go through commit.ts's
+budget gate; PANW:67 — a genuine NATIVE swing commit, but committed well before this fix deployed,
+so its `entry_context.budget_verdict` still carries the OLD thin `{blocked, blockedDimensions}`
+shape, which `parseBudgetVerdictStamp` correctly reads as null — honest absence on a pre-fix
+historical row, exactly as designed, not a bug). Verifying the bullet actually renders needs a
+BRAND NEW native swing commit made AFTER the deploy, which can't happen before the market opens.
+
+**Specific thing to check at next RTH open:** once a fresh native swing position commits today,
+pull its play-brief and confirm the "Why this setup" section shows a "Book risk" bullet with real
+percentages (not absent); separately, pull any WATCH/OPEN/CLOSED play whose structure ladder has at
+least one favorable-side rung and confirm `evidence_numbers` (or the admin/debug envelope view)
+carries an "R:R to ..." line matching the UI's own "X.XR" chip.
+
+## WATCH LIST — 2026-10-26 SPX Slayer closed-market confluence computed off degraded bootstrap shell (PR #6780, merged + deployed `06021c2b`) — fixed, deploy validated green but exact repro condition not yet live-observed
+
+**What was fixed:** the closed-market `SCANNING` branch of `evaluateSpxPlayCore`
+(`spx-play-engine.ts`) gated computing a closing confluence read on `desk.price > 0` alone. A
+cold-cache bootstrap shell (`buildBootstrapFastLane`/`deskShellFromPulse`, built whenever the
+merged-desk cache misses right after the per-day `spx-merged:${date}` key rolls over at ET
+midnight) has a real price and `available: true` but no GEX/flow layer merged in — `source`
+stays at its documented `"none"` degraded-shell marker. `computeSpxConfluence`'s own
+`!desk.available` guard never caught that shape, so it returned a non-null, empty-`factors`
+object instead of `null`, and `assessed: closedConfluence != null` read `true` off it — the
+dashboard reported "session assessed, grade D" for a tick the desk never actually built a real
+read on. Fixed by also gating on `desk.source !== "none"`.
+
+**Post-deploy check performed:** `GET /api/market/spx/play` + `/desk` immediately after deploy
+(05:52 ET pre-market) showed a genuinely healthy, real `polygon+uw-flow` read with 11 real
+factors — confirms no regression on the normal path. The bootstrap-shell repro condition itself
+(cold cache right after ET-midnight rollover) did not naturally occur during this check, so the
+FIXED behavior (`assessed:false` on a `source:"none"` shell) was not directly observed live —
+only unit-tested (RED→GREEN).
+
+**Specific thing to check at next opportunity (ideally right after an ET-midnight cache
+rollover, or any genuine cold-start):** `GET /api/market/spx/desk` for `source: "none"` with
+`market_open: false` and a real `price` — if caught, confirm the SAME-moment `GET
+/api/market/spx/play` now shows `assessed: false` (not `true`) and `factors: []`, instead of the
+pre-fix behavior of reporting a fabricated `grade: "D"`/`score: 0` as if it were a real
+assessment.
+
+## WATCH LIST — 2026-10-26 0DTE record.ts served historical pre-2026-10-06 rows' raw unrounded tranche_fraction float (PR #6782, CI running at time of writing — confirm merged before relying on this entry) — fixed, deploy pending validation
+
+**What was fixed:** `record.ts`'s `toPlay()` served `entry_context` verbatim to
+`GET /api/market/zerodte/record` (and `get_zerodte_record`), so any row **committed before
+2026-10-06** still leaked its frozen `exit_policy_snapshot.trailing_rule`'s raw unrounded
+`tranche_fraction=0.3333333333333333` float — the write-time fix in `buildResolvedExitPolicy()`
+only cleans FRESH commits, never an already-frozen historical blob. Fixed with a read-time-only
+`withRoundedTrailingRuleDisplay()` that rounds just the display string, leaving `config_hash`
+byte-identical (verified explicitly in the new test) and never mutating the DB row.
+
+**Specific thing to check at next RTH open:** `GET /api/market/zerodte/record?days=90` (or
+wider) for any `trim_scale`-policy row committed before 2026-10-06 — confirm its
+`entry_context.exit_policy_snapshot.trailing_rule` now reads `tranche_fraction=0.33` (2dp), not
+the raw 16-digit float; confirm a FRESH (post-2026-10-06) row's `trailing_rule` is unchanged
+(already clean); confirm `config_hash` on any checked historical row is unchanged from before
+this PR (same value the row has always carried — a regression here would mean the fix
+accidentally forked a calibration cohort, the one invariant that must never move).
+
+## WATCH LIST — 2026-10-26 Swing Legacy-carried WATCH reason string kept citing a stale delta after staleDte nulled it (PR #6781, merged `44f1388ca`) — fixed, **LIVE-CONFIRMED 10:20 UTC**: PLTR (Legacy-carried, staleDte) now shows "Δ—" in its reason string; SOXX (native, not stale) still correctly shows its real delta — validated once swing-discovery's cron phase ticked post-deploy
+
+**What was fixed:** `refreshCarriedLegacyPlay`'s (`legacy-confirm-promote.ts`) `staleDte` branch
+correctly nulls `contract.delta`/`gamma`/`theta`/`vega`/`iv` on a Legacy-carried WATCH play when no
+fresh same-contract quote is available and the DTE label has drifted — but it only ever rewrote
+the DTE count inside the play's human-readable `reason` string, never the delta figure baked into
+the same string at generation time. Live-confirmed on MSTR/PLTR/MDB: `contract.delta: null` sitting
+right next to `reason` text still asserting `"Δ0.62"`/`"Δ0.59"`/`"Δ0.60"` as current fact. Fixed by
+extending the same rewrite to blank the delta too, falling back to the `"—"` convention
+`contract-ranker.ts` already uses for unknown delta.
+
+**Specific thing to check at next RTH open:** find a live Legacy-promoted SWING WATCH candidate
+whose carried contract has drifted (no matching fresh same-day organic-scan quote, DTE recomputed
+from the original promotion date) and confirm its `reason` string shows `"Δ—"` rather than a
+specific stale delta number, consistent with `contract.delta: null` in the same row; confirm a
+WATCH candidate with a genuinely fresh, matching contract (`sameContract` true) still shows its
+real, current delta in both the contract object and the reason string (no regression).
+
+## WATCH LIST — 2026-10-26 Swing play-brief diff narrator dropped one side of a HELIX call/put flow move when both moved in the same refresh (PR #6777, merged `7d92996f2`) — fixed, deploy pending validation
+
+**What was fixed:** `diffBriefSnapshots`'s (`play-brief-diff.ts`) HELIX call/put flow narration used
+a single `if`/`else-if`/`else-if` chain instead of two independent `if`s like every other field in
+the file. Call flow and put flow are independent sentiment signals — one side can collapse while
+the other builds in the same refresh (e.g. call-side profit-taking while puts build into a hedge)
+— but the chain meant only whichever branch it reached first was ever narrated in the brief's "What
+changed" diff pulse; the other equally real move was silently dropped. Fixed by splitting into two
+independent `if` blocks so both `callMoved` and `putMoved` can each push their own line in the same
+pulse. RED→GREEN confirmed with a new test (call premium collapsing 500k→100k while put premium
+builds 400k→900k in the same `diffBriefSnapshots` call).
+
+**Specific thing to check at next RTH open:** find a live swing WATCH/OPEN position whose Ask Largo
+play-brief "What changed" diff pulse fires across a refresh where BOTH call premium and put
+premium moved materially (≥1.2x either direction) versus the prior snapshot — confirm the pulse
+shows BOTH a call-side and a put-side "HELIX tape:" line, not just one; confirm a refresh where only
+one side moved still shows exactly one line (no regression, no spurious second line fabricated for
+an unmoved side).
+
+## WATCH LIST — 2026-10-26 Swing executable-stop-breach stale-caveat fix (PR #6756, merged) — fixed, deploy pending validation
+
+**What was fixed:** the "Break watch — stop already breached on the executable side ... right now
+→ exit or cut size" bullet (`play-brief-narrative.ts`'s `tradeManagerNarrativeSection`) — the
+single most action-driving line in a swing play-brief — asserted a live "right now" read off the
+same bid/ask/`markAsOf` snapshot every sibling line in the same brief correctly discloses as stale
+when it's old. Live repro PHM: a `2026-10-23 16:00 ET` quote still said "right now" when read on
+`2026-10-25/26` (2+ days stale), while 20 other occurrences of `_(stale — same quote Mark flagged
+above)_` sat in the identical response. Added `optionMarkStaleCaveat(play, readMs)` to the bullet,
+matching the pattern already used at the sibling giveback bullet and PRs #6726/#6731/#6736.
+Surfaced by a background adversarial-verification Workflow (3/3 independent confirmations); a
+second candidate from the same run (TTD, a claimed Vector-desk-state false-absence contradiction)
+was unanimously refuted as already fixed (PR #6643) and non-reproducing live.
+
+**Specific thing to check at next RTH open:** pull a live swing `play-brief` for any committed
+position whose executable bid has fallen to/through its premium stop while the option mark is
+genuinely stale (a position with no recent live sync, e.g. one that's been idle a few sessions)
+and confirm the "stop already breached on the executable side" bullet now carries the
+`_(stale — same quote Mark flagged above)_` caveat, consistent with every other quote-derived line
+in the same response. Also confirm a FRESH breach (quote synced within the staleness window)
+correctly omits the caveat — the fix only appends it when the helper determines the quote is
+actually stale, never unconditionally.
+
+---
+
+## WATCH LIST — 2026-10-26 Swing room%/cushion% unrounded-basis fix (PR #6753, merged) — fixed, deploy pending validation
+
+**What was fixed:** three swing Largo play-brief sites (`distanceSuffix` in
+`play-brief-narrative-coaching.ts`; `targetRoomPct`/`cushionPct` in `play-brief-intel.ts`) computed
+a room%/cushion% percentage by dividing by the raw, unrounded `mark`/`execMark` float, while
+displaying that same basis rounded to 2dp (`fmtOptionUsd`) right beside the result — invisible for
+normal-priced contracts, visibly wrong for cheap sub-$0.10 swing contracts. Live repro WEN
+(`SWING:WEN:2098`): real mid `$0.025` displayed as `Mark: $0.03`, but "Trade manager read" and
+"What to watch" both printed `+380% from here`/`380% move still needed` — the raw-float math —
+while the two dollar figures literally printed (`$0.03` mark, `$0.12` target) imply `+300%`.
+Added `roundOptionUsd()` to `fmt-money.ts`, rounds the basis before the percentage math at all 3
+sites. Also live-checked PTON/HOG/ASO/NAIL/UVIX/BYND this cycle for the same shape — all had
+already-clean 2dp bases (so the bug never fired for them), confirming the fix is additive and does
+not change any already-correct number.
+
+**Specific thing to check at next RTH open:** pull a live swing `play-brief` for any committed
+position trading a sub-$0.10 contract (cheap weekly OTM calls/puts on a Banger/breakout origin are
+the most likely candidates — check the swing board's committed list for the lowest `contract.mid`
+values) and confirm the room%/cushion% figures now agree with manual arithmetic on the two dollar
+figures printed beside them (e.g. `(target - displayed_mark) / displayed_mark`). Also confirm no
+regression on the ALREADY-correct clean-2dp cases (e.g. re-check HOG/UVIX, which had 2dp-clean
+bases pre-fix) — their numbers should be byte-identical to before.
+
+---
+
+## WATCH LIST — 2026-10-25 Five-engine sweep + Ask Largo fix batch (7 PRs, all merged) — fixed, deploy pending validation
+
+**What was fixed (7 independent findings, one cycle):**
+
+1. **SPX Slayer closed-market freshness thrash** (PR #6743) — PR #6719's 20s freshness bound on
+   `GET /api/market/spx/play`'s Redis-cache read sites couldn't distinguish a legitimately-old
+   closed-market snapshot (`as_of` intentionally stamped from the desk snapshot's own old timestamp)
+   from a genuinely-stale live-market one, forcing every member poll during closed-market hours into
+   a redundant cross-replica re-evaluation. Added `isSpxPlaySnapshotShareable()`, gated on
+   `session_phase === "closed"`, at the three affected call sites in `spx-service.ts`. PR #6719's own
+   live-market fix is unchanged.
+2. **0DTE tranche-fraction rounding** (PR #6744) — `entry_context.executable.tranches[].fraction` on
+   a fully-fired 3-leg trim_scale play summed to 0.99 instead of 1.00 after independent per-leaf
+   rounding (the official `managed_pnl_pct` headline was always correct; only the displayed audit
+   trail drifted). Added `reconcileTrancheFractions()` to `round-floats.ts` (same pattern as the
+   existing `reconcileStrikeTotal`), wired at both `record/route.ts` and `board/route.ts` (the second
+   site found via blast-radius tracing, not in the original finding).
+3. **Swings G-S6 confluence disclosure gap** (PR #6745) — a row's displayed `signalKinds` is a
+   lifetime-accreted union, so it could show enough kinds to look confluence-satisfying while
+   `commitGateBlockedBy` still carried `gate:G-S6:confluence`, with nothing explaining the
+   contradiction. Added `thisScanSignalKinds` (additive), stamped from the exact scan-scoped
+   `discoveryPaths` G-S6 actually evaluated.
+4. **Swing manage-sync Q37 stale snapshot** (PR #6746) — when Q37's execution-time re-arbitration
+   (`executionVerdictForGating`) overrode the roll plan's original verdict (e.g. ROLL → forced
+   CLOSE), the persisted evidence snapshot still documented the stale pre-arbitration verdict, not
+   what was actually acted on. Added `snapshotWithVerdict()` to overlay the real executed verdict
+   onto the snapshot before persisting.
+5. **Swing earnings-peer-lens expiry contradiction** (PR #6747, live repro OUST 31C, confirmed
+   independently reproducing live on MRNA 185C during this cycle's audit) — "Earnings peer lens"
+   unconditionally said "size down or hedge vol" for any print within 14 days, even when the brief's
+   OWN "Trade manager read" section already established the contract expires before the print (no
+   real gap exposure). Added a guard at `meridianPeerSection` reusing the existing
+   `ownContractExpiry()` resolution; same-day-expiry edge case deliberately left unhandled (no
+   reliable report-time signal in the data this section reads).
+6. **Swing zero-bid executable disclosure** (PR #6748, live repro EXPE) — a confirmed `$0.00` bid
+   (a real two-sided quote, not a missing one) collapsed to the same `null` shape as "no quote at
+   all," so EXPE got WEAKER risk disclosure (no Exec P&L line, no "no real cushion" caveat, no
+   "stop already breached" bullet) than a comparable nonzero-low-bid position. Added
+   `bidConfirmedZero`/`execBidZero` threaded from `executableFill()` through the swing adapter to all
+   three narrative/rail consumers, routing a confirmed zero bid into the existing strongest-severity
+   language.
+7. **Swing cross-engine overlap mirror-direction gap** (PR #6750, live repro SNDQ 2120/2077,
+   independently reproducing on LQDA 2122/2033/1995 during this cycle's audit) —
+   `formatOverlapPosition()` only applied the "cross-engine" label when the REVIEWED play was
+   swing-native and the sibling was Banger-origin; the mirror direction (reviewed=Banger-origin,
+   sibling=native) fell through an earlier unconditional return and silently rendered as a
+   same-engine-looking duplicate. Added the missing direction as a dedicated branch before the
+   general early return.
+
+All 7 independently code-reviewed (full diff read, not just agent self-report), CI-verified green,
+and post-merge validated in isolated worktrees against the real merged SHA (tsc clean + full scoped
+test suites, no regressions) before merging. Staged findings:
+`docs/audit/findings-staging/2026-10-25-spx-play-closed-market-freshness-bound.md`,
+`2026-10-25-zerodte-tranche-fraction-reconciliation.md`,
+`2026-10-25-swing-gs6-confluence-signalkinds-mismatch.md`,
+`2026-10-25-swing-manage-q37-stale-snapshot.md`,
+`2026-10-25-swing-meridian-peer-earnings-expiry-guard.md`,
+`2026-10-25-swing-zero-bid-executable-disclosure.md`,
+`2026-10-25-swing-overlap-cross-engine-mirror-direction.md`.
+
+**Specific things to check at next RTH open:**
+- SPX Slayer: during closed-market hours, confirm `/api/market/spx/play` no longer forces a fresh
+  cross-replica re-evaluation on every poll (its `as_of` should track the desk snapshot's own
+  timestamp, not thrash); confirm the live-market freshness bound (PR #6719) still catches a
+  genuinely stale live snapshot.
+- 0DTE: pull a graded, fully-fired trim_scale play from `/api/market/zerodte/record` and
+  `/api/market/zerodte/board` and confirm `executable.tranches[].fraction`/`timeline_tranches[].fraction`
+  sum to exactly 1.00.
+- Swings board: find a live G-S6-confluence-blocked row and confirm `thisScanSignalKinds` is present
+  and reflects a genuinely smaller set than the lifetime `signalKinds`.
+- Swings manage-sync: watch for a live Q37 override (roll plan forced to CLOSE) and confirm the
+  persisted snapshot's `event_json.rung`/`thesis_state` match the executed verdict, not the original
+  plan.
+- Largo swing play-brief: re-check MRNA and OUST (or any contract expiring before its own earnings
+  print) — "Earnings peer lens" should now say "no earnings-gap exposure," matching "Trade manager
+  read," not the contradictory sizing instruction.
+- Largo swing play-brief: re-check EXPE (or any live `$0.00`-bid position) — the Position section's
+  Exec P&L line should read `-100.0%` with the total-loss caveat, not be silently absent.
+- Largo swing play-brief: re-check SNDQ (2120 vs 2077) and LQDA (2122 vs 2033/1995) — Book context
+  should now say "separate, cross-engine position #N" for the native sibling, not the plain label.
+
 ## ⚠️ ACTION NEEDED — 2026-10-19 Night Hawk Legacy edition is LIVE recap_only with 20 wasted candidates — awaiting operator/admin go-ahead to remediate (2026-10-17)
 
 **This is a live, time-sensitive P1 that needs a human (or a future session with explicit
@@ -93,6 +449,235 @@ question above is unchanged and still needs operator/admin go-ahead, same reason
 session had this evening) — next session with CloudWatch/replay access should still trace which
 exact failure (timeout vs. a thrown exception vs. something else) is zeroing every dossier, per the
 sibling lane's journal note.
+
+---
+
+## WATCH LIST — 2026-10-25 Night Hawk Swings horizons board served `thesisLevel:"intact"` on every Banger-origin row regardless of real P&L (source-level fix, not another downstream guard) — fixed, deploy pending validation
+
+**What was fixed:** `horizonPlayFromBangerPosition` (`banger-lane-merge.ts`) stamped the literal
+`thesisLevel: "intact"` on every Banger-origin committed/watch SWING row — there is no real
+per-position thesis dossier for this lane, so it was always fabricated. Three downstream consumers
+(`play-brief-intel.ts`'s narrative, `thesis-health.ts`'s pillar breakdown, and `adapters.ts`'s
+Command Deck adapter, PR #6671 merged earlier the same day) had each independently guarded their own
+read of this fact, but none could fix what `GET /api/market/nighthawk/horizons?view=swings` itself
+already returned — live repro WEN positionId 2098 at `livePnlPct: -58.3%` still showed
+`thesisLevel: "intact"` in the raw API response; 22/90 live Banger-origin rows showed "intact" at
+worse than -20% P&L. Fixed at the one place the literal originates: now stamps `"unknown"` (the
+same honest, already-correctly-rendered value used elsewhere for "no real dossier exists"), keeping
+the real mechanical `thesisNote` untouched. Full write-up:
+`docs/audit/findings-staging/2026-10-25-swing-banger-thesislevel-fabricated-intact.md`.
+
+**Specific things to check at next RTH open:** pull `GET /api/market/nighthawk/horizons?view=swings`
+for a real deeply-underwater Banger-origin committed position and confirm `thesisLevel` reads
+`"unknown"`, never `"intact"`, regardless of `livePnlPct`. Also open the Command Deck's Swing lane
+for that same position and confirm the thesis-health line still reads sensibly (the existing
+Command Deck guard already handled `"unknown"` correctly — this should be a no-visible-change
+confirmation, not a new behavior).
+
+## WATCH LIST — 2026-10-25 Swing play-brief Exec P&L line/bullet never disclosed a stale quote, despite Greeks/Spread right above it flagging the identical snapshot — fixed, deploy pending validation
+
+**What was fixed:** `pnlSection`'s "Position" section and `execSlippageCoaching`'s "Trade manager
+read" bullet both read `execPnlPct`, priced off the exact same aged `contract.bid`/`contract.ask`
+snapshot the Greeks and Spread lines directly above already flag `_(stale — same quote Mark
+flagged above)_` — but neither Exec P&L line carried that caveat. Live repro MRNA: three
+consecutive lines honestly flagged stale, then a confident "Exec P&L: +6.7%" with no mention it's
+the same aged quote. Extracted the shared caveat logic into `optionMarkStaleCaveat`
+(`play-brief-absence.ts`) so both the Position section and the narrative bullet apply it
+consistently; `pnlSection`'s own Greeks/Spread lines now call the same shared function (no behavior
+change there). Full write-up:
+`docs/audit/findings-staging/2026-10-25-swing-exec-pnl-stale-quote-disclosure-gap.md`.
+
+**Specific things to check at next RTH open:** pull a live swing play-brief for a position whose
+option mark genuinely went stale intraday (a quote that hasn't ticked in 18+ minutes) and confirm
+both the "Position" section's `Exec P&L:` line and the "Trade manager read" section's "Executable
+P&L" bullet carry the `_(stale — same quote Mark flagged above)_` caveat, matching the Greeks/Spread
+lines in the same response. Also confirm a position with a genuinely fresh quote shows no caveat on
+any of these lines (no false-positive staleness).
+
+---
+
+## WATCH LIST — 2026-10-25 Swing play-brief "Entry" section's own "Entry stance" label leaked SKIP→"HOLD" (4th call site of an already-named leak) — fixed, deploy pending validation
+
+**What was fixed:** The 2026-10-21 fix (`swingVerdictVerb`, `play-brief.ts`) closed a RESEARCH/
+SKIP-candidate's literal `"HOLD"` leak at three named call sites (the headline/Verdict line,
+`actionNarrative`'s "Entry stance" bullet, `degradedReadLine`'s "Live read" bullet) but missed a
+fourth: `watchEntrySection`'s own "Entry stance:" label in the brief's "Entry" section, which
+carries the identical fallback shape and was never updated. Live repro 2026-10-25: a real TSLA
+377.5P 7DTE RESEARCH candidate (`status: "SKIP"`) read "**Entry stance:** HOLD" in the Entry
+section while the SAME response's "Trade manager read" section, Verdict section, and headline all
+correctly read "PASSED" — a real, member-visible contradiction inside one answer. Fixed by special-
+casing SKIP first and reusing the already-exported `swingVerdictVerb`, same pattern
+`actionNarrative` already uses; every non-SKIP play renders unchanged. Full write-up:
+`docs/audit/findings-staging/2026-10-25-swing-watch-entry-stance-skip-hold-leak.md`.
+
+**Specific things to check at next RTH open:** pull a live RESEARCH/SKIP-bucket swing play-brief
+(e.g. `GET /api/market/swing/play-brief?playId=SWING:<ticker>&ticker=<ticker>&expandIntel=1` for
+any currently-PASSED candidate — the Command Deck's Swing RESEARCH lane shows which tickers qualify)
+and confirm the "Entry" section's "**Entry stance:**" line reads "PASSED", not "HOLD", and agrees
+with the Verdict section and headline in the same response. Also spot-check a genuine OPEN/HOLD
+swing position's Entry section still reads "HOLD" verbatim (unaffected by this fix).
+
+---
+
+## WATCH LIST — 2026-10-24 Command Deck AND Largo swing play-brief both leaking the internal Banger-ledger sentinel — fixed, deploy pending validation
+
+**What was fixed:** `TerminalPlay.regime` forwarded the raw `BANGER_LEDGER_REGIME_LABEL`
+sentinel ("BREAKOUT · BANGER") straight through with no guard, unlike every other consumer of
+that exact sentinel elsewhere in the codebase. `PlayTerminal.tsx`'s play-detail panel rendered it
+verbatim under "Regime"; `SwingCockpitStrip.tsx`'s lane-level cockpit header picked the first
+play in the whole Swing book with any truthy `regime` and rendered the SAME internal fingerprint
+as if it characterized the current market regime for the entire lane; and the swing play-brief's
+own narrative rendered the identical literal string under "**Today's regime read:**" (live repro
+BMNR, confirmed directly against prod — the real markdown read `**Today's regime read:**
+BREAKOUT · BANGER` before this fix). Live count at confirmation time: 90 of 93 currently-committed
+Swing rows carry this sentinel, not 78/81 (CLAUDE.md's earlier estimate). Fixed at the shared root
+(`terminalPlayFromHorizon`, `adapters.ts` — suppresses the sentinel to `null` at the same point
+the existing `thesisBreakResolved` guard already does, leaving the raw value passed into
+`computeSwingThesisHealth` untouched) plus a redundant defense-in-depth guard in
+`whyThisSetupSection` (`play-brief-intel.ts`). Full write-up:
+`docs/audit/findings-staging/2026-10-24-swing-regime-sentinel-leak-command-deck.md`.
+
+**Specific things to check at next RTH open:** open the Command Deck's Swing lane and confirm the
+top-level cockpit "Regime" stat (if shown) is never the literal string "BREAKOUT · BANGER", and
+that a Banger-origin position's play-detail panel shows no "Regime" line at all (rather than that
+same literal string). Also pull a live Banger-origin swing play-brief (e.g. `GET
+/api/market/swing/play-brief?playId=SWING:<ticker>:<positionId>&expandIntel=1` for any currently-
+committed Banger-origin position) and confirm the "Why this setup" section has no "Today's regime
+read" line at all.
+
+---
+
+## WATCH LIST — 2026-10-24 Vector gamma-magnet callout level/percent mismatch — fixed, deploy pending validation
+
+**What was fixed:** `GammaMagnet.callout` (`vector-gamma-magnet.ts`) used to pair a whole-dollar
+rounded level with a percent computed from the unrounded, cents-precision strike — whenever the
+weighted-mean magnet strike wasn't near-integer, the two numbers in one sentence described
+different levels (live repro BMNR: "gamma pivot 31 (+36.86%)" when 31's real distance is +38.33%
+and +36.86% belongs to the real strike, 30.67). Fixed by passing the same cents-precision strike
+into the callout, formatted via the shared `fmtPriceLevel()` helper every other consumer already
+uses. Full write-up: `docs/audit/findings-staging/2026-10-24-vector-gamma-magnet-callout-rounding.md`.
+
+**Specific things to check at next RTH open:** open the Vector chart (`/heatmap` or `/vector`) for
+a few live tickers and check the gamma-magnet tooltip/callout text — confirm the quoted level and
+the quoted percent agree with each other (recompute `(level - spot) / spot * 100` by hand for one
+or two and check it matches). Also check a swing play-brief's "Chart technicals"/structureLadder
+magnet rung for the same consistency, since it renders the identical `callout` string.
+
+---
+
+## WATCH LIST — 2026-10-24 Largo swing play-brief duplicate Vector fetch-failure disclosure — fixed, deploy pending validation
+
+**What was fixed:** `collectBriefUnavailableSources()` pushed both "Vector desk state"/"fetch
+failed" and "Vector state"/"fetch failed" for the same single absence whenever a Vector fetch
+failed with no ecosystem fallback (live repro UMAC: `confidence.why` said "9 sources unavailable"
+when the true count was 8). Fixed by unifying the guard and removing the redundant entry. Full
+write-up: `docs/audit/findings-staging/2026-10-24-play-brief-vector-unavailable-duplicate.md`.
+
+**Specific thing to check at next RTH open:** pull a live swing play-brief for any ticker whose
+Vector read is currently failing (`GET /api/market/swing/play-brief?playId=...&expandIntel=1`) and
+confirm `unavailableSources[]` lists Vector's fetch failure exactly once, and `confidence.why`'s
+stated count matches the array's real length.
+
+---
+
+## WATCH LIST — 2026-10-24 SPX Slayer fabricated "Puts lean" off a null VWAP — fixed, deploy pending validation
+
+**What was fixed:** `resolveLeanDirection()`'s (`spx-play-intel.ts`) final tiebreaker —
+reached only when the confluence score is exactly zero, direction null, bias neutral — used to
+read `desk.above_vwap ? "long" : "short"` unconditionally. Every writer of `above_vwap` defaults
+it to the literal `false` whenever `desk.vwap` is unknown (off-hours, no sticky value either), so
+a genuinely directionless confluence (live repro: 10 factors summing to exactly 0) got rendered
+as a confident "Tape's mixed, but Puts lean" with zero real evidence. Fixed by gating on
+`desk.vwap != null` before trusting the comparison, falling back to `desk.spx_change_pct`'s real
+sign when VWAP is also unknown. Full write-up:
+`docs/audit/findings-staging/2026-10-24-spx-slayer-fabricated-short-lean-null-vwap.md`.
+
+**Specific things to check at next RTH open:** pull `GET /api/market/spx/play` a few times through
+the morning session and confirm `play_idea`'s stated lean ("Calls"/"Puts") never contradicts
+`confluence.score`'s own sign when the score is non-zero, and that a genuinely flat/neutral read
+(score exactly 0) picks its lean from `spx_change_pct` rather than reading as an arbitrary
+coin-flip — i.e. the line should track the day's real tape, not a type-coercion artifact.
+
+---
+
+## WATCH LIST — 2026-10-24 Legacy stale-BACKFILL-contract retroactive repair — fixed, deploy pending validation
+
+**What was fixed (this PR):** #6631 (directly below) fixed `pickAffordableChainContract` so a NEW
+BACKFILL contract can never be picked already-expired — but that guard only runs at edition-
+*generation* time. Checked the live edition about an hour after #6631 merged and confirmed the
+exact PLTR play #6631's own finding cites (`edition_for: "2026-10-26"`, "PLTR $197.5 Call
+2026-10-23") was STILL being served — the edition had already been published before #6631's fix
+deployed, and nothing retroactively repairs an already-published edition's frozen `plays` JSON.
+The one admin endpoint built for after-the-fact edition repair, `POST
+/api/admin/nighthawk/republish-backfill`, no-ops on this edition specifically: it only appends new
+BACKFILL plays when below the play-count floor, never re-validates an existing one, and this
+edition already had 3 plays. Fixed by adding a second repair pass, `repairStaleBackfillContracts`
+(`post-publish-backfill.ts`) + pure `repairStaleBackfillPlays` (`play-backfill.ts`), that
+re-validates every already-published BACKFILL play's contract against `editionFor` on every call
+to that same admin endpoint, re-picking a live replacement or dropping the play — never leaving a
+dead contract live, never fabricating a placeholder. Full write-up:
+`docs/audit/findings-staging/2026-10-24-nighthawk-legacy-stale-backfill-contract-repair.md`.
+
+**Specific things to check at next RTH open:**
+- Call `POST /api/admin/nighthawk/republish-backfill {"edition_for":"2026-10-26"}` and confirm the
+  response's `repairedTickers` (or `droppedTickers`) names PLTR, and that a follow-up
+  `GET /api/market/nighthawk/edition` no longer shows the dead "PLTR $197.5 Call 2026-10-23"
+  contract — either a genuinely live replacement, or PLTR no longer appears in `plays` at all.
+- Separately confirm `GET /api/market/nighthawk/legacy-marks` for whatever OCC the repaired PLTR
+  play now carries (if any) returns a real, non-null mark/bid/ask — proof the replacement contract
+  is actually quotable, not just syntactically well-formed.
+
+---
+
+## WATCH LIST — 2026-10-24 three weekend-audit fixes (Legacy BACKFILL expiry floor, Swing backstop-ask spread guard, Largo earnings-peer CLOSED disclosure) — fixed, deploy pending validation
+
+**What was fixed (PR #6631):** `pickAffordableChainContract` (`src/features/nighthawk/lib/play-backfill.ts`)
+had no `asOfEtYmd` expiry floor — unlike its organic-path sibling `pickChainContract`
+(`deterministic-edition.ts`), which already excludes `row.expiry <= today`. A Legacy BACKFILL play
+(the lower-rigor append-only path `republishBackfilledEdition`/`buildEveningEdition` uses when the
+real candidate pool comes up thin) could rank and recommend an already-expired contract by
+strike-distance alone. Fixed by threading `asOfEtYmd` (default `todayEtYmd()`) through
+`pickAffordableChainContract` → `selectBackfillPlays` → `backfillThinEditionPlays`, wired at all 4
+real call sites (`post-publish-backfill.ts`'s `republishBackfilledEdition` + 3 sites in
+`edition-builder.ts`'s `buildEveningEdition`). Full write-up:
+`docs/audit/findings-staging/2026-10-24-nighthawk-backfill-expiry-floor.md`.
+
+**What was fixed (PR #6632):** `reliableMarkFromSnapshot` (`src/lib/providers/options-snapshot.ts`)
+already catches a dead bid (0) paired with an unfillable "backstop" ask and falls back to a
+reliable reference for `mark` — but the same divergence guard was never extended to the raw
+`bid`/`ask` fields themselves, so a backstop-ask quote (CAG-style repro) flowed straight into
+`swing-active-refresh`'s `loadOptionQuote` and from there into the live Position-section Spread/
+Quote line, producing a nonsensical spread% instead of the honest "one-sided book — spread not
+priceable" fallback `play-brief.ts` already has for exactly this case. Fixed by adding
+`reliableAskFromSnapshot(snap)` (reuses the existing mark-guard's divergence math verbatim, no
+reimplementation) and wiring it into `loadOptionQuote`'s `ask` field. Full write-up:
+`docs/audit/findings-staging/2026-10-24-swing-spread-backstop-ask-guard.md`.
+
+**What was fixed (PR #6633):** `meridianPeerSection` (`src/lib/swing/play-brief-intel.ts`) was the
+one sibling section an earlier sweep (#6493) missed when adding the
+`statusBucket(ctx.play)==="closed"` → `"_Current ... — not what this trade traded under._"`
+disclosure pattern to `chartTechnicalsSection`/`gexPostureSection`/`wallDynamicsSection`/
+`flowIntelSection`/`catalystsSection`. Live repro: a CLOSED/STOPPED GOOGL position (-35.9%, exited
+2026-10-16) still rendered "Earnings peer lens" in full 8 days later with live
+size-down-or-hedge-vol coaching language, with no caveat that the read was current, not
+as-traded. Fixed by prepending the same disclosure at the section-assembly layer (the pure
+formatter `meridianPeerEarningsCoaching` stays play-unaware, unchanged). Full write-up:
+`docs/audit/findings-staging/2026-10-24-meridian-peer-closed-disclosure.md`.
+
+**Specific things to check at next RTH open (needs real market conditions to confirm — all three
+were found/fixed Saturday with markets closed):**
+- **#6631:** when Legacy next falls back to BACKFILL (thin organic candidate pool), pull
+  `GET /api/market/nighthawk/edition` and confirm every `source:"BACKFILL"` play's `expiry` is
+  strictly after that edition's own `edition_for` date — no same-day-or-earlier expiry should ever
+  appear on a BACKFILL-tagged pick.
+- **#6632:** find a live swing position whose underlying has a thin/crossed book (low-liquidity
+  name near market open/close) and confirm the Position-section Spread/Quote line shows the honest
+  "one-sided book — spread not priceable" fallback rather than a spread% computed off a dead-bid/
+  backstop-ask pair — the kind of quote CAG showed in the original repro.
+- **#6633:** pull `GET /api/market/swing/play-brief` for any real CLOSED swing position whose
+  ticker has upcoming earnings and confirm the "Earnings peer lens" section now opens with
+  `_Current earnings peer lens — not what this trade traded under._` before the peer-cohort
+  coaching body.
 
 ---
 
@@ -8215,3 +8800,435 @@ _(Note: this file briefly had two "### 378" entries after a numbering collision 
 - **What was broken:** found incidentally during this cycle's Legacy health check (cross-checking the legacy-marks mechanism against an older edition beyond the specific checks that cycle asked for). A 2026-09-13 fix anchored `resolveLegacyPlayOcc`'s bare "Mon DD" label year-inference on the edition's own publish instant at ONE call site (`adapters.ts`'s `terminalPlayFromEdition`) — but three other call sites re-deriving the same OCC from the same free-text label were never updated: `db.ts`'s `fetchLegacyDiscordLiveRows()` (read by the production `legacy-live-sync` cron, spans every active edition date up to ~14 trading days back), and two Discord trade-notify builders (`legacyInputFromOutcomeRow` — the PRIMARY path `legacyInputFromLiveRow` tries first, so its unanchored re-parse silently shadowed the correctly-resolved `contract_occ` the `db.ts` fix produces — and `legacyInputFromPlaybookPlay`). Live-reproduced: an "Oct 16"-labeled play from the 2026-10-14 edition resolved to a 2027-10-16 contract instead of 2026-10-16 once real "now" moved past Oct 16; `legacy-marks` correctly returned all-null for it as a direct consequence.
 - **What changed:** `resolveLegacyOutcomeExitPremium` now builds its OCC directly from its input's already-resolved `expiry`/`top_strike`/`direction` (new `occFromTradeDiscordInput`) instead of re-parsing `options_play` a second time at all. The other two call sites anchor on the edition's `published_at`/row's own `created_at`, via a newly shared, exported, tested `publishedAtRef` (previously a private, untested helper duplicated only inside `adapters.ts`).
 - **RTH check:** once deployed, pull an older Legacy edition (14 or fewer trading days back) whose plays carry an expiry label that has since passed this calendar year, and confirm `legacy-marks` now resolves real option data instead of all-null for those plays. Also watch the `legacy-live-sync` cron's CloudWatch output for any OCC resolution on an older active edition and confirm the year matches the edition's own publish year, not a rolled-forward one.
+
+### 401. Night Hawk's public/AI-crawler copy omitted the shipped Swing Command tab at 6 call sites — fix/night-hawk-swing-command-seo-copy-stale — 2026-10-20
+
+- **What was broken:** DISCOVERY-lane SEO/GEO sweep. `/nighthawk` shipped a third tab, Swing Command, alongside ZERO_DTE (0DTE Command) and LEGACY (Evening Edition) — confirmed live in `src/features/nighthawk/command-deck/` and documented correctly in the Learn-guide chapter body itself. But every summary/index layer feeding SEO + GEO surfaces still described Night Hawk as a two-part product: `product-manifest.ts`'s `hawk` entry (feeds the pricing page's schema.org `featureList` via `manifestSchemaFeatureList()`), `LEARN_NAV`'s night-hawk descriptor (mapped verbatim into `/llms.txt`), and `guide-seo.ts`'s night-hawk `metaTitle`/`metaDescription` (for the page whose own body already covers Swing — a direct meta-vs-content mismatch). The same stale "(0DTE Command + Evening Edition)" phrase was also copy-pasted into `/why-blackout`'s tool list and two lifecycle-email templates (`downgrade.ts`, `welcome-sequence.ts`).
+- **What changed:** added a Swing Command mention to all 6 call sites, phrased to fit each existing sentence. `guide-seo.ts`'s `dateModified` bumped to reflect the material content change. Deliberately did NOT touch `vs/others`/`methodology`'s "SPX Slayer, Night Hawk, and 0DTE Command" phrasing — that could be a deliberate enumeration of three separately-graded play streams rather than a naming error, a content-strategy call rather than an unambiguous drift bug.
+- **RTH/live check:** once deployed, pull `GET /llms.txt` and confirm the Night Hawk curriculum line mentions Swing Command; pull `/pricing`'s page source and check the `SoftwareApplicationJsonLd` `featureList` includes a Swing Command bullet; view-source `/learn/night-hawk`'s `<meta name="description">` and confirm it mentions Swing Command, matching the page body. None of these need live market data to verify — purely static-content checks, any time.
+
+### 402. `edition-outcome-overlay.ts`'s read-time merge re-inflated a gate-promoted play's `tier` object, right next to its correctly-capped `conviction` — fix/edition-outcome-overlay-tier-cap-leak — 2026-10-21
+
+- **What was broken:** 5-engine live monitor cycle, Ask Largo standing mandate, live Legacy health check. PR #6483 (same day) fixed three sites where a gate-promoted play's merit `tier` assignment could leak an uncapped "A"/"A+" next to its correctly-capped `conviction: "B"` badge, via `capGatePromotedTierAssignment()`. A fourth site was missed: `edition-outcome-overlay.ts`'s `applyEditionOutcomeOverlay()`, which runs on every live `GET /api/market/nighthawk/edition` read (not just build time) and re-derives `tier` from the raw DB-pinned `publish_context.tier` — it only ran `conviction`/`key_signal` through `capGatePromotedConviction`, never the full `tier` object through the shared cap. Live repro: MSTR showed `conviction: "B"` (correctly capped) right next to `tier: { tier: "A", ... }` (still uncapped) on a real edition read.
+- **What changed:** the overlay now runs the pinned `tier` through `capGatePromotedTierAssignment` (keyed on the play's own `gate_promoted` flag) before assigning it, mirroring `publish-context.ts`'s build-time pattern — the overlay is now fail-closed on `tier` the same way it already was on `conviction`, regardless of what the underlying DB pin says.
+- **RTH check:** once deployed, pull a live edition carrying a `gate_promoted: true` play and confirm `tier.tier` never exceeds "B" — specifically re-check MSTR (or whichever ticker is gate-promoted once tonight's edition regenerates) and confirm `tier.tier === conviction` with no A/B mismatch. Also worth re-checking an OLDER, still-cached edition (published before this fix deployed) if one is still being served — that is exactly the stale-pin case this fix's defense-in-depth is for, so it should now read "B" on a live GET even though the underlying DB pin itself predates the fix.
+
+### 403. `closedDeckSourcesFromChains` re-pointed every worst-leg content field except `positionId` itself — fix/swing-closed-deck-positionid-wrong-leg — 2026-10-24
+
+- **What was broken:** Ask Largo × Night Hawk Swings ownership mandate, closed-deck card audit. `closedDeckSourcesFromChains` (`src/lib/swing/closed-plays.ts`) re-points every content field (contract/occ/mid/delta, entry/peak/trough premium) at the WORST leg of a multi-leg closed chain when it differs from the terminal leg — several earlier fixes already did this for every content field. `positionId` was the one identity field left unconditionally pointing at the terminal leg's own `row.id`. Live repro: AMZN chain, terminal leg 48 (+72.41%), worst leg 44 (-27.67%) — the served card's content correctly described leg 44, but `positionId` was 48, so clicking through would resolve `play-brief-resolve.ts`'s `loadClosedPlay` by `r.id === positionId` and build a brief from leg 48's own terminal outcome, directly contradicting the card just clicked.
+- **What changed:** `positionId: worstLegRow?.id ?? src.positionId` — same fallback shape every sibling field already uses, so the common (single-leg / worst-leg-is-terminal) case is unchanged.
+- **RTH check:** once deployed, during RTH (or any time, since this is a closed-position record and doesn't need live market data) pull `GET /api/market/swing/record` for a multi-leg closed chain whose worst leg differs from its terminal leg, and confirm the served `positionId` matches the leg the card's own content (entry/peak/trough premium, contract) actually describes — then click through (or call `play-brief-resolve` directly with that `positionId`) and confirm the resolved brief describes the SAME leg, not the terminal one.
+
+### 404. Thesis-health `rungLabel` named a decay word ("Weakening"/"Degraded"/"Broken") independent of whether anything had actually moved since commit, at 2 renderers — fix/swing-thesis-health-unchanged-since-commit-rung-label — 2026-10-24
+
+- **What was broken:** Ask Largo × Night Hawk Swings ownership mandate. `rungFromHealth`/`rungLabel` (`thesis-health.ts`) bands purely off absolute `health` %, never `delta`/`moves` — so a position sitting in a low band from commit day one, unchanged, forever (purely because its entry geometry was imperfect), still gets a process word that presupposes decay since commit. `play-brief.ts`'s own "Thesis health" section already disambiguated this (2026-10-07, refined 2026-10-14/16) with a local `noDriftSinceCommit` check, but two sibling renderers of the same `h.rungLabel` never inherited it: `holdPlanSection`'s compact "Thesis health" line (`play-brief-intel.ts`, also gated a "Tighten risk — thesis fading; don't add size" bullet on bare `health < 45` with no drift check at all) and `thesisPillarCoaching` (`play-brief-narrative-coaching.ts`, could render "Thesis Degraded (50%) — thesis fading — tighten risk or trim into strength" for a position that, by its own `moves` field, has never moved since commit).
+- **What changed:** extracted the shared predicate `thesisHealthUnchangedSinceCommit` into `thesis-health.ts` from `play-brief.ts`'s own check. All three renderers now call it: `play-brief.ts`'s existing local just calls the shared predicate (behavior unchanged); `holdPlanSection` appends "— unchanged since commit" and suppresses the "Tighten risk" bullet when true; `thesisPillarCoaching` renders "Thesis {rungLabel} ({health}%) — unchanged since commit, not a new decline" instead of the decay-presupposing advisory sentence when true.
+- **RTH check:** once deployed, during RTH pull a few OPEN swing briefs for positions that have retraced materially from their peak but stayed positive (a quick way to find a candidate: look for a "Gave back X% of peak" bullet in "Trade manager read" where X >= 25) and confirm "Thesis health" no longer says "unchanged since commit" for that same position — and separately, find a position with only a shallow pullback from peak (capture still >= 75%) and confirm it still correctly shows "unchanged since commit" when its pillars genuinely haven't moved. Check this in BOTH render sites this PR touched (Hold plan's compact line and the pillar-coaching sentence), not just the original `play-brief.ts` section this was copied from.
+
+### 405. Largo-facing `extractEvidence()` discarded the swing brief's real `envelope.evidence[]` for a bias/headline restatement — fix/largo-evidence-adapter-real-evidence — 2026-10-24
+
+- **What was broken:** Ask Largo × Night Hawk Swings ownership mandate. Largo product-contract C7 requires `evidence: string[]` to be "the specific numbers behind the claim, not a restatement of it." `extractEvidence()` (`src/lib/swing/play-brief-adapter.ts`) never read `envelope.evidence` at all — the real, sourced evidence array `evidenceFromContext` (`play-brief.ts`) builds for exactly this purpose (dealer-posture strike/γ reads, HELIX flow $ premiums/print counts, earnings dates, peer lists). Instead it manufactured its own list out of exactly what C7 disclaims: the headline+bias repeated verbatim, each section's bare bias word, and confidence prose — a model reading the structured `evidence` field saw zero of the brief's real sourced numbers, only a paraphrase of the claim those numbers are supposed to back up.
+- **What changed:** `extractEvidence` now leads with `envelope.evidence[].text` (every real evidence-kind entry). Levels/scenarios/invalidation stay (real price/target numbers too); the pure-restatement bits (headline+bias, section bias words, confidence prose) are dropped. The bare headline+bias fallback is kept only for the genuine-emptiness case, so the contract's non-empty-array requirement is never satisfied by fabrication.
+- **RTH check:** once deployed, during RTH pull `GET /api/market/swing/play-brief` for a position with real sourced evidence (e.g. one with a known upcoming earnings date, or a live dealer-posture/GEX read) and confirm the Largo-facing `evidence[]` (via the swing adapter's `ProductRead<SwingPlayBriefSignal>` output) carries actual numbers from the brief's own "Data freshness"/dealer-posture/earnings sections, not just a restated headline+bias pair. Cross-check against `envelope.evidence` in the same response to confirm the two agree.
+
+## WATCH LIST — 2026-10-25 (stale-positionId silent substitution fix, PR #6656)
+- **What was broken:** `GET /api/market/swing/play-brief?playId=SWING:<ticker>:<positionId>` silently
+  substituted an unrelated position's data whenever the requested positionId didn't exist among the
+  ticker's remaining resolvable candidates (live repro: `SWING:PANW:2103` returned PANW:67's data
+  under the wrong `playId`). Root cause: `pickLanePlayForBrief`/`loadOpenTerminalPlay`'s
+  single-candidate shortcuts never checked the hint against that sole candidate.
+- **What the fix changed:** both shortcuts now only fire when no positionId was requested or it
+  matches; otherwise the resolver returns absence (404/`available:false`) instead of a false
+  substitute.
+- **Live-verified post-deploy (2026-10-25 00:33 UTC, web tier rolled 00:29:26):**
+  `SWING:PANW:2103` → `404 available:false` (correct, was previously a silent 200 with PANW:67's
+  data); `SWING:PANW:67` → `200 playId:SWING:PANW:67` (native resolution unaffected).
+- **What to re-check once RTH opens:** confirm no legitimate play-brief request (a real, resolvable
+  positionId on a ticker with multiple live candidates — e.g. the ZS/FTNT/LQDA-style banger-origin
+  duplicate-ticker cases) now spuriously 404s. The fix is scoped to the single-candidate path only
+  and was unit-tested against the multi-candidate exact-match path, but a live RTH check against a
+  real duplicate-ticker position is the strongest confirmation.
+
+## WATCH LIST — 2026-10-25 (`software` theme-map gap, FTNT/OKTA/S/RBRK — fix/swing-software-theme-cybersecurity-gap)
+- **What was broken:** live PANW play-brief's "Book context" section reported only "5 same-direction
+  positions in theme 'software'" (ZS×2, SNOW, NET, CRWD) while the real committed book also held
+  FTNT×2/OKTA×2/S/RBRK LONG at the same time — 4 real cybersecurity/software names, 6 more
+  positions, missing from `sector-map.ts`'s `software` bucket, so each resolved to its own isolated
+  theme cluster and never counted toward the concentration disclosure.
+- **What the fix changed:** added FTNT, OKTA, S, RBRK to the existing `software` bucket (verified
+  via Polygon reference: Fortinet, Okta, SentinelOne, Rubrik). No scoring/gate logic changed — this
+  only affects the `resolveTheme`/`sameThesis` classification that feeds `checkPortfolioOverlap`'s
+  Book-context concentration narrative.
+- **What to re-check once RTH opens:** pull a live PANW (or CRWD/ZS/SNOW/NET/FTNT/OKTA/S/RBRK, if
+  still concurrently open) play-brief's "Book context" section and confirm the same-direction count
+  now includes all 8 names instead of only 4 of them. Also spot-check that the count still excludes
+  genuinely different-theme holdings (no false merge into an unrelated cluster).
+
+## WATCH LIST — 2026-10-25 (nighthawk-backfill-repair self-heal cron, fix/nighthawk-backfill-repair-cron)
+- **What was broken:** the live Legacy edition (edition_for "2026-10-26") was still serving a
+  BACKFILL play recommending an already-expired contract ("PLTR $197.5 Call 2026-10-23") a full
+  day after PR #6637 (2026-10-24) documented the exact same incident on the exact same edition.
+  Root cause: #6637 shipped the repair function (`repairStaleBackfillContracts`/
+  `republishBackfilledEdition`) but its only caller is an admin-only, manually-triggered endpoint
+  nobody had actually invoked for this edition.
+- **What the fix changed:** added a new, dedicated cron (`nighthawk-backfill-repair`, registered
+  in `cron-registry.ts`, scheduled 9:00 AM ET dual-band, 15 min before `nighthawk-morning-confirm`)
+  that automatically calls the already-shipped `republishBackfilledEdition` for today's edition
+  every trading morning. No existing cron's logic changed.
+- **IMPORTANT — the EventBridge schedule is NOT yet deployed, but most of the path there is
+  already done.** Added `railway.nighthawk-backfill-repair.toml` in this repo (required —
+  `cron-registry-schedule.test.ts` enforces that every registered schedule has a backing TOML,
+  and failed in CI on this PR's first push until it was added). Ran
+  `node scripts/sync-cron-schedules.mjs ../blackout-web` (blackout-infra) locally against this
+  branch and confirmed the EXACT, minimal diff it produces for `terraform/modules/crons/
+  cron-jobs.json` — a single 6-line entry inserted alphabetically before `nighthawk-morning-
+  confirm`, verified against `main.tf`'s actual field usage (`key`/`path`/`eventbridge_schedule`):
+  ```json
+      {
+        "key": "nighthawk-backfill-repair",
+        "path": "/api/cron/nighthawk-backfill-repair",
+        "railway_schedule": "0 13,14 * * 1-5",
+        "eventbridge_schedule": "cron(0 13,14 ? * MON-FRI *)"
+      },
+  ```
+  Opening the blackout-infra PR with this snippet requires push access this session's permission
+  classifier correctly denied (a real access-scope elevation). **Next action for a human or a
+  future blackout-infra-authorized session:** open that PR with the exact snippet above, merge it,
+  then run `terraform apply` against `terraform/modules/crons` (needs AWS creds — none available
+  this run, `InvalidClientTokenId`) to actually create the EventBridge rule. Until the apply runs,
+  this cron is reachable only via `?force=1` manual invocation.
+- **What to re-check once that chain completes:** confirm the rule fires and that
+  `GET /api/market/nighthawk/edition` for the live PLTR edition (or whichever edition is current by
+  then) no longer carries a dead BACKFILL contract.
+
+## WATCH LIST — 2026-10-25 (swing Banger-origin thesis guard dead-code fix, fix/swing-banger-origin-thesis-dead-guard)
+- **What was broken:** a 2026-10-08 fix (`bangerOriginNoRealThesis`/`reviewedIsBangerOrigin` in
+  `play-brief-intel.ts`) and a 2026-10-24 fix (`regimeForDisplay` nulling in `adapters.ts`) were
+  each correct in isolation but silently defeated each other — the later fix nulled the exact
+  `TerminalPlay.regime` field the earlier fix's guards checked, so the thesis-line suppression
+  could never fire again. Live-reproduced on HAL/CLF/NET: the swing play-brief "What to watch"
+  section rendered "Thesis **unknown** — Engine B scale-out — whole-market breakout" for every
+  Banger-origin OPEN position (~78/81 of the live committed Swing book per CLAUDE.md's own count).
+- **What the fix changed:** added a new, stable `TerminalPlay.bangerOrigin` field computed before
+  the display-nulling, and pointed both downstream guards at it instead of the now-always-null
+  `regime` field.
+- **What to re-check once the market opens:** pull `GET /api/market/swing/play-brief` for a few
+  live Banger-origin OPEN/HOLD/TRIM swing positions and confirm the "What to watch"/"Trade manager
+  read" section never renders a "Thesis **unknown**"/"Thesis **intact**" line immediately next to
+  the generic "Engine B scale-out — whole-market breakout" note, and that a same-ticker
+  Banger/Banger overlap in Book context still reads "separate position" rather than
+  "cross-engine."
+
+## WATCH LIST — 2026-10-25 (swing G-S14 Cortex non-veto mislabel fix, fix/swing-g-s14-cortex-nonveto-mislabel)
+- **What was broken:** `commitGateBlocksForVerdict`'s G-S14 branch collapsed every non-veto Cortex
+  block code (`cortex_net_negative`, `cortex_thin_evidence`, `cortex_contested`,
+  `cortex_gex_walls_oppose_unresolved`) to the same hardcoded "Cortex preflight vetoed this setup"
+  sentence as a genuine veto. Live-reproduced on SOXX's WATCH row (`gate:G-S14:cortex_net_negative`)
+  rendering as if Cortex had issued a hard veto in the Command Deck "Why not committed" panel.
+- **What the fix changed:** each known non-veto G-S14 code now gets its own honest reason text
+  distinct from the genuine-veto sentence; `code` itself is unchanged.
+- **What to re-check once the market opens:** pull a few live SWING WATCH rows with an active
+  `gate:G-S14:*` block (`GET /api/market/nighthawk/horizons?view=swings`) and confirm the Command
+  Deck panel's "Why not committed" reason text matches the real block kind — "vetoed" only for a
+  genuine `cortex_veto:*` code, a distinct weaker-sounding sentence for `cortex_net_negative`/
+  `cortex_thin_evidence`/`cortex_contested`/`cortex_gex_walls_oppose_unresolved`.
+
+## WATCH LIST — 2026-10-25 (swing envelope.invalidation moot-gate leak fix, fix/swing-invalidation-moot-gate-leak)
+- **What was broken:** the top-level `envelope.invalidation` callout on a WATCH-bucket swing
+  play-brief fell straight through to the raw `play.gateBlocks?.[0]?.reason` whenever the play was
+  `setupState: "FORMING"` with no live resolvable break level — `gateFramingMootReason`
+  (entry-enterability.ts) already exists to reframe exactly this as moot and is wired into the
+  Entry section/Trade manager read, but was never wired into this field. Live-reproduced on PLTR
+  WATCH: `envelope.invalidation` read "Legacy morning-confirm promotion — Swing V2 confluence/
+  Cortex gates were not evaluated on this path." — gate-provenance boilerplate, not a real
+  invalidation level — while the SAME brief's Entry section correctly called the identical gate
+  moot.
+- **What the fix changed:** the raw gate-reason fallback is now suppressed whenever
+  `gateFramingMootReason(play)` is truthy (FORMING, below-floor, or legacy_exempt-only), falling
+  through to `null` instead of fabricating new text.
+- **What to re-check once the market opens:** pull `GET /api/market/swing/play-brief` for a
+  currently-FORMING WATCH candidate with no live GEX/Vector break level resolvable (check
+  `unavailableSources` for GEX/Vector absence) and confirm `envelope.invalidation` reads `null`
+  (omitted from the markdown's "**Invalidation:**" line) rather than a gate-provenance sentence,
+  and that a genuinely TRIGGERED/above-floor WATCH play still shows a real gate reason there.
+
+## WATCH LIST — 2026-10-25 (swing magnetCoaching distance not spot-anchored fix, fix/swing-magnet-coaching-distance-not-spot-anchored)
+- **What was broken:** `magnetCoaching` (the "Trade manager read" gamma-magnet bullet) displayed
+  `vec.magnet.distancePct` verbatim off the raw Vector snapshot instead of recomputing from this
+  brief's own canonical `spot` — a parameter the function accepted but never used. Live-reproduced
+  on MSTR WATCH (2026-10-25, off-hours): the bullet read "+10.3% from spot" for the gamma magnet at
+  161.56 while the SAME brief's `envelope.structureLadder.rungs` reported 10.2% for the identical
+  level (the mathematically correct rounding of `(161.56-146.54)/146.54*100 = 10.2498%`).
+- **What the fix changed:** `magnetCoaching` now recomputes `distancePct` from `spot`/`m.strike`
+  for both the displayed percentage and the `<1.2%` "sitting on the magnet" near-threshold check,
+  matching `collectFocalLevels`'s formula exactly (the same one feeding the ladder widget).
+- **What to re-check once the market opens:** pull `GET /api/market/swing/play-brief` for a live
+  WATCH/OPEN swing candidate whose Vector snapshot carries an active gamma magnet, and confirm the
+  "Trade manager read" magnet bullet's percentage matches `envelope.structureLadder.rungs`'s
+  `magnet` rung's `distancePct` exactly (same rounded value), and that the "sitting on the magnet"
+  vs. generic pivot-node framing agrees with the real distance rather than a stale upstream one.
+
+## WATCH LIST — 2026-10-25 (Legacy `repairStaleBackfillPlays` missing rr_ratio backfill, fix/legacy-backfill-repair-missing-rr-ratio)
+- **What was broken:** `repairStaleBackfillPlays` (the `nighthawk-backfill-repair` self-heal cron's
+  pure repair function, `play-backfill.ts`) re-picks a live replacement options contract for a
+  BACKFILL play whose own contract has expired relative to `editionFor`, but only overwrote
+  `options_play`/`entry_premium` on the play — any edition published BEFORE the earlier same-day
+  `selectBackfillPlays` rr_ratio fix (#6679) shipped can still carry a BACKFILL play with no
+  structured `rr_ratio` at all, and swapping the dead contract never regenerates it (contract
+  pricing and `rr_ratio` are independent — the latter comes from `entry_range`/`target`/`stop`,
+  not the option strike/premium).
+- **What the fix changed:** the repair pass now backfills a missing `rr_ratio` via
+  `computeRiskReward` using the play's own already-present `direction`/`entry_range`/`target`/
+  `stop` (the exact same inputs/function `selectBackfillPlays` uses) — only when genuinely absent;
+  an already-correct `rr_ratio` is left untouched, never silently recomputed.
+- **What to re-check once the market opens:** if the `nighthawk-backfill-repair` cron actually
+  repairs a stale BACKFILL play's contract this cycle (check `meta.stale_backfill_contract_repair`
+  on `GET /api/market/nighthawk/edition`), confirm that repaired play's `rr_ratio` is populated
+  (not `undefined`) and that `PlaybookBriefingPanel.tsx`'s "R:R" stat renders for it.
+
+## WATCH LIST — 2026-10-25 (swing "Setup score" evidence[] provenance.asOf fix, fix/swing-setup-score-evidence-provenance-asof)
+- **What was broken:** `evidenceFromContext`'s "Setup score" fact stamped `provenance.asOf:
+  ctx.asOf` (the brief's read time) and a hardcoded `freshness: "recent"`, even though
+  `play.score`/`play.factors` are a commit-time snapshot that never gets recomputed later. A play
+  committed days ago would read its score as freshly "recent" forever.
+- **What the fix changed:** anchored the fact's provenance to `play.committedAt` (same pattern as
+  the existing WATCH-levels `pinnedProvenance` fix for `detectedAt`) — `asOf` now cites the real
+  commit timestamp and `freshness` is computed from the real age via `freshnessFromObservedMs`.
+- **What to re-check once the market opens:** pull `GET /api/market/swing/play-brief` for a live
+  OPEN/WATCH/CLOSED play whose `committedAt` is more than ~10 minutes before the brief's own
+  `asOf`, and confirm the "Setup score" evidence entry's `provenance.asOf` matches the play's
+  commit time (not "now") and `freshness` reads `stale` rather than `recent`.
+
+## WATCH LIST — 2026-10-25 (swing lane-rank score rounding mismatch fix, fix/swing-lane-rank-score-rounding-mismatch)
+- **What was broken:** `laneRankSection`'s rank line and `laneRankCoaching`'s "Lane leader"/"Below
+  lane median" bullets displayed `computeLaneRank`'s `playScore` verbatim — deliberately raw,
+  one-decimal `laneRows` precision — while `whyThisSetupSection`'s lede and the "Setup score"
+  evidence fact round the same underlying score to an integer. Live repro SOXX: "...scoring 74."
+  vs "score **73.7**" for the identical measurement, three sections apart in one brief.
+- **What the fix changed:** rounds the score ONLY at the 4 render call sites
+  (`Math.round(snap.playScore)`); `deltaFromMedian`/`medianScore` (computed from the raw value)
+  are untouched — never duplicated elsewhere in the brief, so their own precision was never
+  disputed.
+- **What to re-check once the market opens:** pull a live OPEN/WATCH swing brief whose lane peers
+  carry non-integer scores and confirm the "Lane rank" section's score and `laneRankCoaching`'s
+  leader-line score both match the integer shown in "Why this setup"'s lede and the "Setup score"
+  evidence fact for the SAME play, while the "vs median" delta keeps its own decimal precision.
+
+## WATCH LIST — 2026-10-25 (SPX `mergePulseIntoDesk` available-field fix, fix/spx-merge-pulse-available-never-reassigned)
+- **What was broken:** `mergePulseIntoDesk`'s return spread never reassigned `available`, so
+  `deskShellFromPulse`'s cold/slow-build fallback shell (`mergePulseIntoDesk(emptyDeskPayload(...),
+  pulse)`) stayed `available:false` forever even when `pulse` carried real, live price/VWAP/EMA/
+  tick/trin/add data. `computeSpxConfluence` gates on `!desk.available` and nulls confluence
+  entirely in that case, which cascaded into `GET /api/market/spx/play` serving
+  `assessed:false/score:0/factors:[]/direction:null/grade:"D"` — live-reproduced 2026-10-25 while
+  the sibling `GET /api/market/spx/desk` showed real data (`available:true`, price 7623.68) at the
+  same instant.
+- **What the fix changed:** `available: pulse.available || base.available` in the merge's return
+  object — the shell becomes available the moment either side has real data, and stays honestly
+  unavailable when neither does.
+- **What to re-check once the market opens:** right after an ECS deploy/rolling restart (the
+  window this fallback shell actually serves), pull `GET /api/market/spx/play` a few times in
+  quick succession and confirm `assessed`/`score`/`direction` populate as soon as `pulse` has real
+  data, rather than reading `available:false`/`score:0` until the slower full-desk build finishes.
+
+## WATCH LIST — 2026-10-25 (SPX play-eval cache staleness, 3 unguarded read sites, fix/spx-play-cache-staleness-read-sites)
+- **What was broken:** three of four Redis read sites for the shared `spx-play-read:<date>`
+  cache key in `spx-service.ts` (`waitForPeerSpxPlaySnapshot`, `evaluateSpxPlayStateCrossReplica`'s
+  lock-not-won branch, `spxPlayReadFallback`) returned whatever `sharedCacheGetWithTtl` found
+  unconditionally, with no check against the route's own `playMemberPeekMaxAgeSec()` freshness
+  bound — unlike the fourth reader (`peekSpxPlayState`), which already enforced it. Live-reproduced
+  twice (initial find + independent adversarial re-verification) 2026-10-25: `GET
+  /api/market/spx/play` served at least 4 distinct cached generations non-monotonically across
+  sequential polls, one ~24 minutes stale (~71x the 20s bound), two generations carrying
+  genuinely different `score`/`direction`/`factors` for the same moment.
+- **What the fix changed:** added the same `isSpxPlaySnapshotFreshEnough` guard at all three
+  sites, matching `peekSpxPlayState()`'s established pattern — a too-stale hit now falls through
+  to the next fallback step instead of being trusted outright.
+- **What to re-check once the market opens, during live RTH (the mechanism is identical whether
+  the market is open or closed, but real concurrent member traffic is the condition most likely
+  to actually contend the cross-replica lock):** poll `GET /api/market/spx/play` repeatedly
+  (~5-10s apart) over a few minutes and confirm `as_of` never jumps backward across consecutive
+  polls, and that `score`/`direction`/`factors` never flip between two materially different values
+  faster than the underlying market data could plausibly explain.
+
+## WATCH LIST — 2026-10-25 (swing mark-unknown reason + structural-node market-closed caveat, PR #6731)
+- **What was broken (SNOW):** `collectOptionMarkStalenessAbsence()` (`play-brief-absence.ts`)
+  labeled a genuinely-unknown mark (no live tick ever landed, `pnlPct` null) with the same reason
+  text (`"sync quote without freshness timestamp"`) used for a real-but-untimestamped quote —
+  contradicting the Position/Data-freshness sections' own honest "unknown" framing for the
+  identical play. Live repro SWING:SNOW:2105.
+- **What was broken (RDW):** `watchForSection()`'s "Structural support/resistance node" line
+  (`play-brief-intel.ts`) never applied `closedMarketSessionNote` — unlike every other prose
+  consumer of the same Vector/GEX snapshot — so a post-close/weekend self-warm could state a
+  structural level with no hint the read reflects the last session's tape.
+- **What the fix changed:** SNOW — a more specific, checked-first branch returns an honest
+  "no live price yet — sync quote, no real quote value has ever landed" reason when
+  `optionMarkGenuinelyUnknown(play)` holds (also fixed a regression this introduced in
+  `dataHonestyCoaching()`, which pattern-matched the old single reason string). RDW — appends
+  `closedMarketSessionNote(vec, gexForLevels, readMs)` as a suffix to the structural node line,
+  for every bucket, not just closed.
+- **What to re-check once the market opens:** (SNOW) pull `GET /api/market/swing/play-brief` for a
+  live OPEN/WATCH play whose `markIsSync===true` and `pnlPct` is genuinely null (no live tick has
+  synced since commit) and confirm `unavailableSources`/confidence/footer say "no live price yet"
+  rather than implying a real, just-unstamped price exists. (RDW) pull a brief during a post-close/
+  weekend self-warm (fresh Vector/GEX compute, market CLOSED) for a play with a resolvable
+  structural support/resistance node and confirm that line carries the same "reflects the last
+  session's tape" caveat the brief's other GEX/Vector-derived lines already show.
+
+## WATCH LIST — 2026-10-25 (round-3 Largo swing play-brief fix batch, PRs #6735/#6736/#6737; #6738 pending)
+
+Four adversarially-confirmed (refutedCount:0/3 each) findings from the standing Ask Largo ×
+Night Hawk Swings mandate's round-3 fresh-ticker audit (SPOT/PANW/MRNA/FLY/AMPX/CLF/CRWD/DKNG/
+TMDX/IOT/MSTR/GM), fixed and merged same day:
+
+- **FLY — evidence[] gap (PR #6735, merged `3cd614a24`).** `evidenceFromContext()` never mirrored
+  a committed OPEN position's own entry price or exit-policy stop/target rails into
+  `envelope.evidence[]`/`evidence_numbers`, even though both render prominently in the Position/
+  Management sections' prose. Fixed: two new additive evidence facts, gated on the `open` bucket.
+  **Re-check once the market opens:** fetch a live OPEN swing play-brief
+  (`GET /api/market/swing/play-brief?playId=SWING:<ticker>&expandIntel=1`) and confirm
+  `envelope.evidence[]` now contains an "Entry: $X." fact and an "Exit-policy rails: stop $X ·
+  target $Y." fact with `provenance.source: "Swing ledger"` — and confirm neither appears for a
+  live WATCH or CLOSED play.
+
+- **PANW + CRWD + DKNG — disclosure-caveat propagation, 4 sites (PR #6736, merged `64bd1cb55`).**
+  Same bug class across 3 tickers: a rendered value sat beside a sibling that already carried a
+  staleness/market-closed caveat for the identical snapshot, but never threaded the caveat through
+  itself. Fixed: `pnlSection`'s Peak/Trough lines now append the existing `staleCaveat`;
+  `watchForSection`'s gamma-flip bullet now carries `closedMarketSessionNote` (mirroring the
+  structural-node bullet PR #6731 fixed the same day); `actionNarrative` (now takes `readMs`) and
+  `holdPlanSection`'s giveback blocks (two independent call sites) now append
+  `optionMarkStaleCaveat` to their "Gave back X%"/"Round-tripped" bullets.
+  **Re-check once the market opens:** on a live OPEN position whose option mark is genuinely
+  stale (check `unavailableSources` for an `option mark` entry), confirm the Position section's
+  Peak/Trough lines carry `_(stale — same quote Mark flagged above)_`; on a live WATCH/OPEN play
+  read during a closed-market self-warm, confirm the "Reclaim/Lose gamma flip" bullet in "What to
+  watch" carries the market-closed caveat; on a stale-mark OPEN play with a real giveback,
+  confirm the "Trade manager read" giveback bullet (and, separately, the "Hold plan" giveback
+  bullet if it fires instead) also carries the stale caveat.
+
+- **MSTR — entry-trigger provenance mismatch (PR #6737, merged `9eb08cf6f`).** A WATCH play's
+  structured `envelope.levels[]` "entry trigger" entry was unconditionally stamped with the "flag
+  anchor"'s own pinned `asOf`/`freshness`, even once the two underlying prices had genuinely
+  diverged (proving the trigger was recomputed on a later, unrecorded scan pass). Fixed: reuses
+  `entryTriggerDeadReason`'s existing `flagUnderlyingPx === entryTriggerUnderlyingPx` equality —
+  when they still match, behavior is unchanged; when they've diverged, the entry-trigger level now
+  gets an honest `{ asOf: null, freshness: "unknown" }` instead of a fabricated timestamp.
+  **Re-check once the market opens:** find a live WATCH play whose `flagUnderlyingPx` and
+  `entryTriggerUnderlyingPx` differ (a dossier rebuild since the flag was pinned) and confirm
+  `envelope.levels[]`'s "entry trigger" entry shows `freshness: "unknown"`/`asOf: null` rather than
+  reusing the (now provably wrong) flag-anchor timestamp; confirm a play where the two prices still
+  match renders unchanged (still inherits the flag's pinned provenance).
+
+- **SPOT — desk-consensus self-reference (PR #6738, CI pending at time of writing — confirm it
+  merged before relying on this entry).** For a Legacy-promoted WATCH candidate,
+  `deskConsensusSection` cited Night Hawk Legacy's "last pick on this name" as independent
+  track-record context, when that cited pick was the literal same-dated event that promoted this
+  exact candidate into existence. Fixed: a self-reference guard (`isLegacyPromotedSignal` +
+  a 1-day origination-date match against the cited `edition_for`) suppresses the section when the
+  citation would be self-referential; a genuinely older, independent Legacy pick on the same
+  ticker still renders normally. **Re-check once the market opens:** find a freshly
+  Legacy-promoted WATCH candidate (same-day `firstSeenAt`/`detectedAt` as a recent Legacy edition)
+  and confirm the brief's "Desk context" section is absent (not citing itself); find an older,
+  genuinely-independent Legacy pick on an unrelated ticker and confirm that section still renders
+  with its original wording.
+
+## WATCH LIST — 2026-10-26 (swing earnings-peer "print imminent" contradiction fix, PR #6763; swing banger-origin positionId-unresolvable fix, PR #6767)
+
+- **MSFT-style — earnings-peer-lens "print imminent" bullet survived a no-gap-exposure contract
+  (PR #6763, merged `ee8df01f6`).** `meridianPeerEarningsCoaching()`'s unconditional
+  `"**print imminent** — vol crush risk elevated"` bullet (fires whenever `days_until <= 3`) is
+  pushed BEFORE the pure function ever sees which contract is being reviewed, so a 2026-10-25 fix
+  that correctly swapped the TRAILING sizing-instruction sentence for an honest no-exposure
+  sentence (when the reviewed contract expires on/before the print) never touched this earlier
+  bullet — live MSFT CLOSED #47 showed both halves in one sentence group: "reports in 3d ·
+  **print imminent** — vol crush risk elevated. This contract expires 2026-10-09, on/before the
+  print, so no earnings-gap exposure..." Fixed: `meridianPeerSection()` now strips the
+  `EARNINGS_PEER_PRINT_IMMINENT_BULLET` (plus its leading separator) in the same `noGapExposure`
+  branch that already swaps the sizing instruction. **Re-check once the market opens:** find a
+  live swing position whose contract expiry is on/before an earnings print landing within 3 days
+  (`days_until <= 3`) and confirm the Earnings peer lens / Trade manager read no longer shows
+  "print imminent — vol crush risk elevated" alongside "no earnings-gap exposure from this
+  position" in the same brief; confirm a position still genuinely exposed through an imminent
+  print (contract expiry AFTER the print) still shows both the "print imminent" bullet and the
+  sizing/hedging instruction unchanged (no regression — RKT, live-checked same day, contract
+  expiring 2026-10-30 against a 2026-10-29 print, correctly keeps the full sizing instruction with
+  no false no-exposure claim).
+
+- **PANW-style — banger-origin position unresolvable by `positionId` via Ask Largo play-brief
+  (PR #6767, merged `f6eb80f65`).** `loadOpenTerminalPlay()` only ever queries the native
+  `swing_positions` table; a banger-origin position lives in a separate `banger_positions` table
+  with its own id space, and the merged lane view (`getSwingServingLane`) drops a banger-origin
+  row entirely once a native-engine row already exists for the same ticker. Live-confirmed:
+  PANW carried both a native COMMIT row (`id=67`) and a separate, fully live banger OPEN row
+  (`id=2103`, confirmed via `/api/market/banger/board`) — `?playId=SWING:PANW&positionId=2103`
+  404'd for a position the member is actually holding. Fixed: `loadOpenTerminalPlay`'s two
+  failure exits now fall through to a new `loadOpenBangerTerminalPlay` (direct `banger_positions`
+  lookup via the pure `pickOpenBangerPositionForBrief` selector), additive — a ticker that only
+  ever lives in `swing_positions` is unaffected. **Re-check once the market opens:** find a live
+  ticker that carries BOTH a native `swing_positions` row and a separate `banger_positions` row
+  (check `/api/market/banger/board` against `/api/market/nighthawk/horizons?view=swings` for a
+  ticker where the banger id is absent from the merged view) and confirm
+  `?playId=SWING:<ticker>&positionId=<banger_id>` now resolves to that banger-origin position
+  instead of 404ing or substituting the unrelated native row; confirm a ticker with only a native
+  row still resolves exactly as before (no regression).
+
+## WATCH LIST — 2026-10-26 (swing "Earnings peer lens" pure-duplicate-section fix, PR #6796)
+
+- **TEM-style — "Earnings peer lens" rendered as a byte-for-byte duplicate of "Trade manager
+  read" when no Meridian peer cohort resolved (PR #6796, merged `333cd31a8`).** Live TEM 71C
+  brief (contract expiry 2026-10-30, earnings 2026-11-02, no resolvable Meridian sector peer
+  cohort) showed "Trade manager read" say "this contract expires 2026-10-30, on/before the
+  print, so no earnings-gap exposure from this position (...)" and, two sections later,
+  "Earnings peer lens" say the exact same sentence verbatim with zero peer-specific content —
+  a section occupying a full slot in the brief for no new information. Fixed:
+  `meridianPeerSection()` now returns `null` (suppressing the section entirely) when the brief's
+  own contract has no earnings-gap exposure AND the Meridian peer cohort itself is unavailable;
+  a resolved cohort with real beat-rate stats, or a contract still genuinely exposed to the
+  print, both still render exactly as before. **Re-check once the market opens:** find a live
+  swing position (OPEN/HOLD/WATCH) whose contract expires before its own next earnings print
+  AND whose `unavailableSources` lists "Meridian peer cohort"/"peers" as absent (common for
+  Banger-origin small-caps — CRML/AMPX/AVAV/FLY-style) and confirm the brief's "Earnings peer
+  lens" section is now absent entirely rather than repeating "Trade manager read"'s own
+  no-gap-exposure sentence; separately confirm a position WITH a resolved peer cohort (real
+  sector/beat-rate stats, e.g. a liquid large-cap like PLTR/TEM's own large-cap peers) still
+  renders "Earnings peer lens" with its real peer-beat-rate content unchanged (no regression).
+
+## WATCH LIST — 2026-10-26 (SPX degraded-headline second call site fix, PR #6846)
+
+- **SPX Slayer — degraded play fallback served "Desk warming" mid-RTH on a fully live desk (PR
+  #6846, merged `1c88b8b34`).** A 2026-10-16 fix overrode `degradedPlayPayload()`'s hardcoded
+  `headline`/`idle_message` default at route.ts's catch block only; a live audit on 2026-10-26
+  found the sibling call site, `spx-service.ts`'s `spxPlayReadDegraded()` (the routine
+  cross-replica-lock-loss fallback, not a rare error path), still falling through to the bare
+  "Desk warming — play state unavailable" default while `GET /api/market/spx/desk` showed the
+  real desk fully live (`market_open:true`, ~45s-old poll) at the identical instant. Fixed: both
+  call sites now spread a shared `degradedPlayCatchingUpMessage()` helper instead of one carrying
+  an inline literal and the other nothing. **Re-check once the market opens:** poll
+  `GET /api/market/spx/play` repeatedly during RTH looking for a response with `degraded:true` —
+  confirm its `headline`/`idle_message` read "Play scan still catching up — retry shortly" (never
+  "Desk warming — play state unavailable") whenever `session_phase` is `"cash"` (i.e. the market is
+  genuinely open); separately confirm the SPX Slayer board badge tooltip
+  (`spx-slayer-badge-map.ts`'s `unavailable_reason`) and the Play Verdict Bar's status line show
+  the same honest text during any such window, never the stale "cold desk" claim.
+
+## WATCH LIST — 2026-10-26 (SPX desk loader-path stale-cache ceiling fix, fix/spx-desk-loader-stale-ceiling)
+
+- **SPX Slayer — `loadSpxDesk()`/`loadMergedSpxDesk()`/`loadBootstrapBundle()` had no staleness
+  ceiling of their own, falling back to the generic 10-minute `MAX_STALE_AGE_MS` (4th instance of
+  this same cache-key's staleness-ceiling bug class — see `docs/audit/FINDINGS.md`'s 2026-10-16
+  last-writer-wins fix, PR #6822's off-hours fix, and PR #6882's peek-ceiling fix for the first
+  three).** Live-reproduced pre-fix: `GET /api/market/spx/desk`'s `as_of` 52.4s–76.0s stale across
+  10 consecutive polls with two backward jumps. Fixed in two required steps: (1)
+  `server-cache.ts`'s SWR branch now races its refresh against `opts.maxBlockMs` instead of
+  blocking unboundedly once a key's stale age exceeds `maxStaleAgeMs`; (2) all three loader call
+  sites now pass `maxStaleAgeMs: deskLoaderMaxStaleAgeMs()` (same 40s ceiling `peekSpxDesk()`
+  already uses, PR #6882). **Re-check once the market opens:** poll `GET /api/market/spx/desk`
+  repeatedly during RTH (a dozen or so calls a few seconds apart) and confirm `as_of` only ever
+  advances (never jumps backward) and never lags more than roughly 40-50s behind the poll's own
+  wall-clock time, even across requests that land on different ECS replicas (ALB round-robin);
+  separately confirm no new ALB `TargetResponseTime` p99/Max spike shows up for this route
+  post-deploy (the race-guard fix changes behavior for any `withServerCache` caller combining SWR +
+  a not-yet-degraded key + a stale age past ceiling + an explicit `maxBlockMs` — a regression here
+  would most likely surface as a brief post-deploy tail-latency blip on `/api/market/spx/desk` or
+  `/api/market/spx/play`, not a correctness error).

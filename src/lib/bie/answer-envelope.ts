@@ -14,6 +14,7 @@
 export const BIE_ANSWER_ENVELOPE_VERSION = 1 as const;
 
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
+import { fmtPriceLevel } from "@/lib/fmt-money";
 
 export type BieBias = "bullish" | "bearish" | "neutral" | "mixed";
 
@@ -304,8 +305,18 @@ function renderEvidence(ev: BieEvidence[] | undefined): string[] {
 
 function renderLevels(levels: BieLevel[] | undefined): string[] {
   if (!levels || levels.length === 0) return [];
+  // Round-first-then-stringify (fmtPriceLevel), NOT `toLocaleString(maximumFractionDigits: 2)`
+  // directly on the raw float — the two algorithms disagree at an IEEE-754 half-cent boundary
+  // (e.g. 143.075: `Math.round(143.075*100)/100` underflows to 143.07, matching `roundFloats`'s
+  // own API-boundary rounding, while `toLocaleString` independently rounds to 143.08). This
+  // function runs synchronously inside `makeEnvelope()`, BEFORE the API route's later
+  // `roundFloats()` pass rounds the structured `envelope.levels[].price` field — so the markdown
+  // bullet and the JSON field must each round the SAME raw input the SAME way, or the two
+  // disagree by a cent for the identical level in the identical response. This is the 8th
+  // documented instance of this exact bug class in this file's lineage (see `fmtPriceLevel`'s own
+  // header in `fmt-money.ts`) — the one shared call site missed when the other 7 were fixed.
   const rows = levels.map(
-    (l) => `- ${l.label}: ${l.price.toLocaleString("en-US", { maximumFractionDigits: 2 })}${l.note ? ` — ${l.note}` : ""}`
+    (l) => `- ${l.label}: ${fmtPriceLevel(l.price)}${l.note ? ` — ${l.note}` : ""}`
   );
   return ["**Key levels:**", ...rows];
 }

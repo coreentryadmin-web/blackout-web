@@ -3,6 +3,7 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import { MotionProvider } from "@/components/MotionProvider";
 import { SessionCacheGuard } from "@/components/SessionCacheGuard";
+import { BfcacheAuthGuard } from "@/components/BfcacheAuthGuard";
 import { ClientErrorReporter } from "@/components/ClientErrorReporter";
 import { OnboardingGuide } from "@/components/OnboardingGuide";
 import { PwaRegister } from "@/components/PwaRegister";
@@ -22,6 +23,7 @@ function DeskShell({ children }: { children: React.ReactNode }) {
     <MotionProvider>
       <SharedSigilDefs />
       <SessionCacheGuard />
+      <BfcacheAuthGuard />
       <ClientErrorReporter />
       <PwaRegister />
       <IosViewportLock />

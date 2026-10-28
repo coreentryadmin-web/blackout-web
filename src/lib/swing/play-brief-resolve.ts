@@ -15,9 +15,10 @@ import {
   discoverSwingFromPersisted,
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
-import { fetchBangerOpenBookRowsSettled } from "@/lib/banger/positions-db";
+import { fetchBangerOpenBookRowsSettled, fetchOpenBangerPositions } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { readBangerWatchSnapshot } from "@/lib/banger/watch-cache";
+import { horizonPlayFromBangerPosition } from "./banger-lane-merge";
 import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
 import { isSwingEngineV2Enabled } from "@/lib/swing/v2/config";
 import { todayEt } from "@/lib/et-date";
@@ -34,6 +35,7 @@ import { livePlayFromSwingPosition } from "@/lib/swing/live-plays";
 import {
   parseSwingPlayId,
   pickLanePlayForBrief,
+  pickOpenBangerPositionForBrief,
   resolveBriefIvRank,
   rightFromContractType,
   type ParsedSwingPlayId,
@@ -58,6 +60,7 @@ export function horizonRowToDeckSource(
   positionId?: number | null,
   cortex?: unknown,
   occ?: string | null,
+  budgetVerdict?: unknown,
 ): HorizonDeckSource {
   return {
     ticker: p.ticker,
@@ -127,6 +130,10 @@ export function horizonRowToDeckSource(
     // row.entry_context?.cortex for an open position; a WATCH/lane-only candidate has no row
     // yet, so this stays undefined there (honest absence, never fabricated).
     cortex,
+    // Same shape as cortex above — the budget gate only runs at commit, so this stays undefined
+    // for a WATCH/lane-only candidate (Ask Largo standing mandate, 2026-10-26, #4076 comment
+    // 6410025245).
+    budgetVerdict,
   };
 }
 
@@ -138,21 +145,29 @@ function normalizeRight(right: string | null | undefined): "C" | "P" | null {
   return null;
 }
 
+// BUG FIX (2026-10-20, Ask Largo standing mandate — same defect class as this function's sibling
+// `contractMatches` in play-brief-resolve-pure.ts, found the same cycle). The old
+// `if (strike == null) return true;` short-circuit ran BEFORE `right` was ever examined, so a
+// caller supplying only `right` (no `strike`) matched EVERY row regardless of call/put. `strike`
+// and `right` are independent, optional disambiguation hints (per the Largo tool's own documented
+// call shape — any subset of positionId/strike/right/status may be supplied); each is now checked
+// on its own, so a right-only request can no longer fall through to a true-by-default return.
 function rowContractMatches(row: SwingPositionRow, strike: number | null, right: "C" | "P" | null): boolean {
-  if (strike == null) return true;
-  if (row.contract_strike !== strike) return false;
-  if (right == null) return true;
-  // BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
-  // roll-history fix and this cycle's closed-plays.ts/live-plays.ts sibling fixes). `contract_type`
-  // is a genuinely nullable DB column; the old `row.contract_type === "put" ? "P" : "C"` ternary
-  // fabricated "C" for a row whose real contract type was never recorded — which meant a hint
-  // asking for a specific "C" leg could FALSELY MATCH a row of unknown type (an identity bug, not
-  // just a display one: this function exists specifically to fix ticker-collision misidentification,
-  // per the file header). An unrecorded right can't confidently be declared EITHER "C" or "P", so
-  // it now stays `null` and fails the match rather than guessing — fail-closed, consistent with
-  // `normalizeRight` just above already returning `null` for anything it can't parse.
-  const rowRight = rightFromContractType(row.contract_type);
-  return rowRight === right;
+  if (strike != null && row.contract_strike !== strike) return false;
+  if (right != null) {
+    // BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
+    // roll-history fix and this cycle's closed-plays.ts/live-plays.ts sibling fixes). `contract_type`
+    // is a genuinely nullable DB column; the old `row.contract_type === "put" ? "P" : "C"` ternary
+    // fabricated "C" for a row whose real contract type was never recorded — which meant a hint
+    // asking for a specific "C" leg could FALSELY MATCH a row of unknown type (an identity bug, not
+    // just a display one: this function exists specifically to fix ticker-collision misidentification,
+    // per the file header). An unrecorded right can't confidently be declared EITHER "C" or "P", so
+    // it now stays `null` and fails the match rather than guessing — fail-closed, consistent with
+    // `normalizeRight` just above already returning `null` for anything it can't parse.
+    const rowRight = rightFromContractType(row.contract_type);
+    if (rowRight !== right) return false;
+  }
+  return true;
 }
 
 /**
@@ -259,13 +274,52 @@ async function loadLaneRows(ticker: string): Promise<{
   };
 }
 
+// BUG FIX (2026-10-26, Ask Largo standing mandate, live repro PANW positionId=2103). The
+// 2026-10-24 fix just above (the "lone candidate" guard) correctly stopped this function from
+// substituting an UNRELATED row when a caller's requested `positionId` failed to match — but it
+// left the resulting "no match" case returning bare absence even when the requested id genuinely
+// IS a live, open position, just one that lives in `banger_positions`, not `swing_positions`.
+// `getSwingServingLane` (serving-lane.ts, fed via this file's own `loadLaneRows`) merges BOTH
+// origins per ticker but keeps only one row when a native-engine row and a banger-origin row
+// share the same ticker — so once a banger-origin position's OWN lane/discovery candidate entry
+// ages out of that merge, its ONLY surviving path to a brief was this function, which never
+// queried `banger_positions` at all. Live-confirmed: PANW carries a native swing_positions COMMIT
+// row (id 67) AND a separate, fully live banger_positions OPEN row (id 2103, confirmed via
+// `GET /api/market/banger/board`) — `?playId=SWING:PANW&ticker=PANW&positionId=2103` resolved to
+// a flat 404 "play not found" for a position a member is actually holding right now. Fixed by
+// falling through to a banger-origin lookup whenever the native lookup (above) found nothing —
+// additive, so a ticker that only ever lives in `swing_positions` behaves byte-identically to
+// before.
+async function loadOpenBangerTerminalPlay(
+  ticker: string,
+  hints: { positionId?: number | null },
+): Promise<TerminalPlay | null> {
+  const bangerRows = await fetchOpenBangerPositions().catch(() => []);
+  const row = pickOpenBangerPositionForBrief(bangerRows, ticker, hints.positionId ?? null);
+  if (!row) return null;
+
+  const horizonPlay = horizonPlayFromBangerPosition(row);
+  if (!horizonPlay) return null;
+  return terminalPlayFromHorizon(
+    horizonRowToDeckSource(
+      horizonPlay,
+      row.id,
+      row.entry_context?.cortex ?? null,
+      row.contract_occ,
+      row.entry_context?.budget_verdict ?? null,
+    ),
+  );
+}
+
 export async function loadOpenTerminalPlay(
   ticker: string,
   hints: { positionId?: number | null; strike?: number | null; right?: "C" | "P" | null; status?: string | null },
 ): Promise<TerminalPlay | null> {
   const openRows = await fetchOpenSwingPositions().catch(() => []);
   const matches = openRows.filter((r) => r.ticker.toUpperCase() === ticker.toUpperCase());
-  if (!matches.length) return null;
+  if (!matches.length) {
+    return isBangerEngineEnabled() ? loadOpenBangerTerminalPlay(ticker, hints) : null;
+  }
 
   let row: SwingPositionRow | undefined;
   if (hints.positionId != null) {
@@ -276,7 +330,17 @@ export async function loadOpenTerminalPlay(
     if (byContract.length === 1) row = byContract[0];
     else if (byContract.length > 1) row = byContract[0];
   }
-  if (!row && matches.length === 1) row = matches[0];
+  // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro PANW: `?playId=SWING:PANW:2103`
+  // resolved to the ledger's own PANW:67 row via THIS shortcut). `hints.positionId` already failed
+  // to match any row above (line ~280) — if the caller named a specific position and this ticker's
+  // one remaining open ledger row isn't it, that row is not an honest match, it's the only other
+  // ledger candidate on the same name. Taking it anyway served an unrelated position's entry/mark/
+  // P&L under the requested positionId with the response's own `playId` silently reporting back a
+  // DIFFERENT id than what was asked for. Only take this "lone candidate" guess when no positionId
+  // was requested at all — the exact same fail-closed rule this file's own 2026-10-20
+  // `closedFallback` fix already states: "an explicit, unresolvable positionId must surface as
+  // absence, never as an unrelated substitute."
+  if (!row && matches.length === 1 && hints.positionId == null) row = matches[0];
   if (!row && hints.status && WORKING.has(hints.status.toUpperCase())) {
     const working = matches.filter((r) => WORKING.has(String(r.status ?? "").toUpperCase()));
     if (working.length === 1) row = working[0];
@@ -288,7 +352,9 @@ export async function loadOpenTerminalPlay(
     }
     if (!row) row = matches[0];
   }
-  if (!row) return null;
+  if (!row) {
+    return isBangerEngineEnabled() ? loadOpenBangerTerminalPlay(ticker, hints) : null;
+  }
 
   const snap = await readSwingServingSnapshot().catch(() => null);
   const spot = snap?.spotsByTicker?.[ticker.toUpperCase()] ?? null;
@@ -308,6 +374,7 @@ export async function loadOpenTerminalPlay(
       row.id,
       row.entry_context?.cortex ?? null,
       occSymbolFromSwingRow(row),
+      row.entry_context?.budget_verdict ?? null,
     ),
   );
   const ivRank = resolveBriefIvRank({ dossierIvRank: dossier?.ivRank, featureVector: row.feature_vector });
@@ -436,8 +503,53 @@ export async function resolveSwingPlayForBrief(
     if (closed) return { play: closed, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
   }
 
-  const closedFallback = await loadClosedPlay(ticker, null);
-  if (closedFallback) return { play: closedFallback, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
+  // BUG FIX (2026-10-20, Ask Largo standing mandate, adversarially verified). This fallback used to
+  // run UNCONDITIONALLY — reached whenever every earlier, positionId-targeted lookup above (the
+  // open ledger, both positionId-based closed checks, the chain-root retry) came back empty, with
+  // no check on whether the caller had actually supplied a specific positionId that simply failed
+  // to resolve (e.g. one outside loadClosedPlay/fetchSwingPositionsRange's own 90-day fetch window).
+  // `loadClosedPlay(ticker, null)` ignores positionId entirely and returns whichever graded row for
+  // the ticker has the most recent `graded_at` — a completely different trade than the one asked
+  // about. That is exactly the "silently returns the wrong play" failure mode this file's own
+  // `resolveChainRootId` doc comment above already names, just via a different trigger (a stale
+  // positionId rather than a multi-roll chain) — and `loadSwingPlayBriefContext` (play-brief-
+  // context.ts) already treats a `null` return here as the correct, honestly-handled "not found"
+  // signal, so there is a working absence path this fallback was bypassing. Only take the
+  // ticker-wide "whichever is most recent" guess when the caller never asked about a specific
+  // position in the first place — an explicit, unresolvable positionId must surface as absence,
+  // never as an unrelated substitute.
+  // BUG FIX (2026-10-26, Ask Largo standing mandate, live repro MSTR — same failure CLASS as the
+  // 2026-10-20 fix just above, caught by a different trigger). That fix stopped this fallback from
+  // substituting an unrelated trade when a caller named a specific POSITION that failed to resolve.
+  // It left untouched the mirror case: a caller that names a specific LIVE-LANE STATE instead (the
+  // route's own documented `status=WATCH|COMMIT|OPEN|...` hint, used with NO positionId because a
+  // WATCH/lane-only candidate has no ledger row to embed one — see `horizonRowToDeckSource`'s own
+  // comment above). `wantsClosed` (used for the lane-lookup skip a few lines up) already encodes
+  // exactly this distinction; this fallback just never consulted it.
+  //
+  // Live-confirmed 2026-10-26: `GET /api/market/swing/play-brief?playId=SWING:MSTR&ticker=MSTR&
+  // status=WATCH` — the EXACT request shape `useSwingPlayBrief`'s `briefUrl()` builds for a WATCH-
+  // bucket TerminalPlay (no embedded positionId; `status` set from `play.status`) and the EXACT
+  // shape Largo's own `get_swing_play_brief` tool sends when it passes a `status` hint read off an
+  // earlier `get_swing_horizon` call — returned `available:true` with a `STOPPED — MSTR 160C
+  // 4DTE` CLOSED brief (-62.31% realized) while MSTR was a live, currently-listed WATCH candidate
+  // on the SAME session's board (`/horizons?view=swings`). Root cause: the live WATCH lane had
+  // (very briefly, confirmed via two `/horizons` reads minutes apart) no MSTR row at the instant
+  // this route ran, so `pickLanePlayForBrief` legitimately found nothing — but with `positionId`
+  // always null for a lane-only candidate, this fallback ran anyway and silently handed back MSTR's
+  // unrelated, weeks-old, heavily-losing closed trade AS IF it answered the WATCH request, with no
+  // absence/retryable signal of any kind. `useSwingPlayBrief` polls every 8-20s during RTH
+  // (`briefRefreshMs`), so a member with this exact panel open could have it silently swap from a
+  // live WATCH view to a -62% STOPPED headline on an ordinary auto-refresh — and Largo could narrate
+  // the same substitution as fact in a chat answer. Only take the ticker-wide "whichever is most
+  // recent" guess when the caller either never named a status at all (the ambiguous ticker-only
+  // query both the route and Largo's tool doc describe as the common case) or explicitly asked for
+  // CLOSED — never when they named a specific live-lane state that this lookup failed to honor.
+  const explicitlyWantsLiveState = status != null && !wantsClosed;
+  if (positionId == null && !explicitlyWantsLiveState) {
+    const closedFallback = await loadClosedPlay(ticker, null);
+    if (closedFallback) return { play: closedFallback, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
+  }
 
   return null;
 }

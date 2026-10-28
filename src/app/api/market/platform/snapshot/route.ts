@@ -21,7 +21,11 @@ export async function GET(req: NextRequest) {
         VALID_SERVICES.has(s)
       )
     : undefined;
-  const flowLimit = Number(sp.get("flow_limit") ?? 50);
+  // `?? 50` only guards an absent param — a non-numeric one survives it as NaN (neither null
+  // nor undefined), which then also survives the `?? 50` fallback inside getPlatformSnapshot
+  // and reaches a raw SQL `LIMIT` bind, throwing and silently nulling `snapshot.flows`.
+  // `|| 50` catches it here (NaN is falsy) before it ever leaves this route.
+  const flowLimit = Number(sp.get("flow_limit") ?? 50) || 50;
   const fullEdition = sp.get("full_edition") === "1";
 
   try {

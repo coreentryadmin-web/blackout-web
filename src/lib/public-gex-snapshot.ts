@@ -162,6 +162,17 @@ async function loadLastGood(ticker: string): Promise<PublicGexSnapshot | null> {
 
 function degradedFromLastGood(lastGood: PublicGexSnapshot, note: string): PublicGexSnapshot {
   const session = publicSnapshotSessionFacts();
+  // A last-good snapshot can be re-served long after it was computed — this is the explicit point
+  // of the 24h LAST_GOOD_TTL_SEC cache — so it can carry a regime `read` that was gated (or left
+  // actionable) for a DIFFERENT market session than the one in effect right now. Re-run the gate
+  // against the CURRENT session rather than trusting the stored text: otherwise this function
+  // overrides `market_session` to "CLOSED"/"AFTER-HOURS" while the carried-over `read` keeps
+  // asserting a live actionable claim ("momentum / vol expansion, moves accelerate") that
+  // `applyPublicReadFreshnessGate` exists specifically to suppress outside OPEN. `applyPublicReadFreshnessGate`
+  // is idempotent/reversible, so this is safe whether or not the stored read was already gated.
+  const read = lastGood.read
+    ? applyPublicReadFreshnessGate(lastGood.read, session.market_session)
+    : "Last known dealer positioning — live feed temporarily unavailable. Levels below are from the most recent successful snapshot.";
   return withAgeFields({
     ...lastGood,
     available: true,
@@ -170,9 +181,7 @@ function degradedFromLastGood(lastGood: PublicGexSnapshot, note: string): Public
     market_session: session.market_session,
     session_date: session.session_date,
     as_of_et: session.as_of_et,
-    read:
-      lastGood.read ||
-      "Last known dealer positioning — live feed temporarily unavailable. Levels below are from the most recent successful snapshot.",
+    read,
   });
 }
 

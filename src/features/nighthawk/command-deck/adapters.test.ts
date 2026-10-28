@@ -13,6 +13,7 @@ import {
 import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import { overlayLegacyQuotes } from "./use-legacy-quotes.ts";
 import { swingActionDisplay } from "./play-card-lifecycle.ts";
+import { watchForSection } from "@/lib/swing/play-brief-intel";
 
 test("managementFor: RATCHET progress maps -50→0, +100→1; recommendations by P&L", () => {
   assert.equal(managementFor("RATCHET", "OPEN", -50).progress, 0);
@@ -128,6 +129,43 @@ test("horizon adapter: scoreWithheld threads through from HorizonDeckSource to T
   assert.equal(real.scoreWithheld, undefined, "a genuinely-scored 0 must not be flagged withheld");
 });
 
+// Ask Largo standing mandate, 2026-10-26 (#4076 comment 6410025245): entry_context.budget_verdict
+// (swing commit.ts's budgetVerdictStamp) threads through terminalPlayFromHorizon the same way
+// entry_context.cortex already does — parsed structurally via parseBudgetVerdictStamp, never
+// trusted raw, honestly null/undefined when absent.
+test("horizon adapter: budgetVerdict threads through from HorizonDeckSource to TerminalPlay, parsed structurally", () => {
+  const raw = {
+    blocked: false,
+    blockedDimensions: [],
+    enforce: true,
+    candidateRiskUsd: 500,
+    perPositionConstrained: true,
+    perPositionLimitUsd: 2000,
+    portfolioConstrained: true,
+    portfolioLimitUsd: 6000,
+    portfolioObservedUsd: 1500,
+  };
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 70, status: "OPEN",
+    contract: { strike: 140, right: "C", expiry: "2026-11-06", dte: 14, mid: 5.5 },
+    budgetVerdict: raw,
+  });
+  assert.deepEqual(play.budgetVerdict, raw);
+
+  const noVerdict = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 70, status: "WATCH",
+    contract: { strike: 140, right: "C", expiry: "2026-11-06", dte: 14, mid: 5.5 },
+  });
+  assert.equal(noVerdict.budgetVerdict, null, "a WATCH candidate has no commit-time budget read — honest absence");
+
+  const malformed = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 70, status: "OPEN",
+    contract: { strike: 140, right: "C", expiry: "2026-11-06", dte: 14, mid: 5.5 },
+    budgetVerdict: { garbage: true },
+  });
+  assert.equal(malformed.budgetVerdict, null, "a malformed/foreign blob must never be trusted raw");
+});
+
 // Live repro (GET /api/market/swing/record, 2026-10-16): AMZN positionId 48 (rootPositionId 44)
 // and AAPL positionId 40 (rootPositionId 37) — both ROLLED chains — served a fabricated literal
 // `"score": 0` on the CLOSED tab because closed-plays.ts's closedDeckSourceFromRow never flagged
@@ -189,6 +227,7 @@ test("horizon adapter: Banger-origin thesisLevel:'intact' is suppressed to 'unkn
   });
   assert.equal(banger.thesisBreak!.level, "unknown", "a fabricated 'intact' must never survive for a Banger-origin row");
   assert.equal(banger.thesisBreak!.note, "below the 2× partial and above the hard stop", "the real mechanical note is still useful and must be kept");
+  assert.equal(banger.bangerOrigin, true, "the stable origin marker downstream Largo guards read must be set");
 
   // A NATIVE swing position's real thesisBreak read (not Banger-origin) must be untouched.
   const native = terminalPlayFromHorizon({
@@ -200,6 +239,93 @@ test("horizon adapter: Banger-origin thesisLevel:'intact' is suppressed to 'unkn
     thesisBreak: { level: "intact", note: "thesis intact — structure holding" },
   });
   assert.equal(native.thesisBreak!.level, "intact", "a real, non-Banger thesis read must not be suppressed");
+  assert.notEqual(native.bangerOrigin, true, "a native swing row must never be flagged as Banger-origin");
+});
+
+// BUG FIX (2026-10-24, Ask Largo standing mandate, live repro BMNR — Command Deck's "Regime"
+// stat, PlayTerminal.tsx's play-detail panel AND SwingCockpitStrip.tsx's lane-level headline):
+// the sibling test above already constructs a Banger-origin row with `regime: "BREAKOUT ·
+// BANGER"` and correctly asserts the derived `thesisBreak` is suppressed — but never checks
+// `TerminalPlay.regime` itself, which is the SAME sentinel passed straight through unguarded
+// (`regime: src.regime ?? null` previously, with no BANGER_LEDGER_REGIME_LABEL check). Every
+// other consumer of this exact sentinel (thesisHealthUncalibrated in thesis-health.ts,
+// watchForSection in play-brief-intel.ts, attachThesisExplanation in serving-lane.ts, and this
+// same file's own thesisBreak guard immediately above) treats it as an internal "no real
+// per-position dossier" fingerprint, never a value fit for display. `TerminalPlay.regime` alone
+// skipped that treatment, so PlayTerminal.tsx's play-detail panel rendered a literal
+// "Regime: BREAKOUT · BANGER" line, and SwingCockpitStrip.tsx's lane-level cockpit header (which
+// picks the first play in the whole Swing book with any truthy `regime`) rendered the same
+// sentinel as if it characterized the CURRENT MARKET REGIME for the entire Swing lane — live
+// repro BMNR. With CLAUDE.md's own count that 78/81 of the live committed Swing book is
+// Banger-origin, this was the dominant rendered state of both surfaces, not an edge case. Fix:
+// suppress the sentinel to null at the same point every other consumer already does, leaving the
+// real internal `src.regime` value (still carrying the sentinel) untouched for
+// computeSwingThesisHealth's own correct detection a few lines above in the adapter.
+test("horizon adapter: Banger-origin regime sentinel ('BREAKOUT · BANGER') is suppressed to null, never rendered as a real regime read", () => {
+  const banger = terminalPlayFromHorizon({
+    ticker: "bmnr", direction: "LONG", horizon: "SWING", score: 62, status: "COMMIT",
+    contract: { strike: 35, right: "C", expiry: "2026-10-16", dte: 8, mid: 0.225 },
+    liveStatus: "OPEN",
+    livePnlPct: -10,
+    regime: "BREAKOUT · BANGER",
+  });
+  assert.equal(banger.regime, null, "the internal Banger-ledger sentinel must never surface as a displayed regime read");
+  assert.equal(banger.bangerOrigin, true, "the stable origin marker must survive even though regime itself is nulled for display");
+
+  // A NATIVE swing position's real regime read (not Banger-origin) must be untouched.
+  const native = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 70, status: "COMMIT",
+    contract: { strike: 500, right: "C", expiry: "2026-10-16", dte: 8, mid: 5 },
+    liveStatus: "OPEN",
+    livePnlPct: -10,
+    regime: "Breakout continuation · regime 0.60",
+  });
+  assert.equal(native.regime, "Breakout continuation · regime 0.60", "a real, non-Banger regime read must not be suppressed");
+  assert.notEqual(native.bangerOrigin, true, "a native swing row must never be flagged as Banger-origin");
+});
+
+// BUG FIX (2026-10-25, Ask Largo standing mandate, live repro HAL/CLF/NET): the two tests above
+// each prove ONE adapter-level guard in isolation, but neither ever fed the adapter's OUTPUT into
+// a real downstream Largo consumer — which is exactly how this regression shipped in the first
+// place. `play-brief-intel.ts`'s `bangerOriginNoRealThesis` used to re-check
+// `play.regime === BANGER_LEDGER_REGIME_LABEL` on the TerminalPlay the test above just proved has
+// `regime: null`, so that check could never fire; its own regression tests caught this only because
+// they constructed a `TerminalPlay` fixture directly with `regime: BANGER_LEDGER_REGIME_LABEL`,
+// bypassing this real adapter entirely. This test goes end-to-end through the actual pipeline
+// (`terminalPlayFromHorizon` -> `watchForSection`) a real swing play-brief uses, so a future change
+// to either function that reopens the same gap fails here, not just in production.
+test("end-to-end: a Banger-origin row's thesis line is suppressed through the REAL terminalPlayFromHorizon -> watchForSection pipeline, not just a hand-built fixture", () => {
+  const bangerPlay = terminalPlayFromHorizon({
+    ticker: "hal", direction: "LONG", horizon: "SWING", score: 55, status: "COMMIT",
+    contract: { strike: 30, right: "C", expiry: "2026-11-20", dte: 26, mid: 1.1 },
+    liveStatus: "OPEN",
+    livePnlPct: -4.2,
+    regime: "BREAKOUT · BANGER",
+    thesisBreak: { level: "intact", note: "Engine B scale-out — whole-market breakout" },
+  });
+  assert.equal(bangerPlay.regime, null);
+  assert.equal(bangerPlay.bangerOrigin, true);
+
+  const section = watchForSection(
+    {
+      play: bangerPlay,
+      asOf: "2026-10-25 09:30 ET",
+      sessionDate: "2026-10-25",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(
+    section.body,
+    /Thesis \*\*/,
+    `a Banger-origin row must never render a self-contradictory Thesis line through the real adapter pipeline, got: ${section.body}`,
+  );
+  assert.doesNotMatch(section.body, /Engine B scale-out/);
 });
 
 test("horizon adapter (PR-12): LEAPS / un-enriched caller is UNCHANGED — legacy literals preserved", () => {
@@ -578,6 +704,110 @@ test("0DTE adapter: rehydrates thesisFirst from compact entry_context blob on le
   assert.equal(p.thesisFirst?.rank_tier, "B");
   assert.equal(p.thesisFirst?.thesis.ticker, "CRML");
   assert.equal(p.thesisFirst?.thesis.rail_scores.FLOW, 72);
+});
+
+test("0DTE adapter: committed row strips a thesisFirst.expression that names a DIFFERENT contract than the real trade", () => {
+  // Live repro 2026-10-21 (NVDA): the real committed contract was 217.5C expiring today
+  // (0DTE), but the thesis/contract-engine's generic cross-DTE "optimal expression" layer
+  // (contract-engine.ts's pickBestExpression, which deliberately considers 2-5 DTE when
+  // 0DTE IV is rich) had frozen a DIFFERENT contract — 222.5C expiring 2 days out — into
+  // entry_context.thesis_first at commit time. The Command Deck's "Why we picked it" panel
+  // rendered that frozen, never-traded 222.5C/2DTE line directly under the real 217.5C/0DTE
+  // position, telling the member the wrong contract was the rationale for their actual trade.
+  const p = terminalPlayFromZeroDte({
+    ticker: "nvda",
+    status: "OPEN",
+    strike: 217.5,
+    setup: { direction: "long", dte: 0, actual_dte_at_commit: 0, top_strike: 217.5 },
+    thesis_first_blob: {
+      rail_scores: { FLOW: 59 },
+      rails_fired: ["FLOW"],
+      summaries: {},
+      systems_aligned: 1,
+      trade_archetype: "MOMENTUM_CONTINUATION",
+      archetype_score: 62,
+      structural_state: null,
+      trigger_price: null,
+      rank_tier: "WATCH",
+      archetype_gate: "PASS",
+      archetype_blocks: [],
+      disagreeing_rails: [],
+      expression_horizon: "ZERO_DTE",
+      expression_dte: 2,
+      expression_strike: 222.5,
+      expression_expiry: "2026-10-23",
+      expression_score: 100,
+      expression_rationale: "2026-10-23 222.5C · score 100",
+    },
+  });
+  // The real trade is unaffected (strike label still reads the actual 217.5C/0DTE contract)...
+  assert.equal(p.contract, "217.5C · 0DTE");
+  // ...and the mismatched expression is stripped so "Why we picked it" can't show a contract
+  // the member was never actually in. The rest of the thesis (archetype/tier/evidence) survives.
+  assert.equal(p.thesisFirst?.expression, null);
+  assert.equal(p.thesisFirst?.rank_tier, "WATCH");
+});
+
+test("0DTE adapter: a pre-commit WATCH row keeps its forward-looking expression even if it names a different DTE", () => {
+  // No trade has happened yet for a WATCH row, so the contract-engine's cross-DTE
+  // recommendation is a legitimate forward-looking idea, not a mismatch to hide.
+  const p = terminalPlayFromZeroDte({
+    ticker: "nvda",
+    status: "WATCH",
+    strike: 217.5,
+    setup: { direction: "long", dte: 0, top_strike: 217.5 },
+    thesis_first_blob: {
+      rail_scores: { FLOW: 59 },
+      rails_fired: ["FLOW"],
+      summaries: {},
+      systems_aligned: 1,
+      trade_archetype: "MOMENTUM_CONTINUATION",
+      archetype_score: 62,
+      structural_state: null,
+      trigger_price: null,
+      rank_tier: "WATCH",
+      archetype_gate: "PASS",
+      archetype_blocks: [],
+      disagreeing_rails: [],
+      expression_horizon: "ZERO_DTE",
+      expression_dte: 2,
+      expression_strike: 222.5,
+      expression_expiry: "2026-10-23",
+      expression_score: 100,
+      expression_rationale: "2026-10-23 222.5C · score 100",
+    },
+  });
+  assert.equal(p.thesisFirst?.expression?.contract?.strike, 222.5);
+});
+
+test("0DTE adapter: committed row with a MATCHING expression contract is left untouched", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "qqq",
+    status: "OPEN",
+    strike: 725,
+    setup: { direction: "long", dte: 0, actual_dte_at_commit: 0, top_strike: 725 },
+    thesis_first_blob: {
+      rail_scores: { FLOW: 63 },
+      rails_fired: ["FLOW"],
+      summaries: {},
+      systems_aligned: 1,
+      trade_archetype: "CATALYST_CONTINUATION",
+      archetype_score: 60,
+      structural_state: null,
+      trigger_price: null,
+      rank_tier: "WATCH",
+      archetype_gate: "PASS",
+      archetype_blocks: [],
+      disagreeing_rails: [],
+      expression_horizon: "ZERO_DTE",
+      expression_dte: 0,
+      expression_strike: 725,
+      expression_expiry: "2026-10-21",
+      expression_score: 100,
+      expression_rationale: "2026-10-21 725C · score 100",
+    },
+  });
+  assert.equal(p.thesisFirst?.expression?.contract?.strike, 725);
 });
 
 // ── missing setup entirely ─────────────────────────────────────────────────────────────

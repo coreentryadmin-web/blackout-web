@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isPaidTierForReconcileDowngradeCheck } from "./membership";
+import { isPaidTierForReconcileDowngradeCheck, reconcileStatsBucket } from "./membership";
 
 // reconcileAllMemberships' step 2 ("emails of Clerk users currently marked <paid tier> →
 // re-checks Whop and downgrades once the membership has actually lapsed") used to test
@@ -19,4 +19,32 @@ test("free and unknown/empty tier strings are not re-checked (nothing to downgra
   assert.equal(isPaidTierForReconcileDowngradeCheck("free"), false);
   assert.equal(isPaidTierForReconcileDowngradeCheck(""), false);
   assert.equal(isPaidTierForReconcileDowngradeCheck("admin"), false);
+});
+
+// Regression (2026-10-26): `parseTier` (src/lib/tiers.ts) has always coerced the legacy tier
+// aliases "pro" and "elite" to "premium" for every OTHER consumer of publicMetadata.tier
+// (resolveUserTier/tier-cache.ts grants real desk access for them right now), but this
+// predicate did a raw literal `tier === "premium"` comparison instead of normalizing through
+// parseTier first — so a Clerk user whose publicMetadata.tier is still the literal string
+// "pro" or "elite" (pre-dating the "premium" literal; parseTier's own comment documents these
+// as real legacy aliases) was invisible to this downgrade-check sweep. A churned/refunded
+// legacy "pro"/"elite" subscriber whose membership.deactivated webhook dropped — the exact
+// case this cron exists to self-heal, per the function's own doc-comment — would keep full
+// desk access FOREVER: nothing else in the system ever re-resolves them, exactly the same
+// shape as the already-fixed "community" omission documented above.
+test("legacy 'pro'/'elite' tier aliases are also eligible for the reconcile downgrade re-check", () => {
+  assert.equal(isPaidTierForReconcileDowngradeCheck("pro"), true);
+  assert.equal(isPaidTierForReconcileDowngradeCheck("elite"), true);
+});
+
+// Regression (2026-10-26): reconcileAllMemberships' syncOne() summarized every resolved tier as
+// `tier === "premium" ? "premium" : "free"`, so a real, distinct `community` resolution (SPX
+// Slayer, $49/mo) was silently counted as `free` in the function's own return stats (and
+// therefore in the membership-reconcile cron's logged run + cron_job_runs.meta_json row) even
+// though the member's actual Clerk tier was correctly written as `community`. This pins the
+// three-way split reconcileAllMemberships now uses so that regression can't come back silently.
+test("reconcileStatsBucket keeps community distinct from free — it must not collapse to free", () => {
+  assert.equal(reconcileStatsBucket("premium"), "premium");
+  assert.equal(reconcileStatsBucket("community"), "community");
+  assert.equal(reconcileStatsBucket("free"), "free");
 });

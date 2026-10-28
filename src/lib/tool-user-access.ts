@@ -20,6 +20,32 @@ export function parseToolAccessMap(raw: unknown): ToolAccessMap {
   return out;
 }
 
+/**
+ * Strict allowlist for the admin tool-access PATCH — unlike `parseToolAccessMap` (which
+ * silently drops an unrecognized tool key or mode, by design, since it also reads back
+ * already-persisted Clerk metadata this app itself wrote), an admin mutation must REJECT a
+ * malformed/mistyped entry rather than silently no-op it with a 200 success response. Mirrors
+ * `parseAdminUserTier`'s reasoning in `admin-users.ts`.
+ */
+export function parseAdminToolAccessPatch(raw: unknown): ToolAccessMap | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  // Accumulate in a Map, not a plain/null-prototype object: CodeQL's property-injection query
+  // flags ANY `obj[k] = v` bracket-assignment whose key comes from a loop over untrusted input,
+  // even when `VALID_KEYS.has(k)` already restricts it to a fixed, hardcoded tool-key allowlist
+  // (confirmed live — an `Object.create(null)` accumulator still triggered the same alert, since
+  // the query targets the bracket-assignment syntax itself, not the object's prototype). A
+  // `Map.set()` call isn't a property write at all in the sense this rule tracks, so it's outside
+  // the query's scope entirely. `Object.fromEntries` at the end converts to the plain object
+  // callers/tests expect, through an API that again isn't a per-key bracket assignment.
+  const out = new Map<ToolKey, ToolAccessMode>();
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!VALID_KEYS.has(k as ToolKey)) return undefined;
+    if (v !== "grant" && v !== "block" && v !== "inherit") return undefined;
+    out.set(k as ToolKey, v);
+  }
+  return Object.fromEntries(out);
+}
+
 /** Effective tool access for a non-admin user (admin callers should bypass before this). */
 export function resolveToolAccessForUser(
   key: ToolKey,

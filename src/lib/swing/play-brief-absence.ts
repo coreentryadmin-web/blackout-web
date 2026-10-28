@@ -14,12 +14,14 @@ import type { VectorAbsenceReport, VectorSection } from "@/lib/bie/vector-absent
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
+import type { GammaFlipReason } from "@/lib/providers/gex-cross-validation-core";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason } from "./entry-enterability";
+import { SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC } from "./calibration-cache";
 
 type VectorWithReadContext = VectorFullState & Partial<VectorAbsenceReport & VectorFreshnessBlock>;
 
@@ -266,6 +268,35 @@ export function relativeAgeLabel(
 }
 
 /**
+ * Per-headline relative-age label ("3h ago" / "2d ago") for a ticker-news item's own PUBLISH
+ * time — distinct from the batch-level "Last snapshot" framing `newsCatalystStale`/
+ * `newsCatalystAgeMs` drive, which only discloses when the FETCH ran, not when each cited
+ * article was actually published (Largo C2 gap found 2026-10-26, Ask Largo standing mandate,
+ * #4076 comment 6409186033): Benzinga's news pool can hold up to 20 items
+ * (`ecosystem-context.ts`), so a fresh fetch can still legitimately quote a week-old headline
+ * with nothing disclosing that to the reader. Mirrors `relativeAgeLabel`'s minute/hour tiers but
+ * adds a day tier beyond 36h — unlike the 24h-window `recent_anomalies` feed `relativeAgeLabel`
+ * was built for, a headline can legitimately be days old, and an hour-scale label there would
+ * read as absurd precision ("240h ago"), the same reasoning `ageDaysLabel` already applies to
+ * short-interest's own biweekly cadence. Returns `null` for a missing/unparseable timestamp so
+ * callers can omit the suffix rather than fabricate an age — never invent a date Benzinga itself
+ * didn't supply.
+ */
+export function headlineAgeLabel(isoTimestamp: string | null | undefined, nowMs: number = Date.now()): string | null {
+  if (!isoTimestamp) return null;
+  const observedMs = Date.parse(isoTimestamp);
+  if (!Number.isFinite(observedMs)) return null;
+  const ageMs = nowMs - observedMs;
+  if (!Number.isFinite(ageMs) || ageMs < 0) return "clock-skewed";
+  const ageMin = Math.round(ageMs / 60_000);
+  if (ageMin < 60) return `${Math.max(ageMin, 0)}m ago`;
+  const ageHr = Math.round(ageMin / 60);
+  if (ageHr < 36) return `${ageHr}h ago`;
+  const ageDay = Math.round(ageHr / 24);
+  return `${ageDay}d ago`;
+}
+
+/**
  * Meridian catalyst timeline staleness (Largo C2). `slice.as_of` is stamped once, at the moment
  * `loadMeridianTimelineResponse` actually ran inside `withServerCache` — under that cache's
  * stale-while-revalidate path a degraded Benzinga upstream can legitimately keep serving the same
@@ -448,6 +479,26 @@ export function playExpectsLiveOptionMark(status: string | null | undefined): bo
 }
 
 /**
+ * The minimal shape `optionMarkIsStale`/`optionMarkStaleCaveat`/`optionMarkGenuinelyUnknown`
+ * actually read off a play — narrower than the full `TerminalPlay` those three were originally
+ * typed against, so a caller holding something OTHER than a `TerminalPlay` can still share the
+ * exact same disclosure logic instead of re-deriving it (and risking drift) a second time.
+ *
+ * Added for `siblingPositionsNote` (play-brief.ts): it reads `HorizonPlay` rows off
+ * `ctx.laneRows`, which carries the swing-live/banger-lane fields these three functions need
+ * (`markAsOf`, `livePnlPct` — see `horizon-plays.ts`) but has NO `markIsSync` field of its own
+ * (that flag only exists on the already-adapted `TerminalPlay` the PRIMARY play of a brief is).
+ * `TerminalPlay` itself already satisfies this interface structurally, so every existing caller
+ * (which passes a real `TerminalPlay`) is unaffected by this widening.
+ */
+export interface OptionMarkFreshnessSource {
+  status?: string | null;
+  markIsSync?: boolean | null;
+  markAsOf?: string | null;
+  pnlPct?: number | null;
+}
+
+/**
  * A swing option mark's ONLY writer is `swing-active-refresh` (cron-registry.ts), which runs
  * every 15 minutes during market hours — unlike 0DTE/Vector, there is no faster "live-marks"
  * writer for the persisted `last_mark_at` column (the shared ~1s live-marks lane feeds an
@@ -464,11 +515,15 @@ export function playExpectsLiveOptionMark(status: string | null | undefined): bo
  * active-refresh's own `stale_after_min: 25` is more generous still, since that alert also has to
  * tolerate an outright missed run — this constant only needs to cover normal jitter within one
  * on-schedule cycle).
+ *
+ * Exported (not module-private) so `worstKnownSwingDataAgeMs` (play-brief-intel.ts) can reuse it as
+ * the sentinel age for the `optionMarkGenuinelyUnknown` case — see that function's own comment for
+ * why reusing this exact bound, rather than inventing a second one, is the right call there too.
  */
-const SWING_OPTION_MARK_STALE_MS = 18 * 60_000;
+export const SWING_OPTION_MARK_STALE_MS = 18 * 60_000;
 
 /** True when an OPEN/HOLD/TRIM row carries an aged markAsOf (not the markIsSync no-timestamp case). */
-export function optionMarkIsStale(play: TerminalPlay, readMs: number = Date.now()): boolean {
+export function optionMarkIsStale(play: OptionMarkFreshnessSource, readMs: number = Date.now()): boolean {
   if (!playExpectsLiveOptionMark(play.status)) return false;
   if (play.markIsSync === true || !play.markAsOf) return false;
   const markMs = Date.parse(play.markAsOf);
@@ -476,6 +531,54 @@ export function optionMarkIsStale(play: TerminalPlay, readMs: number = Date.now(
   const ageMs = readMs - markMs;
   if (ageMs < 0) return freshnessFromObservedMs(markMs, readMs) === "stale"; // fail-closed on future skew (Largo C2)
   return ageMs >= SWING_OPTION_MARK_STALE_MS;
+}
+
+/**
+ * The shared "is this contract snapshot aged/unreliable" caveat text — one of the three mutually
+ * exclusive reasons a quote-derived line shouldn't be read as fully current, or "" when none apply.
+ * `pnlSection` (play-brief.ts) computed this inline for the Greeks/Spread lines; extracted here
+ * (Ask Largo standing mandate, 2026-10-25, live repro MRNA) because `execPnlPct`/`execSlippageCoaching`
+ * (play-brief-narrative-coaching.ts) read the EXACT SAME `src.contract` bid/ask snapshot
+ * (`executableFill`, adapters.ts) as Greeks/Spread but had no caveat of its own — a second,
+ * independent re-derivation of this exact ternary would have been the same "three readers, one of
+ * them drifts" risk every other sentinel-leak fix in this codebase has already hit once.
+ */
+export function optionMarkStaleCaveat(play: OptionMarkFreshnessSource, readMs: number = Date.now()): string {
+  if (optionMarkGenuinelyUnknown(play)) {
+    return " _(entry-time read — no live tick since commit, do not read as current)_";
+  }
+  if (play.markIsSync === true && playExpectsLiveOptionMark(play.status)) {
+    return " _(live quote, no freshness timestamp)_";
+  }
+  if (optionMarkIsStale(play, readMs)) {
+    return " _(stale — same quote Mark flagged above)_";
+  }
+  return "";
+}
+
+/**
+ * The archetype/sub-lane calibration-cache snapshot's ONLY writer is `swing-active-refresh`
+ * (cron-registry.ts), the exact same 15-minute-during-RTH-only cron as the option mark above — so
+ * this fact's `asOf` legitimately ranges from 0 to ~15 minutes old under fully healthy operation,
+ * and the generic 10-minute `freshnessFromObservedMs` bucket false-positives on it the same
+ * ~1/3-of-every-cycle way `optionMarkIsStale` exists to fix for `markAsOf` — a defect class
+ * identified but never swept to this sibling fact (Ask Largo standing mandate, 2026-10-20).
+ *
+ * Unlike the option mark, this data's correct staleness horizon is NOT the cron's own tick rate —
+ * `calibration-cache.ts`'s own `SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC` doc comment is explicit that
+ * which archetypes/sub-lanes have graduated "moves far slower than every 15 minutes" and "a
+ * many-hours-stale graduation verdict is still an honest, useful citation" — the TTL is sized to
+ * span an ordinary Friday-close -> Monday-open gap plus a holiday, with margin. Reusing that SAME
+ * documented horizon here (rather than inventing a second, looser-than-markAsOf's-18-minutes but
+ * still arbitrary constant) keeps "how stale is too stale to cite" answered in exactly one place.
+ */
+export function archetypeTrackRecordIsStale(asOfIso: string | null | undefined, readMs: number = Date.now()): boolean {
+  if (!asOfIso) return false;
+  const snapshotMs = Date.parse(asOfIso);
+  if (!Number.isFinite(snapshotMs)) return false;
+  const ageMs = readMs - snapshotMs;
+  if (ageMs < 0) return freshnessFromObservedMs(snapshotMs, readMs) === "stale"; // fail-closed on future skew (Largo C2)
+  return ageMs >= SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC * 1000;
 }
 
 /**
@@ -501,7 +604,7 @@ export function optionMarkIsStale(play: TerminalPlay, readMs: number = Date.now(
  * known. Same self-contradiction class play-brief.ts's own comment already documents for its Mark
  * line (2026-09-11, live repro SWING:ALAB) — this is a second, previously-unchecked instance of it.
  */
-export function optionMarkGenuinelyUnknown(play: TerminalPlay): boolean {
+export function optionMarkGenuinelyUnknown(play: OptionMarkFreshnessSource): boolean {
   return play.markIsSync === true && playExpectsLiveOptionMark(play.status) && play.pnlPct == null;
 }
 
@@ -512,6 +615,26 @@ export function collectOptionMarkStalenessAbsence(
 ): BieUnavailableSource | null {
   if (!play || !playExpectsLiveOptionMark(play.status)) return null;
   if (play.markIsSync === true) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:SNOW:2105): this branch
+    // used to say "sync quote without freshness timestamp" unconditionally whenever
+    // `markIsSync===true` — wording that asserts a real quote VALUE exists, just untimestamped.
+    // That's true for the ordinary banger/native-lane race this branch was built for (comment
+    // below), but it is NOT true when `optionMarkGenuinelyUnknown(play)` also holds — the true
+    // entry-fallback case (`mid = last_mark ?? entry_premium`, no live tick has EVER landed,
+    // `play.pnlPct` itself is null) that pnlSection's own Mark line and dataFreshnessSection
+    // already render as "Mark: unknown ... no live price yet" / "P&L is not yet known". Live
+    // repro: SNOW's unavailableSources/confidence/footer all said "sync quote without freshness
+    // timestamp" — implying a real, just-unstamped price — while the SAME brief's Position and
+    // Data-freshness sections correctly said no price exists at all. Checked first (more specific
+    // predicate), falling through to the generic untimestamped-but-real-quote case otherwise.
+    if (optionMarkGenuinelyUnknown(play)) {
+      return {
+        source: "option mark",
+        reason: "no live price yet — sync quote, no real quote value has ever landed",
+        what_is_missing: "a live option-quote tick (none has synced since commit)",
+        retryable: true,
+      };
+    }
     return {
       source: "option mark",
       reason: "sync quote without freshness timestamp",
@@ -660,13 +783,13 @@ function collectGexStalenessAbsence(
 /**
  * GAP FOUND (Ask Largo standing mandate, 2026-10-08 cycle): `gex-positioning.ts`'s own
  * `flip_reason` field exists specifically so a caller can tell a genuine computation gap
- * (`insufficient_data`, `crossings_far` — a refetch/rebuild might resolve it) apart from an
- * honest, real market-structure fact (`net_short_everywhere`/`net_long_everywhere` — the book
- * never crosses zero gamma because dealers sit on one side at EVERY strike; that file's own doc
- * comment calls this out: "no gamma flip, dealers net short at EVERY strike" is itself a finding,
- * not an absence of one). `play-brief.ts`'s `levelsFromContext` reads only `gex?.flip` when
- * building the "gamma flip" level and silently drops the entry whenever it is null — collapsing
- * both cases to the exact same silence `flip_reason` was built to distinguish, and leaving
+ * (`insufficient_strikes`, `crossings_far_from_spot` — a refetch/rebuild might resolve it) apart
+ * from an honest, real market-structure fact (`net_short_everywhere` — the book never crosses
+ * zero gamma because dealers are net-short at EVERY strike; that file's own doc comment calls
+ * this out: "no gamma flip, dealers net short at EVERY strike" is itself a finding, not an
+ * absence of one). `play-brief.ts`'s `levelsFromContext` reads only `gex?.flip` when building the
+ * "gamma flip" level and silently drops the entry whenever it is null — collapsing both cases to
+ * the exact same silence `flip_reason` was built to distinguish, and leaving
  * `envelope.levels`/`unavailableSources` with NOTHING that tells a reader (or the model) whether
  * "no gamma flip shown" means "we don't have it yet" or "there genuinely isn't one, which is
  * itself worth knowing." Live-reproduced 2026-10-08: INTC's GEX read had a FRESH, non-stale
@@ -682,21 +805,35 @@ function collectGexStalenessAbsence(
  * surfaced — an unrecognized future code is left un-reported rather than guessed at, per C6
  * ("if a product cannot produce a calibrated read, omit the field — fabrication is worse than
  * nothing").
+ *
+ * BUG FIX (2026-10-20, Ask Largo standing mandate, static-code sweep): this table's keys were
+ * drifted vocabulary, not the real `GammaFlipReason` string literals
+ * (`gex-cross-validation-core.ts`) that `polygon-options-gex.ts` actually assigns to
+ * `gex.flip_reason` at the two real producer call sites. The real enum is `"resolved" |
+ * "insufficient_strikes" | "net_short_everywhere" | "crossings_far_from_spot"` — this table used
+ * `insufficient_data` (real: `insufficient_strikes`) and `crossings_far` (real:
+ * `crossings_far_from_spot`), so a real `flip_reason` of either of those two genuine data-gap
+ * codes silently matched NOTHING below and the whole disclosure this function exists to produce
+ * never fired — reproducing, for 2 of the 3 real reason codes, the exact C3 silence this function
+ * was built to fix. `net_long_everywhere` was never a real value at all: `cumulativeGammaFlipDetail`
+ * (gex-cross-validation-core.ts)'s own doc comment confirms the cumulative-gamma definition can
+ * only go null on the "never turns positive" (net-short-everywhere) side — there is no symmetric
+ * "net-long-everywhere" null case to report. The existing regression test for the
+ * `insufficient_data` case used the identical wrong fixture string, so it passed against the bug
+ * instead of catching it. Typed as `Partial<Record<GammaFlipReason, ...>>` (rather than the
+ * previous bare `Record<string, ...>`) so a future rename/removal of a `GammaFlipReason` value
+ * fails this table at compile time instead of silently drifting out of sync again.
  */
-const GEX_FLIP_REASON_DISCLOSURE: Record<string, { reason: string; retryable: boolean }> = {
+const GEX_FLIP_REASON_DISCLOSURE: Partial<Record<GammaFlipReason, { reason: string; retryable: boolean }>> = {
   net_short_everywhere: {
     reason: "no gamma flip in range — dealers are net short gamma at every strike (a real structural read, not a missing fetch)",
     retryable: false,
   },
-  net_long_everywhere: {
-    reason: "no gamma flip in range — dealers are net long gamma at every strike (a real structural read, not a missing fetch)",
-    retryable: false,
-  },
-  insufficient_data: {
+  insufficient_strikes: {
     reason: "not enough strikes in the chain to compute a gamma flip",
     retryable: true,
   },
-  crossings_far: {
+  crossings_far_from_spot: {
     reason: "the book does cross zero gamma, but every crossing sits outside the plausible range near spot",
     retryable: true,
   },
@@ -708,7 +845,12 @@ function collectGexFlipAbsence(
 ): BieUnavailableSource | null {
   if (!gex || gex.flip != null) return null;
   if (gexMatrixStale(gex, readMs)) return null; // already covered by collectGexStalenessAbsence
-  const disclosure = gex.flip_reason ? GEX_FLIP_REASON_DISCLOSURE[gex.flip_reason] : null;
+  // gex.flip_reason is loosely typed `string | null` on GexPositioning, but both real producer
+  // call sites (polygon-options-gex.ts) assign it directly from a GammaFlipDetail.reason
+  // (GammaFlipReason) — the cast documents that real invariant rather than widening the lookup
+  // table's key type back to a bare string.
+  const flipReason = gex.flip_reason as GammaFlipReason | undefined;
+  const disclosure = flipReason ? GEX_FLIP_REASON_DISCLOSURE[flipReason] : null;
   if (!disclosure) return null;
   return {
     source: "GEX gamma flip",
@@ -791,6 +933,22 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       retryable: true,
     });
   }
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro EWY): the archetype track-record
+  // read (play-brief-context.ts) is the one C10 source in this file that was exempted from the
+  // same fetch-failure-disclosure discipline every sibling best-effort source above already gets —
+  // a genuine `withBriefSourceTimeout` rejection collapsed into the same silent `null` a legitimate
+  // cold-cache/ungraduated-bucket absence produces, with no entry here and therefore no effect on
+  // swingPlayBriefConfidence either. Disclosed regardless of play status, same rationale as the
+  // ecosystemFetchFailed block above — a fetch failure is a fact about the read, true regardless of
+  // play status.
+  if (ctx.archetypeTrackRecordFetchFailed) {
+    out.push({
+      source: "Archetype track record",
+      reason: "fetch failed",
+      what_is_missing: "a graduated archetype/sub-lane win-rate snapshot for this ticker",
+      retryable: true,
+    });
+  }
   // FINDINGS 2026-09-06 (#22) + live probe 2026-09-07: sync-without-timestamp AND aged markAsOf
   // must both reach unavailableSources — prose in dataHonestyCoaching alone is not enough (C3).
   const markAbsence = collectOptionMarkStalenessAbsence(ctx.play, readMs);
@@ -809,6 +967,27 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     const gex = ctx.ecosystem?.gex_positioning;
     const gexStale = collectGexStalenessAbsence(gex, readMs);
     if (gexStale) out.push(gexStale);
+  }
+  // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro MRNA:65 CLOSED): `collectGexFlipAbsence`
+  // was folded into the same `!isNotLive` block as `collectGexStalenessAbsence` above, but the two
+  // are different KINDS of check. `collectGexStalenessAbsence` answers "is today's live desk state
+  // current" — genuinely inapplicable to a closed trade's historical facts, same reasoning as every
+  // other check in this `!isNotLive` family. `collectGexFlipAbsence` answers a different question —
+  // "is there a structural/computational reason the matrix has no flip" (insufficient_strikes,
+  // crossings_far_from_spot, or the honest net_short_everywhere structural fact) — and it already
+  // internally gates on the matrix being FRESH and PRESENT (`gexMatrixStale`/`!gex` both return
+  // null), so bucket status adds nothing to its own correctness. Gating it on `!isNotLive` anyway
+  // meant a CLOSED (or dead-WATCH) brief could never disclose this, even though
+  // `gexPostureSection`/`chartLevelsSection` (play-brief-intel.ts) both render a "Current dealer
+  // posture"/"Current levels" read for CLOSED plays — prefixed "_Current ... — not what this trade
+  // traded under._" — gated only on `!stale`, not on bucket status. A CLOSED play can hit the exact
+  // null-flip case this disclosure exists for, with the prose rendering no "Gamma flip:"/"Gamma
+  // posture:" line and nothing in unavailableSources explaining why (the companion gap to the
+  // `evidenceFromContext` fix in play-brief.ts, same root cause: `gamma_posture`/`flip` both null
+  // while net_gex/vex/dex/charm/walls are all live). So this one check is scoped independently of
+  // `isNotLive` — "is the GEX matrix fresh and present" rather than "is this play still live".
+  {
+    const gex = ctx.ecosystem?.gex_positioning;
     const flipAbsence = collectGexFlipAbsence(gex, readMs);
     if (flipAbsence) out.push(flipAbsence);
   }
@@ -860,7 +1039,19 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // later receives Vector data is not evidence the fetch failure was incorrect — but a silent-null
   // fetch that was never disclosed is the race condition C3 forbids. Always disclose vector
   // fetch failure.
-  if (ctx.vectorFetchFailed) {
+  //
+  // BUG FIX (2026-10-24, Ask Largo fan-out audit, live repro UMAC): this push used to fire on the
+  // bare `ctx.vectorFetchFailed` flag alone, with no check for the ecosystem-embedded
+  // `vector_full_state` fallback — unlike the OTHER "fetch failed" push below (added a month
+  // earlier, originally labeled "Vector state"), which already gated on
+  // `!ctx.vector && !ctx.ecosystem?.vector_full_state` specifically so a successful fallback read
+  // suppresses the disclosure. Because this push's condition was a strict superset of that one's,
+  // whenever the standalone fetch failed with no fallback, BOTH pushed — "Vector desk state:
+  // fetch failed" and "Vector state: fetch failed" — two near-synonymous entries for the exact
+  // same single fact, inflating the member-facing "N sources unavailable" count by one. Adopting
+  // the same fallback guard here makes this the one and only "fetch failed" disclosure for Vector
+  // desk state (the standalone "Vector state" push below is removed as now fully redundant).
+  if (ctx.vectorFetchFailed && !ctx.vector && !ctx.ecosystem?.vector_full_state) {
     out.push({
       source: "Vector desk state",
       reason: "fetch failed",
@@ -929,15 +1120,6 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       retryable: true,
     });
   }
-  // Standalone Vector fetch can fail while ecosystem.vector_full_state still succeeded in parallel.
-  if (ctx.vectorFetchFailed === true && !ctx.vector && !ctx.ecosystem?.vector_full_state) {
-    out.push({
-      source: "Vector state",
-      reason: "fetch failed",
-      what_is_missing: "the standalone Vector desk-state read for this ticker",
-      retryable: true,
-    });
-  }
   if (ctx.meridianPeer?.available === false) {
     const peer = ctx.meridianPeer;
     const reason = peer.error ?? peer.note ?? "unavailable";
@@ -948,13 +1130,49 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       retryable: true,
     });
   } else if (ctx.meridianPeer?.available === true && ctx.meridianPeer.insufficient_reason?.trim()) {
+    // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA-closed): `insufficient_reason`
+    // is scoped to the IMPLIED-MOVE RANKING cohort specifically (MIN_COHORT_PEERS peers with a
+    // comparable expected-move number) — a DIFFERENT, independently-gated cohort from the
+    // beat-rate peers `meridianPeerEarningsCoaching` (play-brief-meridian-peer-core.ts) renders at
+    // `beat_rate_n >= 3`. The two can diverge: TSLA's ranking cohort was thin while its beat-rate
+    // cohort produced real data (WGO 75% n=4, WAB 100% n=4), rendered in-body as "peer history" and
+    // explicitly called "directional only" — yet this entry's old generic wording ("not enough peer
+    // names... to be directional") flatly contradicted that, two clauses away in the same document.
+    const hasQualifyingBeatRatePeers = (ctx.meridianPeer.members ?? []).some(
+      (m) => !m.is_subject && m.beat_rate_n >= 3,
+    );
     out.push({
-      source: "Meridian peer cohort",
+      source: hasQualifyingBeatRatePeers ? "Meridian implied-move ranking" : "Meridian peer cohort",
       reason: ctx.meridianPeer.insufficient_reason.trim(),
-      what_is_missing: "enough peer names in the cohort to be directional",
+      what_is_missing: hasQualifyingBeatRatePeers
+        ? "enough peers reporting a comparable implied-move number to rank this ticker's expected move against — beat-rate peer history is still shown separately"
+        : "enough peer names in the cohort to be directional",
       // Insufficiency here is a population-size fact (too few names printed this window), not a
       // transient read failure — asking again a moment later will not add peers to the cohort.
       retryable: false,
+    });
+  }
+  // BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro TSLA WATCH brief): G-S12
+  // (v2/halt-read.ts's readSwingHaltStateForTickers, evaluated by v2/gates.ts at discovery/commit
+  // time) is a real, live-computed system state — entry-verdict.ts turns a stale halt feed into
+  // the gate reason "Trading-halt feed unavailable — desk will not open until halt/LULD data
+  // recovers," which this same envelope's own "Trade manager read" section already cites as one
+  // of the gates blocking entry. But this function (the single source of both
+  // envelope.unavailableSources and confidence.why's source list) never checked for it — a
+  // case-insensitive grep for "halt" across this file returns nothing. dataFreshnessSection
+  // (play-brief-intel.ts) has the identical blind spot. A reader relying on the brief's dedicated,
+  // purpose-built staleness disclosure — the exact surface the Largo product contract's absence
+  // principle exists to guarantee — had no way to learn the halt feed is unavailable right now,
+  // even though every other upstream dependency this brief uses (HELIX, Vector, GEX, Meridian,
+  // Legacy, lane rank, thesis health, option mark) is already wired into it. Scoped the same way
+  // as every other live-desk-state check in this function (`!isNotLive` — the gate is only ever
+  // evaluated pre-commit, so it is structurally absent once a play is CLOSED or dead).
+  if (!isNotLive && ctx.play?.gateBlocks?.some((g) => g.code === "g_s12_halt_feed_stale")) {
+    out.push({
+      source: "Trading-halt feed",
+      reason: "unavailable — halt/LULD data has not refreshed",
+      what_is_missing: "a current halt/LULD read for this ticker",
+      retryable: true,
     });
   }
   // Prior-session discovery scan: WATCH rows can still carry yesterday's lane snapshot while the

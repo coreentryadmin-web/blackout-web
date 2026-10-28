@@ -24,14 +24,35 @@ type Props = {
   initial?: JournalEntry | null;
 };
 
-function readLocal(userId: string): JournalMap {
+export function readLocal(userId: string): JournalMap {
   if (typeof window === "undefined") return {};
-  return parseJournalMap(window.localStorage.getItem(journalStorageKey(userId)));
+  try {
+    return parseJournalMap(window.localStorage.getItem(journalStorageKey(userId)));
+  } catch {
+    // Blocked/unavailable storage (private mode, sandboxed iframe, quota) — treat as empty
+    // rather than throwing. `readLocal` runs inside `useMemo` at render time, so an uncaught
+    // throw here would crash the whole editor instead of just losing the local-only cache.
+    return {};
+  }
 }
 
-function writeLocal(userId: string, map: JournalMap) {
+export function writeLocal(userId: string, map: JournalMap) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(journalStorageKey(userId), serializeJournalMap(map));
+  try {
+    window.localStorage.setItem(journalStorageKey(userId), serializeJournalMap(map));
+  } catch {
+    // Best-effort local cache only — the server POST in save() is the real persistence path.
+  }
+}
+
+/** Warns on tab-close/navigation only while an edit hasn't been saved yet. Exported so the
+ *  gate logic (not just the DOM wiring) is directly testable without rendering the component. */
+export function createJournalBeforeUnloadHandler(dirty: { current: boolean }) {
+  return (event: BeforeUnloadEvent) => {
+    if (!dirty.current) return;
+    event.preventDefault();
+    event.returnValue = "";
+  };
 }
 
 export function JournalEditor({ openPlayId, userId, initial }: Props) {
@@ -53,6 +74,14 @@ export function JournalEditor({ openPlayId, userId, initial }: Props) {
     setStatus("idle");
     dirty.current = false;
   }, [seeded]);
+
+  // `dirty` was tracked on every edit and reset on save/seed, but nothing ever read it — an
+  // admin could type a note, navigate away or close the tab, and lose it with zero warning.
+  useEffect(() => {
+    const handler = createJournalBeforeUnloadHandler(dirty);
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   async function save() {
     setStatus("saving");

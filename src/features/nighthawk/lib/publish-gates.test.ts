@@ -629,6 +629,42 @@ test("capGatePromotedConviction leaves organic plays untouched", () => {
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro MSTR score 52): the cap only ever
+// rewrote `conviction` -- `key_signal`'s own "score N (LETTER)" trailer embeds the SAME pre-cap
+// letter (buildDeterministicThesis, deterministic-edition.ts) and was never kept in sync, so a
+// capped A->B play kept citing its own uncapped "(A)"/"(A+)" grade in the member-facing summary
+// sentence right next to the correctly-capped badge -- a direct, visible self-contradiction.
+test("capGatePromotedConviction also rewrites key_signal's trailing grade token to stay in sync", () => {
+  const capped = capGatePromotedConviction(
+    play({
+      conviction: "A",
+      gate_promoted: true,
+      key_signal: "BULLISH — flow + positioning · score 52 (A)",
+    })
+  );
+  assert.equal(capped.conviction, "B");
+  assert.equal(capped.key_signal, "BULLISH — flow + positioning · score 52 (B)");
+});
+
+test("capGatePromotedConviction rewrites an (A+) key_signal trailer too", () => {
+  const capped = capGatePromotedConviction(
+    play({
+      conviction: "A+",
+      gate_promoted: true,
+      key_signal: "BEARISH — technicals · score 71 (A+)",
+    })
+  );
+  assert.equal(capped.conviction, "B");
+  assert.equal(capped.key_signal, "BEARISH — technicals · score 71 (B)");
+});
+
+test("capGatePromotedConviction never touches key_signal when not gate_promoted or not A/A+", () => {
+  const untouched = capGatePromotedConviction(
+    play({ conviction: "B", gate_promoted: true, key_signal: "BULLISH — flow · score 45 (B)" })
+  );
+  assert.equal(untouched.key_signal, "BULLISH — flow · score 45 (B)");
+});
+
 test("promoteTopBlocked caps at count", () => {
   const blocked = Array.from({ length: 10 }, (_, i) => ({
     ticker: `T${i}`,

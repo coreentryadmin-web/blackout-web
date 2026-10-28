@@ -85,6 +85,22 @@ export function estimateDarkpoolShareSize(
   return null;
 }
 
+/**
+ * "~1.0M ADV" / "~999K ADV" — buckets by rounded quotient, not raw magnitude, so a value
+ * whose raw size sits just under 1,000,000 but whose rounded K-quotient reaches 1000 still
+ * promotes to M (e.g. 999_950 must read "~1.0M ADV", never "~1000K ADV"). Same bug shape as
+ * the Thermal fmtCompactHeatMoney / fmt-money.ts fmtPremium unit-boundary fixes.
+ */
+function formatAdvShareLabel(adv: number): string {
+  if (adv >= 1_000_000) return `~${(adv / 1_000_000).toFixed(1)}M ADV`;
+  if (adv >= 1_000) {
+    const k = Math.round(adv / 1000);
+    if (k >= 1000) return `~${(adv / 1_000_000).toFixed(1)}M ADV`;
+    return `~${k}K ADV`;
+  }
+  return `~${Math.round(adv).toLocaleString("en-US")} ADV`;
+}
+
 /** Block size as a % of 20D ADV — omitted when ADV or size is unknown. */
 export function formatAdvContextLine(
   shares: number | null,
@@ -95,11 +111,6 @@ export function formatAdvContextLine(
   }
   const pct = (shares / adv) * 100;
   if (!Number.isFinite(pct)) return null;
-  const advLabel =
-    adv >= 1_000_000
-      ? `~${(adv / 1_000_000).toFixed(1)}M ADV`
-      : adv >= 1_000
-        ? `~${Math.round(adv / 1000)}K ADV`
-        : `~${Math.round(adv).toLocaleString("en-US")} ADV`;
+  const advLabel = formatAdvShareLabel(adv);
   return `Size: ${pct.toFixed(1)}% of 20D ${advLabel}`;
 }

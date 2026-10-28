@@ -189,7 +189,14 @@ export type FlowSetupInput = {
 // P&L by origin (the calibration origin band, calibration.ts) and each source graduates
 // through the n>=10 / delta>=15 ladder independently. PIN arrives in a later phase; the type
 // already admits it so the merge/label math never has to be revisited.
-export type DiscoveryOrigin = "FLOW" | "BREAKOUT" | "PIN";
+// MOMENTUM (operator directive, 2026-10-25) is the 4th: a same-day-expiration, sub-$1.00-ask
+// screen off a fixed ticker universe (ticker-universe.ts), detected from the underlying's own
+// momentum+RVOL action rather than an options print or a whole-market breadth screen — see
+// momentum-signal.ts / momentum-signal-source.ts / momentum-signal-discovery.ts. It is seated
+// LAST in DISCOVERY_ORIGIN_ORDER below (lowest tie-break priority, strictest score_floor via
+// gates.ts's default-case fallthrough) — the newest, least-proven origin inherits the most
+// conservative treatment everywhere by construction, never by a special case written for it.
+export type DiscoveryOrigin = "FLOW" | "BREAKOUT" | "PIN" | "MOMENTUM";
 
 // ── Play type (Phase 4, docs/audit/0DTE-UNIFICATION-DESIGN.md §1c + §3) ─────────────
 // The board commits TWO kinds of structure. Everything shipped through Phase 3b is
@@ -304,8 +311,9 @@ export function tradingSessionGapDays(todayYmd: string, expiryYmd: string): numb
   return gap;
 }
 
-/** Canonical order for a stable, dedup-friendly origin set/label (FLOW < BREAKOUT < PIN). */
-export const DISCOVERY_ORIGIN_ORDER: readonly DiscoveryOrigin[] = ["FLOW", "BREAKOUT", "PIN"];
+/** Canonical order for a stable, dedup-friendly origin set/label (FLOW < BREAKOUT < PIN <
+ *  MOMENTUM). MOMENTUM seated last (lowest tie-break priority) — see its doc comment above. */
+export const DISCOVERY_ORIGIN_ORDER: readonly DiscoveryOrigin[] = ["FLOW", "BREAKOUT", "PIN", "MOMENTUM"];
 
 /** Union two origin sets into a deduped, canonically-ordered set (pure). Used at merge time so
  *  a ticker found by two sources carries both origins, never a collapsed single value. */
@@ -545,12 +553,12 @@ export function mergeSameTickerDiscovery(
 /** Count how many board setups carry each discovery rail (and how many are multi-rail). Pure. */
 export function summarizeDiscoveryRailMix(
   setups: ReadonlyArray<Pick<EnrichedZeroDteSetup, "discovery_origin">>
-): { FLOW: number; BREAKOUT: number; PIN: number; multi: number; total: number } {
-  const out = { FLOW: 0, BREAKOUT: 0, PIN: 0, multi: 0, total: setups.length };
+): { FLOW: number; BREAKOUT: number; PIN: number; MOMENTUM: number; multi: number; total: number } {
+  const out = { FLOW: 0, BREAKOUT: 0, PIN: 0, MOMENTUM: 0, multi: 0, total: setups.length };
   for (const s of setups) {
     const origins = Array.isArray(s.discovery_origin) ? s.discovery_origin : [];
     for (const o of origins) {
-      if (o === "FLOW" || o === "BREAKOUT" || o === "PIN") out[o] += 1;
+      if (o === "FLOW" || o === "BREAKOUT" || o === "PIN" || o === "MOMENTUM") out[o] += 1;
     }
     if (origins.length > 1) out.multi += 1;
   }
@@ -760,10 +768,13 @@ export type ZeroDteSetup = {
   /**
    * Real intraday day % change magnitude (e.g. 8.2 for an 8.2% move), from the SAME grouped-daily
    * bar already fetched for the whole-market BREAKOUT/BREAKDOWN screen (`mover.gain × 100` —
-   * screenBreakoutMovers/screenBreakdownMovers, candidates.ts). Populated ONLY by
-   * buildBreakoutSetup (breakout-source.ts) for BREAKOUT-origin setups: FLOW/PIN-origin setups
-   * have no equivalent already-fetched change% source (their dossier's `tech` carries
-   * rel_volume, not a day-change field), and fabricating one there would violate the
+   * screenBreakoutMovers/screenBreakdownMovers, candidates.ts). Populated by buildBreakoutSetup
+   * (breakout-source.ts) for BREAKOUT-origin setups, and by buildMomentumSetup
+   * (momentum-signal-source.ts) for MOMENTUM-origin setups (there, the confirmed RECENT-WINDOW
+   * move from momentum-acceleration.ts, not a full day-change — see that builder's own
+   * comment). FLOW/PIN-origin setups have no equivalent already-fetched change% source (their
+   * dossier's `tech` carries rel_volume, not a day-change field), and fabricating one there
+   * would violate the
    * never-invent-an-input discipline (docs/audit/LARGO-PRODUCT-CONTRACT.md). Feeds
    * scoreMomentumRail's `change_pct` input (rails/momentum.ts, wired via
    * rails/legacy-bridge.ts's `railHitsFromLegacySetup`) — see that rail's own comment for why
@@ -1034,6 +1045,10 @@ export function deriveZeroDteSetups(
   opts?: {
     maxSetups?: number;
     excludeTickers?: Set<string>;
+    /** When set, ONLY these tickers are eligible — the 0DTE-desk-wide universe restriction
+     *  (ticker-universe.ts). Checked alongside excludeTickers; null/undefined means unrestricted
+     *  (whole-market), same as before this option existed. */
+    includeTickers?: Set<string> | null;
     nowMs?: number;
     todayYmd?: string;
     rejections?: ZeroDteGateRejection[];
@@ -1085,6 +1100,7 @@ export function deriveZeroDteSetups(
   for (const r of rows) {
     const ticker = r.ticker?.toUpperCase();
     if (!ticker || opts?.excludeTickers?.has(ticker)) continue;
+    if (opts?.includeTickers && !opts.includeTickers.has(ticker)) continue;
     const dte = r.dte ?? null;
     if (dte == null || dte > SETUP_MAX_DTE || dte < 0) continue;
     // dte was stamped at ALERT time — a 0DTE print from a prior session (the tape
@@ -1606,6 +1622,24 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  the index-ETF measured-table estimate (exact for SPY/QQQ/IWM, approximate for a
    *  single name — the honest number comes from the ledger). Null when spot is unknown. */
   condor: IronCondorLegs | null;
+  /**
+   * The underlying price (+ as-of) `condor`'s strikes/width_pct/est_win_rate were actually
+   * DERIVED FROM — captured here, in enrichSetup, at the exact same instant `condor` itself is
+   * built. Same root cause as `qualification_underlying_price` above: enrichSetup runs BEFORE
+   * scan.ts's attachContractPlans ever calls refreshUnderlyingFromLiveSpot, and that refresh
+   * mutates `underlying_price`/`underlying_price_as_of` IN PLACE afterward — but nothing ever
+   * recomputes `condor` to match. So by serve time `underlying_price` can be the live-refreshed
+   * mark while `condor` is still geometry built from the earlier, now-stale price, with no field
+   * anywhere disclosing that the two are on different clocks. A consumer who re-derives the
+   * condor width against the setup's own (refreshed) `underlying_price` gets a DIFFERENT number
+   * than `condor.est_win_rate` actually reports — live-confirmed 2026-10-26 (SPXW: re-deriving
+   * from the live price implied 77% vs the served 92%). `condor_basis_price` is always the exact
+   * `price` fed into `selectIronCondor` (never fabricated); `condor_basis_as_of` mirrors it ONLY
+   * when that price came from `setup.underlying_price` (the branch that can later be refreshed) —
+   * the `tech?.price` fallback carries no as-of stamp of its own, so that case is honestly null
+   * rather than borrowing an unrelated timestamp. Both null when `condor` itself is null. */
+  condor_basis_price?: number | null;
+  condor_basis_as_of?: string | null;
   /** PRICED, tradeable condor plan (Phase 4) — present ONLY on a `play_type: "CONDOR"` setup
    *  built by the flag-gated condor router (condor.ts): the four legs off the live chain, the
    *  net credit, defined max loss, and the breach (short-strike) levels the grader scores. This
@@ -1834,6 +1868,27 @@ export function matchHotNews(
   return out;
 }
 
+/**
+ * Dedupe a list of price levels, keeping the first occurrence of each distinct level.
+ * `support_levels`/`resistance_levels` (technicals.ts) are a concatenation of THREE
+ * independently-sourced levels (swing/weekly/monthly) that can legitimately resolve to
+ * the same round-number price — without this, a coincidence survives an undeduplicated
+ * sort+slice(0,2) as two copies of one level, silently dropping the real second-best one
+ * (live repro 2026-10-21: QQQ/AMD key_supports both `[X, X]` instead of two distinct
+ * levels). Uses the same relative-tolerance convention as `swingLevels`'s own internal
+ * `dedup` in technicals.ts (0.5%, floor 0.01) rather than exact equality, since every
+ * source already rounds to 2dp but isn't guaranteed to collide byte-for-byte.
+ */
+function dedupeLevels(levels: number[]): number[] {
+  const out: number[] = [];
+  for (const lv of levels) {
+    if (!out.some((kept) => Math.abs(lv - kept) / Math.max(Math.abs(kept), 0.01) <= 0.005)) {
+      out.push(lv);
+    }
+  }
+  return out;
+}
+
 export function enrichSetup(
   setup: ZeroDteSetup,
   dossier: SetupDossierView | null,
@@ -1857,13 +1912,22 @@ export function enrichSetup(
 
   // Nearest structure around price: the 2 highest supports below, 2 lowest
   // resistances above — the levels that actually matter for a same-day trade.
+  // `support_levels`/`resistance_levels` (technicals.ts) concatenate THREE independent
+  // sources (swing, weekly, monthly) that can legitimately coincide at the same price
+  // (e.g. swing support and weekly support both sitting at the same round number) — so
+  // dedupe BEFORE the top-2 slice, or a coincidence silently shows one real level twice
+  // and drops the actual second-best level entirely.
   const keySupports =
     price != null
-      ? (tech?.support_levels ?? []).filter((l) => l > 0 && l < price).sort((a, b) => b - a).slice(0, 2)
+      ? dedupeLevels((tech?.support_levels ?? []).filter((l) => l > 0 && l < price))
+          .sort((a, b) => b - a)
+          .slice(0, 2)
       : [];
   const keyResistances =
     price != null
-      ? (tech?.resistance_levels ?? []).filter((l) => l > price).sort((a, b) => a - b).slice(0, 2)
+      ? dedupeLevels((tech?.resistance_levels ?? []).filter((l) => l > price))
+          .sort((a, b) => a - b)
+          .slice(0, 2)
       : [];
 
   // Defined-risk iron-condor geometry for the name (calibration-first evidence — see the
@@ -1942,6 +2006,12 @@ export function enrichSetup(
     gex_king_strike: gexKing,
     gamma_regime: dossier?.positioning?.gamma_regime ?? null,
     condor,
+    // See the condor_basis_price/_as_of field doc above — the exact price `condor` was derived
+    // from, frozen HERE before any later live-spot refresh can move `underlying_price` out from
+    // under it. as_of only travels when `price` actually came from setup.underlying_price (the
+    // mutable branch); the tech-fallback branch has no as-of of its own to honestly report.
+    condor_basis_price: condor ? price : null,
+    condor_basis_as_of: condor && setup.underlying_price != null ? (setup.underlying_price_as_of ?? null) : null,
     intraday: null,
     intraday_conflict: false,
     market_aligned: null,

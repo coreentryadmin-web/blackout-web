@@ -137,6 +137,32 @@ test("an ARMED budget still does NOT change allocation — only the verdict diff
   assert.equal(withArmed.portfolioBudget.hardExceeded.length, 0);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25): `positionsOverCap`'s own doc comment claims an
+// existing position's over-cap `weightPct` is the one way this field populates — but nothing in the
+// function ever checked `existing` against `caps.perPositionPct` until this fix.
+test("an EXISTING position whose injected weightPct already exceeds the per-position cap is flagged in positionsOverCap", () => {
+  const existing = [{ ticker: "NVDA", direction: "LONG" as const, expiry: null, weightPct: 9 }]; // past the 5% cap
+  const res = allocateSwingBook([cand("AMD", 70)], existing);
+  assert.deepEqual(res.capsApplied.positionsOverCap, ["NVDA"]);
+});
+
+test("an EXISTING position at or under the per-position cap is never flagged in positionsOverCap", () => {
+  const atCap = [{ ticker: "NVDA", direction: "LONG" as const, expiry: null, weightPct: 5 }]; // exactly the cap
+  const underCap = [{ ticker: "AMD", direction: "LONG" as const, expiry: null, weightPct: 2 }];
+  const res = allocateSwingBook([cand("SMH", 70)], [...atCap, ...underCap]);
+  assert.deepEqual(res.capsApplied.positionsOverCap, []);
+});
+
+test("multiple EXISTING over-cap positions are all flagged, uppercased, independent of candidates", () => {
+  const existing = [
+    { ticker: "nvda", direction: "LONG" as const, expiry: null, weightPct: 8 },
+    { ticker: "tsla", direction: "SHORT" as const, expiry: null, weightPct: 6 },
+    { ticker: "amd", direction: "LONG" as const, expiry: null, weightPct: 4 }, // under cap
+  ];
+  const res = allocateSwingBook([], existing);
+  assert.deepEqual(res.capsApplied.positionsOverCap, ["NVDA", "TSLA"]);
+});
+
 test("expiryWeekKey buckets two dates in the same Mon–Sun week together, distinct weeks apart", () => {
   assert.equal(expiryWeekKey("2026-08-19"), expiryWeekKey("2026-08-21")); // same week
   assert.notEqual(expiryWeekKey("2026-08-21"), expiryWeekKey("2026-08-28")); // next week

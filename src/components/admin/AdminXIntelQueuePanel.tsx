@@ -11,6 +11,7 @@ import {
 import { franchiseWordmark } from "@/lib/x-intel/franchises";
 import { X_INTEL_QUEUE_FIXTURES } from "@/lib/x-intel/queue-fixtures";
 import { shouldShowXIntelFixtures } from "@/lib/x-intel/queue-fixtures-gate";
+import { computeXIntelStatusCounts } from "@/lib/x-intel/queue-status-counts";
 import type {
   XIntelAttachment,
   XIntelMark,
@@ -414,15 +415,6 @@ export function AdminXIntelQueuePanel() {
     return () => clearInterval(t);
   }, [load]);
 
-  const counts = useMemo(() => {
-    const src = rows ?? [];
-    return {
-      READY: src.filter((r) => r.status === "READY").length,
-      REVIEW: src.filter((r) => r.status === "REVIEW").length,
-      SKIP: src.filter((r) => r.status === "SKIP").length,
-    };
-  }, [rows]);
-
   // With no rows yet at all (status "ALL") the panel shows the hand-written fixtures, clearly
   // labelled. The reviewer surface shipped before the generator, so an empty table is the expected
   // first state — and a blank page would leave nobody able to tell a working page from a broken
@@ -432,6 +424,8 @@ export function AdminXIntelQueuePanel() {
   const showFixtures = shouldShowXIntelFixtures(status, rows);
   const filteredEmpty = !showFixtures && status !== "ALL" && rows != null && rows.length === 0;
   const display = showFixtures ? X_INTEL_QUEUE_FIXTURES : (rows ?? []);
+
+  const counts = useMemo(() => computeXIntelStatusCounts(display), [display]);
 
   return (
     <div className="flex flex-col gap-3">

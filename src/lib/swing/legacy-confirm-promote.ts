@@ -323,6 +323,11 @@ export function buildLegacySwingArtifacts(params: {
     thesisNote: meta.thesisNote ?? undefined,
     sectorLeadershipFacts: meta.sectorLeadershipFacts,
     reason: `${swingPlay.reason} · Legacy morning confirm (${editionFor})`,
+    // BUG FIX (2026-10-21, Ask Largo round-3 deep-dive): same gap as serving-lane.ts's enrichPlay —
+    // liveSpot was never set on this origin either, leaving adapters.ts's "Since flag" track field
+    // dead for Legacy-promoted WATCH plays too. groundedSpot is already computed above (the real
+    // spot this play's plan levels were derived from).
+    liveSpot: groundedSpot,
   };
 
   const archetype = scoredDossier.archetype.archetype ?? "UNCLASSIFIED";
@@ -487,14 +492,34 @@ export function refreshCarriedLegacyPlay(
         dte,
         // A carried blob with a stale DTE label almost certainly has a stale quote too — drop it
         // honestly until live marks or the next scan repopulates it.
+        //
+        // BUG FIX (2026-10-20, Ask Largo standing mandate — live EWY/SHOP/UNH repro): this used to
+        // null mid/bid/ask ONLY, leaving delta/gamma/theta/vega/iv served untouched from the exact
+        // same stale options-chain read — all computed at the same instant as the quote this code
+        // already judges too stale to show. The reasoning above ("a stale quote too — drop it
+        // honestly") applies identically to every field that read; serving confidently-formatted
+        // greeks with zero staleness indication right next to a sibling field the system itself
+        // flagged as untrustworthy was the exact inconsistency this comment already argues against.
         ...(staleDte
-          ? { mid: null, bid: null, ask: null, delta: play.contract.delta ?? null }
+          ? { mid: null, bid: null, ask: null, delta: null, gamma: null, theta: null, vega: null, iv: null }
           : {}),
       };
 
   const reason =
     play.reason && staleDte
-      ? play.reason.replace(/\b\d+DTE\b/g, `${dte}DTE`)
+      ? play.reason
+          .replace(/\b\d+DTE\b/g, `${dte}DTE`)
+          // BUG FIX (2026-10-26, Ask Largo standing mandate — live MSTR/PLTR/MDB repro): the
+          // staleDte branch above already nulls contract.delta (and gamma/theta/vega/iv) for
+          // exactly this reason — "serving confidently-formatted greeks with zero staleness
+          // indication... is the exact inconsistency this comment already argues against" — but
+          // this regex only ever rewrote the DTE count. The human-readable `reason` string a
+          // member/Largo actually reads still baked in the ORIGINAL, now-stale delta figure
+          // ("Δ0.62") as plain fact, a visible self-contradiction sitting right next to
+          // contract.delta:null in the same payload. Blank it to the same "—" fallback
+          // contract-ranker.ts already uses when delta genuinely isn't known at generation time,
+          // rather than leaving a number nothing currently backs.
+          .replace(/Δ-?\d+(?:\.\d+)?/g, "Δ—")
       : play.reason;
 
   return { ...play, contract: mergedContract, reason };
@@ -637,9 +662,37 @@ export async function promoteLegacyConfirmedToSwing(opts: {
  * empty path set and will block on G-S6 confluence like any other under-corroborated
  * single-source candidate.
  */
+/** Per-ticker grouped-daily presence — duplicated from discovery.ts's own `tickerHasGroupedDailyBar`
+ *  (not imported: discovery.ts imports FROM this file, so importing back would cycle). Kept in sync
+ *  by the shared `grouped`-shape contract both sides read. */
+function hasGroupedDailyBar(grouped: ReadonlyArray<{ T?: string }>, ticker: string): boolean {
+  const sym = ticker.trim().toUpperCase();
+  if (!sym) return false;
+  for (const row of grouped) {
+    if ((row.T ?? "").trim().toUpperCase() === sym) return true;
+  }
+  return false;
+}
+
 export function legacyCommitCandidatesFromSnapshot(
   triples: ReadonlyArray<{ dossier: SwingDossier; play: HorizonPlay; watch: SwingWatchCandidate }>,
-  opts: { sessionDate: string; pathsByTicker?: ReadonlyMap<string, readonly string[]> },
+  opts: {
+    sessionDate: string;
+    pathsByTicker?: ReadonlyMap<string, readonly string[]>;
+    /** Real per-ticker halt state for THIS scan (discovery.ts's own `haltActive`, already computed at
+     *  the one real call site before this bridge runs). Omitted (e.g. in isolated tests) degrades to
+     *  "not halted" — the same safe default this bridge always used, now real whenever available
+     *  rather than fabricated regardless. BUG FIX (2026-10-25, Ask Largo standing mandate): this used
+     *  to hardcode `halted: false` unconditionally, silently satisfying G-S12 for every Legacy-sourced
+     *  commit candidate even when the underlying was genuinely halted — see this function's own
+     *  header on why a bypassed real-time gate here is exactly the failure mode it was built to avoid. */
+    haltActive?: ReadonlySet<string>;
+    /** Real whole-market grouped-daily bars for THIS scan (discovery.ts's own `grouped`). Omitted
+     *  degrades to "complete" — the prior unconditional default, now real whenever available. BUG FIX
+     *  (2026-10-25, same mandate): this used to hardcode `dailyBarComplete: true` unconditionally,
+     *  satisfying that gate even when the underlying had no bar in the real feed this session. */
+    grouped?: ReadonlyArray<{ T?: string }>;
+  },
 ): SwingCommitCandidate[] {
   const out: SwingCommitCandidate[] = [];
   for (const t of triples) {
@@ -669,9 +722,15 @@ export function legacyCommitCandidatesFromSnapshot(
       dataQualityDegraded: dossier.dataQuality?.degraded ?? null,
       ivRank: dossier.ivRank ?? null,
       discoveryPaths,
+      // Known, disclosed gap (NOT fixed here — out of scope for this surgical fix, see the staged
+      // finding): a Legacy-promoted dossier is built from synthetic structural reads
+      // (`swingReadsForLegacy`), never a real catalyst/earnings fetch, so there is no real signal to
+      // read yet. Deliberately left as the prior safe default rather than bundled into this PR, which
+      // fixes only the two fields that already have real, in-scope, zero-new-IO data available
+      // (halted/dailyBarComplete below).
       earningsInWindow: false,
-      halted: false,
-      dailyBarComplete: true,
+      halted: opts.haltActive?.has(ticker) ?? false,
+      dailyBarComplete: opts.grouped ? hasGroupedDailyBar(opts.grouped, ticker) : true,
     });
   }
   return out;

@@ -161,6 +161,13 @@ mock.module("../db", {
     insertZeroDteScanRejection: async (row: Record<string, unknown>) => {
       state.rejectionRows.push(row);
     },
+    // rejections.ts/discovery-events-persist.ts (both left REAL) now serialize their cursor
+    // read-modify-write with these, same pattern as gex-regime-events.test.ts/flow-ingest.test.ts.
+    // Always-succeed stand-in: this test exercises the real persistence logic those two lock, not
+    // the lock's own contention behavior (that's covered by rejections.test.ts/
+    // discovery-events-persist.test.ts's own dedicated concurrency cases).
+    tryAdvisoryLock: async () => true,
+    releaseAdvisoryLock: async () => {},
   },
 });
 
@@ -1434,60 +1441,71 @@ test("scanZeroDteBoard: flags OFF → flow-only board, every setup stamped disco
 // firewall fetches cheap batch halt/earnings for every FRESH candidate in attachGateVerdicts.
 test("scanZeroDteBoard: an earnings-today name at RANK 7 is blocked by G-11 (batch earnings reaches ranks 6-10)", async () => {
   resetState();
-  // Six higher-premium clean call setups (rank 1-6) + one lower-premium earnings name that
-  // sorts LAST (rank 7, outside the top-5 dossier enrichment). Each is a single at-the-ask
-  // 0DTE call print that survives deriveZeroDteSetups' evidence gates.
-  const cleanFlow = (ticker: string, premium: number) => ({
-    ticker,
-    premium,
-    option_type: "call",
-    strike: 145, // ~3.6% OTM vs 140 — inside the moneyness caps
-    expiry: "2026-07-06", // == mocked todayEt (a live 0DTE expiry)
-    dte: 0,
-    alert_rule: "sweep",
-    ask_pct: 75,
-    underlying_price: 140,
-    fill_price: 4.2,
-    open_interest: 100,
-    alerted_at: new Date(Date.now() - 5 * 60_000).toISOString(),
-  });
-  state.flows = [
-    cleanFlow("AAA", 3_000_000),
-    cleanFlow("BBB", 2_900_000),
-    cleanFlow("CCC", 2_800_000),
-    cleanFlow("DDD", 2_700_000),
-    cleanFlow("EEE", 2_600_000),
-    cleanFlow("FFF", 2_500_000),
-    cleanFlow("GGG", 2_400_000),
-    cleanFlow("HHH", 2_300_000),
-    cleanFlow("III", 2_200_000),
-    cleanFlow("JJJ", 2_100_000),
-    cleanFlow("KKK", 2_000_000),
-    cleanFlow("LLL", 1_900_000),
-    // Lowest premium → sorts past ENRICH_TOP_N (12) so it has no dossier enrichment.
-    cleanFlow("ERNZ", 1_000_000),
-  ];
-  // ERNZ reports TODAY — the batch earnings snapshot flags it even though it gets no dossier.
-  state.earningsItems = [
-    { ticker: "ERNZ", when: "premarket", report_date: "2026-07-06", expected_move_pct: 8 },
-  ];
+  // This fixture needs 13 DISTINCT synthetic tickers to build a realistic rank ladder (ranks
+  // 1-12 dossier-enriched + ERNZ at rank 7-ish, dossier-less) -- none of them real Mag-7/index
+  // names, so the live 0DTE-desk ticker-universe restriction (ticker-universe.ts, operator
+  // directive 2026-10-25) would otherwise filter every one of them out before G-11 ever runs.
+  // Override for just this test; the universe module reads process.env directly each call, so
+  // no other test is affected once this one restores it.
+  process.env.ZERODTE_TICKER_UNIVERSE = "AAA,BBB,CCC,DDD,EEE,FFF,GGG,HHH,III,JJJ,KKK,LLL,ERNZ";
+  try {
+    // Six higher-premium clean call setups (rank 1-6) + one lower-premium earnings name that
+    // sorts LAST (rank 7, outside the top-5 dossier enrichment). Each is a single at-the-ask
+    // 0DTE call print that survives deriveZeroDteSetups' evidence gates.
+    const cleanFlow = (ticker: string, premium: number) => ({
+      ticker,
+      premium,
+      option_type: "call",
+      strike: 145, // ~3.6% OTM vs 140 — inside the moneyness caps
+      expiry: "2026-07-06", // == mocked todayEt (a live 0DTE expiry)
+      dte: 0,
+      alert_rule: "sweep",
+      ask_pct: 75,
+      underlying_price: 140,
+      fill_price: 4.2,
+      open_interest: 100,
+      alerted_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+    });
+    state.flows = [
+      cleanFlow("AAA", 3_000_000),
+      cleanFlow("BBB", 2_900_000),
+      cleanFlow("CCC", 2_800_000),
+      cleanFlow("DDD", 2_700_000),
+      cleanFlow("EEE", 2_600_000),
+      cleanFlow("FFF", 2_500_000),
+      cleanFlow("GGG", 2_400_000),
+      cleanFlow("HHH", 2_300_000),
+      cleanFlow("III", 2_200_000),
+      cleanFlow("JJJ", 2_100_000),
+      cleanFlow("KKK", 2_000_000),
+      cleanFlow("LLL", 1_900_000),
+      // Lowest premium → sorts past ENRICH_TOP_N (12) so it has no dossier enrichment.
+      cleanFlow("ERNZ", 1_000_000),
+    ];
+    // ERNZ reports TODAY — the batch earnings snapshot flags it even though it gets no dossier.
+    state.earningsItems = [
+      { ticker: "ERNZ", when: "premarket", report_date: "2026-07-06", expected_move_pct: 8 },
+    ];
 
-  const { scanZeroDteBoard } = await mod();
-  const result = (await scanZeroDteBoard()) as {
-    setups: Array<{ ticker: string; gate?: { verdict: string; blocks: Array<{ code: string; reason: string }> } | null }>;
-  };
+    const { scanZeroDteBoard } = await mod();
+    const result = (await scanZeroDteBoard()) as {
+      setups: Array<{ ticker: string; gate?: { verdict: string; blocks: Array<{ code: string; reason: string }> } | null }>;
+    };
 
-  const ernzIdx = result.setups.findIndex((s) => s.ticker.toUpperCase() === "ERNZ");
-  assert.ok(ernzIdx >= 0, "ERNZ must survive discovery into a gated setup");
-  assert.ok(ernzIdx >= 12, `ERNZ must rank outside the top-12 (dossier-less) — got index ${ernzIdx}`);
-  const ernz = result.setups[ernzIdx]!;
-  assert.ok(ernz.gate, "a fresh (un-committed) candidate must get a gate verdict");
-  assert.equal(
-    ernz.gate!.blocks.some((b) => b.code === "earnings"),
-    true,
-    "G-11 earnings must fire for a rank-7 name — pre-fix, ranks 6-10 got earnings:null and committed blind"
-  );
-  assert.equal(ernz.gate!.verdict, "BLOCKED");
+    const ernzIdx = result.setups.findIndex((s) => s.ticker.toUpperCase() === "ERNZ");
+    assert.ok(ernzIdx >= 0, "ERNZ must survive discovery into a gated setup");
+    assert.ok(ernzIdx >= 12, `ERNZ must rank outside the top-12 (dossier-less) — got index ${ernzIdx}`);
+    const ernz = result.setups[ernzIdx]!;
+    assert.ok(ernz.gate, "a fresh (un-committed) candidate must get a gate verdict");
+    assert.equal(
+      ernz.gate!.blocks.some((b) => b.code === "earnings"),
+      true,
+      "G-11 earnings must fire for a rank-7 name — pre-fix, ranks 6-10 got earnings:null and committed blind"
+    );
+    assert.equal(ernz.gate!.verdict, "BLOCKED");
+  } finally {
+    delete process.env.ZERODTE_TICKER_UNIVERSE;
+  }
 });
 
 // ── D2 firewall: a COLD halt FEED fails a fresh commit closed for EVERY committable rank ──────

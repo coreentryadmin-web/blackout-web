@@ -30,7 +30,8 @@ export async function GET() {
       }),
       { status: 200, headers: NO_STORE_HEADERS }
     );
-  } catch {
+  } catch (err) {
+    console.error("[market/anomalies] GET failed:", err);
     return NextResponse.json({ anomalies: [] }, { status: 200, headers: NO_STORE_HEADERS });
   }
 }

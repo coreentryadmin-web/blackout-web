@@ -91,6 +91,24 @@ test("fmtCompareSpot via compare-format: formats finite spot", async () => {
   assert.match(fmtCompareSpot(5432.1, "SPX"), /5,432\.10/);
 });
 
+test("fmtCompareSpot via compare-format: pins the en-US locale rather than deferring to the viewer's browser locale", async () => {
+  const { fmtCompareSpot } = await import("./vector-compare-format");
+  const original = Number.prototype.toLocaleString;
+  let capturedLocale: unknown = "not-called";
+  Number.prototype.toLocaleString = function (locale?: unknown, options?: unknown) {
+    capturedLocale = locale;
+    return original.call(this, locale as never, options as never);
+  };
+  try {
+    fmtCompareSpot(5432.1, "SPX");
+  } finally {
+    Number.prototype.toLocaleString = original;
+  }
+  // `undefined` here would mean "use the viewer's browser locale" (de-DE etc. flip the
+  // grouping/decimal separator meaning for a price figure) — must be pinned to "en-US".
+  assert.equal(capturedLocale, "en-US");
+});
+
 test("resolveCompareRaw: URL is the only source of truth for compare state", async () => {
   const { resolveCompareRaw, isCompareMode } = await import("./vector-compare");
 

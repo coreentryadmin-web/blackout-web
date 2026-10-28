@@ -24,6 +24,15 @@ export type SelectProps = {
 };
 
 /**
+ * Index of the option matching `value`, or 0 if none match. Shared by the initial
+ * mount state and the resync effect below so the "currently highlighted" cursor
+ * is always derived from `value` the same way, never computed once and left stale.
+ */
+export function resolveSelectActiveIndex(options: SelectOption[], value: string): number {
+  return Math.max(0, options.findIndex((o) => o.value === value));
+}
+
+/**
  * Accessible dropdown select — glass menu, emerald focus ring, keyboard driven
  * (↑/↓/Home/End/Enter/Esc), click-outside + Escape close. Purely presentational
  * state; the caller owns `value`. Motion is transform/opacity only and collapses
@@ -42,10 +51,20 @@ export function Select({
   const auto = useId();
   const btnId = id ?? auto;
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(() => Math.max(0, options.findIndex((o) => o.value === value)));
+  const [active, setActive] = useState(() => resolveSelectActiveIndex(options, value));
   const rootRef = useRef<HTMLDivElement>(null);
 
   const selected = options.find((o) => o.value === value);
+
+  // Keep the keyboard/hover cursor in sync with the controlled `value`. Without this, a
+  // `value` change from outside the component (the normal case — this is a controlled
+  // component) leaves `active` pointing at whatever index it had at mount or last
+  // interaction; opening the menu with a click and pressing Enter then calls `commit(active)`
+  // and silently re-selects that stale option instead of a real choice.
+  useEffect(() => {
+    const next = resolveSelectActiveIndex(options, value);
+    setActive((prev) => (prev === next ? prev : next));
+  }, [value, options]);
 
   useEffect(() => {
     if (!open) return;

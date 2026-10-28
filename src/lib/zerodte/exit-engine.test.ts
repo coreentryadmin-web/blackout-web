@@ -464,6 +464,38 @@ test("buildExitContext: floor breach honors the floor mark — never persists a 
   assert.equal(ctx.mark_honored, true, "a floor-honored fill is flagged as inferred, not observed");
 });
 
+// Live finding, 2026-10-26 (SPXW/SPY/TSLA, GET /api/market/zerodte/record?days=1): on every
+// mark_honored:true exit, `exit_detail` embedded the RAW pre-honoring percentage (baked by
+// evaluateExitState/decideTrimScale BEFORE resolveExitMark ever runs) while the persisted
+// `pnl_pct` priced off the HONORED (better) mark — e.g. a real SPXW row read "Mark 14.1
+// (+17.5%) is at/below the +18.33% floor..." right beside a credited +18.33%, a narrative
+// that UNDERSTATES the truth AND reads self-contradictory (17.5 < 18.33 is literally what
+// "at/below the floor" means, not evidence the floor failed to protect the full 18.33%).
+// `detail: decision.detail` passed the stale string through unchanged forever. This is the
+// same SPXW/ENTRY=4/−13%-observed/+8%-honored fixture as the test directly above — the only
+// thing new here is asserting `ctx.detail` instead of stopping at `ctx.pnl_pct`.
+test("buildExitContext: a floor-honored exit's detail narrative must embed the SAME percentage as its own persisted pnl_pct (2026-10-26 finding)", () => {
+  const decision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.48 }));
+  assert.equal(decision.reason, "ratchet_breakeven_floor");
+  // Sanity on the RAW, pre-honoring narrative the engine bakes at decision time — this is
+  // the stale number the bug used to leave frozen in the persisted record.
+  assert.match(decision.detail, /Mark 3\.48 \(-13%\)/, "the engine's own raw detail states the worse observed move, before honoring is known");
+
+  const ctx = buildExitContext(decision, ENTRY, 3.48, 4.8, Date.UTC(2026, 6, 14, 15, 0, 0));
+  assert.equal(ctx.mark_honored, true);
+  assert.equal(ctx.pnl_pct, 8, "persisted pnl_pct prices off the honored floor mark");
+  assert.match(
+    ctx.detail,
+    /Mark 4\.32 \(\+8%\)/,
+    "the regenerated detail must quote the HONORED mark/pct — matching ctx.mark (4.32) and ctx.pnl_pct (8) — not the raw observed print"
+  );
+  assert.doesNotMatch(
+    ctx.detail,
+    /-13%/,
+    "the stale raw -13% must not survive into the persisted, member-facing narrative"
+  );
+});
+
 test("buildExitContext: a thesis exit uses the observed mark verbatim — mark_honored is false", () => {
   const decision = evaluateExitState(
     input({
@@ -476,6 +508,11 @@ test("buildExitContext: a thesis exit uses the observed mark verbatim — mark_h
   assert.equal(ctx.mark, 3.2, "thesis exit takes the observed mark, no floor honoring");
   assert.equal(ctx.mark_observed, 3.2);
   assert.equal(ctx.mark_honored, false, "an observed fill is NOT flagged as inferred");
+  assert.equal(
+    ctx.detail,
+    decision.detail,
+    "a non-honored exit's detail is passed through byte-for-byte — only a mark_honored exit is ever regenerated"
+  );
 });
 
 // Live-monitor finding, 2026-09-04: a real CRCL thesis-break stamped
@@ -535,6 +572,70 @@ test("buildExitContext: a floor mark that rounds to the same cent as the raw obs
   );
 });
 
+// Live finding, 2026-10-26 (TSLA board ledger / SPXW record play): every exit `detail`
+// string interpolated the live `currentMark` RAW — no rounding/formatting at all — while
+// every other dollar figure in the SAME sentence (fmtPct's %, the plan stop, the plan
+// target) was already clean. A half-cent/float mark (e.g. a 3-decimal `1.355` or
+// `0.465`) rendered as a 3+-decimal figure beside an already-2dp plan stop/target in one
+// sentence ("Mark 1.355 ... is at/below the plan stop 0.48"). Every OTHER premium field
+// this product shows a member (entry_premium, last_mark, peak_premium, trough_premium,
+// plan stop/target) is 2dp both at the data layer and in the UI (ZeroDteBoard.tsx's own
+// `.toFixed(2)`), so the narrative owed the same convention. The fix only reformats the
+// DISPLAYED mark text (`fmtMark`) — it must never touch `pnlPct`'s own computation,
+// which stays deliberately RAW per the cent-rounding tests just above.
+test("exit detail: a 3-decimal live mark renders at 2dp in every narrative template (trim_scale, plan_stop)", () => {
+  const d = evaluateExitState(
+    input({ entryPremium: 0.96, currentMark: 0.465, planStop: 0.48, peakPremium: 0.96 })
+  );
+  assert.equal(d.reason, "plan_stop");
+  assert.match(d.detail, /^Mark 0\.47 \(/, "the live mark renders 2dp, matching the already-2dp plan stop");
+  assert.doesNotMatch(d.detail, /0\.465/, "the raw 3-decimal mark must never reach the member-facing detail");
+});
+
+test("exit detail: a 3-decimal live mark renders at 2dp (trim_scale, shared protective floor)", () => {
+  const d = evaluateExitState(
+    input({ peakPremium: 10.0, currentMark: 5.355, planStop: 1.0, trimsTaken: 2 }) // peak +150% (locked tier), both trims banked
+  );
+  assert.equal(d.reason, "runner_floor");
+  assert.match(d.detail, /^Mark 5\.36 \(/);
+  assert.doesNotMatch(d.detail, /5\.355/);
+});
+
+test("exit detail: a 3-decimal live mark renders at 2dp (trim_scale, runner target after both trims)", () => {
+  const d = evaluateExitState(input({ peakPremium: 8.0, currentMark: 8.005, trimsTaken: 2 }));
+  assert.equal(d.reason, "trim_scale_runner_target");
+  assert.match(d.detail, /^Mark 8\.01 \(/);
+  assert.doesNotMatch(d.detail, /8\.005/);
+});
+
+test("exit detail: a 3-decimal live mark renders at 2dp in every narrative template (ratchet, plan_stop)", () => {
+  const d = evaluateExitState(
+    input({ exitMode: "ratchet", currentMark: 1.355, planStop: 2.0, peakPremium: 4.0 })
+  );
+  assert.equal(d.reason, "plan_stop");
+  assert.match(d.detail, /^Mark 1\.35 \(/);
+  assert.doesNotMatch(d.detail, /1\.355/);
+});
+
+test("exit detail: a 3-decimal live mark renders at 2dp (ratchet, breakeven floor)", () => {
+  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 4.317, planStop: 0.5 }));
+  assert.equal(d.reason, "ratchet_breakeven_floor");
+  assert.match(d.detail, /^Mark 4\.32 \(/);
+  assert.doesNotMatch(d.detail, /4\.317/);
+});
+
+test("exit detail: a 3-decimal live mark renders at 2dp (ratchet, plan-target trim/final)", () => {
+  const trim = evaluateExitState(input({ exitMode: "ratchet", currentMark: 8.005, planTarget: 8.0, trimmed: false }));
+  assert.equal(trim.reason, "plan_target_trim");
+  assert.match(trim.detail, /^Mark 8\.01 \(/);
+  assert.doesNotMatch(trim.detail, /8\.005/);
+
+  const final = evaluateExitState(input({ exitMode: "ratchet", currentMark: 8.005, planTarget: 8.0, trimmed: true }));
+  assert.equal(final.reason, "plan_target_final");
+  assert.match(final.detail, /^Mark 8\.01 \(/);
+  assert.doesNotMatch(final.detail, /8\.005/);
+});
+
 test("resolveExitMark: ratchet floor caps at floor premium; thesis uses observed", () => {
   const floorDecision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.5 }));
   const floorResolved = resolveExitMark(floorDecision, ENTRY, 3.5);
@@ -580,6 +681,16 @@ test("buildExitContext: trim_scale dead-zone floor exit HONORS its own floor (20
     12.25,
     "persisted pnl_pct must price off the honored floor mark, not the raw +9.33% print that lost to it"
   );
+  // 2026-10-26 finding (the decideTrimScale-branch sibling of the ratchet-mode test above):
+  // this reason's raw, pre-honoring detail embeds the worse +9.33% observed print — assert
+  // the regenerated detail instead quotes the SAME honored 12.25% the row is credited with.
+  assert.match(decision.detail, /\(\+9\.33%\)/, "the raw detail states the worse observed move");
+  assert.match(
+    ctx.detail,
+    /Mark 4\.49 \(\+12\.25%\)/,
+    "the regenerated detail must quote the honored mark/pct, matching ctx.mark/ctx.pnl_pct"
+  );
+  assert.doesNotMatch(ctx.detail, /\+9\.33%/, "the stale raw percentage must not survive into the persisted narrative");
 });
 
 test("protectiveFloorMark: entry-scaled floor premium", () => {
@@ -804,6 +915,89 @@ test("trim_scale: a thesis break with no tranche banked says nothing about banke
     d.detail,
     /\(peaked at only \+15%, never cleared the ratchet's own \+20% arm threshold\)$/
   );
+});
+
+// ── Live bug, 2026-10-20 (SLS): ZERODTE_TRIM_BANK_LIVE is off in production, so
+// exit-sync.ts recomputes `trimsTaken` as trimTranchesArmed(peak, regime) — a COSMETIC
+// stand-in needed so the dead-zone guard above still behaves (see decideTrimScale's own
+// doc), never a real persisted bank. decideTrimScale had no way to tell the two apart and
+// built "already banked"/"thirds banked" narrative straight off that cosmetic count, so a
+// real SLS exit today read "Thesis broken... (2/2 tranches (33% each) already banked on
+// the way up.)" while the row's own timeline_tranches was null — the WHOLE position was a
+// single sale, nothing was ever banked, but the sentence a member reads claimed otherwise.
+// `trimsTakenIsGenuine: false` is the caller's honest signal that `trimsTaken` is cosmetic;
+// the FUNCTIONAL ladder math (armed/taken/dead-zone) must stay byte-identical — only the
+// claim that a bank occurred should disappear.
+test("trim_scale: trimsTakenIsGenuine:false suppresses the false 'already banked' claim on a floor exit", () => {
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      peakPremium: 6.1016,
+      currentMark: 4.8,
+      trimsTaken: 2,
+      trimsTakenIsGenuine: false,
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "ratchet_profit_floor");
+  assert.equal(d.floorPnlPct, 21.02, "the floor math itself is unchanged — cosmetic vs real affects narrative only");
+  assert.doesNotMatch(d.detail, /already banked/);
+});
+
+test("trim_scale: trimsTakenIsGenuine:false suppresses the false 'already banked' claim on a thesis break (the live SLS shape)", () => {
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      currentMark: 5.0,
+      peakPremium: 6.0,
+      trimsTaken: 2,
+      trimsTakenIsGenuine: false,
+      cortexEvidence: evidence([{ stance: "veto", source: "wall-trend", detail: "wall building against it" }]),
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "thesis_break:wall-trend");
+  assert.doesNotMatch(d.detail, /already banked/);
+});
+
+test("trim_scale: trimsTakenIsGenuine:false reports no-bank wording on 'both thirds armed, running' instead of claiming a bank", () => {
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      peakPremium: 6.0,
+      currentMark: 5.6,
+      trimsTaken: 2,
+      trimsTakenIsGenuine: false,
+    })
+  );
+  assert.equal(d.action, "RAISE_FLOOR");
+  assert.equal(d.reason, "trim_scale_running");
+  assert.doesNotMatch(d.detail, /\d\/2 thirds banked/);
+  assert.match(d.detail, /no tranche banked/);
+});
+
+test("trim_scale: trimsTakenIsGenuine:false reports the runner-target exit without claiming 'after both trims'", () => {
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      peakPremium: 8.0,
+      currentMark: 8.0,
+      trimsTaken: 2,
+      trimsTakenIsGenuine: false,
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "trim_scale_runner_target");
+  assert.doesNotMatch(d.detail, /after both trims|banked in full/);
+});
+
+test("trim_scale: trimsTakenIsGenuine omitted (default) preserves the existing genuine-bank narrative byte-for-byte", () => {
+  // Backward-compat guard: every pre-existing caller/test that passes trimsTaken directly
+  // (meaning it genuinely) must see unchanged text when this new field is simply absent.
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 6.1016, currentMark: 4.8, trimsTaken: 2 })
+  );
+  assert.match(d.detail, /This is the runner only — 2\/2 tranches \(33% each\) already banked on the way up\.$/);
 });
 
 test("trim_scale: a play that never armed a tranche still scratches on the flat timeout", () => {

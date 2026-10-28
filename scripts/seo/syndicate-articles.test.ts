@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import {
   absolutizeLinks, canonicalUrl, coverImageUrl, syndicatedBody,
-  eligibleArticles, pickToSyndicate, productShotFor, DEVTO_TAGS, HASHNODE_TAGS,
+  eligibleArticles, pickToSyndicate, parseLimitArg, productShotFor, DEVTO_TAGS, HASHNODE_TAGS,
+  devtoAlreadyPosted, hashnodePosted,
 } from "./syndicate-articles.mjs";
 
 const SITE = "https://blackouttrades.com";
@@ -74,5 +75,74 @@ describe("syndication helpers", () => {
     assert.ok(DEVTO_TAGS.length <= 4);
     for (const t of DEVTO_TAGS) assert.match(t, /^[a-z0-9]+$/);
     for (const t of HASHNODE_TAGS) { assert.ok(t.slug && t.name); }
+  });
+
+  it("parseLimitArg honors an explicit --limit=0 (operator pause) instead of falling back to 1", () => {
+    // `0` is falsy in JS — `Number(...) || 1` previously turned a deliberate `--limit=0` into `1`
+    // and posted an article anyway, the opposite of what the flag was meant to do.
+    assert.equal(parseLimitArg(["--limit=0"]), 0);
+    // and that 0 actually limits pickToSyndicate's selection to nothing, not just that the
+    // parsed number reads as 0 in isolation.
+    const arts = [art({ slug: "a", path: "/learn/a", type: "article" })] as never;
+    assert.deepEqual(pickToSyndicate(arts, new Set(), parseLimitArg(["--limit=0"])), []);
+  });
+
+  it("parseLimitArg falls back to the default for a missing or unparseable --limit", () => {
+    assert.equal(parseLimitArg([]), 1);
+    assert.equal(parseLimitArg(["--dry-run"]), 1);
+    assert.equal(parseLimitArg(["--limit=abc"]), 1);
+    assert.equal(parseLimitArg(["--limit="]), 1);
+  });
+
+  it("parseLimitArg still parses a normal positive --limit", () => {
+    assert.equal(parseLimitArg(["--limit=5"]), 5);
+  });
+});
+
+describe("already-posted fetch must fail CLOSED, not silently return a partial set", () => {
+  let originalFetch: typeof fetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(() => { globalThis.fetch = originalFetch; });
+
+  // THE BUG THIS GUARDS AGAINST: a transient page-1 failure (rate limit, 5xx, auth hiccup) used to
+  // `break` the pagination loop and return whatever had accumulated so far — for a page-1 failure,
+  // an EMPTY set, i.e. "nothing has ever been posted". `pickToSyndicate` then trusted that empty set
+  // and the daily cron re-posted an already-live article to the real Dev.to/Hashnode account: a
+  // genuine duplicate, the exact thing the idempotency design is supposed to prevent. The fix is to
+  // throw on a failed fetch so `main()`'s existing per-platform try/catch skips the run instead.
+
+  it("devtoAlreadyPosted throws (not resolves to an empty set) when the Dev.to API 500s", async () => {
+    globalThis.fetch = (async () => new Response("server error", { status: 500 })) as typeof fetch;
+    await assert.rejects(() => devtoAlreadyPosted("fake-key"), /Dev\.to .* 500/);
+  });
+
+  it("devtoAlreadyPosted keeps page-1 results AND throws when a later page fails mid-pagination", async () => {
+    let call = 0;
+    globalThis.fetch = (async () => {
+      call += 1;
+      if (call === 1) {
+        // A full page of 100 rows forces a page-2 request.
+        const rows = Array.from({ length: 100 }, (_, i) => ({ canonical_url: `https://blackouttrades.com/learn/x${i}` }));
+        return new Response(JSON.stringify(rows), { status: 200 });
+      }
+      return new Response("rate limited", { status: 429 });
+    }) as typeof fetch;
+    await assert.rejects(() => devtoAlreadyPosted("fake-key"), /Dev\.to .* page 2.* 429/);
+  });
+
+  it("hashnodePosted throws (not resolves to an empty set) on a malformed/errored GraphQL response", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ errors: [{ message: "not authorized" }] }), { status: 200 })) as typeof fetch;
+    await assert.rejects(() => hashnodePosted("fake-key", "pub-id"), /Hashnode[\s\S]*not authorized/);
+  });
+
+  it("hashnodePosted does NOT throw on a genuinely empty publication (real zero-posts case)", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ data: { publication: { posts: { edges: [], pageInfo: { hasNextPage: false, endCursor: null } } } } }),
+        { status: 200 }
+      )) as typeof fetch;
+    const posted = await hashnodePosted("fake-key", "pub-id");
+    assert.equal(posted.size, 0);
   });
 });

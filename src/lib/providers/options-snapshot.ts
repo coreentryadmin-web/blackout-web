@@ -389,6 +389,35 @@ export function reliableMarkFromQuote(
   return reference;
 }
 
+/**
+ * The ASK sibling of `reliableMarkFromSnapshot`/`reliableMarkFromQuote` — same bid=0 backstop-quote
+ * divergence guard, applied to the raw ask that produced the (possibly corrected) mark, instead of
+ * to the mark itself.
+ *
+ * `reliableMarkFromSnapshot` only ever corrects the resolved MARK: when it falls through to the
+ * reference price, `snap.ask` itself is left completely untouched, because that function has no
+ * reason to return it. A caller that carries the raw ask ALONGSIDE the now-guarded mark (e.g. a
+ * live quote object built for a spread / execution-quality display) ends up mixing a sanitized mid
+ * with an unsanitized ask on the same object — and `(ask - bid) / mid` with a guarded (tiny) mid and
+ * an unguarded (backstop) ask produces a nonsensical spread. Confirmed live 2026-10-24: Night Hawk
+ * Swings CAG (positionId 2082) — `bid:0, ask:3.90`, mark correctly guarded down to the real last
+ * trade (`mid:0.03`), yet the horizons/play-brief Spread line read bid/ask straight off the
+ * ORIGINAL unfiltered quote and rendered "Spread: 13000.0% ($0.00/$3.90)" — the exact "dead bid +
+ * backstop ask" artifact `reliableMarkFromSnapshot` was built to catch (CRSR 2026-09-14, CRI
+ * 2026-10-08), just never extended past the mark field.
+ *
+ * Reuses `reliableMarkFromSnapshot` verbatim rather than reimplementing the divergence math, so the
+ * two guards cannot drift apart: the ask is "reliable" exactly when the mark guard did NOT
+ * substitute the reference for the naive doc-priority mark (the identical bid===0 + magnitude check,
+ * including the thin-one-lot 3x bar). Returns `snap.ask` unchanged whenever `snap.bid !== 0` (a real
+ * two-sided market is never second-guessed, matching `reliableMarkFromQuote`'s own scope) or when
+ * there was no mark to compare against in the first place.
+ */
+export function reliableAskFromSnapshot(snap: OptionSnapshot): number | null {
+  if (snap.bid !== 0 || snap.mark == null) return snap.ask;
+  return reliableMarkFromSnapshot(snap) === snap.mark ? snap.ask : null;
+}
+
 /** Split an array into chunks of at most `size`. Exported for chunking tests. */
 export function chunkOccs<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];

@@ -53,6 +53,7 @@ import {
 } from "./flow-corroboration";
 import { deriveWhyNow } from "./why-now";
 import { pinSourceEnabled, mergePinOrigins } from "./pin-source";
+import { momentumSourceEnabled } from "./momentum-signal-source";
 import {
   initialDiscoveryHealth,
   laneStatusFromBreakoutOutcome,
@@ -73,6 +74,10 @@ import { requireHealthySourceEnabled } from "@/lib/ws/source-health";
 import { getFlowSourceHealthState } from "@/lib/ws/uw-socket";
 import { withServerCache } from "@/lib/server-cache";
 import { recordZeroDteScanTick } from "@/lib/play-engine-heartbeat";
+import {
+  awaitWithWarmDeadline,
+  zerodteScanWarmTimeoutMs,
+} from "./scan-warm-deadline";
 import {
   buildZeroDteAuditRow,
   computeLedgerGrade,
@@ -237,6 +242,7 @@ import {
 // source of truth), so a reconciliation regression surfaces as a non-zero telemetry percentile.
 import { asManagedPnlPct, officialPlanPnlPct } from "./record";
 import { computeRelativeVolumeShadow, type RelativeVolumeShadowRead } from "./relative-volume-source";
+import { resolveZeroDteTickerUniverse } from "./ticker-universe";
 
 /** Leveraged/inverse wrappers and vol ETPs stay out (not directional single plays);
  *  index products (SPY/SPX/NDX/QQQ…) are eligible per product direction. Night Hawk
@@ -375,6 +381,9 @@ export async function scanZeroDteBoard(flags?: {
   // NH edition tickers are surfaced as covered_elsewhere but NOT excluded from discovery
   // (2026-07-28): excluding them removed the overnight playbook's best names from 0DTE.
   const excludes = new Set<string>([...STATIC_EXCLUDES]);
+  // Operator directive (2026-10-25): restrict the WHOLE 0DTE desk (all three discovery origins)
+  // to Mag 7 + SPX/SPY/QQQ — see ticker-universe.ts for the full rationale and spelling notes.
+  const includeTickers = resolveZeroDteTickerUniverse();
 
   // Always collected (cheap — a handful of array pushes per candidate ticker);
   // whether it's ever WRITTEN anywhere is a separate decision made by the caller
@@ -397,7 +406,7 @@ export async function scanZeroDteBoard(flags?: {
     })),
     // FLOW seat budget — raised 20→48 so the multi-rail merge isn't starved of
     // FLOW candidates while BREAKOUT/PIN fill their own seats (see GOVERNOR uncapped).
-    { maxSetups: 48, excludeTickers: excludes, nowMs: Date.now(), todayYmd: today, rejections }
+    { maxSetups: 48, excludeTickers: excludes, includeTickers, nowMs: Date.now(), todayYmd: today, rejections }
   );
   const candidateDerivedAt = Date.now();
 
@@ -460,6 +469,7 @@ export async function scanZeroDteBoard(flags?: {
         today,
         nowEtMinutes: hour * 60 + minute,
         excludeTickers: excludes,
+        includeTickers,
       });
       const breakoutSetups = breakoutOutcome.setups;
       discoveryHealth.BREAKOUT = {
@@ -551,6 +561,7 @@ export async function scanZeroDteBoard(flags?: {
         today,
         nowEtMinutes: hour * 60 + minute,
         excludeTickers: excludes,
+        includeTickers,
       });
       // discoverPinSetups returns a bare array, so "ran and found nothing" and "was outside its own
       // window" are the same [] — pinWindowStatus separates them. Reporting a zero as `ok` at 8am
@@ -572,6 +583,52 @@ export async function scanZeroDteBoard(flags?: {
     } catch (err) {
       discoveryHealth.PIN = { status: "failed", setups: 0, reason: "threw" };
       console.warn("[zerodte-pin] discovery failed — flow-only board this cycle:", err);
+    }
+  }
+
+  // ── MOMENTUM discovery origin (operator directive, 2026-10-25) — the FOURTH, INDEPENDENT
+  // discovery source. Flag-gated via ZERODTE_WHOLE_MARKET + ZERODTE_SRC_MOMENTUM (default ON; set
+  // to "0" to disable). Unlike BREAKOUT/PIN this does not screen the whole market or a curated
+  // list — it screens the SAME fixed 10-name universe the FLOW/BREAKOUT include-filter already
+  // restricts to (includeTickers, ticker-universe.ts), detecting a setup directly from the
+  // underlying's own momentum+RVOL action (no options print, no breadth screen required) and
+  // ranking same-day sub-$1.00-ask contracts toward a $20 premium target. Emits candidates
+  // carrying discovery_origin ["MOMENTUM"]; they merge BY TICKER via the SAME origin-agnostic
+  // `mergeDiscoveryOrigins` every other origin uses (a shared ticker → e.g. ["FLOW","MOMENTUM"]).
+  // Merged here, AFTER deriveZeroDteSetups, so the FLOW evidence gates never see them; every
+  // MOMENTUM candidate runs the SAME mandatory contract-attach + shared hard gates + Cortex as a
+  // flow one, and (being a brand-new, uncalibrated origin) inherits the strictest score_floor
+  // (gates.ts's scoreFloorForOrigins default-case fallthrough) and no relief/exemption carve-out
+  // anywhere in the board — the newest, least-proven origin gets the most conservative treatment
+  // by construction, never a special case written for it. IO is dynamic-imported so the flow-only
+  // board never loads this provider graph; any failure degrades to the flow board (best-effort).
+  if (momentumSourceEnabled()) {
+    try {
+      const { hour, minute } = etNowParts();
+      const { discoverMomentumSetups } = await import("./momentum-signal-discovery");
+      const momentumOutcome = await discoverMomentumSetups({
+        today,
+        nowEtMinutes: hour * 60 + minute,
+        excludeTickers: excludes,
+        includeTickers,
+      });
+      discoveryHealth.MOMENTUM =
+        momentumOutcome.status === "skip_off_hours"
+          ? { status: "off_hours", setups: 0 }
+          : { status: "ok", setups: momentumOutcome.setups.length };
+      if (momentumOutcome.setups.length > 0) {
+        mergeDiscoveryOrigins(setups, momentumOutcome.setups);
+        // Prefer true 0DTE over 1DTE, then score — same tie-break every other origin merge uses.
+        setups.sort((a, b) => {
+          const ha = a.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          const hb = b.contract_horizon === "ZERO_DTE" ? 1 : 0;
+          if (ha !== hb) return hb - ha;
+          return b.score - a.score;
+        });
+      }
+    } catch (err) {
+      discoveryHealth.MOMENTUM = { status: "failed", setups: 0, reason: "threw" };
+      console.warn("[zerodte-momentum] discovery failed — flow-only board this cycle:", err);
     }
   }
 
@@ -599,7 +656,7 @@ export async function scanZeroDteBoard(flags?: {
     const mix = summarizeDiscoveryRailMix(setups);
     console.info(
       `[zerodte-scan] discovery rail mix total=${mix.total} FLOW=${mix.FLOW} BREAKOUT=${mix.BREAKOUT} ` +
-        `PIN=${mix.PIN} multi=${mix.multi} merge_policy=${MERGE_POLICY_VERSION}`
+        `PIN=${mix.PIN} MOMENTUM=${mix.MOMENTUM} multi=${mix.multi} merge_policy=${MERGE_POLICY_VERSION}`
     );
   }
 
@@ -1808,8 +1865,8 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   // COALESCE pin would discard a refresh-lane recomputation anyway). NEVER gates, scores, or alters
   // entry/exit/stop/target in any way — see relative-volume.ts's own header for the full rationale
   // and the intended graduation path before this is ever registered as a real cortex source.
-  // `computeRelativeVolumeShadow` never throws; Promise.allSettled is still used as a second,
-  // redundant safety net so a single hung/slow ticker can never block the whole commit batch.
+  // `computeRelativeVolumeShadow` never throws and enforces its own per-ticker fetch timeout
+  // (relative-volume-source.ts); Promise.allSettled is still used as a second safety net.
   const rvolShadowByTicker = new Map<string, RelativeVolumeShadowRead>();
   if (committedFresh.length > 0) {
     const rvolResults = await Promise.allSettled(
@@ -2572,7 +2629,22 @@ export async function gradeZeroDteLedger(force = false, gradeThroughToday = fals
  * small summary object (grid-warm counts a non-null result as a successful warm).
  */
 export async function warmZeroDteBoard(): Promise<{ found: number; logged: number } | null> {
-  const { setups, rejections, market_state } = await scanZeroDteBoard();
+  const deadlineMs = zerodteScanWarmTimeoutMs();
+  const raced = await awaitWithWarmDeadline(scanZeroDteBoard(), deadlineMs);
+  if (!raced.ok) {
+    if (raced.reason === "timeout") {
+      console.warn(
+        `[zerodte-scan] scanZeroDteBoard exceeded ${deadlineMs}ms warm deadline — heartbeat only this cycle`
+      );
+    } else {
+      console.warn("[zerodte-scan] scanZeroDteBoard failed:", raced.error);
+    }
+    await recordZeroDteScanTick("cron").catch((err) => {
+      console.warn("[zerodte-scan-heartbeat] tick record failed:", err);
+    });
+    return null;
+  }
+  const { setups, rejections, market_state } = raced.value;
   // NH-R10: record this scan cycle's tick as soon as scanZeroDteBoard() has actually
   // returned — this is the always-on cron cadence tick (distinct from the member-poll
   // board route), so a silent stall here is the same class of blind spot the SPX play

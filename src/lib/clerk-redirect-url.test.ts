@@ -77,6 +77,28 @@ test("isSafeAppRelativePath: only same-app paths", () => {
   assert.equal(isSafeAppRelativePath("dashboard"), false);
 });
 
+test("isSafeAppRelativePath: rejects backslash-based host-jump bypasses", () => {
+  // Per the WHATWG URL spec, a backslash is equivalent to a forward slash when resolving a
+  // relative reference against an http(s) base, so these all open an authority (host) component
+  // exactly like a literal `//` would — a naive `startsWith("/") && !startsWith("//")` check
+  // misses every one of them. Confirmed live: new URL("/\\evil.com", "https://blackouttrades.com")
+  // resolves to origin "https://evil.com".
+  assert.equal(isSafeAppRelativePath("/\\evil.com"), false);
+  assert.equal(isSafeAppRelativePath("/\\/evil.com"), false);
+  assert.equal(isSafeAppRelativePath("/\\\\evil.com"), false);
+  // A percent-encoded backslash is NOT a bypass — it stays a literal path segment, never
+  // decoded into a path separator by the URL parser or the browser's own navigation.
+  assert.equal(isSafeAppRelativePath("/%5Cevil.com"), true);
+});
+
+test("clerkPostAuthReturnPath: rejects backslash-based host-jump bypass end-to-end", () => {
+  // The function is documented ("rejects absolute URL"/"rejects protocol-relative URL" above) to
+  // never hand back anything but a same-app path. A backslash variant must land on the same
+  // default, not silently resolve toward evil.com.
+  assert.equal(clerkPostAuthReturnPath("/\\evil.com/secret"), CLERK_DEFAULT_POST_AUTH_PATH);
+  assert.equal(clerkPostAuthReturnPath("/\\/evil.com/phish"), CLERK_DEFAULT_POST_AUTH_PATH);
+});
+
 test("middleware uses clerkPostAuthReturnPath for signed-in auth redirect", () => {
   const src = readFileSync(join(here, "../middleware-clerk.ts"), "utf8");
   assert.match(src, /clerkPostAuthReturnPath\(req\.nextUrl\.searchParams\.get\("redirect_url"\)\)/);

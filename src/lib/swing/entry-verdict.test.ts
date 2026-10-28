@@ -75,6 +75,56 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.equal(v?.gateBlocks?.[0]?.code, "thesis_invalidated");
   });
 
+  // BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro SOXX): the thesis_invalidated gate
+  // reason used to say "price CLOSED through the structural invalidation level" — but
+  // deriveSetupState (setup-state.ts) compares the dossier's live (or last-known) INTRADAY spot
+  // against the level, never a settled end-of-day close, so the state can genuinely flip back to
+  // FORMING on a later read within the same session. Live-measured: SOXX read INVALIDATED at one
+  // scan, then FORMING again (identical gate blocks otherwise) under an hour later, with no session
+  // close in between. "Closed through" overstates how settled the break is. Locks in the corrected,
+  // honest wording.
+  it("thesis_invalidated gate reason describes a LIVE price read, never claims a settled close (the state can revert intraday)", () => {
+    const v = swingEntryVerdict({
+      servingSection: "RESEARCH",
+      setupState: "INVALIDATED",
+    });
+    const reason = v?.gateBlocks?.[0]?.reason ?? "";
+    assert.doesNotMatch(reason, /closed through/i, "must never claim a settled close — the check is intraday");
+    assert.match(reason, /live read/i);
+  });
+
+  it("stamped non-RESEARCH section + INVALIDATED → SKIP with thesis block AND the real, already-computed gate blocks (live-shape repro, 2026-10-25)", () => {
+    // Same defect class as the "past entry deadline + active commit gate blocks" test below and the
+    // RESEARCH-section fix in swingEntryVerdict itself: a stamped `servingSection` that predates a
+    // fresher setupState read bypasses sectionForSwingPlay's own INVALIDATED→RESEARCH routing
+    // (resolveSwingServingSection trusts the stamped value), so this lands in the dont_buy/
+    // INVALIDATED branch with real, live commit-gate codes already computed and in scope.
+    const v = swingEntryVerdict({
+      servingSection: "WATCH",
+      setupState: "INVALIDATED",
+      commitGateBlockedBy: ["gate:G-S12:halt_feed_stale", "gate:G-S4:regime_degraded"],
+    });
+    assert.equal(v?.deckStatus, "SKIP");
+    assert.equal(v?.actionLabel, null);
+    assert.equal(v?.gateBlocks?.[0]?.code, "thesis_invalidated"); // primary reason stays first
+    const codes = v?.gateBlocks?.map((g) => g.code) ?? [];
+    assert.ok(codes.includes("g_s12_halt_feed_stale"), "real gate evidence should not be dropped");
+    assert.ok(codes.includes("g_s4_regime"), "real gate evidence should not be dropped");
+  });
+
+  it("stamped non-RESEARCH section + persistence gap → SKIP with persistence reason AND the real gate blocks", () => {
+    const v = swingEntryVerdict({
+      servingSection: "WATCH",
+      persistenceObserved: true,
+      persistenceGapReason: "Needs 1 more session",
+      commitGateBlockedBy: ["gate:G-S6:confluence"],
+    });
+    assert.equal(v?.deckStatus, "SKIP");
+    assert.equal(v?.gateBlocks?.[0]?.code, "persistence_gap");
+    const codes = v?.gateBlocks?.map((g) => g.code) ?? [];
+    assert.ok(codes.includes("g_s6_confluence"), "real gate evidence should not be dropped");
+  });
+
   it("RESEARCH + persistence gap → SKIP with persistence reason", () => {
     const v = swingEntryVerdict({
       servingSection: "RESEARCH",
@@ -132,6 +182,66 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.ok(codes.includes("g_s12_halt_feed_stale"), "must surface the real halt-feed gate, not discard it");
     assert.ok(codes.includes("g_s4_regime"), "must surface the real regime gate, not discard it");
     assert.ok(codes.includes("g_s14_cortex"), "must surface the real cortex gate, not discard it");
+  });
+
+  // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro SOXX WATCH): commitGateBlocksForVerdict
+  // used to collapse every non-`cortex_unavailable` G-S14 block to "Cortex preflight vetoed this
+  // setup" — but cortex-gate.ts's own decision table distinguishes a genuine veto from four
+  // materially weaker, explicitly non-veto outcomes. Live SOXX WATCH row carried exactly
+  // `gate:G-S14:cortex_net_negative` and rendered as if Cortex had issued a hard veto.
+  it("commitGateBlocksForVerdict: G-S14 non-veto codes get their own honest reason, never the 'vetoed' sentence (live SOXX repro)", () => {
+    const netNegative = commitGateBlocksForVerdict(["gate:G-S14:cortex_net_negative"]);
+    assert.match(netNegative[0].reason, /nets negative/i);
+    assert.doesNotMatch(netNegative[0].reason, /vetoed/i, "net-negative is NOT a veto — must not say so");
+
+    const thinEvidence = commitGateBlocksForVerdict(["gate:G-S14:cortex_thin_evidence"]);
+    assert.match(thinEvidence[0].reason, /thinly corroborated/i);
+    assert.doesNotMatch(thinEvidence[0].reason, /vetoed/i, "thin evidence is NOT a veto — must not say so");
+
+    const contested = commitGateBlocksForVerdict(["gate:G-S14:cortex_contested"]);
+    assert.match(contested[0].reason, /contested/i);
+    assert.doesNotMatch(contested[0].reason, /vetoed/i, "contested evidence is NOT a veto — must not say so");
+
+    const gexWallsOppose = commitGateBlocksForVerdict(["gate:G-S14:cortex_gex_walls_oppose_unresolved"]);
+    assert.match(gexWallsOppose[0].reason, /dealer-wall opposition is unresolved/i);
+    assert.doesNotMatch(gexWallsOppose[0].reason, /vetoed/i, "an unresolved oppose is NOT a veto — must not say so");
+
+    const vetoBlind = commitGateBlocksForVerdict(["gate:G-S14:cortex_veto_blind"]);
+    assert.match(vetoBlind[0].reason, /failed to read/i);
+    assert.doesNotMatch(vetoBlind[0].reason, /vetoed this setup/i, "the fail-closed blind firewall is NOT a confirmed veto — must not say so");
+
+    // The genuine veto case must STILL say "vetoed" — this fix narrows the sentence to the real
+    // veto case, it must not also suppress it there.
+    const genuineVeto = commitGateBlocksForVerdict(["gate:G-S14:cortex_veto:gex-walls"]);
+    assert.match(genuineVeto[0].reason, /vetoed/i);
+  });
+
+  // BUG FIX (2026-10-26, Ask Largo standing mandate, live repro MRNA WATCH): the genuine-veto
+  // branch above (`b.includes("cortex_veto")`) is the ONE branch in this G-S14 block that the
+  // 2026-10-25 fix (#6673) left untouched — it still collapses to a flat, source-less sentence
+  // even though the persisted token itself (`gate:G-S14:cortex_veto:<source>`, stamped by
+  // `swingCortexBlockedByFromAssessment` in v2/cortex-swing.ts off cortex-gate.ts's own
+  // `cortex_veto:${v.source}` code) already names exactly which of the 8 CORTEX_SOURCES vetoed.
+  // Live repro: GET /api/market/nighthawk/horizons?view=swings on 2026-10-26 served MRNA with
+  // `commitGateBlockedBy: ["gate:G-S6:confluence", "gate:G-S14:cortex_veto:gex-walls"]`, yet the
+  // rendered reason named no source. The sibling 0DTE board (zerodte/cortex-gate.ts's own
+  // `cortexGateBlocks()` rendering, `Cortex veto [${v.source}]: ${v.detail}`) already preserves
+  // this; only swing's member-facing text discarded it.
+  it("commitGateBlocksForVerdict: genuine G-S14 veto names the specific Cortex source (live MRNA repro)", () => {
+    const gexWallsVeto = commitGateBlocksForVerdict(["gate:G-S14:cortex_veto:gex-walls"]);
+    assert.match(gexWallsVeto[0].reason, /gex-walls/, "must name which Cortex source vetoed, not a generic sentence");
+
+    const darkpoolVeto = commitGateBlocksForVerdict(["gate:G-S14:cortex_veto:darkpool-confluence"]);
+    assert.match(
+      darkpoolVeto[0].reason,
+      /darkpool-confluence/,
+      "must name a different source correctly too, not hardcode one",
+    );
+
+    // No source present (shouldn't happen in production — the token always carries one — but the
+    // fallback must stay honest/generic rather than render a garbage/empty source name).
+    const noSource = commitGateBlocksForVerdict(["gate:G-S14:cortex_veto"]);
+    assert.match(noSource[0].reason, /vetoed this setup/i);
   });
 
   it("RESEARCH with no expiry/persistence/invalidation signal still falls through to the generic reason", () => {

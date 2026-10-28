@@ -4,7 +4,9 @@ import { Suspense, useEffect, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   consumePendingSignUp,
+  ga4Available,
   ga4OncePerSession,
+  hasPendingSignUp,
   hasSessionCookie,
   markPendingSignUp,
   trackGa4Event,
@@ -52,8 +54,17 @@ function Ga4AttributionInner() {
     if (
       (pathname === "/upgrade" || pathname.startsWith("/upgrade")) &&
       hasSessionCookie() &&
-      consumePendingSignUp()
+      hasPendingSignUp() &&
+      ga4Available()
     ) {
+      // Only consume (clear) the pending flag once gtag is actually ready to accept the call.
+      // Clearing it as part of the gate itself (the prior behavior) destroyed the retry
+      // opportunity even when gtag's "afterInteractive" script hadn't loaded yet on a fresh
+      // /upgrade page load — the signup conversion was then silently and permanently lost with no
+      // way to recover it, exactly the failure trackGoogleAdsConversion's own file header warns
+      // against. Leaving the flag in place when gtag isn't ready yet lets a page refresh (which
+      // re-runs the whole script-load race) try again.
+      consumePendingSignUp();
       trackGa4Event(GA4_EVENTS.signUp, { page_path: pathname });
       trackXEvent("tw-re1j3-re9z9");
       // PRIMARY. Fires on the same signal GA4's sign_up uses — a session cookie present on

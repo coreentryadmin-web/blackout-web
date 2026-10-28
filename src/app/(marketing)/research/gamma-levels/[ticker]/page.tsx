@@ -11,6 +11,7 @@ import { isPublishable, type SessionLevels } from "@/lib/research/gamma-levels-c
 import {
   coverageSentence,
   flipSentence,
+  flipSideLabel,
   formatLevel,
   formatSessionLabel,
   pageCopy,
@@ -70,6 +71,24 @@ function OutcomePill({ outcome }: { outcome: SessionLevels["callWallOutcome"] })
   return (
     <span className={`inline-block rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${style}`}>
       {outcome}
+    </span>
+  );
+}
+
+// `close` and `gammaFlip` both render through `formatLevel`, which rounds to whole dollars at or
+// above $100 — two genuinely different raw values can land on the same displayed number. This
+// pill states the side directly from the same unrounded boolean `flipSentence`'s header count
+// uses, so a row that LOOKS tied in the table still reads as a definite Above/Below/unrecorded.
+function FlipSidePill({ closedAboveFlip }: { closedAboveFlip: SessionLevels["closedAboveFlip"] }) {
+  const style =
+    closedAboveFlip === true
+      ? "border-sky-400/30 bg-sky-400/10 text-sky-300"
+      : closedAboveFlip === false
+        ? "border-amber-400/30 bg-amber-400/10 text-amber-300"
+        : "border-white/10 bg-white/5 text-secondary";
+  return (
+    <span className={`inline-block rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${style}`}>
+      {flipSideLabel(closedAboveFlip)}
     </span>
   );
 }
@@ -152,6 +171,7 @@ export default async function GammaLevelsTickerPage({ params }: Params) {
                 <th scope="col" className="px-3 py-2 font-medium">Result</th>
                 <th scope="col" className="px-3 py-2 font-medium">Gamma flip</th>
                 <th scope="col" className="px-3 py-2 font-medium">Close</th>
+                <th scope="col" className="px-3 py-2 font-medium">Flip side</th>
               </tr>
             </thead>
             <tbody className="text-white/80">
@@ -164,6 +184,7 @@ export default async function GammaLevelsTickerPage({ params }: Params) {
                   <td className="px-3 py-2"><OutcomePill outcome={s.putWallOutcome} /></td>
                   <td className="px-3 py-2 tabular-nums">{s.gammaFlip === null ? "—" : formatLevel(s.gammaFlip)}</td>
                   <td className="px-3 py-2 tabular-nums">{formatLevel(s.close)}</td>
+                  <td className="px-3 py-2"><FlipSidePill closedAboveFlip={s.closedAboveFlip} /></td>
                 </tr>
               ))}
             </tbody>

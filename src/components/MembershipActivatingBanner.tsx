@@ -91,7 +91,12 @@ export function MembershipActivatingBanner() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed inset-x-0 top-0 z-[90] border-b border-cyan-400/30 bg-[rgba(6,10,18,0.96)] px-4 py-2.5 text-center backdrop-blur-md"
+      // z-[105]: `.nav-bar` (globals.css) is `z-[100]` and, on every non-home route this banner
+      // can mount on, `data-scrolled` defaults to "true" on first render (Nav.tsx), making
+      // `.nav-surface` fully opaque immediately — no scroll needed. At the banner's old z-[90] it
+      // sat behind that opaque bar from the very first paint, so the only UI telling a member
+      // their payment is still activating was permanently invisible. Must stay above 100.
+      className="fixed inset-x-0 top-0 z-[105] border-b border-cyan-400/30 bg-[rgba(6,10,18,0.96)] px-4 py-2.5 text-center backdrop-blur-md"
     >
       <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-cyan-200">
         {timedOut ? (

@@ -1,5 +1,5 @@
 import type { NightHawkEdition } from "@/features/nighthawk/lib/types";
-import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
+import type { DeskDataQuality, SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { FlowRow } from "@/lib/db";
 import type { FlowStrikeStack } from "@/lib/largo/flow-strike-stacks";
 
@@ -56,6 +56,17 @@ export type SpxDeskSummary = {
   mag7_greek_flow: unknown;
   macro_indicators: unknown;
   strike_stacks: FlowStrikeStack[];
+  /**
+   * Feed-availability + structural-absence disclosure carried from the desk payload (Largo
+   * audit fix, 2026-10-26). Previously computed server-side (`buildDeskDataQuality()`) but
+   * never reached this summary at all, so a model reading `get_spx_structure` had no way to
+   * tell a genuinely-empty-today `oi_changes`/`iv_term_structure` apart from a field that has
+   * never been computed by any function in this codebase — the absence-vs-silence failure
+   * `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s absence principle exists to prevent. `null` only
+   * for the pre-existing degraded/closed-market summary paths that never call
+   * `buildDeskDataQuality()` at all.
+   */
+  data_quality: DeskDataQuality | null;
 };
 
 export type FlowTapeSummary = {

@@ -76,7 +76,14 @@ test("single-name verdict cites the arsenal: earnings countdown, squeeze-fuel SI
       scope: "single_name",
       earnings: { earnings_date: "2026-07-16", days_until: 3, report_time: "afterhours", is_confirmed: true },
       fundamentals: { days_to_cover: 6.4, short_volume_ratio: 0.41, price_target: null, as_of: "2026-07-10" },
-      news: { count: 2, newest: "2026-07-12", headlines: ["NVDA guidance raised", "new GPU"] },
+      news: {
+        count: 2,
+        newest: "2026-07-12",
+        headlines: [
+          { headline: "NVDA guidance raised", publishedAt: null },
+          { headline: "new GPU", publishedAt: null },
+        ],
+      },
       related: ["AMD", "AVGO"],
     }),
     "should I hold NVDA into earnings"

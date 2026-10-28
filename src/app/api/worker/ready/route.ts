@@ -3,7 +3,7 @@ import { isIngestProcess } from "@/lib/process-role";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { getIndexStoreStatus } from "@/lib/ws/polygon-socket";
 import { getUwSocketHealth } from "@/lib/ws/uw-socket";
-import { uwConfigured } from "@/lib/providers/config";
+import { uwConfigured, polygonConfigured } from "@/lib/providers/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ export async function GET() {
 
   const uwOk = !uwConfigured() || (uw.initialized && !uw.auth_failed);
   const indicesOk =
-    !uwConfigured() ||
+    !polygonConfigured() ||
     indices.authenticated ||
     indices.wsState === "OPEN" ||
     indices.wsState === "CONNECTING";

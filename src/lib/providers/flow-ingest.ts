@@ -19,6 +19,9 @@ export type FlowIngestResult = {
   ingested: number;
   polled: number;
   skipped?: string;
+  /** True when a persistent backlog hit the backfill-page cap — some older rows in the gap may
+   * still be unfetched; the next tick's cursor-anchored fetch will keep working through it. */
+  truncated?: boolean;
 };
 
 export async function runFlowIngest(): Promise<FlowIngestResult> {
@@ -77,25 +80,65 @@ export async function runFlowIngest(): Promise<FlowIngestResult> {
   try {
     const cursor = await getMeta(CURSOR_KEY);
     const cursorMaxId = Number((await getMeta(CURSOR_ID_KEY)) ?? 0);
-    let rows: Awaited<ReturnType<typeof fetchMarketFlowAlertRows>>;
-    try {
-      rows = await fetchMarketFlowAlertRows({
-        limit: 100,
-        // FINDINGS 2026-08-04: fetch at the LOWER (near-dated) floor so 0-1DTE prints between
-        // the two floors actually arrive here — persistAndPublishFlowAlert applies the precise,
-        // DTE-aware floor per-row afterward; fetching at MIN_PREMIUM would have discarded them
-        // upstream before persist ever got a chance to apply the lower 0DTE-specific floor.
-        min_premium: MIN_PREMIUM_FETCH_FLOOR,
-        newer_than: cursor ?? undefined,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[flow-ingest] UW fetch skipped:", message);
-      return { ok: false, ingested: 0, polled: 0, skipped: message };
+    // UW's /api/option-trades/flow-alerts returns rows newest-first (confirmed live) and a
+    // `newer_than` filter does NOT change that order — it's still capped at `limit`, counting
+    // down from "now", not up from the cursor. So whenever MORE than one page's worth of rows
+    // landed since the cursor (a WS outage spanning a volatile session is the realistic case —
+    // REST only runs at all when the WS path is down), a single fixed-size fetch silently
+    // serves only the newest `limit` rows and the cursor then advances past the gap, permanently
+    // losing every alert strictly between the cursor and the oldest row in that one page. Detect
+    // a full page and backfill with `older_than` set to that page's own oldest timestamp (UW's
+    // `older_than` boundary is inclusive, so overlap across pages is expected and is deduped
+    // downstream by `persistAndPublishFlowAlert`'s `alert_id` UNIQUE constraint). Bounded so a
+    // sustained backlog degrades to a visible `truncated: true` rather than an unbounded loop.
+    const PAGE_LIMIT = 100;
+    const MAX_BACKFILL_PAGES = 5;
+    let rows: Awaited<ReturnType<typeof fetchMarketFlowAlertRows>> = [];
+    let olderThan: string | undefined;
+    let truncated = false;
+    for (let page = 0; page < MAX_BACKFILL_PAGES; page++) {
+      let batch: Awaited<ReturnType<typeof fetchMarketFlowAlertRows>>;
+      try {
+        batch = await fetchMarketFlowAlertRows({
+          limit: PAGE_LIMIT,
+          // FINDINGS 2026-08-04: fetch at the LOWER (near-dated) floor so 0-1DTE prints between
+          // the two floors actually arrive here — persistAndPublishFlowAlert applies the precise,
+          // DTE-aware floor per-row afterward; fetching at MIN_PREMIUM would have discarded them
+          // upstream before persist ever got a chance to apply the lower 0DTE-specific floor.
+          min_premium: MIN_PREMIUM_FETCH_FLOOR,
+          newer_than: cursor ?? undefined,
+          older_than: olderThan,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (page === 0) {
+          console.warn("[flow-ingest] UW fetch skipped:", message);
+          return { ok: false, ingested: 0, polled: 0, skipped: message };
+        }
+        // A later backfill page failing must not discard the pages already fetched.
+        console.warn(`[flow-ingest] backfill page ${page} failed, keeping ${rows.length} rows:`, message);
+        truncated = true;
+        break;
+      }
+      if (!batch.length) break;
+      rows = rows.concat(batch);
+      if (batch.length < PAGE_LIMIT) break; // short page — no gap left to backfill
+
+      const oldestInBatch = batch.reduce((min, r) => {
+        const c = String(r.raw.created_at ?? "");
+        return c && (!min || c < min) ? c : min;
+      }, "" as string);
+      if (!oldestInBatch || oldestInBatch === olderThan) break; // no progress — avoid a stuck loop
+      olderThan = oldestInBatch;
+      if (page === MAX_BACKFILL_PAGES - 1) truncated = true;
     }
     let ingested = 0;
     let newestCursor = cursor;
     let newestMaxId = cursorMaxId;
+    // Backfill pages overlap at the inclusive older_than boundary — dedup in-process before
+    // persisting (the DB's alert_id UNIQUE constraint would also no-op these, but this skips
+    // the redundant round trip for the common case).
+    const seenInRun = new Set<string>();
 
     for (const { raw, flow } of rows) {
       const rowId = Number(raw.id ?? raw.alert_id ?? 0);
@@ -103,6 +146,9 @@ export async function runFlowIngest(): Promise<FlowIngestResult> {
       if (!created && rowId > 0 && rowId <= cursorMaxId) {
         continue;
       }
+      const rowKey = String(raw.id ?? raw.alert_id ?? `${flow.ticker}|${flow.alerted_at}|${flow.strike}|${flow.premium}`);
+      if (seenInRun.has(rowKey)) continue;
+      seenInRun.add(rowKey);
 
       try {
         const { inserted } = await persistAndPublishFlowAlert(raw, flow);
@@ -129,7 +175,7 @@ export async function runFlowIngest(): Promise<FlowIngestResult> {
       await setMeta(CURSOR_ID_KEY, String(newestMaxId));
     }
 
-    return { ok: true, ingested, polled: rows.length };
+    return { ok: true, ingested, polled: rows.length, truncated };
   } finally {
     // Release inside its own try/catch so a release failure can never mask the real
     // return value / error from the body above. Lock is session-scoped on a held client.

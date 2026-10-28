@@ -492,6 +492,123 @@ test("mfe capture: a genuine gain-on-gain exit still computes a real capture rat
   assert.equal(board.ledger[0]!.mfe_capture_pct, 50, "unchanged behavior for a real capture: 25/50 * 100");
 });
 
+// BUG FIX (2026-10-20, Ask Largo/5-engine standing mandate, live repro BMNR): mapLedgerRow computes
+// peak_pnl_pct/mfe_capture_pct/floor_pnl_pct from the RAW pre-roundFloats entry_premium/peak_premium,
+// but the outer roundFloats() call rounds entry_premium/peak_premium INDEPENDENTLY of each other — so
+// a half-cent peak (real BMNR: entry 0.64, raw peak 0.695) rounds the DISPLAYED peak_premium up to
+// 0.70 while peak_pnl_pct kept reporting the number derived from the raw, never-shown 0.695 — a member
+// doing (0.70−0.64)/0.64 by hand from the row's own displayed fields got 9.37%, not the 8.59% the board
+// showed. live_pnl_pct/live_pnl_pct_exec/exit_policy already got this exact re-derivation treatment;
+// these three fields never did until this fix.
+//
+// Deliberately a HOLD (not CLOSED) row: the 2026-10-21 fix below (see the next test) makes a CLOSED
+// row with a pinned engine-exit stamp prefer that FROZEN peak over any peak_premium-based recompute —
+// which would make this scenario's drifted raw-vs-rounded peak moot (the frozen 8.59 would win
+// outright, never reaching the rounded-recompute path this test exists to cover). Keeping the row
+// non-CLOSED isolates the rounding-reconciliation behavior, which still applies unchanged to every
+// OPEN/HOLD/TRIM row and to a CLOSED row with no exit stamp (a mechanical stop/time-stop).
+test("rounding reconcile: peak_pnl_pct/mfe_capture_pct/floor_pnl_pct are recomputed from the member-visible ROUNDED premiums, not the raw pre-round ones (half-cent peak, live BMNR repro)", async () => {
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        entry_premium: 0.64,
+        last_mark: 0.65,
+        peak_premium: 0.695,
+        trough_premium: 0.64,
+        status: "HOLD",
+        entry_context: { exit: { pnl_pct: 5, peak_pnl_pct: 8.59, reason: "plan_target_final", at: "2026-07-07T15:00:00.000Z" } },
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.peak_premium, 0.7, "roundFloats rounds the raw half-cent peak up to the displayed 0.70");
+  assert.equal(
+    board.ledger[0]!.peak_pnl_pct,
+    9.37,
+    "peak_pnl_pct must reconcile with the DISPLAYED peak_premium/entry_premium (0.70 vs 0.64 → 9.37%), " +
+      "not the raw pre-round 0.695 (which would read 8.59%)",
+  );
+  assert.equal(
+    board.ledger[0]!.mfe_capture_pct,
+    53,
+    "mfe_capture_pct must be derived from the reconciled peak_pnl_pct (5/9.37), not the stale raw one (5/8.59=58)",
+  );
+  assert.equal(
+    board.ledger[0]!.floor_pnl_pct,
+    3.75,
+    "floor_pnl_pct (peak×0.4 ratchet lock) must use the reconciled peak_pnl_pct too (9.37×0.4=3.75), not 8.59×0.4=3.44",
+  );
+});
+
+// BUG FIX (2026-10-21, live repro QQQ/SPCX/NVDA/AAPL): the rounding-reconcile fix above recomputes
+// peak_pnl_pct/mfe_capture_pct/floor_pnl_pct from row.peak_premium UNCONDITIONALLY — including CLOSED
+// rows, whose peak_premium is a continuously-latched field (advancePlayLatch/updateZeroDteLiveState)
+// that is not guaranteed to still equal the peak the exit engine actually armed its floor against at
+// the real moment entry_context.exit was stamped (first-write-wins, off the tick's own peak). Live:
+// a CLOSED QQQ row served peak_pnl_pct 11.11 / floor_pnl_pct 4.44 while its OWN exit_detail read
+// "...+4.24% floor armed by a +10.61% peak" — self-consistent with each other, but not with the
+// frozen narrative the member actually traded under (SPCX/NVDA/AAPL showed the identical
+// peak_pnl_pct×0.4=floor_pnl_pct pattern against their own disagreeing text). floor_pnl_pct's own doc
+// comment (ZeroDteBoardLedgerRow, "floor_pnl_pct") frames it as LIVE-ONLY guidance — a CLOSED row
+// must report the value that was true AT EXIT, not whatever peak_premium happens to hold now. That
+// frozen value is already on the payload, honestly: entry_context.exit.peak_pnl_pct is the exact input
+// buildExitContext stamped when the engine decided (play-timeline.ts's readExitStampFromEntryContext),
+// the same number exit_detail's prose was built from. Fixed: a CLOSED row with a pinned engine-exit
+// stamp now reports THAT frozen peak (and the floor/mfe-capture derived from it) instead of
+// re-deriving from peak_premium. A CLOSED row with NO exit stamp (mechanical stop / genuine
+// time-stop — see the "exit visibility: a stopped play..." test above, unaffected) keeps the existing
+// rounded-premium recompute. OPEN/HOLD/TRIM rows are completely unaffected.
+test("exit visibility (CLOSED, frozen floor): a CLOSED row's peak_pnl_pct/floor_pnl_pct/mfe_capture_pct match the FROZEN exit-time peak, not the row's current peak_premium (QQQ-class live repro)", async () => {
+  const exit = {
+    reason: "ratchet_breakeven_floor",
+    detail: "Mark 4.16 (+4.00%) is at/below the +4.00% floor armed by a +10.00% peak — the ratchet exits so the green trade cannot finish red.",
+    mark: 4.16,
+    pnl_pct: 4,
+    peak_pnl_pct: 10,
+    at: "2026-07-07T15:00:00.000Z",
+  };
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        entry_premium: 4.0,
+        last_mark: 4.16,
+        // DRIFTED: the row's final/current peak_premium (+15%) is higher than the +10% peak the
+        // engine actually armed its floor against at the real exit tick (exit.peak_pnl_pct above) —
+        // the exact live-production shape (served peak_pnl_pct/floor_pnl_pct disagreeing with
+        // exit_detail's own frozen narrative).
+        peak_premium: 4.6,
+        trough_premium: 4.0,
+        status: "CLOSED",
+        entry_context: { exit },
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.peak_premium, 4.6, "the row's own latched peak_premium is untouched");
+  assert.equal(
+    board.ledger[0]!.peak_pnl_pct,
+    10,
+    "peak_pnl_pct must match the FROZEN exit-time peak (+10%, matching exit_detail's own text), " +
+      "not (4.6−4.0)/4.0=+15% recomputed from the row's current (drifted) peak_premium",
+  );
+  assert.equal(
+    board.ledger[0]!.floor_pnl_pct,
+    4,
+    "floor_pnl_pct (frozen peak×0.4 = 4) must agree with exit_detail's own '+4.00% floor', not 15×0.4=6",
+  );
+  assert.equal(
+    board.ledger[0]!.mfe_capture_pct,
+    40,
+    "mfe_capture_pct must be derived from the frozen peak (4/10×100=40), not the drifted one (4/15×100=27)",
+  );
+});
+
 /** The META-class row: peaked +87% (arming both trim tranches), then stopped at −50%. */
 function metaStoppedRunner(entryContext: Record<string, unknown> | null) {
   return ledgerRow({
@@ -545,9 +662,54 @@ test("REGRESSION: a legacy stopped runner with NO committed policy pins to the s
   assert.equal(board.ledger[0]!.live_pnl_pct, -50, "understating a stopped play is the safe error");
 });
 
-test("exit visibility: a plain 15:30 close with no engine exit reads closed_reason 'time_stop'", async () => {
+// BUG FIX (2026-10-20, member audit directive): `engineExitCategory` reads null both for a
+// GENUINE 15:50 ET time-stop AND for a row the exit engine already closed whose
+// `stampZeroDteExitContext` write simply hasn't landed yet (status/exit-context are two
+// separate, unsynchronized DB writes — see mapLedgerRow's own comment). This test used to
+// assert the OLD blind fallback ("no engine stamp => time_stop", regardless of when the row
+// actually closed) as correct; it wasn't — live evidence (SNXX, 2026-10-20) showed a row
+// closed at ~10:11 ET reading closed_reason:"time_stop" for several minutes before its real
+// stamp (a ratchet floor exit) landed. The fix gates the "time_stop" label on the row's own
+// last_mark_at genuinely falling at/after the time-stop boundary.
+test("exit visibility: a CLOSED row with no engine exit and no evidence of a real time-stop reads closed_reason null, not a guess", async () => {
   state.ledgerRead = {
-    rows: [ledgerRow({ entry_premium: 4.0, last_mark: 4.1, peak_premium: 4.5, trough_premium: 3.5, status: "CLOSED" })],
+    rows: [
+      ledgerRow({
+        entry_premium: 4.0,
+        last_mark: 4.1,
+        peak_premium: 4.5,
+        trough_premium: 3.5,
+        status: "CLOSED",
+        // 10:30 ET on the row's own session_date — nowhere near the 15:50 time-stop boundary.
+        last_mark_at: "2026-07-07T14:30:00.000Z",
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(
+    board.ledger[0]!.closed_reason,
+    null,
+    "no engine stamp AND no evidence of a real 15:50 close — honest null, not a fabricated 'time_stop'"
+  );
+  assert.equal(board.ledger[0]!.exit_reason, null);
+});
+
+test("exit visibility: a CLOSED row with no engine exit but last_mark_at at/after 15:50 ET genuinely reads closed_reason 'time_stop'", async () => {
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        entry_premium: 4.0,
+        last_mark: 4.1,
+        peak_premium: 4.5,
+        trough_premium: 3.5,
+        status: "CLOSED",
+        // 15:50 ET on the row's own session_date — the real plan.ts hard time-stop boundary.
+        last_mark_at: "2026-07-07T19:50:00.000Z",
+      }),
+    ],
     committed_known: true,
   };
   state.setups = [];

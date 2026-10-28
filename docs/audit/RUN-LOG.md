@@ -4,6 +4,382 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-26 (18:19 UTC / Mon 14:19 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Resynced to `origin/main` (`df99198b6` → `370464b57`, other-lane membership fix). **Step 1:**
+purged Cloudflare edge HTML, re-measured live homepage CLS — **0.0002, GOOD** (64/64 routed, 0
+fail). Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png` — crawlable,
+confirmed on production. **Step 2 — PR sweep:** 4 open agent PRs fleet-wide, all other-lane
+(swing/largo/agent-state). Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane
+gap found. No PR opened.
+
+## 2026-10-26 (16:33 UTC / Mon 12:33 ET) — [SEO] RTH wake: public live surface validated GOOD
+
+Last RTH window before 13:00 ET close. Resynced to `origin/main` (`0e519cdd4` → `7120fc740`,
+other-lane swing journal). Polled `/tools/gamma-snapshot`'s underlying SPX API twice, 15s apart:
+`calculation_id`/`spot` both advanced (`SPX:1793032432996`@7680.70 → `SPX:1793032461365`@7679.67),
+`market_session: OPEN`, `degraded: false` throughout. Purged Cloudflare edge HTML for `/` and
+`/tools/gamma-snapshot`, re-measured CLS on both: homepage **0.0001, GOOD** (69/69 routed);
+gamma-snapshot page **0, GOOD** (59/59 routed). No defect found. No PR opened. Returning to
+normal search/authority work now that the window has closed.
+
+## 2026-10-26 (15:33 UTC / Mon 11:33 ET) — [SEO] RTH wake: public live surface validated GOOD
+
+Still within the RTH window. Resynced to `origin/main` (`3d7560188` → `65e2046bf`, other-lane
+journal-editor fix). Polled `/tools/gamma-snapshot`'s underlying SPX API twice, 15s apart:
+`calculation_id`/`spot` both advanced (`SPX:1793028843538`@7692.43 → `SPX:1793028853236`@7692.59),
+`market_session: OPEN`, `degraded: false` — genuinely live, refreshing cleanly. Purged Cloudflare
+edge HTML for `/` and `/tools/gamma-snapshot`, re-measured CLS on both: homepage **0.0001, GOOD**
+(68/68 routed); gamma-snapshot page **0, GOOD** (59/59 routed). No defect found. No PR opened.
+
+## 2026-10-26 (14:06 UTC / Mon 10:06 ET) — [SEO] Daily growth cycle: SKIPPED opportunity scan — no AWS creds this session
+
+Resynced to `origin/main` (`cee485546` → `2cbf68ea3`, other-lane email-escaping security fix).
+**Step 1:** `gsc-opportunities-report.mjs` exited 0 with an honest `SKIP: cannot read the GSC
+service account (UnrecognizedClientException)` — no usable AWS creds this session. Not
+fabricating an opportunity register. **Step 2:** `robots.txt` still serves `Allow: /api/og` —
+confirmed live. CLS/`/api/og` already verified this morning's RTH wake (within rule 6's 3-day
+window) — skipped redundant re-check. **Step 3:** 28-day GSC trend tracking also blocked by the
+same missing creds. **Step 4 — housekeeping:** PR sweep shows 0 open agent PRs fleet-wide.
+Nothing to rebase/chase. No PR opened. Quiet day, honestly reported as blocked rather than clean.
+
+## 2026-10-26 (13:38 UTC / Mon 09:38 ET) — [SEO] RTH wake: public live surface validated GOOD
+
+Confirmed RTH window myself (09:38 ET; 2026-10-26 absent from `US_MARKET_HOLIDAYS`). Resynced to
+`origin/main` (`252f6a1b8` → `d040ede70`, other-lane swing journal). Polled
+`/tools/gamma-snapshot`'s underlying SPX API twice, 15s apart: `calculation_id`/`spot` both
+advanced (`SPX:1793021941877`@7663.38 → `SPX:1793021960193`@7664.02), `market_session: OPEN`,
+`degraded: false` throughout — genuinely live, refreshing cleanly. Purged Cloudflare edge HTML
+for `/` and `/tools/gamma-snapshot`, re-measured CLS on both: homepage **0.0002, GOOD** (67/67
+routed); gamma-snapshot page **0, GOOD** (59/59 routed). No defect found. No PR opened.
+
+## 2026-10-26 (12:30 UTC / Mon 08:31 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Monday pre-market (market opens 09:30 ET). Resynced to `origin/main` (`1e13188e7` →
+`3d1774537`, other-lane findings-fold). **Step 1:** purged Cloudflare edge HTML, re-measured
+live homepage CLS — **0.0003, GOOD** (66/66 routed, 0 fail). Fetched `/api/og` with a Googlebot
+UA: `200`, `content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR
+sweep:** 1 open agent PR fleet-wide, other-lane (dead-code cleanup). Nothing for this lane to
+rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-26 (06:19 UTC / Mon 02:19 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Monday overnight, market closed. Resynced to `origin/main` (`ca4edcbe2` → `53d4f6327`,
+other-lane agent-state sync). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage
+CLS — **0.0001, GOOD** (67/67 routed, 0 fail). Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:** 2 open
+agent PRs fleet-wide, both other-lane (#6786 CONFLICTED, autopilot state-sync, not this lane's to
+rebase; #6785 CI-RUNNING, admin fix). Nothing for this lane to chase. **Step 3:** no new SEO-lane
+gap found. No PR opened.
+
+## 2026-10-26 — [GREEN] Night Hawk Swings fresh-ticker Largo audit sweep, batches 5-13 (~80 committed positions), zero new findings
+
+Continuation of the standing Ask Largo × Night Hawk Swings ownership mandate's "keep digging"
+discipline, post-#6767 (PANW banger-origin fix). Pulled real `GET /api/market/swing/play-brief`
+envelopes for ~80 distinct committed/WATCH positions (one temp Clerk session, batched 8 at a time)
+spanning a wide mix of archetypes, sectors and liquidity profiles — PTON/HOG/ASO/TTD/KSS/CAG/
+GDDY/BBY/OWL/ARES/EXPE/PHM/EL/DHI/KKR/LUV/KMB/HPQ/LEN/BIIB/IBM/SOXS/INOD/TDOC plus the batches
+already logged in earlier sessions' FINDINGS/MARKET-OPEN-VALIDATION entries. For each: verified
+P&L/Exec P&L/Peak/Trough/Spread internal arithmetic, target/stop rail derivation (`entry*2` /
+`entry-based cushion`), manage-plan "+N% from here" math, gamma-flip/wall percentage-distance
+calcs, earnings-peer-lens contract-expiry-vs-print-date branching, and giveback/round-trip
+narrative rounding.
+
+**Methodology note worth keeping**: several P&L figures initially looked inconsistent with a
+naive recompute off the displayed 2-decimal Entry/Mark/bid (e.g. OWL: naive `(0.13-0.22)/0.22
+=-40.9%` vs displayed `-43.2%`). Built a small numeric solver
+(`/tmp/.../batch12-check.mjs`-style, not committed — a scratch tool) that searches the full
+sub-cent space consistent with each displayed 2-decimal value and checks whether ANY point
+reconciles P&L *and* Exec P&L simultaneously. Every single case this sweep flagged reconciled
+cleanly (hit counts ranging from a few hundred at the tightest — OWL's bid/ask midpoint landed
+exactly on `$0.125`, the knife-edge between rounding to `$0.12`/`$0.13` — up to hundreds of
+thousands for cases with more slack), confirming display-precision rounding rather than a
+computation bug in every instance. **Zero cases this sweep found an empty reconciliation set**
+(which would indicate a genuine arithmetic bug, as #6753/#6763/#6767 earlier this cycle were).
+This solver approach is faster and more reliable than hand arithmetic for this specific class of
+"does the displayed P&L match the displayed Entry/Mark" question and is worth reusing in future
+sweeps rather than re-deriving sub-cent bounds by hand each time.
+
+No PR opened — nothing to fix. Continuing the fresh-ticker rotation into the remaining unchecked
+committed positions (OWL.../LUV already covered above; LMND/LASR/BLSH/RARE/SEDG/RUN/TMDX/QXO/
+DKNG/TNA/AGNC/BMNR still pending) per the standing task list.
+
+## 2026-10-26 (00:16 UTC / Sun 20:16 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Sunday evening, market closed. Resynced to `origin/main` (`d168f9189` → `f9694b69f`, other-lane
+market-open-validation log). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage
+CLS — **0.0001, GOOD** (67/67 routed, 0 fail). Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:** 1 open
+agent PR fleet-wide, other-lane and CI-RUNNING (docs findings-fold). Nothing for this lane to
+rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-25 (18:16 UTC / Sun 14:16 ET) — [SEO] Lane heartbeat: one-off CLS blip (non-reproducible), shipped fixes validated GOOD
+
+Sunday afternoon, market closed. Resynced to `origin/main` (`e5dd1f85c` → `b07237b18`,
+other-lane swing fix). **Step 1:** purged Cloudflare edge HTML, first CLS measurement came back
+elevated — **0.0331** with a real recorded shift (`[0.0329]`), still under the 0.1 threshold but
+notably above the usual ~0.0001-0.0005 baseline. Market closed, so this isn't the RTH-fetch-
+latency pattern seen Wed 2026-10-21. Immediately re-measured: **0.0002, GOOD, empty shifts** —
+settled clean on the very next run. One-off, non-reproducible blip, not escalated. Fetched
+`/api/og` with a Googlebot UA: `200`, `content-type: image/png` — crawlable, confirmed on
+production. **Step 2 — PR sweep:** 2 open agent PRs fleet-wide, both other-lane and CI-RUNNING.
+Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-25 (14:05 UTC / Sun 10:05 ET) — [SEO] Daily growth cycle: SKIPPED opportunity scan — no AWS creds this session
+
+Sunday, market closed. Resynced to `origin/main` (`f8a6808c3` → `9082a57a8`, other-lane SPX
+fix). **Step 1:** `gsc-opportunities-report.mjs` exited 0 with an honest `SKIP: cannot read the
+GSC service account (UnrecognizedClientException)` — no usable AWS creds this session. Not
+fabricating an opportunity register. **Step 2:** `robots.txt` still serves `Allow: /api/og` —
+confirmed live. CLS/`/api/og` already verified this morning's heartbeat (within rule 6's 3-day
+window) — skipped redundant re-check. **Step 3:** 28-day GSC trend tracking also blocked by the
+same missing creds. **Step 4 — housekeeping:** PR sweep shows 0 open agent PRs fleet-wide.
+Nothing to rebase/chase. No PR opened. Quiet day, honestly reported as blocked rather than clean.
+
+## 2026-10-25 (12:17 UTC / Sun 08:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Sunday morning, market closed. Resynced to `origin/main` (`73744e32e` → `f501063d7`,
+other-lane swing fix). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS —
+**0, GOOD** (68/68 routed, 0 fail). Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:** 4 open
+agent PRs fleet-wide, all other-lane (swing/nighthawk/findings-fold). Nothing for this lane to
+rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-25 (06:17 UTC / Sat 02:18 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Sunday overnight, market closed. Resynced to `origin/main` (`2ec616a8a` → `281ad9ca5`,
+other-lane agent-state sync). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage
+CLS — **0.0001, GOOD** (66/66 routed, 0 fail). Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:** 0 open
+agent PRs fleet-wide. Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap
+found. No PR opened.
+
+## 2026-10-25 (00:16 UTC / Sat 20:16 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Saturday evening, market closed. Resynced to `origin/main` (`f94341720` → `3a1cee90d`,
+other-lane swing fix). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS —
+**0.0004, GOOD** (64/64 routed, 0 fail). Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:** 1 open
+agent PR fleet-wide, other-lane and CI-RUNNING (docs findings-fold). Nothing for this lane to
+rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-24 (18:16 UTC / Sat 14:16 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Saturday afternoon, market closed. Resynced to `origin/main` (`40f165eaf` → `ab6c9c30e`,
+other-lane findings-fold). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage
+CLS — **0.0003, GOOD** (66/66 routed, 0 fail). Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:** 0 open
+agent PRs fleet-wide. Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap
+found. No PR opened.
+
+## 2026-10-24 (14:04 UTC / Sat 10:04 ET) — [SEO] Daily growth cycle: SKIPPED opportunity scan — no AWS creds this session
+
+Saturday, market closed. Resynced to `origin/main` (`e6bfb0762` → `0de331f86`, other-lane
+journal correction). **Step 1:** `gsc-opportunities-report.mjs` exited 0 with an honest `SKIP:
+cannot read the GSC service account (UnrecognizedClientException)` — no usable AWS creds this
+session. Not fabricating an opportunity register. **Step 2:** `robots.txt` still serves `Allow:
+/api/og` — confirmed live. CLS/`/api/og` already verified this morning's resumption cycle (within
+rule 6's 3-day window) — skipped redundant re-check. **Step 3:** 28-day GSC trend tracking also
+blocked by the same missing creds. **Step 4 — housekeeping:** PR sweep shows 0 open agent PRs
+fleet-wide. Nothing to rebase/chase. No PR opened. Quiet day, honestly reported as blocked rather
+than clean.
+
+## 2026-10-24 (12:08 UTC / Sat 08:09 ET) — [SEO] Lane resumed after ~2.5-day gap (org spend limit), shipped fixes validated GOOD
+
+**Gap, honestly reported, not glossed over.** This session's last completed cycle was the Wed
+2026-10-21 18:16 UTC heartbeat (`0676f55ba`). 19 scheduled-trigger notifications queued between
+then and now (Wed 18:16 UTC through Sat 12:08 UTC — ~5 heartbeats, 3 RTH wakes, 1 daily growth
+cycle, plus a coordinator check-in) went unprocessed because **this session's turn FAILED on the
+org's monthly/weekly spend limit** (recorded ~2026-10-24 06:16:58 UTC on an attempted heartbeat;
+weekly reset window is 11:00 UTC). The coordinator's own check-in notification confirmed the
+limit, confirmed the reset window had passed, and explicitly asked this lane to resume rather
+than retry repeatedly or fabricate what happened during the gap. **Not attempting to
+retroactively reconstruct or backfill those 19 missed cycles** — a CLS reading or gamma-snapshot
+poll from 2+ days ago is unverifiable now and reporting one would be fabrication, which this
+lane's standing discipline forbids. Resuming cleanly from the current state instead.
+
+**Resumption validation:** repo intact, no container restart needed. Resynced to `origin/main`
+(`0676f55ba` → `edb526054`, 2+ days of other-lane commits, none SEO-relevant). Purged Cloudflare
+edge HTML, re-measured live homepage CLS — **0.0003, GOOD** (64/64 routed, 0 fail). Fetched
+`/api/og` with a Googlebot UA: `200`, `content-type: image/png` — crawlable. `/api/health`:
+`200` — confirms production stayed healthy through the gap (no undetected outage). **PR sweep:**
+1 open agent PR fleet-wide, other-lane and CI-RUNNING. Nothing for this lane to act on. No PR
+opened. Resuming the standing heartbeat/RTH/daily-growth-cycle cadence from here.
+
+## 2026-10-21 (18:16 UTC / Wed 14:17 ET) — [SEO] Lane heartbeat: elevated-CLS blip investigated and resolved to timing variance, GOOD confirmed
+
+Resynced to `origin/main` (`c1a033687` → `f86f0a42a`, other-lane findings-fold). **Step 1:**
+purged Cloudflare edge HTML, then measured live homepage CLS 4× with `cls-measure.cjs` (desktop
+1440×900) — first 3 at default wait came back elevated and WORSENING (0.0662 → 0.0414 → 0.1255,
+the last one a real recorded shift crossing into `NEEDS-IMPROVEMENT`), not the usual
+near-zero/empty-shifts reading. Did not assume regression or transient blip without checking:
+`git log` on the live-data homepage components (`HomeGammaPromo.tsx`, `HomeLiveDeskStrip.tsx`)
+showed no recent changes — ruled out a just-shipped regression. Re-ran with `--wait 6000` (vs the
+default) — **CLS dropped to 0.0023, GOOD, empty shifts** — and a follow-up default-wait run came
+back clean too (0.0011, GOOD). **Conclusion: the elevated readings were the scroll-triggered
+measurement catching a live market-data component (gamma promo / live desk strip) still mid
+warming→real-data transition under RTH-hours fetch latency, not a reproducible CLS regression** —
+the #2453 fix holds; this is a measurement-timing artifact of auditing during active market hours,
+not a product defect. Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png` —
+crawlable, confirmed on production. **Step 2 — PR sweep:** 3 open agent PRs fleet-wide, all
+other-lane (spx/swing). Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap
+found. No PR opened.
+
+## 2026-10-21 (16:33 UTC / Wed 12:33 ET) — [SEO] RTH wake: public live surface validated GOOD
+
+Last RTH window before 13:00 ET close. Resynced to `origin/main` (`a63598002` → `82264f0a2`,
+other-lane cron fix). Polled `/tools/gamma-snapshot`'s underlying SPX API twice, 15s apart:
+`calculation_id`/`spot` both advanced (`SPX:1792600440653`@7749.42 → `SPX:1792600457963`@7749.18),
+`market_session: OPEN`, `degraded: false` throughout. Purged Cloudflare edge HTML for `/` and
+`/tools/gamma-snapshot`, re-measured CLS on both: homepage **0.0002, GOOD** (69/69 routed);
+gamma-snapshot page **0, GOOD** (59/59 routed). No defect found. No PR opened. Returning to
+normal search/authority work now that the window has closed.
+
+## 2026-10-21 (15:34 UTC / Wed 11:34 ET) — [SEO] RTH wake: public live surface validated GOOD
+
+Still within the RTH window. Resynced to `origin/main` (`c6fde8c98` → `c6848d0cb`, other-lane
+market-open-validation log). Polled `/tools/gamma-snapshot`'s underlying SPX API twice, 15s
+apart: `calculation_id`/`spot` both advanced (`SPX:1792596878295`@7746.24 →
+`SPX:1792596900355`@7746.45), `market_session: OPEN`, `degraded: false` — genuinely live,
+refreshing cleanly. Purged Cloudflare edge HTML for `/` and `/tools/gamma-snapshot`, re-measured
+CLS on both: homepage **0.0001, GOOD** (66/66 routed); gamma-snapshot page **0, GOOD** (59/59
+routed). No defect found. No PR opened.
+
+## 2026-10-21 (14:05 UTC / Wed 10:05 ET) — [SEO] Daily growth cycle: SKIPPED opportunity scan — no AWS creds this session
+
+Resynced to `origin/main` (`c920fd76c` → `36ef50a33`, other-lane findings-fold). **Step 1:**
+`gsc-opportunities-report.mjs` exited 0 with an honest `SKIP: cannot read the GSC service
+account (UnrecognizedClientException)` — no usable AWS creds this session, same as every prior
+day. Not fabricating an opportunity register. **Step 2:** `robots.txt` still serves `Allow:
+/api/og` — confirmed live. CLS/`/api/og` already verified this morning's RTH wake (within rule
+6's 3-day window) — skipped redundant re-check. **Step 3:** 28-day GSC trend tracking also
+blocked by the same missing creds — not logged, no fabricated numbers. **Step 4 — housekeeping:**
+PR sweep shows 1 open agent PR fleet-wide, other-lane and CI-RUNNING. Nothing to rebase/chase. No
+PR opened. Quiet day, honestly reported as blocked rather than clean.
+
+## 2026-10-21 (13:33 UTC / Wed 09:33 ET) — [SEO] RTH wake: public live surface validated GOOD
+
+Confirmed RTH window myself (09:33 ET; 2026-10-21 absent from `US_MARKET_HOLIDAYS`). Resynced to
+`origin/main` (`6a2255d24` → `fa00fe94e`, other-lane swing fix). Polled
+`/tools/gamma-snapshot`'s underlying SPX API twice, 15s apart: `calculation_id`/`spot` both
+advanced (`SPX:1792589629805`@7725.33 → `SPX:1792589642686`@7725.18), `market_session: OPEN`,
+`degraded: false` throughout — genuinely live, refreshing cleanly. Purged Cloudflare edge HTML
+for `/` and `/tools/gamma-snapshot`, re-measured CLS on both: homepage **0.0002, GOOD** (69/69
+routed); gamma-snapshot page **0, GOOD** (59/59 routed). No defect found. No PR opened.
+
+## 2026-10-21 (12:21 UTC / Wed 08:21 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Wednesday pre-market (market opens 09:30 ET). Resynced to `origin/main` (`2a64702bd` →
+`2e700f703`, other-lane agent-state sync). **Step 1:** purged Cloudflare edge HTML, re-measured
+live homepage CLS — **0.0001, GOOD** (66/66 routed, 0 fail). Fetched `/api/og` with a Googlebot
+UA: `200`, `content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:**
+1 open agent PR fleet-wide, other-lane and CI-RUNNING (#6476, docs findings-fold). Nothing for
+this lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-21 (06:16 UTC / Tue 02:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Wednesday overnight, market closed. Resynced to `origin/main` (`c307dba5c` → `d7f8c9d21`,
+other-lane findings-fold). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage
+CLS — **0.0002, GOOD** (68/68 routed, 0 fail). Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:** 0 open
+agent PRs fleet-wide. Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap
+found. No PR opened.
+
+## 2026-10-21 (00:16 UTC / Tue 20:16 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Tuesday evening, market closed. Resynced to `origin/main` (`08a32d1a1` → `ec22c0a5f`,
+other-lane findings-fold). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage
+CLS — **0, GOOD** (68/68 routed, 0 fail). Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:** 0 open
+agent PRs fleet-wide. Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap
+found. No PR opened.
+
+## 2026-10-20 (18:16 UTC / Tue 14:16 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Resynced to `origin/main` (`0a5c4dd98` → `69c47344b`, other-lane Night Hawk journal). **Step 1:**
+purged Cloudflare edge HTML, re-measured live homepage CLS — **0.0001, GOOD** (106/106 routed,
+0 fail). Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png` — crawlable,
+confirmed on production. **Step 2 — PR sweep:** 5 open agent PRs fleet-wide, all other-lane
+(admin/api/findings-fold/swing/nighthawk-legacy). One CONFLICTED (#6380, nighthawk-legacy) — not
+this lane's PR to rebase. Nothing for this lane to chase. **Step 3:** no new SEO-lane gap found.
+No PR opened.
+
+## 2026-10-20 (16:33 UTC / Tue 12:33 ET) — [SEO] RTH wake: public live surface validated GOOD
+
+Last RTH window before 13:00 ET close. Resynced to `origin/main` (`f2caab2ef` → `95da2cfb7`,
+other-lane findings-fold). Polled `/tools/gamma-snapshot`'s underlying SPX API twice, 15s apart:
+`calculation_id` advanced (`SPX:1792514045325` → `SPX:1792514048981`, spot unchanged at 7719.94
+between polls — a quiet tape, not a stall), `market_session: OPEN`, `degraded: false` throughout.
+Purged Cloudflare edge HTML for `/` and `/tools/gamma-snapshot`, re-measured CLS on both: homepage
+**0, GOOD** (68/68 routed); gamma-snapshot page **0.0066, GOOD** (58/58 routed, well under the
+0.1 threshold). No defect found. No PR opened. Returning to normal search/authority work now that
+the window has closed.
+
+## 2026-10-20 (15:33 UTC / Tue 11:33 ET) — [SEO] RTH wake: public live surface validated GOOD
+
+Still within the RTH window. Resynced to `origin/main` (`f1eabe3c4` → `07513b65e`, other-lane
+agent-state bump). Polled `/tools/gamma-snapshot`'s underlying SPX API twice, 15s apart:
+`calculation_id`/`spot` both advanced (`SPX:1792510448944`@7713.16 → `SPX:1792510463698`@7712.09),
+`market_session: OPEN`, `degraded: false` — genuinely live, refreshing cleanly. Purged Cloudflare
+edge HTML for `/` and `/tools/gamma-snapshot`, re-measured CLS on both: homepage **0.0003, GOOD**
+(69/69 routed); gamma-snapshot page **0, GOOD** (59/59 routed). No defect found. No PR opened.
+
+## 2026-10-20 (14:04 UTC / Tue 10:04 ET) — [SEO] Daily growth cycle: SKIPPED opportunity scan — no AWS creds this session
+
+Resynced to `origin/main` (`387aee6ec` → `f6fb77ec6`, other-lane findings-fold). **Step 1:**
+`gsc-opportunities-report.mjs` exited 0 with an honest `SKIP: cannot read the GSC service
+account (UnrecognizedClientException)` — this sandbox has no usable AWS creds this session (same
+as yesterday). Not fabricating an opportunity register. **Step 2:** `robots.txt` still serves
+`Allow: /api/og` — confirmed live. CLS/`/api/og` already verified this morning's RTH wake (within
+rule 6's 3-day window) — skipped redundant re-check. **Step 3:** 28-day GSC trend tracking also
+blocked by the same missing creds — not logged, no fabricated numbers. **Step 4 — housekeeping:**
+PR sweep shows 3 open agent PRs fleet-wide, all other-lane (cron/swing/findings-fold); none
+conflicted on `FINDINGS.md` in a way that's this lane's to resolve. Nothing to rebase/chase. No
+PR opened. Quiet day, honestly reported as blocked rather than clean.
+
+## 2026-10-20 (13:38 UTC / Tue 09:39 ET) — [SEO] RTH wake: public live surface validated GOOD
+
+Confirmed RTH window myself (09:39 ET; 2026-10-20 absent from `US_MARKET_HOLIDAYS`). Resynced to
+`origin/main` (`d009b408b` → `ef236d41e`, other-lane docs fold, not SEO-relevant).
+
+Polled `/tools/gamma-snapshot`'s underlying SPX API twice, 15s apart: `calculation_id`/`spot`
+both advanced (`SPX:1792503561078`@7684.32 → `SPX:1792503574161`@7684), `market_session: OPEN`,
+`degraded: false` throughout — genuinely live, refreshing cleanly this cycle (no stall, unlike
+the longer blip caught yesterday).
+
+Purged Cloudflare edge HTML for `/` and `/tools/gamma-snapshot`, re-measured CLS on both: homepage
+**0.007, GOOD** (62/62 routed, 0 fail — a touch above the usual ~0.0002-0.0005 but well under the
+0.1 threshold and consistent with previously-documented transient noise, not a regression);
+gamma-snapshot page **0, GOOD** (59/59 routed). No defect found. No PR opened. Will return to
+normal search/authority work at 13:00 ET.
+
+## 2026-10-20 (12:21 UTC / Tue 08:22 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Tuesday pre-market (market opens 09:30 ET). Resynced to `origin/main` (`2393e65e2` →
+`51fb35137`, other-lane auth rate-limit fix). **Step 1:** purged Cloudflare edge HTML,
+re-measured live homepage CLS — **0.0003, GOOD** (64/64 routed, 0 fail). Fetched `/api/og` with
+a Googlebot UA: `200`, `content-type: image/png` — crawlable, confirmed on production. **Step 2 —
+PR sweep:** 2 open agent PRs fleet-wide, both other-lane (swing/nighthawk) and CI-RUNNING, neither
+a draft jam. Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No
+PR opened.
+
+## 2026-10-20 (06:17 UTC / Mon 02:18 ET) — [SEO] Lane heartbeat: container restart recovery, shipped fixes validated, flagged other-lane draft jam
+
+**Container restarted — `/home/user/blackout-web` was gone (empty `/home/user`).** Recovered per
+the standing restart-recovery discipline: `gh repo clone` failed (GraphQL blocked for this
+session), fell back to plain `git clone https://github.com/coreentryadmin-web/blackout-web.git`
+— succeeded, landed clean on `main` at tip `03c09f24f`. Node 20 was pre-installed
+(`/opt/node20/bin/node`) but `node_modules` was missing (fresh clone) — ran `npm ci` (756
+packages, ~31s). Confirmed `CF_API_TOKEN`/`CF_ZONE_ID` still set and the audit scripts present
+before trusting any of this session's prior state.
+
+Tuesday overnight, market closed. **Step 1:** purged Cloudflare edge HTML, re-measured live
+homepage CLS — **0.0002, GOOD** (69/69 routed, 0 fail). Fetched `/api/og` with a Googlebot UA:
+`200`, `content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:** 1
+open agent PR fleet-wide, other-lane (0DTE/RVOL) — **#6317 (READY-BUT-DRAFT, `verify: pass`,
+still draft)**, a green-draft jam per the standing discipline. Flagged, not acted on — not this
+lane's PR to undraft. **Step 3:** no new SEO-lane gap found. No PR opened.
+
 ## 2026-10-20 (00:16 UTC / Mon 20:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, flagged other-lane draft jam
 
 Monday evening, market closed. Resynced to `origin/main` (`8c7a9eb4` → `9627f849`, other-lane
@@ -7329,3 +7705,17 @@ AWS-permission-blocked here. Neither re-attempted this cycle. **Checked the six 
 trigger prompts (`trig_01NNvznmA6eMsH61cLe7yb6z` + 5 siblings) for stale "resolved" language before
 writing this up — none needed correction; their Vector-board instruction already says the
 contention mechanism "is still open... do not attempt a speculative fix," which remains accurate.**
+
+## 2026-10-25 — [GREEN] #6711 (SPX `mergePulseIntoDesk` available-field fix) live-confirmed post-deploy
+
+Confirmed via `GET /api/market/spx/play` on prod after the `ecr-push-production.yml` rolling
+deploy for merge commit `9082a57a8` completed (`Roll ECS production web` step finished
+2026-10-25T14:30:27Z). Pre-deploy repro (12:51 UTC, closed Sunday session): `assessed:false,
+score:0, factors:[]` — dead. Post-deploy (14:34 UTC, same closed session, same spot 7623.68):
+`assessed:true, score:0, rawScore:30`, 10 real factors (GEX resistance -18, 0DTE flow +14, live
+tape +12, market tide -10, TRIN -6, ADD +5, EMA20 -5, TICK +4, VIX curve +4, Mega-caps 0 — sum
+exactly 0, matching `score`). `GET /api/market/spx/merged?force=1` independently confirmed
+`available:true, source:"polygon+uw-flow"` for the same read. The play-level `available:false`
+remaining on this response is the honest, separate "Session closed"/gates-blocked signal (market
+genuinely closed, `gates.blocks:["Session closed"]`) — not the desk-data-availability bug #6711
+fixed; confluence is clearly computing from real data now, which is exactly what the fix restores.

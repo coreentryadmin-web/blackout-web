@@ -11,6 +11,7 @@ import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import { useCompactDeskPanels } from "@/hooks/useCompactDeskPanels";
 import type { VectorBar } from "@/features/vector/components/VectorChart";
+import { VectorPaneErrorBoundary } from "@/features/vector/components/VectorPaneErrorBoundary";
 import type { PlayLevelsInput } from "@/features/vector/lib/vector-play-levels";
 import type { FlowAlert, VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import { VectorHelixRail } from "@/features/vector/components/VectorHelixRail";
@@ -850,6 +851,13 @@ export function VectorPageShell({
   );
 
   const chartBlock = (
+    // Per-pane isolation, same as Compare mode's VectorPaneErrorBoundary (VectorCompareDesk.tsx):
+    // without this, an uncaught render error inside VectorChart (a malformed live payload reaching
+    // an overlay that assumes a shape) unmounts the entire (site) route segment via the app-level
+    // error boundary, taking the whole standalone /vector page — toolbar, rails, everything — down
+    // with it instead of just the chart. No onRemove here (matches the boundary's own documented
+    // "the single-pane desk has nothing to remove" case).
+    <VectorPaneErrorBoundary ticker={activeTicker}>
     <VectorChart
       key={activeTicker}
       ticker={activeTicker}
@@ -899,6 +907,7 @@ export function VectorPageShell({
       toolbarPortalEl={toolbarPortalEl}
       sessionHelixFlows={helixState.flows}
     />
+    </VectorPaneErrorBoundary>
   );
 
   const alertToast =

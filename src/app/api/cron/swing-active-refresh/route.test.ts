@@ -94,6 +94,35 @@ test("the slot is released both on the early self-overlap-claim-lost return and 
   );
 });
 
+// Ask Largo standing mandate — PR #4076 comment 6303734681's "alerting only bookends the trade"
+// gap: a THESIS_BREAK_RUNGS gate firing is only member-visible once the position actually closes
+// (notifySwingTerminalFromOutcome above). This adds a one-shot, deduped, non-trade alert the first
+// tick the thesis gate is DETECTED, independent of whether the roll executor closed it that same
+// tick. Regex-asserted against raw source (not behaviorally mocked) to match this file's own
+// convention above for route.ts's DB/provider-heavy side-effect wiring.
+test("swing-active-refresh fires a one-shot, deduped thesis-break alert for positions a THESIS_BREAK_RUNGS gate detected but did NOT close this tick", () => {
+  assert.match(
+    routeSrc,
+    /import \{ THESIS_BREAK_RUNGS, type SwingManageRung \} from "@\/lib\/swing\/manage"/,
+    "must import the thesis-break rung subset from manage.ts rather than re-deriving rung literals"
+  );
+  assert.match(
+    routeSrc,
+    /THESIS_BREAK_RUNGS\.has\(o\.verdict\.rung\)\s*&&\s*!o\.roll\?\.parentGraded/,
+    "must only alert when a thesis gate fired AND the roll/close did not execute this tick — a position that DID close already gets the stronger STC alert above"
+  );
+  assert.match(
+    routeSrc,
+    /sharedCacheSetNx\(\s*dedupeKey/,
+    "must dedupe via the shared cross-replica NX claim so the alert fires at most once per position"
+  );
+  assert.match(
+    routeSrc,
+    /notifySwingThesisBreak/,
+    "must call the dedicated non-trade thesis-break notifier, not the BTO\\/STC chief-trade path"
+  );
+});
+
 test("swing-active-refresh gates on isEtCashRth before dispatching Polygon/UW refresh", () => {
   assert.match(
     routeSrc,
@@ -106,4 +135,31 @@ test("swing-active-refresh gates on isEtCashRth before dispatching Polygon/UW re
   assert.ok(authAt >= 0 && gateAt >= 0 && dispatchAt >= 0);
   assert.ok(gateAt > authAt, "RTH gate must run after auth");
   assert.ok(gateAt < dispatchAt, "RTH gate must run before after() dispatch");
+});
+
+// BUG FIX (2026-10-24, Ask Largo x Night Hawk Swings standing mandate — live CAG repro,
+// positionId 2082): `loadOptionQuote` already guards `mark` against a dead-bid backstop-ask
+// artifact via `reliableMarkFromSnapshot`, but used to carry `snap.ask` straight through
+// unguarded onto the SwingLiveQuote it returns — so a guarded (tiny) mid ended up sitting next
+// to an unguarded (backstop) ask on the same contract, and adapters.ts's `liquidityFromContract`
+// computed a nonsensical spread from the mismatched pair (e.g. "Spread: 13000.0%"). Regex-
+// asserted against raw source (not behaviorally mocked), matching this file's own convention
+// above for route.ts's DB/provider-heavy wiring — the real fetch/guard logic itself is unit-
+// tested directly in options-snapshot.test.ts.
+test("swing-active-refresh's loadOptionQuote guards ask through reliableAskFromSnapshot, not the raw snapshot ask", () => {
+  assert.match(
+    routeSrc,
+    /import \{\s*fetchOptionsUnifiedSnapshot,\s*reliableAskFromSnapshot,\s*reliableMarkFromSnapshot,\s*\} from "@\/lib\/providers\/options-snapshot"/,
+    "must import the ask-side guard alongside the existing mark-side guard"
+  );
+  assert.match(
+    routeSrc,
+    /ask:\s*reliableAskFromSnapshot\(snap\)/,
+    "the quote's ask must be resolved through the same divergence guard as the mark, not read raw off snap.ask"
+  );
+  assert.doesNotMatch(
+    routeSrc,
+    /ask:\s*snap\.ask,/,
+    "the raw, unguarded snap.ask must never be assigned directly onto the returned quote again"
+  );
 });

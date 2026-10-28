@@ -1,8 +1,22 @@
 import { SITE } from "@/lib/site";
 import { emailLayout, emailCta, EMAIL_BRAND, substituteTokens } from "@/lib/email/layout";
 import type { EmailAttachment } from "@/lib/email/resend-client";
+import type { BillingKind } from "@/lib/whop";
 
-export type ScheduledCancelContext = { firstName?: string | null; accessUntil: Date | null };
+export type ScheduledCancelContext = {
+  firstName?: string | null;
+  accessUntil: Date | null;
+  /**
+   * Which plan is winding down — drives the engine list below. A "community"
+   * (SPX Slayer, $49/mo) member was never entitled to Thermal/HELIX/Night Hawk/
+   * Largo AI/Vector/Meridian, so telling them those six engines "stay live"
+   * through the grace window is false, not reassuring. Optional + defaults to
+   * "premium" only so existing callers/tests that predate this field keep their
+   * current (all-seven) behavior; the real webhook path always passes the
+   * actual billingKind it already resolved.
+   */
+  billingKind?: Extract<BillingKind, "premium" | "community">;
+};
 
 function formatDate(d: Date | null): string {
   if (!d || Number.isNaN(d.getTime())) return "the end of your current billing period";
@@ -18,11 +32,15 @@ export function scheduledCancelEmail(ctx: ScheduledCancelContext): {
 } {
   const tokens = { firstName: ctx.firstName?.trim() || "Trader", accessUntil: formatDate(ctx.accessUntil) };
   const t = (s: string) => substituteTokens(s, tokens);
+  const isCommunity = ctx.billingKind === "community";
 
   const subject = t("Cancellation confirmed — you're in until {{accessUntil}}");
+  const stayLiveParagraph = isCommunity
+    ? "You've got full access through {{accessUntil}}. SPX Slayer stays exactly as live as it's always been — the SPX regime read, real-time GEX, every 0DTE setup graded A-F before the outcome's known. Nothing throttles, nothing clips early."
+    : "You've got full access through {{accessUntil}}. Every engine you're paying for stays live — SPX Slayer, Thermal, HELIX, Night Hawk, Largo AI, Vector, Meridian — same GEX reads, same live flow, same A-F grades logged before the outcome's known. Nothing throttles, nothing clips early.";
   const paragraphs = [
     "{{firstName}}, it's done — the cancellation is in, no further charges headed your way. But nobody's cutting the feed tonight. The screens stay lit, the grades keep posting, the desk stays exactly as loud as you left it.",
-    "You've got full access through {{accessUntil}}. Every engine you're paying for stays live — SPX Slayer, Thermal, HELIX, Night Hawk, Largo AI, Vector, Meridian — same GEX reads, same live flow, same A-F grades logged before the outcome's known. Nothing throttles, nothing clips early.",
+    stayLiveParagraph,
     `If a setup prints between now and then and you remember why you were here — undoing this is one click on your billing page. No call, no retention pitch, no "are you sure" theater.`,
   ]
     .map((p) => `<p style="margin:0 0 18px;color:${EMAIL_BRAND.body};">${t(p)}</p>`)

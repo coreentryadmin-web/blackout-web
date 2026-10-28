@@ -60,6 +60,24 @@ test("deriveExpectedMoveInputs: guards — no spot / empty chain → null", () =
   assert.equal(deriveExpectedMoveInputs([c({})], 0, "weekly", TODAY, NOW_MS), null, "no spot");
 });
 
+// RED→GREEN DST regression: under EST (2026-11-16, a Monday), 4:00 PM ET close is 21:00 UTC,
+// not the EDT-season 20:00 UTC. Pre-fix, `isExpirySettled` hardcoded "T20:00:00Z" and would mark
+// today's own still-live 0DTE expiry "settled" a full hour early (20:30 UTC = 3:30 PM ET, with
+// 30 minutes of real regular-session trading still left), rolling the quote forward to a later
+// expiry and reporting the wrong front contract/IV during that last live hour.
+test("deriveExpectedMoveInputs: today's 0DTE expiry is still LIVE at 3:30 PM ET under EST, not settled", () => {
+  const estToday = "2026-11-16";
+  const threeThirtyPmEtEst = Date.parse("2026-11-16T20:30:00Z"); // 3:30 PM ET under EST (UTC-5)
+  const chain: ReconstructContract[] = [
+    c({ strike: 7500, expiry: estToday, type: "call", iv: 0.2 }), // today's own 0DTE, still live
+    c({ strike: 7500, expiry: "2026-11-20", type: "call", iv: 0.3 }), // next weekly, must NOT win
+  ];
+  const res = deriveExpectedMoveInputs(chain, 7500, "all", estToday, threeThirtyPmEtEst);
+  assert.ok(res);
+  assert.equal(res!.expiry, estToday, "today's 0DTE is still live 30 minutes before the real EST close");
+  assert.ok(Math.abs(res!.atmIv - 0.2) < 1e-9, "quotes today's own IV, not the rolled-forward one");
+});
+
 // RED→GREEN regression for the live INTC repro (2026-10-07): a horizon whose nearest listed
 // expiry is TODAY rolls forward to the next live expiry once today's has settled, instead of
 // quoting a near-zero band off a dead contract. Pre-fix this returned expiry "2026-07-13"

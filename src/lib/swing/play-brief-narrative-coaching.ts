@@ -14,6 +14,7 @@ import {
   meridianCatalystAgeMs,
   meridianCatalystStale,
   optionMarkGenuinelyUnknown,
+  optionMarkStaleCaveat,
   resolveGammaPosture,
   vectorAgeStale,
   vectorSnapshotStale,
@@ -22,10 +23,10 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import { computeLaneRank } from "./play-brief-lane-rank";
-import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel, roundOptionUsd } from "@/lib/fmt-money";
 import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
-import { thesisHealthUncalibrated } from "./thesis-health";
+import { thesisHealthUncalibrated, thesisHealthUnchangedSinceCommit } from "./thesis-health";
 import { technicalsBias } from "./play-brief-technicals";
 import { formatFixedNonZero } from "./format-nonzero";
 import { ARCHETYPE_META, type SwingArchetype } from "./taxonomy";
@@ -82,7 +83,21 @@ export function thesisPillarCoaching(play: TerminalPlay): string | null {
     return `**What moved** — ${h.moves.slice(0, 2).join(" · ")}.`;
   }
 
+  // BUG FIX (Ask Largo standing mandate, 2026-10-22, sibling of the 2026-10-07 play-brief.ts
+  // fix at this exact gap): reaching this branch means no pillar lost/faded AND `h.moves` is
+  // either empty or the literal "unchanged" fallback — i.e. the position hasn't actually moved
+  // since commit. `h.rungLabel` ("Weakening"/"Degraded"/etc.) and `h.advisory` ("fading", "tighten
+  // risk") are both PROCESS words that presuppose decay — rendering them here asserts a decline
+  // that never happened, purely because the position's absolute health sat in a low band from
+  // commit onward (e.g. imperfect entry geometry). Live-shape repro: a position committed at
+  // health 50 (DEGRADED band from day one, delta 0) would render "**Thesis Degraded** (50%) —
+  // Thesis fading — tighten risk or trim into strength," telling a member to cut risk on a
+  // position that is, by its own `moves` field, unchanged. Use the shared predicate instead of
+  // the bare advisory sentence when nothing has moved.
   if (!thesisHealthUncalibrated(h) && h.health < 55 && h.advisory) {
+    if (thesisHealthUnchangedSinceCommit(h)) {
+      return `**Thesis ${h.rungLabel}** (${h.health}%) — unchanged since commit, not a new decline.`;
+    }
     return `**Thesis ${h.rungLabel}** (${h.health}%) — ${h.advisory}`;
   }
 
@@ -118,7 +133,11 @@ export function troughResilienceCoaching(play: TerminalPlay, bucket: "watch" | "
 }
 
 /** Trim ladder state, time stop, runner, manage engine. */
-export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
+export function manageLifecycleCoaching(
+  play: TerminalPlay,
+  bucket: "watch" | "open" | "closed",
+  readMs?: number,
+): string | null {
   if (bucket !== "open") return null;
   const ep = play.exitPolicy;
   const parts: string[] = [];
@@ -211,17 +230,37 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
         const markBasisIsFabricated = optionMarkGenuinelyUnknown(play);
         const distanceBasis = play.execMark != null && play.execMark > 0 ? play.execMark : play.mark;
         const distanceBasisIsExec = play.execMark != null && play.execMark > 0;
+        // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro BLSH — sibling gap to the
+        // pnlSection "P&L:" line fix the same day, and the identical shape execSlippageCoaching was
+        // fixed for a line above): `distanceBasis`/`next.premium` are priced off the exact same
+        // `contract.bid`/`ask`/`markAsOf` snapshot pnlSection's Greeks/Spread/P&L lines already
+        // disclose staleness for, but this bullet (built with no `readMs` at all until now) never
+        // referenced it — a stale quote rendered "Mark: ... (stale)" above an unqualified "bid
+        // $0.32, needs $2.20" two sections later, right next to a sibling "Executable P&L" bullet
+        // that DOES carry the caveat for the identical snapshot. `markBasisIsFabricated` already
+        // excludes the genuinely-unknown case from rendering `distanceSuffix` at all, so appending
+        // here only ever surfaces the "stale"/"no freshness timestamp" branches of the shared helper.
+        // ROUNDING-CONSISTENCY FIX (Ask Largo standing mandate, 2026-10-26, live repro WEN
+        // SWING:WEN:2098 HOLD brief): the % math below used the raw unrounded `distanceBasis`
+        // while `fmtOptionUsd(distanceBasis)` displays it rounded to 2dp right beside the result —
+        // for a sub-cent mid (WEN's real mid was $0.025) the two disagree visibly: "mark **$0.03**,
+        // needs **$0.12** (+380% from here)" when the two dollar figures as PRINTED imply +300%
+        // ((0.12-0.03)/0.03). Round the basis with the same algorithm `fmtOptionUsd` uses BEFORE
+        // the percentage math, so the number matches what a member doing the subtraction themselves
+        // on the two printed dollar figures actually gets — same "reconcile to the rounded display"
+        // principle as `round-floats.ts`'s `reconcileTrancheFractions`/`reconcileStrikeTotal`.
+        const roundedDistanceBasis = typeof distanceBasis === "number" ? roundOptionUsd(distanceBasis) : distanceBasis;
         const distanceSuffix =
           !alreadyCrossed &&
           !markBasisIsFabricated &&
           next.premium != null &&
-          typeof distanceBasis === "number" &&
-          Number.isFinite(distanceBasis) &&
-          distanceBasis > 0
-            ? ` — ${distanceBasisIsExec ? "bid" : "mark"} **${fmtOptionUsd(distanceBasis)}**, needs **${fmtOptionUsd(next.premium)}** (+${(
-                ((next.premium - distanceBasis) / distanceBasis) *
+          typeof roundedDistanceBasis === "number" &&
+          Number.isFinite(roundedDistanceBasis) &&
+          roundedDistanceBasis > 0
+            ? ` — ${distanceBasisIsExec ? "bid" : "mark"} **${fmtOptionUsd(roundedDistanceBasis)}**, needs **${fmtOptionUsd(next.premium)}** (+${(
+                ((next.premium - roundedDistanceBasis) / roundedDistanceBasis) *
                 100
-              ).toFixed(0)}% from here)`
+              ).toFixed(0)}% from here)${optionMarkStaleCaveat(play, readMs ?? Date.now())}`
             : "";
         parts.push(
           alreadyCrossed
@@ -325,8 +364,21 @@ export function magnetCoaching(
   if (vectorSnapshotStale(vec, readMs, ctx.sessionDate)) return null;
   const m = vec?.magnet;
   if (!m?.strike) return null;
+  // BUG FIX (Ask Largo standing mandate, live repro MSTR 2026-10-25): `m.distancePct` is the raw
+  // upstream Vector-computed distance, baked in against VECTOR'S OWN spot snapshot at write time —
+  // which can differ fractionally from this brief's canonical `spot` param. collectFocalLevels
+  // (play-brief-narrative.ts) recomputes the identical magnet's distance fresh via its own
+  // `distPct(spot, magnet)`, and that recomputed value is what feeds both the "Why this setup"
+  // narration and the structureLadder widget (play-brief-ladder.ts's own header comment: this
+  // widget "can never disagree with 'Trade manager read' about where ... the gamma flip sits").
+  // This bullet trusted `m.distancePct` verbatim instead, so the two could — and live, did —
+  // disagree after rounding: 10.3% here vs 10.2% in the ladder for the identical 161.56 magnet at
+  // the identical 146.54 spot, same brief, same read. Recompute from `spot`, the one canonical
+  // source every other level in this brief uses, instead of trusting the upstream snapshot's own
+  // baked-in distance.
+  const distancePct = ((m.strike - spot) / spot) * 100;
   const lead = m.pull === "at" ? "pinned at" : `pull **${m.pull}** toward`;
-  const near = Math.abs(m.distancePct) < 1.2;
+  const near = Math.abs(distancePct) < 1.2;
   const posture = resolveGammaPosture(ctx, vec, readMs);
   // BUG FIX (2026-09-20, Ask Largo standing mandate): resolveGammaPosture is a real FOUR-value
   // regime — "long"/"short"/"transition"/"unknown" — and "transition" (verdict.ts: spot within
@@ -343,7 +395,7 @@ export function magnetCoaching(
       : posture === "transition"
         ? "Dealers sitting at the gamma flip here — this node's pull is unsettled until the regime resolves."
         : "Pivot node — acceleration risk if the magnet fails to hold.";
-  return `**Gamma magnet ${fmtPriceLevel(m.strike)}** (${fmtPct(m.distancePct)} from spot) — ${lead} this node. ${pin}`;
+  return `**Gamma magnet ${fmtPriceLevel(m.strike)}** (${fmtPct(distancePct)} from spot) — ${lead} this node. ${pin}`;
 }
 
 /** Options-implied move envelope — don't chase outside bands. */
@@ -889,8 +941,13 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
  * live brief said "size down or exit before report" because this function returned null and the
  * safety check never evaluated. Parsing `occ` fixes WATCH and is strictly more reliable for
  * committed rows too (an exact per-row key, no entry-premium coincidence match needed).
+ *
+ * Exported (2026-10-25, Ask Largo standing mandate, live repro OUST) so `meridianPeerSection`
+ * (play-brief-intel.ts) can reuse the SAME resolution this function already does for
+ * `catalystCoaching`'s own earnings-gap-exposure check, instead of re-deriving it a second way —
+ * see that call site's own comment for the contradiction this closes (SWING:OUST:2127).
  */
-function ownContractExpiry(ctx: SwingPlayBriefContext): string | null {
+export function ownContractExpiry(ctx: SwingPlayBriefContext): string | null {
   const { play } = ctx;
   const parsed = parseOccSymbol(play.occ ?? null);
   if (parsed && sameTicker(parsed.ticker, play.ticker)) return parsed.expiry;
@@ -936,7 +993,10 @@ function ownContractExpiry(ctx: SwingPlayBriefContext): string | null {
 // earnings date itself — "unknown" timing never claims already-landed, matching this file's
 // existing honest-absence discipline (the sibling `noGapExposure` comment right below makes the
 // same call for the identical reason).
-function printAlreadyLandedThresholdMs(ymd: string, reportTime: string | null): number | null {
+// Exported (2026-10-21, Ask Largo standing mandate) so catalystsSection (play-brief-intel.ts,
+// a second renderer of the identical arsenal.earnings field) can reuse this exact bell-relative
+// threshold instead of reimplementing it — see that call site's own comment for why.
+export function printAlreadyLandedThresholdMs(ymd: string, reportTime: string | null): number | null {
   if (reportTime === "afterhours") return parseEtStamp(etStampFromDateOrIso(ymd));
   if (reportTime === "premarket") return parseEtStamp(`${ymd} 09:30 ET`);
   return null;
@@ -1131,19 +1191,32 @@ export function macroTapeCoaching(ctx: SwingPlayBriefContext): string | null {
   const arsenal = ctx.ecosystem?.arsenal;
   if (!arsenal) return null;
   const parts: string[] = [];
-  if (arsenal.macro) {
-    const m = arsenal.macro;
+  const m = arsenal.macro;
+  // Same "< 0 → inverted" convention already used for this field in verdict-core.ts and
+  // ecosystem-narrative.ts — reused here rather than inventing a second threshold.
+  const curveInverted = m?.curve_10y_1y_spread != null && m.curve_10y_1y_spread < 0;
+  if (m) {
     if (m.yield_10_year != null) parts.push(`10Y **${m.yield_10_year.toFixed(2)}%**`);
-    if (m.curve_10y_1y_spread != null) parts.push(`curve **${m.curve_10y_1y_spread.toFixed(2)}**`);
+    if (m.curve_10y_1y_spread != null) {
+      parts.push(`curve **${m.curve_10y_1y_spread.toFixed(2)}${curveInverted ? " (inverted)" : ""}**`);
+    }
   }
   if (arsenal.breadth?.tone) {
     parts.push(`breadth **${arsenal.breadth.tone}**`);
   }
   if (!parts.length) return null;
-  const riskOff = arsenal.breadth?.tone?.toLowerCase().includes("risk-off");
-  const riskOn = arsenal.breadth?.tone?.toLowerCase().includes("risk-on");
-  const hint =
-    ctx.play.direction === "LONG" && riskOff
+  const riskOff = arsenal.breadth?.tone?.toLowerCase().includes("risk-off") ?? false;
+  const riskOn = arsenal.breadth?.tone?.toLowerCase().includes("risk-on") ?? false;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): the hint used to key ONLY off breadth tone,
+  // so an inverted curve (its own distinct risk-off signal) was silently dropped whenever breadth
+  // read risk-on — the narrative would read as an unqualified "risk-on, no issue" even though a
+  // second macro fact in the SAME bullet was flashing the opposite read. Name the tension instead
+  // of letting one signal quietly override the other, same discipline as crossDeskCoaching/
+  // counterThesisLine elsewhere in this file: disagreement is surfaced, never flattened.
+  const curveBreadthDisagree = curveInverted && riskOn;
+  const hint = curveBreadthDisagree
+    ? "Curve inverted (risk-off) while breadth reads risk-on — the two macro reads disagree; treat this as genuine tension, not a clean risk-on signal."
+    : ctx.play.direction === "LONG" && riskOff
       ? "Risk-off tape — long swings need tighter stops."
       : ctx.play.direction === "SHORT" && riskOn
         ? "Risk-on tape — shorts face headwind; respect call walls."
@@ -1152,15 +1225,23 @@ export function macroTapeCoaching(ctx: SwingPlayBriefContext): string | null {
 }
 
 /** Executable vs mid P&L honesty — slippage on the tape. */
-export function execSlippageCoaching(play: TerminalPlay): string | null {
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro MRNA): this bullet reads `execPnlPct`,
+// priced off the exact same `contract.bid`/`contract.ask` snapshot `pnlSection`'s Greeks/Spread
+// lines (play-brief.ts) already disclose staleness for — but this call site carried no equivalent
+// caveat, so a stale quote rendered a fully-confident "mid +17.4% vs fill +6.7% (-11% slippage)"
+// with no hint the "fill" side is computed off an aged bid/ask. `readMs` threaded in the same
+// optional, `ctx.readMs ?? Date.now()`-defaulted shape every other staleness-aware coaching
+// function in this file already uses.
+export function execSlippageCoaching(play: TerminalPlay, readMs?: number): string | null {
   const mid = fin(play.pnlPct);
   const exec = fin(play.execPnlPct);
   if (mid == null || exec == null) return null;
   const gap = mid - exec;
   if (Math.abs(gap) < 5) return null;
+  const staleCaveat = optionMarkStaleCaveat(play, readMs ?? Date.now());
   return (
     `**Executable P&L** — mid **${fmtPct(mid)}** vs fill **${fmtPct(exec)}** ` +
-    `(**${gap > 0 ? "-" : "+"}${Math.abs(gap).toFixed(0)}%** slippage). Size exits on the bid, not the mark.`
+    `(**${gap > 0 ? "-" : "+"}${Math.abs(gap).toFixed(0)}%** slippage). Size exits on the bid, not the mark.${staleCaveat}`
   );
 }
 
@@ -1314,6 +1395,14 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
   if (snap.selfInvalidated) return null;
 
   const label = snap.bucket === "open" ? "OPEN" : "WATCH";
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SOXX — same fix as
+  // laneRankSection's own `displayScore`): `snap.playScore` is deliberately raw one-decimal
+  // precision (see computeLaneRank's doc comment), but every one of this function's three
+  // branches below renders it directly, duplicating the SAME score `whyThisSetupSection` already
+  // shows rounded a few sections earlier — two different numbers for one measurement. Rounds only
+  // the DISPLAYED score; deltaFromMedian/topScore stay untouched (they're never compared against
+  // the "Why this setup" number anywhere, so their own precision was never in question).
+  const displayScore = Math.round(snap.playScore);
   // Live repro 2026-09-12 (same cycle #4849 was opened): CRWD sat #1 of 90 on OPEN by raw score
   // (87) while its own manage engine was EXIT_RUNNER (round-tripped +130% peak -> -10%, all trims
   // banked, runner only) -- the brief's very first bullet said "Desk says TRIM ... consider
@@ -1324,7 +1413,7 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
   // for THIS play's self-referential rank-1 claim. selfReducing (added earlier this same PR for the
   // below-median branch) closes it here too.
   if (snap.rank === 1 && !snap.selfReducing) {
-    return `**Lane leader** — **#1 of ${snap.total}** on ${label} (score **${snap.playScore}**). Desk attention follows the top row.`;
+    return `**Lane leader** — **#1 of ${snap.total}** on ${label} (score **${displayScore}**). Desk attention follows the top row.`;
   }
   if (snap.deltaFromMedian < -15 && snap.selfReducing) {
     // Live repro 2026-09-12: CG sat #90/90 by raw entry-time score — a real +169.2%/+134.6% exec
@@ -1332,7 +1421,7 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
     // lines after "Desk says TRIM ... Bank partial into strength." The entry-time score standing is
     // real context, but "adding size" is backwards advice once the position's own plan is to reduce.
     return (
-      `**Below lane median on entry-time score** — **#${snap.rank}/${snap.total}** (score **${snap.playScore}**, ` +
+      `**Below lane median on entry-time score** — **#${snap.rank}/${snap.total}** (score **${displayScore}**, ` +
       `${snap.deltaFromMedian} vs median) — not a sizing signal here; this position's own plan already calls for reducing, not adding.`
     );
   }
@@ -1349,7 +1438,7 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
       ? " (structurally blocked from committing — a platform wiring gap, not a live gate)"
       : " — confirm before adding size";
     return (
-      `**Below lane median** — **#${snap.rank}/${snap.total}** (score **${snap.playScore}**, ` +
+      `**Below lane median** — **#${snap.rank}/${snap.total}** (score **${displayScore}**, ` +
       `${snap.deltaFromMedian} vs median). Leader: **${snap.topTicker ?? "—"}** @ **${snap.topScore ?? "—"}**${caveat}.`
     );
   }
@@ -1456,7 +1545,25 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   const readMs = ctx.readMs ?? Date.now();
   const markAbsence = collectOptionMarkStalenessAbsence(play, readMs);
   if (markAbsence) {
-    if (markAbsence.reason === "sync quote without freshness timestamp") {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25, follow-up to the SNOW
+    // `collectOptionMarkStalenessAbsence` fix in play-brief-absence.ts): this used to branch on
+    // `markAbsence.reason === "sync quote without freshness timestamp"` — an exact-string match
+    // that broke the instant that function grew a THIRD reason string
+    // ("no live price yet — sync quote, no real quote value has ever landed") for the genuinely-
+    // unknown-mark case it previously lumped in under the same generic reason. Falling to the
+    // `else` branch for that new string would have run it through the "stale — last synced "
+    // stamp-stripper (a no-op on this text) and pushed the garbled
+    // "option mark from **no live price yet — sync quote, no real quote value has ever landed**
+    // — not live-synced". Matching on the one reason shape that actually needs stamp-extraction
+    // (the aged-markAsOf case) and routing everything else through the existing `pnlPct != null`
+    // ternary — which already independently derives the identical real-vs-unknown distinction
+    // `optionMarkGenuinelyUnknown` encodes, see its own 2026-09-11 TWST comment below — keeps this
+    // branch correct regardless of how many "sync, no timestamp yet" reason variants that function
+    // grows.
+    if (markAbsence.reason.startsWith("stale — last synced ")) {
+      const stamp = markAbsence.reason.replace(/^stale — last synced /, "");
+      warnings.push(`option mark from **${stamp}** — not live-synced`);
+    } else {
       // Live repro 2026-09-11 (Ask Largo standing mandate, TWST): `markIsSync` collapses two
       // different real-world cases (see play-brief.ts's own `markGenuinelyUnknown` split) — a
       // mark that is genuinely unknown (no P&L basis exists either) versus a REAL, live mark that
@@ -1472,9 +1579,6 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
           ? "mark is a live quote but lacks a freshness timestamp"
           : "mark not synced to live tape",
       );
-    } else {
-      const stamp = markAbsence.reason.replace(/^stale — last synced /, "");
-      warnings.push(`option mark from **${stamp}** — not live-synced`);
     }
   }
   // Largo C2 (2026-09-16): this Vector check used to be a raw `dataAgeMs > 120_000` comparison —
@@ -1487,8 +1591,19 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
     warnings.push(`Vector **${label}** stale`);
   }
   const gex = ctx.ecosystem?.gex_positioning;
-  if (!dead && gexMatrixStale(gex)) {
-    const label = ageSecondsLabel(gexMatrixAgeMs(gex)) ?? "clock-skewed";
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20, static-code sweep): these two calls omitted
+  // readMs, defaulting both gexMatrixStale/gexMatrixAgeMs to a FRESH Date.now() sample instead of
+  // the request-wide ctx.readMs anchor this same function already threads through every other
+  // staleness check (vectorAgeStale above, and gexMatrixStale again 46 lines below for
+  // closedMarketNote) — exactly the #5351/#5353/#5355/#5356-class gap play-brief-types.ts's own
+  // `readMs` field doc comment names as "the same class of latent risk and a natural next sweep."
+  // A request whose compose takes several real seconds (Meridian/ecosystem/vector/book reads, all
+  // sequential I/O per that same comment) could have this line's live Date.now() and a sibling
+  // section's ctx.readMs land on opposite sides of GEX_MATRIX_STALE_MS for the identical gex
+  // snapshot, silently disagreeing within the same brief about whether dealer posture may be
+  // stale.
+  if (!dead && gexMatrixStale(gex, readMs)) {
+    const label = ageSecondsLabel(gexMatrixAgeMs(gex, readMs)) ?? "clock-skewed";
     warnings.push(`GEX matrix **${label}** stale — dealer posture may lag spot`);
   }
   if (!dead && ctx.ecosystem?.flow_feed_fresh === false) {
@@ -1569,7 +1684,7 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
 }
 
 /** Closed play post-mortem coaching. */
-export function closedCoaching(play: TerminalPlay): string | null {
+export function closedCoaching(play: TerminalPlay, spot?: number | null): string | null {
   if (play.status !== "CLOSED") return null;
   const lines: string[] = [];
 
@@ -1614,8 +1729,25 @@ export function closedCoaching(play: TerminalPlay): string | null {
           typeof inval === "number" && Number.isFinite(inval)) {
         const cushionPct =
           (play.direction === "SHORT" ? (inval - trig) / trig : (trig - inval) / trig) * 100;
+        // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro CRWV:61/MSFT:49): this
+        // clause used to unconditionally conclude "not that the stop was wrong" — a verdict on
+        // whether the STOP ITSELF was premature. watchForSection's own "Since it closed" section
+        // (play-brief-intel.ts, same envelope, rendered later) independently checks whether spot
+        // has since moved back through this exact `invalidationUnderlyingPx` level and, when it
+        // has, says the opposite: "the exit may have been early." Neither section knew about the
+        // other, so a member reading a closed+stopped brief whose underlying had since reclaimed
+        // the stop level saw both verdicts in the same document — this line clearing the stop,
+        // "Since it closed" implicating it, for the identical event. Since "Since it closed"
+        // already carries the real post-close reclaim evidence (how far back through, as of
+        // today), this line defers to it instead of asserting a verdict a later section can
+        // contradict — using the SAME reclaim test (direction-aware spot-vs-invalidation compare)
+        // "Since it closed" uses, so the two can't independently drift into disagreement again.
+        const reclaimed = spot != null && (play.direction === "SHORT" ? spot < inval : spot > inval);
+        const verdict = reclaimed
+          ? `spot has since moved back through this level — see "Since it closed" below for how far.`
+          : `a thin cushion here means the entry was already extended, not that the stop was wrong.`;
         lines.push(
-          `**Stop fired** (${r}) — entry **${fmtPriceLevel(trig)}** vs invalidation **${fmtPriceLevel(inval)}**, a **${fmtPct(cushionPct)}** cushion at commit; a thin cushion here means the entry was already extended, not that the stop was wrong.`,
+          `**Stop fired** (${r}) — entry **${fmtPriceLevel(trig)}** vs invalidation **${fmtPriceLevel(inval)}**, a **${fmtPct(cushionPct)}** cushion at commit; ${verdict}`,
         );
       } else {
         lines.push(`**Stop fired** (${r}) — check if entry was extended past invalidation.`);
@@ -1693,7 +1825,7 @@ export function collectCoachingBullets(
   };
 
   if (bucket === "closed") {
-    push(closedCoaching(play));
+    push(closedCoaching(play, spot));
     return out;
   }
 
@@ -1724,7 +1856,7 @@ export function collectCoachingBullets(
     // terse fact rather than adding trade-manager narrative, so they added no information.
   }
 
-  push(manageLifecycleCoaching(play, bucket));
+  push(manageLifecycleCoaching(play, bucket, ctx.readMs ?? undefined));
   push(catalystCoaching(ctx));
   // Meridian peer earnings live in meridianPeerSection (play-brief-intel.ts) — not here.
   // Duplicating meridianPeerEarningsCoaching in both places re-shipped the #4110/#4116
@@ -1768,7 +1900,7 @@ export function collectCoachingBullets(
   // (already rendered honestly via "Trim progress: X%" in play-brief.ts's Position section, which
   // has no RATCHET dependency), so nothing computable was lost — same dead-gate shape as
   // `scorecardCoaching`/`morningConfirmCoaching`, removed the same week for the identical reason.
-  push(execSlippageCoaching(play));
+  push(execSlippageCoaching(play, ctx.readMs ?? undefined));
   // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `underlyingExcursionCoaching`
   // (formerly here) gated on `play.stockMovePct`/`stockPeakPct`/`stockTroughPct` — fields written in
   // exactly one place repo-wide, `use-legacy-quotes.ts` (a client-side, Legacy-only React hook).

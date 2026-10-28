@@ -33,7 +33,12 @@ export async function POST(req: NextRequest) {
   const tier = parseTier(body.tier);
   const tool = body.tool;
   const mode = body.mode;
-  const limit = Math.min(500, Math.max(1, Number(body.limit ?? 200)));
+  // `body.limit ?? 200` only guards an absent field — a malformed one (e.g. the string "all")
+  // produces `Number("all")` = NaN, which survives `??` (NaN is neither null nor undefined)
+  // and makes every Math.max/Math.min below it NaN too, so `while (updated < limit)` is
+  // `0 < NaN` = false and the whole bulk op silently no-ops (200 ok, updated:0), reading as
+  // "no matching users" rather than "your limit field was malformed." `|| 200` catches it.
+  const limit = Math.min(500, Math.max(1, Number(body.limit ?? 200) || 200));
 
   if (!VALID_TOOLS.has(tool)) {
     return NextResponse.json({ error: "Invalid tool key" }, { status: 400, headers: NO_STORE_HEADERS });

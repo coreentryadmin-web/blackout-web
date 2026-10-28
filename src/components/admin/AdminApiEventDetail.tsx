@@ -36,6 +36,35 @@ function fmtTime(iso: string): string {
   });
 }
 
+/**
+ * Fetches detail for `eventId` via `fetchFn`, but only invokes `apply`/`onSettled` if `eventId`
+ * is STILL the latest requested id (per `getLatestId`) once the fetch resolves.
+ *
+ * WHY: the drawer's effect used to be a bare `fetch(...).then(setDetail)` keyed on `eventId`
+ * with no guard at all. Clicking a second event before the first's (slower) request finished
+ * started a second fetch WITHOUT cancelling or ignoring the first — ordinary React effect
+ * re-runs don't do that for you. If the first (now-stale) request happened to resolve AFTER
+ * the second, its `.then(setDetail)` fired last and overwrote the drawer with the WRONG
+ * event's forensics while it was still titled/keyed for the second event — an admin mid
+ * incident-debug would see event B's header next to event A's status/error/headers with no
+ * indication anything was wrong. Pure + exported so the out-of-order race itself (not just the
+ * trivial id-equality check) is unit-testable without rendering React.
+ */
+export async function loadEventDetailIfCurrent<T>(
+  eventId: string,
+  fetchFn: (id: string) => Promise<T>,
+  getLatestId: () => string | null,
+  apply: (detail: T) => void,
+  onSettled: () => void
+): Promise<void> {
+  try {
+    const data = await fetchFn(eventId);
+    if (getLatestId() === eventId) apply(data);
+  } finally {
+    if (getLatestId() === eventId) onSettled();
+  }
+}
+
 export function AdminApiEventDetail({
   eventId,
   onClose,
@@ -46,6 +75,10 @@ export function AdminApiEventDetail({
   const [detail, setDetail] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
+  // Tracks the MOST RECENTLY requested eventId so an earlier, slower fetch that resolves
+  // after a newer one can tell it is stale and skip applying its (wrong) data — see
+  // loadEventDetailIfCurrent above.
+  const latestEventIdRef = useRef<string | null>(null);
 
   // Trap focus within the forensics drawer; Esc closes it and focus returns to
   // the row/opener that launched it. The drawer doesn't own the viewport, so no
@@ -57,15 +90,22 @@ export function AdminApiEventDetail({
   });
 
   useEffect(() => {
+    latestEventIdRef.current = eventId;
     if (!eventId) {
       setDetail(null);
       return;
     }
     setLoading(true);
-    fetch(`/api/admin/apis/events/${encodeURIComponent(eventId)}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setDetail(d))
-      .finally(() => setLoading(false));
+    void loadEventDetailIfCurrent<EventDetail | null>(
+      eventId,
+      (id) =>
+        fetch(`/api/admin/apis/events/${encodeURIComponent(id)}`, { cache: "no-store" }).then((r) =>
+          r.ok ? r.json() : null
+        ),
+      () => latestEventIdRef.current,
+      setDetail,
+      () => setLoading(false)
+    );
   }, [eventId]);
 
   return (

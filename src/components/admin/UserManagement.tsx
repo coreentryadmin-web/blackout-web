@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import {
   GlassPanel,
@@ -13,6 +13,7 @@ import {
   ConfirmModal,
 } from "@/components/admin/AdminUi";
 import { AdminToolsPanel, UserToolAccessEditor } from "@/components/admin/AdminToolsPanel";
+import { runGuardedUsersFetch } from "@/components/admin/user-management-request-guard";
 import { Modal } from "@/components/ui";
 import type { ToolKey } from "@/lib/tool-access";
 import type { ToolAccessMode, ToolAccessRow } from "@/lib/tool-user-access";
@@ -89,7 +90,16 @@ export function UserManagement() {
   const [globalStats, setGlobalStats] = useState<UsersResponse["stats"]>(null);
   const [section, setSection] = useState<"users" | "tools">("users");
 
+  // Bumped once per fetchUsers() call so a response can tell whether a newer
+  // request has superseded it before applying its data — see
+  // user-management-request-guard.ts for why this exists (the un-debounced
+  // search box can fire several overlapping requests, and without this an
+  // earlier, slower response could resolve after a later one and overwrite
+  // the screen with stale results).
+  const latestUsersRequestIdRef = useRef(0);
+
   const fetchUsers = useCallback(async () => {
+    const requestId = ++latestUsersRequestIdRef.current;
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
     if (query) params.set("q", query);
@@ -97,16 +107,28 @@ export function UserManagement() {
     if (roleFilter) params.set("role", roleFilter);
 
     try {
-      const res = await fetch(`/api/admin/users?${params}`);
-      if (!res.ok) return;
-      const data: UsersResponse = await res.json();
-      setUsers(data.users);
-      setTotal(data.total);
-      setPages(data.pages);
-      setFilterNote(data.filterNote ?? null);
-      setGlobalStats(data.stats ?? null);
+      await runGuardedUsersFetch(
+        requestId,
+        () => latestUsersRequestIdRef.current,
+        async () => {
+          const res = await fetch(`/api/admin/users?${params}`);
+          if (!res.ok) return null;
+          return (await res.json()) as UsersResponse;
+        },
+        (data) => {
+          if (!data) return;
+          setUsers(data.users);
+          setTotal(data.total);
+          setPages(data.pages);
+          setFilterNote(data.filterNote ?? null);
+          setGlobalStats(data.stats ?? null);
+        }
+      );
     } finally {
-      setLoading(false);
+      // Only the still-current request gets to clear the spinner — a
+      // superseded request's `finally` must not flip `loading` back to
+      // false while the request that replaced it is still in flight.
+      if (latestUsersRequestIdRef.current === requestId) setLoading(false);
     }
   }, [page, pageLimit, query, accessFilter, roleFilter]);
 
@@ -575,24 +597,27 @@ function EditUserModal({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="admin-filter-label block mb-1">First name</label>
+          <label className="admin-filter-label block mb-1" htmlFor="edit-user-first-name">First name</label>
           <input
+            id="edit-user-first-name"
             className="admin-filter-input w-full"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
           />
         </div>
         <div>
-          <label className="admin-filter-label block mb-1">Last name</label>
+          <label className="admin-filter-label block mb-1" htmlFor="edit-user-last-name">Last name</label>
           <input
+            id="edit-user-last-name"
             className="admin-filter-input w-full"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
           />
         </div>
         <div>
-          <label className="admin-filter-label block mb-1">Tier</label>
+          <label className="admin-filter-label block mb-1" htmlFor="edit-user-tier">Tier</label>
           <select
+            id="edit-user-tier"
             className="admin-filter-select w-full"
             value={tier}
             onChange={(e) => setTier(e.target.value)}
@@ -603,8 +628,9 @@ function EditUserModal({
           </select>
         </div>
         <div>
-          <label className="admin-filter-label block mb-1">Role</label>
+          <label className="admin-filter-label block mb-1" htmlFor="edit-user-role">Role</label>
           <select
+            id="edit-user-role"
             className="admin-filter-select w-full"
             value={role}
             onChange={(e) => setRole(e.target.value)}
@@ -681,6 +707,7 @@ function EditUserModal({
           <p className="text-[10px] text-white/40 font-mono mb-1">One-time sign-in link (15 min):</p>
           <input
             className="admin-filter-input w-full text-[10px]"
+            aria-label="One-time sign-in link"
             readOnly
             value={signInUrl}
             onFocus={(e) => e.target.select()}
@@ -765,8 +792,9 @@ function CreateUserModal({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         <div className="sm:col-span-2">
-          <label className="admin-filter-label block mb-1">Email *</label>
+          <label className="admin-filter-label block mb-1" htmlFor="create-user-email">Email *</label>
           <input
+            id="create-user-email"
             className="admin-filter-input w-full"
             type="email"
             value={email}
@@ -775,8 +803,9 @@ function CreateUserModal({
           />
         </div>
         <div className="sm:col-span-2">
-          <label className="admin-filter-label block mb-1">Phone *</label>
+          <label className="admin-filter-label block mb-1" htmlFor="create-user-phone">Phone *</label>
           <input
+            id="create-user-phone"
             className="admin-filter-input w-full"
             type="tel"
             value={phone}
@@ -785,24 +814,27 @@ function CreateUserModal({
           />
         </div>
         <div>
-          <label className="admin-filter-label block mb-1">First name</label>
+          <label className="admin-filter-label block mb-1" htmlFor="create-user-first-name">First name</label>
           <input
+            id="create-user-first-name"
             className="admin-filter-input w-full"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
           />
         </div>
         <div>
-          <label className="admin-filter-label block mb-1">Last name</label>
+          <label className="admin-filter-label block mb-1" htmlFor="create-user-last-name">Last name</label>
           <input
+            id="create-user-last-name"
             className="admin-filter-input w-full"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
           />
         </div>
         <div>
-          <label className="admin-filter-label block mb-1">Tier</label>
+          <label className="admin-filter-label block mb-1" htmlFor="create-user-tier">Tier</label>
           <select
+            id="create-user-tier"
             className="admin-filter-select w-full"
             value={tier}
             onChange={(e) => setTier(e.target.value)}
@@ -813,8 +845,9 @@ function CreateUserModal({
           </select>
         </div>
         <div>
-          <label className="admin-filter-label block mb-1">Role</label>
+          <label className="admin-filter-label block mb-1" htmlFor="create-user-role">Role</label>
           <select
+            id="create-user-role"
             className="admin-filter-select w-full"
             value={role}
             onChange={(e) => setRole(e.target.value)}

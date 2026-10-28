@@ -399,12 +399,27 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
     prev.flowPutPremium != null &&
     next.flowPutPremium != null &&
     Math.abs(next.flowPutPremium - prev.flowPutPremium) > 50_000;
-  if (callMoved && next.flowCallPremium! > prev.flowCallPremium! * 1.2) {
-    lines.push("HELIX tape: call flow building");
-  } else if (putMoved && next.flowPutPremium! > (prev.flowPutPremium ?? 0) * 1.2) {
-    lines.push("HELIX tape: put flow building");
-  } else if (callMoved || putMoved) {
-    lines.push("HELIX tape: flow shifted");
+  // BUG FIX (Ask Largo standing mandate, 2026-10-26): call and put flow are independent
+  // sentiment signals (unlike gamma flip/call wall/put wall, each already narrated by its own
+  // unconditional `if` below) — but this used to be an if/else-if/else-if chain, so when BOTH
+  // sides moved materially in the same refresh (one collapsing while the other builds), only
+  // whichever branch the chain reached first was ever narrated; the other equally real move was
+  // silently dropped, the same "a real change goes unnarrated" shape every other gap in this file
+  // was fixed for. Two independent `if`s — matching the structural-level fields' own pattern —
+  // let both sides fire in the same pulse when both genuinely moved.
+  if (callMoved) {
+    lines.push(
+      next.flowCallPremium! > prev.flowCallPremium! * 1.2
+        ? "HELIX tape: call flow building"
+        : "HELIX tape: call flow shifted",
+    );
+  }
+  if (putMoved) {
+    lines.push(
+      next.flowPutPremium! > (prev.flowPutPremium ?? 0) * 1.2
+        ? "HELIX tape: put flow building"
+        : "HELIX tape: put flow shifted",
+    );
   }
   if (
     prev.trimsFired != null &&
@@ -501,7 +516,22 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
     lines.push(`No longer showing: ${removedSections.join(", ")}`);
   }
 
-  return lines.slice(0, 8);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20, Largo C3 absence violation): this cap used to
+  // be a bare `lines.slice(0, 8)` with no disclosure when more than 8 real changes fired in one
+  // pulse — up to ~17 independent facts can be pushed above (direction flip, thesis/pnl synthesis,
+  // recommendation, mark, spot, gamma flip, call/put wall, HELIX flow, trims, roll-watch,
+  // entry-gate shift, headline, section add/remove). A refresh after a long gap (overnight,
+  // multi-hour stall) could legitimately produce more than 8, and the lowest-priority ones were
+  // dropped with zero indication to the member — the exact silent-truncation shape
+  // `scripts/audit/largo-truncation-probe.mjs` exists to catch on other Largo surfaces (three real
+  // shipped bugs: #2433, #2436, #2480), just unguarded here. Name the cut instead of hiding it.
+  const MAX_DIFF_LINES = 8;
+  if (lines.length <= MAX_DIFF_LINES) return lines;
+  const overflow = lines.length - MAX_DIFF_LINES;
+  return [
+    ...lines.slice(0, MAX_DIFF_LINES),
+    `+${overflow} more change${overflow === 1 ? "" : "s"} this refresh (not shown — see the live board for full detail).`,
+  ];
 }
 
 /**

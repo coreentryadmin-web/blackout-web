@@ -8,6 +8,7 @@ import type { HorizonPlay } from "@/lib/horizon-plays";
 import { computeSwingThesisHealth } from "./thesis-health";
 import { swingPlayBriefConfidence } from "./play-brief-confidence";
 import { collectBriefUnavailableSources } from "./play-brief-absence";
+import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -171,6 +172,67 @@ test("composeSwingPlayBrief: OPEN play with no same-ticker siblings omits the di
   );
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro TSLA WATCH SHORT candidate). A
+// WATCH-bucket subject is never itself committed (fixturePlay defaults to status "WATCH" with no
+// entry premium), so it can never appear in laneRows and must NOT be counted as a "live position"
+// itself — only the real, committed sibling(s) are live. Before the fix, this rendered "2
+// concurrent live position(s)" for exactly 1 real committed sibling.
+test("composeSwingPlayBrief: WATCH candidate with ONE real committed sibling discloses exactly 1 live position, not 2", () => {
+  const siblingRow: HorizonPlay = {
+    ticker: "INTC",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 64,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:INTC260918C00090000",
+      strike: 90,
+      expiry: "2026-09-18",
+      right: "C",
+      dte: 8,
+      mid: 0.2,
+      bid: null,
+      ask: null,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: 0,
+    },
+    scoreFloor: 60,
+    reason: "Banger breakout +8.7% · 90C 2026-09-18",
+    entryPremium: 0.2,
+    livePnlPct: -12.5,
+    liveStatus: "OPEN",
+    committedAt: "2026-09-10T20:15:25.368Z",
+  };
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "INTC", status: "WATCH" }),
+    asOf: "2026-09-11T15:00:00.000Z",
+    sessionDate: "2026-09-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [siblingRow],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(sib, "must disclose the real committed sibling");
+  assert.match(
+    sib!.body,
+    /1 concurrent live position/,
+    `a non-committed WATCH subject must not count itself as a live position — got "${sib!.body}"`,
+  );
+  assert.doesNotMatch(sib!.body, /2 concurrent live position/);
+  const sibEvidence = brief.envelope.evidence.find((e) => e.text.includes("concurrent live position"));
+  assert.ok(sibEvidence, "sibling-position claim must carry a matching evidence entry (Largo C7)");
+  assert.match(sibEvidence!.text, /1 concurrent live position/);
+  assert.doesNotMatch(sibEvidence!.text, /2 concurrent live position/);
+});
+
 // Live repro 2026-10-11 (Ask Largo standing mandate — AMD positionId 51 vs 52). Two
 // independently-committed positions on the same ticker, different archetypes/theses
 // (`commit.ts`'s own idempotency key correctly treats them as separate — see `swingThesisKey`),
@@ -243,6 +305,15 @@ test("composeSwingPlayBrief: a same-ticker sibling with a near-identical entry p
   );
   assert.match(sib!.body, /605C 2026-10-16/);
   assert.match(sib!.body, /2 concurrent live position/);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): `evidenceFromContext`'s own sibling-count
+  // block used to omit the positionId exact-match branch `siblingPositionsNote` uses above, so a
+  // near-identical-premium sibling resolved by positionId here was still silently excluded from
+  // evidence[] by the premium-proximity fallback. Largo C7 (2026-09-15): this concrete, checkable
+  // claim must carry a matching evidence entry, same discipline the sibling tests above/below this
+  // one already pin.
+  const sibEvidence = brief.envelope.evidence.find((e) => e.text.includes("concurrent live position"));
+  assert.ok(sibEvidence, "sibling-position claim must carry a matching evidence entry (Largo C7)");
+  assert.match(sibEvidence!.text, /2 concurrent live position/);
 });
 
 // BUG FOUND (Ask Largo standing mandate, 2026-10-15 — same deep-dive that found #6023's
@@ -320,9 +391,160 @@ test("composeSwingPlayBrief: a WATCH candidate (no entry premium yet) with a sam
       "deciding whether to open a new position needs to know they already hold one",
   );
   assert.match(sib!.body, /300C 2026-10-16/);
-  assert.match(sib!.body, /2 concurrent live position/);
+  // BUG FIX (2026-10-21, Ask Largo standing mandate): this used to assert "2 concurrent live
+  // position(s)" — but this WATCH-bucket subject is itself never committed (no positionId, no
+  // entry premium), so only the ONE real sibling is actually "live". The old assertion encoded
+  // the exact overcounting bug fixed this cycle; see play-brief.ts's siblingPositionsNote.
+  assert.match(sib!.body, /1 concurrent live position/);
+  assert.doesNotMatch(sib!.body, /2 concurrent live position/);
   const sibEvidence = brief.envelope.evidence.find((e) => e.text.includes("concurrent live position"));
   assert.ok(sibEvidence, "the WATCH-row sibling claim must carry a matching evidence entry too (Largo C7)");
+  assert.match(sibEvidence!.text, /1 concurrent live position/);
+});
+
+// BUG FIX (Ask Largo standing mandate, live repro SWING:MRNA:68, 2026-10-26): `siblingPositionsNote`
+// used to render a bare "P&L: —" with ZERO disclosure of why whenever a sibling row's
+// `livePnlPct` was null — even though every other quote-derived line in this same file (the
+// PRIMARY play's own Mark/P&L/Peak/Trough in `pnlSection`) already distinguishes "no live tick has
+// synced yet since commit" from "the quote is stale" via `optionMarkGenuinelyUnknown`/
+// `optionMarkStaleCaveat` (play-brief-absence.ts). Live repro: a position opened 5 minutes after
+// the prior close still showed "P&L —" 3+ hours later with no caveat at all. Every sibling fixture
+// before this one sets a real numeric `livePnlPct`, so none of them exercised this path.
+test("composeSwingPlayBrief: a same-ticker sibling with no live P&L yet discloses WHY, not a bare dash", () => {
+  const siblingRow: HorizonPlay = {
+    ticker: "MRNA",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 61,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:MRNA261030C00210000",
+      strike: 210,
+      expiry: "2026-10-30",
+      right: "C",
+      dte: 4,
+      mid: 3.85,
+      bid: null,
+      ask: null,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: 0,
+    },
+    scoreFloor: 60,
+    reason: "live hold — BREAKOUT thesis",
+    archetype: "BREAKOUT",
+    entryPremium: 3.85,
+    // No live tick has synced since commit (same shape live-plays.ts/banger-lane-merge.ts produce
+    // for a just-opened position: `livePnlPct(entry, mark)` is null exactly when `mark` is null).
+    livePnlPct: null,
+    liveStatus: "OPEN",
+    committedAt: "2026-10-26T16:15:00.000Z",
+    markAsOf: null,
+    positionId: 68,
+  };
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      id: "SWING:MRNA:70",
+      ticker: "MRNA",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 2.1,
+      mark: 2.05,
+      pnlPct: -2.4,
+    }),
+    asOf: "2026-10-26T19:22:00.000Z",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [siblingRow],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(sib, "must disclose the concurrent sibling position");
+  assert.doesNotMatch(
+    sib!.body,
+    /P&L —\s*$/m,
+    `a null livePnlPct must never render as a bare, unexplained dash — got "${sib!.body}"`,
+  );
+  assert.match(
+    sib!.body,
+    /P&L —.*no live tick since commit/,
+    `expected the same "entry-time read, no live tick since commit" disclosure pnlSection already uses for the primary play — got "${sib!.body}"`,
+  );
+});
+
+// A sibling row with a real, non-null P&L but an aged `markAsOf` must get the SAME stale-quote
+// disclosure `pnlSection` already gives the primary play — proving the fix reuses the shared
+// helper (and its exact wording) rather than only covering the null-P&L branch.
+test("composeSwingPlayBrief: a same-ticker sibling with a real P&L but a stale quote discloses staleness", () => {
+  const siblingRow: HorizonPlay = {
+    ticker: "NRG",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 66,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:NRG261030C00150000",
+      strike: 150,
+      expiry: "2026-10-30",
+      right: "C",
+      dte: 4,
+      mid: 4.2,
+      bid: 4.1,
+      ask: 4.3,
+      delta: 0.5,
+      gamma: 0.02,
+      theta: -0.8,
+      vega: 0.3,
+      iv: 0.45,
+      openInterest: 300,
+    },
+    scoreFloor: 60,
+    reason: "live hold — BREAKOUT thesis",
+    archetype: "BREAKOUT",
+    entryPremium: 3.0,
+    livePnlPct: 40.0,
+    liveStatus: "OPEN",
+    committedAt: "2026-10-25T14:00:00.000Z",
+    // 3+ hours stale against the brief's own 19:22 ET "now" below — well past the 18-minute
+    // SWING_OPTION_MARK_STALE_MS cadence-aware threshold (play-brief-absence.ts).
+    markAsOf: "2026-10-26T16:00:00.000Z",
+    positionId: 71,
+  };
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      id: "SWING:NRG:72",
+      ticker: "NRG",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 2.1,
+      mark: 2.05,
+      pnlPct: -2.4,
+    }),
+    asOf: "2026-10-26T19:22:00.000Z",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    readMs: new Date("2026-10-26T19:22:00.000Z").getTime(),
+    laneRows: [siblingRow],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(sib, "must disclose the concurrent sibling position");
+  assert.match(
+    sib!.body,
+    /P&L \+40\.0%.*stale — same quote Mark flagged above/,
+    `a real but aged sibling P&L must carry the same stale-quote caveat pnlSection uses — got "${sib!.body}"`,
+  );
 });
 
 // BUG FOUND (Ask Largo standing mandate, 2026-09-20): sibling of PR #5288's buildIntelSections
@@ -437,6 +659,16 @@ test("composeSwingPlayBrief: Book context concentration carries a matching evide
 // (resolveTheme's own-cluster "NAME:<TICKER>" sentinel — theme-cluster.ts) leaked into this
 // evidence entry too. Confirmed live: GET /api/market/swing/play-brief for BYND returned
 // envelope.evidence text `Book overlap: 1 same-direction position in theme "NAME:BYND".`.
+//
+// BUG FIX (2026-10-21, Ask Largo standing mandate): this assertion originally expected
+// `describeThemeOverlap`'s own-cluster-sentinel resolution ("the same name (BYND)") because, at
+// the time, that was the only mechanism translating a same-ticker overlap into readable text. The
+// 2026-10-21 same-ticker/other-ticker split fix (mirroring bookContextSection's own fix) now
+// detects the same-ticker case BEFORE ever calling `describeThemeOverlap`, so this exact fixture
+// (a same-ticker, same-direction overlap) now renders the sharper, more specific phrasing directly
+// — the NAME: leak this test exists to guard is now structurally impossible via this path (the
+// same-ticker branch never touches `overlap.theme` at all), which is a stronger guarantee than
+// the original fix, not a regression of it.
 test("composeSwingPlayBrief: Book overlap evidence for an own-cluster (unmapped-ticker) overlap never leaks the NAME: sentinel", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ id: "SWING:BYND:9999", ticker: "BYND", direction: "LONG", status: "OPEN", recommendation: "HOLD" }),
@@ -453,8 +685,45 @@ test("composeSwingPlayBrief: Book overlap evidence for an own-cluster (unmapped-
   const brief = composeSwingPlayBrief(ctx);
   const overlapEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Book overlap:"));
   assert.ok(overlapEvidence, "sanity: the same-ticker overlap must still fire evidence");
-  assert.match(overlapEvidence!.text, /the same name \(BYND\)/);
+  assert.match(overlapEvidence!.text, /same-ticker same-direction position on BYND itself/);
   assert.doesNotMatch(overlapEvidence!.text, /NAME:/, "must never leak the internal own-cluster sentinel");
+});
+
+// BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA WATCH short): the
+// sameThemeSameDirection bucket got the same-ticker/other-ticker split above, but its mirror-image
+// sibling (sameThemeOpposedDirection) never did — a same-underlying opposed conflict (long AND
+// short the same ticker) collapsed into the generic "N opposed position(s) in the same theme",
+// understating severity relative to bookContextSection's own sharper "Internal conflict — same
+// underlying... one of these two positions is mechanically wrong" framing for the identical fact.
+test("composeSwingPlayBrief: Book overlap evidence distinguishes a same-underlying opposed conflict from a cross-ticker theme-level one", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ id: "SWING:TSLA:400P", ticker: "TSLA", direction: "SHORT", status: "WATCH" }),
+    asOf: "2026-10-21T15:00:00.000Z",
+    sessionDate: "2026-10-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    openBook: [
+      { ticker: "TSLA", direction: "LONG", positionId: 60 },
+      { ticker: "TSLL", direction: "LONG", positionId: 61 },
+    ],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const overlapEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Book overlap:"));
+  assert.ok(overlapEvidence, "sanity: the opposed overlap must fire evidence");
+  assert.match(
+    overlapEvidence!.text,
+    /1 same-ticker \+ 1 other opposed position in/,
+    `expected the same-ticker/cross-ticker split, got: ${overlapEvidence!.text}`,
+  );
+  assert.doesNotMatch(
+    overlapEvidence!.text,
+    /^Book overlap: 2 opposed position\(s\) in the same theme\.$/,
+    "must not collapse the literal same-underlying conflict into a generic cross-ticker count",
+  );
 });
 
 test("composeSwingPlayBrief: CLOSED play never surfaces a Book overlap evidence entry (matches the section's own gating)", () => {
@@ -558,6 +827,16 @@ test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope h
   // `play.status`, so the SAME brief response showed "· SKIP" plus "Desk is passing this
   // setup — no entry recommended." directly under a headline that says HOLD — a real,
   // member-visible contradiction inside one answer, not two different reads.
+  //
+  // BUG FIX (2026-10-21, Ask Largo standing mandate, live repro META/ORCL): this test's own
+  // assertions used to require the headline/Verdict line read "HOLD" — which is exactly the SECOND
+  // gap this chain had, confirmed live in production: "HOLD" is `SwingEntryVerdict.recommendation`'s
+  // literal value for a RESEARCH/SKIP row (entry-verdict.ts), not a statement that anything is being
+  // held, and it sat one sentence away from "Desk is passing this setup — no entry recommended." —
+  // indistinguishable, to a skimming trader, from an existing open position told to keep holding.
+  // `swingVerdictVerb` (play-brief.ts) now special-cases SKIP to "PASSED" — the engine's own
+  // already-shipped vocabulary for this exact decision (`playStatusDisplay`'s SKIP case) — so this
+  // test now asserts the CORRECTED output instead of the bug it used to encode.
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({
       status: "SKIP",
@@ -575,11 +854,98 @@ test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope h
     vector: null,
   };
   const brief = composeSwingPlayBrief(ctx);
-  assert.match(brief.envelope.headline, /^HOLD — /);
+  assert.match(brief.envelope.headline, /^PASSED — /);
+  assert.doesNotMatch(
+    brief.envelope.headline,
+    /^HOLD — /,
+    "a declined RESEARCH/SKIP candidate must never read HOLD in the headline — nothing was entered, so nothing is being held",
+  );
+  assert.match(
+    brief.envelope.thesis ?? "",
+    /— PASSED/,
+    `thesis must agree with the headline, got: ${brief.envelope.thesis}`,
+  );
   const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
   assert.ok(verdict, "expected Verdict section");
-  assert.match(verdict!.body, /· HOLD$/m, `Verdict must agree with the headline, got: ${verdict!.body}`);
+  assert.match(verdict!.body, /· PASSED$/m, `Verdict must agree with the headline, got: ${verdict!.body}`);
+  assert.doesNotMatch(verdict!.body, /· HOLD$/m, "Verdict must not leak the overloaded recommendation:HOLD value for a declined SKIP candidate");
   assert.doesNotMatch(verdict!.body, /· SKIP/, "Verdict must not show the raw internal SKIP deckStatus");
+});
+
+// BUG FIX (2026-10-25, Ask Largo standing mandate, live repro TSLA 377.5P 7DTE): watchEntrySection's
+// own "Entry stance:" label (the "Entry" section, separate from Verdict/headline above) carries the
+// IDENTICAL `action?.label ?? play.swingEntryAction?.toUpperCase() ?? play.recommendation ?? "WAIT"`
+// fallback shape the 2026-10-21 fix already named as leaking into the headline/Verdict line,
+// actionNarrative's "Entry stance" bullet, and degradedReadLine's "Live read" bullet — but this
+// FOURTH site was never enumerated in that fix, so a SKIP/RESEARCH candidate still fell through to
+// raw "HOLD" here while every other section correctly said "PASSED". Live repro: the real TSLA
+// brief rendered "Entry stance: HOLD" in the Entry section and, a few lines later in the SAME
+// response's "Trade manager read" section, "Entry stance — PASSED" for the identical play — exactly
+// the headline-vs-Verdict contradiction `swingVerdictVerb` exists to prevent, one call site over.
+test("composeSwingPlayBrief: Entry section's own 'Entry stance' label agrees with Verdict/Trade-manager-read for a SKIP candidate", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "SKIP",
+      recommendation: "HOLD",
+      swingEntryAction: undefined,
+      servingSection: "RESEARCH",
+      recNote: "Desk is passing this setup — no entry recommended.",
+    }),
+    asOf: "2026-09-10T13:47:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry, "expected Entry section");
+  assert.match(
+    entry!.body,
+    /\*\*Entry stance:\*\* PASSED/,
+    `Entry section must agree with the headline/Verdict PASSED framing, got: ${entry!.body}`,
+  );
+  assert.doesNotMatch(
+    entry!.body,
+    /\*\*Entry stance:\*\* HOLD/,
+    "a declined SKIP candidate must never read HOLD in the Entry section — nothing was entered, so nothing is being held",
+  );
+  // Cross-section consistency: the SAME brief's Verdict line must agree, not just this section.
+  const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
+  assert.ok(verdict, "expected Verdict section");
+  assert.match(verdict!.body, /· PASSED$/m);
+});
+
+// BUG FIX regression (2026-10-21, Ask Largo standing mandate): the SKIP->"PASSED" special case
+// above must be scoped to SKIP only — a genuine OPEN position the desk is actively telling a
+// member to hold (recommendation:"HOLD", no trim fired, no still-forming entry action) must keep
+// reading "HOLD" verbatim in the headline/thesis/Verdict line, exactly as before this fix.
+test("composeSwingPlayBrief: a genuine OPEN/HOLD position still reads HOLD, unaffected by the SKIP fix", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      swingEntryAction: undefined,
+      recNote: "Thesis intact — hold the existing position.",
+    }),
+    asOf: "2026-09-10T13:47:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.match(brief.envelope.headline, /^HOLD — /, `a real open position must still read HOLD, got: ${brief.envelope.headline}`);
+  assert.match(brief.envelope.thesis ?? "", /— HOLD/, `thesis must still read HOLD, got: ${brief.envelope.thesis}`);
+  const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
+  assert.ok(verdict, "expected Verdict section");
+  assert.match(verdict!.body, /· HOLD$/m, `Verdict must still read HOLD for a real open position, got: ${verdict!.body}`);
 });
 
 // Live repro 2026-09-13 (COIN, WATCH, real production play-brief): the same PULLBACK_CONTINUATION
@@ -863,9 +1229,15 @@ test("composeSwingPlayBrief: top-level Invalidation line reflects a dead entry w
   );
 });
 
+// FIXTURE FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-25): this test's own title
+// says "when entry is genuinely still open", but its fixture used the base `fixturePlay()`
+// defaults (setupState FORMING / entryStatus PRE_TRIGGER) — NOT genuinely still open at all, the
+// exact same fixture/title mismatch already caught and fixed for the sibling Entry-section test
+// below ("Entry section still frames gates as the live blocker...") on 2026-10-18, but missed here.
+// Overridden to the actual genuinely-still-open-but-gate-blocked state this test's title describes.
 test("composeSwingPlayBrief: top-level Invalidation line still uses the real gate reason when entry is genuinely still open", () => {
   const ctx: SwingPlayBriefContext = {
-    play: fixturePlay(),
+    play: fixturePlay({ setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", aboveFloor: true }),
     asOf: "2026-09-10T09:00:00.000Z",
     sessionDate: "2026-09-10",
     scanAsOf: null,
@@ -877,6 +1249,67 @@ test("composeSwingPlayBrief: top-level Invalidation line still uses the real gat
   };
   const brief = composeSwingPlayBrief(ctx);
   assert.equal(brief.envelope.invalidation, "Bucket not graduated");
+});
+
+// BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-25): live repro, PLTR WATCH
+// brief, 2026-10-24/25 — setupState FORMING, entry window with 3 days still left (not dead per
+// `deadPlayReason`'s own design), gateBlocks exactly [{code:"legacy_exempt"}]. Before this fix,
+// `envelope.invalidation` read the raw gate-block reason text ("Legacy morning-confirm
+// promotion...") verbatim — a provenance marker about why gates weren't evaluated, not a price
+// level or condition that invalidates the setup — while the SAME brief's Entry section correctly
+// framed the identical gate as moot ("thesis still forming — not yet at trigger"). RED before the
+// fix (`git stash` on play-brief.ts reproduces the raw gate text), GREEN after.
+test("composeSwingPlayBrief: top-level Invalidation line omits a moot gate's raw reason text for a still-forming WATCH candidate", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      setupState: "FORMING",
+      entryStatus: "PRE_TRIGGER",
+      gateBlocks: [{ code: "legacy_exempt", reason: "Legacy morning-confirm promotion — Swing V2 confluence/Cortex gates were not evaluated on this path." }],
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    null,
+    "a FORMING play's moot gate reason must not be presented as a real invalidation level",
+  );
+});
+
+// BUG FIX continued (Ask Largo x Night Hawk Swings standing mandate, 2026-10-25): the moot-gate
+// fix above fires on `setupState === "FORMING"` alone (via `gateFramingMootReason`), independent
+// of gate code — so it also suppresses a genuinely-real gate's raw reason text (not just
+// legacy_exempt) whenever the play simply hasn't triggered yet, same as the Entry section already
+// does for that gate.
+test("composeSwingPlayBrief: top-level Invalidation line omits a real gate's reason too while the play is still FORMING (not yet at trigger)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      setupState: "FORMING",
+      entryStatus: "PRE_TRIGGER",
+      gateBlocks: [{ code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." }],
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    null,
+    "a FORMING play has not reached a real gate check yet, so its gate reason must not stand in for invalidation",
+  );
 });
 
 // BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 3 of the standing Ask Largo x Night Hawk
@@ -1129,7 +1562,7 @@ test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
         earnings: { earnings_date: "2026-09-12", days_until: 7, report_time: "AMC", is_confirmed: true },
         fundamentals: { days_to_cover: 2.1, short_volume_ratio: 0.35, price_target: null, as_of: "2026-09-05" },
         related: ["AMD", "NVDA"],
-        news: { count: 2, newest: "2026-09-05", headlines: ["INTC restructures fab unit"] },
+        news: { count: 2, newest: "2026-09-05", headlines: [{ headline: "INTC restructures fab unit", publishedAt: null }] },
         macro: null,
         breadth: null,
         unavailable_sources: [],
@@ -1230,7 +1663,7 @@ test("composeSwingPlayBrief: invalidation prefers a real per-ticker technical br
   // position that was never entered. See resolveBreakInvalidation's `preEntry` handling.
   assert.equal(
     brief.envelope.invalidation,
-    "**Break watch** — lose **22.00** on a closing basis → structural support failed; this setup is no longer live — skip it.",
+    "**Break watch** — lose **22.00** (10.2% away) on a closing basis → structural support failed; this setup is no longer live — skip it.",
   );
   assert.doesNotMatch(
     brief.envelope.invalidation ?? "",
@@ -1306,7 +1739,7 @@ test("composeSwingPlayBrief: OPEN play's invalidation callout keeps live positio
   const brief = composeSwingPlayBrief(ctx);
   assert.equal(
     brief.envelope.invalidation,
-    "**Break watch** — lose **22.00** on a closing basis → structural support failed; exit or cut size.",
+    "**Break watch** — lose **22.00** (10.2% away) on a closing basis → structural support failed; exit or cut size.",
   );
 });
 
@@ -1576,6 +2009,222 @@ test("composeSwingPlayBrief: 'Track record' section appears ONLY when ctx.archet
   );
 });
 
+// Ask Largo standing mandate (evidence[] completeness, 2026-10-21): whyThisSetupSection's
+// synthesizedSetupLede renders play.score ("...scoring 72.") and its own "Score pillars" bullet
+// list renders play.factors, but neither ever reached evidence[] -- the same bug class as the
+// archetype/sub-lane/peers fixes in this file. This proves the score (plus its pillar breakdown)
+// is now a citable, typed evidence[] fact, gated on the same scoreWithheld check the lede uses.
+test("composeSwingPlayBrief: setup score and pillar breakdown surface as a citable evidence[] entry", () => {
+  const baseCtx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      score: 72,
+      factors: [
+        { label: "Rel. strength", points: 18 },
+        { label: "Regime", points: 12 },
+      ],
+    }),
+    asOf: "2026-09-10 16:00 ET",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(baseCtx);
+  const evidence = brief.envelope.evidence.find((e) => e.text.startsWith("Setup score:"));
+  assert.ok(evidence, "expected a citable setup-score evidence entry");
+  assert.equal(evidence!.text, "Setup score: 72 (Rel. strength +18, Regime +12).");
+  assert.equal(evidence!.provenance?.source, "Swing ledger");
+  assert.equal(evidence!.provenance?.asOf, "2026-09-10 16:00 ET");
+
+  // A withheld score is a 0 FALLBACK, never a real measured value -- must never be cited as
+  // evidence, the same discipline synthesizedSetupLede already applies to the prose lede.
+  const withheldCtx: SwingPlayBriefContext = {
+    ...baseCtx,
+    play: fixturePlay({ score: 0, scoreWithheld: true, factors: [{ label: "Rel. strength", points: 18 }] }),
+  };
+  const withheldBrief = composeSwingPlayBrief(withheldCtx);
+  assert.equal(
+    withheldBrief.envelope.evidence.some((e) => e.text.startsWith("Setup score:")),
+    false,
+    "a withheld score must not be fabricated as evidence",
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25 — adversarially verified via the Ask Largo
+// sweep workflow): the "Setup score" evidence fact above stamped `asOf: ctx.asOf` (brief-read
+// time) even though score/factors are a COMMIT-TIME snapshot that never gets recomputed later. A
+// score committed days before this brief was read would have claimed `freshness: "recent"`
+// forever. Proves the fact is now anchored to the play's own `committedAt`, same fix shape as the
+// WATCH-levels `pinnedProvenance` precedent (detectedAt) a few hundred lines above in the source.
+test("composeSwingPlayBrief: setup score evidence is anchored to the play's own committedAt, not the brief's read time", () => {
+  const committedAt = "2026-09-08T14:00:00.000Z"; // 2 days before asOf below
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ score: 72, factors: [{ label: "Rel. strength", points: 18 }], committedAt }),
+    asOf: "2026-09-10 16:00 ET",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+  const evidence = brief.envelope.evidence.find((e) => e.text.startsWith("Setup score:"));
+  assert.ok(evidence, "expected a citable setup-score evidence entry");
+  assert.equal(evidence!.provenance?.asOf, etStampFromIso(committedAt), "must cite when the score was actually committed, not when the brief was read");
+  assert.notEqual(evidence!.provenance?.asOf, ctx.asOf, "must not reuse the read-time timestamp for a commit-pinned fact");
+  assert.equal(
+    evidence!.provenance?.freshness,
+    "stale",
+    "a score committed 2 real days ago must never read as freshly 'recent'",
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro FLY OPEN brief): the "Position"
+// section renders "Entry: $0.55" (pnlSection) and the "Management" section renders "Rails: stop
+// $0.22 · target $1.10" (managementSection) for a committed OPEN position, but evidenceFromContext
+// — the sole feeder of envelope.evidence[]/evidence_numbers — never mirrored either, the same
+// "rendered-in-prose-but-never-mirrored" gap already fixed twice above (peers, score). Proves the
+// position's own entry price and exit-policy stop/target rails are now citable, typed evidence[]
+// facts for an OPEN position.
+test("composeSwingPlayBrief: entry price and exit-policy stop/target rails surface as citable evidence[] entries for an OPEN position", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.55,
+      mark: 0.6,
+      pnlPct: 9.1,
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 1.1, fired: false }],
+        runner_fraction: 0.5,
+        stop_premium: 0.22,
+        target_premium: 1.1,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-10-25 16:00 ET",
+    sessionDate: "2026-10-25",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+  const entryEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Entry:"));
+  assert.ok(entryEvidence, "expected a citable entry-price evidence entry");
+  assert.equal(entryEvidence!.text, "Entry: $0.55.");
+  assert.equal(entryEvidence!.provenance?.source, "Swing ledger");
+
+  const railsEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Exit-policy rails:"));
+  assert.ok(railsEvidence, "expected a citable exit-policy rails evidence entry");
+  assert.equal(railsEvidence!.text, "Exit-policy rails: stop $0.22 · target $1.10.");
+  assert.equal(railsEvidence!.provenance?.source, "Swing ledger");
+});
+
+// BUG FIX (2026-10-26, Ask Largo standing mandate, live-production audit): the test above only
+// ever fixtured a NOT-yet-fired trim rung (`fired: false`), so it could never catch the evidence[]
+// feeder citing a dead rail as live. Once a trim has fired (the position has scaled out), the
+// pre-scale hard stop is permanently disabled by the live exit engine and the real governing floor
+// becomes the runner's trailing stop off its peak — and once a fired trim's own banked premium is
+// at/above `target_premium`, the target has already been reached, not a fresh objective still
+// ahead. `managementSection` ("Rails: ..." line) and `watchForSection` ("Premium stop/target rail"
+// bullets) both already guard this; this evidence[] fact did not, citing the raw dollar levels with
+// no annotation regardless of scale-out/target-reached state.
+test("composeSwingPlayBrief: Exit-policy rails evidence[] reflects already-scaled stop and already-reached target", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.55,
+      mark: 0.65,
+      peak: 130,
+      pnlPct: 18.2,
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 1.1, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: 0.22,
+        target_premium: 1.1,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-10-26 16:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+  const railsEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Exit-policy rails:"));
+  assert.ok(railsEvidence, "expected a citable exit-policy rails evidence entry");
+  // peakPremiumDollar = 0.55 * (1 + 130/100) = 1.265; runnerTrail = round2(1.265 * 0.5) = 0.63
+  assert.equal(
+    railsEvidence!.text,
+    "Exit-policy rails: stop $0.22 (no longer applies — already scaled; runner trail now $0.63) · target $1.10 (already reached).",
+  );
+  assert.equal(railsEvidence!.provenance?.source, "Swing ledger");
+});
+
+// Same fix: a WATCH candidate (pre-entry, no exitPolicy pinned) and a CLOSED play (Outcome
+// section, not Position/Management) must never fabricate an entry/rails evidence fact — matching
+// the exact bucket Management/Position are themselves gated on in composeSwingPlayBrief.
+test("composeSwingPlayBrief: no entry/exit-policy-rails evidence fabricated for WATCH or CLOSED plays", () => {
+  const baseCtx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "WATCH", entry: null, exitPolicy: undefined }),
+    asOf: "2026-10-25 16:00 ET",
+    sessionDate: "2026-10-25",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const watchBrief = composeSwingPlayBrief(baseCtx);
+  assert.equal(watchBrief.envelope.evidence.some((e) => e.text.startsWith("Entry:")), false);
+  assert.equal(watchBrief.envelope.evidence.some((e) => e.text.startsWith("Exit-policy rails:")), false);
+
+  const closedCtx: SwingPlayBriefContext = {
+    ...baseCtx,
+    play: fixturePlay({
+      status: "CLOSED",
+      entry: 0.55,
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [],
+        runner_fraction: 1,
+        stop_premium: 0.22,
+        target_premium: 1.1,
+        time_stop_et: "15:50",
+      },
+    }),
+  };
+  const closedBrief = composeSwingPlayBrief(closedCtx);
+  assert.equal(closedBrief.envelope.evidence.some((e) => e.text.startsWith("Entry:")), false);
+  assert.equal(closedBrief.envelope.evidence.some((e) => e.text.startsWith("Exit-policy rails:")), false);
+});
+
 // Largo C10 enhancement (2026-09-20, Ask Largo standing mandate): the "Track record"/"Ticker
 // track record" sections above already cite the same wins/losses/n numbers in prose, but prose
 // cannot be joined/cited the way a typed evidence[] entry with its own provenance can — this
@@ -1635,6 +2284,106 @@ test("composeSwingPlayBrief: archetype track record also surfaces as a citable e
     withUngraduated.envelope.evidence.some((e) => e.text.startsWith("Archetype track record:")),
     false,
     "an ungraduated bucket must not be cited as evidence",
+  );
+
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): the archetype track-record evidence entry's
+  // `freshness` used the generic 10-minute cross-product bucket directly, mislabeling an
+  // on-schedule read (written by the 15-minute swing-active-refresh cron) as "stale" roughly a
+  // third of every refresh cycle — the exact defect class already fixed for the sibling `markAsOf`
+  // fact elsewhere in this file.
+  const onScheduleReadMs = Date.parse("2026-09-10T15:11:00.000Z"); // 11 minutes after graduatedSnap.asOf
+  const onScheduleBrief = composeSwingPlayBrief({
+    ...baseCtx,
+    archetypeTrackRecord: graduatedSnap,
+    readMs: onScheduleReadMs,
+  });
+  const onScheduleEvidence = onScheduleBrief.envelope.evidence.find((e) =>
+    e.text.startsWith("Archetype track record:"),
+  );
+  assert.notEqual(
+    onScheduleEvidence?.provenance?.freshness,
+    "stale",
+    "an 11-minute-old on-schedule snapshot must not be mislabeled stale",
+  );
+
+  const genuinelyStaleReadMs = Date.parse("2026-09-20T15:00:00.000Z"); // 10 days later, past the 120h TTL
+  const staleBrief = composeSwingPlayBrief({
+    ...baseCtx,
+    archetypeTrackRecord: graduatedSnap,
+    readMs: genuinelyStaleReadMs,
+  });
+  const staleEvidence = staleBrief.envelope.evidence.find((e) => e.text.startsWith("Archetype track record:"));
+  assert.equal(
+    staleEvidence?.provenance?.freshness,
+    "stale",
+    "a snapshot genuinely past the documented TTL must still read stale — this fix narrows false",
+  );
+});
+
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SEDG): the archetype evidence[]
+// citation above never had a sub-lane sibling, even though archetypeTrackRecordSection
+// (play-brief-intel.ts) independently gates and renders the sub-lane dimension in prose, and its
+// own tests prove a sub-lane-alone graduation (archetype ungraduated/absent) is a real, supported
+// state. A ticker in that state would have real sub-lane evidence in the rendered prose with no
+// matching evidence[] fact.
+test("composeSwingPlayBrief: sub-lane track record ALSO surfaces as its own citable evidence[] entry, independent of the archetype dimension (Largo C10, live repro SEDG)", () => {
+  const subLaneGraduatedSnap: SwingArchetypeTrackRecordSnapshot = {
+    asOf: "2026-09-10T15:00:00.000Z",
+    gradedPlays: 40,
+    archetypes: {},
+    subLanes: {
+      TACTICAL: {
+        tier: "LIMITED",
+        graduated: true,
+        wilsonLbPct: 58.1,
+        pointDeltaPts: 14.2,
+        n: 35,
+        wins: 22,
+        losses: 13,
+        winRatePct: 62.9,
+      },
+    },
+  };
+  const baseCtx: SwingPlayBriefContext = {
+    // archetype left at the fixture default (BREAKOUT) but the snapshot's archetypes map is empty,
+    // so graduatedArchetypeEntry returns null — exactly the "sub-lane graduated alone" state.
+    play: fixturePlay({ archetype: "BREAKOUT", subLane: "TACTICAL" }),
+    asOf: "2026-09-10 16:00 ET",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const withSubLane = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: subLaneGraduatedSnap });
+  const archetypeEvidence = withSubLane.envelope.evidence.find((e) => e.text.startsWith("Archetype track record:"));
+  assert.equal(archetypeEvidence, undefined, "archetype dimension ungraduated here — must not fabricate a citation");
+  const subLaneEvidence = withSubLane.envelope.evidence.find((e) => e.text.startsWith("Sub-lane track record:"));
+  assert.ok(subLaneEvidence, "expected a citable sub-lane track-record evidence entry");
+  assert.match(subLaneEvidence!.text, /22W \/ 13L/);
+  assert.match(subLaneEvidence!.text, /35 graded plays/);
+  assert.equal(subLaneEvidence!.provenance?.source, "Swing ledger");
+
+  const withoutTrackRecord = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: undefined });
+  assert.equal(
+    withoutTrackRecord.envelope.evidence.some((e) => e.text.startsWith("Sub-lane track record:")),
+    false,
+    "no evidence citation when the track-record read is absent",
+  );
+
+  // An ungraduated sub-lane bucket must be omitted here too, never cited as though trustworthy.
+  const ungraduatedSnap: SwingArchetypeTrackRecordSnapshot = {
+    ...subLaneGraduatedSnap,
+    subLanes: { TACTICAL: { ...subLaneGraduatedSnap.subLanes.TACTICAL!, graduated: false, tier: "RESEARCH" } },
+  };
+  const withUngraduated = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: ungraduatedSnap });
+  assert.equal(
+    withUngraduated.envelope.evidence.some((e) => e.text.startsWith("Sub-lane track record:")),
+    false,
+    "an ungraduated sub-lane bucket must not be cited as evidence",
   );
 });
 
@@ -1813,6 +2562,142 @@ test("composeSwingPlayBrief: Dealer posture evidence falls through to fresh GEX 
     postureEvidence!.provenance?.source,
     "GEX",
     "posture resolved from the GEX fallback must be attributed to GEX, not Vector",
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-26, live repro MRNA:65 CLOSED): evidenceFromContext
+// used to gate the ENTIRE "Dealer posture" evidence item on `if (gammaPosture)` — so whenever
+// `resolveGammaPosture` returned null (a real, common case: the GEX matrix's own `gamma_posture`
+// is null, which `buildGexRegime` produces whenever the flip is null for a genuine structural
+// reason such as `insufficient_strikes`/`crossings_far_from_spot`), net GEX and nearest-wall — both
+// independently live and non-stale — were silently dropped too, even though the human-facing
+// `gexPostureSection` (play-brief-intel.ts) renders those same figures gated only on `!stale`,
+// never on `gamma_posture`. Live-reproduced: MRNA's own CLOSED brief showed "Net GEX: +9.6M" /
+// "Nearest wall: 210.00 (resistance, 13.0 pts...)" in its markdown "GEX posture" section while
+// `envelope.evidence[]` carried zero [CALC]/dealer-posture entries for the identical read.
+test("composeSwingPlayBrief: Dealer posture evidence still surfaces net GEX/nearest wall when gamma_posture itself is unresolved (Largo, live repro MRNA)", () => {
+  const nowIso = new Date().toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-10-26 10:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "MRNA",
+      gex_positioning: {
+        ticker: "MRNA",
+        spot: 197.03,
+        flip: null,
+        flip_reason: "insufficient_strikes",
+        call_wall: 210,
+        put_wall: 150,
+        gamma_posture: null,
+        net_gex: 9_600_000,
+        asof: nowIso,
+        as_of_et: "2026-10-26 10:00 ET",
+        matrix_age_sec: 60,
+        freshness: "live",
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(
+    postureEvidence,
+    "expected a Dealer posture evidence item even though gamma_posture itself is unresolved",
+  );
+  assert.doesNotMatch(
+    postureEvidence!.text,
+    /γ/,
+    "must omit the posture token (never fabricate one) when gamma_posture is null",
+  );
+  assert.match(postureEvidence!.text, /net GEX \+9\.6M/, "net GEX figure must still surface");
+  assert.match(
+    postureEvidence!.text,
+    /nearest wall 210\.00/,
+    "nearest wall must still surface from the live call/put walls",
+  );
+  assert.equal(postureEvidence!.provenance?.source, "GEX");
+});
+
+// Sibling of the test above: when NOTHING resolves (gex stale or absent, no vector), the old
+// silent-omission behavior must be preserved — Largo C6 says omit, never fabricate a "Dealer
+// posture:" line with nothing after the colon.
+test("composeSwingPlayBrief: Dealer posture evidence omits cleanly when gamma_posture, net GEX, and nearest wall all fail to resolve", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-10-26 10:00 ET",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.equal(postureEvidence, undefined, "must omit the item entirely, not push an empty one");
+});
+
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro GOOGL-closed): provenance.source
+// here was tagged purely off `postureFromVec` (whether the DIRECTIONAL WORD resolved from Vector's
+// regime.posture) — but the net-GEX dollar figure in the SAME line is unconditionally read from
+// `gex.net_gex` whenever gex is present and fresh (there is no Vector equivalent for it anywhere in
+// this file). So a genuinely-resolved Vector posture ("short") that happens to agree with a fresh
+// GEX matrix's own posture got the WHOLE line tagged "(Vector · ...)" even though the printed net
+// GEX figure (and, in the live repro, the wall too) was verbatim GEX-matrix content — confirmed
+// live: GOOGL's "## Vector desk" section carried only grade/conviction, no GEX data at all, while
+// every number in the "Dealer posture" evidence line matched its "## GEX posture" section exactly.
+test("composeSwingPlayBrief: Dealer posture tags GEX, not Vector, when the net-GEX figure shown is GEX-sourced (live repro GOOGL)", () => {
+  const nowIso = new Date().toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-10-21 04:47 ET",
+    sessionDate: "2026-10-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "GOOGL",
+      gex_positioning: {
+        ticker: "GOOGL",
+        spot: 339.85,
+        flip: 345,
+        call_wall: 345,
+        put_wall: 337.5,
+        gamma_posture: "short",
+        net_gex: 157_700_000,
+        asof: nowIso,
+        as_of_et: "2026-10-21 04:47 ET",
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: {
+      asOf: nowIso,
+      asOfEt: "2026-10-21 04:47 ET",
+      spot: 339.85,
+      dataAgeMs: 5_000,
+      freshness: "live",
+      // Vector's own regime genuinely resolved (not "unknown") — but carries NO gexWalls of its
+      // own, same shape as the live GOOGL repro's "Vector desk" section (grade/conviction only).
+      regime: { posture: "short", label: "SHORT" },
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(postureEvidence, "expected dealer posture evidence");
+  assert.match(postureEvidence!.text, /net GEX \+157\.7M/);
+  assert.equal(
+    postureEvidence!.provenance?.source,
+    "GEX",
+    "the printed net-GEX figure is GEX-only content — tagging the whole line 'Vector' misattributes it",
   );
 });
 
@@ -2202,7 +3087,10 @@ test("composeSwingPlayBrief: GEX dealer posture grounds in envelope evidence (La
         as_of_et: "2026-09-05 16:00 ET",
         session_date: "2026-09-05",
         market_session: "CLOSED",
-        flip: 24,
+        // Flip set far from spot (not 24, which at 0.5pts away would itself be nearer than the
+        // 1.5pt-away call wall this test asserts on) — this test's own subject is wall precedence
+        // (GEX-matrix vs Vector), not the wall-vs-flip comparison nearestLevelWithFlip now adds.
+        flip: 20,
         call_wall: 26,
         put_wall: 22,
         max_pain: null,
@@ -2324,7 +3212,11 @@ test("composeSwingPlayBrief: Dealer posture nearest-wall evidence prefers the li
         as_of_et: "2026-09-05 16:00 ET",
         session_date: "2026-09-05",
         market_session: "CLOSED",
-        flip: 14.72,
+        // Flip set far from spot (not 14.72, which at 0.46pts away would itself be nearer than the
+        // live Vector put wall's 1.18pts this test asserts on) — this test's own subject is wall
+        // precedence (GEX-matrix vs Vector), not the wall-vs-flip comparison nearestLevelWithFlip
+        // now adds.
+        flip: 10,
         call_wall: 18,
         put_wall: 13, // GEX-matrix-native put wall — must NOT win when Vector has a fresher one
         max_pain: null,
@@ -2367,6 +3259,64 @@ test("composeSwingPlayBrief: Dealer posture nearest-wall evidence prefers the li
     /nearest wall 14\.00/,
     "Dealer posture must cite the SAME wall the envelope levels show, not the raw GEX-matrix one",
   );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, fresh-angle technicals audit, adversarially
+// verified): this evidence line picked the gamma flip ONLY when no wall existed at all (`else if`),
+// never comparing the two — so a wall farther from spot than the flip still won, naming a "nearest
+// wall" that wasn't actually nearest. Same bug shape fixed the same day in
+// gexPostureSection/chartLevelsSection.
+test("composeSwingPlayBrief: Dealer posture cites the gamma flip, not a farther-away wall, when the flip is genuinely nearest", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "SPX",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      gex_positioning: {
+        ticker: "SPX",
+        spot: 7550,
+        change_pct: 1.2,
+        asof: "2026-09-05T20:00:00Z",
+        as_of_et: "2026-09-05 16:00 ET",
+        session_date: "2026-09-05",
+        market_session: "CLOSED",
+        flip: 7560, // 10pts away — nearer than either wall below
+        call_wall: 7650,
+        put_wall: 7400,
+        max_pain: null,
+        gex_king_strike: 7650,
+        net_gex: 12_300_000,
+        gamma_posture: "long",
+        gamma_regime_read: "long gamma",
+        net_vex: 0,
+        vanna_posture: null,
+        vanna_regime_read: "",
+        net_dex: null,
+        dex_posture: null,
+        dex_regime_read: null,
+        net_charm: null,
+        charm_posture: null,
+        charm_regime_read: null,
+        nearest_wall: { strike: 7650, kind: "resistance", distance_pts: 100 },
+        freshness: "cached",
+        matrix_age_sec: 30,
+      },
+      arsenal: null,
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(postureEvidence, "expected dealer posture evidence");
+  assert.match(postureEvidence!.text, /γ-flip 7560\.00 \(10\.0 pts\)/);
+  assert.doesNotMatch(postureEvidence!.text, /nearest wall/, "must not cite the farther-away wall as nearest");
 });
 
 test("composeSwingPlayBrief: wall/flip/king level provenance (asOf/freshness) matches the live Vector price actually shown, not GEX's (Largo C8)", () => {
@@ -2588,6 +3538,53 @@ test("composeSwingPlayBrief: a confluence zone citing a DIFFERENT call wall than
     "confluence (call-wall@125+max-pain)",
     "confluence citing a call-wall strike different from the primary must disclose the actual strike",
   );
+});
+
+test("composeSwingPlayBrief: a confluence zone's weighted-average center is rounded before reaching envelope.levels, not served as a raw float", () => {
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): confluenceZones() computes `center` as a
+  // weighted average (weightedPrice / centerWeightSum), which routinely produces a long
+  // floating-point tail — CLAUDE.md's own documented "round at the data layer" systemic issue
+  // (e.g. 7499.360000000001). Two sibling call sites of this same ConfluenceZone.center field
+  // already round it (play-brief-intel.ts, play-brief-narrative-coaching.ts via fmtPriceLevel);
+  // this was the one omission, fixed at the source rather than relying on route.ts's external
+  // roundFloats() wrapper two layers away.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-10-20 16:00 ET",
+    sessionDate: "2026-10-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: new Date().toISOString(),
+      asOfEt: "2026-10-20 16:00 ET",
+      spot: 7499.4,
+      dataAgeMs: 5_000,
+      freshness: "live",
+      gexWalls: { callWalls: [{ strike: 7499.3, pct: 1 }], putWalls: [{ strike: 7400, pct: 2 }] },
+      gammaFlip: 7499.5,
+      maxPain: 7450,
+      confluenceZones: [
+        {
+          // (3*7499.30 + 2.5*7499.50) / 5.5 = 7499.390909090909 — a real non-terminating tail.
+          center: 7499.390909090909,
+          kinds: ["call-wall", "gamma-flip"],
+          score: 5,
+          levels: [
+            { price: 7499.3, kind: "call-wall" },
+            { price: 7499.5, kind: "gamma-flip" },
+          ],
+        },
+      ],
+      darkPoolLevels: [],
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const confluenceLevel = brief.envelope.levels?.find((l) => l.label.startsWith("confluence"));
+  assert.ok(confluenceLevel, "expected a confluence level to render");
+  assert.equal(confluenceLevel?.price, 7499.39, "confluence center must be rounded to 2dp at the source");
 });
 
 test("composeSwingPlayBrief: a confluence zone whose call wall MATCHES the primary is unaffected (no spurious @price qualifier)", () => {
@@ -2989,6 +3986,70 @@ test("composeSwingPlayBrief: earnings evidence carries brief asOf for Largo C1 j
   const earningsEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Next earnings"));
   assert.ok(earningsEvidence, "expected earnings evidence");
   assert.equal(earningsEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
+});
+
+test("composeSwingPlayBrief: peers evidence mirrors catalystsSection's 'Peers:' line (evidence[] completeness)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "SRPT",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: null,
+        related: ["EDIT", "CTMX", "BMRN", "RARE", "FOLD", "QURE", "ARWR"],
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const peersEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Peers:"));
+  assert.ok(peersEvidence, "expected peers evidence to mirror catalystsSection's rendered peer list");
+  assert.equal(peersEvidence?.text, "Peers: EDIT, CTMX, BMRN, RARE, FOLD, QURE.");
+  assert.equal(peersEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
+});
+
+test("composeSwingPlayBrief: no peers evidence fabricated when arsenal.related is empty/null", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: null,
+        related: [],
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const peersEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Peers:"));
+  assert.equal(peersEvidence, undefined, "must not fabricate peers evidence from an empty related[] list");
 });
 
 test("composeSwingPlayBrief: short interest evidence grounds Catalysts claims for Largo C7", () => {
@@ -3955,6 +5016,13 @@ test("composeSwingPlayBrief: Greeks line carries the same 'no live tick yet' cav
 // (18 minutes) — the brief's own separate "Data freshness" section independently flags this mark
 // stale, but Greeks/Spread in the SAME Position section carried zero mention it's the identical
 // quote. Live repro: TSLA/CRWV (both markAsOf-stamped, optionMarkIsStale true).
+//
+// BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro CRWV:63): Greeks/Spread's caveat
+// text reads "_(stale — same quote Mark flagged above)_" — but until the fix this test now also
+// covers, the Mark line a few lines above never actually said "stale" (it fell through to the
+// plain fallback branch, which carried zero confidence wording, unlike the other two Mark
+// branches). So the caveat's own premise was false in exactly the case it fires. The Mark line
+// now appends its own "(stale)" tag when `optionMarkIsStale` is true, making "flagged above" true.
 test("composeSwingPlayBrief: Greeks and Spread both carry a 'stale' caveat when the mark is timestamped but past the staleness window, and neither caveat fires on a fresh mark", () => {
   const stalePlay = fixturePlay({
     status: "HOLD",
@@ -3982,6 +5050,7 @@ test("composeSwingPlayBrief: Greeks and Spread both carry a 'stale' caveat when 
   });
   const stalePosition = staleBrief.envelope.sections.find((s) => s.title === "Position");
   assert.ok(stalePosition, "Position section expected");
+  assert.match(stalePosition!.body, /Mark:.*2026-10-18 09:00 ET.*\(stale\)/, `Mark line itself must flag stale, making "flagged above" true: got ${stalePosition!.body}`);
   assert.match(stalePosition!.body, /Greeks:.*Δ \+0\.62.*stale — same quote Mark flagged above/, `got: ${stalePosition!.body}`);
   assert.match(stalePosition!.body, /Spread:.*stale — same quote Mark flagged above/, `got: ${stalePosition!.body}`);
 
@@ -4207,7 +5276,10 @@ test("composeSwingPlayBrief: absolute premium prices (entry/mark/stop/target) ne
   assert.match(position!.body, /Mark: \*\*\$9\.70\*\*/, `got: ${position!.body}`);
   assert.doesNotMatch(position!.body, /\$\+|\+\$/, `Position must never sign an absolute price, got: ${position!.body}`);
 
-  assert.match(management!.body, /Rails: stop \$1\.96 · target \$9\.80/, `got: ${management!.body}`);
+  // This fixture's trim rung already fired (premium 7.35 >= its own trigger), so the stop side
+  // now carries the 2026-10-21 "already scaled" caveat (a separate, later fix) in between the
+  // stop and target figures — still no '+' sign anywhere, which is this test's actual point.
+  assert.match(management!.body, /Rails: stop \$1\.96 .* · target \$9\.80/, `got: ${management!.body}`);
   assert.doesNotMatch(
     management!.body,
     /\$\+|\+\$/,
@@ -4223,7 +5295,7 @@ test("composeSwingPlayBrief: absolute premium prices (entry/mark/stop/target) ne
 // self-contradiction play-brief-intel.ts's "What to watch" section already fixed on 2026-09-22 for
 // its own "Premium target rail" line, but this earlier, more prominent summary line never got the
 // same treatment.
-test("composeSwingPlayBrief: Rails target already reached by a fired trim is annotated, not shown as a bare unmet figure (live EXTR repro)", () => {
+test("composeSwingPlayBrief: Rails target already reached by a fired trim is annotated, not shown as a bare unmet figure (live EXTR repro); stop side also annotated once scaled (2026-10-21 MRNA fix)", () => {
   const brief = composeSwingPlayBrief({
     play: fixturePlay({
       status: "HOLD",
@@ -4257,8 +5329,8 @@ test("composeSwingPlayBrief: Rails target already reached by a fired trim is ann
   assert.ok(management, "expected Management section");
   assert.match(
     management!.body,
-    /Rails: stop \$0\.06 · target \$0\.30 ✓ \(reached\)/,
-    `target already hit by the fired trim must say so, not read as a fresh unmet objective, got: ${management!.body}`,
+    /Rails: stop \$0\.06 _\(no longer applies — already scaled; runner trail now \$0\.19\)_ · target \$0\.30 ✓ \(reached\)/,
+    `target already hit by the fired trim must say so, not read as a fresh unmet objective, AND the stop (dead post-scale per scale-out.ts) must surface the real governing runner-trail floor instead of reading as a live trigger, got: ${management!.body}`,
   );
 });
 
@@ -4298,6 +5370,53 @@ test("composeSwingPlayBrief: Rails target not yet reached renders as a bare figu
   assert.ok(management, "expected Management section");
   assert.match(management!.body, /Rails: stop \$0\.06 · target \$0\.30$/m, `got: ${management!.body}`);
   assert.doesNotMatch(management!.body, /reached/, `got: ${management!.body}`);
+});
+
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro MRNA 237.5C 2DTE/positionId 1958):
+// once a trim tranche has fired, the exit engine's own live state machine (deriveScaleOutAction/
+// computeScaleOutTriggerInfo, scale-out.ts) permanently disables the pre-scale hard stop — it is
+// gated `if (!scaledAlready)`, and post-scale the engine returns `hard_stop_price: null` because
+// "the hard stop no longer applies (the partial is already locked in)". This line used to render
+// `ep.stop_premium` unconditionally, stating a dead thesis-break trigger as live and never
+// surfacing the real governing floor (the runner's trailing stop off its peak,
+// peakPremium × SCALE_OUT_RULES.trail_from_peak). Live repro numbers: entry $6.49, peak +103.4%.
+test("composeSwingPlayBrief: Rails stop rail is annotated (not a bare live trigger) once a trim has fired, surfacing the real runner-trail floor (live MRNA repro)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "TRIM",
+      recommendation: "HOLD",
+      entry: 6.49,
+      mark: 10,
+      pnlPct: 54.1,
+      peak: 103.4,
+      manageAction: "HOLD",
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 12.98, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: 2.6,
+        target_premium: 12.98,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-10-20T20:00:00.000Z",
+    sessionDate: "2026-10-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.match(
+    management!.body,
+    /Rails: stop \$2\.60 _\(no longer applies — already scaled; runner trail now \$6\.60\)_ · target \$12\.98 ✓ \(reached\)/,
+    `the dead pre-scale stop must be annotated and the real runner-trail floor (entry $6.49 × (1+103.4%) × 0.5 ≈ $6.60) surfaced, not rendered as a bare live trigger, got: ${management!.body}`,
+  );
 });
 
 // ─── Roll-candidate advisory (Ask Largo standing mandate, 2026-09-18): manage.ts's dte_migration/
@@ -4567,6 +5686,65 @@ test("composeSwingPlayBrief: CLOSED play emits outcome section", () => {
   assert.doesNotMatch(outcome!.body, /16:05:00\.000Z/, "Outcome must not print a raw ISO exit timestamp");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro NVDA:62): the test above injects
+// `mfeCapturePct: 68` directly, a shape that never occurs in real production data —
+// mfe-capture.ts's own doc comment says this field is "currently never populated," and the real
+// swing closed-play adapter (`terminalPlayFromHorizon`) confirms it never sets `mfeCapturePct`.
+// closedSection used to gate its "MFE capture" line on that raw field alone, so it was
+// permanently dead for every real swing CLOSED play even though `peak`/`exitPnlPct` (the inputs
+// the shared `mfeCaptureOutcome()` ratio-fallback needs) were already present — the SAME envelope's
+// "Lessons" section computes and shows the identical ratio from the same two fields. This test
+// uses the REAL production shape (no `mfeCapturePct`) to prove the fallback now fires.
+test("composeSwingPlayBrief: CLOSED play's Outcome section shows MFE capture via the ratio fallback when mfeCapturePct is absent (real production shape, live repro NVDA:62)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "CLOSED",
+      exitPnlPct: 7.2,
+      peak: 66.1,
+      closedReason: "target",
+      mfeCapturePct: null,
+      exitAt: "2026-10-20T13:30:00.000Z",
+    }),
+    asOf: "2026-10-20 16:00 ET",
+    sessionDate: "2026-10-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const outcome = brief.envelope.sections.find((s) => s.title === "Outcome");
+  assert.ok(outcome, "Outcome section must render");
+  assert.match(outcome!.body, /MFE capture: \*\*\+10\.9%\*\*/, "ratio fallback (7.2/66.1) must render, not vanish because mfeCapturePct is absent");
+});
+
+test("composeSwingPlayBrief: CLOSED play's Outcome section omits MFE capture (not a negative 'capture') on a round-trip-to-loss, even with peak/exitPnlPct present", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "CLOSED",
+      exitPnlPct: -26.9,
+      peak: 40.2,
+      closedReason: "stopped",
+      mfeCapturePct: null,
+      exitAt: "2026-10-20T13:30:00.000Z",
+    }),
+    asOf: "2026-10-20 16:00 ET",
+    sessionDate: "2026-10-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const outcome = brief.envelope.sections.find((s) => s.title === "Outcome");
+  assert.ok(outcome, "Outcome section must still render (Exit P&L/Reason/Closed)");
+  assert.doesNotMatch(outcome!.body, /MFE capture/, "a round-trip-to-loss has nothing captured — mfeCaptureOutcome returns round_trip, not capture");
+});
+
 test("composeSwingPlayBrief: envelope levels use measured Vector/GEX freshness, not hardcoded live", () => {
   const staleAsOf = new Date(Date.now() - 20 * 60_000).toISOString();
   const ctx: SwingPlayBriefContext = {
@@ -4798,6 +5976,75 @@ test("composeSwingPlayBrief: OPEN/CLOSED plays do not surface flag anchor/entry 
   assert.equal(brief.envelope.levels?.find((l) => l.label === "entry trigger"), undefined);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25 — live MSTR repro): `levelsFromContext` used to
+// stamp BOTH "flag anchor" and "entry trigger" with the IDENTICAL `pinnedProvenance` object (built
+// from `play.detectedAt`) unconditionally, even once the two prices had genuinely diverged — which
+// only happens when the dossier rebuilt its plan on a later scan pass and `entryTriggerUnderlyingPx`
+// moved away from the flag's pinned price (horizon-plays.ts's own field doc: "the two can diverge
+// once a dossier refreshes its plan on a later scan pass"). Live repro: MSTR flagUnderlyingPx 163.30
+// vs entryTriggerUnderlyingPx 147.47, both stamped asOf "2026-10-21 09:15 ET" — falsely claiming the
+// entry-trigger price was pinned at the same instant as the flag anchor when it plainly was not.
+test("composeSwingPlayBrief: entry trigger reuses the flag anchor's pinned provenance when the price still matches it", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "LONG",
+      flagUnderlyingPx: 163.3,
+      entryTriggerUnderlyingPx: 163.3, // identical — never recomputed since the flag was pinned
+      detectedAt: "2026-10-21T13:15:00.000Z",
+    }),
+    asOf: "2026-10-21 09:15 ET",
+    sessionDate: "2026-10-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  const entryTrigger = brief.envelope.levels?.find((l) => l.label === "entry trigger");
+  assert.ok(flagAnchor && entryTrigger);
+  // Unchanged behavior: still genuinely pinned to the flag's own moment, so it's honest to share
+  // the flag anchor's provenance verbatim.
+  assert.equal(entryTrigger?.provenance?.asOf, flagAnchor?.provenance?.asOf);
+  assert.equal(entryTrigger?.provenance?.freshness, flagAnchor?.provenance?.freshness);
+  assert.equal(entryTrigger?.provenance?.source, "Swing lane");
+});
+
+test("composeSwingPlayBrief: entry trigger gets honest unknown provenance once its price has diverged from the flag anchor's (MSTR repro)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "LONG",
+      flagUnderlyingPx: 163.3,
+      entryTriggerUnderlyingPx: 147.47, // dossier rebuilt on a later scan pass — no longer the flag's pinned price
+      detectedAt: "2026-10-21T13:15:00.000Z",
+    }),
+    asOf: "2026-10-21 09:15 ET",
+    sessionDate: "2026-10-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  const entryTrigger = brief.envelope.levels?.find((l) => l.label === "entry trigger");
+  assert.ok(flagAnchor && entryTrigger);
+  // The flag anchor itself is unaffected — it is genuinely pinned to detectedAt.
+  assert.match(flagAnchor?.provenance?.asOf ?? "", /2026-10-21/);
+  // The entry trigger must NOT borrow the flag anchor's asOf/freshness once the prices disagree —
+  // that would falsely claim it was pinned at the same instant.
+  assert.notEqual(entryTrigger?.provenance?.asOf, flagAnchor?.provenance?.asOf);
+  assert.equal(entryTrigger?.provenance?.asOf, null);
+  assert.equal(entryTrigger?.provenance?.freshness, "unknown");
+  assert.equal(entryTrigger?.provenance?.source, "Swing lane");
+});
+
 test("composeSwingPlayBrief: envelope level provenance uses ET stamps, not raw UTC ISO (C1)", () => {
   const staleAsOf = "2026-09-05T20:00:00.000Z";
   const ctx: SwingPlayBriefContext = {
@@ -5003,6 +6250,207 @@ test("composeSwingPlayBrief: Exec P&L line has no qualifier when no trim has fir
   assert.ok(position, "expected Position section");
   assert.match(position!.body, /Exec P&L: \*\*\+1\.8%\*\*$/m, `got: ${position!.body}`);
   assert.doesNotMatch(position!.body, /Exec P&L.*open runner only/, `got: ${position!.body}`);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: GET
+// /api/market/swing/play-brief?playId=SWING:EXPE:2071 — a real, live two-sided quote (bid $0.00,
+// ask $1.20, mid $0.60=(0+1.2)/2, passing the "is this a real quote" backstop check), not a
+// missing one). `execPnlPct`/`execMark` are both null for a confirmed zero bid (executableFill,
+// terminal-ladder.ts, intentionally does not fabricate a fill price at $0), which is
+// indistinguishable, before this fix, from "no quote at all" — so the Exec P&L line silently
+// vanished with zero caveat, the single WORST real executable state getting WEAKER disclosure
+// than a comparable position with a nonzero low bid (e.g. BLSH, bid $0.32, which correctly renders
+// this line). `execBidZero: true` (adapters.ts, from executableFill's new `bidConfirmedZero`) is
+// how the brief now tells the two null-shaped cases apart.
+test("composeSwingPlayBrief: Exec P&L line surfaces a confirmed $0.00 bid as a total loss, not silence (live EXPE repro)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.95,
+      mark: 0.6, // mid = (0 + 1.2) / 2
+      pnlPct: -36.8,
+      peak: -10,
+      execMark: null, // executableFill() correctly keeps this null for a genuine zero bid
+      execPnlPct: null, // same — no honest nonzero fill price exists
+      execBidZero: true, // but the book IS real and the bid IS a confirmed $0.00
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(
+    position!.body,
+    /Exec P&L: \*\*-100\.0%\*\* _\(bid is \$0\.00 — no real buyer at any price; the executable exit is a total loss\)_/,
+    `a confirmed $0.00 bid must render the strongest disclosure, not silently omit the line — got: ${position!.body}`,
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro MRNA): Exec P&L is priced off the
+// exact same bid/ask snapshot the Greeks/Spread lines already flag stale — this line must carry
+// the identical caveat, not render as if the fill-based figure were freshly measured.
+test("composeSwingPlayBrief: Exec P&L line carries the same stale-quote caveat as the Greeks/Spread lines above it", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 17.63,
+      mark: 20.7,
+      markAsOf: "2026-09-10T20:00:00.000Z", // 1 hour before asOf below — well past the 18-minute stale bar
+      markIsSync: false,
+      pnlPct: 17.4,
+      peak: 46.1,
+      greeks: { delta: 0.4 },
+      liquidity: { bid: 18.8, ask: 22.6, spreadPct: 0.184 },
+      execPnlPct: 6.7,
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Greeks:.*_\(stale — same quote Mark flagged above\)_/, `got: ${position!.body}`);
+  assert.match(
+    position!.body,
+    /Exec P&L: \*\*\+6\.7%\*\*\s*_\(stale — same quote Mark flagged above\)_/,
+    `Exec P&L must carry the same staleness caveat as Greeks/Spread above it, got: ${position!.body}`,
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro NAIL/BMNR/TDOC): the plain "P&L:"
+// line is the one Position-section line still missing `staleCaveat` — Greeks/Spread/Exec P&L all
+// carry it (test above), but `pnlForDisplay` is derived from the identical stale contract snapshot.
+// A member could even read the SAME percentage stale-flagged in "Trade manager read"
+// (execSlippageCoaching's "Executable P&L — mid X%") and unflagged a few lines above in Position.
+test("composeSwingPlayBrief: plain P&L line carries the same stale-quote caveat as Greeks/Spread/Exec P&L", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 17.63,
+      mark: 20.7,
+      markAsOf: "2026-09-10T20:00:00.000Z", // 1 hour before asOf below — well past the 18-minute stale bar
+      markIsSync: false,
+      pnlPct: 17.4,
+      peak: 46.1,
+      greeks: { delta: 0.4 },
+      liquidity: { bid: 18.8, ask: 22.6, spreadPct: 0.184 },
+      execPnlPct: 6.7,
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(
+    position!.body,
+    /P&L: \*\*\+17\.4%\*\*\s*_\(stale — same quote Mark flagged above\)_/,
+    `the plain P&L line must carry the same staleness caveat as Greeks/Spread/Exec P&L below it, got: ${position!.body}`,
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro SWING:PANW): Peak/Trough are DB
+// watermarks (peak_premium/trough_premium) ratcheted GREATEST/LEAST on the SAME live-tick cadence
+// as last_mark (db.ts), so when the mark freezes/goes stale, Peak/Trough are equally frozen/
+// unverified — but the two lines above (P&L, test above) and below (Greeks/Spread/Exec P&L,
+// earlier tests) all carry `staleCaveat` for the identical frozen snapshot, and Peak/Trough never
+// did. Live PANW repro: "Mark: $19.45 ... (stale)" / "P&L: +9.9% (stale...)" / "Peak: +9.9%" (no
+// caveat) / "Trough: -5.2%" (no caveat) / "Greeks: ... (stale...)".
+test("composeSwingPlayBrief: Peak/Trough lines carry the same stale-quote caveat as P&L/Greeks/Spread/Exec P&L", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 17.63,
+      mark: 20.7,
+      markAsOf: "2026-09-10T20:00:00.000Z", // 1 hour before asOf below — well past the 18-minute stale bar
+      markIsSync: false,
+      pnlPct: 17.4,
+      peak: 46.1,
+      trough: -5.2,
+      greeks: { delta: 0.4 },
+      liquidity: { bid: 18.8, ask: 22.6, spreadPct: 0.184 },
+      execPnlPct: 6.7,
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(
+    position!.body,
+    /Peak: \*\*\+46\.1%\*\*\s*_\(stale — same quote Mark flagged above\)_/,
+    `Peak must carry the same staleness caveat as P&L/Greeks above/below it, got: ${position!.body}`,
+  );
+  assert.match(
+    position!.body,
+    /Trough: \*\*-5\.2%\*\*\s*_\(stale — same quote Mark flagged above\)_/,
+    `Trough must carry the same staleness caveat as P&L/Greeks above/below it, got: ${position!.body}`,
+  );
+});
+
+// The markGenuinelyUnknown branch already renders its own distinct "(no live tick yet)" caveat —
+// appending `staleCaveat` there too would double up two different "we can't trust this" messages
+// on the same line. Pins that the fix above is correctly scoped to the non-unknown branch only.
+test("composeSwingPlayBrief: Peak/Trough 'no live tick yet' wording is not doubled up with the stale-quote caveat", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 10,
+      mark: 10,
+      markIsSync: true,
+      pnlPct: null,
+      peak: null,
+      trough: null,
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Peak: \*\*—\*\* _\(no live tick yet\)_/, `got: ${position!.body}`);
+  assert.match(position!.body, /Trough: \*\*—\*\* _\(no live tick yet\)_/, `got: ${position!.body}`);
+  assert.doesNotMatch(
+    position!.body,
+    /no live tick yet\)_\s*_\(/,
+    `must not double up the two distinct caveats, got: ${position!.body}`,
+  );
 });
 
 // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):

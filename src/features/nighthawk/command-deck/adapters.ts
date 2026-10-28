@@ -43,8 +43,10 @@ import type {
   ThesisLevel,
 } from "./types";
 import { readCortexView } from "@/lib/zerodte/pane";
+import { parseBudgetVerdictStamp } from "@/lib/swing/swing-portfolio-budget";
 import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
+import type { ThesisPipelineResult } from "@/lib/zerodte/thesis/types";
 import { projectRunnerProfileForCandidate } from "@/lib/zerodte/runner-profile";
 import type { ZeroDteVectorPulse } from "@/lib/zerodte/vector-crosslink";
 import { vectorSideToDirection } from "@/lib/zerodte/vector-commit-boost";
@@ -391,6 +393,33 @@ export function firstSeenIso(
   return null;
 }
 
+/**
+ * The thesis/contract-engine's `expression` is a generic cross-DTE "best way to express this
+ * idea" recommendation (contract-engine.ts's `pickBestExpression`) — it can legitimately name a
+ * 2-5 DTE contract instead of the front (0DTE) expiry when 0DTE IV is rich. That's a fair
+ * forward-looking idea on a pre-commit WATCH/SKIP row, but once a row has actually traded, 0DTE's
+ * own entry logic always commits the same-day contract regardless of what `expression`
+ * recommended — so a committed row can carry a frozen `expression` naming a DIFFERENT, never-
+ * traded contract. Rendering that under "Why we picked it" (ZeroDteCommandPanel.tsx) told a
+ * member the wrong strike/DTE was the rationale for their actual position (live repro
+ * 2026-10-21: NVDA committed 217.5C/0DTE, frozen expression said 222.5C/2DTE). Strip it rather
+ * than show a contract the member was never actually in; the rest of the thesis (archetype,
+ * tier, desk evidence) is still accurate and stays.
+ */
+function stripMismatchedExpression(
+  thesisFirst: ThesisPipelineResult | null,
+  isCommitted: boolean,
+  realStrike: number | null,
+  realDte: number | null
+): ThesisPipelineResult | null {
+  const contract = thesisFirst?.expression?.contract;
+  if (!thesisFirst || !contract || !isCommitted) return thesisFirst;
+  const strikeMismatch = realStrike != null && contract.strike !== realStrike;
+  const dteMismatch = realDte != null && contract.dte !== realDte;
+  if (!strikeMismatch && !dteMismatch) return thesisFirst;
+  return { ...thesisFirst, expression: null };
+}
+
 export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const setup = src.setup ?? null;
   const direction = asDir(setup?.direction);
@@ -559,10 +588,14 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const trackReference = watchTrack ? watchReferencePremium(setup?.plan ?? null) : null;
   const trackPct = watchTrack ? watchTrackPct(trackReference, markNum) : null;
 
-  const thesisFirstResolved =
+  const thesisFirstResolved = stripMismatchedExpression(
     setup?.thesis_first ??
-    src.thesis_first ??
-    thesisFirstFromEntryContext(src.thesis_first_blob, src.ticker, setupDir);
+      src.thesis_first ??
+      thesisFirstFromEntryContext(src.thesis_first_blob, src.ticker, setupDir),
+    status === "OPEN" || status === "HOLD" || status === "TRIM" || status === "CLOSED",
+    strike,
+    dte
+  );
 
   return {
     id: `0DTE:${src.ticker}`,
@@ -757,6 +790,12 @@ export interface HorizonDeckSource {
    *  pre-commit WATCH/lane candidate (Cortex only runs on committed rows), a pre-wire-in row,
    *  or a non-SWING caller — honest absence, never fabricated (Largo contract §3 absence). */
   cortex?: unknown;
+  /** Raw entry_context.budget_verdict JSONB (swing commit.ts's `budgetVerdictStamp`) — parsed
+   *  structurally via `parseBudgetVerdictStamp`/`bookRiskLine` below, never trusted raw. Undefined/
+   *  null on a pre-commit WATCH/lane candidate (the budget gate only runs on committed rows), a
+   *  pre-wire-in row, or a non-SWING caller — honest absence, never fabricated (Ask Largo standing
+   *  mandate, 2026-10-26, #4076 comment 6410025245). */
+  budgetVerdict?: unknown;
   /** CLOSED SWING only: whether a real scale-out trim was ENFORCED on this leg at any point before
    *  it closed — see `SwingClosedDeckSource`'s own field (closed-plays.ts) for the full history of
    *  why `status`/`liveStatus` alone can never answer this for a closed row. Null/absent = not
@@ -972,10 +1011,37 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   // `thesisHealthUncalibrated()`'s (thesis-health.ts) identical guard for the aggregate score.
   // The mechanical `note` (e.g. "below the 2× partial and above the hard stop") is real, useful
   // information and is kept; only the misleading green "intact" level is suppressed.
-  const thesisBreakResolved =
-    src.regime === BANGER_LEDGER_REGIME_LABEL
-      ? { level: "unknown" as ThesisLevel, note: src.thesisBreak?.note }
-      : (src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon));
+  // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro HAL/CLF/NET): the two guards below
+  // (`thesisBreakResolved`, `regimeForDisplay`) both key off `src.regime === BANGER_LEDGER_REGIME_LABEL`
+  // — computed ONCE, here, so downstream consumers that need to detect Banger origin have a single
+  // source of truth that survives the display-nulling the rest of this function does to `regime`.
+  // Without this, `play-brief-intel.ts`'s `bangerOriginNoRealThesis`/`reviewedIsBangerOrigin` guards
+  // (which re-check `play.regime === BANGER_LEDGER_REGIME_LABEL` on the OUTPUT TerminalPlay, not the
+  // raw `src`) became dead code the moment `regimeForDisplay` started nulling that same field for
+  // display — `null === BANGER_LEDGER_REGIME_LABEL` is always false, so the suppression they gate
+  // never fires. Live-reproduced: HAL/CLF/NET's swing play-briefs each rendered the self-contradictory
+  // "Thesis **unknown** — Engine B scale-out — whole-market breakout" line (level forced to "unknown"
+  // by `thesisBreakResolved` below, but the generic Banger sentinel note rendered right alongside it
+  // because the line-level suppression itself never triggered). See `bangerOrigin` on `TerminalPlay`
+  // (types.ts) for the field this exposes to those downstream guards.
+  const isBangerOrigin = src.regime === BANGER_LEDGER_REGIME_LABEL;
+  const thesisBreakResolved = isBangerOrigin
+    ? { level: "unknown" as ThesisLevel, note: src.thesisBreak?.note }
+    : (src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon));
+  // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro BMNR): the sibling
+  // `thesisBreakResolved` guard immediately above already treats `BANGER_LEDGER_REGIME_LABEL` as
+  // an internal "no real per-position dossier" sentinel, never a value fit for display — but
+  // `TerminalPlay.regime` itself (returned below) used to forward `src.regime` straight through
+  // with no equivalent guard. PlayTerminal.tsx's play-detail panel rendered a literal
+  // "Regime: BREAKOUT · BANGER" line, and SwingCockpitStrip.tsx's lane-level cockpit header
+  // (which picks the first play in the whole Swing book with ANY truthy `regime`) rendered the
+  // same sentinel as if it characterized the current market regime for the entire Swing lane —
+  // with 78/81 of the live committed Swing book Banger-origin (CLAUDE.md), this was the dominant
+  // rendered state of both surfaces, not an edge case. `src.regime` itself (the raw sentinel) is
+  // still passed into `computeSwingThesisHealth` below unchanged — that function's own
+  // `thesisHealthUncalibrated()` guard needs to SEE the sentinel to correctly withhold the
+  // aggregate score; only the value handed to the UI is suppressed here.
+  const regimeForDisplay = isBangerOrigin ? null : (src.regime ?? null);
   // Ask Largo standing mandate (#4076): a committed row's WATCH-lane dossier state (setupState)
   // never survives the WATCH→COMMIT transition — src.setupState is structurally null for every
   // live SWING position, permanently withholding computeSwingThesisHealth's persistence pillar.
@@ -1096,7 +1162,8 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     archetypeNearTie: src.archetypeNearTie ?? null,
     topFlowProvenance: src.topFlowProvenance ?? null,
     gates: [],
-    regime: src.regime ?? null,
+    regime: regimeForDisplay,
+    bangerOrigin: isBangerOrigin,
     thesisBreak: thesisBreakResolved,
     ...mgmtWithThesis,
     ...(preEntrySwingMgmt ?? {}),
@@ -1112,6 +1179,12 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
           : livePnl ?? exec.pnl_pct,
     execMark: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.fill,
     execPnlPct: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.pnl_pct,
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE): `exec.fill`/`exec.pnl_pct`
+    // above are null both for "no quote at all" and for a REAL two-sided book whose bid is a
+    // confirmed $0.00 — `exec.bidConfirmedZero` (terminal-ladder.ts) is the only place that tells
+    // the two apart, so it has to reach the play-brief narrative/rail layers the same gated way
+    // execMark/execPnlPct do, or the distinction is computed here and then thrown away.
+    execBidZero: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.bidConfirmedZero,
     occ: occPrefixed,
     markAsOf: src.markAsOf ?? null,
     markIsSync: src.markAsOf == null,
@@ -1170,6 +1243,10 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     // Pinned Cortex evidence from entry_context.cortex — parsed structurally, honestly null
     // when absent (pre-commit candidate, pre-wire-in row, or a malformed/foreign blob).
     cortex: readCortexView(src.cortex ?? null),
+    // Pinned book-risk budget verdict from entry_context.budget_verdict — parsed structurally,
+    // honestly null when absent (pre-commit candidate, pre-this-fix historical row, or a
+    // malformed/foreign blob). Ask Largo standing mandate, 2026-10-26, #4076 comment 6410025245.
+    budgetVerdict: parseBudgetVerdictStamp(src.budgetVerdict ?? null),
   };
 }
 
@@ -1459,6 +1536,7 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     exitPnlPct: src.exitPnlPct ?? null,
     closedReason: src.closedReason ?? null,
     cortex: src.cortex ?? null,
+    budgetVerdict: src.budgetVerdict ?? null,
     entryTriggerUnderlyingPx: src.entryTriggerUnderlyingPx ?? null,
     invalidationUnderlyingPx: src.invalidationUnderlyingPx ?? null,
     trimEnforcedBeforeClose: src.trimEnforcedBeforeClose ?? null,

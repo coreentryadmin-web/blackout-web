@@ -141,6 +141,57 @@ test("buildStructureLadder: R:R is the REAL deriveSwingPlanLevels ratio, not a f
   assert.equal(flipRung!.target!.horizon, "swing", "10pts is beyond 2x the 1.5 ATR proxy (3pts)");
 });
 
+test("buildStructureLadder: an OPEN position with real committed entry/stop uses THOSE, not the live ATR recompute (2026-10-20 fix)", () => {
+  // Real position: committed LONG at underlying 220, real structural stop 205 (6.8% below entry).
+  // Spot has since risen to 240 — before the fix, `stop` would be a fresh ATR recompute off 240
+  // (234.60), disagreeing with the narrative's "Structural stop (committed): 205.00" line in the
+  // SAME envelope.
+  const play = fixturePlay({
+    direction: "LONG",
+    entryTriggerUnderlyingPx: 220,
+    invalidationUnderlyingPx: 205,
+  });
+  const vec = fixtureVec({ spot: 240, gammaFlip: 260 });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.equal(ladder!.stop, 205, "stop must be the REAL committed invalidation, not a live recompute");
+
+  const flipRung = ladder!.rungs.find((r) => r.kind === "gamma_flip");
+  assert.ok(flipRung?.target);
+  // |260-220| / |220-205| = 40/15, using the REAL entry/stop pair, not live spot/ATR-recompute.
+  assert.ok(Math.abs(flipRung!.target!.rewardRisk - 40 / 15) < 1e-9);
+});
+
+test("buildStructureLadder: a WATCH candidate ALWAYS uses the live recompute, even if the play somehow carries real committed fields", () => {
+  const play = fixturePlay({
+    direction: "LONG",
+    entryTriggerUnderlyingPx: 220,
+    invalidationUnderlyingPx: 205,
+  });
+  const vec = fixtureVec({ spot: 240, gammaFlip: 260 });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "watch");
+  assert.ok(ladder);
+  // atr proxy = 240*0.015=3.6, stopDist=1.5*3.6=5.4, stop=240-5.4=234.6 — the live recompute, not 205.
+  assert.ok(Math.abs(ladder!.stop - 234.6) < 1e-9, "a WATCH candidate has no real position to disagree with");
+});
+
+test("buildStructureLadder: an OPEN position with only ONE real field present falls back fully to the live recompute (no mixed real/live frame)", () => {
+  const playStopOnly = fixturePlay({ direction: "LONG", invalidationUnderlyingPx: 205 });
+  const vec = fixtureVec({ spot: 240, gammaFlip: 260 });
+  const ctxStopOnly = fixtureCtx({ play: playStopOnly, vector: vec, ecosystem: null });
+  const ladderStopOnly = buildStructureLadder(ctxStopOnly, playStopOnly, "open");
+  assert.ok(ladderStopOnly);
+  assert.ok(Math.abs(ladderStopOnly!.stop - 234.6) < 1e-9, "missing real entry must not mix with the real stop alone");
+
+  const playEntryOnly = fixturePlay({ direction: "LONG", entryTriggerUnderlyingPx: 220 });
+  const ctxEntryOnly = fixtureCtx({ play: playEntryOnly, vector: vec, ecosystem: null });
+  const ladderEntryOnly = buildStructureLadder(ctxEntryOnly, playEntryOnly, "open");
+  assert.ok(ladderEntryOnly);
+  assert.ok(Math.abs(ladderEntryOnly!.stop - 234.6) < 1e-9, "missing real stop must not mix with the real entry alone");
+});
+
 test("buildStructureLadder: horizon classifies short_term within ~2x ATR, swing beyond it", () => {
   const play = fixturePlay({ direction: "LONG" });
   // Two favorable-side rungs straddling the 2xATR=3pt boundary at spot=100, atr=1.5.
@@ -319,6 +370,54 @@ test("buildStructureLadder: cites the archetype track record ONLY when the bucke
   );
 });
 
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SEDG): archetypeTrackRecord above
+// only ever covered the ARCHETYPE dimension — but archetypeTrackRecordSection (play-brief-intel.ts)
+// independently gates and renders the SUB-LANE dimension too, and a ticker whose sub-lane bucket
+// graduated while its archetype bucket didn't is a real, supported state (that section's own tests
+// prove it). The Structure Ladder had no field at all for that case.
+test("buildStructureLadder: cites the sub-lane track record ONLY when that bucket has graduated — independent of the archetype dimension", () => {
+  const play = fixturePlay({ direction: "LONG", archetype: "BREAKOUT", subLane: "TACTICAL" });
+  const vec = fixtureVec({ spot: 100, gammaFlip: 110 });
+
+  const subLaneGraduatedCtx = fixtureCtx({
+    play,
+    vector: vec,
+    archetypeTrackRecord: {
+      asOf: "2026-09-10T15:00:00.000Z",
+      gradedPlays: 40,
+      archetypes: {},
+      subLanes: { TACTICAL: trackRecordEntry({ graduated: true, winRatePct: 62.9, wilsonLbPct: 58.1, n: 35 }) },
+    },
+  });
+  const ladder = buildStructureLadder(subLaneGraduatedCtx, play, "open")!;
+  assert.equal(ladder.archetypeTrackRecord, undefined, "archetype bucket ungraduated here — must not fabricate");
+  assert.deepEqual(ladder.subLaneTrackRecord, {
+    subLaneLabel: "Tactical (5–7d)",
+    winRatePct: 62.9,
+    wilsonLbPct: 58.1,
+    n: 35,
+  });
+
+  const ungraduatedCtx = fixtureCtx({
+    play,
+    vector: vec,
+    archetypeTrackRecord: {
+      asOf: "2026-09-10T15:00:00.000Z",
+      gradedPlays: 40,
+      archetypes: {},
+      subLanes: { TACTICAL: trackRecordEntry({ graduated: false }) },
+    },
+  });
+  assert.equal(
+    buildStructureLadder(ungraduatedCtx, play, "open")!.subLaneTrackRecord,
+    undefined,
+    "never cite an ungraduated sub-lane bucket — Largo C6 omission, not a discounted number",
+  );
+
+  const coldCacheCtx = fixtureCtx({ play, vector: vec, archetypeTrackRecord: null });
+  assert.equal(buildStructureLadder(coldCacheCtx, play, "open")!.subLaneTrackRecord, undefined);
+});
+
 // ── WATCH bucket (still builds — the ladder is useful pre-entry too) ────────
 
 test("buildStructureLadder: builds for a WATCH candidate too (forward risk/reward is exactly the pre-entry question)", () => {
@@ -458,6 +557,73 @@ test("buildStructureLadder: riskTheOtherSide falls back to a neutral pivot when 
   const ladder = buildStructureLadder(ctx, play, "open");
   assert.ok(ladder);
   assert.ok(ladder!.riskTheOtherSide, "must still fall back to the neutral pivot when nothing else exists");
+  assert.equal(ladder!.riskTheOtherSide!.kind, "magnet");
+  assert.equal(ladder!.riskTheOtherSide!.role, "neutral");
+});
+
+// BUG FIX (2026-10-20, Ask Largo standing mandate, adversarially verified): a call wall CAN sit
+// below spot (price already ran through it) and used to win riskTheOtherSide's "nearest unfavorable
+// rung" reduce for a LONG thesis purely on distance, with no check that call_wall is even an
+// eligible kind for a LONG's "wrong side". `resolveInvalidationFocalLevel` (play-brief-narrative.ts)
+// — the sibling this widget's own header claims it can never disagree with — never treats call_wall
+// as a candidate invalidation level for a LONG (only put_wall/dark_pool/king), so the two could name
+// different "the level that matters on the downside" prices for the identical position.
+test("buildStructureLadder: riskTheOtherSide never names a call wall as the unfavorable side for a LONG, even when it is nearer than an eligible wall (live kind-mismatch repro)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    gexWalls: {
+      callWalls: [{ strike: 98 }], // below spot (ran through it), NEARER — ineligible for a LONG's wrong side
+      putWalls: [{ strike: 80 }], // below spot, farther, but the only kind-eligible real wall
+    },
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide);
+  assert.equal(
+    ladder!.riskTheOtherSide!.kind,
+    "put_wall",
+    "a call wall is never eligible as a LONG's unfavorable-side level, regardless of distance",
+  );
+  assert.equal(ladder!.riskTheOtherSide!.price, 80);
+});
+
+test("buildStructureLadder: riskTheOtherSide never names a put wall as the unfavorable side for a SHORT, even when it is nearer than an eligible wall (symmetric kind-mismatch repro)", () => {
+  const play = fixturePlay({ direction: "SHORT" });
+  const vec = fixtureVec({
+    spot: 100,
+    gexWalls: {
+      putWalls: [{ strike: 102 }], // above spot (ran through it), NEARER — ineligible for a SHORT's wrong side
+      callWalls: [{ strike: 120 }], // above spot, farther, but the only kind-eligible real wall
+    },
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide);
+  assert.equal(
+    ladder!.riskTheOtherSide!.kind,
+    "call_wall",
+    "a put wall is never eligible as a SHORT's unfavorable-side level, regardless of distance",
+  );
+  assert.equal(ladder!.riskTheOtherSide!.price, 120);
+});
+
+// Fallback tier must ALSO exclude the cross-direction wall kind — otherwise it would resurface the
+// same bug whenever no kind-eligible real wall exists at all (the call wall must be treated as if
+// it weren't there, falling through to a neutral pivot, never as a last-resort "real wall").
+test("buildStructureLadder: riskTheOtherSide falls through an ineligible-kind wall to a neutral pivot, never to the ineligible wall itself", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    gexWalls: { callWalls: [{ strike: 98 }] }, // the ONLY unfavorable-side rung, but ineligible for LONG
+    magnet: { strike: 90 }, // neutral, farther, but the only eligible fallback
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide, "must fall through to the neutral pivot, never omit entirely");
   assert.equal(ladder!.riskTheOtherSide!.kind, "magnet");
   assert.equal(ladder!.riskTheOtherSide!.role, "neutral");
 });

@@ -11,6 +11,7 @@ import { ironCondorProductForLargo, liveCondorForLargo } from "@/lib/largo/zerod
 import { fetchNighthawkEchoForTickers, type EcosystemNightHawkTake } from "@/lib/bie/ecosystem-context";
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
+import { etMinutes } from "@/features/spx/lib/spx-play-session-time";
 import { fetchBenzingaNews } from "@/lib/providers/polygon";
 import { zerodteBoardMaxBlockMs } from "@/lib/providers/config";
 import { readGridEarnings } from "@/lib/zerodte/earnings";
@@ -518,13 +519,40 @@ function mapLedgerRow(
         ratchetTargetReached(pinnedLivePnlPct(r.entry_premium, r.peak_premium), rails.targetPct)
       );
   // The terminal close label, now distinguishing the exit type: a pinned stop pins (and
-  // wins); else an engine exit is categorized; else a plain 15:50 close is "time_stop";
+  // wins); else an engine exit is categorized; else a GENUINE 15:50 ET close is "time_stop";
   // else the row is still live (null).
+  //
+  // BUG FIX (2026-10-20, member audit directive — "verify stop execution, thesis
+  // invalidation, time stops... don't dismiss this"): `engineExitCategory` reads null in TWO
+  // completely different situations that this used to conflate under one fallback label:
+  // (1) a GENUINE 15:50 ET hard time-stop (PLAN_RULES.time_stop_et_minutes) — plan.ts's own
+  // close, which never stamps an exit-engine context at all, so "time_stop" is the correct,
+  // only available label; and (2) a row the EXIT ENGINE already closed (ratchet/thesis/flat/
+  // plan_stop/trim_scale) whose `stampZeroDteExitContext` write simply hasn't landed yet —
+  // exit-sync.ts stamps entry_context.exit and the caller flips `status` to CLOSED in two
+  // SEPARATE, unsynchronized DB writes (live-marks.ts / scan.ts), so a board read in that
+  // window sees status=CLOSED with no stamp yet, which is indistinguishable from (1) under
+  // the old blind `?? "time_stop"` fallback. Live evidence (SNXX, 2026-10-20): committed
+  // ~10:11 ET, nowhere near the 15:50 boundary; a board read at 15:23 UTC showed
+  // closed_reason:"time_stop" / exit_pnl_pct:null; a read six minutes later (once the real
+  // stamp landed) showed closed_reason:"ratchet" / exit_pnl_pct:14.04 — proving the
+  // "time_stop" label shown in between was never true, just the fallback's only available
+  // string. Gated now on the row's OWN frozen `last_mark_at` (CASE-guarded to the close
+  // instant — see updateZeroDteLiveState) genuinely falling at/after the time-stop boundary,
+  // with a few minutes of slack for the ~1s/~2min sync lanes' own tick latency; otherwise
+  // report null ("exit reason not yet persisted") rather than a specific reason the row
+  // cannot yet support. `exit_pnl_pct`/`exit_reason` already read null honestly in this
+  // window (unchanged) — this fix makes `closed_reason` consistent with them instead of
+  // contradicting them with a wrong, meaningful-sounding label.
+  const lastMarkEtMinutes =
+    typeof r.last_mark_at === "string" ? etMinutes(new Date(r.last_mark_at)) : null;
+  const isGenuineTimeStop =
+    lastMarkEtMinutes != null && lastMarkEtMinutes >= PLAN_RULES.time_stop_et_minutes - 2;
   const boardClosedReason: ZeroDteBoardLedgerRow["closed_reason"] =
     closedReason === "stopped"
       ? "stopped"
       : r.status === "CLOSED"
-        ? (engineExitCategory ?? "time_stop")
+        ? (engineExitCategory ?? (isGenuineTimeStop ? "time_stop" : null))
         : null;
 
   return {
@@ -867,18 +895,65 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   // what gradePlanFromBars will stamp after the session). Same single derivation as mapLedgerRow.
   return {
     ...payload,
-    ledger: payload.ledger.map((row) => ({
-      ...row,
-      live_pnl_pct: reconcileLedgerLivePnlPct(row),
-      // Re-price the executable P&L off the member-visible ROUNDED bid/entry (same reason the
-      // mid live_pnl_pct is recomputed here) so the two exit lanes stay directly comparable.
-      live_pnl_pct_exec: executableFill(row.bid, row.ask, row.entry_premium).pnl_pct,
-      // Re-derive the ladder fired-state off the rounded entry/peak so a tranche's rendered
-      // premium level and its FIRED flag agree with the numbers shown elsewhere on the row.
-      exit_policy: row.exit_policy
-        ? buildTerminalExitLadder(row.exit_policy, row.entry_premium, row.peak_premium)
-        : null,
-    })),
+    ledger: payload.ledger.map((row, i) => {
+      // BUG FIX (2026-10-20, Ask Largo/5-engine standing mandate, live repro): peak_pnl_pct/
+      // mfe_capture_pct/floor_pnl_pct were computed in mapLedgerRow from the RAW pre-roundFloats
+      // entry_premium/peak_premium, but roundFloats() below rounds entry_premium/peak_premium
+      // independently of each other — so a row with a half-cent peak (e.g. a real 0.695 rounding
+      // to a displayed 0.70) ends up with a peak_pnl_pct that no longer matches the simple
+      // (peak−entry)/entry arithmetic a member would do from the row's OWN displayed
+      // peak_premium/entry_premium fields. live_pnl_pct/live_pnl_pct_exec/exit_policy already get
+      // this exact re-derivation treatment below for the identical reason — these three fields
+      // never did. Re-derived here from the same member-visible rounded premiums, same functions
+      // mapLedgerRow itself uses (peakPnlPct/mfeCapturePct/ratchetFloorPct+ratchetTargetReached).
+      //
+      // BUG FIX (2026-10-21, live repro — QQQ/SPCX/NVDA/AAPL): the recompute above was applied
+      // UNCONDITIONALLY, including to CLOSED rows. floor_pnl_pct's own doc comment (above, on the
+      // ZeroDteBoardLedgerRow type) frames it as LIVE-ONLY guidance ("your stop is now at...") —
+      // but a CLOSED row's `peak_premium` is the row's FINAL/latched value, which is not
+      // guaranteed to equal the peak that was actually armed at the moment the exit engine made
+      // its decision (entry_context.exit is stamped FIRST-WRITE-WINS off the peak seen at THAT
+      // tick; peak_premium can still widen on the very same transition before the row's lanes
+      // fully quiesce). Live evidence: a CLOSED QQQ row served peak_pnl_pct 11.11 / floor_pnl_pct
+      // 4.44 (= round2(11.11×0.4)) while its OWN pinned exit_detail read "...+4.24% floor armed by
+      // a +10.61% peak" — the served numbers were self-consistent with each other but NOT with the
+      // frozen narrative the member actually traded under; SPCX/NVDA/AAPL showed the identical
+      // peak-pnl_pct×0.4-floor pattern against their own disagreeing exit_detail text. A CLOSED
+      // row's exit-time peak is ALREADY on the payload, honestly, via the pinned
+      // entry_context.exit blob (readExitStampFromEntryContext's peak_pnl_pct — the exact value
+      // buildExitContext stamped when the engine decided, same input exit_detail's prose was built
+      // from) — so a CLOSED row with an engine-exit stamp now reports THAT frozen value instead of
+      // re-deriving from peak_premium. A CLOSED row with NO engine-exit stamp (a mechanical stop or
+      // a genuine 15:50 time-stop, neither of which stamps entry_context.exit) has no better frozen
+      // source and keeps the existing rounded-premium recompute, unchanged. OPEN/HOLD/TRIM rows are
+      // completely unaffected — this guards on row.status === "CLOSED" only.
+      const r = ledgerRows[i];
+      const frozenPeakPnl =
+        row.status === "CLOSED" ? readExitStampFromEntryContext(r?.entry_context ?? null).peak_pnl_pct : null;
+      const peakPnl = frozenPeakPnl != null ? frozenPeakPnl : peakPnlPct(row.entry_premium, row.peak_premium);
+      return {
+        ...row,
+        live_pnl_pct: reconcileLedgerLivePnlPct(row),
+        // Re-price the executable P&L off the member-visible ROUNDED bid/entry (same reason the
+        // mid live_pnl_pct is recomputed here) so the two exit lanes stay directly comparable.
+        live_pnl_pct_exec: executableFill(row.bid, row.ask, row.entry_premium).pnl_pct,
+        // Re-derive the ladder fired-state off the rounded entry/peak so a tranche's rendered
+        // premium level and its FIRED flag agree with the numbers shown elsewhere on the row.
+        exit_policy: row.exit_policy
+          ? buildTerminalExitLadder(row.exit_policy, row.entry_premium, row.peak_premium)
+          : null,
+        peak_pnl_pct: peakPnl,
+        mfe_capture_pct: mfeCapturePct(row.exit_pnl_pct, peakPnl),
+        // floor_pnl_pct is a pure function of the SAME peak (frozen-or-live, resolved above) and
+        // the row's frozen target_pct — reusing `peakPnl` (rather than re-deriving
+        // pinnedLivePnlPct(row.entry_premium, row.peak_premium) twice, as this used to) keeps a
+        // CLOSED row's floor consistent with its own served peak_pnl_pct/exit_detail by
+        // construction, never re-introducing the live peak through a second code path.
+        floor_pnl_pct: row.is_condor
+          ? null
+          : ratchetFloorPct(peakPnl, ratchetTargetReached(peakPnl, row.target_pct ?? PLAN_RULES.target_pct)),
+      };
+    }),
   };
 }
 

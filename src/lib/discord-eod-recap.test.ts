@@ -58,6 +58,43 @@ test("filterDarkpoolSessionPrints keeps RTH prints", () => {
   assert.equal(prints[0]?.ticker, "NVDA");
 });
 
+// Regression: sessionOpenMs used to hardcode "T13:30:00.000Z" as 9:30 AM ET, which is only
+// correct under EDT. Under EST (DST ends the first Sunday of November), 9:30 AM ET is
+// 14:30 UTC, so the old constant read as 8:30 AM ET and let an hour of genuine pre-market
+// flow leak into the EOD recap filter as regular-session activity.
+test("filterHelixSessionFlows excludes pre-market flows under EST (DST-correct session open)", () => {
+  const sessionDate = "2026-11-16"; // Monday, after DST ends 2026-11-01 — EST (UTC-5) in effect
+  const now = new Date("2026-11-16T21:00:00.000Z"); // 4:00 PM ET
+  const preMarket: HelixDiscordFlowInput = {
+    ...helixBase,
+    ticker: "PRE",
+    event_at: "2026-11-16T13:45:00.000Z", // 8:45 AM ET — pre-market, must be excluded
+  };
+  const rth: HelixDiscordFlowInput = {
+    ...helixBase,
+    ticker: "RTH",
+    event_at: "2026-11-16T15:00:00.000Z", // 10:00 AM ET — regular session, must be kept
+  };
+  const kept = filterHelixSessionFlows([preMarket, rth], sessionDate, now);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0]?.ticker, "RTH");
+});
+
+test("filterDarkpoolSessionPrints excludes pre-market prints under EST (DST-correct session open)", () => {
+  const sessionDate = "2026-11-16";
+  const now = new Date("2026-11-16T21:00:00.000Z");
+  const prints = filterDarkpoolSessionPrints(
+    [
+      { ticker: "PRE", premium: 6_000_000, side: "buy", executed_at: "2026-11-16T13:45:00.000Z" },
+      { ticker: "RTH", premium: 6_000_000, side: "sell", executed_at: "2026-11-16T15:00:00.000Z" },
+    ],
+    sessionDate,
+    now
+  );
+  assert.equal(prints.length, 1);
+  assert.equal(prints[0]?.ticker, "RTH");
+});
+
 test("filterHelixSessionFlows mirrors session window", () => {
   const sessionDate = "2026-08-04";
   const now = new Date("2026-08-04T20:06:00.000Z");

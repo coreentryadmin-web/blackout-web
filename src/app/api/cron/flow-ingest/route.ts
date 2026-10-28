@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
       reason: typeof result.skipped === "string" ? result.skipped : undefined,
       ingested: result.ingested,
       polled: result.polled,
+      truncated: result.truncated,
     });
     return NextResponse.json(result);
   } catch (error) {

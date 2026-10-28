@@ -316,6 +316,16 @@ export function mergePulseIntoDesk(
   const vix = pulseVixLive ? pulse.vix : base.vix;
   return {
     ...base,
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25): same "never reassigned, inherited from
+    // base/emptyDeskPayload forever" shape as the prior_close/gap_pct/gap_source fix and the
+    // vix_term fix below — `available` was never reassigned either, so deskShellFromPulse's
+    // fallback shell (mergePulseIntoDesk(emptyDeskPayload(...), pulse)) stayed available:false
+    // forever even when pulse carried real, live data (pulse.available is true precisely when
+    // buildSpxDeskPulse resolved a real price). computeSpxConfluence gates on `!desk.available`
+    // and nulls confluence entirely when that happens, which cascades into
+    // evaluateSpxPlayCore's closed-market branch emitting assessed:false/score:0/factors:[]/
+    // direction:null/grade:"D" even with real underlying data sitting in pulse the whole time.
+    available: pulse.available || base.available,
     price,
     // Fall back to the desk's own spx_change_pct when pulse could not anchor its own (common
     // off-hours/pre-open, when pulse has no trusted prior-close basis) — mirrors the vix
@@ -372,7 +382,21 @@ export function mergePulseIntoDesk(
     add: pulse.add ?? base.add,
     regime: pulse.regime ?? base.regime,
     leader_stocks: pulse.leader_stocks.length ? pulse.leader_stocks : base.leader_stocks,
-    vix_term: pulse.vix_term ?? base.vix_term,
+    // BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro): the off-hours "serve today's
+    // own settled close" branch of buildSpxDeskPulse (spx-desk.ts, empty-shell spread) sets
+    // vix_term to the DEFINED placeholder {vix9d:null,vix3m:null,structure:"unknown",detail:""},
+    // never reassigning it. A bare `pulse.vix_term ?? base.vix_term` keeps that placeholder
+    // (it's a defined object, not null/undefined) and discards the real base desk's vix_term —
+    // silently dropping the scored "VIX curve" factor from GET /api/market/spx/play while the
+    // sibling GET /api/market/spx/desk (built without this merge) still showed real contango/
+    // backwardation data at the exact same instant. Same "check for real content, not just
+    // definedness" fix already applied to leader_stocks two lines below (`.length ?` instead of
+    // a bare `??`) — applied here the same way, since vix_term can likewise be a real,
+    // non-empty object with no values set.
+    vix_term:
+      pulse.vix_term && (pulse.vix_term.vix9d != null || pulse.vix_term.vix3m != null)
+        ? pulse.vix_term
+        : base.vix_term,
     data_quality: pulse.data_quality ?? base.data_quality,
     market_open: pulse.market_open ?? base.market_open,
     market_status: pulse.market_status ?? base.market_status,

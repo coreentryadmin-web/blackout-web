@@ -124,7 +124,13 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/platform-warm",
     schedule_label: "~Every 5 min (extended warm window)",
-    stale_after_min: 15,
+    // 10, not 15 — matches this cron's own OVERLAP_LOCK_TTL_SEC=600s (route.ts) and its true
+    // siblings in the same "~5min warm window" job family (desk-warm, meridian-warm, both 10).
+    // Was 15 here only; corrected 2026-10-20 (DISCOVERY-lane sweep) after finding route.ts's own
+    // comment claimed lockstep with "10" (copy-pasted from meridian-warm when #5984 added the
+    // overlap guard) while this registry entry still said 15 — a real invariant drift, same bug
+    // class as the vector-pick-sweep TTL silent-revert found the same cycle.
+    stale_after_min: 10,
     weekdays_only: true,
     market_hours_only: true,
     description:
@@ -428,6 +434,24 @@ export const CRON_JOBS: CronJobDefinition[] = [
     weekdays_only: true,
     description: "Validates overnight Night Hawk plays vs pre-market SPX; writes CONFIRMED/DEGRADED/INVALIDATED status to Redis for UI badges",
     produces_member_alert: true,
+  },
+  {
+    key: "nighthawk-backfill-repair",
+    name: "Night Hawk Backfill Repair",
+    kind: "http",
+    path: "/api/cron/nighthawk-backfill-repair",
+    schedule_label: "9:00 AM ET weekdays",
+    // 15 min BEFORE nighthawk-morning-confirm's own dual-band, same DST-coverage shape, so any
+    // repair this makes is already in the DB by the time morning-confirm reads the edition row.
+    // Added 2026-10-25 (Ask Largo standing mandate) — closes the gap PR #6637 (2026-10-24)
+    // shipped the repair CAPABILITY for but never wired an automatic caller: a BACKFILL play's
+    // contract that expired before its own edition's target trading day sat dead in the
+    // member-facing edition for a full day because nothing ever invoked the admin-only
+    // POST /api/admin/nighthawk/republish-backfill endpoint for it.
+    schedule_cron_utc: "0 13,14 * * 1-5",
+    stale_after_min: 36 * 60,
+    weekdays_only: true,
+    description: "Auto-repairs a BACKFILL play whose own contract has expired relative to the edition's target trading day, before morning-confirm and market open",
   },
   {
     key: "market-regime-detector",

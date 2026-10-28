@@ -548,6 +548,59 @@ test("reliableMarkFromSnapshot: thin ask (size<=1) just past the new 3x boundary
 });
 
 // ---------------------------------------------------------------------------
+// reliableAskFromSnapshot — the ask-side sibling of reliableMarkFromSnapshot. Live repro
+// 2026-10-24 (Ask Largo x Night Hawk Swings standing mandate): Night Hawk Swings CAG
+// (positionId 2082) showed bid:0, ask:3.90 — mark was already correctly guarded down to the
+// real last trade ($0.03), but the SAME snapshot's `ask` passed through raw into the contract
+// that feeds `liquidityFromContract`'s `(ask - bid) / mid` — producing a "Spread: 13000.0%"
+// line on the swing play-brief instead of the honest "one-sided book — spread not priceable"
+// fallback that already exists for a genuinely absent ask.
+test("reliableAskFromSnapshot: bid=0 backstop quote (CAG live repro) is nulled, not passed through raw", async () => {
+  const { reliableAskFromSnapshot } = await import("./options-snapshot");
+  // bid:0, ask:3.90 -> naive mid 1.95; real last trade 0.03 -> 65x divergence, well past the 10x bar
+  // (the same guard reliableMarkFromSnapshot already applies to the mark).
+  const snap = baseSnap({ mark: 1.95, bid: 0, ask: 3.9, last: 0.03, dayClose: 0.03 });
+  assert.equal(reliableAskFromSnapshot(snap), null, "a backstop ask must be nulled, never asserted as a real quote");
+});
+
+test("reliableAskFromSnapshot: bid>0 (a real two-sided market) is never second-guessed", async () => {
+  const { reliableAskFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 7.5, bid: 5, ask: 10, last: 0.07 });
+  assert.equal(reliableAskFromSnapshot(snap), 10);
+});
+
+test("reliableAskFromSnapshot: bid=0 legitimate deep-OTM case (mid close to last) keeps the real ask", async () => {
+  const { reliableAskFromSnapshot } = await import("./options-snapshot");
+  // Same shape as reliableMarkFromSnapshot's own "legitimate deep-OTM" case — not a backstop artifact.
+  const snap = baseSnap({ mark: 0.025, bid: 0, ask: 0.05, last: 0.03 });
+  assert.equal(reliableAskFromSnapshot(snap), 0.05);
+});
+
+test("reliableAskFromSnapshot: bid=0, no last/dayClose reference at all -> ask passes through (nothing to compare against)", async () => {
+  const { reliableAskFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 7.5, bid: 0, ask: 15, last: null, dayClose: null });
+  assert.equal(reliableAskFromSnapshot(snap), 15);
+});
+
+test("reliableAskFromSnapshot: null mark (nothing to compare against) leaves the ask untouched", async () => {
+  const { reliableAskFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: null, bid: 0, ask: 15, last: 0.07 });
+  assert.equal(reliableAskFromSnapshot(snap), 15);
+});
+
+test("reliableAskFromSnapshot: thin one-lot ask (askSize<=1) applies the tighter 3x bar — CRI-shaped case", async () => {
+  const { reliableAskFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 2.8, bid: 0, ask: 5.6, askSize: 1, last: 0.55 });
+  assert.equal(reliableAskFromSnapshot(snap), null, "a 5.09x divergence on a one-lot ask must be nulled");
+});
+
+test("reliableAskFromSnapshot: the SAME 5.09x divergence with normal ask size keeps the 10x bar (no regression)", async () => {
+  const { reliableAskFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 2.8, bid: 0, ask: 5.6, askSize: 25, last: 0.55 });
+  assert.equal(reliableAskFromSnapshot(snap), 5.6, "real size behind the ask must keep the existing 10x tolerance untouched");
+});
+
+// ---------------------------------------------------------------------------
 // reliableMarkFromQuote — the generic form reliableMarkFromSnapshot delegates to, extracted
 // 2026-09-15 so a non-OptionSnapshot quote shape (the WS mark stream, {mark, bid, last}, no
 // dayClose) can apply the identical bid=0 backstop-quote divergence guard. Same rule, same
