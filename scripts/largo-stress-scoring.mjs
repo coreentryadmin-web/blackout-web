@@ -46,3 +46,28 @@ export function scoreAnswer(entry, route, answer, status) {
         : "WARN";
   return { verdict, issues };
 }
+
+/** True when the live harness should backoff and retry (429 or exhausted fetch retries). */
+export function liveResponseShouldRetry(res) {
+  return res?.status === 429 || Boolean(res?.transport_error);
+}
+
+/**
+ * Non-200 and transport failures are excluded from answer-quality scoring.
+ * Returns null when the response should be scored for product quality (HTTP 200).
+ */
+export function liveTransportVerdict(res) {
+  if (res?.transport_error) {
+    return {
+      verdict: "SKIP",
+      issues: [`transport-${res.transport_error} — transport, excluded from the quality tally`],
+    };
+  }
+  if (res?.throttled || res?.status !== 200) {
+    return {
+      verdict: "SKIP",
+      issues: [`http-${res.status} — transport, excluded from the quality tally`],
+    };
+  }
+  return null;
+}

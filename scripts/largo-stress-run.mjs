@@ -24,7 +24,7 @@
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { scoreAnswer } from "./largo-stress-scoring.mjs";
+import { scoreAnswer, liveTransportVerdict, liveResponseShouldRetry } from "./largo-stress-scoring.mjs";
 import { loadStressBank, bankStats } from "./largo-stress-banks.mjs";
 import { classifyBieIntent, classifyBieStagingFallback, isOutOfScopeQuestion } from "../src/lib/bie/router.ts";
 import { isCompoundQuestion, isNonsenseQuestion } from "../src/lib/bie/question-focus.ts";
@@ -95,15 +95,21 @@ async function askLive(cookieHeader, question) {
   const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
   const BASE = liveBaseUrl();
   const t0 = Date.now();
-  const res = await fetchRetry(
-    `${BASE}/api/market/largo/query`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookieHeader },
-      body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
-    },
-    { retries: 1, timeoutMs: 120_000 }
-  );
+  let res;
+  try {
+    res = await fetchRetry(
+      `${BASE}/api/market/largo/query`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
+      },
+      { retries: 3, timeoutMs: 120_000 }
+    );
+  } catch (err) {
+    const transport_error = err?.cause?.code ?? err?.code ?? "fetch-failed";
+    return { status: 0, answer: "", ms: Date.now() - t0, transport_error };
+  }
   const body = await res.json().catch(() => ({}));
 
   // Capture rate-limit headers on 429 to identify the upstream source
@@ -144,10 +150,15 @@ async function askLiveThrottleAware(cookieHeader, question, attempts = 3) {
   let last = null;
   for (let i = 0; i < attempts; i++) {
     last = await askLive(cookieHeader, question);
-    if (last.status !== 429) return last;
-    await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+    if (last.status === 200) return last;
+    if (liveResponseShouldRetry(last) && i < attempts - 1) {
+      await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+      continue;
+    }
+    break;
   }
-  return { ...last, throttled: true };
+  if (last?.status === 429) return { ...last, throttled: true };
+  return last;
 }
 
 const rows = [];
@@ -254,13 +265,10 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
             console.log(`[largo-stress] refresh ${ok ? "succeeded, retrying" : "unavailable"}`);
             if (ok) res = await askLiveThrottleAware(live.cookieHeader, entry.q);
           }
-          const { status, answer, source, ms, throttled, rate_limit_headers } = res;
+          const { status, answer, source, ms, rate_limit_headers } = res;
           const route = { intent: rows[i].intent };
-          // ONLY A 200 IS SCORED FOR QUALITY — everything else is a transport outcome.
-          const scored =
-            throttled || status !== 200
-              ? { verdict: "SKIP", issues: [`http-${status} — transport, excluded from the quality tally`] }
-              : scoreAnswer(entry, route, answer, status);
+          const transportScored = liveTransportVerdict(res);
+          const scored = transportScored ?? scoreAnswer(entry, route, answer, status);
           liveRows.push({
             ...entry,
             status,
