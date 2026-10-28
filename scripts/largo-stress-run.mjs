@@ -20,6 +20,7 @@
  *   LARGO_STRESS_LIVE — 1 to POST each question to live Largo
  *   LARGO_STRESS_CONCURRENCY — parallel live requests (default 1)
  *   LARGO_STRESS_LIMIT — cap questions (debug)
+ *   LARGO_STRESS_FETCH_RETRIES — fetchRetry attempts for live POSTs (default 3)
  *   LARGO_BASE_URL — default https://blackouttrades.com
  */
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -95,6 +96,7 @@ async function askLive(cookieHeader, question) {
   const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
   const BASE = liveBaseUrl();
   const t0 = Date.now();
+  const fetchRetries = Math.max(0, Number(process.env.LARGO_STRESS_FETCH_RETRIES ?? 3) || 3);
   let res;
   try {
     res = await fetchRetry(
@@ -104,7 +106,7 @@ async function askLive(cookieHeader, question) {
         headers: { "Content-Type": "application/json", Cookie: cookieHeader },
         body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
       },
-      { retries: 3, timeoutMs: 120_000 }
+      { retries: fetchRetries, timeoutMs: 120_000 }
     );
   } catch (err) {
     const transport_error = err?.cause?.code ?? err?.code ?? "fetch-failed";
