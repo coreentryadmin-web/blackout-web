@@ -24,7 +24,7 @@
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { scoreAnswer } from "./largo-stress-scoring.mjs";
+import { scoreAnswer, scoreLiveHttpOutcome } from "./largo-stress-scoring.mjs";
 import { loadStressBank, bankStats } from "./largo-stress-banks.mjs";
 import { classifyBieIntent, classifyBieStagingFallback, isOutOfScopeQuestion } from "../src/lib/bie/router.ts";
 import { isCompoundQuestion, isNonsenseQuestion } from "../src/lib/bie/question-focus.ts";
@@ -95,15 +95,26 @@ async function askLive(cookieHeader, question) {
   const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
   const BASE = liveBaseUrl();
   const t0 = Date.now();
-  const res = await fetchRetry(
-    `${BASE}/api/market/largo/query`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookieHeader },
-      body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
-    },
-    { retries: 1, timeoutMs: 120_000 }
-  );
+  let res;
+  try {
+    res = await fetchRetry(
+      `${BASE}/api/market/largo/query`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
+      },
+      { retries: 3, timeoutMs: 120_000 }
+    );
+  } catch (err) {
+    const code = err?.cause?.code ?? err?.code ?? "fetch-failed";
+    return {
+      status: 0,
+      answer: "",
+      ms: Date.now() - t0,
+      transport_error: String(code),
+    };
+  }
   const body = await res.json().catch(() => ({}));
 
   // Capture rate-limit headers on 429 to identify the upstream source
@@ -256,11 +267,7 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
           }
           const { status, answer, source, ms, throttled, rate_limit_headers } = res;
           const route = { intent: rows[i].intent };
-          // ONLY A 200 IS SCORED FOR QUALITY — everything else is a transport outcome.
-          const scored =
-            throttled || status !== 200
-              ? { verdict: "SKIP", issues: [`http-${status} — transport, excluded from the quality tally`] }
-              : scoreAnswer(entry, route, answer, status);
+          const scored = scoreLiveHttpOutcome(res, entry, route);
           liveRows.push({
             ...entry,
             status,

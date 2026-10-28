@@ -46,3 +46,16 @@ export function scoreAnswer(entry, route, answer, status) {
         : "WARN";
   return { verdict, issues };
 }
+
+/** Live harness only — non-200 and fetch failures are transport, not answer quality. */
+export function scoreLiveHttpOutcome(res, entry, route) {
+  const { status, answer, throttled, transport_error } = res;
+  const transportIssue =
+    transport_error != null
+      ? `transport-${transport_error} — excluded from the quality tally`
+      : `http-${status} — transport, excluded from the quality tally`;
+  if (throttled || status !== 200) {
+    return { verdict: "SKIP", issues: [transportIssue] };
+  }
+  return scoreAnswer(entry, route, answer ?? "", status);
+}
