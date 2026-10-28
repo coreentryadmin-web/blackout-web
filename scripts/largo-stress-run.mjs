@@ -95,15 +95,27 @@ async function askLive(cookieHeader, question) {
   const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
   const BASE = liveBaseUrl();
   const t0 = Date.now();
-  const res = await fetchRetry(
-    `${BASE}/api/market/largo/query`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookieHeader },
-      body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
-    },
-    { retries: 1, timeoutMs: 120_000 }
-  );
+  let res;
+  try {
+    res = await fetchRetry(
+      `${BASE}/api/market/largo/query`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
+      },
+      { retries: 4, timeoutMs: 120_000 }
+    );
+  } catch (err) {
+    const code = err?.cause?.code ?? err?.code;
+    return {
+      status: 0,
+      answer: "",
+      ms: Date.now() - t0,
+      transport_error: err?.message ?? String(err),
+      transport_code: code ?? null,
+    };
+  }
   const body = await res.json().catch(() => ({}));
 
   // Capture rate-limit headers on 429 to identify the upstream source
@@ -144,10 +156,14 @@ async function askLiveThrottleAware(cookieHeader, question, attempts = 3) {
   let last = null;
   for (let i = 0; i < attempts; i++) {
     last = await askLive(cookieHeader, question);
-    if (last.status !== 429) return last;
-    await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+    if (last.status === 200) return last;
+    if (last.status === 429 || last.status === 0) {
+      await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+      continue;
+    }
+    return last;
   }
-  return { ...last, throttled: true };
+  return { ...last, throttled: last?.status === 429, transport_failed: last?.status === 0 };
 }
 
 const rows = [];
@@ -242,24 +258,42 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
         while (idx < entries.length) {
           const i = idx++;
           const entry = entries[i];
-          let res = await askLiveThrottleAware(await freshCookie(), entry.q);
-          if (res.status === 401) {
-            // LOGGED UNCONDITIONALLY, because the first version of this was silent and I could
-            // not tell whether it had run. The one sweep that should have exercised it answered
-            // 16 questions, hit a hard 401 wall, and printed nothing — leaving "the recovery
-            // works" unverifiable. A recovery path that cannot be seen firing is indistinguishable
-            // from one that is not wired.
-            console.log(`[largo-stress] 401 on "${entry.q.slice(0, 40)}" — refreshing session token`);
-            const ok = await refreshSession();
-            console.log(`[largo-stress] refresh ${ok ? "succeeded, retrying" : "unavailable"}`);
-            if (ok) res = await askLiveThrottleAware(live.cookieHeader, entry.q);
+          let res;
+          try {
+            res = await askLiveThrottleAware(await freshCookie(), entry.q);
+            if (res.status === 401) {
+              // LOGGED UNCONDITIONALLY, because the first version of this was silent and I could
+              // not tell whether it had run. The one sweep that should have exercised it answered
+              // 16 questions, hit a hard 401 wall, and printed nothing — leaving "the recovery
+              // works" unverifiable. A recovery path that cannot be seen firing is indistinguishable
+              // from one that is not wired.
+              console.log(`[largo-stress] 401 on "${entry.q.slice(0, 40)}" — refreshing session token`);
+              const ok = await refreshSession();
+              console.log(`[largo-stress] refresh ${ok ? "succeeded, retrying" : "unavailable"}`);
+              if (ok) res = await askLiveThrottleAware(live.cookieHeader, entry.q);
+            }
+          } catch (err) {
+            res = {
+              status: 0,
+              answer: "",
+              ms: 0,
+              transport_error: err?.message ?? String(err),
+              transport_failed: true,
+            };
           }
-          const { status, answer, source, ms, throttled, rate_limit_headers } = res;
+          const { status, answer, source, ms, throttled, rate_limit_headers, transport_error } = res;
           const route = { intent: rows[i].intent };
           // ONLY A 200 IS SCORED FOR QUALITY — everything else is a transport outcome.
           const scored =
             throttled || status !== 200
-              ? { verdict: "SKIP", issues: [`http-${status} — transport, excluded from the quality tally`] }
+              ? {
+                  verdict: "SKIP",
+                  issues: [
+                    status === 0 && transport_error
+                      ? `transport — ${transport_error} (excluded from the quality tally)`
+                      : `http-${status} — transport, excluded from the quality tally`,
+                  ],
+                }
               : scoreAnswer(entry, route, answer, status);
           liveRows.push({
             ...entry,
