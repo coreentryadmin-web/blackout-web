@@ -28,6 +28,7 @@ import { scoreAnswer } from "./largo-stress-scoring.mjs";
 import { loadStressBank, bankStats } from "./largo-stress-banks.mjs";
 import { classifyBieIntent, classifyBieStagingFallback, isOutOfScopeQuestion } from "../src/lib/bie/router.ts";
 import { isCompoundQuestion, isNonsenseQuestion } from "../src/lib/bie/question-focus.ts";
+import { liveResultFromFetchError, transportSkipIssues } from "./largo-stress-transport.mjs";
 
 const OUT = join(process.cwd(), "audit-output");
 mkdirSync(OUT, { recursive: true });
@@ -95,15 +96,20 @@ async function askLive(cookieHeader, question) {
   const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
   const BASE = liveBaseUrl();
   const t0 = Date.now();
-  const res = await fetchRetry(
-    `${BASE}/api/market/largo/query`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookieHeader },
-      body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
-    },
-    { retries: 1, timeoutMs: 120_000 }
-  );
+  let res;
+  try {
+    res = await fetchRetry(
+      `${BASE}/api/market/largo/query`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
+      },
+      { retries: 3, timeoutMs: 120_000 }
+    );
+  } catch (err) {
+    return liveResultFromFetchError(err, Date.now() - t0);
+  }
   const body = await res.json().catch(() => ({}));
 
   // Capture rate-limit headers on 429 to identify the upstream source
@@ -242,24 +248,29 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
         while (idx < entries.length) {
           const i = idx++;
           const entry = entries[i];
-          let res = await askLiveThrottleAware(await freshCookie(), entry.q);
-          if (res.status === 401) {
-            // LOGGED UNCONDITIONALLY, because the first version of this was silent and I could
-            // not tell whether it had run. The one sweep that should have exercised it answered
-            // 16 questions, hit a hard 401 wall, and printed nothing — leaving "the recovery
-            // works" unverifiable. A recovery path that cannot be seen firing is indistinguishable
-            // from one that is not wired.
-            console.log(`[largo-stress] 401 on "${entry.q.slice(0, 40)}" — refreshing session token`);
-            const ok = await refreshSession();
-            console.log(`[largo-stress] refresh ${ok ? "succeeded, retrying" : "unavailable"}`);
-            if (ok) res = await askLiveThrottleAware(live.cookieHeader, entry.q);
+          let res;
+          try {
+            res = await askLiveThrottleAware(await freshCookie(), entry.q);
+            if (res.status === 401) {
+              // LOGGED UNCONDITIONALLY, because the first version of this was silent and I could
+              // not tell whether it had run. The one sweep that should have exercised it answered
+              // 16 questions, hit a hard 401 wall, and printed nothing — leaving "the recovery
+              // works" unverifiable. A recovery path that cannot be seen firing is indistinguishable
+              // from one that is not wired.
+              console.log(`[largo-stress] 401 on "${entry.q.slice(0, 40)}" — refreshing session token`);
+              const ok = await refreshSession();
+              console.log(`[largo-stress] refresh ${ok ? "succeeded, retrying" : "unavailable"}`);
+              if (ok) res = await askLiveThrottleAware(live.cookieHeader, entry.q);
+            }
+          } catch (err) {
+            res = liveResultFromFetchError(err);
           }
           const { status, answer, source, ms, throttled, rate_limit_headers } = res;
           const route = { intent: rows[i].intent };
           // ONLY A 200 IS SCORED FOR QUALITY — everything else is a transport outcome.
           const scored =
             throttled || status !== 200
-              ? { verdict: "SKIP", issues: [`http-${status} — transport, excluded from the quality tally`] }
+              ? { verdict: "SKIP", issues: transportSkipIssues(res) }
               : scoreAnswer(entry, route, answer, status);
           liveRows.push({
             ...entry,
