@@ -28,6 +28,7 @@ import { scoreAnswer } from "./largo-stress-scoring.mjs";
 import { loadStressBank, bankStats } from "./largo-stress-banks.mjs";
 import { classifyBieIntent, classifyBieStagingFallback, isOutOfScopeQuestion } from "../src/lib/bie/router.ts";
 import { isCompoundQuestion, isNonsenseQuestion } from "../src/lib/bie/question-focus.ts";
+import { withLiveTransportRetries } from "./largo-stress-live-transport.mjs";
 
 const OUT = join(process.cwd(), "audit-output");
 mkdirSync(OUT, { recursive: true });
@@ -102,7 +103,7 @@ async function askLive(cookieHeader, question) {
       headers: { "Content-Type": "application/json", Cookie: cookieHeader },
       body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
     },
-    { retries: 1, timeoutMs: 120_000 }
+    { retries: 3, timeoutMs: 120_000 }
   );
   const body = await res.json().catch(() => ({}));
 
@@ -140,14 +141,8 @@ async function askLive(cookieHeader, question) {
  * So throttled questions are retried with backoff, and anything that is not a 200 is reported as
  * SKIPPED and excluded from the quality tally rather than counted against it.
  */
-async function askLiveThrottleAware(cookieHeader, question, attempts = 3) {
-  let last = null;
-  for (let i = 0; i < attempts; i++) {
-    last = await askLive(cookieHeader, question);
-    if (last.status !== 429) return last;
-    await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
-  }
-  return { ...last, throttled: true };
+async function askLiveThrottleAware(cookieHeader, question, attempts = 4) {
+  return withLiveTransportRetries(() => askLive(cookieHeader, question), { attempts });
 }
 
 const rows = [];
