@@ -95,15 +95,28 @@ async function askLive(cookieHeader, question) {
   const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
   const BASE = liveBaseUrl();
   const t0 = Date.now();
-  const res = await fetchRetry(
-    `${BASE}/api/market/largo/query`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookieHeader },
-      body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
-    },
-    { retries: 1, timeoutMs: 120_000 }
-  );
+  let res;
+  try {
+    res = await fetchRetry(
+      `${BASE}/api/market/largo/query`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
+      },
+      { retries: 4, timeoutMs: 120_000 }
+    );
+  } catch (err) {
+    const code = err?.cause?.code ?? err?.code;
+    const detail = code ? String(code) : err instanceof Error ? err.message : String(err);
+    return {
+      status: 0,
+      answer: "",
+      source: null,
+      ms: Date.now() - t0,
+      fetch_failed: detail,
+    };
+  }
   const body = await res.json().catch(() => ({}));
 
   // Capture rate-limit headers on 429 to identify the upstream source
@@ -254,12 +267,16 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
             console.log(`[largo-stress] refresh ${ok ? "succeeded, retrying" : "unavailable"}`);
             if (ok) res = await askLiveThrottleAware(live.cookieHeader, entry.q);
           }
-          const { status, answer, source, ms, throttled, rate_limit_headers } = res;
+          const { status, answer, source, ms, throttled, rate_limit_headers, fetch_failed } = res;
           const route = { intent: rows[i].intent };
           // ONLY A 200 IS SCORED FOR QUALITY — everything else is a transport outcome.
+          const transportIssue =
+            fetch_failed != null
+              ? `fetch-failed (${fetch_failed}) — transport, excluded from the quality tally`
+              : `http-${status} — transport, excluded from the quality tally`;
           const scored =
             throttled || status !== 200
-              ? { verdict: "SKIP", issues: [`http-${status} — transport, excluded from the quality tally`] }
+              ? { verdict: "SKIP", issues: [transportIssue] }
               : scoreAnswer(entry, route, answer, status);
           liveRows.push({
             ...entry,

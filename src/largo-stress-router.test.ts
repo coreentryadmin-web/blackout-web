@@ -5,6 +5,13 @@ import { join } from "node:path";
 import { isCompoundQuestion, isNonsenseQuestion } from "@/lib/bie/question-focus";
 import { scoreAnswer } from "../scripts/largo-stress-scoring.mjs";
 
+test("largo-stress askLive: exhausted fetch errors become SKIP transport, not an uncaught throw", () => {
+  const src = readFileSync(join(import.meta.dirname, "..", "scripts", "largo-stress-run.mjs"), "utf8");
+  assert.match(src, /fetch_failed/);
+  assert.match(src, /catch \(err\)/);
+  assert.match(src, /status: 0/);
+});
+
 test("largo-stress routeQuestion: nonsense before compound (??? → clarify_read)", () => {
   const src = readFileSync(join(import.meta.dirname, "..", "scripts", "largo-stress-run.mjs"), "utf8");
   assert.match(
