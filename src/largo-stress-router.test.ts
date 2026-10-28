@@ -33,6 +33,13 @@ test("largo-stress routeQuestion: nonsense before compound (??? → clarify_read
   assert.equal(scored.verdict, "OK", scored.issues.join(", "));
 });
 
+test("largo-stress askLiveThrottleAware treats exhausted fetch errors as transport SKIP", () => {
+  const src = readFileSync(join(import.meta.dirname, "..", "scripts", "largo-stress-run.mjs"), "utf8");
+  assert.match(src, /transportError/);
+  assert.match(src, /fetch-\$\{transportError\}/);
+  assert.match(src, /isRetryableFetchError\(e\)/);
+});
+
 test("concept_read answers may explain without inventing numbers (calendar spread)", () => {
   const route = { intent: "concept_read" as const, ticker: null };
   const answer =
