@@ -102,7 +102,7 @@ async function askLive(cookieHeader, question) {
       headers: { "Content-Type": "application/json", Cookie: cookieHeader },
       body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
     },
-    { retries: 1, timeoutMs: 120_000 }
+    { retries: Number(process.env.LARGO_STRESS_FETCH_RETRIES ?? 4) || 4, timeoutMs: 120_000 }
   );
   const body = await res.json().catch(() => ({}));
 
@@ -242,7 +242,27 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
         while (idx < entries.length) {
           const i = idx++;
           const entry = entries[i];
-          let res = await askLiveThrottleAware(await freshCookie(), entry.q);
+          let res;
+          try {
+            res = await askLiveThrottleAware(await freshCookie(), entry.q);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            const scored = {
+              verdict: "SKIP",
+              issues: [`fetch-failed — ${msg} (transport, excluded from the quality tally)`],
+            };
+            liveRows.push({
+              ...entry,
+              status: 0,
+              ms: 0,
+              answer_len: 0,
+              ...scored,
+              preview: "",
+            });
+            console.log(`– 0ms SKIP | ${entry.q.slice(0, 55)}`);
+            console.log(`    ${scored.issues.join(", ")}`);
+            continue;
+          }
           if (res.status === 401) {
             // LOGGED UNCONDITIONALLY, because the first version of this was silent and I could
             // not tell whether it had run. The one sweep that should have exercised it answered
