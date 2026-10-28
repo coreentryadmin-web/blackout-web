@@ -95,15 +95,22 @@ async function askLive(cookieHeader, question) {
   const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
   const BASE = liveBaseUrl();
   const t0 = Date.now();
-  const res = await fetchRetry(
-    `${BASE}/api/market/largo/query`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookieHeader },
-      body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
-    },
-    { retries: 1, timeoutMs: 120_000 }
-  );
+  let res;
+  try {
+    res = await fetchRetry(
+      `${BASE}/api/market/largo/query`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
+      },
+      { retries: 3, timeoutMs: 120_000 }
+    );
+  } catch (err) {
+    const ms = Date.now() - t0;
+    const message = err instanceof Error ? err.message : String(err);
+    return { status: 0, answer: "", ms, transport_error: message };
+  }
   const body = await res.json().catch(() => ({}));
 
   // Capture rate-limit headers on 429 to identify the upstream source
@@ -139,15 +146,21 @@ async function askLive(cookieHeader, question) {
  *
  * So throttled questions are retried with backoff, and anything that is not a 200 is reported as
  * SKIPPED and excluded from the quality tally rather than counted against it.
+ *
+ * Transient fetch failures (ECONNRESET after retries, etc.) return status 0 — same treatment as 429,
+ * and must not crash the worker pool (CI run 734b7f94 on main).
  */
 async function askLiveThrottleAware(cookieHeader, question, attempts = 3) {
   let last = null;
   for (let i = 0; i < attempts; i++) {
     last = await askLive(cookieHeader, question);
-    if (last.status !== 429) return last;
+    if (last.status === 200) return last;
+    if (last.status !== 429 && last.status !== 0) return last;
     await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
   }
-  return { ...last, throttled: true };
+  if (last?.status === 429) return { ...last, throttled: true };
+  if (last?.status === 0) return { ...last, transport_failed: true };
+  return last;
 }
 
 const rows = [];
@@ -254,7 +267,7 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
             console.log(`[largo-stress] refresh ${ok ? "succeeded, retrying" : "unavailable"}`);
             if (ok) res = await askLiveThrottleAware(live.cookieHeader, entry.q);
           }
-          const { status, answer, source, ms, throttled, rate_limit_headers } = res;
+          const { status, answer, source, ms, throttled, rate_limit_headers, transport_error } = res;
           const route = { intent: rows[i].intent };
           // ONLY A 200 IS SCORED FOR QUALITY — everything else is a transport outcome.
           const scored =
@@ -277,6 +290,9 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
           if (scored.issues.length) console.log(`    ${scored.issues.join(", ")}`);
           if (rate_limit_headers) {
             console.log(`    [429 source details] ${JSON.stringify(rate_limit_headers)}`);
+          }
+          if (transport_error) {
+            console.log(`    [transport] ${transport_error}`);
           }
         }
       }
