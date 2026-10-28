@@ -5,6 +5,20 @@ import { join } from "node:path";
 import { isCompoundQuestion, isNonsenseQuestion } from "@/lib/bie/question-focus";
 import { scoreAnswer } from "../scripts/largo-stress-scoring.mjs";
 
+test("largo-stress live worker records fetch failures as SKIP instead of aborting the sweep", () => {
+  const src = readFileSync(join(import.meta.dirname, "..", "scripts", "largo-stress-run.mjs"), "utf8");
+  assert.match(
+    src,
+    /catch \(err\)[\s\S]*fetch-failed/,
+    "transient ECONNRESET after retries must not kill the nightly bank mid-run",
+  );
+  assert.match(
+    src,
+    /LARGO_STRESS_FETCH_RETRIES|retries: Number\(process\.env\.LARGO_STRESS_FETCH_RETRIES/,
+    "live Largo queries need more than one retry for long bank sweeps",
+  );
+});
+
 test("largo-stress routeQuestion: nonsense before compound (??? → clarify_read)", () => {
   const src = readFileSync(join(import.meta.dirname, "..", "scripts", "largo-stress-run.mjs"), "utf8");
   assert.match(
