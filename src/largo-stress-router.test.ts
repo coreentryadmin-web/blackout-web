@@ -19,6 +19,26 @@ test("largo-stress routeQuestion: nonsense before compound (??? → clarify_read
   assert.equal(scored.verdict, "OK", scored.issues.join(", "));
 });
 
+test("largo-stress live harness: fetch transport errors become SKIP, not uncaught throws", () => {
+  const src = readFileSync(join(import.meta.dirname, "..", "scripts", "largo-stress-run.mjs"), "utf8");
+  assert.match(
+    src,
+    /async function askLive[\s\S]*catch \(err\)[\s\S]*transport_error/,
+    "askLive must catch fetchRetry failures and return transport_error instead of crashing workers",
+  );
+  assert.match(
+    src,
+    /last\.status === 429 \|\| Boolean\(last\.transport_error\)/,
+    "askLiveThrottleAware must backoff-retry transport failures like 429",
+  );
+  assert.match(
+    src,
+    /transport_error[\s\S]*transport, excluded from the quality tally/,
+    "worker SKIP issues must label transport skips explicitly",
+  );
+  assert.match(src, /retries: 4/, "askLive fetchRetry needs enough retries for long nightly sweeps");
+});
+
 test("concept_read answers may explain without inventing numbers (calendar spread)", () => {
   const route = { intent: "concept_read" as const, ticker: null };
   const answer =
