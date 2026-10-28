@@ -95,15 +95,23 @@ async function askLive(cookieHeader, question) {
   const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
   const BASE = liveBaseUrl();
   const t0 = Date.now();
-  const res = await fetchRetry(
-    `${BASE}/api/market/largo/query`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookieHeader },
-      body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
-    },
-    { retries: 1, timeoutMs: 120_000 }
-  );
+  let res;
+  try {
+    res = await fetchRetry(
+      `${BASE}/api/market/largo/query`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
+      },
+      { retries: 3, timeoutMs: 120_000 }
+    );
+  } catch (err) {
+    // A transport reset after retries is NOT an answer-quality signal — same discipline as 429/401.
+    // Letting it bubble crashed the whole nightly bank mid-run (2026-10-28: ECONNRESET after a 429 tail).
+    const code = err?.cause?.code ?? err?.code ?? "fetch-failed";
+    return { status: 0, answer: "", ms: Date.now() - t0, transport_error: String(code) };
+  }
   const body = await res.json().catch(() => ({}));
 
   // Capture rate-limit headers on 429 to identify the upstream source

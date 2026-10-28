@@ -9,6 +9,11 @@ test("largo-stress routeQuestion: nonsense before compound (??? → clarify_read
   const src = readFileSync(join(import.meta.dirname, "..", "scripts", "largo-stress-run.mjs"), "utf8");
   assert.match(
     src,
+    /catch \(err\)[\s\S]*transport_error/,
+    "live askLive must map exhausted fetch errors to transport SKIP, not crash the worker",
+  );
+  assert.match(
+    src,
     /isNonsenseQuestion\(q\)[\s\S]*isCompoundQuestion\(q\)/,
     "stress harness must gate nonsense before compound — ??? has three ? marks",
   );
