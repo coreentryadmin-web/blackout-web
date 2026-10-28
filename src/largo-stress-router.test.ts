@@ -12,9 +12,10 @@ test("largo-stress live worker records fetch failures as SKIP instead of abortin
     /catch \(err\)[\s\S]*fetch-failed/,
     "transient ECONNRESET after retries must not kill the nightly bank mid-run",
   );
+  assert.match(src, /transport_error:\s*true/, "askLive must map fetchRetry exhaustion to transport_error");
   assert.match(
     src,
-    /LARGO_STRESS_FETCH_RETRIES|retries: Number\(process\.env\.LARGO_STRESS_FETCH_RETRIES/,
+    /LARGO_STRESS_FETCH_RETRIES|retries: stressRetries/,
     "live Largo queries need more than one retry for long bank sweeps",
   );
 });
