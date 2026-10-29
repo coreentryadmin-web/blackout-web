@@ -12,5 +12,6 @@ test("isRetryableFetchError: ECONNRESET and fetch failed message", () => {
 test("isRetryableStatus: 429 and 5xx", () => {
   assert.equal(isRetryableStatus(429), true);
   assert.equal(isRetryableStatus(503), true);
+  assert.equal(isRetryableStatus(520), true);
   assert.equal(isRetryableStatus(200), false);
 });

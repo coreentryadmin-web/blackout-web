@@ -13,6 +13,7 @@ import {
   describeConnectError,
 } from "./pg-audit.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
@@ -27,10 +28,13 @@ async function auditViaWatchdog() {
     console.error("[cron-audit] CRON_SECRET not set — cannot run HTTP watchdog fallback");
     process.exit(1);
   }
-  const res = await fetch(`${BASE}/api/cron/cron-staleness-watchdog`, {
-    headers: { Authorization: `Bearer ${cron}` },
-    signal: AbortSignal.timeout(90_000),
-  });
+  const res = await fetchRetry(
+    `${BASE}/api/cron/cron-staleness-watchdog`,
+    {
+      headers: { Authorization: `Bearer ${cron}` },
+    },
+    { retries: 4, baseDelayMs: 2500, timeoutMs: 90_000 }
+  );
   const body = await res.json().catch(() => ({}));
   if (res.status !== 200) {
     console.error(`[cron-audit] watchdog HTTP ${res.status}`);
