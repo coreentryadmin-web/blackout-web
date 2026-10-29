@@ -28,16 +28,19 @@ async function auditViaWatchdog() {
     console.error("[cron-audit] CRON_SECRET not set — cannot run HTTP watchdog fallback");
     process.exit(1);
   }
+  const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
+  const headers = { Authorization: `Bearer ${cron}` };
   const WATCHDOG_TIMEOUT_MS = 90_000;
   const WATCHDOG_MAX_ATTEMPTS = 3;
   let res = null;
   let body = {};
   for (let attempt = 0; attempt < WATCHDOG_MAX_ATTEMPTS; attempt++) {
     try {
-      res = await fetch(`${BASE}/api/cron/cron-staleness-watchdog`, {
-        headers: { Authorization: `Bearer ${cron}` },
-        signal: AbortSignal.timeout(WATCHDOG_TIMEOUT_MS),
-      });
+      res = await fetchRetry(
+        `${BASE}/api/cron/cron-staleness-watchdog`,
+        { headers },
+        { retries: 2, timeoutMs: WATCHDOG_TIMEOUT_MS }
+      );
       body = await res.json().catch(() => ({}));
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);

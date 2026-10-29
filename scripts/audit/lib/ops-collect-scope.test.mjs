@@ -18,6 +18,7 @@ describe("watchdogHttpPriority", () => {
     assert.equal(watchdogHttpPriority(502), "P2");
     assert.equal(watchdogHttpPriority(503), "P2");
     assert.equal(watchdogHttpPriority(504), "P2");
+    assert.equal(watchdogHttpPriority(520), "P2");
     assert.equal(watchdogHttpPriority(524), "P2");
   });
 
