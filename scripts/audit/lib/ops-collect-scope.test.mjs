@@ -18,6 +18,7 @@ describe("watchdogHttpPriority", () => {
     assert.equal(watchdogHttpPriority(502), "P2");
     assert.equal(watchdogHttpPriority(503), "P2");
     assert.equal(watchdogHttpPriority(504), "P2");
+    assert.equal(watchdogHttpPriority(520), "P2");
     assert.equal(watchdogHttpPriority(524), "P2");
   });
 
@@ -46,6 +47,7 @@ describe("shouldRetryWatchdogFetch", () => {
     assert.equal(shouldRetryWatchdogFetch(502), true);
     assert.equal(shouldRetryWatchdogFetch(503), true);
     assert.equal(shouldRetryWatchdogFetch(504), true);
+    assert.equal(shouldRetryWatchdogFetch(520), true);
     assert.equal(shouldRetryWatchdogFetch(524), true);
     assert.equal(shouldRetryWatchdogFetch(401), false);
     assert.equal(shouldRetryWatchdogFetch(500), false);
