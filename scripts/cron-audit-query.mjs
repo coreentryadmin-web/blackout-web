@@ -14,6 +14,7 @@ import {
 } from "./pg-audit.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
+import { shouldRetryWatchdogFetch } from "./audit/lib/ops-collect-scope.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -21,19 +22,43 @@ const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").
 /** Registered in code + TOML but cron trigger service not yet provisioned — warn, don't fail CI. */
 const PROVISION_PENDING = new Set([]);
 
+const WATCHDOG_TIMEOUT_MS = 90_000;
+const WATCHDOG_MAX_ATTEMPTS = 3;
+
+async function fetchCronWatchdog(cron) {
+  try {
+    const res = await fetch(`${BASE}/api/cron/cron-staleness-watchdog`, {
+      headers: { Authorization: `Bearer ${cron}` },
+      signal: AbortSignal.timeout(WATCHDOG_TIMEOUT_MS),
+    });
+    const body = await res.json().catch(() => ({}));
+    return { status: res.status, body };
+  } catch (e) {
+    console.warn(`[cron-audit] watchdog fetch error: ${e.message}`);
+    return { status: 0, body: {} };
+  }
+}
+
 async function auditViaWatchdog() {
   const cron = auditSecret("CRON_SECRET");
   if (!cron) {
     console.error("[cron-audit] CRON_SECRET not set — cannot run HTTP watchdog fallback");
     process.exit(1);
   }
-  const res = await fetch(`${BASE}/api/cron/cron-staleness-watchdog`, {
-    headers: { Authorization: `Bearer ${cron}` },
-    signal: AbortSignal.timeout(90_000),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (res.status !== 200) {
-    console.error(`[cron-audit] watchdog HTTP ${res.status}`);
+  let status = 0;
+  let body = {};
+  for (let attempt = 0; attempt < WATCHDOG_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      console.warn(
+        `[cron-audit] watchdog retry ${attempt}/${WATCHDOG_MAX_ATTEMPTS - 1} after HTTP ${status}`
+      );
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+    ({ status, body } = await fetchCronWatchdog(cron));
+    if (status === 200 || !shouldRetryWatchdogFetch(status)) break;
+  }
+  if (status !== 200) {
+    console.error(`[cron-audit] watchdog HTTP ${status}`);
     process.exit(1);
   }
   const problems = [
