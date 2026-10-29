@@ -14,6 +14,7 @@ import {
 } from "./pg-audit.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
+import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
