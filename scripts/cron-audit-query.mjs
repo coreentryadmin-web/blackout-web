@@ -14,6 +14,8 @@ import {
 } from "./pg-audit.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
+import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
+import { shouldRetryWatchdogFetch } from "./audit/lib/ops-collect-scope.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -27,13 +29,35 @@ async function auditViaWatchdog() {
     console.error("[cron-audit] CRON_SECRET not set — cannot run HTTP watchdog fallback");
     process.exit(1);
   }
-  const res = await fetch(`${BASE}/api/cron/cron-staleness-watchdog`, {
-    headers: { Authorization: `Bearer ${cron}` },
-    signal: AbortSignal.timeout(90_000),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (res.status !== 200) {
-    console.error(`[cron-audit] watchdog HTTP ${res.status}`);
+  const WATCHDOG_MAX_ATTEMPTS = 3;
+  let res = null;
+  let body = {};
+  for (let attempt = 0; attempt < WATCHDOG_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+    try {
+      res = await fetchRetry(
+        `${BASE}/api/cron/cron-staleness-watchdog`,
+        { headers: { Authorization: `Bearer ${cron}` } },
+        { retries: 2, baseDelayMs: 2000, timeoutMs: 90_000 }
+      );
+      body = await res.json().catch(() => ({}));
+    } catch (err) {
+      console.warn(
+        `[cron-audit] watchdog fetch attempt ${attempt + 1}/${WATCHDOG_MAX_ATTEMPTS} failed: ${err?.message ?? err}`
+      );
+      if (attempt + 1 >= WATCHDOG_MAX_ATTEMPTS) {
+        console.error("[cron-audit] watchdog fetch exhausted retries");
+        process.exit(1);
+      }
+      continue;
+    }
+    if (res.status === 200 || !shouldRetryWatchdogFetch(res.status)) break;
+    console.warn(`[cron-audit] watchdog HTTP ${res.status} — retrying (${attempt + 1}/${WATCHDOG_MAX_ATTEMPTS})`);
+  }
+  if (!res || res.status !== 200) {
+    console.error(`[cron-audit] watchdog HTTP ${res?.status ?? 0}`);
     process.exit(1);
   }
   const problems = [
