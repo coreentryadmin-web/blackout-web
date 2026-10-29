@@ -14,6 +14,7 @@ import {
 } from "./pg-audit.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
+import { shouldRetryWatchdogFetch } from "./audit/lib/ops-collect-scope.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -27,13 +28,30 @@ async function auditViaWatchdog() {
     console.error("[cron-audit] CRON_SECRET not set — cannot run HTTP watchdog fallback");
     process.exit(1);
   }
-  const res = await fetch(`${BASE}/api/cron/cron-staleness-watchdog`, {
-    headers: { Authorization: `Bearer ${cron}` },
-    signal: AbortSignal.timeout(90_000),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (res.status !== 200) {
-    console.error(`[cron-audit] watchdog HTTP ${res.status}`);
+  const WATCHDOG_MAX_ATTEMPTS = 3;
+  let status = 0;
+  let body = {};
+  for (let attempt = 0; attempt < WATCHDOG_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      console.warn(`[cron-audit] watchdog HTTP ${status} — retry ${attempt + 1}/${WATCHDOG_MAX_ATTEMPTS}`);
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+    try {
+      const res = await fetch(`${BASE}/api/cron/cron-staleness-watchdog`, {
+        headers: { Authorization: `Bearer ${cron}` },
+        signal: AbortSignal.timeout(90_000),
+      });
+      status = res.status;
+      body = await res.json().catch(() => ({}));
+    } catch (err) {
+      status = 0;
+      body = {};
+      console.warn(`[cron-audit] watchdog fetch failed: ${err?.message ?? err}`);
+    }
+    if (status === 200 || !shouldRetryWatchdogFetch(status)) break;
+  }
+  if (status !== 200) {
+    console.error(`[cron-audit] watchdog HTTP ${status}`);
     process.exit(1);
   }
   const problems = [
