@@ -46,6 +46,7 @@ describe("shouldRetryWatchdogFetch", () => {
     assert.equal(shouldRetryWatchdogFetch(502), true);
     assert.equal(shouldRetryWatchdogFetch(503), true);
     assert.equal(shouldRetryWatchdogFetch(504), true);
+    assert.equal(shouldRetryWatchdogFetch(520), true);
     assert.equal(shouldRetryWatchdogFetch(524), true);
     assert.equal(shouldRetryWatchdogFetch(401), false);
     assert.equal(shouldRetryWatchdogFetch(500), false);
