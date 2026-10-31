@@ -6,6 +6,7 @@ import {
   persistSwingServingSnapshot,
   SWING_SERVING_TTL_SEC,
   attachThesisExplanation,
+  resolveThesisHealth,
   type SwingDiscoveryLike,
 } from "./serving-lane.ts";
 import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge.ts";
@@ -13,7 +14,7 @@ import { SWING_SCAN_PHASES } from "./scan-cadence.ts";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier.ts";
 import type { SwingReads } from "../swing-signals.ts";
 import type { ZeroDteFlowAccumulation } from "../zerodte/flow-accumulation-context.ts";
-import type { SwingServingReads } from "./serving-ingest.ts";
+import { swingServingMetaFromDossier, type SwingServingReads } from "./serving-ingest.ts";
 import type { HorizonPlay } from "../horizon-plays.ts";
 import type { ChainContract } from "../horizon-fanout.ts";
 import { swingThesisKey, type SwingWatchCandidate } from "./accumulation-store.ts";
@@ -693,6 +694,110 @@ test("a Legacy-exempt play whose PERSISTED factors do NOT sum to its own score g
     [{ label: "Night Hawk edition score", points: shownScore }],
     "a bad persisted breakdown on a Legacy-exempt play is REPAIRED to the single pinned factor, " +
       "never left broken and never replaced with a fresh (also-mismatched) dossier decomposition",
+  );
+});
+
+// FINDINGS 2026-10-31 (live repro NET, RESEARCH bucket). `enrichPlay` correctly falls back to
+// `play.setupState`/`play.entryStatus` when this scan's `meta.setupState`/`meta.entryStatus` come back
+// null (reads dropped), but used to take `thesisLevel`/`thesisNote` from `meta` unconditionally — so a
+// served row could carry a real carried-forward `setupState: "TRIGGERED"` / `entryStatus: "AT_TRIGGER"`
+// alongside a contradicting `thesisLevel: "unknown"` / `thesisNote: "no setup read attached to this
+// name yet"`, because `swingServingMetaFromDossier` derives those two fields from a LOCAL, THIS-CALL-
+// ONLY setupState variable, never from the merged value `enrichPlay` produces. See `resolveThesisHealth`
+// (serving-lane.ts) for the full trace and why a blanket `meta.thesisLevel ?? play.thesisLevel` would
+// not actually fix it (`thesisLevel` is typed non-nullable).
+test("resolveThesisHealth carries thesisLevel/thesisNote forward when this scan's reads dropped but a prior setupState exists (2026-10-31, live repro NET)", () => {
+  const d = buildSwingDossier(dossier("NET"));
+  // No reads passed → swingServingMetaFromDossier's own setup-maturity branch has nothing to ground on.
+  const meta = swingServingMetaFromDossier(d);
+  assert.equal(meta.setupState, null, "sanity: this call supplied no grounded reads");
+  assert.equal(meta.thesisLevel, "unknown", "sanity: meta fell to its own reads-absent default");
+  assert.equal(meta.thesisNote, "no setup read attached to this name yet");
+
+  const priorPlay = play({
+    ticker: "NET",
+    status: "WATCH",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    thesisLevel: "intact",
+    thesisNote: null,
+  });
+  const resolved = resolveThesisHealth(meta, priorPlay);
+  assert.equal(
+    resolved.thesisLevel,
+    "intact",
+    "must carry the prior, carried-forward level — not meta's reads-absent 'unknown' default",
+  );
+  assert.equal(resolved.thesisNote, null, "no stale 'no setup read attached' note beside a live trigger");
+});
+
+test("resolveThesisHealth still renders the honest 'unknown' default when there is genuinely no prior thesis to carry forward (9-6c honesty preserved)", () => {
+  const d = buildSwingDossier(dossier("FRESH"));
+  const meta = swingServingMetaFromDossier(d); // no reads this scan, same as above
+  // A genuinely never-grounded WATCH candidate: no setupState/entryStatus/thesisLevel has ever been set.
+  const neverGroundedPlay = play({ ticker: "FRESH", status: "WATCH" });
+  const resolved = resolveThesisHealth(meta, neverGroundedPlay);
+  assert.equal(
+    resolved.thesisLevel,
+    "unknown",
+    "nothing to carry forward — the data-absent thesis must stay honestly 'unknown', never a fabricated " +
+      "'intact' (the exact 9-6c invariant this field's header documents)",
+  );
+  assert.equal(resolved.thesisNote, "no setup read attached to this name yet");
+});
+
+test("resolveThesisHealth never withholds a FRESH thesis-health read behind a stale carried-forward value", () => {
+  const d = buildSwingDossier(dossier("NET"));
+  // Reads ARE present this scan and genuinely confirm a new, non-invalidated, non-degraded state.
+  const meta = swingServingMetaFromDossier(d, {
+    setup: { price: 95, triggerPx: 100, invalidationPx: 90, atr: 3 },
+  });
+  assert.equal(meta.setupState, "FORMING");
+  assert.equal(meta.thesisLevel, "intact", "sanity: a fresh, non-degraded, non-invalidated read is 'intact'");
+  // The prior play disagrees in every field — proves the carry-forward branch is never taken when this
+  // scan's reads are genuinely present, regardless of what the prior play says.
+  const stalePlay = play({
+    ticker: "NET",
+    setupState: "INVALIDATED",
+    thesisLevel: "break",
+    thesisNote: "stale — structure invalidated last scan",
+  });
+  const resolved = resolveThesisHealth(meta, stalePlay);
+  assert.equal(resolved.thesisLevel, "intact", "fresh meta must win whenever this scan's reads are present");
+  assert.equal(resolved.thesisNote, null);
+});
+
+test("getSwingServingLane: a carried-forward setupState/entryStatus never rides beside a reads-absent thesisLevel/thesisNote (2026-10-31, live repro NET)", async () => {
+  const d = buildSwingDossier(dossier("NET"));
+  const priorPlay = play({
+    ticker: "NET",
+    status: "WATCH",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    thesisLevel: "intact",
+    thesisNote: null,
+  });
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [priorPlay] }),
+    // NET has no grounded reads this scan at all (the transient per-ticker drop the live repro found) —
+    // readsByTicker simply has no entry for it, so `reads` is undefined inside enrichPlay.
+    readsByTicker: new Map(),
+  });
+  const row = Object.values(lane.sections)
+    .flat()
+    .find((p) => p.ticker === "NET");
+  assert.ok(row, "NET must still render somewhere on the board (an honest degrade, never dropped)");
+  assert.equal(row!.setupState, "TRIGGERED", "setupState correctly carries forward from the prior play");
+  assert.equal(row!.entryStatus, "AT_TRIGGER", "entryStatus correctly carries forward from the prior play");
+  assert.equal(
+    row!.thesisLevel,
+    "intact",
+    "thesisLevel must agree with the carried-forward setupState/entryStatus, not regress to 'unknown'",
+  );
+  assert.equal(
+    row!.thesisNote,
+    null,
+    "no 'no setup read attached to this name yet' note beside a live carried-forward trigger",
   );
 });
 
