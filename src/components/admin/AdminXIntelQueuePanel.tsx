@@ -70,6 +70,48 @@ function minutesBetween(aMs: number, bMs: number): string {
   return mins > 0 ? `${abs} ${unit} earlier` : `${abs} ${unit} LATER`;
 }
 
+/**
+ * Which post-copy state a card should render — and deliberately NOT the same question as
+ * "is `row.post_copy` truthy".
+ *
+ * `queue-store.ts`'s `saveQueueRow()` downgrades a candidate that fails `readyBlockReason()`
+ * from READY to **REVIEW** rather than discarding it, to keep "the pipeline ran but this one
+ * needs a human" distinct from "no row at all". One of `readyBlockReason`'s own checks is
+ * "READY requires post_copy — there is nothing for a reviewer to paste", which fires exactly
+ * when `post_copy` is null/empty — so a REVIEW row with no `post_copy` yet is a real, reachable
+ * shape, not merely a SKIP row's. Gating the skip-flavored wording on `post_copy` truthiness
+ * alone (the previous code) rendered that REVIEW row as "No high-value post this hour" — a SKIP
+ * claim about a cycle that actually picked a story and is simply waiting on copy. That is the
+ * exact "absence mislabeled as a different kind of absence" this panel's other design rules
+ * (`shouldShowXIntelFixtures`, the BLIND-vs-QUIET split in `readyBlockReason`) exist to prevent.
+ *
+ * `status` is the gate, matching every other isSkip-based branch in this file — not `skip_kind`,
+ * which is documented as "Set on SKIP rows" and must never drive this by itself if it happens to
+ * survive stale on a non-SKIP row.
+ */
+export type XIntelPostCopyDisplay =
+  | { kind: "post_copy"; text: string }
+  | { kind: "skip"; label: string }
+  | { kind: "awaiting_copy" };
+
+export function xIntelPostCopyDisplay(
+  row: Pick<XIntelQueueRow, "status" | "post_copy" | "skip_kind">,
+): XIntelPostCopyDisplay {
+  if (row.status === "SKIP") {
+    const label =
+      row.skip_kind === "BLIND"
+        ? "Skipped — could not read the platform"
+        : row.skip_kind === "MARKET_CLOSED"
+          ? "Skipped — market closed"
+          : "No high-value post this hour";
+    return { kind: "skip", label };
+  }
+  if (row.post_copy && row.post_copy.trim().length > 0) {
+    return { kind: "post_copy", text: row.post_copy };
+  }
+  return { kind: "awaiting_copy" };
+}
+
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
   const copy = useCallback(() => {
@@ -197,6 +239,7 @@ function AttachmentCard({ a }: { a: XIntelAttachment }) {
 function PackageCard({ row }: { row: XIntelQueueRow }) {
   const isSkip = row.status === "SKIP";
   const surfaces = new Set(row.attachments.map((a) => a.source_surface));
+  const postCopyDisplay = xIntelPostCopyDisplay(row);
 
   return (
     <GlassPanel
@@ -243,27 +286,35 @@ function PackageCard({ row }: { row: XIntelQueueRow }) {
         </p>
       )}
 
-      {row.post_copy ? (
+      {postCopyDisplay.kind === "post_copy" ? (
         <div className="mt-3">
           <div className="mb-1 flex items-center justify-between">
             <span className="font-mono text-[10px] uppercase tracking-wider text-white/40">
               Post copy — paste as-is
             </span>
-            <CopyButton text={row.post_copy} label="Copy post" />
+            <CopyButton text={postCopyDisplay.text} label="Copy post" />
           </div>
           <pre className="whitespace-pre-wrap rounded border border-white/10 bg-black/30 p-3 font-mono text-[12px] leading-relaxed text-white/90">
-            {row.post_copy}
+            {postCopyDisplay.text}
           </pre>
         </div>
-      ) : (
+      ) : postCopyDisplay.kind === "skip" ? (
         // A SKIP row is a decision, not a hole. It says what it looked at and why it declined.
         <div className="mt-3 rounded border border-white/10 bg-black/30 p-3">
           <p className="font-mono text-[11px] font-bold uppercase tracking-wider text-white/70">
-            {row.skip_kind === "BLIND"
-              ? "Skipped — could not read the platform"
-              : row.skip_kind === "MARKET_CLOSED"
-                ? "Skipped — market closed"
-                : "No high-value post this hour"}
+            {postCopyDisplay.label}
+          </p>
+          <p className="mt-1 text-[11px] text-white/60">{row.reason_selected}</p>
+        </div>
+      ) : (
+        // A REVIEW (or READY-downgraded-to-REVIEW) row with no post_copy YET is not a skip: the
+        // pipeline selected a real story and is waiting on a human/the next pass to finish the
+        // copy. Rendering this with SKIP's wording would claim the cycle produced nothing, which
+        // is exactly the "absence mislabeled as a different kind of absence" this panel's other
+        // design rules exist to prevent — see xIntelPostCopyDisplay's own comment.
+        <div className="mt-3 rounded border border-white/10 bg-black/30 p-3">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-wider text-white/70">
+            Awaiting post copy — not a skip
           </p>
           <p className="mt-1 text-[11px] text-white/60">{row.reason_selected}</p>
         </div>
