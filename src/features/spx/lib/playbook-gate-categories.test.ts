@@ -16,6 +16,21 @@ test("classifyGateBlock: operational vs risk", () => {
   assert.equal(classifyGateBlock("Buy cooldown (10m after any exit)"), "risk");
 });
 
+test("classifyGateBlock: playbook session trigger cap is a risk block, like its session-cap siblings", () => {
+  // trade-governor.ts emits this exact message (line ~153) when a playbook has fired its max
+  // allowed triggers for the session — the same kind of session-level risk cap as the two
+  // sibling messages below, which already classify as "risk".
+  assert.equal(classifyGateBlock("Playbook PB-01 session trigger cap (3)"), "risk");
+  assert.equal(
+    classifyGateBlock("Session entry cap (3) — stand down for today"),
+    "risk"
+  );
+  assert.equal(
+    classifyGateBlock("Session loss cap (2) — revenge-trading lockout"),
+    "risk"
+  );
+});
+
 test("categorizeGateBlocks: buckets all blocks", () => {
   const cats = categorizeGateBlocks([
     "Opening range — no BUY",
