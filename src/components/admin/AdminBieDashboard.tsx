@@ -657,7 +657,7 @@ export function AdminBieDashboard() {
             <MetricChip
               label="Auth failures (24h)"
               value={data?.auth_failures ? String(data.auth_failures.total_24h) : "—"}
-              tone="bull"
+              tone={data?.auth_failures && data.auth_failures.total_24h > 0 ? "amber" : "bull"}
             />
             <LivePill label={loading ? "SYNC" : "LIVE"} active={!loading} />
           </>
