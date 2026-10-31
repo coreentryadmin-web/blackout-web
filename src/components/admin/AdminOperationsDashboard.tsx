@@ -7,6 +7,7 @@ import { clsx } from "clsx";
 import { storeAge } from "@/components/admin/admin-store-age";
 import { timeAgoFromIso } from "@/components/admin/admin-time-ago";
 import { runGuardedAuditLoad } from "@/components/admin/admin-operations-audit-request-guard";
+import { launchGateHealthy } from "@/components/admin/admin-launch-gate-health";
 import {
   ActionButton,
   EmptyDeck,
@@ -842,14 +843,7 @@ export function AdminOperationsDashboard() {
                       ? `${h.launch_status.open_count}/${h.launch_status.total_count} open`
                       : "—"
                   }
-                  ok={
-                    h?.launch_status
-                      ? h.launch_status.open_count === h.launch_status.total_count ||
-                        (h.launch_status.open_count === 5 &&
-                          h.launch_status.locked_keys.length === 1 &&
-                          h.launch_status.locked_keys[0] === "largo")
-                      : null
-                  }
+                  ok={h?.launch_status ? launchGateHealthy(h.launch_status) : null}
                   sub={
                     h?.launch_status?.launched_tools_env
                       ? `LAUNCHED_TOOLS=${h.launch_status.launched_tools_env}`
