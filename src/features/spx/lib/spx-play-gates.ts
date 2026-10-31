@@ -86,6 +86,34 @@ export const GATE_BLOCK = {
   MIXED_TAPE: "Tape's mixed",
 } as const;
 
+/**
+ * Mixed-tape sub-check as a standalone, pure verdict — the exact "weighted_conflicts has
+ * crossed the grade-scaled hard-block threshold" condition `evaluatePlayGates` below applies,
+ * extracted so a caller that cannot run the FULL gate stack (trade governor, halt checks,
+ * session-entry counters, playbook live-gate — all meaningless when no entry is possible at
+ * all, e.g. market closed) can still get the identical mixed-tape verdict instead of silently
+ * skipping it. Returns the block/warning text, or null when the tape isn't mixed enough to
+ * flag. `evaluatePlayGates` itself calls this (see below) so the two can never drift apart —
+ * extracting the shared math once up front, rather than hand-rolling two copies, is the point.
+ *
+ * Added 2026-10-26: this was the missing link behind a confirmed desk_context/gates
+ * incoherence — `spx-play-context.ts`'s `buildSpxPlayDeskContext` independently recomputes
+ * `desk_context.mixed_tape_blocked` off this same condition unconditionally (every response,
+ * gates evaluated or not), while `spx-play-engine.ts`'s closed-market branch hand-built a
+ * `{blocks:["Session closed"], warnings:[]}` gate result without ever calling this check — so a
+ * real closed-market response could show `mixed_tape_blocked:true` with no "Tape's mixed" text
+ * anywhere in `gates`. See `spx-play-engine.ts`'s closed-market branch for the consumer.
+ */
+export function mixedTapeGateMessage(
+  confluence: Pick<SpxConfluence, "weighted_conflicts" | "grade" | "score">
+): string | null {
+  const abs = Math.abs(confluence.score);
+  if (confluence.weighted_conflicts >= mixedTapeBlockThreshold(confluence.grade, abs)) {
+    return `${GATE_BLOCK.MIXED_TAPE} — too many conflicting signals for clean entry`;
+  }
+  return null;
+}
+
 /** Grade-scaled mixed-tape hard block — A setups tolerate one extra soft counter-trend signal. */
 export function mixedTapeBlockThreshold(grade: string, absScore?: number): number {
   const base = playWeightedConflictBlockMin();
@@ -311,8 +339,8 @@ export function evaluatePlayGates(
     blocks.push(`Desk data stale (${Math.round(deskStaleSec)}s)`);
   }
 
-  const mixedTapeMsg = `${GATE_BLOCK.MIXED_TAPE} — too many conflicting signals for clean entry`;
-  if (confluence.weighted_conflicts >= mixedTapeBlockThreshold(confluence.grade, abs)) {
+  const mixedTapeMsg = mixedTapeGateMessage(confluence);
+  if (mixedTapeMsg) {
     if (buyIntent) {
       blocks.push(mixedTapeMsg);
     } else {
@@ -427,8 +455,14 @@ export function evaluatePlayGates(
   // Post-stop / re-entry locks enforced by Trade Governor
 
   // Flow staleness: if the UW flow feed has been silent > 5 min, entries are blocked —
-  // unless the cluster heartbeat confirms another replica is delivering live WS frames
-  // (this replica's in-memory stamp can lag even when the tape rows are current).
+  // unless the SPX/SPXW flow-cohort heartbeat confirms another replica is delivering a
+  // live WS frame for SPX's OWN tape specifically (this replica's in-memory stamp can lag
+  // even when SPX's own tape rows are current). `desk.flow_cluster_live` is sourced from
+  // isFlowFreshForSpxCohort (@/lib/flow-liveness), NOT the market-wide
+  // isFlowFrameFreshAnywhere — the latter is true whenever ANY ticker anywhere in the
+  // market delivered a frame recently and cannot tell "SPX is live" apart from "something
+  // unrelated is live", which silently disabled both gates below until the
+  // spx-flow-staleness-market-wide-signal fix (2026-10-26).
   const flowAgeMs = desk.flow_data_age_ms;
   const clusterLive = desk.flow_cluster_live === true;
   if (buyIntent && flowAgeMs != null && flowAgeMs > 300_000 && !clusterLive) {

@@ -18,6 +18,7 @@ test('isTransientOriginError flags edge/origin overload codes', () => {
   assert.equal(isTransientOriginError(502), true);
   assert.equal(isTransientOriginError(503), true);
   assert.equal(isTransientOriginError(504), true);
+  assert.equal(isTransientOriginError(520), true);
   assert.equal(isTransientOriginError(524), true);
   assert.equal(isTransientOriginError(200), false);
   assert.equal(isTransientOriginError(401), false);

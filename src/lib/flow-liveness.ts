@@ -36,6 +36,29 @@ const HEARTBEAT_KEY = "flow_alerts:last_delivered_at";
 // dead WS lets the key lapse and the cron resumes REST within ~1.5 min.
 const HEARTBEAT_TTL_SEC = 90;
 
+/**
+ * Narrower heartbeat key for the SPX options cohort specifically (SPX/SPXW — the only
+ * tickers SPX Slayer's own tape reads; matches the cohort spx-desk.ts's own
+ * fetchSpxDeskFlowAlertsWithDb already filters DB rows to). Fix for the
+ * spx-flow-staleness-market-wide-signal finding (2026-10-26): `isFlowFrameFreshAnywhere`
+ * is true whenever ANY ticker anywhere in the whole market delivered a frame recently,
+ * which cannot tell "SPX's own tape is corroborated" apart from "some unrelated name's
+ * flow is live" — see `isFlowFreshForSpxCohort` below.
+ */
+const SPX_COHORT_HEARTBEAT_KEY = "flow_alerts:last_delivered_at:spx_cohort";
+
+/** Tickers UW uses for SPX index options flow. Defined here (not re-derived from
+ *  spx-desk.ts) because spx-desk.ts already imports FROM this module and transitively
+ *  pulls in `server-only`-guarded providers — a reverse import would make this module
+ *  unsafe for its other, lightweight callers (flow-persist.ts, flow-ingest.ts, admin
+ *  health checks). */
+const SPX_FLOW_COHORT = new Set(["SPX", "SPXW"]);
+
+/** True when `ticker` is part of the SPX options cohort this module heartbeats separately. */
+export function isSpxFlowCohortTicker(ticker: string): boolean {
+  return SPX_FLOW_COHORT.has(ticker.toUpperCase());
+}
+
 const INSTANCE_ID = randomUUID();
 
 type HeartbeatRecord = { at: number; instance: string };
@@ -64,6 +87,40 @@ export function markFlowFrameDelivered(now = Date.now()): void {
   const record: HeartbeatRecord = { at: now, instance: INSTANCE_ID };
   void sharedCacheSet(HEARTBEAT_KEY, record, HEARTBEAT_TTL_SEC).catch(() => {
     /* best-effort; in-memory fallback already written by sharedCacheSet */
+  });
+}
+
+let lastSpxCohortWriteAt = 0;
+
+/**
+ * Record that THIS replica just delivered a live UW flow frame for `ticker`
+ * (spx-flow-staleness-market-wide-signal fix, 2026-10-26).
+ *
+ * Always writes the existing market-wide heartbeat via {@link markFlowFrameDelivered} —
+ * every existing isFlowFrameFreshAnywhere/isFlowFrameFreshFromCluster consumer (cluster
+ * health, the flow-ingest REST-skip decision, admin dashboards) is unaffected. ADDITIONALLY,
+ * when `ticker` is in the SPX options cohort (see {@link isSpxFlowCohortTicker}), also stamps
+ * the separate, narrower SPX-cohort heartbeat so a caller that specifically needs to know
+ * "is SPX's OWN tape corroborated by a live WS frame" — not "is ANY ticker in the whole
+ * market being delivered right now" — has a real, scoped signal to read instead of silently
+ * reusing the market-wide one. Best-effort and never throws, same contract as
+ * markFlowFrameDelivered.
+ *
+ * Why a fixed small cohort rather than a literal per-ticker heartbeat: the market-wide
+ * heartbeat is throttled process-wide (one write per 5s regardless of frame volume) because
+ * WS delivers many frames/sec market-wide; a true per-ticker heartbeat would need a write per
+ * (ticker, 5s) bucket — real new Redis surface for every ticker in the market just to serve
+ * ONE consumer (SPX staleness gating). A cohort-sized key (today: SPX/SPXW) keeps the same
+ * cheap single-key shape this module already uses, scoped to what SPX Slayer's own tape reads.
+ */
+export function markFlowFrameDeliveredForTicker(ticker: string, now = Date.now()): void {
+  markFlowFrameDelivered(now);
+  if (!isSpxFlowCohortTicker(ticker)) return;
+  if (now - lastSpxCohortWriteAt < WRITE_THROTTLE_MS) return;
+  lastSpxCohortWriteAt = now;
+  const record: HeartbeatRecord = { at: now, instance: INSTANCE_ID };
+  void sharedCacheSet(SPX_COHORT_HEARTBEAT_KEY, record, HEARTBEAT_TTL_SEC).catch(() => {
+    /* best-effort; mirrors markFlowFrameDelivered's own fail-soft contract */
   });
 }
 
@@ -114,6 +171,39 @@ export async function isFlowFrameFreshFromCluster(maxAgeMs = 120_000): Promise<b
 export async function isFlowFrameFreshAnywhere(maxAgeMs = 120_000): Promise<boolean> {
   try {
     const record = await sharedCacheGet<HeartbeatRecord>(HEARTBEAT_KEY);
+    if (!record || typeof record.at !== "number") return false;
+    const ageMs = flowHeartbeatAgeMs(record.at);
+    return ageMs != null && ageMs <= maxAgeMs;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when the SPX/SPXW options cohort SPECIFICALLY delivered a live UW flow WS frame
+ * within `maxAgeMs` — the SCOPED counterpart to {@link isFlowFrameFreshAnywhere}.
+ *
+ * Fix for the spx-flow-staleness-market-wide-signal finding (2026-10-26): SPX Slayer's
+ * `deskFlowDataAgeMs` (spx-desk.ts) used to clamp a genuinely-stale SPX tape age down to
+ * 120_000ms whenever `isFlowFrameFreshAnywhere` was true — but that signal is true whenever
+ * ANY ticker anywhere in the whole market had a flow alert persisted in the last 120s,
+ * regardless of whether SPX itself was ever involved. Since options flow is being delivered
+ * somewhere in the market almost continuously during RTH (and often after close), the clamp
+ * was effectively always live, which silently disabled both the stale-flow BUY-block
+ * (`flowAgeMs > 300_000ms`) and warning (`> 120_000ms`) in `spx-play-gates.ts` — the exact
+ * staleness protections those gates exist to enforce. This function reads the narrower
+ * `SPX_COHORT_HEARTBEAT_KEY` that {@link markFlowFrameDeliveredForTicker} stamps ONLY when
+ * the delivered print was for SPX/SPXW, so it can actually tell "SPX's own tape is
+ * corroborated by a live WS frame" apart from "the market-wide pipe is merely alive".
+ *
+ * Same no-anti-self-skip posture as `isFlowFrameFreshAnywhere` (a corroboration read for a
+ * staleness clamp, not a REST-skip decision) and the same fail-open contract: Redis down / no
+ * heartbeat / any error -> false, so the caller falls back to its own real tape-grounded age
+ * (`resolveFlowDataAgeMs`) rather than a falsely-fresh clamp. Never throws.
+ */
+export async function isFlowFreshForSpxCohort(maxAgeMs = 120_000): Promise<boolean> {
+  try {
+    const record = await sharedCacheGet<HeartbeatRecord>(SPX_COHORT_HEARTBEAT_KEY);
     if (!record || typeof record.at !== "number") return false;
     const ageMs = flowHeartbeatAgeMs(record.at);
     return ageMs != null && ageMs <= maxAgeMs;

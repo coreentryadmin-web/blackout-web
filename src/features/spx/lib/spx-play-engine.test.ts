@@ -296,6 +296,116 @@ test("evaluateOpenPlay closed-market SCANNING, bootstrap-shell desk (source:none
   assert.deepEqual(payload.factors, []);
 });
 
+// BUG FIX (2026-10-26): the closed-market branch hand-built `gates: {blocks:["Session
+// closed"], warnings:[]}` and never ran the mixed-tape sub-check that `evaluatePlayGates`
+// applies on every other path — so a real closed-market response could show
+// `desk_context.mixed_tape_blocked:true` (computed independently and unconditionally by
+// buildSpxPlayDeskContext, spx-play-context.ts) alongside `gates.warnings:[]`, no "Tape's
+// mixed" text anywhere. Confirmed live via GET /api/market/spx/play.
+//
+// Driving this end-to-end through the real signal engine (computeSpxConfluence) would make
+// the test depend on wall-clock ET time (computeSpxConfluence's own session-quality/live-tape
+// factors shift with time of day) — see spx-play-context.test.ts's "mixed-tape coherence"
+// test for the deterministic behavioral proof that buildSpxPlayDeskContext and
+// mixedTapeGateMessage agree on the SAME confluence-shaped data. This is the narrower,
+// source-text companion (same idiom as getNhConfluenceBonus below): it pins that the
+// closed-market branch actually WIRES mixedTapeGateMessage's result into gates.warnings,
+// which that behavioral test alone cannot catch — it only exercises the two shared
+// functions in isolation, not whether spx-play-engine.ts's closed-market branch still calls
+// either of them.
+test("evaluateSpxPlayCore closed-market branch runs the shared mixed-tape check and wires it into gates.warnings", () => {
+  const src = readFileSync(fileURLToPath(new URL("./spx-play-engine.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("if (!desk.market_open && !premarket) {");
+  assert.ok(start > 0, "closed-market branch exists");
+  const end = src.indexOf("\n  const technicals =", start);
+  assert.ok(end > start, "closed-market branch's early-return block ends before the open-market path resumes");
+  const body = src.slice(start, end);
+  assert.match(
+    body,
+    /mixedTapeGateMessage\(closedConfluence\)/,
+    "closed-market branch must run the shared mixed-tape sub-check, not skip it entirely"
+  );
+  assert.match(
+    body,
+    /warnings:\s*mixedTapeMsg\s*!=\s*null\s*\?\s*\[mixedTapeMsg\]\s*:\s*\[\]/,
+    "gates.warnings must surface the mixed-tape message instead of being hardcoded to []"
+  );
+});
+
+// BUG FIX (2026-10-26, Ask Largo/5-engine standing mandate, live repro): the closed-market
+// SCANNING branch serves a GEX-derived factor/play-idea built from `desk.gex_walls`, which on
+// this path peekMergedSpxDesk() deliberately tolerates up to 24h stale (an intentional,
+// unchanged design choice — "once the market is genuinely closed, stale and correct are the same
+// thing"). The bug was that the factor/play-idea/thesis never consulted desk.gex_stale before
+// presenting a specific GEX level, so a member saw "At 0DTE support node 7675 (+5 pts)" with zero
+// indication it could be hours old. Live repro: the sibling GET /api/market/spx/desk route
+// (peekSpxDesk(), NOT 24h-tolerant) reported gex_stale:true/gex_walls:[] at virtually the same
+// instant /play served this exact idea undisclosed.
+function closedDeskWithGexSupport(overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
+  return desk(7680, {
+    market_open: false,
+    source: "test",
+    gex_walls: [{ strike: 7675, net_gex: 500_000, kind: "support", distance_pts: 5 }],
+    ...overrides,
+  });
+}
+
+test("evaluateOpenPlay closed-market SCANNING, desk.gex_stale:true: the GEX-derived factor/thesis/play-idea disclose staleness", async () => {
+  const stalePayload = await evaluateSpxPlay(
+    closedDeskWithGexSupport({ gex_stale: true, gex_age_ms: 26 * 3_600_000 }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+
+  assert.equal(stalePayload.phase, "SCANNING");
+  const gexFactor = stalePayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  assert.ok(gexFactor, "fixture must actually fire a GEX-derived factor to test disclosure on");
+  assert.match(
+    gexFactor!.detail,
+    /GEX stale, not live/,
+    "a GEX-derived factor built from stale desk data must disclose it rather than present a specific level as if live"
+  );
+  assert.match(
+    stalePayload.thesis,
+    /GEX stale, not live/,
+    "the closed-market thesis must also carry the staleness clause"
+  );
+  assert.ok(stalePayload.gates.play_idea, "fixture must produce a play idea to test disclosure on");
+  assert.match(stalePayload.gates.play_idea!, /GEX stale, not live/);
+});
+
+test("evaluateOpenPlay closed-market SCANNING, desk.gex_stale:false (or absent): the SAME GEX-derived factor renders unchanged, with no staleness disclosure", async () => {
+  const freshPayload = await evaluateSpxPlay(
+    closedDeskWithGexSupport({ gex_stale: false, gex_age_ms: 1000 }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const freshGexFactor = freshPayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  assert.ok(freshGexFactor);
+  assert.doesNotMatch(freshGexFactor!.detail, /GEX stale/);
+  assert.doesNotMatch(freshPayload.thesis, /GEX stale/);
+  assert.ok(freshPayload.gates.play_idea);
+  assert.doesNotMatch(freshPayload.gates.play_idea!, /GEX stale/);
+
+  // gex_stale entirely absent from the desk payload must behave identically to explicit false —
+  // this is the live production shape (older/degraded desk snapshots may never set the field).
+  const absentPayload = await evaluateSpxPlay(
+    closedDeskWithGexSupport(),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const absentGexFactor = absentPayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  assert.ok(absentGexFactor);
+  assert.doesNotMatch(absentGexFactor!.detail, /GEX stale/);
+  assert.doesNotMatch(absentPayload.thesis, /GEX stale/);
+});
+
 // BUG FIX (2026-09-03): getNhConfluenceBonus's staleness check used a raw
 // `(Date.now() - publishedAt.getTime()) / 3_600_000 > 20` comparison. published_at is written by a
 // SEPARATE Night Hawk cron process, so cross-process clock skew is real — a future-dated edition

@@ -2874,17 +2874,44 @@ export function meridianPeerSection(ctx: SwingPlayBriefContext): RichSection | n
   // branch. The bullet always has a preceding "reports in Nd"/"reports today" part ahead of it
   // (pushed unconditionally, one line above the `days_until<=3` gate in the pure helper), so it is
   // never the first joined part — stripping its leading " · " separator along with it is safe.
-  const withoutPrintImminent = noGapExposure
+  const isClosed = statusBucket(ctx.play) === "closed";
+  // BUG FIX (2026-10-26, Ask Largo standing mandate, cycle-34, live repro GOOGL #64/#59 CLOSED
+  // briefs): `noGapExposure` is a fact about the REVIEWED CONTRACT's own calendar expiry vs. the
+  // print date — it is entirely independent of whether the POSITION has since closed (e.g.
+  // stopped out early, well before its contract's own calendar expiry). Every two swaps above
+  // (print-imminent bullet, trailing sizing instruction) only ever fired off `noGapExposure`, so a
+  // CLOSED position whose contract was still genuinely alive through the print at commit time —
+  // the common case, not the rarer "contract itself already decayed past the print" case
+  // `noGapExposure` exists to catch — kept both live, second-person risk-management directives
+  // completely unmodified right next to the `prefix` disclaimer above ("not what this trade traded
+  // under"), producing a self-contradicting paragraph: the disclaimer says this isn't live, the
+  // next sentence tells the trader to size down or hedge vol on a position that no longer exists.
+  // Confirmed live on two real closed GOOGL positions (#64, #59). `noGapExposure` must stay the
+  // OPEN/WATCH-only mechanism it already is (it still solely owns the "this contract expires X,
+  // on/before the print" phrasing — that sentence stays factually true and worth keeping even for
+  // a closed play whose contract genuinely never reached the print); CLOSED is handled as an
+  // independent, bucket-driven condition, mirroring `vectorDeskSection`'s own closed-bucket pattern
+  // of stripping forward/actionable directives entirely for CLOSED rather than merely disclaiming
+  // them (see that function's own comment).
+  const stripPrintImminent = noGapExposure || isClosed;
+  const withoutPrintImminent = stripPrintImminent
     ? body.replace(` · ${EARNINGS_PEER_PRINT_IMMINENT_BULLET}`, "")
     : body;
-  const adjustedBody = noGapExposure
-    ? withoutPrintImminent.replace(
-        EARNINGS_PEER_SIZING_INSTRUCTION,
-        `This contract expires ${expiry}, on/before the print, so no earnings-gap exposure from ` +
-          `this position (a concurrent sibling with a later expiry may still be exposed — check ` +
-          `its own brief).`,
-      )
-    : body;
+  let adjustedBody = withoutPrintImminent;
+  if (noGapExposure) {
+    adjustedBody = adjustedBody.replace(
+      EARNINGS_PEER_SIZING_INSTRUCTION,
+      `This contract expires ${expiry}, on/before the print, so no earnings-gap exposure from ` +
+        `this position (a concurrent sibling with a later expiry may still be exposed — check ` +
+        `its own brief).`,
+    );
+  } else if (isClosed) {
+    adjustedBody = adjustedBody.replace(
+      EARNINGS_PEER_SIZING_INSTRUCTION,
+      "This position already closed before this print — no live sizing/hedging decision remains " +
+        "on it; peer context above is for reference only.",
+    );
+  }
   // BUG FIX (2026-10-26, Ask Largo standing mandate, live repro TEM 71C / CRML 6.5C / AMPX 8.5C /
   // AVAV 130C — Banger-origin positions with no resolvable Meridian sector peer cohort, confirmed
   // live: `unavailableSources` already carries "Meridian peer cohort: unclassified_sector" for all

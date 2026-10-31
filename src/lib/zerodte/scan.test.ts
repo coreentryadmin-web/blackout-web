@@ -161,6 +161,13 @@ mock.module("../db", {
     insertZeroDteScanRejection: async (row: Record<string, unknown>) => {
       state.rejectionRows.push(row);
     },
+    // rejections.ts/discovery-events-persist.ts (both left REAL) now serialize their cursor
+    // read-modify-write with these, same pattern as gex-regime-events.test.ts/flow-ingest.test.ts.
+    // Always-succeed stand-in: this test exercises the real persistence logic those two lock, not
+    // the lock's own contention behavior (that's covered by rejections.test.ts/
+    // discovery-events-persist.test.ts's own dedicated concurrency cases).
+    tryAdvisoryLock: async () => true,
+    releaseAdvisoryLock: async () => {},
   },
 });
 

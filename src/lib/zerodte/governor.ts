@@ -37,7 +37,8 @@
 
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { PLAN_RULES } from "./plan";
-import { asManagedPnlPct } from "./record";
+import { asManagedPnlPct, readManagedExit } from "./record";
+import { categorizeExitReason } from "./exit-engine";
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import type { ZeroDteGateBlock } from "./gates";
 import { timeOfDayFactor } from "./intraday";
@@ -503,14 +504,44 @@ function isCondorLedgerRow(r: Pick<GovernorLedgerRow, "entry_context">): boolean
   return ec?.play_type === "CONDOR" || Boolean(ec?.condor);
 }
 
-/** Did this ledger row stop out? Two independent signals, either suffices:
- *  the graded plan_outcome, or the latched trough at/below the plan's stop level
- *  (derivePlayStatus's own CLOSED/stopped condition) — so the count is right even
- *  before the lazy grader has run. A time-stop close is NOT a stop. Condors are
- *  excluded: their trough is the winning direction (falling debit-to-close) and
- *  directional stop math inverts — settlement is gradeCondorFromBars. */
+/** Did this ledger row stop out? AS-MANAGED FIRST (the live engine's own recorded exit reason,
+ *  entry_context.exit), then the raw mechanical plan_outcome, then the latched trough at/below
+ *  the plan's stop level (derivePlayStatus's own CLOSED/stopped condition) as a fallback for a
+ *  row neither the engine nor the lazy grader has reached yet — so the count is right even
+ *  before grading completes. A time-stop close is NOT a stop. Condors are excluded: their
+ *  trough is the winning direction (falling debit-to-close) and directional stop math inverts
+ *  — settlement is gradeCondorFromBars.
+ *
+ *  FOUND LIVE (companion to ledgerRowRealizedPnlPct's 2026-10-20 HOOD fix, deliberately left
+ *  out of scope at that time): this used to check the raw mechanical `plan_outcome` column
+ *  FIRST (`if (r.plan_outcome === "stopped") return true;`). `plan_outcome` is the naive
+ *  hold-to-stop bar-walk grade — what an UNMANAGED hold would have done — and can read
+ *  "stopped" for a row the live engine actually exited for a genuine PROFIT via ratchet/
+ *  thesis/flat before the bar walk would have later traded through the -50% stop (e.g.
+ *  exit_reason:"ratchet", exit_pnl_pct:+7.87%, even though the position's trough dipped
+ *  -8.66% off entry at some point — the mechanical column says "stopped", the as-managed
+ *  reality was a win). Checking `plan_outcome` first miscounted that win as a stop and fed it
+ *  straight into `deriveGovernorFromLedger`'s stop tally, which `evaluateZeroDteGovernor`'s G-5
+ *  hard-halt (`GOVERNOR_MAX_SESSION_STOPS`) enforces live — a winning session could trip the
+ *  halt on phantom stops.
+ *
+ *  FIX: mirrors scan.ts's own real-time determination of a real stop-out —
+ *  `state.closed_reason === "stopped" || exit?.decision.reason === "plan_stop"` — using the
+ *  ledger's persisted equivalent of each signal. `readManagedExit` reads the SAME
+ *  entry_context.exit blob the live engine stamps (exit-engine.ts buildExitContext); when a
+ *  real exit reason is present, `categorizeExitReason` (the single source of truth for the
+ *  reason→family vocabulary, also used by record.ts's as-managed P&L lane) decides: only the
+ *  "stop" category (`plan_stop`) is a real stop, so a ratchet/thesis/flat/target exit is never
+ *  one, no matter what the mechanical plan_outcome column independently says. Only when there
+ *  is NO as-managed exit at all (legacy rows, or a row the engine hasn't exited yet) does this
+ *  fall back to the original mechanical plan_outcome/trough-latch check — unchanged, so a
+ *  row with no live-managed exit is graded exactly as before. */
 function ledgerRowStopped(r: GovernorLedgerRow): boolean {
   if (isCondorLedgerRow(r)) return false;
+  const managedExit = readManagedExit(r.entry_context);
+  if (managedExit && managedExit.reason != null) {
+    return categorizeExitReason(managedExit.reason) === "stop";
+  }
   if (r.plan_outcome === "stopped") return true;
   if (r.status !== "CLOSED") return false;
   return (
@@ -820,8 +851,9 @@ export function evaluateZeroDteGovernor(
     // UNTIMED STOP — fail CLOSED (2026-08-06 audit, P2).
     //
     // WHY: `at_ms` is null for every stop the Redis lane never witnessed live.
-    // `deriveGovernorFromLedger` recognises a stop from `plan_outcome === "stopped"` OR the
-    // latched trough (`ledgerRowStopped`), while `recordGovernorStops` is only called by
+    // `deriveGovernorFromLedger` recognises a stop from the as-managed exit reason, the raw
+    // mechanical `plan_outcome === "stopped"`, or the latched trough (`ledgerRowStopped`), while
+    // `recordGovernorStops` is only called by
     // scan.ts when THIS process observes the CLOSED/stopped transition in a scan pass. A stop
     // that closed before the replica came up, was stamped later by the lazy grader, or whose
     // Redis twin was lost/evicted therefore stays timeless for the whole session

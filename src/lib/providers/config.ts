@@ -43,12 +43,15 @@ export function deskCacheTtlMs(): number {
  * desk/merged 10s TTL) — comfortably below the 90s gate threshold, so a lagging replica corrects
  * itself well before the gate would ever read two replicas' answers as contradictory.
  *
- * Deliberately NOT applied to `loadSpxDesk()`/`loadMergedSpxDesk()`'s own SWR `maxStaleAgeMs` (the
- * blocking-loader path, not the peek path) — `withServerCache`'s SWR branch falls through to an
- * UNBOUNDED `refreshCache()` call (no `maxBlockMs` race) once `staleAge > maxStaleAgeMs` on a
- * not-yet-degraded key, so shrinking that ceiling for an actively-SWR'd key would make that
- * unbounded-block branch fire far more often — a real regression risk needing its own fix to
- * `server-cache.ts`'s SWR branch, out of scope for this change. The peek path has no such hazard:
+ * UPDATE (2026-10-26, SPX desk loader-path stale-cache ceiling gap — FIXED): this comment
+ * previously said tightening `loadSpxDesk()`/`loadMergedSpxDesk()`'s own SWR `maxStaleAgeMs` was
+ * deliberately deferred because `withServerCache`'s SWR branch fell through to an UNBOUNDED
+ * `refreshCache()` call (no `maxBlockMs` race) once `staleAge > maxStaleAgeMs` on a not-yet-
+ * degraded key — shrinking that ceiling for an actively-SWR'd key would have made that unbounded-
+ * block branch fire far more often, a real regression risk. That gap is now closed: the SWR branch
+ * in `server-cache.ts` races its refresh against `opts.maxBlockMs` exactly like every other
+ * maxBlockMs-configured branch in that file, so tightening the loader path's ceiling (see
+ * `deskLoaderMaxStaleAgeMs()` below) is now safe. The peek path never had this hazard —
  * `peekServerCache` never invokes a loader at all, so returning null just hands the caller to its
  * already-safe fallback.
  */
@@ -57,6 +60,33 @@ export function deskPeekMaxAgeSec(): number {
   const sec = raw ? Number(raw) : 40;
   if (!Number.isFinite(sec) || sec <= 0) return 40;
   return Math.round(sec);
+}
+
+/**
+ * Staleness ceiling (ms) for the SPX desk/merged-desk cache keys' BLOCKING LOADER paths —
+ * `loadSpxDesk()`/`loadMergedSpxDesk()`/`loadBootstrapBundle()`'s `withServerCache` `maxStaleAgeMs`
+ * option (`src/features/spx/lib/spx-desk-loader.ts`). This is the SWR-branch sibling of
+ * `deskPeekMaxAgeSec()` above, which only ever tightened the non-blocking PEEK paths
+ * (`peekSpxDesk()`/`peekMergedSpxDesk()`), leaving these three loader call sites on
+ * `server-cache.ts`'s generic 10-minute `MAX_STALE_AGE_MS` default — the exact cross-replica
+ * divergence gap `deskPeekMaxAgeSec()`'s own doc comment describes, just for the path that
+ * actually invokes `buildSpxDesk()`/`loadMergedSpxDeskCore()` rather than only peeking.
+ *
+ * Deliberately reuses `deskPeekMaxAgeSec()`'s value (via the SAME `SPX_DESK_PEEK_MAX_AGE_SEC` env
+ * var) rather than an independent constant/env var, so the peek ceiling and the loader ceiling
+ * can never drift apart again the way they did between the two fixes (peek tightened first; this
+ * loader-path fix came second, closing the gap the first fix's own doc comment named and
+ * deferred). A dedicated `SPX_DESK_LOADER_MAX_STALE_AGE_SEC` would just reopen that same drift
+ * risk — one knob controls both ceilings on purpose.
+ *
+ * Safe to apply now (see the UPDATE note on `deskPeekMaxAgeSec()` above) only because
+ * `server-cache.ts`'s SWR branch was fixed FIRST to race its refresh against `opts.maxBlockMs` —
+ * all three loader call sites already pass `maxBlockMs: deskBootstrapMaxBlockMs()`, so a refresh
+ * that blows the tightened ~40s ceiling is now bounded by that budget instead of blocking
+ * unboundedly.
+ */
+export function deskLoaderMaxStaleAgeMs(): number {
+  return deskPeekMaxAgeSec() * 1000;
 }
 
 /** Hard cap on UW flow-alerts fetch during cold desk build (sticky tape covers gaps). */

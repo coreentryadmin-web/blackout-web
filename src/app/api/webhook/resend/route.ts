@@ -12,6 +12,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { dbConfigured, dbQuery } from "@/lib/db";
+import { sharedCacheSetNx, sharedCacheDel } from "@/lib/shared-cache";
+
+// Svix (the delivery transport Resend's webhooks ride on, same scheme the SDK's
+// webhooks.verify() checks above) retries a delivery on any non-2xx response, and —
+// same as every other at-least-once webhook — can also redeliver an already-ack'd
+// event (network blip losing our 200, a dashboard-triggered "resend event", etc.).
+// `svix-id` is stable across redeliveries of the SAME event (it's Svix's own message
+// id, not a per-attempt id), so it is the correct idempotency key — the exact pattern
+// webhook/whop/route.ts already uses for the same reason (see claimWhopEvent there).
+// Without this, a redelivered event inserts a SECOND email_events row for the same
+// delivery, inflating the admin/email-events dashboard's sent/delivered/opened/
+// bounced/complained counts with phantom duplicates.
+// 24h mirrors claimWhopEvent's own TTL choice — long enough to outlast Svix's retry
+// window, short enough that the claim key set doesn't grow unbounded.
+const RESEND_EVENT_CLAIM_TTL_SEC = 24 * 60 * 60;
+
+/**
+ * Atomically claim a Resend/Svix delivery id so a redelivery of the same event is
+ * skipped rather than double-inserted. Returns true iff THIS call is the first to
+ * claim it. Fails OPEN (treats a Redis error as "proceed") rather than ever dropping
+ * a genuine, first-time delivery over an infra blip — same bias as every other
+ * best-effort guard in this file and in ip-rate-limit.ts.
+ */
+async function claimResendEvent(svixId: string): Promise<boolean> {
+  return sharedCacheSetNx(`resend:event:${svixId}`, 1, RESEND_EVENT_CLAIM_TTL_SEC).catch(() => true);
+}
+
+/**
+ * Release a claimed delivery id after processing FAILED, so Svix's retry of the
+ * SAME event (it reuses the same svix-id) is reprocessed instead of being silently
+ * swallowed as a "duplicate" of an attempt that never actually persisted anything —
+ * the exact bug `releaseWhopEventClaim` in webhook/whop/route.ts documents and fixes.
+ */
+async function releaseResendEventClaim(svixId: string): Promise<void> {
+  await sharedCacheDel(`resend:event:${svixId}`).catch(() => undefined);
+}
 
 function getClient(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
@@ -77,6 +113,15 @@ export async function POST(req: NextRequest) {
 
   if (!dbConfigured()) return NextResponse.json({ ok: true });
 
+  // Idempotency: a redelivery of an event we already recorded is ack'd without
+  // re-inserting. Claimed BEFORE processing (not after) so two genuinely-concurrent
+  // redeliveries can't both pass the check and double-insert.
+  const isFirstDelivery = await claimResendEvent(svixId);
+  if (!isFirstDelivery) {
+    console.log("[resend webhook] duplicate delivery", svixId, event.type, "— already recorded, acking");
+    return NextResponse.json({ ok: true, duplicate: true });
+  }
+
   try {
     const { emailId, recipient, subject, templateTag } = extractIndexed(event.data);
     const occurredAt =
@@ -90,6 +135,10 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     console.error("[resend webhook] failed to record event", event.type, err);
+    // Release the claim so Svix's retry of this exact delivery (it reuses svix-id)
+    // gets reprocessed instead of being silently ack'd as a duplicate of an attempt
+    // that never persisted anything.
+    await releaseResendEventClaim(svixId);
     return NextResponse.json({ error: "db_error" }, { status: 500 });
   }
 

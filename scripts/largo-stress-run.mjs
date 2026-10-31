@@ -95,15 +95,29 @@ async function askLive(cookieHeader, question) {
   const { fetchRetry } = await import("./audit/lib/fetch-retry.mjs");
   const BASE = liveBaseUrl();
   const t0 = Date.now();
-  const res = await fetchRetry(
-    `${BASE}/api/market/largo/query`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookieHeader },
-      body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
-    },
-    { retries: 1, timeoutMs: 120_000 }
-  );
+  const stressRetries = Number(process.env.LARGO_STRESS_FETCH_RETRIES ?? 4) || 4;
+  let res;
+  try {
+    res = await fetchRetry(
+      `${BASE}/api/market/largo/query`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify({ question, session_id: `stress-${Date.now()}` }),
+      },
+      { retries: stressRetries, timeoutMs: 120_000 }
+    );
+  } catch (err) {
+    const ms = Date.now() - t0;
+    const detail = err?.cause?.code ?? err?.code ?? err?.message ?? "fetch_failed";
+    return {
+      status: 0,
+      answer: "",
+      ms,
+      transport_error: true,
+      transport_detail: String(detail).slice(0, 200),
+    };
+  }
   const body = await res.json().catch(() => ({}));
 
   // Capture rate-limit headers on 429 to identify the upstream source
@@ -144,6 +158,13 @@ async function askLiveThrottleAware(cookieHeader, question, attempts = 3) {
   let last = null;
   for (let i = 0; i < attempts; i++) {
     last = await askLive(cookieHeader, question);
+    if (last.transport_error) {
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+        continue;
+      }
+      return { ...last, throttled: true };
+    }
     if (last.status !== 429) return last;
     await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
   }
@@ -242,7 +263,27 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
         while (idx < entries.length) {
           const i = idx++;
           const entry = entries[i];
-          let res = await askLiveThrottleAware(await freshCookie(), entry.q);
+          let res;
+          try {
+            res = await askLiveThrottleAware(await freshCookie(), entry.q);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            const scored = {
+              verdict: "SKIP",
+              issues: [`fetch-failed — ${msg} (transport, excluded from the quality tally)`],
+            };
+            liveRows.push({
+              ...entry,
+              status: 0,
+              ms: 0,
+              answer_len: 0,
+              ...scored,
+              preview: "",
+            });
+            console.log(`– 0ms SKIP | ${entry.q.slice(0, 55)}`);
+            console.log(`    ${scored.issues.join(", ")}`);
+            continue;
+          }
           if (res.status === 401) {
             // LOGGED UNCONDITIONALLY, because the first version of this was silent and I could
             // not tell whether it had run. The one sweep that should have exercised it answered
@@ -254,7 +295,7 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
             console.log(`[largo-stress] refresh ${ok ? "succeeded, retrying" : "unavailable"}`);
             if (ok) res = await askLiveThrottleAware(live.cookieHeader, entry.q);
           }
-          const { status, answer, source, ms, throttled, rate_limit_headers } = res;
+          const { status, answer, source, ms, throttled, rate_limit_headers, transport_detail } = res;
           const route = { intent: rows[i].intent };
           // ONLY A 200 IS SCORED FOR QUALITY — everything else is a transport outcome.
           const scored =
@@ -270,6 +311,7 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
             ...scored,
             preview: answer.slice(0, 120),
             ...(rate_limit_headers && { rate_limit_headers }),
+            ...(transport_detail && { transport_detail }),
           });
           const icon =
             scored.verdict === "OK" ? "✓" : scored.verdict === "WARN" ? "⚠" : scored.verdict === "SKIP" ? "–" : "✗";
@@ -277,6 +319,9 @@ if (process.env.LARGO_STRESS_LIVE === "1") {
           if (scored.issues.length) console.log(`    ${scored.issues.join(", ")}`);
           if (rate_limit_headers) {
             console.log(`    [429 source details] ${JSON.stringify(rate_limit_headers)}`);
+          }
+          if (transport_detail) {
+            console.log(`    [transport] ${transport_detail}`);
           }
         }
       }

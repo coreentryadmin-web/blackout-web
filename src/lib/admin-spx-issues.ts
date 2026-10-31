@@ -147,6 +147,28 @@ export async function buildSpxAdminIssues(input: {
     });
   }
 
+  // `oi_changes`/`iv_term_structure` are PERMANENTLY absent from `desk.data_quality.missing`
+  // (buildDeskDataQuality() in spx-desk.ts pushes them unconditionally — no function anywhere
+  // computes real data for either field) — a standing structural gap, not a VIX feed outage.
+  // Surface it in its OWN, always-evaluated check rather than piggybacking on the
+  // `vix_term_partial` block above: that block only fires when the VIX curve itself is
+  // degraded, which is usually false, so gating this disclosure on it would mean the admin
+  // dashboard almost never shows these two fields are dead. `info`, not `warning` — this is
+  // known, standing behavior to track, not an incident to page on.
+  const deadFeeds = (desk.data_quality?.missing ?? []).filter(
+    (f) => f === "oi_changes" || f === "iv_term_structure"
+  );
+  if (deadFeeds.length) {
+    push(issues, {
+      severity: "info",
+      category: "desk",
+      title: "OI-change / IV-term-structure not computed",
+      detail: `${deadFeeds.join(", ")} always empty — no function computes real data for ${
+        deadFeeds.length > 1 ? "these fields" : "this field"
+      } yet (structural gap, not a feed fault)`,
+    });
+  }
+
   const polygonWs = health.websockets.polygon_indices;
   if (polygonConfigured()) {
     const polygonClusterLive = polygonWs.cluster_live === true;

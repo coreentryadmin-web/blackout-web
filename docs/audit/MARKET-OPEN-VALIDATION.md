@@ -1,3 +1,26 @@
+## WATCH LIST — 2026-10-26 SPX Slayer discloses `oi_changes`/`iv_term_structure` as permanently missing (PR pending at time of writing — see commit for the merged SHA)
+
+**What was shipped:** `buildDeskDataQuality()` (`spx-desk.ts`) now names `oi_changes` and
+`iv_term_structure` in `data_quality.missing` **unconditionally, every call** — those two
+`SpxDeskPayload` fields are structurally dead (no function anywhere computes them; the canonical
+build hardcodes `[]`), so before this fix nothing distinguished "never computed" from "genuinely
+zero today". Also closed two wiring gaps found while verifying the disclosure actually reaches
+consumers: `SpxDeskSummary` (the object Largo's `get_spx_structure`/`get_market_context`/
+`get_platform_snapshot` return to the model) never carried `data_quality` at all — now populated
+via `summarizeSpxDesk()` — and the admin dashboard's issue surfacer only read `data_quality` inside
+a block gated on an unrelated `vix_term_partial` flag — now has its own always-evaluated, `info`-
+severity check. No real OI-change/IV-term-structure computation was added (disclosure fix only, per
+scope). Full suite + `tsc --noEmit` clean before merge (see PR for exact counts).
+
+**Specific thing to check next cycle:** ask Largo a question that would normally pull
+`get_spx_structure` (e.g. "what's SPX dealer positioning and OI changes look like right now") and
+confirm the tool result's `data_quality.missing` array includes `"oi_changes"` and
+`"iv_term_structure"` — this is new; before this PR the field didn't exist on that object at all.
+Separately, open the admin SPX dashboard's issues panel and confirm an `info`-severity "OI-change /
+IV-term-structure not computed" item is present (it should be present on EVERY load, not
+conditionally) — this is a disclosure-only change, so there is no behavior difference to spot in
+the board/UI itself beyond these two new visible facts.
+
 ## WATCH LIST — 2026-10-26 `thesis_invalidated` gate reason no longer claims a settled close (PR #6899, merged `3e0ccc805`)
 
 **What was shipped:** Corrected the swing `thesis_invalidated` gate reason (`entry-verdict.ts`) and
@@ -9209,3 +9232,24 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   with any of them. If SEDG/ENPH are still concurrently LONG, confirm their play-briefs now render
   a "Book context" section reporting the pair's concentration, labeled a `solar` theme overlap,
   never folded into any semis-named language.
+
+## WATCH LIST — 2026-10-26 (SPX desk loader-path stale-cache ceiling fix, fix/spx-desk-loader-stale-ceiling)
+
+- **SPX Slayer — `loadSpxDesk()`/`loadMergedSpxDesk()`/`loadBootstrapBundle()` had no staleness
+  ceiling of their own, falling back to the generic 10-minute `MAX_STALE_AGE_MS` (4th instance of
+  this same cache-key's staleness-ceiling bug class — see `docs/audit/FINDINGS.md`'s 2026-10-16
+  last-writer-wins fix, PR #6822's off-hours fix, and PR #6882's peek-ceiling fix for the first
+  three).** Live-reproduced pre-fix: `GET /api/market/spx/desk`'s `as_of` 52.4s–76.0s stale across
+  10 consecutive polls with two backward jumps. Fixed in two required steps: (1)
+  `server-cache.ts`'s SWR branch now races its refresh against `opts.maxBlockMs` instead of
+  blocking unboundedly once a key's stale age exceeds `maxStaleAgeMs`; (2) all three loader call
+  sites now pass `maxStaleAgeMs: deskLoaderMaxStaleAgeMs()` (same 40s ceiling `peekSpxDesk()`
+  already uses, PR #6882). **Re-check once the market opens:** poll `GET /api/market/spx/desk`
+  repeatedly during RTH (a dozen or so calls a few seconds apart) and confirm `as_of` only ever
+  advances (never jumps backward) and never lags more than roughly 40-50s behind the poll's own
+  wall-clock time, even across requests that land on different ECS replicas (ALB round-robin);
+  separately confirm no new ALB `TargetResponseTime` p99/Max spike shows up for this route
+  post-deploy (the race-guard fix changes behavior for any `withServerCache` caller combining SWR +
+  a not-yet-degraded key + a stale age past ceiling + an explicit `maxBlockMs` — a regression here
+  would most likely surface as a brief post-deploy tail-latency blip on `/api/market/spx/desk` or
+  `/api/market/spx/play`, not a correctness error).

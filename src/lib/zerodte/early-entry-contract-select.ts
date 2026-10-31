@@ -28,6 +28,7 @@
 // mismatched anchor would silently misreport how much room is actually left.
 
 import { rankContractsByReachability, type ChainCandidate } from "./strike-reachability";
+import { targetReachabilityScenarios, type TargetReachabilityResult } from "./early-entry-target-reachability";
 
 export type EarlyEntryChainRow = {
   strike: number;
@@ -62,6 +63,16 @@ export type EarlyEntryCandidate = {
   /** Ordering key only — NOT a trading decision by itself, same discipline as every other
    *  rank_score in this directory. */
   rank_score: number;
+  /** How far the underlying would have to move (and under what time-decay/IV-shock scenario)
+   *  for THIS contract's real Black-Scholes value to reach $10 / $20 — early-entry-target-
+   *  reachability.ts. ADVISORY ONLY: reported for display/future gating, never used in
+   *  `rank_score` or as a reject reason yet — this backtest's historical data source has no
+   *  point-in-time IV, so the field can't be validated against real history (disclosed in
+   *  early-entry-big-target-backtest.mjs); live production DOES have a real IV, so it is
+   *  wired here for forward paper-test evidence to accumulate against. Null exactly when `iv`
+   *  is missing (never fabricated). */
+  target10: TargetReachabilityResult | null;
+  target20: TargetReachabilityResult | null;
 };
 
 export type EarlyEntryRejectReason =
@@ -169,6 +180,7 @@ export function selectEarlyEntryContract(input: {
     const original = byStrike.get(r.strike);
     const rankScore =
       (r.reachability_prob ?? 0) - (r.spread_pct ?? 100) / 1000 - (captured ?? 0) / 10;
+    const iv = original?.iv ?? null;
     candidates.push({
       strike: r.strike,
       side: r.side,
@@ -177,12 +189,14 @@ export function selectEarlyEntryContract(input: {
       mid: r.mid,
       spread_pct: r.spread_pct,
       oi: original?.oi ?? null,
-      iv: original?.iv ?? null,
+      iv,
       distance_pct: r.distance_pct,
       expected_move_pct: r.expected_move_pct,
       reachability_prob: r.reachability_prob,
       captured_fraction: captured,
       rank_score: Math.round(rankScore * 10000) / 10000,
+      target10: targetReachabilityScenarios({ spot: input.spotNow, strike: r.strike, side: r.side, iv, minutesRemaining: input.minutesRemaining, targetPremium: 10 }),
+      target20: targetReachabilityScenarios({ spot: input.spotNow, strike: r.strike, side: r.side, iv, minutesRemaining: input.minutesRemaining, targetPremium: 20 }),
     });
   }
   candidates.sort((a, b) => b.rank_score - a.rank_score);

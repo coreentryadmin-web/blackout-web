@@ -12,11 +12,44 @@ import type { BillingKind } from '@/lib/whop';
 import { notifyOpsDiscord } from '@/features/spx/lib/spx-play-notify';
 import { buildNewMemberNotificationFields } from '@/lib/clerk-new-member-notify';
 import { isInternalAuditEmail } from '@/lib/internal-audit-email';
+import { sharedCacheSetNx, sharedCacheDel } from '@/lib/shared-cache';
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+// Clerk's webhooks ride the same Svix at-least-once delivery transport as Resend's and
+// Whop's (see webhook/resend/route.ts, webhook/whop/route.ts) — Svix retries on any
+// non-2xx response, and can also redeliver an already-ack'd event (network blip losing
+// our 200, a dashboard-triggered "resend event", etc). `svix-id` is stable across
+// redeliveries of the SAME event, so it is the correct idempotency key. Without this
+// guard, a redelivered user.created re-ran syncWhopForClerkUser() and fired a SECOND
+// "New member signed up" Discord ping for one real signup (startWelcomeSequence itself
+// is separately protected by its own `ON CONFLICT (user_id) DO NOTHING`, but the ops
+// notification and the Whop API call are not) and a redelivered user.updated re-ran the
+// full tier-sync path a second time for no reason. 24h mirrors claimWhopEvent's own TTL.
+const CLERK_EVENT_CLAIM_TTL_SEC = 24 * 60 * 60;
+
+/**
+ * Atomically claim a Clerk/Svix delivery id so a redelivery of the same event is skipped
+ * rather than reprocessed. Returns true iff THIS call is the first to claim it. Fails
+ * OPEN (treats a Redis error as "proceed") rather than ever dropping a genuine, first-time
+ * delivery over an infra blip — same bias as claimWhopEvent/claimResendEvent.
+ */
+async function claimClerkEvent(svixId: string): Promise<boolean> {
+  return sharedCacheSetNx(`clerk:event:${svixId}`, 1, CLERK_EVENT_CLAIM_TTL_SEC).catch(() => true);
+}
+
+/**
+ * Release a claimed delivery id after processing FAILED, so Svix's retry of the SAME
+ * event (it reuses the same svix-id) is reprocessed instead of being silently swallowed
+ * as a "duplicate" of an attempt that never actually persisted anything — same reasoning
+ * as releaseWhopEventClaim/releaseResendEventClaim.
+ */
+async function releaseClerkEventClaim(svixId: string): Promise<void> {
+  await sharedCacheDel(`clerk:event:${svixId}`).catch(() => undefined);
+}
 
 function metadataFromClerkWebhook(data: WebhookEvent["data"]) {
   const meta = (
@@ -103,6 +136,15 @@ export async function POST(req: Request) {
 
   const { type, data } = evt;
   console.log(`[clerk-webhook] Event: ${type}, id: ${data.id}`);
+
+  // Idempotency: a redelivery of an event we already processed is ack'd without
+  // reprocessing. Claimed BEFORE processing (not after) so two genuinely-concurrent
+  // redeliveries can't both pass the check and both run the side effects below.
+  const isFirstDelivery = await claimClerkEvent(svix_id);
+  if (!isFirstDelivery) {
+    console.log(`[clerk-webhook] duplicate delivery ${svix_id} (${type}) — already processed, acking`);
+    return new Response('OK', { status: 200 });
+  }
 
   try {
     if (type === "user.created" || type === "user.updated") {
@@ -211,7 +253,12 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     // Fail-closed on DB errors — return 500 so Clerk retries (incl. user.deleted GDPR cleanup).
+    // Release the claim so Svix's retry of this exact delivery (it reuses svix-id) gets
+    // reprocessed instead of being silently ack'd as a duplicate of an attempt that never
+    // actually persisted anything — the exact bug releaseWhopEventClaim/
+    // releaseResendEventClaim exist to avoid.
     console.error(`[clerk-webhook] DB error on ${type}:`, err);
+    await releaseClerkEventClaim(svix_id);
     return new Response("Database error", { status: 500 });
   }
 

@@ -5,6 +5,7 @@
 import type { DiscordEmbedPayload } from "@/lib/discord-post";
 import { todayEt } from "@/lib/et-date";
 import { pickGexShiftLeaders } from "@/lib/gex-shift-leaders";
+import { wallStrengthShift } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import {
   buildThermalDiscordEmbed,
   buildThermalRegimeSummary,
@@ -47,7 +48,18 @@ function fmtShiftPct(pct: number | null): string {
   return `${pct >= 0 ? "+" : ""}${Math.round(pct)}%`;
 }
 
-/** Per-ticker intraday build/melt leaders — null when shift unavailable. */
+/**
+ * Per-ticker intraday build/melt leaders — null when shift unavailable.
+ *
+ * Must bucket by wall STRENGTH (did the strike's gamma get heavier or lighter), never by the raw
+ * signed Δ or `leader.pct` (both keyed to delta direction via `shiftPercentForStrike`) — that
+ * convention is correct for a call-side (positive-GEX) strike but INVERTS for a put-side one: a
+ * put wall strengthening means its net GEX goes MORE NEGATIVE (delta < 0), which `delta > 0 ==
+ * build` mislabels as "melt" with a negative %, the exact opposite of what happened. This is the
+ * same inversion `wallStrengthShift`'s own doc comment (gex-heatmap/shift-math.ts) and the two UI
+ * consumers (GexMatrixShiftBadge, GexShiftLeadersStrip) already correct for — this Discord
+ * formatter was the one caller still using the raw-delta convention.
+ */
 export function buildThermalShiftLeadersLine(col: ThermalCardColumn, perSide = 2): string | null {
   const h = col.heatmap;
   if (!h?.shift?.available) return null;
@@ -55,12 +67,15 @@ export function buildThermalShiftLeadersLine(col: ThermalCardColumn, perSide = 2
   const leaders = pickGexShiftLeaders(h.gex?.strike_totals, h.shift, { perSide });
   if (!leaders.length) return null;
 
-  const builds = leaders
-    .filter((l) => l.delta > 0)
-    .map((l) => `+${l.strike} (${fmtShiftPct(l.pct)})`);
-  const melts = leaders
-    .filter((l) => l.delta < 0)
-    .map((l) => `${l.strike} (${fmtShiftPct(l.pct)})`);
+  const builds: string[] = [];
+  const melts: string[] = [];
+  for (const l of leaders) {
+    const strength = wallStrengthShift(l.currentValue, l.delta);
+    if (!strength) continue;
+    const entry = `${l.strike} (${fmtShiftPct(strength.pct)})`;
+    if (strength.built) builds.push(`+${entry}`);
+    else melts.push(entry);
+  }
 
   const parts: string[] = [];
   if (builds.length) parts.push(`build ${builds.join(", ")}`);

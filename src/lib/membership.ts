@@ -48,6 +48,28 @@ export function isPaidTierForReconcileDowngradeCheck(tier: string): boolean {
   return normalized === "premium" || normalized === "community";
 }
 
+/**
+ * Which `reconcileAllMemberships` summary bucket a resolved tier belongs in — pure so the
+ * three-way split is unit-testable without standing up Clerk/Whop clients, same reasoning as
+ * `isPaidTierForReconcileDowngradeCheck` above.
+ *
+ * `community` (SPX Slayer, $49/mo, added by #1159) is a real, distinct resolved tier from
+ * `syncWhopMembershipForEmail` — not a degenerate case of "not premium". A prior version of
+ * `syncOne` (this function's only caller) collapsed it to "free" via a bare
+ * `tier === "premium" ? "premium" : "free"`, so every reconciled community subscriber was
+ * silently mislabeled in the function's own return stats (and therefore in the cron's logged
+ * run + the `cron_job_runs.meta_json` row) — the member's real tier was written to Clerk
+ * correctly (that write happens inside `syncWhopMembershipForEmail` itself and is unaffected by
+ * this classification), but anyone reading the reconcile summary to answer "how many stayed
+ * premium vs actually dropped to free this run" saw every community resolution counted as a
+ * free-tier one, understating how many paid subscribers the sweep actually confirmed.
+ */
+export function reconcileStatsBucket(tier: Tier): "premium" | "community" | "free" {
+  if (tier === "premium") return "premium";
+  if (tier === "community") return "community";
+  return "free";
+}
+
 export async function findClerkUsersByEmail(email: string) {
   const normalized = email.trim().toLowerCase();
   if (!normalized) return [];
@@ -282,6 +304,7 @@ export async function reconcileAllMemberships(opts?: {
 }): Promise<{
   checked: number;
   premium: number;
+  community: number;
   free: number;
   errors: number;
   capped: boolean;
@@ -349,15 +372,18 @@ export async function reconcileAllMemberships(opts?: {
   const slice = capped ? targets.slice(0, maxEmails) : targets;
 
   let premium = 0;
+  let community = 0;
   let free = 0;
   let errors = 0;
 
-  async function syncOne(email: string): Promise<"premium" | "free" | "error"> {
+  // Three-way (not two-way) resolution — see reconcileStatsBucket's own doc comment for why
+  // `community` must not collapse into `free` here.
+  async function syncOne(email: string): Promise<"premium" | "community" | "free" | "error"> {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const { tier, updatedUserIds } = await syncWhopMembershipForEmail(email);
         for (const uid of updatedUserIds) publishTierChanged(uid);
-        return tier === "premium" ? "premium" : "free";
+        return reconcileStatsBucket(tier);
       } catch (err) {
         const status = (err as { status?: number })?.status ?? (err as { statusCode?: number })?.statusCode;
         if (status === 429 && attempt < 3) {
@@ -372,8 +398,8 @@ export async function reconcileAllMemberships(opts?: {
   }
 
   let nextIdx = 0;
-  async function worker(): Promise<Array<"premium" | "free" | "error">> {
-    const out: Array<"premium" | "free" | "error"> = [];
+  async function worker(): Promise<Array<"premium" | "community" | "free" | "error">> {
+    const out: Array<"premium" | "community" | "free" | "error"> = [];
     for (;;) {
       const i = nextIdx++;
       if (i >= slice.length) return out;
@@ -386,6 +412,7 @@ export async function reconcileAllMemberships(opts?: {
   for (const batch of batches) {
     for (const o of batch) {
       if (o === "premium") premium++;
+      else if (o === "community") community++;
       else if (o === "free") free++;
       else errors++;
     }
@@ -397,5 +424,5 @@ export async function reconcileAllMemberships(opts?: {
     );
   }
 
-  return { checked: slice.length, premium, free, errors, capped };
+  return { checked: slice.length, premium, community, free, errors, capped };
 }
