@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { MarkdownBody } from "@/components/learn/MarkdownBody";
 import { manifestProductCount } from "@/lib/marketing/product-manifest";

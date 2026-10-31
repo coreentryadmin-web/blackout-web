@@ -39,6 +39,28 @@ test("the 12,400+ daily-screen figure is labeled stocks/tickers, never contracts
   assert.doesNotMatch(src, /12,400\+?\s+contracts/i, "12,400+ is a real stock-universe count, not a contract count — never label it 'contracts'");
 });
 
+// Regression (found 2026-10-31, round 165 audit): #1944's breadcrumbs fix added
+// `import type { ReactNode } from "react";` ABOVE the pre-existing `"use client";`
+// directive. A directive only takes effect as the FIRST statement in the module (same
+// rule as "use strict") — any statement before it, even a type-only import that is
+// erased at compile time, demotes the literal to an ordinary no-op expression statement.
+// Every other "use client" file in this repo (grep -rl '"use client"' src) puts the
+// directive first; this was the only exception, left silently inert for over a year.
+// It happened not to break anything because this component uses no hooks/browser APIs
+// of its own (MarkdownBody, which it renders, declares its own "use client"), but the
+// NEXT edit that adds a `useState`/`useEffect` here would hard-fail `next build` with
+// "You're importing a component that needs client-only ..." — see client-server-
+// boundary.test.ts's doc comment for exactly that failure shape elsewhere in the repo.
+test('"use client" is the literal first line — not merely present, but a real directive', () => {
+  const firstNonBlankLine = src.split("\n").find((l) => l.trim().length > 0);
+  assert.equal(
+    firstNonBlankLine?.trim(),
+    '"use client";',
+    `"use client" must be the first statement in the file (before even a type-only import) ` +
+      `to take effect as a module directive; got: ${JSON.stringify(firstNonBlankLine)}`
+  );
+});
+
 test("/why-blackout's tool list names every live product in the manifest", () => {
   for (const id of MANIFEST_PRODUCT_ORDER) {
     const entry = PRODUCT_MANIFEST[id];
