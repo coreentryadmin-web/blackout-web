@@ -33,7 +33,15 @@ export function ExecutionAnalysisPanel({
     );
   }
 
-  const maxPremium = entries[0]?.premium ?? 1;
+  // BUG FIXED (round 185): `summarizeExecutionQuality` returns entries in a FIXED bucket order
+  // (aggressive, passive, mid, unknown — see helix-execution-quality.ts), never sorted by premium.
+  // Treating `entries[0]` as the max (the sibling RouteBreakdown.tsx panel does this safely only
+  // because IT explicitly sorts its entries by premium first) silently assumed the first bucket in
+  // that fixed order always held the largest premium. When a later bucket (e.g. "passive") carries
+  // far more premium than "aggressive" (first in the fixed order), `barW` for that bucket computed
+  // to many thousands of percent — a bar width style of "9000%" overflowing its container — while
+  // the actual-smallest bucket rendered at a full 100%, i.e. visually backwards from the real data.
+  const maxPremium = Math.max(1, ...entries.map((e) => e.premium));
 
   return (
     <Panel accent="sky" kicker="◇ execution" title="Fill quality" bodyClassName="space-y-2">
