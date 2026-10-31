@@ -1,5 +1,5 @@
 import type { ApiProviderId } from "@/lib/api-telemetry-types";
-import { getApiTelemetrySnapshot, getProviderHealthSummary } from "@/lib/api-telemetry";
+import { getProviderHealthSummary } from "@/lib/api-telemetry";
 
 const TELEMETRY_TTL_SEC = 120;
 const INSTANCE_SET_KEY = "telemetry:instances";
@@ -68,7 +68,6 @@ async function redisClient() {
 }
 
 function buildInstancePayload(): InstanceTelemetryPayload {
-  const snap = getApiTelemetrySnapshot(5 * 60_000);
   const health = getProviderHealthSummary(5 * 60_000);
   const providers: InstanceTelemetryPayload["providers"] = {};
 
