@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-31T13:13:31.497Z",
+  "updated_at": "2026-10-31T13:03:25.823Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "684cdce2f5f47e278a0a6848f4e52935bc8270c6",
+    "last_main_sha": "28d8c0c78a4e57db36c73f55a6bbcf4423081bb3",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
@@ -1255,44 +1255,34 @@
       "open_pr_count": 4
     },
     {
-      "at": "2026-10-31T13:13:22.017Z",
+      "at": "2026-10-31T13:03:16.599Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 6
+      "open_pr_count": 5
     },
     {
-      "at": "2026-10-31T13:13:27.023Z",
+      "at": "2026-10-31T13:03:21.470Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 6
+      "open_pr_count": 5
     },
     {
-      "at": "2026-10-31T13:13:31.497Z",
+      "at": "2026-10-31T13:03:25.823Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 6
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6998,
-      "title": "fix(market-internals): correct inverted TRIN proxy polarity",
-      "branch": "fix/market-internals-trin-direction",
+      "number": 6996,
+      "title": "fix(admin): drop stale out-of-order responses in X Intel Queue panel",
+      "branch": "fix/x-intel-queue-panel-fetch-race",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T13:05:53Z"
-    },
-    {
-      "number": 6997,
-      "title": "chore: sync agent-state heartbeat files",
-      "branch": "chore/agent-state-heartbeat-sync-20261031-1303",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T13:03:50Z"
+      "updated_at": "2026-10-31T12:56:59Z"
     },
     {
       "number": 5547,
