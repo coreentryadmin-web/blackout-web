@@ -879,10 +879,6 @@ export function getNetPremTicksForTicker(ticker: string): NetPremTick[] {
   return snap.ticks;
 }
 
-export function getNetFlow(): typeof netFlowStore {
-  return netFlowStore;
-}
-
 const OPTION_TRADES_RING_MAX = 250;
 const LIT_TRADES_RING_MAX = 120;
 
@@ -899,11 +895,6 @@ export const litTradesStore: {
 } = { rows: [], updatedAt: 0, total_received: 0 };
 
 const priceByTicker = new Map<string, UwPriceTick>();
-
-/** Latest UW `price:TICKER` tick (same socket as flow — time-aligned with tape). */
-export function getUwPriceForTicker(ticker: string): UwPriceTick | null {
-  return priceByTicker.get(ticker.toUpperCase()) ?? null;
-}
 
 function upsertPriceTicks(ticks: UwPriceTick[]) {
   if (!ticks.length) return;
