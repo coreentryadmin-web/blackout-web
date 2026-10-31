@@ -27,20 +27,40 @@ function fanOutLocal(flow: FlowRow): void {
   });
 }
 
+// Skips our OWN looped-back messages (already fanned locally) and strips the origin tag;
+// only genuine cross-instance flows are fanned + counted here.
+//
+// Hoisted to a single stable function reference (rather than a fresh arrow function built
+// inside ensureRedisBridge()) on purpose: redisSubscribe() registers whatever handler it is
+// given into redis-pubsub.ts's module-level channelHandlers Set REGARDLESS of whether the
+// connection attempt itself succeeds (subscribed:false still adds the handler, so a later,
+// unrelated successful subscribe on the same channel can still deliver to it). ensureRedisBridge
+// resets bridgeInit to null on every failed attempt specifically so the NEXT caller retries —
+// and every caller that connects to this module (init-data-sockets.ts at boot, every new
+// /api/market/flows/stream SSE connection) calls initFlowEventBridge()/subscribeFlowEvents()
+// again. With a fresh closure built per attempt, each failed retry during a Redis outage leaked
+// one more handler into that Set forever (never unsubscribed); once the channel finally
+// subscribed, EVERY leaked handler fired on every real message, multiplying one cross-instance
+// flow event into N local deliveries to every connected SSE client. A single stable reference
+// makes repeated registration idempotent (Set.add() of the same function is a no-op), so retries
+// never accumulate duplicates.
+function handleRedisFlowMessage(message: string): void {
+  const flow = decodeFlowMessage(message, INSTANCE_ID);
+  if (flow) {
+    receivedViaRedis += 1;
+    fanOutLocal(flow);
+  }
+}
+
 async function ensureRedisBridge(): Promise<void> {
   if (bridgeReady) return;
   if (bridgeInit) return bridgeInit;
 
   bridgeInit = (async () => {
-    const { unsubscribe, subscribed } = await redisSubscribe(FLOW_REDIS_CHANNEL, (message) => {
-      // Skips our OWN looped-back messages (already fanned locally) and strips the
-      // origin tag; only genuine cross-instance flows are fanned + counted here.
-      const flow = decodeFlowMessage(message, INSTANCE_ID);
-      if (flow) {
-        receivedViaRedis += 1;
-        fanOutLocal(flow);
-      }
-    });
+    const { unsubscribe, subscribed } = await redisSubscribe(
+      FLOW_REDIS_CHANNEL,
+      handleRedisFlowMessage
+    );
     redisUnsubscribe = unsubscribe;
     bridgeReady = subscribed;
     if (!subscribed) {
