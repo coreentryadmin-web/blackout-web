@@ -24,6 +24,7 @@ import {
 import {
   evaluatePlayGates,
   mixedTapeGateMessage,
+  isFlowDataStale,
   GATE_BLOCK,
   type PlayGateResult,
 } from "@/features/spx/lib/spx-play-gates";
@@ -1676,6 +1677,40 @@ function discloseStaleVwapFactor(factors: SpxSignalFactor[]): SpxSignalFactor[] 
   );
 }
 
+/**
+ * Labels of the `SpxSignalFactor`s computeSpxConfluence() (spx-signals.ts) builds directly from
+ * flow/tape-derived desk fields — `desk.flow_0dte_net` ("0DTE flow"), `desk.spx_flows`' matched
+ * sweeps ("HELIX sweeps"), `desk.unified_tape` ("Live tape"), and `desk.net_prem_ticks` ("Net
+ * prem"). Sibling of GEX_DERIVED_FACTOR_LABELS/VWAP_FACTOR_LABEL above, for the one remaining
+ * data family those two comments explicitly called out as untouched ("Non-GEX factors... are
+ * left untouched — their own data freshness is a separate concern this fix does not touch").
+ */
+const FLOW_DERIVED_FACTOR_LABELS = new Set(["0DTE flow", "HELIX sweeps", "Live tape", "Net prem"]);
+
+/**
+ * BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
+ * closed): same bug class as discloseStaleGexFactors/discloseStaleVwapFactor above, for the
+ * flow/tape-derived factors instead. Unlike GEX and VWAP, nothing on `SpxDeskPayload` had ever
+ * disclosed flow staleness in this closed-market branch at all — `desk.flow_data_age_ms` was
+ * read nowhere in this branch (only a debug log elsewhere), despite the live-market gate stack
+ * (`evaluatePlayGates` / `isFlowDataStale`, spx-play-gates.ts) already treating stale flow as
+ * unreliable enough to hard-block a BUY. Confirmed live: GET /api/market/spx/play served a
+ * +14-weight "0DTE flow" factor ("Call premium leading 0DTE tape") — 35% of the published score
+ * of 40 — built from data `flow_data_age_ms` reported as ~17.4h (62,672,013ms) old, with zero
+ * staleness disclosure anywhere in the response, while the sibling GET /api/market/spx/desk
+ * route reported the same age.
+ *
+ * Reuses `isFlowDataStale` (spx-play-gates.ts) rather than inventing a second threshold, so the
+ * live BUY-intent hard-block boundary and this closed-market disclosure can never drift apart —
+ * the same "extract once, consult from both paths" idiom `mixedTapeGateMessage` already
+ * established for the mixed-tape check.
+ */
+function discloseStaleFlowFactors(factors: SpxSignalFactor[]): SpxSignalFactor[] {
+  return factors.map((f) =>
+    FLOW_DERIVED_FACTOR_LABELS.has(f.label) ? { ...f, detail: `${f.detail} — Flow stale, not live` } : f
+  );
+}
+
 async function evaluateSpxPlayCore(
   desk: SpxDeskPayload,
   prefetchedTechnicals?: PlayTechnicals | null,
@@ -1738,17 +1773,28 @@ async function evaluateSpxPlayCore(
     const closedVwapFactorStale =
       desk.vwap_stale === true &&
       (closedConfluence?.factors.some((f) => f.label === VWAP_FACTOR_LABEL) ?? false);
+    // See discloseStaleFlowFactors()'s own doc comment above — the sibling check for the
+    // flow/tape-derived factors, gated on `isFlowDataStale` (spx-play-gates.ts, the same
+    // predicate the live BUY-intent hard block consults) rather than a boolean already carried
+    // on the desk payload, because unlike GEX/VWAP no such boolean existed — and likewise only
+    // when a flow-derived factor actually fired so a closed-market read with none present never
+    // grows a staleness clause about data it never showed.
+    const closedFlowFactorStale =
+      isFlowDataStale(desk.flow_data_age_ms, desk.flow_cluster_live === true) &&
+      (closedConfluence?.factors.some((f) => FLOW_DERIVED_FACTOR_LABELS.has(f.label)) ?? false);
     let closedFactors = closedGexFactorStale
       ? discloseStaleGexFactors(closedConfluence!.factors)
       : (closedConfluence?.factors ?? []);
     if (closedVwapFactorStale) closedFactors = discloseStaleVwapFactor(closedFactors);
-    // Compose both disclosure clauses (independent conditions — either, both, or neither can
-    // fire) into one "· <clause> · <clause>" suffix shared by the thesis and the play idea, so a
-    // closed-market read that's stale on BOTH GEX and VWAP discloses both rather than only
-    // whichever check happened to run last.
+    if (closedFlowFactorStale) closedFactors = discloseStaleFlowFactors(closedFactors);
+    // Compose all disclosure clauses (independent conditions — any combination can fire) into
+    // one "· <clause> · <clause>" suffix shared by the thesis and the play idea, so a
+    // closed-market read that's stale on more than one data family discloses all of them rather
+    // than only whichever check happened to run last.
     const staleClauses = [
       closedGexFactorStale ? "GEX stale, not live" : null,
       closedVwapFactorStale ? "VWAP stale, not live" : null,
+      closedFlowFactorStale ? "Flow stale, not live" : null,
     ].filter((c): c is string => c != null);
     const closedPlayIdea =
       staleClauses.length && playIdea ? `${playIdea} · ${staleClauses.join(" · ")}` : playIdea;
