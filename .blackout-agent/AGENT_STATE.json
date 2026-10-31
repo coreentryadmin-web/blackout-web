@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-31T14:07:42.129Z",
+  "updated_at": "2026-10-31T14:37:44.050Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "ce5caa28b6ef89caca02aad7367fbef1821c37ed",
+    "last_main_sha": "a6f8959d98e15007279ac9cff0b0c353ed77775f",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-21T09:36:32.917Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-21T09:36:37.357Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-21T09:46:48.338Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-21T09:46:52.783Z",
       "type": "context_sync",
@@ -1271,18 +1253,56 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-31T14:37:30.670Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-31T14:37:37.787Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-31T14:37:44.050Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 7009,
-      "title": "fix(x-content): remove dead WHOP_URL constant",
-      "branch": "fix/remove-dead-whop-url",
+      "number": 7017,
+      "title": "fix(spx): disclose closed-market flow/tape factor staleness (0DTE flow, HELIX sweeps, Live tape, Net prem)",
+      "branch": "fix/spx-flow-tape-staleness-undisclosed",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T13:56:19Z"
+      "updated_at": "2026-10-31T14:36:56Z"
+    },
+    {
+      "number": 7016,
+      "title": "fix(lib): remove orphaned PLAN_VALUE_PROPS/valuePropFor dead export cluster",
+      "branch": "fix/remove-dead-upsell-value-prop",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-31T14:35:53Z"
+    },
+    {
+      "number": 7015,
+      "title": "fix(lib): remove unused fetchPlatformHealth dead export",
+      "branch": "fix/remove-fetchplatformhealth-dead-export",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-31T14:28:09Z"
     },
     {
       "number": 5547,
