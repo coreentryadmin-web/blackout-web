@@ -142,3 +142,18 @@ test("selectEarlyEntryContract: a chain with nothing qualifying returns empty ca
   assert.deepEqual(candidates, []);
   assert.equal(rejections.length, 3);
 });
+
+test("selectEarlyEntryContract: target10/target20 populate from the real iv (advisory field, never fabricated without one)", () => {
+  const withIv = selectEarlyEntryContract({ ...BASE, chain: [row({ iv: 0.45 })] });
+  assert.equal(withIv.candidates.length, 1);
+  const c = withIv.candidates[0]!;
+  assert.ok(c.target10 != null);
+  assert.ok(c.target20 != null);
+  assert.equal(c.target10!.target_premium, 10);
+  assert.equal(c.target20!.target_premium, 20);
+  assert.equal(c.target10!.scenarios.length, 3);
+
+  const noIv = selectEarlyEntryContract({ ...BASE, chain: [row({ iv: null })] });
+  assert.equal(noIv.candidates[0]!.target10, null);
+  assert.equal(noIv.candidates[0]!.target20, null);
+});
