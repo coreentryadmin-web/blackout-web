@@ -66,7 +66,13 @@ export async function buildFlowsMemberPayload(q: FlowsMemberQueryWithCursor): Pr
   };
 }
 
-let lastGoodFlowsPayload: FlowsMemberPayload | null = null;
+// Keyed by the SAME cacheKey as the server cache (ticker/premium/since_hours/max_dte/pageLimit),
+// never a single shared value — see the fallback wiring below for why. Mirrors the per-key
+// `lastGood*` convention used everywhere else in this codebase for the identical purpose
+// (polygon-options-gex.ts's `lastGoodHeatmapLocal`, unusual-whales.ts's
+// `lastGoodFlow0dteByTicker`, public-gex-snapshot.ts's `lastGoodKey(ticker)`), none of which
+// collapse distinct queries onto one slot.
+const lastGoodFlowsPayloadByKey = new Map<string, FlowsMemberPayload>();
 
 export function emptyFlowsMemberPayload(): FlowsMemberPayload {
   return {
@@ -88,7 +94,18 @@ export async function readFlowsMemberCached(q: FlowsMemberQueryWithCursor): Prom
   const opts = {
     maxBlockMs: flowsMemberReadMaxBlockMs(),
     staleOnInflight: true,
-    fallback: async () => lastGoodFlowsPayload ?? emptyFlowsMemberPayload(),
+    // BUG FIX (round-190 audit): this used to read a single process-wide `lastGoodFlowsPayload`
+    // shared across EVERY distinct query (ticker/min_premium/since_hours/max_dte/pageLimit all
+    // produce their own cacheKey). Under a cold/inflight miss for THIS cacheKey — reachable via
+    // `withServerCache`'s own documented fallback branches (cold key racing maxBlockMs, or a
+    // concurrent inflight build with no stale/Redis copy — server-cache.ts's comments name this
+    // exact module as a caller that reaches them) — the fallback returned whichever query last
+    // happened to populate the shared slot, e.g. serving a TSLA request's own filters mislabeled
+    // onto cached NVDA flow rows, with no `degraded` flag set (that field was only ever stamped by
+    // `emptyFlowsMemberPayload()`, never carried on the stale substitute). Scoping the fallback by
+    // cacheKey makes "no good data for THIS query yet" fall through to the honest
+    // `emptyFlowsMemberPayload()` instead of a different query's rows.
+    fallback: async () => lastGoodFlowsPayloadByKey.get(cacheKey) ?? emptyFlowsMemberPayload(),
   };
 
   const instant = await peekServerCache<FlowsMemberPayload>(cacheKey);
@@ -100,7 +117,7 @@ export async function readFlowsMemberCached(q: FlowsMemberQueryWithCursor): Prom
   }
 
   const payload = await withServerCache(cacheKey, ttlMs, () => buildFlowsMemberPayload(q), opts);
-  if (payload.count > 0) lastGoodFlowsPayload = payload;
+  if (payload.count > 0) lastGoodFlowsPayloadByKey.set(cacheKey, payload);
   return payload;
 }
 
