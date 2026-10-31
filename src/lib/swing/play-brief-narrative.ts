@@ -78,6 +78,72 @@ export type FocalLevel = {
 };
 
 /**
+ * A level is "hard" when it is a real, priced structural fact a trade can actually bounce off or
+ * break through — mirrors `roleForKind`'s own non-neutral/neutral split (play-brief-ladder.ts:
+ * gamma_flip/max_pain/magnet are derived pivots, never a wall price bounces off; put_wall/
+ * call_wall/king/dark_pool each name an actual priced node). Restated here rather than imported —
+ * play-brief-ladder.ts already imports `collectFocalLevels` from this file, so importing the
+ * other direction would be circular — but the two lists must stay in lockstep; if one changes,
+ * check the other.
+ */
+function focalLevelIsHard(kind: LevelKind): boolean {
+  return kind !== "gamma_flip" && kind !== "max_pain" && kind !== "magnet";
+}
+
+/**
+ * Push a focal level, merging into whatever is ALREADY in `out` at the same price (within a
+ * cent — same price-identity tolerance `confluenceZoneKindsLabel`, play-brief-absence.ts, already
+ * uses elsewhere in this product) instead of letting two kinds narrate the identical strike as if
+ * they were two independent facts.
+ *
+ * BUG FIX (2026-10-31, Ask Largo standing mandate, live repro META/CC/TSM): the GEX king strike
+ * commonly sits AT a major wall (king is, definitionally, wherever gamma concentration peaks, and
+ * that is often the same strike dealers already wall at) — before this fix, `collectFocalLevels`
+ * pushed every kind that resolved independently of whether its price matched one already pushed.
+ * Every reader of this array then duplicated the collision: the narration loop below deduped only
+ * by KIND (`used: Set<LevelKind>`), never by price, so both `narrateWall` and `narrateKing` fired
+ * as separate "Trade manager read" bullets about the literal same strike; `buildStructureLadder`
+ * (play-brief-ladder.ts) maps focal levels 1:1 into rungs with no price merge, so
+ * `envelope.structureLadder.rungs` carried two byte-identical `{price, target.rewardRisk}` entries
+ * differing only in kind/label; and `extractEvidence` (play-brief-adapter.ts) walks those rungs and
+ * pushed an `"R:R to <label> ($<price>): <N>R"` string per rung — stating the identical R:R number
+ * twice under two different labels. The 2026-10-08 fix a few lines up (see
+ * `resolveInvalidationFocalLevel`'s doc comment) patched a SIDE EFFECT of this exact collision
+ * (one wasted bullet slot starving the reserved Break-watch level's own narration out of
+ * MAX_BULLETS) without deduping the collision itself — this is the root-cause fix.
+ *
+ * Priority on a collision: a "hard" kind always outranks a neutral pivot at the same price (see
+ * `focalLevelIsHard`). Within the hard tier — the live repro's actual shape, king coinciding with
+ * a wall — the EARLIER-pushed kind wins, i.e. the new candidate is dropped. Given this function's
+ * own fixed push order below (dark-pool prints first, then put/call wall, then king), that means a
+ * real wall's directional breached/cleared/reclaimed coaching (`narrateWall`) survives over king's
+ * generic pin-risk framing (`narrateKing`) whenever the two coincide — matching this file's own
+ * existing, already-shipped narration tests that fix wall/king collisions in their fixtures
+ * (e.g. "LONG put wall ABOVE spot reads as broken support", 2026-10-14) and assert on the WALL's
+ * text specifically. `king` is still the universally-valid kind `resolveInvalidationFocalLevel`
+ * treats as a candidate for EITHER trade direction (unlike a direction-specific wall) — losing it
+ * to a same-priced, opposite-direction wall is a known, narrow trade-off this fix accepts in favor
+ * of matching the file's existing display convention, not something it claims to solve perfectly.
+ */
+function pushFocalLevel(out: FocalLevel[], level: FocalLevel): void {
+  const collision = out.find((l) => Math.abs(l.price - level.price) < 0.01);
+  if (!collision) {
+    out.push(level);
+    return;
+  }
+  if (focalLevelIsHard(level.kind) && !focalLevelIsHard(collision.kind)) {
+    // The new candidate is a real structural fact and the existing one is only a neutral pivot —
+    // upgrade in place (same array slot, so sort order below is unaffected either way).
+    collision.kind = level.kind;
+    collision.label = level.label;
+    collision.meta = level.meta;
+    collision.distancePct = level.distancePct;
+  }
+  // Otherwise — equal tier, or the new candidate is the neutral one — the existing entry already
+  // represents this price; drop the new candidate rather than pushing a second entry for it.
+}
+
+/**
  * All the REAL structural nodes this brief computes for a ticker, Vector-ladder-first with the
  * GEX-matrix fallback (same precedence as `chartLevelsSection`/`preferredGexWalls`,
  * play-brief-intel.ts), staleness-gated identically. Exported (2026-09-12, Ask Largo standing
@@ -86,6 +152,9 @@ export type FocalLevel = {
  * different precedence rules for one conceptual level" defect class this file's own comments
  * elsewhere (GEX king strike, nearest wall) document as already having shipped and been fixed
  * twice. Never call this with a different spot than the one the rest of the brief uses.
+ *
+ * Levels are merged (never duplicated) when two kinds resolve to the same price — see
+ * `pushFocalLevel`'s own doc comment for the live repro and the merge priority.
  */
 export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): FocalLevel[] {
   const vec = vectorOf(ctx);
@@ -106,7 +175,7 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
   const dpStale = darkPoolStale(vec);
   for (const dp of (vec?.darkPoolLevels ?? []).slice(0, 3)) {
     if (vectorStale || dpStale) break;
-    out.push({
+    pushFocalLevel(out, {
       price: dp.strike,
       kind: "dark_pool",
       label: "dark pool",
@@ -133,7 +202,7 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
   const magnet = vec?.magnet?.strike ?? null;
 
   if (putWall != null && !putWallFromStaleGex) {
-    out.push({
+    pushFocalLevel(out, {
       price: putWall,
       kind: "put_wall",
       label: "put wall",
@@ -141,7 +210,7 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
     });
   }
   if (callWall != null && !callWallFromStaleGex) {
-    out.push({
+    pushFocalLevel(out, {
       price: callWall,
       kind: "call_wall",
       label: "call wall",
@@ -149,7 +218,7 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
     });
   }
   if (flip != null && !flipFromStaleGex) {
-    out.push({
+    pushFocalLevel(out, {
       price: flip,
       kind: "gamma_flip",
       label: "gamma flip",
@@ -157,7 +226,7 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
     });
   }
   if (king != null && !kingFromStaleGex) {
-    out.push({
+    pushFocalLevel(out, {
       price: king,
       kind: "king",
       label: "GEX king",
@@ -165,7 +234,7 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
     });
   }
   if (maxPain != null && !vectorStale) {
-    out.push({
+    pushFocalLevel(out, {
       price: maxPain,
       kind: "max_pain",
       label: "max pain",
@@ -173,7 +242,7 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
     });
   }
   if (magnet != null && !vectorStale) {
-    out.push({
+    pushFocalLevel(out, {
       price: magnet,
       kind: "magnet",
       label: "gamma magnet",
