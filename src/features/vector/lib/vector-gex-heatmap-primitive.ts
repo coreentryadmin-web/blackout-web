@@ -78,6 +78,13 @@ class GexHeatmapPaneView implements IPrimitivePaneView {
   }
 
   renderer(): IPrimitivePaneRenderer | null {
+    // Gate on the toggle FIRST. `spotCoordinate()` tracks the live tape independently of the
+    // "gex-heatmap" toggle (the caller pushes `setSpot()` on every tick regardless of visibility —
+    // see VectorChart.tsx's live-tick handler), so checking only "rects empty AND spotY null" let
+    // the cyan dashed spot guide keep drawing — alone, with an empty heatmap — after the member
+    // switched the toggle OFF. That breaks this file's own documented contract ("visible === false
+    // makes renderer() return null → nothing is drawn"). Bug: #round183.
+    if (!this._source.isVisible()) return null;
     const rects = this._source.computeRects();
     const spotY = this._source.spotCoordinate();
     if (!rects.length && spotY == null) return null;
@@ -122,6 +129,12 @@ export class GexHeatmapPrimitive implements ISeriesPrimitive<Time> {
     this._grid = grid;
     this._visible = visible;
     this._requestUpdate?.();
+  }
+
+  /** Whether the "gex-heatmap" toggle is currently on — gates the WHOLE surface, including the
+   *  spot guide line, which `setSpot()` keeps fresh independently of this toggle. */
+  isVisible(): boolean {
+    return this._visible;
   }
 
   /** Pin spot price line to chart y-axis (updates every SSE tick). */
