@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-31T17:11:17.063Z",
+  "updated_at": "2026-10-31T17:19:24.366Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -1255,19 +1255,19 @@
       "open_pr_count": 6
     },
     {
-      "at": "2026-10-31T17:11:04.720Z",
+      "at": "2026-10-31T17:19:10.780Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
     },
     {
-      "at": "2026-10-31T17:11:11.313Z",
+      "at": "2026-10-31T17:19:17.456Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
     },
     {
-      "at": "2026-10-31T17:11:17.062Z",
+      "at": "2026-10-31T17:19:24.366Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
@@ -1275,34 +1275,34 @@
   ],
   "open_prs": [
     {
-      "number": 7049,
-      "title": "fix(swing): actionNarrative \"Entry stance\" bullet now respects gateFramingMootReason",
-      "branch": "fix/swing-action-narrative-gate-moot-framing",
+      "number": 7052,
+      "title": "fix(admin): Auth failures (24h) chip never turns amber on the BIE dashboard",
+      "branch": "fix/admin-bie-auth-failures-tone",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T17:03:43Z"
+      "updated_at": "2026-10-31T17:19:03Z"
     },
     {
-      "number": 7048,
-      "title": "fix(ios): getIosRouteKey's /dashboard branch doesn't strip query/hash before matching",
-      "branch": "fix/ios-route-key-query-strip",
+      "number": 7051,
+      "title": "fix(admin): billing sync after create never applies — admin tier lock blocks it",
+      "branch": "fix/admin-create-whop-sync-lock",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T17:02:19Z"
+      "updated_at": "2026-10-31T17:12:41Z"
     },
     {
-      "number": 7047,
-      "title": "fix(spx): off-hours /play fast path no longer trusts a degraded bootstrap-shell peek",
-      "branch": "fix/spx-off-hours-degraded-shell-peek-v2",
+      "number": 7050,
+      "title": "chore: sync agent-state heartbeat files",
+      "branch": "chore/agent-state-heartbeat-sync-20261031-1710",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "human",
       "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-10-31T16:54:23Z"
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-31T17:12:15Z"
     },
     {
       "number": 5547,
