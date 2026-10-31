@@ -106,6 +106,37 @@ test("correctPublicRead: both walls wrong-side says so instead of leaving a bare
   assert.ok(!/Resistance 90/.test(out) && !/support 110/.test(out), out);
 });
 
+// Regression: the producer (gex-cross-validation-core.ts) emits "Resistance X" only when
+// callWall != null and "support Y" only when putWall != null — EITHER half can be missing on its
+// own (a one-sided book), leaving a bare single-wall clause ("Resistance X." or "support Y." with
+// no comma, no sibling word). The original `clause` regex only matched the two-wall
+// "Resistance X, support Y." form, so a wrong-side wall asserted ALONE passed straight through
+// uncorrected — the exact defect this function exists to prevent.
+test("correctPublicRead: a wrong-side wall asserted ALONE (no sibling wall in the clause) is still corrected", () => {
+  const read =
+    "Spot 7,748.5 is below the gamma flip (7,800) → short gamma: momentum / vol expansion, moves accelerate. Resistance 7,490.";
+  assert.equal(classifyWall("call", 7490, 7748.5), "concentration", "precondition: the call wall sits BELOW spot");
+  const out = correctPublicRead(read, { spot: 7748.5, call_wall: 7490, put_wall: null });
+  assert.ok(!/Resistance 7,490/.test(out), `still asserts the wrong-side wall as resistance: ${out}`);
+  // Only one wall was ever in the clause — the "Both gamma walls..." wording would be false here.
+  assert.ok(!/Both gamma walls/i.test(out), out);
+  assert.ok(out.includes("short gamma: momentum / vol expansion"), out);
+});
+
+test("correctPublicRead: a correctly-sided wall asserted alone (no sibling wall) survives unchanged", () => {
+  const read = "Spot 7,748.5 is above the gamma flip (7,600) → long gamma: range-bound, fade extremes. Resistance 7,800.";
+  assert.equal(classifyWall("call", 7800, 7748.5), "resistance", "precondition: the call wall sits ABOVE spot");
+  assert.equal(correctPublicRead(read, { spot: 7748.5, call_wall: 7800, put_wall: null }), read);
+});
+
+test("correctPublicRead: a wrong-side support-only clause (no resistance half) is still corrected", () => {
+  const read = "Spot 7,748.5 is below the gamma flip (7,800) → short gamma. support 8,000.";
+  assert.equal(classifyWall("put", 8000, 7748.5), "concentration", "precondition: the put wall sits ABOVE spot");
+  const out = correctPublicRead(read, { spot: 7748.5, call_wall: null, put_wall: 8000 });
+  assert.ok(!/support 8,000/.test(out), `still asserts the wrong-side wall as support: ${out}`);
+  assert.ok(!/Both gamma walls/i.test(out), out);
+});
+
 // Regression for a P1 finding (2026-09-02): the short/long-gamma regime read carries an
 // ACTIONABLE momentum claim ("moves accelerate" / "fade extremes") with no gate on whether the
 // underlying quote is actually live. `publicFreshnessCopy` already knows market_session outside
