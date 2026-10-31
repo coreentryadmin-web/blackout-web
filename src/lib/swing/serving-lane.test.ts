@@ -19,6 +19,8 @@ import type { HorizonPlay } from "../horizon-plays.ts";
 import type { ChainContract } from "../horizon-fanout.ts";
 import { swingThesisKey, type SwingWatchCandidate } from "./accumulation-store.ts";
 import { scoreSwingPillars } from "./swing-pillars.ts";
+import { calendarDte } from "../horizon-fanout.ts";
+import { todayEt } from "@/lib/et-date";
 
 function accum(direction: "bull" | "bear", days: number): ZeroDteFlowAccumulation {
   return {
@@ -47,6 +49,13 @@ const contract: ChainContract = {
 };
 function play(over: Partial<HorizonPlay>): HorizonPlay {
   return { ticker: "AAA", direction: "LONG", horizon: "SWING", score: 80, status: "COMMIT", contract, scoreFloor: 60, reason: "r", ...over };
+}
+
+/** UTC-midnight date math, matching `calendarDte`'s own UTC-anchored diffing (horizon-fanout.ts). */
+function addDaysYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 test("no discover injected → empty structured lane (member-safe default)", async () => {
@@ -837,5 +846,81 @@ test("SWING_SERVING_TTL_SEC survives the ordinary Friday-close -> Monday-open ga
     SWING_SERVING_TTL_SEC > worstCaseGapSec,
     `SWING_SERVING_TTL_SEC (${SWING_SERVING_TTL_SEC}s) must exceed the Fri-close -> Mon-PRE_OPEN gap ` +
       `(${worstCaseGapSec}s / ${(worstCaseGapSec / 3600).toFixed(1)}h) or the snapshot silently expires every weekend`,
+  );
+});
+
+// BUG FIX (2026-10-31, live Saturday repro — AXTI). `legacy-confirm-promote.ts`'s
+// `refreshCarriedLegacyPlay` only recomputes a carried Legacy play's DTE when the swing-discovery
+// CRON actually runs a carry-forward — and no scan runs on a day the market is closed. Live
+// evidence: `GET /horizons?view=swings` fetched twice on a Saturday, 8 minutes apart, both showed
+// `scanSessionDay` stuck at the prior Friday; the ONE Legacy-exempt row on the board (no
+// `positionId`) served `contract.dte: 7` (calendarDte(Friday, expiry)) while every one of the other
+// 57 real DB-committed SWING rows sharing the SAME expiry correctly served `dte: 6`
+// (calendarDte(TODAY, expiry) — those go through `live-plays.ts`'s `contractFromRow`, which
+// recomputes fresh on every serve). Unlike a quote (honestly stale while the market is closed),
+// calendar DTE is a pure function of the calendar date and expiry alone, so freezing it reports an
+// actively WRONG number, not just an old one.
+test("a Legacy-exempt carried play's DTE (and the DTE token in reason) is recomputed against TODAY on every serve, not frozen at the last scan's session day", async () => {
+  const todayYmd = todayEt();
+  const expiry = addDaysYmd(todayYmd, 7);
+  const realDte = calendarDte(todayYmd, expiry);
+  // Simulate a snapshot last carried forward one real calendar day ago (e.g. Friday's scan, read
+  // back on a Saturday no scan has touched since) — one day stale, same shape as the live repro.
+  const staleDte = realDte + 1;
+
+  const d = buildSwingDossier(dossier("AXTI"));
+  const legacyExemptPlay = play({
+    ticker: "AXTI",
+    status: "COMMIT",
+    contract: { ...contract, ticker: "AXTI", expiry, dte: staleDte },
+    commitGateBlockedBy: ["legacy:exempt"],
+    reason: `C 61 exp ${expiry} (${staleDte}DTE, Δ—, OI 255) · Legacy morning confirm (2026-10-29)`,
+  });
+
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [legacyExemptPlay] }),
+  });
+  const axti = Object.values(lane.sections).flat().find((p) => p.ticker === "AXTI");
+  assert.ok(axti, "the Legacy-exempt play must still render somewhere on the board");
+  assert.equal(
+    axti!.contract.dte,
+    realDte,
+    "contract.dte must match TODAY's real calendar day, not the frozen scan-day value",
+  );
+  assert.match(
+    axti!.reason,
+    new RegExp(`\\(${realDte}DTE,`),
+    "the DTE token baked into `reason` must be corrected too, not just contract.dte",
+  );
+  assert.doesNotMatch(
+    axti!.reason,
+    new RegExp(`\\(${staleDte}DTE,`),
+    "the stale DTE token must not still be present anywhere in reason",
+  );
+});
+
+test("a NON-legacy-exempt play's DTE is left untouched by the Legacy serve-time refresh — scope stays narrow", async () => {
+  const todayYmd = todayEt();
+  const expiry = addDaysYmd(todayYmd, 7);
+  const realDte = calendarDte(todayYmd, expiry);
+  const mismatchedDte = realDte + 3; // deliberately wrong, to prove this path is never touched
+
+  const d = buildSwingDossier(dossier("BBB"));
+  const organicPlay = play({
+    ticker: "BBB",
+    status: "COMMIT",
+    contract: { ...contract, ticker: "BBB", expiry, dte: mismatchedDte },
+    reason: `C 50 exp ${expiry} (${mismatchedDte}DTE, Δ0.40) · organic discovery`,
+  });
+
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [organicPlay] }),
+  });
+  const bbb = Object.values(lane.sections).flat().find((p) => p.ticker === "BBB");
+  assert.ok(bbb, "the organic play must still render somewhere on the board");
+  assert.equal(
+    bbb!.contract.dte,
+    mismatchedDte,
+    "a non-Legacy-exempt play's contract.dte must be left exactly as the discovery scan produced it",
   );
 });

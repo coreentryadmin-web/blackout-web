@@ -33,6 +33,8 @@ import {
   type SwingServingReads,
 } from "./serving-ingest";
 import type { ChainContract } from "../horizon-fanout";
+import { calendarDte } from "../horizon-fanout";
+import { todayEt } from "@/lib/et-date";
 import { livePlaysFromOpenPositions } from "./live-plays";
 import type { SwingPositionRow } from "../db";
 import type { BangerPositionRow } from "../banger/positions-db";
@@ -115,6 +117,52 @@ function factorsSumToScore(factors: HorizonPlay["factors"], score: number, toler
  *  create a cycle. */
 function isLegacyExemptPlay(play: HorizonPlay): boolean {
   return Array.isArray(play.commitGateBlockedBy) && play.commitGateBlockedBy.includes(LEGACY_COMMIT_GATE_EXEMPT);
+}
+
+/**
+ * Recompute a Legacy-carried play's calendar DTE (and the DTE token baked into `reason`) against
+ * TODAY's real ET calendar day — not whatever day the persisted snapshot happens to be stamped with.
+ *
+ * BUG FIX (2026-10-31, live Saturday repro — AXTI). `legacy-confirm-promote.ts`'s
+ * `refreshCarriedLegacyPlay` already recomputes a carried play's DTE on every carry-forward, but it
+ * ONLY runs inside `carryLegacyPromotedIntoSnapshot`, which the swing-discovery CRON calls — and no
+ * scan runs on a day the market is closed. So a Legacy-exempt play's persisted `contract.dte`
+ * freezes at whatever the LAST scan's own `sessionDay` computed, and stays wrong for every serve
+ * after that until the next scan happens to run. Live evidence: `GET /horizons?view=swings` fetched
+ * twice on a Saturday (2026-10-31) 8 minutes apart both showed `scanSessionDay: "2026-10-30"`
+ * (Friday — no scan had run since), and the one Legacy-exempt row on the board (AXTI, no
+ * `positionId`) served `contract.dte: 7` / `reason` text `"...7DTE..."` — calendarDte(Friday,
+ * 2026-11-06) — while every one of the other 57 SWING rows (real DB-committed positions, whose
+ * `dte` is recomputed fresh on every serve by `live-plays.ts`'s `contractFromRow`) shared the SAME
+ * 2026-11-06 expiry and correctly served `dte: 6` — calendarDte(TODAY, 2026-11-06).
+ *
+ * Unlike a quote (genuinely unchanged while the market is closed, so serving Friday's mark on
+ * Saturday is honest), calendar DTE is a pure function of the calendar date and the expiry alone —
+ * freezing it does not merely go stale, it reports an actively WRONG number once a real calendar
+ * day has passed. This mirrors `live-plays.ts`'s own fresh-every-serve `calendarDte(etYmd(), ...)`
+ * for the one path that doesn't go through that function (a Legacy-exempt candidate has no DB
+ * position row yet — `commitGateBlockedBy: ["legacy:exempt"]` is exactly "not committed").
+ *
+ * Deliberately narrow in scope: only `contract.dte` and the DTE token in `reason` move here.
+ * mid/bid/ask/delta/gamma/theta/vega/iv are untouched — they are already nulled by
+ * `refreshCarriedLegacyPlay`'s own staleDte branch (2026-10-20/2026-10-26 fixes) the last time a
+ * scan actually carried this play forward, and this function has no fresh quote to refresh them
+ * WITH. Recomputing DTE needs no provider read, so — unlike the quote fields — it can safely run on
+ * every single serve, scan or no scan.
+ *
+ * Lives here (not in `legacy-confirm-promote.ts`, where `refreshCarriedLegacyPlay` itself lives)
+ * for the same reason `isLegacyExemptPlay` above does: `legacy-confirm-promote.ts` imports THIS
+ * module (persist/read snapshot), so this module cannot import back from it without a cycle.
+ */
+function refreshLegacyExemptDteForServe(play: HorizonPlay, todayYmd: string): HorizonPlay {
+  if (!isLegacyExemptPlay(play) || !play.contract?.expiry) return play;
+  const dte = calendarDte(todayYmd, play.contract.expiry);
+  if (!Number.isFinite(dte) || dte === play.contract.dte) return play;
+  return {
+    ...play,
+    contract: { ...play.contract, dte },
+    reason: play.reason ? play.reason.replace(/\b\d+DTE\b/g, `${dte}DTE`) : play.reason,
+  };
 }
 
 /** The one honest breakdown for a Legacy-promoted play: a single factor equal to its own shown score
@@ -226,7 +274,11 @@ export function resolveThesisHealth(
  * must agree on the same carried-forward reality, or the row contradicts itself.
  */
 function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?: SwingServingReads): HorizonPlay {
-  if (!dossier) return play; // no thesis found for this ticker → leave it as-is (routes to RESEARCH honestly)
+  // Applied before the dossier early-return below: a Legacy-exempt play's DTE must be correct on
+  // every serve regardless of whether a thesis dossier survived the carry-forward (see the
+  // function's own header for why this can't wait for a fresh scan).
+  const dteFixed = refreshLegacyExemptDteForServe(play, todayEt());
+  if (!dossier) return dteFixed; // no thesis found for this ticker → leave it as-is (routes to RESEARCH honestly)
   const meta = swingServingMetaFromDossier(dossier, reads);
   const thesisHealth = resolveThesisHealth(meta, play);
   // WATCH track anchor: pinned first-flag price only — never the live scan spot (reads.setup.price).
@@ -235,7 +287,7 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
     dossier.plan?.entryUnderlyingPx ??
     null;
   return {
-    ...play,
+    ...dteFixed,
     setupState: meta.setupState ?? play.setupState,
     entryStatus: meta.entryStatus ?? play.entryStatus,
     archetype: meta.archetype ?? play.archetype,
