@@ -105,11 +105,17 @@ export function selectTickersToRecord(input: {
   let nextCursor = startAt;
   const ordered = n > 0 ? Array.from({ length: n }, (_, i) => roster[(startAt + i) % n]!) : [];
 
-  for (const raw of ordered) {
+  for (let i = 0; i < ordered.length; i++) {
+    const raw = ordered[i]!;
     const ticker = String(raw ?? "").trim().toUpperCase();
     if (!ticker) continue;
     // A roster that repeats a ticker must not start it twice in one tick — that would be two
     // concurrent records of the same rail, i.e. the duplicate-append problem in a new place.
+    // (A duplicate "seen" skip consumes a ROSTER POSITION without landing in any bucket, which is
+    // exactly why `nextCursor` below is derived from `i` — the loop's own position — rather than
+    // from `start.length + busy.length`: a count-based derivation silently falls behind by one
+    // slot per duplicate, re-offering an already-started ticker its next tick while a never-tried
+    // tail ticker is skipped over. See the regression test for the live shape this produces.)
     if (seen.has(ticker)) continue;
     seen.add(ticker);
 
@@ -123,9 +129,13 @@ export function selectTickersToRecord(input: {
     }
     start.push(ticker);
     free -= 1;
-    // Next tick resumes just past the last ticker we actually STARTED. Resuming past the ones we
-    // merely skipped would march the cursor over a busy name and cost it its next turn too.
-    nextCursor = (startAt + start.length + busy.length) % (n || 1);
+    // Next tick resumes just past the last ticker we actually STARTED — "just past" meaning one
+    // ROSTER POSITION after this one (`i + 1`), not one past the running count of starts+busy.
+    // Resuming past the ones we merely skipped (busy) would march the cursor over a busy name and
+    // cost it its next turn too; resuming at a POSITION (rather than a count) is what keeps that
+    // true even when a duplicate ticker earlier in this same tick consumed a roster slot without
+    // ever being counted as busy or started.
+    nextCursor = (startAt + i + 1) % (n || 1);
   }
 
   return { start, busy, deferred, nextCursor };
