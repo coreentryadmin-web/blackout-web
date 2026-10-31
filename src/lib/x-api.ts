@@ -610,18 +610,3 @@ export async function fetchOwnProfile(): Promise<XOwnProfile | null> {
       : undefined,
   };
 }
-
-/** @mention outreach posts today (legacy counter — outreach removed from timeline). */
-export async function countOwnMentionPostsTodayEt(): Promise<number> {
-  const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 40);
-  const todayEt = new Date().toLocaleDateString("en-CA", {
-    timeZone: "America/New_York",
-  });
-  return tweets.filter((t) => {
-    if (!t.created_at || !t.text?.trim().startsWith("@")) return false;
-    const d = new Date(t.created_at).toLocaleDateString("en-CA", {
-      timeZone: "America/New_York",
-    });
-    return d === todayEt;
-  }).length;
-}
