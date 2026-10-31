@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as apiTelemetryRedisModule from "./api-telemetry-redis";
 import { flushTelemetryToRedis, readCrossInstanceTelemetry } from "./api-telemetry-redis";
 
@@ -46,4 +49,28 @@ test("flushTelemetryToRedis / readCrossInstanceTelemetry still no-op cleanly wit
     if (prevRedisUrl === undefined) delete process.env.REDIS_URL;
     else process.env.REDIS_URL = prevRedisUrl;
   }
+});
+
+// `buildInstancePayload()` used to call `getApiTelemetrySnapshot(5 * 60_000)` and assign the
+// result to a local `snap` that was never read again — the payload it actually returns is
+// built entirely from `getProviderHealthSummary()`'s own `by_provider`/`rate_limits` fields.
+// `getApiTelemetrySnapshot` additionally filters/sorts the whole in-memory event ring buffer
+// and its per-endpoint stats map on every single call (see api-telemetry.ts), so this ran that
+// full recompute — on every on-demand flush this module's real callers trigger
+// (admin-api-dashboard.ts, market-health.ts) — purely to throw the result away.
+//
+// This is a source-text check, not a runtime one: the dead call has no observable side effect
+// to assert against at the module's public boundary (it never touched `health`, the payload,
+// or any shared state `getProviderHealthSummary` also reads), so the only way to prove it is
+// gone is to read the source and confirm neither the call nor its now-unused import survived.
+test("api-telemetry-redis.ts no longer imports or calls the unused getApiTelemetrySnapshot", () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const source = fs.readFileSync(path.join(here, "api-telemetry-redis.ts"), "utf8");
+  assert.ok(
+    !source.includes("getApiTelemetrySnapshot"),
+    "getApiTelemetrySnapshot was removed from api-telemetry-redis.ts: buildInstancePayload() " +
+      "assigned its result to an unused `snap` local and the real payload is built entirely " +
+      "from getProviderHealthSummary() — re-add only if buildInstancePayload() actually reads " +
+      "the snapshot's fields (e.g. recent_events/recent_errors/active_retries) into the payload"
+  );
 });
