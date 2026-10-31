@@ -14,9 +14,16 @@ import { dbConfigured, dbQuery } from "@/lib/db";
 
 const REVOKED_PREFIX = "whop:revoked:";
 const REVOKED_TTL_SEC = 400 * 24 * 60 * 60; // Redis cache TTL; Postgres rows are permanent
-// Negative-result cache: "checked Postgres, not revoked". Short TTL keeps the common case
-// (non-revoked memberships checked on every tier resolution) off Postgres without letting a
-// stale negative linger — and markMembershipRevoked overwrites it with 1 immediately anyway.
+// Negative-result cache: "checked Postgres, not revoked". Written on every miss so a stale
+// entry can be OVERWRITTEN by isMembershipRevoked's own re-check below, but — unlike a plain
+// TTL cache — it is never TRUSTED on read (see the "do not short-circuit" comment on cached 0
+// in isMembershipRevoked). A fresh miss's own write can otherwise race a concurrent
+// markMembershipRevoked's positive write and land AFTER it (ordinary async interleaving: this
+// read's SELECT can run and return zero rows just BEFORE the webhook's INSERT commits, and its
+// own sharedCacheSet(...,0,...) can still complete AFTER markMembershipRevoked's
+// sharedCacheSet(...,1,...) — nothing serializes the two callers' cache writes against each
+// other). Trusting that stale 0 would un-revoke a refunded/charged-back membership for up to
+// this TTL.
 const NOT_REVOKED_TTL_SEC = 10 * 60;
 
 /**
@@ -69,7 +76,13 @@ export async function isMembershipRevoked(membershipId: string | null | undefine
 
   const cached = await sharedCacheGet<number>(REVOKED_PREFIX + membershipId);
   if (cached === 1) return true;
-  if (cached === 0) return false; // fresh negative from a prior Postgres check
+  // Do NOT short-circuit on cached === 0: markMembershipRevoked can durably write Postgres
+  // while Redis still holds a stale negative written by an earlier, concurrent miss (its
+  // SELECT ran before the refund/chargeback webhook's INSERT committed, but its own
+  // sharedCacheSet(0) can still complete after markMembershipRevoked's sharedCacheSet(1) —
+  // see the comment on NOT_REVOKED_TTL_SEC above). Only a positive Redis hit is authoritative
+  // enough to skip Postgres; this mirrors whop-dunning.ts's isMembershipInDunningGrace, which
+  // carries the identical guard for the identical reason.
 
   if (!dbConfigured()) return false;
   try {
