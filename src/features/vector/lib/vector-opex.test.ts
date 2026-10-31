@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isQuarterlyOpex, opexDatesInRange, thirdFriday } from "./vector-opex";
+import { isQuarterlyOpex, monthlyExpiryYmd, opexDatesInRange, thirdFriday } from "./vector-opex";
 
 test("third Friday is computed, not approximated", () => {
   // Hand-checked against a calendar. The August 2026 case is the one that matters: 2026-08-01
@@ -51,6 +51,27 @@ test("degenerate ranges are rejected, not guessed at", () => {
   assert.deepEqual(opexDatesInRange(NaN, 1), []);
   assert.deepEqual(opexDatesInRange(1, NaN), []);
   assert.deepEqual(opexDatesInRange(Date.parse("2026-06-01T00:00:00Z"), Date.parse("2026-01-01T00:00:00Z")), [], "to < from");
+});
+
+test("monthlyExpiryYmd rolls the raw third Friday back off a market holiday", () => {
+  // 2026-06-19 and 2027-06-18 are both Juneteenth — the one calendar case (swept 2024-2028) where
+  // the raw third Friday is not a trading day. The real listed expiry (and the last session with
+  // a daily bar for that week) is the preceding trading day, Thursday.
+  assert.equal(thirdFriday(2026, 6), "2026-06-19", "the raw third Friday is unchanged");
+  assert.equal(monthlyExpiryYmd(2026, 6), "2026-06-18", "rolled back off the Juneteenth holiday");
+  assert.equal(thirdFriday(2027, 6), "2027-06-18");
+  assert.equal(monthlyExpiryYmd(2027, 6), "2027-06-17");
+  // A month whose third Friday is an ordinary trading day is returned unchanged.
+  assert.equal(monthlyExpiryYmd(2026, 8), "2026-08-21");
+});
+
+test("opexDatesInRange marks the holiday-rolled date, not the un-tradable raw Friday", () => {
+  // Before the fix this returned "2026-06-19" (Juneteenth, no daily bar exists for that date),
+  // so lightweight-charts' createSeriesMarkers — which drops any marker whose `time` has no
+  // matching series point — silently rendered NO OPEX mark for June at all.
+  const from = Date.parse("2026-06-01T00:00:00Z");
+  const to = Date.parse("2026-06-30T00:00:00Z");
+  assert.deepEqual(opexDatesInRange(from, to), ["2026-06-18"]);
 });
 
 test("quarterly OPEX is distinguished from monthly", () => {
