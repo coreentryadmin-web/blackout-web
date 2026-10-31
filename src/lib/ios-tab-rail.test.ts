@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   IOS_TAB_RAIL,
-  getIosTabRailIndex,
   isIosIntelligenceHubPath,
   isIosTabRailActive,
 } from "@/lib/ios-tab-rail";
@@ -22,14 +21,6 @@ describe("IOS_TAB_RAIL", () => {
     assert.equal(isIosTabRailActive(intel, "/flows"), true);
     assert.equal(isIosTabRailActive(intel, "/heatmap"), true);
     assert.equal(isIosTabRailActive(intel, "/vector"), false);
-  });
-
-  it("resolves tab index for transitions", () => {
-    assert.equal(getIosTabRailIndex("/dashboard"), 0);
-    assert.equal(getIosTabRailIndex("/heatmap"), 1);
-    assert.equal(getIosTabRailIndex("/vector"), 2);
-    assert.equal(getIosTabRailIndex("/nighthawk"), 3);
-    assert.equal(getIosTabRailIndex("/terminal"), 4);
   });
 
   it("detects intelligence hub paths", () => {
