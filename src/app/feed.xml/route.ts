@@ -1,5 +1,5 @@
 import { SITE } from "@/lib/site";
-import { feedArticles, feedPubDateForArticle } from "@/lib/seo/sitemap-dates";
+import { feedArticles, feedLastModifiedForArticle, feedPubDateForArticle } from "@/lib/seo/sitemap-dates";
 
 export const dynamic = "force-static";
 export const revalidate = 86400;
@@ -30,8 +30,11 @@ function stripMarkdown(md: string): string {
 
 export function GET() {
   const articles = feedArticles();
+  // lastBuildDate wants the most recent EDIT across the feed (channel-level freshness), which is
+  // a different question from any one item's own pubDate below — see feedLastModifiedForArticle's
+  // header.
   const lastBuildDate = new Date(
-    Math.max(...articles.map((a) => Date.parse(feedPubDateForArticle(a.slug)))),
+    Math.max(...articles.map((a) => Date.parse(feedLastModifiedForArticle(a.slug)))),
   ).toUTCString();
 
   const items = articles
