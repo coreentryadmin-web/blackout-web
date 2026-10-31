@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * Regression coverage for the signup-conversion-lost-before-gtag-ready bug: `Ga4Attribution`
@@ -133,4 +135,31 @@ test("hasPurchaseFired is false off the browser (SSR) and never throws", async (
   } finally {
     Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
   }
+});
+
+/**
+ * Regression coverage for a duplicated-literal drift risk (found 2026-10-31, round 146 dead-code
+ * sweep): `utm.ts` exports `GA4_PENDING_SIGNUP_KEY = "bo_ga4_pending_signup_v1"` as the named
+ * source of truth for this sessionStorage key, but `markPendingSignUp`/`hasPendingSignUp`/
+ * `consumePendingSignUp` in this file used to spell the SAME string out as three independent
+ * literals instead of importing the constant. The three copies happened to agree today, but
+ * nothing enforced that — editing the exported constant (the obviously "correct" place to change
+ * this key) would silently leave the three literals here stale, breaking the pending-signup
+ * dedupe flow with no compiler or test error. Fixed by importing `GA4_PENDING_SIGNUP_KEY` and
+ * using it at all three call sites. This test pins the fix at the SOURCE level (not just
+ * behavior, which is identical either way since the values already matched) by asserting the
+ * literal string value never reappears hardcoded in this file.
+ */
+test("the pending-signup storage key is never hardcoded as a duplicate literal in this file", () => {
+  const thisFile = fileURLToPath(import.meta.url).replace(/\.test\.ts$/, ".ts");
+  const source = readFileSync(thisFile, "utf8");
+  assert.ok(
+    source.includes("GA4_PENDING_SIGNUP_KEY"),
+    "ga4-client.ts must import and reference the shared GA4_PENDING_SIGNUP_KEY constant",
+  );
+  assert.ok(
+    !source.includes('"bo_ga4_pending_signup_v1"') && !source.includes("'bo_ga4_pending_signup_v1'"),
+    "the pending-signup key must come from the imported GA4_PENDING_SIGNUP_KEY constant, " +
+      "never a hardcoded duplicate literal that could silently drift from it",
+  );
 });
