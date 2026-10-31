@@ -1237,14 +1237,10 @@ export function ensureUwClusterFreshnessPoller(): void {
 // during the outage were never seen in-process — a GAP. This tracks the recovery lifecycle
 // (OFFLINE→RECOVERING→CATCHING_UP→WARM→HEALTHY) and, ONLY when ZERODTE_REQUIRE_HEALTHY_SOURCE=1,
 // runs a REST backfill of that gap on reconnect before the source is trusted to warm to HEALTHY.
-// The health snapshot is surfaced in admin health; the commit GATE that consumes it lives in
-// zerodte/gates.ts and is likewise DEFAULT-OFF (byte-for-byte unchanged live behavior).
+// The commit GATE that consumes the health STATE lives in zerodte/gates.ts and is likewise
+// DEFAULT-OFF (byte-for-byte unchanged live behavior). No admin route currently surfaces the full
+// snapshot — see getFlowSourceHealthState() below for the one consumer that exists today.
 const flowSourceHealth = makeSourceHealth();
-
-/** Admin-health snapshot of the live flow source's recovery state machine. */
-export function getFlowSourceHealth() {
-  return flowSourceHealth.snapshot();
-}
 
 /** Current flow-source health state — read by the (default-off) WS-21 commit gate in the scan. */
 export function getFlowSourceHealthState() {
