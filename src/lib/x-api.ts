@@ -276,20 +276,6 @@ export async function postQuoteTweet(
   return json.data;
 }
 
-export async function postThread(texts: string[]): Promise<TweetResult[]> {
-  const out: TweetResult[] = [];
-  let parentId: string | undefined;
-  for (const text of texts) {
-    const tweet = parentId
-      ? await postReply(text, parentId)
-      : await postTweet(text);
-    out.push(tweet);
-    parentId = tweet.id;
-    await new Promise((r) => setTimeout(r, 1200));
-  }
-  return out;
-}
-
 // ---------------------------------------------------------------------------
 // Engagement — likes, RTs, follows
 // ---------------------------------------------------------------------------
