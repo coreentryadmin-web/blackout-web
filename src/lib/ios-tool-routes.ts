@@ -245,8 +245,14 @@ export const IOS_NATIVE_SHELL_PATH_PREFIXES = [
 ] as const;
 
 export function isIosNativeShellPath(path: string): boolean {
+  // Strip a query string/hash before matching, same as isIosToolRoute/getIosToolMeta/
+  // getIosToolRouteIndex above (normalizeIosPath) — without it, a utility path carrying
+  // a query string or hash (e.g. "/account?from=upgrade", "/upgrade#plans") fails both the
+  // exact-match and the startsWith(`${prefix}/`) check and is wrongly read as not a
+  // native-shell path.
+  const p = normalizeIosPath(path);
   return IOS_NATIVE_SHELL_PATH_PREFIXES.some(
-    (prefix) => path === prefix || path.startsWith(`${prefix}/`)
+    (prefix) => p === prefix || p.startsWith(`${prefix}/`)
   );
 }
 
