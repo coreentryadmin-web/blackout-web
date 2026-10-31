@@ -150,6 +150,32 @@ function genKeyFor(key: string): string {
 }
 
 /**
+ * Reads the generation timestamp (`server-gen:<key>`, see writeRedisCache below) stored alongside
+ * a Redis-cached value — the wall-clock time THAT value's own refresh started, i.e. the payload's
+ * real vintage. `readRedisCache`'s `remainingTtlSec` only says how much longer Redis will keep the
+ * key before expiring it; it carries no information about how old the cached VALUE already is
+ * (a key written with a long ttlMs can sit unrefreshed for most of that window while still
+ * reporting a healthy remaining TTL). `peekServerCache` uses this to apply its staleness ceiling
+ * to a Redis hit the same way it already does to a local-only hit. Same best-effort race as
+ * readRedisCache — never block a peek behind a slow ElastiCache hop; a timeout/miss/error reads as
+ * "age unknown" (null), not as "fresh" or "stale".
+ */
+async function readRedisGeneratedAt(key: string): Promise<number | null> {
+  if (!process.env.REDIS_URL?.trim()) return null;
+  try {
+    const { sharedCacheGet } = await import("./shared-cache");
+    const read = sharedCacheGet<number>(genKeyFor(key));
+    const raced = await Promise.race([
+      read,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), REDIS_READ_RACE_MS)),
+    ]);
+    return raced;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * BUG (found live 2026-10-15, SPX desk `as_of` reverting backward across consecutive polls,
  * confirmed reproducible via the live production monitor): every withServerCache-backed key is
  * refreshed independently by EACH ECS replica's own background refresh (`refreshCache`), and this
@@ -512,12 +538,39 @@ export async function peekServerCache<T>(key: string, opts?: { maxStaleMs?: numb
   if (hit && hit.expiresAt > now) return hit.value;
   const redisHit = await readRedisCache<T>(key);
   if (redisHit != null) {
-    setStoreEntry(key, {
-      value: redisHit.value,
-      expiresAt: now + redisHit.remainingTtlSec * 1000,
-      refreshedAt: now,
-    });
-    return redisHit.value;
+    // BUG (found live 2026-10-31, SPX desk/play `as_of` non-monotonic, up to ~13.5 minutes
+    // backward across consecutive polls a few seconds apart): this branch used to return
+    // `redisHit.value` UNCONDITIONALLY — no staleness check at all — and then re-stamp the
+    // LOCAL cache's `refreshedAt` to `now`, regardless of how old the Redis-cached PAYLOAD
+    // actually was. `redisHit.remainingTtlSec` only reflects Redis's own expiry countdown for
+    // the key; it says nothing about when the value was actually produced (a key written with
+    // a long ttlMs can sit unrefreshed for most of that window while `TTL` still reports a
+    // healthy remaining time). So a replica that happened to read an old-but-not-yet-expired
+    // Redis copy would then treat it as freshly-verified for its own subsequent maxStaleMs
+    // window on top — exactly the asymmetry the local-only fallback two lines below this one
+    // was already guarding against (via `refreshedAt`), just never applied here.
+    //
+    // Fix: check the SAME ceiling against the payload's own vintage, read from the generation
+    // timestamp `writeRedisCache` stores alongside the value (`server-gen:<key>` /
+    // `readRedisGeneratedAt`, this file). When that metadata is present and the value is older
+    // than `maxStaleMs`, treat it as a miss (fall through to the local-hit/null paths below)
+    // instead of caching and serving it. When the metadata is absent (e.g. a replica mid-rollout
+    // still running pre-generation-guard code, or Redis timed out on this specific read), age is
+    // unknown — fall back to the pre-fix behavior (trust it) rather than rejecting a value we
+    // have no actual evidence is stale.
+    const generatedAt = await readRedisGeneratedAt(key);
+    const redisValueIsStale = generatedAt != null && now - generatedAt > maxStaleMs;
+    if (!redisValueIsStale) {
+      setStoreEntry(key, {
+        value: redisHit.value,
+        expiresAt: now + redisHit.remainingTtlSec * 1000,
+        // Stamp the entry's real vintage when known, instead of always `now` — otherwise this
+        // replica's OWN later peeks of this now-local copy would restart the maxStaleMs clock
+        // from the moment it was copied rather than from when it was actually produced.
+        refreshedAt: generatedAt ?? now,
+      });
+      return redisHit.value;
+    }
   }
   if (hit && now - hit.refreshedAt <= maxStaleMs) return hit.value;
   return null;
