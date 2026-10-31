@@ -5,6 +5,7 @@ import {
   getWhopClient,
   PREMIUM_MEMBERSHIP_STATUSES,
   resolveBillingKindFromMemberships,
+  resolveTierFromMembership,
   resolveTierFromMemberships,
   type BillingKind,
 } from "@/lib/whop";
@@ -68,6 +69,56 @@ export function reconcileStatsBucket(tier: Tier): "premium" | "community" | "fre
   if (tier === "premium") return "premium";
   if (tier === "community") return "community";
   return "free";
+}
+
+/**
+ * Pick which membership in `sorted` gets stamped as "the active one" for an email whose overall
+ * tier has ALREADY been resolved (via `resolveTierFromMemberships` over the same list). Extracted
+ * to a pure predicate — same reasoning as `isPaidTierForReconcileDowngradeCheck`/
+ * `reconcileStatsBucket` above — so this is unit-testable without standing up Clerk/Whop clients.
+ *
+ * `sortMemberships` orders purely by Whop STATUS (active > trialing > completed > past_due >
+ * canceling) and recency — it has no notion of premium vs community vs neither. So once an email
+ * holds more than one membership (a real premium subscription AND the $49 community add-on is the
+ * live case; `communityProducts.includes(productId)` in `resolveTierFromMembership` means these are
+ * never the same row), the membership that sorts FIRST is not necessarily the one that actually
+ * produced the resolved tier — e.g. a more-recently-created community row can sort ahead of an
+ * older, still-active premium row. The previous unconditional
+ * `sorted.find((m) => !revoked.has(m.id)) ?? sorted[0]` picked whichever one sorted first
+ * regardless of `tier`, so a `tier: "premium"` result could still stamp a COMMUNITY membership's
+ * id/plan as `activeMembership`.
+ *
+ * That desync isn't cosmetic: `activeMembership.plan.id` becomes `activeMembershipPlanId`, which
+ * `billing-lifecycle-email.ts` passes straight to `resolveBillingInterval()` to pick monthly-vs-
+ * annual copy for the welcome-premium transactional email — so a wrong pick can tell a real,
+ * currently-upgrading premium subscriber the wrong billing interval, sourced from a plan id that
+ * was never their premium plan. `activeMembership.id`/`activeMembership.user.id` also become the
+ * `whop_membership_id`/`whop_user_id` written to Clerk metadata and shown on the admin user
+ * dashboard (`/api/admin/users`), so a support lookup for a "premium" user could land on the
+ * community membership row instead.
+ *
+ * Fix: when the resolved tier is paid, prefer the first non-revoked membership whose OWN
+ * classification (`resolveTierFromMembership`) actually matches that tier. Falls back to the
+ * original "first non-revoked, else first overall" behavior for `tier === "free"` (nothing
+ * tier-specific to preserve) or if no membership happens to match (should not occur in practice,
+ * since `tier` was derived from this same list, but never leaves `activeMembership` undefined for
+ * a non-empty list).
+ */
+export function pickActiveMembershipForResolvedTier(
+  sorted: MembershipListResponse[],
+  revoked: ReadonlySet<string>,
+  tier: Tier,
+  dunningGraceIds?: ReadonlySet<string>
+): MembershipListResponse | undefined {
+  if (tier !== "free") {
+    const matching = sorted.find(
+      (m) =>
+        !revoked.has(m.id) &&
+        resolveTierFromMembership(m, { dunningGraceIds }) === tier
+    );
+    if (matching) return matching;
+  }
+  return sorted.find((m) => !revoked.has(m.id)) ?? sorted[0];
 }
 
 export async function findClerkUsersByEmail(email: string) {
@@ -172,7 +223,7 @@ async function resolveMembershipTierForEmail(
   }
   const tier = resolveTierFromMemberships(sorted, revoked, dunningGrace);
   const billingKind = resolveBillingKindFromMemberships(sorted, revoked, dunningGrace);
-  const activeMembership = sorted.find((m) => !revoked.has(m.id)) ?? sorted[0];
+  const activeMembership = pickActiveMembershipForResolvedTier(sorted, revoked, tier, dunningGrace);
   return { tier, billingKind, activeMembership };
 }
 
