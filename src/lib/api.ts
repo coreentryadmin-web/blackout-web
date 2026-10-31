@@ -252,23 +252,6 @@ export async function fetchSpxState(): Promise<SpxState> {
   }
 }
 
-export interface PlatformHealth {
-  market: { ok: boolean; polygon?: boolean; unusual_whales?: boolean };
-  intel: { ok: boolean; engine?: string };
-}
-
-export async function fetchPlatformHealth(): Promise<PlatformHealth> {
-  const [market, intel] = await Promise.allSettled([
-    fetch("/api/market/health", { cache: "no-store" }).then((r) => r.json()),
-    fetch("/api/engine/health", { cache: "no-store" }).then((r) => r.json()),
-  ]);
-
-  return {
-    market: market.status === "fulfilled" ? market.value : { ok: false },
-    intel: intel.status === "fulfilled" ? intel.value : { ok: false, engine: "offline" },
-  };
-}
-
 // ── Flows ─────────────────────────────────────────────────────────────────────
 
 export interface FlowAlert {
