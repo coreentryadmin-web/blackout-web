@@ -30,6 +30,7 @@ import { getUwSocketHealth } from "@/lib/ws/uw-socket";
 import { getDatabasePoolStats } from "@/lib/db";
 import { getPlayEngineHealth } from "@/lib/play-engine-health";
 import { flushTelemetryToRedis, readCrossInstanceTelemetry } from "@/lib/api-telemetry-redis";
+import { matchTelemetry } from "@/lib/admin-api-dashboard-match";
 
 export type EndpointDashboardRow = CatalogEndpoint & {
   telemetry: ApiEndpointStats | null;
@@ -88,45 +89,6 @@ export type ApiDashboardPayload = {
     by_provider: Partial<Record<ApiProviderId, { cross_calls_5m: number; cross_errors_5m: number }>>;
   } | null;
 };
-
-function normalizeEndpointKey(endpoint: string): string {
-  return endpoint.replace(/\{[^}]+\}/g, "{*}").replace(/\/\d+/g, "/{*}");
-}
-
-function matchTelemetry(
-  catalogEp: CatalogEndpoint,
-  provider: ApiProviderId,
-  stats: ApiEndpointStats[]
-): ApiEndpointStats | null {
-  const normCatalog = normalizeEndpointKey(catalogEp.endpoint);
-  let best: ApiEndpointStats | null = null;
-
-  for (const s of stats) {
-    const normStat = normalizeEndpointKey(s.endpoint);
-    const exact = s.endpoint === catalogEp.endpoint && s.method === catalogEp.method;
-    const fuzzy =
-      normStat === normCatalog ||
-      normStat.startsWith(normCatalog.replace("{*}", "")) ||
-      normCatalog.includes(normStat.replace("{*}", ""));
-
-    if (exact || fuzzy) {
-      if (!best || (s.last_at && (!best.last_at || s.last_at > best.last_at))) {
-        best = s;
-      }
-    }
-  }
-
-  if (best) return best;
-
-  const prefix = catalogEp.endpoint.split("{")[0];
-  return (
-    stats.find(
-      (s) =>
-        s.method === catalogEp.method &&
-        (s.endpoint === catalogEp.endpoint || s.endpoint.startsWith(prefix))
-    ) ?? null
-  );
-}
 
 function endpointStatus(
   configured: boolean,
