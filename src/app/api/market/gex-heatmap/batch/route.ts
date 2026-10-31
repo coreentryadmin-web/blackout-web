@@ -57,32 +57,46 @@ export async function GET(req: NextRequest) {
   const forceRequested = req.nextUrl.searchParams.get("force") === "1";
   const now0 = Date.now();
 
+  // Each ticker is isolated with its own try/catch — this fans out to as many as
+  // THERMAL_COMPARE_PRESET_SIZE independent upstream reads, and a forced refresh
+  // (loadHeatmapCacheReaderOnly's forceRefresh branch) awaits fetchGexHeatmap directly with no
+  // .catch() of its own. Before this, a single ticker's upstream failure rejected this whole
+  // Promise.all and took every OTHER ticker's already-successful read down with it — the batch
+  // route had no equivalent of the single-ticker route's top-level try/catch (which degrades
+  // gracefully to `{ available: false }` on any error). One bad name must read as "omitted",
+  // the same honest-absence contract `memberPayloadFromHeatmap(null)` already gives a thin/empty
+  // heatmap — never as a 500 for a grid where most names loaded fine.
   const results = await Promise.all(
-    tickers.map(async (ticker) => {
-      const lastForce = lastForceAt.get(ticker) ?? 0;
-      const forceRefresh = forceRequested && now0 - lastForce >= FORCE_THROTTLE_MS;
-      if (forceRefresh) {
-        if (lastForceAt.size > 200) lastForceAt.clear();
-        lastForceAt.set(ticker, now0);
+    tickers.map(async (ticker): Promise<readonly [string, HeatmapMemberPayload | null]> => {
+      try {
+        const lastForce = lastForceAt.get(ticker) ?? 0;
+        const forceRefresh = forceRequested && now0 - lastForce >= FORCE_THROTTLE_MS;
+        if (forceRefresh) {
+          if (lastForceAt.size > 200) lastForceAt.clear();
+          lastForceAt.set(ticker, now0);
+        }
+
+        joinGexStrikeExpiryTicker(ticker);
+        registerVectorUniverseView(ticker);
+
+        const matrixPeek = await peekGexHeatmapCache(ticker);
+        const heatmap = await loadHeatmapCacheReaderOnly(ticker, forceRefresh);
+        if (
+          !forceRefresh &&
+          matrixPeek.cached &&
+          matrixPeek.age_sec != null &&
+          matrixPeek.ttl_sec != null &&
+          matrixPeek.age_sec >= matrixPeek.ttl_sec
+        ) {
+          scheduleHeatmapBackgroundWarm(ticker);
+        }
+
+        const payload = memberPayloadFromHeatmap(heatmap);
+        return [ticker, payload] as const;
+      } catch (error) {
+        console.error("[market/gex-heatmap/batch]", ticker, error);
+        return [ticker, null] as const;
       }
-
-      joinGexStrikeExpiryTicker(ticker);
-      registerVectorUniverseView(ticker);
-
-      const matrixPeek = await peekGexHeatmapCache(ticker);
-      const heatmap = await loadHeatmapCacheReaderOnly(ticker, forceRefresh);
-      if (
-        !forceRefresh &&
-        matrixPeek.cached &&
-        matrixPeek.age_sec != null &&
-        matrixPeek.ttl_sec != null &&
-        matrixPeek.age_sec >= matrixPeek.ttl_sec
-      ) {
-        scheduleHeatmapBackgroundWarm(ticker);
-      }
-
-      const payload = memberPayloadFromHeatmap(heatmap);
-      return [ticker, payload] as const;
     })
   );
 
