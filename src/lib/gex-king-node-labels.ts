@@ -9,9 +9,6 @@
 /** Primary label — matches learn guides, Discord, Night Hawk `gex_king_strike`. */
 export const GEX_KING_NODE_LABEL = "King node";
 
-/** Synonym label — SPX desk levels ladder + commentary tradition. */
-export const GEX_ANCHOR_LABEL = "GEX anchor";
-
 /** Compact dual label for tight matrix/profile row tags. */
 export const GEX_KING_COMPACT_LABEL = "King · Anchor";
 
