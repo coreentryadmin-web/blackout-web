@@ -110,6 +110,20 @@ describe("getIosRouteKey", () => {
     assert.equal(getIosRouteKey("/learn/spx-slayer"), "learn");
     assert.equal(getIosRouteKey("/admin/health"), "admin");
   });
+
+  // Same bug class, same sibling file, as the isIosNativeShellPath query/hash fix above:
+  // getIosRouteKey's "/dashboard" branch is the one check in this function that requires an
+  // EXACT match or a startsWith(`${prefix}/`) match (every other branch here is a bare
+  // startsWith, which already tolerates a query/hash suffix appended directly after the
+  // prefix). A query string or hash on "/dashboard" itself ("/dashboard?ref=upgrade",
+  // "/dashboard#widgets") fails both of those checks and falls through every other branch to
+  // "other" instead of "dashboard" — the exact-match requirement is what makes this branch,
+  // alone among the ones here, sensitive to an un-stripped suffix.
+  it("strips a query string or hash before matching the exact-match /dashboard branch", () => {
+    assert.equal(getIosRouteKey("/dashboard?ref=upgrade"), "dashboard");
+    assert.equal(getIosRouteKey("/dashboard#widgets"), "dashboard");
+    assert.equal(getIosRouteKey("/dashboard/positions?tab=open"), "dashboard");
+  });
 });
 
 describe("getIosHeaderMeta", () => {
