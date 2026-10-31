@@ -8,10 +8,32 @@ export const CLERK_SESSION_COOKIE_NAMES = [
   "__clerk_db_jwt",
 ] as const;
 
+/**
+ * Clerk cookie names that get a `_<publishableKeySuffix>` suffix instead of (not in addition
+ * to) the bare name when this instance's session cookie collides with another Clerk instance
+ * on the same top-level domain (see `@clerk/backend`'s `usesSuffixedCookies()`/
+ * `getSuffixedOrUnSuffixedCookie()` — a real, current SDK mechanism, not legacy). Confirmed to
+ * actually happen in THIS deployment by #797 (a signed-in member's browser carried ONLY
+ * `__session_<suffix>`, no bare `__session` at all — "Homepage nav stayed on Sign in").
+ * `__clerk_db_jwt` is not part of this mechanism, so it stays bare-only in the set above.
+ */
+const SUFFIXABLE_CLERK_COOKIE_PREFIXES = ["__session_", "__client_uat_"] as const;
+
 export function requestHasClerkSessionCookie(req: NextRequest | Request): boolean {
   const cookies = "cookies" in req ? req.cookies : null;
   if (!cookies) return false;
-  return CLERK_SESSION_COOKIE_NAMES.some((name) => cookies.has(name));
+  if (CLERK_SESSION_COOKIE_NAMES.some((name) => cookies.has(name))) return true;
+  if (!("getAll" in cookies) || typeof cookies.getAll !== "function") return false;
+  // #797's root cause, left unfixed here: a request whose ONLY Clerk cookies are the suffixed
+  // variant must still read as "has a Clerk session signal" — the bare-name-only check above
+  // reads a genuinely signed-in request (per `auth.protect()`, which Clerk's own SDK resolves
+  // correctly via `getSuffixedOrUnSuffixedCookie()`) as fully signed-out.
+  for (const c of cookies.getAll()) {
+    if (SUFFIXABLE_CLERK_COOKIE_PREFIXES.some((prefix) => c.name.startsWith(prefix))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Expire Clerk session cookies so the browser stops sending invalid JWTs. */

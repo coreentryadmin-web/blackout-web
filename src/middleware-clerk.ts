@@ -115,8 +115,9 @@ export default clerkMiddleware(
         }
       }
       if (clerkIsClerkSyncFailed(req.nextUrl)) {
-        const hasClerkCookie =
-          req.cookies.has("__session") || req.cookies.has("__client_uat");
+        // Suffix-aware (#797): a request carrying ONLY __session_<suffix>/__client_uat_<suffix>
+        // is genuinely signed in and must not be bounced into a sync-failure retry redirect.
+        const hasClerkCookie = requestHasClerkSessionCookie(req);
         if (!hasClerkCookie) {
           const clean = new URL(req.nextUrl);
           clean.searchParams.delete("__clerk_synced");
@@ -153,8 +154,12 @@ export default clerkMiddleware(
       !isPublicTelemetryRoute(req) &&
       !isPublicMutationRoute(req)
     ) {
-      const hasClerkCookie =
-        req.cookies.has("__session") || req.cookies.has("__client_uat");
+      // Suffix-aware (#797): a signed-in member whose browser carries ONLY the suffixed
+      // __session_<suffix>/__client_uat_<suffix> cookie pair (no bare __session at all — the
+      // exact scenario #797 fixed for the sign-in-page redirect, but not for this guard) was
+      // reading as fully signed-out here and getting every mutation API call rejected with a
+      // spurious 401, even though auth.protect() above had already proved the session is real.
+      const hasClerkCookie = requestHasClerkSessionCookie(req);
 
       if (!hasBearerToken(req) && !hasClerkCookie) {
         return withStagingNoEdgeCache(

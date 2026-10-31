@@ -17,6 +17,23 @@ test("requestHasClerkSessionCookie detects session cookies", () => {
   assert.equal(requestHasClerkSessionCookie(clean), false);
 });
 
+test("requestHasClerkSessionCookie detects a SUFFIXED-only session (real #797 scenario)", () => {
+  // Clerk writes __session_<publishableKeySuffix> / __client_uat_<publishableKeySuffix>
+  // instead of the bare names when this instance's session cookie collides with another
+  // Clerk instance on the same top-level domain — confirmed live in #797 (a signed-in member
+  // whose browser carried ONLY the suffixed cookie, no bare __session at all). A caller that
+  // checks only the bare names reads that genuinely signed-in request as fully signed-out.
+  const suffixedOnly = new NextRequest("https://blackouttrades.com/dashboard", {
+    headers: { cookie: "__session_AbCdEf12=real.jwt.value; __client_uat_AbCdEf12=1700000000" },
+  });
+  assert.equal(requestHasClerkSessionCookie(suffixedOnly), true);
+
+  const noClerkCookieAtAll = new NextRequest("https://blackouttrades.com/dashboard", {
+    headers: { cookie: "some_other_cookie=1" },
+  });
+  assert.equal(requestHasClerkSessionCookie(noClerkCookieAtAll), false);
+});
+
 test("clerkSignInRecoveryUrl preserves return path", () => {
   const req = new NextRequest("https://blackouttrades.com/flows?tab=live");
   const url = clerkSignInRecoveryUrl(req);
