@@ -66,8 +66,3 @@ export function isIosTabRailActive(tab: IosTabRailItem, path: string): boolean {
   if (tab.intelligenceHub) return isIosIntelligenceHubPath(p);
   return p === tab.href || p.startsWith(`${tab.href}/`);
 }
-
-export function getIosTabRailIndex(path: string): number {
-  const p = path.split(/[?#]/)[0] ?? path;
-  return IOS_TAB_RAIL.findIndex((tab) => isIosTabRailActive(tab, p));
-}
