@@ -783,9 +783,26 @@ function ExposureProfile({
 
   // Resolve each dark-pool price level to the nearest profile-row index so the line is
   // drawn across that strike band. Only levels inside the rendered strike range appear.
+  //
+  // `darkPoolLevels` is built server-side from the ticker's raw dark-pool TAPE (top-5 prints by
+  // notional over the lookback window, buildDarkPoolLevels() in gex-heatmap/route.ts) — it is NOT
+  // constrained to `strikes`/`rows` the way the flow overlay is (buildFlowByStrike IS passed
+  // `strikes`). A print from a materially different price than today's (a pre-earnings-gap print,
+  // a thinly-traded name whose strike band is narrow) can sit far outside the rendered band, so
+  // without the distance guard below every level — however far away — snapped to whichever row
+  // happened to be nearest (often the top or bottom edge row), drawing it as if that dark-pool
+  // print occurred AT that strike. The step is derived from the rows themselves (same technique
+  // `depthBandForPrice`/gex-depth.ts uses for its own band step) since different tickers/strike
+  // bands have different spacing.
   const darkPoolByRow = useMemo(() => {
     const map = new Map<number, DarkPoolLevel>();
     if (!showDarkPool || !darkPoolLevels?.length || rows.length === 0) return map;
+    let step = Infinity;
+    for (let i = 1; i < rows.length; i++) {
+      const gap = Math.abs(rows[i - 1].strike - rows[i].strike);
+      if (gap > 0 && gap < step) step = gap;
+    }
+    const maxDist = Number.isFinite(step) ? step / 2 : Infinity;
     for (const level of darkPoolLevels) {
       let bestIdx = -1;
       let bestDist = Infinity;
@@ -796,8 +813,10 @@ function ExposureProfile({
           bestIdx = i;
         }
       }
-      // Skip levels far outside the band (> half the strike step from any row).
-      if (bestIdx >= 0 && !map.has(bestIdx)) map.set(bestIdx, level);
+      // Skip levels far outside the band (> half the strike step from any row) — this was a
+      // comment describing intent with no enforcing code (FINDING 2026-10-31); see the block
+      // comment above for why that silently mislabeled far-away prints.
+      if (bestIdx >= 0 && bestDist <= maxDist && !map.has(bestIdx)) map.set(bestIdx, level);
     }
     return map;
   }, [darkPoolLevels, rows, showDarkPool]);
