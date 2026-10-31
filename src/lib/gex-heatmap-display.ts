@@ -89,9 +89,6 @@ export function heatmapMatrixExtremeCellStyle(
     : { ...heatmapExtremeNegativeStyle(), ...heatmapExtremeNegativeTextStyle() };
 }
 
-/** Top-N ranked cells per expiry column get color; everything else stays neutral. */
-export const HEATMAP_TOP_HIGHLIGHT_COUNT = 3;
-
 /** Ranks 2–3 on each side — green/red; rank 1 uses yellow/purple via heatmapMatrixExtremeCellStyle. */
 export function heatmapTopRankCellStyle(
   value: number,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import * as gexHeatmapDisplay from "./gex-heatmap-display";
 import {
   fmtHeatmapMoney,
   fmtHeatmapMoneySigned,
@@ -194,5 +195,24 @@ describe("top highlight cell styles", () => {
     assert.equal(isHeatmapTopHighlightRank(1, undefined), true);
     assert.equal(isHeatmapTopHighlightRank(undefined, 4), true);
     assert.equal(isHeatmapTopHighlightRank(undefined, undefined), false);
+  });
+
+  // Regression guard: the actual top-N ranking count this module's styles are painted for
+  // lives in thermal-compact-matrix.ts's own COMPACT_TOP_HIGHLIGHT_COUNT (the value passed
+  // as `rankTopStrikes`'s `topN`, which produces the posRank/negRank this file's
+  // resolveHeatmapTopHighlightCellStyle/heatmapTopRankCellStyle consume). This module's own
+  // ranking-count export (HEATMAP_TOP_HIGHLIGHT_COUNT) was dead — no ranking logic here ever
+  // read it, so it couldn't drift or sync with the real constant. Don't re-add a local
+  // ranking-count constant to this file unless it is actually wired into the rank computation
+  // (which lives in thermal-compact-matrix.ts, not here) — a second, unread "count" constant
+  // is exactly the kind of orphaned scaffolding this guard exists to catch.
+  it("does not export a dead top-N ranking-count constant", () => {
+    assert.equal(
+      "HEATMAP_TOP_HIGHLIGHT_COUNT" in gexHeatmapDisplay,
+      false,
+      "HEATMAP_TOP_HIGHLIGHT_COUNT was removed as dead code (never read by any ranking logic) " +
+        "— if re-added, it must be threaded into the actual rank computation in " +
+        "thermal-compact-matrix.ts, not left as an orphaned export",
+    );
   });
 });
