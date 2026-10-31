@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { resolveAdminApi } from "@/lib/admin-access";
 import { logAdminAction } from "@/lib/admin-audit";
-import { isValidCreateUserTier, parseAdminUserRole, upsertAdminUserRow } from "@/lib/admin-users";
+import {
+  isValidCreateUserTier,
+  parseAdminUserRole,
+  shouldApplyWhopSyncToCreatedUser,
+  upsertAdminUserRow,
+} from "@/lib/admin-users";
 import { syncWhopMembershipForEmail } from "@/lib/membership";
 import { parseTier } from "@/lib/tiers";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -71,12 +76,21 @@ export async function POST(req: NextRequest) {
     if (syncWhop !== false) {
       try {
         const synced = await syncWhopMembershipForEmail(email.trim());
-        whopTier = synced.tier;
-        await upsertAdminUserRow({
-          clerkUserId: user.id,
-          tier: synced.tier,
-          membershipKind: synced.billingKind,
-        });
+        // `tier_managed_by: "admin"` was just written above, so syncWhopMembershipForEmail's own
+        // admin-tier-lock guard skips this exact user on every real run (see
+        // shouldApplyWhopSyncToCreatedUser's doc comment) — `synced.tier` then defaults to "free"
+        // with an empty `updatedUserIds`, which is NOT the same as "this email has no Whop
+        // membership". Only mirror the resolved tier into the admin_users cache row when the sync
+        // genuinely updated this user; otherwise leave the admin's just-chosen tier alone instead
+        // of silently stomping it back to "free".
+        if (shouldApplyWhopSyncToCreatedUser(user.id, synced.updatedUserIds)) {
+          whopTier = synced.tier;
+          await upsertAdminUserRow({
+            clerkUserId: user.id,
+            tier: synced.tier,
+            membershipKind: synced.billingKind,
+          });
+        }
       } catch (err) {
         console.warn("[admin-users] Whop sync after create failed:", err);
       }
