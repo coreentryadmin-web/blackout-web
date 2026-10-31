@@ -6,6 +6,8 @@ import {
   sortSignals,
   spxPhaseFor,
   spxToSignal,
+  type Signal,
+  type SignalPhase,
 } from "./signals-projection";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-payload";
 import type { NightHawkEdition, PlaybookPlay } from "@/features/nighthawk/lib/types";
@@ -227,5 +229,45 @@ test("sortSignals orders active > confirming > detected > invalidated, higher sc
   assert.deepEqual(
     out.map((x) => x.id),
     ["d", "b", "c", "a", "x"]
+  );
+});
+
+test("sortSignals places 'managing' after confirming/detected, per the function's own doc comment", () => {
+  // The doc comment above STAGE_WEIGHT states the order as:
+  // "active first, then confirming, then detected, then managing/closed/invalidated/graded."
+  // No producer emits "managing" today (spxPhaseFor/nighthawkPhaseFor never return it), but the
+  // SignalPhase type and STAGE_WEIGHT table both carry it for a future producer, so this builds a
+  // signal directly rather than going through either projector — the comparator must still honor
+  // its own contract for every value in the SignalPhase union, not just the ones wired up today.
+  const now = "2026-07-27T14:30:00Z";
+  const s = (phase: SignalPhase, id: string): Signal => ({
+    id,
+    source: "SPX_SLAYER",
+    ticker: "SPX",
+    direction: "long",
+    action: "BUY",
+    grade: "A",
+    score: 50,
+    rawScore: 50,
+    phase,
+    headline: "",
+    thesis: "",
+    entry: null,
+    stop: null,
+    target: null,
+    invalidation: null,
+    factors: [],
+    asOf: now,
+    meta: {},
+  });
+  const out = sortSignals([
+    s("managing", "m"),
+    s("confirming", "c"),
+    s("detected", "d"),
+    s("active", "a"),
+  ]);
+  assert.deepEqual(
+    out.map((x) => x.id),
+    ["a", "c", "d", "m"]
   );
 });
