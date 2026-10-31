@@ -2,6 +2,7 @@
  * Polygon/Massive WebSocket client for real-time index aggregates.
  */
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
+import { MASSIVE_WS_INDICES } from "@/lib/polygon-docs-nav";
 import {
   isConnectionCapFrame,
   reconnectDelayAfterClose,
@@ -34,7 +35,7 @@ export type PolygonAgg = {
   e: number;
 };
 
-const POLYGON_WS_INDICES = process.env.POLYGON_WS_INDICES ?? "wss://socket.massive.com/indices";
+const POLYGON_WS_INDICES = process.env.POLYGON_WS_INDICES ?? MASSIVE_WS_INDICES;
 const POLYGON_API_KEY = process.env.POLYGON_API_KEY ?? process.env.MASSIVE_API_KEY ?? "";
 
 /**
