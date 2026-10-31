@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-31T15:38:37.537Z",
+  "updated_at": "2026-10-31T16:40:59.627Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,49 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "53dfbd123c64752a99ee6381a4a8e66e8a4af496",
+    "last_main_sha": "80f5a39cebea0aaa841d2475a93623b9cb527099",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-21T11:47:55.690Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-21T11:47:59.385Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-21T12:14:50.349Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-21T12:14:54.894Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-21T12:14:59.007Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-21T12:53:58.559Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-21T12:54:02.429Z",
       "type": "context_sync",
@@ -1271,68 +1235,64 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 10
+    },
+    {
+      "at": "2026-10-31T16:38:13.236Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-31T16:38:19.466Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-31T16:38:25.225Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-31T16:40:48.248Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-31T16:40:54.072Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-31T16:40:59.627Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 7034,
-      "title": "fix(swing): add defense-space-systems theme bucket for KTOS/RDW",
-      "branch": "fix/sector-map-defense-space-systems-ktos-rdw",
+      "number": 7042,
+      "title": "fix(dead-code): remove unused vectorWarmTickers from heatmap-allowlist.ts",
+      "branch": "fix/remove-dead-vector-warm-tickers",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T15:35:34Z"
+      "updated_at": "2026-10-31T16:34:47Z"
     },
     {
-      "number": 7033,
-      "title": "docs(audit): nighthawk-swings journal — correct own thesis.outcome offer scope on #4076",
-      "branch": "docs/swing-journal-thesis-outcome-20261031",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T15:35:11Z"
-    },
-    {
-      "number": 7032,
-      "title": "fix(dead-code): remove unused meridianOpexBenchmarkTickers export and its source constant",
-      "branch": "fix/meridian-opex-dead-benchmark-export",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T15:35:06Z"
-    },
-    {
-      "number": 7031,
-      "title": "fix(spx): isSpxPlaySnapshotShareable() ignores assessed, trusts degenerate closed snapshot forever",
-      "branch": "fix/spx-play-shareable-assessed-gap",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T15:33:33Z"
-    },
-    {
-      "number": 7030,
-      "title": "fix(lib): remove dead getSubscriberCount/clearSubscribers from gex-matrix-broadcast.ts",
-      "branch": "fix/gex-matrix-broadcast-dead-exports",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T15:29:15Z"
-    },
-    {
-      "number": 7029,
-      "title": "chore(flow-data-freshness): remove dead lastFlowDataTimestamp export",
-      "branch": "fix/flow-data-freshness-dead-export",
+      "number": 7041,
+      "title": "fix(dead-code): remove unused getNetFlow/getUwPriceForTicker from uw-socket.ts",
+      "branch": "fix/uw-socket-dead-getters",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "completed/success",
-      "updated_at": "2026-10-31T15:23:31Z"
+      "updated_at": "2026-10-31T16:29:29Z"
     },
     {
       "number": 5547,
