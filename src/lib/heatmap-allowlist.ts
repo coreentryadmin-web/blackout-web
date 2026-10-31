@@ -136,15 +136,6 @@ export function vectorUniverseTickers(): string[] {
   return [...ALLOWLIST];
 }
 
-/**
- * Static warm/allowlist subset only. Live `heatmap-warm` + Vector recorder use
- * `listSharedUniverseTickers()` (static ∪ dynamic ≤100 / 14d) — do not reintroduce this
- * as the warm batch or Thermal and Vector drift apart again.
- */
-export function vectorWarmTickers(): string[] {
-  return vectorUniverseTickers();
-}
-
 /** True when `ticker` is one of the ~11 warm presets (the fast-move + warm-cron set). */
 export function isHeatmapPreset(ticker: string): boolean {
   const root = String(ticker ?? "").trim().toUpperCase();
