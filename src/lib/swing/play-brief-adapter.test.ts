@@ -221,6 +221,81 @@ test("adaptSwingBriefToLargo: evidence_numbers' level prices use the same roundi
   );
 });
 
+// BUG FIX (2026-10-31, live-audit finding, Ask Largo standing mandate): `envelope.levels`
+// (levelsFromContext, play-brief.ts) resolves call wall / put wall / GEX king etc. independently,
+// so a GEX king strike coinciding with a wall produced TWO envelope.levels entries at the same
+// price, and this loop pushed both verbatim — restating the identical real price twice under two
+// different labels. Isolated unit test (hand-built envelope.levels, mirroring the SOXX precision
+// test above) proving extractEvidence's own loop dedupes by price, independent of upstream.
+test("adaptSwingBriefToLargo: evidence_numbers dedupes two envelope.levels entries at the same price under different labels (2026-10-31, live repro META/MRNA)", () => {
+  const ctx = fixtureCtx();
+  const brief = composeSwingPlayBrief(ctx);
+  // Live META shape: call wall AND GEX king both resolve to 700.00.
+  brief.envelope.levels = [
+    { label: "call wall", price: 700 },
+    { label: "put wall", price: 610 },
+    { label: "GEX king", price: 700 },
+  ];
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  const at700 = largoRead.data.evidence.filter((e) => e.includes("$700.00"));
+  assert.equal(
+    at700.length,
+    1,
+    `expected exactly one evidence line for the colliding $700.00 price, got: ${JSON.stringify(at700)}`
+  );
+  assert.ok(
+    at700[0].startsWith("call wall"),
+    `expected the earlier-pushed label (call wall) to survive the collision, got: ${at700[0]}`
+  );
+  assert.ok(
+    largoRead.data.evidence.some((e) => e === "put wall: $610.00"),
+    "a non-colliding level must still come through unchanged"
+  );
+});
+
+// Same bug, driven through the REAL end-to-end pipeline (composeSwingPlayBrief ->
+// adaptSwingBriefToLargo, not a hand-built envelope.levels) — proving the fix holds for the
+// actual production code path, not just extractEvidence's own loop in isolation. This is the
+// `levelsFromContext` (play-brief.ts) sibling of the `collectFocalLevels` collision PR #7000 fixed
+// the same day for the structure-ladder rungs — that PR's own write-up explicitly named
+// `envelope.levels` as a separate, independently-computed list left out of scope.
+test("adaptSwingBriefToLargo: a GEX king coinciding with a wall in envelope.levels (real pipeline) cites ONE evidence line for that price, not two", () => {
+  const ctx = fixtureCtx({
+    vector: {
+      spot: 100,
+      gexWalls: { callWalls: [{ strike: 110, pct: 8 }], putWalls: [] },
+      ladder: { rows: [{ strike: 110, isKing: true }] },
+    } as SwingPlayBriefContext["vector"],
+  });
+  const brief = composeSwingPlayBrief(ctx);
+
+  // Sanity: the real levelsFromContext must have actually produced the collision in
+  // envelope.levels — otherwise this test would pass for the wrong reason.
+  const levelsAt110 = brief.envelope.levels?.filter((l) => Math.abs(l.price - 110) < 0.01) ?? [];
+  assert.equal(
+    levelsAt110.length,
+    2,
+    `expected the real pipeline to produce a call-wall/king collision in envelope.levels, got: ${JSON.stringify(levelsAt110)}`
+  );
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  // Scoped to the bare "label: $price" lines this loop produces — the real pipeline also cites
+  // "R:R to call wall ($110.00): 4.4R" at the same price via a DIFFERENT, independent evidence
+  // source (the structure-ladder reward:risk line, already deduped by PR #7000 upstream), which
+  // is not the collision this test targets.
+  const at110 = largoRead.data.evidence.filter((e) => e.includes("$110.00") && !e.startsWith("R:R"));
+  assert.equal(
+    at110.length,
+    1,
+    `expected exactly one bare level evidence_numbers line for the colliding $110.00 price, got: ${JSON.stringify(at110)}`
+  );
+});
+
 // Ask Largo standing mandate, 2026-10-26 (follow-up to #4076 comment 6324494558's enhancement idea
 // #1): buildStructureLadder already computes a real reward:risk per favorable-side rung and
 // BieStructureLadder.tsx already renders it visually ("X.XR" chip), but it never reached the

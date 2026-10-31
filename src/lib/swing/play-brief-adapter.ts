@@ -91,8 +91,32 @@ function extractEvidence(envelope: BieAnswerEnvelope): string[] {
   // "flag anchor: $479.20" (`(479.205).toFixed(2)`) while `envelope.levels[0].price` and the
   // "Watch levels" section both read 479.21 (`Math.round(479.205*100)/100`) — the exact
   // `fmtPriceLevel` call site this adapter never adopted when every other renderer did.
+  //
+  // BUG FIX (2026-10-31, live-audit finding, Ask Largo standing mandate): `envelope.levels`
+  // (`levelsFromContext`, play-brief.ts) resolves call wall / put wall / gamma flip / GEX king /
+  // max pain etc. independently of one another, and a GEX king strike commonly sits AT a major
+  // wall (king is, definitionally, wherever gamma concentration peaks — often the same strike
+  // dealers already wall at). This loop used to push EVERY `envelope.levels[]` entry verbatim
+  // with no price-collision check, so a collision surfaced here as the identical real price
+  // restated twice under two different labels — live repro, production, both confirmed 2026-10-31:
+  // META (SWING:META:69) carried both "call wall: $700.00" AND "GEX king: $700.00"; MRNA
+  // (SWING:MRNA:68) carried both "call wall: $250.00" AND "GEX king: $250.00". This is the sibling
+  // of the fix shipped the same day for `collectFocalLevels` (play-brief-narrative.ts, PR #7000) —
+  // that PR's own write-up explicitly named `envelope.levels` ("a separate, independently-computed
+  // list filtered by label text, not by this function's output") as out of scope, so the gap it
+  // deliberately deferred is this one. Dedup is scoped to just this loop/array (never mutates
+  // `envelope.levels` itself, nor any other evidence source), using the same `< 0.01` price-
+  // identity tolerance this product already uses elsewhere for the identical purpose
+  // (`confluenceZoneKindsLabel`, play-brief-absence.ts; `pushFocalLevel`, play-brief-narrative.ts).
+  // Keeping the FIRST-pushed label on a collision needs no extra hard/soft precedence logic here:
+  // `levelsFromContext`'s own push order already puts call wall/put wall/gamma flip before GEX
+  // king/max pain, matching the "wall wins over king" display convention PR #7000 established for
+  // the sibling bug.
   if (envelope.levels && envelope.levels.length > 0) {
+    const seenPrices: number[] = [];
     for (const level of envelope.levels) {
+      if (seenPrices.some((p) => Math.abs(p - level.price) < 0.01)) continue;
+      seenPrices.push(level.price);
       evidence.push(`${level.label}: $${fmtPriceLevel(level.price)}`);
     }
   }
