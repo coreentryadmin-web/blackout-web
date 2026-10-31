@@ -16,7 +16,7 @@ import {
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { loadSessionWallHistory } from "./vector-wall-persist";
-import { persistWallSampleDebounced, writeWallHistorySample } from "./vector-wall-write";
+import { persistWallSampleDebounced } from "./vector-wall-write";
 import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
 import { resolveWallTrailSampleSec } from "./vector-wall-sample-server";
 import { refreshSharedUniverseCacheIfStale } from "./vector-shared-universe-cache";
@@ -633,87 +633,6 @@ const STALE_RECORD_MAX_MS = 120_000;
  */
 function wallRailRecordingOpen(): boolean {
   return isEtCashRth();
-}
-
-/**
- * Record blended + narrowed wall-history samples when wall reads are fresh.
- * Used by vector-walls-warm (~15–30s) so SPY/QQQ/NVDA rails accumulate server-side
- * without requiring a live Vector viewer — the gap behind SPX's always-on desk stream.
- */
-export async function recordVectorWallSamplesFromWarm(ticker: string): Promise<boolean> {
-  const t = normalizeVectorTicker(ticker);
-  joinGexStrikeExpiryTicker(t);
-  await primeVectorWallScope(t);
-
-  const s = state(t);
-  try {
-    const pos = await getGexPositioning(t);
-    s.cachedFlip = pos?.flip ?? null;
-  } catch {
-    /* honest gap — flip stays whatever the cache had */
-  }
-  s.cachedFlipAt = Date.now();
-
-  const sessionYmd = todayEtYmd();
-  if (s.sessionYmd !== sessionYmd) {
-    s.wallHistory = [];
-    s.sessionYmd = sessionYmd;
-    s.lastNarrowedWallBucket = 0;
-  }
-
-  const walls = getVectorBeadRailGexWalls(t);
-  const vexWalls = getVectorVexWalls(t);
-  const gammaFlip = s.cachedFlip;
-  const vexFlip = getVectorVexFlip(t);
-  const nowMs = Date.now();
-  // RTH gate BEFORE freshness: an always-on oracle subscription keeps the cache fresh overnight.
-  if (!wallRailRecordingOpen()) return false;
-  const gexRecordable =
-    walls != null && isWsUpdatedAtFresh(s.cachedBeadRailWallsAt, STALE_RECORD_MAX_MS + 1, nowMs);
-  const vexRecordable = vexWalls != null && isWsUpdatedAtFresh(s.cachedVexWallsAt, STALE_RECORD_MAX_MS + 1, nowMs);
-  if (!gexRecordable && !vexRecordable) return false;
-
-  const tickerBucketSec = await resolveWallTrailSampleSec(t);
-  const sampleTime = bucketWallSampleTime(Math.floor(nowMs / 1000), tickerBucketSec);
-  const sample = buildWallHistorySample({
-    time: sampleTime,
-    gexWalls: gexRecordable ? walls : null,
-    gammaFlip: gexRecordable ? gammaFlip : null,
-    vexWalls: vexRecordable ? vexWalls : null,
-    vexFlip: vexRecordable ? vexFlip : null,
-  });
-  if (!sample) return false;
-
-  s.wallHistory = recordWallSample(s.wallHistory, sample);
-  await writeWallHistorySample({
-    source: "walls-warm",
-    sessionYmd,
-    ticker: t,
-    sample,
-    rthRequired: false,
-  });
-
-  if (gexRecordable) {
-    const rows = await buildNarrowedHorizonWallSamples(t, sampleTime, {
-      walls,
-      flip: gammaFlip,
-    });
-    for (const r of rows) {
-      if (r.sample) {
-        await writeWallHistorySample({
-          source: "walls-warm",
-          sessionYmd,
-          ticker: t,
-          sample: r.sample,
-          horizon: r.horizon,
-          rthRequired: false,
-        });
-      }
-    }
-    s.lastNarrowedWallBucket = sampleTime;
-  }
-
-  return true;
 }
 
 export async function buildVectorStreamPayload(
