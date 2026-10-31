@@ -992,6 +992,24 @@ export type SpxDeskPayload = {
   /** WHERE the VWAP weights came from: SPX's own bar volume, SPY's as proxy, or unweighted.
    *  `vwap_volume_weighted: true` alone would imply SPX volume that does not exist (ISSUE-16). */
   vwap_volume_source?: VwapVolumeSource;
+  /**
+   * True when `vwap` came from spx-desk-merge.ts's `stickyStructureLevel` cross-request
+   * "last-known-good" fallback rather than a fresh pulse/base read THIS cycle — i.e. both
+   * `pulse.vwap` and `base.vwap` were null (routinely true on a non-trading day: weekend or
+   * holiday) and the sticky cache carried a prior session's VWAP forward. Same shape as
+   * `gex_stale`/`gex_age_ms` below. Set only by `mergePulseIntoDesk`; undefined/false elsewhere
+   * means "fresh, or no sticky fallback was needed."
+   *
+   * BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday market
+   * closed): `stickyStructureLevel`'s vwap branch (`pulseVal ?? baseVal ?? lastGoodStructure[key]
+   * ?? null`) serves a stale prior-session VWAP INDEFINITELY once both live sources go null, and
+   * nothing on `SpxDeskPayload` ever disclosed that — unlike `gex_stale`, which exists for the
+   * exact same class of sticky-fallback problem on the GEX ladder. Added so
+   * `evaluateSpxPlayCore`'s closed-market branch (spx-play-engine.ts) can disclose it the same
+   * way it already discloses stale GEX factors, instead of presenting a Friday close as a live
+   * sell/buy signal.
+   */
+  vwap_stale?: boolean;
   pdh: number | null;
   pdl: number | null;
   prior_close: number | null;

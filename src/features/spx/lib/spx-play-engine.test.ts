@@ -406,6 +406,106 @@ test("evaluateOpenPlay closed-market SCANNING, desk.gex_stale:false (or absent):
   assert.doesNotMatch(absentPayload.thesis, /GEX stale/);
 });
 
+// BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
+// closed): same bug class as the GEX staleness disclosure above, for the VWAP factor instead.
+// The closed-market branch's "VWAP" factor is built straight off `desk.vwap`, which on this path
+// can be a cross-request sticky "last-known-good" fallback (spx-desk-merge.ts's
+// mergePulseIntoDesk -> stickyStructureLevel) serving a prior session's VWAP INDEFINITELY once
+// both pulse.vwap and base.vwap go null (any non-trading day) — with nothing on the desk
+// disclosing it before `vwap_stale` (spx-desk.ts/spx-desk-merge.ts) was added alongside this
+// fix. Live repro: GET /api/market/spx/play served a "VWAP" factor (weight -12, "Below VWAP
+// 7580.87 — sellers pressing") contributing to the closed-market score/grade on a Saturday,
+// while the sibling GET /api/market/spx/desk route (peekSpxDesk(), no sticky merge) correctly
+// reported vwap:null at the same instant.
+function closedDeskWithVwap(overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
+  return desk(7500, {
+    market_open: false,
+    source: "test",
+    vwap: 7580.87,
+    ...overrides,
+  });
+}
+
+test("evaluateOpenPlay closed-market SCANNING, desk.vwap_stale:true: the VWAP factor/thesis/play-idea disclose staleness", async () => {
+  const stalePayload = await evaluateSpxPlay(
+    closedDeskWithVwap({ vwap_stale: true }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+
+  assert.equal(stalePayload.phase, "SCANNING");
+  const vwapFactor = stalePayload.factors.find((f) => f.label === "VWAP");
+  assert.ok(vwapFactor, "fixture must actually fire a VWAP factor to test disclosure on");
+  assert.match(
+    vwapFactor!.detail,
+    /VWAP stale, not live/,
+    "a VWAP factor built from a sticky-fallback vwap must disclose it rather than present a prior session's level as if live"
+  );
+  assert.match(
+    stalePayload.thesis,
+    /VWAP stale, not live/,
+    "the closed-market thesis must also carry the VWAP staleness clause"
+  );
+  assert.ok(stalePayload.gates.play_idea, "fixture must produce a play idea to test disclosure on");
+  assert.match(stalePayload.gates.play_idea!, /VWAP stale, not live/);
+});
+
+test("evaluateOpenPlay closed-market SCANNING, desk.vwap_stale:false (or absent): the SAME VWAP factor renders unchanged, with no staleness disclosure", async () => {
+  const freshPayload = await evaluateSpxPlay(
+    closedDeskWithVwap({ vwap_stale: false }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const freshVwapFactor = freshPayload.factors.find((f) => f.label === "VWAP");
+  assert.ok(freshVwapFactor);
+  assert.doesNotMatch(freshVwapFactor!.detail, /VWAP stale/);
+  assert.doesNotMatch(freshPayload.thesis, /VWAP stale/);
+  assert.ok(freshPayload.gates.play_idea);
+  assert.doesNotMatch(freshPayload.gates.play_idea!, /VWAP stale/);
+
+  // vwap_stale entirely absent from the desk payload must behave identically to explicit false —
+  // the live production shape whenever vwap came from a fresh pulse/base read this cycle.
+  const absentPayload = await evaluateSpxPlay(
+    closedDeskWithVwap(),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const absentVwapFactor = absentPayload.factors.find((f) => f.label === "VWAP");
+  assert.ok(absentVwapFactor);
+  assert.doesNotMatch(absentVwapFactor!.detail, /VWAP stale/);
+  assert.doesNotMatch(absentPayload.thesis, /VWAP stale/);
+});
+
+// Proves the two disclosure checks are independent and COMPOSE rather than one overwriting the
+// other — a closed-market read that's stale on both the GEX wall and the VWAP level at once
+// must disclose both clauses, not just whichever check happened to run last.
+test("evaluateOpenPlay closed-market SCANNING, BOTH desk.gex_stale and desk.vwap_stale true: both staleness clauses are disclosed together", async () => {
+  const bothStalePayload = await evaluateSpxPlay(
+    closedDeskWithGexSupport({
+      gex_stale: true,
+      gex_age_ms: 26 * 3_600_000,
+      vwap: 7580.87,
+      vwap_stale: true,
+    }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+
+  const gexFactor = bothStalePayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  const vwapFactor = bothStalePayload.factors.find((f) => f.label === "VWAP");
+  assert.ok(gexFactor, "fixture must fire a GEX-derived factor");
+  assert.ok(vwapFactor, "fixture must fire a VWAP factor");
+  assert.match(gexFactor!.detail, /GEX stale, not live/);
+  assert.match(vwapFactor!.detail, /VWAP stale, not live/);
+  assert.match(bothStalePayload.thesis, /GEX stale, not live/);
+  assert.match(bothStalePayload.thesis, /VWAP stale, not live/);
+  assert.ok(bothStalePayload.gates.play_idea);
+  assert.match(bothStalePayload.gates.play_idea!, /GEX stale, not live/);
+  assert.match(bothStalePayload.gates.play_idea!, /VWAP stale, not live/);
+});
+
 // BUG FIX (2026-09-03): getNhConfluenceBonus's staleness check used a raw
 // `(Date.now() - publishedAt.getTime()) / 3_600_000 > 20` comparison. published_at is written by a
 // SEPARATE Night Hawk cron process, so cross-process clock skew is real — a future-dated edition

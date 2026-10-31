@@ -320,6 +320,51 @@ describe("mergePulseIntoDesk off-hours derived-field fallback", () => {
   });
 });
 
+// BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
+// closed): stickyStructureLevel's non-hod/lod branch (`pulseVal ?? baseVal ??
+// lastGoodStructure[key] ?? null`) serves a cross-request "last-known-good" VWAP forever once
+// both pulse.vwap and base.vwap go null (any non-trading day), with nothing on the merged desk
+// disclosing it — unlike gex_stale, which exists for the identical class of problem on the GEX
+// ladder. Confirmed live: GET /api/market/spx/play scored a "Below VWAP 7580.87 — sellers
+// pressing" factor (-12) off a sticky Friday close on a Saturday, while the sibling
+// GET /api/market/spx/desk (peekSpxDesk(), no sticky merge) correctly reported vwap:null at the
+// same instant.
+describe("mergePulseIntoDesk vwap_stale disclosure", () => {
+  beforeEach(() => {
+    resetSpxDeskMergeCache();
+  });
+
+  it("marks vwap_stale:true once both pulse.vwap and base.vwap go null and only the sticky cache still carries a value forward", () => {
+    // Prior cycle (e.g. Friday RTH): a real VWAP seeds the sticky cache.
+    mergePulseIntoDesk(deskStub({ vwap: 7580.87 }), pulseStub({ vwap: 7580.87 }));
+
+    // This cycle (e.g. Saturday): both live sources are honestly null, but the sticky cache
+    // still has Friday's value and keeps serving it.
+    const closedBase = deskStub({ vwap: null, market_open: false });
+    const closedPulse = pulseStub({ vwap: null, market_open: false });
+    const merged = mergePulseIntoDesk(closedBase, closedPulse);
+
+    assert.equal(merged.vwap, 7580.87, "sticky fallback still carries the last-known VWAP forward");
+    assert.equal(
+      merged.vwap_stale,
+      true,
+      "must flag that the served vwap did not come from a fresh pulse/base read this cycle"
+    );
+  });
+
+  it("leaves vwap_stale falsy when vwap came from a fresh pulse read this cycle (no regression)", () => {
+    const merged = mergePulseIntoDesk(deskStub({ vwap: 7350 }), pulseStub({ vwap: 7360 }));
+    assert.equal(merged.vwap, 7360);
+    assert.ok(!merged.vwap_stale, "a fresh pulse-sourced vwap must not be flagged stale");
+  });
+
+  it("leaves vwap_stale falsy when vwap came from a fresh base read this cycle (pulse itself has none)", () => {
+    const merged = mergePulseIntoDesk(deskStub({ vwap: 7350 }), pulseStub({ vwap: null }));
+    assert.equal(merged.vwap, 7350);
+    assert.ok(!merged.vwap_stale, "a fresh base-sourced vwap must not be flagged stale");
+  });
+});
+
 describe("mergeFlowIntoDesk gamma flip truth", () => {
   it("keeps an explicit null live flip — does not resurrect sticky desk flip", () => {
     const base = deskStub({ gamma_flip: 7596.4, above_gamma_flip: false, price: 7428.78 });

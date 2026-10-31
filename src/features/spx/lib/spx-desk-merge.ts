@@ -300,6 +300,19 @@ export function mergePulseIntoDesk(
   let hod = stickyStructureLevel("hod", pulse.hod, base.hod, liveSpot);
   ({ hod, lod } = widenSessionExtremesWithSpot(price, hod, lod, rthOpen));
   const vwap = stickyStructureLevel("vwap", pulse.vwap, base.vwap);
+  // BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday market
+  // closed): stickyStructureLevel's non-hod/lod branch resolves as `pulseVal ?? baseVal ??
+  // lastGoodStructure[key] ?? null` — so `vwap` above came from the cross-request sticky
+  // fallback, not a fresh read THIS cycle, exactly when BOTH pulse.vwap and base.vwap are
+  // null/undefined and a prior cycle already seeded the sticky cache. That is routinely true
+  // on a non-trading day (weekend/holiday), when the sticky cache keeps serving Friday's VWAP
+  // forever with nothing on the payload saying so. Confirmed live: GET /api/market/spx/play
+  // scored a "Below VWAP 7580.87 — sellers pressing" factor (-12) off this exact path while the
+  // sibling GET /api/market/spx/desk (peekSpxDesk(), no sticky merge) correctly reported
+  // vwap:null at the same instant. `vwap_stale` lets evaluateSpxPlayCore's closed-market branch
+  // disclose this the same way it already discloses stale GEX factors (discloseStaleGexFactors)
+  // instead of inventing a new mechanism.
+  const vwapStale = pulse.vwap == null && base.vwap == null && vwap != null;
   const pdh = stickyStructureLevel("pdh", pulse.pdh, base.pdh);
   const pdl = stickyStructureLevel("pdl", pulse.pdl, base.pdl);
   const ema20 = stickyStructureLevel("ema20", pulse.ema20, base.ema20);
@@ -370,6 +383,7 @@ export function mergePulseIntoDesk(
     lod,
     hod,
     vwap,
+    vwap_stale: vwapStale,
     pdh,
     pdl,
     ema20,
