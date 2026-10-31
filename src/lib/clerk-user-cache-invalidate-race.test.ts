@@ -106,6 +106,60 @@ test("clerk-user-cache: a global invalidate() (no userId) also suppresses an in-
   assert.deepEqual(fresh.publicMetadata.tool_access, { vector: "block" });
 });
 
+test("clerk-user-cache: a stale pre-invalidate fetch's finally{} must not evict a DIFFERENT, still-pending fetch's inflight entry", async () => {
+  const userId = "user_race_test_4";
+  let getUserCallCount = 0;
+  let pendingResolvers: Array<(value: { publicMetadata: { tool_access?: unknown } }) => void> = [];
+
+  __setFetchClerkUserForTest((_id: string) => {
+    getUserCallCount++;
+    return new Promise((resolve) => {
+      pendingResolvers.push(resolve as (value: unknown) => void);
+    }) as Promise<{ publicMetadata: { tool_access?: unknown } }>;
+  });
+
+  invalidateClerkUserCache(); // clean slate
+
+  // (A) An ordinary request starts reading — fetch #1 (will resolve to a now-stale value).
+  const readA = getClerkUserCached(userId);
+  assert.equal(getUserCallCount, 1, "fetch #1 starts");
+
+  // An admin write lands and invalidates WHILE fetch #1 is still in flight — this clears the
+  // `inflight` entry for userId that fetch #1 registered.
+  invalidateClerkUserCache(userId);
+
+  // (B) A second caller, arriving right after the invalidate, finds nothing pending (fetch #1's
+  // entry was just cleared) and correctly kicks off a brand-new fetch #2 to get fresh data.
+  const readB = getClerkUserCached(userId);
+  assert.equal(getUserCallCount, 2, "fetch #2 starts for the post-invalidate read");
+  assert.equal(pendingResolvers.length, 2, "fetch #2 must be pending (not yet resolved)");
+
+  // Now let fetch #1 (the OLD, pre-invalidate fetch) resolve. Its own seq guard correctly skips
+  // caching its stale result — but its `finally` block must NOT blow away fetch #2's still-live
+  // inflight entry just because they share the same userId key.
+  pendingResolvers[0]({ publicMetadata: { tool_access: { vector: "grant" /* STALE */ } } });
+  await readA;
+
+  // (C) A THIRD caller arrives while fetch #2 is still pending. It must reuse fetch #2's
+  // in-flight promise (true dedupe) rather than kicking off a redundant fetch #3 — which is
+  // exactly what happens if fetch #1's finally{} wrongly deleted fetch #2's inflight entry.
+  const readC = getClerkUserCached(userId);
+  assert.equal(
+    getUserCallCount,
+    2,
+    "a concurrent caller while fetch #2 is still pending must be deduped onto fetch #2, not " +
+      "trigger a redundant fetch #3 — the stale fetch #1's finally{} must not have evicted " +
+      "fetch #2's still-live inflight entry"
+  );
+
+  pendingResolvers[1]({ publicMetadata: { tool_access: { vector: "block" /* NEW, real */ } } });
+  const [fromB, fromC] = (await Promise.all([readB, readC])) as Array<{
+    publicMetadata: { tool_access?: unknown };
+  }>;
+  assert.deepEqual(fromB.publicMetadata.tool_access, { vector: "block" });
+  assert.deepEqual(fromC.publicMetadata.tool_access, { vector: "block" });
+});
+
 test("clerk-user-cache: sanity — without any invalidate, the in-flight fetch's result IS cached (dedupe still works)", async () => {
   const userId = "user_race_test_3";
   let getUserCallCount = 0;
