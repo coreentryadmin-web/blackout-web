@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-31T15:09:06.896Z",
+  "updated_at": "2026-10-31T15:38:37.537Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "22f0b92d04ddeac47920059ba1d82e13b275938b",
+    "last_main_sha": "53dfbd123c64752a99ee6381a4a8e66e8a4af496",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-21T11:08:39.275Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-21T11:08:44.700Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-21T11:47:51.442Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-21T11:47:55.690Z",
       "type": "context_sync",
@@ -1271,28 +1253,86 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-31T15:38:19.964Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-10-31T15:38:29.103Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-10-31T15:38:37.537Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
     }
   ],
   "open_prs": [
     {
-      "number": 7025,
-      "title": "fix(lib): remove dead getApiTelemetrySnapshot call in api-telemetry-redis.ts",
-      "branch": "fix/api-telemetry-redis-dead-snap",
+      "number": 7034,
+      "title": "fix(swing): add defense-space-systems theme bucket for KTOS/RDW",
+      "branch": "fix/sector-map-defense-space-systems-ktos-rdw",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T15:04:50Z"
+      "updated_at": "2026-10-31T15:35:34Z"
     },
     {
-      "number": 7024,
-      "title": "fix(thermal): remove dead HEATMAP_TOP_HIGHLIGHT_COUNT export",
-      "branch": "fix/gex-heatmap-dead-top-highlight-count",
+      "number": 7033,
+      "title": "docs(audit): nighthawk-swings journal — correct own thesis.outcome offer scope on #4076",
+      "branch": "docs/swing-journal-thesis-outcome-20261031",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-31T15:35:11Z"
+    },
+    {
+      "number": 7032,
+      "title": "fix(dead-code): remove unused meridianOpexBenchmarkTickers export and its source constant",
+      "branch": "fix/meridian-opex-dead-benchmark-export",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T14:58:48Z"
+      "updated_at": "2026-10-31T15:35:06Z"
+    },
+    {
+      "number": 7031,
+      "title": "fix(spx): isSpxPlaySnapshotShareable() ignores assessed, trusts degenerate closed snapshot forever",
+      "branch": "fix/spx-play-shareable-assessed-gap",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-31T15:33:33Z"
+    },
+    {
+      "number": 7030,
+      "title": "fix(lib): remove dead getSubscriberCount/clearSubscribers from gex-matrix-broadcast.ts",
+      "branch": "fix/gex-matrix-broadcast-dead-exports",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-31T15:29:15Z"
+    },
+    {
+      "number": 7029,
+      "title": "chore(flow-data-freshness): remove dead lastFlowDataTimestamp export",
+      "branch": "fix/flow-data-freshness-dead-export",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-10-31T15:23:31Z"
     },
     {
       "number": 5547,
