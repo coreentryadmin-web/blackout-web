@@ -67,7 +67,3 @@ export function resolveFlowDataAgeMs(
   if (fromMem == null) return fromTape;
   return Math.min(fromTape, fromMem);
 }
-
-export function lastFlowDataTimestamp(): number | null {
-  return lastFlowDataAt;
-}
