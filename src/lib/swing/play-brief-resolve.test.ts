@@ -545,6 +545,61 @@ describe("loadOpenTerminalPlay: restores factors/regime for a committed row (Lar
     const play = await mod.loadOpenTerminalPlay("PANW", {});
     assert.ok(play, "a ticker-only lookup with no positionId hint must still resolve the sole open row");
   });
+
+  // BUG FIX (2026-10-31, Ask Largo standing mandate, live repro MRNA). Same failure CLASS as the
+  // PANW `positionId`-with-no-match tests above, caught by a different trigger: a caller that also
+  // sends a `status` hint alongside a failed positionId/strike/right hint. Before this fix, the
+  // status-only fallback block (play-brief-resolve.ts, a few lines below the PANW `matches.length
+  // === 1` guard) took the ticker's one WORKING-status native row WITHOUT ever re-checking it
+  // against the positionId/strike/right the caller had already, explicitly, asked for and failed to
+  // match — exactly the shape `useSwingPlayBrief`'s `briefUrl()` sends for every open position
+  // (playId + ticker + positionId + status + strike + right). Live repro: MRNA carried native row
+  // #68 (195C, HOLD) plus two banger-origin positions (#2240 225C, #2167 217.5C) that never appear
+  // in `fetchOpenSwingPositions()` at all; `?positionId=2240&status=HOLD&strike=225&right=C`
+  // resolved to #68 (wrong) instead of #2240. Removing only `status` from the request correctly
+  // returned null here too (banger lookup unavailable in this unit test, same as the PANW test
+  // above) — isolating `status` as what re-introduced the wrong substitution.
+  test("BUG FIX: a status hint must not override a positionId/strike/right hint that already failed to match (live MRNA repro)", async () => {
+    // The ticker's ONE native row — status HOLD (a WORKING status), but a DIFFERENT contract
+    // (195C) than the banger-origin position actually being asked about (225C, positionId 2240).
+    mockOpenRows = [{ ...openRow("MRNA", 68), contract_strike: 195, contract_type: "call", status: "HOLD" }];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const play = await mod.loadOpenTerminalPlay("MRNA", {
+      positionId: 2240,
+      strike: 225,
+      right: "C",
+      status: "HOLD",
+    });
+    assert.equal(
+      play,
+      null,
+      "a failed positionId/strike/right hint plus a matching status must fall through to the banger " +
+        "lookup (null here, since it's unmocked), never silently substitute the unrelated native row #68",
+    );
+  });
+
+  // Preserves the status-fallback's LEGITIMATE purpose: a caller sending ONLY a status hint (no
+  // positionId/strike/right at all) against a genuinely ambiguous native-only ticker must still get
+  // disambiguated by status, exactly as before this fix — the fix narrows the gate, it does not
+  // remove the block.
+  test("a status-only hint (no positionId/strike/right) still disambiguates an otherwise-ambiguous native-only ticker", async () => {
+    mockOpenRows = [
+      // PENDING is a valid `fetchOpenSwingPositions` status (excluded only CLOSED/ROLLED) but is
+      // NOT in the WORKING set — so this row must be filtered OUT by the status fallback, leaving
+      // exactly one genuine WORKING candidate for the hint to resolve.
+      { ...openRow("DUO", 301), contract_strike: 50, contract_type: "call", status: "PENDING" },
+      { ...openRow("DUO", 302), contract_strike: 60, contract_type: "call", status: "HOLD" },
+    ];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const play = await mod.loadOpenTerminalPlay("DUO", { status: "HOLD" });
+    assert.ok(play, "a status-only hint against an ambiguous native-only ticker must still resolve");
+    assert.ok(
+      play!.contract.includes("60"),
+      `must resolve the HOLD-status (WORKING) row, strike 60 — not the non-WORKING PENDING row — got contract "${play!.contract}"`,
+    );
+  });
 });
 
 describe("resolveSwingPlayForBrief: WATCH lane restores factors/regime (parity with open path)", () => {

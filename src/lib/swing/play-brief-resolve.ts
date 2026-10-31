@@ -341,7 +341,36 @@ export async function loadOpenTerminalPlay(
   // `closedFallback` fix already states: "an explicit, unresolvable positionId must surface as
   // absence, never as an unrelated substitute."
   if (!row && matches.length === 1 && hints.positionId == null) row = matches[0];
-  if (!row && hints.status && WORKING.has(hints.status.toUpperCase())) {
+  // BUG FIX (2026-10-31, Ask Largo standing mandate, live repro MRNA — three concurrent open swing
+  // positions on one ticker: a native swing_positions row (#68, 195C) plus two banger-origin
+  // positions (#2240 225C, #2167 217.5C) that never appear in `matches` at all, since `matches` is
+  // built solely from `fetchOpenSwingPositions()` (the native table, line ~318 above). The
+  // positionId check (line ~326) and the strike/right check (line ~328-332) both correctly FAILED
+  // to match row #68 against a requested banger positionId/strike — but this status-only fallback
+  // used to run unconditionally whenever `row` was still unset, with no check on WHY it was unset.
+  // Since row #68 happened to be the ticker's one WORKING-status native row, `working[0]` below
+  // took it directly WITHOUT ever re-validating it against the positionId/strike/right hint that had
+  // already, explicitly, failed to match it moments earlier — silently substituting an unrelated
+  // position instead of falling through to `loadOpenBangerTerminalPlay` (reached a few lines down,
+  // the existing banger-lookup fallback already shipped for the analogous PANW incident above).
+  //
+  // Live repro: `GET /api/market/swing/play-brief?playId=SWING:MRNA:2240&ticker=MRNA&
+  // positionId=2240&status=HOLD&strike=225&right=C` — the EXACT shape `useSwingPlayBrief`'s
+  // `briefUrl()` builds (playId + ticker + positionId + status + strike + right) — resolved to
+  // `SWING:MRNA:68` (the wrong, unrelated 195C position, "TRIM 100%") instead of `SWING:MRNA:2240`
+  // (225C). The identical shape for positionId=2167/strike=217.5 ALSO wrongly resolved to #68.
+  // Removing ONLY `status` from the same request (keeping positionId/strike/right) correctly
+  // resolved #2240/#2167 respectively — isolating `status` as the trigger.
+  //
+  // Fix: only take the status-only guess when the caller supplied NO specific identifying hint at
+  // all (no positionId, no strike, no right) — the legitimate case this block exists for: a plain
+  // "ticker + status" query against an otherwise-ambiguous ticker with no contract-level hint to
+  // disambiguate by. A positionId/strike/right hint that was supplied and already failed to match
+  // any row in `matches` now falls straight through to the final `if (!row)` banger-lookup fallback
+  // below instead, exactly as it already does when `matches` itself is empty — never silently
+  // overridden by a same-ticker row's status alone.
+  const hasSpecificContractHint = hints.positionId != null || hints.strike != null || hints.right != null;
+  if (!row && !hasSpecificContractHint && hints.status && WORKING.has(hints.status.toUpperCase())) {
     const working = matches.filter((r) => WORKING.has(String(r.status ?? "").toUpperCase()));
     if (working.length === 1) row = working[0];
     else if (working.length > 1 && (hints.strike != null || hints.right != null)) {
