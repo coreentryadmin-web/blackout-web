@@ -129,6 +129,37 @@ test("parseNextEarningsFromBenzinga picks nearest upcoming print", () => {
   assert.equal(next?.is_confirmed, true);
 });
 
+test(
+  "parseNextEarningsFromBenzinga skips a SAME-DAY row that already reported (BMO print posted " +
+    "actual_eps this morning) and finds the real next one, instead of reporting it as upcoming",
+  () => {
+    const next = parseNextEarningsFromBenzinga(
+      "NVDA",
+      [
+        // Already reported today — Benzinga leaves `date` unchanged after the print lands.
+        bz({ ticker: "NVDA", date: "2026-08-26", time: "08:30:00", actual_eps: 1.64, date_status: "confirmed" }),
+        bz({ ticker: "NVDA", date: "2026-11-25", time: "16:20:00", date_status: "projected" }),
+      ],
+      "2026-08-26"
+    );
+    assert.equal(next?.earnings_date, "2026-11-25");
+    assert.equal(next?.is_confirmed, false);
+  }
+);
+
+test(
+  "parseNextEarningsFromBenzinga returns null, NOT the stale already-reported row, when the " +
+    "only row on file for today has already reported and the next quarter isn't calendared yet",
+  () => {
+    const next = parseNextEarningsFromBenzinga(
+      "NVDA",
+      [bz({ ticker: "NVDA", date: "2026-08-26", time: "08:30:00", actual_eps: 1.64 })],
+      "2026-08-26"
+    );
+    assert.equal(next, null);
+  }
+);
+
 test("mergeStreetEstimates prefers Benzinga then UW tail", () => {
   const merged = mergeStreetEstimates(
     [bz({ ticker: "NVDA", date: "2026-08-26", estimated_eps: 2.07, estimated_revenue: 9e10, fiscal_year: 2027 })],
