@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as xApi from "./x-api";
 import { xApiEnabled, X_ACCOUNT_USER_ID, X_BLOCK_RT_USERNAMES } from "./x-api";
 
 /**
@@ -84,4 +85,12 @@ test("X_ACCOUNT_USER_ID and X_BLOCK_RT_USERNAMES are the stable identity constan
   assert.equal(X_ACCOUNT_USER_ID, "2055511397338087425");
   assert.ok(X_BLOCK_RT_USERNAMES.has("IHate0dte"));
   assert.ok(X_BLOCK_RT_USERNAMES.has("ihate0dte"));
+});
+
+test("postThread stays removed — a dead thread-posting wrapper with zero callers anywhere in the repo since it was added (#847); do not re-add it as a thin re-export without a real caller", () => {
+  assert.equal(
+    (xApi as Record<string, unknown>).postThread,
+    undefined,
+    "postThread should not be re-exported from x-api.ts unless a real caller is wired up alongside it",
+  );
 });
