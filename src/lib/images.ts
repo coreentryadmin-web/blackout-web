@@ -39,10 +39,3 @@ export const MARKETING_MODULE_GALLERY: Record<MarketingModuleId, readonly string
   meridian: [MARKETING_MODULE_IMAGES.meridian],
   vector: [MARKETING_MODULE_IMAGES.vector, "/images/marketing/vector-2.webp", "/images/marketing/vector-3.webp", "/images/marketing/vector-4.webp"],
 };
-
-/** Assets still referenced by the live site (guard / docs). */
-export const IMAGE_FILES = [
-  { path: "public/images/blackout-emblem.webp", label: "Brand emblem — marketing hero" },
-  { path: "public/og-image.webp", label: "Social share preview (webp, default)" },
-  { path: "public/og-image.png", label: "Social share preview (png fallback)" },
-] as const;
