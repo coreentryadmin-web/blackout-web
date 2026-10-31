@@ -7,6 +7,7 @@ import { fetchBenzingaStructuredEarnings } from "@/lib/providers/polygon";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { serverCache } from "@/lib/server-cache";
 import { roundFloats } from "@/lib/round-floats";
+import { pickUpcomingEarningsRow } from "@/lib/meridian/meridian-ticker-lookup-core";
 
 const LOOKUP_TTL_MS = 10 * 60 * 1000;
 
@@ -54,7 +55,10 @@ async function loadMeridianTickerLookupUncached(
     return res.rows;
   });
 
-  const upcoming = rows.find((r) => r.date >= today && r.actual_eps == null) ?? rows[0] ?? null;
+  // See meridian-ticker-lookup-core.ts's own header for the live bug this fixes: a bare
+  // `?? rows[0]` fallback used to echo an already-reported earnings date back out as
+  // "upcoming" whenever no not-yet-reported row existed in the window.
+  const upcoming = pickUpcomingEarningsRow(rows, today);
   const timeline_id = upcoming ? `earnings:${ticker}:${upcoming.date}` : null;
   const in_timeline = timeline_id ? timelineIds.includes(timeline_id) : false;
 
