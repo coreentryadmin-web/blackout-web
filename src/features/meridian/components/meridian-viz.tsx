@@ -90,11 +90,16 @@ export function MeridianCountUp({
 }) {
   const [shown, setShown] = useState<number | null>(value);
   const fromRef = useRef<number | null>(value);
+  // Mirrors `shown`, but synchronously — a ref, unlike state, is readable inside this same
+  // effect's cleanup the instant a new `value` arrives, before React commits whatever render
+  // that cleanup is racing. Needed below to resume an interrupted animation honestly.
+  const shownRef = useRef<number | null>(value);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (value === null) {
       setShown(null);
+      shownRef.current = null;
       fromRef.current = null;
       return;
     }
@@ -103,6 +108,7 @@ export function MeridianCountUp({
     // imaginary zero would animate a number the data never held.
     if (from === null) {
       setShown(value);
+      shownRef.current = value;
       fromRef.current = value;
       return;
     }
@@ -111,14 +117,24 @@ export function MeridianCountUp({
     const tick = (now: number) => {
       const t = clamp((now - start) / durationMs, 0, 1);
       const eased = 1 - (1 - t) ** 3;
-      setShown(from + (value - from) * eased);
+      const next = from + (value - from) * eased;
+      setShown(next);
+      shownRef.current = next;
       if (t < 1) rafRef.current = requestAnimationFrame(tick);
       else fromRef.current = value;
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      fromRef.current = value;
+      // BUG FIX (round 179): resume an INTERRUPTED count-up from the value actually last
+      // RENDERED (`shownRef.current`), not from this effect's own stale TARGET (`value`).
+      // A second prop change inside `durationMs` (~520ms) re-runs this effect before the first
+      // animation finishes; the old code set `fromRef.current = value` here — the target the
+      // first animation was still mid-flight toward, which the viewer never actually saw. The
+      // next tick then opened at `t=0` (`eased=0`), so `setShown(from + 0)` snapped the display
+      // STRAIGHT to that unseen target for one frame before animating on toward the second
+      // value — a visible flicker/jump on any metric that updates faster than it counts up.
+      fromRef.current = shownRef.current;
     };
   }, [value, durationMs]);
 
