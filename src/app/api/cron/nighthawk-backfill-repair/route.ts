@@ -1,5 +1,9 @@
 // Cron: NIGHT HAWK BACKFILL REPAIR — self-heals a stale BACKFILL contract on today's already-
-// published Legacy edition, before market open.
+// published Legacy edition, before market open. ALSO (added after the 2026-11-02/2026-10-28
+// starved-funnel recurrence — see the `no_rank_governor_snapshot` branch below): when the
+// backfill mechanism has no candidate pool to draw from at all because the evening build never
+// reached ranking (100% dossier-fetch collapse), dispatches ONE last-resort full pipeline
+// rebuild before market open, since nothing else does.
 //
 // FIRES: 13:00 + 14:00 UTC Mon-Fri (dual-band, same shape as nighthawk-morning-confirm) — 9:00 AM
 // ET in both DST regimes, 15 minutes BEFORE morning-confirm's own 9:15 AM ET run, so morning-
@@ -33,15 +37,16 @@
 // AUTH: Bearer CRON_SECRET (isCronAuthorized). force-dynamic.
 
 import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { requireDatabaseInProduction, fetchLatestNighthawkEdition, fetchNighthawkEditionByDate } from "@/lib/db";
-import { rowToNightHawkEdition } from "@/features/nighthawk/lib/edition-builder";
+import { rowToNightHawkEdition, buildEveningEdition } from "@/features/nighthawk/lib/edition-builder";
 import { republishBackfilledEdition } from "@/features/nighthawk/lib/post-publish-backfill";
-import { todayEt, isTradingDayEt } from "@/features/nighthawk/lib/session";
+import { todayEt, isTradingDayEt, previousTradingDayEt } from "@/features/nighthawk/lib/session";
 import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -119,6 +124,75 @@ export async function GET(req: NextRequest) {
     const result = await republishBackfilledEdition(editionFor);
 
     if (!result.ok) {
+      // MORNING RESCUE (added after a live repro, 2026-11-02 and 2026-10-28):
+      // `no_rank_governor_snapshot` is not an ordinary no-op — it means the backfill mechanism
+      // above has NO candidate pool to draw from at all, because the evening build never
+      // reached the ranking stage in the first place. `edition-builder.ts` collapses straight
+      // to a recap-only publish (zero plays) the moment `funnel.dossiers === 0` (every one of
+      // that night's dossier-fetch attempts failed) — no candidate is ever scored or ranked,
+      // so no `rank_governor` snapshot row is ever written for `backfillThinEditionPlays`
+      // (reconstructScoredPoolFromRankGovernorRows above) to read back.
+      //
+      // The evening cron's own same-night retry (`shouldRetryRecapOnlyEdition`, edition-stale.ts)
+      // only fires while `isInEditionWindow()` is still true (the 5:30-7:55pm ET dispatch
+      // window) — once that closes for the night, nothing re-attempts the build again until
+      // THIS cron's own 9am ET fire, and until now this cron's own repair
+      // (repairStaleBackfillContracts / backfillThinEditionPlays, both gated on an existing
+      // rank_governor snapshot) could not help either. Confirmed live: edition_for 2026-11-02
+      // and, separately, 2026-10-28 (an ordinary Wednesday, not weekend-adjacent) both published
+      // recap-only with the identical `funnel:{candidates:20, dossiers:0, ranked:0}` shape and
+      // sat that way with zero automatic recovery path all the way to market open.
+      //
+      // Fix: when this exact signal fires, dispatch ONE more full pipeline rebuild — the same
+      // `buildEveningEdition({ force: true, ... })` mechanism the evening cron itself uses for a
+      // force-rebuild — in the background via `after()` (same fire-and-forget shape as
+      // src/app/api/cron/nighthawk-edition/route.ts, so this 60s-budget route still returns
+      // promptly). `asOfEt` is derived as `previousTradingDayEt(editionFor)` so
+      // `nextTradingDayEt(asOfEt) === editionFor` inside buildEveningEdition — proven inverse,
+      // see session.test.ts. By 9am ET the transient congestion that is the leading theory for
+      // the original 100% dossier-fetch failure (docs/audit/FINDINGS.md) has had all night to
+      // clear; if it hasn't, the rebuild just republishes the same recap-only result — a cheap,
+      // bounded retry, self-rate-limited to at most the 2 dual-band fires/day this cron already
+      // has (no new cron, no new moving parts).
+      if (result.status === "no_rank_governor_snapshot") {
+        const dispatchRebuild = () => {
+          void runWithBackgroundUwSweep(() =>
+            buildEveningEdition({ asOfEt: previousTradingDayEt(editionFor), force: true, persist: true })
+          )
+            .then((rebuildResult) => {
+              console.info(
+                `[nighthawk/backfill-repair] morning rescue rebuild done — ${editionFor} ` +
+                  `plays=${rebuildResult.plays_count} recap_only=${rebuildResult.recap_only ?? "?"}`
+              );
+            })
+            .catch((err) => {
+              console.error(`[nighthawk/backfill-repair] morning rescue rebuild REJECTED — ${editionFor}:`, err);
+            });
+        };
+        try {
+          after(dispatchRebuild);
+        } catch {
+          dispatchRebuild();
+        }
+
+        await notifyOpsDiscord({
+          severity: "warning",
+          title: `Night Hawk: morning rescue rebuild dispatched — ${editionFor}`,
+          body:
+            `No rank_governor snapshot for ${editionFor} (100% dossier-fetch collapse overnight) ` +
+            `— dispatching one more full pipeline rebuild before market open.`,
+        }).catch(() => undefined);
+
+        const payload = {
+          ok: true,
+          status: "rebuild_dispatched",
+          reason: "no_rank_governor_snapshot",
+          edition_for: editionFor,
+        };
+        await logCronRun(CRON_KEY, started, payload);
+        return NextResponse.json(payload);
+      }
+
       const payload = { ok: false, skipped: true, reason: result.status, edition_for: editionFor };
       await logCronRun(CRON_KEY, started, payload);
       return NextResponse.json(payload);
