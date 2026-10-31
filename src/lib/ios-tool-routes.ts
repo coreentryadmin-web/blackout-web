@@ -124,18 +124,26 @@ const IOS_UTILITY_META: Record<
 
 /** Maps URL path → `data-ios-route` key (used by chrome + CSS). */
 export function getIosRouteKey(path: string): IosRouteKey {
-  if (path === "/dashboard" || path.startsWith("/dashboard/")) return "dashboard";
-  if (path.startsWith("/flows")) return "flows";
-  if (path.startsWith("/heatmap")) return "heatmap";
-  if (path.startsWith("/terminal")) return "largo";
-  if (path.startsWith("/nighthawk")) return "nighthawk";
-  if (path.startsWith("/vector")) return "vector";
-  if (path.startsWith("/meridian")) return "meridian";
-  if (path.startsWith("/account")) return "account";
-  if (path.startsWith("/faq")) return "faq";
-  if (path.startsWith("/learn")) return "learn";
-  if (path.startsWith("/upgrade")) return "upgrade";
-  if (path.startsWith("/admin")) return "admin";
+  // Strip a query string/hash before matching — same bug class, same sibling file, as the
+  // isIosNativeShellPath fix above. The "/dashboard" branch below is the one check in this
+  // function that requires an EXACT match or a startsWith(`${prefix}/`) match (every other
+  // branch here is a bare startsWith, which already tolerates a suffix appended directly
+  // after the prefix), so an un-stripped query string or hash on "/dashboard" itself
+  // ("/dashboard?ref=upgrade", "/dashboard#widgets") failed both checks and fell through
+  // every branch to "other" instead of "dashboard".
+  const p = normalizeIosPath(path);
+  if (p === "/dashboard" || p.startsWith("/dashboard/")) return "dashboard";
+  if (p.startsWith("/flows")) return "flows";
+  if (p.startsWith("/heatmap")) return "heatmap";
+  if (p.startsWith("/terminal")) return "largo";
+  if (p.startsWith("/nighthawk")) return "nighthawk";
+  if (p.startsWith("/vector")) return "vector";
+  if (p.startsWith("/meridian")) return "meridian";
+  if (p.startsWith("/account")) return "account";
+  if (p.startsWith("/faq")) return "faq";
+  if (p.startsWith("/learn")) return "learn";
+  if (p.startsWith("/upgrade")) return "upgrade";
+  if (p.startsWith("/admin")) return "admin";
   return "other";
 }
 
