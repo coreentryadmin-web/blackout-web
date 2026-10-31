@@ -388,3 +388,22 @@ test("SEDG and ENPH (residential-solar power-electronics makers) cluster togethe
   assert.equal(sameThesis("SEDG", "NVDA"), false);
   assert.equal(sameThesis("ENPH", "AMD"), false);
 });
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-10-31, live finding): a
+// real committed book held CF (CF Industries) and MOS (The Mosaic Company) concurrently LONG
+// with neither ticker mapped anywhere in sector-map.ts, so both resolved to isolated
+// `NAME:CF`/`NAME:MOS` own-clusters and neither position's play-brief rendered a "Book context"
+// section at all — same gap shape as every other extension in this file. CF and MOS are
+// confirmed via Polygon reference (`/v3/reference/tickers/<T>`) as sharing the identical SIC
+// code 2870 "AGRICULTURAL CHEMICALS" — both are large-cap nitrogen/phosphate fertilizer
+// producers whose equity is dominated by the same ag-input commodity-price cycle, not by any
+// sector already listed above (not semis, not energy, not the diversified `financials`/
+// `consumer` buckets).
+test("CF and MOS (nitrogen/phosphate fertilizer producers) cluster together as an agricultural-chemicals theme, not each in its own isolated cluster", () => {
+  assert.equal(resolveTheme("CF"), "agricultural-chemicals");
+  assert.equal(resolveTheme("MOS"), "agricultural-chemicals");
+  assert.equal(sameThesis("CF", "MOS"), true);
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("CF", "XOM"), false);
+  assert.equal(sameThesis("MOS", "NVDA"), false);
+});
