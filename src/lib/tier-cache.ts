@@ -119,6 +119,22 @@ export function invalidateTierCache(userId: string): void {
 }
 
 /**
+ * Stable module-level handler for the tier-changed channel. Must NOT be a fresh closure built
+ * inside ensureTierCacheSubscription() — redis-pubsub.ts's redisSubscribe() registers whatever
+ * handler it's given into a module-level Set UNCONDITIONALLY, regardless of whether the
+ * connection attempt itself succeeds, and resolveUserTier() calls ensureTierCacheSubscription()
+ * on EVERY call (cache hit or miss) with no in-flight guard — so while tierSubReady stays false
+ * (any burst of concurrent cache misses before the first successful subscribe, or any stretch
+ * with Redis unavailable) every single call used to leak one more orphaned closure into
+ * redis-pubsub's channelHandlers Set forever, the same shape fixed in flow-events.ts's
+ * ensureRedisBridge(). Set.add() of this SAME reference is a no-op, so repeated retries no
+ * longer accumulate duplicates.
+ */
+function handleTierChangedMessage(userId: string): void {
+  invalidateTierCache(userId);
+}
+
+/**
  * Lazy, once-per-process subscriber: a peer's tier-changed event drops our stale entry so
  * the next request re-fetches from Clerk. Mirrors the UW circuit-breaker pub/sub pattern.
  * Dynamic import keeps this module alias-free for unit tests; no-ops with no Redis.
@@ -127,9 +143,7 @@ function ensureTierCacheSubscription(): void {
   if (tierSubReady) return;
   void import("@/lib/redis-pubsub")
     .then(async ({ redisSubscribe }) => {
-      const { subscribed } = await redisSubscribe(TIER_CHANGED_CHANNEL, (userId) => {
-        invalidateTierCache(userId);
-      });
+      const { subscribed } = await redisSubscribe(TIER_CHANGED_CHANNEL, handleTierChangedMessage);
       if (subscribed) {
         tierSubReady = true;
       } else {

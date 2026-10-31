@@ -135,3 +135,14 @@ export function getRedisPubSubStatus() {
     subscribed_channels: Array.from(channelHandlers.keys()),
   };
 }
+
+/**
+ * Test/ops helper: how many local handlers are currently registered for a channel.
+ * Registration happens unconditionally inside redisSubscribe() regardless of whether the
+ * connection attempt itself succeeds, so this also doubles as the right probe for a caller-side
+ * handler leak (a fresh closure re-registered on every retry instead of a stable reference) —
+ * see tier-cache.ts's regression test for exactly that case.
+ */
+export function getChannelHandlerCount(channel: string): number {
+  return channelHandlers.get(channel)?.size ?? 0;
+}
