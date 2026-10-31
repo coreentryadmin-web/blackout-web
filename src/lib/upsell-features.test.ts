@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FEATURE_MATRIX } from "./upsell-features";
+import * as upsellFeaturesModule from "./upsell-features";
 import type { MarkProduct } from "@/components/marks/ProductMark";
 import { PLAN_MATRIX } from "./plan-matrix";
 import { DESK_TIER_REQUIREMENTS } from "./desk-tier-requirements";
@@ -130,4 +131,23 @@ test("hand-set SPX Slayer rows (no code-level gate) stay backed by PLAN_MATRIX.s
   const discordRow = FEATURE_MATRIX.find((r) => r.label === "Private Discord access");
   assert.ok(discordRow, "FEATURE_MATRIX is missing the Discord row");
   assert.equal(discordRow!.community, true);
+});
+
+// `PLAN_VALUE_PROPS`/`valuePropFor`/`PlanValueProp` (badge/subline/savings framing keyed by
+// WHOP_PREMIUM_CHECKOUT_OPTIONS labels) were added in the original presentation-only plan ladder
+// (commit cfa0d4989) and never had a single caller once that ladder was replaced by the
+// hand-built `PlanLadder.tsx` (commit 19d7eb3f2, which sources its own copy straight from
+// `MEMBERSHIP_PRICING` in pricing.ts instead). Repo-wide grep confirmed zero references outside
+// this file before removal. This guard fails the build if that dead cluster is reintroduced
+// without a real caller, rather than relying on a human noticing an unused export again.
+test("upsell-features.ts does not re-export the removed, callerless plan-value-prop framing", () => {
+  const mod: Record<string, unknown> = upsellFeaturesModule;
+  assert.ok(
+    !("PLAN_VALUE_PROPS" in mod),
+    "PLAN_VALUE_PROPS was removed as dead code (no callers) — re-add only alongside a real consumer"
+  );
+  assert.ok(
+    !("valuePropFor" in mod),
+    "valuePropFor was removed as dead code (no callers) — re-add only alongside a real consumer"
+  );
 });
