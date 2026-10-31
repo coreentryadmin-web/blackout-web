@@ -264,6 +264,44 @@ test("adaptSwingBriefToLargo: evidence_numbers cites each favorable-side structu
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-31, live repro META/CC/TSM — a GEX king strike
+// coinciding with the call/put wall price, e.g. META:69 where call wall AND king both resolve to
+// 700): unlike the test above (which hand-builds `structureLadder` to isolate extractEvidence's own
+// per-rung mapping), this one drives the REAL pipeline end to end — collectFocalLevels merges the
+// collision (play-brief-narrative.ts's `pushFocalLevel`), buildStructureLadder maps the already-
+// merged focal array into rungs, and extractEvidence (this file) walks those rungs into evidence
+// strings — proving the fix holds through the whole chain, not just at the one layer this file
+// owns.
+test("adaptSwingBriefToLargo: a GEX king coinciding with a wall cites ONE R:R evidence string for that price, not two (2026-10-31, live repro META/CC/TSM)", () => {
+  const ctx = fixtureCtx({
+    vector: {
+      spot: 100,
+      gexWalls: { callWalls: [{ strike: 110, pct: 8 }], putWalls: [] },
+      ladder: { rows: [{ strike: 110, isKing: true }] },
+    } as SwingPlayBriefContext["vector"],
+  });
+  const brief = composeSwingPlayBrief(ctx);
+
+  // Sanity: the real upstream pipeline must have actually merged the collision (collectFocalLevels/
+  // pushFocalLevel) into one rung — otherwise this test would pass for the wrong reason.
+  const rungsAt110 = brief.envelope.structureLadder?.rungs.filter((r) => Math.abs(r.price - 110) < 0.01) ?? [];
+  assert.equal(
+    rungsAt110.length,
+    1,
+    `expected the real pipeline to merge the wall/king collision into one rung, got: ${JSON.stringify(rungsAt110)}`,
+  );
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  const rrLines = largoRead.data.evidence.filter((e) => e.startsWith("R:R to") && e.includes("$110.00"));
+  assert.equal(
+    rrLines.length,
+    1,
+    `expected exactly one R:R evidence string for 110.00, got: ${JSON.stringify(rrLines)}`,
+  );
+});
+
 // BUG FIX (Largo C2, 2026-10-26, Ask Largo standing mandate — live repro
 // SWING:CLF:2116): worstKnownSwingDataAgeMs's option-mark branch only contributed an age when
 // `play.markIsSync !== true && play.markAsOf` — the ordinary "aged timestamp" case. It silently

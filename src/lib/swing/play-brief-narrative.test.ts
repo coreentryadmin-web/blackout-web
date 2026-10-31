@@ -8,6 +8,7 @@ import {
   tradeManagerNarrativeSection,
   rollRunwayExtensionDays,
   resolveInvalidationFocalLevel,
+  collectFocalLevels,
   type FocalLevel,
 } from "./play-brief-narrative";
 import { computeSwingThesisHealth, thesisHealthUncalibrated } from "./thesis-health";
@@ -4499,6 +4500,74 @@ test("tradeManagerNarrativeSection: SHORT put wall ABOVE spot reads as already b
     wallLine!,
     /already broke|broken|cleared/i,
     "an above-spot put wall on a SHORT must read as already-cleared downside, not a future invalidation risk",
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-31, live repro META/CC/TSM — the GEX king strike
+// coinciding with the call/put wall price, e.g. META:69 where call wall AND king both resolve to
+// 700): collectFocalLevels used to push every kind independently of whether its price matched one
+// already pushed, so a wall/king collision produced TWO focal entries at the identical price. Every
+// reader of this array then duplicated the collision on its own: this narration loop deduped only
+// by KIND (`used: Set<LevelKind>`), never by price, so both narrateWall and narrateKing fired as
+// separate bullets about the literal same strike; buildStructureLadder mapped focal 1:1 into rungs
+// with no price merge (two byte-identical {price, target.rewardRisk} rungs); extractEvidence walked
+// those rungs into two identical "R:R to <label> ($<price>): <N>R" strings. See pushFocalLevel's own
+// doc comment (play-brief-narrative.ts) for the merge priority — a wall survives over a
+// same-priced king, matching the existing wall/king-collision narration tests just above (e.g. "LONG
+// put wall ABOVE spot reads as broken support", 2026-10-14) that already rely on the wall's text.
+test("collectFocalLevels: a GEX king coinciding with a call wall merges into ONE entry, not two (2026-10-31, live repro META/CC/TSM)", () => {
+  const vector = {
+    spot: 600,
+    gexWalls: { callWalls: [{ strike: 700, gex: 1 }], putWalls: [] },
+    ladder: { rows: [{ strike: 700, isKing: true }] },
+  } as unknown as SwingPlayBriefContext["vector"];
+  const focal = collectFocalLevels(ctx({ vector }), 600);
+  const at700 = focal.filter((l) => Math.abs(l.price - 700) < 0.01);
+  assert.equal(at700.length, 1, `expected exactly one merged focal level at 700, got: ${JSON.stringify(at700)}`);
+  assert.equal(
+    at700[0]!.kind,
+    "call_wall",
+    "the wall's directional framing wins the merge over king's generic pin-risk framing",
+  );
+});
+
+test("collectFocalLevels: a GEX king coinciding with a put wall merges into ONE entry, not two (2026-10-31, sibling of the call-wall collision above)", () => {
+  const vector = {
+    spot: 600,
+    gexWalls: { callWalls: [], putWalls: [{ strike: 500, gex: 1 }] },
+    ladder: { rows: [{ strike: 500, isKing: true }] },
+  } as unknown as SwingPlayBriefContext["vector"];
+  const focal = collectFocalLevels(ctx({ vector }), 600);
+  const at500 = focal.filter((l) => Math.abs(l.price - 500) < 0.01);
+  assert.equal(at500.length, 1, `expected exactly one merged focal level at 500, got: ${JSON.stringify(at500)}`);
+  assert.equal(at500[0]!.kind, "put_wall");
+});
+
+test("tradeManagerNarrativeSection: a GEX king coinciding with a wall narrates ONE bullet, not two (2026-10-31, live repro META/CC/TSM)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }),
+      vector: {
+        spot: 600,
+        gexWalls: { callWalls: [{ strike: 700, gex: 1 }], putWalls: [] },
+        ladder: { rows: [{ strike: 700, isKing: true }] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  const lines700 = section!.body.split("\n").filter((l) => l.includes("700.00"));
+  assert.equal(
+    lines700.length,
+    1,
+    `expected exactly one narrated bullet citing 700.00, got: ${JSON.stringify(lines700)}`,
+  );
+  assert.match(lines700[0]!, /\*\*Call wall 700\.00\*\*/i, "the surviving bullet must be the wall's, not the king's");
+  assert.doesNotMatch(
+    section!.body,
+    /GEX king 700\.00/i,
+    "the king must not ALSO get its own bullet for the identical strike",
   );
 });
 

@@ -121,6 +121,31 @@ test("buildStructureLadder: rungs sort high price -> low price and carry the rig
   assert.ok(Math.abs(byKind.put_wall.distancePct - -5) < 1e-9);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-31, live repro META/CC/TSM): collectFocalLevels
+// (play-brief-narrative.ts) used to push the GEX king as an independent entry even when it resolved
+// to the SAME price as a call/put wall already pushed — buildStructureLadder maps the focal array
+// 1:1 into rungs with no price-based merge, so a wall/king collision produced two byte-identical
+// `{price, target.rewardRisk}` rungs differing only in kind/label, and extractEvidence
+// (play-brief-adapter.ts) then walked both into two identical "R:R to <label> ($<price>): <N>R"
+// evidence strings for the one real number. Fixed at the shared `collectFocalLevels`/
+// `pushFocalLevel` layer (play-brief-narrative.ts) this function already reuses, so the merge
+// happens once, upstream of every reader.
+test("buildStructureLadder: a GEX king coinciding with a wall produces ONE rung, not two (2026-10-31, live repro META/CC/TSM)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 600,
+    gexWalls: { callWalls: [{ strike: 700 }], putWalls: [] },
+    ladder: { rows: [{ strike: 700, isKing: true }] },
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+
+  const rungsAt700 = ladder!.rungs.filter((r) => Math.abs(r.price - 700) < 0.01);
+  assert.equal(rungsAt700.length, 1, `expected exactly one rung at 700, got: ${JSON.stringify(rungsAt700)}`);
+  assert.equal(rungsAt700[0]!.kind, "call_wall");
+});
+
 // ── Real per-level R:R (point 2) ────────────────────────────────────────────
 
 test("buildStructureLadder: R:R is the REAL deriveSwingPlanLevels ratio, not a fixed multiple", () => {
