@@ -42,6 +42,52 @@ function withFakeSessionStorage<T>(run: () => T): T {
   }
 }
 
+function withFakeDocumentCookie<T>(cookie: string, run: () => T): T {
+  const g = globalThis as typeof globalThis & { document?: { cookie: string }; window?: unknown };
+  const originalDocument = g.document;
+  const originalWindow = g.window;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {} });
+  g.document = { cookie };
+  try {
+    return run();
+  } finally {
+    if (originalDocument === undefined) delete g.document;
+    else g.document = originalDocument;
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
+}
+
+/**
+ * Regression coverage (round 194): `hasSessionCookie` used to check
+ * `document.cookie.includes("__session=")`, a bare-name-only substring match that misses Clerk's
+ * suffixed `__session_<publishableKeySuffix>` cookie — the same real, already-confirmed-live
+ * cookie shape #797/#7082 fixed server-side (`req.cookies`), but this client-side
+ * (`document.cookie`) check was never updated to match. A signed-in member carrying only the
+ * suffixed cookie silently never fired the `/upgrade` GA4 `sign_up` event, the Google Ads
+ * `signup` conversion, or the desk `desk_opened` event — all three are gated on this function in
+ * `Ga4Attribution.tsx`.
+ */
+test("hasSessionCookie detects a SUFFIXED-only __session cookie (real #797/#7082 scenario)", async () => {
+  const { hasSessionCookie } = await import("./ga4-client.ts");
+  withFakeDocumentCookie("__session_AbCdEf12=eyJ.fake.jwt", () => {
+    assert.equal(hasSessionCookie(), true);
+  });
+});
+
+test("hasSessionCookie still detects the bare __session cookie", async () => {
+  const { hasSessionCookie } = await import("./ga4-client.ts");
+  withFakeDocumentCookie("__session=eyJ.fake.jwt", () => {
+    assert.equal(hasSessionCookie(), true);
+  });
+});
+
+test("hasSessionCookie is false when no session cookie is present", async () => {
+  const { hasSessionCookie } = await import("./ga4-client.ts");
+  withFakeDocumentCookie("unrelated=1", () => {
+    assert.equal(hasSessionCookie(), false);
+  });
+});
+
 test("hasPendingSignUp reports true after markPendingSignUp without clearing it", async () => {
   const { markPendingSignUp, hasPendingSignUp } = await import("./ga4-client.ts");
   withFakeSessionStorage(() => {

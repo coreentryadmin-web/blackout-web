@@ -4,6 +4,7 @@ import {
   GA4_PENDING_SIGNUP_KEY,
   attributionEventParams,
 } from "./utm";
+import { clerkClientCookiePresent } from "@/lib/clerk-client-cookie";
 
 type GtagFn = (...args: unknown[]) => void;
 
@@ -61,7 +62,12 @@ export function trackGa4PageView(pathname: string, search = ""): void {
 
 export function hasSessionCookie(): boolean {
   if (!isBrowser()) return false;
-  return document.cookie.includes("__session=");
+  // Clerk may write `__session_<publishableKeySuffix>` INSTEAD OF the bare `__session` cookie
+  // (confirmed live in this deployment — #797, #7082); a signed-in member whose browser carries
+  // only the suffixed cookie previously made this `includes("__session=")` check — and therefore
+  // every GA4/Google Ads conversion event gated on it (`sign_up`, the `signup` Ads conversion,
+  // `desk_opened`) — silently never fire. See `clerk-client-cookie.ts`.
+  return clerkClientCookiePresent("__session");
 }
 
 export function markPendingSignUp(): void {
