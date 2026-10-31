@@ -1,8 +1,13 @@
 import type { PostType } from "@/lib/x-content-types";
 import { xDeskPostIncludeUrl } from "@/lib/x-marketing-env";
+import { SITE } from "@/lib/site";
 
 const WHOP_BASE = "https://whop.com/blackout-2d9c";
 const SITE_PRICING = "https://blackouttrades.com/pricing";
+// Same handle as x-content.ts's X_ACCOUNT_USERNAME — both derive from
+// SITE.social.x.handle so the account name can't drift between the two files
+// (it drifted once already: see docs/audit/findings-staging/ for the writeup).
+const ACCOUNT_TAG = `@${SITE.social.x.handle}`;
 
 function utmParams(campaign: string): URLSearchParams {
   return new URLSearchParams({
@@ -36,7 +41,7 @@ export function xPostFooterLine(
   const includeUrl = opts?.includeUrl ?? xDeskPostIncludeUrl();
   if (includeUrl) {
     const url = siteMarketingUrl(postType).replace(/^https:\/\//, "");
-    return `@BlackOutTrade ${url}`;
+    return `${ACCOUNT_TAG} ${url}`;
   }
-  return "@BlackOutTrade · link in bio";
+  return `${ACCOUNT_TAG} · link in bio`;
 }

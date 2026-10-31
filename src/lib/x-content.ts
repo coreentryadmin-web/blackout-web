@@ -1,3 +1,4 @@
+import { SITE } from "@/lib/site";
 import { anthropicText } from "@/lib/providers/anthropic";
 import {
   getVectorGexWallsForHorizon,
@@ -80,7 +81,14 @@ export function marketDataReady(
 // Brand
 // ---------------------------------------------------------------------------
 
-export const X_ACCOUNT_USERNAME = "BlackOutTrade";
+// Single source of truth is SITE.social.x.handle (src/lib/site.ts) — this just
+// re-exports it under the name the X-marketing prompts below already expect.
+// (Previously a standalone literal that drifted out of sync with SITE.social.x:
+// its only consumer, a local `TAG` constant, was deleted in #849 when
+// `xPostFooter()` was replaced by `xPostFooterLine()` in x-whop-link.ts, which
+// hardcoded "@BlackOutTrade" again instead of importing this. See
+// docs/audit/findings-staging/ for the write-up.)
+export const X_ACCOUNT_USERNAME = SITE.social.x.handle;
 
 const FULL_STACK = `THE DESK (weave ALL of these naturally — one unified story, not a bullet list):
 • Vector — live GEX ladder, animated wall beads, gamma flip line
@@ -92,7 +100,7 @@ const FULL_STACK = `THE DESK (weave ALL of these naturally — one unified story
 
 const PRICING_RULES = `PRICING: SPX Slayer $49/mo · Premium $199/mo (full desk) · Yearly $1,999/yr. Never say free.`;
 
-const BRAND_VOICE = `You write as a real trader who runs the @BlackOutTrade desk — not a social media manager.
+const BRAND_VOICE = `You write as a real trader who runs the @${X_ACCOUNT_USERNAME} desk — not a social media manager.
 
 ${PRICING_RULES}
 
@@ -108,7 +116,7 @@ VOICE — sound human:
 - NEVER @tag other accounts
 - 0-1 emojis. NO hashtags
 - Body under 195 chars (footer added automatically)
-- Do NOT include @BlackOutTrade or Whop in body`;
+- Do NOT include @${X_ACCOUNT_USERNAME} or Whop in body`;
 
 const ANGLES: Record<PostType, string> = {
   desk_open: `ANGLE: Pre-open / morning. Evening Edition prep → Vector shows walls at the bell → SPX Slayer flags the first setup. Paint the morning workflow as one connected desk.`,
