@@ -174,7 +174,23 @@ export function manageLifecycleCoaching(
         // already cleared and simply not yet banked. Checked directly against live pnlPct rather
         // than assumed from manageAction, since this branch also fires for a plain HOLD where the
         // trigger genuinely hasn't been reached yet and "next" is the correct, honest framing.
-        const alreadyCrossed = typeof play.pnlPct === "number" && play.pnlPct >= next.trigger_pct;
+        //
+        // BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-31, live repro MRNA
+        // SWING:MRNA:68): the current-pnlPct check above misses the case where the RATCHETED PEAK
+        // already cleared the trigger (which is what the scale-out engine actually decides TRIM
+        // on — deriveScaleOutAction, scale-out.ts, `peakPremium >= entryPremium * scale_at_mult`,
+        // same basis as `play.peak`/adapters.ts's `peakDisplay`) but price has since retraced
+        // below it. Live repro: entry $14.80, peak +117.6% (> the +100% trigger — this is WHY
+        // `play.manageReasonDetail` says "peak ≥ 2× entry" a few lines above in this same
+        // bullet's sibling "manage engine TAKE PARTIAL" line), current pnlPct +99.2% (just under
+        // the trigger). The old check alone read 99.2 >= 100 as false and rendered "next trim at
+        // +100% ... needs +6% from here" — directly contradicting "manage engine TAKE PARTIAL"
+        // one clause earlier in the exact same response. Once either the peak or the current
+        // price has reached the rail, it is "already cleared, not yet banked" — only a rail
+        // NEITHER ever reached is genuinely still ahead.
+        const alreadyCrossed =
+          (typeof play.pnlPct === "number" && play.pnlPct >= next.trigger_pct) ||
+          (typeof play.peak === "number" && play.peak >= next.trigger_pct);
         // A single-rung ladder (`total === 1`, the common case — most swing plays carry exactly
         // one trim trigger) makes the parenthetical `(${ladder})` byte-for-byte redundant with the
         // trigger_pct already stated in the clause itself — live repro (forensic batch 10,
