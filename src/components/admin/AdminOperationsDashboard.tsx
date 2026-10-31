@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { storeAge } from "@/components/admin/admin-store-age";
 import { timeAgoFromIso } from "@/components/admin/admin-time-ago";
+import { runGuardedAuditLoad } from "@/components/admin/admin-operations-audit-request-guard";
 import {
   ActionButton,
   EmptyDeck,
@@ -580,18 +581,38 @@ export function AdminOperationsDashboard() {
     if (actor) setAuditActor(actor);
   }, [searchParams]);
 
-  // Load audit trail
+  // Load audit trail. Guarded against out-of-order responses: loadAudit() is
+  // re-triggered on EVERY keystroke in the un-debounced Action/Actor filter
+  // boxes AND on a 30s background poll, so an earlier, slower call (e.g. a
+  // stale filter, or a poll tick that started before a filter change) can
+  // resolve after a later, faster one and silently overwrite the screen with
+  // stale audit rows — see admin-operations-audit-request-guard.ts for the
+  // full writeup and the same bug shape elsewhere in this admin surface
+  // (UserManagement.tsx #6927, AdminApiDashboard.tsx).
+  const auditRequestIdRef = useRef(0);
   const loadAudit = useCallback(async () => {
+    const requestId = ++auditRequestIdRef.current;
     try {
       const qs = new URLSearchParams({ limit: "50" });
       if (auditAction) qs.set("action", auditAction);
       if (auditActor)  qs.set("actor", auditActor);
-      const res = await fetch(`/api/admin/audit-log?${qs}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as { entries: AuditLogEntry[]; total: number };
-      setAudit({ entries: data.entries ?? [], total: data.total ?? 0, loading: false, error: null, lastAt: new Date().toISOString() });
+      await runGuardedAuditLoad(
+        requestId,
+        () => auditRequestIdRef.current,
+        async () => {
+          const res = await fetch(`/api/admin/audit-log?${qs}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return (await res.json()) as { entries: AuditLogEntry[]; total: number };
+        },
+        (data) => setAudit({ entries: data.entries ?? [], total: data.total ?? 0, loading: false, error: null, lastAt: new Date().toISOString() })
+      );
     } catch (e) {
-      setAudit((s) => ({ ...s, loading: false, error: String(e) }));
+      // A superseded request's own failure must not clobber a newer,
+      // already-applied success — only surface the error if this call is
+      // still the latest one.
+      if (auditRequestIdRef.current === requestId) {
+        setAudit((s) => ({ ...s, loading: false, error: String(e) }));
+      }
     }
   }, [auditAction, auditActor]);
 
