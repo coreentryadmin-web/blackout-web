@@ -1458,3 +1458,147 @@ VIX-regime buckets; trend-day vs range-day; fade-the-open vs follow; gamma-regim
 flip / avoid pinned-to-wall); exit-engine replication vs hold-to-close; SPX/NDX index 0DTE; whole-market
 banger with a realistic scale-out exit rule (quantify realized vs maxRet); news/catalyst-day conditioning;
 half-days / OPEX / triple-witching; bid-ask slippage realism at entry.
+
+### E7 continuation — big-target ($10/$20) hit-rate study, separated from the small-winner rate (2026-10-27…31)
+
+**Operator mandate, 2026-10-27:** a 5/5 day at roughly +10%/play (2026-10-26's live debut, E7
+continuation above) does not establish that the early-entry pipeline can find $1.00-$3.00
+contracts that reach $10.00 (stretch $20.00) — measure the big-target hit rate SEPARATELY, audit
+detection-through-exit for why it would catch a move late or exit before a sustained run, select
+the actual CONTRACT (not just ticker) by executable ask/spread/freshness/IV, estimate move+time
+required including IV change/decay, compare the shipped exit against partial-profit/trailing-
+runner alternatives accounting for the cost of chasing a bigger target, validate chronologically
+with realistic costs, and do not claim success from one session.
+
+**What shipped (#6946, #7094):**
+1. `early-entry-target-reachability.ts` — numerically inverts the real `blackScholesEstimate` via
+   bisection to solve the underlying move required to reach $10/$20 under 3 scenarios (`now`,
+   `decayed` = half remaining time, `vol_shock` = IV×1.5). A put whose target ≥ strike reports
+   `impossible: true` (the real r=0 structural bound), never a fabricated huge required move.
+   Wired into `selectEarlyEntryContract` as `target10`/`target20` — **advisory only**, never fed
+   into `rank_score` or a reject reason, because this sandbox's historical Polygon data has no
+   point-in-time IV so the field can't be backtested against real history; it ships now to
+   accumulate forward paper-test evidence against live production's real IV feed.
+2. `early-entry-exit-variants.ts` — pure, bar-walkable replays of the real shipped ratchet
+   (`exit-engine.ts`'s own constants) plus two named alternatives: `WIDE_A`/`WIDE_B` (later arm,
+   looser lock fraction — a genuinely wider trailing stop) and `PARTIAL` (bank 1/3 at $5, 1/3 at
+   $10, leave the final third fully unguarded except the hard stop/time-stop). **Found and fixed
+   a real measurement bug before drawing any conclusion** (#7094, staged finding
+   `2026-10-31-early-entry-exit-variants-hit-target-scan-truncation.md`): both replay functions
+   computed `hit10`/`hit20` INSIDE their own per-bar decision loop, which returns early on a
+   stop/floor/timeout — silently truncating the "did the underlying path ever touch $10" scan to
+   "before THIS rule's own exit happened to stop looking." Caught because one TRAIN row showed
+   `PARTIAL` reporting a nonzero `hit20%` while every other variant on the IDENTICAL real bar path
+   showed zero — directly violating the tool's own documented invariant. Fixed by scanning the
+   full path once, up front, independent of any rule's own control flow.
+3. `scripts/audit/early-entry-big-target-backtest.mjs` — replays the real shipped pipeline
+   (`classifySetup`/`selectEarlyEntryContract`/`buildEarlyEntryAlert`, same production imports as
+   the sibling `early-entry-backtest.mjs`) against real historical data, then replays ALL FOUR
+   exit variants against the SAME real option-premium minute-bar path per real graded entry,
+   reporting separated metrics: profitable-exit rate, % path ever touched $10/$20 (identical
+   across variants by construction), % this rule's OWN realized exit cleared $10/$20, avg P&L,
+   MAE, sequential max drawdown. Chronological TRAIN/VALIDATION split.
+
+**Real 45-day backtest (2026-09-02…10-30), fixed-tooling run, n=151 real graded $1-$3 entries
+across the 10-name universe (TRAIN n=83 / VALIDATION n=68, chronological split, no look-ahead):**
+
+| Split | Variant | profitable-exit% | hit$10% | hit$20% | avg P&L% | avg $P&L | max DD |
+|---|---|---|---|---|---|---|---|
+| TRAIN | SHIPPED (ratchet, arm+5%/lock0.4x) | **88.0%** | 3.6% | 1.2% | **+9.84%** | +$21.04 | **-$359.8** |
+| TRAIN | WIDE_A (arm+50%/lock0.3x) | 51.8% | 3.6% | 1.2% | +2.35% | +$11.25 | -$1059.5 |
+| TRAIN | WIDE_B (arm+100%/lock0.25x) | 39.8% | 3.6% | 1.2% | +1.17% | +$11.13 | -$1409.8 |
+| TRAIN | PARTIAL ($5/$10 tranches, unguarded runner) | 32.5% | 3.6% | 1.2% | +12.64% | +$24.27 | -$1419.8 |
+| VALIDATION | SHIPPED | **83.8%** | 4.4% | 0% | -1.04% | -$3.86 | **-$352.0** |
+| VALIDATION | WIDE_A | 38.2% | 4.4% | 0% | -10.73% | -$20.68 | -$1453.0 |
+| VALIDATION | WIDE_B | 25.0% | 4.4% | 0% | -13.98% | -$25.15 | -$2110.0 |
+| VALIDATION | PARTIAL | 20.6% | 4.4% | 0% | -16.63% | -$29.44 | -$2293.6 |
+
+`hit$10%`/`hit$20%` are byte-identical across all 4 variants in each split, as the fixed
+invariant requires (same real underlying bar path; a rule's own exit can only change whether it
+CAPTURES the touch — `exitCleared10/20`, separately measured, near-zero for every variant in
+both halves). `reachedTheMoney` (the underlying reaching the originally-watched level) stayed
+84-90% both halves, consistent with E7's own earlier detection-side result holding up.
+
+**Headline: the exit-rule question is a clean, well-evidenced NEGATIVE result for a blanket
+change — do not ship any of the three alternatives as a global replacement for the shipped
+ratchet.** Across 151 real entries in both chronological halves, every alternative is
+substantially worse on profitable-exit-rate, avg P&L, and max drawdown (3-6x larger drawdowns),
+while gaining **zero** net improvement in the big-target hit rate — which cannot differ, since
+`hit10`/`hit20` are a pure property of the underlying's own price path, not of which exit rule
+is watching it. A looser exit cannot make a setup run further than it was always going to run;
+it can only change how much of that fixed path gets captured, or how much extra gets lost
+chasing it on the setups that never run far at all (the vast majority — ~96% never even touch
+$10 in this real sample).
+
+**Missed-winner analysis (hand-read of the 6/151 real setups whose underlying bar path ever
+touched $10 anywhere in the session — n=6 is thin, read as case evidence, not statistics):**
+
+| Ticker/day | SHIPPED result | What the looser variants did | Read |
+|---|---|---|---|
+| QQQ 2026-09-21 | rode to time_stop, **+520.41%** | WIDE_A/B identical (never floored); PARTIAL worse (+333.97%, tranching gave back upside) | Free win regardless of exit choice — ratchet never triggered |
+| META 2026-09-21 | ratchet-floored at **+4.39%** | WIDE_A/B still floored early (+86-103%); only PARTIAL's unguarded runner leg reached the true peak ($34.60, **+1286.36%**) | Genuine mega-winner missed by every ratchet-based variant, caught only by the unguarded-runner structure |
+| AMZN 2026-08-28 | ratchet-floored at **+2.81%** | WIDE_A still floored early (+17.77%); WIDE_B/PARTIAL rode to the real move (**+223/+190%**) | Real missed upside from a floor that locks too tight too early |
+| QQQ 2026-10-14 | ratchet-floored at **+3.98%** | WIDE_A still floored early (+21.45%); WIDE_B/PARTIAL captured the real move (**+297/+217%**) | Same pattern as AMZN — the 0.4x-peak lock is the binding constraint, not the stop |
+| QQQ 2026-10-16 | ratchet-floored at a real **+6.95%** win | WIDE_A/B/PARTIAL all got stopped out at **-50.3%** chasing the same later $10 touch | The real COST side point 6 asked for: loosening converted a real win into a real loss and still didn't capture the target |
+| META 2026-10-16 | stopped at **-50.59%** | WIDE_A/B/PARTIAL identical (-50.59%) | The $10 touch happened on bars AFTER the shared hard stop fired in every variant — unreachable by ANY exit-rule change here |
+
+4 of 6 are genuine runners where a looser exit captured real additional upside (2 fully, 1
+partially via PARTIAL only, 1 captured by all variants equally); 2 of 6 show the alternatives
+either gaining nothing (shared hard stop fires first regardless of exit shape) or actively
+converting a real win into a real loss. This is exactly the asymmetric-cost tension the mandate's
+exit-management question raised — and it resolves at the AGGREGATE level in the table above:
+applied uniformly to every one of the 151 entries (not just the ones that turn out, after the
+fact, to be among the rare runners), the same looseness that rescues 2-3 real winners here costs
+enough on the ~145 ordinary setups to make every aggregate metric worse.
+
+**Failure/signal-time analysis (task: compare entry filtering vs exit management, and study
+winners vs failures using ONLY signal-time data).** Since exit-rule choice cannot change
+`hit10`/`hit20` (a path property fixed by entry timing + contract choice, not exit logic), the
+only lever that could ever move the big-target hit rate is the ENTRY side — which setups get
+selected in the first place. Re-derived the real, signal-time `PressureRead` (via `classifySetup`'s
+own `pressure` field, captured at WATCH-detection — never look-ahead) for the 4 genuine runners
+above (excluding the 2 where the touch was unreachable regardless of exit choice) against a
+10-entry comparison sample of ordinary stopped-out losses:
+
+| Group (n) | avg RVOL ratio | avg level_tests | avg \|order_flow_bias\| |
+|---|---|---|---|
+| Genuine $10+ runners (4) | **7.10** (range 2.14-10.54; 3/4 above 7.6) | 10.25 | 0.143 |
+| Hit10-but-unreachable, shared stop fired first (2) | 2.58 | 14.00 | 0.071 |
+| Ordinary stopped-out losses (10) | 3.38 (range 1.60-13.28; one 13.28 outlier still a loss) | 7.30 | 0.259 |
+
+**A real, directional signal, explicitly NOT proven at this sample size (n=4 winners is the
+entire real population this historical window contains — there is no larger n to pull from
+without more data or forward paper-trading):** 3 of the 4 genuine runners carry RVOL well above
+the ordinary loss population's range (7.6-10.5x vs 1.6-3.0x for most losses), while the "hit10
+but unreachable" group's RVOL (2.58) sits inside the ordinary-loss range, not the runner range —
+consistent with (not proof of) elevated RVOL at signal time being associated with which rare
+setups go on to become genuine big-target runners. The one outlier (MSFT 2026-09-28, RVOL 13.28,
+still a -51% loss) rules out RVOL alone as sufficient. `level_tests` shows a softer same-direction
+gap (10.25 vs 7.30); `order_flow_bias` magnitude shows no clean separation at this n.
+
+**Ship decision (operator: "do not claim success from one session or from adding individual
+trade percentages together"):**
+- **Shipped, already live (#6946 + the #7094 fix):** the `target10`/`target20` BS-reachability
+  advisory fields — zero behavior change, non-gating, accumulating forward paper-test evidence
+  against live production's real IV.
+- **NOT shipped — negative result, well-evidenced:** none of WIDE_A/WIDE_B/PARTIAL ship as a
+  blanket exit-rule change. The shipped ratchet stays. 151 real entries across two chronological
+  halves is enough to reject "a uniformly looser/partial-profit exit improves the big-target
+  outcome" as a general claim — it demonstrably does not, in aggregate, even though it can be
+  shown case-by-case to help on a handful of the actual runners.
+- **New, explicitly unvalidated hypothesis for future work, not shipped:** elevated signal-time
+  RVOL (roughly >7x trailing average) as a candidate marker for which $1-$3 entries are more
+  likely to become genuine $10+ runners, which would support a CONDITIONAL exit (loosen the floor
+  only when RVOL is extreme at entry) rather than a blanket one. n=4 is the entire historical
+  population available; this needs either a much longer backtest window or live forward
+  paper-trading before any gate, threshold, or exit-rule change is made on it.
+- **Remaining limitations (disclosed, not hidden):** no point-in-time historical IV, so
+  `target10`/`target20` and any IV-aware part of the reachability model are unvalidated against
+  history by construction — forward paper-test evidence only. The mechanical exit replays carry
+  no thesis-break/catalyst/regime evidence (same disclosed gap as this repo's other mechanical
+  exit replays). `exitCleared10`/`exitCleared20` were ~0% for every variant in both halves — in
+  this real sample, no tested exit rule ever actually realized a position AT $10+, even on the
+  genuine runners (the realized exit always lands below the peak touch, by the nature of any
+  trailing/tranche rule) — a further, separate gap from "did the path get there" worth keeping in
+  mind before reading `hit10%`/`hit20%` as a measure of achievable profit rather than of
+  opportunity.
