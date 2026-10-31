@@ -2051,15 +2051,25 @@ export function computeLedgerGrade(
   }
   const raw = ((closePrice - underlyingAtFlag) / underlyingAtFlag) * 100;
   const signed = direction === "long" ? raw : -raw;
+  // Round FIRST, decide direction_hit off the ROUNDED value — not the other way around.
+  // `move_pct` is the number actually served/displayed; `direction_hit` must agree with
+  // it. Deciding direction_hit off the raw `signed` let any move inside the display's
+  // rounding band (|signed| < 0.005, e.g. signed=0.001) round to a displayed
+  // `move_pct: 0` while direction_hit still resolved true/false — a served 0 is defined
+  // below as "breakeven — no directional edge", so a row showing 0 must never also show
+  // a directional hit/miss. Basing both on the same rounded number makes that
+  // impossible by construction.
+  const move_pct = Math.round(signed * 100) / 100;
   return {
     close_price: closePrice,
-    move_pct: Math.round(signed * 100) / 100,
-    // Three-way, not a boolean: a flat close (signed exactly 0 — close == flag) is a
-    // BREAKEVEN, not a directional miss. `signed > 0` alone booked every dead-flat
-    // session as a `direction_hit:false` loss, biasing the underlying-move honesty
-    // ledger down (asymmetric with the SPX 3-way win/loss/breakeven partition). null
-    // = "no directional edge either way", excluded from hit/miss just like the
-    // ungradeable branch above — the row is still stamped graded (real close present).
-    direction_hit: signed > 0 ? true : signed < 0 ? false : null,
+    move_pct,
+    // Three-way, not a boolean: a flat (rounds-to-zero) close is a BREAKEVEN, not a
+    // directional miss. A naive `signed > 0` alone booked every dead-flat session (and,
+    // before this fix, every sub-±0.005% near-flat session) as a `direction_hit:false`
+    // loss, biasing the underlying-move honesty ledger down (asymmetric with the SPX
+    // 3-way win/loss/breakeven partition). null = "no directional edge either way",
+    // excluded from hit/miss just like the ungradeable branch above — the row is still
+    // stamped graded (real close present).
+    direction_hit: move_pct > 0 ? true : move_pct < 0 ? false : null,
   };
 }

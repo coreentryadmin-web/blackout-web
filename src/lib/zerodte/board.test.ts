@@ -540,6 +540,45 @@ test("ledger grade: a flat close (signed exactly 0) is a breakeven, not a direct
   assert.equal(computeLedgerGrade("long", 100, 99.99).direction_hit, false);
 });
 
+// A move inside the DISPLAY ROUNDING BAND (|signed| < 0.005%) must grade identically to
+// an exactly-flat close: the served move_pct rounds to 0, so direction_hit must also be
+// null, never true/false. Deciding direction_hit off the raw unrounded `signed` instead
+// of the rounded `move_pct` let a genuinely tiny move (e.g. signed=0.0049) display as
+// `move_pct: 0, direction_hit: true` — a served row claiming "breakeven" (0) and
+// "directional hit" (true) at once. Confirmed live on production (2026-10-31,
+// GET /api/market/zerodte/record?days=90): the SPXW 2026-08-12 row served exactly this
+// combination, the only violation in 589 graded rows.
+test("ledger grade: a move inside the rounding band (rounds to move_pct 0) is a breakeven, not a hit/miss", () => {
+  // underlyingAtFlag=100000, close +$4.90 -> raw = 4.90/100000*100 = 0.0049% -> rounds to 0.00.
+  const tinyFavorableLong = computeLedgerGrade("long", 100000, 100004.9);
+  assert.equal(tinyFavorableLong.move_pct, 0, "a 0.0049% move displays as 0");
+  assert.equal(
+    tinyFavorableLong.direction_hit,
+    null,
+    "a row displaying move_pct:0 must never also claim a directional hit"
+  );
+
+  // Same tiny move, unfavorable for a short (raw positive, signed negative but still
+  // inside the rounding band) — must also collapse to breakeven, not a miss. Math.round
+  // of a small negative fraction can yield -0 (e.g. Math.round(-0.49) === -0); that is
+  // numerically zero (JSON/display both render it as "0") even though `assert.equal`
+  // (strict, Object.is-based) distinguishes it from +0 — so compare with `===`, the
+  // same operator `direction_hit`'s own `>`/`<` checks use, not Object.is identity.
+  const tinyUnfavorableShort = computeLedgerGrade("short", 100000, 100004.9);
+  assert.ok(
+    tinyUnfavorableShort.move_pct === 0,
+    `expected move_pct to be (positive-or-negative) zero, got ${tinyUnfavorableShort.move_pct}`
+  );
+  assert.equal(tinyUnfavorableShort.direction_hit, null);
+
+  // Just OUTSIDE the band (signed exactly 0.005%, which rounds UP to 0.01) still
+  // resolves to a clean, non-null hit — the fix narrows the null case to the rounding
+  // band only, it does not swallow genuine small-but-displayed moves.
+  const justOutsideBand = computeLedgerGrade("long", 100000, 100005);
+  assert.equal(justOutsideBand.move_pct, 0.01);
+  assert.equal(justOutsideBand.direction_hit, true);
+});
+
 // ── earnings + hot-news flags ────────────────────────────────────────────────────
 
 test("earnings: only tickers reporting today/next session are flagged", () => {
