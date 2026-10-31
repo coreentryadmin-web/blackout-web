@@ -1644,6 +1644,38 @@ function discloseStaleGexFactors(factors: SpxSignalFactor[]): SpxSignalFactor[] 
   );
 }
 
+/**
+ * Label of the `SpxSignalFactor` computeSpxConfluence() (spx-signals.ts) builds directly from
+ * `desk.vwap` — the sibling of GEX_DERIVED_FACTOR_LABELS above, for the VWAP factor specifically.
+ */
+const VWAP_FACTOR_LABEL = "VWAP";
+
+/**
+ * BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
+ * closed): same bug class as discloseStaleGexFactors above, for the VWAP factor instead of the
+ * GEX-derived ones. `desk.vwap` on this closed-market path comes from peekMergedSpxDesk() ->
+ * mergePulseIntoDesk() (spx-desk-merge.ts), whose `stickyStructureLevel` cross-request
+ * "last-known-good" fallback keeps serving a prior session's VWAP INDEFINITELY once both
+ * `pulse.vwap` and `base.vwap` go null (any non-trading day — weekend/holiday) — but unlike
+ * `gex_stale`, nothing on `SpxDeskPayload` disclosed that until `vwap_stale` was added
+ * (spx-desk.ts/spx-desk-merge.ts) alongside this fix. Confirmed live: GET /api/market/spx/play
+ * served a "VWAP" factor (weight -12, "Below VWAP 7580.87 — sellers pressing") contributing to
+ * the closed-market score/grade on a Saturday, while the sibling GET /api/market/spx/desk route
+ * (peekSpxDesk(), NOT merged, no sticky fallback) reported vwap:null at the same instant — a
+ * stale Friday close presented as a live sell signal with zero disclosure.
+ *
+ * discloseStaleGexFactors()'s own doc comment explicitly notes "Non-GEX factors (VWAP, γ
+ * regime, max pain, …) are left untouched — their own data freshness is a separate concern this
+ * fix does not touch" — this is that separate fix, for the one non-GEX factor whose own
+ * desk-level staleness signal (`vwap_stale`) now exists. Same disclosure idiom (append
+ * "— <X> stale, not live" to the factor's own `detail`), not a new strategy.
+ */
+function discloseStaleVwapFactor(factors: SpxSignalFactor[]): SpxSignalFactor[] {
+  return factors.map((f) =>
+    f.label === VWAP_FACTOR_LABEL ? { ...f, detail: `${f.detail} — VWAP stale, not live` } : f
+  );
+}
+
 async function evaluateSpxPlayCore(
   desk: SpxDeskPayload,
   prefetchedTechnicals?: PlayTechnicals | null,
@@ -1698,13 +1730,30 @@ async function evaluateSpxPlayCore(
     const closedGexFactorStale =
       desk.gex_stale === true &&
       (closedConfluence?.factors.some((f) => GEX_DERIVED_FACTOR_LABELS.has(f.label)) ?? false);
-    const closedFactors = closedGexFactorStale
+    // See discloseStaleVwapFactor()'s own doc comment above — the sibling check for the VWAP
+    // factor, gated on `desk.vwap_stale` (spx-desk-merge.ts's sticky-fallback signal) the same
+    // way the GEX check above is gated on `desk.gex_stale`, and likewise only when the VWAP
+    // factor actually fired so a closed-market read with no VWAP factor present never grows a
+    // staleness clause about data it never showed.
+    const closedVwapFactorStale =
+      desk.vwap_stale === true &&
+      (closedConfluence?.factors.some((f) => f.label === VWAP_FACTOR_LABEL) ?? false);
+    let closedFactors = closedGexFactorStale
       ? discloseStaleGexFactors(closedConfluence!.factors)
       : (closedConfluence?.factors ?? []);
+    if (closedVwapFactorStale) closedFactors = discloseStaleVwapFactor(closedFactors);
+    // Compose both disclosure clauses (independent conditions — either, both, or neither can
+    // fire) into one "· <clause> · <clause>" suffix shared by the thesis and the play idea, so a
+    // closed-market read that's stale on BOTH GEX and VWAP discloses both rather than only
+    // whichever check happened to run last.
+    const staleClauses = [
+      closedGexFactorStale ? "GEX stale, not live" : null,
+      closedVwapFactorStale ? "VWAP stale, not live" : null,
+    ].filter((c): c is string => c != null);
     const closedPlayIdea =
-      closedGexFactorStale && playIdea ? `${playIdea} · GEX stale, not live` : playIdea;
-    const closedThesis = closedGexFactorStale
-      ? `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT · GEX stale, not live`
+      staleClauses.length && playIdea ? `${playIdea} · ${staleClauses.join(" · ")}` : playIdea;
+    const closedThesis = staleClauses.length
+      ? `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT · ${staleClauses.join(" · ")}`
       : `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT`;
 
     return {
