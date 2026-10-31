@@ -93,3 +93,39 @@ test("a null/undefined cached value is rejected (fail closed)", () => {
   assert.equal(isSpxPlaySnapshotShareable(null, 1_000_000, 20_000), false);
   assert.equal(isSpxPlaySnapshotShareable(undefined, 1_000_000, 20_000), false);
 });
+
+// Live production bug (2026-10-31 audit): isSpxPlaySnapshotShareable trusted ANY
+// session_phase:"closed" snapshot "regardless of age" with no check on `assessed` -- so a
+// degenerate/placeholder closed-market read (evaluateSpxPlayCore's own
+// `assessed: closedConfluence != null`, false whenever desk.source==="none" or price<=0)
+// was treated as equally trustworthy-forever as a genuine fully-assessed closed-market read.
+// Live-caught: assessed:true/score:40 at 15:04:55Z, then assessed:false/score:0/factors:[]
+// with as_of regressed ~9 minutes, served byte-identically again 23s later -- proving it was
+// a stable cached placeholder, not a fresh recompute.
+
+test("BUG: a degenerate closed-market snapshot (assessed:false) is NOT shareable past the freshness bound -- it is a placeholder, not a genuine closed-market read", () => {
+  const now = Date.parse("2026-10-31T15:05:38.000Z");
+  const asOf = "2026-10-31T14:56:30.479Z"; // ~9 minutes old, the live-measured magnitude
+  assert.equal(
+    isSpxPlaySnapshotShareable({ as_of: asOf, session_phase: "closed", assessed: false }, now, 20_000),
+    false
+  );
+});
+
+test("a degenerate closed-market snapshot (assessed:false) IS still shareable while genuinely fresh -- only the indefinite-age exemption is removed, not single-flight sharing", () => {
+  const now = 1_000_000;
+  const asOf = new Date(now - 2_000).toISOString();
+  assert.equal(
+    isSpxPlaySnapshotShareable({ as_of: asOf, session_phase: "closed", assessed: false }, now, 20_000),
+    true
+  );
+});
+
+test("a genuine closed-market snapshot (assessed:true) is still shareable regardless of age -- the original 2026-10-25 fix is unchanged", () => {
+  const now = Date.parse("2026-10-25T21:37:00.000Z");
+  const asOf = "2026-10-25T21:15:02.434Z"; // ~22 minutes old
+  assert.equal(
+    isSpxPlaySnapshotShareable({ as_of: asOf, session_phase: "closed", assessed: true }, now, 20_000),
+    true
+  );
+});

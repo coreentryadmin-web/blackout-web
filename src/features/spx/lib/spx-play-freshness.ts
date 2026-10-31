@@ -41,13 +41,33 @@ export function isSpxPlaySnapshotFreshEnough(
  * re-evaluation reads the exact same (legitimately old) desk peek and produces an identical result.
  * `session_phase` is the discriminator already stamped on every `SpxPlayPayload` for exactly this
  * purpose — trust it here rather than re-deriving market-open state at the read site.
+ *
+ * BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro): `session_phase ===
+ * "closed"` alone is NOT the same claim as "this is a genuine closed-market read" — it is also
+ * true of a degenerate/placeholder closed-market snapshot (`evaluateSpxPlayCore`'s own
+ * `assessed: closedConfluence != null`, which goes `false` whenever `desk.source === "none"`
+ * — a cold-cache bootstrap shell — or `desk.price <= 0`; `scanningPayload`'s
+ * `assessed: confluence != null` can land the same way once `currentSessionPhase()` reports
+ * "closed"). That placeholder carries `score:0`, `factors:[]`, `gates.play_idea:null` — "grade/
+ * score are placeholder literals, NOT a measurement" per `SpxPlayPayload.assessed`'s own doc
+ * comment — yet this function was trusting it as shareable "regardless of its as_of age" just
+ * like a genuine closed-market read, with no check on `assessed` at all. Live-caught 2026-10-31:
+ * a poll returning a real `assessed:true`/`score:40` closed-market read was followed 20s later by
+ * `assessed:false`/`score:0`/`as_of` ~9 minutes OLDER, then served byte-identically again 23s
+ * after that — a degenerate snapshot cached once and reused indefinitely, exactly the "stale
+ * served well past this route's freshness budgets" failure this function exists to prevent for
+ * the opposite (live-market) case. Require `assessed !== false` (matching the sibling
+ * `shouldCache` guard on the primary `spx-play-read:<date>` cache key, `getSpxPlayState()` below)
+ * before trusting the closed-market exemption; a placeholder still falls through to the plain
+ * freshness bound, so a request made moments after a real lock-loss can briefly share it (the
+ * single-flight purpose this gate serves) without caching it forever.
  */
 export function isSpxPlaySnapshotShareable(
-  value: { as_of?: string | null; session_phase?: string | null } | null | undefined,
+  value: { as_of?: string | null; session_phase?: string | null; assessed?: boolean | null } | null | undefined,
   nowMs: number,
   maxAgeMs: number
 ): boolean {
   if (!value) return false;
-  if (value.session_phase === "closed") return true;
+  if (value.session_phase === "closed" && value.assessed !== false) return true;
   return isSpxPlaySnapshotFreshEnough(value.as_of, nowMs, maxAgeMs);
 }
