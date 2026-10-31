@@ -36,11 +36,32 @@ function severityTone(s: Severity): "bear" | "bull" | "sky" | "neutral" {
   return "neutral";
 }
 
+/**
+ * Which anomalies should still render given a set of previously-dismissed ids.
+ *
+ * Pulled out as a pure function so "dismiss" can be scoped to the SPECIFIC
+ * anomalies on screen at the moment of the click, rather than a blanket
+ * `dismissed: boolean` that also hides every anomaly that shows up later in
+ * the same session — including a brand new, unrelated, possibly CRITICAL one
+ * the member never had a chance to see or dismiss.
+ */
+export function visibleFlowAnomalies<T extends { id: string }>(
+  anomalies: readonly T[],
+  dismissedIds: ReadonlySet<string>,
+): T[] {
+  return anomalies.filter((a) => !dismissedIds.has(a.id));
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function FlowAnomalyBanner() {
   const [anomalies, setAnomalies] = useState<FlowAnomaly[]>([]);
-  const [dismissed, setDismissed] = useState(false);
+  // Ids of the anomalies that were on screen the last time "Dismiss" was
+  // clicked — NOT a blanket "hide forever this session" flag. This lets a
+  // genuinely new anomaly (different id) that the poll picks up later still
+  // surface, instead of staying suppressed by a stale dismissal of a
+  // completely different, possibly already-expired alert.
+  const [dismissedIds, setDismissedIds] = useState<ReadonlySet<string>>(new Set());
   const inFlight = useRef(false);
   const pending = useRef(false);
 
@@ -79,9 +100,11 @@ export function FlowAnomalyBanner() {
     };
   }, [load]);
 
-  if (dismissed || anomalies.length === 0) return null;
+  const visible = visibleFlowAnomalies(anomalies, dismissedIds);
 
-  const hasCritical = anomalies.some((a) => a.severity === "CRITICAL");
+  if (visible.length === 0) return null;
+
+  const hasCritical = visible.some((a) => a.severity === "CRITICAL");
 
   return (
     <div
@@ -117,14 +140,14 @@ export function FlowAnomalyBanner() {
             Flow Anomalies Detected
           </span>
           <span className="font-mono text-[9px] text-mute tabular-nums">
-            ({anomalies.length})
+            ({visible.length})
           </span>
         </div>
 
         {/* Dismiss */}
         <button
           type="button"
-          onClick={() => setDismissed(true)}
+          onClick={() => setDismissedIds(new Set(anomalies.map((a) => a.id)))}
           className="font-mono text-[9px] uppercase tracking-[0.14em] text-mute transition-colors hover:text-white"
           aria-label="Dismiss anomaly banner"
         >
@@ -134,7 +157,7 @@ export function FlowAnomalyBanner() {
 
       {/* Anomaly list */}
       <ul className="flex flex-col gap-2">
-        {anomalies.map((a) => (
+        {visible.map((a) => (
           <li
             key={a.id}
             className={clsx(
