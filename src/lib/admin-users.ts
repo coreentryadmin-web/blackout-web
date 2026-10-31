@@ -286,3 +286,30 @@ export async function upsertAdminUserRow(input: {
 export function isValidCreateUserTier(value: unknown): boolean {
   return value === "free" || value === "community" || value === "premium";
 }
+
+/**
+ * True only when `syncWhopMembershipForEmail`'s result actually updated THIS freshly-created
+ * user's Clerk metadata — i.e. it's safe to also mirror the resolved tier/billingKind into the
+ * `admin_users` DB cache row.
+ *
+ * WHY THIS EXISTS: `POST /api/admin/users/create` always writes `tier_managed_by: "admin"` into
+ * the new user's Clerk `publicMetadata` (a few lines before it calls `syncWhopMembershipForEmail`
+ * on the SAME email, without `{ ignoreAdminTierLock: true }`). `syncWhopMembershipForEmail`'s own
+ * admin-tier-lock guard (`isAdminManagedTier`) then finds that lock on every real run — the
+ * account it just created — and skips updating it, so its returned `tier`/`billingKind` default
+ * to "free" with an EMPTY `updatedUserIds`, regardless of whether the email actually has a real,
+ * active Whop membership. The create route used to write that resolved "free" into the
+ * `admin_users` row UNCONDITIONALLY (`upsertAdminUserRow({ tier: synced.tier, ... })`), silently
+ * stomping the tier/membershipKind the admin had just explicitly chosen (e.g. "premium") back to
+ * "free" in the DB cache on every single create — even though Clerk's own `publicMetadata.tier`
+ * (the real source of truth `GET /api/admin/users` reads) stayed correctly locked and untouched.
+ * The admin list's own tier/access FILTER is backed by this DB cache
+ * (`listClerkUserIdsByDbFilters`/`shouldUseDbAdminUserList`), so a freshly admin-created premium
+ * user would silently vanish from a "show premium users" filter immediately after creation.
+ */
+export function shouldApplyWhopSyncToCreatedUser(
+  createdUserId: string,
+  syncedUpdatedUserIds: string[]
+): boolean {
+  return syncedUpdatedUserIds.includes(createdUserId);
+}

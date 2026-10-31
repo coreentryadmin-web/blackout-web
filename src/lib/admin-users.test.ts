@@ -7,6 +7,7 @@ import {
   isValidCreateUserTier,
   parseAdminUserRole,
   parseAdminUserTier,
+  shouldApplyWhopSyncToCreatedUser,
   shouldUseDbAdminUserList,
 } from "./admin-users";
 
@@ -36,6 +37,25 @@ test("isValidCreateUserTier accepts only the canonical tiers", () => {
   assert.equal(isValidCreateUserTier("free"), true);
   assert.equal(isValidCreateUserTier("community"), true);
   assert.equal(isValidCreateUserTier("premium"), true);
+});
+
+// Regression (round 171, DISCOVERY-lane): POST /api/admin/users/create always sets
+// `tier_managed_by: "admin"` on the account it just created, then calls
+// syncWhopMembershipForEmail on the SAME email WITHOUT { ignoreAdminTierLock: true } (unlike
+// sync/route.ts's explicit sync button, which passes it). That lock makes the sync a guaranteed
+// no-op for the user it just created — `updatedUserIds` comes back empty and `tier`/`billingKind`
+// default to "free" regardless of whether the email has a real, active Whop membership. The
+// create route used to write that resolved value into the admin_users DB cache row
+// UNCONDITIONALLY, silently stomping whatever tier the admin had just explicitly chosen (e.g.
+// "premium") back to "free" in the DB cache on every single create.
+test("shouldApplyWhopSyncToCreatedUser is false when the sync never touched the new user (the admin-lock no-op case)", () => {
+  assert.equal(shouldApplyWhopSyncToCreatedUser("user_new", []), false);
+  assert.equal(shouldApplyWhopSyncToCreatedUser("user_new", ["user_other"]), false);
+});
+
+test("shouldApplyWhopSyncToCreatedUser is true when the sync genuinely updated the new user", () => {
+  assert.equal(shouldApplyWhopSyncToCreatedUser("user_new", ["user_new"]), true);
+  assert.equal(shouldApplyWhopSyncToCreatedUser("user_new", ["user_other", "user_new"]), true);
 });
 
 test("isValidCreateUserTier rejects legacy aliases and malformed values", () => {
