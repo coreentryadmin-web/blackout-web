@@ -32,9 +32,9 @@ import {
   spxMergedDeskOffHoursRefreshIntervalSec,
 } from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
+import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSetNx } from "@/lib/shared-cache";
 import { roundFloats } from "@/lib/round-floats";
-import { withServerCache, peekServerCache } from "@/lib/server-cache";
+import { withServerCache, peekServerCache, writeRedisCache } from "@/lib/server-cache";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxDeskSummary } from "@/lib/platform/types";
@@ -357,6 +357,12 @@ export async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<Return
     return spxPlayReadDegraded();
   }
   try {
+    // Stamped BEFORE the eval runs, not after — see writeRedisCache's own comment (server-cache.ts)
+    // for why generation ordering must be keyed off when the upstream read STARTED: start time
+    // correlates with the result's real vintage, while completion time is confounded by per-
+    // replica latency, which is exactly what lets a slower-but-older eval finish (and publish)
+    // after a faster-but-newer one (see the BUG FIX comment below this eval call).
+    const evalStartedAt = Date.now();
     const result = await evaluateSpxPlayState();
     // BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — 5th instance of
     // this cache key's staleness/non-monotonic-publish bug class, see FINDINGS.md's own note on
@@ -391,11 +397,40 @@ export async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<Return
     // `assessed`-gap fix to `isSpxPlaySnapshotShareable`) already closed on every OTHER path, just
     // not this one. Fix: gate the publish exactly like every sibling path already does -- never
     // let a degenerate read become the shared "current" snapshot for other replicas to replay.
+    //
+    // BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro — the 6th instance of
+    // this exact cache key's bug class, explicitly anticipated and deliberately deferred by the
+    // 5th instance's own fix above: "If a future session finds a 6th instance of this pattern
+    // where two genuinely non-degenerate writes race out of order, that is the natural next,
+    // narrower follow-up"): the `assessed !== false` gate above stops a DEGENERATE result from
+    // being published, but even after that fix this call still published via a bare, unconditional
+    // `sharedCacheSet` with NO ordering/generation check at all — so two genuinely non-degenerate
+    // (assessed:true) evals racing out of order (e.g. a slower-but-older eval finishing AFTER a
+    // faster-but-newer one; see `evalStartedAt`'s own comment above) could clobber an already-
+    // published newer result with a staler one. Live-reproduced 2026-10-31, 18:34-18:43 UTC,
+    // 3 independent runs AFTER this cache key's prior fix (#7061) had already fully deployed:
+    // `GET /api/market/spx/play`'s `as_of` jumped BACKWARD by 2.5-7 minutes between two
+    // consecutive assessed:true reads with genuinely different scores (e.g. 18:34:16.244Z/score
+    // 29 -> 18:27:07.816Z/score 36) — never the already-fixed assessed:false shape.
+    //
+    // Fix: route the publish through server-cache.ts's existing, already-tested cross-replica
+    // generation guard (`writeRedisCache`/`server-gen:<key>`, built 2026-10-15 for the sibling
+    // `spx-desk:<date>` key's identical failure shape — see that function's own comment) instead
+    // of the raw `sharedCacheSet`, stamped with `evalStartedAt`. A write whose own upstream read
+    // started before one Redis already holds for this key is skipped instead of clobbering it.
+    // `writeRedisCache(key, ...)` itself prepends `server:`, so passing the bare
+    // `spx-play-read:<date>` (not `spxPlayServerCacheKey(date)`) lands on the exact same Redis key
+    // every other call site in this file already reads via `spxPlayServerCacheKey`/
+    // `sharedCacheGetWithTtl` — confirmed identical to `readRedisCache`'s own `server:${key}`
+    // prefixing. Not folding this into a change to `spxPlayServerCacheKey` itself: every READ call
+    // site still needs the fully-prefixed key for `sharedCacheGetWithTtl`, so only this one WRITE
+    // call site's key construction changes.
     if ((result as { assessed?: boolean }).assessed !== false) {
-      void sharedCacheSet(
-        spxPlayServerCacheKey(date),
+      void writeRedisCache(
+        `spx-play-read:${date}`,
         result,
-        Math.max(playMemberReadCacheSec() * 2, 10)
+        Math.max(playMemberReadCacheSec() * 2, 10) * 1000,
+        evalStartedAt
       ).catch(() => undefined);
     }
     return result;
