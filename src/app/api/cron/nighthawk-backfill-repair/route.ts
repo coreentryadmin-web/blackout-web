@@ -47,6 +47,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { sanitizeForLog } from "@/lib/log-sanitize";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -160,13 +161,17 @@ export async function GET(req: NextRequest) {
             buildEveningEdition({ asOfEt: previousTradingDayEt(editionFor), force: true, persist: true })
           )
             .then((rebuildResult) => {
-              console.info(
-                `[nighthawk/backfill-repair] morning rescue rebuild done — ${editionFor} ` +
-                  `plays=${rebuildResult.plays_count} recap_only=${rebuildResult.recap_only ?? "?"}`
-              );
+              console.info("[nighthawk/backfill-repair] morning rescue rebuild done", {
+                editionFor: sanitizeForLog(editionFor),
+                plays: rebuildResult.plays_count,
+                recapOnly: rebuildResult.recap_only ?? "?",
+              });
             })
             .catch((err) => {
-              console.error(`[nighthawk/backfill-repair] morning rescue rebuild REJECTED — ${editionFor}:`, err);
+              console.error("[nighthawk/backfill-repair] morning rescue rebuild REJECTED", {
+                editionFor: sanitizeForLog(editionFor),
+                err,
+              });
             });
         };
         try {
