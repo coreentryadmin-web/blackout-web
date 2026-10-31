@@ -9188,3 +9188,24 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   genuinely open); separately confirm the SPX Slayer board badge tooltip
   (`spx-slayer-badge-map.ts`'s `unavailable_reason`) and the Play Verdict Bar's status line show
   the same honest text during any such window, never the stale "cold desk" claim.
+
+## WATCH LIST — 2026-10-31 (swing biotech/solar theme-cluster gap, PR TBD)
+
+- **Night Hawk Swings — VKTX/SRPT/SMMT/IBRX/CAPR/REPL and SEDG/ENPH gave no Book-context
+  concentration flag despite a real, live, concurrent same-direction basket.** Live committed book
+  (`GET /api/market/nighthawk/horizons?view=swings`) held VKTX(2298)/SRPT(2231)/SMMT(2219)/
+  IBRX(2215)/CAPR(2313)/REPL(2303) LONG alongside NVAX (already in the `biotech` bucket), and
+  SEDG(2307)/ENPH(2248) LONG — all unmapped in `sector-map.ts`, so each resolved to its own
+  isolated `NAME:<ticker>` cluster and `checkPortfolioOverlap` reported zero cross-ticker
+  concentration for either basket. Fixed: extended the `biotech` bucket with the six names
+  (Polygon-reference-verified SIC 2834/2836, matching the bucket's existing SIC range) while
+  deliberately excluding WGS (GeneDx Holdings — SIC 8000 diagnostics, same GRAL-shaped exclusion
+  already documented), and added a new `solar: ["SEDG", "ENPH"]` bucket (both SIC 3674 like
+  `semis`, but deliberately NOT merged into `semis` — their real driver is the residential-solar
+  cycle, not AI-datacenter capex). **Re-check once the market opens:** if any of
+  VKTX/SRPT/SMMT/IBRX/CAPR/REPL/NVAX are still concurrently LONG, open one of their play-briefs and
+  confirm "Book context" now reports the real cross-ticker biotech concentration (not just
+  same-ticker repeats); separately confirm WGS, if still live, renders no biotech-cluster overlap
+  with any of them. If SEDG/ENPH are still concurrently LONG, confirm their play-briefs now render
+  a "Book context" section reporting the pair's concentration, labeled a `solar` theme overlap,
+  never folded into any semis-named language.

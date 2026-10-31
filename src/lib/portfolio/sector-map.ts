@@ -180,7 +180,27 @@ const SECTORS: Record<string, string[]> = {
   // France-based clinical-stage biotech in Phase 3 trials for obefazimod (ulcerative colitis) —
   // a single-segment company whose entire value hinges on one trial readout, the exact same binary
   // clinical/regulatory catalyst risk driver as every other name in this bucket.
-  biotech: ["NTLA", "CRSP", "VIR", "MIRM", "IONS", "NVAX", "IOVA", "PCVX", "TNGX", "RLAY", "ABVX"],
+  // Added 2026-10-31 (Ask Largo standing mandate, Night Hawk Swings lane, live finding): a real
+  // committed book held VKTX+SRPT+SMMT+IBRX+CAPR+REPL concurrently LONG (6 names, all unmapped)
+  // alongside NVAX (already in this bucket, held twice) — same gap shape as every prior extension
+  // in this file: each name resolved to its own isolated `NAME:<ticker>` cluster and
+  // `checkPortfolioOverlap` reported zero cross-ticker biotech concentration for a 7-position
+  // single-catalyst-class basket. Each verified via Polygon reference (`/v3/reference/tickers/<T>`),
+  // not guessed from the symbol: VKTX (Viking Therapeutics), SRPT (Sarepta Therapeutics), SMMT
+  // (Summit Therapeutics) are SIC 2834 "PHARMACEUTICAL PREPARATIONS"; IBRX (ImmunityBio) and REPL
+  // (Replimune Group) are SIC 2836 "BIOLOGICAL PRODUCTS" — both codes already documented above as
+  // this bucket's own SIC range, and CAPR (Capricor Therapeutics, SIC 2834) is a clinical-stage
+  // cell/gene-therapy company, the same binary clinical-trial-readout risk driver as the rest of
+  // this bucket. WGS (GeneDx Holdings) was live in the SAME book but deliberately left OUT, same
+  // exclusion rationale this bucket's own comment already gives for GRAL: Polygon classifies WGS
+  // as SIC 8000 "SERVICES-HEALTH SERVICES" — a diagnostics/genetic-testing company monetized by
+  // commercial test adoption, not a clinical-stage therapeutics developer with a binary trial
+  // catalyst — so it stays its own `NAME:WGS` cluster rather than being folded in on a symbol-only
+  // guess.
+  biotech: [
+    "NTLA", "CRSP", "VIR", "MIRM", "IONS", "NVAX", "IOVA", "PCVX", "TNGX", "RLAY", "ABVX",
+    "VKTX", "SRPT", "SMMT", "IBRX", "CAPR", "REPL",
+  ],
   // Added 2026-10-20 (Ask Largo standing mandate, Night Hawk Swings lane, live finding): a real
   // committed book held KGC and AEM concurrently LONG (both Banger-origin BREAKOUT calls, same
   // discovery batch) with neither ticker mapped anywhere in this file, so both resolved to
@@ -196,6 +216,20 @@ const SECTORS: Record<string, string[]> = {
   // fix, not a speculative broader miners basket (e.g. NEM, GOLD) with no live partner to
   // demonstrate against in this snapshot.
   "precious-metals": ["KGC", "AEM"],
+  // Added 2026-10-31 (Ask Largo standing mandate, Night Hawk Swings lane, live finding): a real
+  // committed book held SEDG and ENPH concurrently LONG with neither ticker mapped anywhere in
+  // this file, so both resolved to isolated `NAME:SEDG`/`NAME:ENPH` own-clusters and neither
+  // position's play-brief rendered a "Book context" section at all — same gap shape as every other
+  // extension here. SEDG (SolarEdge Technologies) and ENPH (Enphase Energy) are the two dominant,
+  // most-traded residential-solar power-electronics (inverter/optimizer) makers — famously
+  // correlated on interest-rate sensitivity, residential-solar-policy/tariff news and installer
+  // demand, not on the AI-datacenter-capex driver the `semis` bucket actually represents even
+  // though Polygon's own reference data files both under SIC 3674 "SEMICONDUCTORS & RELATED
+  // DEVICES" (verified via `/v3/reference/tickers/<T>`, not guessed from the symbol) — folding them
+  // into `semis` on that SIC code alone would misclassify two residential-solar-cycle names as an
+  // NVDA-capex bet, so they get their own small pair cluster instead, same precedent as
+  // corning/roblox/gamestop/sofi above (a leveraged-wrapper-free pair with no existing themed peer).
+  solar: ["SEDG", "ENPH"],
 };
 
 // Inverted once at module load: TICKER → sector.
