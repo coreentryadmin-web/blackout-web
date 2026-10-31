@@ -19,6 +19,38 @@ const FAILURE_THRESHOLD = 3;
  */
 const MAX_STALE_AGE_MS = 10 * 60 * 1000; // 10 minutes
 
+/**
+ * BUG (found live 2026-10-31, SPX desk `as_of` non-monotonic — a payload byte-identical to one
+ * served ~43s earlier was still being served ~10.6 minutes after its own `refreshedAt`, with
+ * `cf-cache-status: DYNAMIC`/`cache-control: no-store` ruling out edge caching): the SWR branch's
+ * "already degraded" shortcut (below, `degradedKeys.has(key)`) returned `hit.value`
+ * UNCONDITIONALLY once a key crossed FAILURE_THRESHOLD consecutive loader failures — no staleness
+ * check of ANY kind, not even the already-tightened per-key `maxStaleAgeMs` this same branch's
+ * sibling ("not yet degraded", a few lines down) already respects. A replica whose own
+ * `buildSpxDesk()` call keeps failing fast (not necessarily hanging — a broken upstream credential
+ * or network path specific to that one ECS task is enough) degrades after 3 consecutive failures
+ * and then serves that SAME frozen `hit` forever, growing arbitrarily stale, as long as the
+ * upstream keeps failing — because every subsequent request re-enters this exact branch and takes
+ * the same unconditional early return. This is the SPX desk cache key's 5th distinct
+ * staleness-ceiling bug (see `docs/audit/FINDINGS.md`'s "4th instance" write-up, which named this
+ * exact branch's "no further ceiling check" as the specific gap it deferred), but the bug is
+ * generic to `withServerCache`, not SPX-desk-specific — any `degradedKeys` key with a configured
+ * `maxStaleAgeMs` was equally exposed.
+ *
+ * Fix: once staleness ALSO clears this second, harder ceiling (a multiple of the caller's own
+ * `maxStaleAgeMs`), stop returning the frozen `hit` unconditionally and prefer `opts.fallback()`
+ * (bounded by `opts.maxBlockMs`, same race idiom used elsewhere in this file) when one is
+ * configured — e.g. `spx-desk-loader.ts`'s `deskCacheOpts.fallback` builds a desk shell from the
+ * independently-cached `pulse` lane, which is typically NOT degraded on the same replica and gives
+ * a genuinely fresher (if less complete) response instead of the same ancient snapshot. A caller
+ * with no fallback configured keeps today's exact behavior (nothing better to serve) — this only
+ * changes the outcome once BOTH a hard ceiling is crossed AND an escape hatch actually exists.
+ * 3x headroom beyond the primary ceiling preserves the branch's original intent (skip a doomed
+ * blocking refresh on the common, brief-degradation case) while still bounding the worst case to a
+ * small multiple of the caller's own freshness contract instead of unboundedly.
+ */
+const DEGRADED_HARD_STALE_MULTIPLIER = 3;
+
 const store = new Map<string, CacheEntry<unknown>>();
 const inflight = new Map<string, Promise<unknown>>();
 
@@ -326,8 +358,41 @@ export async function withServerCache<T>(
       // refresh will almost certainly fail again, adding latency for no benefit.
       // Return the stale entry and kick off a non-blocking refresh attempt instead.
       if (degradedKeys.has(key) && hit) {
-        console.warn(`[server-cache] ${key}: degraded upstream, serving stale (age ${Math.round(staleAge / 1000)}s) instead of blocking refresh`);
+        const hardCeilingMs = maxStaleAgeMs * DEGRADED_HARD_STALE_MULTIPLIER;
+        if (staleAge <= hardCeilingMs) {
+          console.warn(`[server-cache] ${key}: degraded upstream, serving stale (age ${Math.round(staleAge / 1000)}s) instead of blocking refresh`);
+          refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
+          return hit.value;
+        }
+        // Past the hard ceiling (see DEGRADED_HARD_STALE_MULTIPLIER's doc comment) — this hit has
+        // now been frozen for multiple ceilings' worth of time with no sign the upstream is
+        // recovering. Keep retrying in the background, but stop handing out the same ancient
+        // snapshot unconditionally: prefer a configured fallback (bounded by maxBlockMs, same race
+        // idiom as every other fallback site in this file) when one exists, since it is typically a
+        // DIFFERENT, independently-cached code path that may not share this key's degradation.
+        console.warn(
+          `[server-cache] ${key}: degraded upstream AND past the hard ceiling (age ${Math.round(staleAge / 1000)}s, hard ceiling ${Math.round(hardCeilingMs / 1000)}s) — preferring fallback over the frozen snapshot`
+        );
         refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
+        if (opts.fallback) {
+          try {
+            const maxBlock = opts.maxBlockMs;
+            if (maxBlock != null && Number.isFinite(maxBlock) && maxBlock > 0) {
+              const racedFallback = await Promise.race([
+                opts.fallback() as Promise<T>,
+                new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+              ]);
+              if (racedFallback !== "timeout") return racedFallback;
+            } else {
+              return (await opts.fallback()) as T;
+            }
+          } catch {
+            // Fallback itself failed — fall through to the stale value below. We already have
+            // *something* to serve, which beats throwing on top of an already-degraded key.
+          }
+        }
+        // No fallback configured (or it also failed/timed out) — same last-resort behavior as
+        // before this fix: nothing better exists, so serve the stale value.
         return hit.value;
       }
       // FIX (found live 2026-10-26, SPX desk loader-path stale-cache ceiling gap): this was the
