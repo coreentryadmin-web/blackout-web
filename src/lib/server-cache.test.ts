@@ -56,6 +56,70 @@ test("repeated throws mark the key degraded after the failure threshold", async 
   assert.equal(isDegraded(key), true);
 });
 
+// BUG (found live 2026-10-31, SPX desk `as_of` non-monotonic — a payload byte-identical to one
+// served ~43s earlier was still being served ~10.6 minutes after its own refresh, well past the
+// desk cache's own ~40s maxStaleAgeMs ceiling): once a key crosses FAILURE_THRESHOLD consecutive
+// loader failures, the SWR branch's "already degraded" shortcut returned the frozen `hit.value`
+// UNCONDITIONALLY, forever, with no staleness check of any kind — unlike every sibling branch in
+// this file, which all enforce `maxStaleAgeMs` one way or another. This test drives a key into
+// that degraded state (3 consecutive failures, loser of every maxBlockMs race so no rejection ever
+// reaches the caller), then proves a 4th call — once staleness ALSO clears the new hard ceiling
+// (DEGRADED_HARD_STALE_MULTIPLIER × maxStaleAgeMs) — prefers a configured `fallback` over the same
+// ancient hit, instead of serving it forever. Timings are real (not fake-clock) but small, mirroring
+// the file's other maxStaleAgeMs regression tests above.
+test("degraded key does not serve the same frozen stale value forever — falls back once past the hard staleness ceiling", async () => {
+  const key = `test:degraded-hard-ceiling:${Math.random()}`;
+  const ttl = 5;
+  const maxStaleAgeMs = 10;
+  const maxBlockMs = 5;
+  const loaderDelayMs = 30; // > maxBlockMs: every refresh attempt below loses its race
+
+  // Seed a real, successful hit.
+  const seeded = await withServerCache(key, ttl, async () => ({ n: 1 }), {
+    staleWhileRevalidate: true,
+    maxStaleAgeMs,
+  });
+  assert.deepEqual(seeded, { n: 1 });
+  await new Promise((r) => setTimeout(r, 15)); // past maxStaleAgeMs, not yet degraded
+
+  const failingLoader = async () => {
+    await new Promise((r) => setTimeout(r, loaderDelayMs));
+    throw new Error("spx-desk: upstream broken on this replica");
+  };
+
+  // Drive the key to "degraded" via 3 consecutive failed background refreshes. Each call below
+  // races the refresh against maxBlockMs and loses (the loader is slower), so it returns the
+  // stale { n: 1 } hit without ever rejecting to the caller — but the background refresh keeps
+  // running and eventually rejects, incrementing the failure counter.
+  for (let i = 0; i < 3; i += 1) {
+    const value = await withServerCache(key, ttl, failingLoader, {
+      staleWhileRevalidate: true,
+      maxBlockMs,
+      maxStaleAgeMs,
+    });
+    assert.deepEqual(value, { n: 1 });
+    // Let the slower background refresh actually finish rejecting before the next call, so
+    // `inflight` is clear and the next call re-enters this same SWR branch.
+    await new Promise((r) => setTimeout(r, loaderDelayMs + 20));
+  }
+  assert.equal(isDegraded(key), true, "key must be degraded after 3 consecutive failures");
+
+  // The key is now degraded AND staleAge is already well past both maxStaleAgeMs (10ms) and the
+  // new hard ceiling (3x = 30ms). Before the fix, this call returned the SAME { n: 1 } hit
+  // unconditionally — it would keep doing so forever as long as the upstream kept failing.
+  const degradedValue = await withServerCache(key, ttl, failingLoader, {
+    staleWhileRevalidate: true,
+    maxBlockMs,
+    maxStaleAgeMs,
+    fallback: async () => ({ n: 99 }),
+  });
+  assert.deepEqual(
+    degradedValue,
+    { n: 99 },
+    "a degraded key past its hard staleness ceiling must prefer the configured fallback over the same frozen snapshot served forever"
+  );
+});
+
 // Regression guard for the ticker-news 60ms bug: `serverCache(key, 60, …)` read as
 // "60 seconds" but the parameter is MILLISECONDS, so per-ticker news was effectively
 // uncached and every member poll hit Benzinga upstream. Two tripwires: the shared TTL

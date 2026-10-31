@@ -339,6 +339,85 @@ test("adaptSwingBriefToLargo: evidence_numbers cites each favorable-side structu
   );
 });
 
+// BUG FIX (2026-10-31, live-audit finding, Ask Largo standing mandate): for a Banger-origin OPEN
+// position, `structureLadder.stop` is NOT the real, committed invalidation level — it is
+// `deriveSwingPlanLevels`'s live-spot-anchored heuristic (horizonPlayFromBangerPosition never
+// populates entryTriggerUnderlyingPx/invalidationUnderlyingPx, so buildStructureLadder's
+// useRealPlan gate is always false for these rows). BieStructureLadder.tsx already discloses this
+// risk right next to the R:R chip ("Recomputed from today's spot... may differ") whenever
+// `positionState === "open" && !stopIsCommitted`, but extractEvidence's R:R loop above used to copy
+// only the bare reward:risk ratio into evidence_numbers with no caveat — Largo's answer-engine
+// context reads evidence_numbers, not the rendered widget, so it cited a basis-less R:R as if it
+// were real. Mirror the UI's own disclosure condition exactly.
+test("adaptSwingBriefToLargo: an OPEN position's R:R evidence discloses an uncommitted (live-spot-recomputed) reference stop", () => {
+  const ctx = fixtureCtx();
+  const brief = composeSwingPlayBrief(ctx);
+  brief.envelope.structureLadder = {
+    spot: 100,
+    direction: "long",
+    stop: 95,
+    stopIsCommitted: false,
+    atr: 5,
+    positionState: "open",
+    rungs: [
+      {
+        kind: "call_wall",
+        label: "call wall",
+        price: 110,
+        distancePct: 10,
+        role: "resistance",
+        target: { rewardRisk: 2, horizon: "swing", gatekeeper: false },
+      },
+    ],
+  };
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.ok(
+    largoRead.data.evidence.some(
+      (e) =>
+        e.startsWith("R:R to call wall ($110.00): 2.0R") &&
+        e.includes("not this position's committed invalidation level"),
+    ),
+    `expected the uncommitted-stop caveat on the OPEN R:R line, got: ${JSON.stringify(largoRead.data.evidence)}`,
+  );
+});
+
+// BUG FIX (2026-10-31, same finding as above): a COMMITTED OPEN position's R:R line must stay bare
+// — the UI's own disclosure never fires when `stopIsCommitted:true`, and this is a real, pinned
+// invalidation level, not a heuristic, so no caveat is honest here.
+test("adaptSwingBriefToLargo: an OPEN position's R:R evidence stays bare when the stop IS committed (real entry-pinned invalidation)", () => {
+  const ctx = fixtureCtx();
+  const brief = composeSwingPlayBrief(ctx);
+  brief.envelope.structureLadder = {
+    spot: 100,
+    direction: "long",
+    stop: 95,
+    stopIsCommitted: true,
+    atr: 5,
+    positionState: "open",
+    rungs: [
+      {
+        kind: "call_wall",
+        label: "call wall",
+        price: 110,
+        distancePct: 10,
+        role: "resistance",
+        target: { rewardRisk: 2, horizon: "swing", gatekeeper: false },
+      },
+    ],
+  };
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.ok(
+    largoRead.data.evidence.some((e) => e === "R:R to call wall ($110.00): 2.0R"),
+    `expected the bare committed-stop R:R line, got: ${JSON.stringify(largoRead.data.evidence)}`,
+  );
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-10-31, live repro META/CC/TSM — a GEX king strike
 // coinciding with the call/put wall price, e.g. META:69 where call wall AND king both resolve to
 // 700): unlike the test above (which hand-builds `structureLadder` to isolate extractEvidence's own
