@@ -106,9 +106,6 @@ export async function GET(
       return NextResponse.json(payload, { headers: noStore });
     }
 
-    // Prefer the ranked walls for "nearest wall" — top-level `nearest_wall`
-    // on the source payload is a summary; the ranked list is the authority.
-    // Payload shape verified from `src/lib/providers/gex-positioning.ts`.
     const source = p as Record<string, unknown>;
     const num = (v: unknown): number | null =>
       typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -118,8 +115,19 @@ export async function GET(
       | null
       | undefined;
 
+    // BUG (fixed 2026-10-26): `GexPositioning.nearest_wall.kind` (gex-positioning.ts, via the
+    // shared `nearestWallFromLevels` helper in gex-nearest-wall.ts) is typed and always populated
+    // as "resistance" | "support" — never "call" | "put". This mapping used to compare `nw.kind`
+    // directly against the literals "call"/"put", which can never match the source's actual
+    // vocabulary, so `kind` — and therefore the whole `nearestWall` field below — was unconditionally
+    // null in every mobile response, regardless of whether the backend had a real nearest wall.
+    // The native iOS Watchlist detail sheet's "nearest wall" field was silently dead for every
+    // ticker. Fix: translate the source vocabulary instead of literal-matching it — a "resistance"
+    // wall is always the call wall (largest-positive net gamma) and "support" is always the put
+    // wall (largest-negative net gamma), confirmed against nearestWallFromLevels's own candidate
+    // assignment. See route.test.ts.
     const kind: "call" | "put" | null =
-      nw?.kind === "call" || nw?.kind === "put" ? nw.kind : null;
+      nw?.kind === "resistance" ? "call" : nw?.kind === "support" ? "put" : null;
     const nearestWall =
       nw && num(nw.strike) != null && num(nw.distance_pts) != null && kind !== null
         ? {
