@@ -4,6 +4,4415 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-10-28 — [FINDING, P2 CI / Largo] `largo-stress-nightly` hard-fails on transient `ECONNRESET` after 429 burst — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+| --- | --- |
+| **Symptom** | Run `40695702887` on `734b7f94`: ~100+ live OK, several 429 SKIPs, then uncaught `TypeError: fetch failed` / `read ECONNRESET` in `fetchRetry` → worker pool abort → exit 1 (not a BAD Largo answer). |
+| **Root cause** | `askLive` used `fetchRetry` with `retries: 1`; after retries exhausted, the error propagated out of the worker. Design already treats non-200 as transport SKIP, but transport-layer throws bypassed that path. |
+| **Fix** | `scripts/largo-stress-run.mjs`: catch `fetchRetry` failures → `{ status: 0, transport_error }`; retry transport in `askLiveThrottleAware`; worker try/catch backstop; default `LARGO_STRESS_FETCH_RETRIES=3`. |
+| **Regression** | `scripts/audit/lib/fetch-retry.test.mjs`; `src/largo-stress-router.test.ts` source ratchet on `transport_error`. |
+| **Status** | FIXED — branch `fix/largo-stress-transport-skip`. |
+
+## Largo stress nightly aborted on transient fetch ECONNRESET — FIXED
+> **kind:** `FINDING`
+
+Duplicate staging of the same incident as the entry immediately above (both trace to the same
+`askLive`/`fetchRetry` transport-error gap in `scripts/largo-stress-run.mjs`, found by two
+different sessions). Restamped against git history rather than left `UNRECONCILED`: merged via
+PR #6970, commit `c722f91eb58b677a411c6c29d0771f4c38db2b41` ("fix(ci): largo-stress treats fetch
+ECONNRESET as transport SKIP") — confirmed present on `main`.
+
+| **Status** | FIXED — PR #6970 (`c722f91e`) |
+|------------|-------------------------------|
+
+**Symptom:** `largo-stress-nightly.yml` red on `main` @ `734b7f94` — bank1 sweep crashed with `TypeError: fetch failed` / `read ECONNRESET` (~18m in), no report artifact.
+
+**Root cause:** `askLive` used `fetchRetry` with `retries: 1`; an uncaught throw in the worker aborted the whole run instead of SKIP transport handling used for HTTP 429/401.
+
+**Fix:** Default 4 fetch retries; catch exhausted transport errors per question as SKIP and continue the bank.
+
+## 0DTE governor `ledgerRowStopped()` counted a genuinely profitable ratchet/thesis/flat exit as a hard STOP, feeding phantom stops into the G-5 session-stop halt — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 (risk-control miscount — can trip a live-enforced trading halt on a winning session; no member-facing data corruption, and the separate realized-P&L channel this bug's sibling already fixed was unaffected) |
+| **Surface** | `src/lib/zerodte/governor.ts` — `ledgerRowStopped()`, feeding `deriveGovernorFromLedger()`'s `stops` tally, consumed live by `evaluateZeroDteGovernor()`'s G-5 hard-halt (`GOVERNOR_MAX_SESSION_STOPS`) and surfaced on the board via `summarizeGovernorForBoard()` |
+| **Status** | FIXED |
+
+### Root cause
+
+`ledgerRowStopped(r)` decided whether a closed ledger row was a hard STOP by checking the raw
+mechanical `plan_outcome` column **first**:
+
+```ts
+function ledgerRowStopped(r: GovernorLedgerRow): boolean {
+  if (isCondorLedgerRow(r)) return false;
+  if (r.plan_outcome === "stopped") return true;   // <-- the bug
+  if (r.status !== "CLOSED") return false;
+  return (
+    r.entry_premium != null && r.entry_premium > 0 &&
+    r.trough_premium != null &&
+    r.trough_premium <= r.entry_premium * (1 + PLAN_RULES.stop_pct / 100)
+  );
+}
+```
+
+`plan_outcome`/`plan_pnl_pct` are the **naive, mechanical bar-walk grade** — what an UNMANAGED
+hold would have done, walking the contract's own minute bars all the way to the plan's fixed
+−50/+100/15:50 rules regardless of what the live engine actually did. They are computed and
+stamped independently of, and often *after*, a real live exit. When the exit engine closes a
+position early for a genuine profit via a ratchet profit-floor, a thesis-break veto, or a
+flat-theta-bleed exit (`entry_context.exit`, stamped by `exit-engine.ts`'s `buildExitContext`),
+the mechanical bar-walk can still "trade" the same contract's bars onward from that point and
+independently conclude the position would *later* have traded through the −50% hard stop —
+producing `plan_outcome: "stopped"` / `plan_pnl_pct: -50` for a row that, as actually managed,
+closed green.
+
+Checking `plan_outcome === "stopped"` first therefore miscounted that real WIN as a STOP, and fed
+it straight into `deriveGovernorFromLedger`'s `stops` array — the array `evaluateZeroDteGovernor`'s
+G-5 hard-halt (`governor_session_stops`, `GOVERNOR_MAX_SESSION_STOPS = 4`) enforces **live**,
+blocking every new commit for the rest of the session once 4 stops accumulate. A session with
+several genuine ratchet/thesis/flat wins could accumulate 4 *phantom* stops this way and trip the
+halt on what was actually a winning day — the exact failure mode G-5 exists to prevent, triggered
+by the counting mechanism itself rather than by real losses.
+
+### Precedent / why this was left open before
+
+A sibling P&L channel in the same file, `ledgerRowRealizedPnlPct` (feeding
+`session_pnl_pct`/`realized_losers`), had this exact mechanical-vs-as-managed precedence bug fixed
+on 2026-10-20 (the HOOD finding — a real ratchet-floor exit at +3.35% was counted as a −50%
+realized loser because `plan_pnl_pct` was read before the as-managed exit). That fix explicitly
+left `ledgerRowStopped` out of scope at the time (see that function's own doc comment and
+`governor.test.ts`'s SEV-3 test block). This finding closes that gap.
+
+### Evidence
+
+New tests in `src/lib/zerodte/governor.test.ts`:
+
+- `"ledgerRowStopped: a genuine ratchet-exit WIN is never counted as a governor stop, even though
+  the mechanical plan_outcome says 'stopped'"` — a row with `plan_outcome: "stopped"`,
+  `plan_pnl_pct: -50`, trough dipped ~-8.5% off entry at some point, but
+  `entry_context.exit = { reason: "ratchet_profit_floor", pnl_pct: 7.87, peak_pnl_pct: 20 }` (the
+  bug's own motivating shape — ratchet exit at +7.87%, trough dipped -8.66% off entry at some
+  point). Also asserts `evaluateZeroDteGovernor` returns no blocks for a fresh candidate, i.e. the
+  live-enforced G-5 consumer is clean too.
+- `"ledgerRowStopped: a genuine as-managed thesis/flat exit is also never counted as a stop..."` —
+  same shape with `entry_context.exit.reason: "thesis_break_veto"` and a trough that would
+  independently read as a hard stop under the OLD trough-latch fallback (1.9 on a 4.0 entry);
+  confirms the fix isn't narrowly scoped to just the ratchet reason family.
+- `"ledgerRowStopped: a genuine as-managed STOP still counts, matching scan.ts's own real-time
+  check (exit reason 'plan_stop')"` — a row with `entry_context.exit.reason: "plan_stop"` (a REAL
+  hard stop) still counts, proving the fix doesn't just stop counting stops altogether.
+- `"ledgerRowStopped: a row with no live-managed exit at all still falls back to the mechanical
+  plan_outcome/trough (legacy rows unaffected)"` — a row with no `entry_context.exit` at all still
+  uses the original mechanical check, proving full backward compatibility for legacy/ungraded rows.
+
+RED→GREEN confirmed via a manual pre-fix/post-fix swap (this sandbox's shared git-stash stack made
+a bare `git stash` unsafe, so the pre-fix file content was restored from `git show HEAD:...`,
+applied, tested, then the fixed content was restored):
+- **Before the fix:** 65/67 tests pass, 2 fail — both new ratchet-exit and thesis-exit tests,
+  each asserting `snap.stops` is empty but observing the ticker present (`AAPL`/`META`
+  respectively) in the stop tally.
+- **After the fix:** 67/67 pass.
+
+All 67 tests in `governor.test.ts` pass post-fix, including every pre-existing test (the existing
+`"deriveGovernorFromLedger: a stop is detected from the graded plan_outcome OR the latched trough"`
+test and the trough-boundary tests, which carry no `entry_context` and therefore exercise the
+unchanged mechanical/trough fallback path unaffected by this fix).
+
+### Blast radius
+
+`ledgerRowStopped` is a private function with exactly two consumers, both inside `governor.ts`:
+`deriveGovernorFromLedger` (exported, used by `scan.ts` and `zerodte-service.ts`'s
+`summarizeGovernorForBoard`) and nothing else repo-wide (verified by grep — no other file
+references `ledgerRowStopped`, `summarizeGovernorForBoard`, or `deriveGovernorFromLedger` outside
+`governor.ts`/`scan.ts`/`zerodte-service.ts` and their own test files). The fix changes what counts
+as a stop more accurately in both consumers; neither assumed the old (incorrect) semantics as
+correct, so no other call site needed a change.
+
+One stale doc comment inside `evaluateZeroDteGovernor` (the UNTIMED STOP / fail-closed re-entry
+lock section) described the old two-signal check (`plan_outcome === "stopped"` OR the latched
+trough) — updated in the same PR to mention the as-managed signal, since it was describing
+`ledgerRowStopped`'s behavior by name.
+
+### Fix
+
+`ledgerRowStopped` now checks the AS-MANAGED exit reason first: `readManagedExit(r.entry_context)`
+(the same `entry_context.exit` blob `record.ts`'s as-managed P&L lane already reads) and, when a
+real exit reason is present, `categorizeExitReason(reason)` (the existing single source of truth
+for the reason→family vocabulary, also used by `record.ts`) decides — only the `"stop"` category
+(`plan_stop`) counts as a real stop; `ratchet`/`thesis`/`flat`/`target` never do, no matter what the
+mechanical `plan_outcome` column independently says. Only when there is **no** as-managed exit at
+all (legacy rows, or a row the engine hasn't exited yet) does the function fall back to the
+original mechanical `plan_outcome === "stopped"` / trough-latch check — byte-for-byte unchanged, so
+a row with no live-managed exit stamp is graded exactly as it was before this fix.
+
+### Fix rationale
+
+Mirrors the exact real-time equivalent `scan.ts` already uses to decide a real stop-out for its own
+Discord-notification/Redis-stop-recording purposes:
+`(state.status === "CLOSED" && state.closed_reason === "stopped") ||
+exit?.decision.reason === "plan_stop"` — i.e. the AS-MANAGED signal, never the mechanical column.
+`governor.ts` has no access to that live `state`/`exit.decision` object (it only ever sees
+persisted ledger rows), so the fix uses the row's persisted equivalent of the same signal
+(`entry_context.exit.reason`, categorized) rather than inventing a new vocabulary.
+
+Considered reusing `record.ts`'s full `managedGradeView`/`asManagedOutcome`-shaped precedence
+(engine exit > genuine WS-11 trim-scale reconstruction > mechanical fallback) for symmetry with
+`ledgerRowRealizedPnlPct`'s own `asManagedPnlPct` call — prototyped this as an `asManagedOutcome`
+export and found it breaks backward compatibility for one class of existing test fixture: a graded
+row whose `plan_outcome` is stamped but whose `plan_pnl_pct` is still null (a real, pre-existing
+possible data shape — the lazy grader can stamp the outcome label before the pnl value) reads as
+UNGRADED under `isGradedZeroDteRow`'s finite-pnl requirement, which would silently stop counting it
+as a stop at all and fall through to the trough-latch fallback — changing behavior for rows this
+fix never intended to touch. The simpler, narrower `readManagedExit` + `categorizeExitReason`
+approach taken instead needs only the exit `reason` field (ignoring `pnl_pct`'s finiteness
+entirely), so it reproduces the OLD mechanical/trough fallback behavior exactly for every row shape
+that isn't carrying a real live-managed exit — deliberately narrower in scope than the P&L
+channel's own fix, but correct for exactly the bug this finding is about.
+
+### Tests
+
+`src/lib/zerodte/governor.test.ts` (4 new tests, described under Evidence above). Full file: 67/67
+pass. `npx tsc --noEmit` clean repo-wide. Sibling files that read/write the same ledger rows
+(`record.test.ts` 173/173, `exit-engine.test.ts`, `exit-sync.test.ts`, `scan.test.ts` 46/46) all
+still pass unaffected — `record.ts` itself carries no code change (an `asManagedOutcome` export was
+prototyped and reverted per the Fix rationale above, so its diff is empty).
+
+## 0DTE discovery/rejection observability cursors (`ZERODTE_REJECTION_CURSOR_KEY`, `DISCOVERY_EVENT_CURSOR_KEY`) had an unlocked read-modify-write raced by multiple concurrent, unawaited call sites in a single scan cycle — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (pure observability/audit data — `zerodte_discovery_events`/`zerodte_scan_rejections` never gate a live trade — but a genuine, confirmed lost-update bug that defeats these tables' whole dedup purpose) |
+| **Surface** | `src/lib/zerodte/rejections.ts` (`persistZeroDteRejections`), `src/lib/zerodte/discovery-events-persist.ts` (`persistDiscoveryDetectedEvents`/`persistDiscoveryGateBlockedEvents`/`persistDiscoveryCommitEvents`), both consumed from `src/lib/zerodte/scan.ts` |
+| **Status** | FIXED |
+
+### Root cause
+
+Both cursor functions follow the same shape: read the ENTIRE cursor blob out of
+`platform_meta` as a JSON map (`getMeta` → `JSON.parse`), mutate it in memory per-ticker, and
+write the WHOLE blob back (`JSON.stringify` → `setMeta`, a plain `INSERT ... ON CONFLICT DO
+UPDATE SET value = EXCLUDED.value` — no version check, no lock). That is correct when calls are
+sequential, but in production both cursors are read-modify-written from **multiple concurrent,
+unawaited (`void ... .catch(...)`) call sites within a single `warmZeroDteBoard` cycle**:
+
+- `ZERODTE_REJECTION_CURSOR_KEY` (`rejections.ts`) — raced by `scan.ts:1842` and `scan.ts:2321`
+  (both inside `persistZeroDteScan`, two independently-derived rejection populations — the
+  initial-commit gate rejections and the atomic-commit recount rejections) and `scan.ts:2661`
+  (inside `warmZeroDteBoard` itself, after `await persistZeroDteScan(setups)` — that `await` does
+  **not** wait for the `void` calls fired *inside* `persistZeroDteScan`, so all three can still be
+  in flight together).
+- `DISCOVERY_EVENT_CURSOR_KEY` (`discovery-events-persist.ts`) — raced by `scan.ts:1845` and
+  `scan.ts:2362` (both inside `persistZeroDteScan`) and `scan.ts:2662`/`scan.ts:2665` (inside
+  `warmZeroDteBoard`).
+
+When two of these interleave: both read the same base map before either writes, both mutate
+their own in-memory copy (each adding a *different* ticker), then both write the whole blob back
+— whichever `setMeta` resolves **last** silently clobbers the other's addition, and also discards
+the dedup history for every *other* ticker already in the blob it read before the race. This
+causes a duplicate `zerodte_scan_rejections`/`zerodte_discovery_events` row immediately (this
+tick, since the clobbered ticker's entry never lands) and cascading duplicates on later ticks (a
+clobbered ticker reads as "never logged" again, so an unchanged rejection/detection re-logs next
+cycle too) — defeating the cursor's whole stated purpose: "one row per ticker per DISTINCT state
+transition, not one row per scan cycle."
+
+**Why existing tests never caught this:** `discovery-events-persist.test.ts` and
+`rejections.test.ts` only ever call these functions sequentially, one `await`ed call after
+another. That exercises the throttle logic correctly in isolation but can never produce the
+interleaving that causes a lost update — the bug is purely about *two in-flight calls racing the
+same read-modify-write*, which a sequential test harness structurally cannot reproduce.
+
+**Explicitly not a duplicate-call-removal fix.** A first read suggests "these are redundant
+calls, just drop one" — that is wrong. `gateRejections` (computed inside `persistZeroDteScan`
+from `freshCandidates`' plan/precondition blocks) and the top-level `rejections` (computed
+earlier in `scanZeroDteBoard` from the evidence-gate check) are **different, independently-derived
+rejection populations**, not duplicate calls with the same data; dropping either would silently
+drop real gate-blocked-event logging for a genuinely distinct rejection set.
+
+### Evidence
+
+New regression tests (RED→GREEN, confirmed via a real revert/restore cycle rather than asserted):
+`src/lib/zerodte/rejections.test.ts` and `src/lib/zerodte/discovery-events-persist.test.ts` each
+got a `tryAdvisoryLock`/`releaseAdvisoryLock` fake (the same non-blocking, session-scoped-mutex
+shape `x-rate-budget-concurrency.test.ts` uses for `recordBudgetUse`'s identical race) plus a
+real async gap on `getMeta` so two concurrent calls provably both read the cursor before either
+writes.
+
+- `persistZeroDteRejections`: two concurrent calls for *different* tickers (mirroring
+  `scan.ts`'s real `gateRejections`/`recountRejections`/top-level-`rejections` race) — asserts
+  BOTH tickers' cursor entries survive, then confirms the throttle still holds on a repeat.
+- `persistDiscoveryGateBlockedEvents`: two concurrent calls for different tickers — same
+  assertion.
+- `persistDiscoveryGateBlockedEvents` + `persistDiscoveryCommitEvents` racing concurrently for
+  different tickers — the cross-FUNCTION race that actually occurs in production
+  (`scan.ts:2362` vs `scan.ts:2665`), not just two calls of the same function.
+
+**Before the fix** (verified by checking out the pre-fix `rejections.ts`/
+`discovery-events-persist.ts` from `origin/main` while keeping the new tests, then running
+`npx tsx --experimental-test-module-mocks --test`): all 3 new tests **FAIL** —
+`"AAA's cursor entry must survive the race"` / `"the gate-blocked write's cursor entry must
+survive"` assertion errors, with the clobbered ticker's entry provably missing from the final
+cursor JSON. All pre-existing sequential tests in both files still pass (16/19 total), confirming
+the bug is specifically about concurrency, not a general regression.
+
+**After the fix** (restoring the locked implementation): all 19 tests in both files pass,
+including the 3 new regression cases.
+
+### Blast radius
+
+Both cursor keys and every call site listed above in `scan.ts` — none of `scan.ts`'s call sites
+needed to change (the lock is acquired *inside* the existing exported functions, so every
+fire-and-forget `void ... .catch(...)` caller gets the fix for free). `exit-engine.ts`,
+`iron-condor.ts`, and the Vector files flagged clean in the same audit pass were **not** touched —
+out of scope, no read-modify-write race was found there.
+
+### Fix
+
+Wrapped the full read-modify-write critical section (load cursor → mutate → save cursor) of each
+function in a `tryAdvisoryLock`/`releaseAdvisoryLock` pair, mirroring the exact pattern already
+used in this repo for the identical shape (`x-rate-budget.ts`'s `recordBudgetUse`,
+`x-marketing-meta.ts`'s `recordPostHook`):
+
+- `rejections.ts`: `persistZeroDteRejections` now acquires `"zerodte-rejection-cursor-write"`
+  before calling the (new, internal) `writeRejectionsLocked` helper that holds the previous
+  function body unchanged; bounded retry (30 × 60ms ≈ 1.8s), falls back to the old unlocked path
+  with a `console.warn` if the lock can't be acquired in that window (never silently drops a
+  cycle's rejections).
+- `discovery-events-persist.ts`: a single shared `"zerodte-discovery-event-cursor-write"` lock
+  (one global key, not per-function, since all three functions read-modify-write the SAME
+  `DISCOVERY_EVENT_CURSOR_KEY` blob and must serialize against *each other*, not just against
+  repeat calls of themselves) via a new `withDiscoveryEventCursorLock` helper that each of
+  `persistDiscoveryDetectedEvents`/`persistDiscoveryGateBlockedEvents`/`persistDiscoveryCommitEvents`
+  wraps its existing body in. Same bounded retry/fallback shape.
+
+`scan.ts`'s call sites are deliberately unchanged — they stay fire-and-forget
+(`void ... .catch(...)`), since the lock makes the underlying blob write safe regardless of
+whether the outer call is awaited by its caller.
+
+### Fix rationale
+
+Advisory-lock serialization (not dropping any call) because, per the correction above, the
+colliding call sites are not duplicates — each persists a real, independently-derived rejection
+or event population, so removing any of them would silently delete real observability data for a
+genuinely distinct signal. Serializing the shared blob's critical section is the only fix that
+preserves all of them. Reused `tryAdvisoryLock`/`releaseAdvisoryLock` (a Postgres session-scoped
+advisory lock already proven correct and tested for this exact "read whole blob → mutate → write
+whole blob back, raced by multiple concurrent writers" shape in `x-rate-budget.ts`/
+`x-marketing-meta.ts`) rather than inventing a new primitive, keeping the fix small and
+consistent with the rest of the codebase. Left `exit-engine.ts`, `iron-condor.ts`, and the Vector
+files untouched — audited clean in the same pass, no equivalent unguarded read-modify-write found
+there.
+
+### Tests
+
+`src/lib/zerodte/rejections.test.ts` (+1 new concurrency regression case, 19 total pre-existing +
+new combined across both files) and `src/lib/zerodte/discovery-events-persist.test.ts` (+2 new
+concurrency regression cases). Full `npm test` and `npx tsc --noEmit` both clean on Node 20.
+
+## 0DTE board condor calibration-bucket widths (and option greeks) were destroyed to a flat 2dp on the wire, collapsing 77%/92%/96% win-rate buckets onto the identical served value — root cause was ONE LAYER UPSTREAM of where a prior pass fixed it — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 (member-facing data-integrity/precision loss on a live product surface — Ask Largo and the Night Hawk Command board both serve a condor's calibration-bucket width as a number a member/Largo can't actually distinguish from a different, differently-calibrated geometry; no financial-math error, no wrong trade, but a real loss of the Largo-contract "precision" guarantee) |
+| **Surface** | `src/lib/platform/zerodte-service.ts` — `buildZeroDteBoardPayload()`'s own internal `roundFloats({...})` call, whose output is what `publishBoardSnapshot()` caches into the shared Redis board snapshot (`BOARD_SNAPSHOT_KEY`) every reader of `getZeroDteBoardPayload()` converges on (the member board route, `/nighthawk/horizons`, the `zerodte-warm` cron, `web-boot-warm`, and the Largo/BIE composers) |
+| **Status** | FIXED |
+
+### Correction notice (read this first — staleness trap)
+
+This finding **replaces an earlier, mis-located diagnosis from the same audit pass, same day**.
+The original claim said the bug was in `src/app/api/market/zerodte/board/route.ts`'s own
+`ZERODTE_BOARD_GREEKS_WIRE_DP` keyDp map (added in an earlier fix) missing
+`put_width_pct`/`call_width_pct` entries. That map's *contents* were indeed incomplete, but fixing
+only that map would have changed nothing on the wire — an adversarial verifier traced the actual
+destructive rounding to a **different, earlier call site**: `zerodte-service.ts`'s own
+`buildZeroDteBoardPayload()` calls `roundFloats({...setups: displaySetups, ledger: ...})` with **no
+dp/keyDp arguments at all** (defaulting to `dp=2`, zero per-key overrides), and that call's result
+is what gets published to the shared Redis snapshot **before** the board route ever runs its own
+(correctly-configured, but too-late) override pass. `roundFloats()` is idempotent on an
+already-rounded value — re-rounding `0.01` at 4dp is still `0.01` — so route.ts's own keyDp map,
+even for the fields it already listed (delta/theta/iv/gamma/vega), was **also already a no-op in
+production**: the real destructive 2dp rounding had already happened and could not be recovered
+downstream. This is the exact "verify against the real current source, not a prior session's
+account" trap `CLAUDE.md`'s own "staleness trap" discipline warns about, caught the same day it was
+introduced rather than persisting across sessions.
+
+### Root cause
+
+`buildZeroDteBoardPayload()` (zerodte-service.ts, ~line 855, before this fix):
+
+```ts
+const payload = roundFloats({
+  available: true,
+  as_of: new Date().toISOString(),
+  ...
+  setups: displaySetups,
+  ...
+  ledger: ledgerRows.map((r) => { ... }),
+  ...
+}) as ZeroDteBoardPayload;
+```
+
+No `dp`/`keyDp` arguments — `roundFloats<T>(value, dp = 2, keyDp?)` defaults to a flat 2 decimal
+places with **zero per-key overrides**, applied recursively to the ENTIRE payload, including:
+
+- Every fresh-find setup's `condor: IronCondorLegs | null` (iron-condor.ts) — carrying
+  `put_width_pct`/`call_width_pct` at their own internal 4dp precision (`.toFixed(4)`) — and every
+  `condor_plan?: CondorPlan | null` (condor.ts), which carries the same two fields for the priced,
+  tradeable CONDOR structure.
+- Every setup's `plan.greeks` (plan.ts's `buildContractPlan`, never rounded upstream) and every
+  ledger row's `greeks` (straight off the raw 1s live-mark store) — `delta`/`theta`/`iv`/`gamma`/
+  `vega`, routinely sub-0.01 for gamma/vega on a 0DTE contract.
+
+`CONDOR_WINRATE_BY_WIDTH` (iron-condor.ts) buckets sit as close as **0.002 apart**:
+`0.006 → 77%`, `0.008 → 92%`, `0.010 → 96%`. Rounding all three to a flat 2dp collapses every one
+of them onto the identical served `0.01` — a member or Largo reading the served
+`condor.put_width_pct`/`call_width_pct` cannot tell a 77% geometry from a 96% one; both read `0.01`.
+**Live-confirmed 2026-10-26:** SPXW's served `call_width_pct` was `0.01` on the wire while the real
+value re-derived from the disclosed `condor_basis_price` was `0.00825` (the 92% bucket, not
+whatever `0.01` implies).
+
+This payload is then handed to `publishBoardSnapshot()`, which writes it to the shared Redis
+snapshot (`zerodte:board:snapshot:v1`) every replica and every consumer of
+`getZeroDteBoardPayload()` reads — including `board/route.ts`'s own
+`roundFloats(await getZeroDteBoardPayload(), 2, ZERODTE_BOARD_GREEKS_WIRE_DP)` call, which
+operates on an **already-rounded** value and can therefore never recover the lost precision no
+matter how correctly its own keyDp map is configured.
+
+### Evidence
+
+New test in `src/lib/platform/zerodte-service.test.ts` ("setups[].condor put_width_pct/call_width_pct
+keep their calibration-bucket precision instead of collapsing to a flat 2dp") exercises the REAL
+`buildZeroDteBoardPayload()` (not a route-level mock of its return value) with three fresh-find
+setups carrying condors at the 0.006/0.008/0.010 calibration buckets.
+
+RED→GREEN confirmed via `git show HEAD:src/lib/platform/zerodte-service.ts` (pre-fix content
+restored to the working file, tested, then the fixed content restored — never a bare `git stash`):
+- **Before the fix:** 1 failure — `0.01 !== 0.006` (the 77% bucket collapsed onto the served value
+  the 96% bucket also produces).
+- **After the fix:** 28/28 pass in `zerodte-service.test.ts`, including all three buckets serving
+  distinguishably (`0.006`, `0.008`, `0.01`).
+
+### Blast radius
+
+- `board/route.ts`'s own `roundFloats(...)` call (member board route,
+  `GET /api/market/zerodte/board`) — fixed indirectly: it now imports the single corrected keyDp
+  map from `zerodte-service.ts` instead of keeping its own separate, now-redundant copy, and keeps
+  calling `roundFloats()` with it as a harmless, idempotent belt-and-suspenders guard (consistent
+  with this route's existing two-layer defense for `timeline_tranches`).
+- Every OTHER direct reader of `getZeroDteBoardPayload()`/`buildZeroDteBoardPayload()` that does
+  **not** go through `board/route.ts`'s extra pass benefits too, since they previously received the
+  SAME destructively-2dp-rounded payload with no override at all:
+  `GET /api/market/nighthawk/horizons` (via `horizonBoardFromZeroDtePayload` — confirmed this
+  transform does not itself carry `put_width_pct`/`call_width_pct`/`condor`, so it was unaffected
+  by the condor-width half of this bug, but its `payload.upstream_ok`/`payload.session` reads and
+  any future lane that threads more of the raw payload through benefit from the corrected
+  greeks precision), the `zerodte-warm` cron, `web-boot-warm`, and the Largo
+  (`zeroDtePlaysForLargo`) / BIE composers (`composeZeroDtePlays`/`composeTickerPlayState`).
+- `GET /api/admin/zerodte/sim/board`'s sim-feed path (`zerodte-sim-board.ts`) is **not** in this
+  blast radius — it's a separate, admin-gated payload source (`getSimBoardPayload()`), never routed
+  through `buildZeroDteBoardPayload()`.
+- No consumer was found that depends on the PRE-fix 2dp-rounded intermediate value (checked every
+  caller of `buildZeroDteBoardPayload`/`getZeroDteBoardPayload`/`buildAndPublishBoard`/
+  `runColdBoardBuild` — all either pass the payload straight through or re-derive their own numbers
+  from other, unrounded sources), so widening precision at this one shared layer is safe.
+
+### Fix
+
+Moved the keyDp protection to the call site that actually matters — `buildZeroDteBoardPayload()`'s
+own `roundFloats({...}, 2, ZERODTE_BOARD_WIRE_DP)` call, now exported as `ZERODTE_BOARD_WIRE_DP`
+(zerodte-service.ts) so there is exactly one source of truth:
+
+```ts
+export const ZERODTE_BOARD_WIRE_DP: RoundFloatsKeyDp = {
+  delta: 4,
+  theta: 4,
+  iv: 4,
+  gamma: 6,
+  vega: 6,
+  put_width_pct: 4,
+  call_width_pct: 4,
+};
+```
+
+`board/route.ts` now imports this constant instead of keeping its own local, driftable copy, and
+still calls `roundFloats(await getZeroDteBoardPayload(), 2, ZERODTE_BOARD_WIRE_DP)` — idempotent on
+the already-correctly-rounded payload, kept as a defensive second pass rather than removed, per
+this repo's existing two-layer pattern (same file's `timeline_tranches` reconciliation runs a
+second, deliberate pass for an analogous reason).
+
+### Fix rationale
+
+Considered the task's other offered option — skip rounding entirely at `zerodte-service.ts`'s layer
+and let `board/route.ts`'s own `roundFloats()` be the ONLY place rounding happens. Rejected: several
+OTHER consumers (`nighthawk/horizons` route, `zerodte-warm` cron, `web-boot-warm`, the Largo/BIE
+composers) read `getZeroDteBoardPayload()` directly and do **not** go through `board/route.ts`'s
+extra pass — skipping rounding upstream would have reintroduced the original IEEE-754 money-math
+noise (`7499.360000000001`-style values) for every one of them, trading one precision bug for a
+different one. Keeping the round at the layer that gets cached, with the correct per-key map, fixes
+every consumer at once without reopening that door.
+
+`condor_plan` (the priced, tradeable CONDOR structure, condor.ts) was not independently added to
+the test — it shares the exact same `put_width_pct`/`call_width_pct` field names as `condor`
+(IronCondorLegs), and `roundFloats`'s key-matching is purely by field name (scoped to the
+*immediate* key, per its own doc comment), so the same `ZERODTE_BOARD_WIRE_DP` entry protects both
+without a second map.
+
+### Tests
+
+`src/lib/platform/zerodte-service.test.ts` (1 new test, 28/28 pass in the file). Also updated
+`src/app/api/market/zerodte/board/route.test.ts`'s mock of `zerodte-service` to supply
+`ZERODTE_BOARD_WIRE_DP` (the route now imports it; `mock.module()` replaces ALL named exports of a
+mocked specifier, so an import the real module satisfies but a stale mock omits would silently
+resolve to `undefined` and disable the route's own keyDp override in that test). Full relevant
+suite: `npx tsx --experimental-test-module-mocks --test` across `src/lib/zerodte/**/*.test.ts`,
+`src/app/api/market/zerodte/**/*.test.ts`, `src/lib/platform/**/*.test.ts` (126 files) — 1877/1878
+pass (1 pre-existing unrelated skip), 0 fail. Full repo `npm test` — 17284/17287 pass (3 pre-existing
+unrelated skips), 0 fail. `npx tsc --noEmit` clean, Node 20.
+
+## X-marketing daily budget counter (`recordBudgetUse`) had an unlocked read-modify-write — concurrent crons could silently lose increments, defeating the rate cap — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 (shared mutable state race — undercounts a real rate-limit/spend guard, no member-facing data corruption) |
+| **Surface** | `src/lib/x-rate-budget.ts` — `recordBudgetUse`, the shared per-day X-API-action counter behind `X_DAILY_CAPS`/`resolveRunBudget`, written by `x-growth`, `x-engage`, `x-autopost`, and `src/lib/x-mention-replies.ts` |
+| **Status** | FIXED |
+
+### Root cause
+
+`recordBudgetUse(action, count)` did an unlocked, two-round-trip read-modify-write against the
+single per-ET-day Postgres key-value row (`platform_meta` key `x_marketing_budget_<date>`):
+
+```ts
+const b = await loadDayBudget();   // SELECT
+b[action] += count;
+await saveDayBudget(b);            // UPSERT (overwrite)
+```
+
+This row is shared by **multiple separate cron routes**, not one: `x-growth-engine.ts`'s
+`runGrowthSweep` is a thin wrapper that calls the exact same `runEngagementSweep` the `x-engage`
+cron route calls directly — i.e. `src/app/api/cron/x-growth/route.ts` and
+`src/app/api/cron/x-engage/route.ts` are two independently-scheduled HTTP routes invoking the
+identical budget-consuming function — plus `src/app/api/cron/x-autopost/route.ts` and
+`src/lib/x-mention-replies.ts` (the `x-replies` cron) call `recordBudgetUse` on the same row for
+their own action types. None of these four call sites held any lock around the write, and
+`recordBudgetUse` itself had none either.
+
+If two of these processes interleave — both `loadDayBudget()` before either `saveDayBudget()`
+lands — both compute their increment from the same stale base, and the second write clobbers the
+first: one whole action's usage is silently lost (a classic "lost update"). The real X API call
+still happened; only the *recorded* count undercounts it. Since `resolveRunBudget`/`remainingDaily`
+decide how much headroom is left purely from this recorded count, the undercounted row makes the
+budget system believe there is spare capacity that is already spent — defeating the stated purpose
+of `X_DAILY_CAPS`, whose own comment is "stay under pay-per-use spend + 429 thresholds."
+
+Within a single `runEngagementSweep` invocation this was never a problem — every
+`recordBudgetUse` call there is `await`ed sequentially, never raced against itself. The race is
+strictly cross-process: two cron fires overlapping in time (or a manual run overlapping a
+scheduled one), racing the *same* `platform_meta` row.
+
+### Evidence
+
+New test `src/lib/x-rate-budget-concurrency.test.ts` mocks `@/lib/db`'s `getMeta`/`setMeta` with a
+real async gap on read (modeling an actual Postgres round-trip) so two concurrent
+`recordBudgetUse("likes")` calls both read the pre-increment value before either writes — exactly
+the interleaving a real overlapping-cron race produces — and mocks `tryAdvisoryLock`/
+`releaseAdvisoryLock` with real non-blocking, session-scoped-mutex semantics.
+
+RED→GREEN confirmed via `git stash` on `src/lib/x-rate-budget.ts` alone (test file untouched):
+- **Before the fix:** two concurrent `recordBudgetUse("likes")` calls land as `1` instead of `2`
+  (lost update); 3 concurrent different-action calls and 8 concurrent same-action calls both
+  undercount the same way (`8` increments recorded as `1`).
+- **After the fix:** all three cases land the full, correct count every time.
+
+### Blast radius
+
+Every writer of the shared per-day budget row: `x-growth`/`x-engage` (same underlying
+`runEngagementSweep`), `x-autopost`, and `x-mention-replies.ts` (the `x-replies` cron). All go
+through the one shared `recordBudgetUse` function, so the fix covers every call site with no
+further changes needed elsewhere. `resolveRunBudget`/`remainingDaily`/`getDayBudgetSnapshot` (the
+readers) needed no change — they already read whatever `recordBudgetUse` last wrote; the bug was
+entirely in what got written.
+
+### Fix
+
+Serialized the load+mutate+save critical section in `recordBudgetUse` with the same
+`tryAdvisoryLock`/`releaseAdvisoryLock` primitive this repo already uses for whole-cron-run
+dedup (`flow-ingest.ts`, `welcome-sequence/route.ts`, `membership-reconcile/route.ts`,
+`alert-outcome-sync/route.ts`, `helix-signal-outcomes/route.ts`) — a Postgres session-scoped
+advisory lock (`pg_try_advisory_lock(hashtext(...))`), held on a dedicated pooled connection for
+exactly the lifetime of one load+save. Since `tryAdvisoryLock` is non-blocking ("try", not a
+queue), wrapped it in a short bounded retry (30 attempts × 60ms ≈ 1.8s max) rather than a single
+try — the holder releases within one round-trip, so a competing caller only needs to wait out
+that one round-trip, not indefinitely. If the lock still can't be acquired after the bound (e.g. a
+genuinely stuck holder), falls back to the old unlocked behavior with a `console.warn` rather than
+silently dropping the increment forever — no worse than the pre-fix behavior, and now visible in
+logs if it ever actually fires.
+
+### Fix rationale
+
+Considered switching the whole counter to a single atomic Postgres UPSERT (e.g. JSONB
+`||`-merge-with-increment in one statement) instead of a lock — that removes the retry/backoff
+entirely, but it's materially harder to verify correct without a reachable Postgres instance in
+this sandbox (raw TCP to Postgres is blocked here per this repo's own environment notes), and this
+repo already has a proven, tested primitive for exactly this shape of problem
+(`tryAdvisoryLock`/`releaseAdvisoryLock`, used by five other call sites). Reusing it keeps the fix
+small, auditable, and consistent with the rest of the codebase rather than introducing a new
+unverified SQL pattern for a P2-severity fix. Left `loadDayBudget`/`saveDayBudget` and the
+in-memory `memoryMeta` dev/no-DB fallback untouched — `tryAdvisoryLock` already returns `true`
+unconditionally when `!dbConfigured()` (matching the existing single-process dev-mode behavior),
+so the lock is a no-op exactly where there's nothing to race against.
+
+### Tests
+
+`src/lib/x-rate-budget-concurrency.test.ts` (new, 3 cases: same-action race, different-action
+race, 8-way same-action race). Existing `src/lib/x-rate-budget.test.ts` (cap/jitter sanity),
+`src/lib/x-engage-engine.test.ts`, `src/lib/x-engage-replies.test.ts` all still pass unaffected
+(`recordBudgetUse`'s signature and call sites are unchanged). `npx tsc --noEmit` clean. `npx
+eslint` clean on both changed files.
+
+## X-marketing replied-tweet dedup set (`markTweetReplied`) had an unlocked read-modify-write — concurrent crons could silently lose an id and reply/quote-tweet the SAME tweet twice — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P1 (shared mutable state race — a lost update here produces a visible, public DUPLICATE reply/quote-tweet from the brand account, not just an internal counter drift) |
+| **Surface** | `src/lib/x-marketing-meta.ts` — `markTweetReplied`/`getRepliedTweetIds`, the shared dedup set behind `REPLIED_KEY` (`x_marketing_replied_ids`), written by `src/lib/x-engage-engine.ts` (quote/reply) and `src/lib/x-mention-replies.ts` (the `x-replies` cron) |
+| **Status** | FIXED |
+
+### Root cause
+
+`markTweetReplied(tweetId)` did an unlocked, two-round-trip read-modify-write against the
+single Postgres key-value row (`platform_meta` key `x_marketing_replied_ids`):
+
+```ts
+const set = await getRepliedTweetIds();   // SELECT
+set.add(tweetId);
+const arr = [...set].slice(-MAX_REPLIED);
+await writeMeta(REPLIED_KEY, JSON.stringify(arr)); // UPSERT (overwrite)
+```
+
+This row is shared by **multiple separate cron routes**: `src/app/api/cron/x-growth/route.ts`
+and `src/app/api/cron/x-engage/route.ts` are two independently-scheduled HTTP routes that both
+call the exact same `runEngagementSweep` (`x-growth-engine.ts`'s `runGrowthSweep` is a thin
+wrapper around it) — which calls `markTweetReplied` from `tryQuote`/`tryReply` whenever it
+quote-tweets or replies to a FinTwit post — and `src/app/api/cron/x-replies/route.ts`
+(`x-mention-replies.ts`'s `runMentionReplySweep`) calls `markTweetReplied` for every @mention
+reply it posts, on the SAME row.
+
+If two of these processes interleave — both `getRepliedTweetIds()` before either
+`writeMeta()` lands — both compute their updated set from the same stale base, and the second
+write clobbers the first: one process's tweet id is silently dropped from the dedup set (a
+classic "lost update"), exactly the same shape round 111 found and fixed in
+`x-rate-budget.ts`'s `recordBudgetUse`. The consequence here is more severe than that one:
+losing a tweet id from `REPLIED_KEY` doesn't just undercount a soft rate cap — on the NEXT
+cron run, `getRepliedTweetIds()`/`engagedIds.has(tweet.id)` no longer sees that tweet as
+already-replied-to, so the engine can reply or quote-tweet the **same tweet a second time** —
+a visible, public duplicate action posted from the `@BlackOutTrade` brand account.
+
+Within a single `runEngagementSweep`/`runMentionReplySweep` invocation this was never a
+problem — every `markTweetReplied` call there is `await`ed sequentially against its own
+in-memory `engagedIds`/`replied` Set first, so a run never double-replies to the same tweet
+*within itself*. The race is strictly cross-process: two cron fires overlapping in time (or a
+manual run overlapping a scheduled one), racing the *same* `platform_meta` row, each marking a
+DIFFERENT tweet id as replied at the same tick.
+
+### Evidence
+
+New test `src/lib/x-marketing-meta-concurrency.test.ts` (sibling of round 111's
+`x-rate-budget-concurrency.test.ts`) mocks `@/lib/db`'s `getMeta`/`setMeta` with a real async
+gap on read (modeling an actual Postgres round-trip) so two concurrent `markTweetReplied(...)`
+calls — for *different* tweet ids, as `x-growth` and `x-engage` would produce — both read the
+pre-update set before either writes, exactly the interleaving a real overlapping-cron race
+produces. Mocks `tryAdvisoryLock`/`releaseAdvisoryLock` with real non-blocking,
+session-scoped-mutex semantics.
+
+RED→GREEN confirmed via `git stash` on `src/lib/x-marketing-meta.ts` alone (test file
+untouched):
+- **Before the fix:** all 3 cases fail — two concurrent marks for different tweet ids land as
+  a set of size 1 instead of 2 (lost update); 8 concurrent marks for 8 different tweet ids land
+  as 1 instead of 8; even the "same id marked twice concurrently" case loses the OTHER
+  concurrently-marked id.
+- **After the fix:** all three cases land every id, every time.
+
+### Blast radius
+
+Every writer of the shared replied-ids row: `x-growth`/`x-engage` (same underlying
+`runEngagementSweep` → `tryQuote`/`tryReply`), and `x-replies`
+(`x-mention-replies.ts`'s `runMentionReplySweep`). All go through the one shared
+`markTweetReplied` function, so the fix covers every call site with no further changes
+needed elsewhere. `getRepliedTweetIds` (the reader) needed no change — it already reads
+whatever `markTweetReplied` last wrote; the bug was entirely in what got written. Did not
+touch the file's other read-modify-write helpers with the same unlocked shape
+(`recordPostHook`/`HOOKS_KEY`, `bumpEngageRotation`/`ENGAGE_ROTATION_KEY`,
+`getCachedFollowingUserIds`+`invalidateFollowingCache`/`FOLLOWING_CACHE_KEY`) — each of those
+races too, but a lost update there only weakens a soft content-similarity hint, repeats a
+target-rotation offset, or causes one extra cache refresh API call; none of them can cause a
+duplicate PUBLIC action the way losing a replied-tweet id does, so they're left as a
+documented, lower-severity follow-up rather than widening this single-issue PR.
+
+### Fix
+
+Serialized the load+mutate+save critical section in `markTweetReplied` with the same
+`tryAdvisoryLock`/`releaseAdvisoryLock` primitive this repo already uses for whole-cron-run
+dedup (`flow-ingest.ts`, `welcome-sequence/route.ts`, `membership-reconcile/route.ts`,
+`alert-outcome-sync/route.ts`, `helix-signal-outcomes/route.ts`) and that round 111 just added
+to `recordBudgetUse` — a Postgres session-scoped advisory lock
+(`pg_try_advisory_lock(hashtext(...))`), held on a dedicated pooled connection for exactly the
+lifetime of one load+save. Wrapped in the same short bounded retry (30 attempts × 60ms ≈ 1.8s
+max) as `recordBudgetUse`, since `tryAdvisoryLock` is non-blocking ("try", not a queue) and the
+holder releases within one round-trip. If the lock still can't be acquired after the bound,
+falls back to the old unlocked behavior with a `console.warn` rather than silently dropping
+the tweet id forever — no worse than the pre-fix behavior, and now visible in logs if it ever
+actually fires.
+
+### Fix rationale
+
+Matched round 111's fix exactly (same primitive, same retry bound, same fallback behavior)
+rather than inventing a new pattern — this is a duplicate instance of the same root cause in
+a sibling file, and the existing `tryAdvisoryLock`/`releaseAdvisoryLock` primitive is already
+proven in this codebase (five other call sites, now six with `recordBudgetUse`, seven with
+this fix). `tryAdvisoryLock` already returns `true` unconditionally when `!dbConfigured()`
+(matching the existing single-process dev-mode/`memoryMeta` fallback behavior), so the lock is
+a no-op exactly where there's nothing to race against. Left `getRepliedTweetIds`,
+`readMeta`/`writeMeta`, and the in-memory `memoryMeta` dev/no-DB fallback untouched.
+
+### Tests
+
+`src/lib/x-marketing-meta-concurrency.test.ts` (new, 3 cases: different-tweet-id race,
+8-way different-tweet-id race, same-id-raced-against-a-different-id). Existing
+`src/lib/x-marketing-meta-freshness.test.ts`, `src/lib/x-engage-engine.test.ts`,
+`src/lib/x-engage-replies.test.ts`, `src/lib/x-rate-budget.test.ts`, `src/lib/x-marketing-env.test.ts`
+all still pass unaffected (`markTweetReplied`'s signature and call sites are unchanged — 17/17
+green). `npx tsc --noEmit` clean. `npx eslint` clean on both changed files.
+
+## X-marketing recent-post-hooks dedup hint (`recordPostHook`) had an unlocked read-modify-write — overlapping posts could silently lose a hook and weaken near-duplicate content detection — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (shared mutable state race — a lost update here weakens a soft content-similarity hint, not a visible public duplicate action) |
+| **Surface** | `src/lib/x-marketing-meta.ts` — `recordPostHook`/`getRecentPostHooks`, the shared recent-hooks list behind `HOOKS_KEY` (`x_marketing_recent_hooks`), written by `src/app/api/cron/x-autopost/route.ts` (its only call site) and read by `src/lib/x-content-dedup.ts`'s `getRecentPostHooks()` consumer to steer future generated posts away from near-duplicate content |
+| **Status** | FIXED |
+
+### Root cause
+
+`recordPostHook(body)` did an unlocked, two-round-trip read-modify-write against the single
+Postgres key-value row (`platform_meta` key `x_marketing_recent_hooks`):
+
+```ts
+const prev = await getRecentPostHooks();   // SELECT
+prev.push(hook);
+await writeMeta(HOOKS_KEY, JSON.stringify(prev.slice(-MAX_HOOKS))); // UPSERT (overwrite)
+```
+
+Round 112 found and fixed the identical read-modify-write shape in the same file's
+`markTweetReplied` (`REPLIED_KEY`) and deferred this sibling as a lower-severity follow-up.
+Unlike `markTweetReplied` (written by `x-growth`/`x-engage`/`x-replies` — three separately
+scheduled cron routes sharing one row) or `recordBudgetUse` (round 111, written by every
+budget-consuming action across those same crons), `recordPostHook` has exactly **one** call
+site: `x-autopost/route.ts`'s post-success path (line ~227, right after `postTweet`/
+`tweetWithImage` succeeds). So the realistic interleaving isn't a cross-cron-type race — it's
+two overlapping invocations of that *same* route: e.g. two manual `?force=1&manual=1` triggers
+run close together (`scripts/x-marketing-run.mjs` supports exactly this), or a manual run
+racing a re-enabled scheduled fire. `checkPostGuard()` is explicitly skipped when `force=1` is
+set (`if (!dryRun && !forcePost) { ... checkPostGuard ... }`), so nothing else in the route
+prevents two such overlapping calls from both reaching `recordPostHook` with different content
+at the same tick.
+
+If two such calls interleave — both `getRecentPostHooks()` before either `writeMeta()` lands —
+both compute their updated array from the same stale base, and the second write clobbers the
+first: one process's posted hook is silently dropped from the recent-hooks list (a lost
+update). The consequence is lower-severity than `REPLIED_KEY`'s: `x-content-dedup.ts` only uses
+this list as a soft similarity hint for the *next* generated post, so a dropped hook weakens
+(does not disable) the near-duplicate check rather than causing a visible duplicate public
+action by itself.
+
+Note: X marketing crons (`x-autopost`/`x-growth`/`x-replies`/`x-intel`) have their EventBridge
+rules disabled in production as of 2026-08-28 (operator confirmed — see
+`src/lib/cron-registry.test.ts`'s `INTENTIONALLY_UNREGISTERED` map and multiple prior
+`FINDINGS.md` entries, e.g. 2026-07-29 `x-autopost cron STALE` — NO ACTION, working as
+intended). That removes the *scheduled*-fire overlap risk specifically, but manual triggers via
+`scripts/x-marketing-run.mjs`/`validate-x-marketing.mjs` (or EventBridge being re-enabled in the
+future) are unaffected by that config, so the race is real whenever the route is invoked at all,
+not merely theoretical dead code — same reasoning applied to this file's other read-modify-write
+helpers in rounds 111/112.
+
+### Evidence
+
+New test `src/lib/x-marketing-meta-hooks-concurrency.test.ts` (sibling of round 111's
+`x-rate-budget-concurrency.test.ts` and round 112's `x-marketing-meta-concurrency.test.ts`)
+mocks `@/lib/db`'s `getMeta`/`setMeta` with a real async gap on read (modeling an actual
+Postgres round-trip) so two concurrent `recordPostHook(...)` calls — for *different* bodies, as
+two overlapping `x-autopost` invocations would produce — both read the pre-update array before
+either writes. Mocks `tryAdvisoryLock`/`releaseAdvisoryLock` with real non-blocking,
+session-scoped-mutex semantics.
+
+RED→GREEN confirmed via `git stash` on `src/lib/x-marketing-meta.ts` alone (test file
+untouched):
+- **Before the fix:** 2 of 3 cases fail — two concurrent `recordPostHook` calls for different
+  bodies land as a list of size 1 instead of 2 (lost update); 8 concurrent calls land as 1
+  instead of 8.
+- **After the fix:** all three cases land every hook, every time.
+
+### Blast radius
+
+`recordPostHook` has exactly one caller (`x-autopost/route.ts`), so the fix covers the entire
+blast radius with no further changes needed elsewhere. `getRecentPostHooks` (the reader, used
+by `x-content-dedup.ts`) needed no change — it already reads whatever `recordPostHook` last
+wrote; the bug was entirely in what got written. Did not touch this file's two remaining
+unlocked read-modify-write helpers with the same shape — `bumpEngageRotation`/
+`ENGAGE_ROTATION_KEY` (lost increment just repeats a target-rotation offset, cosmetic) and
+`getCachedFollowingUserIds`+`invalidateFollowingCache`/`FOLLOWING_CACHE_KEY` (a TOCTOU on a
+cache, worst case one extra API call or briefly stale cache) — both lower stakes still, left
+as a documented follow-up per the standing single-issue-per-PR discipline.
+
+### Fix
+
+Serialized the load+mutate+save critical section in `recordPostHook` with the same
+`tryAdvisoryLock`/`releaseAdvisoryLock` primitive rounds 111/112 used for `recordBudgetUse` and
+`markTweetReplied` — a Postgres session-scoped advisory lock
+(`pg_try_advisory_lock(hashtext(...))`), held on a dedicated pooled connection for exactly the
+lifetime of one load+save. Wrapped in the same short bounded retry (30 attempts × 60ms ≈ 1.8s
+max), since `tryAdvisoryLock` is non-blocking ("try", not a queue) and the holder releases
+within one round-trip. If the lock still can't be acquired after the bound, falls back to the
+old unlocked behavior with a `console.warn` rather than silently dropping the hook forever — no
+worse than the pre-fix behavior, and now visible in logs if it ever actually fires.
+
+### Fix rationale
+
+Matched rounds 111/112's fix exactly (same primitive, same retry bound, same fallback
+behavior) rather than inventing a new pattern — this is a third instance of the same root cause
+in the same file, and the existing primitive is already proven here (now eight call sites).
+`tryAdvisoryLock` already returns `true` unconditionally when `!dbConfigured()` (matching the
+existing single-process dev-mode/`memoryMeta` fallback behavior), so the lock is a no-op
+exactly where there's nothing to race against. Used a dedicated lock key
+(`x-marketing-recent-hooks-write`) distinct from `REPLIED_WRITE_LOCK`/`BUDGET_WRITE_LOCK` so the
+three critical sections don't serialize against each other unnecessarily — they guard
+independent rows. Left `getRecentPostHooks`, `readMeta`/`writeMeta`, and the in-memory
+`memoryMeta` dev/no-DB fallback untouched.
+
+### Tests
+
+`src/lib/x-marketing-meta-hooks-concurrency.test.ts` (new, 3 cases) +
+`src/lib/x-marketing-meta-freshness.test.ts` (existing, unaffected) —
+`npx tsx --experimental-test-module-mocks --test src/lib/x-marketing-meta-hooks-concurrency.test.ts src/lib/x-marketing-meta-freshness.test.ts`
+all green. `npx tsc --noEmit` clean. `npx eslint src/lib/x-marketing-meta.ts
+src/lib/x-marketing-meta-hooks-concurrency.test.ts` clean.
+
+## X-marketing engagement-target rotation index (`bumpEngageRotation`) had an unlocked read-modify-write — concurrent crons could silently lose a rotation step — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (shared mutable state race — cosmetic: a repeated/skipped target-rotation offset, no spend/dedup/safety impact) |
+| **Surface** | `src/lib/x-marketing-meta.ts` — `bumpEngageRotation`, the shared engagement-target rotation counter behind `x-engage-engine.ts`'s `runEngagementSweep`, called from both the `x-growth` and `x-engage` cron routes |
+| **Status** | FIXED |
+
+### Root cause
+
+`bumpEngageRotation()` did an unlocked, two-round-trip read-modify-write against the single
+Postgres key-value row (`platform_meta` key `x_marketing_engage_rotation`):
+
+```ts
+const next = ((await getEngageRotationIndex()) + 1) % 1000;  // SELECT
+await writeMeta(ENGAGE_ROTATION_KEY, String(next));          // UPSERT (overwrite)
+```
+
+This row is shared by **two separate cron routes**: `src/app/api/cron/x-growth/route.ts` and
+`src/app/api/cron/x-engage/route.ts` both invoke `x-engage-engine.ts`'s `runEngagementSweep`
+directly (`x-growth-engine.ts`'s `runGrowthSweep` is a thin wrapper around the exact same
+function `x-engage`'s route calls), and every call to `runEngagementSweep` calls
+`bumpEngageRotation()` exactly once to decide which engagement targets rotate in next. Neither
+call site held any lock, and `bumpEngageRotation` itself held none either — the same
+unlocked-read-modify-write shape as `recordBudgetUse` (round 111, PR #6906) and `markTweetReplied`
+(round 112, PR #6908).
+
+If two of these processes interleave — both `getEngageRotationIndex()` before either
+`writeMeta()` lands — both compute `base + 1` from the same stale base, and the second write
+clobbers the first: one whole rotation step is silently lost (a classic "lost update"). This is
+the exact same race shape as the two already-fixed siblings, just on a lower-stakes field: the
+rotation index only decides which targets get engaged next, so a lost step means a target is
+revisited slightly sooner (or a different one slightly later) than intended — a cosmetic drift,
+not a correctness, spend, or dedup problem (unlike the budget counter undercounting real spend,
+or the replied-ids race risking a duplicate public reply/quote).
+
+### Evidence
+
+New test `src/lib/x-marketing-meta-rotation-concurrency.test.ts` mocks `@/lib/db`'s
+`getMeta`/`setMeta` with a real async gap on read (modeling an actual Postgres round-trip) so two
+concurrent `bumpEngageRotation()` calls both read the pre-increment value before either writes —
+exactly the interleaving an overlapping `x-growth`/`x-engage` race produces — and mocks
+`tryAdvisoryLock`/`releaseAdvisoryLock` with real non-blocking, session-scoped-mutex semantics.
+
+RED→GREEN confirmed via `git stash` on `src/lib/x-marketing-meta.ts` alone (test file untouched):
+- **Before the fix:** two concurrent `bumpEngageRotation()` calls from a `0` base both land as
+  `1` instead of advancing to `1` and `2` (lost update); 8 concurrent calls land the index at `1`
+  instead of `8`; two concurrent calls from a `998` base land at `999` instead of correctly
+  wrapping to `0` (one step lost at the modulo boundary too).
+- **After the fix:** all three cases advance the index by exactly one per call, every time,
+  including the wraparound case.
+
+### Blast radius
+
+The only writer of `ENGAGE_ROTATION_KEY` is `bumpEngageRotation` itself, and its only caller is
+`runEngagementSweep` — reached from both the `x-growth` and `x-engage` cron routes. The fix covers
+both call sites with no further changes needed elsewhere. `getEngageRotationIndex` (the reader)
+needed no change — it already reads whatever `bumpEngageRotation` last wrote; the bug was
+entirely in what got written.
+
+### Fix
+
+Serialized the load+mutate+save critical section in `bumpEngageRotation` with the same
+`tryAdvisoryLock`/`releaseAdvisoryLock` primitive `recordBudgetUse`/`markTweetReplied` already
+use — a Postgres session-scoped advisory lock, held on a dedicated pooled connection for exactly
+the lifetime of one load+save. Gave it its own dedicated lock key
+(`x-marketing-engage-rotation-write`), distinct from `recordBudgetUse`'s
+(`x-marketing-budget-write`) and `markTweetReplied`'s (`x-marketing-replied-ids-write`), so this
+unrelated critical section never serializes against those — the three fields are independent and
+have no reason to contend with each other. Since `tryAdvisoryLock` is non-blocking ("try", not a
+queue), wrapped it in the same short bounded retry (30 attempts × 60ms ≈ 1.8s max) used by the two
+sibling fixes — the holder releases within one round-trip, so a competing caller only needs to
+wait out that one round-trip, not indefinitely. If the lock still can't be acquired after the
+bound (e.g. a genuinely stuck holder), falls back to the old unlocked behavior with a
+`console.warn` rather than stalling the rotation forever — no worse than the pre-fix behavior, and
+now visible in logs if it ever actually fires.
+
+### Fix rationale
+
+Same rationale as the two already-merged/in-flight siblings: reuse the existing, proven
+`tryAdvisoryLock`/`releaseAdvisoryLock` primitive rather than redesigning the storage as a single
+atomic UPSERT, for consistency and because raw Postgres isn't reachable from this sandbox to
+verify a new SQL pattern. Deliberately gave this fix its own lock key rather than reusing
+`recordBudgetUse`'s or `markTweetReplied`'s — bumping the rotation index has nothing to do with
+either of those fields, and sharing a lock key across unrelated critical sections would add false
+contention (a growth sweep incrementing the budget counter would needlessly block an engage sweep
+bumping rotation, and vice versa) for no correctness benefit.
+
+Also evaluated, during round 113, whether this fix was even worth forcing given its purely
+cosmetic impact (no spend, dedup, or safety consequence) — concluded yes, now that the two
+higher-severity siblings are already fixed/in-flight: the remaining risk is zero and the fix is a
+direct, cheap copy of an already-reviewed pattern, closing out this file's known race-condition
+class rather than leaving one known-but-deferred item on it indefinitely.
+
+### Tests
+
+`src/lib/x-marketing-meta-rotation-concurrency.test.ts` (new, 3 cases: 2-way race from a 0 base,
+8-way race, 2-way race across the `998 -> 999 -> 0` modulo wraparound boundary). Existing
+`src/lib/x-rate-budget.test.ts`, `src/lib/x-rate-budget-concurrency.test.ts`,
+`src/lib/x-engage-engine.test.ts`, `src/lib/x-engage-replies.test.ts`,
+`src/lib/x-marketing-env.test.ts`, `src/lib/x-marketing-meta-freshness.test.ts` all still pass
+unaffected (`bumpEngageRotation`'s signature and call sites are unchanged). `npx tsc --noEmit`
+clean. `npx eslint` clean on both changed files.
+
+## X growth engagement's "extra search likes" pass aborted the entire remaining batch on one ordinary like failure, wasting unused like/follow/retweet budget — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (product-enhancement lane — wasted engagement budget / reduced growth-sweep throughput, no member-facing or financial impact) |
+| **Surface** | `src/lib/x-engage-engine.ts` — `runEngagementSweep`, step 3 ("Extra search likes on trending 0DTE posts"), run by both the `x-growth` and `x-engage` cron routes |
+| **Status** | FIXED |
+
+### Root cause
+
+Step 3 of `runEngagementSweep` iterates a sorted batch of trending-search candidates and liked/followed/retweeted each one:
+
+```ts
+for (const t of candidates.slice(0, likeCap + (cronMode ? 1 : 2) + followCap)) {
+  if (stats.rateLimited) break;
+  stats.scanned.push(`search:@${t.author_username}`);
+  if (!(await tryLike(t.id))) break;   // <-- the bug
+  if (followCap > 0 && t.author_id && isNewDiscoveryAuthor(t)) {
+    const followed = await tryFollow(t.author_id, t.author_username!, true);
+    if (followed) followingIds.add(t.author_id);
+  }
+  const imps = t.public_metrics?.impression_count ?? 0;
+  if (rtCap > 0) await tryRetweet(t.id, imps);
+}
+```
+
+`tryLike()` returns `false` for three completely different reasons, and this loop could not tell
+them apart:
+
+1. `likeCap <= 0` — like budget for this run is exhausted (legitimate reason to stop).
+2. `stats.rateLimited` was already `true` (legitimate reason to stop — and already checked
+   independently at the top of the loop).
+3. `likeTweet()` returned `"failed"` — the X API's `/2/users/{id}/likes` call returned some
+   non-200, non-429 response. `likeTweet()` (`src/lib/x-api.ts`) collapses *every* such response
+   (a deleted tweet, a protected/suspended author, a transient one-off 4xx/5xx) into the same
+   generic `"failed"` string — this is **not** a budget or rate-limit condition at all, it is a
+   fact about exactly one candidate tweet.
+
+`if (!(await tryLike(t.id))) break;` treated all three cases identically: the very first
+`"failed"` result for *any* candidate in the batch silently discarded every candidate behind it —
+including the follow and retweet attempts those later candidates would otherwise have received —
+even when real like/follow/retweet budget was still available and the account was never actually
+rate-limited.
+
+The other two engagement passes in the same file (`runDiscoveryPass`'s loop, and the curated
+"giants" loop) never had this shape: a failed like for one tweet there just moves on to the next
+tweet or account. Only this third, "extra search likes," loop turned one ordinary per-tweet
+failure into an early exit for the whole batch.
+
+### Evidence
+
+New test in `src/lib/x-engage-engine.test.ts` mocks `./x-api`, `./x-marketing-meta`,
+`./x-rate-budget`, and `./x-marketing-env` so `runEngagementSweep` can be driven end-to-end without
+any network/DB access. It feeds step 3 exactly two candidates (`tweetA`, `tweetB`), makes
+`likeTweet("tweetA")` resolve to `"failed"` (an ordinary non-rate-limit failure) and
+`likeTweet("tweetB")` resolve to `"ok"`, with real like/follow/retweet budget left over.
+
+RED→GREEN confirmed via `git stash` on `src/lib/x-engage-engine.ts` alone (test file untouched):
+
+- **Before the fix:** `likeTweet` is only ever called with `"tweetA"` — the loop `break`s
+  immediately after the first failure, `tweetB` is never even tried. `stats.likes === 0`,
+  `tweetB`'s author is never followed, `tweetB` is never retweeted.
+- **After the fix:** both tweets are tried (`likedIds === ["tweetA", "tweetB"]`), `stats.likes ===
+  1` (only the genuinely-successful like counts), `tweetB`'s author is followed and `tweetB` is
+  retweeted — the batch keeps going past the one ordinary failure.
+
+### Blast radius
+
+Only this one loop (`runEngagementSweep` step 3). The discovery pass and curated-giants loop
+already skip-and-continue on a failed like, so they needed no change. `x-growth-engine.ts`'s
+`runGrowthSweep` calls the same `runEngagementSweep`, so both the `x-growth` and `x-engage` cron
+routes get the fix with no further changes.
+
+### Fix rationale
+
+Kept the existing `tryLike`/budget-decrement contract untouched (no new return type, no new
+sentinel) — the loop now re-checks the two conditions that are *actually* legitimate reasons to
+stop (`stats.rateLimited`, `likeCap <= 0`) before breaking, and otherwise `continue`s to the next
+candidate on an ordinary failure rather than treating it as fatal. This mirrors exactly how the
+sibling discovery/curated-giants passes already behave, so the three passes are now consistent
+rather than one silently being far more fragile than the other two. Did not change `tryLike`
+itself, or attempt to have `likeTweet()` distinguish failure reasons more finely (e.g. a dedicated
+`"already_liked"` result) — that would be a larger, separate change to `x-api.ts`'s shared result
+type, and the budget-vs-ordinary-failure distinction this loop actually needs is already fully
+recoverable from state the loop already has (`stats.rateLimited`, `likeCap`).
+
+### Tests
+
+`src/lib/x-engage-engine.test.ts` (new `describe` block, 1 case). `npx tsc --noEmit` clean. `npx
+eslint` clean on both changed files. Also re-ran the full `x-rate-budget`/`x-marketing-meta`
+concurrency suites and the `x-engage` cron holiday-gate test — all pass unaffected (no shared
+state/signature changed).
+
+## `saveAnalyticsSnapshot` appended to `x_marketing_analytics_history` with an unlocked read-modify-write — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | X marketing analytics (`src/lib/x-marketing-meta.ts`) |
+| **Status** | FIXED (#TBD) |
+| **Severity** | P3 — correctness bug, not member-facing; weakens a trend/debugging history |
+
+### Root cause
+
+`saveAnalyticsSnapshot` (called by `collectXAnalyticsSnapshot` on every `x-analytics` cron run)
+wrote the "latest" pointer with a pure overwrite (`writeMeta(ANALYTICS_KEY, ...)` — safe, no prior
+value involved), but then appended to the rolling history with an **unlocked
+read-modify-write**: `readMeta(ANALYTICS_HISTORY_KEY)` → parse → `history.push(snap)` →
+`writeMeta(ANALYTICS_HISTORY_KEY, ...)`, two separate Postgres round-trips with no lock between
+them.
+
+This is byte-for-byte the same lost-update shape already found and fixed in this file for
+`recordPostHook` (round 113) and in `x-rate-budget.ts` for `recordBudgetUse` (round 111): if two
+callers interleave — both read the same base history array before either writes — the **second
+write clobbers the first**, and one entire analytics snapshot silently vanishes from history. The
+"latest" snapshot (`ANALYTICS_KEY`) is unaffected (each write there is self-contained), so the bug
+is invisible on the admin dashboard's "current" card and only shows up as a missing day in the
+trend history — the same "hard to notice, not hard to cause" shape the sibling fixes already
+called out.
+
+### Why this is a real, not just theoretical, interleaving
+
+`x-analytics` is scheduled once/day (`cron-registry.ts`, `schedule_cron_utc: "30 23 * * *"`), which
+on its own would make overlap rare. But `scripts/x-marketing-audit.mjs` calls
+`GET /api/cron/x-analytics` **directly, without `?dry=1`**, to pull a fresh snapshot for its own
+audit output — i.e. a real, already-committed script in this repo triggers a full
+`collectXAnalyticsSnapshot()`/`saveAnalyticsSnapshot()` run on demand, through the exact same
+cron-authorized route the scheduler uses. A manual audit run landing near the scheduled 23:30 UTC
+fire, or two overlapping manual audit runs (e.g. two agents auditing X marketing in the same
+cycle), reproduces the interleaving exactly — the same "two overlapping invocations of the same
+route" scenario the `recordPostHook` fix's own comment named as the realistic case for a
+once-call-site function.
+
+### Evidence
+
+Added `src/lib/x-marketing-meta-analytics-history-concurrency.test.ts`, modeling the real
+async-gap Postgres interleaving the same way the sibling
+`x-marketing-meta-hooks-concurrency.test.ts`/`x-rate-budget-concurrency.test.ts` do: a fake
+`getMeta` that resolves on a macrotask tick so two concurrent `saveAnalyticsSnapshot` calls both
+read the pre-update history before either writes, and a fake `tryAdvisoryLock`/
+`releaseAdvisoryLock` modeling a real Postgres session-scoped advisory lock.
+
+- **RED (pre-fix, via `git stash`):** two concurrent `saveAnalyticsSnapshot` calls → only 1 of 2
+  snapshots survived in history (confirmed by test failure: `"first concurrent snapshot must be
+  recorded — a lost update would drop it"`); the 8-concurrent-calls test similarly undercounted.
+- **GREEN (post-fix):** both/all concurrent snapshots land in history; a third test confirms the
+  "latest" pointer still correctly reflects the most recently saved snapshot (proving the fix
+  didn't accidentally serialize or break that independent overwrite path).
+
+### Fix
+
+Wrapped the `ANALYTICS_HISTORY_KEY` read+append+write in the same
+`tryAdvisoryLock`/`releaseAdvisoryLock` critical section already used for `HOOKS_WRITE_LOCK`
+(`recordPostHook`) and `BUDGET_WRITE_LOCK` (`recordBudgetUse`) in this codebase — a new
+`ANALYTICS_HISTORY_WRITE_LOCK` global key, bounded retry (30 attempts × 60ms), with the same
+"could not acquire lock → fall back to the old unlocked behavior rather than dropping the
+snapshot forever, and log it" degradation path as its siblings. The `ANALYTICS_KEY` ("latest")
+write is left untouched/unlocked — it's a pure overwrite with no read dependency, so locking it
+would add contention for no correctness benefit.
+
+### Blast radius
+
+Single call site (`collectXAnalyticsSnapshot` → `saveAnalyticsSnapshot`), single file. No other
+consumer of `ANALYTICS_HISTORY_KEY`/`getAnalyticsHistory` writes to it, so no other code path needed
+touching.
+
+## Welcome-sequence drip injects a Clerk first name unescaped into email HTML — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | `src/lib/email/templates/welcome-sequence.ts` |
+| **Severity** | P2 (self-XSS in an HTML email client; highest-volume template — fires on every signup) |
+| **Status** | FIXED |
+| **PR** | fix/welcome-sequence-firstname-xss |
+
+### Root cause
+
+`welcome-sequence.ts` defines its own local `personalize()` helper for the `{{firstName}}`
+token used throughout its 5-step signup drip:
+
+```ts
+function personalize(text: string, ctx: WelcomeEmailContext): string {
+  const name = ctx.firstName?.trim() || "Trader";
+  return text.replace(/\{\{firstName\}\}/g, name);
+}
+```
+
+This is a bare, unescaped string substitution. `ctx.firstName` is not arbitrary server data —
+it comes straight off the Clerk `user.created` webhook's `data.first_name`
+(`src/app/api/webhooks/clerk/route.ts:152,192`), i.e. a member's own self-settable Clerk profile
+field, with no HTML-safety validation on Clerk's side. The substituted text is then interpolated
+directly into raw HTML template strings (`h1()`, `p()`, `closing()`, the subject line) with no
+further escaping. A member who sets their Clerk first name to `<script>alert(1)</script>` or
+`"><img src=x onerror=alert(1)>` gets that markup rendered live, unescaped, into every one of
+this drip's 5 emails — sent automatically, immediately on signup, to that same member's inbox.
+
+This is the exact field and exact risk `src/lib/email/layout.ts`'s own `substituteTokens`/
+`escapeHtml` were built to close (see that file's own comment: *"firstName is read from the
+member's own self-settable Clerk profile... an unescaped value would let `<script>`/`onerror=`
+markup in a display name reach rendered email HTML"*), and every OTHER billing-lifecycle template
+in the same directory already routes `firstName` through that shared, escaped helper:
+
+```
+welcome-premium.ts, downgrade.ts, scheduled-cancel.ts, payment-failed.ts,
+access-ended.ts, welcome-community.ts, cancel-reversed.ts, trial-ending-soon.ts
+```
+
+— all `import { substituteTokens } from "@/lib/email/layout"` and build a local `t = (s) =>
+substituteTokens(s, tokens)`. `welcome-sequence.ts` alone reimplemented substitution by hand
+and never got the escaping. Confirmed against a freshly-fetched `origin/main` before filing this
+— the gap is real and current, not something an earlier round already closed.
+
+### Why it wasn't caught earlier
+
+The earlier XSS fix (PR #6844, referenced in `layout.ts`'s own comments) fixed
+`substituteTokens` itself. That closed the gap for every template that *calls*
+`substituteTokens` — but `welcome-sequence.ts` never called it; it had a parallel,
+independently-written substitution function with the same token syntax (`{{firstName}}`) but
+none of the escaping. A fix to the shared helper cannot cover a caller that bypasses the helper
+entirely, and nothing in this repo's test suite exercised `welcome-sequence.ts`'s `personalize()`
+with an HTML-significant name before this finding (`layout.test.ts` tests `substituteTokens`
+directly, not this file's local reimplementation of the same idea).
+
+### Blast radius
+
+All 5 steps of `WELCOME_SEQUENCE` (`src/lib/email/templates/welcome-sequence.ts`) use
+`personalize()` for both their HTML body and their subject line — every step was affected, not
+just step 1. This is also the single highest-volume template in the directory: it fires
+automatically for every new signup (`startWelcomeSequence`, wired off the Clerk `user.created`
+webhook) and again for steps 2-5 via the `welcome-sequence` cron
+(`src/app/api/cron/welcome-sequence/route.ts`), so every member who ever set an HTML-significant
+Clerk display name would have received injected markup in their own inbox on every run.
+
+### Fix
+
+`personalize()` now delegates to `layout.ts`'s `substituteTokens` (the same shared, HTML-escaped
+helper every sibling template already uses) instead of a bare `.replace()`. Behavior for an
+ordinary plain-text name is byte-for-byte unchanged (`substituteTokens` is a drop-in `{{token}}`
+substitution); an HTML-significant name is now escaped to display text instead of rendering as
+markup, matching the established pattern.
+
+### Evidence (RED → GREEN)
+
+Added `src/lib/email/templates/welcome-sequence-firstname-xss.test.ts`:
+- Before the fix: building any of the 5 steps with
+  `firstName: "<script>alert('x')</script>"` produced HTML (and a subject, for the steps whose
+  subject carries `{{firstName}}`) containing a literal, un-escaped `<script>` tag — 2 of 3 new
+  tests failed (RED, confirmed via a real pre-fix run of the new test file).
+- After the fix: the same payload comes back HTML-escaped (`&lt;script&gt;...`), an
+  `onerror=` attribute-injection attempt is likewise neutralized, and a plain name (`"Alex"`)
+  still renders exactly as before — all 3 new tests pass (GREEN).
+- Full existing suite for the touched area re-run clean: `welcome-sequence.test.ts` (25/25),
+  `welcome-sequence-day4-product-count.test.ts`, `welcome-sequence-day6-track-record-link.test.ts`,
+  `layout.test.ts`, every `*.test.ts` under `src/lib/email/`, `src/app/api/cron/welcome-sequence/`,
+  and `src/app/api/webhooks/clerk/` — 0 failures.
+- `npx tsc --noEmit` clean; `npx eslint` clean on both changed files.
+
+### Fix rationale
+
+Reused the existing, already-tested `substituteTokens` rather than hand-rolling a second escape
+routine inside this file — it is the exact helper every sibling template already relies on for
+this same token, so this fix makes `welcome-sequence.ts` consistent with the rest of the
+directory instead of introducing a third substitution implementation. No gate, schedule, or
+copy/content changed — only how the one dynamic token in this file's copy gets substituted.
+
+## Vector chart fib-retracement drawings had a time-UNBOUNDED hit test — clicking anywhere along a fib price level, even far outside the drawn segment, could select/delete the wrong drawing — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (member-visible UI defect — wrong select/delete target on the Vector chart's drawing layer; no data integrity or financial-correctness impact) |
+| **Surface** | `src/features/vector/lib/vector-drawings.ts` — `hitTestDrawing`'s `"fib"` case, used by `useVectorChartDrawings`'s select-tool click handler (`handleChartClick` → `hitTestDrawing`) and keyboard Delete/Backspace on the Vector desk's chart drawing toolbar |
+| **Status** | FIXED |
+
+### Root cause
+
+`hitTestDrawing` scores how close a chart click is to each persisted drawing so the `"select"`
+tool (and keyboard Delete) picks the right one. Every other multi-point drawing kind bounds its
+score by how far the click is from the drawing's actual geometry in BOTH time and price:
+`"trend"`/`"ray"` use `dist2ToSegment` (which clamps the projection to the segment, so distance
+grows the farther past either endpoint you click), `"rect"` explicitly tests time+price bounds,
+`"text"`/`"vline"` score on `(t - d.t)` and `(p - d.price)` together. `"hline"` is the one
+legitimate exception — it scores on price alone, because an hline is rendered as a horizontal
+price line spanning the *entire* chart width (`applyUserHLines`), so "no time bound" correctly
+matches what's drawn.
+
+`"fib"` was scored exactly like `"hline"` — price only, zero consideration of `t` — but a fib is
+**not** rendered like an hline. `vector-drawings-primitive.ts`'s `project()` draws each fib
+retracement level as a horizontal line segment bounded to `[tLo, tHi]` (`Math.min/max(d.t1, d.t2)`
+→ `ts.timeToCoordinate(tLo)`/`timeToCoordinate(tHi)`), i.e. only across the time range the member
+actually dragged the tool over. The hit test's extent therefore did not match the rendered extent:
+a click at *any* time coordinate on the chart, as long as the price matched one of the fib's
+0/23.6/38.2/50/61.8/78.6/100% levels, scored as a hit (`((p - price) / tolPrice) ** 2`, which is
+`0` regardless of `t`).
+
+Concretely: draw a fib between 9:30am and 9:35am at prices 100→200. At 3:00pm, clicking anywhere
+near price 100 (the 0% level) — nowhere near the visually-drawn segment, which only spans those
+five minutes — still registers a hit on that fib in `hitTestDrawing`. In `"select"` mode this
+silently selects a drawing nowhere near the actual click; combined with keyboard Delete, a member
+trying to delete something else near that price (or trying to draw a NEW fib at that price level)
+could instead select and delete the old, unrelated fib with no visual cue why.
+
+### Evidence
+
+New test in `src/features/vector/lib/vector-drawings.test.ts`:
+```ts
+test("hitTestDrawing: fib hit test is bounded by the drawn [t1,t2] range, not infinite", () => {
+  const fib = { id: "fib-1", kind: "fib", color: "cyan", createdAt: 1, t1: 1000, p1: 100, t2: 1100, p2: 200 };
+  assert.equal(hitTestDrawing([fib], 1050, 100, 60, 2), "fib-1"); // inside the drawn range — real hit
+  assert.equal(hitTestDrawing([fib], 5000, 100, 60, 2), null);    // ~65min past t2 — must not hit
+});
+```
+RED→GREEN confirmed via `git stash` on `src/features/vector/lib/vector-drawings.ts` alone (test
+file untouched):
+- **Before the fix:** both assertions pass individually but the second one (`t=5000`, 3900s past
+  the fib's own `t2=1100`) returns `"fib-1"` instead of `null` — the old code ignores `t` entirely
+  for the `"fib"` case, so it fails the "must not hit" assertion.
+- **After the fix:** both assertions pass — in-range click still hits, far-outside click does not.
+
+### Blast radius
+
+Only the `"fib"` case of `hitTestDrawing` changed. `"hline"`/`"trend"`/`"ray"`/`"rect"`/`"text"`/
+`"vline"` cases are untouched (verified by re-running the full existing
+`vector-drawings.test.ts` suite — 9/9 pass, including the pre-existing `hitTestDrawing: finds
+nearest hline` case, confirming the hline path's intentional time-independence is unaffected).
+`hitTestDrawing`'s only caller is `useVectorChartDrawings`'s select-tool click handler
+(`src/features/vector/lib/use-vector-chart-drawings.ts`); no other file calls it. Rendering
+(`vector-drawings-primitive.ts`) and persistence (`vector-drawings-store.ts`) are untouched —
+this is purely a hit-test-vs-render-extent mismatch fix, not a data-shape change.
+
+### Fix rationale
+
+Added a time-out-of-range penalty (`tOut`, `0` when the click's `t` is inside `[tLo, tHi]`, else
+the distance past the nearer boundary) to each fib level's score, combined with the existing
+price-distance term the same way `"text"`/`"vline"` already combine time+price:
+`(tOut / tolTimeSec) ** 2 + ((p - price) / tolPrice) ** 2`. Inside the drawn range this adds
+exactly `0`, so in-range hit sensitivity is byte-identical to before the fix — only the
+out-of-range case changes. Considered reusing `dist2ToSegment(t, p, tLo, price, tHi, price) /
+tol2` (treating each level as a horizontal segment, matching the `"rect"`/`"trend"` style more
+literally) but it changes the in-range price-distance scale (`tol2 = tolTimeSec² + tolPrice²`
+instead of the existing `tolPrice²` alone), which would silently loosen in-range fib-selection
+sensitivity as a side effect of fixing the out-of-range case — the simpler additive-penalty form
+avoids that and keeps the diff minimal and easy to verify.
+
+### Tests
+
+`src/features/vector/lib/vector-drawings.test.ts` (new case added, full file: 9/9 pass).
+`npx tsc --noEmit` clean. `npx eslint src/features/vector/lib/vector-drawings.ts
+src/features/vector/lib/vector-drawings.test.ts` clean.
+
+## `setToolAccessForUserId` unlocked read-modify-write on Clerk `publicMetadata` — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED (`fix/tool-access-metadata-race`)
+
+**Area:** `src/lib/tool-access-server.ts` — admin tool-access overrides (consumed by
+`POST /api/admin/users/tools/bulk` and the single-user `PATCH /api/admin/users/[id]`
+`toolAccess` path).
+
+### Root cause
+
+`setToolAccessForUserId` read a user's ENTIRE Clerk `publicMetadata` object
+(`client.users.getUser(userId)`), spread it into a local copy, set/deleted `tool_access` on that
+copy, then wrote the WHOLE copy back via `client.users.updateUserMetadata`:
+
+```ts
+const user = await client.users.getUser(userId);
+const meta = { ...(user.publicMetadata as Record<string, unknown>) };
+// ...set/delete meta.tool_access...
+await client.users.updateUserMetadata(userId, { publicMetadata: meta });
+```
+
+Clerk's `updateUserMetadata` performs a server-side top-level MERGE of whatever keys are present
+in the payload — a key present overwrites, `null` removes it, every other key is left untouched.
+Two OTHER functions in this exact codebase already document relying on this specifically to avoid
+a read-modify-write race:
+
+- `updateClerkMembershipMetadata` (`src/lib/membership.ts`): *"Use updateUserMetadata (not
+  updateUser) so Clerk performs a server-side deep-merge of publicMetadata rather than a full
+  overwrite. This eliminates the read-modify-write race where two concurrent calls could each
+  read stale metadata and overwrite each other's changes."*
+- `setPersonalWebhook` (`src/lib/personal-alert-store.ts`): sends only
+  `{ [PERSONAL_WEBHOOK_META_KEY]: value | null }`, never a full snapshot.
+
+`setToolAccessForUserId` was the one place in the Clerk-metadata surface that didn't follow this
+pattern: by reading the full object first and resending every key (including ones it had no
+business touching), it reintroduced exactly the race those two sibling functions were written to
+avoid. Any top-level field that changed concurrently between this function's `getUser` read and
+its `updateUserMetadata` write (`tier`, `role`, `whop_user_id`, `whop_membership_id`,
+`membership_kind`, `tier_managed_by`) got silently reverted to the stale value this function
+re-sent, because that stale value was explicitly present in its merge payload — not because Clerk
+failed to merge, but because the payload itself carried the wrong (stale) value for that key.
+
+### Evidence
+
+Reproduced with a fake Clerk client that models Clerk's own documented merge semantics (present
+key overwrites, `null` removes, nothing else touched) and forces a real async gap inside `getUser`
+so a concurrent "webhook" write can land in the window between this function's read and its write
+— see `src/lib/tool-access-server-metadata-race.test.ts`.
+
+- RED (pre-fix, via `git stash` on the fix alone): the old code's structure — reading the full
+  object then writing it back — fails under the reproduction (the test's mocked Clerk client
+  shows the concurrent `tier` change getting clobbered back to the stale pre-webhook value).
+- GREEN (post-fix): a concurrent `tier`/`role` change made mid-flight by another caller survives
+  a `setToolAccessForUserId` call, and the `tool_access` update itself still lands correctly
+  (both the grant and the clear-to-empty path).
+
+### Blast radius
+
+Both call sites of `setToolAccessForUserId` are affected:
+
+- `POST /api/admin/users/tools/bulk` — iterates up to 500 users per run (paged 100 at a time
+  through Clerk's API), calling `setToolAccessForUserId` once per matching user. A real,
+  non-trivial window during which a concurrent Whop webhook
+  (`membership.activated`/`deactivated` → `updateClerkMembershipMetadata`) touching the SAME
+  user's `tier` could have its change silently reverted by this function's stale resend.
+- `PATCH /api/admin/users/[id]` (the `toolAccess` body field) — a single-user edit, smaller
+  window but the same shape, and reachable concurrently with the bulk route or a webhook for the
+  same user.
+
+### Fix rationale
+
+Stop doing the read-modify-write entirely rather than adding a lock: Clerk's API has no
+transactional/locking primitive to take a lock against, and a lock would not even be the right
+fix here — the actual problem is that the function was sending data it didn't need to send.
+Compute the intended `tool_access` value and send ONLY that key (`null` to clear it), matching the
+already-established pattern in `updateClerkMembershipMetadata` and `setPersonalWebhook`. This also
+removes an unnecessary `client.users.getUser` round-trip per call (a secondary performance win,
+not the primary motivation) and replaces the inline dynamic `import("@/lib/clerk-user-cache")`
+with the module's existing static import (already imported for `getClerkUserCached`), since the
+function no longer has any other reason to delay that import.
+
+### Test
+
+`src/lib/tool-access-server-metadata-race.test.ts` — two cases: a concurrent `tier` change
+surviving a `tool_access` grant, and a concurrent `role` promotion surviving a `tool_access`
+clear-to-inherit (empty map).
+
+## `src/lib/tier-cache.ts` — `invalidateTierCache`/`publishTierChanged` don't guard an in-flight `resolveUserTier` fetch — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | Fixed |
+| **File** | `src/lib/tier-cache.ts` |
+| **Severity** | P2 — can re-grant a stale (including downgraded) tier for up to the full 60s TTL after an explicit, supposedly-instant invalidation |
+| **Found** | 2026-10-26, round 120 discovery sweep — a sibling-check follow-up explicitly flagged by round 118/119 (the `clerk-user-cache.ts` write-then-invalidate race, PR #6918): "check whether any OTHER cache in the codebase has the same shape." |
+
+### Root cause
+
+`resolveUserTier()` is a classic cache-miss-then-fetch-then-cache function:
+
+```js
+const user = await getClerkUserCached(userId);
+const tier = parseTier(user.publicMetadata?.tier);
+setTierCache(userId, tier);
+```
+
+`invalidateTierCache(userId)` (and `publishTierChanged`, which calls it) is documented as giving
+"immediate cross-replica invalidation" after a confirmed Whop/Clerk metadata write — e.g. a
+subscription downgrade webhook writes the new tier to Clerk then calls `publishTierChanged(userId)`
+so every replica's next read sees `free` right away instead of waiting out the 60s TTL.
+
+But `invalidateTierCache` can only clear what is **already sitting in `tierCache`** — it has no way
+to reach a `resolveUserTier()` call that started **earlier** (and is therefore mid-flight, reading
+Clerk's **pre-write** state) and stop it from completing afterward. Without a guard, that in-flight
+call's `setTierCache(userId, tier)` runs unconditionally once its Clerk round-trip resolves,
+re-caching the exact pre-downgrade tier — e.g. `premium` — right after the invalidation that was
+supposed to make the downgrade visible instantly. The next TTL_MS (60s) of requests on that replica
+then see the stale, already-downgraded-away tier, directly contradicting the "instant" guarantee
+`publishTierChanged`'s own doc comment promises.
+
+This is the identical shape to the `getClerkUserCached`/`invalidateClerkUserCache` race PR #6918
+fixed one layer down — `tier-cache.ts` builds its own, separate cache (`tierCache`) *on top of*
+`clerk-user-cache.ts`'s cache, with its own independent invalidation path, so fixing the lower layer
+did not fix this one; the two caches needed the same fix independently.
+
+### Evidence
+
+New test file `src/lib/tier-cache-invalidate-race.test.ts`, mocking `getClerkUserCached` with a
+manually-controlled deferred promise to reproduce the exact interleaving:
+
+1. Call `resolveUserTier(userId)` — it reaches its `await getClerkUserCached(userId)` and is left
+   pending (the mock fetch has not resolved yet).
+2. While still pending, call `invalidateTierCache(userId)` — simulating the downgrade webhook's
+   write-then-invalidate landing concurrently.
+3. Resolve the pending mock fetch with the OLD (`premium`) tier. The first call completes and
+   correctly returns `premium` to its own caller (it can't un-ask a question it already asked).
+4. Call `resolveUserTier(userId)` again, with a fresh mock armed to return the CURRENT (`free`)
+   tier.
+
+**RED** (fix stashed out, `git stash -- src/lib/tier-cache.ts`): step 4 reads directly from a
+cache entry the stale step-3 fetch wrote, serves `premium` without ever calling Clerk again, and
+the assertion fails: `must re-consult Clerk on the next call rather than serving a tier cached from
+the stale in-flight fetch`.
+
+**GREEN** (fix restored): step 4 correctly re-consults Clerk (`getUserCalls` increases) and returns
+`free`.
+
+Full affected-suite rerun, all green (65/65): the new test plus every existing `tier-cache*`,
+`auth-access-tier-gate`, `market-api-auth-tier-gate`, `sse-stream-entitlement*`,
+`membership-reconcile-downgrade`, `gated-route-redirects`, `admin-user-access`, `auth-server`, and
+the Whop/Clerk/membership webhook route tests that exercise `resolveUserTier`/`publishTierChanged`
+indirectly. `npx tsc --noEmit` and `npx eslint src/lib/tier-cache.ts
+src/lib/tier-cache-invalidate-race.test.ts` both clean.
+
+### Blast radius
+
+`resolveUserTier()` is the single read path shared by `requireTier()` (page gate) and
+`requireTierApi()` (market-data API gate) — every tier-gated page render and every protected API
+call goes through this one cache. `invalidateTierCache`/`publishTierChanged` are called from the
+Whop webhook route, the Clerk webhook route, the admin user-sync route, and the membership-sync
+route — any of these racing a concurrent page render/API call on the same ECS replica during the
+~60s TTL window is exposed. No other call site needed changes; `setTierCache`/`setTierFailCache`
+themselves were already correct (plain LRU-bounded Map writes) — the bug was entirely in
+`resolveUserTier` writing to them without checking whether an invalidation happened mid-flight.
+
+### Fix rationale
+
+Mirrored `clerk-user-cache.ts`'s own fix exactly: a monotonic `tierInvalidationSeq` counter, bumped
+by every `invalidateTierCache()` call (and therefore by `publishTierChanged`, which calls it).
+`resolveUserTier` captures the counter immediately before its Clerk fetch and only writes to
+`tierCache`/`tierFailCache` if nothing invalidated in the meantime — on either the success path
+(`setTierCache`) or the failure path (`setTierFailCache`, so a stale-fetch failure doesn't impose an
+unwarranted 15s backoff right after an invalidation asked for an immediate retry). The function
+still *returns* whatever it actually read to its own caller in both cases — a caller can't un-ask a
+question it asked before the write landed — the fix only prevents that known-stale read from being
+written into the SHARED cache for every subsequent caller on that replica.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+## Thermal Discord breach-state (`runThermalBreachAlerts`) had an unlocked read-modify-write — overlapping main-cron/5m-poller ticks could lose a crossing's dedup slot and re-fire a duplicate Discord alert — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 (shared mutable state race — a lost update produces a visible, duplicate public Discord post, the same severity class as the X-marketing `markTweetReplied` fix, round 112) |
+| **Surface** | `src/lib/thermal-discord-run.ts` — `runThermalBreachAlerts`, the single shared `thermal-discord:breach-state:v1` Redis key (`THERMAL_BREACH_STATE_KEY`, `src/lib/thermal-discord-breach-state.ts`), read by both `/api/cron/thermal-discord`'s main 15-minute schedule and its own `?breach_only=1` 5-minute breach poller |
+| **Status** | FIXED |
+
+### Root cause
+
+`runThermalBreachAlerts` did an unlocked, multi-round-trip read-modify-write against a single
+shared Redis row:
+
+```ts
+let state = await loadThermalBreachState();            // GET
+for (const ev of detected) {
+  const { alerts, state: nextState } = filterNewBreachAlerts([ev], state);
+  if (!alerts.length) continue;
+  const ok = await postDiscordWebhook(...);             // network round-trip, inside the window
+  if (ok) state = nextState;
+}
+await saveThermalBreachState(state);                    // SET (overwrite)
+```
+
+`thermal-discord-run.ts`'s own top-of-file comment says exactly who calls this: "Cache-reader
+only; **shared by main cron + 5m breach poller**." Both are independent EventBridge schedules
+that fire the SAME `/api/cron/thermal-discord` route (`route.ts` line 125,
+`breachResult = await runThermalBreachAlerts(webhook, columns)`), with no coordination between
+them. The main cron's 15-minute cadence (`:00/:15/:30/:45`) and the poller's 5-minute cadence
+(`:00/:05/:10/:15/...`) land on the SAME wall-clock minute every 15 minutes — a real, scheduled
+overlap, not a hypothetical one — and nothing in the route or `runThermalBreachAlerts` prevents
+both invocations from executing concurrently.
+
+`filterNewBreachAlerts` merges a NEW crossing into the OLD `state` in application code (not an
+atomic DB operation), so two overlapping calls that both read the same base `state` before
+either saves produce two distinct failure shapes:
+
+1. **Duplicate alert for the SAME crossing.** If both calls detect the identical crossing (e.g.
+   both fetch columns close enough in time that both see SPY's flip now above its prior level),
+   both independently compute `prev !== side` off the same stale `state` and both post —
+   members see the same breach announced twice.
+2. **Silently discarded state for a DIFFERENT crossing (the more insidious case).** If the main
+   cron detects SPY's flip cross while the poller, off its own slightly-later fetch, detects
+   QQQ's call-wall break, each call computes its OWN `nextState` from the SAME base and saves it
+   — whichever save lands last **overwrites the other's update entirely**, because the save is a
+   full-object overwrite, not a merge. The call whose write was clobbered leaves its crossing
+   unmarked in the durably-saved state, so the NEXT tick re-detects it as "new" again and
+   double-posts a crossing that should already have been marked seen.
+
+This is the same unlocked-RMW shape rounds 111-114 already found and fixed in
+`src/lib/x-marketing-meta.ts`/`x-rate-budget.ts` (per-process-type cron races) and
+`src/lib/providers/gex-regime-events.ts` (concurrent per-ticker builds sharing one global
+cursor row) — here the two concurrent callers are two DIFFERENT cron schedules sharing one
+route and one Redis key, closest in shape to the `markTweetReplied` case (three cron routes
+racing one row) rather than the single-call-site `recordPostHook` case.
+
+### Evidence
+
+New test `src/lib/thermal-discord-breach-lock-concurrency.test.ts` mocks
+`loadThermalBreachState`/`saveThermalBreachState` with a real async gap on read (modeling an
+actual Redis round-trip) and `tryAdvisoryLock`/`releaseAdvisoryLock` with real non-blocking,
+process-wide-mutex semantics — the same harness shape as the X-marketing/GEX regression tests.
+
+RED→GREEN confirmed via `git stash` on `src/lib/thermal-discord-run.ts` alone (test file
+untouched):
+- **Before the fix:** 2 of 3 cases fail. Two concurrent calls detecting DIFFERENT crossings
+  (SPY flip + QQQ call-wall) land with only ONE of the two states persisted — the other is
+  silently discarded exactly as described above. Five concurrent calls across five tickers land
+  with only one ticker's state saved instead of five.
+- **After the fix:** all three cases pass — every concurrent call's crossing lands in the final
+  saved state, and the pre-existing "a failed webhook must not burn the alert slot" behavior is
+  preserved unchanged under the lock.
+
+### Blast radius
+
+`runThermalBreachAlerts` has exactly one call site (`/api/cron/thermal-discord/route.ts`), so
+the fix covers the entire blast radius with no further changes needed elsewhere. The sibling
+`THERMAL_SPOT_META_KEY` read/write in the same function (`loadThermalSpotMeta`/
+`persistSpotSnapshotAfterTick`) was deliberately left untouched: its write is a pure overwrite
+of freshly-fetched spot values (never merged against the old value it read), so two concurrent
+writers landing in either order both leave a materially-current snapshot — the same
+idempotent-last-write-wins shape this repo's cron-DST audit already treats as correct (not a
+race), unlike the breach-state merge this fix addresses. `runThermalScheduledPost`'s
+`THERMAL_DISCORD_WALLS_KEY` read/write (same file) has the identical pure-overwrite shape and
+is also not reachable from the breach-only poller path (`breachOnly` returns early in the
+route, before `runThermalScheduledPost` is ever called), so it was not in scope either.
+
+### Fix
+
+Wrapped the load→per-event-diff→post→save critical section in `runThermalBreachAlerts` with
+the same `tryAdvisoryLock`/`releaseAdvisoryLock` primitive used by the four prior fixes — a
+Postgres session-scoped advisory lock (`pg_try_advisory_lock(hashtext(...))`), held for the
+lifetime of one load+save cycle (including the webhook POSTs inside it, matching the existing
+per-event "a failed webhook must not burn the alert slot" semantics exactly). Same bounded
+retry (30 attempts × 60ms ≈ 1.8s max). If the lock still can't be acquired after the bound,
+falls back to the old unlocked behavior with a `console.warn` rather than dropping a session's
+breach alerts entirely — no worse than the pre-fix behavior, now visible in logs if it ever
+fires.
+
+### Fix rationale
+
+Matched the established primitive/retry-bound/fallback shape from rounds 111-114 rather than
+inventing a new one — proven in four prior instances of this exact bug class. Used a new,
+dedicated lock key (`thermal-discord-breach-state-write`) distinct from all five prior fixes'
+keys (`x-marketing-budget-write`, the `REPLIED_KEY`/`HOOKS_KEY`/`ENGAGE_ROTATION_KEY` locks, and
+the GEX regime-event cursor lock) so this critical section doesn't serialize against unrelated
+ones. Considered narrowing the lock to exclude the webhook POST calls (acquire → compute+save
+the diff → release → post afterward), but that would reopen failure mode #1 above (two
+overlapping calls could still both decide the same crossing is "new" and both post) while also
+requiring a second lock acquisition to "unclaim" a slot on a failed post — more moving parts for
+no correctness gain, since the realistic contention window (two cron schedules landing on the
+same minute, a handful of breach events at most) is short enough that holding the lock through
+the loop is the simpler, equally correct choice. Left `filterNewBreachAlerts`,
+`loadThermalBreachState`/`saveThermalBreachState` themselves, and `loadThermalSpotMeta`/
+`persistSpotSnapshotAfterTick` untouched.
+
+### Tests
+
+`src/lib/thermal-discord-breach-lock-concurrency.test.ts` (new, 3 cases) +
+`src/lib/thermal-discord-breach-state.test.ts`, `src/lib/thermal-discord-eod.test.ts`,
+`src/lib/thermal-discord-embed.test.ts`, `src/lib/thermal-discord-card.test.ts` (existing,
+unaffected) +
+`src/app/api/cron/thermal-discord/thermal-discord-dedup.test.ts`,
+`thermal-discord-columns.test.ts`, `thermal-discord-rth.test.ts` (existing, unaffected) —
+`npx tsx --experimental-test-module-mocks --test <all of the above>` all green. `npx tsc
+--noEmit` clean. `npx eslint src/lib/thermal-discord-run.ts
+src/lib/thermal-discord-breach-lock-concurrency.test.ts` clean.
+
+## `scripts/seo/syndicate-articles.mjs` — `--limit=0` silently posted one article anyway — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | Fixed |
+| **File** | `scripts/seo/syndicate-articles.mjs` |
+| **Severity** | P3 (narrow — only on a manual `workflow_dispatch` with that exact flag) |
+| **Found** | 2026-10-26, round 120 discovery sweep, follow-up flagged by round 119 |
+
+### Root cause
+
+`main()`'s limit parsing used the classic falsy-fallback bug:
+
+```js
+const limit = Number((args.find((a) => a.startsWith("--limit=")) || "").split("=")[1]) || 1;
+```
+
+`0` is falsy in JavaScript, so `Number("0") || 1` evaluates to `1`. An operator who deliberately
+passes `--limit=0` on a manual trigger (e.g. to pause posting for one run without touching the
+schedule itself) got `limit = 1` instead — the script posted exactly one article, the opposite of
+what `--limit=0` is supposed to mean. This sits in the exact same file PR #6920 (round 119) fixed a
+different, more severe bug in (fail-open duplicate-posting on a fetch failure); this is an
+independent, narrower issue in the CLI arg parsing, not a re-touch of that fix.
+
+### Evidence
+
+New test `parseLimitArg honors an explicit --limit=0 (operator pause) instead of falling back to 1`
+in `scripts/seo/syndicate-articles.test.ts`. RED→GREEN proof via `git stash`:
+- With the fix stashed out (old inline expression restored), the two new `parseLimitArg` tests
+  fail: `parseLimitArg is not a function` (pre-fix, the helper didn't exist as a separable, testable
+  unit at all — the logic was buried inline in `main()`).
+- With the fix restored, all 12 tests in the file pass, including:
+  - `parseLimitArg(["--limit=0"])` → `0` (not `1`).
+  - `pickToSyndicate(arts, new Set(), parseLimitArg(["--limit=0"]))` → `[]` (actually limits
+    selection to nothing, not just that the parsed number reads as 0 in isolation).
+  - Fallback still correctly applies for a missing flag, an unparseable value (`--limit=abc`), and
+    a present-but-empty value (`--limit=` with nothing after `=`).
+  - A normal positive `--limit=5` still parses to `5`.
+
+### Blast radius
+
+Single call site — `main()`'s own `const limit = ...` line is the only place this parsing happened.
+`pickToSyndicate(articles, alreadyPostedCanonicals, limit)` itself was already correct (`.slice(0,
+0)` legitimately returns `[]`); the bug was entirely upstream, in never actually producing a `0` to
+pass it.
+
+### Fix rationale
+
+Extracted the parsing into a small, exported, independently-testable `parseLimitArg(args,
+defaultLimit = 1)` function, replacing the inline `||`-based fallback with an explicit
+`Number.isFinite(n) ? n : defaultLimit` check — this only falls back when the flag is absent, has no
+value after `=`, or doesn't parse to a finite number, never on a legitimately-parsed `0`. Negative
+limits are deliberately left out of scope: `Number("-1")` was already truthy under the old code (so
+a negative limit already passed through unchanged before this fix), and `pickToSyndicate`'s own
+`.slice(0, limit)` behavior on a negative limit is a separate, pre-existing question not raised by
+this finding.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+## Swing thesis-health `regimeScore()` borrowed a DIFFERENT pillar's factor/label whenever `regime` was null and that pillar happened to score higher than the real "Regime" factor — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 (fabricated-looking calibrated read under the "Regime fit" heading — a member-facing correctness defect in Ask Largo's Thesis Health panel for swing positions, same C6-violation class as the Banger-ledger regime sentinel bug this file's own header comment already documents) |
+| **Surface** | `src/lib/swing/thesis-health.ts` — `regimeScore()`, consumed by `computeSwingThesisHealth()` and rendered by `src/features/nighthawk/command-deck/ThesisHealthPanel.tsx` |
+| **Status** | FIXED |
+
+### Root cause
+
+`regimeScore()` took the factor to borrow a label/score boost from by raw array position:
+
+```ts
+const top = factors?.[0];
+```
+
+`factors[]` is **not** an arbitrary-order array — `contributionsToFactors()` in
+`src/lib/swing/swing-pillars.ts` sorts it `.sort((a, b) => b.points - a.points)` before this
+function ever sees it, specifically so the desk/Ask Largo can show "biggest lever first." So
+`factors?.[0]` is whichever pillar (Structure, Flow, Rel. strength, …) happened to score the
+**most points for this specific position** — almost never actually the pillar labeled `"Regime"`.
+
+When `regime` (the live/commit-time regime string) was null, the old code treated this
+highest-scoring, arbitrary-identity factor as if it *were* the regime read:
+
+```ts
+const factorBoost = top && top.points > 0 ? Math.min(0.2, top.points / 100) : 0;
+const score = clamp01(base + factorBoost);
+return { commit: score, current: score, label: regime ?? (top ? top.label : "unread") };
+```
+
+Live repro (as reported): a position with `regime: null` and a real
+`{"label":"Regime","points":10.4}` entry present in `factors[]` — genuinely scored, genuinely
+real — but **outranked** by another pillar's higher-point factor (e.g. `{"label":"Structure",
+"points":20.5}`). The real "Regime" factor was never consulted at all; instead the function
+produced something like `{label:"Regime fit", currentLabel:"Structure", currentScore:0.65,
+status:"intact"}` — a green, 65%-filled progress bar rendered under the **"Regime fit"** heading
+in the Thesis Health panel, showing **Structure's** label and borrowing **Structure's** points for
+the score boost. A member reading that panel has no way to tell the bar is describing a different
+pillar entirely — the heading says "Regime fit," the content is "Structure."
+
+This is the same failure shape `UNCALIBRATED_PILLAR_LABELS`/`thesisHealthUncalibrated()`
+(this file, see their own header comments) were built to catch for the Banger-ledger stamped-
+constant sentinel and the generic "unread" default — but neither of those sentinels matches
+`"Structure"` (or whichever pillar happens to win), because this isn't a *missing*-input case, it's
+a *wrong-identity* case: real data, attached to the wrong pillar's name. The sentinel guard was
+never going to catch it because the bug is upstream of the guard — in which VALUE gets labeled
+`"Regime fit"` in the first place, not in whether that value looks like a known placeholder.
+
+### Evidence
+
+New tests in `src/lib/swing/thesis-health.test.ts` (describe block: `regimeScore() consults the
+factor actually labeled "Regime", never factors[0] by array position`):
+
+1. `regime:null`, `factors` = `[{label:"Structure",points:20.5}, {label:"Regime",points:10.4}]` —
+   the real "Regime" factor is present but is **not** `factors[0]` (Structure outscores it). Must
+   render `currentLabel: "Regime"` (the real factor, correctly consulted), never `"Structure"`
+   (the higher-scoring pillar's identity).
+2. `regime:null`, `factors` = `[{label:"Structure",...}, {label:"Flow",...}]` — **no** factor is
+   actually labeled "Regime" anywhere in the array. Must fall through to the honest `"unread"`
+   uncalibrated default (which `thesisHealthUncalibrated()` already recognizes and withholds from
+   the calibrated blend), never substitute the top-scoring pillar's label.
+
+RED→GREEN confirmed via a scoped revert of `regimeScore()` alone (test file untouched,
+`factors?.find(...)` reverted back to `factors?.[0]`):
+- **Before the fix:** 2 failures — exactly the two new tests above (31/33 pass).
+- **After the fix:** 33/33 pass.
+
+Full suite: `npx tsx --experimental-test-module-mocks --test src/lib/swing/*.test.ts` — **2146/2146
+pass** (Node 20.20.2). `npx tsc --noEmit` — clean, no new diagnostics.
+
+### Blast radius
+
+Single call site: `regimeScore()` is only called from `computeSwingThesisHealth()` in this same
+file, which is the sole producer of the swing `ThesisHealthPayload` the Thesis Health panel (and
+any Ask Largo play-brief section reading `h.pillars`) renders. No other function in the codebase
+reads `factors?.[0]` for this purpose. `UNCALIBRATED_PILLAR_LABELS`/`thesisHealthUncalibrated()`/
+`calibratedThesisPillars()` are unchanged — the fix corrects which value `regimeScore()` produces,
+not how downstream code decides whether that value is calibrated; the existing "unread" sentinel
+already does the right thing once `regimeScore()` honestly reaches it only when no real "Regime"
+factor exists.
+
+### Fix rationale
+
+Changed the lookup from array-position to identity:
+
+```ts
+const top = factors?.find((f) => f.label === SWING_PILLAR_LABELS.REGIME);
+```
+
+`SWING_PILLAR_LABELS.REGIME` (imported from `./swing-pillars`, the same module that builds and
+sorts `factors[]` in the first place) is reused rather than a second hardcoded `"Regime"` string
+literal, so the two can never drift apart if the label is ever renamed. Everything else in
+`regimeScore()` — the score formula, the "unread" fallback when no real match exists, the function
+signature — is unchanged; this is a one-line lookup fix, not a rework of the scoring logic. No gate,
+weight, or rendering behavior changed for the (already-correct) case where a real "Regime" factor
+happens to also be the highest-scoring one, or where `regime` itself is non-null.
+
+## Night Hawk Swings — `siblingPositionsNote` rendered a bare "P&L —" with zero disclosure of why, instead of the same genuinely-unknown/stale caveat `pnlSection` already gives the primary play — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (Largo C3 absence-without-reason violation — a null/aged sibling P&L read as an unexplained dash rather than a disclosed data state; no wrong numbers shown, just missing context a member needs to interpret the dash correctly) |
+| **Surface** | `src/lib/swing/play-brief.ts` — `siblingPositionsNote()` ("Other concurrent position(s)" section of the Ask Largo swing play-brief) |
+| **Status** | FIXED |
+
+### Root cause
+
+`siblingPositionsNote` rendered each sibling row's live P&L as:
+
+```ts
+const pnl = r.livePnlPct != null ? fmtPct(r.livePnlPct) : "—";
+```
+
+A bare em-dash with no indication of *why* the figure is missing. `r` here is a `HorizonPlay`
+(`src/lib/horizon-plays.ts`) — it carries `markAsOf` and `livePnlPct` exactly like the fields the
+PRIMARY play's own `pnlSection` (a few hundred lines up in the same file) already reads via
+`optionMarkGenuinelyUnknown`/`optionMarkStaleCaveat` (`play-brief-absence.ts`) to distinguish "no
+live tick has synced yet since commit" from "the quote is stale" — every one of the primary play's
+own Mark/P&L/Peak/Trough/Spread/Exec-P&L lines already uses this disclosure idiom. This one
+sibling-line call site was simply never wired to either helper.
+
+Live repro (2026-10-26, `GET /api/market/swing/play-brief?playId=SWING:MRNA:68`): the "Other
+concurrent position(s)" section showed `210C 2026-10-30 — entered 2026-10-26 16:15 ET, entry
+$3.85, P&L —` for a position opened 5 minutes after the prior close — 3+ hours later with no live
+mark synced and no caveat explaining that absence.
+
+### Why the fix needed a type change, not just a call-site patch
+
+`optionMarkGenuinelyUnknown`/`optionMarkStaleCaveat`/`optionMarkIsStale` were all typed to take a
+full `TerminalPlay` (`features/nighthawk/command-deck/types.ts`), because every existing caller
+passes the brief's own primary `TerminalPlay`. A `HorizonPlay` sibling row has no `markIsSync`
+field of its own — that flag is synthesized only once `terminalPlayFromHorizon` (adapters.ts)
+builds a `TerminalPlay` from its source `HorizonPlay` (`markIsSync: src.markAsOf == null`,
+adapters.ts:1190). Re-deriving the caveat wording a second time for a `HorizonPlay` shape would
+have risked exactly the "two readers, one of them drifts" trap this file's own comments warn
+against repeatedly (e.g. the `optionMarkStaleCaveat` extraction comment itself).
+
+Instead, the three functions' parameter type was widened from `TerminalPlay` to a new minimal
+`OptionMarkFreshnessSource` interface (`play-brief-absence.ts`) — exactly the four fields they
+actually read (`status`, `markIsSync`, `markAsOf`, `pnlPct`). `TerminalPlay` already satisfies this
+interface structurally, so every existing call site (all of which pass a real `TerminalPlay`) is
+byte-for-byte unaffected — confirmed by `tsc --noEmit` clean and the full pre-existing test suite
+passing unchanged.
+
+The call site then builds a small adapter per sibling row:
+
+```ts
+const pnlCaveat = optionMarkStaleCaveat(
+  {
+    status: r.liveStatus ?? null,
+    markIsSync: r.livePnlPct == null,
+    markAsOf: r.markAsOf ?? null,
+    pnlPct: r.livePnlPct ?? null,
+  },
+  ctx.readMs ?? Date.now(),
+);
+```
+
+`markIsSync` is derived from `r.livePnlPct == null`, not from `r.markAsOf == null` (the rule
+`adapters.ts` uses for the primary play). This is deliberate: `livePnlPct(entry, mark)`
+(`live-plays.ts` / `banger-lane-merge.ts`) is null **exactly** when no real `mark` has ever
+landed — `entry` is already guaranteed non-null by `siblingPositionsNote`'s own `siblings` filter,
+so `livePnlPct == null` for a filtered sibling row is precisely the "no live tick yet" signal this
+lane needs, independent of whatever a `markAsOf` timestamp happens to say. Driving `markIsSync` off
+`markAsOf == null` instead would have left a real gap: a fixture with a *recent* `markAsOf` and a
+still-null `livePnlPct` would compute `markIsSync: false` and fall through every branch of
+`optionMarkStaleCaveat` silently, reproducing the exact bare-dash bug for that shape — this was
+caught while writing the regression tests, not assumed.
+
+### Evidence
+
+Two new tests in `src/lib/swing/play-brief.test.ts`:
+
+- `"composeSwingPlayBrief: a same-ticker sibling with no live P&L yet discloses WHY, not a bare
+  dash"` — a sibling with `livePnlPct: null`, `markAsOf: null` (just-opened position, no live tick
+  synced). Asserts the section body never matches a bare trailing `P&L —` and does match the same
+  `"no live tick since commit"` wording `pnlSection` already uses for the primary play.
+- `"composeSwingPlayBrief: a same-ticker sibling with a real P&L but a stale quote discloses
+  staleness"` — a sibling with a real `livePnlPct: 40.0` but a `markAsOf` 3+ hours stale (past the
+  18-minute `SWING_OPTION_MARK_STALE_MS` cadence-aware threshold). Asserts the body renders
+  `P&L +40.0%` followed by the same `"stale — same quote Mark flagged above"` caveat `pnlSection`
+  uses — proving the fix reuses the shared helper end-to-end (both branches of its logic), not just
+  the null-P&L case.
+
+RED→GREEN confirmed via `git show HEAD:<file> > <file>` to restore pre-fix content (never a bare
+`git stash` — this sandbox's shared git working directory makes that unsafe), re-run, then restore
+the fix:
+- **Before the fix:** 185/187 pass, 2 fail — both new tests, each showing the exact bug shape in
+  their failure output (`P&L —` with no caveat; `P&L +40.0%` with no stale caveat).
+- **After the fix:** 187/187 pass.
+
+Full `src/lib/swing/*.test.ts` suite: **2148/2148 pass** (31 suites) — no regressions anywhere else
+in the swing lane. `npx tsc --noEmit` clean repo-wide (Node 20).
+
+### Blast radius
+
+`optionMarkIsStale`/`optionMarkStaleCaveat`/`optionMarkGenuinelyUnknown` are reused as-is by their
+existing callers in `play-brief.ts`, `play-brief-intel.ts`, and `play-brief-narrative-coaching.ts`
+— all pass a real `TerminalPlay`, so the widened parameter type changes nothing for them (verified:
+full `src/lib/swing/*.test.ts` suite passes unchanged, `tsc --noEmit` clean). The only new behavior
+is the single `siblingPositionsNote` call site this finding targets.
+
+### Fix rationale
+
+Reusing the shared helper (rather than inventing a parallel disclosure string for `HorizonPlay`)
+was chosen specifically because the task required matching the existing idiom exactly — the
+wording for "genuinely unknown" vs "stale" now lives in exactly one place, and a sibling with a
+real-but-aged P&L gets the identical stale-quote caveat the primary play's own P&L line gives, for
+free, from the same logic.
+
+An alternative considered and rejected: reimplementing the genuinely-unknown/stale checks directly
+against `HorizonPlay`'s own fields inside `play-brief.ts`. Rejected because it would duplicate
+logic that already exists once in `play-brief-absence.ts`, reintroducing exactly the kind of
+divergence risk this codebase's own prior fixes to these three functions explicitly called out and
+tried to close.
+
+### Tests
+
+`src/lib/swing/play-brief.test.ts` (2 new tests, described under Evidence above). Full
+`src/lib/swing/*.test.ts` suite: 2148/2148 pass. `npx tsc --noEmit` clean (Node 20,
+`/opt/node20/bin`).
+
+## Ask Largo swing play-brief: "Earnings peer lens" left a live sizing/hedging directive unchanged on CLOSED positions whose contract was genuinely exposed to the print — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Found by** | Live-production audit, Ask Largo × Night Hawk Swings standing ownership mandate, cycle 34, 2026-10-26 |
+| **Scope** | `src/lib/swing/play-brief-intel.ts` (`meridianPeerSection`) |
+
+### Root cause
+
+`meridianPeerSection` is the one sibling "live read" section in this file that did NOT follow the
+established CLOSED-bucket pattern the rest of the file uses. Every other section that renders a
+fresh-every-request market context (`catalystsSection`, `chartLevelsSection`, `gexPostureSection`,
+`wallDynamicsSection`, `flowIntelSection`, `meridianCatalystSection`) either unshifts a "not what
+this trade traded under" disclaimer AND strips the forward/actionable directive content for a
+CLOSED play (`vectorDeskSection`'s and `watchForSection`'s own closed-bucket branches drop entry
+zone/targets/invalidation/"Watch now" entirely, keeping only an informational snapshot), or at
+minimum disclaim the whole body. `meridianPeerSection` only ever PREPENDED the disclaimer
+("_Current earnings peer lens — not what this trade traded under._") — it never touched the
+TRAILING live directive text `meridianPeerEarningsCoaching` (`play-brief-meridian-peer-core.ts`)
+unconditionally appends: `EARNINGS_PEER_SIZING_INSTRUCTION` ("Peers that beat often gap through
+implied — size down or hedge vol unless thesis is the print.") and, when `days_until<=3`,
+`EARNINGS_PEER_PRINT_IMMINENT_BULLET` ("**print imminent** — vol crush risk elevated").
+
+The ONLY mechanism that swapped out that live directive was `noGapExposure`
+(`expiry != null && expiry < earningsItem.date`) — a signal computed purely from the REVIEWED
+CONTRACT's own calendar expiry vs. the earnings print date, entirely independent of whether the
+position has since CLOSED. For a CLOSED position whose contract's calendar expiry was still AFTER
+the print at commit time — the common case (stopped out early, not simply time-decayed past the
+print) — `noGapExposure` is false, so both the sizing directive and the print-imminent bullet
+survived completely unmodified alongside the CLOSED-bucket disclaimer, producing a
+self-contradicting paragraph: "not what this trade traded under" immediately followed by direct,
+actionable, second-person risk-management instructions about a position that no longer exists.
+
+This was not a fresh defect — it is the one remaining gap in a section that had already been fixed
+three times this week for adjacent shapes of the same underlying class of bug (the CLOSED-bucket
+disclaimer itself, 2026-10-24; the `noGapExposure` sizing-instruction swap, 2026-10-25; stripping
+the print-imminent bullet under `noGapExposure`, 2026-10-26) — none of those three fixes ever made
+the swap depend on the position's own status bucket, only on the contract's own expiry vs. the
+print date, so a CLOSED play whose contract was genuinely still exposed to the print fell through
+every one of them untouched.
+
+### Evidence
+
+Live-reproduced against production, 2026-10-26: two real CLOSED swing positions — GOOGL #64 (closed
+4 days ago) and GOOGL #59 (closed 10 days ago) — both still rendered the CLOSED disclaimer
+immediately followed by actionable "size down or hedge vol" advice about a position the member no
+longer holds, because each position's own contract had a calendar expiry still after the relevant
+earnings print at the time it was committed/closed (i.e. `noGapExposure` was false for both).
+
+Confirmed in code: `meridianPeerSection` (`play-brief-intel.ts`, pre-fix) only read
+`statusBucket(ctx.play)` once, for the `prefix` disclaimer — the subsequent `withoutPrintImminent`/
+`adjustedBody` swaps were gated solely on `noGapExposure`, with no reference to the play's bucket
+at all.
+
+### Blast radius
+
+Single call site — `meridianPeerSection`'s own body construction. No other section reads
+`EARNINGS_PEER_SIZING_INSTRUCTION`/`EARNINGS_PEER_PRINT_IMMINENT_BULLET` or re-derives this swap
+independently (`meridianCatalystSection`, the sibling catalyst section, reads a different field
+entirely and already carries its own, separately-fixed CLOSED guard). The pure helper
+(`meridianPeerEarningsCoaching`, `play-brief-meridian-peer-core.ts`) is untouched — it deliberately
+stays play-unaware, same discipline the 2026-10-25/26 fixes already established; this fix is scoped
+entirely to the section-assembly layer in `play-brief-intel.ts`, consistent with how every other
+bucket-aware adjustment in this function is already applied.
+
+### Fix
+
+Added an independent `isClosed = statusBucket(ctx.play) === "closed"` check alongside the existing
+`noGapExposure` one:
+
+- `stripPrintImminent` is now `noGapExposure || isClosed` — the print-imminent bullet is stripped
+  whenever EITHER condition holds, not only when the contract itself had already decayed past the
+  print.
+- The trailing sizing instruction is now swapped under three distinct, non-overlapping outcomes:
+  - `noGapExposure` (unchanged, still the OPEN/WATCH-only mechanism it already was): replaced with
+    the existing "this contract expires X, on/before the print, so no earnings-gap exposure..."
+    sentence — this phrasing stays factually true and worth keeping even for a CLOSED play whose
+    contract genuinely never reached the print, per the task's explicit scoping.
+  - `isClosed && !noGapExposure` (the gap this fix closes): replaced with a retrospective,
+    non-actionable sentence — "This position already closed before this print — no live
+    sizing/hedging decision remains on it; peer context above is for reference only." — mirroring
+    `vectorDeskSection`'s established pattern of stripping forward directives entirely for the
+    CLOSED bucket rather than merely disclaiming them.
+  - Neither (OPEN/WATCH, genuinely exposed): unchanged, the real live sizing instruction renders as
+    before — no regression to the common, correct case.
+
+The existing null-return guard (`if (noGapExposure && ctx.meridianPeer?.available !== true) return
+null;`, added 2026-10-26 for the TEM/CRML/AMPX/AVAV no-cohort case) is untouched — it is scoped to
+`noGapExposure` specifically and the new `isClosed` branch does not produce a byte-for-byte
+duplicate of any other section's content, so no new duplicate-suppression case is needed.
+
+### Fix rationale
+
+Kept `noGapExposure` exactly as it already was (the OPEN/WATCH-only, contract-expiry-vs-print
+mechanism) rather than folding CLOSED into it, because the two signals answer genuinely different
+questions — "was this contract ever exposed to the print" vs. "does this position still exist to
+act on" — and conflating them would have silently changed the OPEN/WATCH behavior while fixing the
+CLOSED one. Chose to mirror `vectorDeskSection`'s own established CLOSED-bucket pattern (strip
+forward directives, keep informational content) rather than inventing a new disclosure shape,
+since this file already has a working, precedent-setting pattern for exactly this class of
+section. Chose a distinct retrospective sentence for `isClosed && !noGapExposure` rather than
+reusing the `noGapExposure` "no earnings-gap exposure" sentence, since that sentence would be
+factually false here — the position WAS genuinely exposed to the gap at the time it was open; what
+changed is that it no longer exists to act on, not that it was never exposed.
+
+### Regression test
+
+- `src/lib/swing/play-brief-intel.test.ts`:
+  - Extended "meridianPeerSection: CLOSED bucket prefixes a current-not-as-traded disclosure" — its
+    fixture previously carried NO contract/expiry data at all, so it never exercised this gap. Gave
+    both the CLOSED and OPEN fixture plays a real `occ` (expiry after the print, i.e.
+    `noGapExposure` false) and added assertions that the CLOSED section drops the sizing
+    instruction and renders the new retrospective sentence, while the OPEN section keeps the real
+    sizing instruction unchanged (no regression).
+  - Extended "meridianPeerSection: contract still alive through the print keeps the sizing/hedging
+    instruction unchanged (no regression)" with an identical-contract CLOSED sibling case, asserting
+    the sizing instruction is swapped for the retrospective sentence (not left "unchanged" the way
+    the OPEN case correctly is) while real peer stats (KTOS) survive.
+  - Extended "meridianPeerSection: imminent (<=3d) print the position is still exposed to keeps the
+    'print imminent' bullet (no regression)" with an identical-contract CLOSED sibling case,
+    asserting BOTH the print-imminent bullet and the sizing instruction are neutralized together —
+    this is the exact live GOOGL #64/#59 repro shape (imminent print + genuinely-exposed contract +
+    CLOSED position).
+
+### Verification
+
+- RED→GREEN proof: ran the 3 extended tests against the pre-fix code (`git stash` equivalent via
+  reverting the implementation hunk) — exactly the 3 new/extended assertions failed (342 pass / 3
+  fail); applying the fix brought the full file back to 345/345 pass, 0 fail.
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-intel.test.ts` (Node
+  20) — 345/345 pass, 0 fail.
+- Full `npm test` (Node 20) — pass, 0 fail (see PR for exact count).
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+
+## SPX Slayer: `oi_changes`/`iv_term_structure` are permanently, structurally empty — `data_quality.missing` never named them, so nothing distinguished "never computed" from "genuinely zero today"
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #TBD) |
+| **Found by** | Live-production health-check sweep, Ask Largo × Night Hawk Swings standing mandate (cycle 34), 2026-10-26 |
+| **Scope** | `src/features/spx/lib/spx-desk.ts` (`buildDeskDataQuality()`), `src/lib/platform/types.ts` (`SpxDeskSummary`), `src/features/spx/lib/spx-service.ts` (`summarizeSpxDesk()`), `src/lib/admin-spx-issues.ts` (admin dashboard issue surfacing) |
+
+### Root cause
+
+`SpxDeskPayload` (`spx-desk.ts`) declares `oi_changes: OiChangeItem[]` and `iv_term_structure:
+IvTermPoint[]`. No function anywhere in the codebase ever computes a real instance of either type
+for this payload — confirmed by a repo-wide grep for `OiChangeItem(`/`IvTermPoint(` construction
+and for any assignment to these two field names. The canonical `buildSpxDesk()` return object
+hardcodes them as literal empty arrays, `oi_changes: [], iv_term_structure: [],` — unlike every
+sibling array field in the same return object, which is built from a named computed variable with
+a `?? []` fallback (e.g. `flow_by_expiry: enrichment?.flow_by_expiry ?? []`). The same bare-empty-
+array literals are duplicated in `spx-desk.ts`'s own `emptyPayload()` stub and in
+`spx-desk-merge.ts`'s `signalDeskStub()` shell default.
+
+`fetchUwOiChange`/`fetchUwIvTermStructure` (`unusual-whales.ts`) DO exist and ARE called — but only
+by Night Hawk's dossier builder (`features/nighthawk/lib/dossier.ts`) and by Largo's own
+`run_largo_tool` dispatcher (`src/lib/largo/run-tool.ts`) for a *different*, on-demand tool call.
+Neither ever feeds `SpxDeskPayload.oi_changes`/`.iv_term_structure` — those two fields on the SPX
+desk itself are dead wiring, not merely slow or rate-limited.
+
+`buildDeskDataQuality()` (the function that produces `DeskDataQuality.missing`, the one place this
+payload already discloses data gaps) only ever tracked VIX/VIX9D/VIX3M feed presence. Nothing
+named `oi_changes`/`iv_term_structure` as missing, so a consumer reading an empty array had no way
+to tell "this is a real zero today" from "this has never been computed, ever" — the exact
+absence-vs-silence failure `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s absence principle exists to
+prevent.
+
+**A second, independent gap surfaced while verifying this disclosure actually reaches consumers**
+(per the audit's own "check whether the disclosure reaches the admin dashboard / Ask Largo"
+discipline): `SpxDeskSummary` (`platform/types.ts`) — the exact object Largo's `get_spx_structure`
+tool returns to the model (`summarizeSpxDesk()` in `spx-service.ts`) — never carried
+`data_quality` AT ALL. Even a correctly-populated `missing` array on the server-side payload could
+never reach Largo, because the Largo-facing summary type dropped the whole field. Separately, the
+admin dashboard's own issue surfacer (`admin-spx-issues.ts`) only reads `desk.data_quality.missing`
+inside a block gated on `vix_term_partial` — a flag about the VIX curve specifically, almost always
+false — so even once `missing` carried `oi_changes`/`iv_term_structure`, the admin dashboard would
+almost never show it.
+
+### Evidence
+
+- `grep -rn "OiChangeItem(\|IvTermPoint(" src/` and a grep for `oi_changes:`/`iv_term_structure:`
+  assignments across the repo: every non-test call site that builds an `SpxDeskPayload` literal
+  (`spx-desk.ts:1409-1410`, `spx-desk.ts:1804-1805` pre-fix, `spx-desk-merge.ts:513-514`) hardcodes
+  `[]`; the only real producers of these UW-provider types
+  (`fetchUwOiChange`/`fetchUwIvTermStructure`) are called only from `nighthawk/lib/dossier.ts` and
+  `lib/largo/run-tool.ts`'s own on-demand tool handlers, never from anything that builds the SPX
+  desk payload.
+- `src/lib/platform/types.ts`'s pre-fix `SpxDeskSummary` type had no `data_quality` key at all —
+  confirmed by grep (`data_quality` appears nowhere in that file before this fix) — so
+  `get_spx_structure`/`get_market_context`/`get_platform_snapshot` (all backed by the identical
+  `getSpxDeskSummary()`) could never surface ANY desk data-quality caveat to Largo, not just these
+  two fields.
+- `src/lib/admin-spx-issues.ts`'s only existing read of `desk.data_quality` was gated on
+  `vix_term_partial`, which is false on a healthy VIX curve — the common case — so the admin
+  dashboard's "Partial VIX term structure" issue would never fire to disclose a permanently-dead,
+  VIX-unrelated field.
+- `src/lib/largo/spx-structure-fit.ts`'s field-truncation table (`SPX_STRUCTURE_LIST_CAPS`)
+  includes `{ key: "oi_changes", cap: 8 }` alongside genuinely-live fields (`unified_tape`,
+  `news_headlines`, `macro_events`, `sector_heat`) — implying real data could appear there, when it
+  structurally never does. Left as-is (see Fix rationale below) since this cap is harmless (it
+  never fires on a permanently-empty array) and removing it is a separate, not-yet-scoped cleanup.
+
+### Fix
+
+1. `buildDeskDataQuality()` now pushes `"oi_changes"` and `"iv_term_structure"` into `missing`
+   **unconditionally, every call** — independent of VIX feed health (`vix_term_partial` is left
+   computed exactly as before, from the VIX legs only; the two new entries are additive, not a
+   replacement).
+2. `SpxDeskSummary` gained a `data_quality: DeskDataQuality | null` field, populated in
+   `summarizeSpxDesk()` from `merged.data_quality ?? null` — the ONLY call site that constructs an
+   `SpxDeskSummary` object literal, so every reader (Largo's `get_spx_structure`,
+   `get_market_context`, `get_platform_snapshot`, Night Hawk's day-trade filters, Meridian's
+   cross-product reads) now receives this disclosure for free.
+3. `admin-spx-issues.ts` gained a second, **always-evaluated** check (not gated on
+   `vix_term_partial`) that pushes an `info`-severity issue naming `oi_changes`/`iv_term_structure`
+   whenever `data_quality.missing` contains either — `info`, not `warning`, because this is known,
+   standing behavior to track, not an incident to page on.
+
+### Fix rationale — what was deliberately left unchanged
+
+- **No real OI-change/IV-term-structure computation was added.** Implementing that is a genuine,
+  multi-day feature (wiring `fetchUwOiChange`/`fetchUwIvTermStructure` into the desk build path,
+  handling their own freshness/staleness) — out of scope for a single small PR per this repo's
+  "one issue per branch/PR" policy. This PR fixes the DISCLOSURE only, per the audit task's own
+  scope instruction.
+- **The fields were NOT removed from `SpxDeskPayload`/the Largo product contract.** Per
+  `docs/audit/LARGO-PRODUCT-CONTRACT.md`: absence must be disclosed, not papered over by deleting
+  the contract surface. A future PR that wires real computation needs the fields to already exist.
+- **`spx-structure-fit.ts`'s `oi_changes` cap entry was left in place.** It is harmless (capping an
+  always-empty array is a no-op) and removing table entries is a separate cleanup with its own
+  blast radius (the shed-order list, its own unit tests) — not bundled into a disclosure fix.
+- **`emptyPayload()`/`signalDeskStub()`'s own `data_quality: { vix_term_partial: false, missing:
+  [] }` stub literals were left untouched.** Those paths represent `available: false` — the WHOLE
+  payload is already disclosed as unavailable, so a sub-field disclosure inside it is redundant;
+  only the real, `available: true` build path (`buildDeskDataQuality()`) needed the fix.
+
+### Regression test
+
+`src/features/spx/lib/spx-desk-data-quality.test.ts` (new file): imports `buildDeskDataQuality`
+as a value via a dynamic `import("./spx-desk")` after mocking `server-only` (mirrors
+`spx-desk-wall-scope.test.ts`'s established pattern for unit-testing this module directly).
+Two tests: (1) with all three VIX legs healthy, `missing` must equal exactly
+`["oi_changes", "iv_term_structure"]` and `vix_term_partial` must stay `false`; (2) with a real
+VIX/VIX3M gap, the two permanent entries must be present ADDITIVELY alongside the real VIX gap
+entries, never crowded out or duplicated.
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/features/spx/lib/spx-desk-data-quality.test.ts`
+  — RED pre-fix (2/2 fail, reverted `buildDeskDataQuality()`'s two new lines only, test file kept
+  in place), GREEN post-fix (2/2 pass).
+- Full suite (`npm test`, Node 20) — pass, 0 fail.
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+
+## SPX Slayer: `flow_cluster_live` was sourced from a MARKET-WIDE "is any ticker's flow live" signal, silently disabling the stale-flow BUY-block and warning gates
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #6922) |
+| **Found by** | Two independent live-audit passes, Ask Largo × Night Hawk standing performance/correctness mandate, 2026-10-26 |
+| **Scope** | `src/features/spx/lib/spx-desk.ts` (`deskFlowDataAgeMs`, both `flow_cluster_live` call sites), `src/features/spx/lib/spx-play-gates.ts` (the consuming stale-flow BUY-block/warning gate), `src/lib/flow-liveness.ts` (new scoped signal), `src/lib/flow-persist.ts` (write site) |
+
+### Root cause
+
+`deskFlowDataAgeMs` (`spx-desk.ts`) is SPX Slayer's "how old is our flow tape, honestly" function:
+
+```js
+function deskFlowDataAgeMs(flows, flowClusterLive) {
+  markFlowDataFromBriefs(flows);
+  let age = resolveFlowDataAgeMs(flows);
+  if (flowClusterLive && age != null && age > 120_000) age = 120_000;
+  return age;
+}
+```
+
+The clamp's own stated intent (per the gate's consuming comment) is reasonable: tolerate a
+replica whose own in-memory tape read is lagging, as long as SOME replica is demonstrably
+delivering live WS frames for SPX right now. The bug is in what `flowClusterLive` actually
+measured. Both call sites computed it as:
+
+```js
+const flowClusterLive = await isFlowFrameFreshAnywhere(120_000).catch(() => false);
+```
+
+`isFlowFrameFreshAnywhere` (`flow-liveness.ts`) reads ONE shared Redis key
+(`flow_alerts:last_delivered_at`) with **no ticker filter at all** — it is `true` whenever ANY
+ticker anywhere in the entire market had a flow alert persisted within the last 120s. The write
+site (`flow-persist.ts`'s `persistAndPublishFlowAlert` → `markFlowFrameDelivered()`) is gated only
+on dedup/fan-out logic, never on ticker identity or premium size tied to SPX.
+
+Because options flow is being delivered *somewhere* in the market almost continuously during RTH
+(and often after close), this signal is nearly always `true` — which means the clamp fired nearly
+always, silently reporting a fresh `120_000`ms age for `flow_data_age_ms` even when SPX's own real
+tape was far staler. That field is then consumed directly by `spx-play-gates.ts`:
+
+```js
+const flowAgeMs = desk.flow_data_age_ms;
+const clusterLive = desk.flow_cluster_live === true;
+if (buyIntent && flowAgeMs != null && flowAgeMs > 300_000 && !clusterLive) {
+  blocks.push(`Flow data stale (${...}m) — tape and 0DTE signals unreliable`);
+} else if (flowAgeMs != null && flowAgeMs > 120_000 && !clusterLive) {
+  warnings.push(`Flow data ${...}m old — tape signal may lag`);
+}
+```
+
+Both the BUY-block (>5 min stale) and the warning (>2 min stale) are gated on `!clusterLive`, so
+with `clusterLive` almost always `true`, both protections were effectively unreachable whenever
+SPX's own tape went genuinely stale while the rest of the market kept printing — which is the
+common case, not an edge case.
+
+### Evidence
+
+- Live-confirmed (both audit passes, independently): `flow_data_age_ms` reported capped at
+  `120000` while the real newest `alerted_at` across the desk's own `spx_flows[]` array was
+  ~1,055,000ms (~17.6 min) old — a genuinely stale SPX tape read as "2 minutes old."
+- `isFlowFrameFreshAnywhere`'s own write site (`flow-persist.ts:238` pre-fix,
+  `markFlowFrameDelivered()`) is called for every persisted/published flow print above
+  `MIN_PREMIUM`/`MIN_PREMIUM_NEAR_DATED` regardless of ticker — confirmed by reading the call site
+  and its heartbeat key shape (`flow_alerts:last_delivered_at`, no ticker component).
+- RED→GREEN regression proof (below): a test using the REAL flow-liveness functions reproduces
+  the exact scenario — an unrelated ticker (`AAPL`) delivers a fresh print, `isFlowFrameFreshAnywhere`
+  correctly reads `true` (unaffected, intentional for its other market-wide consumers), but
+  `deskFlowDataAgeMs` fed that signal would have clamped a genuinely 400s-stale SPX tape down to
+  `120_000`ms, suppressing the stale-flow BUY-block that should have fired.
+
+### Blast radius
+
+Both consumers in `spx-play-gates.ts` share the one `desk.flow_cluster_live` field, so the same
+bug affected:
+1. The **BUY-block** (`flowAgeMs > 300_000ms && !clusterLive`) — the harder protection, meant to
+   stop new entries on a genuinely stale tape.
+2. The **warning** (`flowAgeMs > 120_000ms && !clusterLive`) — the softer disclosure, meant to flag
+   lag to the trader even when not hard-blocking.
+
+Both call sites inside `spx-desk.ts` that compute `flowClusterLive` (the canonical `buildSpxDesk()`
+path and the UW "flow lane" `buildSpxDeskFlow()` path) independently repeated the same
+market-wide-signal mistake, so the fix had to land at both.
+
+### Fix
+
+Added a ticker-scoped sibling to the existing heartbeat architecture in `flow-liveness.ts`,
+rather than discarding the clamp outright (see rationale below):
+
+1. `isSpxFlowCohortTicker(ticker)` — true for `SPX`/`SPXW` (the UW tickers SPX Slayer's own tape
+   already filters to — matches `spx-desk.ts`'s own existing `fetchSpxDeskFlowAlertsWithDb` DB
+   filter, `t === "SPX" || t === "SPXW"`).
+2. `markFlowFrameDeliveredForTicker(ticker, now)` — always writes the existing market-wide
+   heartbeat (every other consumer of `isFlowFrameFreshAnywhere`/`isFlowFrameFreshFromCluster` —
+   cluster health, the flow-ingest REST-skip decision, admin dashboards — is unaffected), and
+   ADDITIONALLY writes a second, narrower `flow_alerts:last_delivered_at:spx_cohort` heartbeat key
+   only when `ticker` is SPX/SPXW. `flow-persist.ts`'s write site now calls this instead of the
+   unscoped `markFlowFrameDelivered()`.
+3. `isFlowFreshForSpxCohort(maxAgeMs)` — the scoped read, mirroring
+   `isFlowFrameFreshAnywhere`'s own shape/fail-open contract (Redis down / no heartbeat / error →
+   `false`, so the caller falls back to the real tape-grounded age — never worse than before).
+4. `spx-desk.ts`'s both `flowClusterLive` computations now call `isFlowFreshForSpxCohort(120_000)`
+   instead of `isFlowFrameFreshAnywhere(120_000)`. `deskFlowDataAgeMs`'s own clamp logic is
+   UNCHANGED — only the boolean fed into it is now correctly scoped.
+
+### Fix rationale — why a scoped signal, not dropping the override
+
+The task brief named two reasonable approaches: add a ticker/cohort-scoped freshness check, or
+(if that isn't cheaply derivable) drop the clamp/override entirely and rely on the already-honest
+tape-grounded `resolveFlowDataAgeMs`. A scoped signal was feasible and cheap here — the existing
+heartbeat architecture (`flow-liveness.ts`) already has exactly the write-throttle / Redis-with-
+in-memory-fallback / fail-open shape this needs; adding a second, narrowly-scoped key alongside
+the existing one reuses that shape rather than inventing new surface area. This preserves the
+clamp's genuine original intent (excusing real replica-side staleness jitter when SPX's own tape
+IS corroborated live) while closing the exact gap the bug report identified (a signal that
+couldn't tell SPX's tape apart from the rest of the market). Dropping the override outright was
+the more conservative fallback named in the brief, but was not needed once the scoped signal
+proved cheap to add from the existing architecture — and would have removed a real, intentional
+affordance (tolerating replica lag) rather than fixing its scope.
+
+What was deliberately left unchanged:
+- `isFlowFrameFreshAnywhere`/`isFlowFrameFreshFromCluster` and every OTHER consumer of them
+  (`admin-spx-health.ts`, `admin-spx-issues.ts`, `admin-helix-health.ts`, `ecosystem-context.ts`,
+  `spx-signal-log.ts`, `spx-signals-shadow.ts`, `cron-writer-target-fresh.ts`,
+  `flow-ingest.ts`) — these are legitimately market-wide observability/REST-skip signals, not
+  SPX-tape-staleness gates, and are out of this fix's scope.
+- `deskFlowDataAgeMs`'s clamp logic itself (`if (flowClusterLive && age > 120_000) age =
+  120_000;`) — unchanged; only its caller-supplied argument is now correctly scoped.
+- `resolveFlowDataAgeMs`/`flow-data-freshness.ts` — untouched; a separate, pre-existing
+  replica-local freshness heuristic not named in the bug report, out of this fix's scoped files.
+
+### Regression tests (RED → GREEN proof)
+
+Three test files, each verified to fail before the fix and pass after (git-stash proof, see
+Verification below):
+
+1. `src/lib/flow-liveness.test.ts` (extended) — drives the real `markFlowFrameDeliveredForTicker`/
+   `isFlowFreshForSpxCohort`/`isFlowFrameFreshAnywhere` (no mocks; Redis is unconfigured in this
+   sandbox so `sharedCacheGet`/`sharedCacheSet` run their real in-memory fallback): an unrelated
+   ticker's (`AAPL`) fresh print reads market-wide live but NOT SPX-cohort live; an `SPXW` print
+   makes the SPX-cohort signal live too.
+2. `src/features/spx/lib/spx-play-gates.test.ts` (extended) — exercises `evaluatePlayGates` end to
+   end with the REAL liveness signal: an `AAPL` print is market-wide live while SPX's own flow age
+   is genuinely 310s old; feeding the SPX-cohort-scoped signal correctly lets the stale-flow
+   BUY-block fire, while feeding the OLD market-wide signal into the identical scenario would have
+   (wrongly) suppressed it — demonstrating the exact bug. A third test covers the softer
+   warning-tier (120s–300s) case.
+3. `src/features/spx/lib/spx-desk-flow-staleness.test.ts` (new) — exercises `deskFlowDataAgeMs`
+   ITSELF (exported for testability, mirroring the established `spx-desk-wall-scope.test.ts`/
+   `spx-desk-data-quality.test.ts` pattern of mocking `server-only` then dynamically importing
+   `./spx-desk` as a value): a genuinely-stale (400s) SPX tape is NOT clamped fresh when only an
+   unrelated ticker corroborates the market-wide signal; the clamp still correctly fires to 120s
+   when SPX's OWN cohort is genuinely corroborated live — proving the clamp's original intent
+   survives the fix.
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/flow-liveness.test.ts
+  src/features/spx/lib/spx-play-gates.test.ts src/features/spx/lib/spx-desk-flow-staleness.test.ts`
+  — RED pre-fix (`git stash` the 4 fix files only, keep test files in place: 3 new
+  `flow-liveness.test.ts` tests fail, 3 new `spx-play-gates.test.ts` tests fail, both new
+  `spx-desk-flow-staleness.test.ts` tests fail — all with `markFlowFrameDeliveredForTicker is not
+  a function`, every pre-existing test in each file still passes), GREEN post-fix (38/38 pass,
+  restored via `git stash apply` + drop).
+- Full suite (`npm test`, Node 20) — pass, 0 fail.
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+
+## SPX desk loader-path (`loadSpxDesk()`/`loadMergedSpxDesk()`/`loadBootstrapBundle()`) had no staleness ceiling of its own, letting replicas fall back to a 10-minute default — 4th instance of this cache-key's staleness-ceiling bug class — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 — no incorrect trading math, but a real, reproducible live incoherence: `GET /api/market/spx/desk`'s `as_of` measured 52.4s–76.0s stale across 10 consecutive live polls, with two confirmed backward jumps (an older `as_of` served after a newer one had already been served). Feeds `playGexStaleMaxSec()`'s 90s "Desk data stale" play-gate and every member-facing desk read. |
+| **Surface** | `src/lib/server-cache.ts` (`withServerCache`'s SWR branch) and `src/features/spx/lib/spx-desk-loader.ts` (`loadSpxDesk()`, `loadMergedSpxDesk()`, `loadBootstrapBundle()`), `src/lib/providers/config.ts` (new `deskLoaderMaxStaleAgeMs()`) |
+| **Status** | FIXED |
+
+### Root cause
+
+Two different code paths read the same SPX desk cache keys (`spx-desk:<date>`, `spx-merged:<date>`,
+`spx-bootstrap:<date>`) with two different staleness ceilings, and only one was ever tightened:
+
+- `peekSpxDesk()`/`peekMergedSpxDesk()` pass `maxStaleMs: deskPeekMaxAgeSec() * 1000` (40s) into
+  `peekServerCache` — fixed in PR #6882.
+- Their FALLBACK — `loadSpxDesk()`, `loadMergedSpxDesk()`, and `loadBootstrapBundle()` — are backed
+  by `withServerCache` with **no `maxStaleAgeMs` override**, so they defaulted to
+  `server-cache.ts`'s generic 10-minute `MAX_STALE_AGE_MS`. `providers/config.ts`'s own doc comment
+  on `deskPeekMaxAgeSec()` explicitly flagged this exact gap as deliberately deferred (see "Why this
+  wasn't a one-line fix" below for why).
+
+`server-cache.ts`'s per-process module-level `store` Map means each ECS replica can independently
+serve its own stale local snapshot (bounded only by the untouched 10-minute ceiling) once Redis's
+own short TTL (`deskCacheTtlMs()`, 10s) also lapses. ALB round-robin across replicas with staggered
+refresh timing produces exactly the observed symptom: sustained tens-of-seconds-to-minutes
+staleness and non-monotonic `as_of` timestamps across polls.
+
+**Live-reproduced** (10 polls, `GET /api/market/spx/desk`, production, pre-fix): `as_of` values
+ranging 52.4s–76.0s stale, with two confirmed backward jumps.
+
+### Why this wasn't a simple one-line fix — required order
+
+Tightening the loader path's ceiling to 40s *without first* fixing a separate issue would have
+created a new regression: `withServerCache`'s SWR branch (`staleAge > maxStaleAgeMs`, key
+not-yet-degraded) had a fast-lane/cold-miss sibling branches that already race a refresh against
+`opts.maxBlockMs` via `Promise.race` — but this ONE branch did `return refreshCache(...)` **fully
+awaited, with no race at all**. Tightening the ceiling to 40s would have made this unbounded-block
+branch fire far more often (every one of the three loader call sites already passes
+`maxBlockMs: deskBootstrapMaxBlockMs()`), risking the same ALB tail-latency regression this codebase
+already had to fix once (PR #5061/#5065, documented inline near `server-cache.ts`'s
+`deskBootstrapMaxBlockMs()` comment).
+
+**Fixed in the required order:**
+
+1. **FIRST**: added a `Promise.race` against `opts.maxBlockMs` to the `staleAge > maxStaleAgeMs`
+   SWR branch in `server-cache.ts`, mirroring the identical race pattern already used by the
+   fast-lane and cold-start branches in the same function. `refreshCache()` registers its promise in
+   the module's `inflight` map **before** returning, so the loser of the race keeps running in the
+   background and still populates the cache/Redis on success — nothing is cancelled, only the
+   caller stops waiting on it. On a race-loss, the branch now returns the stale `hit.value` (the
+   same race-losing behavior every other `maxBlockMs` branch in this file already falls back to).
+2. **THEN**: added `deskLoaderMaxStaleAgeMs()` (`providers/config.ts`) — deliberately derived from
+   the SAME value as `deskPeekMaxAgeSec()` (same env var, `SPX_DESK_PEEK_MAX_AGE_SEC`, default 40s)
+   so the peek ceiling and the loader ceiling can never drift apart again — and wired it as
+   `maxStaleAgeMs` into all three loader call sites' `withServerCache` options.
+
+### Evidence (tests)
+
+**Step 1 (race guard), `src/lib/server-cache.test.ts`:** new test *"SWR branch (stale past
+maxStaleAgeMs, not yet degraded) honors maxBlockMs — bounded, serves the stale value instead of
+blocking unboundedly on a slow refresh"*. RED→GREEN proven via a scoped `git show HEAD:...` revert
+(this sandbox's shared git-stash stack makes a bare `git stash` unsafe across concurrent
+sessions/worktrees, per this repo's own environment notes): pre-fix, the test's own harness-timeout
+(150ms) fired because the branch blocked on the full 500ms slow refresh regardless of its 20ms
+`maxBlockMs`; post-fix, 16/16 `server-cache.test.ts` pass, bounded near 20ms.
+
+**Step 2 (ceiling), `src/features/spx/lib/spx-desk-loader-stale-ceiling.test.ts`** (new file): new
+test *"loadSpxDesk()/loadMergedSpxDesk()/loadBootstrapBundle() pass maxStaleAgeMs:
+deskLoaderMaxStaleAgeMs() to withServerCache, instead of leaving it unset..."* — mocks
+`withServerCache` itself to capture the real `opts` object each of the three loader call sites
+passes, and asserts `opts.maxStaleAgeMs` equals the mocked `deskLoaderMaxStaleAgeMs()` return value
+for all three. (A first attempt at this test used real timing instead of capturing opts and was a
+**false positive**: without the ceiling wired in at all, a freshly-aged ~40ms-old entry never gets
+anywhere near the un-tightened 10-minute default, so it silently takes the ordinary non-ceiling SWR
+fast path in BOTH the pre-fix and post-fix code, passing either way and proving nothing — replaced
+with the opts-capturing version below, which RED-failed correctly pre-fix:
+`actual: undefined, expected: 40321`.) RED→GREEN proven the same `git show HEAD:...` way.
+
+Full scoped run post-fix: `server-cache.test.ts` (16/16), `spx-desk-loader.test.ts` (1/1),
+`spx-desk-loader-stale-ceiling.test.ts` (1/1), `spx-desk-peek-staleness.test.ts` (2/2) — 20/20 pass.
+`npx tsc --noEmit` clean.
+
+Two pre-existing test files that mock `providers/config` partially (`spx-signal-log-catalyst-
+shadow.test.ts`, `spx-signal-log-macro-predictions.test.ts`, `spx-desk-peek-staleness.test.ts`) had
+to add a `deskLoaderMaxStaleAgeMs` stub alongside their existing `deskBootstrapMaxBlockMs`/
+`deskCacheTtlMs`/etc. stubs — `spx-desk-loader.ts` now imports this function eagerly at module load
+(same as its sibling `maxBlockMs` constants), so any test mocking that module's config dependency
+partially needs it stubbed too, or the module fails to even load. Confirmed all three pass after
+adding the stub (13/13 combined for the two signal-log files, 2/2 for the peek-staleness file).
+
+### Blast radius
+
+- `server-cache.ts`'s SWR-branch race-guard fix changes the behavior of **every**
+  `withServerCache`/`serverCache` caller repo-wide that combines SWR (default), a not-yet-degraded
+  key, a stale age past `maxStaleAgeMs`, AND an explicit `opts.maxBlockMs` — previously such a
+  caller blocked fully on the refresh; now it's bounded. A caller that does NOT pass `maxBlockMs`
+  (the overwhelming majority of callers that never set `maxStaleAgeMs` either, since the generic
+  10-minute default is rarely approached) is completely unaffected — the `if (maxBlock != null...)`
+  guard falls through to the exact same `return refreshCache(...)` as before when no budget is
+  configured.
+- The ceiling-tightening (step 2) only touches the three named SPX desk loader call sites
+  (`loadSpxDesk()`, `loadMergedSpxDesk()`, `loadBootstrapBundle()`) — `loadSpxDeskFlow()` and
+  `loadSpxDeskPulse()` (via `flowCacheOpts`/`pulseCacheOpts`) are **deliberately untouched**, not in
+  scope for this fix, and not implicated by the live evidence (which was specifically `/spx/desk`'s
+  `as_of`, backed by the `spx-desk`/`spx-merged`/`spx-bootstrap` keys).
+
+### Fix rationale
+
+Reused `deskPeekMaxAgeSec()`'s existing value (same env var) for the loader ceiling rather than
+inventing a second, independent one — a dedicated `SPX_DESK_LOADER_MAX_STALE_AGE_SEC` would just
+reopen the exact drift risk this fix closes (the peek path got tightened once already while the
+loader path was deferred; a second independently-tunable knob could silently diverge the same way
+again). The generic `MAX_STALE_AGE_MS` default (10 minutes) for every OTHER `withServerCache` caller
+is untouched — this is a narrow, SPX-desk-specific tightening, not a global policy change.
+
+For the race guard, considered adding a brand-new timeout mechanism but instead copied the EXACT
+`Promise.race` pattern already used twice elsewhere in the same function (the fast-lane branch and
+the cold-start branch) — same `setTimeout`-resolves-"timeout"-sentinel shape, same
+"`refreshCache()` already registers itself in `inflight` before returning" reasoning for why the
+race-loser keeps running safely in the background. This keeps the file internally consistent rather
+than adding a fourth, differently-shaped timeout idiom.
+
+### Prior sibling instances of this same staleness-ceiling bug class (4th occurrence, same cache key)
+
+This is the **4th** distinct staleness-ceiling bug found against the exact same SPX desk cache
+key(s), per `docs/audit/FINDINGS.md`:
+
+1. **2026-10-15/16** — cross-replica Redis last-writer-wins race in `withServerCache` (`as_of`
+   reverting backward across consecutive polls) — fixed via a `server-gen:<key>` generation guard in
+   `writeRedisCache`.
+2. **PR #6822 (2026-10-26)** — the off-hours `peekMergedSpxDesk({ maxStaleMs: 24h })` shortcut in
+   `evaluateSpxPlayState()` served a genuinely-stale pre-7am-ET overnight snapshot as if "closed
+   market = stale is fine" still held; fixed with a bounded off-hours re-refresh interval.
+3. **PR #6882 (2026-10-26)** — `peekSpxDesk()`/`peekMergedSpxDesk()`'s own default usage had no
+   per-key ceiling at all, falling back to the generic 10-minute `MAX_STALE_AGE_MS`; fixed with
+   `deskPeekMaxAgeSec()`.
+4. **This finding** — the peek path's own FALLBACK (the blocking loaders) still had no ceiling,
+   because tightening it safely required first fixing an unrelated unbounded-block gap in
+   `server-cache.ts`'s SWR branch. Same cache key, same root shape (a second, unguarded path reading
+   the identical cache with a looser bound than the one already fixed), different specific code
+   path each time.
+
+The recurring pattern across all four: this cache key has multiple independent read paths
+(peek-fast / blocking-loader / cross-replica-write / off-hours-shortcut), and fixing staleness on
+one path without auditing every OTHER path that reads the same underlying key leaves the bug class
+alive just one call site over. A future session finding a FIFTH instance here should treat that as
+confirmation this cache key needs a single, shared staleness-ceiling abstraction rather than
+continuing to patch each read path individually — out of scope for this fix, noted for the next one.
+
+## SPX Slayer closed-market branch never ran the mixed-tape sub-check — `desk_context.mixed_tape_blocked:true` could show with no "Tape's mixed" text anywhere in `gates` — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 — genuine API-contract coherence defect (the "gates.blocks coherent with underlying data" class of check this repo's audits apply everywhere else), but currently inert: a repo-wide grep found no UI component that reads `desk_context.mixed_tape_blocked`, and `src/lib/largo/spx-play-fit.ts` explicitly drops the whole `desk_context` object before Largo ingestion — so no member or Largo answer is affected today. Fixed anyway because the contract defect is real and cheap to close. |
+| **Surface** | `src/features/spx/lib/spx-play-context.ts` (`buildSpxPlayDeskContext`), `src/features/spx/lib/spx-play-engine.ts` (`evaluateSpxPlayCore`'s closed-market branch), `src/features/spx/lib/spx-play-gates.ts` (`evaluatePlayGates`, new `mixedTapeGateMessage` export) |
+| **Status** | FIXED |
+
+### Root cause
+
+`buildSpxPlayDeskContext` (`spx-play-context.ts`) unconditionally computes
+`desk_context.mixed_tape_blocked = weighted_conflicts >= mixed_tape_threshold` on every response,
+whether or not the real gate stack ever ran. `evaluateSpxPlayCore`'s closed-market branch
+(`spx-play-engine.ts`, the `!desk.market_open && !premarket` path) hand-builds `gates` instead of
+calling `evaluatePlayGates`:
+
+```ts
+gates: {
+  passed: false,
+  blocks: ["Session closed"],
+  blocks_by_category: categorizeGateBlocks(["Session closed"]),
+  first_block_category: firstGateBlockCategory(["Session closed"]),
+  warnings: [],               // <-- always empty, regardless of desk_context
+  entry_mode: "none",
+  play_idea: playIdea,
+},
+```
+
+`evaluatePlayGates` (`spx-play-gates.ts`) is the ONLY place that previously applied the mixed-tape
+check (`confluence.weighted_conflicts >= mixedTapeBlockThreshold(confluence.grade, abs)`) and
+appended `"Tape's mixed — too many conflicting signals for clean entry"` to `blocks`/`warnings` —
+and the closed-market branch never called it. So the two independently-computed fields could
+disagree: confirmed live, a real closed-market `/play` response showed
+`desk_context.mixed_tape_blocked:true` alongside `gates.blocks:["Session closed"]` with no "Tape's
+mixed" text anywhere in `gates.blocks` or `gates.warnings`.
+
+### Why this wasn't caught earlier
+
+The closed-market shortcut exists specifically to avoid running the full entry-gate machinery
+(trade governor, halt checks, session-entry counters, playbook live-gate — all meaningless when no
+entry is possible at all because the session is closed), which is correct. But that shortcut threw
+out the mixed-tape sub-check along with everything else, even though that one check is cheap,
+desk/confluence-only, and `desk_context` kept computing its own independent copy of the exact same
+condition regardless.
+
+### Evidence
+
+New tests:
+
+- `src/features/spx/lib/spx-play-context.test.ts` — `"mixed-tape coherence: desk_context
+  .mixed_tape_blocked and the gate's mixed-tape message never disagree"`. Builds a confluence-shaped
+  object (desk + score/grade/factors/direction) with exactly as many soft-opposing factors as the
+  real `mixedTapeBlockThreshold` requires (computed via the real function, not a hardcoded magic
+  number — robust to `SPX_PLAY_WEIGHTED_CONFLICT_BLOCK_MIN`/`SPX_PLAY_CONFLICT_BLOCK_MIN` env
+  overrides), feeds it into both `buildSpxPlayDeskContext` and the new `mixedTapeGateMessage`, and
+  asserts they agree in both directions (mixed tape → both fire; clean tape → neither fires).
+- `src/features/spx/lib/spx-play-engine.test.ts` — `"evaluateSpxPlayCore closed-market branch runs
+  the shared mixed-tape check and wires it into gates.warnings"`. A source-text regression guard
+  (same idiom as the file's existing `getNhConfluenceBonus` staleness-check test) pinning that the
+  closed-market branch actually calls `mixedTapeGateMessage(closedConfluence)` and merges the result
+  into `gates.warnings` — the behavioral test above only proves the two shared functions agree in
+  isolation, not that the engine's closed-market branch still wires them together, so this
+  companion test exists specifically to catch a future regression that reverts just the engine-side
+  wiring while leaving the gates.ts export intact. Driving this end-to-end through the real
+  `computeSpxConfluence` signal engine was deliberately avoided — its own session-quality/live-tape
+  factors shift with wall-clock ET time, which would make the test flaky depending on when CI runs.
+
+RED→GREEN confirmed via a manual pre-fix/post-fix swap (this sandbox's shared git-stash stack makes
+a bare `git stash` unsafe — pre-fix content was restored from `git show HEAD:<file>`, tested, then
+the fixed content restored):
+
+- **Before the fix:** `spx-play-context.test.ts` 5/6 pass (the new coherence test fails:
+  `mixedTapeGateMessage is not a function`, since the export didn't exist yet).
+  `spx-play-engine.test.ts` 6/7 pass (the new source-text regression test fails: the closed-market
+  branch's hardcoded `warnings: []` doesn't match the expected wired-up pattern).
+- **After the fix:** both files pass in full — `spx-play-context.test.ts` 6/6,
+  `spx-play-engine.test.ts` 7/7. The two pre-existing mixed-tape tests in `spx-play-gates.test.ts`
+  (`"mixed tape hard-blocks BUY"`, `"mixed tape warns on WATCH intent"`) also still pass unchanged,
+  confirming the refactor into a shared `mixedTapeGateMessage` helper didn't alter
+  `evaluatePlayGates`'s own behavior.
+
+### Blast radius
+
+`mixedTapeBlockThreshold` had exactly one consumer before this fix
+(`evaluatePlayGates`'s inline check) plus `buildSpxPlayDeskContext`'s independent recompute of the
+same condition — both now share the same `mixedTapeGateMessage` helper for the actual verdict, so
+they can never drift apart again regardless of future changes to the threshold formula. No other
+call site references the old inline `mixedTapeMsg` construction (verified by reading the full diff);
+`evaluatePlayGates`'s behavior for every other path (`entry_intent: "watch"` and `"buy"`, on an open
+market) is byte-identical before and after — the refactor only extracts the existing condition into
+a named, exported function.
+
+### Fix rationale
+
+Extracted the shared condition into `mixedTapeGateMessage` (`spx-play-gates.ts`) rather than calling
+the full `evaluatePlayGates` from the closed-market branch: `evaluatePlayGates` needs a `session`
+object (buy-cooldown/loss-streak/governor state), a `confirmations` result, and various playbook
+options that are meaningless (and in some cases simply unavailable) once the market is closed — the
+closed-market branch would have had to synthesize fake inputs for machinery that serves no purpose
+when no entry can happen at all. The mixed-tape sub-check, in contrast, is pure desk/confluence math
+with no session-state dependency, so factoring it out once and calling it from both places is the
+narrower, more honest fix.
+
+Surfaced the result in `gates.warnings`, not `gates.blocks`: "Session closed" already fully explains
+why no new entry is possible, so the mixed-tape read isn't an ADDITIONAL reason entry is blocked —
+it's the same informational-only treatment `evaluatePlayGates` itself gives this check on its
+non-buy (`entry_intent: "watch"`) path, which is the closer analogue here since no BUY is ever being
+evaluated once the market is closed. This also matches the task's own preference for the fix that
+"keeps `mixed_tape_blocked` meaningful" over silently suppressing it — the information is cheap and
+correct, so it's surfaced rather than thrown away.
+
+### Tests
+
+`src/features/spx/lib/spx-play-context.test.ts` (1 new test, 6/6 total),
+`src/features/spx/lib/spx-play-engine.test.ts` (1 new test, 7/7 total). Full suite:
+`src/features/spx/lib/spx-play-context.test.ts`, `spx-play-engine.test.ts`, `spx-play-gates.test.ts`,
+`spx-play-gates-gex-age-future.test.ts`, `spx-play-gates-playbook-allowlist.test.ts` together:
+47/47 pass. `npx tsc --noEmit` clean repo-wide.
+
+## SPX closed-market `/play` served a specific GEX-derived trade idea sourced from up-to-24h-stale GEX data with ZERO staleness disclosure — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 (member-facing data-honesty gap — a live-looking, specific trade idea ["At 0DTE support node 7675 (+2 pts)"] presented with no indication the underlying GEX layer could be hours old; no incorrect trading decision was possible from this alone since it's the closed-market SCANNING branch, no BUY/SELL action, but it violates the Largo product contract's absence/freshness principle) |
+| **Surface** | `src/features/spx/lib/spx-play-engine.ts` — the closed-market branch of `evaluateSpxPlayCore` (`!desk.market_open && !premarket`, no open play) — consumed by every closed-market poll of `GET /api/market/spx/play` and by Ask Largo's SPX read |
+| **Status** | FIXED |
+
+### Root cause
+
+When the market is closed, `evaluateSpxPlayCore` builds a "Session closed" SCANNING payload off
+`computeSpxConfluence(desk)` (`spx-signals.ts`). That function's `buildLevels()` reads
+`desk.gex_walls` directly to construct the "GEX support"/"GEX resistance"/"King node · GEX anchor"
+factors (specific strike + point-distance in the `detail` text), the `levels.stop`/`invalidation`
+fields, and (via `buildPlayIdeaIntel`) the `gates.play_idea` narrative line — all without ever
+consulting `desk.gex_stale`/`desk.gex_age_ms` (`SpxDeskPayload`, `spx-desk.ts`), which exist
+specifically so stale GEX is never presented as live (see that type's own doc comment: "the walls
+are REAL but not live — the UI age-badges / grays them so a minutes-old wall is never shown as a
+current node").
+
+The desk snapshot feeding this branch comes from `peekMergedSpxDesk()` (`spx-desk-loader.ts`),
+which **deliberately** tolerates up to 24h of staleness once the market is genuinely closed — a
+correct, intentional design choice this fix does NOT touch ("once the market is genuinely closed,
+stale and correct are the same thing"). The bug was never the tolerance itself; it was that the
+GEX-derived factor/levels/play-idea built from that tolerated-stale data carried no staleness
+disclosure anywhere in the response, while `desk.gex_stale` becomes `true` whenever the GEX
+snapshot's age exceeds `GEX_STALE_MS` (default 30s, `gexStaleFromAge`/`spx-desk-numerics.ts`) —
+i.e. on this 24h-tolerant path, `gex_stale:true` is the overwhelmingly common case, not an edge
+case.
+
+### Evidence (live repro, as reported)
+
+The sibling `GET /api/market/spx/desk` route (`peekSpxDesk()`, NOT 24h-tolerant — the tightly-bound
+peek) reported `gex_walls:[]`, `gex_stale:true`, `gex_age_ms:null` at virtually the same instant
+`GET /api/market/spx/play` served a specific GEX-support-derived trade idea with zero staleness
+disclosure anywhere in the response (grepped the payload for `stale`/`age_ms` — found none outside
+unrelated top-level desk fields).
+
+New regression tests in `src/features/spx/lib/spx-play-engine.test.ts`:
+- `"evaluateOpenPlay closed-market SCANNING, desk.gex_stale:true: the GEX-derived
+  factor/thesis/play-idea disclose staleness"` — a closed-market desk with a GEX support wall
+  within range and `gex_stale:true` must produce a factor whose own `detail` text, a `thesis`, and
+  a `gates.play_idea` that all disclose "GEX stale, not live".
+- `"evaluateOpenPlay closed-market SCANNING, desk.gex_stale:false (or absent): the SAME GEX-derived
+  factor renders unchanged, with no staleness disclosure"` — the identical fixture with
+  `gex_stale:false`, and again with the field entirely absent (the realistic degraded-snapshot
+  shape), must render the exact same factor/thesis/play-idea with NO staleness clause — proving the
+  disclosure is conditional, not unconditionally appended, and that absent-vs-false behave
+  identically.
+
+RED→GREEN confirmed via a scoped pre-fix/post-fix swap (`git show HEAD:<file>` restored the
+pre-fix source into the working tree — this sandbox's shared git-stash stack makes a bare `git
+stash` unsafe for a concurrent-session repo):
+- **Before the fix:** 7/8 tests pass in this file, 1 fails — the new `gex_stale:true` test, with
+  the actual factor detail observed as `"At 0DTE support node 7675 (+5 pts)"` (no disclosure),
+  reproducing the exact live-reported gap.
+- **After the fix:** 8/8 pass.
+
+Full suite: all **894 tests across every `src/features/spx/lib/*.test.ts` file pass** post-fix (0
+failures). `npx tsc --noEmit` clean repo-wide.
+
+### Blast radius
+
+`computeSpxConfluence`/`buildLevels` (`spx-signals.ts`) are shared by the LIVE-market path too
+(`BUY_CALL`/`BUY_PUT`/`HOLD` evaluation during market hours) — this fix does **not** touch that
+file at all. The live-market path already has its own freshness enforcement at the gate layer
+(`gex_stale_max_sec`, `gate-rules.ts`), so adding disclosure there was out of scope and
+unnecessary; this fix is scoped entirely to the closed-market branch of `spx-play-engine.ts`,
+which is the one place `desk.gex_stale` was never even read. No other call site of
+`computeSpxConfluence`/`buildPlayIdeaIntel` is touched.
+
+### Fix
+
+Added `GEX_DERIVED_FACTOR_LABELS` (the three factor labels `buildLevels` builds directly off
+`desk.gex_walls`/`desk.gex_king`: "GEX support", "GEX resistance", "King node · GEX anchor") and
+`discloseStaleGexFactors()` in `spx-play-engine.ts`. In the closed-market branch, when
+`desk.gex_stale === true` **and** the computed confluence actually fired one of those GEX-derived
+factors (gated on both, not `gex_stale` alone — a closed-market read whose only firing factors are
+VWAP/max-pain/etc. must never grow a confusing staleness clause about data it never showed):
+- each GEX-derived factor's own `detail` text gets `" — GEX stale, not live"` appended;
+- the closed-market `thesis` line gets a `" · GEX stale, not live"` clause appended;
+- `gates.play_idea` gets the same `" · GEX stale, not live"` suffix appended.
+
+The **24h staleness tolerance itself in `peekMergedSpxDesk()` was NOT changed** — this fix only
+adds disclosure on top of the existing, intentional tolerance.
+
+### Fix rationale
+
+Matches the existing disclosure idiom this codebase already uses elsewhere for stale GEX, rather
+than inventing new phrasing: `spx-invalidation.ts`'s `composeSpxInvalidationLines` ("**Data
+stale** — GEX/feed lagging; treat invalidation levels as soft until refresh.") and
+`spx-desk-brief.ts`'s risk line ("GEX/feed stale — lighter size until refresh."). Both already key
+off the exact same `desk.gex_stale` field this fix reads.
+
+Considered surfacing `gex_stale`/`gex_age_ms` directly onto `SpxPlayPayload` instead (mirroring the
+sibling `/desk` route's own top-level fields) — rejected as a wider, less-contained change to a
+type consumed by more call sites than necessary to close this specific gap; the in-text disclosure
+on the factor/thesis/play-idea that actually present the stale-derived content is the narrower,
+sufficient fix and is also the pattern the two sibling files above already establish.
+
+Gating on "a GEX-derived factor actually fired" (not just `gex_stale` alone) was a deliberate
+design choice made while writing the fix: an earlier draft appended the clause whenever
+`gex_stale` was true regardless of whether any GEX factor fired, which would have produced a
+confusing "GEX stale, not live" clause on a closed-market read whose only real signal was VWAP or
+max-pain — disclosing staleness about a GEX factor the response never actually presented.
+
+### Tests
+
+`src/features/spx/lib/spx-play-engine.test.ts` (2 new tests, described under Evidence above).
+`npx tsx --experimental-test-module-mocks --test src/features/spx/lib/*.test.ts`: 894/894 pass
+(15 suites). `npx tsc --noEmit`: clean.
+
+## Daily article-syndication cron trusted a silently-truncated "already posted" list — a transient Dev.to/Hashnode API failure would re-post an already-live article to the real account — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 (external-facing duplicate content on a scheduled, unattended daily cron — not a data-correctness bug on the member-facing product, but a genuine violation of the component's own stated invariant) |
+| **Surface** | `scripts/seo/syndicate-articles.mjs` — `devtoAlreadyPosted`, `hashnodePosted`, run daily at 15:05 UTC by `.github/workflows/seo-syndicate.yml` ("SEO article syndication") |
+| **Status** | FIXED |
+
+### Root cause
+
+`syndicate-articles.mjs` cross-posts BlackOut Academy `/learn/*` guides to Dev.to and Hashnode.
+Its own file header states the idempotency guarantee in plain terms: *"before posting, we read
+what the account already published and skip any article whose canonical already exists there —
+safe to run on a schedule forever, never double-posts."*
+
+That guarantee depended on `devtoAlreadyPosted(apiKey)` and `hashnodePosted(apiKey, publicationId)`
+returning the **complete** set of already-syndicated canonical URLs. Both functions paginate the
+platform's own API and, on ANY fetch failure mid-pagination, silently `break` the loop and return
+whatever had accumulated so far — not an error, not even a log line:
+
+```js
+// devtoAlreadyPosted (before fix)
+const res = await fetch(`https://dev.to/api/articles/me/all?per_page=100&page=${page}`, {...});
+if (!res.ok) break;           // <-- a 429/500/auth hiccup on ANY page silently truncates the set
+...
+
+// hashnodePosted (before fix)
+const j = await res.json().catch(() => ({}));
+const posts = j?.data?.publication?.posts;
+if (!posts) break;            // <-- a GraphQL error/null response silently truncates the set
+```
+
+A failure on **page 1** (the common case — one request, one chance to fail) returns an **empty**
+set, i.e. "nothing has ever been posted." `main()` then calls `pickToSyndicate(LEARN_ARTICLES,
+posted, limit)`, which — trusting that empty/partial set — returns the top-ranked eligible article
+(the same pillar/article the previous successful run already posted), and the script re-posts it
+live to the real Dev.to/Hashnode account. This is the exact failure the idempotency design exists
+to prevent, triggered by nothing more than a transient rate limit or 5xx on the "list what I've
+already posted" call — the kind of hiccup a daily unattended cron is expected to hit eventually,
+not an exotic edge case.
+
+Why this wasn't caught earlier: every existing test (`syndicate-articles.test.ts`) exercised only
+the pure helpers (`pickToSyndicate`, `eligibleArticles`, `canonicalUrl`, etc.) with a hand-built
+`alreadyPostedCanonicals` set — none exercised `devtoAlreadyPosted`/`hashnodePosted` themselves, so
+the fetch-failure path was never under test. Both functions were also module-private (not
+exported), so there was no seam to test them from outside without this fix.
+
+### Evidence (RED → GREEN)
+
+Four new tests added to `syndicate-articles.test.ts`, stubbing `globalThis.fetch`:
+1. `devtoAlreadyPosted` on a page-1 `500` — **before fix**: resolves to an empty `Set` (no error).
+   **After fix**: rejects with `Dev.to "already posted" fetch failed on page 1: HTTP 500`.
+2. `devtoAlreadyPosted` on a full page-1 (100 rows, forcing a page-2 request) then a page-2 `429` —
+   **before fix**: resolves, silently dropping every canonical on page 2+. **After fix**: rejects,
+   naming the exact page and status.
+3. `hashnodePosted` on a GraphQL error response (`{errors:[...]}`, HTTP 200) — **before fix**:
+   resolves to an empty `Set`. **After fix**: rejects, including the GraphQL error message.
+4. `hashnodePosted` on a genuinely empty publication (`posts.edges: []`, `hasNextPage: false`) —
+   unchanged both before and after: resolves to an empty `Set` with no error, proving the fix
+   distinguishes a real "nothing posted yet" state from a failed fetch rather than conflating them.
+
+Confirmed RED by reverting only the two changed lines (keeping the new exports) and re-running the
+new tests: 3/4 failed exactly as predicted (`Missing expected rejection`). Restoring the fix turned
+all 4 green. Full file: `npx tsx --experimental-test-module-mocks --test scripts/seo/*.test.ts
+src/lib/seo/*.test.ts` → 27/27 pass. `npx tsc --noEmit` clean. `npx eslint
+scripts/seo/syndicate-articles.mjs scripts/seo/syndicate-articles.test.ts` clean.
+
+### Blast radius
+
+Both functions are called from exactly one place each inside `main()` (one per platform, inside
+its own `try`/`catch`). `main()`'s existing per-platform `catch (e) { log("... SKIP: " + e.message); }`
+already does the RIGHT thing on a thrown error — skip posting for that platform this run and move
+on to the other platform — so the fix needed no new error handling, only removing the silent
+swallow that kept the error from ever reaching that `catch`. No other file imports
+`devtoAlreadyPosted`/`hashnodePosted` (repo-wide grep: only `syndicate-articles.mjs` itself and its
+own test); the only other reference to the script at all is the GitHub Actions workflow that
+invokes it as a subprocess, unaffected by the exported-functions change.
+
+### Fix rationale
+
+Throwing on a failed intermediate fetch, rather than quietly returning a partial result, is the
+minimal change that restores the invariant the module's own comments already claim: "safe to run on
+a schedule forever, never double-posts." The alternative (retry-with-backoff inside the pagination
+loop) was deliberately NOT done here — it would add real complexity (how many retries, what
+backoff, what if ALL retries fail) for a problem `main()`'s existing per-platform catch-and-skip
+already solves correctly: on a day the Dev.to/Hashnode "list my posts" call fails, the right
+behavior is "skip syndicating to that platform today, try again tomorrow" — not "retry harder" and
+not "guess and post anyway." The one real empty-publication case (`posts.edges: []` with
+`hasNextPage: false`) is explicitly left as a non-throwing success path and covered by its own
+regression test, so the fix cannot be mistaken for "throw whenever posts is falsy-ish."
+
+Also exported `devtoAlreadyPosted`/`hashnodePosted` (previously module-private) so this failure path
+has a test seam at all — matches the existing convention in the same file of exporting every pure/
+testable function.
+
+## Resend delivery/engagement webhook had no idempotency guard — duplicate `email_events` rows on redelivery — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Email observability — Resend webhook (`src/app/api/webhook/resend/route.ts`) |
+| **Status** | FIXED |
+| **Severity** | P3 (observability-only blast radius — no entitlement/billing logic reads this table — but a real, repo-inconsistent correctness gap) |
+
+### Root cause
+
+`src/app/api/webhook/resend/route.ts` records every Resend delivery/engagement event
+(sent/delivered/opened/clicked/bounced/complained/failed/suppressed, plus `contact.*`) into
+`email_events` — the only observability surface for "did this email actually land" beyond the
+original `sendEmail()` call succeeding. It is Svix-signed (same scheme Clerk's webhook route
+unwraps) and the SDK's `webhooks.verify()` correctly checks the signature, but the route then
+inserted unconditionally on every verified delivery, with **no check for whether this exact
+delivery had already been recorded**.
+
+Svix is an at-least-once delivery transport: it retries on any non-2xx response, and (same as
+every other at-least-once webhook provider) can redeliver an already-ack'd event — a network
+blip that loses our 200 on the wire, infra-side retries, etc. `svix-id` is Svix's own message id
+and is **stable across redeliveries of the same event** (not a per-attempt id) — exactly the
+property `webhook/whop/route.ts`'s `claimWhopEvent`/`eventId` already relies on for its own
+idempotency claim. This repo already has the correct pattern for this exact problem, one webhook
+handler over; the Resend route simply never applied it. (Clerk's `webhooks/clerk/route.ts` has
+the same gap, but that route is a separate, unrelated concern and out of scope for this fix —
+noted here so a future sweep doesn't have to rediscover it.)
+
+### Failure scenario
+
+1. Resend sends an `email.bounced` webhook; our route verifies it and inserts one `email_events`
+   row, then returns 200.
+2. The 200 is lost in transit (or Svix redelivers for its own reasons) — Svix retries the SAME
+   event, same `svix-id`, same payload.
+3. The route has no record of having already processed that `svix-id`, so it inserts a **second**
+   row for the identical delivery.
+4. `GET /api/admin/email-events` (the only consumer of this table) aggregates `COUNT(*) GROUP BY
+   template_tag, event_type` over a time window — the duplicate row inflates that count, so the
+   deliverability dashboard (sent/delivered/opened/bounced/complained per template) over-reports
+   exactly the events that got redelivered, with bounce/complaint counts — the ones ops actually
+   watches for reputation risk — no exception.
+
+No downstream suppression/entitlement logic reads `email_events` today (confirmed via
+`grep -rn email_events src/` — the only writer is this route, the only reader is the admin
+observability route), so the blast radius is dashboard-accuracy only, not a security or billing
+issue. It is still a real, silently-wrong number on a page a human reads to make judgment calls.
+
+### Evidence
+
+- Added `src/app/api/webhook/resend/route.test.ts` (did not exist before this fix — the route had
+  zero test coverage).
+- RED/GREEN proof: stashed the route fix (`git stash -- src/app/api/webhook/resend/route.ts`),
+  re-ran the new test file — the "redelivered event is NOT inserted twice" case failed
+  (`redelivery must be acked as a duplicate: + undefined - true`), the other two cases happened to
+  pass incidentally (they don't exercise the dedup path). Restored the fix (`git stash pop`) — all
+  3/3 pass.
+- Confirmed the fix does not change the module's claimed field-indexing contract (`extractIndexed`
+  still keeps the full raw payload in `metadata` regardless of which fields it can index) — this
+  fix is purely about *whether* a row is inserted, not what fields the row carries.
+
+### Fix
+
+Mirror `webhook/whop/route.ts`'s `claimWhopEvent`/`releaseWhopEventClaim` pattern exactly, using
+the shared `sharedCacheSetNx`/`sharedCacheDel` primitives (`src/lib/shared-cache.ts` — the same
+atomic Redis `SET NX EX` claim primitive the Whop route's own hand-rolled Redis client achieves
+manually; reusing it here avoids a second hand-rolled Redis connection for the same purpose):
+
+- **Claim before processing** (`resend:event:<svix-id>`, 24h TTL — mirrors `claimWhopEvent`'s own
+  TTL choice): a redelivery that's already been claimed is ack'd with `{ ok: true, duplicate:
+  true }` and never reaches the INSERT.
+- **Release the claim on a processing failure** (the DB insert throws): otherwise a transient DB
+  error would permanently "poison" that `svix-id` — Svix's own retry of the exact same event would
+  find the key already claimed and be silently swallowed as a duplicate of an attempt that never
+  actually persisted anything. This is the identical bug `releaseWhopEventClaim`'s own doc comment
+  describes and fixes for the Whop route; the Resend route is simply the second place in this repo
+  the same shape could recur.
+- **Fail open** (`.catch(() => true)` on the claim) if Redis itself errors mid-call — same bias as
+  every other best-effort guard in this file and in `ip-rate-limit.ts`: never drop a genuine,
+  first-time delivery over an infra blip. With no `REDIS_URL` configured at all, `sharedCacheSetNx`
+  already falls through to its per-process in-memory NX map, which still gives correct dedup
+  within one replica (not cross-replica, same documented limitation as every other `shared-cache.ts`
+  caller without Redis).
+
+### Fix rationale — why `sharedCacheSetNx` and not a second hand-rolled Redis client
+
+`webhook/whop/route.ts` builds its own `makeRedis(...)` client inline for `claimWhopEvent` because
+it predates `shared-cache.ts`'s `sharedCacheSetNx` (per that function's own doc comment, it is "the
+cross-replica idempotency primitive" — built for exactly this kind of atomic claim, and already
+used by the swing-discovery cron's overlap guard). Reusing it here is less code, no new Redis
+connection management to get wrong, and has its own dedicated test suite
+(`src/lib/shared-cache.test.ts`) already proving the atomic-claim semantics this fix depends on.
+
+### Blast radius
+
+Only `src/app/api/webhook/resend/route.ts`. `extractIndexed`, the INSERT's column list, and the
+`email_events` schema are all unchanged. The sibling `admin/email-events` read route needed no
+change — it already just counts whatever rows exist; this fix stops wrong rows from being created
+in the first place. `webhook/whop/route.ts` (the pattern this fix mirrors) and `shared-cache.ts`
+(the primitive it reuses) are both read-only references, not touched.
+
+### Tests
+
+`src/app/api/webhook/resend/route.test.ts` (new):
+- "a redelivered event (same svix-id) is NOT inserted twice" — the regression proof (RED pre-fix).
+- "two different svix-ids each insert their own row (not over-deduped)" — guards against an
+  over-eager key or a key that doesn't actually vary per event.
+- "a retry AFTER a failed insert is reprocessed, not swallowed as a duplicate" — proves the
+  release-on-failure path, mirroring `releaseWhopEventClaim`'s own stated purpose.
+
+`npx tsx --experimental-test-module-mocks --test src/app/api/webhook/resend/route.test.ts
+src/app/api/webhook/whop/route.test.ts src/lib/shared-cache.test.ts src/lib/email/*.test.ts`:
+33/33 pass. `npx tsc --noEmit` and `npx eslint src/app/api/webhook/resend/route.ts
+src/app/api/webhook/resend/route.test.ts` both clean.
+
+## `buildProviderHealthIssues` hardcoded "in the last hour" in the rate-limit incident detail, regardless of the actual reconcile window — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (admin-facing data-accuracy defect — misleads severity judgment on a persisted, dashboard-visible incident record; no member-facing impact, no gate/alerting threshold miscounted) |
+| **Surface** | `src/lib/provider-health-issues.ts` — `buildProviderHealthIssues()`'s rate-limit issue branch, consumed by the `provider-health-reconcile` cron (`src/app/api/cron/provider-health-reconcile/route.ts`) and persisted into `admin_incidents.detail` via `syncAdminIncidents` (`src/lib/admin-incidents.ts`), surfaced on the admin operations dashboard |
+| **Status** | FIXED |
+
+### Root cause
+
+`provider-health-reconcile`'s cron route reads a configurable window
+(`PROVIDER_HEALTH_WINDOW_MIN`, default `10` minutes) and passes it through
+`runProviderHealthReconcile(windowMinutes)` → `fetchProviderTelemetryRollups(windowMinutes)`, which
+clamps it to `[1, 60]` and uses the clamped value in the live SQL predicate
+(`WHERE at > NOW() - (N || ' minutes')::interval`). That clamped value was never threaded through
+to `buildProviderHealthIssues`, which built the rate-limit issue's `detail` text with a literal,
+unconditional string:
+
+```ts
+detail: `${row.rate_limits} rate-limited call(s) in the last hour`,
+```
+
+regardless of what window the rollup it was describing actually came from. With the real default
+10-minute window, an admin reading "4 rate-limited calls in the last hour" on the incident
+dashboard would badly understate how fast the provider is actually getting rate-limited — 4 in 10
+minutes is a materially more urgent signal than 4 in 60 minutes, and this issue's own `detail` text
+is the only place that context is recorded (the row is persisted verbatim into `admin_incidents`
+and re-displayed from there, not re-derived). The sibling "fail" detail text had the same latent
+gap in a milder form — it said generic `"... in window"` with no number at all, never claiming a
+wrong duration, but also never giving the real one.
+
+This was a clean, standalone bug — unrelated to and not a duplicate of round 126's
+`admin-incidents.ts` reopen-stale-ack fix (PR #6934, still in flight): that fix is about
+`acked_at`/`acked_by` not resetting on a resolved→reopened transition; this fix is about the
+`detail` TEXT this cron computes before it ever reaches `syncAdminIncidents`.
+
+### Evidence
+
+New/extended tests in `src/lib/__tests__/provider-health-reconcile.test.ts`:
+- `"reflects the ACTUAL reconcile window in the rate-limit detail text, not a hardcoded hour"` —
+  passes `windowMinutes=10` and asserts the detail does NOT match `/last hour/i` and DOES match
+  `/10m window/`.
+- `"reflects a non-default window (e.g. PROVIDER_HEALTH_WINDOW_MIN=45) exactly, not the old
+  10-minute default"` — passes `windowMinutes=45`, asserts the detail says `45m window` and not
+  `10m window`.
+- `"defaults to a 10-minute window label when no windowMinutes is passed (back-compat)"`.
+- `clampProviderHealthWindowMinutes`: direct unit coverage of the clamp (`[1, 60]`, rounds),
+  proving it matches the SQL query's own clamp byte-for-byte (it's now the literal same function).
+
+RED→GREEN confirmed via `git stash` on just the two fixed source files (the test file itself was
+not stashed, so it ran against the pre-fix implementation):
+- **Before the fix:** 4/8 tests in the file failed — the two new window-text assertions (detail
+  still said "last hour" / "10m window" was absent), the back-compat default assertion, and the new
+  `clampProviderHealthWindowMinutes` test (`is not a function`, since the export didn't exist yet).
+- **After the fix (`git stash pop`):** 8/8 pass.
+
+Also ran the sibling `admin-incidents.test.ts` (17/17 pass, unaffected — confirms this fix doesn't
+touch or interact with round 126's in-flight reopen-stale-ack fix) and a repo-wide
+`npx tsc --noEmit` (clean) + `npx eslint` on both changed source files and the test file (clean).
+
+### Blast radius
+
+`buildProviderHealthIssues` has exactly one call site repo-wide
+(`runProviderHealthReconcile` in `provider-health-reconcile.ts`, itself called only by the
+`provider-health-reconcile` cron route) — verified by grep. `fetchProviderTelemetryRollups`'s own
+clamp logic was extracted into the newly-exported `clampProviderHealthWindowMinutes` so the query
+and the issue text can never drift onto two different clamped values again; `fetchProviderTelemetryRollups`
+now calls the shared helper instead of inlining the same `Math.min(Math.max(...))` expression a
+second time. No other consumer of either function exists.
+
+### Fix
+
+1. Extracted the window clamp (`Math.min(Math.max(1, Math.round(minutes)), 60)`) out of
+   `fetchProviderTelemetryRollups` into an exported `clampProviderHealthWindowMinutes()` in
+   `provider-health-issues.ts`.
+2. `buildProviderHealthIssues(rollups, thresholds, windowMinutes = 10)` gained a third, optional
+   parameter (appended, not inserted — keeps every existing positional call site, including both
+   existing tests, working unchanged) and now builds both the "fail" and "rate-limit" detail
+   strings from a single `windowLabel = "the last ${windowMinutes}m window"`, replacing both the
+   generic "in window" phrasing and the hardcoded "in the last hour" string.
+3. `runProviderHealthReconcile` now computes `clampProviderHealthWindowMinutes(windowMinutes)`
+   once and passes that SAME value into `buildProviderHealthIssues`, so the issue text always
+   describes the exact window the SQL query actually used — including when an env override like
+   `PROVIDER_HEALTH_WINDOW_MIN=120` gets clamped down to 60 before the query runs; the old code
+   would have had no way to reflect that clamp in text at all, since it never threaded the window
+   through in the first place.
+
+### Fix rationale
+
+Threading the already-clamped number through (rather than, say, re-deriving or re-clamping a raw
+value inside `buildProviderHealthIssues` itself) keeps the query and the display text
+provably in sync — they now both call the one exported `clampProviderHealthWindowMinutes`, so a
+future change to the clamp bounds only has one place to change. Appending `windowMinutes` as a
+third parameter with a default (rather than, say, folding it into `ProviderHealthThresholds`) was
+deliberate: it's not a tunable severity threshold, it's provenance about the data being described,
+and keeping it separate avoids touching the thresholds type/tests at all.
+
+### Tests
+
+`src/lib/__tests__/provider-health-reconcile.test.ts` (4 new tests + existing 4 unchanged, all 8
+pass). `src/lib/admin-incidents.test.ts` (17/17, unaffected). `npx tsc --noEmit` clean repo-wide.
+`npx eslint` clean on all three touched files.
+
+## Mobile `/api/mobile/ticker/[ticker]` always served `nearestWall: null` — the vocabulary it compared against never matched the source payload — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (dead field in a mobile-only contract — no financial-correctness impact, no data corruption, but a real, silent "feature does nothing" defect on every request) |
+| **Surface** | `src/app/api/mobile/ticker/[ticker]/route.ts` — the native iOS Watchlist row detail-sheet endpoint |
+| **Status** | FIXED |
+
+### Root cause
+
+The route derives its mobile-facing `levels.nearestWall` field from `GexPositioning.nearest_wall`
+(`src/lib/providers/gex-positioning.ts`), whose `kind` is typed — and always populated, via the
+shared `nearestWallFromLevels` helper in `src/lib/providers/gex-nearest-wall.ts` — as
+`"resistance" | "support"`. The route instead compared the raw value directly against the mobile
+contract's own output literals:
+
+```ts
+const kind: "call" | "put" | null =
+  nw?.kind === "call" || nw?.kind === "put" ? nw.kind : null;
+```
+
+`nw.kind` is never the string `"call"` or `"put"` — it is always `"resistance"` or `"support"` (or
+absent). So this comparison can never match, `kind` is always `null`, and the `nearestWall` field
+of the response (`nearestWall` requires `kind !== null` to be non-null) was unconditionally `null`
+for every ticker, on every request, regardless of whether the backend genuinely had a nearest wall
+with a real strike and distance. The native iOS Watchlist detail sheet's "nearest wall" UI element
+was silently dead from the moment this route shipped — no error, no degraded flag, nothing to
+distinguish it from "this ticker genuinely has no computable nearest wall" (which is a real, valid
+state elsewhere in the same payload, e.g. when both `call_wall`/`put_wall` are null). This is the
+same absence-as-fact failure shape this repo's CLAUDE.md records repeatedly elsewhere — a dead
+field reading identically to a legitimately-empty one.
+
+There is no test file for this route at all prior to this fix (`src/app/api/mobile/ticker/`
+contains only `route.ts`), so nothing caught the mismatch.
+
+### Evidence
+
+New `src/app/api/mobile/ticker/[ticker]/route.test.ts`, three tests:
+
+- A `nearest_wall: { strike: 590, kind: "resistance", distance_pts: 10 }` fixture (the call wall is
+  nearer) — asserts the response's `levels.nearestWall` equals
+  `{ strike: 590, kind: "call", distancePts: 10 }`.
+- A `nearest_wall: { strike: 576, kind: "support", distance_pts: -4 }` fixture (the put wall is
+  nearer) — asserts `{ strike: 576, kind: "put", distancePts: -4 }`.
+- A `nearest_wall: null` fixture — asserts `nearestWall` stays `null` (the genuinely-absent case is
+  unaffected by the fix).
+
+RED→GREEN confirmed via `git stash` of just the route fix (keeping the new test file in place):
+**before the fix**, 1/3 pass — both resistance/support fixtures fail with `actual: null` where
+`{strike, kind, distancePts}` was expected (the null-case test, which doesn't depend on the broken
+comparison, already passed). **After the fix**, 3/3 pass.
+
+### Blast radius
+
+`nearest_wall`'s `kind` vocabulary (`"resistance" | "support"`) is shared by every other consumer
+of `GexPositioning`/`nearestWallFromLevels` (Thermal, Vector, the public gamma-snapshot tool,
+`play-brief.ts`) — none of those compare it against `"call"`/`"put"` literals; this mobile route
+was the only call site translating it to a different vocabulary, and the only one that got the
+translation backwards. No other file references this route's local `kind` variable or its
+`MobileTickerDetail` type outside `route.ts` itself (verified by grep), so the fix is fully
+contained to this one file.
+
+### Fix
+
+Map the source vocabulary explicitly instead of literal-matching it: `"resistance"` strikes are
+always the call wall (`nearest_wall`'s own doc comment and `nearestWallFromLevels`'s candidate
+construction: the `call_wall` candidate is always tagged `"resistance"`, `put_wall` always
+`"support"`), so `nw.kind === "resistance" ? "call" : nw.kind === "support" ? "put" : null`.
+
+### Fix rationale
+
+Translating the vocabulary (rather than, say, renaming the mobile contract's `kind` to
+`"resistance" | "support"` to match the source) keeps the mobile app's existing `call`/`put`
+labels — which already match every other field in this same payload (`levels.callWall`,
+`levels.putWall`) — intact; this is purely a backend bug fix with zero mobile-client-side change
+required.
+
+### Tests
+
+`src/app/api/mobile/ticker/[ticker]/route.test.ts` (new file, 3 tests, all pass post-fix).
+`npx tsc --noEmit` clean repo-wide.
+
+## `reconcileAllMemberships`'s own run-summary stats silently mislabeled every reconciled `community`-tier member as `free` — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (observability/reporting defect — the actual Clerk tier write is correct and unaffected; only the reconcile cron's own summary stats, logged to `cron_job_runs.meta_json` and returned in the cron's JSON response, were wrong) |
+| **Surface** | `src/lib/membership.ts` — `reconcileAllMemberships`'s inner `syncOne` helper, called by `GET /api/cron/membership-reconcile` |
+| **Status** | FIXED |
+
+### Root cause
+
+`reconcileAllMemberships` re-resolves the true Whop tier for every email in its target set and
+tallies the outcome into `{checked, premium, free, errors, capped}` for the cron's logged run.
+`syncOne` derived the bucket with:
+
+```ts
+return tier === "premium" ? "premium" : "free";
+```
+
+`syncWhopMembershipForEmail` can resolve a real third tier, `"community"` (SPX Slayer, $49/mo,
+added by #1159) — not a degenerate case of "not premium". The bare ternary collapsed every
+`community` resolution into the `"free"` bucket for this function's own return stats, even though
+the member's actual Clerk `publicMetadata.tier` was written correctly as `"community"` by
+`syncWhopMembershipForEmail` → `updateClerkMembershipMetadata` (a separate code path, unaffected
+by this classification — no member ever lost or gained access from this bug).
+
+This repo's own code already treats `community` as a distinct, first-class paid tier everywhere
+else that matters: `isPaidTierForReconcileDowngradeCheck` (same file, fixed earlier today in
+#6886/the "community omission" fix one paragraph above it) explicitly folds `community` in
+alongside `premium` for the *downgrade-check* side of this exact function; `admin-users.ts`'s
+`AdminUserListStats` tracks `{total, premium, admins, community, free}` as four separate buckets
+for the admin User Management dashboard. Only this one tally, on the *upgrade/resolve* side of the
+same function, still conflated `community` with `free`.
+
+### Evidence
+
+New test in `src/lib/membership-reconcile-downgrade.test.ts` (the existing home of this function's
+other pure-predicate regression tests) pins the extracted `reconcileStatsBucket` helper:
+
+```ts
+test("reconcileStatsBucket keeps community distinct from free — it must not collapse to free", () => {
+  assert.equal(reconcileStatsBucket("premium"), "premium");
+  assert.equal(reconcileStatsBucket("community"), "community");
+  assert.equal(reconcileStatsBucket("free"), "free");
+});
+```
+
+RED→GREEN confirmed via `git stash push -- src/lib/membership.ts` (test file left in place):
+- **Before the fix:** `reconcileStatsBucket` doesn't exist yet — the test fails with
+  `(0 , import_membership.reconcileStatsBucket) is not a function`.
+- **After the fix:** all 4 tests in the file pass, including the 3 pre-existing ones (unaffected).
+
+### Blast radius
+
+`reconcileAllMemberships` has exactly one caller, `GET /api/cron/membership-reconcile`, which
+spreads the full result into both its JSON response and the row `logCronRun` persists to
+`cron_job_runs.meta_json`. No other code path reads `syncOne`'s bucket or `reconcileAllMemberships`'s
+`{premium, free}` counts, so the fix is fully contained to this one function and its one caller —
+confirmed via `npx tsc --noEmit` (clean across the whole project after widening the return type)
+and a repo-wide grep showing no other consumer destructures `{premium, free}` from this specific
+function.
+
+### Fix
+
+Extracted the tier→bucket mapping into a new, pure, exported `reconcileStatsBucket(tier: Tier):
+"premium" | "community" | "free"` helper (same file, right after the sibling
+`isPaidTierForReconcileDowngradeCheck` predicate it mirrors), widened `syncOne`'s return type to
+`"premium" | "community" | "free" | "error"`, and added a `community` counter alongside `premium`/
+`free` in `reconcileAllMemberships`'s tally loop and return type. The cron route's
+`{ ok: true, ...result }` spread needed no change — it already forwards whatever shape
+`reconcileAllMemberships` returns.
+
+### Fix rationale
+
+Extracting a pure, named predicate (rather than inlining a wider ternary in `syncOne`) matches this
+exact file's own established pattern for making a reconcile-sweep classification decision
+independently testable without standing up Clerk/Whop clients — the same reasoning stated in
+`isPaidTierForReconcileDowngradeCheck`'s own doc comment. Widening the return shape additively
+(`community` is a new field; `checked`/`premium`/`free`/`errors`/`capped` are unchanged) means no
+existing consumer's expectations break, which `tsc --noEmit` across the whole project confirms.
+
+### Tests
+
+`src/lib/membership-reconcile-downgrade.test.ts` (1 new test, 3 pre-existing unaffected). Sibling
+suites that exercise the surrounding membership/whop logic also re-run clean and unaffected:
+`membership-activating.test.ts`, `membership-sync-limit.test.ts`, `membership-tiebreak.test.ts`,
+`tiers.test.ts`, `whop-billing-kind.test.ts`, `whop-dunning.test.ts`, `whop-revocation.test.ts`
+(35 tests total, 0 failures). `npx tsc --noEmit` clean. `npx eslint` clean on both changed files.
+
+## Night Hawk Swings: `tradeManagerNarrativeSection`'s "Break watch — stop already breached" bullet compared against the DEAD pre-scale stop, not the live runner trail — a systemic blind spot on every TRIM/RUNNER position
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #6924) |
+| **Found by** | Live production repro + independent code verification, Ask Largo × Night Hawk Swings standing ownership mandate, 2026-10-26 |
+| **Scope** | `src/lib/swing/play-brief-narrative.ts` (`tradeManagerNarrativeSection`) |
+
+### Root cause
+
+Once a TRIM/RUNNER swing position has scaled out (a trim tranche fired — `hasScaledOut(exitPolicy)`
+reads `true`), the live exit engine's own state machine (`deriveScaleOutAction`/
+`computeScaleOutTriggerInfo`, `src/lib/zerodte/scale-out.ts`) **permanently disables** the original
+pre-scale `stop_premium` — the real governing floor becomes the runner's trailing stop off its peak
+(`runnerTrailingStopPremium(peakPremium)` = peak × `SCALE_OUT_RULES.trail_from_peak` (0.5),
+`src/lib/zerodte/terminal-ladder.ts`).
+
+THREE sibling call sites in this exact subsystem already apply this substitution correctly:
+- `play-brief.ts`'s `managementSection` ("Rails: stop ... (no longer applies — already scaled;
+  runner trail now $X)" line, ~L310-319).
+- `play-brief.ts`'s evidence-fact builder (`evidence_numbers`, the Largo contract's C7 "specific
+  numbers" field, ~L1908-1940 — fixed the SAME day as this finding).
+- `play-brief-intel.ts`'s `watchForSection` ("Premium stop rail" bullet, ~L2208-2260).
+
+`tradeManagerNarrativeSection`'s "Break watch — stop already breached on the executable side"
+bullet — this function's own code comment calls it "the single most action-driving line in the
+brief" — was the ONE remaining call site in this file that read the raw `play.exitPolicy?.
+stop_premium` with **no** `hasScaledOut`/`runnerTrailingStopPremium` substitution at all (confirmed
+by grep: zero hits for either helper name anywhere in `play-brief-narrative.ts` before this fix).
+The same unguarded `execStop` also fed the function's forward-looking `!breakLine` fallback wording
+("Break watch — lose premium stop $X → cut size or exit"), so both render paths carried the bug.
+
+### Evidence — two confirmed live failure directions
+
+1. **False alarm / mislabel (NN, positionId 2133):** "Trade manager read" said *"Break watch —
+   stop already breached on the executable side — bid $0.05 is at/through your premium stop $0.22
+   right now → exit or cut size"* while the SAME response's Management section correctly said
+   *"stop $0.22 (no longer applies — already scaled; runner trail now $1.20)"*. Two sections of
+   one brief flatly contradicting each other about whether $0.22 is the live number — and even
+   where the bullet's underlying breach call happened to be directionally correct (the bid really
+   had also breached the real $1.20 trail), it cited the wrong dollar figure and the wrong label.
+
+2. **Silent miss — the dangerous direction (AI, positionId 2128):** the live bid was **exactly at**
+   the real runner-trailing floor (per the brief's own already-fixed evidence fact) — a genuine
+   live risk event — but **no** "stop already breached" bullet rendered anywhere, because
+   `execStop` was still pinned to the dead, lower pre-scale stop and the bid sat above that dead
+   number, so the comparison read "not breached" even though the position had genuinely hit its
+   real managed floor.
+
+### Why this is systemic, not a one-off
+
+`runnerTrailingStopPremium` (peak × 0.5) is structurally **always ≥** the original pre-scale
+`stop_premium` once a position has scaled out: scaling requires peak ≥ 2× entry (per
+`SCALE_OUT_RULES`/`decideTrimScale`), so trail = peak × 0.5 ≥ entry > the original sub-entry stop.
+So **any** TRIM/RUNNER position whose bid sits between the dead stop and the live trail got **no**
+stop-breach alert at all, even though it has genuinely hit its real managed floor — a live,
+systemic blind spot across the whole post-scale population, not limited to the two sampled
+positions above. This is exactly the kind of defect the standing Ask Largo "own this feature,
+100% correctness" mandate exists to catch.
+
+### Fix
+
+- Compute `scaledAlready = play.exitPolicy != null && hasScaledOut(play.exitPolicy)` and
+  `peakPremiumDollarForStop` the same way the evidence-fact builder sibling derives it
+  (`play.entry * (1 + play.peak / 100)`, guarded on both being present/finite).
+- `runnerTrail = scaledAlready ? runnerTrailingStopPremium(peakPremiumDollarForStop) : null`.
+- `effectiveStop = scaledAlready ? runnerTrail : (execStop ?? null)` — the real governing floor.
+  Deliberately **not** `runnerTrail ?? execStop`: if a position has scaled out but the peak basis
+  can't be priced (missing `entry`/`peak`), this never silently falls back to citing the confirmed-
+  dead stop as if it were live — consistent with this codebase's "never fabricate, honest absence"
+  discipline. In that (rare, disclosed) edge case the bullet simply has nothing to compare against
+  and stays silent on this specific rail, rather than re-introducing the exact false-alarm bug this
+  PR fixes.
+- `stopRailLabel = scaledAlready ? "runner trailing stop" : "premium stop"` — relabels the bullet so
+  it can never again disagree with Management/`evidence_numbers`/What-to-watch's own labeling of
+  the same fact.
+- `execBreached` now compares `execMarkForBreach` against `effectiveStop` instead of raw `execStop`.
+- Applied the identical substitution to the `!breakLine` forward-looking fallback ("Break watch —
+  lose premium stop $X → cut size or exit", both LONG and SHORT wording) — same root cause
+  (unguarded `execStop`), same fix, same file.
+
+### Fix rationale — what was deliberately left unchanged
+
+- **The three sibling call sites were not touched.** They already apply this substitution
+  correctly; this PR only brings the one remaining call site in line with them.
+- **No change to `hasScaledOut`/`runnerTrailingStopPremium` themselves** (`terminal-ladder.ts`) —
+  both already existed, built for exactly this bug class (see that file's own 2026-10-21 comment),
+  and are imported here unchanged.
+- **The missing-peak-basis edge case suppresses the bullet rather than fabricating a number** (see
+  Fix above) — a deliberate, disclosed design choice over the alternative of falling back to the
+  dead stop, which would reopen the false-alarm failure mode in that corner case.
+
+### Regression test (RED → GREEN proof)
+
+Two new tests in `src/lib/swing/play-brief-narrative.test.ts`:
+1. *"Break watch fires off the LIVE runner trail (not the dead pre-scale stop) once scaled out —
+   silent-miss repro (live AI#2128 shape)"* — TRIM/RUNNER play with `hasScaledOut=true`
+   (`trim_levels: [{ trigger_pct: 100, fired: true }]`), entry $0.19 / peak +100% → runner trail
+   $0.19, dead pre-scale stop $0.07, bid $0.19 (above the dead stop, exactly at the live trail).
+   Asserts the "stop already breached" bullet DOES fire off the $0.19 runner trail, and that the
+   soft "lose premium stop" fallback does NOT render instead.
+2. *"Break watch cites the LIVE runner trail, not the dead pre-scale stop, once scaled out —
+   false-alarm/mislabel repro (live NN#2133 shape)"* — entry $0.50 / peak +380% → runner trail
+   $1.20, dead pre-scale stop $0.22, bid $0.05 (below both). Asserts the bullet fires citing the
+   **runner trailing stop $1.20**, not the dead **premium stop $0.22**.
+
+Verified RED → GREEN exactly as this repo's policy requires: reverted `play-brief-narrative.ts` to
+its pre-fix `origin/main` content (test file kept in place) — both new tests FAILED (162/164 pass,
+2/164 fail, matching the two live repros exactly: the silent-miss case rendered only the soft
+"lose premium stop $0.07" fallback with no breach bullet at all, and the mislabel case rendered
+"premium stop $0.22" instead of the runner trail). Restored the fix — both tests PASS, 164/164.
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-narrative.test.ts`
+  (Node 20) — RED (162/164) confirmed pre-fix, GREEN (164/164) confirmed post-fix.
+- Full suite (`npm test`, Node 20) — pass, 0 fail.
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+
+## GEX regime-transition durable-history cursor (`persistGexRegimeEvents`) had an unlocked, cross-ticker read-modify-write — concurrent builds for different tickers could cause duplicate durable rows — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (shared mutable state race — inflates a durable analytics/history log with duplicate rows; no member-facing data corruption, no spend/safety impact) |
+| **Surface** | `src/lib/providers/gex-regime-events.ts` — `persistGexRegimeEvents`, the fire-and-forget durable-history writer called from `polygon-options-gex.ts`'s `fetchGexHeatmap` on every fresh (cache-miss) GEX matrix build |
+| **Status** | FIXED |
+
+### Root cause
+
+`persistGexRegimeEvents(ticker, events)` did an unlocked, multi-round-trip read-modify-write
+against a single Postgres key-value row (`platform_meta` key `gex_regime_event_cursor`):
+
+```ts
+const cursor = await loadCursor(today);      // SELECT (one GLOBAL JSON blob, all tickers)
+// ...diff events against cursor, decide what's "new"...
+// ...insert the "new" rows into gex_regime_events...
+await saveCursor(today, cursor);             // UPSERT (overwrite the whole blob)
+```
+
+Critically, `GEX_REGIME_EVENT_CURSOR_KEY` is **one shared row for every ticker**, not one row
+per ticker — the cursor is a JSON map keyed by `${ticker}|${type}:${direction}` slots, all
+packed into a single `platform_meta` value. `persistGexRegimeEvents` is called from
+`polygon-options-gex.ts`'s `fetchGexHeatmap`, fire-and-forget (`void persistGexRegimeEvents(...)
+.catch(...)`, never awaited by the matrix build), once per fresh (cache-miss) matrix compute for
+whichever ticker that compute was for.
+
+There IS a cross-replica safeguard in `fetchGexHeatmap` — a Redis `SET NX`-based
+`clusterBuildLockKey` (`gex:heatmap:build-lock:${inflightKey}`) — but it is keyed **per ticker**
+(`inflightKey` embeds the ticker-specific `cacheKey`), so it only serializes two builds of the
+**same** ticker. It does nothing for two **different** tickers (e.g. SPY and NVDA) whose
+cache-miss builds land on two different ECS replicas at the same moment — both can call
+`persistGexRegimeEvents` concurrently, both racing the one shared cursor row.
+
+If two such calls interleave — both `loadCursor()` before either `saveCursor()` lands — both
+compute their own ticker's diff against the same stale base map, and whichever write lands last
+overwrites the whole row: the OTHER ticker's newly-recorded slot(s) are silently dropped (a
+classic read-modify-write "lost update", same shape as the X-marketing races in
+`x-rate-budget.ts`/`x-marketing-meta.ts`, rounds 111-114). The consequence here is a *duplicate*
+write rather than a dropped one: because the clobbered ticker's slot never actually reached the
+saved cursor, the **next** sample for that ticker sees the same transition as "new" again and
+inserts a **second** durable `gex_regime_events` row for a transition that already has one —
+inflating "how many times has X's wall moved today" / "when did X's flip last cross" history
+that `gexRegimeEventsForLargo`/admin surfaces read from this table.
+
+### Evidence
+
+New test `src/lib/providers/gex-regime-events-concurrency.test.ts` mocks `@/lib/db`'s
+`getMeta`/`setMeta` with a real async gap on read (modeling an actual Postgres round-trip) so
+two concurrent `persistGexRegimeEvents` calls for **different tickers** both read the
+pre-update cursor before either writes — exactly the interleaving two different replicas'
+cache-miss builds for different tickers would produce — and mocks
+`tryAdvisoryLock`/`releaseAdvisoryLock` with real non-blocking, session-scoped-mutex semantics.
+
+RED→GREEN confirmed via `git stash` on `src/lib/providers/gex-regime-events.ts` alone (test
+files untouched):
+- **Before the fix:** two tickers (SPY, NVDA) persisting the same events twice in a row insert
+  **3** rows total instead of the correct **2** (the second, repeat call for one ticker
+  re-inserts because its first write was clobbered); 8 tickers persisting the same event twice
+  insert **15** rows instead of the correct **8**.
+- **After the fix:** both cases insert exactly the expected count — no duplicate re-inserts.
+
+### Blast radius
+
+The only writer of `GEX_REGIME_EVENT_CURSOR_KEY` is `persistGexRegimeEvents` itself, called only
+from `fetchGexHeatmap`'s fire-and-forget hook. The fix covers that single call site (which is hit
+once per ticker per cache-miss build, across every replica) with no further changes needed.
+`fetchGexRegimeEvents`/`gexRegimeEventsForLargo` (the readers) needed no change — the bug was
+entirely in what got written, not how it's read. Confirmed this is independent of (and does not
+touch) `/api/cron/gex-alerts`'s own, separate Redis-based live-push dedup — same "neither path
+reads or writes the other's keys" guarantee this module's own doc comment already asserts and
+the existing test `persistGexRegimeEvents never touches gex-alerts' Redis dedup keyspace...`
+still verifies unaffected.
+
+### Fix
+
+Serialized the load+diff+insert(s)+save critical section in `persistGexRegimeEvents` with the
+same `tryAdvisoryLock`/`releaseAdvisoryLock` primitive the X-marketing fixes use, factored into
+a small internal `writeGexRegimeEvents` helper so both the locked path and the unlocked
+bounded-retry-exhausted fallback call the identical logic. Used a **single global** lock key
+(`gex-regime-event-cursor-write`) rather than a per-ticker one — deliberate, because the row
+itself is global (one JSON blob for every ticker), so a per-ticker lock key would miss the actual
+race, which is cross-ticker, not same-ticker. 30-attempt × 60ms bounded retry (`tryAdvisoryLock`
+is non-blocking "try", not a queue), unlocked fallback + `console.warn` if the lock still can't
+be acquired after the bound — no worse than the pre-fix behavior, and now visible in logs if it
+ever actually fires. The fire-and-forget contract is unchanged: the lock only adds latency to
+this already-detached background write, never to the live heatmap response path.
+
+### Fix rationale
+
+Reused the exact `tryAdvisoryLock`/`releaseAdvisoryLock` primitive and bounded-retry shape
+already established and tested across `recordBudgetUse`/`markTweetReplied`/`bumpEngageRotation`
+in this repo's X-marketing lane, for consistency and because it's a proven pattern rather than a
+new one needing separate verification. Considered switching the cursor to one row per ticker
+instead of one global row — that would let a per-ticker lock (or none at all, relying on the
+existing per-ticker cluster build lock) suffice, but it's a larger schema/storage change for a
+P3 cosmetic-duplication bug, and the existing global-row design is otherwise working as
+documented (todays-date pruning, slot-level throttling); a global lock key is the minimal change
+that actually closes the race without touching storage shape.
+
+### Tests
+
+`src/lib/providers/gex-regime-events-concurrency.test.ts` (new, 2 cases: 2-ticker race with a
+repeat-persist check, 8-ticker race with a repeat-persist check). Existing
+`src/lib/providers/gex-regime-events.test.ts` updated only to add trivial
+`tryAdvisoryLock`/`releaseAdvisoryLock` stubs to its existing `mock.module("../db", ...)` (single
+-process tests there never actually contend, so an always-succeeds stub is correct — the real
+interleaving/contention behavior is covered by the new concurrency test instead); all 16 cases in
+that file still pass. `src/lib/correctness/heatmap-verifier.test.ts` and
+`src/lib/admin-gex-health.test.ts` (the two other test files touching
+`gex_regime_event_cursor`/`gex-regime-events`) pass unaffected. `npx tsc --noEmit` clean. `npx
+eslint` clean on all three changed files.
+
+## `fmtPct()`/`roundFloats()` ties toward +Infinity, not away-from-zero — a negative percentage sitting exactly on a display-precision tie rounded to a SMALLER magnitude than the identical positive one — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 (display-correctness — a losing position's percentage silently read as smaller/less-bad than the mirror-image winner at the same magnitude; no data was mis-recorded, only mis-displayed at exact tie boundaries) |
+| **Surface** | `src/lib/fmt-money.ts` — `fmtPct()`; `src/lib/round-floats.ts` — `roundFloats()`. Both are the two canonical, widely-shared rounding primitives for everything downstream of raw float math across the whole product (percentage/distance display and the JSON response-shaping boundary, respectively). |
+| **Status** | FIXED |
+
+### Root cause
+
+Both functions rounded with the plain, unguarded pattern `Math.round(n * factor) / factor`.
+JavaScript's `Math.round` ties **toward +Infinity**, not away from zero:
+
+```
+Math.round(13.5)  === 14   // positive tie rounds UP (away from zero)
+Math.round(-13.5) === -13  // negative tie rounds UP TOO (toward zero — a SMALLER magnitude)
+```
+
+This is a direction-biased asymmetry, not a magnitude-biased one: for any value sitting exactly on
+a display-precision tie, the POSITIVE case always rounds away from zero (bigger magnitude) while
+the NEGATIVE case always rounds toward zero (smaller magnitude). The two mirror-image magnitudes
+are not treated symmetrically.
+
+**Live repro:** an Exec P&L line computed as entry `$14.80`, bid `$14.60` → raw `-1.35%` →
+`fmtPct(-1.35, 1)` rendered `"-1.3%"`, while the identical `+1.35%` magnitude rendered `"+1.4%"` via
+`fmtPct(+1.35, 1)`. A losing position's displayed percentage read as smaller (looked less bad) than
+the mirror-image winning position at the exact same magnitude — purely a tie-breaking-direction
+artifact, not a real difference in the underlying numbers.
+
+`roundFloats()` carries the identical bug at the JSON response-shaping boundary used by ~168
+source files repo-wide (every `NextResponse.json` route that wraps its payload in `roundFloats()`,
+plus every library that rounds a derived field before serving it) — any negative field (P&L%,
+distance%, dealer-gamma deltas, etc.) sitting on an exact tie at its own `dp` is subject to the
+same smaller-magnitude bias.
+
+### Why this went undetected
+
+`src/lib/fmt-money.test.ts` already had a "matches `roundFloats()` byte-for-byte" regression test
+covering `fmtPct(-1.05)`, but its local `roundFloatsStyle` comparison helper was a literal copy of
+the SAME biased algorithm — so the test only ever asserted **internal self-consistency** (fmtPct
+and the local copy agreed, because both shared the identical bug) and never compared the negative
+case's magnitude against the positive case directly. A test that reproduces a bug in its own
+oracle can never catch that bug.
+
+### Evidence
+
+RED→GREEN confirmed via a source-only revert (`git show HEAD:<file>` to restore the pre-fix
+content of just `fmt-money.ts`/`round-floats.ts`, test files left untouched — `git stash` was
+avoided here since this repo's worktree stash stack is shared across concurrent sessions):
+
+- **Before the fix** (original `Math.round(n*factor)/factor`), the 3 new symmetric-pair tests
+  failed exactly as predicted:
+  - `fmtPct(-1.05, 1)` → `"-1.0%"` (expected `"-1.1%"`, the symmetric counterpart of
+    `fmtPct(1.05,1) → "+1.1%"`)
+  - `roundFloats(-1.05, 1)` → `-1` (expected `-1.1`, the symmetric counterpart of
+    `roundFloats(1.05, 1) → 1.1`)
+- **After the fix**, all 55 tests in both files pass (52 pre-existing + 3 new), including the
+  updated "stale fixture" test below.
+
+Every tie-value pair used in the new tests was independently verified (not assumed) to land on a
+genuine floating-point `.5` tie after scaling — `console.log((1.05*10).toPrecision(20))` →
+`10.500000000000000000`, confirming the multiplication rounds the double's own representation
+noise (`1.05` is really stored as `1.0500000000000000444...`) exactly onto the tie boundary rather
+than landing just shy of it. A decimal value that merely *looks* like a tie (e.g. the classic
+`1.005` at 2dp) is NOT necessarily a real double-precision tie (`1.005` is actually
+`1.00499999999999989341...`) and was deliberately excluded from the new fixtures for that reason.
+
+### Blast radius
+
+Both functions are intentionally shared, product-wide primitives, so this fix's correctness
+propagates to every caller automatically — no other file needed to change. For completeness,
+every CONSUMER CATEGORY touched (verified via repo-wide grep, non-test source only):
+
+- **`fmtPct()` — 32 non-test call sites** across: Night Hawk 0DTE/Swings desk components
+  (`SwingAnalyticsPanel.tsx`, `HawkRecordStrip.tsx`, `NighthawkAnalyticsPanel.tsx`,
+  `BangerBoard.tsx`), SPX Slayer (`SpxSniperHeader.tsx`, `SpxLiveSpotPrice.tsx`,
+  `SpxIosMarketStrip.tsx`), Meridian (desk + 4 panels + 3 core libs), Helix
+  (`HelixRegimeRibbon.tsx`), Thermal (`GexHeatmap.tsx`), shared GEX components
+  (`GexMatrixShiftBadge.tsx`, `GexShiftLeadersStrip.tsx`), Ask Largo
+  (`BieStructureLadder.tsx`, `largo-live-feed.ts`), Swing play-brief narrative modules
+  (`play-brief.ts`, `play-brief-narrative.ts`, `play-brief-narrative-coaching.ts`,
+  `play-brief-intel.ts`), 0DTE `exit-engine.ts`, track-record formatting
+  (`components/track-record/format.ts`, `TrackRecordProductCard.tsx`), and the shared
+  `lib/api.ts`/`lib/bie/platform-read-format.ts` client-facing formatters.
+- **`roundFloats()` — 158 non-test call sites**, the JSON response-shaping boundary for nearly
+  every `src/app/api/**/route.ts` in the product (Vector ~16 routes, SPX ~10 routes, Night Hawk
+  0DTE/Legacy ~9 routes, Swing routes, Meridian, Helix, GEX heatmap/matrix-delta, admin analytics/
+  health/export routes ~25, public track-record, mobile signals/ticker, platform snapshot) plus
+  core data-layer libraries (`zerodte/marks-math.ts`, `zerodte/live-marks.ts`, `swing/record.ts`,
+  `swing/closed-plays.ts`, `vector-*` libs, `meridian-*` libs, `largo/*` libs,
+  `bie/answer-envelope.ts`, `public-gex-snapshot.ts`, `ws/stocks-spot-stream-hub.ts`).
+
+No call site needed a code change — both functions' signatures and return types are unchanged;
+only the rounding direction at an exact negative tie changed (toward-zero → away-from-zero,
+matching the positive case).
+
+**Deliberately NOT touched (noted, not fixed — kept in scope per the task):** `fmtOptionUsd()` and
+`fmtPriceLevel()` (both also in `fmt-money.ts`) contain the same `Math.round(n*100)/100` pattern
+inline (their own header comments document they must match `roundFloats()`'s rounding
+byte-for-byte), so they likely carry the identical sign-asymmetry bug for negative dollar amounts/
+price levels at an exact tie. In practice both are near-exclusively used for POSITIVE values
+(premium prices, spot/wall/flip/pin levels are never negative), so the live blast radius is
+believed near-zero, but this was not verified exhaustively. Left out of this fix to keep the PR to
+the two functions the bug was confirmed and reported against; worth a follow-up sweep if a signed
+dollar use of either function is ever found.
+
+### Fix
+
+Round by **magnitude**, then reapply the original sign: `Math.sign(n) * Math.round(Math.abs(n) *
+factor) / factor` instead of `Math.round(n * factor) / factor`. This makes both signs tie the same
+direction (away from zero) instead of the same direction in absolute terms (toward +Infinity) —
+matching how humans read signed percentages/magnitudes and eliminating the asymmetry entirely.
+
+`n === 0` / `Math.sign(0) === 0` was verified to still produce a plain `0` safely. A negative
+value whose MAGNITUDE rounds to exactly 0 at the given precision (not a tie — e.g. `-0.03` at 1dp)
+can produce a `-0` via `Math.sign(n) * 0` (IEEE-754 sign-of-product) — this is **pre-existing**
+behavior unchanged by this fix (the OLD `Math.round(v*f)/f` already produced `-0` for any
+near-zero negative, per the JS spec: `Math.round` of any value in `(-0.5, 0)` returns `-0`), and
+was deliberately left as-is rather than normalized, for two reasons: (1) a genuine tie can never
+produce a zero-magnitude result (`Math.round(0.5) === 1`, never `0`), so this fix's own change path
+never introduces a NEW `-0`; (2) `fmtPct()` immediately stringifies via `.toFixed()`, which already
+prints `-0` as `"0.0"` with no stray minus sign and no observable difference from `+0`, and
+`roundFloats()`'s result is always serialized via `JSON.stringify` (`NextResponse.json`), where
+`JSON.stringify(-0) === "0"` — also no observable artifact. Normalizing it anyway would have
+diverged `roundFloats()`'s behavior from its own existing `legacyRoundFloats` byte-identical
+regression test (`round-floats.test.ts`) for an unrelated, pre-existing near-zero case, which would
+have been unnecessary scope creep on a fix that is otherwise a pure, surgical direction correction.
+
+### Fix rationale
+
+Considered an alternative of only fixing `fmtPct()` (the directly-reported symptom) and leaving
+`roundFloats()` alone — rejected, because the task's own repro and this file's module-level
+comments both state the two functions are REQUIRED to round byte-identically (several call sites,
+e.g. `fmtOptionUsd`/`fmtPriceLevel`'s own headers, exist specifically to stay in sync with
+`roundFloats()`'s algorithm), so fixing one without the other would have reintroduced exactly the
+kind of two-different-values-for-one-fact defect this codebase has repeatedly found and fixed
+(`fmtOptionUsd`/`fmtPriceLevel`'s own module comments document three prior rounds of that same
+bug class). Fixing both together keeps the invariant intact.
+
+### Tests
+
+`src/lib/fmt-money.test.ts`: new `it("rounds a negative tie to the SAME magnitude as its positive
+mirror image, not a smaller one")` (5 verified-tie pairs + the exact live-repro pin), and the
+existing "matches `roundFloats()` byte-for-byte" test's local `roundFloatsStyle` helper updated
+from the old biased algorithm to the fixed magnitude-then-sign one (the stale `-1.05` fixture this
+task named — it previously only ever asserted self-consistency against an equally-biased local
+copy).
+
+`src/lib/round-floats.test.ts`: new `test("rounds a negative tie to the SAME magnitude as its
+positive mirror image, not a smaller one")`, same 5 verified-tie pairs plus the explicit
+`-1.05`/`1.05` pin. The pre-existing `legacyRoundFloats` byte-identical comparison test (asserting
+`roundFloats` with no `keyDp` matches the OLD pre-override implementation) was left unchanged and
+still passes — none of its fixture values land on an exact tie, so it correctly continues to prove
+the `keyDp` feature itself doesn't change behavior, without being a stale assertion of the now-fixed
+bug.
+
+RED→GREEN: confirmed via a source-only revert of `fmt-money.ts`/`round-floats.ts` to their
+pre-fix content (test files untouched) — 3 failures pre-fix, 0 failures post-fix, full command:
+`PATH=/opt/node20/bin:$PATH npx tsx --experimental-test-module-mocks --test
+src/lib/fmt-money.test.ts src/lib/round-floats.test.ts`. `npx tsc --noEmit` clean on Node 20.
+
+## Clerk auth webhook had no idempotency guard — redelivery reprocesses the full handler — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Auth provisioning — Clerk webhook (`src/app/api/webhooks/clerk/route.ts`) |
+| **Status** | FIXED |
+| **Severity** | P3 (no data corruption on any event type, but real duplicate side effects — a second Whop API call + a second "New member signed up" Discord ping per redelivery; flagged as a known follow-up by the 2026-10-26 Resend-webhook idempotency fix, `docs/audit/findings-staging/2026-10-26-resend-webhook-no-idempotency.md`) |
+
+### Root cause
+
+`src/app/api/webhooks/clerk/route.ts` verifies the Svix signature on every Clerk webhook
+(`user.created`/`user.updated`/`user.deleted`) and then processes it unconditionally — same gap
+as the Resend webhook route fixed earlier the same day, and explicitly named as a known follow-up
+in that fix's own write-up: "Clerk's `webhooks/clerk/route.ts` has the same gap... noted here so a
+future sweep doesn't have to rediscover it."
+
+Clerk's webhooks are Svix-signed (same `svix-id`/`svix-timestamp`/`svix-signature` headers, same
+at-least-once delivery semantics as Resend's and Whop's webhooks) — Svix retries on any non-2xx
+response and can also redeliver an already-ack'd event. `svix-id` is stable across redeliveries of
+the same event, so it is the correct dedup key, exactly as it is for the Whop and Resend routes.
+
+### What a redelivery actually does per event type (verified before fixing, not assumed)
+
+- **`user.deleted`** — calls `deleteUserDataForClerkId`, which issues plain `DELETE ... WHERE
+  clerk_user_id = $1` statements inside one transaction. A second run against an already-deleted
+  user is a safe no-op (0 rows affected, no error) — **not** load-bearing/correctness-class, despite
+  this handler being the one just hardened in the prior SAVEPOINT transaction-abort fix. Confirmed
+  by reading `deleteUserDataForClerkId` in `src/lib/db.ts` directly rather than assuming.
+- **`user.created`** — the INSERT uses `ON CONFLICT (clerk_user_id) DO UPDATE`, so the row write
+  itself is idempotent. But three side effects downstream of it are **not** all guarded the same
+  way:
+  - `startWelcomeSequence` — already self-guarded (`ON CONFLICT (user_id) DO NOTHING` on
+    `welcome_sequence_state`, confirmed in `src/lib/welcome-sequence.ts`) — a redelivery is a
+    genuine no-op here already.
+  - `notifyOpsDiscord({ title: "New member signed up", ... })` — **not** guarded. A redelivery
+    fires a second "someone just showed up" ping to the ops Discord channel for one real signup.
+  - `syncWhopForClerkUser` — **not** guarded. A redelivery makes a second, redundant call to
+    Whop's membership API for the same user.
+- **`user.updated`** — a plain column `UPDATE`, idempotent in itself, but re-runs
+  `syncWhopForClerkUser` a second time on redelivery for no reason.
+
+So this is dashboard/ops-noise class, not data-corruption class — but a real, avoidable duplicate
+side effect on every redelivery, same shape as the Resend finding, just a step less severe because
+none of Clerk's downstream writes happen to be order- or count-sensitive the way `email_events`
+aggregation is.
+
+### Evidence
+
+- Extended the existing `src/app/api/webhooks/clerk/route.test.ts` (had 2 tests, unrelated to
+  idempotency) with a new `describe` block, 3 cases.
+- RED/GREEN proof: stashed the route fix only (`git stash -- src/app/api/webhooks/clerk/route.ts`),
+  re-ran the full test file — the new "redelivered event is NOT reprocessed" case failed
+  (`redelivery must NOT trigger a second Whop sync call: 2 !== 1`), the other 2 idempotency cases
+  and both pre-existing tests happened to pass incidentally (they don't exercise the dedup path, or
+  don't depend on it). Restored the fix (`git stash pop`) — all 5/5 pass.
+- The two pre-existing tests previously shared one hard-coded `svix-id` ("msg_test") across every
+  request in the file via the `next/headers` mock — harmless before this fix, but would have made
+  every test after the first read as a duplicate-delivery no-op once dedup was added. Made the
+  mocked `svix-id` settable per test (`setSvixId`) so each test keeps its own independent identity.
+
+### Fix
+
+Mirror `webhook/whop/route.ts`'s `claimWhopEvent`/`releaseWhopEventClaim` pattern exactly — the
+same pattern just applied to `webhook/resend/route.ts` earlier the same day — using the shared
+`sharedCacheSetNx`/`sharedCacheDel` primitives (`src/lib/shared-cache.ts`):
+
+- **Claim before processing** (`clerk:event:<svix-id>`, 24h TTL, same TTL choice as
+  `claimWhopEvent`/`claimResendEvent`): claimed right after signature verification succeeds, before
+  any DB write or side-effecting call. A redelivery that's already claimed is ack'd 200 immediately
+  without reprocessing.
+- **Release the claim on a processing failure** (any DB error inside the existing try/catch):
+  otherwise a transient DB error would permanently "poison" that `svix-id` — Clerk/Svix's retry of
+  the exact same event would find the key already claimed and be silently swallowed as a duplicate
+  of an attempt that never actually persisted anything, including for `user.deleted`'s GDPR
+  cleanup. Same bug `releaseWhopEventClaim`'s own doc comment describes for the Whop route.
+- **Fail open** (`.catch(() => true)` on the claim) if Redis itself errors mid-call — never drop a
+  genuine, first-time delivery (including a `user.deleted`) over an infra blip.
+
+### Blast radius
+
+Only `src/app/api/webhooks/clerk/route.ts`. No change to `deleteUserDataForClerkId`,
+`startWelcomeSequence`, `syncWhopForClerkUser`'s own internals, the `users` table schema, or the
+metadata-parsing helpers. `webhook/whop/route.ts` and `shared-cache.ts` are read-only references,
+not touched.
+
+### Tests
+
+`src/app/api/webhooks/clerk/route.test.ts`:
+- "a redelivered event (same svix-id) is NOT reprocessed (no second Whop sync call)" — the
+  regression proof (RED pre-fix).
+- "two different svix-ids each process independently" — guards against an over-eager key.
+- "a retry AFTER a failed DB write is reprocessed, not swallowed as a duplicate" — proves the
+  release-on-failure path, including for `user.created`'s own DB write.
+- Both pre-existing tests (internal-audit-email Whop-sync skip) updated to use distinct per-test
+  `svix-id`s and still pass unchanged otherwise.
+
+`npx tsx --experimental-test-module-mocks --test src/app/api/webhooks/clerk/route.test.ts
+src/app/api/webhook/whop/route.test.ts src/lib/shared-cache.test.ts`: 14/14 pass. `npx tsc
+--noEmit` and `npx eslint src/app/api/webhooks/clerk/route.ts
+src/app/api/webhooks/clerk/route.test.ts` both clean.
+
+## `invalidateClerkUserCache` could be silently undone by an in-flight fetch that started before it — a just-written tool_access/admin-role change stayed stale for up to another 5s — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 (auth/authorization staleness window — not a full bypass, but a bounded window where a just-revoked block or just-granted admin/tool_access override reads as the old value) |
+| **Surface** | `src/lib/clerk-user-cache.ts` — `getClerkUserCached`/`invalidateClerkUserCache`, the shared 5s-TTL Clerk `users.getUser` dedupe read by `src/lib/tier-cache.ts`, `src/lib/tool-access-server.ts` (`loadUserToolAccess`, `userCanAccessTool`), `src/lib/admin-access.ts` (`isAdminUser`), and `src/lib/user-directory.ts`. Write-then-invalidate caller: `setToolAccessForUserId` in `src/lib/tool-access-server.ts`. |
+| **Status** | FIXED |
+
+### Root cause
+
+`setToolAccessForUserId` (an admin mutation) follows the standard "write, then invalidate" shape:
+
+```ts
+await client.users.updateUserMetadata(userId, { publicMetadata: meta });
+invalidateClerkUserCache(userId);
+```
+
+`invalidateClerkUserCache` only clears whatever is **currently sitting in** the `resolved`/
+`inflight` maps. It cannot reach back and stop a fetch that **started earlier** — and therefore
+already read Clerk's pre-write state — from completing afterward. `getClerkUserCached`'s in-flight
+promise unconditionally called `setResolved(userId, user)` on resolution, with no check for
+whether an invalidate had landed in the meantime:
+
+```ts
+const p = (async () => {
+  const { clerkClient } = await import("@clerk/nextjs/server");
+  const user = await (await clerkClient()).users.getUser(userId);
+  setResolved(userId, user);   // <-- always writes, even if stale by now
+  return user;
+})();
+```
+
+Sequence that reproduces it: (1) an ordinary request calls `getClerkUserCached(userId)`, no cache
+hit, kicks off a `getUser` fetch that reads Clerk's state *before* the write (Clerk's read latency
+is ~100-300ms per this file's own header comment); (2) concurrently, an admin blocks/grants a tool
+via `setToolAccessForUserId`, which writes the new `publicMetadata.tool_access` and calls
+`invalidateClerkUserCache(userId)`; (3) step (1)'s fetch — already in flight, unaffected by the
+invalidate call touching the maps it isn't in yet — resolves with the **pre-write** user object and
+writes it into `resolved`, resurrecting exactly the staleness the invalidate was called to clear.
+Every read for the next `DEDUPE_TTL_MS` (5s) now serves that stale snapshot instead of triggering a
+fresh fetch, even though the caller explicitly invalidated right after writing. The same race
+applies to any other write-then-invalidate caller and to `isAdminUser`/`userCanAccessTool`, since
+they all read through the same cache.
+
+### Evidence
+
+New test `src/lib/clerk-user-cache-invalidate-race.test.ts`, 3 cases. RED→GREEN confirmed by
+removing just the new generation guard (test file and seam untouched) and re-running:
+- **Before the fix:** after a write-then-invalidate landing mid-flight, the next
+  `getClerkUserCached` call is served the stale cached value instead of issuing a fresh Clerk
+  call (both the per-user and the global/no-`userId` invalidate form) — 2 of 3 cases fail
+  (`1 !== 2` on the expected post-invalidate Clerk call count).
+- **After the fix:** all 3 cases pass — the stale in-flight write is suppressed, the next read
+  issues a fresh call, and ordinary dedupe (no invalidate in between) still serves the cache as
+  before (sanity case 3).
+
+Mocking the real `@clerk/nextjs/server` package to drive this test hit a separate, previously
+undocumented tooling gap worth recording: node:test's `--experimental-test-module-mocks`
+`mock.module()` override of a bare npm specifier is observed by a dynamic
+`import(bareSpecifier)` call issued from a plain, untransformed `.mjs`/`.js` ESM module, but
+**not** by the textually-identical call issued from inside a `tsx`-compiled `.ts` module (every
+`.ts` file in this repo) — confirmed empirically by swapping only the intermediary file's
+extension between `.ts` and `.mjs` with everything else held constant. Since
+`clerk-user-cache.ts` must stay `.ts`, the fix adds a narrow `__setFetchClerkUserForTest` seam
+(same `*ForTest` convention already used by `resetPolygonCircuitForTest` /
+`_resetZeroDteLiveMarksForTest` elsewhere in this repo) so the test can control fetch timing
+directly instead of trying to mock the SDK import.
+
+### Blast radius
+
+Every reader of `getClerkUserCached` inherits the fix for free (no other call site needed
+changes): `tier-cache.ts`'s `resolveUserTier`, `tool-access-server.ts`'s `loadUserToolAccess`/
+`userCanAccessTool` (and therefore `canAccessTool`/`requireToolApi`/`requireAnyToolApi`),
+`admin-access.ts`'s `isAdminUser`, and `user-directory.ts`. The only write-then-invalidate caller
+today is `setToolAccessForUserId`, but the fix is general — it protects any future caller that
+follows the same write-then-invalidate pattern against this same race, not just that one.
+
+### Fix
+
+Added a monotonically-incrementing `invalidationSeq` counter, bumped by every
+`invalidateClerkUserCache()` call (both the per-user and the global/no-argument form).
+`getClerkUserCached` captures the counter's value when it starts a fresh fetch and only calls
+`setResolved` if the counter is unchanged when the fetch resolves — i.e. nothing invalidated the
+cache while this specific fetch was in flight. If an invalidate landed in between, the fetch's
+caller still gets the (now possibly stale) data it awaited — there's no way to retroactively fix
+what was already read from Clerk — but the cache itself is left clean, so the very next read
+issues a fresh call instead of serving the stale snapshot for the rest of the TTL window.
+
+Also extracted the actual Clerk fetch behind an overridable `fetchClerkUser` reference (defaulting
+to the original `await import("@clerk/nextjs/server")` call) with a `__setFetchClerkUserForTest`
+setter, purely for testability — no behavior change on the real path.
+
+### Fix rationale
+
+Considered a per-user generation map (`Map<userId, number>`) instead of one global counter, to
+avoid a rare, harmless over-cautious case: an invalidate for user B landing while user A's
+unrelated fetch is in flight would, under the global counter, also skip caching A's result (one
+extra Clerk call next time, not a correctness issue). Chose the single global counter anyway —
+it's simpler, impossible to get subtly wrong (no reset-to-0-after-clear edge case a per-user map
+would need to avoid reintroducing the same bug on its own global-clear path), and invalidate calls
+are rare admin-only events, so the performance cost of the occasional extra Clerk call is
+negligible next to the complexity saved. Left `setResolved`'s own LRU/eviction logic and the
+`inflight` promise-sharing path untouched — this bug is specific to the write-after-resolve step,
+not the dedupe mechanism itself.
+
+### Tests
+
+`src/lib/clerk-user-cache-invalidate-race.test.ts` (new, 3 cases). Full existing suite touching
+this cache re-run and confirmed green: `clerk-user-cache-freshness.test.ts`,
+`tier-cache-fail-backoff.test.ts`, `tier-cache-jwt-downgrade.test.ts`,
+`tier-cache-freshness.test.ts`, `tool-access-server.latency.test.ts`,
+`tool-access-server-block-override.test.ts`,
+`src/app/(site)/__tests__/gated-route-redirects.test.ts` (34/34 pass). `npx tsc --noEmit` clean.
+`npx eslint` clean on both changed files.
+
+## 2026-10-26 — [FINDING, P3 Security] New-member Discord ops notification embedded Clerk firstName/lastName/email unescaped, letting a sign-up render a clickable masked link in the ops channel — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `buildNewMemberNotificationFields()` (`src/lib/clerk-new-member-notify.ts`), called from `src/app/api/webhooks/clerk/route.ts`'s `user.created` handler, builds a Discord embed `fields` array (`Email` / `Name` / `Clerk User ID`) for the "New member signed up" ops ping with the member's self-settable `firstName`/`lastName`/`email` interpolated verbatim, no escaping. Discord embeds render Markdown INSIDE field values — including `[label](url)` masked links, a surface plain message `content` does not have. A sign-up whose Clerk display name is `[Verify your billing](https://evil.example/phish)` produces a live, clickable phishing link in the internal ops Discord channel the instant the webhook fires, before any human reviews the account. |
+| **Root cause** | Same bug *shape* as the `welcome-sequence.ts` firstName HTML-XSS gap fixed in PR #6929 (a local, unescaped reimplementation of "interpolate user-controlled text into a rendered-as-markup surface"), just on the Discord-Markdown surface instead of HTML. No shared Discord-markdown-escaping helper existed anywhere in the codebase — every other Discord notifier (`thermal-discord-*`, `darkpool-discord-*`, `helix-discord-*`, etc.) only ever interpolates server-computed tickers/numbers, never member-supplied free text, so this one file is the first to actually need it. |
+| **Exploit path, checked not assumed** | Traced the one real call site: `src/app/api/webhooks/clerk/route.ts` `user.created` → `buildNewMemberNotificationFields({ email, firstName, lastName, clerkUserId })` → `notifyOpsDiscord({ fields, ... })`. `firstName`/`lastName` come straight off the live Clerk webhook payload — fully attacker-controlled at sign-up, no server-side validation beyond Clerk's own (which places no restriction on Markdown-special characters in a display name). `email`'s local-part may also legally contain Markdown-special characters per RFC 5321 (`*_~|^` are valid unquoted local-part chars), so even the email field was a real, not merely theoretical, vector. Unlike #6929 (self-XSS at most — the vulnerable email always goes back to the account owner), this message goes to a THIRD PARTY (the ops team watching that Discord channel), so it's a direct social-engineering/phishing vector against staff, not self-XSS. |
+| **Fix** | Added `escapeDiscordMarkdown()` in `src/lib/clerk-new-member-notify.ts` — backslash-escapes every Discord Markdown control character (`\* _ ~ \` \| < > [ ]`), covering emphasis, strikethrough/spoiler, code, blockquote, and the `[label](url)`/`<@id>` mention-and-link syntax in one pass — and applied it to both the `Name` and `Email` field values. `Clerk User ID` is left untouched (already backtick-wrapped, and sourced from Clerk's own server-generated id, never user-settable). No other file changed; `notifyOpsDiscord` (`src/features/spx/lib/spx-play-notify.ts`, owned SPX lane — not touched) renders fields exactly as before. |
+| **Blast radius** | Single call site (`webhooks/clerk/route.ts`'s `user.created` handler is the only caller of `buildNewMemberNotificationFields`). Checked every other `firstName`/`lastName`-consuming file in `src/lib` (`billing-lifecycle-email.ts`, `welcome-sequence.ts`, `admin-users.ts`, `user-directory.ts`, `membership.ts`, `resend-contacts.ts`) — all of them either already route through the escaped `substituteTokens`/`escapeHtml` (email templates, fixed under #6929) or pass the raw name to Resend's own contact-management API / Postgres (no Markdown/HTML rendering involved), so this is the only unescaped rendered-as-markup sink for these fields. |
+| **Regression guard** | Extended `src/lib/clerk-new-member-notify.test.ts` with 2 new tests: a `[label](url)` masked-link firstName renders as literal escaped text (not a clickable link), and a battery of Markdown control characters (`**bold**`, `<@&id>`, `_~\``) across both `Name` and `Email` are all escaped. RED→GREEN proven via `git stash` on just the implementation file: pre-fix, 2/6 tests fail with the raw unescaped values surviving intact; post-fix, 6/6 pass. |
+| **Gates** | `npx tsc --noEmit` clean · `npx eslint src/lib/clerk-new-member-notify.ts src/lib/clerk-new-member-notify.test.ts` clean · `npx tsx --experimental-test-module-mocks --test src/lib/clerk-new-member-notify.test.ts` 6/6 pass (Node 20.20.2). |
+| **Status** | FIXED (PR #TBD). |
+
+## `api-telemetry-persist.ts` silently dropped `queue_wait_ms`/`cancel_reason` on every persisted row — admin event-detail fallback read `null` even though the live call genuinely captured both
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR #TBD) |
+| **Found by** | Round-108 discovery-lane audit sweep (lesson (d): "a type field correctly populated by the caller but dead/unused in the callee") |
+| **Scope** | `src/lib/api-telemetry-persist.ts` (`persistApiTelemetryEvent`, `fetchPersistedApiEvent`); `src/lib/db.ts` (`ensureSchema`'s `api_telemetry_events` CREATE TABLE) |
+
+### Root cause
+
+`api-telemetry-types.ts`'s `ApiCallEvent` carries two "Phase 1 instrumentation" fields —
+`queue_wait_ms` (ms spent waiting for shared-rate-limiter admission before the HTTP call itself
+started, e.g. `uw-rate-limiter.ts`'s `acquireSlot()`) and `cancel_reason` (why a request was
+aborted, e.g. `"dossier_ticker_wall_timeout"`) — added specifically to diagnose incidents like the
+UW/Anthropic rate-limiter queue-wait spikes documented inline in `providers/unusual-whales.ts` and
+`providers/anthropic.ts` ("queue_wait_ms up to 19,460ms"/"18428ms"). `api-tracked-fetch.ts`
+populates both correctly on every tracked fetch call, and `api-telemetry.ts`'s `recordApiCall`
+correctly stores them on the live, in-memory `ApiCallEvent` (locked in by
+`api-telemetry.test.ts`'s own "Phase 1 instrumentation" tests).
+
+But the persistence side of this pipeline was never updated to match:
+- `src/lib/db.ts`'s `api_telemetry_events` `CREATE TABLE` never had `queue_wait_ms`/
+  `cancel_reason` columns added.
+- `persistApiTelemetryEvent`'s `INSERT` statement never listed either column, so every persisted
+  row silently dropped both fields (no error — the extra fields on the JS object are just never
+  read).
+- `fetchPersistedApiEvent`'s `SELECT *` mapping back into an `ApiCallEvent` never read either
+  column either, so even if they had reached the table, the read path would still drop them.
+
+**Blast radius:** the in-memory ring buffer (`events` array in `api-telemetry.ts`) is capped at
+800 entries and is per-process — across 5 ECS replicas it fills and evicts fast. Once an event ages
+out of that buffer, `src/app/api/admin/apis/events/[id]/route.ts` (the admin API-event detail
+viewer) falls back to `fetchPersistedApiEvent`. An admin investigating a historical
+rate-limited/cancelled call — exactly the incident-diagnosis workflow this instrumentation exists
+for — would see `cancel_reason: null` and a missing `queue_wait_ms`, even though the live call
+genuinely captured both. This directly undermines the standing performance/latency audit
+mandate's own "tail-latency, not average" diagnosis discipline: a p99/queue-wait spike investigated
+any time after the in-memory buffer has rotated loses the one piece of evidence (why/how long it
+queued) that explains it.
+
+### Fix
+
+- `db.ts`: `ALTER TABLE api_telemetry_events ADD COLUMN IF NOT EXISTS queue_wait_ms INT` /
+  `... cancel_reason TEXT` (idempotent, matches the file's existing `ADD COLUMN IF NOT EXISTS`
+  convention for additive schema changes).
+- `persistApiTelemetryEvent`: added `queue_wait_ms, cancel_reason` to the `INSERT`'s column list
+  and `event.queue_wait_ms ?? null, event.cancel_reason ?? null` to its params — never fabricated
+  as `0`/`""`, matching the type's own "null for callers with no shared-limiter concept, never
+  fabricated" contract.
+- `fetchPersistedApiEvent`: added both columns to the row type and the returned `ApiCallEvent`.
+
+Deliberately scoped to only these two fields — `synthetic` (another optional `ApiCallEvent` field)
+is also absent from the table/INSERT, but that field exists specifically to EXCLUDE an event from
+latency aggregation, which only matters for the live in-memory aggregate computed in
+`api-telemetry.ts`; it is not consulted by anything that reads a persisted row back, so leaving it
+out of this fix's scope (a single-issue PR, per policy) is a deliberate, disclosed choice, not an
+oversight.
+
+### Regression test
+
+New `src/lib/api-telemetry-persist.test.ts` (mocks `./db`'s `dbQuery`/`dbConfigured`, same
+mock-module convention `admin-gex-health.test.ts` etc. already use):
+1. `persistApiTelemetryEvent` carries `queue_wait_ms`/`cancel_reason` into the `INSERT` params.
+2. Both persist as `null` (never fabricated) when the event has no value.
+3. `fetchPersistedApiEvent` round-trips both fields from a persisted row.
+
+### Verification
+
+- RED→GREEN proof: `git stash push -- src/lib/api-telemetry-persist.ts src/lib/db.ts` (keeping the
+  new test file in the working tree) reproduced the bug exactly — all 3 new tests failed (the
+  INSERT params carried no `queue_wait_ms`/`cancel_reason` at all, and the fetched row read back
+  `undefined`). Restoring the fix (`git stash pop`) turned all 3 GREEN.
+- `node --import tsx --experimental-test-module-mocks --test src/lib/api-telemetry-persist.test.ts
+  src/lib/api-telemetry.test.ts` (Node 20) — 7/7 pass.
+- `node --import tsx --experimental-test-module-mocks --test src/lib/db.test.ts` (Node 20) —
+  42/42 pass (the `api_telemetry_events` schema change doesn't disturb any existing `db.ts` test).
+- `npx tsc --noEmit` (Node 20) — clean, exit 0.
+- `npx eslint src/lib/api-telemetry-persist.ts src/lib/api-telemetry-persist.test.ts src/lib/db.ts`
+  — clean, no warnings.
+
+## Admin User Management search box could show results for an earlier, already-abandoned query — a classic stale-out-of-order-fetch race — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (admin-only tooling, never member-facing; wrong rows render transiently in the admin user table — a search, ban, or edit action taken against what's on screen could target the wrong user if an admin acts in the small window before a correct, newer response is ever issued) |
+| **Surface** | `src/components/admin/UserManagement.tsx` — `fetchUsers` / the search box's `useEffect(() => { fetchUsers(); }, [fetchUsers])` |
+| **Status** | FIXED |
+
+### Root cause
+
+`UserManagement`'s search input (`FilterSearch`, via `handleSearch`) has no debounce — every
+keystroke calls `setQuery(v)`, which changes `fetchUsers`'s identity (it's a `useCallback` keyed on
+`[page, pageLimit, query, accessFilter, roleFilter]`), which re-runs the `useEffect` and fires a
+brand-new `GET /api/admin/users?q=...` request immediately.
+
+Nothing tracked which request was the most recently issued one. So typing "AAP" then quickly typing
+"AAPL" fires two overlapping requests, and whichever one's HTTP response happens to arrive LAST wins
+— even if it's the EARLIER, now-abandoned "AAP" request, which can easily resolve after "AAPL"'s if
+the server's query-building step (or just normal network jitter) makes the first call slightly
+slower:
+
+```tsx
+// before fix
+const fetchUsers = useCallback(async () => {
+  setLoading(true);
+  const params = new URLSearchParams({ page: String(page), limit: String(pageLimit) });
+  if (query) params.set("q", query);
+  ...
+  const res = await fetch(`/api/admin/users?${params}`);
+  if (!res.ok) return;
+  const data: UsersResponse = await res.json();
+  setUsers(data.users);       // <-- applied unconditionally, regardless of whether `query`
+  setTotal(data.total);       //     (and therefore this exact request) is still current
+  ...
+}, [page, pageLimit, query, accessFilter, roleFilter]);
+
+useEffect(() => { fetchUsers(); }, [fetchUsers]);
+```
+
+This is the identical bug shape to the one just fixed in `AdminApiEventDetail.tsx` (#6926) for the
+API-forensics drawer's per-event detail fetch — a component does `useEffect(() => { fetch(...).then(setState) }, [someKey])` with no abort-controller and no "is this response still current"
+guard — just triggered here by free-text search input instead of a selected id, and in a sibling
+admin component `AdminApiEventDetail.tsx`'s own fix didn't touch.
+
+### Evidence (RED → GREEN)
+
+New file `src/components/admin/user-management-request-guard.ts` exports
+`runGuardedUsersFetch(requestId, getLatestRequestId, doFetch, applyResult)`, a framework-free async
+helper that only calls `applyResult` once `doFetch()` resolves AND `requestId` is still the latest
+value `getLatestRequestId()` reports — i.e. no newer request has started since this one was issued.
+
+New test file `src/components/admin/user-management-request-guard.test.ts` (3 tests) reproduces the
+out-of-order scenario directly with deferred promises:
+- Request 1 ("AAP") starts first but is slow; request 2 ("AAPL") starts second and resolves FIRST;
+  request 1's response then arrives AFTER request 2's — **before fix (file doesn't exist /
+  `UserManagement.tsx` applies every response unconditionally): the stale "AAP" result would have
+  overwritten the already-rendered "AAPL" result. After fix: only `"AAPL results"` is ever applied**
+  (`assert.deepEqual(applied, ["AAPL results"])`).
+- A lone, un-superseded request is still applied normally (no change in the common case).
+- A response that resolves LAST but is still the latest request (nothing superseded it) is still
+  applied — the guard drops only genuinely SUPERSEDED requests, not merely "didn't resolve first."
+
+RED→GREEN proved via `git stash`/`git stash pop`: stashing the fix removes the new helper + test
+files and reverts `UserManagement.tsx`, so the test file no longer exists and the run fails
+immediately (`Could not find '.../user-management-request-guard.test.ts'`) — confirming there is no
+pre-existing guard. Restoring the stash and re-running: `tests 3 / pass 3 / fail 0`.
+
+`npx tsc --noEmit` clean; `npx eslint src/components/admin/UserManagement.tsx
+src/components/admin/user-management-request-guard.ts
+src/components/admin/user-management-request-guard.test.ts` — 0 errors (one pre-existing,
+unrelated `<img>`/LCP warning on a line this change didn't touch).
+
+### Blast radius
+
+Only `UserManagement.tsx`'s `fetchUsers` called the unguarded pattern on a changing free-text key —
+its other fetches (`openUserDetail`, ban/delete/sync/create actions) are one-shot, imperative calls
+triggered by a discrete user action (click a row, confirm a modal), not re-fired on every keystroke
+of a shared key, so they don't share this race shape and were left unchanged. `AdminApiDashboard.tsx`
+polls on fixed intervals (not a changing search key) and was also left unchanged — a different,
+narrower concern noted but not fixed here (polling responses can still theoretically overlap, but
+there is no user-typed key driving rapid-fire requests, so the practical exposure is far smaller and
+out of scope for this fix).
+
+### Fix rationale
+
+Extracted the ordering check into a small, pure, DOM/React-free function
+(`runGuardedUsersFetch`) rather than inlining an `if` after the `await` in `fetchUsers` directly,
+matching the pattern `AdminApiEventDetail.tsx`'s own fix (#6926) establishes for this bug class —
+this repo's "use client" components are tested via source-text assertions only (no React Testing
+Library/jsdom in `package.json`), so the actual async-ordering logic needs to live somewhere
+testable with real deferred promises, outside the component. `fetchUsers` now bumps a
+`useRef`-held counter (`latestUsersRequestIdRef`) before each fetch and passes a closure reading
+that same ref as `getLatestRequestId`; the `finally` block's `setLoading(false)` is likewise gated
+on `latestUsersRequestIdRef.current === requestId` so a superseded request can't flip the loading
+spinner off out from under the request that replaced it.
+
+## A recurring admin incident reopening from `resolved` kept its PREVIOUS occurrence's `acked_at`/`acked_by` — fabricating an MTTA for an incident nobody has acked this time — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (admin-only observability defect — no member-facing impact, but corrupts an operational metric the dashboard uses to judge response time) |
+| **Surface** | `src/lib/admin-incidents.ts` — `syncAdminIncidents`'s upsert, shared by the `data-integrity` cron, the `provider-health-reconcile` cron, `spx-issues-sync`, and `AdminOperationsDashboard`/`admin-spx-dashboard.ts` (polled every 5s from the admin terminal) |
+| **Status** | FIXED |
+
+### Root cause
+
+`syncAdminIncidents`'s batched INSERT...ON CONFLICT upsert reactivated a fingerprint (same
+`category:title`) that had previously been resolved by resetting only `status` and `resolved_at`:
+
+```sql
+status = CASE WHEN admin_incidents.status = 'resolved' THEN 'open' ELSE admin_incidents.status END,
+resolved_at = CASE WHEN admin_incidents.status = 'resolved' THEN NULL ELSE admin_incidents.resolved_at END
+```
+
+`acked_at`, `acked_by`, and `opened_at` were never touched by the upsert at all. So a recurring
+issue — acked, then resolved, then fired again later (the normal shape of a recurring incident,
+not a rare edge case) — came back with `status: 'open'` but a **non-null `acked_at`/`acked_by`**
+carried straight over from its previous, unrelated occurrence, and an `opened_at` from whenever
+the fingerprint was first ever created.
+
+`computeMttaMs`'s own doc comment (and its own regression test, already in `admin-incidents.test.ts`
+before this fix) states the invariant this breaks: *"Deliberately NEVER falls back to time elapsed
+since open for a still-unacked incident — that would fabricate an ack latency for an incident
+nobody has acked."* But `listOpenAdminIncidents` computes `mtta_ms` straight from whatever
+`acked_at`/`opened_at` the row carries, with no awareness that the CURRENT occurrence was never
+acked. `AdminOperationsDashboard.tsx`'s per-row "MTTA" badge is gated only on
+`incident.mtta_ms != null` (never on `incident.status`), and the dashboard's aggregate "Avg MTTA"
+KPI (`mttaAll = incidents.map(i => i.mtta_ms).filter(v => v != null)`) pools every incident's
+`mtta_ms` unconditionally. So a reactivated-but-not-yet-acked-this-time incident would silently
+render — and get averaged into the fleet-wide KPI as — a real-looking ack-latency number that
+belongs entirely to the incident's last, unrelated occurrence, while the incident sits visibly
+`status: open` with no ack action yet taken on it.
+
+### Evidence
+
+New tests:
+- `src/lib/admin-incidents.test.ts` — 4 new unit tests on the extracted pure function
+  `nextIncidentLifecycle`: brand-new fingerprint, still-open (untouched), still-acked (untouched,
+  real ack preserved), and the regression case — a `resolved` prior row reactivating.
+- `src/lib/admin-incidents-reactivation.test.ts` (new) — integration-style coverage of the real
+  `syncAdminIncidents`, mocking `@/lib/db`'s `dbQuery`/`dbConfigured` to capture the exact upsert
+  params. 5 cases, including one with 3 simultaneous issues (new / still-open / brand-new) in a
+  single call to prove each row's lifecycle is computed independently.
+
+RED→GREEN confirmed via `git stash` on `src/lib/admin-incidents.ts` alone (both test files kept):
+- **Before the fix:** 9/18 tests in `admin-incidents.test.ts` fail (`nextIncidentLifecycle` does not
+  exist yet) and all 5 tests in `admin-incidents-reactivation.test.ts` fail — the pre-fix upsert
+  only ever threads 5 params per row (fingerprint/severity/category/title/detail), so it cannot
+  produce the explicit-reset lifecycle fields the test asserts on at all. This is the structural
+  signature of the bug: the pre-fix code never computes or passes an ack-reset decision in the
+  first place — in real Postgres, the live CASE clause never reaching `acked_at`/`acked_by` means
+  those columns are left exactly as they were.
+- **After the fix:** all 18 + 5 = 23 tests pass.
+
+### Blast radius
+
+`syncAdminIncidents` is shared infrastructure called from 4 places: `src/app/api/cron/data-integrity/route.ts`,
+`src/app/api/cron/provider-health-reconcile/route.ts`, `src/features/spx/lib/spx-issues-sync.ts`
+(via the `spx-issues-sync` cron), and `src/lib/admin-spx-dashboard.ts` (the admin terminal's
+5s-polled live path). All four get the fix with no call-site changes — the function's signature is
+unchanged. `listOpenAdminIncidents`, `ackAdminIncident`, `resolveAdminIncident` needed no change;
+the bug was entirely in what the upsert wrote on reactivation, not in how acks/resolves/reads work.
+
+### Fix
+
+Extracted the upsert's reactivation decision into a pure, unit-tested function
+(`nextIncidentLifecycle`), matching this same file's existing `computeIncidentsToResolve` pattern
+(split out specifically so branching logic is testable without a live Postgres connection — raw
+Postgres is blocked from this sandbox per `CLAUDE.md`). `syncAdminIncidents` now does one extra
+batched `SELECT` (keyed on the same fingerprints the upsert is about to touch) to read each active
+fingerprint's current `status`/`acked_at`/`acked_by`/`opened_at`, computes the correct lifecycle
+for each row in JS, and passes explicit values into the upsert (`status`, `opened_at`, `acked_at`,
+`acked_by`, `resolved_at` all now real columns via `(VALUES ...)` + `ON CONFLICT DO UPDATE SET col
+= EXCLUDED.col`, replacing the old SQL-side `CASE WHEN admin_incidents.status = 'resolved'`
+expressions that only ever covered 2 of the 5 lifecycle columns that actually needed one). A
+reactivated incident now gets a clean `opened_at: NOW()` too, consistent with it being a genuinely
+new occurrence rather than a continuation of a resolved one from days/weeks earlier.
+
+### Fix rationale
+
+Considered leaving the single-query upsert and just widening the existing inline `CASE WHEN
+admin_incidents.status = 'resolved'` expressions to also cover `acked_at`/`acked_by` (zero extra
+round trips). Chose the prefetch-and-decide-in-JS approach instead because it is directly,
+genuinely testable without a live Postgres connection — this sandbox cannot reach raw Postgres, and
+an inline SQL `CASE` can only be proven correct by someone reading the SQL text, not by a test that
+actually executes the decision. The extra `SELECT` is one more batched round trip (keyed on the
+same fingerprint array the upsert already uses), not a per-row query, so it does not reintroduce
+the N-round-trip contention problem this same upsert was batched to fix in the first place
+(`EDGE-12`/the `#111-storm` comment already in the file). Deliberately left `ackAdminIncident`/
+`resolveAdminIncident` untouched — they already correctly set exactly one lifecycle column each and
+have no reactivation case to get wrong.
+
+### Tests
+
+`src/lib/admin-incidents.test.ts` (4 new cases on `nextIncidentLifecycle`, 14 existing untouched),
+`src/lib/admin-incidents-reactivation.test.ts` (new, 5 cases). Also re-ran
+`src/app/api/cron/spx-issues-sync/route.test.ts` and `src/lib/admin-spx-terminal.test.ts` (both
+exercise code paths downstream of `syncAdminIncidents`/`admin-incidents.ts`) — unaffected, still
+green. `npx tsc --noEmit` clean. `npx eslint` clean on all 3 changed/added files.
+
+## AdminApiEventDetail's forensics drawer could show the wrong event's data under a fast double-click — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | DISCOVERY sweep, round 121 (non-owned: `src/components/admin/AdminApiEventDetail.tsx`) |
+| **Surface** | The "API call forensics" drawer opened from `AdminApiLiveFeed`/the Command Center call timeline — an admin clicks a row to inspect one API call's full detail (status, error, headers, retry chain, endpoint stats). |
+
+### Root cause
+
+`AdminApiEventDetail`'s detail fetch was a bare effect keyed on `eventId`:
+
+```ts
+useEffect(() => {
+  if (!eventId) { setDetail(null); return; }
+  setLoading(true);
+  fetch(`/api/admin/apis/events/${encodeURIComponent(eventId)}`, { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => setDetail(d))
+    .finally(() => setLoading(false));
+}, [eventId]);
+```
+
+There was no guard against an **earlier, slower request resolving after a later one**. If an
+admin clicked event A, then clicked event B before A's request finished, two fetches were now
+in flight (React effect re-runs on a dependency change do not cancel or ignore the prior run's
+own promise chain — that is left entirely to the effect body). Whichever response landed
+*last* won, regardless of which event it was actually for. So if A's (now-stale) response
+happened to resolve after B's, `.then(setDetail)` fired last for A and silently overwrote the
+drawer with **event A's forensics while the drawer was still open and titled for event B** —
+wrong HTTP status, wrong error text, wrong headers/retry chain, with no visual indication
+anything was inconsistent. For an admin mid incident-debug, rapidly clicking through several
+rows in the live feed/timeline (the exact workflow this drawer exists for) is a realistic way
+to trigger it.
+
+### Evidence
+
+New test `src/components/admin/admin-api-event-detail-stale-fetch.test.ts`. RED→GREEN proven
+via `git stash` on `AdminApiEventDetail.tsx` alone (test file untouched): all 3 new tests fail
+(`loadEventDetailIfCurrent is not a function` — the export didn't exist pre-fix) on the stashed
+tree; restoring the fix makes all 3 pass. The main regression test simulates the exact race with
+two independently-resolvable deferred promises (A requested first, B requested second, B's
+response delivered first, A's delivered second) and asserts only B's data is ever applied and
+A's stale `onSettled`/loading-clear is skipped too (so a slow stale response can't flip
+`loading` back to `false` out from under the still-in-flight current request).
+
+### Fix
+
+Extracted the fetch-and-apply sequencing into a pure, exported, unit-testable helper
+`loadEventDetailIfCurrent(eventId, fetchFn, getLatestId, apply, onSettled)`: it fetches detail
+for `eventId`, then only calls `apply`/`onSettled` if `getLatestId()` still equals `eventId` at
+resolution time. The component tracks the latest requested id in a ref (`latestEventIdRef`,
+updated synchronously at the top of the effect, same turn as the new fetch starts) and passes
+that as `getLatestId`. A request superseded by a newer one before it resolves is silently
+dropped instead of applied — matching the existing `AdminApiLiveFeed`/live-feed convention of
+"the latest click wins," which this drawer already implicitly promised just never actually
+delivered once two requests overlapped.
+
+### Fix rationale
+
+Kept the fix entirely in this one component/helper rather than reaching for a shared
+"cancellable fetch" utility — no sibling admin panel in this sweep showed the same unguarded
+effect-fetch-on-id-change shape (checked `AdminApiLiveFeed.tsx`, `AdminCronDashboard.tsx`), so a
+shared abstraction would be premature. The ref-based "latest id wins" guard (rather than an
+`AbortController`) was chosen because the underlying request is a cheap admin-only read with no
+side effects worth cancelling server-side — skipping the *apply* step is sufficient to fix the
+user-visible bug, and keeps the change a pure addition with no behavior change to the fetch
+itself.
+
+### Blast radius
+
+Single file + its new test. No other component reads `AdminApiEventDetail`'s internal fetch
+effect; `eventId`/`onClose` props are unchanged.
+
+### Gates
+
+`npx tsx --experimental-test-module-mocks --test src/components/admin/*.test.ts` (Node 20,
+39/39 pass, including the 3 new cases). `npx tsc --noEmit` clean. `npx eslint
+src/components/admin/AdminApiEventDetail.tsx src/components/admin/admin-api-event-detail-stale-fetch.test.ts`
+clean.
+
+## AdminApiDashboard could revert the screen to stale data right after "Rescan codebase"/"Probe providers" — a stale-out-of-order-fetch race — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (admin-only tooling, never member-facing; a manual refresh action's result can be visibly overwritten moments later by an in-flight periodic poll, misleading the admin about whether the rescan/probe actually ran) |
+| **Surface** | `src/components/admin/AdminApiDashboard.tsx` — `load()`, called from four independent sources |
+| **Status** | FIXED |
+
+### Root cause
+
+`load(withProbe)` is the single fetch-and-apply path for the API Command Center's dashboard
+payload, and it is invoked from FOUR independent, overlapping triggers:
+
+1. An 8s telemetry poll: `setInterval(() => load(false), 8_000)`
+2. A 120s probe poll: `setInterval(() => load(true), 120_000)`
+3. The manual "Probe providers" button: `onClick={() => load(true)}`
+4. "Rescan codebase": `rescan()` POSTs `/api/admin/apis/rescan` then calls `load(false)` itself
+
+Before the fix, `load` applied whatever `fetch` resolved most recently with no check on which
+call started last:
+
+```tsx
+// before fix
+const load = useCallback(async (withProbe = false) => {
+  if (withProbe) setProbing(true);
+  else if (!data) setLoading(true);
+  setError(null);
+  try {
+    const qs = withProbe ? "?probe=1" : "";
+    const res = await fetch(`/api/admin/apis/dashboard${qs}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(...);
+    setData(await res.json());   // <-- applied unconditionally, regardless of whether a
+                                  //     NEWER load() call has since superseded this one
+  } catch (e) { ... } finally { setLoading(false); setProbing(false); }
+}, [data]);
+```
+
+Concretely: an 8s poll's `load(false)` can already be in flight when the admin clicks "Rescan
+codebase". `rescan()` POSTs the rescan, then calls its own `load(false)`. If the POST + its own
+`load()` happen to resolve faster than the poll's call that was already running (normal network
+jitter, or the poll's request simply landing a beat before the rescan's), the OLDER poll response
+— carrying pre-rescan data — lands AFTER the rescan's fresher payload and silently overwrites it.
+The admin who just clicked "Rescan codebase" sees the screen revert to the stale pre-rescan
+counts/registry rows a moment later, with nothing indicating that happened — indistinguishable from
+"the rescan didn't actually do anything," which is exactly the kind of false signal this admin
+surface exists to prevent.
+
+This is the identical bug shape already fixed twice in the same admin surface this round:
+`AdminApiEventDetail.tsx` (#6926, selected-event-id key) and `UserManagement.tsx` (#6927, free-text
+search key) — a component applies whichever `fetch` response resolves last with no "is this still
+the latest request" guard. This instance is keyed by "which of four trigger sources fired `load()`
+most recently" rather than a changing search/filter value, and was explicitly flagged as "noted but
+not fixed" in #6927's own write-up as a narrower, separate concern worth a closer look.
+
+### Evidence (RED → GREEN)
+
+New file `src/components/admin/admin-api-dashboard-request-guard.ts` exports
+`runGuardedDashboardLoad(requestId, getLatestRequestId, doFetch, applyResult)`, a framework-free
+async helper that only calls `applyResult` once `doFetch()` resolves AND `requestId` is still the
+latest value `getLatestRequestId()` reports — i.e. no newer `load()` call has started since this
+one was issued.
+
+New test file `src/components/admin/admin-api-dashboard-request-guard.test.ts` (3 tests) reproduces
+the exact race with deferred promises:
+- A poll's `load()` call starts first but is slow; a manual rescan/probe `load()` call starts
+  second and resolves FIRST; the poll's response then arrives AFTER the rescan's — only
+  `"post-rescan dashboard payload"` is ever applied (`assert.deepEqual(applied, [...])`).
+- A lone, un-superseded call is still applied normally (no change in the common case).
+- A response that resolves LAST but is still the latest call (nothing superseded it) is still
+  applied — the guard drops only genuinely SUPERSEDED calls, not merely "didn't resolve first."
+
+RED→GREEN proved directly (temporarily replaced the guard body with the naive "always apply"
+version, confirmed 2 of 3 tests fail with the stale `"stale payload"`/`"stale pre-rescan dashboard
+payload"` leaking into the applied list, restored the real guard, confirmed `tests 3 / pass 3 / fail
+0`).
+
+`npx tsc --noEmit` clean; `npx eslint src/components/admin/AdminApiDashboard.tsx
+src/components/admin/admin-api-dashboard-request-guard.ts
+src/components/admin/admin-api-dashboard-request-guard.test.ts` — 0 errors. Pre-existing sibling
+test `admin-api-dashboard-probe-filter.test.ts` still passes alongside the new one.
+
+### Blast radius
+
+Only `load()`'s own `fetch`/`setData` path shared this race — `rescan()`'s own `fetch` (the POST
+itself) is a one-shot action gated by `rescanning`, not re-fired on a changing key, and it already
+delegates its post-rescan refresh through the now-guarded `load(false)`, so no second fix site was
+needed there. `useAdminHealth(8_000)` (a separate SWR hook, keyed by URL) was left untouched — SWR
+already dedupes/sequences by key and doesn't share this component's bespoke `useState`-based
+fetch-and-apply path.
+
+### Fix rationale
+
+Extracted the ordering check into a small, pure, DOM/React-free function
+(`runGuardedDashboardLoad`) rather than inlining an `if` after the `await` in `load` directly,
+matching the exact pattern `AdminApiEventDetail.tsx` (#6926) and
+`user-management-request-guard.ts` (#6927) establish for this bug class in this same admin
+surface — this repo's "use client" components are tested via source-text assertions only (no React
+Testing Library/jsdom in `package.json`), so the async-ordering logic needs to live somewhere
+testable with real deferred promises, outside the component. `load` now bumps a `useRef`-held
+counter (`loadRequestIdRef`) before each call and passes a closure reading that same ref as
+`getLatestRequestId`; both the `catch` block's `setError` and the `finally` block's
+`setLoading(false)`/`setProbing(false)` are likewise gated on `loadRequestIdRef.current ===
+requestId` so a superseded call's own failure or settle-handling can't clobber state that a newer,
+already-applied call already set.
+
+## `accessEndedEmail`'s closing re-engagement line undercounts the Premium stack as six engines instead of seven — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 (member-facing copy defect, not a money-path/data-correctness bug — undersells what re-subscribing to Premium actually gets) |
+| **Surface** | `src/lib/email/templates/access-ended.ts` — the full-cancellation lifecycle email's closing re-engagement paragraph |
+| **Status** | FIXED |
+
+### Root cause
+
+`accessEndedEmail`'s third (closing) paragraph is shared across both tiers — it is NOT gated by
+`ctx.previousTier` the way the opening paragraph is — and reads:
+
+> "...same door, wide open — SPX Slayer for the 0DTE desk, Premium for the full **six-engine
+> stack**."
+
+Premium is the 0DTE desk (SPX Slayer) **plus** the other six engines (Thermal, HELIX, Night Hawk,
+Largo AI, Vector, Meridian) — **seven** products total, exactly as:
+
+- `welcomePremiumEmail`'s own subject states it: `"Full desk unlocked. All seven products, live."`
+- the same file's shared paragraph states it: `"...access is identical, full seven-product desk,
+  no walls between you and any of it."`
+- `access-ended.ts`'s own top-of-function doc comment states it: `"a Premium member loses the
+  whole seven-product desk"` (the comment that was added when `previousTier` personalization was
+  wired in — the opening paragraph was fixed to say "the other six engines... all gone at once",
+  but the closing paragraph's "six-engine stack" phrase, describing the WHOLE Premium stack rather
+  than "the other six", was never caught).
+- `scheduled-cancel-tier-blind.test.ts`'s own comment: `"a premium one keeps the full
+  seven-engine list"`.
+
+Every sibling lifecycle template follows one consistent convention: **"six" always names the six
+OTHER engines beyond the 0DTE desk a member already has** (`welcome-premium.ts`'s "six more
+engines", `downgrade.ts`'s "six engines went dark", `scheduled-cancel.ts`'s "those six engines
+stay live") — never the whole Premium stack *including* the 0DTE desk itself, which is always
+"seven". `access-ended.ts`'s closing line broke that convention by applying "six" to the whole
+stack, undercounting Premium's real entitlement by one product in the exact sentence meant to
+entice a lapsed member back.
+
+This is the same bug class `welcome-premium-downgrade-product-count.test.ts` already caught once
+(stale "five more engines"/"five engines" counts left behind when Meridian shipped as the 7th
+product, commit `5103e7f8d`) — this time in a template that was edited later (the `previousTier`
+personalization work, round 106) without the editor re-deriving the closing paragraph's own count
+against the same convention.
+
+### Evidence
+
+New test `src/lib/email/templates/access-ended-reengagement-engine-count.test.ts`:
+
+- `"accessEndedEmail: the re-engagement line calls Premium the full seven-engine stack, not six"` —
+  asserts the Premium-cancellation render contains `"Premium for the full seven-engine stack"` and
+  does NOT contain `"full six-engine stack"`.
+- `"accessEndedEmail: the same (shared, not tier-gated) re-engagement line is correct for a
+  community cancellation too"` — same assertions for a community-cancellation render, since this
+  paragraph is identical across both tiers.
+
+RED→GREEN confirmed: both tests fail against the pre-fix file (`assert.match` on
+`/Premium for the full seven-engine stack/` fails — the live text was "six-engine stack") and pass
+once `access-ended.ts`'s string is corrected. Full template suite
+(`src/lib/email/templates/*.test.ts`, 26 tests across every lifecycle email) passes post-fix.
+`npx tsc --noEmit` clean.
+
+### Blast radius
+
+`access-ended.ts` has exactly one export (`accessEndedEmail`) and one call site
+(`billing-lifecycle-email.ts`'s `dispatchTransitionEmail`, on a full Whop cancellation). The
+closing paragraph is a single literal string with no other consumer. No other template shares this
+exact string (verified by grep across `src/lib/email/templates/*.ts`).
+
+### Fix
+
+Changed the one word: `"the full six-engine stack"` → `"the full seven-engine stack"` in
+`access-ended.ts`'s closing paragraph. No other text, gating, or logic touched.
+
+### Fix rationale
+
+The minimal, surgical correction — this is a literal miscount in otherwise-correct, already
+carefully-personalized copy (the `previousTier`-gated opening paragraph is correct and untouched).
+Considered also rewording the sentence structure, but the existing "SPX Slayer for X, Premium for
+Y" parallel structure is fine; only the number was wrong.
+
+### Tests
+
+`src/lib/email/templates/access-ended-reengagement-engine-count.test.ts` (2 new tests, described
+above). Full `src/lib/email/templates/*.test.ts` suite: 26/26 pass. `npx tsc --noEmit` clean
+repo-wide.
+
 ## `clearMembershipDunningGrace` silently swallows a Postgres delete failure — FIXED
 
 > **kind:** `FINDING`
@@ -2130,40 +6539,6 @@ a source-level regression test (`AccountMembershipPanel.test.tsx`) asserting the
 tag, since rendered HTML markup is identical between `<a>` and `<Link>` (both resolve to an
 `<a>` tag) and can't distinguish the two — a plain `renderToStaticMarkup` assertion on the
 output wouldn't catch a regression back to a bare anchor, so the test instead checks the source.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## Night Hawk 0DTE: every directional setup's calibration-only `condor` geometry (strikes/width_pct/est_win_rate) is silently derived from a STALE pre-refresh spot, with no field on the payload disclosing it is on a different clock than the setup's own (later-refreshed) `underlying_price`
 
