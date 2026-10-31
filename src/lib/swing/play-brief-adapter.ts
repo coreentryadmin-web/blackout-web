@@ -130,10 +130,40 @@ function extractEvidence(envelope: BieAnswerEnvelope): string[] {
   // comment 6324494558's enhancement idea #1). `target` is present ONLY on the favorable side of
   // spot (StructureLadderTarget's own doc comment) — unfavorable-side rungs correctly contribute
   // nothing here, same as they contribute no "R" chip in the UI.
+  //
+  // BUG FIX (2026-10-31, live-audit finding, Ask Largo standing mandate): every R:R line here is
+  // measured against `structureLadder.stop` — for a genuinely COMMITTED OPEN position
+  // (`stopIsCommitted:true`) that is the real, frozen invalidation level pinned at entry
+  // (play.entryTriggerUnderlyingPx/invalidationUnderlyingPx), but for EVERY Banger-origin OPEN
+  // position it is not: `horizonPlayFromBangerPosition` (banger-lane-merge.ts) never populates
+  // either field, so `buildStructureLadder`'s `useRealPlan` gate (play-brief-ladder.ts) is always
+  // false and `stop` silently falls back to `deriveSwingPlanLevels`'s context-free, live-spot-
+  // anchored heuristic (entry := today's spot, stop := spot ∓ 1.5×(spot×1.5%)) — re-derived fresh
+  // on every request, not this position's actual risk. Live repro (2026-10-31): CVNA's reference
+  // stop recomputed to 66.76 off today's spot (a pure 1.5%-of-spot guess), yielding "R:R to call
+  // wall ($80.00): 7.6R" here while the SAME brief's own disclosed Invalidation level (the put
+  // wall, $58.00) implies ~1.1R — an order-of-magnitude gap with zero caveat.
+  // `BieStructureLadder.tsx` (the UI widget rendering this SAME R:R number) already discloses
+  // exactly this risk right next to the chip ("Reference stop ... Recomputed from today's spot —
+  // this position's own committed invalidation level (set at entry) may differ"), gated on
+  // `positionState === "open" && !stopIsCommitted` — but this loop (added 2026-10-26, #6790) copied
+  // only `rung.target.rewardRisk` into evidence_numbers, never the sibling `stopIsCommitted`/
+  // `positionState` fields the UI reads for that disclosure. Largo's answer-engine context reads
+  // evidence_numbers, not the rendered widget, so it was citing a basis-less R:R with no caveat.
+  // Mirror the UI's own disclosure condition exactly (never invent a new one): a WATCH candidate's
+  // stop is honestly "structural" (there is no committed entry to compare against in the first
+  // place), so it gets no caveat, same as the widget.
   if (envelope.structureLadder?.rungs.length) {
-    for (const rung of envelope.structureLadder.rungs) {
+    const ladder = envelope.structureLadder;
+    const uncommittedOpenStop = ladder.positionState === "open" && !ladder.stopIsCommitted;
+    for (const rung of ladder.rungs) {
       if (rung.target) {
-        evidence.push(`R:R to ${rung.label} ($${fmtPriceLevel(rung.price)}): ${rung.target.rewardRisk.toFixed(1)}R`);
+        const base = `R:R to ${rung.label} ($${fmtPriceLevel(rung.price)}): ${rung.target.rewardRisk.toFixed(1)}R`;
+        evidence.push(
+          uncommittedOpenStop
+            ? `${base} (vs a reference stop recomputed from today's spot — not this position's committed invalidation level)`
+            : base,
+        );
       }
     }
   }
