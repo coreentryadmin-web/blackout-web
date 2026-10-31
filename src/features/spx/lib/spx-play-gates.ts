@@ -114,6 +114,39 @@ export function mixedTapeGateMessage(
   return null;
 }
 
+/**
+ * Hard-stale threshold (ms) for the UW flow feed — beyond this (and with no live SPX/SPXW flow-
+ * cohort heartbeat), a BUY-intent entry is blocked below. Named so `isFlowDataStale` and the
+ * block message agree on one number instead of two copies of `300_000` drifting apart.
+ */
+export const FLOW_HARD_STALE_MS = 300_000;
+
+/**
+ * Pure "is flow data genuinely stale" verdict — the exact `flowAgeMs > FLOW_HARD_STALE_MS &&
+ * !clusterLive` condition the BUY-intent hard block below applies, extracted the same way
+ * `mixedTapeGateMessage` above was extracted: so a caller that cannot run the full gate stack
+ * (the closed-market branch — no entry is ever possible once the market's closed) can still ask
+ * the identical freshness question instead of inventing its own threshold, or skipping the
+ * question entirely.
+ *
+ * BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
+ * closed): before this existed, nothing played this role for the closed-market branch, so flow/
+ * tape-derived factors ("0DTE flow", "HELIX sweeps", "Live tape", "Net prem" — see
+ * FLOW_DERIVED_FACTOR_LABELS, spx-play-engine.ts) were served with zero staleness disclosure no
+ * matter how old `desk.flow_0dte_net`/`desk.unified_tape`/`desk.net_prem_ticks` actually were.
+ * Confirmed live: a Saturday GET /api/market/spx/play served a +14-weight "0DTE flow" factor
+ * ("Call premium leading 0DTE tape") built from data `flow_data_age_ms` reported as ~17.4h
+ * (62,672,013ms) old — 35% of the published score of 40 — with no disclosure anywhere in the
+ * response, while this exact live-market gate already treats anything past `FLOW_HARD_STALE_MS`
+ * as unreliable for a BUY. See `spx-play-engine.ts`'s closed-market branch for the consumer.
+ */
+export function isFlowDataStale(
+  flowAgeMs: number | null | undefined,
+  clusterLive: boolean
+): boolean {
+  return flowAgeMs != null && flowAgeMs > FLOW_HARD_STALE_MS && !clusterLive;
+}
+
 /** Grade-scaled mixed-tape hard block — A setups tolerate one extra soft counter-trend signal. */
 export function mixedTapeBlockThreshold(grade: string, absScore?: number): number {
   const base = playWeightedConflictBlockMin();
@@ -465,8 +498,8 @@ export function evaluatePlayGates(
   // spx-flow-staleness-market-wide-signal fix (2026-10-26).
   const flowAgeMs = desk.flow_data_age_ms;
   const clusterLive = desk.flow_cluster_live === true;
-  if (buyIntent && flowAgeMs != null && flowAgeMs > 300_000 && !clusterLive) {
-    blocks.push(`Flow data stale (${Math.round(flowAgeMs / 60_000)}m) — tape and 0DTE signals unreliable`);
+  if (buyIntent && isFlowDataStale(flowAgeMs, clusterLive)) {
+    blocks.push(`Flow data stale (${Math.round(flowAgeMs! / 60_000)}m) — tape and 0DTE signals unreliable`);
   } else if (flowAgeMs != null && flowAgeMs > 120_000 && !clusterLive) {
     warnings.push(`Flow data ${Math.round(flowAgeMs / 60_000)}m old — tape signal may lag`);
   }

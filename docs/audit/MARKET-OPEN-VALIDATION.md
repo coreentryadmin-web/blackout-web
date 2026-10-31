@@ -9253,3 +9253,28 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   a not-yet-degraded key + a stale age past ceiling + an explicit `maxBlockMs` — a regression here
   would most likely surface as a brief post-deploy tail-latency blip on `/api/market/spx/desk` or
   `/api/market/spx/play`, not a correctness error).
+
+## WATCH LIST — 2026-10-31 (SPX closed-market flow/tape staleness disclosure fix, PR TBD)
+
+- **SPX Slayer — closed-market `/play` served a +14-weight "0DTE flow" factor (35% of a published
+  score of 40) built from `flow_data_age_ms` ~17.4h old, with zero staleness disclosure.** Live
+  repro (Saturday, market closed): `GET /api/market/spx/desk` reported `flow_0dte_net:
+  1,892,691,448`, `flow_data_age_ms: 62,672,013` (~17.4h), `flow_cluster_live: false`; the
+  same-session `GET /api/market/spx/play` scored a `"0DTE flow"` factor off that data with no
+  disclosure clause anywhere, even though the GEX/VWAP staleness disclosures (both already shipped
+  this same day/week) correctly stayed silent because `gex_stale`/`vwap_stale` were both `false` in
+  that snapshot — confirming this was a genuinely uncovered factor family, not a broken mechanism.
+  Fixed: added `discloseStaleFlowFactors`, a third sibling of `discloseStaleGexFactors`/
+  `discloseStaleVwapFactor`, gated on a new shared `isFlowDataStale` predicate (extracted from the
+  live BUY-intent gate's existing `flowAgeMs > 300_000 && !clusterLive` check, `spx-play-gates.ts`)
+  so the live and closed-market thresholds can never drift apart. Covers all four flow/tape-derived
+  factor labels ("0DTE flow", "HELIX sweeps", "Live tape", "Net prem"). **Re-check once the market
+  opens:** poll `GET /api/market/spx/play` during any window where the market is genuinely closed
+  (pre-open, post-close, or a future weekend) alongside `GET /api/market/spx/desk`'s
+  `flow_data_age_ms`/`flow_cluster_live` — confirm any flow/tape-derived factor present in
+  `factors[]` carries a "— Flow stale, not live" clause (and the same clause appears in `thesis`/
+  `gates.play_idea`) whenever `flow_data_age_ms > 300_000` and `flow_cluster_live` is not `true`,
+  and confirm the clause is absent whenever flow is fresh or `flow_cluster_live:true`; separately
+  confirm the live BUY-intent gate's own stale-flow block/warning text (`spx-play-gates.test.ts`'s
+  existing coverage) is unchanged during RTH — this fix only refactored that check's threshold into
+  a shared function, it did not change its behavior.

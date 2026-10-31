@@ -506,6 +506,116 @@ test("evaluateOpenPlay closed-market SCANNING, BOTH desk.gex_stale and desk.vwap
   assert.match(bothStalePayload.gates.play_idea!, /VWAP stale, not live/);
 });
 
+// BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
+// closed): same bug class as the GEX/VWAP staleness disclosure above, for flow/tape-derived
+// factors instead. The closed-market branch's "0DTE flow" factor is built straight off
+// `desk.flow_0dte_net` with no freshness check at all — unlike GEX/VWAP, there was never even a
+// boolean on the desk payload for this; `desk.flow_data_age_ms` was read nowhere in this branch
+// (only in a debug log elsewhere). Live repro: GET /api/market/spx/play served a +14-weight
+// "0DTE flow" factor ("Call premium leading 0DTE tape") — 35% of the published score of 40 — on
+// a Saturday whose `flow_data_age_ms` the sibling GET /api/market/spx/desk route reported as
+// ~17.4h (62,672,013ms) old, with zero disclosure anywhere in the response.
+function closedDeskWithFlowNet(overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
+  return desk(7500, {
+    market_open: false,
+    source: "test",
+    flow_0dte_net: 500_000,
+    ...overrides,
+  });
+}
+
+test("evaluateOpenPlay closed-market SCANNING, stale flow (age past threshold, no live cluster heartbeat): the 0DTE-flow factor/thesis/play-idea disclose staleness", async () => {
+  const stalePayload = await evaluateSpxPlay(
+    closedDeskWithFlowNet({ flow_data_age_ms: 62_672_013, flow_cluster_live: false }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+
+  assert.equal(stalePayload.phase, "SCANNING");
+  const flowFactor = stalePayload.factors.find((f) => f.label === "0DTE flow");
+  assert.ok(flowFactor, "fixture must actually fire the 0DTE-flow factor to test disclosure on");
+  assert.match(
+    flowFactor!.detail,
+    /Flow stale, not live/,
+    "a flow-derived factor built from hours-old flow data must disclose it rather than present it as if live"
+  );
+  assert.match(
+    stalePayload.thesis,
+    /Flow stale, not live/,
+    "the closed-market thesis must also carry the flow staleness clause"
+  );
+  assert.ok(stalePayload.gates.play_idea, "fixture must produce a play idea to test disclosure on");
+  assert.match(stalePayload.gates.play_idea!, /Flow stale, not live/);
+});
+
+test("evaluateOpenPlay closed-market SCANNING, fresh flow (age below threshold): the SAME 0DTE-flow factor renders unchanged, with no staleness disclosure", async () => {
+  const freshPayload = await evaluateSpxPlay(
+    closedDeskWithFlowNet({ flow_data_age_ms: 1000, flow_cluster_live: true }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const freshFlowFactor = freshPayload.factors.find((f) => f.label === "0DTE flow");
+  assert.ok(freshFlowFactor);
+  assert.doesNotMatch(freshFlowFactor!.detail, /Flow stale/);
+  assert.doesNotMatch(freshPayload.thesis, /Flow stale/);
+  assert.ok(freshPayload.gates.play_idea);
+  assert.doesNotMatch(freshPayload.gates.play_idea!, /Flow stale/);
+
+  // Old age but a live SPX/SPXW flow-cohort heartbeat (flow_cluster_live:true) must also NOT
+  // disclose — the exact same "another replica is delivering a live frame" override the live
+  // BUY-intent gate (isFlowDataStale, spx-play-gates.ts) already respects.
+  const liveClusterPayload = await evaluateSpxPlay(
+    closedDeskWithFlowNet({ flow_data_age_ms: 62_672_013, flow_cluster_live: true }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const liveClusterFlowFactor = liveClusterPayload.factors.find((f) => f.label === "0DTE flow");
+  assert.ok(liveClusterFlowFactor);
+  assert.doesNotMatch(liveClusterFlowFactor!.detail, /Flow stale/);
+  assert.doesNotMatch(liveClusterPayload.thesis, /Flow stale/);
+});
+
+// Proves the three disclosure checks are independent and COMPOSE rather than one overwriting
+// another — a closed-market read that's stale on GEX, VWAP, AND flow at once must disclose all
+// three clauses, not just whichever check happened to run last.
+test("evaluateOpenPlay closed-market SCANNING, GEX + VWAP + flow all stale: all three staleness clauses are disclosed together", async () => {
+  const allStalePayload = await evaluateSpxPlay(
+    desk(7680, {
+      market_open: false,
+      source: "test",
+      gex_walls: [{ strike: 7675, net_gex: 500_000, kind: "support", distance_pts: 5 }],
+      gex_stale: true,
+      gex_age_ms: 26 * 3_600_000,
+      vwap: 7580.87,
+      vwap_stale: true,
+      flow_0dte_net: 500_000,
+      flow_data_age_ms: 62_672_013,
+      flow_cluster_live: false,
+    }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+
+  const gexFactor = allStalePayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  const vwapFactor = allStalePayload.factors.find((f) => f.label === "VWAP");
+  const flowFactor = allStalePayload.factors.find((f) => f.label === "0DTE flow");
+  assert.ok(gexFactor, "fixture must fire a GEX-derived factor");
+  assert.ok(vwapFactor, "fixture must fire a VWAP factor");
+  assert.ok(flowFactor, "fixture must fire the 0DTE-flow factor");
+  assert.match(gexFactor!.detail, /GEX stale, not live/);
+  assert.match(vwapFactor!.detail, /VWAP stale, not live/);
+  assert.match(flowFactor!.detail, /Flow stale, not live/);
+  assert.match(allStalePayload.thesis, /GEX stale, not live/);
+  assert.match(allStalePayload.thesis, /VWAP stale, not live/);
+  assert.match(allStalePayload.thesis, /Flow stale, not live/);
+  assert.ok(allStalePayload.gates.play_idea);
+  assert.match(allStalePayload.gates.play_idea!, /GEX stale, not live/);
+  assert.match(allStalePayload.gates.play_idea!, /VWAP stale, not live/);
+  assert.match(allStalePayload.gates.play_idea!, /Flow stale, not live/);
+});
+
 // BUG FIX (2026-09-03): getNhConfluenceBonus's staleness check used a raw
 // `(Date.now() - publishedAt.getTime()) / 3_600_000 > 20` comparison. published_at is written by a
 // SEPARATE Night Hawk cron process, so cross-process clock skew is real — a future-dated edition
