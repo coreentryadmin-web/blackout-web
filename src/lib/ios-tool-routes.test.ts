@@ -6,6 +6,7 @@ import {
   getIosToolMeta,
   getIosToolNavLabel,
   getIosToolRouteIndex,
+  isIosNativeShellPath,
   isIosNativeShellRoute,
   isIosToolRoute,
   IOS_TOOLS,
@@ -50,6 +51,26 @@ describe("isIosNativeShellRoute", () => {
     assert.equal(isIosNativeShellRoute("/"), false);
     assert.equal(isIosNativeShellRoute("/sign-in"), false);
     assert.equal(isIosNativeShellRoute("/pricing"), false);
+  });
+
+  // isIosToolRoute (the tool half of isIosNativeShellRoute, see above) already strips a
+  // query/hash suffix via normalizeIosPath before matching — isIosNativeShellPath (the utility
+  // half: /account, /faq, /learn, /upgrade, /admin) did not, so a signed-in utility path with a
+  // query string or hash (e.g. a deep link, a redirect carrying `?from=`, or an in-page `#anchor`)
+  // fell through both the exact-match and the startsWith(`${prefix}/`) check and incorrectly
+  // read as NOT a native-shell route. Both real call sites (useIosNativeShell/IosAppChrome) feed
+  // this from Next's usePathname(), which never carries a query/hash, so this was unreachable in
+  // practice — but the function should still be correct standing alone, and the inconsistency
+  // with its sibling isIosToolRoute (which already handles this) was the bug.
+  it("strips a query string or hash before matching utility paths", () => {
+    assert.equal(isIosNativeShellPath("/account?from=upgrade"), true);
+    assert.equal(isIosNativeShellPath("/upgrade#plans"), true);
+    assert.equal(isIosNativeShellPath("/admin/health?tab=cron"), true);
+    assert.equal(isIosNativeShellRoute("/account?from=upgrade"), true);
+    assert.equal(isIosNativeShellRoute("/faq#billing"), true);
+    // Still correctly rejects a non-native-shell path carrying a query/hash.
+    assert.equal(isIosNativeShellPath("/pricing?ref=home"), false);
+    assert.equal(isIosNativeShellRoute("/sign-in?redirect=/account"), false);
   });
 });
 
