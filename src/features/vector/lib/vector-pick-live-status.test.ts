@@ -136,6 +136,41 @@ test("evaluateVectorPickLiveStatus: tracked intent — +30% extended is caution,
   assert.match(r.reason, /limit only/i);
 });
 
+// REGRESSION (round 138 dead-code cleanup, 2026-10-31): evaluateVectorPickLiveStatus used to
+// carry a nested `if (intent === "tracked") { if (premiumPct >= 50) {...} ... }` whose inner
+// `premiumPct >= 50` branch could never run — the unconditional `premiumPct >= 50` check earlier
+// in the function already returns for ANY premiumPct >= 50 regardless of intent, so by the time
+// execution reaches the nested check premiumPct is always < 50. These two tests pin the boundary
+// so a future refactor that collapses/reorders these checks cannot silently change which message
+// a tracked pick gets just below vs at the 50% line.
+test("evaluateVectorPickLiveStatus: tracked intent at exactly +50% hits the Winner/manage-exit message", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 576,
+    side: "call",
+    entryMid: 2.0,
+    quote: { bid: 2.9, ask: 3.1, mid: 3.0, delta: 0.42 },
+    bias: "long",
+    intent: "tracked",
+  });
+  assert.equal(r.premiumPctFromEntry, 50);
+  assert.equal(r.status, "caution");
+  assert.match(r.reason, /Winner \+50%.*manage exit/i);
+});
+
+test("evaluateVectorPickLiveStatus: tracked intent just under +50% hits the Extended/limit-only message", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 576,
+    side: "call",
+    entryMid: 2.0,
+    quote: { bid: 2.88, ask: 3.08, mid: 2.98, delta: 0.42 },
+    bias: "long",
+    intent: "tracked",
+  });
+  assert.equal(r.premiumPctFromEntry, 49);
+  assert.equal(r.status, "caution");
+  assert.match(r.reason, /Extended \+49%.*limit only/i);
+});
+
 test("evaluateVectorPickLiveStatus: sub-$0.10 entry with wild % is caution, not chase risk", () => {
   const r = evaluateVectorPickLiveStatus({
     spot: 12,
