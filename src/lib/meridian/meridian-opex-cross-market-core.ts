@@ -21,8 +21,6 @@ export const MERIDIAN_OPEX_MAG7 = [
   "TSLA",
 ] as const;
 
-export const MERIDIAN_OPEX_BENCHMARKS = ["SPY", "QQQ", "IWM"] as const;
-
 const MOVER_PRICE_MIN = 5;
 const MOVER_PRICE_MAX = 400;
 const MOVER_MIN_VOL = 1_000_000;
