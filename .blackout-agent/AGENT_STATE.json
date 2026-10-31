@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-31T19:37:49.374Z",
+  "updated_at": "2026-10-31T19:48:24.747Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "258757d9273339013e42388b36810fb3821661d6",
+    "last_main_sha": "eb81974d14085c6a82f0752e54c9c749117d1d30",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
@@ -1255,34 +1255,54 @@
       "open_pr_count": 8
     },
     {
-      "at": "2026-10-31T19:37:41.228Z",
+      "at": "2026-10-31T19:48:14.107Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 7
     },
     {
-      "at": "2026-10-31T19:37:45.364Z",
+      "at": "2026-10-31T19:48:19.620Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 7
     },
     {
-      "at": "2026-10-31T19:37:49.374Z",
+      "at": "2026-10-31T19:48:24.747Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 7070,
-      "title": "fix(vector): remove dead recordVectorWallSamplesFromWarm, orphaned by full-universe bead-recorder refactor",
-      "branch": "fix/vector-snapshot-dead-record-warm",
+      "number": 7073,
+      "title": "fix(helix): HelixContextHeader no longer fabricates UNKNOWN option_type into call premium",
+      "branch": "fix/helix-context-header-unknown-call",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T19:30:30Z"
+      "updated_at": "2026-10-31T19:46:24Z"
+    },
+    {
+      "number": 7072,
+      "title": "fix(helix): ExecutionAnalysisPanel bar width can overflow past 100%",
+      "branch": "fix/helix-execution-panel-maxpremium-order",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-31T19:39:28Z"
+    },
+    {
+      "number": 7071,
+      "title": "chore: sync agent-state heartbeat files",
+      "branch": "chore/agent-state-heartbeat-sync-20261031-1939",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-31T19:39:26Z"
     },
     {
       "number": 5547,
