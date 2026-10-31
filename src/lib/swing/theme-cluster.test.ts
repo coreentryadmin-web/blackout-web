@@ -407,3 +407,27 @@ test("CF and MOS (nitrogen/phosphate fertilizer producers) cluster together as a
   assert.equal(sameThesis("CF", "XOM"), false);
   assert.equal(sameThesis("MOS", "NVDA"), false);
 });
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-10-31, live finding): a
+// real committed book held KTOS (Kratos Defense) and RDW (Redwire) concurrently LONG with
+// neither ticker mapped anywhere in sector-map.ts, so both resolved to isolated
+// `NAME:KTOS`/`NAME:RDW` own-clusters and neither position's play-brief rendered a "Book
+// context" section at all — same gap shape as every other extension in this file. KTOS and RDW
+// are confirmed via Polygon reference (`/v3/reference/tickers/<T>`) as sharing the identical
+// SIC code 3760 "GUIDED MISSILES & SPACE VEHICLES & PARTS" — both small-cap tactical-systems/
+// space-component makers. LHX (SIC 3812, a $50B+ prime contractor — adjacent but NOT the same
+// SIC) and NN (SIC 3812 purely by generic-code coincidence, no real defense-prime overlap) are
+// deliberately excluded rather than folded in on a looser SIC match.
+test("KTOS and RDW (small-cap tactical/space-systems makers) cluster together as a defense-space-systems theme, not each in its own isolated cluster", () => {
+  assert.equal(resolveTheme("KTOS"), "defense-space-systems");
+  assert.equal(resolveTheme("RDW"), "defense-space-systems");
+  assert.equal(sameThesis("KTOS", "RDW"), true);
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("KTOS", "NVDA"), false);
+  assert.equal(sameThesis("RDW", "XOM"), false);
+  // LHX and NN stay excluded — adjacent/coincidental SIC match, not the same risk driver.
+  assert.equal(sameThesis("KTOS", "LHX"), false);
+  assert.equal(sameThesis("RDW", "NN"), false);
+  assert.equal(resolveTheme("LHX"), "NAME:LHX");
+  assert.equal(resolveTheme("NN"), "NAME:NN");
+});
