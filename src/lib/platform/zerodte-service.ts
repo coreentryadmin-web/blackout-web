@@ -17,7 +17,7 @@ import { zerodteBoardMaxBlockMs } from "@/lib/providers/config";
 import { readGridEarnings } from "@/lib/zerodte/earnings";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
-import { roundFloats } from "@/lib/round-floats";
+import { roundFloats, type RoundFloatsKeyDp } from "@/lib/round-floats";
 import {
   matchEarnings,
   matchHotNews,
@@ -748,6 +748,53 @@ async function registerSetupQuotes(
   }
 }
 
+/**
+ * Per-key wire precision for the board payload — applied HERE, at the ONE roundFloats() call
+ * whose output gets cached into the shared Redis snapshot (BOARD_SNAPSHOT_KEY, below) that
+ * every reader of `getZeroDteBoardPayload()` converges on: the member board route, the
+ * `/nighthawk/horizons` route, the `zerodte-warm` cron, `web-boot-warm`, and the Largo
+ * (`zeroDtePlaysForLargo`) / BIE composers. `roundFloats()` is idempotent on an
+ * already-rounded value (rounding 0.01 AGAIN at 4dp is still 0.01 — no lost precision can be
+ * recovered downstream), so this is the ONLY place a per-key override can actually matter; one
+ * applied later, after this value has already been cached, is a no-op dressed up as a fix.
+ *
+ * CORRECTED ROOT CAUSE (Ask Largo standing audit mandate, 2026-10-26): an earlier pass added a
+ * keyDp override at the board ROUTE's own `roundFloats(await getZeroDteBoardPayload(), 2, ...)`
+ * call (`board/route.ts`) believing that was where the destructive flat-2dp rounding happened.
+ * It was the wrong layer — this function's OWN `roundFloats({...}, ...)` call a few lines below
+ * ran FIRST (dp=2, no override at the time) and its result is what `publishBoardSnapshot()`
+ * writes to Redis, so the route's later, correctly-configured override was rounding numbers that
+ * were already destroyed. Moving the SAME override here (and exporting it so the route imports
+ * one source of truth instead of keeping its own drifting copy) is the actual fix; the route's
+ * second pass is kept as a harmless, idempotent belt-and-suspenders guard for any future reader
+ * of this constant that doesn't go through `getZeroDteBoardPayload()`.
+ *
+ * Two field families need it:
+ *  - Option greeks (`delta`/`theta`/`iv`/`gamma`/`vega`) — `setups[].plan.greeks` (plan.ts's
+ *    buildContractPlan, never rounded upstream) and `ledger[].greeks` (straight off the raw 1s
+ *    live-mark store) are both genuinely unrounded before this call; SPY 0DTE gamma is routinely
+ *    ~0.0008-0.05, so the flat 2dp default quantizes it to 0.00 and DESTROYS the number. Same
+ *    values as the sibling `/marks` route's `ZERODTE_MARKS_WIRE_DP` (live-marks.ts), so a board
+ *    read and a marks read of the same contract always render identically.
+ *  - Condor calibration-bucket widths (`put_width_pct`/`call_width_pct`) — `setups[].condor`
+ *    (IronCondorLegs, iron-condor.ts) and `setups[].condor_plan` (CondorPlan, condor.ts) both
+ *    carry these at their own internal 4dp precision (`.toFixed(4)`), and `CONDOR_WINRATE_BY_WIDTH`
+ *    buckets sit as close as 0.002 apart (0.006/0.008/0.010 → 77%/92%/96% measured win rate). The
+ *    flat 2dp default collapses every one of those onto the identical served 0.01, destroying the
+ *    ability to tell which calibrated geometry was actually served. Live-confirmed 2026-10-26:
+ *    SPXW's served `call_width_pct` was 0.01 on the wire while the value re-derived from the
+ *    disclosed `condor_basis_price` was 0.00825 (the 92% bucket, not whatever 0.01 implies).
+ */
+export const ZERODTE_BOARD_WIRE_DP: RoundFloatsKeyDp = {
+  delta: 4,
+  theta: 4,
+  iv: 4,
+  gamma: 6,
+  vega: 6,
+  put_width_pct: 4,
+  call_width_pct: 4,
+};
+
 /** Uncached board assembly — the exact pipeline the member route used before extraction. */
 export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   const today = todayEt();
@@ -886,7 +933,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     vector_pulse_by_ticker,
     vector_near_misses,
     veto_shadow,
-  }) as ZeroDteBoardPayload;
+  }, 2, ZERODTE_BOARD_WIRE_DP) as ZeroDteBoardPayload;
 
   // roundFloats() rounds entry_premium/last_mark independently; recompute PnL from the
   // member-visible rounded premiums so live_pnl_pct always matches its structure's formula —

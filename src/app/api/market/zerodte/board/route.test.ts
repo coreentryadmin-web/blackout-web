@@ -65,6 +65,21 @@ const RAW_MONEY_FLOAT = 7499.360000000001;
 
 mock.module("../../../../../lib/platform/zerodte-service", {
   namedExports: {
+    // The route now imports its keyDp map from zerodte-service.ts (single source of truth —
+    // see that module's ZERODTE_BOARD_WIRE_DP doc comment) instead of keeping its own local
+    // copy, so this mock must supply it: mock.module() replaces ALL named exports of the
+    // mocked specifier, and an import the real module satisfies but this mock omits resolves
+    // to `undefined` — which would silently turn the route's own roundFloats(..., keyDp) call
+    // into the flat-2dp default this whole test exists to rule out.
+    ZERODTE_BOARD_WIRE_DP: {
+      delta: 4,
+      theta: 4,
+      iv: 4,
+      gamma: 6,
+      vega: 6,
+      put_width_pct: 4,
+      call_width_pct: 4,
+    },
     getZeroDteBoardPayload: async () => ({
       available: true,
       as_of: "2026-10-26T14:41:00.000Z",
