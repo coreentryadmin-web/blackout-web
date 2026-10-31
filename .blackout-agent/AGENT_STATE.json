@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-31T17:37:44.846Z",
+  "updated_at": "2026-10-31T19:37:49.374Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "cfdceabc45858163555a3e525012c416c21163ea",
+    "last_main_sha": "258757d9273339013e42388b36810fb3821661d6",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-21T17:36:59.979Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-21T17:37:04.889Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-21T18:36:56.974Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-21T18:37:01.947Z",
       "type": "context_sync",
@@ -1271,48 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-31T19:37:41.228Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-31T19:37:45.364Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-31T19:37:49.374Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 7056,
-      "title": "fix(admin): X Intel queue card rendered a REVIEW-no-copy row as a SKIP decision",
-      "branch": "fix/xintel-queue-postcopy-skip-mislabel",
+      "number": 7070,
+      "title": "fix(vector): remove dead recordVectorWallSamplesFromWarm, orphaned by full-universe bead-recorder refactor",
+      "branch": "fix/vector-snapshot-dead-record-warm",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T17:36:16Z"
-    },
-    {
-      "number": 7055,
-      "title": "chore: sync agent-state heartbeat files",
-      "branch": "chore/agent-state-heartbeat-sync-20261031-1733",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T17:34:22Z"
-    },
-    {
-      "number": 7054,
-      "title": "fix(zerodte): clamp managed_pnl_pct to its own peak_pnl_pct for frozen pre-2026-09-04 exits",
-      "branch": "fix/zerodte-record-managed-pnl-exceeds-peak",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T17:32:25Z"
-    },
-    {
-      "number": 7053,
-      "title": "fix(admin): launch-gate health check no longer hardcodes a stale open_count",
-      "branch": "fix/admin-launch-gate-stale-open-count",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T17:25:49Z"
+      "updated_at": "2026-10-31T19:30:30Z"
     },
     {
       "number": 5547,
