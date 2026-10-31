@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-31T11:26:31.488Z",
+  "updated_at": "2026-10-31T12:37:58.667Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "246af417203430911b37516f701b62bc6332de12",
+    "last_main_sha": "79417c09b340fd913e19cac5f9908fe44a85cc6d",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-21T03:39:56.066Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-21T03:39:59.604Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-21T05:37:56.076Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-21T05:38:01.718Z",
       "type": "context_sync",
@@ -1271,39 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-31T12:37:51.441Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-31T12:37:55.237Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-31T12:37:58.667Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 6983,
-      "title": "docs(audit): nighthawk-swings journal — biotech/solar theme-cluster gap (PR #6981), cycle-gap note",
-      "branch": "docs/swing-journal-6981-20261031",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T11:25:49Z"
-    },
-    {
-      "number": 6982,
-      "title": "chore: agent-state heartbeat sync",
-      "branch": "chore/agent-state-heartbeat-sync-20261031",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-31T11:22:24Z"
-    },
-    {
-      "number": 6981,
-      "title": "fix(swing): biotech/solar theme-cluster gap leaves real concentration unflagged",
-      "branch": "fix/swing-biotech-solar-theme-gap",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-10-31T11:11:01Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
