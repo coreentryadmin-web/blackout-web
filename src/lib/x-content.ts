@@ -81,7 +81,6 @@ export function marketDataReady(
 // ---------------------------------------------------------------------------
 
 export const X_ACCOUNT_USERNAME = "BlackOutTrade";
-export const WHOP_URL = "whop.com/blackout-2d9c";
 
 const FULL_STACK = `THE DESK (weave ALL of these naturally — one unified story, not a bullet list):
 • Vector — live GEX ladder, animated wall beads, gamma flip line
