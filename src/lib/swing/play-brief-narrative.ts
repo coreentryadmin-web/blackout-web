@@ -31,7 +31,7 @@ import { formatDealerDollars } from "./format-nonzero";
 import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
-import { isSwingPlayStaleCheckExempt } from "./entry-enterability";
+import { isSwingPlayStaleCheckExempt, gateFramingMootReason } from "./entry-enterability";
 import { swingVerdictVerb } from "./play-brief";
 import { hasScaledOut, runnerTrailingStopPremium } from "@/lib/zerodte/terminal-ladder";
 
@@ -838,6 +838,21 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
       play.status === "SKIP"
         ? swingVerdictVerb(play, action)
         : action?.label ?? play.swingEntryAction?.toUpperCase() ?? rec;
+    // BUG FIX (2026-10-31, Ask Largo x Night Hawk Swings standing mandate, live repro
+    // SWING:TSM, setupState FORMING/entryStatus PRE_TRIGGER): this bullet stated the raw gate
+    // count with no `gateFramingMootReason` check, while the very next bullet in the SAME
+    // "Trade manager read" section — `watchGateCoaching` (play-brief-narrative-coaching.ts),
+    // pushed immediately after this one via `collectCoachingBullets` in
+    // `tradeManagerNarrativeSection` — correctly reframes the identical `play.gateBlocks` as
+    // moot whenever clearing them would not actually reopen entry (still-FORMING thesis, below
+    // the lane score floor, or past-deadline/invalidated). Three OTHER renderers of this same
+    // gate list (`watchEntrySection` play-brief.ts, `watchGateCoaching` above, `entryTriggerDeadReason`
+    // play-brief-intel.ts) were already fixed to check `gateFramingMootReason` — this call site
+    // was simply missed each time, so a WATCH brief could read "3 gates blocking entry — see
+    // below." here and "Also gate-blocked (moot — thesis still forming — not yet at trigger) —
+    // ..." one bullet later, for the identical gates: a live, self-contradictory pair in one
+    // section. Mirror the same check here rather than inventing new wording.
+    const gateFramingMoot = gateCount > 0 ? gateFramingMootReason(play) : null;
     lines.push(
       `**Entry stance** — ${actionLabel}. ` +
         (gateCount > 0
@@ -852,7 +867,9 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
             // two bullets open with different wording ("Entry stance —" vs "Gates blocking
             // entry —"), even though their content was the same (live EWY/NRG WATCH reads,
             // 2026-09-10). State the count here; the reason text has exactly one home below.
-            `${gateCount} gate${gateCount === 1 ? "" : "s"} blocking entry — see below.`
+            gateFramingMoot
+              ? `${gateCount} gate${gateCount === 1 ? "" : "s"} nominally blocking entry (moot — ${gateFramingMoot}) — see below.`
+              : `${gateCount} gate${gateCount === 1 ? "" : "s"} blocking entry — see below.`
           : rec === "BUY"
             ? "No mechanical gates blocking — wait for trigger geometry."
             : "Wait for setup maturity before sizing."),
