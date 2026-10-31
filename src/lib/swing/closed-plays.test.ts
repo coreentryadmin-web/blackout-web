@@ -545,6 +545,115 @@ describe("closedDeckSourcesFromChains", () => {
     assert.equal(out[0]!.positionId, 50, "positionId still identifies the worst leg (50) even when its premium columns are themselves genuinely absent");
   });
 
+  // BUG FIX (Ask Largo standing mandate, 2026-10-31, live repro AMZN positionId 48 (root 44) — 5th
+  // site of the same bug class as the four fixes above): `entryTriggerUnderlyingPx`/
+  // `invalidationUnderlyingPx`/`exitAt`/`committedAt`/`firstSeenAt` were STILL unconditionally the
+  // terminal leg's own values (carried through the `...src` spread, never re-pointed) even after
+  // contract/mid/delta/positionId/entryPremium/peakPremium/troughPremium were all fixed to borrow
+  // from the worst leg. Live: AMZN leg 44 (worst leg, -27.67%) has its own real entry-trigger/
+  // invalidation underlying prices and its own real commit/first-seen/close timestamps; the served
+  // row paired leg 44's correctly-identified loss with leg 48's (terminal) own entry-
+  // trigger/invalidation prices (247.45/241.58) and leg 48's own commit/close dates instead.
+  it("borrows the WORST leg's own entryTriggerUnderlyingPx/invalidationUnderlyingPx/exitAt/committedAt/firstSeenAt, not the terminal leg's — live repro AMZN positionId 48/44", () => {
+    const parent = row({
+      id: 44,
+      roll_seq: 0,
+      realized_pnl_pct: -27.67,
+      contract_strike: 605,
+      contract_expiry: "2026-10-16",
+      contract_type: "call",
+      contract_occ: "O:AMZN261016C00605000",
+      entry_premium: 5.15,
+      peak_premium: 5.15,
+      trough_premium: 3.73,
+      last_mark: 3.73,
+      entry_underlying_px: 230.1, // leg 44's REAL own entry-trigger underlying — must be served, not leg 48's
+      thesis_invalidation_px: 224.5, // leg 44's REAL own invalidation underlying
+      first_seen_at: "2026-09-28T12:00:00.000Z", // when leg 44 (this trade) was actually first seen
+      committed_at: "2026-09-29T13:45:00.000Z", // when leg 44 (this trade) actually started
+      graded_at: "2026-09-30T13:31:19.000Z",
+      closed_at: "2026-09-30T13:31:19.000Z", // when leg 44 itself exited (rolled away) — NOT when the chain finally closed
+    });
+    const terminal = row({
+      id: 48,
+      roll_seq: 1,
+      parent_position_id: 44,
+      root_position_id: 44,
+      realized_pnl_pct: 72.41,
+      contract_strike: 245,
+      contract_expiry: "2026-10-09",
+      contract_type: "call",
+      contract_occ: "AMZN261009C00245000",
+      entry_premium: 5.8,
+      peak_premium: 10.0,
+      trough_premium: 5.8,
+      last_mark: 10.0,
+      entry_underlying_px: 247.45, // leg 48's own entry-trigger underlying — must NOT leak onto leg 44's card
+      thesis_invalidation_px: 241.58, // leg 48's own invalidation underlying
+      first_seen_at: "2026-09-30T14:00:00.000Z",
+      committed_at: "2026-09-30T13:35:00.000Z", // when the ROLL into leg 48 happened
+      closed_at: "2026-10-07T13:30:39.000Z", // when the whole chain finally closed
+      graded_at: "2026-10-07T13:30:39.000Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, terminal]]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.exitPnlPct, -27.67, "sanity: still the worst-leg composite P&L");
+    assert.equal(
+      out[0]!.entryTriggerUnderlyingPx,
+      230.1,
+      "entry-trigger underlying must be leg 44's own (230.1), not leg 48's (247.45) — closedCoaching's 'cushion at commit' math pairs this with leg 44's own -27.67% stop",
+    );
+    assert.equal(
+      out[0]!.invalidationUnderlyingPx,
+      224.5,
+      "invalidation underlying must be leg 44's own (224.5), not leg 48's (241.58)",
+    );
+    assert.equal(
+      out[0]!.exitAt,
+      "2026-09-30T13:31:19.000Z",
+      "exitAt must be WHEN LEG 44 ITSELF EXITED (rolled away), matching the P&L/reason already shown for leg 44 — not leg 48's own close date",
+    );
+    assert.equal(
+      out[0]!.committedAt,
+      "2026-09-29T13:45:00.000Z",
+      "committedAt must be leg 44's own commit time, not leg 48's",
+    );
+    assert.equal(
+      out[0]!.firstSeenAt,
+      "2026-09-28T12:00:00.000Z",
+      "firstSeenAt must be leg 44's own first-seen time, not leg 48's",
+    );
+  });
+
+  it("falls back to the terminal leg's own entryTriggerUnderlyingPx/invalidationUnderlyingPx/exitAt/committedAt/firstSeenAt when the worst leg IS the terminal leg (no mismatch to fix)", () => {
+    const parent = row({
+      id: 40,
+      roll_seq: 0,
+      realized_pnl_pct: -5,
+      graded_at: "2026-08-05T12:00:00Z",
+    });
+    const child = row({
+      id: 41,
+      roll_seq: 1,
+      parent_position_id: 40,
+      root_position_id: 40,
+      realized_pnl_pct: -40.83,
+      entry_underlying_px: 112,
+      thesis_invalidation_px: 108,
+      first_seen_at: "2026-08-10T10:00:00.000Z",
+      committed_at: "2026-08-11T14:00:00.000Z",
+      closed_at: "2026-08-12T12:00:00Z",
+      graded_at: "2026-08-12T12:05:00Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, child]]);
+    assert.equal(out[0]!.exitPnlPct, -40.83, "terminal leg is also the worst leg here");
+    assert.equal(out[0]!.entryTriggerUnderlyingPx, 112, "terminal leg's own value IS the worst leg's value -- keep it");
+    assert.equal(out[0]!.invalidationUnderlyingPx, 108);
+    assert.equal(out[0]!.exitAt, "2026-08-12T12:00:00Z");
+    assert.equal(out[0]!.committedAt, "2026-08-11T14:00:00.000Z");
+    assert.equal(out[0]!.firstSeenAt, "2026-08-10T10:00:00.000Z");
+  });
+
   // BUG FIX (Ask Largo standing mandate, live repro 2026-10-16, same AMZN root-44/terminal-48 chain
   // as the contract-identity fix above): the chain-composite path's `score`/`scoreWithheld` come
   // from `closedDeckSourceFromRow(terminal)` — the rolled CHILD leg, which never carries its own
