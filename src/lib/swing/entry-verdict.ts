@@ -299,11 +299,25 @@ function researchGateBlocks(input: SwingEntryVerdictInput): SwingEntryGateBlock[
   // first seen 2026-07-30, still routed RESEARCH via entryWindowExpired) read as if it had been
   // rejected on the merits.
   if (input.entryWindowExpired === true) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-31, live repro GOOGL): the comment above claims
+    // this branch is only ever reached by "a real, mature setup" — that is false.
+    // `evaluateSwingEntryEnterability` (entry-enterability.ts) checks `pastEntryDeadline` BEFORE its
+    // own `setup === "FORMING"` branch, so a thesis that never triggered — first flagged long enough
+    // ago to exceed its sub-lane's entry-validity window while still FORMING/PRE_TRIGGER — reaches
+    // here with `entryWindowExpired: true` too, not only a genuinely TRIGGERED/EXTENDED setup. The
+    // single hardcoded "This setup triggered" sentence then directly contradicted the SAME brief's
+    // own Entry-section facts ("Setup: FORMING" / "Entry geometry: PRE_TRIGGER") — live-confirmed
+    // GOOGL 285P, first flagged 24 days ago, still FORMING, RESEARCH/PASSED. Branch on `setupState`
+    // (TRIGGERED/EXTENDED both imply the setup DID fire; FORMING is the only pre-trigger state that
+    // can reach this branch, since INVALIDATED and null are both ruled out above) so the reason text
+    // never asserts a trigger that didn't happen.
+    const everTriggered = input.setupState === "TRIGGERED" || input.setupState === "EXTENDED";
     return [
       {
         code: "entry_window_expired",
-        reason:
-          "This setup triggered, but its entry window already lapsed — the thesis wasn't rejected, the clean-fill opportunity closed.",
+        reason: everTriggered
+          ? "This setup triggered, but its entry window already lapsed — the thesis wasn't rejected, the clean-fill opportunity closed."
+          : "This setup never reached its trigger — its entry window already lapsed while the thesis was still forming — the thesis wasn't rejected, the clean-fill opportunity closed before price got there.",
       },
     ];
   }

@@ -184,6 +184,53 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.ok(codes.includes("g_s14_cortex"), "must surface the real cortex gate, not discard it");
   });
 
+  // BUG FIX (2026-10-31, Ask Largo standing mandate, live repro GOOGL 285P 7DTE SHORT, first
+  // flagged 24 days ago, RESEARCH/PASSED): the `entry_window_expired` reason text unconditionally
+  // asserted "This setup triggered, but its entry window already lapsed" — but a FORMING/
+  // PRE_TRIGGER play that reaches this branch never triggered at all (`pastEntryDeadline` in
+  // entry-enterability.ts is checked BEFORE that function's own `setup === "FORMING"` branch, so a
+  // thesis that is still forming but was first flagged long enough ago can legitimately carry
+  // `entryWindowExpired: true` while setupState stays FORMING). The test two above this one
+  // (live AMD repro) already fed this exact FORMING/PRE_TRIGGER shape into this branch but only
+  // ever asserted on `gateBlocks` *codes* — never on whether the reason TEXT was accurate for that
+  // shape. This directly pins the text so a FORMING play's gate reason never claims a trigger that
+  // didn't happen, while a genuinely TRIGGERED/EXTENDED play keeps the (accurate) "triggered" text.
+  it("RESEARCH + expired entry window on a setup that NEVER triggered (FORMING/PRE_TRIGGER) → reason text must not claim it triggered (live GOOGL repro 2026-10-31)", () => {
+    const formingVerdict = swingEntryVerdict({
+      servingSection: "RESEARCH",
+      setupState: "FORMING",
+      entryStatus: "PRE_TRIGGER",
+      entryWindowExpired: true,
+    });
+    const formingReason = formingVerdict?.gateBlocks?.[0]?.reason ?? "";
+    assert.equal(formingVerdict?.gateBlocks?.[0]?.code, "entry_window_expired");
+    assert.doesNotMatch(
+      formingReason,
+      /this setup triggered/i,
+      "a FORMING/PRE_TRIGGER play never triggered — the reason text must not claim it did",
+    );
+    assert.match(formingReason, /entry window already lapsed/);
+    assert.doesNotMatch(formingReason, /needs more work/);
+
+    // Sibling check: a genuinely TRIGGERED/EXTENDED setup (the case the original text was written
+    // for) must keep saying "triggered" — this fix narrows the claim, it does not remove it.
+    const triggeredVerdict = swingEntryVerdict({
+      servingSection: "RESEARCH",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      entryWindowExpired: true,
+    });
+    assert.match(triggeredVerdict?.gateBlocks?.[0]?.reason ?? "", /this setup triggered/i);
+
+    const extendedVerdict = swingEntryVerdict({
+      servingSection: "RESEARCH",
+      setupState: "EXTENDED",
+      entryStatus: "EXTENDED_CHASE",
+      entryWindowExpired: true,
+    });
+    assert.match(extendedVerdict?.gateBlocks?.[0]?.reason ?? "", /this setup triggered/i);
+  });
+
   // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro SOXX WATCH): commitGateBlocksForVerdict
   // used to collapse every non-`cortex_unavailable` G-S14 block to "Cortex preflight vetoed this
   // setup" — but cortex-gate.ts's own decision table distinguishes a genuine veto from four
