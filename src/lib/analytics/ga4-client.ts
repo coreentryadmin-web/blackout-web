@@ -1,6 +1,7 @@
 import { GA4_MEASUREMENT_ID } from "./ga4-measurement-id";
 import {
   GA4_ONCE_STORAGE_KEY,
+  GA4_PENDING_SIGNUP_KEY,
   attributionEventParams,
 } from "./utm";
 
@@ -66,7 +67,7 @@ export function hasSessionCookie(): boolean {
 export function markPendingSignUp(): void {
   if (!isBrowser()) return;
   try {
-    sessionStorage.setItem("bo_ga4_pending_signup_v1", "1");
+    sessionStorage.setItem(GA4_PENDING_SIGNUP_KEY, "1");
   } catch {
     /* ignore */
   }
@@ -81,7 +82,7 @@ export function markPendingSignUp(): void {
 export function hasPendingSignUp(): boolean {
   if (!isBrowser()) return false;
   try {
-    return sessionStorage.getItem("bo_ga4_pending_signup_v1") === "1";
+    return sessionStorage.getItem(GA4_PENDING_SIGNUP_KEY) === "1";
   } catch {
     return false;
   }
@@ -90,9 +91,9 @@ export function hasPendingSignUp(): boolean {
 export function consumePendingSignUp(): boolean {
   if (!isBrowser()) return false;
   try {
-    const v = sessionStorage.getItem("bo_ga4_pending_signup_v1");
+    const v = sessionStorage.getItem(GA4_PENDING_SIGNUP_KEY);
     if (v !== "1") return false;
-    sessionStorage.removeItem("bo_ga4_pending_signup_v1");
+    sessionStorage.removeItem(GA4_PENDING_SIGNUP_KEY);
     return true;
   } catch {
     return false;
