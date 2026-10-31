@@ -230,6 +230,20 @@ const SECTORS: Record<string, string[]> = {
   // NVDA-capex bet, so they get their own small pair cluster instead, same precedent as
   // corning/roblox/gamestop/sofi above (a leveraged-wrapper-free pair with no existing themed peer).
   solar: ["SEDG", "ENPH"],
+  // Added 2026-10-31 (Ask Largo standing mandate, Night Hawk Swings lane, live finding): a real
+  // committed book held CF (CF Industries) and MOS (The Mosaic Company) concurrently LONG with
+  // neither ticker mapped anywhere in this file, so both resolved to isolated
+  // `NAME:CF`/`NAME:MOS` own-clusters and neither position's play-brief rendered a "Book context"
+  // section at all — same gap shape as every other extension in this file (ALAB/CRDO/KLAC,
+  // quantum-computing, biotech, precious-metals, solar). Verified via Polygon reference
+  // (`/v3/reference/tickers/<T>`), not guessed from the symbol: CF and MOS share the identical
+  // SIC code 2870 "AGRICULTURAL CHEMICALS" — both are large-cap nitrogen/phosphate fertilizer
+  // producers whose equity is dominated by the same ag-input commodity-price cycle (crop prices,
+  // natural-gas feedstock costs, global fertilizer demand), not by any sector already listed
+  // above (not `energy`, not `financials`, not `consumer`). No existing themed peer here, same
+  // precedent as corning/roblox/gamestop/sofi/solar above — a small pair cluster with no
+  // leveraged-wrapper shape.
+  "agricultural-chemicals": ["CF", "MOS"],
 };
 
 // Inverted once at module load: TICKER → sector.
