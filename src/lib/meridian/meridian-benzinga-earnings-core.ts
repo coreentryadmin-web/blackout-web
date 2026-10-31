@@ -169,7 +169,19 @@ export function overlayTimelineExpectedMoves(
   });
 }
 
-/** Next upcoming print from Benzinga structured earnings (Meridian/Largo — no UW REST). */
+/**
+ * Next upcoming print from Benzinga structured earnings (Meridian/Largo — no UW REST).
+ *
+ * `r.date >= todayYmd` alone is not "upcoming" — Benzinga leaves a same-day row's `date`
+ * unchanged after it reports, so a BMO print that already posted `actual_eps`/`actual_revenue`
+ * THIS morning still has `date === todayYmd` and would otherwise sort to the front and be
+ * returned as the "next" earnings for the rest of the day, until the following quarter's date
+ * gets calendared. Same bug shape as `meridian-ticker-lookup-core.ts`'s
+ * `pickUpcomingEarningsRow` (#7100) — a date-only "upcoming" filter needs a companion
+ * not-yet-reported check, not just a boundary on the date itself. `actual_eps`/`actual_revenue`
+ * are the row's own "has this printed" signal (a genuine EPS of 0 parses to the number `0`, not
+ * `null`, so this isn't fooled by a real zero print).
+ */
 export function parseNextEarningsFromBenzinga(
   ticker: string,
   rows: BenzingaStructuredEarnings[],
@@ -177,7 +189,7 @@ export function parseNextEarningsFromBenzinga(
 ): NextEarnings | null {
   const sym = ticker.trim().toUpperCase();
   const upcoming = rows
-    .filter((r) => r.date >= todayYmd)
+    .filter((r) => r.date >= todayYmd && r.actual_eps == null && r.actual_revenue == null)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));
   const row = upcoming[0];
   if (!row) return null;
