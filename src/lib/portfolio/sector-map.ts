@@ -244,6 +244,30 @@ const SECTORS: Record<string, string[]> = {
   // precedent as corning/roblox/gamestop/sofi/solar above — a small pair cluster with no
   // leveraged-wrapper shape.
   "agricultural-chemicals": ["CF", "MOS"],
+  // Added 2026-10-31 (Ask Largo standing mandate, Night Hawk Swings lane, live finding): a real
+  // committed book held KTOS (Kratos Defense & Security Solutions) and RDW (Redwire Corporation)
+  // concurrently LONG with neither ticker mapped anywhere in this file, so both resolved to
+  // isolated `NAME:KTOS`/`NAME:RDW` own-clusters and neither position's play-brief rendered a
+  // "Book context" section at all — same gap shape as every other extension in this file
+  // (precious-metals, solar, agricultural-chemicals, quantum-computing). Verified via Polygon
+  // reference (`/v3/reference/tickers/<T>`), not guessed from the symbol: KTOS and RDW share the
+  // identical SIC code 3760 "GUIDED MISSILES & SPACE VEHICLES & PARTS" — both are small-cap
+  // tactical-systems/space-component makers whose equity is dominated by the same
+  // defense-budget/launch-cadence risk driver, not by any sector already listed above.
+  // Deliberately narrow, same discipline as every single-pair precedent above (corning/roblox/
+  // gamestop/sofi/solar/agricultural-chemicals): this bucket holds ONLY the two names actually
+  // live and SIC-matched in this book snapshot, not a general "defense" bucket. Two real
+  // candidates were considered and deliberately left OUT rather than folded in on a looser match:
+  // LHX (L3Harris) carries the adjacent-but-different SIC 3812 "SEARCH, DETECTION, NAVIGATION,
+  // GUIDANCE, AERONAUTICAL SYS" and is a $50B+ prime contractor — a materially different risk
+  // profile from KTOS/RDW's small-cap tactical/space-component makers, not the same SIC code; and
+  // NN (NextNav Inc., a spectrum-based 3D-geolocation company, confirmed via Polygon reference —
+  // not guessed from the symbol) happens to share LHX's SIC 3812 purely by generic-code
+  // coincidence and has no real defense-prime business overlap at all. Folding either in on SIC
+  // proximity alone would be exactly the false-merge this file's own header warns against
+  // ("an unmapped name is NEVER falsely merged into a shared thesis") — if LHX/NN later prove to
+  // genuinely belong, that is a separate, independently-evidenced fix, not an extension of this one.
+  "defense-space-systems": ["KTOS", "RDW"],
 };
 
 // Inverted once at module load: TICKER → sector.
