@@ -641,7 +641,29 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       const kKey = kingKey(side, trail.strike);
       const isLiveKing = kingAt.get(liveTime) === trail.strike;
       this._kingTargetEmph.set(kKey, isLiveKing ? 1 : 0);
-      const liveEmph = this._reduceMotion ? (isLiveKing ? 1 : 0) : this._kingEmph.get(kKey) ?? 0;
+      let liveEmph: number;
+      if (this._reduceMotion) {
+        liveEmph = isLiveKing ? 1 : 0;
+      } else {
+        const curEmph = this._kingEmph.get(kKey);
+        if (curEmph == null) {
+          // First sight of this strike's king state (fresh mount, ticker switch, or a wall newly
+          // entering the rendered set) — SNAP straight to target instead of defaulting to 0 and
+          // easing up. Mirrors the half-height channel's own "first sight -> snap" guard a few
+          // lines below (`this._easedHalf.get(key)` / seed-on-null): without it, every genuinely
+          // live king rendered with ZERO crown emphasis for however many repaints land before the
+          // rAF loop's first tick (at minimum the very first paint after every `setData()` —
+          // `project()` runs synchronously off `requestUpdate()`, before any queued
+          // `requestAnimationFrame` callback can fire) — a king that IS the king painting as if it
+          // were not, the same class of defect the half-height fix exists to prevent. Only a
+          // CHANGING target (a real handover) should ease; a brand-new key has nothing to crossfade
+          // FROM.
+          liveEmph = isLiveKing ? 1 : 0;
+          this._kingEmph.set(kKey, liveEmph);
+        } else {
+          liveEmph = curEmph;
+        }
+      }
 
       // Median bucket step → gap threshold. A jump beyond GAP_SPLIT_FACTOR× the median means the wall
       // genuinely dropped out of the dominant set (a dead stretch), so we break the band there rather
