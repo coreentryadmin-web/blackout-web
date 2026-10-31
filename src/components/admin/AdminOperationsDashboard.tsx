@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { storeAge } from "@/components/admin/admin-store-age";
 import { timeAgoFromIso } from "@/components/admin/admin-time-ago";
+import { uwSocketVitalDisplay } from "@/components/admin/admin-uw-socket-vital";
 import { runGuardedAuditLoad } from "@/components/admin/admin-operations-audit-request-guard";
 import { launchGateHealthy } from "@/components/admin/admin-launch-gate-health";
 import {
@@ -800,8 +801,8 @@ export function AdminOperationsDashboard() {
                 />
                 <VitalRow
                   label="UW Socket"
-                  value={h?.websockets.unusual_whales.initialized ? "Live" : "Offline"}
-                  ok={h != null ? (h.websockets.unusual_whales.initialized && !h.websockets.unusual_whales.auth_failed) : null}
+                  value={uwSocketVitalDisplay(h?.websockets.unusual_whales).value}
+                  ok={uwSocketVitalDisplay(h?.websockets.unusual_whales).ok}
                   sub="flow feed"
                 />
                 <VitalRow
