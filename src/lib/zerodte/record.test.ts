@@ -961,3 +961,85 @@ test("buildZeroDteRecord: max_favorable_pct is null (not 0) for a row with no li
   assert.ok(play);
   assert.equal(play!.max_favorable_pct, null);
 });
+
+// ── FINDINGS 2026-10-31: managed_pnl_pct must never display as exceeding its own peak ──
+// A live audit of GET /api/market/zerodte/record?days=90 found 7 real rows where the
+// as-managed headline read BETTER than the position's own recorded maximum favorable
+// excursion -- a mathematical impossibility (see clampManagedPnlToPeak's doc). Every one
+// of the 7 was a frozen pre-2026-09-04 cent-rounding artifact (exit-engine.ts's
+// buildExitContext, commit f42a3892b/#3445); this reproduces the exact shape (NVDA
+// 2026-08-28: managed 0 vs peak -1.14) off a bare fixture, not live data, so the test
+// stays meaningful even after that row ages out of any live 90-day window.
+
+test("buildZeroDteRecord: a frozen pre-2026-09-04 exit stamp whose pnl_pct exceeds its own peak_pnl_pct is clamped to the peak (NVDA 2026-08-28 repro)", () => {
+  const rec = buildZeroDteRecord(
+    [
+      withExit(
+        { ticker: "NVDA", session_date: "2026-08-28", plan_outcome: "stopped", plan_pnl_pct: -50 },
+        { reason: "plan_stop", pnl_pct: 0, peak_pnl_pct: -1.14 } as unknown as { reason: string; pnl_pct: number }
+      ),
+    ],
+    { since: "2026-08-28", through: "2026-08-28", days: 1 },
+  );
+  const play = rec.plays.find((p) => p.ticker === "NVDA");
+  assert.ok(play);
+  // The peak (reliable — the 09-04 bug never touched peak_pnl_pct's own formula) is
+  // reported unchanged; the realized number is capped to agree with it, never left to
+  // claim a better outcome than the row's own documented best moment.
+  assert.equal(play!.max_favorable_pct, -1.14);
+  assert.equal(play!.managed_pnl_pct, -1.14, "managed_pnl_pct must never exceed max_favorable_pct");
+  assert.equal(play!.managed_source, "engine");
+  assert.equal(rec.wins, 0);
+  assert.equal(rec.losses, 1, "a clamped-negative exit must book as a loss, not the pre-clamp breakeven");
+  assert.equal(rec.avg_pnl_pct, -1.14);
+});
+
+test("buildZeroDteRecord: the same clamp caps a POSITIVE frozen pnl_pct to its own peak too (HIMS 2026-08-19 repro) — still a win, just not an impossible one", () => {
+  const rec = buildZeroDteRecord(
+    [
+      withExit(
+        { ticker: "HIMS", session_date: "2026-08-19", plan_outcome: "doubled", plan_pnl_pct: 100 },
+        { reason: "ratchet_profit_floor", pnl_pct: 5.68, peak_pnl_pct: 5.11 } as unknown as {
+          reason: string;
+          pnl_pct: number;
+        }
+      ),
+    ],
+    { since: "2026-08-19", through: "2026-08-19", days: 1 },
+  );
+  const play = rec.plays.find((p) => p.ticker === "HIMS");
+  assert.ok(play);
+  assert.equal(play!.max_favorable_pct, 5.11);
+  assert.equal(play!.managed_pnl_pct, 5.11);
+  assert.equal(rec.wins, 1, "still a real win — clamping only removes the impossible excess, not the win itself");
+  assert.equal(rec.avg_pnl_pct, 5.11);
+});
+
+test("buildZeroDteRecord: the clamp is a no-op when pnl_pct already sits at or below its own peak (the correct, post-fix and honored-floor shape)", () => {
+  // Same TSLA shape as the "reported SEPARATELY" test above (peak=0, realized=-22.57) plus
+  // a second, POSITIVE-peak row (ratchet-floor exit at +22.5%, peak +30% — the ordinary
+  // "closed off the all-time high" shape) — neither should move under the clamp.
+  const rec = buildZeroDteRecord(
+    [
+      withExit(
+        { ticker: "TSLA", session_date: "2026-10-19", plan_outcome: "stopped", plan_pnl_pct: -22.57 },
+        { reason: "thesis_break:gex-walls", pnl_pct: -22.57, peak_pnl_pct: 0 } as unknown as {
+          reason: string;
+          pnl_pct: number;
+        }
+      ),
+      withExit(
+        { ticker: "AMZN", session_date: "2026-10-19", plan_outcome: "stopped", plan_pnl_pct: -50 },
+        { reason: "ratchet_profit_floor", pnl_pct: 22.5, peak_pnl_pct: 30 } as unknown as {
+          reason: string;
+          pnl_pct: number;
+        }
+      ),
+    ],
+    { since: "2026-10-19", through: "2026-10-19", days: 1 },
+  );
+  const tsla = rec.plays.find((p) => p.ticker === "TSLA");
+  const amzn = rec.plays.find((p) => p.ticker === "AMZN");
+  assert.equal(tsla!.managed_pnl_pct, -22.57);
+  assert.equal(amzn!.managed_pnl_pct, 22.5);
+});
