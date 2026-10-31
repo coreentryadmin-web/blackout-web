@@ -286,16 +286,18 @@ export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): Ve
   }
 
   if (premiumPct != null && premiumPct >= 20) {
+    // DEAD-CODE CLEANUP (flagged across 4+ audit rounds, actioned 2026-10-31): this branch
+    // is only ever reached with premiumPct < 50 — the unconditional `premiumPct >= 50` check
+    // above already returns for ANY premiumPct >= 50, regardless of `intent`. A nested
+    // `if (premiumPct >= 50)` duplicating that exact same "Winner" return used to sit here;
+    // it could never execute (confirmed by inspection, and now by removal leaving every
+    // existing/new test passing byte-for-byte unchanged). Left in place, it was a latent
+    // maintenance hazard: a future edit to the outer check (e.g. gating it to fresh_entry
+    // only, which would be a plausible-looking change given this file's other intent-aware
+    // branches) would silently "revive" this shadowed branch without anyone realizing it had
+    // been dead the whole time. Removed; the single return below is the only code that can
+    // ever run for `intent === "tracked"` in this premiumPct range.
     if (intent === "tracked") {
-      if (premiumPct >= 50) {
-        return {
-          status: "caution",
-          reason: `Winner +${premiumPct.toFixed(0)}% — manage exit, not fresh entry`,
-          premiumPctFromEntry: premiumPct,
-          invalidationLevel: inv.level,
-          setupInvalidated: false,
-        };
-      }
       return {
         status: "caution",
         reason: `Extended +${premiumPct.toFixed(0)}% — limit only, not fresh entry`,
