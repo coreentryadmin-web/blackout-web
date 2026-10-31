@@ -2010,6 +2010,43 @@ test("tradeManagerNarrativeSection: TRIM's rail bullet keeps 'next rail at' when
   assert.doesNotMatch(section!.body, /already cleared/);
 });
 
+// BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-31, live repro MRNA
+// SWING:MRNA:68): the two siblings above only cover CURRENT pnlPct crossing the trigger. The
+// scale-out engine that actually decides rec==="TRIM" (deriveScaleOutAction, scale-out.ts) fires
+// off the RATCHETED PEAK, not the current mark, so a position whose peak cleared the trigger and
+// has since retraced below it is ALSO "already crossed, not yet banked" -- not "next rail at
+// +100%", which reads as if the rail is still ahead when it was already touched. Live numbers:
+// entry $14.80, peak +117.6% (clears +100%), pnlPct +99.2% (just under +100%).
+test("tradeManagerNarrativeSection: TRIM's rail bullet says 'already touched at peak', not 'next', when PEAK (not current price) cleared the unfired trigger", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "TRIM",
+        recommendation: "TRIM",
+        pnlPct: 99.2,
+        peak: 117.6,
+        manageAction: "TAKE_PARTIAL",
+        manageReason: "profit_ladder",
+        manageReasonDetail: "peak ≥ 2× entry — realize 50%, trail the runner",
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 29.6, fired: false }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /\*\*\+100%\*\* rail already touched at peak \(\*\*\+117\.6%\*\*\), since retraced to \*\*\+99\.2%\*\*, not yet banked/,
+  );
+  assert.doesNotMatch(section!.body, /next rail at/);
+});
+
 // Sibling: once at least one trim rung HAS actually fired (mechanical + status===TRIM, per
 // adapters.ts's gating comment), the position is no longer 100% exposed — the costliest gap
 // (silent full exposure) no longer applies, so the disclosure should not fire.

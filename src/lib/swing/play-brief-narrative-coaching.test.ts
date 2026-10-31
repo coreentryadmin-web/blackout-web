@@ -414,6 +414,38 @@ test("manageLifecycleCoaching: keeps 'next trim at' when price genuinely has NOT
   assert.doesNotMatch(line!, /already cleared/);
 });
 
+// BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-31, live repro MRNA
+// SWING:MRNA:68): the two siblings above only cover CURRENT pnlPct crossing the trigger. The
+// scale-out engine that actually decided manageAction==="TAKE_PARTIAL" (deriveScaleOutAction,
+// scale-out.ts: `peakPremium >= entryPremium * scale_at_mult`) fires off the RATCHETED PEAK, not
+// the current mark -- a position whose peak cleared the trigger and has since retraced below it
+// is ALSO "already cleared, not yet banked", not "next trim at +100% ... needs +X% from here",
+// which directly contradicts the "manage engine TAKE PARTIAL" clause rendered earlier in the
+// SAME bullet. Live numbers: peak +117.6% (clears +100%), pnlPct +99.2% (just under +100%).
+test("manageLifecycleCoaching: 'next trim' becomes 'already cleared, not yet banked' when PEAK (not current price) cleared the unfired trigger", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "TAKE_PARTIAL",
+      pnlPct: 99.2,
+      peak: 117.6,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+        runner_fraction: 0.5,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /\*\*\+100%\*\* rail already cleared, not yet banked/);
+  assert.doesNotMatch(line!, /next trim at/);
+  // The distance disclosure ("needs $X, +Y% from here") only belongs on the genuinely-ahead
+  // branch -- rendering it here would restate the same "+6% from here" contradiction this fix
+  // removes, since the rail was already touched at peak.
+  assert.doesNotMatch(line!, /from here/);
+});
+
 // Live repro (forensic batch 10, 2026-09-14: AMLX/NEO/HACK/MSTX/PZZA, all single-rung ladders):
 // "next trim at **+100%** (+100%)" -- the parenthetical ladder recap is byte-identical to the
 // trigger_pct already stated in the clause, pure filler for the common single-rung case.

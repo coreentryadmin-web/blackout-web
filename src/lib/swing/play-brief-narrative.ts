@@ -924,12 +924,38 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
     // "always crossed" comment) so the wording self-corrects if that invariant ever doesn't hold:
     // only the already-past case gets the past-tense framing, a genuinely-ahead rail (or an
     // unknown current pnl) keeps the original "next rail" wording untouched.
-    const railAlreadyCrossed =
+    //
+    // BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-31, live repro MRNA
+    // SWING:MRNA:68): the check above only compared the unfired trigger against CURRENT pnlPct,
+    // but the scale-out engine that actually decided rec==="TRIM" at all (deriveScaleOutAction,
+    // scale-out.ts: `if (peakPremium >= entryPremium * scale_at_mult)`) fires off the RATCHETED
+    // PEAK, not the current mark — the same peak this file already reads via `play.peak`
+    // (peakDisplay in adapters.ts, identical % basis as trigger_pct/pnlPct). Live repro: entry
+    // $14.80, peak $32.20 (+117.6%, > the +100% trigger -- this is WHY manageReasonDetail says
+    // "peak ≥ 2× entry"), current mark retraced to +99.2% (just under +100%). The old check,
+    // `pnlPct >= trigger_pct`, read 99.2 >= 100 as false and rendered the forward-looking "next
+    // rail at +100%" — directly contradicting the engine's own stated reason two bullets earlier
+    // in the SAME response. A rail that peak already touched is "already cleared, not yet
+    // banked" regardless of where price sits right now; only a rail NEITHER peak nor current
+    // ever reached is genuinely still ahead. Distinguish "cleared by current price" (existing
+    // wording, current still above the rail) from "cleared by peak, since retraced" (new wording
+    // — citing the peak number the member can already see in the Position section, not the
+    // current pnlPct, which would misleadingly imply the rail is where price sits now).
+    const currentAlreadyCrossed =
       next != null && typeof play.pnlPct === "number" && play.pnlPct >= next.trigger_pct;
+    const peakAlreadyCrossed =
+      next != null &&
+      !currentAlreadyCrossed &&
+      typeof play.peak === "number" &&
+      play.peak >= next.trigger_pct;
     const railClause = next
-      ? railAlreadyCrossed
+      ? currentAlreadyCrossed
         ? ` — **+${next.trigger_pct}%** rail already cleared (now **${fmtPct(play.pnlPct!)}**), not yet banked`
-        : ` — next rail at **+${next.trigger_pct}%**`
+        : peakAlreadyCrossed
+          ? ` — **+${next.trigger_pct}%** rail already touched at peak (**${fmtPct(play.peak!)}**)` +
+            (typeof play.pnlPct === "number" ? `, since retraced to **${fmtPct(play.pnlPct)}**` : "") +
+            `, not yet banked`
+          : ` — next rail at **+${next.trigger_pct}%**`
       : "";
     const reasonClause = trimReasonClause(play.manageReason);
     lines.push(
