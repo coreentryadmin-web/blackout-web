@@ -391,6 +391,44 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
       worstLegRow?.peak_premium != null ? round2(worstLegRow.peak_premium) : null;
     const worstLegTroughPremium =
       worstLegRow?.trough_premium != null ? round2(worstLegRow.trough_premium) : null;
+    // BUG FIX (Ask Largo standing mandate, 2026-10-31, live repro AMZN positionId 48 (root 44),
+    // 5th site of the same bug class as the four fixes above): `...src` (the spread below) carries
+    // `entryTriggerUnderlyingPx`/`invalidationUnderlyingPx`/`exitAt`/`committedAt`/`firstSeenAt`
+    // from the TERMINAL leg (`closedDeckSourceFromRow(terminal)`) — every one of the four prior
+    // fixes re-pointed a different field (positionId, contract/occ/mid/delta, entry/peak/trough
+    // premium) at the worst leg's own row when it isn't the terminal leg, but left these five
+    // untouched, so the identical mismatch survived one layer deeper. All five are genuine per-leg
+    // columns on `swing_positions` (`entry_underlying_px`/`thesis_invalidation_px`/`closed_at`/
+    // `graded_at`/`committed_at`/`first_seen_at` — db.ts `SwingPositionRow`), the same class as
+    // `entry_premium`/`contract_delta` already borrowed above — there was never a "no per-leg
+    // equivalent" gap here either, same misconception the 2026-10-21 fix's comment names for
+    // entryPremium/peakPremium/troughPremium.
+    //
+    // Consequence, live-confirmed: `closedCoaching` (play-brief-narrative-coaching.ts) narrates
+    // "Stop fired — entry **X** vs invalidation **Y**, a **Z%** cushion at commit" using
+    // `entryTriggerUnderlyingPx`/`invalidationUnderlyingPx` specifically for a `closedReason ===
+    // "stopped"` play — and `closedReason` above is ALREADY the worst leg's own composite reason.
+    // AMZN root 44 (the worst leg, -27.67%, correctly named/priced/dated by the four prior fixes)
+    // paired its own real loss with leg 48's (terminal, +72.41%) own entry-trigger/invalidation
+    // underlying prices (247.45/241.58) — a specific, checkable, false "cushion at commit" claim
+    // about a trade that was never leg 44's. Same shape for `exitAt`: `closedSection` (play-brief.ts)
+    // renders "Exit P&L: **-27.67%** / Reason: **stopped** / Closed: **<date>**" as one connected
+    // "Outcome" block — pairing the worst leg's own P&L/reason with the TERMINAL leg's own close
+    // date (when the chain finally finished, not when leg 44 itself rolled away) is the same
+    // cross-leg pairing bug, one field over. `committedAt`/`firstSeenAt` get the identical fix for
+    // the same reason — `playTriggeredEvent` (play-card-lifecycle.ts) documents `firstFlaggedAt`
+    // (== `committedAt`) as "when the trade started" for a closed row, which must mean the leg whose
+    // outcome is actually being shown, not a different leg's own entry.
+    //
+    // Fix: borrow all five from `worstLegRow` the same way contract/mid/delta/premiums already are,
+    // falling back to `src`'s own (terminal) value only when the worst leg IS the terminal leg
+    // (`worstLegRow` is `null` in exactly that case) — same `worstLegIsTerminal` gate every sibling
+    // field above already uses, no new branch invented.
+    const worstLegEntryTriggerUnderlyingPx = worstLegRow ? fin(worstLegRow.entry_underlying_px) : null;
+    const worstLegInvalidationUnderlyingPx = worstLegRow ? fin(worstLegRow.thesis_invalidation_px) : null;
+    const worstLegExitAt = worstLegRow ? worstLegRow.closed_at ?? worstLegRow.graded_at : null;
+    const worstLegCommittedAt = worstLegRow ? worstLegRow.committed_at : null;
+    const worstLegFirstSeenAt = worstLegRow ? worstLegRow.first_seen_at : null;
     out.push({
       ...src,
       // BUG FIX (Ask Largo standing mandate, 2026-10-22, live repro AMZN positionId 48 (root 44) +
@@ -413,6 +451,11 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
       entryPremium: worstLegIsTerminal ? src.entryPremium : worstLegEntryPremium,
       peakPremium: worstLegIsTerminal ? src.peakPremium : worstLegPeakPremium,
       troughPremium: worstLegIsTerminal ? src.troughPremium : worstLegTroughPremium,
+      entryTriggerUnderlyingPx: worstLegIsTerminal ? src.entryTriggerUnderlyingPx : worstLegEntryTriggerUnderlyingPx,
+      invalidationUnderlyingPx: worstLegIsTerminal ? src.invalidationUnderlyingPx : worstLegInvalidationUnderlyingPx,
+      exitAt: worstLegIsTerminal ? src.exitAt : worstLegExitAt,
+      committedAt: worstLegIsTerminal ? src.committedAt : worstLegCommittedAt,
+      firstSeenAt: worstLegIsTerminal ? src.firstSeenAt : worstLegFirstSeenAt,
       closedReason: compositeReason,
       reason: `${src.reason} · chain composite (${record.composite.gradedLegs} leg${record.composite.gradedLegs === 1 ? "" : "s"})`,
       ...(worstLegBundle
