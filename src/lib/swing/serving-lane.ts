@@ -29,6 +29,7 @@ import {
 import {
   buildSwingReadsByTicker,
   swingServingMetaFromDossier,
+  type SwingServingMeta,
   type SwingServingReads,
 } from "./serving-ingest";
 import type { ChainContract } from "../horizon-fanout";
@@ -158,6 +159,53 @@ function resolvedFactorsFor(play: HorizonPlay, fallback: HorizonPlay["factors"])
 }
 
 /**
+ * Resolve the thesis-health fields (`thesisLevel`/`thesisNote`) a play should SHOW, carrying them
+ * forward from `play` instead of trusting `meta`'s fresh read in exactly one case.
+ *
+ * THE BUG THIS CLOSES (FINDINGS 2026-10-31, live repro NET, RESEARCH bucket). `enrichPlay` correctly
+ * falls back to `play.setupState`/`play.entryStatus` when `meta.setupState`/`meta.entryStatus` come
+ * back null (`meta.setupState ?? play.setupState`, a few lines below this function's call site) — but
+ * it used to take `thesisLevel`/`thesisNote` from `meta` UNCONDITIONALLY, with no equivalent fallback.
+ * `swingServingMetaFromDossier` (serving-ingest.ts) derives `thesisLevel`/`thesisNote` from a LOCAL
+ * `setupState` variable that is purely THIS CALL's reads-derived value (`reads?.setup ? deriveSetupState(...)
+ * : null` — null whenever `reads?.setup` is absent, which is EXACTLY when `meta.setupState` itself is
+ * null, since `deriveSetupState` never returns null on its own) — a completely different value from the
+ * MERGED `setupState`/`entryStatus` `enrichPlay` produces one level up. So the moment this call's reads
+ * drop (a transient per-ticker fetch miss, not a universal outage) while a prior `play.setupState` is
+ * being correctly carried forward, the row simultaneously asserts a real carried-forward `setupState:
+ * "TRIGGERED"`/`entryStatus: "AT_TRIGGER"` AND `thesisLevel: "unknown"` / `thesisNote: "no setup read
+ * attached to this name yet"` — directly contradicting itself in the same object. Live-confirmed on NET
+ * (2026-10-31): exactly that pairing, in the same served row, while 11 sibling RESEARCH-bucket plays in
+ * the same response (reads present) had the fields agree.
+ *
+ * WHY NOT A BLANKET `meta.thesisLevel ?? play.thesisLevel`. `SwingServingMeta.thesisLevel` is typed
+ * NON-NULLABLE (`SwingThesisLevel` — always "break"/"warn"/"intact"/"unknown", never null/undefined),
+ * so that `??` would never actually fall back — `meta.thesisLevel` is always a truthy string. It would
+ * compile and read like a fix without changing behavior. The real fix has to detect the SPECIFIC case
+ * that produces the contradiction and carry forward only then.
+ *
+ * THE DETECTION SIGNAL: `meta.setupState == null` (the raw, pre-`??` value, available here before
+ * `enrichPlay` applies its own fallback) is precisely "no grounded setup read was supplied THIS call" —
+ * never anything else, since `deriveSetupState` is total over a supplied `reads.setup`. Combined with
+ * `meta.thesisLevel === "unknown"` (meta itself fell to its own reads-absent default, rather than an
+ * INDEPENDENTLY-true "break"/"warn" the dossier's own data quality established without needing reads —
+ * see `swingServingMetaFromDossier`'s INVALIDATED/degraded branches, which this must NOT override) and a
+ * genuine prior `play.thesisLevel` to carry (never invent one when there is nothing to carry forward —
+ * see the "genuinely no setup read ever attached" case this must still render "unknown" honestly).
+ */
+export function resolveThesisHealth(
+  meta: SwingServingMeta,
+  play: HorizonPlay,
+): { thesisLevel: SwingServingMeta["thesisLevel"]; thesisNote: SwingServingMeta["thesisNote"] } {
+  const readsDroppedThisScan = meta.setupState == null && play.setupState != null;
+  const metaFellToReadsAbsentDefault = meta.thesisLevel === "unknown";
+  if (readsDroppedThisScan && metaFellToReadsAbsentDefault && play.thesisLevel != null) {
+    return { thesisLevel: play.thesisLevel, thesisNote: play.thesisNote ?? null };
+  }
+  return { thesisLevel: meta.thesisLevel, thesisNote: meta.thesisNote };
+}
+
+/**
  * Stamp a produced play with the OBSERVABLE swing state its dossier + grounded reads imply, so the serving
  * router (buildSwingSections) can place it in the right section. Only the observable fields the router keys
  * on (setupState / entryStatus) and the calibration-partition labels (archetype / subLane) are set — the
@@ -171,10 +219,16 @@ function resolvedFactorsFor(play: HorizonPlay, fallback: HorizonPlay["factors"])
  * and so never take that other function's path). Organic (non-Legacy) discovery plays never set
  * `play.factors` at all (`horizon-plays.ts`'s `factors` field is optional/undefined until this function
  * fills it), so `resolvedFactorsFor` falls through to `meta.factors` for them exactly as before.
+ *
+ * THESIS-HEALTH CARRY-FORWARD: `thesisLevel`/`thesisNote` go through `resolveThesisHealth` (see its own
+ * header above) rather than taking `meta`'s values unconditionally — the merged `setupState`/
+ * `entryStatus` fallback a few lines below and the thesis-health fallback inside `resolveThesisHealth`
+ * must agree on the same carried-forward reality, or the row contradicts itself.
  */
 function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?: SwingServingReads): HorizonPlay {
   if (!dossier) return play; // no thesis found for this ticker → leave it as-is (routes to RESEARCH honestly)
   const meta = swingServingMetaFromDossier(dossier, reads);
+  const thesisHealth = resolveThesisHealth(meta, play);
   // WATCH track anchor: pinned first-flag price only — never the live scan spot (reads.setup.price).
   const flagPx =
     play.flagUnderlyingPx ??
@@ -190,8 +244,8 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
     // sight; it must actually sum to the score it rides beside, or it gets repaired.
     factors: resolvedFactorsFor(play, meta.factors),
     regime: meta.regime,
-    thesisLevel: meta.thesisLevel,
-    thesisNote: meta.thesisNote,
+    thesisLevel: thesisHealth.thesisLevel,
+    thesisNote: thesisHealth.thesisNote,
     sectorLeadershipFacts: meta.sectorLeadershipFacts,
     flagUnderlyingPx:
       typeof flagPx === "number" && Number.isFinite(flagPx) && flagPx > 0 ? flagPx : play.flagUnderlyingPx,
