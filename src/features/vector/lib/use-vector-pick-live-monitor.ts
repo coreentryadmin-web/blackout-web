@@ -75,6 +75,21 @@ export function useVectorPickLiveMonitor(
   const genRef = useRef(0);
   /** Pin the first-seen entry mid per OCC so 45s pick refreshes do not reset "% vs pick". */
   const pinnedEntryByOcc = useRef<Map<string, number>>(new Map());
+  // BUG FIX (2026-10-31): `pickKey` exists so a 45s pick refetch that returns the SAME occ/strike/
+  // expiry set (new array identity, identical identity content — useVectorContractPicks calls
+  // setPicks(newArray) on every refresh regardless of whether anything changed) does not tear down
+  // this hook's 1s live-quote poll. But the effect below ALSO listed raw `picks` in its deps, which
+  // defeats that: a reference-only change on an identity-unchanged refetch still reran the effect,
+  // cancelling the in-flight live-quote fetch (bumping genRef, so its response is dropped) and
+  // rebuilding the interval — the exact "derived stable key defeated by also depending on the raw
+  // value" class fixed in useVectorContractPicks's own fetch effect (see
+  // vector-contract-picks-effect-deps-starvation). `picksRef` lets `poll()` always read the CURRENT
+  // picks (fresh premium/confidence/rank/etc. even when identity is unchanged) without the effect
+  // itself needing to restart on every reference change — pickKey alone decides when to restart.
+  const picksRef = useRef(picks);
+  useEffect(() => {
+    picksRef.current = picks;
+  }, [picks]);
   // Wall-clock time of the last SUCCESSFUL poll — not reset on failure, so it keeps growing stale
   // across an outage instead of resetting on every failed attempt.
   const lastSuccessAtRef = useRef<number | null>(null);
@@ -95,13 +110,19 @@ export function useVectorPickLiveMonitor(
       pinnedEntryByOcc.current.clear();
       return;
     }
-    const occPicks = picks.filter((p): p is VectorContractPick & { occ: string } => Boolean(p.occ));
-    if (!occPicks.length) return;
-
     let cancelled = false;
     const gen = ++genRef.current;
 
     const poll = () => {
+      // Read through the ref, not the closed-over `picks` param — this hook's effect restarts
+      // only on a real occ/strike/expiry change (pickKey), so a content-identical 45s refetch must
+      // still let each poll tick see the LATEST pick fields (premium/confidence/rank/etc.) rather
+      // than freezing them at whatever `picks` was when the effect last (re)ran.
+      const occPicks = picksRef.current.filter(
+        (p): p is VectorContractPick & { occ: string } => Boolean(p.occ)
+      );
+      if (!occPicks.length) return;
+
       const resolveEntryMid = (p: (typeof occPicks)[number]) => {
         const incoming = p.entryMid ?? p.premium;
         if (!p.occ) return incoming;
@@ -168,7 +189,11 @@ export function useVectorPickLiveMonitor(
       cancelled = true;
       clearInterval(id);
     };
-  }, [ticker, emit, pickKey, picks, liveSession, paused]);
+    // `pickKey` (occ|strike|expiry identity), not raw `picks`, decides when to restart — see the
+    // BUG FIX note on picksRef above. `poll()` reads live data through picksRef so a content-
+    // identical refetch (new array, same identities) never tears down the running 1s interval.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `picks`/`picks.length` are read via picksRef inside poll(), not closed over directly; pickKey is the deliberate, coarser restart trigger.
+  }, [ticker, emit, pickKey, liveSession, paused]);
 
   return useMemo(() => {
     const stale = isLiveQuotesStale(lastSuccessAtRef.current, Date.now());
