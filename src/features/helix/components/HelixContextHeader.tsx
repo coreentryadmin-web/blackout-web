@@ -45,8 +45,15 @@ export function summarizeHelixTapeContext(
 
   for (const a of scoped) {
     const prem = a.premium ?? 0;
-    if (a.option_type?.toUpperCase() === "PUT") putPremium += prem;
-    else callPremium += prem;
+    const optType = a.option_type?.toUpperCase();
+    // gap-#6 (same discipline as FlowFeed.tsx/NetPremiumLeaderboard.tsx): `option_type` is a bare
+    // `string` on FlowAlert, not a "CALL" | "PUT" union, so an UNKNOWN/typeless/malformed print is
+    // a real possibility, not a theoretical one. The previous `else callPremium += prem` treated
+    // every non-PUT value — including '', null-ish, and any garbage string — as a CALL, which
+    // fabricates call premium out of prints this header could not classify at all and silently
+    // inflates the Call/Put premium readout and the PCR this header renders for the ticker.
+    if (optType === "CALL") callPremium += prem;
+    else if (optType === "PUT") putPremium += prem;
     if (a.dte === 0) dte0Count += 1;
     if (a.open_interest != null && a.open_interest > 0) {
       chainOi += a.open_interest;
