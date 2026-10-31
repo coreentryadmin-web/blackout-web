@@ -358,11 +358,46 @@ export async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<Return
   }
   try {
     const result = await evaluateSpxPlayState();
-    void sharedCacheSet(
-      spxPlayServerCacheKey(date),
-      result,
-      Math.max(playMemberReadCacheSec() * 2, 10)
-    ).catch(() => undefined);
+    // BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — 5th instance of
+    // this cache key's staleness/non-monotonic-publish bug class, see FINDINGS.md's own note on
+    // the 4th instance anticipating a 5th): this published `result` to the shared cross-replica
+    // key UNCONDITIONALLY, with no gate at all. Every OTHER reader/writer of this exact payload
+    // shape treats `assessed: false` as a one-off, must-not-persist placeholder -- `shouldCache`
+    // on `getSpxPlayState()`'s withServerCache call below (`value.assessed !== false`) and
+    // `isSpxPlaySnapshotShareable` (spx-play-freshness.ts) both exist specifically so a
+    // degenerate eval (desk.source==="none" cold shell, or any other legitimate-but-transient
+    // "nothing was assessed" outcome from evaluateSpxPlayState() -- see
+    // SpxPlayPayload.assessed's own doc comment) never gets trusted as a cacheable "current play
+    // state." This explicit `sharedCacheSet` is the ONE write path to this key that bypassed both
+    // protections: `getSpxPlayState()` passes `localOnly: true`, so `withServerCache`'s own
+    // `shouldCache`-guarded Redis write is skipped entirely for this key, making THIS call the
+    // sole publisher -- and unlike the generic `withServerCache` layer, it writes via a bare
+    // `sharedCacheSet` with no `shouldCache` check and no `server-gen:<key>` generation stamp
+    // (that guard, and `peekServerCache`'s own matching read-side check, both live in
+    // server-cache.ts's `writeRedisCache`/`readRedisGeneratedAt`, which this call never goes
+    // through). So a transient `assessed:false` result -- a normal, routine outcome off-hours
+    // whenever `loadMergedSpxDesk()`'s own bounded load falls back to a degraded shell under load
+    // -- got published for every other replica's `waitForPeerSpxPlaySnapshot`/
+    // `spxPlayReadFallback`/`peekSpxPlayState` to pick up, with no ordering guard against an
+    // OLDER-vintage write clobbering a newer good one, and with `peekServerCache`'s local-copy
+    // fallback (no generation metadata on this key -> "age unknown, trust it") free to keep
+    // re-serving that exact copy for its own un-overridden 10-minute ceiling. Live-reproduced
+    // 2026-10-31 (Saturday, market closed, desk healthy/monotonic throughout via a parallel
+    // GET /api/market/spx/desk poll): GET /api/market/spx/play alternated assessed:true/score:36
+    // <-> assessed:false/score:0/direction:null across polls ~13s apart, with `as_of` jumping
+    // BACKWARD to an exact byte-identical older generation (17:26:16.480Z) 22+ minutes after it
+    // was first observed, then forward again -- the same non-monotonic-publish shape this file's
+    // sibling fixes (2026-10-25 `isSpxPlaySnapshotShareable`/`shouldCache`, 2026-10-31's own
+    // `assessed`-gap fix to `isSpxPlaySnapshotShareable`) already closed on every OTHER path, just
+    // not this one. Fix: gate the publish exactly like every sibling path already does -- never
+    // let a degenerate read become the shared "current" snapshot for other replicas to replay.
+    if ((result as { assessed?: boolean }).assessed !== false) {
+      void sharedCacheSet(
+        spxPlayServerCacheKey(date),
+        result,
+        Math.max(playMemberReadCacheSec() * 2, 10)
+      ).catch(() => undefined);
+    }
     return result;
   } finally {
     await sharedCacheDel(lockKey).catch(() => undefined);
