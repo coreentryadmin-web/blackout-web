@@ -344,3 +344,47 @@ test("cybersecurity/software names FTNT/OKTA/S/RBRK cluster into the software th
   assert.equal(sameThesis("FTNT", "NVDA"), false);
   assert.equal(sameThesis("S", "AAPL"), false);
 });
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-10-31, live finding): a
+// real committed book held VKTX+SRPT+SMMT+IBRX+CAPR+REPL concurrently LONG (6 names, all
+// unmapped) alongside NVAX (already in the biotech bucket, held twice) — the same
+// clinical/commercial-stage binary-catalyst risk driver as the existing NTLA/CRSP/VIR/.../ABVX
+// cohort, but each resolved to its own isolated `NAME:<ticker>` cluster, hiding a 7-position
+// single-thesis concentration from every one of those briefs. WGS (GeneDx Holdings) was live in
+// the same book but is deliberately NOT added — Polygon reference classifies it SIC 8000
+// "SERVICES-HEALTH SERVICES" (diagnostics/genetic testing), the same GRAL-shaped exclusion this
+// bucket's own sector-map.ts comment already documents, not a clinical-stage therapeutics name.
+test("clinical-stage biotech names VKTX/SRPT/SMMT/IBRX/CAPR/REPL join the biotech theme, not isolated clusters; diagnostics name WGS stays excluded (2026-10-31 live finding)", () => {
+  assert.equal(resolveTheme("VKTX"), "biotech");
+  assert.equal(resolveTheme("SRPT"), "biotech");
+  assert.equal(resolveTheme("SMMT"), "biotech");
+  assert.equal(resolveTheme("IBRX"), "biotech");
+  assert.equal(resolveTheme("CAPR"), "biotech");
+  assert.equal(resolveTheme("REPL"), "biotech");
+  assert.equal(sameThesis("VKTX", "NVAX"), true);
+  assert.equal(sameThesis("SRPT", "NTLA"), true);
+  assert.equal(sameThesis("CAPR", "ABVX"), true); // joins the WHOLE biotech cluster, not just one peer
+  // Diagnostics/genetic-testing names stay excluded, same rationale as the existing GRAL exclusion.
+  assert.equal(sameThesis("WGS", "VKTX"), false);
+  assert.equal(resolveTheme("WGS"), "NAME:WGS");
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("VKTX", "LLY"), false);
+  assert.equal(sameThesis("IBRX", "NVDA"), false);
+});
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-10-31, live finding): a
+// real committed book held SEDG and ENPH concurrently LONG with neither ticker mapped anywhere,
+// so both resolved to isolated `NAME:SEDG`/`NAME:ENPH` own-clusters and neither play-brief
+// rendered a "Book context" section at all. SEDG (SolarEdge) and ENPH (Enphase) are the two
+// dominant residential-solar power-electronics makers, correlated on rate sensitivity and
+// residential-solar policy news — a real shared thesis even though Polygon files both under the
+// same SIC code (3674) as the unrelated `semis` (AI-datacenter-capex) bucket, which is exactly why
+// they get their own small pair cluster rather than being folded into `semis` on SIC alone.
+test("SEDG and ENPH (residential-solar power-electronics makers) cluster together as a solar theme, not each in its own isolated cluster, and not folded into the unrelated semis bucket", () => {
+  assert.equal(resolveTheme("SEDG"), "solar");
+  assert.equal(resolveTheme("ENPH"), "solar");
+  assert.equal(sameThesis("SEDG", "ENPH"), true);
+  // Not merged into `semis` just because Polygon's SIC code for both happens to be 3674.
+  assert.equal(sameThesis("SEDG", "NVDA"), false);
+  assert.equal(sameThesis("ENPH", "AMD"), false);
+});
