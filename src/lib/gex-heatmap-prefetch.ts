@@ -12,22 +12,6 @@ type BatchPayload = {
   tickers?: Record<string, unknown>;
 };
 
-export async function fetchGexHeatmapForPrefetch(
-  ticker: string,
-  signal?: AbortSignal
-): Promise<unknown | null> {
-  const t = ticker.trim().toUpperCase();
-  if (!t) return null;
-  const res = await fetch(`/api/market/gex-heatmap?ticker=${encodeURIComponent(t)}&compact=1`, {
-    credentials: "same-origin",
-    cache: "no-store",
-    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-    signal,
-  });
-  if (!res.ok) return null;
-  return res.json();
-}
-
 async function fetchGexHeatmapBatchForPrefetch(
   tickers: readonly string[],
   signal?: AbortSignal
