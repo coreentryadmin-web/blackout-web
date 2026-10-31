@@ -68,17 +68,3 @@ export function subscribeMatrixDeltas(writer: SubscriberWriter): () => void {
     subscribers.delete(writer);
   };
 }
-
-/**
- * Get current subscriber count (for monitoring).
- */
-export function getSubscriberCount(): number {
-  return subscribers.size;
-}
-
-/**
- * Clear all subscribers (used in tests).
- */
-export function clearSubscribers(): void {
-  subscribers.clear();
-}
