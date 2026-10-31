@@ -4,6 +4,29 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-31 (12:30 UTC / Sat 08:30 ET) — [SEO] Lane resumed after ~4.5-day gap (worker-process restarts), shipped fixes validated
+
+**Gap, honestly reported, not glossed over.** 35 scheduled-trigger notifications (lane heartbeat,
+RTH wakes, daily growth cycles) queued unprocessed from Tue 2026-10-27 00:16 UTC through Sat
+2026-10-31 12:23 UTC — this session's turns were not running during that window; the visible
+history shows repeated "worker process was restarted" system messages rather than any single
+outage. Not attempting to retroactively reconstruct or backfill those 35 missed cycles — a CLS
+reading, gamma-snapshot poll, or PR-sweep result from hours-to-days ago is unverifiable now and
+reporting one would be fabrication, which this lane's standing discipline forbids. Resuming
+cleanly from the current state instead.
+
+Verified repo/container state fresh (no restart recovery needed this time — repo, `node_modules`,
+Node 20 at `/opt/node20/bin/node`, and `CF_API_TOKEN`/`CF_ZONE_ID` were all intact; resynced to
+`origin/main` at `f5fbaa1a8`). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage
+CLS — **0.0001, GOOD** (64/64 routed, 0 fail, empty shifts). Fetched `/api/og` with a Googlebot
+UA: `200`, `content-type: image/png`, valid 1200x630 PNG — crawlable, confirmed on production.
+`robots.txt` still serves `Allow: /api/og`. `/api/health` → `200` (no undetected outage during the
+gap). **Step 2 — PR sweep:** 5 open agent PRs fleet-wide (3 MERGEABLE, 2 CI-RUNNING), all
+other-lane (vector/swing). No draft jam, nothing conflicted, nothing for this lane to act on.
+**Step 3 — opportunity scan:** `gsc-opportunities-report.mjs` still blocked, no AWS creds
+(`UnrecognizedClientException`) — honest `SKIP`, exit 0, nothing fabricated, consistent with every
+prior run this month. Standing cadence resumes from here.
+
 ## 2026-10-26 (18:19 UTC / Mon 14:19 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Resynced to `origin/main` (`df99198b6` → `370464b57`, other-lane membership fix). **Step 1:**
