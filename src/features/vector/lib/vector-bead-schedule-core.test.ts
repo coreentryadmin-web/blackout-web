@@ -42,6 +42,30 @@ test("a ticker repeated in the roster is started at most once", () => {
   assert.deepEqual(d.start, ["SPY"]);
 });
 
+test("REGRESSION: a duplicate ticker must not throw nextCursor off for the rest of the roster", () => {
+  // ["A","B","A","C"]: the duplicate "A" at roster index 2 is skipped (`seen.has`) without landing
+  // in start/busy/deferred — it still consumes a ROSTER POSITION, but contributes nothing to a
+  // count built from `start.length + busy.length`. A nextCursor derived from that count silently
+  // falls one position behind: the last ticker actually started here is "C" at roster index 3, and
+  // "just past" it must be index 4, which wraps to 0 on a 4-ticker roster — NOT 3, which is C's own
+  // index and would re-offer C to the very next tick before A/B ever get a look.
+  const d = selectTickersToRecord({ tickers: ["A", "B", "A", "C"], inFlight: S(), limit: 10, cursor: 0 });
+  assert.deepEqual(d.start, ["A", "B", "C"]);
+  assert.equal(d.nextCursor, 0, "must wrap past C's own index (3), not land ON it");
+
+  // Consequence if this regresses: the next tick starts scanning AT "C" again (re-serving it
+  // immediately) instead of wrapping the lap back to "A" — the duplicate earlier in the SAME tick
+  // quietly costs the roster's tail its fair share of turns, the exact fairness bug this scheduler
+  // exists to prevent, just reached through a duplicate roster entry instead of a binding ceiling.
+  const d2 = selectTickersToRecord({
+    tickers: ["A", "B", "A", "C"],
+    inFlight: S(),
+    limit: 10,
+    cursor: d.nextCursor,
+  });
+  assert.deepEqual(d2.start, ["A", "B", "C"], "a fresh lap starts from A again, not a re-serve of C");
+});
+
 test("tickers are matched against inFlight case- and whitespace-insensitively", () => {
   const d = selectTickersToRecord({ tickers: [" spy "], inFlight: S("SPY"), limit: 10 });
   assert.deepEqual(d.busy, ["SPY"]);
