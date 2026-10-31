@@ -14,7 +14,6 @@ mock.module("./vector-snapshot", {
   namedExports: {
     getVectorGexWalls: () => null,
     getVectorVexWalls: () => null,
-    recordVectorWallSamplesFromWarm: async () => true,
   },
 });
 

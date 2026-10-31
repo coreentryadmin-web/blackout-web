@@ -74,17 +74,33 @@ test("writeWallHistorySample applies isEtCashRth by default", () => {
   assert.match(src, /rthRequired\s*=\s*true/, "RTH gate is on by default");
 });
 
-test("the RTH gate is evaluated BEFORE the staleness check, not merged into it", () => {
+test("the live writer's record condition gates recordable (staleness-derived) flags on wallRailRecordingOpen, not the other way around", () => {
   // Ordering matters for intent, not just correctness: freshness passing overnight is exactly the
-  // trap. Keeping the market-hours question first makes the two checks obviously independent.
+  // trap (see the module docblock above `wallRailRecordingOpen`). buildVectorStreamPayload — the
+  // only remaining in-process writer of the session rail — expresses this as one combined
+  // condition rather than an early return, so this asserts the compound condition exists with
+  // wallRailRecordingOpen() textually first (short-circuiting staleness, same intent as a guard
+  // clause would).
+  //
+  // recordVectorWallSamplesFromWarm used to be the second writer this test covered — it carried
+  // the same gate as an early `if (!wallRailRecordingOpen()) return false;` guard clause, but was
+  // removed as dead code (zero callers since the 2026-08-05 bead-recorder-universe refactor moved
+  // all warm-path recording to vector-universe.ts/vector-bead-recorder-leader.ts — see
+  // docs/audit/findings-staging for the removal). The staleness check it shared with the live
+  // writer is still exercised by the other tests in this file.
   const src = read(SNAPSHOT);
-  const gateIdx = src.indexOf("if (!wallRailRecordingOpen()) return false;");
+  const gateIdx = src.indexOf(
+    "if (wallRailRecordingOpen() && (gexRecordable || vexRecordable)) {"
+  );
   const staleIdx = src.indexOf(
     "isWsUpdatedAtFresh(s.cachedBeadRailWallsAt, STALE_RECORD_MAX_MS + 1, nowMs)"
   );
-  assert.ok(gateIdx > -1, "recordVectorWallSamplesFromWarm must gate on wallRailRecordingOpen()");
+  assert.ok(gateIdx > -1, "buildVectorStreamPayload must gate the rail write on wallRailRecordingOpen()");
   assert.ok(staleIdx > -1, "the staleness check must still exist (via isWsUpdatedAtFresh)");
-  assert.ok(gateIdx < staleIdx, "the RTH gate must come before the first staleness check");
+  assert.ok(
+    staleIdx < gateIdx,
+    "gexRecordable/vexRecordable must be computed before the combined gate checks them"
+  );
 });
 
 test("the gate documents WHY freshness is not a substitute for market hours", () => {
