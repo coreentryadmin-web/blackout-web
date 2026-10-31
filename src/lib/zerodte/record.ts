@@ -463,6 +463,50 @@ function realExitIsBarWalkReproducible(reason: string | null): boolean {
   return category === "stop" || category === "target";
 }
 
+/**
+ * Read-time-only display clamp (FINDINGS 2026-10-31). A live-managed exit can never
+ * realize a BETTER outcome than its own recorded peak — peak_pnl_pct is the highest
+ * premium this exact position ever reached before it closed (see extractMaxFavorablePct's
+ * doc), so a realized pnl_pct numerically ABOVE it is a mathematical impossibility, not a
+ * real result. A live audit of `GET /api/market/zerodte/record?days=90` found exactly that:
+ * 7 real rows (NVDA 2026-08-28, OCUL 2026-08-18, HIMS 2026-08-19, KORU 2026-08-13,
+ * SPCH 2026-08-12, RIOT 2026-08-11, FIG 2026-08-10) where `managed_pnl_pct` exceeded
+ * `max_favorable_pct` by 0.5-1.2 points, every one dated strictly BEFORE the 2026-09-04
+ * fix in exit-engine.ts's `buildExitContext` (see that fix's own "BUG FIX (2026-09-04)"
+ * comment) shipped 2026-09-03 — zero such rows in any September/October pull since.
+ *
+ * Root cause (confirmed by reading the pre-fix diff, commit f42a3892b/#3445): for a
+ * NON-honored exit (thesis/plan_stop/flat), the OLD formula computed `pnl_pct` from
+ * `resolveExitMark`'s `round2(observedMark)` — the raw mid rounded to the nearest cent —
+ * while `peak_pnl_pct` was (and still is) computed from the UNROUNDED `peakPremium`
+ * (exit-sync.ts's `peak = Math.max(row.peak_premium, mark)`, built from the same raw,
+ * pre-rounding mark). Cent-rounding a raw mid that sits just below a half-cent boundary
+ * (e.g. 2.265 -> 2.27) rounds UP past the row's own genuine high-water mark whenever that
+ * mark is a cheap, sub-few-dollar 0DTE premium — exactly the "several points" the fix's own
+ * comment warns a sub-$1 lotto premium can lose to this rounding. The fix (now live for
+ * every fresh exit) uses the raw `observedMark` instead on the non-honored path, so
+ * `pnl_pct <= peak_pnl_pct` holds by construction going forward — but the ~7 rows that
+ * already exited under the old formula have it baked into their immutable
+ * `entry_context.exit` blob (first-write-wins, never rebuilt — scan.ts's own documented
+ * discipline), and this module used to serve `pnl_pct` from that blob verbatim.
+ *
+ * There is no way to recover the TRUE pre-rounding `pnl_pct` retroactively — the raw,
+ * unrounded mark was only ever used transiently to compute it and was never itself
+ * persisted (only the already-cent-rounded `mark`/`mark_observed` survive) — so this
+ * clamps the DISPLAYED `pnl_pct` to the row's own `peak_pnl_pct` (the one number in the
+ * same frozen blob the 2026-09-04 bug never touched) rather than fabricate a new precise
+ * figure: the honest statement available is "this realized at best as well as its own
+ * recorded peak," not a specific percentage weaker than that. Mirrors the read-time
+ * display-only precedent `withRoundedTrailingRuleDisplay` below (same "fix the stamp, not
+ * the past" shape, different frozen field). A no-op, provably, whenever the invariant
+ * already holds — which post-fix rows and every pre-fix HONORED floor/stop exit (never
+ * affected; same exit-sync.ts guarantee) already do — so this can never move a correct
+ * number, only cap an impossible one.
+ */
+function clampManagedPnlToPeak(pnl: number, peak: number | null): number {
+  return peak != null && Number.isFinite(peak) && pnl > peak ? peak : pnl;
+}
+
 function reconstructedGradeView(reco: { plan_outcome: string | null; plan_pnl_pct: number }): GradeView {
   const pnl = round2(reco.plan_pnl_pct);
   return {
@@ -516,7 +560,7 @@ function managedGradeView(row: OfficialGradableRow): GradeView {
     return reconstructedGradeView(reco);
   }
   if (hasRealTerminalExit) {
-    const pnl = round2(exit.pnl_pct as number);
+    const pnl = round2(clampManagedPnlToPeak(exit.pnl_pct as number, exit!.peak_pnl_pct));
     return {
       graded: true,
       outcome: managedOutcomeLabel(exit!.reason, pnl),
