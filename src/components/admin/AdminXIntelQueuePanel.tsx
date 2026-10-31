@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import {
   EmptyDeck,
@@ -12,6 +12,7 @@ import { franchiseWordmark } from "@/lib/x-intel/franchises";
 import { X_INTEL_QUEUE_FIXTURES } from "@/lib/x-intel/queue-fixtures";
 import { shouldShowXIntelFixtures } from "@/lib/x-intel/queue-fixtures-gate";
 import { computeXIntelStatusCounts } from "@/lib/x-intel/queue-status-counts";
+import { runGuardedXIntelQueueLoad } from "@/components/admin/x-intel-queue-request-guard";
 import type {
   XIntelAttachment,
   XIntelMark,
@@ -391,16 +392,38 @@ export function AdminXIntelQueuePanel() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("ALL");
 
+  // Bumped once per load() call so a response can tell whether a newer
+  // request has superseded it before applying its data — see
+  // x-intel-queue-request-guard.ts for why this exists: switching the status
+  // filter recreates load() (it closes over `status`) and the 120s poll
+  // interval below re-fires it immediately, so an earlier filter's in-flight
+  // request can resolve AFTER a later one and overwrite the table with the
+  // wrong filter's rows.
+  const latestLoadRequestIdRef = useRef(0);
+
   const load = useCallback(async () => {
+    const requestId = ++latestLoadRequestIdRef.current;
     try {
-      const res = await fetch(`/api/admin/x-intel/queue?status=${status}&limit=50`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as { rows: XIntelQueueRow[] };
-      setRows(json.rows);
-      setError(null);
+      await runGuardedXIntelQueueLoad(
+        requestId,
+        () => latestLoadRequestIdRef.current,
+        async () => {
+          const res = await fetch(`/api/admin/x-intel/queue?status=${status}&limit=50`, {
+            cache: "no-store",
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return (await res.json()) as { rows: XIntelQueueRow[] };
+        },
+        (json) => {
+          setRows(json.rows);
+          setError(null);
+        }
+      );
     } catch (e) {
+      // Only a still-current request gets to paint an error — a superseded
+      // request's failure must not clobber a newer, still-pending one's
+      // eventual (possibly successful) result.
+      if (latestLoadRequestIdRef.current !== requestId) return;
       // Distinguish "the queue is empty" from "we could not read the queue" — collapsing the two
       // would let an outage read as a quiet market, which is the one confusion this queue exists
       // to prevent.
