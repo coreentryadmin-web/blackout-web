@@ -91,7 +91,13 @@ export async function getClerkUserCached(userId: string): Promise<ClerkUser> {
   try {
     return await p;
   } finally {
-    inflight.delete(userId);
+    // Only remove OUR OWN entry. invalidateClerkUserCache(userId) can delete this key out
+    // from under us while we're still pending (see the race this guards against above), and a
+    // concurrent caller can then have legitimately registered a NEWER promise for the same
+    // userId before we get here. An unconditional `inflight.delete(userId)` would blow that
+    // newer, still-live fetch's entry away — defeating the dedupe for anyone who shows up after
+    // us but before it resolves (they'd kick off a redundant fetch #3 instead of reusing it).
+    if (inflight.get(userId) === p) inflight.delete(userId);
   }
 }
 
