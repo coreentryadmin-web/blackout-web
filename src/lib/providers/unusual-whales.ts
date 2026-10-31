@@ -2556,6 +2556,33 @@ export async function fetchUwTickerEarningsHistory(ticker: string, limit = 8) {
   return extractRows(data as Record<string, unknown>).slice(0, limit);
 }
 
+/**
+ * PURE: pick the next not-yet-reported row out of the `/api/earnings/{ticker}` feed, which
+ * carries BOTH future estimates and past prints in one array (see `fetchUwTickerEarningsHistory`'s
+ * own comment). `d >= todayYmd` alone is not "upcoming" — a same-day row keeps its
+ * `report_date`/`earnings_date` unchanged after it reports, so a BMO print that already posted
+ * `actual_eps` THIS morning still has `date === todayYmd` and would otherwise sort to the front
+ * and be returned as "next" for the rest of the day, until the following quarter's date gets
+ * calendared. Same bug shape already fixed twice in the Meridian/Benzinga lane:
+ * `meridian-ticker-lookup-core.ts`'s `pickUpcomingEarningsRow` (#7100) and
+ * `meridian-benzinga-earnings-core.ts`'s `parseNextEarningsFromBenzinga` (#7101) — a date-only
+ * "upcoming" filter needs a companion not-yet-reported check, not just a boundary on the date
+ * itself. `actual_eps` is this row's own "has this printed" signal (verified live,
+ * `uw-earnings-normalize.test.ts`'s WMT fixture: `actual_eps: null` pre-print) — `== null` so a
+ * genuine EPS of 0 still counts as reported, not accidentally treated as "no actual yet".
+ */
+export function pickUwNextEarningsRow(
+  rows: ReadonlyArray<Record<string, unknown>>,
+  todayYmd: string
+): Record<string, unknown> | null {
+  return (
+    rows.find((r) => {
+      const d = String(r.earnings_date ?? r.date ?? r.report_date ?? "").slice(0, 10);
+      return d >= todayYmd && r.actual_eps == null;
+    }) ?? null
+  );
+}
+
 // Next expected earnings date.
 // NOTE: the old path `/api/stock/{ticker}/earnings-dates` is not a real UW route — it 404s
 // ("Route not found") for every ticker, so this silently returned null everywhere. UW exposes
@@ -2565,12 +2592,8 @@ export async function fetchUwTickerEarningsHistory(ticker: string, limit = 8) {
 export async function fetchUwTickerNextEarnings(ticker: string) {
   const data = await uwGetSafe<unknown>(`/api/earnings/${safeTicker(ticker)}`, {});
   const rows = extractRows(data as Record<string, unknown>);
-  // Return first future date
   const today = new Date().toISOString().slice(0, 10);
-  return rows.find((r) => {
-    const d = String(r.earnings_date ?? r.date ?? r.report_date ?? "").slice(0, 10);
-    return d >= today;
-  }) ?? null;
+  return pickUwNextEarningsRow(rows, today);
 }
 
 export async function fetchUwOptionChains(ticker: string, limit = 500) {
