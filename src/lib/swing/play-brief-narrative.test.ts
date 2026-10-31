@@ -2173,6 +2173,52 @@ test("tradeManagerNarrativeSection: watch bucket gate reasons appear once, not d
   assert.match(section!.body, /Gates blocking entry.*g_s12_halt_feed_stale/i);
 });
 
+// BUG FIX (2026-10-31, Ask Largo x Night Hawk Swings standing mandate, live repro SWING:TSM,
+// setupState FORMING/entryStatus PRE_TRIGGER): `actionNarrative`'s "Entry stance" bullet stated
+// the raw gate count with no `gateFramingMootReason` check, while `watchGateCoaching` — pushed
+// immediately after it in the SAME "Trade manager read" section via `collectCoachingBullets` —
+// correctly reframed the identical `gateBlocks` as moot (thesis still forming, not yet at
+// trigger). The two bullets disagreed about the same fact in the same brief: "Entry stance —
+// WAIT. 3 gates blocking entry — see below." right next to "Also gate-blocked (moot — thesis
+// still forming — not yet at trigger) — ...". Both bullets must now agree once the play is
+// FORMING/not-yet-enterable for a reason unrelated to the gates themselves.
+test("tradeManagerNarrativeSection: watch bucket 'Entry stance' gate bullet agrees with watchGateCoaching's moot framing when the thesis is still FORMING (live TSM repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "WATCH",
+        recommendation: "HOLD",
+        setupState: "FORMING",
+        entryStatus: "PRE_TRIGGER",
+        gateBlocks: [
+          { code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." },
+          { code: "g_s6_confluence", reason: "Independent signal confluence below commit threshold — desk will not open." },
+          { code: "g_s14_cortex", reason: "Cortex evidence nets negative against this setup — desk will not open (no veto; the weight of evidence itself argues against it)." },
+        ],
+      }),
+      vector: { spot: 50 } as SwingPlayBriefContext["vector"],
+    }),
+    "watch",
+  );
+  assert.ok(section);
+  // The "Entry stance" bullet must now carry the same "moot — thesis still forming" framing
+  // `watchGateCoaching`'s "Also gate-blocked" bullet carries for the identical gates — not the
+  // old unqualified "N gates blocking entry" that implied clearing them would open entry.
+  assert.match(
+    section!.body,
+    /Entry stance.*3 gates nominally blocking entry \(moot — thesis still forming — not yet at trigger\) — see below/i,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /Entry stance.*3 gates blocking entry — see below/i,
+    "the 'Entry stance' bullet must not state the gate count as an unqualified real blocker once gateFramingMootReason fires",
+  );
+  assert.match(
+    section!.body,
+    /Also gate-blocked\*\* \(moot — thesis still forming — not yet at trigger\)/i,
+  );
+});
+
 test("tradeManagerNarrativeSection: watch bucket entry stance", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
