@@ -41,16 +41,28 @@ export async function seedUwCacheFromWsStores(
     skipped_ws.push("market_tide");
   }
 
+  // Two independent off_lit_trades writes share one channel-freshness gate: the market-wide
+  // recent-ring (dark_pool_recent) and the SPX ticker-level snapshot (dark_pool:SPX:...). Either
+  // can fire alone (the ring can be empty while the ticker store still has data, and vice versa),
+  // so track whether EITHER actually seeded rather than only counting/reporting the first — a
+  // ticker-only seed used to seed real data into Redis while silently NOT incrementing `seeded`
+  // and NOT appending "off_lit_trades" to `skipped_ws`, undercounting the one WS-health metric
+  // (`ws_seeded`/`ws_skipped` on GET /api/cron/uw-cache-refresh) ops uses to tell whether the WS
+  // bridge is actually covering this channel.
+  let offLitSeeded = false;
   if (isUwChannelFresh("off_lit_trades", 120_000) && darkPoolRecentRing.rows.length > 0) {
     // dark_pool_recent must be raw UW rows (array) — NOT a DarkPoolSnapshot object.
     await uwCacheSet(redis, UW_KEYS.darkPoolRecent(), UW_CACHE_TTL.darkPoolRecent, darkPoolRecentRing.rows);
     seeded += 1;
-    skipped_ws.push("off_lit_trades");
+    offLitSeeded = true;
   }
 
   if (isUwChannelFresh("off_lit_trades", 120_000) && darkPoolStore.updatedAt > 0 && darkPoolStore.data) {
     await uwCacheSet(redis, UW_KEYS.darkPoolTicker("SPX"), UW_CACHE_TTL.darkPoolTicker, darkPoolStore.data);
+    seeded += 1;
+    offLitSeeded = true;
   }
+  if (offLitSeeded) skipped_ws.push("off_lit_trades");
 
   if (isUwChannelFresh("net_flow", 120_000)) {
     for (const ticker of ["SPX", "SPY", "QQQ", "IWM"] as const) {
