@@ -9278,3 +9278,32 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   confirm the live BUY-intent gate's own stale-flow block/warning text (`spx-play-gates.test.ts`'s
   existing coverage) is unchanged during RTH — this fix only refactored that check's threshold into
   a shared function, it did not change its behavior.
+
+## WATCH LIST — 2026-10-31 (SPX off-hours degraded bootstrap-shell peek fix, PR TBD)
+
+- **SPX Slayer — `GET /api/market/spx/play`'s off-hours closed-market fast path could trust a
+  degraded bootstrap-shell merged-desk snapshot (`source:"none"`) for extended periods, producing a
+  fully degenerate `assessed:false/score:0/factors:[]/direction:null` read with a frozen `as_of`
+  while the real desk was simultaneously healthy via sibling cache lanes.** Live repro (Saturday,
+  market closed): two polls 5m35s apart (fresh script/session each time) returned the
+  byte-identical degenerate `/play` response (same frozen `as_of 2026-10-31T16:06:52.996Z`) while
+  `GET /api/market/spx/desk` and `GET /api/market/spx/bootstrap` both showed a healthy, current
+  desk (`source:"polygon+uw-flow"`) at the same instants. Root cause: `peekMergedSpxDesk()`'s
+  off-hours peek (24h staleness tolerance, by design) trusted ANY non-null `market_open:false`
+  result, including a `deskShellFromPulse`/`emptyDeskPayload` bootstrap shell that gets written
+  into the shared `spx-merged:<date>` cache as a "successful" value whenever the nested
+  `loadSpxDesk()` call loses its `maxBlockMs` race — a shape `spx-play-engine.ts`'s own
+  closed-market branch already distrusts (`desk.source !== "none"` gate) but
+  `evaluateSpxPlayState()`'s off-hours gate never checked before committing to it. Fixed: added the
+  same `source !== "none"` check to the off-hours trust condition, so a degraded-shell peek is now
+  treated the same as a null peek — falling through to the real, already-`maxBlockMs`-bounded
+  `loadMergedSpxDesk()` call instead of serving the known-degenerate snapshot. **Re-check once the
+  market opens/closes again:** poll `GET /api/market/spx/play` repeatedly through a genuinely
+  closed window (pre-open, post-close, or a weekend) alongside `GET /api/market/spx/desk` and
+  `GET /api/market/spx/bootstrap` — confirm `/play` never returns `assessed:false` with an `as_of`
+  that stays frozen across multiple polls spanning several minutes while the sibling desk routes
+  report a healthy, advancing `as_of`/`source`; if `/play` ever is legitimately degenerate (e.g. a
+  cold start with no cached snapshot anywhere), confirm its `as_of` still advances on the next poll
+  rather than staying pinned. Separately confirm no RTH regression: during real trading hours this
+  branch is never taken at all (gated on `!isSpxEngineCronWindow()`), so `GET /api/market/spx/play`
+  behavior during RTH should be completely unchanged by this fix.

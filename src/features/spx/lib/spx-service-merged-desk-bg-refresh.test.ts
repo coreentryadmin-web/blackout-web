@@ -45,14 +45,20 @@ let peekCalls = 0;
 
 function closedBundle() {
   const staleAsOf = new Date(Date.now() - 20 * 60 * 1000).toISOString(); // ~20 min stale
+  // source MUST be a real-build marker here, not "none" (the degraded bootstrap-shell sentinel,
+  // spx-desk.ts's emptyDeskPayload). This suite exercises the off-hours THROTTLE/background-
+  // refresh wiring, not the degraded-shell trust gate — spx-service-degraded-shell-peek.test.ts
+  // covers that separately. A "none"-source peek is now (2026-10-31 fix) treated the same as a
+  // null peek and skips this whole branch entirely, which would make every assertion here about
+  // the throttle lock spuriously fail for an unrelated reason.
   return {
-    desk: { price: 6500, market_open: false, source: "none", as_of: staleAsOf },
+    desk: { price: 6500, market_open: false, source: "polygon+uw-flow", as_of: staleAsOf },
     flow: null,
     pulse: null,
     merged: {
       price: 6500,
       market_open: false,
-      source: "none",
+      source: "polygon+uw-flow",
       as_of: staleAsOf,
       polled_at: staleAsOf,
     },

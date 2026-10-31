@@ -169,7 +169,34 @@ async function evaluateSpxPlayState() {
   // every trading-hours eval — this only shortcuts the already-broken off-hours case.
   if (!isSpxEngineCronWindow()) {
     const peeked = await peekMergedSpxDesk({ maxStaleMs: 24 * 60 * 60 * 1000 });
-    if (peeked && !peeked.merged.market_open && !isPremarketPlanningWindow()) {
+    // BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday market
+    // closed): this trusted ANY non-null peeked snapshot, including a DEGRADED BOOTSTRAP SHELL
+    // (desk.source === "none" — spx-desk.ts's deskShellFromPulse/emptyDeskPayload). That shape
+    // gets written into the shared `spx-merged:<date>` cache as a "successful" value whenever
+    // loadMergedSpxDeskCore()'s own nested loadSpxDesk() call loses its maxBlockMs race
+    // (spx-desk-loader.ts): the fallback resolves rather than throws, so withServerCache's
+    // refreshCache() caches the degraded bundle exactly like a real build. Because
+    // peekMergedSpxDesk() is a Redis/L1-only PEEK — it never invokes a loader or triggers any
+    // SWR background refresh — a replica whose local copy got poisoned this way keeps re-serving
+    // the IDENTICAL frozen snapshot for up to this call's 24h staleness tolerance; the only thing
+    // that calls the real loader off-hours (maybeRefreshMergedSpxDeskOffHours(), below) is
+    // throttled by a FLEET-WIDE lock (one replica, once per
+    // spxMergedDeskOffHoursRefreshIntervalSec(), 5 min default) and, within this entry's own
+    // short TTL, just re-reads the same still-cached poisoned value. Reproduced live 2026-10-31:
+    // two polls 5m35s apart returned the BYTE-IDENTICAL degenerate play response
+    // (assessed:false/score:0/factors:[]/direction:null, frozen as_of) while
+    // GET /api/market/spx/desk and GET /api/market/spx/bootstrap showed a healthy, current desk
+    // (source:"polygon+uw-flow") at the same instants — a different cache lane entirely, never
+    // touched by this poisoned `spx-merged:<date>` entry.
+    //
+    // spx-play-engine.ts's own closed-market branch already treats this exact shape as
+    // untrustworthy — `closedConfluence` there is gated on `desk.source !== "none"` specifically
+    // because a cold-cache bootstrap shell "has a real price and available:true but no GEX/flow
+    // layer ever merged in". Apply that SAME check here, BEFORE deciding to trust the peek, so a
+    // degraded shell is treated the same as a null peek (market open, premarket, or no cached
+    // snapshot at all) — falling through to the real, maxBlockMs-bounded loadMergedSpxDesk() call
+    // a few lines down instead of committing to a known-degenerate answer for up to 24h.
+    if (peeked && peeked.merged.source !== "none" && !peeked.merged.market_open && !isPremarketPlanningWindow()) {
       // Non-blocking — see maybeRefreshMergedSpxDeskOffHours's own comment for the live
       // cross-replica divergence bug this guards against. Fires at most once per
       // spxMergedDeskOffHoursRefreshIntervalSec() window regardless of poll volume.
