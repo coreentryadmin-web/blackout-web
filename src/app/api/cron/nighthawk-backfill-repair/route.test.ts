@@ -45,11 +45,56 @@ test("reuses the already-shipped repairStaleBackfillContracts via republishBackf
 
 test("alerts ops on Discord only when something was actually repaired or dropped, never on a clean no-op", () => {
   const resultAt = routeSrc.indexOf("const result = await republishBackfilledEdition(editionFor);");
-  const discordAt = routeSrc.indexOf("notifyOpsDiscord({");
   const guardAt = routeSrc.indexOf("if (repairedTickers.length > 0 || droppedTickers.length > 0)");
+  // There are now TWO notifyOpsDiscord({ calls in this route — an earlier one inside the
+  // `no_rank_governor_snapshot` morning-rescue branch (checked by its own test below), and this
+  // repaired/dropped one. Search from `guardAt` onward so this assertion keeps checking the one
+  // it actually names, not whichever occurrence happens to come first in the file.
+  const discordAt = routeSrc.indexOf("notifyOpsDiscord({", guardAt);
   assert.ok(resultAt >= 0 && discordAt >= 0 && guardAt >= 0);
   assert.ok(guardAt > resultAt, "the repaired/dropped check must run after the repair call");
   assert.ok(discordAt > guardAt, "the Discord alert must be inside the repaired/dropped guard");
+});
+
+test("morning rescue: a no_rank_governor_snapshot result dispatches a full force-rebuild instead of a dead-end skip", () => {
+  const resultAt = routeSrc.indexOf("const result = await republishBackfilledEdition(editionFor);");
+  const notOkAt = routeSrc.indexOf("if (!result.ok) {", resultAt);
+  const rescueBranchAt = routeSrc.indexOf('if (result.status === "no_rank_governor_snapshot")', notOkAt);
+  const dispatchAt = routeSrc.indexOf("buildEveningEdition(", rescueBranchAt);
+  const skipAt = routeSrc.indexOf("reason: result.status, edition_for: editionFor", rescueBranchAt);
+
+  assert.ok(resultAt >= 0 && notOkAt >= 0, "the repair-failure branch must exist");
+  assert.ok(
+    rescueBranchAt >= 0 && rescueBranchAt > notOkAt,
+    "the no_rank_governor_snapshot check must be inside the !result.ok branch"
+  );
+  assert.ok(
+    dispatchAt >= 0 && dispatchAt > rescueBranchAt,
+    "the rescue branch must call buildEveningEdition"
+  );
+  assert.ok(
+    skipAt >= 0 && skipAt > dispatchAt,
+    "the generic dead-end skip must come AFTER the rescue branch, so no_rank_governor_snapshot" +
+      " is handled before falling through to it"
+  );
+
+  // The rebuild must force a reset (job.status is "published" for a recap-only edition) and
+  // persist real writes (default would be a dry-run once asOfEt differs from today).
+  const rescueSlice = routeSrc.slice(rescueBranchAt, skipAt);
+  assert.match(rescueSlice, /force:\s*true/, "the rescue rebuild must force a full reset");
+  assert.match(rescueSlice, /persist:\s*true/, "the rescue rebuild must persist (not dry-run)");
+  assert.match(
+    rescueSlice,
+    /asOfEt:\s*previousTradingDayEt\(editionFor\)/,
+    "asOfEt must be derived from editionFor via previousTradingDayEt so " +
+      "nextTradingDayEt(asOfEt) === editionFor inside buildEveningEdition"
+  );
+  // Fire-and-forget via next/server's after(), same shape as nighthawk-edition/route.ts's own
+  // background dispatch, so this 60s-budget route still returns promptly.
+  assert.match(rescueSlice, /after\(dispatchRebuild\)/);
+  // Tagged as a background UW sweep (reserves a concurrency slot for live member traffic),
+  // matching the evening cron's own dispatch.
+  assert.match(rescueSlice, /runWithBackgroundUwSweep\(\(\) =>\s*\n\s*buildEveningEdition\(/);
 });
 
 test("the schedule is 15 minutes BEFORE nighthawk-morning-confirm's own dual-band, so a repair is already persisted before morning-confirm reads the edition row", async () => {

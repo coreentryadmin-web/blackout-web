@@ -40,6 +40,23 @@ test("previousTradingDayEt is inverse of nextTradingDayEt across a holiday weeke
   assert.equal(previousTradingDayEt(nextTradingDayEt("2026-07-02")), "2026-07-02");
 });
 
+// The OTHER direction of the same inverse, which nighthawk-backfill-repair's morning-rescue
+// path (route.ts) relies on: given a trading-day `editionFor`, it derives
+// `asOfEt = previousTradingDayEt(editionFor)` and passes that to `buildEveningEdition`, which
+// internally computes `edition_for = nextTradingDayEt(asOfEt)` — this must round-trip back to
+// the original `editionFor`, or the rescue rebuild would silently target the WRONG edition.
+// Covers both an ordinary weekend gap and the 2026-11-02 (post-Halloween-weekend Monday) /
+// 2026-10-28 dates from the live starved-funnel incident that motivated the rescue path.
+test("nextTradingDayEt(previousTradingDayEt(X)) round-trips back to X for a trading day", () => {
+  for (const editionFor of ["2026-11-02", "2026-10-28", "2026-07-06", "2026-07-13"]) {
+    assert.equal(
+      nextTradingDayEt(previousTradingDayEt(editionFor)),
+      editionFor,
+      `round-trip must hold for ${editionFor}`
+    );
+  }
+});
+
 // task #173 (market_regime staleness): mostRecentTradingDayEt is the boundary
 // /api/market/regime's GET compares a captured_at against to decide `stale`.
 test("mostRecentTradingDayEt returns today when today is itself a trading day", () => {
