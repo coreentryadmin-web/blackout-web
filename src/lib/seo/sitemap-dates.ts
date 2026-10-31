@@ -54,7 +54,37 @@ export function sitemapLastModified(path: string): Date {
   return new Date(`${ARTICLE_DATE_MODIFIED}T12:00:00Z`);
 }
 
+/**
+ * RSS `<item><pubDate>` — per the RSS 2.0 spec this is WHEN THE ITEM WAS PUBLISHED, not when it
+ * was last edited. The per-article/per-guide SEO metadata already tracks both dates separately
+ * (`datePublished`/`dateModified` — see `src/app/(marketing)/learn/[slug]/page.tsx`'s structured
+ * data, which correctly uses both), but this feed read `dateModified` for the item-level pubDate.
+ *
+ * BUG this fixes: because every edit to an article bumps its `dateModified` (see
+ * `scripts/seo/generate-article-dates.mjs`), a routine content fix on a MONTHS-old article (e.g.
+ * "dealer-gamma-options-flow-guide": published 2026-07-31, last edited 2026-09-01) moved that
+ * item's RSS `<pubDate>` forward by over a month — misrepresenting an edit as a brand-new post. An
+ * aggregator/reader that notifies subscribers on a pubDate change (common behavior, since RSS 2.0
+ * has no standard "updated" field the way Atom does) would then re-announce old content as new
+ * every time it was merely corrected, and any reader sorting strictly by `<pubDate>` would rank a
+ * months-old article above a genuinely newer one that happened not to need an edit yet.
+ *
+ * Use `feedLastModifiedForArticle` (below) for the channel-level `<lastBuildDate>` instead — that
+ * one legitimately wants "most recent change across the whole feed", which IS `dateModified`.
+ */
 export function feedPubDateForArticle(slug: string): string {
+  if (isLearnGuideSlug(slug)) {
+    return new Date(`${GUIDE_SEO[slug].datePublished}T12:00:00Z`).toUTCString();
+  }
+  return new Date(`${getArticleDates(slug).datePublished}T12:00:00Z`).toUTCString();
+}
+
+/**
+ * Channel-level freshness signal (`<lastBuildDate>`) — unlike an item's own `<pubDate>` above,
+ * this legitimately wants the most recent EDIT across the whole feed, since the feed's rendered
+ * content really did change on that date even for an already-published article.
+ */
+export function feedLastModifiedForArticle(slug: string): string {
   if (isLearnGuideSlug(slug)) {
     return new Date(`${GUIDE_SEO[slug].dateModified}T12:00:00Z`).toUTCString();
   }
