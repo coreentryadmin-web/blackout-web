@@ -227,6 +227,55 @@ test("G-N2 SHORT mirror: distance is absolute, so a downside target measures the
   assert.deepEqual(beyond.blocks.map((b) => b.code), ["target_unreachable"]);
 });
 
+// REGRESSION (2026-10-31, live repro STM/AXTI/ORCL 2026-10-30 edition, NU 2026-10-27 edition):
+// every currently-published scale_out ("Banger exit") play's target_unreachable gate_warning
+// still asserted the superseded single-session grading model ("not achievable in the
+// one-session grading horizon"), directly contradicting the SAME play's own risk_note, which
+// correctly says this play is graded on a multi-day option scale-out (2x partial, trailing
+// runner, -60% stop) — see play-outcomes.ts's resolveBangerScaleOutGrades/gradeBangerScaleOut.
+// The gate's pass/fail VERDICT must not change for either play type — only the warning TEXT.
+test("G-N2 scale_out play: gate_warning text describes the scale-out grading rule, not the one-session horizon", () => {
+  // Same geometry as the non-scale_out case below (2.025× — just past the 2.0× threshold),
+  // but exit_style:"scale_out" — the banger-exit marker set in deterministic-edition.ts before
+  // this play ever reaches the publish gates.
+  const result = evaluate(
+    play({
+      entry_range: "$99.50-$100.00",
+      target: "$108.10",
+      stop: "$97.00",
+      exit_style: "scale_out",
+    }),
+    dossier({ price: 100, atr14: 4 })
+  );
+  assert.equal(result.verdict, "BLOCK");
+  const block = result.blocks.find((b) => b.code === "target_unreachable");
+  assert.ok(block, "target_unreachable must still fire — exit_style changes TEXT, not the verdict");
+  // The misleading claim must be gone...
+  assert.doesNotMatch(block!.reason, /one-session grading horizon/);
+  // ...replaced with an accurate description of how a scale_out play is actually graded.
+  assert.match(block!.reason, /scale-out/i);
+  assert.match(block!.reason, /option's own forward bars/);
+  // The numeric value/threshold feeding promotion eligibility and the admin histogram must be
+  // byte-identical to the non-scale_out case — only the member-facing prose changed.
+  assert.equal(block!.value, 2.025);
+  assert.equal(block!.threshold, GATE_TARGET_MAX_ATR_MULTIPLE);
+});
+
+test("G-N2 non-scale_out play: gate_warning text is UNCHANGED (still the one-session-horizon wording)", () => {
+  // Identical geometry to the scale_out test above, no exit_style — this play really IS graded
+  // on the stock target touching in one session (play-outcomes.ts's stock-outcome pass), so the
+  // original wording must survive exactly as before.
+  const result = evaluate(
+    play({ entry_range: "$99.50-$100.00", target: "$108.10", stop: "$97.00" }),
+    dossier({ price: 100, atr14: 4 })
+  );
+  assert.equal(result.verdict, "BLOCK");
+  const block = result.blocks.find((b) => b.code === "target_unreachable");
+  assert.ok(block);
+  assert.match(block!.reason, /not achievable in the one-session grading horizon/);
+  assert.doesNotMatch(block!.reason, /scale-out/i);
+});
+
 // ── G-N3 stale-quote guard ──────────────────────────────────────────────────────────────
 
 test("G-N3: quote from a prior session blocks; quote from the publish session passes", () => {

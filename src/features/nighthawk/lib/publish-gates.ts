@@ -252,9 +252,25 @@ export function evaluateNighthawkPublishGates(opts: {
     threshold: GATE_TARGET_MAX_ATR_MULTIPLE,
   });
   if (!targetOk) {
+    // BUG FIX (2026-10-31, live repro STM/AXTI/ORCL/NU — every currently-published scale_out
+    // play): this reason string used to be unconditional, always asserting the ORIGINAL
+    // single-session stock-target grading model ("not achievable in the one-session grading
+    // horizon"). That is simply false for a scale_out ("Banger exit") play — play-outcomes.ts's
+    // resolveBangerScaleOutGrades/gradeBangerScaleOut never grades these on the published stock
+    // target touching in one session at all; it grades the OPTION's own forward bars (up to
+    // ~9 days to expiry) under a 2x-partial/trailing-runner/-60%-stop rule that doesn't reference
+    // this gate's target/ATR distance. The published card then showed this gate_warning directly
+    // contradicting the SAME play's own risk_note (bangerScaleOutNote, scale-out.ts), which
+    // correctly describes the scale-out exit. Branch the TEXT ONLY — the gate's pass/fail
+    // verdict and promotion eligibility (isPromotableBlockedPlay/NON_PROMOTABLE_GATE_CODES) are
+    // unchanged for every play, scale_out or not.
+    const reason =
+      opts.play.exit_style === "scale_out"
+        ? `target $${geo.target} is ${targetAtrMultiple}× ATR14 ($${geo.atr14}) from the entry edge $${geo.fill_edge} (max ${GATE_TARGET_MAX_ATR_MULTIPLE}×) — this stock target is a reference level, not the grading basis: this is a scale-out ("Banger exit") play, graded on the option's own forward bars toward expiry (partial at 2×, trail the runner, hard stop −60%), not on the stock target touching in one session`
+        : `target $${geo.target} is ${targetAtrMultiple}× ATR14 ($${geo.atr14}) from the entry edge $${geo.fill_edge} (max ${GATE_TARGET_MAX_ATR_MULTIPLE}×) — not achievable in the one-session grading horizon`;
     blocks.push({
       code: "target_unreachable",
-      reason: `target $${geo.target} is ${targetAtrMultiple}× ATR14 ($${geo.atr14}) from the entry edge $${geo.fill_edge} (max ${GATE_TARGET_MAX_ATR_MULTIPLE}×) — not achievable in the one-session grading horizon`,
+      reason,
       threshold: GATE_TARGET_MAX_ATR_MULTIPLE,
       value: targetAtrMultiple,
     });
