@@ -84,6 +84,23 @@ export function scopeStructureToExpiry(input: {
   eventYmd?: string | null;
   /** Expiries the unscoped aggregate would have summed — reported, not used. */
   aggregateExpiries?: readonly string[] | null;
+  /**
+   * Underlying spot. When supplied, the walls are SIDE-CONSTRAINED: a call wall must sit above
+   * spot and a put wall below it. Omit it and the historical unconstrained behaviour is preserved
+   * exactly, so no existing caller changes until it is wired deliberately.
+   *
+   * WHY THIS IS NEEDED. Without the constraint this picks max-positive-gamma and
+   * max-negative-gamma ANYWHERE in the scoped chain, so a "call wall" can land below spot and a
+   * "put wall" above it — inverted as resistance/support, which is the only way a member reads
+   * them. Same defect, same fix, as `wallsFromStrikeTotals` (gex-cross-validation-core.ts, fixed
+   * 2026-08-20 after live AAPL/SPY/META each served an inverted wall) — this function
+   * reimplements the same wall selection independently and never inherited that fix.
+   *
+   * NO FALLBACK TO THE WRONG SIDE. If no strike qualifies on a side, that wall is null —
+   * "there is no call wall above spot in this chain" is a true statement; inventing one below
+   * spot is not.
+   */
+  spot?: number | null;
 }): ExpiryScopedStructure {
   const empty: ExpiryScopedStructure = {
     expiryUsed: null,
@@ -105,6 +122,12 @@ export function scopeStructureToExpiry(input: {
     return { ...empty, noCoveringExpiry: hasEvent && (input.expiries ?? []).length > 0 };
   }
 
+  const spot = num(input.spot);
+  // Mirrors `wallsFromStrikeTotals` (gex-cross-validation-core.ts): only constrain when a real,
+  // positive spot was actually supplied. Omitting it preserves the historical unconstrained pick
+  // exactly, so no existing caller changes until it is wired deliberately.
+  const constrained = spot != null && spot > 0;
+
   const strikeTotals: Record<string, number> = {};
   let net = 0;
   let best: { strike: number; v: number } | null = null;
@@ -117,8 +140,15 @@ export function scopeStructureToExpiry(input: {
     if (strike == null) continue;
     strikeTotals[strikeKey] = round(v, 4);
     net += v;
-    if (v > 0 && (best == null || v > best.v)) best = { strike, v };
-    if (v < 0 && (worst == null || v < worst.v)) worst = { strike, v };
+    // Side-of-spot constraint: a call wall (resistance) must sit ABOVE spot, a put wall
+    // (support) BELOW it. Without this, argmax/argmin-anywhere can hand back an inverted level
+    // — the exact defect already fixed in `wallsFromStrikeTotals` for the cross-validation path.
+    if (v > 0 && (!constrained || strike > spot!) && (best == null || v > best.v)) {
+      best = { strike, v };
+    }
+    if (v < 0 && (!constrained || strike < spot!) && (worst == null || v < worst.v)) {
+      worst = { strike, v };
+    }
   }
 
   const touched = Object.keys(strikeTotals).length;

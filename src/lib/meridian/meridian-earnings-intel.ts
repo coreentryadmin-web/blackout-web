@@ -126,6 +126,9 @@ export async function loadMeridianEarningsIntel(input: {
     heatmap: rawHeatmap,
   }).catch(() => null);
 
+  // Hoisted above `scoped` below: the scoper needs it to side-constrain the walls it picks.
+  const spot = input.pack.positioning.spot ?? thermal?.spot ?? null;
+
   /**
    * Dealer structure scoped to the expiry that COVERS THE PRINT.
    *
@@ -139,6 +142,10 @@ export async function loadMeridianEarningsIntel(input: {
    * Falls back to the aggregate when the scoped column carries no data, and records WHICH it
    * used, because the two look identical on screen and only one answers "what is positioned
    * around this print".
+   *
+   * `spot` is passed so the walls it picks are side-constrained (call wall above spot, put wall
+   * below) — without it this independently reimplements `wallsFromStrikeTotals`'s pre-fix
+   * behavior (argmax/argmin anywhere in the chain), which can invert a wall relative to price.
    */
   const scoped = scopeStructureToExpiry({
     cells: rawHeatmap?.gex?.cells ?? null,
@@ -146,6 +153,7 @@ export async function loadMeridianEarningsIntel(input: {
     maxPainByExpiry: rawHeatmap?.max_pain_by_expiry ?? null,
     eventYmd: input.pack.earnings_date ?? null,
     aggregateExpiries: rawHeatmap?.near_term_expiries ?? rawHeatmap?.expiries ?? null,
+    spot,
   });
   const scopeUsable = scoped.expiryUsed != null && Object.keys(scoped.strikeTotals).length > 0;
 
@@ -196,7 +204,6 @@ export async function loadMeridianEarningsIntel(input: {
     dominant_type: s.option_type ?? null,
   }));
 
-  const spot = input.pack.positioning.spot ?? thermal?.spot ?? null;
   const gamma_regime =
     thermal?.gamma_regime_read ?? input.pack.positioning.gamma_regime ?? null;
 
