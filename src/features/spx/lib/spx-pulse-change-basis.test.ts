@@ -98,3 +98,56 @@ test("cold-replica pulse minimal fallback's market_status agrees with market_ope
   assert.match(body, /market_status: rthOpenNow \? "open" : "closed",/);
   assert.doesNotMatch(body, /market_status: "open",/);
 });
+
+// BUG FIX (2026-11-01, live repro, Sunday market closed): `vix_change_pct` was transported
+// straight from Polygon's raw snapshot `change_pct` at all three builder call sites — unlike
+// `spx_change_pct`, which has used `pulseChangePctFromPriorClose` since the 2026-08-07 P0 above.
+// Polygon serves a FABRICATED 0 for `change_percent` whenever `session.previous_close ===
+// session.close` (every night after close, every weekend, every holiday). Confirmed live:
+// GET /api/market/spx/desk returned {"vix": 19.42, "vix_change_pct": 0, "spx_change_pct": -1.82}
+// while real Polygon daily bars for I:VIX showed a true day-over-day change of ~+12.9%, not 0.
+// See spx-change-anchor.test.ts for the arithmetic and fetchVixPriorDayCached's own header
+// (spx-desk.ts) for the full repro.
+test("buildSpxDeskPulse: vix_change_pct is DERIVED from priorVix.pdc, not transported from vixSnap.change_pct", () => {
+  const pulseStart = src.indexOf("export async function buildSpxDeskPulse(");
+  const pulseEnd = src.indexOf("\nexport async function buildSpxDeskPulseMinimal(");
+  assert.ok(pulseStart >= 0 && pulseEnd > pulseStart, "could not locate buildSpxDeskPulse's own body");
+  const body = src.slice(pulseStart, pulseEnd);
+  assert.match(
+    body,
+    /vixPriorDayForPulseLane\(rthOpen\)/,
+    "must fetch VIX's own daily-bars-derived prior close alongside SPX's"
+  );
+  assert.match(
+    body,
+    /vix_change_pct: pulseChangePctFromPriorClose\(vixSnap\?\.price \?\? null, priorVix\.pdc, vixSnap\?\.change_pct\),/,
+    "vix_change_pct must be derived the same way spx_change_pct already is"
+  );
+  assert.doesNotMatch(
+    body,
+    /vix_change_pct: vixSnap\?\.change_pct \?\? null,/,
+    "must not regress back to transporting Polygon's raw (possibly fabricated-0) change_pct"
+  );
+});
+
+test("buildSpxDeskPulseMinimal: vix_change_pct is DERIVED from priorVix.pdc, not transported from snapsRaw[VIX].change_pct", () => {
+  const minimalStart = src.indexOf("export async function buildSpxDeskPulseMinimal");
+  assert.ok(minimalStart > 0, "buildSpxDeskPulseMinimal exists");
+  const minimalEnd = src.indexOf("\n}", src.indexOf("roundPulseNumerics(raced)", minimalStart));
+  const body = src.slice(minimalStart, minimalEnd);
+  assert.match(
+    body,
+    /vixPriorDayForPulseLane\(rthOpenNow\)/,
+    "must fetch VIX's own daily-bars-derived prior close alongside SPX's"
+  );
+  assert.match(
+    body,
+    /vix_change_pct: pulseChangePctFromPriorClose\(\s*\n\s*snapsRaw\[VIX\]\?\.price \?\? null,\s*\n\s*priorVix\.pdc,\s*\n\s*snapsRaw\[VIX\]\?\.change_pct \?\? null\s*\n\s*\),/,
+    "vix_change_pct must be derived the same way spx_change_pct already is"
+  );
+  assert.doesNotMatch(
+    body,
+    /vix_change_pct: snapsRaw\[VIX\]\?\.change_pct \?\? null,/,
+    "must not regress back to transporting Polygon's raw (possibly fabricated-0) change_pct"
+  );
+});

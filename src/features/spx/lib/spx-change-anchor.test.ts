@@ -53,6 +53,30 @@ test("VIX is gated alongside SPX in the pulse fast path, not left behind it", ()
   assert.match(src, /changeResolved\(SPX\) && changeResolved\(VIX\)/);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-11-01: Polygon's /v3/snapshot/indices serves a FABRICATED 0 for `change_percent`
+// whenever no new session has started since the snapshot was last computed (every night after
+// close, every weekend, every holiday) by setting `session.previous_close === session.close` — a
+// stale-anchor artifact, not a real flat day. `spx_change_pct` already escapes this via
+// `pulseChangePctFromPriorClose` (the P0 above); `vix_change_pct` did not — it was transported
+// straight through at all three builder call sites in spx-desk.ts. Same function, same fix.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("pulseChangePctFromPriorClose reproduces the TRUE VIX day-change from the live 2026-11-01 repro, not Polygon's fabricated 0", () => {
+  // Live repro (Sunday, market closed): GET /api/market/spx/desk returned
+  // {"vix": 19.42, "vix_change_pct": 0, "spx_change_pct": -1.82}. Direct Polygon daily bars for
+  // I:VIX showed the two real most recent sessions: Thu 2026-10-29 close 17.20, Fri 2026-10-30
+  // close 19.42 — a real, large up move Polygon's own transported change_percent reported as 0%.
+  const vixPrice = 19.42;
+  const vixTruePriorClose = 17.20;
+  const polygonFabricatedZero = 0;
+  const derived = pulseChangePctFromPriorClose(vixPrice, vixTruePriorClose, polygonFabricatedZero);
+  assert.ok(derived !== 0, `must not collapse to Polygon's fabricated flat 0 (got ${derived})`);
+  assert.ok(derived > 10, `expected a large positive move (~+12.9%), got ${derived}`);
+  const expected = ((vixPrice - vixTruePriorClose) / vixTruePriorClose) * 100;
+  assert.ok(Math.abs(derived - expected) < 1e-9, `got ${derived}, expected ${expected}`);
+});
+
 test("restAnchoredIndexChangePct trusts change_pct only on REST-seeded anchors", () => {
   assert.equal(restAnchoredIndexChangePct({ change_pct: 1.2, open_source: "rest" }), 1.2);
   assert.equal(
