@@ -101,6 +101,26 @@ test("orbitalLayout: size floors above zero so a zero-score pillar is still visi
   assert.ok(nodes[0]!.size >= 0.18, "a present-but-neutral pillar must not vanish");
 });
 
+test("orbitalLayout: an informational zero-weight pillar must read lighter than real weak evidence — RED before the fix (it tied with weight-1 at the rim)", () => {
+  // Mirrors meridian-earnings-report-core.ts's real shape: thermal is real evidence (weight 2),
+  // "news" is informational-only (always neutral, weight 0 on purpose), dark_pool is real but
+  // weaker evidence (weight 1). Before the fix, weight 0 was promoted to 1 and tied with
+  // dark_pool at the rim — the zero-evidence pillar read as equally influential as real weak
+  // evidence instead of strictly less so.
+  const nodes = orbitalLayout([
+    { pillar: "thermal", lean: "bullish", weight: 2, score: 1 },
+    { pillar: "news", lean: "neutral", weight: 0, score: 0 },
+    { pillar: "dark_pool", lean: "bullish", weight: 1, score: 1 },
+  ]);
+  const news = nodes.find((n) => n.pillar === "news")!;
+  const darkPool = nodes.find((n) => n.pillar === "dark_pool")!;
+  assert.equal(news.weight, 0, "the pillar's own deliberate weight must survive, not be promoted to 1");
+  assert.ok(
+    news.radius > darkPool.radius,
+    "zero real weight must sit further from the centre than genuine weak evidence"
+  );
+});
+
 test("orbitalLayout: unknown pillars are dropped rather than placed arbitrarily", () => {
   assert.deepEqual(orbitalLayout([{ pillar: "invented", lean: "bullish", weight: 5 }]), []);
   assert.deepEqual(orbitalLayout([]), []);
