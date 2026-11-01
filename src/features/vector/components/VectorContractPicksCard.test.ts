@@ -45,6 +45,33 @@ test("VectorContractPicksCard: loading state acknowledges a closed session inste
   );
 });
 
+// BUG FIX (round 307 DISCOVERY sweep): the "no contract cleared the bar" branch read
+// `play.bias !== "neutral"` — the RAW bias, which stays "neutral" for a pivot play's whole
+// lifetime even after spot commits past the gamma flip (vector-play-engine.ts: "pivot stays
+// neutral in bias"). Because `spot` was a documented-but-unused prop, a committed pivot play with
+// zero qualifying contracts fell through to `pivotPickWaitingCopy` and permanently showed the
+// "contract picks rank once price commits above or below the flip" copy, even once it already
+// had. Fixed by switching to `effectivePickBias` (spot + gammaFlip aware) and threading `spot`
+// into `pivotPickWaitingCopy` too, so it stops claiming "still waiting" once commit has happened.
+test("VectorContractPicksCard: quality-bar-empty check uses effective bias, not raw play.bias", () => {
+  const src = readFileSync(join(root, "components/VectorContractPicksCard.tsx"), "utf8");
+  assert.match(
+    src,
+    /effectivePickBias\(play, spot, gammaFlip\)/,
+    "the empty-state branch must resolve EFFECTIVE bias (spot + gammaFlip), not read play.bias raw"
+  );
+  assert.doesNotMatch(
+    src,
+    /if \(play && play\.bias !== "neutral"\)/,
+    "must not regress back to gating the quality-bar-empty message on raw play.bias"
+  );
+  assert.match(
+    src,
+    /pivotPickWaitingCopy\(play, spot, gammaFlip\)/,
+    "spot must be threaded into pivotPickWaitingCopy so it can tell waiting-for-commit apart from already-committed"
+  );
+});
+
 test("VectorContractPicksCard: both call sites thread liveSession through (blast radius)", () => {
   // Same root cause reaches VectorPageShell's action rail (desktop 4th column / mobile Plays
   // segment — the finding's own repro path) AND VectorComparePlayStrip (the 4-up Compare desk's
