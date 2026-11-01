@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as xApi from "./x-api";
-import { xApiEnabled, X_ACCOUNT_USER_ID, X_BLOCK_RT_USERNAMES } from "./x-api";
+import {
+  xApiEnabled,
+  X_ACCOUNT_USER_ID,
+  X_BLOCK_RT_USERNAMES,
+  classifyFollowError,
+} from "./x-api";
 
 /**
  * x-api.ts previously had NO test file at all despite being the live posting/engagement
@@ -85,6 +90,42 @@ test("X_ACCOUNT_USER_ID and X_BLOCK_RT_USERNAMES are the stable identity constan
   assert.equal(X_ACCOUNT_USER_ID, "2055511397338087425");
   assert.ok(X_BLOCK_RT_USERNAMES.has("IHate0dte"));
   assert.ok(X_BLOCK_RT_USERNAMES.has("ihate0dte"));
+});
+
+test("classifyFollowError: a bare 403 with no 'already'/'duplicate' wording is a real failure, not already_following", () => {
+  // This is the regression: a 403 from X's /following endpoint can mean the target
+  // blocked us, the target account is suspended, or our app's access tier can't write
+  // follows — none of those are "we already follow this account". Previously ANY 403
+  // was collapsed into already_following purely on status code, silently hiding every
+  // one of those real failures from stats.errors in x-engage-engine.ts forever.
+  assert.equal(
+    classifyFollowError(403, '{"errors":[{"message":"You are unable to follow this user."}]}'),
+    "failed",
+  );
+  assert.equal(
+    classifyFollowError(403, '{"title":"Forbidden","detail":"Your account is not permitted to follow at this access level."}'),
+    "failed",
+  );
+});
+
+test("classifyFollowError: a 403 body that actually says already/duplicate is already_following", () => {
+  assert.equal(
+    classifyFollowError(403, '{"errors":[{"message":"You have already requested to follow this user."}]}'),
+    "already_following",
+  );
+  assert.equal(
+    classifyFollowError(403, '{"errors":[{"message":"Duplicate follow request."}]}'),
+    "already_following",
+  );
+});
+
+test("classifyFollowError: a 409 Conflict is treated as already_following regardless of body wording", () => {
+  assert.equal(classifyFollowError(409, "{}"), "already_following");
+});
+
+test("classifyFollowError: any other status with an unrelated body is a real failure", () => {
+  assert.equal(classifyFollowError(500, "internal error"), "failed");
+  assert.equal(classifyFollowError(401, "unauthorized"), "failed");
 });
 
 test("postThread stays removed — a dead thread-posting wrapper with zero callers anywhere in the repo since it was added (#847); do not re-add it as a thin re-export without a real caller", () => {
