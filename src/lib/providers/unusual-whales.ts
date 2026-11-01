@@ -1280,11 +1280,29 @@ export function coerceDarkPoolRecentRows(cached: unknown): Record<string, unknow
 /**
  * Normalize a raw UW `off_lit_trades` WebSocket payload into DarkPoolSnapshot shape.
  * The WS sends individual trade objects (or arrays of them) — not the REST aggregate structure.
+ *
+ * ── THE DEFECT (ticker scoping) ────────────────────────────────────────────────────────────────
+ * `off_lit_trades` is joined UNSCOPED (`joinWiresForChannel` in uw-socket.ts has no
+ * `off_lit_trades` branch, so it falls through to the bare channel name with no `:TICKER`
+ * suffix — unlike `option_trades:SPX`/`lit_trades:SPY`/`net_flow:SPX` etc) — i.e. it is a
+ * MARKET-WIDE stream of every ticker's dark-pool block prints, not an SPX-only one. The
+ * `uw-ws-cache-bridge.ts` seeder's own comment calls it "the SPX ticker-level snapshot" and
+ * caches whatever this function returns under `UW_KEYS.darkPoolTicker("SPX")` — but without a
+ * ticker filter here, a single WS frame carrying AAPL/TSLA/NVDA (etc.) prints alongside, or
+ * instead of, any real SPX print gets aggregated into ONE snapshot (total_premium/bias/pcr all
+ * blended across tickers) and stamped onto the "SPX" cache key. Any non-SPX frame — the common
+ * case, since the index itself never actually dark-pool-prints under the ticker "SPX" the way
+ * single-name equities do — silently overwrites the SPX slot with another name's tape, which
+ * `spx-desk.ts`'s `readUwDarkPoolFromRedis("SPX")` then presents as SPX's own dark-pool read.
+ * Scoping the normalizer call to `onlyTicker` (passed by the one real caller, the `off_lit_trades`
+ * subscribe handler) is the fix — optional and default-unfiltered so every other caller (incl.
+ * the existing precision test below, which intentionally uses a non-SPX `symbol`) is unaffected.
  */
-export function normalizeDarkPoolWsPayload(raw: unknown): DarkPoolSnapshot | null {
+export function normalizeDarkPoolWsPayload(raw: unknown, onlyTicker?: string): DarkPoolSnapshot | null {
   const rows = Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.data;
   const list = Array.isArray(rows) ? rows : typeof raw === "object" && raw !== null ? [raw] : [];
   if (!list.length) return null;
+  const wantTicker = onlyTicker ? onlyTicker.toUpperCase() : null;
 
   const today = todayEt();
   const prints: DarkPoolPrint[] = [];
@@ -1295,6 +1313,10 @@ export function normalizeDarkPoolWsPayload(raw: unknown): DarkPoolSnapshot | nul
   for (const row of list) {
     if (!row || typeof row !== "object") continue;
     const r = row as Record<string, unknown>;
+    if (wantTicker) {
+      const rowTicker = String(r.ticker ?? r.symbol ?? r.underlying ?? "").toUpperCase();
+      if (rowTicker !== wantTicker) continue;
+    }
     const execAt = String(r.executed_at ?? r.date ?? r.timestamp ?? "");
     // Convert the trade timestamp to ET before extracting the date, so trades between
     // 8 PM–midnight ET (UTC next day) are not silently discarded as "wrong date".
