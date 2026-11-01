@@ -88,6 +88,7 @@ import {
   EARNINGS_PEER_SIZING_INSTRUCTION,
   meridianPeerEarningsCoaching,
   pickEarningsForSwingPeer,
+  SWING_MERIDIAN_INDEX_TICKERS,
 } from "./play-brief-meridian-peer-core";
 
 // Absolute per-contract/level PRICE formatting is `fmtUsd` (aliased from @/lib/fmt-money's
@@ -2796,12 +2797,29 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
     ? `**Last snapshot**${ageLabel != null ? ` (~${ageLabel} old)` : ""} — catalyst calendar may lag.\n\n`
     : "";
   if (!slice?.items.length) {
+    // BUG FIX (2026-11-01, Ask Largo standing mandate, live repro QXO, Largo C3 absence
+    // violation): this unconditionally asserted "calendar is quiet, not missing" for ANY empty
+    // `items` array — but `items` is filtered, by ticker, out of a market-wide Benzinga window
+    // fetch (`fetchBenzingaStructuredEarnings`) that paginates behind its own safety cap
+    // (`MAX_EXTRA_PAGES`, polygon.ts). When that cap is hit with pages still remaining upstream,
+    // `items` can be empty for THIS ticker simply because its row sits past where the fetch
+    // stopped reading — not because the calendar is actually quiet. Live repro: QXO's own
+    // earnings (2026-11-13) landed on page 23 of a 21-page-capped, date-sorted fetch, so this
+    // branch rendered "not missing" while `catalystsSection`, three sections earlier in the SAME
+    // brief, correctly showed "Earnings: 2026-11-13 in 12 days (afterhours)" from an independent
+    // UW-sourced read — a brief contradicting itself about the one fact a trader most needs
+    // right. `slice.window_truncated` is the exact signal that distinguishes the two cases; it
+    // did not exist before this fix (see `fetchBenzingaStructuredEarnings`'s own `truncated`
+    // field, threaded up through `loadBenzingaEarningsBundle`/`loadMeridianEarningsTimeline`/
+    // `loadMeridianTimelineResponse`/`fetchMeridianForTicker`).
+    const quietBody = slice?.window_truncated
+      ? "Meridian's market-wide earnings calendar fetch was truncated this read (hit its page " +
+        "cap before finishing) — cannot confirm this ticker has no catalyst in the **14-day** " +
+        "window, not evidence the calendar is quiet."
+      : "No catalysts in the **14-day** Meridian window on this read — calendar is quiet, not missing.";
     return {
       title: "Meridian catalysts",
-      body:
-        closedPrefix +
-        staleLead +
-        "No catalysts in the **14-day** Meridian window on this read — calendar is quiet, not missing.",
+      body: closedPrefix + staleLead + quietBody,
     };
   }
 
@@ -2846,7 +2864,40 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
 export function meridianPeerSection(ctx: SwingPlayBriefContext): RichSection | null {
   const earningsItem = pickEarningsForSwingPeer(ctx.meridian?.items, ctx.play.ticker);
   const body = meridianPeerEarningsCoaching(ctx.meridianPeer, earningsItem);
-  if (!body || !earningsItem) return null;
+  if (!body || !earningsItem) {
+    // BUG FIX (2026-11-01, Ask Largo standing mandate, live repro QXO — secondary symptom of the
+    // same root cause meridianCatalystSection's sibling fix above addresses): when the market-wide
+    // Benzinga earnings-window fetch feeding `ctx.meridian` was truncated by its own pagination
+    // cap, a single-name ticker's earnings row can be missing from `ctx.meridian.items` for a
+    // reason that has nothing to do with whether it actually has an upcoming print.
+    // `pickEarningsForSwingPeer` then correctly returns null (there is no item to coach from), and
+    // this whole section silently rendered nothing — identical, from the outside, to the genuine
+    // "no earnings within 14 days" case, and to the live QXO repro: the "Earnings peer lens"
+    // section was entirely absent from a brief whose sibling catalystsSection showed a real print
+    // 12 days out. Index tickers (SPY/QQQ/...) never get a per-name peer item at all regardless of
+    // truncation — `SWING_MERIDIAN_INDEX_TICKERS` already short-circuits `pickEarningsForSwingPeer`
+    // for them (see that function's own regression test, "null for index swings") — so this
+    // disclosure only fires for a genuine single-name ticker where the calendar fetch itself is
+    // the reason nothing is known, never for a name this section was never going to cover anyway.
+    const ticker = ctx.play.ticker?.toUpperCase() ?? "";
+    if (!earningsItem && ctx.meridian?.window_truncated && !SWING_MERIDIAN_INDEX_TICKERS.has(ticker)) {
+      // Same CLOSED-bucket "current read, not what this trade traded under" discipline every
+      // sibling return site in this file already carries (see meridianCatalystSection's own
+      // "unavailable" return site for the same pattern applied to a different absence reason).
+      const closedPrefix =
+        statusBucket(ctx.play) === "closed"
+          ? "_Current earnings peer lens — not what this trade traded under._\n\n"
+          : "";
+      return {
+        title: "Earnings peer lens",
+        body:
+          closedPrefix +
+          "Cannot confirm this ticker's earnings peer lens — Meridian's market-wide calendar " +
+          "fetch was truncated this read, not evidence this ticker has no upcoming print.",
+      };
+    }
+    return null;
+  }
   // BUG FIX (2026-10-24, Ask Largo standing mandate, live repro SWING:GOOGL:58 CLOSED/STOPPED
   // brief): every sibling "live read" market-context section in this file (catalystsSection,
   // chartLevelsSection, gexPostureSection, wallDynamicsSection, flowIntelSection) unshifts a

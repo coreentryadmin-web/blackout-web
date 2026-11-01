@@ -15,7 +15,10 @@ mock.module("../server-cache", {
 });
 
 type FetchOutcome =
-  | { kind: "resolve"; value: { rows: unknown[]; entitled: boolean; error: string | null } }
+  | {
+      kind: "resolve";
+      value: { rows: unknown[]; entitled: boolean; error: string | null; truncated?: boolean };
+    }
   | { kind: "reject"; message: string };
 
 let structuredEarningsOutcome: FetchOutcome = {
@@ -102,4 +105,43 @@ test("a genuinely empty (no error) result still returns cleanly for both functio
   const guidance = await loadBenzingaTickerGuidance("TGT");
   assert.equal(board.error, null);
   assert.equal(guidance.error, null);
+});
+
+// BUG FIX (2026-11-01, Ask Largo standing mandate, live repro QXO): loadBenzingaEarningsBundle's
+// market-wide window fetch (fetchBenzingaStructuredEarnings({..., paginate: true})) can hit its
+// own pagination safety cap with real rows still unfetched upstream — `window_truncated` is the
+// signal that must reach every consumer (meridianCatalystSection/meridianPeerSection) so a ticker
+// absent from `window_rows` is never misread as "this ticker has no catalyst in the window."
+test("loadBenzingaEarningsBundle: forwards a truncated window fetch as window_truncated:true", async () => {
+  structuredEarningsOutcome = {
+    kind: "resolve",
+    value: { rows: [], entitled: true, error: null, truncated: true },
+  };
+  const { loadBenzingaEarningsBundle } = await mod();
+  const bundle = await loadBenzingaEarningsBundle("2026-11-01", 21);
+  assert.equal(
+    bundle.window_truncated,
+    true,
+    "a truncated window fetch must be forwarded as window_truncated:true, not silently dropped",
+  );
+});
+
+test("loadBenzingaEarningsBundle: a complete window fetch reports window_truncated:false (no regression)", async () => {
+  structuredEarningsOutcome = {
+    kind: "resolve",
+    value: { rows: [], entitled: true, error: null, truncated: false },
+  };
+  const { loadBenzingaEarningsBundle } = await mod();
+  const bundle = await loadBenzingaEarningsBundle("2026-11-01", 21);
+  assert.equal(bundle.window_truncated, false);
+});
+
+test("loadBenzingaEarningsBundle: a window fetch with no truncated field at all (single-page fetch shape) reports window_truncated:false", async () => {
+  // fetchBenzingaStructuredEarnings never sets `truncated` on an early return (not asked to
+  // paginate, or the first page already carried everything) — the field is simply absent, not
+  // explicitly false. Must not be read as truthy.
+  structuredEarningsOutcome = { kind: "resolve", value: { rows: [], entitled: true, error: null } };
+  const { loadBenzingaEarningsBundle } = await mod();
+  const bundle = await loadBenzingaEarningsBundle("2026-11-01", 21);
+  assert.equal(bundle.window_truncated, false);
 });

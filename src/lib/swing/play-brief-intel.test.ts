@@ -6787,6 +6787,67 @@ test("meridianCatalystSection: empty successful read states quiet calendar, not 
   assert.match(section!.body, /quiet, not missing/);
 });
 
+// BUG FIX (2026-11-01, Ask Largo standing mandate, live repro QXO, Largo C3 absence violation):
+// before this fix, an empty `items` array ALWAYS rendered "calendar is quiet, not missing" — even
+// when the market-wide Benzinga earnings-window fetch feeding `items` had hit its own pagination
+// safety cap with real pages still unread (`window_truncated: true`). Live repro: QXO's own
+// earnings (2026-11-13, 12 days out) landed on page 23 of a 21-page-capped fetch, so this ticker's
+// `items` was empty while catalystsSection — reading an independent UW source three sections
+// earlier in the SAME brief — correctly showed the real earnings date. This test locks the fix:
+// a truncated window must render an honest "cannot confirm" disclosure, never the false
+// "quiet, not missing" claim.
+test("meridianCatalystSection: truncated window fetch discloses 'cannot confirm', not a false 'quiet, not missing' claim (live repro QXO)", () => {
+  const section = meridianCatalystSection({
+    play: fixturePlay({ ticker: "QXO" }),
+    asOf: "2026-11-01 09:00 ET",
+    sessionDate: "2026-11-01",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-11-01 09:00 ET",
+      items: [],
+      total_matched: 0,
+      window_truncated: true,
+    },
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.doesNotMatch(
+    section!.body,
+    /quiet, not missing/,
+    "a truncated fetch must never render the confident 'quiet, not missing' claim",
+  );
+  assert.match(section!.body, /truncated/i);
+  assert.match(section!.body, /cannot confirm/i);
+});
+
+// Companion no-regression test: the SAME empty-items shape, but window_truncated is false (or
+// absent, matching every pre-existing fixture in this file) — the original "quiet, not missing"
+// wording must still render unchanged.
+test("meridianCatalystSection: genuinely complete empty read still states 'quiet, not missing' (no regression)", () => {
+  const section = meridianCatalystSection({
+    play: fixturePlay({ ticker: "QXO" }),
+    asOf: "2026-11-01 09:00 ET",
+    sessionDate: "2026-11-01",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-11-01 09:00 ET",
+      items: [],
+      total_matched: 0,
+      window_truncated: false,
+    },
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /quiet, not missing/);
+  assert.doesNotMatch(section!.body, /truncated/i);
+});
+
 test("meridianCatalystSection: stale as_of (>120s, Largo C2) prefixes a Last snapshot caveat instead of reading as current", () => {
   // Real production shape: withServerCache's stale-while-revalidate path can keep serving the
   // same stored payload — and its true, un-bumped as_of — for up to 10 minutes under a degraded
@@ -7163,6 +7224,87 @@ test("meridianPeerSection: null for index swings (no per-name peer cohort)", () 
         },
       ],
       total_matched: 1,
+    },
+    meridianPeer: null,
+    ecosystem: null,
+    vector: null,
+  });
+  assert.equal(section, null);
+});
+
+// BUG FIX (2026-11-01, Ask Largo standing mandate, live repro QXO — secondary symptom of the same
+// root cause as meridianCatalystSection's own fix above): when the ticker's earnings row is
+// missing from ctx.meridian.items because the window fetch was truncated (not because the ticker
+// genuinely has no upcoming print), pickEarningsForSwingPeer correctly returns null and this
+// section used to silently render nothing — identical, from the outside, to a name with no
+// earnings within 14 days. The live QXO brief was missing this whole section even though a real
+// print was 12 days out. Locks the fix: a truncated window with no matching item must render an
+// honest disclosure, not silence.
+test("meridianPeerSection: truncated window with no matching item discloses 'cannot confirm', not silence (live repro QXO)", () => {
+  const section = meridianPeerSection({
+    play: fixturePlay({ ticker: "QXO" }),
+    asOf: "2026-11-01 09:00 ET",
+    sessionDate: "2026-11-01",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-11-01 09:00 ET",
+      items: [],
+      total_matched: 0,
+      window_truncated: true,
+    },
+    meridianPeer: null,
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(section, "a truncated window must disclose, not silently render nothing");
+  assert.equal(section!.title, "Earnings peer lens");
+  assert.match(section!.body, /cannot confirm/i);
+  assert.match(section!.body, /truncated/i);
+});
+
+// Companion no-regression test: the SAME empty-items/no-match shape, but window_truncated is
+// false — this must stay null exactly as before (a genuinely quiet calendar renders nothing here,
+// same as every pre-existing fixture in this file).
+test("meridianPeerSection: no matching item and window NOT truncated still returns null (no regression)", () => {
+  const section = meridianPeerSection({
+    play: fixturePlay({ ticker: "QXO" }),
+    asOf: "2026-11-01 09:00 ET",
+    sessionDate: "2026-11-01",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-11-01 09:00 ET",
+      items: [],
+      total_matched: 0,
+      window_truncated: false,
+    },
+    meridianPeer: null,
+    ecosystem: null,
+    vector: null,
+  });
+  assert.equal(section, null);
+});
+
+// Index tickers never get a per-name peer item regardless of truncation — the disclosure must not
+// fire for them (pickEarningsForSwingPeer short-circuits on SWING_MERIDIAN_INDEX_TICKERS before
+// even looking at truncation), or every index-ticker brief would wrongly claim it "cannot confirm"
+// something that was never in scope for this section in the first place.
+test("meridianPeerSection: truncated window on an INDEX ticker still returns null (truncation disclosure does not apply)", () => {
+  const section = meridianPeerSection({
+    play: fixturePlay({ ticker: "SPY" }),
+    asOf: "2026-11-01 09:00 ET",
+    sessionDate: "2026-11-01",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-11-01 09:00 ET",
+      items: [],
+      total_matched: 0,
+      window_truncated: true,
     },
     meridianPeer: null,
     ecosystem: null,

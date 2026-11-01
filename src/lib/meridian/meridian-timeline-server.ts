@@ -94,6 +94,13 @@ export type MeridianEarningsTimelineResult = {
   >["estimate_revision_timeline"];
   after_hours_movers: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["after_hours_movers"];
   calendar_entitled: boolean;
+  /**
+   * Forwarded from `loadBenzingaEarningsBundle`'s `window_truncated` (see that field's own doc
+   * comment). True when the market-wide earnings window this `rows` array is filtered from is
+   * itself a PREFIX, not the whole window — so a ticker absent from `rows` cannot be read as
+   * "this ticker has no catalyst in the window," only as "not found in what was fetched."
+   */
+  window_truncated: boolean;
   /** How many prints were hidden because the name has no listed options. */
   non_optionable_hidden: number;
   /**
@@ -218,6 +225,7 @@ export async function loadMeridianEarningsTimeline(
     estimate_revision_timeline: bundle.estimate_revision_timeline,
     after_hours_movers: bundle.after_hours_movers,
     calendar_entitled: bundle.entitled && boardRes.entitled,
+    window_truncated: bundle.window_truncated,
     non_optionable_hidden: split.hidden.length,
     expected_move_coverage: expectedMoveCoverage,
     optionable_filter_applied: split.applied,

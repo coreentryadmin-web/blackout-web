@@ -583,6 +583,19 @@ export type BenzingaPartnerFetchResult<T> = {
   error: string | null;
   /** Relative or absolute next page URL when the upstream API paginates. */
   nextUrl?: string | null;
+  /**
+   * True ONLY when a paginated fetch stopped because it hit its own safety page cap while the
+   * upstream still had more pages (`next_url` was non-empty) — never set on a single-page fetch,
+   * which has no concept of "more pages" to miss. BUG FIX (2026-11-01, Ask Largo standing mandate,
+   * live repro QXO): `fetchBenzingaStructuredEarnings`'s pagination loop already detected this
+   * exact condition (`pagesFollowed >= MAX_EXTRA_PAGES && nextPath`) but only `console.warn`ed it —
+   * a signal that exists but is discarded is no better than one that was never computed, because
+   * every caller still sees a plain `rows: []`/`rows: [...]` indistinguishable from a complete
+   * fetch. `rows.length < true total` is the exact "no data" vs "no signal" distinction the Largo
+   * product contract's C3 (absence) point exists to prevent — see
+   * `meridianCatalystSection` (play-brief-intel.ts) for the consumer this reaches.
+   */
+  truncated?: boolean;
 };
 
 function shapeBenzingaStructuredEarnings(row: Record<string, unknown>): BenzingaStructuredEarnings | null {
@@ -759,13 +772,24 @@ export async function fetchBenzingaStructuredEarnings(opts: {
   // No silent caps: if the safety cap itself was the reason pagination stopped (there was still
   // a next_url when the loop ended), the result can still be truncated — log so this is
   // discoverable instead of silently read as "the calendar is quiet."
-  if (pagesFollowed >= MAX_EXTRA_PAGES && nextPath) {
+  //
+  // BUG FIX (2026-11-01, Ask Largo standing mandate, live repro QXO): this condition was already
+  // computed correctly but only reached a `console.warn` — no caller could ever see it, so a
+  // truncated fetch and a complete one returned the identical shape. A prior fix (2026-10-18,
+  // RBLX/SOFI) raised MAX_EXTRA_PAGES from 2 to 20 to buy headroom, but a static cap on a
+  // date-sorted market-wide fetch only ever buys time until the next denser week — confirmed live
+  // 2026-11-01: a single reporting day (2026-11-13) alone spans 3 pages (~120+ rows), pushing
+  // QXO's own earnings row to page 23, past this 21-page (1 initial + 20 extra) ceiling. Raising
+  // the cap again would repeat the same mistake; propagating the signal this loop already computes
+  // is the actual fix — see `truncated` on `BenzingaPartnerFetchResult` above.
+  const truncated = pagesFollowed >= MAX_EXTRA_PAGES && !!nextPath;
+  if (truncated) {
     console.warn(
       `[benzinga] /benzinga/v1/earnings window fetch hit the ${MAX_EXTRA_PAGES}-page safety cap with more pages remaining — result may still be truncated (dateGte=${opts.dateGte ?? "?"}, dateLte=${opts.dateLte ?? "?"})`
     );
   }
 
-  return { ...first, rows, nextUrl: null };
+  return { ...first, rows, nextUrl: null, truncated };
 }
 
 /** Corporate guidance — separate Benzinga SKU; fails closed to [] when not entitled. */

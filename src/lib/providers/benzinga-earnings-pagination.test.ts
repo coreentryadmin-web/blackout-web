@@ -80,6 +80,10 @@ describe("fetchBenzingaStructuredEarnings pagination", () => {
     });
     assert.equal(res.rows.length, 7, "all 7 pages' rows must be present, not capped at the old 3-page/360-row budget");
     assert.equal(res.nextUrl, null, "fully-paginated result reports no further pages");
+    // BUG FIX (2026-11-01, Ask Largo standing mandate, live repro QXO): a fetch that fully
+    // completes (never hit the safety cap) must report truncated:false — callers rely on this to
+    // tell a genuinely complete window from one that stopped early with real rows still unread.
+    assert.equal(res.truncated, false, "a fully-paginated result must not report itself truncated");
   });
 
   test("still bounded — stops at the safety cap rather than following an unbounded/adversarial next_url chain forever", async (t) => {
@@ -100,6 +104,18 @@ describe("fetchBenzingaStructuredEarnings pagination", () => {
       // 1 initial page + MAX_EXTRA_PAGES(20) = 21 total fetches/rows, never the full 50 available.
       assert.equal(res.rows.length, 21, "pagination must stop at the safety cap, not run away");
       assert.ok(warnCalls.length >= 1, "hitting the safety cap with more pages remaining must be logged, never silent");
+      // BUG FIX (2026-11-01, Ask Largo standing mandate, live repro QXO): the console.warn above
+      // was the ONLY signal a truncated fetch ever produced — no caller could see it, so a
+      // truncated result and a complete one were indistinguishable by shape. This is the
+      // root-cause fix: the SAME condition that triggers the warn must also be readable on the
+      // returned result, so every consumer (loadBenzingaEarningsBundle -> Meridian timeline ->
+      // meridianCatalystSection/meridianPeerSection) can tell "genuinely quiet" apart from "fetch
+      // stopped early, more rows unread."
+      assert.equal(
+        res.truncated,
+        true,
+        "hitting the safety cap with more pages remaining must mark the result truncated:true, not just log it",
+      );
     } finally {
       warnMock.mock.restore();
     }

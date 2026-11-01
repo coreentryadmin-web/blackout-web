@@ -20,6 +20,16 @@ export type SwingMeridianCatalystSlice = {
   items: LargoTimelineItem[];
   total_matched: number;
   unavailable?: boolean;
+  /**
+   * True when the market-wide Benzinga earnings-window fetch feeding this slice's `items` hit its
+   * own pagination safety cap with more pages still remaining upstream. BUG FIX (2026-11-01, Ask
+   * Largo standing mandate, live repro QXO): forwarded from `loadMeridianTimelineResponse`'s
+   * `earnings_window_truncated` so `meridianCatalystSection`/`meridianPeerSection` (play-brief-
+   * intel.ts) can tell "this ticker genuinely has no catalyst in the window" apart from "this
+   * ticker's row may be sitting past where this fetch stopped reading" — the exact Largo C3
+   * (absence) distinction a flat `items.length === 0` cannot make on its own.
+   */
+  window_truncated?: boolean;
 };
 
 /** Index/proxy names that use market-wide Meridian catalyst slices — no per-name earnings peer cohort. */
@@ -98,5 +108,6 @@ export async function fetchMeridianForTicker(ticker: string): Promise<SwingMerid
     as_of: payload.as_of,
     items: shaped.items,
     total_matched: shaped.total_matched,
+    window_truncated: payload.earnings_window_truncated === true,
   };
 }
