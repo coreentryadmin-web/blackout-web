@@ -818,6 +818,29 @@ export function getIntervalFlowForTicker(ticker = "SPX"): { rows: Record<string,
   return intervalFlowByTicker.get(sym) ?? (sym === "SPX" ? intervalFlowStore : { rows: [], updatedAt: 0 });
 }
 
+/**
+ * Pure reducer for the `interval_flow` WS handler (channel is joined UNSCOPED — see
+ * `joinWiresForChannel`'s default-case fallthrough — the same market-wide-feed shape
+ * already fixed for `off_lit_trades` in #7307, not a per-ticker join like `net_flow`/
+ * `lit_trades`/`price`). Buckets normalized rows by ticker, and separately reports the
+ * SPX-only subset so a frame containing ONLY other tickers' rows (e.g. a pure AAPL
+ * interval-flow push) never gets stored under the SPX-labeled snapshot — `spxRows` is
+ * `null`, not "every row in the frame", when no row's ticker is actually SPX.
+ */
+export function bucketIntervalFlowRows(rows: Record<string, unknown>[]): {
+  byTicker: Map<string, Record<string, unknown>[]>;
+  spxRows: Record<string, unknown>[] | null;
+} {
+  const byTicker = new Map<string, Record<string, unknown>[]>();
+  for (const row of rows) {
+    const sym = String(row.ticker ?? "SPX").toUpperCase();
+    const bucket = byTicker.get(sym) ?? [];
+    bucket.push(row);
+    byTicker.set(sym, bucket);
+  }
+  return { byTicker, spxRows: byTicker.get("SPX") ?? null };
+}
+
 export const tradingHaltsStore: {
   halts: Map<string, StoredTradingHalt>;
   updatedAt: number;
@@ -1465,19 +1488,16 @@ export function initUwSocket() {
     if (rows.length) {
       recordUwDelivery("interval_flow");
       const now = Date.now();
-      const byTicker = new Map<string, Record<string, unknown>[]>();
-      for (const row of rows) {
-        const sym = String(row.ticker ?? "SPX").toUpperCase();
-        const bucket = byTicker.get(sym) ?? [];
-        bucket.push(row);
-        byTicker.set(sym, bucket);
-      }
+      const { byTicker, spxRows } = bucketIntervalFlowRows(rows);
       for (const [sym, tickerRows] of byTicker) {
         intervalFlowByTicker.set(sym, { rows: tickerRows, updatedAt: now });
       }
-      const spx = byTicker.get("SPX");
-      intervalFlowStore.rows = spx ?? rows;
-      intervalFlowStore.updatedAt = now;
+      // Only overwrite the legacy SPX-labeled snapshot when this frame actually carried
+      // an SPX-ticker row — never with another ticker's rows (see bucketIntervalFlowRows).
+      if (spxRows) {
+        intervalFlowStore.rows = spxRows;
+        intervalFlowStore.updatedAt = now;
+      }
     }
   });
 
