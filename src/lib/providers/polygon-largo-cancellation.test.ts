@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { Socket } from "node:net";
 import { __allowFetchHostForTest } from "../api-tracked-fetch";
+import { resetPolygonCircuitForTest } from "./polygon-rate-limiter";
+
+/** Under full `npm test`, acquirePolygonSlot can queue briefly before localhost fetch connects. */
+const CONNECT_WAIT_MS = 10_000;
 
 // Proves fetchPolygonNews/fetchPolygonTickerDetails actually terminate the real underlying
 // connection when their caller aborts — through polygonGet -> buildPolygonLargoFetchInit ->
@@ -68,6 +72,7 @@ after(() => {
 });
 
 test("fetchPolygonNews: aborting the caller's signal terminates the real underlying connection", async () => {
+  resetPolygonCircuitForTest();
   const { fetchPolygonNews } = await polygonLargoPromise;
   const sinceCount = sockets.length;
 
@@ -75,7 +80,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECT_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -102,6 +107,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
 });
 
 test("fetchPolygonTickerDetails: aborting the caller's signal terminates the real underlying connection", async () => {
+  resetPolygonCircuitForTest();
   const { fetchPolygonTickerDetails } = await polygonLargoPromise;
   const sinceCount = sockets.length;
 
@@ -109,7 +115,7 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECT_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
