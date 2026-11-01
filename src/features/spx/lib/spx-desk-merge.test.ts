@@ -365,6 +365,86 @@ describe("mergePulseIntoDesk vwap_stale disclosure", () => {
   });
 });
 
+// BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro): stickyStructureLevel's
+// hod/lod branch used to Math.max/Math.min across [pulseVal, baseVal, lastGoodStructure[key],
+// livePrice] UNCONDITIONALLY every cycle, so a single bad/stale candidate (an off-hours pulse
+// lane carrying forward a stale snapshot via `lastPulseForSignals`, or a transient index-feed
+// glitch during RTH) ratcheted `lastGoodStructure.hod` upward and then kept re-entering that same
+// inflated value into the max on every SUBSEQUENT cycle, permanently out-ranking a correct,
+// fresh `baseVal` for the rest of the session. Confirmed live: `market_recap.spx_desk.hod`
+// read 7758.43 — above both the real daily bar's H (7637) and PDH (7732.21) — for a session the
+// recap narrative said gapped down and "continued lower" the whole day, with market_label
+// EXTENDED (off-hours, no live spot to reconcile against).
+describe("mergePulseIntoDesk off-hours hod/lod sticky-ratchet correction", () => {
+  beforeEach(() => {
+    resetSpxDeskMergeCache();
+  });
+
+  it("prefers a fresh, lower base hod over a stale/inflated sticky-ratcheted value off-hours", () => {
+    // Prior cycle (e.g. an earlier session, or a bad tick mid-RTH): an inflated HOD seeds the
+    // sticky cache the same way a real one would.
+    mergePulseIntoDesk(
+      deskStub({ hod: 7758.43, market_open: true }),
+      pulseStub({ hod: 7758.43, price: 7758.43, market_open: true })
+    );
+
+    // This cycle (off-hours/EXTENDED): the pulse lane still carries the stale 7758.43 forward
+    // (e.g. via lastPulseForSignals, spx-desk.ts), but the full desk build (`base`) has
+    // recomputed a correct, fresh, LOWER hod from the real daily bar — the session gapped down
+    // and never traded above 7637. No live spot to reconcile against off-hours.
+    const closedBase = deskStub({ hod: 7637, market_open: false });
+    const closedPulse = pulseStub({ hod: 7758.43, market_open: false });
+    const merged = mergePulseIntoDesk(closedBase, closedPulse);
+
+    assert.equal(
+      merged.hod,
+      7637,
+      "must not let a stale sticky-ratcheted hod outrank the fresh, correct base hod off-hours"
+    );
+  });
+
+  it("prefers a fresh, higher base lod over a stale/deflated sticky-ratcheted value off-hours", () => {
+    mergePulseIntoDesk(
+      deskStub({ lod: 7200, market_open: true }),
+      pulseStub({ lod: 7200, price: 7200, market_open: true })
+    );
+
+    const closedBase = deskStub({ lod: 7528, market_open: false });
+    const closedPulse = pulseStub({ lod: 7200, market_open: false });
+    const merged = mergePulseIntoDesk(closedBase, closedPulse);
+
+    assert.equal(
+      merged.lod,
+      7528,
+      "must not let a stale sticky-ratcheted lod outrank the fresh, correct base lod off-hours"
+    );
+  });
+
+  it("still falls back to the sticky cache off-hours when there is genuinely no fresh hod/lod anywhere (no regression)", () => {
+    mergePulseIntoDesk(
+      deskStub({ hod: 7392.95, lod: 7294.18, market_open: true }),
+      pulseStub({ hod: 7392.95, lod: 7294.18, price: 7392.95, market_open: true })
+    );
+
+    // A cold-replica off-hours pulse (empty shell) plus a base that itself couldn't resolve a
+    // real session extreme this cycle — the only honest option left is the sticky last-known.
+    const merged = mergePulseIntoDesk(
+      deskStub({ hod: null, lod: null, market_open: false }),
+      pulseStub({ hod: null, lod: null, market_open: false })
+    );
+    assert.equal(merged.hod, 7392.95, "sticky fallback still carries the last-known hod forward");
+    assert.equal(merged.lod, 7294.18, "sticky fallback still carries the last-known lod forward");
+  });
+
+  it("leaves the RTH live-spot widen behavior unchanged (no regression)", () => {
+    // Same scenario as "expands HOD to live spot when minute-bar lane lags" above, but exercised
+    // again here to pin the RTH branch is untouched by the off-hours fix.
+    const merged = mergePulseIntoDesk(deskStub(), pulseStub());
+    assert.equal(merged.hod, 7440.43);
+    assert.equal(merged.lod, 7294.18);
+  });
+});
+
 describe("mergeFlowIntoDesk gamma flip truth", () => {
   it("keeps an explicit null live flip — does not resurrect sticky desk flip", () => {
     const base = deskStub({ gamma_flip: 7596.4, above_gamma_flip: false, price: 7428.78 });
