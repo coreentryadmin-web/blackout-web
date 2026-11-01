@@ -33,6 +33,11 @@ server.on("connection", (sock) => {
   sockets.push(sock);
 });
 
+/** Full `npm test` on GHA can leave polygon admission contended long enough that 2s is too tight. */
+const ABORT_WIRE_CONNECT_WAIT_MS = Number(
+  process.env.POLYGON_ABORT_WIRE_CONNECT_WAIT_MS ?? (process.env.CI ? 15_000 : 2_000)
+);
+
 function waitForNextConnection(sinceCount: number, timeoutMs: number): Promise<Socket | null> {
   return new Promise((resolve) => {
     const deadline = Date.now() + timeoutMs;
@@ -75,7 +80,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, ABORT_WIRE_CONNECT_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -109,7 +114,7 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, ABORT_WIRE_CONNECT_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
