@@ -1,13 +1,16 @@
 > **kind:** FINDING
 
-## Background-warm crons log `ok`/`accepted` before the real work runs — a total background failure is invisible to `cron_job_runs` and never alerts, across at least 4 routes — OPEN, write-up only
+## Background-warm crons log `ok`/`accepted` before the real work runs — a total background failure is invisible to `cron_job_runs` and never alerts, across at least 9 routes (1 confirmed clean) — OPEN, write-up only
 
 **Status:** OPEN — write-up only, no code changed. Needs a decided pattern (shared helper vs.
 per-file catch block) before anyone implements it — see "Suggested fix direction" below.
 **Severity:** P2 observability gap — not a wrong-answer bug, but it defeats the one mechanism
 (`cron_job_runs` + the Discord failure alert) this repo relies on to *notice* a cron has stopped
 working. **Area:** `src/app/api/cron/desk-warm/route.ts`, `platform-warm/route.ts`,
-`meridian-warm/route.ts`, `vector-bead-record/route.ts` (and likely more — see "Blast radius").
+`meridian-warm/route.ts`, `vector-bead-record/route.ts`, `vector-universe-snapshot/route.ts`,
+`vector-full-state-snapshot/route.ts`, `vector-walls-warm/route.ts`,
+`vector-dark-pool-warm/route.ts`, `vector-pick-sweep/route.ts` (9 confirmed-affected routes;
+`heatmap-warm/route.ts` confirmed CLEAN — see "Blast radius").
 
 ### What's wrong
 
@@ -119,15 +122,49 @@ Confirmed present in (same two-phase shape, same gap):
 - `meridian-warm`
 - `vector-bead-record`
 
-**Not yet checked this round** — the same `after()`-dispatch + single-handshake-`logCronRun` shape
-is visible in several sibling route comments (`vector-universe-snapshot`, `vector-full-state-snapshot`,
-`vector-walls-warm`, `vector-dark-pool-warm`, `vector-pick-sweep`, `heatmap-warm` all say "handshake
-in seconds, \[work\] in after()" in their own comments) — whoever picks this up should re-grep each
-of those for a second `logCronRun`/failure-alert call before assuming they share the gap or are
-exempt; `heatmap-warm` in particular logs its final `logCronRun` call from *inside* a later async
-section (line ~319) rather than immediately after dispatch, which may or may not already close this
-gap for that route specifically — needs a direct read, not an assumption, before being added to or
-excluded from this list.
+**Round 223 confirmed 5 more routes share the identical gap**, via direct read of each file off
+`origin/main` (same `after(dispatchX)` scheduling the real work, then an unconditional
+`logCronRun(..., accepted)` call that fires before `dispatchX`'s deferred body has run, with the
+background callback's own failure path reaching only `console.error`, never a second
+`logCronRun(..., {ok:false, ...})`):
+
+- `vector-universe-snapshot/route.ts` — `after(dispatchSnapshot)` at line 73,
+  `logCronRun("vector-universe-snapshot", started, accepted)` at line 84; the background catch
+  (line 68) is `console.error` only.
+- `vector-full-state-snapshot/route.ts` — `after(dispatchSnapshot)` at line 215,
+  `logCronRun("vector-full-state-snapshot", started, accepted)` at line 228; the background catch
+  (line 210) is `console.error` only.
+- `vector-walls-warm/route.ts` — `after(dispatchWarming)` at line 137,
+  `logCronRun("vector-walls-warm", started, accepted)` at line 147; the background catch
+  (line 132) is `console.error` only.
+- `vector-dark-pool-warm/route.ts` — `after(dispatchWarm)` at line 149,
+  `logCronRun("vector-dark-pool-warm", started, accepted)` at line 160; the background catch
+  (line 144) is `console.error` only. (Note: a separate, unrelated bug in this same route — its
+  self-overlap lock never being released on this success/failure path — was found and fixed
+  independently in round 224, PR #7134; that fix does not touch this observability gap.)
+- `vector-pick-sweep/route.ts` — `after(dispatch)` at line 145,
+  `logCronRun("vector-pick-sweep", started, accepted)` at line 155. Structured slightly
+  differently from the other four: the failure catch lives *inside* `runPickSweep` itself
+  (a `try { ... } catch (error) { console.error(...) } finally { ... }` wrapping the real work,
+  rather than a `.catch()` chained onto the `dispatch()` call) — but the end state is identical:
+  console.error only, no second `logCronRun` call anywhere in the file reachable from that catch.
+
+Grepped each of the 5 for a second `logCronRun` call reachable from the background failure path —
+zero hits in all five, confirming none already closes this gap independently.
+
+**Round 223/224 confirmed `heatmap-warm/route.ts` does NOT share this gap — it is structurally
+different, not just luckier.** `grep -n "after("` on the file returns **zero matches**: unlike
+every route above, `heatmap-warm` never dispatches its real work via `after()` at all — the whole
+per-ticker GEX-heatmap warm (`runPolygonPool` fan-out, delta broadcast, snapshot caching) runs
+**synchronously**, in-request, before the handler returns. Its one `logCronRun` call
+(`heatmap-warm/route.ts` line ~319) sits at the very end of that synchronous chain and reports the
+REAL, already-computed outcome — `ok: !allFailed` where `allFailed = tickers.length > 0 && failed
+=== tickers.length` (`failed`/`warmed` are live counts from the just-completed
+`Promise`/`runPolygonPool` results, not a pre-dispatch guess) — so a total failure genuinely
+derives `ok: false` and reaches the real alert path. If an earlier version of this finding ever
+listed `heatmap-warm` as affected or uncertain, that was wrong; this is the authoritative
+correction. (Its design necessarily does not use `after()` — it does the opposite trade: pays the
+synchronous latency cost, in exchange for `logCronRun` always reflecting a real outcome.)
 
 `zerodte-warm` is excluded from this round's lane (owned by the 0DTE/zerodte lane per the hard
 exclusion list) and intentionally not inspected here, despite being named in `desk-warm`'s own
@@ -137,7 +174,8 @@ comments as sharing this `after()`-dispatch pattern.
 
 Two shapes would close this, and the right one should be decided once rather than picked
 independently per file (these routes get touched by multiple lanes over time, and a mixed pattern
-is worse than either pattern alone):
+is worse than either pattern alone). This now applies to 9 confirmed-affected routes, not 4 —
+a stronger case for the shared-helper shape (option 2) over repeating the fix nine times:
 
 1. **Per-route `logCronRun` on the failure path** — have each background callback's `.catch()` (or
    an outer try/catch around the whole `after()`-dispatched function) call
