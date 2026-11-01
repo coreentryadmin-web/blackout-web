@@ -10,7 +10,8 @@ import {
   purchaseValueUsd,
   readRememberedPlan,
 } from "@/lib/analytics/checkout-plans";
-import { tierAtLeast, parseTier } from "@/lib/tiers";
+import { parseTier } from "@/lib/tiers";
+import { purchaseFiredKey, shouldFirePurchaseConversion } from "@/lib/analytics/purchase-tracking";
 import { purchaseTransactionId, trackGoogleAdsConversion } from "@/lib/analytics/google-ads";
 
 /** Fire purchase when tier upgrades to a paid plan (post-Whop checkout return). */
@@ -25,11 +26,15 @@ export function Ga4ConversionTracker() {
     const previous = prevTier.current ? parseTier(prevTier.current) : null;
     prevTier.current = tier ?? "free";
 
-    const nowPaid = tierAtLeast(current, "community");
-    const wasPaid = previous ? tierAtLeast(previous, "community") : false;
-
-    if (!nowPaid || wasPaid) return;
-    if (hasPurchaseFired(userId)) return;
+    // See shouldFirePurchaseConversion's own doc comment for the bug this fixes: the old
+    // "paid now AND was not already paid before" gate swallowed every upgrade past the member's
+    // first paid tier (community -> premium never fired), because "already paid" was true the
+    // moment they were on ANY paid tier, not just the one they're upgrading FROM this moment.
+    if (!shouldFirePurchaseConversion(current, previous)) return;
+    // Scoped per (member, tier reached) — not per member for life — so a genuine upgrade gets its
+    // own flag instead of being blocked forever by the flag the member's first purchase set.
+    const purchaseKey = purchaseFiredKey(userId, current);
+    if (hasPurchaseFired(purchaseKey)) return;
     // gtag may not have finished its strategy="afterInteractive" load yet on a fresh page load
     // (exactly how a user reaches this component: a hard redirect back from the Whop checkout
     // round-trip). Don't persist the fired flag until we know the call will actually reach gtag —
@@ -38,7 +43,7 @@ export function Ga4ConversionTracker() {
     // sessionStorage. Leaving it unmarked lets a refresh (which re-runs the same script-load race)
     // retry.
     if (!ga4Available()) return;
-    markPurchaseFired(userId);
+    markPurchaseFired(purchaseKey);
 
     // Value the purchase from the plan the member actually clicked (recovered across the Whop
     // round-trip) so a yearly buyer is booked at $1999, not the $199 a tier-only lookup would give
