@@ -9307,3 +9307,35 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   rather than staying pinned. Separately confirm no RTH regression: during real trading hours this
   branch is never taken at all (gated on `!isSpxEngineCronWindow()`), so `GET /api/market/spx/play`
   behavior during RTH should be completely unchanged by this fix.
+
+## WATCH LIST — 2026-11-01 (Ask Largo swing envelope.levels GEX-king/wall and confluence/max-pain dedup, PR #7181)
+
+- **Night Hawk Swings — `composeSwingPlayBrief`'s `envelope.levels` could carry the SAME strike
+  twice under two different labels** (e.g. GEX king strike vs. call/put wall; confluence zone vs.
+  max pain) whenever two independently-resolved structural levels rounded to the same price,
+  because `pushLevel()`'s collision-merge check wasn't being applied at those call sites at all.
+  Live-reproduced in production THIS session, pre-deploy, on tickers never checked before: both
+  HPQ and TWLO showed the exact duplicate-level collision live (SNDQ checked clean, for contrast).
+  Regression coverage added for two synthetic repros: a GEX king strike coinciding with a call wall
+  (CC/KTOS-shaped) and a confluence zone coinciding with max pain (VKTX-shaped) — both now merge to
+  ONE `envelope.levels` entry instead of two. Fix required a second, narrower pass same-day: a first
+  cut routed ALL eleven `pushLevel()` call sites (not just the 8 structural GEX/dealer-positioning
+  ones) through the merge check, which silently dropped the WATCH-bucket "entry trigger" level
+  whenever it legitimately equals "flag anchor", and dropped a real confluence-zone level whenever
+  its rounded center coincidentally fell within one cent of the unrelated live "spot" price (real
+  repro: spot 7499.40 vs. a confluence center rounding to 7499.39 — two unrelated facts, not a
+  duplicate). Final fix scopes the merge to ONLY the 8 structural levels (call wall, put wall,
+  gamma flip, confluence zone, dark pool, gamma magnet, GEX king, max pain), via a separate
+  `structuralLevels` array merged back in before the final `levels.slice(0, 10)`; "spot", "flag
+  anchor", and "entry trigger" always push unconditionally. Blast radius: `play-brief-adapter.ts`'s
+  `adaptSwingBriefToLargo` sanity-check test (`play-brief-adapter.test.ts`) asserted the OLD
+  2-duplicate-entries shape for a GEX-king/wall collision and had to be updated to expect the
+  now-correctly-merged 1-entry shape — the end-to-end "cites one evidence line" assertion this test
+  anchors on was unchanged throughout. **Re-check once the market opens:** re-fetch the swing
+  play-brief (`GET /api/market/swing/play-brief?ticker=<T>`) for HPQ, TWLO, CC, KTOS, and VKTX (and
+  any other ticker with a GEX king, confluence zone, or dark-pool level near a call/put wall or max
+  pain) and confirm `envelope.levels` no longer carries two entries at the same (or ~1-cent-rounded)
+  price under different labels; separately confirm "spot", "flag anchor", and "entry trigger" STILL
+  always render even when numerically close to a structural level (the specific regression the
+  first cut introduced) — a WATCH-bucket play whose flag anchor or entry trigger silently vanished
+  from `envelope.levels` would be a reintroduction of that bug, not a fix holding.
