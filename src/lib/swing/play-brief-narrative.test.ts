@@ -3804,6 +3804,138 @@ test("tradeManagerNarrativeSection: Break watch + Counter-thesis survive MAX_BUL
   assert.match(section!.body, /Counter-thesis/i, "counter-thesis must not starve behind MAX_BULLETS");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-01, same bug class/fix shape as the
+// dealerPostureLine reserved fix above, different call site/section — live repro, five-engine-
+// largo-cycle-61): `flowNarrative`'s own doc comment calls its "HELIX tape" bullet "the ONLY
+// flow content that survives `collapseRedundantIntelSections` for OPEN/WATCH buckets" (the
+// dedicated "Flow & positioning" section is deleted whenever a narrative exists, replaced with a
+// note claiming the detail was "folded into Trade manager read above" — play-brief-intel-
+// collapse.ts). But the call site here (`add(flow)`) was never marked `{ reserved: true }`, so
+// it queued up behind every other non-reserved bullet and was silently dropped once the cap
+// filled first. This fixture is the EXACT "rich Vector data" MAX_BULLETS-stress fixture two
+// tests above, which already produces >14 non-reserved bullets, plus a real `recent_flow` that
+// is non-null and conflicts with the LONG play direction (put-heavy, flowNarrative's own
+// `conflict` branch) — i.e. a bullet that genuinely should render. Pre-fix, this fixture's own
+// 14 non-reserved bullets (action/Pillar fade/Manage plan/Catalyst/Cross-desk friction/VEX lens/
+// Gamma magnet/Confluence/Chart read/dealer posture/4 focal levels) fill the cap before this
+// call ever runs, so "HELIX tape" becomes candidate #15 and is dropped — while the real app's
+// `collapseRedundantIntelSections` would still delete "Flow & positioning" and assert it was
+// folded in, leaving the member with literally no flow/positioning content anywhere in the brief.
+test("tradeManagerNarrativeSection: HELIX tape flow bullet survives MAX_BULLETS when 14+ other coaching bullets already fired (2026-11-01)", () => {
+  const richVector = {
+    spot: 100,
+    gammaFlip: 98.5,
+    maxPain: 99,
+    vexFlip: 99.2,
+    vexWalls: { callWalls: [{ strike: 104, gex: 1 }], putWalls: [{ strike: 96, gex: 1 }] },
+    darkPoolLevels: [{ strike: 99.5, premium: 12_000_000, pct: 42 }],
+    regime: { posture: "long", label: "LONG GAMMA" },
+    gexWalls: { callWalls: [{ strike: 105, gex: 1 }], putWalls: [{ strike: 97, gex: 1 }] },
+    proximity: { strike: 105, side: "call", callout: "within 2% of call wall" },
+    wallEvents: [{ kind: "call_wall_shift", message: "call wall lifted to 105" }],
+    magnet: { strike: 100, distancePct: 0.3, pull: "at" },
+    confluenceZones: [{ center: 101, score: 8, kinds: ["gex", "dark_pool"] }],
+    expectedMove: { pct: 4.2, upper: 104.2, lower: 95.8 },
+    technicals: { emaStack: "up", macd: "bull", vwapSide: "above", structure: "BOS up" },
+  } as SwingPlayBriefContext["vector"];
+
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        score: 52,
+        pnlPct: 18,
+        peak: 32,
+        manageAction: "HOLD",
+        thesisHealth: {
+          health: 48,
+          rungLabel: "Degraded",
+          advisory: "Tighten risk",
+          pillars: [
+            {
+              id: "market",
+              label: "Regime fit",
+              status: "faded",
+              commitLabel: "aligned",
+              currentLabel: "neutral",
+              deltaPts: -12,
+            },
+          ],
+          moves: ["flow cooled vs open"],
+        },
+        exitPolicy: {
+          trim_levels: [
+            { trigger_pct: 25, fired: true },
+            { trigger_pct: 50, fired: false },
+          ],
+          stop_premium: 1.85,
+          target_premium: 4.2,
+          time_stop_et: "15:45",
+          runner_fraction: 0.25,
+        },
+      }),
+      vector: richVector,
+      laneRows: [
+        { ticker: "NRG", direction: "LONG", horizon: "SWING", score: 52, status: "COMMIT", contract: {} as never, scoreFloor: 40, reason: "momentum" },
+        { ticker: "INTC", direction: "LONG", horizon: "SWING", score: 61, status: "COMMIT", contract: {} as never, scoreFloor: 40, reason: "flow" },
+        { ticker: "MU", direction: "LONG", horizon: "SWING", score: 44, status: "COMMIT", contract: {} as never, scoreFloor: 40, reason: "breakout" },
+      ],
+      meridian: {
+        items: [{ kind: "earnings", days_until: 5, ticker: "NRG", importance: 4 }],
+      } as SwingPlayBriefContext["meridian"],
+      ecosystem: {
+        ticker: "NRG",
+        // Non-null, LONG-conflicting flow (put-heavy vs LONG direction) — flowNarrative's own
+        // `conflict` branch, and genuinely non-null so it SHOULD render per the function's own
+        // doc comment.
+        recent_flow: {
+          window_hours: 24,
+          print_count: 22,
+          call_premium: 350_000,
+          put_premium: 1_100_000,
+          unknown_premium: 0,
+        },
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "bearish",
+          score: null,
+        },
+        zerodte_today: { direction: "long", conviction: "medium" },
+        gex_positioning: {
+          spot: 100,
+          flip: 98.5,
+          gamma_posture: "long",
+          gex_king_strike: 100,
+        },
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  // Sanity-check the fixture actually stresses the cap the way the live repro did — otherwise
+  // this test would pass for the wrong reason (the bullet simply never got starved).
+  const nonReservedBulletsBeforeFlow = section!.body
+    .split("\n")
+    .filter((l) => l.startsWith("• "))
+    .findIndex((l) => /HELIX tape/i.test(l));
+  assert.ok(
+    nonReservedBulletsBeforeFlow >= 14,
+    `expected the HELIX tape bullet to land at position >=14 (cap already full), got index ${nonReservedBulletsBeforeFlow} in: ${section!.body}`,
+  );
+  assert.match(
+    section!.body,
+    /HELIX tape/i,
+    "the HELIX tape flow bullet must survive MAX_BULLETS just like Break watch/Counter-thesis/dealer-posture — it is the ONLY flow content collapseRedundantIntelSections leaves behind for OPEN/WATCH buckets",
+  );
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro: PROF WATCH brief). Unlike the
 // fixture above (where the live Vector put wall sits close to spot, at -3%, and survives the
 // cap on nearest-first merit alone), a LONG breakout commonly has its resistance levels (call
