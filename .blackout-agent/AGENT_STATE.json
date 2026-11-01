@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T05:37:33.690Z",
+  "updated_at": "2026-11-01T06:37:48.031Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "9f4a1ca6ef49e66ca147bf27e24070ea0900b59c",
+    "last_main_sha": "c19c8eab110ed80d51eb6dd275287e612389a184",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T05:55:46.748Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T05:55:50.064Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T07:36:51.784Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-25T07:36:56.045Z",
       "type": "context_sync",
@@ -1271,28 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T06:37:40.397Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T06:37:44.463Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T06:37:48.031Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 7157,
-      "title": "docs(swing-journal): log weekend sync + parallel-lane swing fixes verified",
-      "branch": "docs/swing-journal-weekend-sync-2026-11-01",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T05:34:31Z"
-    },
-    {
-      "number": 7156,
-      "title": "fix: guard Vector GEX heatmap live-tick force-refetch against DTE-horizon race",
-      "branch": "fix/vector-gex-heatmap-live-tick-horizon-race",
+      "number": 7169,
+      "title": "fix: guard AdminNightHawkDashboard load() against a stale window-switch race",
+      "branch": "fix/admin-nighthawk-window-race",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T05:30:12Z"
+      "updated_at": "2026-11-01T06:32:36Z"
     },
     {
       "number": 5547,
