@@ -1250,6 +1250,41 @@ test("optionMarkStaleCaveat: a fresh, on-schedule mark returns an empty caveat",
   assert.equal(optionMarkStaleCaveat(play, readMs), "");
 });
 
+// BUG FIX (Ask Largo standing mandate, live repro SWING:MRNA:68, 2026-11-01): the stale branch's
+// wording asserts an IDENTITY claim ("same quote Mark flagged above") that is only true when the
+// caller's quote IS the brief's own subject contract — the premise baked into every existing call
+// site (`pnlSection`, the narrative/coaching bullets, all of which pass the brief's own `play`).
+// `siblingPositionsNote` (play-brief.ts) reuses this exact function for a SIBLING position on a
+// DIFFERENT strike/expiry, where that identity claim is false. The new third argument
+// (`sameContractAsMarkAbove`) lets a caller opt OUT of the borrowed claim when its quote is
+// genuinely a different, independently-stale contract.
+test("optionMarkStaleCaveat: omitting the third arg (default) still returns the 'same quote Mark flagged above' caveat — no regression on existing call sites", () => {
+  const readMs = Date.parse("2026-09-15T19:19:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z",
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  assert.match(optionMarkStaleCaveat(play, readMs), /stale — same quote Mark flagged above/);
+  assert.match(optionMarkStaleCaveat(play, readMs, true), /stale — same quote Mark flagged above/);
+});
+
+test("optionMarkStaleCaveat: sameContractAsMarkAbove=false returns an honest, sibling-scoped caveat — never the borrowed 'same quote' claim", () => {
+  const readMs = Date.parse("2026-09-15T19:19:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z", // 19 minutes old — past the 18-minute stale threshold
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  const caveat = optionMarkStaleCaveat(play, readMs, false);
+  assert.match(caveat, /stale — its own quote, last synced/);
+  assert.doesNotMatch(
+    caveat,
+    /same quote Mark flagged above/,
+    `a distinct contract's own staleness must never claim identity with a different line's Mark — got "${caveat}"`,
+  );
+});
+
 // Sibling bug (Ask Largo standing mandate, 2026-10-20, same defect class as optionMarkIsStale's
 // own history above, never swept to this fact): the archetype/sub-lane calibration-cache
 // snapshot's ONLY writer is the IDENTICAL 15-minute swing-active-refresh cron, so a snapshot

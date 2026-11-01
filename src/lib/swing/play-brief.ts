@@ -501,6 +501,12 @@ function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
     const right = r.contract?.right ?? "C";
     const expiry = r.contract?.expiry ?? "—";
     const entered = r.committedAt ? etStampFromIso(r.committedAt) : null;
+    // BUG FIX (Ask Largo standing mandate, live repro SWING:MRNA:68, 2026-11-01): this sibling row
+    // is a DIFFERENT contract (different strike/expiry) than the brief's own subject `play` — the
+    // default "same quote Mark flagged above" wording falsely claims identity with the Position
+    // section's Mark line above, which is about the subject contract, not this one. Pass
+    // `sameContractAsMarkAbove: false` so a stale sibling quote gets its own honest wording instead.
+    // See `optionMarkStaleCaveat`'s own comment (play-brief-absence.ts) for the full repro.
     const pnlCaveat = optionMarkStaleCaveat(
       {
         status: r.liveStatus ?? null,
@@ -509,6 +515,7 @@ function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
         pnlPct: r.livePnlPct ?? null,
       },
       ctx.readMs ?? Date.now(),
+      false,
     );
     const pnl = `${fmtPct(r.livePnlPct ?? null)}${pnlCaveat}`;
     return `• **${strike ?? "?"}${right} ${expiry}** — entered ${entered ?? "unknown date"}, entry ${fmtUsd(r.entryPremium ?? null)}, P&L ${pnl}`;

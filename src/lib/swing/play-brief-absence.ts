@@ -542,8 +542,29 @@ export function optionMarkIsStale(play: OptionMarkFreshnessSource, readMs: numbe
  * (`executableFill`, adapters.ts) as Greeks/Spread but had no caveat of its own — a second,
  * independent re-derivation of this exact ternary would have been the same "three readers, one of
  * them drifts" risk every other sentinel-leak fix in this codebase has already hit once.
+ *
+ * BUG FIX (Ask Largo standing mandate, live repro SWING:MRNA:68, 2026-11-01): the stale branch's
+ * " _(stale — same quote Mark flagged above)_" wording asserts an IDENTITY claim — that the aged
+ * quote being annotated is the literal same contract snapshot as the brief's own "Mark:" line a few
+ * lines above. That is true by construction for every call site that passes the brief's own subject
+ * `play` (`pnlSection`'s Peak/Trough/Greeks/Spread lines, `play-brief-narrative*.ts`'s give-back/
+ * break-watch/exec-slippage bullets) — they all read `play.contract`, the exact snapshot the Position
+ * section's Mark line already rendered earlier in the SAME document. But `siblingPositionsNote`
+ * (play-brief.ts) reuses this exact function for OTHER (sibling) positions on a DIFFERENT strike/
+ * expiry, adapting a `HorizonPlay` row that is NOT `ctx.play` into the same `OptionMarkFreshnessSource`
+ * shape — there, "Mark flagged above" refers to the brief's SUBJECT contract, not the sibling's own,
+ * independently-stale one. Live repro: MRNA's Position section showed "Mark: $29.48 (195C) (stale)"
+ * and the sibling line for the 225C position (its own distinct $10.48 quote) rendered "P&L +18.4%
+ * _(stale — same quote Mark flagged above)_" — a false provenance claim; the 225C quote was never
+ * "flagged above" anywhere in the document. Fix: an explicit `sameContractAsMarkAbove` flag (default
+ * `true`, preserving every existing call site's behavior unchanged) lets a caller whose quote is a
+ * genuinely different contract opt into honest wording instead of the borrowed "same quote" claim.
  */
-export function optionMarkStaleCaveat(play: OptionMarkFreshnessSource, readMs: number = Date.now()): string {
+export function optionMarkStaleCaveat(
+  play: OptionMarkFreshnessSource,
+  readMs: number = Date.now(),
+  sameContractAsMarkAbove: boolean = true,
+): string {
   if (optionMarkGenuinelyUnknown(play)) {
     return " _(entry-time read — no live tick since commit, do not read as current)_";
   }
@@ -551,7 +572,13 @@ export function optionMarkStaleCaveat(play: OptionMarkFreshnessSource, readMs: n
     return " _(live quote, no freshness timestamp)_";
   }
   if (optionMarkIsStale(play, readMs)) {
-    return " _(stale — same quote Mark flagged above)_";
+    if (sameContractAsMarkAbove) {
+      return " _(stale — same quote Mark flagged above)_";
+    }
+    // `optionMarkIsStale` returning true already guarantees `play.markAsOf` is a real, truthy
+    // timestamp (it returns false early on `!play.markAsOf`) — safe to format unconditionally.
+    const stamp = etStampFromIso(play.markAsOf!) ?? play.markAsOf!;
+    return ` _(stale — its own quote, last synced ${stamp})_`;
   }
   return "";
 }
