@@ -280,6 +280,44 @@ export function mergeTradeIntoOptionMark(
   };
 }
 
+/**
+ * Merge a Quote ("Q") frame onto the existing option mark entry, if any.
+ *
+ * BUG (found 2026-11-01, live audit — the Quote-side mirror of the Trade-side fix immediately
+ * above). A Massive Q frame is NBBO-only (module doc: "Q.O:SPXW...,...", fields `bp`/`ap` — a
+ * quote never carries a trade price), so `handleQuote`'s own `finiteOrNull(msg.lp ?? msg.last ??
+ * msg.p)` resolves to null on essentially every real quote tick. The previous inline version of
+ * this merge built a brand-new `OptionMark` straight from that null, discarding whatever `last`
+ * the most recent Trade ("T") frame had just established — on a contract quoting far more often
+ * than it trades (the common case), `last` was wiped back to null within milliseconds of being
+ * set by `mergeTradeIntoOptionMark`. `last` was added to `OptionMark`/`getLiveOptionMarkSync`
+ * specifically (2026-09-15, see that function's own doc comment) "so a caller can apply the same
+ * bid=0 backstop-quote divergence guard (`reliableMarkFromQuote`, options-snapshot.ts) to this WS
+ * mark too" — a guard that needs `last` to actually be present, which this clobbering defeated in
+ * practice for any consumer polling between quote ticks.
+ *
+ * Fix: a Quote frame carrying no trade price of its own CARRIES FORWARD the previous entry's
+ * `last` instead of overwriting it with null — mirroring `mergeTradeIntoOptionMark`'s own
+ * carry-forward discipline for bid/ask/mark, just in the opposite direction. `bid`/`ask`/`mark`
+ * and `ts` still update unconditionally on every quote — a Quote frame IS the fresh NBBO, exactly
+ * as before this fix.
+ */
+export function mergeQuoteIntoOptionMark(
+  prev: OptionMark | undefined,
+  bid: number | null,
+  ask: number | null,
+  quoteLast: number | null,
+  now: number
+): OptionMark {
+  return {
+    bid,
+    ask,
+    mark: midOf(bid, ask),
+    last: quoteLast ?? prev?.last ?? null,
+    ts: now,
+  };
+}
+
 async function writeMarkThrough(occ: string, m: OptionMark): Promise<void> {
   try {
     const { sharedCacheSet } = await import("../shared-cache");
@@ -611,6 +649,9 @@ class OptionsShard {
     }
   }
 
+  /** Quote (NBBO) update — see mergeQuoteIntoOptionMark's own doc for why `last` is carried
+   *  forward from the prior entry rather than overwritten, even though bid/ask/mark/ts refresh
+   *  unconditionally on every quote. */
   private handleQuote(msg: Record<string, unknown>) {
     // OCC symbol — Massive uses `sym`; tolerate `T`/`ticker` aliases.
     const occ = String(msg.sym ?? msg.T ?? msg.ticker ?? "");
@@ -620,14 +661,17 @@ class OptionsShard {
     // bid/ask aliases. Sizes (bs/as) are ignored — we only need the NBBO prices.
     const bid = finiteOrNull(msg.bp ?? msg.bid);
     const ask = finiteOrNull(msg.ap ?? msg.ask);
-    const last = finiteOrNull(msg.lp ?? msg.last ?? msg.p);
-    const mark = midOf(bid, ask);
-    // A Q frame with no usable price at all is dropped — never store a fabricated mark.
-    if (mark == null && bid == null && ask == null && last == null) return;
+    // A real Quote frame never carries one of these (they're Trade-frame fields) — this almost
+    // always resolves to null, which is exactly why mergeQuoteIntoOptionMark must carry the prior
+    // entry's `last` forward instead of overwriting it with this.
+    const quoteLast = finiteOrNull(msg.lp ?? msg.last ?? msg.p);
+    // A Q frame with no usable price at all (checked on the FRAME's own fields, not whatever gets
+    // carried forward below) is dropped — never store a fabricated mark.
+    if (bid == null && ask == null && quoteLast == null) return;
 
     const now = Date.now();
     // (liveness is tracked in handleMessage on ANY frame; here we only need `now` for the ts)
-    const entry: OptionMark = { bid, ask, mark, last, ts: now };
+    const entry = mergeQuoteIntoOptionMark(optionMarks.get(occ), bid, ask, quoteLast, now);
     optionMarks.set(occ, entry);
     void writeMarkThrough(occ, entry);
   }
