@@ -4,6 +4,7 @@ import {
   crossValidateGexLevels,
   cumulativeGammaFlip,
   cumulativeGammaFlipDetail,
+  gexWallsFromStrikeTotals,
   kingFromStrikeTotals,
   resolveNearTermExpiriesForCrossValidation,
   restFallbackAllowed,
@@ -178,6 +179,41 @@ test("wallsFromStrikeTotals picks max positive call and max negative put", () =>
   });
   assert.equal(callWall, 720);
   assert.equal(putWall, 700);
+});
+
+// ── wallsFromStrikeTotals: deterministic tiebreak on an exact tie (sibling of the
+// kingFromStrikeTotals tiebreak below — call_wall/put_wall are the PRIMARY published GEX levels,
+// so an unsorted scan's insertion-order-dependent tie-break is the same bug class, just not
+// previously fixed here). Decimal strike keys (SPX-style 0.5 increments) are NOT JS integer-index
+// keys, so Object.entries() enumerates them in INSERTION order, not numeric order — before the
+// fix, these two fixtures (identical data, swapped insertion order) resolved to DIFFERENT walls.
+test("wallsFromStrikeTotals: exact tie between two strikes always keeps the LOWER one, regardless of insertion order", () => {
+  const tiedHighFirst = { "720.5": 1e9, "700.5": 1e9, "710.5": 5e8 };
+  const tiedLowFirst = { "700.5": 1e9, "720.5": 1e9, "710.5": 5e8 };
+  assert.equal(wallsFromStrikeTotals(tiedHighFirst).callWall, 700.5);
+  assert.equal(wallsFromStrikeTotals(tiedLowFirst).callWall, 700.5);
+
+  const putTiedHighFirst = { "720.5": -1e9, "700.5": -1e9, "710.5": -5e8 };
+  const putTiedLowFirst = { "700.5": -1e9, "720.5": -1e9, "710.5": -5e8 };
+  assert.equal(wallsFromStrikeTotals(putTiedHighFirst).putWall, 700.5);
+  assert.equal(wallsFromStrikeTotals(putTiedLowFirst).putWall, 700.5);
+});
+
+test("wallsFromStrikeTotals: tie-break determinism holds under the spot side-constraint too", () => {
+  const tiedHighFirst = { "720.5": 1e9, "710.5": 1e9 };
+  const tiedLowFirst = { "710.5": 1e9, "720.5": 1e9 };
+  // Both strikes are above spot 700, so the constraint admits either — the tie-break must still
+  // pick the lower one regardless of insertion order.
+  assert.equal(wallsFromStrikeTotals(tiedHighFirst, 700).callWall, 710.5);
+  assert.equal(wallsFromStrikeTotals(tiedLowFirst, 700).callWall, 710.5);
+});
+
+// ── gexWallsFromStrikeTotals: the unconstrained CLIENT-side sibling scan — same root cause ──
+test("gexWallsFromStrikeTotals: exact tie between two strikes always keeps the LOWER one, regardless of insertion order", () => {
+  const tiedHighFirst = { "720.5": 1e9, "700.5": 1e9, "710.5": 5e8 };
+  const tiedLowFirst = { "700.5": 1e9, "720.5": 1e9, "710.5": 5e8 };
+  assert.equal(gexWallsFromStrikeTotals(tiedHighFirst).callWall, 700.5);
+  assert.equal(gexWallsFromStrikeTotals(tiedLowFirst).callWall, 700.5);
 });
 
 // ── kingFromStrikeTotals: deterministic tiebreak on an exact |GEX| tie ──

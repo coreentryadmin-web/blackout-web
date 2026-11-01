@@ -74,7 +74,17 @@ export function wallsFromStrikeTotals(
   let putWall: number | null = null;
   let maxPos = 0;
   let maxNeg = 0;
-  for (const [s, gRaw] of Object.entries(strikeTotals)) {
+  // Sort ascending by strike before scanning — see kingFromStrikeTotals's doc comment for why:
+  // Object.entries() enumerates non-integer-index string keys (e.g. SPX's "7700.5") in INSERTION
+  // order, not numeric order, so a `g > maxPos` / `g < maxNeg` STRICT comparison on an unsorted
+  // scan lets an exact tie between two strikes resolve to whichever one the caller happened to
+  // insert first — not a function of the actual gamma data at all. call_wall/put_wall are the
+  // PRIMARY published GEX levels (resistance/support shown across Thermal/Vector/SPX/Largo), so
+  // this is the same flicker-risk bug class kingFromStrikeTotals was fixed for, just not yet
+  // applied to its sibling wall scan. Sorting first makes a tie deterministically keep the LOWER
+  // strike on every call, regardless of how strikeTotals was built.
+  const sortedEntries = Object.entries(strikeTotals).sort(([sa], [sb]) => Number(sa) - Number(sb));
+  for (const [s, gRaw] of sortedEntries) {
     const strike = Number(s);
     const g = Number(gRaw);
     if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
@@ -443,7 +453,12 @@ export function gexWallsFromStrikeTotals(strikeTotals: Record<string, number>): 
   let putWall: number | null = null;
   let maxPos = 0;
   let maxNeg = 0;
-  for (const [s, g] of Object.entries(strikeTotals)) {
+  // Same deterministic-tiebreak sort as wallsFromStrikeTotals/kingFromStrikeTotals above — see
+  // wallsFromStrikeTotals's comment for the full rationale (an unsorted scan lets an exact tie
+  // resolve on Object.entries() insertion order rather than on which strike's gamma is actually
+  // tied-for-largest).
+  const sortedEntries = Object.entries(strikeTotals).sort(([sa], [sb]) => Number(sa) - Number(sb));
+  for (const [s, g] of sortedEntries) {
     const strike = Number(s);
     if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
     if (g > maxPos) {
