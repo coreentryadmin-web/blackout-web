@@ -37,6 +37,36 @@ test("managementFor: WATCH/SKIP are candidate-only — no ratchet progress or po
   assert.match(skip.recNote, /Gate blocked/);
 });
 
+// Regression (2026-11-01, Ask Largo standing mandate — found live via PANW:67's swing play-brief
+// briefContentKey still carrying `recommendation:"HOLD"` for a CLOSED play, traced to this shared
+// function having no CLOSED branch): before this fix, CLOSED fell into the live P&L logic below
+// and produced live-position instructions for a position that no longer exists — "SELL"/"cut and
+// preserve capital" on a deep-loss CLOSED row, "TRIM"/"Bank a tranche" on a big-winner RATCHET
+// CLOSED row, a bare "HOLD"/"hold while the thesis is intact" on everything in between. Reachable
+// in the Command Deck's own Manage tab (renders for every status) and in both board-row badge call
+// sites (0DTE + Swing adapters), not just the Ask Largo brief this gap was found from.
+test("managementFor: CLOSED has no position left to manage, at every P&L extreme", () => {
+  // `progress` is deliberately NOT nulled for CLOSED — it still feeds a historical RATCHET-track
+  // marker position from the blended as-managed P&L (ZeroDteCommandPanel.tsx); only the
+  // recommendation/recNote text (the actual bug — live-sounding instructions for a dead trade)
+  // is pinned to HOLD/"closed" below.
+  const deepLoss = managementFor("RATCHET", "CLOSED", -60); // would have been SELL pre-fix
+  assert.equal(deepLoss.recommendation, "HOLD");
+  assert.equal(deepLoss.progress, 0); // clamped floor of the −50→0/+100→1 track
+  assert.match(deepLoss.recNote, /closed/i);
+  assert.doesNotMatch(deepLoss.recNote, /preserve capital/);
+
+  const bigWinner = managementFor("RATCHET", "CLOSED", 95); // would have been TRIM pre-fix
+  assert.equal(bigWinner.recommendation, "HOLD");
+  assert.ok(bigWinner.progress != null && bigWinner.progress > 0.9);
+  assert.doesNotMatch(bigWinner.recNote, /Bank a tranche|Take partial/);
+
+  const midRange = managementFor("SCALE_OUT", "CLOSED", 10); // would have read live "HOLD" pre-fix
+  assert.equal(midRange.progress, null); // SCALE_OUT never has a RATCHET track to position
+  assert.match(midRange.recNote, /closed/i);
+  assert.doesNotMatch(midRange.recNote, /thesis holds|thesis is intact/);
+});
+
 test("0DTE adapter: rich factors from flow-quality, RATCHET model, allocation + pnl", () => {
   const play = terminalPlayFromZeroDte({
     ticker: "nvda",
