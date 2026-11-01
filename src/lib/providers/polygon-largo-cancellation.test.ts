@@ -12,6 +12,11 @@ import { __allowFetchHostForTest } from "../api-tracked-fetch";
 // give an isolated server the way it looks like it should — this loader resolves a
 // query-string variant of the same specifier back to the SAME cached module instance
 // (verified against the identical trap in unusual-whales-abort-wiring.test.ts).
+//
+// Waits on inbound HTTP *requests*, not raw TCP `connection` events: undici keep-alive reuses
+// one socket across sequential calls to the same mock origin, so a second subtest's fetch can
+// reach the server without opening a new connection (CI flake: test 2 timed out at 2s while
+// test 1's socket was reused).
 process.env.POLYGON_API_KEY = "test-polygon-key";
 __allowFetchHostForTest("127.0.0.1");
 
@@ -35,19 +40,20 @@ function listen(server: Server): Promise<string> {
   });
 }
 
-const sockets: Socket[] = [];
-const server = createServer(() => {
+let inboundRequestCount = 0;
+/** Socket serving the most recent inbound HTTP request (keep-alive reuses one TCP session). */
+let lastRequestSocket: Socket | null = null;
+const server = createServer((req) => {
+  inboundRequestCount += 1;
+  lastRequestSocket = req.socket;
   // Never respond — every test below aborts before a real Polygon would ever have answered.
 });
-server.on("connection", (sock) => {
-  sockets.push(sock);
-});
 
-function waitForNextConnection(sinceCount: number, timeoutMs: number): Promise<Socket | null> {
+function waitForNextInboundRequest(sinceCount: number, timeoutMs: number): Promise<Socket | null> {
   return new Promise((resolve) => {
     const deadline = Date.now() + timeoutMs;
     const tick = () => {
-      if (sockets.length > sinceCount) return resolve(sockets[sinceCount]!);
+      if (inboundRequestCount > sinceCount) return resolve(lastRequestSocket);
       if (Date.now() >= deadline) return resolve(null);
       setTimeout(tick, 2);
     };
@@ -86,13 +92,13 @@ after(() => {
 test("fetchPolygonNews: aborting the caller's signal terminates the real underlying connection", async () => {
   await resetPolygonCancellationHarness();
   const { fetchPolygonNews } = await polygonLargoPromise;
-  const sinceCount = sockets.length;
+  const sinceCount = inboundRequestCount;
 
   const controller = new AbortController();
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, CONNECTION_PROOF_WAIT_MS);
+  const socket = await waitForNextInboundRequest(sinceCount, CONNECTION_PROOF_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -121,13 +127,13 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
 test("fetchPolygonTickerDetails: aborting the caller's signal terminates the real underlying connection", async () => {
   await resetPolygonCancellationHarness();
   const { fetchPolygonTickerDetails } = await polygonLargoPromise;
-  const sinceCount = sockets.length;
+  const sinceCount = inboundRequestCount;
 
   const controller = new AbortController();
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, CONNECTION_PROOF_WAIT_MS);
+  const socket = await waitForNextInboundRequest(sinceCount, CONNECTION_PROOF_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
