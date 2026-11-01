@@ -12,7 +12,20 @@ import { todayEt } from "@/lib/et-date";
  */
 export const POST_HOURS_ET = [8, 10, 12, 14, 16, 18, 20] as const;
 
-const WEEKEND_POST_HOURS = [10, 14] as const;
+// Weekend posts ride the SAME fixed-UTC EventBridge schedule as weekdays, so they need the
+// SAME DST-aware ET-hour shift the weekday branch already applies via isDST() below — see the
+// NOTE at the top of this file. Under EDT the cron's weekend-relevant UTC fires land on ET
+// 10/14 (the intended 10am/2pm slots); under EST the same UTC times land one hour earlier, at
+// ET 9/13. A single fixed [10, 14] array (the pre-fix form of this constant) only ever matched
+// the EDT case, so every actual EST firing — which is what happens on every real winter
+// Saturday/Sunday cron invocation — missed both hours and `isPostWindow` returned false at
+// every one of them. The symptom is silent: no error, no log, the cron still runs 7x/day on
+// schedule, it just never recognizes any of those times as a post window, so `weekend_desk`
+// posts stop appearing entirely from the November DST changeover through the March one, then
+// resume automatically once DST starts again — exactly the seasonal, self-healing-then-
+// regressing shape `cron-dst-audit.mjs`'s own header describes for its "ET-GATED" bug class.
+const EDT_WEEKEND_POST_HOURS = [10, 14] as const;
+const EST_WEEKEND_POST_HOURS = [9, 13] as const;
 
 // Under EDT (UTC-4), these hours receive posts
 const EDT_HOUR_TO_TYPE: Record<number, PostType> = {
@@ -83,7 +96,8 @@ export function isPostWindow(nowEt: Date): boolean {
   const h = nowEt.getHours();
   const dow = nowEt.getDay();
   if (dow === 0 || dow === 6) {
-    return (WEEKEND_POST_HOURS as readonly number[]).includes(h);
+    const weekendHours = isDST(nowEt) ? EDT_WEEKEND_POST_HOURS : EST_WEEKEND_POST_HOURS;
+    return (weekendHours as readonly number[]).includes(h);
   }
   // Weekday EventBridge fires on NYSE holidays too — no desk-cycle posts on a closed tape.
   if (!isTradingDayEt(todayEt(nowEt))) return false;
