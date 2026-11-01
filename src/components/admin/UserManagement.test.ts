@@ -112,3 +112,45 @@ test("EditUserModal's read-only sign-in-link input carries an aria-label", () =>
     "the sign-in-link input has no <label> element — it must carry an aria-label"
   );
 });
+
+// Regression (DISCOVERY-lane sweep, round 245): `openUserDetail` used to be a bare
+// `fetch(...).then(setSelectedUser)` with no race guard at all. The "Edit" button has no
+// per-row loading/disabled state, so clicking two different user rows in quick succession (or
+// double-clicking the same row before the first request resolves) fires two overlapping
+// `GET /api/admin/users/:id` requests with nothing stopping the EARLIER one from resolving
+// AFTER the LATER one and overwriting `selectedUser` with the wrong user's data — and
+// `onDelete={() => setDeleteConfirm(selectedUser)}` seeds the ban/delete confirm modals
+// straight from `selectedUser`, so a stale overwrite risks an admin banning or deleting the
+// wrong account while believing the drawer reflects the row they most recently clicked. Same
+// shape already fixed in `AdminApiEventDetail.tsx` (#6926) and reused here via this file's own
+// `runGuardedUsersFetch` (already wired into `fetchUsers` for the un-debounced search box, but
+// — until this fix — not into `openUserDetail`). No render harness for this file (see the
+// header comment above), so this asserts the actual wiring via source text: that `openUserDetail`
+// bumps its OWN request-id ref (distinct from the list fetch's `latestUsersRequestIdRef`) and
+// routes its fetch through the shared guard rather than applying the response unconditionally.
+test("openUserDetail guards against an out-of-order stale response via runGuardedUsersFetch", () => {
+  const body = componentBody("UserManagement");
+  const fnStart = body.indexOf("const openUserDetail = async (userId: string) => {");
+  assert.ok(fnStart >= 0, "openUserDetail not found in UserManagement.tsx");
+  const fnEnd = body.indexOf("\n  };", fnStart);
+  const fnBody = body.slice(fnStart, fnEnd >= 0 ? fnEnd : fnStart + 600);
+
+  assert.match(
+    fnBody,
+    /runGuardedUsersFetch\(/,
+    "openUserDetail must route its fetch through runGuardedUsersFetch, not apply the response unconditionally"
+  );
+  assert.match(
+    fnBody,
+    /latestUserDetailRequestIdRef\.current/,
+    "openUserDetail must bump/read its own request-id ref — reusing latestUsersRequestIdRef " +
+      "would make an ordinary list refetch spuriously drop an in-flight detail fetch"
+  );
+  // Must NOT be the dedicated list-fetch ref — that would silently defeat the guard by having
+  // openUserDetail watch a counter it never bumps (or that an unrelated list refetch bumps).
+  assert.doesNotMatch(
+    fnBody,
+    /latestUsersRequestIdRef/,
+    "openUserDetail must not reuse the list-fetch's request-id ref"
+  );
+});
