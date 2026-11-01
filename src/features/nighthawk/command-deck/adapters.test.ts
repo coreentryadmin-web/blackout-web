@@ -2161,9 +2161,13 @@ test("overlayLegacyQuotes: stockPrice stays undefined when no quote", () => {
 });
 
 test("overlayLegacyQuotes: LONG at stop → recommendation SELL", () => {
+  // morning_status: "CONFIRMED" -> status OPEN. The stop/target override models managing an
+  // ALREADY-ENTERED position; a WATCH play (no morning_status, the pre-confirm evening-edition
+  // default) must never get this override -- see the "WATCH ... never gets its recommendation
+  // overridden" tests in use-legacy-quotes.test.ts (2026-11-01 fix).
   const play = terminalPlayFromEdition({
     ticker: "NVDA", direction: "long", rank: 1, score: 85,
-    entry_range: "$180", target: "$200", stop: "$170",
+    entry_range: "$180", target: "$200", stop: "$170", morning_status: "CONFIRMED",
   });
   const quotes = new Map([["NVDA", { price: 169, changePct: -5, asof: "2026-07-28T14:00:00Z" }]]);
   const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180" }];
@@ -2175,7 +2179,7 @@ test("overlayLegacyQuotes: LONG at stop → recommendation SELL", () => {
 test("overlayLegacyQuotes: LONG at target → recommendation TRIM", () => {
   const play = terminalPlayFromEdition({
     ticker: "NVDA", direction: "long", rank: 1, score: 85,
-    entry_range: "$180", target: "$200", stop: "$170",
+    entry_range: "$180", target: "$200", stop: "$170", morning_status: "CONFIRMED",
   });
   const quotes = new Map([["NVDA", { price: 202, changePct: 3, asof: "2026-07-28T14:00:00Z" }]]);
   const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180" }];
@@ -2187,7 +2191,7 @@ test("overlayLegacyQuotes: LONG at target → recommendation TRIM", () => {
 test("overlayLegacyQuotes: SHORT at stop → recommendation SELL", () => {
   const play = terminalPlayFromEdition({
     ticker: "TSLA", direction: "short", rank: 1, score: 80,
-    entry_range: "$250", target: "$230", stop: "$265",
+    entry_range: "$250", target: "$230", stop: "$265", morning_status: "CONFIRMED",
   });
   const quotes = new Map([["TSLA", { price: 266, changePct: 2, asof: "2026-07-28T14:00:00Z" }]]);
   const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250" }];
@@ -2198,12 +2202,26 @@ test("overlayLegacyQuotes: SHORT at stop → recommendation SELL", () => {
 test("overlayLegacyQuotes: SHORT at target → recommendation TRIM", () => {
   const play = terminalPlayFromEdition({
     ticker: "TSLA", direction: "short", rank: 1, score: 80,
-    entry_range: "$250", target: "$230", stop: "$265",
+    entry_range: "$250", target: "$230", stop: "$265", morning_status: "CONFIRMED",
   });
   const quotes = new Map([["TSLA", { price: 228, changePct: -4, asof: "2026-07-28T14:00:00Z" }]]);
   const originals = [{ ticker: "TSLA", target: "$230", stop: "$265", entry_range: "$250" }];
   const [result] = overlayLegacyQuotes([play], quotes, originals);
   assert.equal(result.recommendation, "TRIM");
+});
+
+test("overlayLegacyQuotes: WATCH (no morning_status yet) at stop/target never overrides recommendation " +
+  "-- the evening-edition default before morning confirm, same fixtures as the CONFIRMED tests above", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA", direction: "long", rank: 1, score: 85,
+    entry_range: "$180", target: "$200", stop: "$170",
+  });
+  assert.equal(play.status, "WATCH");
+  const originals = [{ ticker: "NVDA", target: "$200", stop: "$170", entry_range: "$180" }];
+  const atStop = overlayLegacyQuotes([play], new Map([["NVDA", { price: 169, changePct: -5, asof: "2026-07-28T14:00:00Z" }]]), originals);
+  assert.equal(atStop[0].recommendation, play.recommendation);
+  const atTarget = overlayLegacyQuotes([play], new Map([["NVDA", { price: 202, changePct: 3, asof: "2026-07-28T14:00:00Z" }]]), originals);
+  assert.equal(atTarget[0].recommendation, play.recommendation);
 });
 
 test("overlayLegacyQuotes: between stop and target → keeps original recommendation", () => {
