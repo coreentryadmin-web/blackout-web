@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { entryRangeMid } from "@/features/nighthawk/lib/entry-range";
+import { formatPlayHistoryDate } from "./play-history-date";
 
 type SpxPlayRow = {
   id: number;
@@ -57,13 +58,6 @@ function pnlClass(pnl: number | null): string {
   return pnl > 0 ? "text-bull" : pnl < 0 ? "text-bear" : "text-sky-300";
 }
 
-function fmtDate(s: string | null): string {
-  if (!s) return "—";
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
-}
-
 function SpxTable({ rows }: { rows: SpxPlayRow[] }) {
   if (!rows.length) return (
     <p className="py-6 text-center font-mono text-xs text-sky-300/50">No closed plays yet</p>
@@ -87,7 +81,7 @@ function SpxTable({ rows }: { rows: SpxPlayRow[] }) {
             const { text, cls } = outcomeLabel(r.outcome);
             return (
               <tr key={r.id} className="group">
-                <td className="py-1.5 pr-4 text-sky-300/70">{fmtDate(r.session_date)}</td>
+                <td className="py-1.5 pr-4 text-sky-300/70">{formatPlayHistoryDate(r.session_date)}</td>
                 <td className={`py-1.5 pr-4 ${r.direction === "LONG" || r.direction === "BUY" ? "text-bull" : "text-bear"}`}>
                   {String(r.direction).slice(0, 1)}
                 </td>
@@ -134,7 +128,7 @@ function NHTable({ rows }: { rows: NHPlayRow[] }) {
             const entryMid = mid != null ? mid.toFixed(2) : "—";
             return (
               <tr key={r.id}>
-                <td className="py-1.5 pr-4 text-sky-300/70">{fmtDate(r.edition_for)}</td>
+                <td className="py-1.5 pr-4 text-sky-300/70">{formatPlayHistoryDate(r.edition_for)}</td>
                 <td className="py-1.5 pr-4 text-white">{r.ticker}</td>
                 <td className={`py-1.5 pr-4 ${r.direction === "LONG" ? "text-bull" : "text-bear"}`}>
                   {r.direction === "LONG" ? "L" : "S"}
