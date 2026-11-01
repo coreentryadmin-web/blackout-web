@@ -97,6 +97,18 @@ export function UserManagement() {
   // earlier, slower response could resolve after a later one and overwrite
   // the screen with stale results).
   const latestUsersRequestIdRef = useRef(0);
+  // Same race, different fetch: bumped once per openUserDetail() call so a slower detail
+  // response for a row clicked EARLIER can't land after a faster one for a row clicked
+  // LATER and overwrite the edit drawer with the wrong user. There is no per-row loading
+  // state disabling the "Edit" button, so two rows clicked in quick succession (or the same
+  // row double-clicked) genuinely fire two overlapping `GET /api/admin/users/:id` requests —
+  // and `deleteConfirm`/`banConfirm` are seeded straight from `selectedUser`, so a stale
+  // overwrite here risks an admin banning/deleting the wrong account while believing the
+  // drawer reflects the row they most recently clicked. Deliberately a SEPARATE ref from
+  // `latestUsersRequestIdRef` above — that one tracks the list fetch, this one the detail
+  // fetch; conflating them would make an ordinary list refetch spuriously drop an in-flight
+  // detail fetch (or vice versa).
+  const latestUserDetailRequestIdRef = useRef(0);
 
   const fetchUsers = useCallback(async () => {
     const requestId = ++latestUsersRequestIdRef.current;
@@ -140,11 +152,21 @@ export function UserManagement() {
   };
 
   const openUserDetail = async (userId: string) => {
-    const res = await fetch(`/api/admin/users/${userId}`);
-    if (!res.ok) return;
-    const data: UserDetail = await res.json();
-    setSelectedUser(data);
-    setEditOpen(true);
+    const requestId = ++latestUserDetailRequestIdRef.current;
+    await runGuardedUsersFetch(
+      requestId,
+      () => latestUserDetailRequestIdRef.current,
+      async () => {
+        const res = await fetch(`/api/admin/users/${userId}`);
+        if (!res.ok) return null;
+        return (await res.json()) as UserDetail;
+      },
+      (data) => {
+        if (!data) return;
+        setSelectedUser(data);
+        setEditOpen(true);
+      }
+    );
   };
 
   const syncWhop = async (email: string) => {
