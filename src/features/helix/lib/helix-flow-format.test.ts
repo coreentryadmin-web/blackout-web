@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { FlowAlert } from "@/lib/api";
 import {
   daysToExpiry,
+  filterAndSortFlowsForTape,
   flowSignals,
   flowTimeMs,
   fmtExpiryShort,
@@ -69,6 +70,43 @@ test("sortFlows orders premium descending", () => {
   ];
   const sorted = sortFlows(rows, "premium", "desc");
   assert.deepEqual(sorted.map((r) => r.ticker), ["B", "C", "A"]);
+});
+
+// Root cause (found live 2026-11-01): HelixFlowTable's own filter+sort pipeline special-cased
+// `sortKey === "time"` to always sort "desc", discarding the user's own `sortDir` toggle for
+// exactly that column — the one the table defaults to and the only one with a visible ▲/▼
+// direction indicator wired to real state. Clicking the Time header to flip to ascending moved
+// the arrow but never moved a row. `filterAndSortFlowsForTape` is the pipeline pulled out of the
+// component so this is provable without rendering it.
+test("filterAndSortFlowsForTape honors ascending order on the time column (regression)", () => {
+  const rows = [
+    flow({ ticker: "OLDEST", alerted_at: "2026-07-11T14:00:00.000Z" }),
+    flow({ ticker: "NEWEST", alerted_at: "2026-07-11T16:00:00.000Z" }),
+    flow({ ticker: "MIDDLE", alerted_at: "2026-07-11T15:00:00.000Z" }),
+  ];
+  const asc = filterAndSortFlowsForTape(rows, "ALL", "time", "asc");
+  assert.deepEqual(
+    asc.map((r) => r.ticker),
+    ["OLDEST", "MIDDLE", "NEWEST"],
+    "ascending time sort must put the oldest print first, not silently stay newest-first"
+  );
+
+  const desc = filterAndSortFlowsForTape(rows, "ALL", "time", "desc");
+  assert.deepEqual(desc.map((r) => r.ticker), ["NEWEST", "MIDDLE", "OLDEST"]);
+});
+
+test("filterAndSortFlowsForTape still drops untyped rows and applies the CALL/PUT filter", () => {
+  const rows = [
+    flow({ ticker: "CALLROW", option_type: "CALL", alerted_at: "2026-07-11T14:00:00.000Z" }),
+    flow({ ticker: "PUTROW", option_type: "PUT", alerted_at: "2026-07-11T15:00:00.000Z" }),
+    // @ts-expect-error — exercising a malformed/untyped row, which the live tape does carry.
+    flow({ ticker: "UNTYPED", option_type: undefined, alerted_at: "2026-07-11T16:00:00.000Z" }),
+  ];
+  const allSorted = filterAndSortFlowsForTape(rows, "ALL", "time", "desc");
+  assert.deepEqual(allSorted.map((r) => r.ticker), ["PUTROW", "CALLROW"]);
+
+  const callsOnly = filterAndSortFlowsForTape(rows, "CALL", "time", "desc");
+  assert.deepEqual(callsOnly.map((r) => r.ticker), ["CALLROW"]);
 });
 
 test("flowSignals includes whale and 0dte tags", () => {

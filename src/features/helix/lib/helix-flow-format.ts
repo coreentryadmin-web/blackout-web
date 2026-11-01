@@ -323,6 +323,38 @@ export function sortFlows(
   });
 }
 
+/**
+ * The desktop tape's actual filter+sort pipeline (typed rows → type filter → sortFlows), pulled
+ * out of HelixFlowTable so the decision is testable without rendering the component.
+ *
+ * ROOT CAUSE this fixes: HelixFlowTable's own `filtered` useMemo special-cased `sortKey === "time"`
+ * to ALWAYS call `sortFlows(base, "time", "desc")`, discarding whatever `sortDir` the user had just
+ * toggled to. `sortFlows` itself has always honored "asc" correctly (see the "premium descending"
+ * test above, and `cmp(...) * mul` for every key including "time") — the bug was this call site
+ * silently throwing the direction away for exactly one column, the one it defaults to. Clicking the
+ * Time header to flip to ascending still flipped the ▲/▼ indicator (driven by `sortDir` state) but
+ * the row order never moved, because every render re-forced "desc" underneath it — the control was
+ * cosmetic. It also fed `isNew = i === 0 && sortKey === "time" && sortDir === "desc"` in the
+ * component, so toggling to "asc" silently killed the newest-print flash highlight on row 0 even
+ * though row 0 was still the newest row (since the real order never changed).
+ *
+ * Present since the initial migration (#770) — there is no earlier commit that introduced this
+ * forcing deliberately, and nothing in HelixFlowTable's extensive surrounding comments explains it.
+ */
+export function filterAndSortFlowsForTape(
+  flows: FlowAlert[],
+  typeFilter: "ALL" | "CALL" | "PUT",
+  sortKey: HelixFlowSortKey,
+  sortDir: HelixFlowSortDir
+): FlowAlert[] {
+  const typed = flows.filter((f) => {
+    const t = f.option_type?.toUpperCase();
+    return t === "CALL" || t === "PUT";
+  });
+  const base = typeFilter === "ALL" ? typed : typed.filter((f) => f.option_type?.toUpperCase() === typeFilter);
+  return sortFlows(base, sortKey, sortDir);
+}
+
 export type HelixFlowSignal = {
   id: string;
   label: string;
