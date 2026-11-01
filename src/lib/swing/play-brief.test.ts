@@ -540,10 +540,102 @@ test("composeSwingPlayBrief: a same-ticker sibling with a real P&L but a stale q
   const brief = composeSwingPlayBrief(ctx);
   const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
   assert.ok(sib, "must disclose the concurrent sibling position");
+  // BUG FIX (Ask Largo standing mandate, live repro SWING:MRNA:68, 2026-11-01): this used to assert
+  // the sibling line carries the literal "stale — same quote Mark flagged above)_" text — but that
+  // text is a false provenance claim here. The sibling (NRG positionId 71, entry $3.00, its own
+  // $4.10-$4.30 bid/ask) is a DIFFERENT contract than the brief's own subject play (NRG, positionId
+  // 72, entry $2.10/mark $2.05) — nothing about the subject's OWN Mark line ever "flagged" the
+  // sibling's quote; they are two independently-stale snapshots. The sibling must get its own
+  // honest wording instead, and must NEVER claim the subject's Mark line flagged it.
   assert.match(
     sib!.body,
-    /P&L \+40\.0%.*stale — same quote Mark flagged above/,
-    `a real but aged sibling P&L must carry the same stale-quote caveat pnlSection uses — got "${sib!.body}"`,
+    /P&L \+40\.0%.*stale — its own quote, last synced/,
+    `a real but aged sibling P&L must carry an honest, sibling-scoped stale-quote caveat — got "${sib!.body}"`,
+  );
+  assert.doesNotMatch(
+    sib!.body,
+    /same quote Mark flagged above/,
+    `the sibling's stale quote is NOT the same contract as the subject's own Mark line — claiming so is false provenance — got "${sib!.body}"`,
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, live repro SWING:MRNA:68, 2026-11-01): the same false
+// "same quote Mark flagged above" claim reproduced directly with TWO siblings carrying their OWN
+// distinct staleness states (one fresh, one stale) alongside a subject play whose own Mark line is
+// ALSO stale — proving the false-identity text never leaks onto a sibling line regardless of
+// whether the subject's own quote happens to be stale too (the exact live MRNA shape: subject
+// 195C stale, sibling 225C independently stale on its own $10.48 quote).
+test("composeSwingPlayBrief: sibling stale-quote caveat never borrows the subject's own 'flagged above' claim, even when the subject's own quote is also stale", () => {
+  const staleSibling: HorizonPlay = {
+    ticker: "MRNA",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 58,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:MRNA261030C00225000",
+      strike: 225,
+      expiry: "2026-10-30",
+      right: "C",
+      dte: 4,
+      mid: 10.48,
+      bid: 10.3,
+      ask: 10.6,
+      delta: 0.42,
+      gamma: 0.01,
+      theta: -0.6,
+      vega: 0.25,
+      iv: 0.4,
+      openInterest: 150,
+    },
+    scoreFloor: 60,
+    reason: "live hold — BREAKOUT thesis",
+    archetype: "BREAKOUT",
+    entryPremium: 8.85,
+    livePnlPct: 18.4,
+    liveStatus: "OPEN",
+    // Independently stale — its OWN quote never synced since well before the subject's Mark line.
+    markAsOf: "2026-10-26T15:30:00.000Z",
+    committedAt: "2026-10-25T14:00:00.000Z",
+    positionId: 225,
+  };
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      id: "SWING:MRNA:68",
+      ticker: "MRNA",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 25.0,
+      mark: 29.48,
+      // The subject's OWN Mark/contract snapshot is ALSO stale (markAsOf well past the 18-minute
+      // cadence threshold) — this is the live MRNA shape: both quotes are stale, but they are two
+      // DIFFERENT contracts (195C vs 225C), never the "same quote".
+      markAsOf: "2026-10-26T16:00:00.000Z",
+      pnlPct: 17.9,
+    }),
+    asOf: "2026-10-26T19:22:00.000Z",
+    sessionDate: "2026-10-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    readMs: new Date("2026-10-26T19:22:00.000Z").getTime(),
+    laneRows: [staleSibling],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(sib, "must disclose the concurrent sibling position");
+  assert.match(sib!.body, /225C/, `expected the 225C sibling line — got "${sib!.body}"`);
+  assert.match(
+    sib!.body,
+    /P&L \+18\.4%.*stale — its own quote, last synced/,
+    `the sibling's own independently-stale quote must get its own honest caveat — got "${sib!.body}"`,
+  );
+  assert.doesNotMatch(
+    sib!.body,
+    /same quote Mark flagged above/,
+    `the subject's Mark line (195C/29.48) never "flagged" the sibling's distinct 225C quote — got "${sib!.body}"`,
   );
 });
 
