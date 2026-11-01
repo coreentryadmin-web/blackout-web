@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { Skeleton } from "@/components/ui";
+import { isEtCashRth } from "@/lib/et-market-hours";
 
 // One shared brief per 15-min window — generated server-side for all users
 const REFRESH_MS = 15 * 60 * 1000;
@@ -30,24 +31,6 @@ function etHour(): number {
     hour12: false,
   }).formatToParts(new Date());
   return Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
-}
-
-function isRTH(): boolean {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-    hour: "numeric",
-    minute: "numeric",
-    hour12: false,
-  }).formatToParts(new Date());
-
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
-  const hour    = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
-  const minute  = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
-
-  if (["Sat", "Sun"].includes(weekday)) return false;
-  const mins = hour * 60 + minute;
-  return mins >= 570 && mins < 960; // 9:30–16:00 ET
 }
 
 function afterHoursLine(): string {
@@ -88,7 +71,7 @@ export function FlowBrief() {
   const [brief, setBrief]     = useState<string | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  // Hydration safety (React #418): isRTH() / afterHoursLine() read the wall clock, so SSR and the
+  // Hydration safety (React #418): isEtCashRth() / afterHoursLine() read the wall clock, so SSR and the
   // first client render can disagree (the RTH boundary or the ET hour can tick between them). Seed
   // `marketOpen` to a STABLE value (true) for both passes and only resolve the real clock after a
   // mounted useEffect — never during render. `mounted` gates the time-derived after-hours copy so
@@ -97,7 +80,7 @@ export function FlowBrief() {
   const [marketOpen, setMarketOpen] = useState(true);
 
   const refresh = useCallback(async () => {
-    if (!isRTH()) {
+    if (!isEtCashRth()) {
       setMarketOpen(false);
       return; // preserve last RTH brief text across the 4 PM boundary
     }
@@ -114,7 +97,7 @@ export function FlowBrief() {
   // Resolve the real RTH state once on the client, after hydration — keeps SSR/first-paint stable.
   useEffect(() => {
     setMounted(true);
-    setMarketOpen(isRTH());
+    setMarketOpen(isEtCashRth());
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -126,7 +109,7 @@ export function FlowBrief() {
 
   // Re-check RTH every minute so the banner flips at open/close automatically
   useEffect(() => {
-    const id = setInterval(() => setMarketOpen(isRTH()), 60_000);
+    const id = setInterval(() => setMarketOpen(isEtCashRth()), 60_000);
     return () => clearInterval(id);
   }, []);
 
