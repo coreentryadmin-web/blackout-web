@@ -30,6 +30,14 @@ export function topGexPinStrikes(
     if (!Number.isFinite(strike) || !Number.isFinite(v)) continue;
     rows.push({ strike, abs: Math.abs(v) });
   }
-  rows.sort((a, b) => b.abs - a.abs);
+  // Strongest first; an EXACT |gex| tie breaks on strike ascending (lower strike wins) so the
+  // result never depends on `Object.entries(totals)` insertion order. Non-integer (half-strike)
+  // keys preserve true insertion order in JS, and `strike_totals` is built with two different
+  // insertion orders in this codebase (polygon-options-gex.ts's primary chain path inserts
+  // strike-descending; its UW-spot-exposures fallback path inserts in raw upstream row order) —
+  // without this secondary key, two sessions with the identical tied book could rank oppositely
+  // purely because of which upstream fed the heatmap. Same convention as kingFromStrikeTotals /
+  // wallsFromStrikeTotals in gex-cross-validation-core.ts.
+  rows.sort((a, b) => (b.abs !== a.abs ? b.abs - a.abs : a.strike - b.strike));
   return rows.slice(0, limit).map((r) => r.strike);
 }
