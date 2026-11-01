@@ -126,4 +126,24 @@ describe("cron-schedule-window", () => {
     assert.equal(last?.toISOString(), "2026-08-07T21:30:00.000Z");
     assert.equal(next?.toISOString(), "2026-08-10T20:30:00.000Z");
   });
+
+  // BUG: a bare "N/M" minute/hour field (no leading range or "*") is valid cron/Quartz step
+  // syntax meaning "start at N, repeat every M" — e.g. "5/15" = :05, :20, :35, :50. parseIntList's
+  // `stepOnly` branch matched the field but discarded the start value (group 1) and stepped from
+  // the field's bare `min` instead, so "5/15" silently produced the same fires as "0/15" (:00,
+  // :15, :30, :45) — a parse that looks successful (no throw, a non-empty result) but is simply
+  // wrong whenever the start value isn't already equal to the field's own minimum. Every
+  // registered `schedule_cron_utc` in cron-registry.ts happens to use "*/N" or "A-B/N" (whose own
+  // branches already carry the start correctly) or a start of exactly 0, which is why this never
+  // surfaced live — but the bare "N/M" form is still real cron syntax this same function already
+  // claims to parse (the sibling `starStep`/`stepMatch` branches), so it must not silently return
+  // the wrong set the moment a schedule actually uses a non-zero start.
+  it("bare N/M step field honors the start value, not the field's bare minimum", () => {
+    const cron = "5/15 10 * * *";
+    const now = new Date("2026-07-30T10:10:00.000Z");
+    const last = lastExpectedCronFireUtc(cron, now);
+    const next = nextExpectedCronFireUtc(cron, now);
+    assert.equal(last?.toISOString(), "2026-07-30T10:05:00.000Z");
+    assert.equal(next?.toISOString(), "2026-07-30T10:20:00.000Z");
+  });
 });

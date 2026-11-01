@@ -45,8 +45,12 @@ function parseIntList(field: string, min: number, max: number): number[] {
     }
     const stepOnly = part.match(/^(\d+)\/(\d+)$/);
     if (stepOnly) {
+      // "N/M" (no range, no leading "*") means "start at N, repeat every M" — same convention
+      // the `starStep` ("*/M", start = field min) and `stepMatch` ("A-B/M", start = A) branches
+      // right above already honor. The start value is group 1, not the field's bare `min`.
+      const start = Number(stepOnly[1]);
       const step = Number(stepOnly[2]);
-      for (let v = min; v <= max; v += step) out.add(v);
+      for (let v = start; v <= max; v += step) out.add(v);
       continue;
     }
     out.add(Number(part));
