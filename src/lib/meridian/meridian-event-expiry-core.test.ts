@@ -162,6 +162,54 @@ test("scope: with spot supplied, no fallback to the wrong side — null beats an
   assert.equal(s.putWall, 95);
 });
 
+/*
+ * ── Exact-tie determinism ─────────────────────────────────────────────────────────
+ *
+ * Same defect class, same fix, as `kingFromStrikeTotals` (gex-cross-validation-core.ts):
+ * `scopeStructureToExpiry` ran its call/put-wall argmax/argmin scan straight over
+ * `Object.entries(input.cells)` with no preceding sort. Integer-like strike keys ("90")
+ * always enumerate ascending per the JS spec regardless of insertion order, but DECIMAL
+ * strike keys ("92.5" — the normal case for a 0.5-wide chain) enumerate in INSERTION
+ * order instead. Two payloads describing the exact same book, differing only in which
+ * strike's column was inserted into `cells` first, could therefore report a DIFFERENT
+ * call/put wall for an exact-tie book purely from incidental key order.
+ */
+
+test("scope: exact-tie call wall is deterministic regardless of cells key insertion order (decimal strikes)", () => {
+  const tieExpiries = ["2026-08-21"];
+  // Two decimal strikes tie EXACTLY on positive gamma — same book, built in two different
+  // key insertion orders (a real provider payload can't guarantee which strike's column
+  // lands in `cells` first).
+  const ascendingInsertion = {
+    "92.5": { "2026-08-21": 5_000_000 },
+    "97.5": { "2026-08-21": 5_000_000 },
+  };
+  const descendingInsertion = {
+    "97.5": { "2026-08-21": 5_000_000 },
+    "92.5": { "2026-08-21": 5_000_000 },
+  };
+  const a = scopeStructureToExpiry({ cells: ascendingInsertion, expiries: tieExpiries, eventYmd: "2026-08-18" });
+  const b = scopeStructureToExpiry({ cells: descendingInsertion, expiries: tieExpiries, eventYmd: "2026-08-18" });
+  assert.equal(a.callWall, 92.5, "an exact tie must deterministically keep the LOWER strike");
+  assert.equal(b.callWall, 92.5, "same book, different key insertion order — must agree with `a`, not flip to 97.5");
+});
+
+test("scope: exact-tie put wall is deterministic regardless of cells key insertion order (decimal strikes)", () => {
+  const tieExpiries = ["2026-08-21"];
+  const ascendingInsertion = {
+    "92.5": { "2026-08-21": -5_000_000 },
+    "97.5": { "2026-08-21": -5_000_000 },
+  };
+  const descendingInsertion = {
+    "97.5": { "2026-08-21": -5_000_000 },
+    "92.5": { "2026-08-21": -5_000_000 },
+  };
+  const a = scopeStructureToExpiry({ cells: ascendingInsertion, expiries: tieExpiries, eventYmd: "2026-08-18" });
+  const b = scopeStructureToExpiry({ cells: descendingInsertion, expiries: tieExpiries, eventYmd: "2026-08-18" });
+  assert.equal(a.putWall, 92.5, "an exact tie must deterministically keep the LOWER strike");
+  assert.equal(b.putWall, 92.5, "same book, different key insertion order — must agree with `a`, not flip to 97.5");
+});
+
 test("describeEventExpiry: says whether the chain settles on the print or after it", () => {
   const same = scopeStructureToExpiry({ cells, expiries: ["2026-08-18"], eventYmd: "2026-08-18" });
   assert.match(describeEventExpiry(same)!, /day of the print/);

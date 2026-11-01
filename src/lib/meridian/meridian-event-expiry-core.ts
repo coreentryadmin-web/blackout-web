@@ -133,7 +133,20 @@ export function scopeStructureToExpiry(input: {
   let best: { strike: number; v: number } | null = null;
   let worst: { strike: number; v: number } | null = null;
 
-  for (const [strikeKey, byExpiry] of Object.entries(input.cells ?? {})) {
+  // Entries are sorted by strike ASCENDING before the argmax/argmin scan (not iterated in
+  // `Object.entries` order) so an exact tie between two strikes deterministically keeps the
+  // LOWER one, always, on every call — same fix, same reasoning, as `kingFromStrikeTotals`
+  // (gex-cross-validation-core.ts). Without this, JS's key-enumeration order for a
+  // `Record<string, number>` is inconsistent by strike shape: integer-index-like string keys
+  // ("450") enumerate in ascending numeric order per spec regardless of insertion order, but
+  // decimal keys ("450.5" — the normal case for a 0.5-wide chain) enumerate in INSERTION
+  // order instead, which depends on how the caller happened to build the `cells` object. A
+  // near-tied call/put wall could then flicker between two strikes across rebuilds purely
+  // from incidental key-insertion order, not from gamma actually moving.
+  const sortedEntries = Object.entries(input.cells ?? {}).sort(
+    ([a], [b]) => Number(a) - Number(b)
+  );
+  for (const [strikeKey, byExpiry] of sortedEntries) {
     const v = num(byExpiry?.[expiry]);
     if (v == null) continue;
     const strike = num(strikeKey);
