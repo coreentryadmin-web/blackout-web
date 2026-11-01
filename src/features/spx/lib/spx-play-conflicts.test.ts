@@ -48,6 +48,35 @@ describe("computeWeightedConflicts", () => {
     assert.equal(weighted_conflicts, 2);
   });
 
+  it("still counts a nearby opposing GEX wall when the mutually-exclusive nearer wall was scored", () => {
+    // Root cause (live-reachable): computeSpxConfluence's mutual-exclusivity fix (ISSUE-01)
+    // scores ONLY the nearer of two in-range GEX walls when price sits between a support wall
+    // and a resistance wall both within 12pts — the farther wall is dropped entirely, never
+    // pushed into `factors`. Here price (7400) sits 4pts above a support wall (7396, nearer —
+    // the one computeSpxConfluence would score, +18, agreeing with a long) and 10pts below a
+    // resistance wall (7410, farther — dropped, never scored, but genuinely opposing a long).
+    // The guard below used to suppress the +2 conflict bonus whenever ANY GEX-labeled factor
+    // was present in `factors` — including the unrelated AGREEING "GEX support" factor — so the
+    // real, unscored resistance-wall conflict was silently dropped from weighted_conflicts,
+    // letting a setup with a genuine nearby opposing wall pass gates as if it had none.
+    const desk: SpxDeskPayload = {
+      ...baseDesk(),
+      gex_walls: [
+        { kind: "support", strike: 7396, gex: 1e9, distance: 4 },
+        { kind: "resistance", strike: 7410, gex: 1e9, distance: 10 },
+      ],
+      tide_bias: "neutral",
+      news_headlines: [],
+      vix: 20,
+    } as SpxDeskPayload;
+    const factors: SpxSignalFactor[] = [
+      { label: "GEX support", weight: 18, detail: "At 0DTE support node 7396" },
+      { label: "0DTE flow", weight: 14, detail: "Call premium leading 0DTE tape" },
+    ];
+    const { weighted_conflicts } = computeWeightedConflicts(desk, 32, factors);
+    assert.equal(weighted_conflicts, 2);
+  });
+
   it("does not treat a null gamma_flip's stale sticky gamma_regime as a live GEX conflict", () => {
     // Live-observed shape (2026-10-17): gamma_flip resolves honestly null for the cycle, but
     // gamma_regime is still carrying a prior cycle's sticky "amplification" label (spx-desk.ts

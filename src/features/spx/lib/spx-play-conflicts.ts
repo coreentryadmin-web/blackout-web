@@ -108,7 +108,21 @@ export function computeWeightedConflicts(
   if (tideOpposed(desk, direction) && !factors.some((f) => f.label === "Market tide")) {
     weighted += 2;
   }
-  if (gexOpposed(desk, direction) && !factors.some((f) => f.label.includes("GEX") || f.label.includes("γ"))) {
+  // BUG FIX (2026-11-01, SPX Slayer audit): this guard used to suppress the +2 bonus whenever
+  // ANY GEX/γ-labeled factor existed in `factors`, regardless of which SIDE it agreed with.
+  // computeSpxConfluence's mutual-exclusivity fix (ISSUE-01, spx-signals.ts) scores ONLY the
+  // nearer of two in-range GEX walls when price sits between a support wall and a resistance
+  // wall both within 12pts — the farther, genuinely-opposing wall is dropped entirely and never
+  // reaches `factors`. So "GEX support" (agreeing with a long) could be the only GEX factor
+  // present while a real, nearby, unscored resistance wall (gexOpposed()'s wall-proximity check)
+  // opposed that same long — and the old broad guard read the agreeing factor's mere presence as
+  // "already counted", silently dropping the real conflict from weighted_conflicts. The guard
+  // must check whether an EXISTING factor actually OPPOSES `direction` (factorOpposes, already
+  // used by the main loop above) — not merely whether a same-family factor exists at all.
+  const gexAlreadyScored = factors.some(
+    (f) => (f.label.includes("GEX") || f.label.includes("γ")) && factorOpposes(direction, f)
+  );
+  if (gexOpposed(desk, direction) && !gexAlreadyScored) {
     weighted += 2;
   }
   if (vixExtremeAgainst(desk, direction) && !vixAlreadyScored(factors)) {
