@@ -18,6 +18,7 @@ import {
   deskPath,
   loadCompareSeedsBounded,
   pruneStaleTickerEntries,
+  pruneStaleTickerMapEntries,
   type VectorComparePreset,
 } from "@/features/vector/lib/vector-compare";
 import type { VectorClientSeed } from "@/features/vector/lib/vector-client-seed";
@@ -112,13 +113,29 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     (ticker: string, timeline: number[]) => {
       timelinesRef.current.set(ticker, timeline);
       const active = new Set(seeds.map((s) => s.ticker));
-      for (const key of timelinesRef.current.keys()) {
-        if (!active.has(key)) timelinesRef.current.delete(key);
-      }
+      timelinesRef.current = pruneStaleTickerMapEntries(timelinesRef.current, active);
       setUnionTimeline(mergeReplayTimelines([...timelinesRef.current.values()]));
     },
     [seeds]
   );
+
+  // Proactively prune `timelinesRef` the moment a ticker leaves the compare set (removeTicker /
+  // a preset swap), mirroring the metaByTicker/playByTicker cleanup below. Without this,
+  // `handleReplayTimeline` above only pruned a departed ticker's entry as a SIDE EFFECT of some
+  // OTHER pane's NEXT bar arriving — during live RTH with other panes still ticking that
+  // self-heals within seconds, but off-hours, with replay data static, or if the removed pane was
+  // the only one still producing updates, the stale timeline could sit in `timelinesRef.current`
+  // indefinitely, inflating `unionTimeline` (and the linked-replay scrubber's range) with steps
+  // belonging to a pane that's no longer on screen. See `pruneStaleTickerMapEntries`'s own doc
+  // comment for the full account.
+  useEffect(() => {
+    const active = new Set(seeds.map((s) => s.ticker));
+    const pruned = pruneStaleTickerMapEntries(timelinesRef.current, active);
+    if (pruned !== timelinesRef.current) {
+      timelinesRef.current = pruned;
+      setUnionTimeline(mergeReplayTimelines([...pruned.values()]));
+    }
+  }, [seeds]);
 
   const linkedReplayUi = useMemo((): VectorCompareLinkedReplayProps | null => {
     if (!canLinkReplay) return null;
