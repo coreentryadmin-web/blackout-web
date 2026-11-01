@@ -3,11 +3,28 @@ import assert from "node:assert/strict";
 import {
   buildMeridianTimeline,
   daysUntilEt,
+  findEarningsTimelineItemId,
   parseMeridianEventId,
   priorOpexDates,
   thirdFridayYmd,
   upcomingOpexDates,
 } from "./meridian-timeline";
+import type { MeridianTimelineItem } from "./meridian-types";
+
+function fakeItem(partial: Partial<MeridianTimelineItem>): MeridianTimelineItem {
+  return {
+    id: partial.id ?? "earnings:NVDA:2026-08-14",
+    kind: partial.kind ?? "earnings",
+    title: partial.title ?? "NVDA earnings",
+    subtitle: partial.subtitle ?? null,
+    date: partial.date ?? "2026-08-14",
+    time: partial.time ?? null,
+    impact: partial.impact ?? "high",
+    days_until: partial.days_until ?? 1,
+    ticker: partial.ticker ?? "NVDA",
+    ...partial,
+  };
+}
 
 test("daysUntilEt: same day is 0, tomorrow is 1", () => {
   assert.equal(daysUntilEt("2026-08-16", "2026-08-16"), 0);
@@ -113,4 +130,36 @@ test("parseMeridianEventId still accepts every well-formed id", () => {
   assert.equal(parseMeridianEventId("macro:2026-08-12:CPI:CORE")?.slug, "CPI:CORE");
   assert.equal(parseMeridianEventId("opex:2026-08-21")?.date, "2026-08-21");
   assert.equal(parseMeridianEventId("fda:MRNA:2026-08-15")?.date, "2026-08-15");
+});
+
+test("findEarningsTimelineItemId: resolves the real row id, case-insensitively", () => {
+  const items = [
+    fakeItem({ id: "earnings:NVDA:2026-08-14", ticker: "NVDA" }),
+    fakeItem({ id: "macro:2026-08-12:cpi", kind: "macro", ticker: null }),
+  ];
+  assert.equal(findEarningsTimelineItemId(items, "nvda"), "earnings:NVDA:2026-08-14");
+  assert.equal(findEarningsTimelineItemId(items, "NVDA"), "earnings:NVDA:2026-08-14");
+});
+
+test("findEarningsTimelineItemId: null when the ticker has no timeline row", () => {
+  // The exact bug this guards against: `earnings_week` / `estimate_revision_timeline` /
+  // `recent_earnings_revisions` are built from the RAW Benzinga window (no options-chain
+  // filter), while the timeline rows this id must resolve against are optionable-filtered — so
+  // a ticker named by one of those panels can legally be absent from `allItems`. Hand-building
+  // `earnings:${ticker}:${date}` and navigating to it unconditionally used to select an id with
+  // no matching row, leaving the detail pane stuck on "Select a catalyst" — a dead click that
+  // reads as a broken button. The lookup must return null so the caller can no-op instead.
+  const items = [fakeItem({ id: "earnings:NVDA:2026-08-14", ticker: "NVDA" })];
+  assert.equal(findEarningsTimelineItemId(items, "ZZZZ"), null);
+});
+
+test("findEarningsTimelineItemId: never matches a non-earnings row by ticker", () => {
+  const items = [fakeItem({ id: "fda:NVDA:2026-08-14", kind: "fda", ticker: "NVDA" })];
+  assert.equal(findEarningsTimelineItemId(items, "NVDA"), null);
+});
+
+test("findEarningsTimelineItemId: blank/whitespace ticker never matches", () => {
+  const items = [fakeItem({ id: "earnings:NVDA:2026-08-14", ticker: "NVDA" })];
+  assert.equal(findEarningsTimelineItemId(items, ""), null);
+  assert.equal(findEarningsTimelineItemId(items, "   "), null);
 });

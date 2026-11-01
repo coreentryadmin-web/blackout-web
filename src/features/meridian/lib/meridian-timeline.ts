@@ -329,3 +329,30 @@ export function parseMeridianEventId(id: string): {
   }
   return null;
 }
+
+/**
+ * Find the timeline row id for an earnings ticker, or `null` when the window has none.
+ *
+ * THE SINGLE LOOKUP every "click a ticker, open its earnings event" control must share, rather
+ * than each caller re-deriving `earnings:${ticker}:${date}` by hand. `allItems` here is already
+ * the OPTIONABLE-FILTERED set `loadMeridianEarningsTimeline` serves — prints on names with no
+ * listed options chain never become a timeline row at all (see that loader's own comment) — but
+ * three OTHER server payloads (`earnings_week`, `estimate_revision_timeline`,
+ * `recent_earnings_revisions`) are built from the raw, unfiltered Benzinga window and can legally
+ * name a ticker that filter dropped. A caller that hand-builds the id anyway (`earnings:${ticker}:
+ * ${date}`) and navigates unconditionally sends the reader to a selected id with no matching row —
+ * the detail pane renders "Select a catalyst", a dead click that looks like a broken button, not
+ * an absence. Returning `null` here lets every caller no-op instead, the same contract
+ * `MeridianDesk`'s own `selectEarningsTicker` already documents for the analytics-panel clicks.
+ */
+export function findEarningsTimelineItemId(
+  items: readonly MeridianTimelineItem[],
+  ticker: string
+): string | null {
+  const target = ticker.trim().toUpperCase();
+  if (!target) return null;
+  const match = items.find(
+    (it) => it.kind === "earnings" && (it.ticker ?? "").toUpperCase() === target
+  );
+  return match?.id ?? null;
+}
