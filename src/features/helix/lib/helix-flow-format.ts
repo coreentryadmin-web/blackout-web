@@ -237,8 +237,23 @@ export function fmtFill(n: number | null | undefined): string {
   return n.toFixed(2);
 }
 
+/**
+ * BUG FIX (round 296): `open_interest` is the count of contracts outstanding on a strike, and
+ * `open_interest === 0` is a genuine, maximally-informative reading — "every lot on this strike is
+ * newly opened" — not a missing one. `helix-position-intent.ts`'s `positionIntent` already treats
+ * it that way: its absence check is `open_interest == null || !Number.isFinite(oi) || oi < 0`,
+ * `oi === 0` falls straight through to `{ intent: "opening", basis: "no_open_interest" }`, and that
+ * verdict drives a real "NEW" badge (`openingBadgeLabel`) with a tooltip that states the fact
+ * outright: "traded on a strike with no open interest — every lot is newly opened" — rendered in
+ * the SAME tape row (`HelixFlowTable.tsx` builds `signals` and the `oi` cell from the identical
+ * `flow` object). This formatter alone folded 0 back into `n <= 0`, so that row's OI cell rendered
+ * "—" (the no-data glyph) one cell away from a badge whose tooltip explicitly asserts OI is 0 — the
+ * same direct contradiction #7248 fixed for `fmtAskPct`/`askPctTone`, just between a cell and a
+ * badge instead of a cell's text and its own color. Guard only against values the field cannot
+ * legitimately take (negative), never against 0 itself.
+ */
 export function fmtOi(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n) || n <= 0) return "—";
+  if (n == null || !Number.isFinite(n) || n < 0) return "—";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(Math.round(n));
