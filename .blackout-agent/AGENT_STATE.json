@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T02:41:54.097Z",
+  "updated_at": "2026-11-01T03:25:26.318Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "878cd5f8953e7935748ff1cca813ff2a885391ef",
+    "last_main_sha": "a0c1fd9501a3f34df05ff4a209430012a878bb89",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T01:27:35.856Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-25T01:27:40.781Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-25T02:10:27.589Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-25T02:10:39.466Z",
       "type": "context_sync",
@@ -1271,28 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T03:25:17.312Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T03:25:22.011Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T03:25:26.318Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 7127,
-      "title": "fix(x-feed-policy): scan every line of a tweet for @mentions, not just line 1",
-      "branch": "fix/x-feed-policy-multiline-mention",
+      "number": 7135,
+      "title": "docs: fold round-223 blast-radius into background-warm-cron finding",
+      "branch": "docs/round224-findings-blast-radius",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T02:41:14Z"
+      "updated_at": "2026-11-01T03:22:56Z"
     },
     {
-      "number": 7126,
-      "title": "fix(x-api): followUser no longer maps bare 403 to already_following",
-      "branch": "fix/x-follow-403-already-following",
+      "number": 7134,
+      "title": "fix: release vector-dark-pool-warm overlap lock on success path",
+      "branch": "fix/vector-dark-pool-warm-overlap-lock-release",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T02:33:27Z"
+      "updated_at": "2026-11-01T03:21:08Z"
     },
     {
       "number": 5547,
