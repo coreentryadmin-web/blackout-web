@@ -167,13 +167,19 @@ function factorGloss(label: string): string {
   return map[label] ? ` ${map[label]}` : "";
 }
 
+// BUG FIX (2026-11-01): same root cause as spx-signals.ts's computeSpxConfluence TICK/TRIN/ADD
+// factors (see that file's BUG FIX comment) — `desk.tick`/`trin` can be a breadth-derived proxy
+// substituted for a missing real Polygon I:TICK/I:TRIN print (`desk.internals_estimated`), and
+// this member-facing "Live Desk AI brief" INTERNALS line cited them as plain "TICK +176"/
+// "TRIN 0.50" with no disclosure — the same truth-mandate gap, in the AI-commentary surface
+// instead of the scored factors.
 function internalsLine(desk: SpxDeskPayload): string | null {
   const parts: string[] = [];
   if (desk.tick != null && Number.isFinite(desk.tick)) {
-    parts.push(`TICK ${desk.tick > 0 ? "+" : ""}${fmt(desk.tick, 0)}`);
+    parts.push(`TICK ${desk.tick > 0 ? "+" : ""}${fmt(desk.tick, 0)}${desk.internals_estimated?.tick ? " est." : ""}`);
   }
   if (desk.trin != null && Number.isFinite(desk.trin)) {
-    parts.push(`TRIN ${fmt(desk.trin, 2)}`);
+    parts.push(`TRIN ${fmt(desk.trin, 2)}${desk.internals_estimated?.trin ? " est." : ""}`);
   }
   if (desk.vix != null && Number.isFinite(desk.vix)) {
     parts.push(`VIX ${n(desk.vix, 1)}`);

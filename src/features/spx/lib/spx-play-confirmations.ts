@@ -276,6 +276,14 @@ export function evaluatePlayConfirmations(
   // TICK thresholds: ±400 is a meaningful signal threshold — NYSE TICK routinely
   // fluctuates ±300 on normal days, so ±800 was nearly always passing and added
   // no real filter. ±400 blocks entries when breadth is genuinely opposed.
+  //
+  // BUG FIX (2026-11-01): same root cause as spx-signals.ts's computeSpxConfluence TICK/TRIN/ADD
+  // factors (see that file's BUG FIX comment on the sibling fix) — `desk.tick` can be a
+  // breadth-derived proxy substituted for a missing real Polygon I:TICK print
+  // (`desk.internals_estimated.tick`), and this "Internals" confirmation check rendered it as
+  // "TICK +176" with no disclosure. Unlike the scored factors, this check IS member-rendered
+  // (SpxDeskTerminal.tsx/SpxTradeAlerts.tsx read `confirmations.checks[].detail` directly), so
+  // the same truth-mandate gap applies here too.
   const tickOk =
     desk.tick == null ||
     (direction === "long" ? desk.tick > -400 : desk.tick < 400);
@@ -283,7 +291,10 @@ export function evaluatePlayConfirmations(
     label: "Internals",
     required: false,
     passed: tickOk,
-    detail: desk.tick != null ? `TICK ${desk.tick > 0 ? "+" : ""}${desk.tick.toFixed(0)}` : "TICK n/a",
+    detail:
+      desk.tick != null
+        ? `TICK ${desk.tick > 0 ? "+" : ""}${desk.tick.toFixed(0)}${desk.internals_estimated?.tick ? " — estimated, not live" : ""}`
+        : "TICK n/a",
   });
 
   const news = newsSentiment(desk.news_headlines ?? []);
