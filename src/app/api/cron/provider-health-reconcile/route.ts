@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const windowMin = Number(process.env.PROVIDER_HEALTH_WINDOW_MIN ?? "10");
-    const { rollups, issues } = await runProviderHealthReconcile(windowMin);
+    const { rollups, issues, effectiveWindowMinutes } = await runProviderHealthReconcile(windowMin);
 
     const incidentsEnabled = process.env.PROVIDER_HEALTH_INCIDENTS !== "0";
     if (incidentsEnabled) {
@@ -49,7 +49,13 @@ export async function GET(req: NextRequest) {
 
     const payload = {
       ok: true,
-      window_min: windowMin,
+      // The CLAMPED value actually used for the query + issue text (see
+      // runProviderHealthReconcile's own doc comment on this field) — not the raw
+      // `windowMin` above, which is NaN whenever PROVIDER_HEALTH_WINDOW_MIN is unset to a
+      // non-numeric value, and would otherwise show as a bare "window_min": NaN in this
+      // cron's own logged/returned payload while every real window usage silently fell
+      // back to the 10-minute default.
+      window_min: effectiveWindowMinutes,
       providers_flagged: rollups.length,
       incidents: issues.length,
       incidents_synced: incidentsEnabled,

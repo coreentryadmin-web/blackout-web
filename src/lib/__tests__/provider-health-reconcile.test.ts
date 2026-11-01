@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { before, describe, it, mock } from "node:test";
 import {
   DEFAULT_PROVIDER_HEALTH_THRESHOLDS,
   buildProviderHealthIssues,
   clampProviderHealthWindowMinutes,
 } from "@/lib/provider-health-issues";
+import type { runProviderHealthReconcile as RunProviderHealthReconcile } from "@/lib/provider-health-reconcile";
 
 describe("buildProviderHealthIssues", () => {
   it("opens critical when failures exceed crit threshold", () => {
@@ -97,5 +98,50 @@ describe("clampProviderHealthWindowMinutes", () => {
     assert.equal(clampProviderHealthWindowMinutes(NaN), 10);
     assert.equal(clampProviderHealthWindowMinutes(Infinity), 10);
     assert.equal(clampProviderHealthWindowMinutes(-Infinity), 10);
+  });
+});
+
+describe("runProviderHealthReconcile", () => {
+  // provider-health-reconcile.ts has `import "server-only"` at its top, which throws under plain
+  // Node outside a Next.js server bundle — same "MUST be intercepted before the real file's
+  // static imports ever touch it" pattern already used throughout this repo's route tests (e.g.
+  // src/app/api/market/gex-heatmap/route.test.ts). dbConfigured() returns false with no
+  // DATABASE_URL set in this test env, so runProviderHealthReconcile never touches `pg` either.
+  let runProviderHealthReconcile: typeof RunProviderHealthReconcile;
+  before(async () => {
+    mock.module("server-only", { namedExports: {} });
+    // Forces dbConfigured() to false so fetchProviderTelemetryRollups short-circuits to `[]`
+    // instead of attempting a real connection (and eating a ~30s timeout against whatever
+    // DATABASE_URL happens to be set to in this sandbox) — same pattern already used by
+    // spx-play-engine.test.ts/discovery-quality.test.ts for the identical reason.
+    process.env.DATABASE_URL = "";
+    delete process.env.DATABASE_PUBLIC_URL;
+    // Relative path, not the "@/" tsconfig alias — mock.module() resolves bare/aliased
+    // specifiers relative to THIS file once active, breaking the alias for any import() that
+    // comes after it in the same run (see src/app/api/market/quote/route.test.ts for the same
+    // documented gotcha).
+    ({ runProviderHealthReconcile } = await import("../provider-health-reconcile"));
+  });
+
+  // Regression: the cron route (`app/api/cron/provider-health-reconcile/route.ts`) builds its
+  // argument via `Number(process.env.PROVIDER_HEALTH_WINDOW_MIN ?? "10")` and used to report
+  // THAT raw value back as `window_min` in its own cron_job_runs log / HTTP response — even
+  // though the query and issue text both already used the CLAMPED value internally. A
+  // misconfigured env var (non-numeric, e.g. "") makes the raw value NaN, so the route's own
+  // payload would show "window_min": NaN while every real window usage silently fell back to
+  // 10 minutes — the exact "member/admin sees a raw NaN" shape clampProviderHealthWindowMinutes's
+  // own NaN guard exists to prevent, just at a third exposure point that guard didn't reach.
+  // `effectiveWindowMinutes` closes that gap by handing the caller the SAME clamped number it
+  // already computes internally, instead of forcing the caller to re-derive or re-clamp it.
+  it("returns the clamped window it actually used, not the raw possibly non-finite input", async () => {
+    const nanResult = await runProviderHealthReconcile(Number("not-a-number"));
+    assert.equal(nanResult.effectiveWindowMinutes, 10, "NaN input must clamp to the 10-minute default");
+    assert.ok(Number.isFinite(nanResult.effectiveWindowMinutes), "must never surface a raw NaN to the caller");
+
+    const outOfRangeResult = await runProviderHealthReconcile(120);
+    assert.equal(outOfRangeResult.effectiveWindowMinutes, 60, "an out-of-range input must clamp to the [1,60] ceiling");
+
+    const normalResult = await runProviderHealthReconcile(45);
+    assert.equal(normalResult.effectiveWindowMinutes, 45, "an in-range input must pass through unchanged");
   });
 });
