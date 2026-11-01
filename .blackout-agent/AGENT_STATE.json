@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T00:29:37.254Z",
+  "updated_at": "2026-11-01T00:50:23.154Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,13 +65,31 @@
     }
   },
   "deploy": {
-    "last_main_sha": "42dbe9e04c68bb7c2070a861509ae3547428ff07",
+    "last_main_sha": "6b9877df39d1014cd87ee57c1617fa319089c11f",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
+    {
+      "at": "2026-10-24T12:07:53.096Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-24T12:07:56.510Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-24T12:56:40.382Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
     {
       "at": "2026-10-24T12:56:48.179Z",
       "type": "context_sync",
@@ -1237,72 +1255,64 @@
       "open_pr_count": 5
     },
     {
-      "at": "2026-11-01T00:23:17.620Z",
+      "at": "2026-11-01T00:50:11.237Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 7
+      "open_pr_count": 8
     },
     {
-      "at": "2026-11-01T00:23:24.088Z",
+      "at": "2026-11-01T00:50:17.269Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 7
+      "open_pr_count": 8
     },
     {
-      "at": "2026-11-01T00:23:29.785Z",
+      "at": "2026-11-01T00:50:23.154Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-11-01T00:29:27.238Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-11-01T00:29:32.415Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-11-01T00:29:37.254Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
+      "open_pr_count": 8
     }
   ],
   "open_prs": [
     {
-      "number": 7109,
-      "title": "fix(helix): parseContractMeta preserves genuine zero open_interest/day_volume",
-      "branch": "fix/helix-contract-meta-genuine-zero",
+      "number": 7113,
+      "title": "chore: sync agent-state heartbeat files",
+      "branch": "chore/heartbeat-sync-202611010042",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T00:42:41Z"
+    },
+    {
+      "number": 7112,
+      "title": "docs(findings): fold 81 staged findings into FINDINGS.md (batch-121)",
+      "branch": "docs/findings-fold-batch-121",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T00:27:02Z"
+      "updated_at": "2026-11-01T00:41:01Z"
     },
     {
-      "number": 7108,
-      "title": "fix(vector): normalize ticker before oracle-rail check in fetchVectorEmbedFastSeed",
-      "branch": "fix/vector-embed-fast-seed-oracle-ticker-case",
+      "number": 7111,
+      "title": "fix(gex): scoped matrix shift no longer hides a measured zero as absence",
+      "branch": "fix/gex-shift-scoped-zero-delta",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T00:22:52Z"
+      "updated_at": "2026-11-01T00:40:33Z"
     },
     {
-      "number": 7107,
-      "title": "fix(0dte): thesis-health pillarStatus no longer mislabels an unchanged pillar as faded/lost",
-      "branch": "fix/zerodte-thesis-pillarstatus-unchanged",
+      "number": 7110,
+      "title": "fix(swing): CLOSED 'target' label no longer asserts a mechanical ladder exit it can't confirm",
+      "branch": "fix/swing-closed-target-mechanism-not-confirmed",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T00:16:53Z"
+      "updated_at": "2026-11-01T00:36:43Z"
     },
     {
       "number": 5547,
