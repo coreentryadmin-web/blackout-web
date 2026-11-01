@@ -150,8 +150,52 @@ test("per-play rows: rounding at the data layer + ET rendering + context passthr
   const mu = rec.plays.find((p) => p.ticker === "MU");
   assert.ok(mu);
   assert.deepEqual(mu.entry_context, { score: 54, vix_open: 17.2, spy_bias: "down" });
+  // MU's top-level `score` is the ratcheted peak (61); `committed_score` must disclose
+  // the real commit-time number (54) that `by_score_band` actually banded it by —
+  // see the dedicated OKLO-shaped test below for the full live-bug reproduction.
+  assert.equal(mu.score, 61);
+  assert.equal(mu.committed_score, 54);
   const amd = rec.plays.find((p) => p.ticker === "AMD");
   assert.equal(amd?.flagged_et, "09:50 ET");
+});
+
+// Live bug (found 2026-11-01, docs/audit/findings-staging/2026-11-01-zerodte-record-committed-score-disclosure.md):
+// GET /api/market/zerodte/record served a top-level `score` (always score_max, the
+// ratcheted peak) alongside a `by_score_band` aggregate that silently banded every row
+// by the DIFFERENT entry_context.score (via scoreForBanding) — with no field on the
+// wire reconciling the two. Live production shape: OKLO 2026-08-25 carried top-level
+// `score: 100` yet was counted in the response's own "score <55" bucket because its
+// real commit-time score was 50. 13/589 rows in a 90-day window crossed a band
+// boundary this way. This reproduces that exact shape against the real `toPlay`/
+// `buildZeroDteRecord` pipeline (not a reimplementation) and asserts the per-play row
+// now carries the disclosure that makes the two numbers reconcilable.
+test("toPlay: committed_score discloses the real commit-time score when it diverges from the ratcheted peak (OKLO 2026-08-25 live bug shape)", () => {
+  const rows = [
+    row({ ticker: "OKLO", session_date: "2026-08-25", score_max: 100, entry_context: { score: 50 } }),
+  ];
+  const rec = buildZeroDteRecord(rows, WINDOW);
+  const oklo = rec.plays.find((p) => p.ticker === "OKLO");
+  assert.ok(oklo);
+  // The exact disagreement a consumer previously had no way to detect.
+  assert.equal(oklo.score, 100);
+  assert.equal(oklo.committed_score, 50);
+  // And it is the committed_score (not the top-level score) that explains why this
+  // row lands in the API's own <55 aggregate bucket — no more silent disagreement.
+  assert.equal(scoreBand(oklo.committed_score as number), "score <55");
+  assert.equal(rec.by_score_band.find((b) => b.label === "score <55")?.n, 1);
+  assert.equal(rec.by_score_band.find((b) => b.label === "score 65+"), undefined);
+});
+
+test("toPlay: committed_score is OMITTED (never a fabricated/redundant duplicate) when there's nothing new to say", () => {
+  const noContext = row({ ticker: "NOCTX", entry_context: null });
+  const nonNumericScore = row({ ticker: "BADTYPE", entry_context: { score: "58" } });
+  const noRatchet = row({ ticker: "SAME", score_max: 70, entry_context: { score: 70 } });
+  const rec = buildZeroDteRecord([noContext, nonNumericScore, noRatchet], WINDOW);
+  for (const ticker of ["NOCTX", "BADTYPE", "SAME"]) {
+    const play = rec.plays.find((p) => p.ticker === ticker);
+    assert.ok(play, ticker);
+    assert.equal("committed_score" in play!, false, `${ticker} must omit committed_score`);
+  }
 });
 
 test("ungraded and ungradeable rows appear per-play but never in aggregates", () => {

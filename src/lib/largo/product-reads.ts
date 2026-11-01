@@ -342,14 +342,21 @@ const ZERODTE_RECORD_MAX_SAMPLE_PLAYS = 40;
  * new to say: no `entry_context`, a non-numeric/garbled `entry_context.score`, or a
  * commit score that happens to equal the peak (no ratchet occurred). That keeps
  * the field's presence itself meaningful — and keeps the payload cost on the ~44%
- * of rows where the number actually differs, not on every row. */
+ * of rows where the number actually differs, not on every row.
+ *
+ * `committed_score` itself is now computed ONCE, at the source, by `toPlay()` in
+ * record.ts (2026-11-01 — the same disclosure this comment describes, moved off this
+ * one Largo-only surface and onto `ZeroDteRecordPlay` itself, which the public
+ * `/api/market/zerodte/record` route and `PlayHistoryTable.tsx` also read). This
+ * function used to re-derive it independently from `entry_context.score` with the
+ * identical logic — a second, silently-driftable copy of the same computation that
+ * only this one tool benefited from. Nothing here recomputes it anymore; it is
+ * already present on `play` (or already honestly absent) by the time this runs. */
 export function leanZeroDtePlayForModel(
   play: ZeroDteRecordPlay
-): Omit<ZeroDteRecordPlay, "entry_context"> & { committed_score?: number } {
+): Omit<ZeroDteRecordPlay, "entry_context"> {
   const { entry_context, ...rest } = play;
-  const ctxScore = entry_context?.score;
-  const hasRealCommitScore = typeof ctxScore === "number" && Number.isFinite(ctxScore);
-  return hasRealCommitScore && ctxScore !== rest.score ? { ...rest, committed_score: ctxScore } : rest;
+  return rest;
 }
 
 /** Aggregate-only base is ~2.8k chars; each lean play is ~330. 40 is a reading

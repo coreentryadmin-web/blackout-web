@@ -51,8 +51,35 @@ export type ZeroDteRecordPlay = {
   flagged_at: string;
   flagged_et: string;
   /** Peak evidence score for the session (score_max) — the committed score, when the
-   *  row carries entry_context, lives in entry_context.score. */
+   *  row carries entry_context, lives in entry_context.score. NOTE: this is the field
+   *  every score-band gate (G-3) acted on at commit — it keeps ratcheting UP across scan
+   *  ticks AFTER commit, so a play's own `score` can read well above what actually cleared
+   *  the gate. See `committed_score` immediately below, which discloses exactly that gap
+   *  on this same row — do not read `score` alone as "what the play committed at". */
   score: number;
+  /** The REAL commit-time score (`entry_context.score`) — the exact number
+   *  `scoreForBanding()` uses for `by_score_band` below, and the one every score-band
+   *  gate (G-3) actually acted on. OMITTED (never emitted as an equal or fabricated
+   *  value) whenever there's nothing new to say: no `entry_context`, a non-numeric/
+   *  garbled `entry_context.score`, or a commit score that happens to equal `score`
+   *  (no ratchet occurred) — same additive-disclosure discipline as
+   *  `leanZeroDtePlayForModel`'s `committed_score` (product-reads.ts), which this
+   *  mirrors so the two "committed_score" fields on the UI/Largo surfaces and this raw
+   *  API route always mean the identical thing. Exists because `score` above is
+   *  `score_max` (the session-peak, ratcheted-after-commit evidence score) while this
+   *  response's OWN `by_score_band` aggregate buckets every row by the commit-time
+   *  score via `scoreForBanding` — so a consumer reading `plays[].score` alone saw one
+   *  number while the response's own aggregate silently classified that same row by a
+   *  different one, with nothing on the wire to reconcile them. Found live 2026-11-01:
+   *  OKLO 2026-08-25 carried `score: 100` yet was counted in `by_score_band`'s "score
+   *  <55" bucket via its real `entry_context.score` of 50 — 13/589 rows in a 90-day
+   *  window crossed a band boundary this way, all on 2026-08-25. The 2026-10-16 fix
+   *  (FINDINGS.md) added this exact disclosure to `PlayHistoryTable.tsx` and
+   *  `product-reads.ts`'s Largo lean payload but explicitly left this route (and
+   *  `record.ts` itself) untouched — this field closes that gap at the source, so
+   *  every consumer of `buildZeroDteRecord` (the public route, the UI, and the Largo
+   *  tool) gets it from one place instead of three independently-reimplemented ones. */
+  committed_score?: number;
   /** Dossier-scored Night Hawk letter when the row's origin has options-flow evidence to
    *  score (FLOW), else the PR-F merit tier as a real fallback (toPlay's own doc comment
    *  has the full mechanism) — never a bare null when SOME rank exists for the play. Null
@@ -826,6 +853,16 @@ function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
   // Computed once, reused for both `conviction`'s fallback and `tier` below — same
   // adapter, same pinned blob, one call.
   const tierAssignment = tierFromEntryContext(r.entry_context);
+  // Same additive-disclosure test as `leanZeroDtePlayForModel` (product-reads.ts) and
+  // `scoreForBanding` above: a real, finite entry_context.score that actually differs
+  // from the peak is "new information" worth a field; a non-numeric/missing context
+  // score or one that already equals the peak (no ratchet occurred) says nothing new,
+  // so `committed_score` stays omitted rather than emitted as a fabricated/redundant
+  // duplicate of `score`.
+  const ctxScore = r.entry_context?.score;
+  const hasRealCommitScore = typeof ctxScore === "number" && Number.isFinite(ctxScore);
+  const committedScore =
+    hasRealCommitScore && ctxScore !== r.score_max ? (ctxScore as number) : undefined;
   return {
     session_date: r.session_date,
     ticker: r.ticker,
@@ -833,6 +870,7 @@ function toPlay(r: ZeroDteSetupLogRow): ZeroDteRecordPlay {
     flagged_at: r.first_flagged_at,
     flagged_et: flaggedEt,
     score: r.score_max,
+    ...(committedScore !== undefined ? { committed_score: committedScore } : {}),
     // `r.conviction` is the dossier-scored Night Hawk letter (scoreCandidate/assignNighthawkTier
     // over flow/tech/pos/news/smart-money) — board.ts's enrichSetup(setup, dossier) stamps it
     // from `dossier.scored.conviction`. BREAKOUT/PIN-origin setups are discovered from a bare
