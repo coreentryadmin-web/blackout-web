@@ -15,6 +15,9 @@ import { __allowFetchHostForTest } from "../api-tracked-fetch";
 process.env.POLYGON_API_KEY = "test-polygon-key";
 __allowFetchHostForTest("127.0.0.1");
 
+/** Under full-suite CI load the polygon rate limiter can defer the second call in this file. */
+const CONNECT_WAIT_MS = process.env.CI ? 8000 : 2000;
+
 function listen(server: Server): Promise<string> {
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
@@ -75,7 +78,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECT_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -109,7 +112,7 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECT_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
