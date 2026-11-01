@@ -105,6 +105,85 @@ test("buildMeridianEarningsReport: YoY growth adds yoy pillar", () => {
   assert.ok(report.signals.some((s) => s.pillar === "yoy"));
 });
 
+/* ── "target" is not a direction ──────────────────────────────────────────────────────
+ *
+ * shapeAnalyst (meridian-catalyst-enrich.ts) assigns action:"target" ONLY as a fallback — a
+ * real raise ("Firm Raises Price Target to $150") matches its "upgrade" branch and never reaches
+ * "target"; a real lower matches "downgrade" and never reaches it either. So an
+ * action:"target" row is, by construction, a headline whose direction could not be determined
+ * (e.g. "Firm Sets $100 Price Target", "Firm Maintains $100 Price Target"). Before the fix,
+ * analystLean counted it the same as an "upgrade", turning a direction-less price-target mention
+ * into a bullish signal on the Street/analyst pillar — which carries weight into the composite
+ * score driving the report's `verdict`/`confidence`.
+ */
+
+test("buildMeridianEarningsReport: a direction-less 'target' action does not count as bullish", () => {
+  const report = buildMeridianEarningsReport({
+    ...baseInput,
+    flow_bias: "neutral",
+    dark_pool_available: false,
+    gamma_regime: null,
+    thermal_available: false,
+    spot: null,
+    king_strike: null,
+    call_wall: null,
+    put_wall: null,
+    beat_rate: null,
+    earnings_yoy: null,
+    financials: null,
+    analyst_revisions: [{ title: "Firm Sets $100 Price Target", action: "target" }],
+  });
+  const analyst = report.signals.find((s) => s.pillar === "analyst");
+  assert.ok(analyst, "analyst signal must always be present");
+  assert.equal(analyst!.lean, "neutral");
+  assert.equal(analyst!.score, 0);
+});
+
+test("buildMeridianEarningsReport: multiple direction-less 'target' actions still stay neutral, not bearish-by-default", () => {
+  const report = buildMeridianEarningsReport({
+    ...baseInput,
+    flow_bias: "neutral",
+    dark_pool_available: false,
+    gamma_regime: null,
+    thermal_available: false,
+    spot: null,
+    king_strike: null,
+    call_wall: null,
+    put_wall: null,
+    beat_rate: null,
+    earnings_yoy: null,
+    financials: null,
+    analyst_revisions: [
+      { title: "Firm A Sets $100 Price Target", action: "target" },
+      { title: "Firm B Maintains $95 Price Target", action: "target" },
+    ],
+  });
+  const analyst = report.signals.find((s) => s.pillar === "analyst");
+  assert.equal(analyst!.lean, "neutral");
+  assert.equal(analyst!.score, 0);
+});
+
+test("buildMeridianEarningsReport: a real upgrade still counts as bullish (regression guard)", () => {
+  const report = buildMeridianEarningsReport({
+    ...baseInput,
+    flow_bias: "neutral",
+    dark_pool_available: false,
+    gamma_regime: null,
+    thermal_available: false,
+    spot: null,
+    king_strike: null,
+    call_wall: null,
+    put_wall: null,
+    beat_rate: null,
+    earnings_yoy: null,
+    financials: null,
+    analyst_revisions: [{ title: "Firm Raises Price Target", action: "upgrade" }],
+  });
+  const analyst = report.signals.find((s) => s.pillar === "analyst");
+  assert.equal(analyst!.lean, "bullish");
+  assert.equal(analyst!.score, 1);
+});
+
 /* ── "imminent" is a distance, not a state ───────────────────────────────────────────── */
 
 /**
