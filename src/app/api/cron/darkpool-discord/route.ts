@@ -69,14 +69,21 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   const allowDup = req.nextUrl.searchParams.get("allow_dup") === "1";
   const bypassDedup = force && allowDup;
+  const now = new Date();
 
-  if (!force && rthOnly() && !isEtCashRth()) {
+  // `now` must exist before this gate (and the gate must carve out the EOD-recap window) so a
+  // tick landing at ~4:04-4:14 PM ET — already outside cash RTH — isn't skipped before the EOD
+  // recap section below ever runs. Without `&& !isDiscordEodRecapWindow(now)`, every tick in that
+  // window hit "Outside cash RTH" under the default DARKPOOL_DISCORD_RTH_ONLY=unset(true) config,
+  // so `isDiscordEodRecapWindow`/`buildDarkpoolEodRecapEmbed` were dead code in production despite
+  // being fully built, tested, and wired below — the dark-pool EOD recap could never fire. Mirrors
+  // the carve-out thermal-discord's route already has (`!isRth && !eodDue`).
+  if (!force && rthOnly() && !isEtCashRth(now) && !isDiscordEodRecapWindow(now)) {
     const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
     await logCronRun("darkpool-discord", started, payload);
     return NextResponse.json(payload);
   }
 
-  const now = new Date();
   const minute = Number(
     new Intl.DateTimeFormat("en-US", {
       timeZone: "America/New_York",
