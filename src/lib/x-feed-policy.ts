@@ -23,10 +23,22 @@
 
 /** Reject original timeline posts that @tag other users (spam pattern). */
 export function isTimelinePostAllowed(text: string): boolean {
-  const firstLine = (text.split("\n")[0] ?? text).trim();
+  const lines = text.split("\n");
+  const firstLine = (lines[0] ?? text).trim();
   if (/^@\w/.test(firstLine)) return false;
-  if (/(?:^|\s)@\w{2,}/.test(firstLine) && !firstLine.includes("@BlackOutTrade")) {
-    return false;
+  // Scan EVERY line, not just the first. The AI-written body (x-content-humanize's draft/enhance
+  // pass) is never guaranteed single-line — nothing in that pipeline strips an internal "\n" — and
+  // the trusted Whop footer (always its own last line, always self-tagging "@BlackOutTrade") is
+  // appended AFTER this check used to stop looking. A first-line-only scan let an @mention of
+  // another account hide on line 2+ of the body and reach the timeline uncaught, even though the
+  // policy above and the prompt both say "NEVER @tag other accounts." Checking every line still
+  // allows the footer's own self-tag (the `!line.includes("@BlackOutTrade")` guard below), so a
+  // normal desk post is unaffected.
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (/(?:^|\s)@\w{2,}/.test(line) && !line.includes("@BlackOutTrade")) {
+      return false;
+    }
   }
   return true;
 }
