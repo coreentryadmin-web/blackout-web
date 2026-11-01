@@ -4395,11 +4395,25 @@ export function VectorChart({
         ) {
           const move = Math.abs(curSpot - gexHeatmapSpotAtFetchRef.current) / gexHeatmapSpotAtFetchRef.current;
           if (move >= VECTOR_GEX_HEATMAP_FAST_MOVE_PCT) {
-            void fetch(`/api/market/vector/gex-heatmap?ticker=${encodeURIComponent(ticker)}&dte=${dteHorizonRef.current}` +
+            // STALE-HORIZON GUARD: mirrors fetchGexHeatmap's own
+            // `dteHorizonRef.current !== dteHorizon` check above (it bails both right after the
+            // fetch resolves AND again after the json body is parsed). This duplicate fetch — the
+            // same /api/market/vector/gex-heatmap call, fired on-demand from the live SSE tick
+            // instead of the poll interval — used to have NO such check: if the member switched the
+            // DTE horizon selector while this in-flight request was still resolving, the OLD
+            // horizon's grid landed AFTER the switch and silently overwrote the already-correct
+            // grid the horizon-change effect had just fetched, repainting the surface with the
+            // wrong horizon's walls. Unlike a ticker switch (safe today only because every render
+            // site remounts VectorChart via key={activeTicker}), a DTE-horizon switch does NOT
+            // remount — same component instance, same shared gexHeatmapGridRef — so this call site
+            // needed its own staleness check rather than inheriting one for free.
+            const horizonAtFetch = dteHorizonRef.current;
+            void fetch(`/api/market/vector/gex-heatmap?ticker=${encodeURIComponent(ticker)}&dte=${horizonAtFetch}` +
               `&session=${encodeURIComponent(sessionYmd)}&bucketSec=${heatmapBucketSecForChartTimeframe(timeframeRef.current)}&force=1`)
               .then(async (res) => {
-                if (!res.ok) return;
+                if (!res.ok || dteHorizonRef.current !== horizonAtFetch) return;
                 const grid = ((await res.json()) as { grid?: GexHeatmapGrid | null }).grid ?? null;
+                if (dteHorizonRef.current !== horizonAtFetch) return;
                 gexHeatmapGridRef.current = grid;
                 gexHeatmapSpotAtFetchRef.current = curSpot;
                 gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
