@@ -13,7 +13,9 @@ import {
   fmtCountdown,
   fmtSurprisePct,
   hasPrinted,
+  sortEarningsAnalyticsRows,
   type CalendarCell,
+  type EarningsTableSortKey,
   type PrintSession,
   type ScatterPoint,
   type EarningsAnalyticsRow,
@@ -381,8 +383,6 @@ export function MeridianBeatStreak({
 
 // ── 6. PRINT TABLE — the dense, sortable ledger ────────────────────────────────────────────────
 
-type SortKey = "date" | "importance" | "eps_surprise" | "rev_surprise" | "ticker";
-
 export function MeridianEarningsTable({
   rows,
   onSelectTicker,
@@ -390,42 +390,22 @@ export function MeridianEarningsTable({
   rows: readonly EarningsAnalyticsRow[];
   onSelectTicker?: (ticker: string) => void;
 }) {
-  const [sort, setSort] = useState<SortKey>("date");
+  const [sort, setSort] = useState<EarningsTableSortKey>("date");
   const [desc, setDesc] = useState(false);
   const [onlyMega, setOnlyMega] = useState(false);
   const [onlyPrinted, setOnlyPrinted] = useState(false);
 
   const view = useMemo(() => {
-    let list = [...rows];
+    let list = rows;
     if (onlyMega) list = list.filter((r) => (r.importance ?? 0) >= 4);
     if (onlyPrinted) list = list.filter(hasPrinted);
-    // Nulls always sort LAST regardless of direction — an unknown is not "the smallest value",
-    // and letting it float to the top of a desc sort buries the real leaders.
-    const cmp = (a: EarningsAnalyticsRow, b: EarningsAnalyticsRow): number => {
-      const num = (x: number | null | undefined) => (x != null && Number.isFinite(x) ? x : null);
-      switch (sort) {
-        case "ticker":
-          return a.ticker.localeCompare(b.ticker);
-        case "importance":
-          return (b.importance ?? 0) - (a.importance ?? 0);
-        case "eps_surprise":
-        case "rev_surprise": {
-          const av = num(sort === "eps_surprise" ? a.eps_surprise_pct : a.revenue_surprise_pct);
-          const bv = num(sort === "eps_surprise" ? b.eps_surprise_pct : b.revenue_surprise_pct);
-          if (av == null && bv == null) return 0;
-          if (av == null) return 1;
-          if (bv == null) return -1;
-          return bv - av;
-        }
-        default:
-          return a.date.localeCompare(b.date) || a.ticker.localeCompare(b.ticker);
-      }
-    };
-    list.sort((a, b) => (desc ? -cmp(a, b) : cmp(a, b)));
-    return list;
+    // Sort/null-ordering lives in meridian-earnings-analytics-core (sortEarningsAnalyticsRows)
+    // so it is unit-tested — see that function's doc for the "nulls always sort last, even under
+    // desc" bug it fixes.
+    return sortEarningsAnalyticsRows(list, sort, desc);
   }, [rows, sort, desc, onlyMega, onlyPrinted]);
 
-  const head = (key: SortKey, label: string, cls = "") => (
+  const head = (key: EarningsTableSortKey, label: string, cls = "") => (
     <th
       className={`mea-th ${cls}${sort === key ? " is-sorted" : ""}`}
       onClick={() => {
