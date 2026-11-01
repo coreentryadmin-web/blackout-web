@@ -22,6 +22,7 @@ import { thesisHealthUncalibrated } from "./thesis-health";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason } from "./entry-enterability";
 import { SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC } from "./calibration-cache";
+import { signedExcursionPct } from "./underlying-excursion";
 
 type VectorWithReadContext = VectorFullState & Partial<VectorAbsenceReport & VectorFreshnessBlock>;
 
@@ -631,6 +632,74 @@ export function archetypeTrackRecordIsStale(asOfIso: string | null | undefined, 
  * known. Same self-contradiction class play-brief.ts's own comment already documents for its Mark
  * line (2026-09-11, live repro SWING:ALAB) — this is a second, previously-unchecked instance of it.
  */
+/**
+ * BUG FIX (2026-11-01, Ask Largo x Night Hawk Swings standing mandate, live repro META
+ * SWING:META:69 / TSM COMMIT briefs). `play.underlyingExcursion` is computed upstream at RESOLVE
+ * time (play-brief-resolve.ts's `loadOpenTerminalPlay` -> live-plays.ts's
+ * `livePlayFromSwingPosition`) off a `spot` that traces to the periodically-refreshed
+ * swing-active-refresh/swing-discovery cron's persisted serving-snapshot cache
+ * (`readSwingServingSnapshot()`) — a DIFFERENT spot resolution than the fresh, per-request
+ * Vector/GEX spot the brief displays everywhere else (`envelope.levels[0]`/`structureLadder.spot`,
+ * play-brief.ts's `levelsFromContext`). Live repro: META's play-brief showed
+ * `envelope.levels[0]={label:'spot',price:614,source:'Vector'}` and `structureLadder.spot:614`,
+ * while "Underlying excursion since entry: +0.2% favorable / -2.4% adverse" was byte-identical to
+ * `GET /api/market/nighthawk/horizons`'s own `underlyingExcursion` for the same positionId (whose
+ * own `liveSpot` field confirms it was computed off spot 615.49) — a $1.49 gap within the same
+ * closed-market minute, so not real price movement.
+ *
+ * Shared by TWO call sites with the identical blast-radius shape — play-brief.ts's Management
+ * section ("Underlying excursion since entry") and play-brief-narrative-coaching.ts's
+ * `ivLeverageDivergenceCoaching` ("Option down/up more than the stock's own move would suggest"),
+ * both of which read `play.underlyingExcursion` raw before this fix. One shared implementation
+ * here (rather than two independent copies) so the two can never silently drift apart.
+ *
+ * Reconstructs the prior ratcheted price extremes (the real `row.underlying_mfe`/
+ * `row.underlying_mae` price columns aren't threaded onto `TerminalPlay` — only the already-pct-
+ * converted `underlyingExcursion` is) by reversing `signedExcursionPct`'s own
+ * `pct(px) = (px-entry)/entry*100`, which recovers the EXACT price that produced the existing
+ * (possibly stale) mfePct/maePct. Folding the fresh spot in on top via `signedExcursionPct` itself
+ * (`hi = max(priorMfePx, spot, entry)`) can only grow the ratchet, never shrink it — mathematically
+ * equivalent to the real ledger ratchet, not an approximation. Falls back to the existing
+ * (possibly stale) value when the entry price or a fresh spot isn't available — same "recompute
+ * when possible, else fall back silently" discipline the 2026-10-21 WATCH-bucket "Since flag" fix
+ * (play-brief-intel.ts's `watchForSection`) already established for this exact bug class.
+ */
+export function freshUnderlyingExcursion(
+  excursion: { mfePct: number; maePct: number } | null | undefined,
+  entryPx: number | null | undefined,
+  direction: "LONG" | "SHORT",
+  freshSpot: number | null | undefined,
+): { mfePct: number; maePct: number } | null {
+  if (!excursion) return null;
+  const { mfePct, maePct } = excursion;
+  if (
+    freshSpot == null ||
+    !Number.isFinite(freshSpot) ||
+    entryPx == null ||
+    !Number.isFinite(entryPx) ||
+    entryPx <= 0 ||
+    mfePct == null ||
+    maePct == null
+  ) {
+    return excursion;
+  }
+  const dirLc = direction === "SHORT" ? "short" : "long";
+  // Reverse pct(px) = (px - entry) / entry * 100, direction-aware (SHORT mirrors favorable/
+  // adverse vs LONG — see signedExcursionPct's own comment).
+  const priorHi = dirLc === "short" ? entryPx * (1 - maePct / 100) : entryPx * (1 + mfePct / 100);
+  const priorLo = dirLc === "short" ? entryPx * (1 - mfePct / 100) : entryPx * (1 + maePct / 100);
+  const fresh = signedExcursionPct({
+    direction: dirLc,
+    entryPx,
+    spot: freshSpot,
+    priorMfePx: priorHi,
+    priorMaePx: priorLo,
+  });
+  return fresh.mfePct != null && fresh.maePct != null
+    ? { mfePct: fresh.mfePct, maePct: fresh.maePct }
+    : excursion;
+}
+
 export function optionMarkGenuinelyUnknown(play: OptionMarkFreshnessSource): boolean {
   return play.markIsSync === true && playExpectsLiveOptionMark(play.status) && play.pnlPct == null;
 }
