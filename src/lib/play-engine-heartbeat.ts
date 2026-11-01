@@ -36,6 +36,10 @@ const processStartedAt = new Date().toISOString();
 // after startup so recordPlayEngineTick() picks up the persisted value before
 // incrementing rather than starting from 0.
 let initialized = false;
+// BUG FIX (round 330): see ensureInitialized()'s own comment below — this holds the
+// single in-flight hydration promise so concurrent callers all await the SAME
+// completion instead of racing past it.
+let initPromise: Promise<void> | null = null;
 
 type HeartbeatPayload<Source extends string> = {
   last_tick_at: string;
@@ -66,19 +70,46 @@ function applyHeartbeatPayload(payload: HeartbeatPayload<PlayEngineTickSource>):
 
 // EDGE-11 fix: read the last persisted tick_count from the DB so that after a
 // restart we continue from the stored value instead of resetting to 0.
+//
+// BUG FIX (round 330): `initialized` used to flip to `true` BEFORE the `await getMeta(...)`
+// below ever resolved — the comment even said "mark eagerly so concurrent callers don't
+// double-read". That makes the flag alone an unsafe gate: any ensureInitialized() call that
+// starts while an earlier call's hydration is still in flight sees `initialized === true`
+// synchronously and returns immediately, without having waited for hydration at all.
+//
+// Concretely: two near-simultaneous recordPlayEngineTick() calls right after a cold start
+// (tickCount=0, initialized=false). Call A enters ensureInitialized(), sets the flag, and
+// starts `await getMeta(...)` (a real DB round trip). Call B's ensureInitialized() now sees
+// the flag already true and resolves on the next microtask — well before A's DB read lands —
+// so B proceeds to increment `tickCount` from its stale pre-hydration value (0) and persists
+// that. When A's `getMeta` finally resolves with the real persisted state (say tick_count:
+// 50 from before the restart), `applyHeartbeatPayload()` overwrites `tickCount` with 50,
+// silently discarding B's increment and its persisted write — one real tick vanishes from the
+// running total with no error anywhere.
+//
+// Fix: share the single in-flight hydration promise (the same single-flight pattern this
+// codebase already uses for flow-events.ts's `ensureRedisBridge`/`bridgeInit` and
+// shared-cache.ts's `getRedis`/`redisInitPromise`) so every concurrent caller actually AWAITS
+// hydration — not just a synchronous flag — before touching `lastTickAt`/`tickCount`.
 async function ensureInitialized(): Promise<void> {
   if (initialized) return;
-  initialized = true; // mark eagerly so concurrent callers don't double-read
-  if (!dbConfigured()) return;
-  try {
-    const raw = await getMeta(HEARTBEAT_META_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as HeartbeatPayload<PlayEngineTickSource>;
-      if (parsed.last_tick_at) applyHeartbeatPayload(parsed);
-    }
-  } catch (err) {
-    console.warn("[play-engine-heartbeat] init hydration failed:", err);
+  if (!initPromise) {
+    initPromise = (async () => {
+      if (!dbConfigured()) return;
+      try {
+        const raw = await getMeta(HEARTBEAT_META_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as HeartbeatPayload<PlayEngineTickSource>;
+          if (parsed.last_tick_at) applyHeartbeatPayload(parsed);
+        }
+      } catch (err) {
+        console.warn("[play-engine-heartbeat] init hydration failed:", err);
+      } finally {
+        initialized = true;
+      }
+    })();
   }
+  return initPromise;
 }
 
 export async function recordPlayEngineTick(source: PlayEngineTickSource): Promise<void> {
@@ -163,6 +194,8 @@ function createEngineHeartbeat<Source extends string>(metaKey: string) {
   let source: Source | null = null;
   let count = 0;
   let hydrated = false;
+  // Same single-flight fix as ensureInitialized() above — see its comment for the full race.
+  let hydratePromise: Promise<void> | null = null;
   const startedAt = new Date().toISOString();
 
   function snapshot(): EngineHeartbeatSnapshot<Source> {
@@ -187,17 +220,23 @@ function createEngineHeartbeat<Source extends string>(metaKey: string) {
 
   async function ensureHydrated(): Promise<void> {
     if (hydrated) return;
-    hydrated = true;
-    if (!dbConfigured()) return;
-    try {
-      const raw = await getMeta(metaKey);
-      if (raw) {
-        const parsed = JSON.parse(raw) as HeartbeatPayload<Source>;
-        if (parsed.last_tick_at) apply(parsed);
-      }
-    } catch (err) {
-      console.warn(`[engine-heartbeat:${metaKey}] init hydration failed:`, err);
+    if (!hydratePromise) {
+      hydratePromise = (async () => {
+        if (!dbConfigured()) return;
+        try {
+          const raw = await getMeta(metaKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as HeartbeatPayload<Source>;
+            if (parsed.last_tick_at) apply(parsed);
+          }
+        } catch (err) {
+          console.warn(`[engine-heartbeat:${metaKey}] init hydration failed:`, err);
+        } finally {
+          hydrated = true;
+        }
+      })();
     }
+    return hydratePromise;
   }
 
   async function recordTick(tickSource: Source): Promise<void> {
