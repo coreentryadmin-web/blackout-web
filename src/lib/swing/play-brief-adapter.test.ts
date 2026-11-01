@@ -262,6 +262,16 @@ test("adaptSwingBriefToLargo: evidence_numbers dedupes two envelope.levels entri
 // `levelsFromContext` (play-brief.ts) sibling of the `collectFocalLevels` collision PR #7000 fixed
 // the same day for the structure-ladder rungs — that PR's own write-up explicitly named
 // `envelope.levels` as a separate, independently-computed list left out of scope.
+//
+// UPDATED (2026-11-01, same day): `levelsFromContext` itself now dedupes a GEX-king/wall
+// collision AT THE SOURCE (`pushLevel`, play-brief.ts) rather than leaving it for this adapter's
+// own `extractEvidence` loop to clean up downstream — so the real pipeline's `envelope.levels`
+// now carries exactly ONE entry at the colliding price, not two. The sanity check below was
+// updated to match (was asserting on the PRE-fix shape, which no longer occurs); the actual
+// end-to-end assertion this test exists for (exactly one evidence line at the colliding price)
+// is unchanged and, if anything, now a stronger proof — it holds with defense-in-depth at TWO
+// independent layers (source dedup here, the adapter's own dedup loop above) rather than relying
+// on the adapter alone to paper over a duplicate upstream.
 test("adaptSwingBriefToLargo: a GEX king coinciding with a wall in envelope.levels (real pipeline) cites ONE evidence line for that price, not two", () => {
   const ctx = fixtureCtx({
     vector: {
@@ -272,13 +282,14 @@ test("adaptSwingBriefToLargo: a GEX king coinciding with a wall in envelope.leve
   });
   const brief = composeSwingPlayBrief(ctx);
 
-  // Sanity: the real levelsFromContext must have actually produced the collision in
-  // envelope.levels — otherwise this test would pass for the wrong reason.
+  // Sanity: the real levelsFromContext must have actually resolved call wall and GEX king to the
+  // SAME price and merged them into one entry (not dropped the level entirely) — otherwise this
+  // test would pass for the wrong reason.
   const levelsAt110 = brief.envelope.levels?.filter((l) => Math.abs(l.price - 110) < 0.01) ?? [];
   assert.equal(
     levelsAt110.length,
-    2,
-    `expected the real pipeline to produce a call-wall/king collision in envelope.levels, got: ${JSON.stringify(levelsAt110)}`
+    1,
+    `expected the real pipeline to already merge the call-wall/king collision in envelope.levels, got: ${JSON.stringify(levelsAt110)}`
   );
 
   const largoRead = adaptSwingBriefToLargo(brief);
