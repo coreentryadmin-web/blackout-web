@@ -1453,7 +1453,19 @@ export function normalizeLitTradesWsPayload(raw: unknown): UwLitTradePrint[] {
       price,
       size,
       premium: Number.isFinite(premium) ? premium : price * size,
-      executed_at: executedAt.slice(0, 19),
+      /**
+       * VERBATIM — no `.slice(0, 19)`. Same defect `normalizeOptionTradesWsPayload` (above)
+       * was fixed for, never propagated to this sibling, which parses the identical
+       * `r.executed_at ?? r.timestamp` shape off the same UW WS transport. Slicing to 19
+       * chars strips an ISO string's trailing `Z` — `"2026-06-30T15:04:00Z"` becomes
+       * `"2026-06-30T15:04:00"`, which `new Date()`/`Date.parse()` read as LOCAL time, not
+       * UTC (silently correct only on a UTC container) — and on a microsecond-precision
+       * timestamp (UW's real shape for the sibling `created_at` field, captured live:
+       * `"2026-08-21T20:14:37.211537Z"`) it drops both the fractional seconds AND the `Z` at
+       * once. Sub-second-free timestamps parse fine either way, so there was nothing worth
+       * trimming here.
+       */
+      executed_at: executedAt,
     });
   }
   return out;
