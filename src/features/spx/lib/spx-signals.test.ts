@@ -471,6 +471,37 @@ test("reclassifyConfluenceScore: a bonus that lifts abs score past 10 flips dire
   assert.equal(postBonus.bias, "bullish");
 });
 
+// BUG FIX (2026-11-01): reclassifyConfluenceScore's return type omitted `levels`, so the Night
+// Hawk prior mutation site in spx-play-engine.ts reassigned score/rawScore/bias/action/grade/
+// direction/agreeing/conflicts/weighted_conflicts but never touched `confluence.levels`
+// (entry/stop/target/invalidation) — those stayed frozen at whatever computeSpxConfluence built
+// from the PRE-bonus bias/action. A bonus that flips action across a boundary (bounded ±3 by
+// getNhConfluenceBonus's own contract — e.g. WAIT -> HOLD/bullish at the |10| boundary, the exact
+// same boundary the "flips direction" test above exercises) therefore reclassifies direction
+// correctly while still serving a stale/empty target built for the OLD (no-trade) action.
+test("reclassifyConfluenceScore: a bonus that flips action also recomputes levels.target, not the stale pre-bonus value", () => {
+  const desk = reclassifyDesk(); // price 7400, vix 16 -> playDynamicTargetPts(16) = 12
+  // Pre-bonus: abs score 8 is below the |10| WAIT/HOLD boundary -> action WAIT -> no trade target.
+  const factors: SpxSignalFactor[] = [{ label: "VWAP", weight: 8, detail: "above" }];
+  const preBonus = reclassifyConfluenceScore(desk, 8, factors);
+  assert.equal(preBonus.action, "WAIT");
+  assert.equal(preBonus.levels.target, null, "WAIT action must not carry a trade target");
+
+  // +3 bonus -> 11, crosses into the HOLD/bullish band -> buildLevels must be re-run against the
+  // NEW action/bias, producing a real target (entry + dynamic target pts), not the stale
+  // WAIT-era null the pre-fix code left behind.
+  const withBonus = [...factors, { label: "Night Hawk prior", weight: 3, detail: "NH edition bullish" }];
+  const postBonus = reclassifyConfluenceScore(desk, 11, withBonus);
+  assert.equal(postBonus.action, "HOLD");
+  assert.equal(postBonus.bias, "bullish");
+  assert.equal(postBonus.levels.entry, 7400);
+  assert.equal(
+    postBonus.levels.target,
+    7400 + 12,
+    "levels.target must be recomputed from the post-bonus action/bias, not left stale at null"
+  );
+});
+
 // BUG FIX (2026-10-18): reclassifyConfluenceScore's return type used to omit `rawScore`, so the
 // Night Hawk prior mutation site in spx-play-engine.ts (the only caller) reassigned every OTHER
 // derived field (score/bias/action/grade/direction/agreeing/conflicts/weighted_conflicts) but left

@@ -1962,6 +1962,11 @@ async function evaluateSpxPlayCore(
     // stayed frozen at the pre-bonus value (persisted downstream as "confidence" — see
     // reclassifyConfluenceScore's updated header) while every other field here was already fresh.
     // Now included in `reclass` and reassigned alongside the rest.
+    // BUG FIX (2026-11-01): `levels` (entry/stop/target/invalidation) was the SECOND field this
+    // fix's Pick<...> omitted — buildLevels's stop/target geometry is keyed directly off
+    // action/bias, so a bonus that flips action across a boundary left members looking at a
+    // target/invalidation still built for the pre-bonus action while grade/direction had already
+    // moved on. Now included in `reclass` and reassigned alongside the rest.
     const reclass = reclassifyConfluenceScore(desk, confluence.score + nhBonus.bonus, confluence.factors);
     confluence.score = reclass.score;
     confluence.rawScore = reclass.rawScore;
@@ -1972,6 +1977,7 @@ async function evaluateSpxPlayCore(
     confluence.agreeing = reclass.agreeing;
     confluence.conflicts = reclass.conflicts;
     confluence.weighted_conflicts = reclass.weighted_conflicts;
+    confluence.levels = reclass.levels;
   }
 
   const confirmations = evaluatePlayConfirmations(desk, confluence, technicals);

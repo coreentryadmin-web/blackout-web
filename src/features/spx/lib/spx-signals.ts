@@ -206,6 +206,17 @@ function scoreToGrade(absScore: number, conflicts: number): SpxConfluenceGrade {
  * clamped score and factor count, so it can never again drift from the fields it's derived
  * alongside.
  *
+ * BUG FIX (2026-11-01): this function's return type used to omit `levels`, so the Night Hawk
+ * prior mutation site in spx-play-engine.ts reassigned every OTHER derived field (score/rawScore/
+ * bias/action/grade/direction/agreeing/conflicts/weighted_conflicts) but left `confluence.levels`
+ * (entry/stop/target/invalidation) frozen at whatever `buildLevels` produced from the PRE-bonus
+ * bias/action. `buildLevels`'s stop/target geometry is keyed directly off `action`/`bias` (see
+ * its own body below), so a bonus that flips action across a reachable boundary (e.g. WAIT ->
+ * HOLD/bullish at the |10| threshold, or HOLD -> BUY_CALL at 22 — both within the documented ±3
+ * bonus range) left members looking at a target/invalidation built for the OLD, no-longer-true
+ * action while score/grade/direction had already moved on. `levels` is now re-derived here too,
+ * via the exact same `buildLevels` call `computeSpxConfluence` uses below.
+ *
  * Call this any time `score`/`factors` are mutated on an already-built SpxConfluence, and
  * reassign every field it returns — never just `score` alone.
  */
@@ -224,6 +235,7 @@ export function reclassifyConfluenceScore(
   | "agreeing"
   | "conflicts"
   | "weighted_conflicts"
+  | "levels"
 > {
   const clamped = clamp(score, -100, 100);
   const abs = Math.abs(clamped);
@@ -255,6 +267,10 @@ export function reclassifyConfluenceScore(
     bias === "bullish" ? "long" : bias === "bearish" ? "short" : null;
   const agreeing = direction === "long" ? bullFactors : direction === "short" ? bearFactors : 0;
 
+  // Re-run the SAME buildLevels computeSpxConfluence uses, against the freshly reclassified
+  // bias/action — never the stale pair the pre-bonus SpxConfluence was originally built from.
+  const rebuiltLevels = buildLevels(desk, desk.price, bias, action);
+
   return {
     score: clamped,
     rawScore,
@@ -265,6 +281,12 @@ export function reclassifyConfluenceScore(
     agreeing,
     conflicts,
     weighted_conflicts,
+    levels: {
+      entry: rebuiltLevels.entry,
+      stop: rebuiltLevels.stop,
+      target: rebuiltLevels.target,
+      invalidation: rebuiltLevels.invalidation,
+    },
   };
 }
 
