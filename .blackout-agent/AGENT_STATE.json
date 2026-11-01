@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T09:04:51.932Z",
+  "updated_at": "2026-11-01T10:38:16.797Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "5ff2eac26f9fb63880e6ff4d7ef823b3c20d7a36",
+    "last_main_sha": "ca6b5c1f5129c1847089fa6944e85dc8addb6961",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T08:06:59.245Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T08:07:02.663Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T08:49:10.803Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-25T08:49:14.955Z",
       "type": "context_sync",
@@ -1271,38 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-01T10:38:06.185Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T10:38:11.168Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T10:38:16.797Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 7189,
-      "title": "fix(meridian): revenue estimate-set event never emitted in revision timeline",
-      "branch": "fix/meridian-revenue-estimate-set-timeline",
+      "number": 7203,
+      "title": "fix(zerodte-record): WS-11 reconstructed trim-scale rows can carry a sign-contradicting outcome label (bypasses #7133)",
+      "branch": "fix/zerodte-reconstructed-outcome-sign-mismatch",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": false,
+      "draft": true,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T09:50:13Z"
+      "updated_at": "2026-11-01T10:36:46Z"
     },
     {
-      "number": 7190,
-      "title": "fix(meridian): signal weight:0 (informational-only pillars) promoted to weight:1",
-      "branch": "fix/meridian-viz-bug",
+      "number": 7202,
+      "title": "fix(thermal): GEX Heatmap PNG capture mislabels Greeks Distribution tab as \"matrix\"",
+      "branch": "fix/thermal-capture-view-distribution-label",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T09:01:49Z"
-    },
-    {
-      "number": 7181,
-      "title": "fix(swing): dedup envelope.levels GEX-king/wall and confluence/max-pain collisions",
-      "branch": "fix/largo-swing-envelope-levels-dedup",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T07:30:29Z"
+      "updated_at": "2026-11-01T10:31:10Z"
     },
     {
       "number": 5547,
