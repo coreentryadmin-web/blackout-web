@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T14:34:04.052Z",
+  "updated_at": "2026-11-01T15:18:10.008Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "107141e4cfabe8754a0de02931eacf6d6882777a",
+    "last_main_sha": "dea6c2f010ed7bf2e5278eb5db522aec6dca6db6",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T09:37:57.347Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-25T09:38:01.393Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-25T10:07:34.108Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-25T10:07:37.834Z",
       "type": "context_sync",
@@ -1271,28 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T15:18:01.845Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T15:18:06.064Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T15:18:10.008Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 7235,
-      "title": "fix(admin): SPX health issue ids were array-position-dependent, breaking critical-alert dedup",
-      "branch": "fix/spx-issue-id-stability",
+      "number": 7243,
+      "title": "fix(helix): context header PCR was put-share-of-total, not put/call ratio",
+      "branch": "fix/helix-context-header-pcr-formula",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-11-01T14:21:41Z"
-    },
-    {
-      "number": 7234,
-      "title": "fix(nighthawk): managementFor() had no CLOSED branch — live SELL/TRIM/HOLD guidance on a closed position",
-      "branch": "fix/managementfor-closed-no-op",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "completed/failure",
-      "updated_at": "2026-11-01T14:20:09Z"
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T15:17:39Z"
     },
     {
       "number": 5547,
