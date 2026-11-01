@@ -84,4 +84,18 @@ describe("clampProviderHealthWindowMinutes", () => {
     assert.equal(clampProviderHealthWindowMinutes(120), 60);
     assert.equal(clampProviderHealthWindowMinutes(10.6), 11);
   });
+
+  // Regression: the route builds its argument via
+  // `Number(process.env.PROVIDER_HEALTH_WINDOW_MIN ?? "10")` — a non-numeric override (e.g.
+  // PROVIDER_HEALTH_WINDOW_MIN=abc) makes that `NaN`, the exact "non-numeric env override" shape
+  // alert-outcome-sync/nighthawk-outcomes/largo-cleanup already guard explicitly. Without a
+  // Number.isFinite guard, Math.max/Math.min propagate the NaN operand instead of clamping it,
+  // so this returned NaN (not a value in [1, 60]) — which makes the SQL interval cast
+  // (`($1 || ' minutes')::interval` with $1="NaN") throw, silently zeroing out every rollup, and
+  // would print "the last NaNm window" in admin-facing issue text if ever rendered unclamped.
+  it("falls back to the 10-minute default on a non-finite input (NaN/Infinity), never propagating it", () => {
+    assert.equal(clampProviderHealthWindowMinutes(NaN), 10);
+    assert.equal(clampProviderHealthWindowMinutes(Infinity), 10);
+    assert.equal(clampProviderHealthWindowMinutes(-Infinity), 10);
+  });
 });
