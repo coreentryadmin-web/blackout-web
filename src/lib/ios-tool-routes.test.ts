@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   getIosHeaderMeta,
   getIosRouteKey,
@@ -11,6 +13,41 @@ import {
   isIosToolRoute,
   IOS_TOOLS,
 } from "@/lib/ios-tool-routes";
+
+// `IOS_TOOL_NAV_LABELS` was the real lookup table `getIosToolNavLabel` used, back when the
+// function was `IOS_TOOL_NAV_LABELS[match]` (introduced #556). #557's "native product shell"
+// rewrite replaced that body with `getIosToolMeta(path)?.label` (richer per-tool metadata:
+// mark/accent/tagline/code) but kept re-deriving `IOS_TOOL_NAV_LABELS` from `IOS_TOOLS` anyway —
+// orphaning it with zero consumers (repo-wide grep and `git log --all -S` both confirm it's only
+// ever touched by the two commits that defined/redefined it, never referenced from a third).
+// Pin the module's export surface so an orphaned, no-longer-consumed convenience constant can't
+// silently drift back in unnoticed, the same discipline #7062/#7139 used for their own dead
+// re-derivations of already-covered data.
+describe("ios-tool-routes.ts export surface", () => {
+  it("no longer exports the orphaned IOS_TOOL_NAV_LABELS re-derivation", () => {
+    const source = readFileSync(join(__dirname, "ios-tool-routes.ts"), "utf8");
+    const exportNames = [
+      ...source.matchAll(/^export\s+(?:type\s+)?(?:async\s+)?(?:function|const)\s+([A-Za-z0-9_]+)/gm),
+    ].map((m) => m[1]);
+    assert.ok(!exportNames.includes("IOS_TOOL_NAV_LABELS"), "IOS_TOOL_NAV_LABELS should be removed");
+    assert.deepEqual(
+      exportNames.sort(),
+      [
+        "IOS_NATIVE_SHELL_PATH_PREFIXES",
+        "IOS_TOOLS",
+        "IOS_TOOL_ROUTES",
+        "getIosHeaderMeta",
+        "getIosRouteKey",
+        "getIosToolMeta",
+        "getIosToolNavLabel",
+        "getIosToolRouteIndex",
+        "isIosNativeShellPath",
+        "isIosNativeShellRoute",
+        "isIosToolRoute",
+      ].sort(),
+    );
+  });
+});
 
 describe("isIosToolRoute", () => {
   it("matches primary tool paths", () => {

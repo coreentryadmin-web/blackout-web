@@ -147,10 +147,6 @@ export function getIosRouteKey(path: string): IosRouteKey {
   return "other";
 }
 
-export const IOS_TOOL_NAV_LABELS: Record<IosToolRoute, string> = Object.fromEntries(
-  IOS_TOOLS.map((t) => [t.href, t.label])
-) as Record<IosToolRoute, string>;
-
 export function isIosToolRoute(path: string): boolean {
   const p = normalizeIosPath(path);
   return IOS_TOOL_ROUTES.some((prefix) => p === prefix || p.startsWith(`${prefix}/`));
