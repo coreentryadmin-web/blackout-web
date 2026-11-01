@@ -11,6 +11,7 @@ import type { VectorDarkPoolLevel } from "./vector-dark-pool-levels";
 import type { ConfluenceZone } from "./vector-confluence";
 import type { VectorPickCatalyst } from "./vector-pick-types";
 import { fmtPremium } from "@/lib/fmt-money";
+import { flowDirection } from "@/features/helix/lib/helix-flow-aggression";
 
 export type VectorPickEvidenceItem = {
   label: string;
@@ -66,12 +67,20 @@ function flowsAtStrike(
   side: "call" | "put"
 ): PlayPlatformFlowPrint[] {
   if (!flows?.length) return [];
-  const want = side === "call" ? "CALL" : "PUT";
+  // Aggressor-aware, not raw option_type — a SOLD call at this strike is bearish flow, not
+  // confirming evidence for a bought-call pick (and a sold put is bullish, not bearish). Every
+  // sibling flow-reading helper in this codebase already applies this fix (flowPremiumAtStrike /
+  // largestFlowPremium in vector-play-candidates.ts, largestAlignedFlowPremium and
+  // summarizeSessionFlowBias in vector-play-platform.ts) — this one was the missed consumer: it
+  // rendered "Print at strike $X" directly under the "HELIX flow" evidence section for whatever
+  // contract the member is looking at, reading as confirmation regardless of which side of the
+  // tape actually initiated the trade. An undetermined-aggressor print (no ask_pct, or midpoint)
+  // is excluded rather than guessed, matching every sibling helper.
+  const wantDir = side === "call" ? "bullish" : "bearish";
   return flows
-    .filter((f) => {
-      const s = f.option_type?.toUpperCase();
-      return s === want && typeof f.strike === "number" && f.strike === strike;
-    })
+    .filter(
+      (f) => flowDirection(f) === wantDir && typeof f.strike === "number" && f.strike === strike
+    )
     .sort((a, b) => (b.premium ?? 0) - (a.premium ?? 0))
     .slice(0, 3);
 }
