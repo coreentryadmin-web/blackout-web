@@ -352,8 +352,34 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
       // pre-existing behavior rather than silently downgrading every untouched row's label).
       const ladderDriven = play.manageReason == null || play.manageReason === "profit_ladder";
       const next = ladderDriven ? play.exitPolicy?.trim_levels?.find((t) => !t.fired) : null;
-      if (next) return { label: `TRIM ${Math.round(next.trigger_pct)}%`, tone: "active" };
-      return { label: "TRIM", tone: "active" };
+      // BUG FIX (2026-11-01, Ask Largo x Night Hawk Swings standing mandate, live repro MRNA
+      // SWING:MRNA positionId 68, OPEN/HOLD): the ladderDriven check above only decides WHICH
+      // rung's trigger_pct to cite — it has zero awareness of whether that rung is actually
+      // ENFORCED. manage.ts's edge rungs (profit_ladder included) stay `enforced:false` until
+      // that specific rung graduates the PR-16 calibration ladder (n>=10, delta>=15pt — see
+      // manage.ts's own header and calibration.ts); until it does, the ledger itself takes no
+      // action on it (manage-sync.ts's `latchSwingLiveStatus` only latches TRIM when
+      // `verdict.enforced && rung === "profit_ladder"`). This label — tone "active", identical to
+      // a hard, acted-on EXIT — feeds `swingVerdictVerb()` (play-brief.ts) verbatim, so the SAME
+      // un-qualified string also becomes the envelope headline, the Verdict section's own opening
+      // line, and `thesis`. The brief's own Management-section line (play-brief.ts's
+      // managementSection, several sections lower in the same brief) already discloses "Advisory
+      // only... the system itself is not acting on it" whenever `manageEnforced === false`, but a
+      // member reading only the headline or this Command Deck pill had no way to tell an
+      // enforced trim from an unproven one. Live repro confirmed `manageReason:"profit_ladder"`,
+      // `manageEnforced:false` — the percentage trigger fired but the rung hasn't graduated, so
+      // even the "genuinely ladder-driven" case needs this disclosure, not just the generic-reason
+      // one. `manageEnforced` is tri-state; only an explicit `false` downgrades — `null`
+      // (no live manage tick yet, or an older snapshot shape) keeps the pre-existing "active"
+      // tone/label exactly as before, same discipline the ladderDriven check above already
+      // applies to `manageReason == null` for the identical reason.
+      const advisoryOnly = play.manageEnforced === false;
+      const tone: StatusTone = advisoryOnly ? "watch" : "active";
+      if (next) {
+        const label = `TRIM ${Math.round(next.trigger_pct)}%`;
+        return { label: advisoryOnly ? `${label} (ADV)` : label, tone };
+      }
+      return { label: advisoryOnly ? "TRIM (ADV)" : "TRIM", tone };
     }
     const anyTrimFired = play.exitPolicy?.trim_levels?.some((t) => t.fired) ?? false;
     if (anyTrimFired) return { label: "RUNNER", tone: "active" };

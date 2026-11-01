@@ -626,6 +626,81 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
     );
   });
 
+  // BUG FIX (2026-11-01, Ask Largo x Night Hawk Swings standing mandate, live repro MRNA
+  // SWING:MRNA, positionId 68, OPEN/HOLD): neither TRIM branch above ever read `manageEnforced` —
+  // manage.ts's edge rungs (profit_ladder included) stay `enforced:false` until that specific
+  // rung graduates the PR-16 calibration ladder (n>=10, delta>=15pt). Before this fix, an
+  // un-graduated TRIM rendered with the IDENTICAL `tone: "active"` and a bare "TRIM {pct}%" label
+  // as a graduated, system-acted one — and this exact label feeds `swingVerdictVerb()`
+  // (play-brief.ts), so the same un-qualified string also became the envelope headline, the
+  // Verdict section's opening line, and `thesis`. The brief's own Management-section line
+  // (play-brief.ts's managementSection, several sections lower) already discloses "Advisory
+  // only... the system itself is not acting on it" whenever `manageEnforced === false`, but a
+  // member reading only the headline/pill had no way to tell. Live repro confirmed
+  // `manageReason: "profit_ladder"`, `manageEnforced: false` — the ladder rung fired on
+  // percentage terms but hasn't graduated, so even the "genuinely ladder-driven" branch
+  // (the test above) must still disclose the advisory-only state. Only an explicit `false`
+  // downgrades (tri-state field) — `null`/`undefined` (no live manage tick, or an older
+  // snapshot shape) must keep the pre-existing "active"/un-qualified behavior, same discipline
+  // the ladderDriven check two tests up already requires for the same reason.
+  it("TRIM recommendation that hasn't graduated enforcement (manageEnforced:false) is marked advisory — never the same tone/label as a hard, acted-on trim", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "profit_ladder",
+          manageEnforced: false,
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 100% (ADV)", tone: "watch" },
+      "an un-graduated edge rung must disclose it is advisory-only, not render identically to a hard trim",
+    );
+  });
+
+  it("TRIM recommendation driven by an unrelated advisory rung (catalyst_shift) AND un-graduated also discloses advisory", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "catalyst_shift",
+          manageEnforced: false,
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM (ADV)", tone: "watch" },
+    );
+  });
+
+  it("TRIM recommendation that HAS graduated enforcement (manageEnforced:true) keeps the hard, active label unchanged", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "profit_ladder",
+          manageEnforced: true,
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 100%", tone: "active" },
+    );
+  });
+
   it("live OPEN swing uses HOLD when not enterable", () => {
     assert.deepEqual(
       swingActionDisplay(base({ horizon: "SWING", status: "OPEN", recommendation: "HOLD" })),
