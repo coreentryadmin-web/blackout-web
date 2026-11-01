@@ -209,16 +209,34 @@ export async function mergeMacroEventsToday(input: {
   return dedupeEvents([...staticHits, ...fromNews]);
 }
 
+/**
+ * Add N calendar days to a YYYY-MM-DD date string, returning the result as YYYY-MM-DD.
+ *
+ * BUG THIS FIXES (2026-11-01): the two call sites below used to build a UTC-MIDNIGHT `Date` for
+ * the target day and then re-format it through the ET-zone `Intl` formatter (`todayEtYmd`). A
+ * UTC-midnight instant is 19:00/20:00 the PREVIOUS day in America/New_York (ET is always behind
+ * UTC), so formatting it back through the ET zone silently rolled the date back one day —
+ * `fetchUpcomingMacroEvents(7)` resolved its own window end to `today + 6`, not `today + 7`, and
+ * dropped any event dated exactly `daysAhead` out. Reproduced directly: for an ET "today" of
+ * 2026-06-15 with `daysAhead=7`, the old code computed `end = "2026-06-21"` (should be
+ * "2026-06-22") — confirmed by running the exact `Date.UTC(...)` + `todayEtYmd(...)` pair from
+ * the old code in isolation.
+ *
+ * This is pure CALENDAR-date arithmetic — there is no real-world instant involved — so it must
+ * never be routed through a timezone formatter at all. `Date.UTC` already does correct calendar
+ * rollover (month length, leap years) for the Y/M/D components; reading the result's UTC fields
+ * straight back off avoids reprojecting through `America/New_York` a second time.
+ */
+export function etYmdPlusDays(ymd: string, days: number): string {
+  const parts = ymd.split("-").map(Number) as [number, number, number];
+  const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + days));
+  return d.toISOString().slice(0, 10);
+}
+
 /** Upcoming US macro from curated schedule. */
 export function fetchUpcomingMacroEvents(daysAhead = 7): MacroEvent[] {
   const today = todayEtYmd();
-  // Use calendar-day arithmetic in ET to avoid DST errors (a day can be 23 or 25 hours).
-  // Parse today's ET date, advance by daysAhead calendar days, then reformat.
-  const todayParts = today.split("-").map(Number) as [number, number, number];
-  const endDate = new Date(
-    Date.UTC(todayParts[0], todayParts[1] - 1, todayParts[2] + Math.max(1, daysAhead))
-  );
-  const end = todayEtYmd(endDate);
+  const end = etYmdPlusDays(today, Math.max(1, daysAhead));
 
   return ALL_MACRO_SCHEDULE.filter((e) => e.date >= today && e.date <= end).map((e) => ({
     ...scheduleRowToEvent(e),
@@ -409,11 +427,7 @@ export async function macroEventsOnDateLive(dateYmd: string): Promise<MacroEvent
 /** Live-preferred variant of fetchUpcomingMacroEvents (corrected literal fallback on a miss). */
 export async function fetchUpcomingMacroEventsLive(daysAhead = 7): Promise<MacroEvent[]> {
   const today = todayEtYmd();
-  const todayParts = today.split("-").map(Number) as [number, number, number];
-  const endDate = new Date(
-    Date.UTC(todayParts[0], todayParts[1] - 1, todayParts[2] + Math.max(1, daysAhead))
-  );
-  const end = todayEtYmd(endDate);
+  const end = etYmdPlusDays(today, Math.max(1, daysAhead));
   const live = await fetchLiveMacroCalendar();
   const window = live?.filter((e) => e.date != null && e.date >= today && e.date <= end) ?? null;
   return window && window.length ? window : fetchUpcomingMacroEvents(daysAhead);
