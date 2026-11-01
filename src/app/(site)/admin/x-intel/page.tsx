@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { etDateTimeShort } from "@/lib/et-clock";
 import type { XIntelQueueRow, XIntelStatus } from "@/lib/x-intel/queue-types";
+import { runGuardedXIntelQueueLoad } from "@/components/admin/x-intel-queue-request-guard";
 
 export default function XIntelQueuePage() {
   const [rows, setRows] = useState<XIntelQueueRow[]>([]);
@@ -11,29 +12,52 @@ export default function XIntelQueuePage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<XIntelStatus | "ALL">("ALL");
 
-  useEffect(() => {
-    fetchQueueRows();
-  }, [status]);
+  // Bumped once per fetchQueueRows() call so a response can tell whether a newer
+  // request has superseded it before applying its data. Same bug shape (and same
+  // shared guard) as AdminXIntelQueuePanel.tsx's `load()` (#6926/#6927-family,
+  // x-intel-queue-request-guard.ts): fetchQueueRows() closes over `status`, and
+  // clicking a different status filter button before the in-flight request for
+  // the PREVIOUS filter resolves let that earlier, now-stale response land after
+  // the newer one and silently repaint the table with the wrong filter's rows —
+  // the status buttons would show (say) "SKIP" active while the list showed
+  // "ALL" rows, whichever fetch happened to resolve last. This standalone page
+  // duplicates the panel's queue view rather than reusing it, so it had drifted
+  // without the fix the panel already carries.
+  const latestLoadRequestIdRef = useRef(0);
 
-  async function fetchQueueRows() {
+  const fetchQueueRows = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const requestId = ++latestLoadRequestIdRef.current;
     try {
-      const url = new URL("/api/admin/x-intel/queue", window.location.origin);
-      url.searchParams.set("status", status);
-      url.searchParams.set("limit", "50");
+      await runGuardedXIntelQueueLoad(
+        requestId,
+        () => latestLoadRequestIdRef.current,
+        async () => {
+          const url = new URL("/api/admin/x-intel/queue", window.location.origin);
+          url.searchParams.set("status", status);
+          url.searchParams.set("limit", "50");
 
-      const res = await fetch(url.toString());
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-      setRows(data.rows || []);
+          const res = await fetch(url.toString());
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return (await res.json()) as { rows?: XIntelQueueRow[] };
+        },
+        (data) => setRows(data.rows || [])
+      );
     } catch (err) {
+      // A superseded request's own failure must not clobber a newer,
+      // already-applied success — only surface the error if this call is
+      // still the latest one.
+      if (latestLoadRequestIdRef.current !== requestId) return;
       setError(err instanceof Error ? err.message : "Failed to load queue");
     } finally {
-      setLoading(false);
+      if (latestLoadRequestIdRef.current === requestId) setLoading(false);
     }
-  }
+  }, [status]);
+
+  useEffect(() => {
+    void fetchQueueRows();
+  }, [fetchQueueRows]);
 
   function formatDate(d: string | Date | null | undefined): string {
     return etDateTimeShort(d) || "(unknown)";
