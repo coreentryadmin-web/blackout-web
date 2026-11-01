@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T18:50:23.475Z",
+  "updated_at": "2026-11-01T20:25:37.443Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "df2e18fe3ad5fe04b13d8bf270e362ad880827d9",
+    "last_main_sha": "1172ba0a4d3788daa3bcfa6f1040dd234a29fad1",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T18:06:55.441Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T18:06:59.560Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T20:31:37.351Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
     {
       "at": "2026-10-25T20:31:43.405Z",
       "type": "context_sync",
@@ -1271,28 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T20:25:27.580Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T20:25:32.611Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T20:25:37.443Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 7268,
-      "title": "chore: sync ambient agent-state heartbeat files",
-      "branch": "agent-state-heartbeat-sync-2026-11-01-1849",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T18:49:03Z"
-    },
-    {
-      "number": 7267,
-      "title": "fix(vector): magnet-mean contract-pick direction was inverted vs its own reversion thesis",
-      "branch": "fix/vector-magnet-mean-direction",
+      "number": 7275,
+      "title": "fix(telemetry): close quote-escape bypass in credential redaction",
+      "branch": "fix/telemetry-sanitize-quote-escape",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T18:45:06Z"
+      "updated_at": "2026-11-01T20:14:06Z"
+    },
+    {
+      "number": 7271,
+      "title": "feat(swing): pin WATCH-batch lane rank at commit so CLOSED briefs aren't blind (Largo C10)",
+      "branch": "fix/largo-closed-lane-rank-at-commit",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-11-01T20:07:38Z"
     },
     {
       "number": 5547,
