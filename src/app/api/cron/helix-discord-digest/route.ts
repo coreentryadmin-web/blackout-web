@@ -128,8 +128,17 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   const allowDup = req.nextUrl.searchParams.get("allow_dup") === "1";
   const bypassDedup = force && allowDup;
+  const now = new Date();
 
-  if (!force && rthOnly() && !isEtCashRth()) {
+  // `now` must exist before this gate (and the gate must carve out the EOD-recap window) so a
+  // tick landing at ~4:04-4:14 PM ET — already outside cash RTH — isn't skipped before the EOD
+  // recap section below ever runs. Without `&& !isDiscordEodRecapWindow(now)`, every tick in that
+  // window hit "Outside cash RTH" under the default HELIX_DISCORD_DIGEST_RTH_ONLY=unset(true)
+  // config, so `isDiscordEodRecapWindow`/`buildHelixEodRecapEmbed` were dead code in production
+  // despite being fully built, tested, and wired below — the HELIX EOD recap could never fire.
+  // Same root cause as the sibling darkpool-discord route; mirrors the carve-out thermal-discord's
+  // route already has (`!isRth && !eodDue`).
+  if (!force && rthOnly() && !isEtCashRth(now) && !isDiscordEodRecapWindow(now)) {
     const payload = {
       ok: true,
       skipped: true,
@@ -139,7 +148,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const now = new Date();
   const minute = Number(
     new Intl.DateTimeFormat("en-US", {
       timeZone: "America/New_York",
