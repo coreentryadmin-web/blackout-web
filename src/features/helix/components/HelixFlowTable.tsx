@@ -17,6 +17,7 @@ import {
 import { dtePrintLabel } from "@/features/helix/components/HelixMobileFlowTape";
 import {
   daysToExpiry,
+  filterAndSortFlowsForTape,
   flowSignals,
   fmtAskPct,
   fmtExpiryShort,
@@ -28,7 +29,6 @@ import {
   fmtSpot,
   premiumDisplay,
   ruleBadge,
-  sortFlows,
   type HelixFlowSortDir,
   type HelixFlowSortKey,
 } from "@/features/helix/lib/helix-flow-format";
@@ -357,23 +357,12 @@ export function HelixFlowTable({
   const [sortDir, setSortDir] = useState<HelixFlowSortDir>("desc");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const typed = useMemo(
-    () =>
-      flows.filter((f) => {
-        const t = f.option_type?.toUpperCase();
-        return t === "CALL" || t === "PUT";
-      }),
-    [flows]
+  // Honors sortDir for every column, including "time" — see filterAndSortFlowsForTape's own
+  // header for the bug this replaced (sortDir was silently discarded for "time").
+  const filtered = useMemo(
+    () => filterAndSortFlowsForTape(flows, typeFilter, sortKey, sortDir),
+    [flows, typeFilter, sortKey, sortDir]
   );
-
-  const filtered = useMemo(() => {
-    const base =
-      typeFilter === "ALL"
-        ? typed
-        : typed.filter((f) => f.option_type?.toUpperCase() === typeFilter);
-    if (sortKey === "time") return sortFlows(base, "time", "desc");
-    return sortFlows(base, sortKey, sortDir);
-  }, [typed, typeFilter, sortKey, sortDir]);
 
   const scoreDistribution = useMemo(
     () => helixScoreDistribution(flows.map((f) => f.score)),
