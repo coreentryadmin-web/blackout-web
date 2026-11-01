@@ -67,6 +67,7 @@ import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import { todayEt } from "@/lib/et-date";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { rebaseChangePct, referenceCloseFromSnapshot } from "@/lib/providers/change-pct";
 import {
   pulseChangePctFromPriorClose,
@@ -455,19 +456,56 @@ function fmtExpiry(ymd: string): string {
   return `${months[m - 1]} ${d}`;
 }
 
+/** The raw third Friday of a calendar month, as YYYY-MM-DD (no holiday adjustment). */
+function thirdFridayYmdClient(year: number, month1: number): string {
+  const first = new Date(Date.UTC(year, month1 - 1, 1));
+  const dow = first.getUTCDay(); // 0=Sun..6=Sat
+  const firstFriday = 1 + ((5 - dow + 7) % 7);
+  const day = firstFriday + 14;
+  return `${year}-${String(month1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 /**
- * True when a YYYY-MM-DD is a standard US monthly options expiration (the THIRD FRIDAY) — the
- * far-dated columns the server now appends (monthly + quarterly OpEx carry the dominant dealer
- * walls). Mirrors the server's thirdFridayYmd calendar math. Used to classify expiries into the
- * "monthly" horizon and to badge the far-dated matrix columns. Tolerant: a malformed date → false.
+ * The REAL standard-monthly options expiration for a month — the third Friday, ROLLED BACK to
+ * the preceding trading day when that Friday is a market holiday.
+ *
+ * BUG THIS FIXES. `isMonthlyExpiry` used to test `d === firstFriday + 14` with no holiday
+ * adjustment, so it mislabeled the two real holiday-landing months swept 2024-2028 — 2026-06-19
+ * and 2027-06-18 (both Juneteenth) — where the LISTED contract settles the preceding trading day
+ * instead (equity/index options can never expire on a day the market is closed). On those two
+ * expiries this function returned false for the column that actually IS that month's monthly
+ * OpEx, so it lost the gold far-dated tint, dropped out of `monthlyExpiries` (undercounting the
+ * "Monthly" horizon preset and the per-expiry chip badge), and was wrongly folded into
+ * `nearExpiries` — diluting the walls/flip/net-GEX levels a member sees under the "Near"
+ * horizon filter with the dominant OpEx column that filter exists to exclude.
+ *
+ * Mirrors the server-side `monthlyExpiryYmd` (meridian-timeline.ts) holiday-roll exactly, same
+ * `isTradingDayEt` source of truth — reimplemented here (not imported) because that module
+ * transitively imports `server-only` and this component is "use client".
+ */
+function monthlyExpiryYmdClient(year: number, month1: number): string {
+  const friday = thirdFridayYmdClient(year, month1);
+  if (isTradingDayEt(friday)) return friday;
+  const [y, m, d] = friday.split("-").map(Number) as [number, number, number];
+  for (let back = 1; back <= 7; back += 1) {
+    const dt = new Date(Date.UTC(y, m - 1, d - back));
+    const ymd = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+    if (isTradingDayEt(ymd)) return ymd;
+  }
+  return friday;
+}
+
+/**
+ * True when a YYYY-MM-DD is a standard US monthly options expiration (the THIRD FRIDAY, holiday-
+ * rolled when needed — see `monthlyExpiryYmdClient`) — the far-dated columns the server now
+ * appends (monthly + quarterly OpEx carry the dominant dealer walls). Used to classify expiries
+ * into the "monthly" horizon and to badge the far-dated matrix columns. Tolerant: a malformed
+ * date → false.
  */
 function isMonthlyExpiry(ymd: string): boolean {
   const [y, m, d] = ymd.split("-").map(Number);
   if (!y || !m || !d) return false;
-  const first = new Date(Date.UTC(y, m - 1, 1));
-  const dow = first.getUTCDay(); // 0=Sun..6=Sat
-  const firstFriday = 1 + ((5 - dow + 7) % 7);
-  return d === firstFriday + 14; // third Friday
+  return monthlyExpiryYmdClient(y, m) === ymd;
 }
 
 type Lens = "gex" | "vex" | "dex" | "charm";
