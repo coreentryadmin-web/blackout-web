@@ -12,6 +12,10 @@ import { acquireHeavyCronSlot, type HeavyCronSlot } from "@/lib/cron/heavy-cron-
 const ROTATION_CURSOR_KEY = "cron:vector-dark-pool-warm:cursor";
 // Persist well past the ~10min schedule so a single missed/overlapping run doesn't reset coverage.
 const ROTATION_CURSOR_TTL_SEC = 3600;
+// Self-overlap lock (see the "Overlap guard" comment on its acquisition below). Hoisted to a
+// shared constant so every release site (lost heavy-cron-slot race, and the real background-work
+// finally below) can never drift from the key used to acquire it.
+const OVERLAP_LOCK_KEY = "cron:vector-dark-pool-warm:lock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,11 +43,30 @@ export const maxDuration = 120;
  * header comment for the full measurement and why a 2-way (not larger) rotation was chosen. This
  * halves the per-run ticker count — full universe coverage every 2 runs instead of every 1 — which
  * halves this cron's own total admission-queue commitment without touching the shared limiter.
+ *
+ * LOCK RELEASE (found 2026-11-01, round 224). Unlike every sibling warm-cron on this exact
+ * self-overlap-lock pattern (vector-pick-sweep, vector-walls-warm, vector-full-state-snapshot —
+ * each releases its own `OVERLAP_LOCK_KEY` in a `finally` wrapping its real background work),
+ * this route only ever released `cron:vector-dark-pool-warm:lock` on the LOST-RACE early-return
+ * path (the `if (!slot)` branch above, fixed 2026-10-26) — never on the real work's success or
+ * failure path. The acquisition TTL (610s = 10min10s) is already picked to just barely outlast
+ * the ~10-minute schedule, so on every run that completes normally (typically well under 610s,
+ * per this cron's own "measured runtime can reach 220+ seconds" comment), the lock sat UNRELEASED
+ * for the rest of its 610s lifetime — still valid at the next scheduled fire (~600s later, since
+ * 610 > 600), which then read it as "Prior run still executing" and skipped even though the prior
+ * run had already finished minutes earlier. That halves this cron's EFFECTIVE cadence to ~every
+ * 20 minutes (every other scheduled fire silently skipped), which breaks the 2-way rotation's own
+ * stated assumption (rotation.ts's header: "full coverage in ~20 minutes, comfortably under the
+ * 25-minute [cache] TTL") — at the real ~40-minute effective cadence this bug produces, half the
+ * universe's dark-pool cache entries go stale (>25min) before their next warm ever runs. Releasing
+ * the lock here, in the same `finally` that already releases the cross-cron `slot`, matches the
+ * sibling files' pattern and restores the real ~10-minute cadence the rotation design relies on.
  */
 async function runVectorDarkPoolWarm(started: number, slot: HeavyCronSlot): Promise<void> {
   try {
     await runVectorDarkPoolWarmInner(started);
   } finally {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
     await slot.release();
   }
 }
@@ -107,7 +130,7 @@ export async function GET(req: NextRequest) {
   // when the next scheduled run starts, risking concurrent Redis writes to dark-pool cache keys.
   // Set NX on a lock key with 10m10s TTL to ensure only one run executes at a time.
   const acquired = await sharedCacheSetNx(
-    "cron:vector-dark-pool-warm:lock",
+    OVERLAP_LOCK_KEY,
     { startedAt: started },
     610 // TTL = 10min + 10sec buffer for schedule variance
   ).catch(() => true);
@@ -129,7 +152,7 @@ export async function GET(req: NextRequest) {
     // this, the self-overlap lock acquired above sits for its full 610s TTL even though no work
     // ever ran, causing the next scheduled fire (~600s later, before the lock expires) to also be
     // skipped as "prior run still executing" when nothing was actually running.
-    await sharedCacheDel("cron:vector-dark-pool-warm:lock").catch(() => undefined);
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
     const payload = { ok: true, skipped: true, reason: "heavy-cron concurrency slot unavailable (idempotent skip)" };
     await logCronRun("vector-dark-pool-warm", started, payload);
     return NextResponse.json(payload);
