@@ -1094,3 +1094,120 @@ test("buildZeroDteRecord: the clamp is a no-op when pnl_pct already sits at or b
   assert.equal(tsla!.managed_pnl_pct, -22.57);
   assert.equal(amzn!.managed_pnl_pct, 22.5);
 });
+
+// ── FINDINGS 2026-11-01: officialOverridingRealExit (the calibration/feature-store/Largo lane)
+// must apply the SAME peak clamp managedGradeView() already does (clampManagedPnlToPeak,
+// 2026-10-31) to the IDENTICAL frozen entry_context.exit blob, on the same rows — otherwise the
+// two "official" numbers for one position disagree, and plan_pnl_pct (the number calibration/
+// feature-store/Largo's get_zerodte_record read, per the module comment near line 193) can read
+// as BETTER than the position's own highest-ever recorded excursion, which is impossible. Live
+// audit (GET /api/market/zerodte/record?days=90, 2026-11-01) found 8 real violating rows; 5 of
+// them (HIMS/KORU/SPCH/RIOT/FIG) are the EXACT rows the 2026-10-31 fix already named as fixed for
+// managed_pnl_pct — proving that fix's blast radius never reached this sibling lane.
+
+test("FINDINGS 2026-11-01: officialPlanPnlPct clamps a real-exit-outranking-a-GENUINE-reconstruction row to its own peak (HIMS 2026-08-19 live-shape repro)", () => {
+  // Live shape: HIMS 2026-08-19 — a GENUINE (2-tranche) reconstruction exists, but a real,
+  // live-only ratchet-floor exit outranks it (officialOverridingRealExit's own precedence,
+  // identical to managedGradeView's) — and that real exit's raw pnl_pct (5.68) sits ABOVE its
+  // own recorded peak (5.11), the exact frozen pre-2026-09-04 cent-rounding artifact
+  // clampManagedPnlToPeak's doc describes. Before this fix, officialPlanPnlPct returned the raw
+  // 5.68 while the sibling asManagedPnlPct (already fixed 2026-10-31) returned the clamped
+  // 5.11 — the two "official" numbers for the SAME position disagreed.
+  const r = row({
+    ticker: "HIMS",
+    session_date: "2026-08-19",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: 40,
+    entry_context: {
+      exit: { reason: "ratchet_profit_floor", pnl_pct: 5.68, peak_pnl_pct: 5.11 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: 25.61,
+        tranches: [
+          { tranche: 1, fraction: 1 / 2, exit_pnl_pct: 10.0, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 1 / 2, exit_pnl_pct: 41.22, exit_reason: "time_stop", at_et: "15:15" },
+        ],
+      },
+    },
+  });
+  assert.equal(officialPlanPnlPct(r), 5.11, "plan_pnl_pct must never exceed the row's own peak_pnl_pct");
+  assert.equal(asManagedPnlPct(r), 5.11, "the sibling as-managed lane was already clamped 2026-10-31");
+  assert.equal(
+    officialPlanPnlPct(r),
+    asManagedPnlPct(r),
+    "the calibration/feature-store/Largo number and the member-facing number must agree for the same frozen exit"
+  );
+
+  const rec = buildZeroDteRecord([r], { since: "2026-08-19", through: "2026-08-19", days: 1 });
+  const play = rec.plays[0]!;
+  assert.equal(play.plan_pnl_pct, 5.11);
+  assert.equal(play.managed_pnl_pct, 5.11);
+  assert.equal(play.max_favorable_pct, 5.11);
+});
+
+test("FINDINGS 2026-11-01: officialPlanPnlPct is unaffected when the real exit already sits within its own peak (no regression)", () => {
+  // Same APLD-shaped real-thesis-break-outranks-a-GENUINE-reconstruction case this module's own
+  // 2026-08-27 fix covers, now carrying a peak (25.0) comfortably ABOVE the real exit's pnl
+  // (19.0) — the ordinary, correct shape every post-2026-09-04 fresh exit produces. The clamp
+  // must be a provable no-op here, exactly like clampManagedPnlToPeak's own doc promises.
+  const r = row({
+    ticker: "APLD",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: -0.98,
+    entry_context: {
+      exit: { reason: "thesis_break:gex-walls", pnl_pct: 19.0, peak_pnl_pct: 25.0 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: -0.98,
+        tranches: [
+          { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 10.0, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 2 / 3, exit_pnl_pct: -6.47, exit_reason: "time_stop", at_et: "15:15" },
+        ],
+      },
+    },
+  });
+  assert.equal(officialPlanPnlPct(r), 19.0, "pnl already sits below its own peak — the clamp must not move it");
+  assert.equal(asManagedPnlPct(r), 19.0);
+  assert.equal(isZeroDteWin(r), true, "a correctly-unclamped real win must still grade as a win");
+});
+
+test("FINDINGS 2026-11-01: plan_pnl_pct and managed_pnl_pct agree on a negative-peak override row too (CRCL 2026-09-03 live-shape repro)", () => {
+  // CRCL 2026-09-03 live shape: a position that never moved favorably (peak -0.22) whose real
+  // exit's raw pnl_pct (0) would otherwise read as a false breakeven instead of its own honest
+  // small loss — the negative-peak analogue of the HIMS repro above, and the sign this bug's
+  // clamp must handle correctly (peak itself negative, not just smaller than a positive pnl).
+  const crcl = row({
+    ticker: "CRCL",
+    session_date: "2026-09-03",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: 40,
+    entry_context: {
+      exit: { reason: "flat_theta_bleed", pnl_pct: 0, peak_pnl_pct: -0.22 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: 27.07,
+        tranches: [
+          { tranche: 1, fraction: 1 / 2, exit_pnl_pct: 20.0, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 1 / 2, exit_pnl_pct: 34.14, exit_reason: "time_stop", at_et: "15:15" },
+        ],
+      },
+    },
+  });
+  const rec = buildZeroDteRecord([crcl], { since: "2026-09-03", through: "2026-09-03", days: 1 });
+  const play = rec.plays[0]!;
+  assert.equal(
+    play.plan_pnl_pct,
+    play.managed_pnl_pct,
+    "the two official lanes must never disagree for the same frozen exit"
+  );
+  assert.equal(play.plan_pnl_pct, -0.22);
+  assert.equal(play.managed_pnl_pct, -0.22);
+  assert.equal(officialPlanPnlPct(crcl), asManagedPnlPct(crcl));
+  assert.equal(rec.losses, 1, "a clamped-negative override must book as a loss, not the pre-clamp breakeven");
+});
