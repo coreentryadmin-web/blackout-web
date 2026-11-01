@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { Socket } from "node:net";
 import { __allowFetchHostForTest } from "../api-tracked-fetch";
+import { resetPolygonCircuitForTest } from "./polygon-rate-limiter";
 
 // Proves fetchPolygonNews/fetchPolygonTickerDetails actually terminate the real underlying
 // connection when their caller aborts — through polygonGet -> buildPolygonLargoFetchInit ->
@@ -68,12 +69,19 @@ const basePromise = listen(server).then((base) => {
 
 const polygonLargoPromise = basePromise.then(() => import("./polygon-largo"));
 
+function resetPolygonHarnessState(largo: { resetPolygonLargoFailoverForTest?: () => void }) {
+  resetPolygonCircuitForTest();
+  largo.resetPolygonLargoFailoverForTest?.();
+}
+
 after(() => {
   server.close();
 });
 
 test("fetchPolygonNews: aborting the caller's signal terminates the real underlying connection", async () => {
-  const { fetchPolygonNews } = await polygonLargoPromise;
+  const largo = await polygonLargoPromise;
+  resetPolygonHarnessState(largo);
+  const { fetchPolygonNews } = largo;
   const sinceCount = sockets.length;
 
   const controller = new AbortController();
@@ -107,7 +115,9 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
 });
 
 test("fetchPolygonTickerDetails: aborting the caller's signal terminates the real underlying connection", async () => {
-  const { fetchPolygonTickerDetails } = await polygonLargoPromise;
+  const largo = await polygonLargoPromise;
+  resetPolygonHarnessState(largo);
+  const { fetchPolygonTickerDetails } = largo;
   const sinceCount = sockets.length;
 
   const controller = new AbortController();
