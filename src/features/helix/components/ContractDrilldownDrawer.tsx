@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   CartesianGrid,
@@ -57,6 +57,41 @@ function timeLabel(iso: string): string {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return iso.slice(11, 16) || "—";
   return etClock(t, { pad: true, hour12: false }) ?? "—";
+}
+
+/**
+ * Runs one generation-guarded fetch. Shared by `load`/`loadHistory` below so the exact same
+ * stale-response guard protects both — `generation` is this request's own id (bumped once per
+ * `flow` change in the effect), `currentGeneration()` reads the LATEST id at the moment the
+ * promise settles. If a newer request has started by then, `generation !== currentGeneration()`
+ * and the result is discarded instead of applied — otherwise an in-flight fetch for a contract the
+ * user has already navigated away from can resolve AFTER the new contract's fetch and overwrite
+ * its correct data with the stale one's (same race TickerDrawer.tsx's own generation ref guards
+ * against, there labeled "Bug 13"). Exported so the invariant is testable without rendering React:
+ * see ContractDrilldownDrawer.test.ts for a fake-fetcher race that resolves out of order.
+ */
+export async function runGenerationGuardedLoad<T>(
+  generation: number,
+  currentGeneration: () => number,
+  fetcher: () => Promise<T>,
+  handlers: {
+    onStart: () => void;
+    onSuccess: (data: T) => void;
+    onError: () => void;
+    onSettle: () => void;
+  }
+): Promise<void> {
+  handlers.onStart();
+  try {
+    const data = await fetcher();
+    if (generation !== currentGeneration()) return;
+    handlers.onSuccess(data);
+  } catch {
+    if (generation !== currentGeneration()) return;
+    handlers.onError();
+  } finally {
+    if (generation === currentGeneration()) handlers.onSettle();
+  }
 }
 
 /** Compact notional ($6.0M / $430K) — same thresholds as fmtPremium but without the sign path. */
@@ -142,50 +177,70 @@ export function ContractDrilldownDrawer({
   // section if it fails; a member should still see today's fills even on a bad history fetch.
   const [history, setHistory] = useState<OptionContractHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  // Bumped once per `flow` change (in the effect below) and read back by `currentGeneration()`
+  // inside `runGenerationGuardedLoad` — see that function's header for the race it prevents.
+  const loadGenerationRef = useRef(0);
+  const currentGeneration = useCallback(() => loadGenerationRef.current, []);
 
-  const load = useCallback(async (c: FlowAlert) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const d = await fetchOptionContractDrilldown({
-        ticker: c.ticker,
-        strike: c.strike,
-        expiry: c.expiry,
-        option_type: c.option_type.toUpperCase() === "PUT" ? "PUT" : "CALL",
-      });
-      setData(d);
-    } catch {
-      setError("Contract data unavailable");
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    (c: FlowAlert, generation: number) =>
+      runGenerationGuardedLoad(
+        generation,
+        currentGeneration,
+        () =>
+          fetchOptionContractDrilldown({
+            ticker: c.ticker,
+            strike: c.strike,
+            expiry: c.expiry,
+            option_type: c.option_type.toUpperCase() === "PUT" ? "PUT" : "CALL",
+          }),
+        {
+          onStart: () => {
+            setLoading(true);
+            setError(null);
+          },
+          onSuccess: (d) => setData(d),
+          onError: () => {
+            setError("Contract data unavailable");
+            setData(null);
+          },
+          onSettle: () => setLoading(false),
+        }
+      ),
+    [currentGeneration]
+  );
 
-  const loadHistory = useCallback(async (c: FlowAlert) => {
-    setHistoryLoading(true);
-    try {
-      const h = await fetchOptionContractHistory({
-        ticker: c.ticker,
-        strike: c.strike,
-        expiry: c.expiry,
-        option_type: c.option_type.toUpperCase() === "PUT" ? "PUT" : "CALL",
-      });
-      setHistory(h);
-    } catch {
-      // Fail silent, not fail loud — see the state comment above. The section below just
-      // hides itself when `history` stays null, same convention as `data` elsewhere here.
-      setHistory(null);
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, []);
+  const loadHistory = useCallback(
+    (c: FlowAlert, generation: number) =>
+      runGenerationGuardedLoad(
+        generation,
+        currentGeneration,
+        () =>
+          fetchOptionContractHistory({
+            ticker: c.ticker,
+            strike: c.strike,
+            expiry: c.expiry,
+            option_type: c.option_type.toUpperCase() === "PUT" ? "PUT" : "CALL",
+          }),
+        {
+          onStart: () => setHistoryLoading(true),
+          onSuccess: (h) => setHistory(h),
+          // Fail silent, not fail loud — see the state comment above. The section below just
+          // hides itself when `history` stays null, same convention as `data` elsewhere here.
+          onError: () => setHistory(null),
+          onSettle: () => setHistoryLoading(false),
+        }
+      ),
+    [currentGeneration]
+  );
 
   useEffect(() => {
     if (flow) {
-      void load(flow);
-      void loadHistory(flow);
+      const gen = ++loadGenerationRef.current;
+      void load(flow, gen);
+      void loadHistory(flow, gen);
     } else {
+      loadGenerationRef.current += 1;
       setData(null);
       setError(null);
       setHistory(null);
