@@ -211,3 +211,74 @@ test("best_play keeps the wait-for-print hint for an actually-upcoming print", (
   const r = reportFor({ days_until: 0, post_print: null });
   assert.match(r.best_play.headline, /Wait for the print — gap risk dominates/);
 });
+
+/* ── bearish best_play's "call wall" structure must gate on call_wall, not put_wall ───── */
+
+// Shared overrides that drive the composite verdict to "bearish" without touching call_wall/
+// put_wall themselves, mirroring the "bearish flow flips lean" fixture above.
+const BEARISH_OVERRIDES = {
+  flow_bias: "bearish",
+  dark_pool_bias: "bearish",
+  beat_rate: 0.25,
+  financials: {
+    ...baseInput.financials!,
+    revenue_yoy_pct: -5,
+    margin_trend: "contracting" as const,
+  },
+};
+
+test("bearish best_play shows the call wall it has even when put_wall is absent", () => {
+  // Root cause: the structure string displays `call_wall`, but the branch it lives behind
+  // guarded on `put_wall != null` instead — a different field of the same shape. A real
+  // call_wall with no put_wall therefore fell through to the generic fallback and a real,
+  // known level went unshown.
+  const r = reportFor({
+    ...BEARISH_OVERRIDES,
+    days_until: 5,
+    post_print: null,
+    call_wall: 520,
+    put_wall: null,
+  });
+  assert.equal(r.verdict, "bearish", "guard: fixture must actually reach the bearish branch");
+  assert.match(
+    r.best_play.structure,
+    /call wall 520/,
+    "a real call_wall must be shown even when put_wall is missing"
+  );
+});
+
+test("bearish best_play never shows a dangling 'call wall —' when call_wall is absent", () => {
+  // The inverse half of the same bug: `Number.isFinite(input.call_wall ?? 0)` coerces a null/
+  // undefined call_wall to 0 before checking finiteness, so the check was always true — it could
+  // never actually gate on call_wall being present, only on the unrelated put_wall.
+  const r = reportFor({
+    ...BEARISH_OVERRIDES,
+    days_until: 5,
+    post_print: null,
+    call_wall: null,
+    put_wall: 480,
+  });
+  assert.equal(r.verdict, "bearish", "guard: fixture must actually reach the bearish branch");
+  assert.doesNotMatch(
+    r.best_play.structure,
+    /call wall/,
+    "with no real call_wall, the structure must fall back to the generic put-side phrasing"
+  );
+});
+
+test("printed-miss best_play shows the call wall it has even when put_wall is absent", () => {
+  // Same guard, same bug, in the already-printed branch (lines above the pre-print one).
+  const r = reportFor({
+    ...BEARISH_OVERRIDES,
+    days_until: 0,
+    post_print: { lean: "miss", headline: "Miss · EPS -8%" },
+    call_wall: 520,
+    put_wall: null,
+  });
+  assert.equal(r.verdict, "bearish", "guard: fixture must actually reach the bearish branch");
+  assert.match(
+    r.best_play.structure,
+    /call wall 520/,
+    "a real call_wall must be shown even when put_wall is missing"
+  );
+});

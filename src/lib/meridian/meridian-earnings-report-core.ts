@@ -168,8 +168,8 @@ function bestPlayHint(
       return {
         headline: "Miss — the reaction is the read now",
         structure:
-          input.put_wall != null && Number.isFinite(input.call_wall ?? 0)
-            ? `Reaction-trade put-side or fade setups below call wall ${input.call_wall?.toLocaleString() ?? "—"} · ${emLabel}`
+          input.call_wall != null && Number.isFinite(input.call_wall)
+            ? `Reaction-trade put-side or fade setups below call wall ${input.call_wall.toLocaleString()} · ${emLabel}`
             : `Reaction-trade put-side structures inside ${emLabel}`,
         risk: "Short squeezes on beats are common — respect the band",
       };
@@ -204,8 +204,8 @@ function bestPlayHint(
     return {
       headline: "Bearish lean into earnings",
       structure:
-        input.put_wall != null && Number.isFinite(input.call_wall ?? 0)
-          ? `Put-side or fade setups below call wall ${input.call_wall?.toLocaleString() ?? "—"} · ${emLabel}`
+        input.call_wall != null && Number.isFinite(input.call_wall)
+          ? `Put-side or fade setups below call wall ${input.call_wall.toLocaleString()} · ${emLabel}`
           : `Put-side structures inside ${emLabel}`,
       risk: "Short squeezes on beats are common — respect the band",
     };
