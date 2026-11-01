@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { HorizonPlay } from "@/lib/horizon-plays";
-import { computeLaneRank, laneRankSection, parseDeckContractLabel } from "./play-brief-lane-rank";
+import { computeLaneRank, laneRankSection, closedLaneRankSection, parseDeckContractLabel } from "./play-brief-lane-rank";
 
 function play(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -516,4 +516,47 @@ test("laneRankSection: no stale-scan caveat when scan context is omitted (backwa
   const sec = laneRankSection(play({ ticker: "NRG", score: 70 }), [row("NRG", 70, "COMMIT"), row("X", 40, "COMMIT")]);
   assert.ok(sec);
   assert.doesNotMatch(sec!.body, /Ranked against the last scan/);
+});
+
+// ─── closedLaneRankSection (Largo C10 — historical context, the CLOSED-bucket sibling) ─────────
+
+test("closedLaneRankSection: renders the formatted section for a CLOSED play with a pinned commit-batch rank", () => {
+  const sec = closedLaneRankSection(
+    play({
+      status: "CLOSED",
+      laneRankAtCommit: { rank: 2, total: 5, score: 61, medianScore: 58, deltaFromMedian: 3 },
+    }),
+  );
+  assert.ok(sec);
+  assert.equal(sec!.title, "Lane rank at commit");
+  assert.match(sec!.body, /#2 of 5/);
+  assert.match(sec!.body, /WATCH candidates this scan/);
+  assert.match(sec!.body, /score \*\*61\*\*/);
+  assert.match(sec!.body, /\+3/);
+  assert.match(sec!.body, /Batch median at commit: \*\*58\*\*/);
+});
+
+test("closedLaneRankSection: names a top-ranked commit batch position explicitly", () => {
+  const sec = closedLaneRankSection(
+    play({
+      status: "CLOSED",
+      laneRankAtCommit: { rank: 1, total: 4, score: 80, medianScore: 55, deltaFromMedian: 25 },
+    }),
+  );
+  assert.ok(sec);
+  assert.match(sec!.body, /#1 of 4/);
+  assert.match(sec!.body, /Top-ranked candidate in its commit batch\./);
+});
+
+test("closedLaneRankSection: null when laneRankAtCommit is absent — honest absence, never fabricated", () => {
+  assert.equal(closedLaneRankSection(play({ status: "CLOSED" })), null);
+  assert.equal(closedLaneRankSection(play({ status: "CLOSED", laneRankAtCommit: null })), null);
+});
+
+test("closedLaneRankSection: null when play.status is not CLOSED, even if laneRankAtCommit happens to be present", () => {
+  const withLaneRank = play({
+    status: "HOLD",
+    laneRankAtCommit: { rank: 1, total: 3, score: 70, medianScore: 50, deltaFromMedian: 20 },
+  });
+  assert.equal(closedLaneRankSection(withLaneRank), null);
 });

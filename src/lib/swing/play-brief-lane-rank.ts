@@ -310,3 +310,44 @@ export function laneRankSection(
     body: lines.join("\n\n"),
   };
 }
+
+/**
+ * Lane rank AT COMMIT — the CLOSED-bucket sibling of `laneRankSection` above (Largo C10:
+ * historical context). `laneRankSection`/`computeLaneRank` rank a play against the LIVE OPEN/WATCH
+ * board at BRIEF-READ time and explicitly return null once the play is closed (there is no live
+ * board left to rank a closed position against) — so a CLOSED brief previously carried no lane
+ * context at all. This answers a different, PAST-tense question instead: was this a top idea
+ * among its SAME-SCAN WATCH-candidate peers at the exact moment it got promoted into a real
+ * position? That snapshot is frozen at commit time (`commit.ts`'s `LaneRankAtCommit`, pinned into
+ * `entry_context.lane_rank_at_commit`) because the live board snapshot from that past moment was
+ * never persisted and cannot be reconstructed after the fact.
+ *
+ * Gated to CLOSED plays only — an OPEN/WATCH play already gets the live `laneRankSection` above,
+ * and the two are mutually exclusive in practice (one is null exactly where the other is
+ * non-null), so no dedup logic is needed between them. Returns null whenever `laneRankAtCommit`
+ * is absent (a pre-this-fix historical row, a shadow position, or a batch of fewer than 2
+ * candidates at commit) — honest absence, never backfilled or fabricated.
+ */
+export function closedLaneRankSection(play: TerminalPlay): RichSection | null {
+  if (play.status !== "CLOSED") return null;
+  const snap = play.laneRankAtCommit;
+  if (!snap) return null;
+
+  const displayScore = Math.round(snap.score);
+  const delta =
+    snap.deltaFromMedian >= 0
+      ? `**+${snap.deltaFromMedian}** vs batch median`
+      : `**${snap.deltaFromMedian}** vs batch median`;
+  const lines = [
+    `**#${snap.rank} of ${snap.total}** WATCH candidates this scan · score **${displayScore}** (${delta})`,
+    `Batch median at commit: **${snap.medianScore}**`,
+  ];
+  if (snap.rank === 1 && snap.total > 1) {
+    lines.push("Top-ranked candidate in its commit batch.");
+  }
+
+  return {
+    title: "Lane rank at commit",
+    body: lines.join("\n\n"),
+  };
+}

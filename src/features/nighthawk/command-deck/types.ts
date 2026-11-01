@@ -264,6 +264,16 @@ export interface TerminalPlay {
    *  account risk (Ask Largo standing mandate, 2026-10-26, #4076 comment 6410025245). */
   budgetVerdict?: SwingBudgetVerdictStamp | null;
 
+  /** SWING, CLOSED-bucket only: this position's standing among its SAME-SCAN WATCH-candidate batch
+   *  at the moment it committed (`entry_context.lane_rank_at_commit`, commit.ts's
+   *  `LaneRankAtCommit`), parsed structurally via `parseLaneRankAtCommit` — never trusts the raw
+   *  JSONB blob. Present ONLY on a CLOSED row committed after this field shipped; absent/null on
+   *  any older row, a shadow position, or any non-SWING/non-CLOSED context — never fabricated or
+   *  backfilled (there is no way to reconstruct a commit-time batch snapshot after the fact).
+   *  Distinct from `laneRankSection`'s LIVE rank (play-brief-lane-rank.ts), which answers a
+   *  different question and is null for exactly the bucket this field exists to cover. */
+  laneRankAtCommit?: { rank: number; total: number; score: number; medianScore: number; deltaFromMedian: number } | null;
+
   /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal (benchmark
    *  ETF/label, the name's and the group's own %-returns, and the delta) — echoed off the live/
    *  persisted dossier (`swing-ingest.ts`'s `industryGroupRsFacts`). Null/absent when no benchmark
