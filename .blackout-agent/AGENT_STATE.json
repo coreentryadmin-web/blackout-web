@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T20:25:37.443Z",
+  "updated_at": "2026-11-01T22:33:04.157Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1172ba0a4d3788daa3bcfa6f1040dd234a29fad1",
+    "last_main_sha": "aa5feefdeb3b155c5ba7deb1d65cb663475b4830",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T20:31:43.405Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-25T20:31:49.077Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-25T22:10:33.219Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
     {
       "at": "2026-10-25T22:10:40.111Z",
       "type": "context_sync",
@@ -1271,28 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T22:32:56.146Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T22:33:00.304Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T22:33:04.157Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 7275,
-      "title": "fix(telemetry): close quote-escape bypass in credential redaction",
-      "branch": "fix/telemetry-sanitize-quote-escape",
+      "number": 7312,
+      "title": "chore: sync ambient agent-state heartbeat files (round 2)",
+      "branch": "chore/sync-agent-heartbeat-20261101-2223",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "human",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T20:14:06Z"
-    },
-    {
-      "number": 7271,
-      "title": "feat(swing): pin WATCH-batch lane rank at commit so CLOSED briefs aren't blind (Largo C10)",
-      "branch": "fix/largo-closed-lane-rank-at-commit",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-11-01T20:07:38Z"
+      "updated_at": "2026-11-01T22:23:11Z"
     },
     {
       "number": 5547,
