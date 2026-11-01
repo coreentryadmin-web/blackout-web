@@ -135,4 +135,78 @@ describe("computeWeightedConflicts", () => {
     const { weighted_conflicts } = computeWeightedConflicts(desk, -40, factors);
     assert.equal(weighted_conflicts, 2);
   });
+
+  it("still counts the VIX-extreme conflict when an AGREEING VIX-family factor is present (live repro, 2026-11-01 audit)", () => {
+    // Root cause (live-reachable): desk.vix (absolute level) and the "VIX curve" factor
+    // (spx-signals.ts, built from vix_term's vix9d/vix3m term structure) are independent
+    // metrics from independent inputs. Here desk.vix=30 genuinely opposes the long (>28), while
+    // "VIX curve" carries a POSITIVE weight (contango, AGREEING with the long) at the same time.
+    // Pre-fix, vixAlreadyScored() suppressed the bonus on the mere presence of any VIX-family
+    // factor, regardless of side -> weighted_conflicts wrongly dropped from 2 to 0. Post-fix, the
+    // guard requires the existing factor to actually oppose direction (factorOpposes) before
+    // treating the conflict as already counted — an agreeing factor does not satisfy that, so the
+    // real, independent VIX-extreme conflict still fires.
+    const desk: SpxDeskPayload = {
+      ...baseDesk(),
+      tide_bias: "neutral",
+      gex_walls: [],
+      news_headlines: [],
+      vix: 30,
+      vix_term: { vix9d: 20, vix3m: 22 },
+    } as SpxDeskPayload;
+    const factors: SpxSignalFactor[] = [
+      { label: "Live tape", weight: 12, detail: "calls" },
+      { label: "VIX curve", weight: 4, detail: "contango" },
+    ];
+    const { weighted_conflicts } = computeWeightedConflicts(desk, 40, factors);
+    assert.equal(weighted_conflicts, 2);
+  });
+
+  it("does not double-count the VIX-extreme conflict when the VIX-family factor genuinely opposes direction", () => {
+    // The case vixAlreadyScored() was originally designed for: a VIX-family factor that
+    // OPPOSES the long is already counted by the main opposing-factor loop above (as a hard
+    // opposing factor, label.includes("VIX") has no entry in isHardOpposingFactor, so it's a
+    // soft +1 there) — vixExtremeAgainst's own +2 desk-level bonus must not ALSO fire and
+    // double-count the same underlying VIX-extreme condition. Backwardation ("VIX curve"
+    // weight -8) genuinely opposes a long, same as the pre-fix behavior for this case.
+    const desk: SpxDeskPayload = {
+      ...baseDesk(),
+      tide_bias: "neutral",
+      gex_walls: [],
+      news_headlines: [],
+      vix: 30,
+      vix_term: { vix9d: 24, vix3m: 20 },
+    } as SpxDeskPayload;
+    const factors: SpxSignalFactor[] = [
+      { label: "Live tape", weight: 12, detail: "calls" },
+      { label: "VIX curve", weight: -8, detail: "backwardation" },
+    ];
+    const { weighted_conflicts } = computeWeightedConflicts(desk, 40, factors);
+    // VIX curve opposes (soft, +1) and the desk-level VIX-extreme bonus is suppressed because
+    // that same opposing factor already accounts for it -> weighted_conflicts = 1, not 3.
+    assert.equal(weighted_conflicts, 1);
+  });
+
+  it("IV rank presence is unaffected by the fix — still suppresses the VIX-extreme bonus (no regression)", () => {
+    // "IV rank" is only ever pushed as an OPPOSING factor by spx-signals.ts (high IV rank fades
+    // a long, low IV rank squeezes a short), so "exists" and "exists and opposes" are equivalent
+    // for it — this must keep behaving exactly as before the fix. "IV rank" is also a HARD
+    // opposing factor (isHardOpposingFactor), so the main loop above already counts it at 2x.
+    const desk: SpxDeskPayload = {
+      ...baseDesk(),
+      tide_bias: "neutral",
+      gex_walls: [],
+      news_headlines: [],
+      vix: 30,
+      vix_term: { vix9d: null, vix3m: null },
+    } as SpxDeskPayload;
+    const factors: SpxSignalFactor[] = [
+      { label: "Live tape", weight: 12, detail: "calls" },
+      { label: "IV rank", weight: -4, detail: "High IV rank 75 — fade risk on longs" },
+    ];
+    const { weighted_conflicts } = computeWeightedConflicts(desk, 40, factors);
+    // IV rank opposes and is hard (+2 from the main loop) and already accounts for the
+    // VIX-extreme bonus, which must stay suppressed -> 2, not 4.
+    assert.equal(weighted_conflicts, 2);
+  });
 });

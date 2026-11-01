@@ -120,8 +120,24 @@ function newsAlreadyScored(factors: SpxSignalFactor[]): boolean {
   return factors.some((f) => f.label === "News risk" || f.label.startsWith("News"));
 }
 
-function vixAlreadyScored(factors: SpxSignalFactor[]): boolean {
-  return factors.some((f) => f.label.includes("VIX") || f.label === "IV rank");
+// BUG FIX (2026-11-01, five-engine-largo-cycle-60 audit): same bug class as gexAlreadyScored
+// above (PR #7114) — this guard used to suppress the vixExtremeAgainst() +2 bonus whenever ANY
+// VIX-family factor existed in `factors`, regardless of which SIDE it agreed with. desk.vix
+// (absolute VIX level) and the "VIX curve" factor (spx-signals.ts, built from vix_term's
+// vix9d/vix3m term-structure shape) are independent metrics from independent inputs — "VIX curve"
+// can carry a POSITIVE weight (contango, agreeing with a long) at the exact same time desk.vix is
+// extreme (>28) and genuinely OPPOSES that long. Live repro: vix=30 (long opposed) + an agreeing
+// "VIX curve" contango factor (weight +4) -> the old broad guard read "a VIX-family factor
+// exists" as "the VIX-extreme conflict is already counted" and dropped a real, independent
+// conflict (weighted_conflicts 2 -> 0). Fixed the same way as gexAlreadyScored: require the
+// EXISTING factor to actually OPPOSE `direction` (factorOpposes), not merely exist.
+// "IV rank" is unaffected by this fix: spx-signals.ts only ever pushes it as an OPPOSING factor
+// (high IV rank fades a long, low IV rank squeezes a short — see the uw_iv_rank block above), so
+// "exists" and "exists and opposes" were already equivalent for it; no behavior change there.
+function vixAlreadyScored(factors: SpxSignalFactor[], direction: "long" | "short"): boolean {
+  return factors.some(
+    (f) => (f.label.includes("VIX") || f.label === "IV rank") && factorOpposes(direction, f)
+  );
 }
 
 export function computeWeightedConflicts(
@@ -165,7 +181,7 @@ export function computeWeightedConflicts(
   if (gexOpposed(desk, direction) && !gexAlreadyScored) {
     weighted += 2;
   }
-  if (vixExtremeAgainst(desk, direction) && !vixAlreadyScored(factors)) {
+  if (vixExtremeAgainst(desk, direction) && !vixAlreadyScored(factors, direction)) {
     weighted += 2;
   }
 
