@@ -1488,6 +1488,10 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     snapsRaw,
     minuteBars,
     dailyBars,
+    // VIX sibling of `dailyBars` — see `priorFromBarsVix` below (2026-11-01 fix) for why VIX
+    // needs its own daily-bars-derived prior close instead of trusting Polygon's transported
+    // `change_pct`, same as SPX already does via `priorFromBars`.
+    dailyBarsVix,
     ema20,
     ema50,
     ema200,
@@ -1501,6 +1505,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     fetchIndexSnapshots([SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD]).catch(() => ({})),
     fetchIndexMinuteBars(SPX, today, today).catch(() => []),
     fetchIndexDailyBars(SPX, fromWeek, today).catch(() => []),
+    fetchIndexDailyBars(VIX, fromWeek, today).catch(() => []),
     fetchIndexEma(SPX, 20, "day"),
     fetchIndexEma(SPX, 50, "day"),
     fetchIndexEma(SPX, 200, "day"),
@@ -1562,6 +1567,14 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     label !== "RTH OPEN"
       ? latestSessionAndItsOwnPrior(dailyBars, today).prior
       : priorDayFromDailyBars(dailyBars, today);
+  // VIX sibling of `priorFromBars` immediately above — same RTH-aware anchor strategy, applied to
+  // `dailyBarsVix` instead of `dailyBars`, so `vix_change_pct` below can be DERIVED the same way
+  // `spx_change_pct` already is rather than transported straight from Polygon's snapshot
+  // `change_pct` (2026-11-01 fix — see fetchVixPriorDayCached's header for the full repro).
+  const priorFromBarsVix =
+    label !== "RTH OPEN"
+      ? latestSessionAndItsOwnPrior(dailyBarsVix, today).prior
+      : priorDayFromDailyBars(dailyBarsVix, today);
   const price =
     spxSnap?.price ?? lastPulseForSignals?.price ?? priorFromBars.pdc ?? 0;
   if (!(price > 0)) return empty;
@@ -1587,6 +1600,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
         }
       : null;
   const prior = priorFromBars;
+  const priorVix = priorFromBarsVix;
   const newsHeadlines: DeskNewsHeadline[] = (newsRaw ?? [])
     .map((a) => ({
       title: a.title,
@@ -1781,7 +1795,14 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     // Derived from prior_close (served two lines below as `pdc`) — see pulseChangePctFromPriorClose.
     spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
     vix: roundDeskNum(vixSnap?.price ?? intel?.vix ?? null),
-    vix_change_pct: vixSnap?.change_pct ?? intel?.vix_change_pct ?? null,
+    // Derived from priorVix.pdc (2026-11-01 fix) — same "derive, don't transport" treatment
+    // spx_change_pct gets above. Previously transported vixSnap?.change_pct verbatim, which
+    // inherits Polygon's fabricated-0 artifact whenever session.previous_close === session.close
+    // (every night after close, every weekend/holiday) — see fetchVixPriorDayCached's header.
+    vix_change_pct:
+      pulseChangePctFromPriorClose(vixSnap?.price ?? null, priorVix.pdc, vixSnap?.change_pct) ??
+      intel?.vix_change_pct ??
+      null,
     above_vwap: vwap != null ? price >= vwap : false,
     lod: roundDeskNum(lod),
     hod: roundDeskNum(hod),
@@ -1895,6 +1916,79 @@ async function fetchPriorDayCached(rthOpen: boolean): Promise<{
     : latestSessionAndItsOwnPrior(bars, today).prior;
   cachedPriorDay = { pdh: prior.pdh, pdl: prior.pdl, pdc: prior.pdc, fetchedAt: now };
   return { pdh: prior.pdh, pdl: prior.pdl, pdc: prior.pdc };
+}
+
+/**
+ * VIX sibling of {@link cachedPriorDay}/{@link fetchPriorDayCached} — same shape, same 60s TTL,
+ * same RTH-aware anchor strategy, applied to I:VIX's own daily bars instead of SPX's.
+ *
+ * BUG (found live 2026-11-01, Ask Largo/5-engine standing mandate): `vix_change_pct` was
+ * transported straight from Polygon's raw index-snapshot `change_percent` at all three builder
+ * call sites (buildSpxDesk/buildSpxDeskPulse/buildSpxDeskPulseMinimal below), with no derivation
+ * at all — unlike `spx_change_pct`, which has used {@link pulseChangePctFromPriorClose} since the
+ * 2026-08-07 P0. Polygon serves a FABRICATED 0 for `change_percent` whenever no new session has
+ * started since the snapshot was last computed (every night after close, every weekend, every
+ * holiday) by setting `session.previous_close === session.close` — a stale-anchor artifact, not a
+ * real flat day. Live repro 2026-11-01 (Sunday, market closed): `GET /api/market/spx/desk`
+ * returned `{"vix": 19.42, "vix_change_pct": 0, "spx_change_pct": -1.82}` — SPX came out correct
+ * because of its existing derivation, VIX did not. Raw Polygon daily bars for I:VIX over the same
+ * window: Thu 2026-10-29 close 17.20, Fri 2026-10-30 close 19.42 → true day-over-day change
+ * ≈ +12.85%, not 0. This cache/fetch pair gives VIX the identical "derive, don't transport"
+ * treatment SPX already has, reusing the same anchor-strategy conditional rather than inventing a
+ * new one.
+ */
+let cachedVixPriorDay = {
+  pdh: null as number | null,
+  pdl: null as number | null,
+  pdc: null as number | null,
+  fetchedAt: 0,
+};
+
+async function fetchVixPriorDayCached(rthOpen: boolean): Promise<{
+  pdh: number | null;
+  pdl: number | null;
+  pdc: number | null;
+}> {
+  const now = Date.now();
+  if (
+    isWsUpdatedAtFresh(cachedVixPriorDay.fetchedAt, 60_000, now) &&
+    cachedVixPriorDay.pdh != null
+  ) {
+    return { pdh: cachedVixPriorDay.pdh, pdl: cachedVixPriorDay.pdl, pdc: cachedVixPriorDay.pdc };
+  }
+  const today = todayEtYmd();
+  const bars = await fetchIndexDailyBars(VIX, priorEtYmd(10), today).catch(() => []);
+  const prior = rthOpen
+    ? priorDayFromDailyBars(bars, today)
+    : latestSessionAndItsOwnPrior(bars, today).prior;
+  cachedVixPriorDay = { pdh: prior.pdh, pdl: prior.pdl, pdc: prior.pdc, fetchedAt: now };
+  return { pdh: prior.pdh, pdl: prior.pdl, pdc: prior.pdc };
+}
+
+/**
+ * VIX sibling of {@link priorDayForPulseLane} — serve stale immediately, refresh in background,
+ * never block cold. On a true cold start (no VIX prior-day fetch has ever completed), there is no
+ * `lastPulseForSignals`-style sticky VIX prior close to fall back to, so this returns nulls — the
+ * background fetch this call kicks off populates {@link cachedVixPriorDay} for the next poll.
+ * `pulseChangePctFromPriorClose` falls back to the raw transported value when `pdc` is null, so
+ * this is never worse than pre-fix behavior, only better once the cache is warm (typically within
+ * one Polygon round trip).
+ */
+async function vixPriorDayForPulseLane(rthOpen: boolean): Promise<{
+  pdh: number | null;
+  pdl: number | null;
+  pdc: number | null;
+}> {
+  const now = Date.now();
+  if (cachedVixPriorDay.fetchedAt > 0) {
+    if (isWsUpdatedAtFresh(cachedVixPriorDay.fetchedAt, 60_000, now)) {
+      return { pdh: cachedVixPriorDay.pdh, pdl: cachedVixPriorDay.pdl, pdc: cachedVixPriorDay.pdc };
+    }
+    void fetchVixPriorDayCached(rthOpen).catch(() => {});
+    return { pdh: cachedVixPriorDay.pdh, pdl: cachedVixPriorDay.pdl, pdc: cachedVixPriorDay.pdc };
+  }
+  void fetchVixPriorDayCached(rthOpen).catch(() => {});
+  return { pdh: null, pdl: null, pdc: null };
 }
 
 /**
@@ -2248,9 +2342,10 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
   const today = todayEtYmd();
   // Structure (EMAs/VWAP/HOD) refreshes on a 5s cadence — NEVER block the fast price lane on it.
   kickPulseStructureRefresh(today);
-  const [snapsRaw, prior] = await Promise.all([
+  const [snapsRaw, prior, priorVix] = await Promise.all([
     fetchPulseLaneSnapshots(),
     priorDayForPulseLane(rthOpen),
+    vixPriorDayForPulseLane(rthOpen),
   ]);
   const structure = cachedPulseStructure;
   const snaps = snapsRaw;
@@ -2325,7 +2420,10 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     // the 2026-08-07 P0 was measured on.
     spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
     vix: vixSnap?.price ?? null,
-    vix_change_pct: vixSnap?.change_pct ?? null,
+    // Derived from priorVix.pdc (vixPriorDayForPulseLane) — same "derive, don't transport"
+    // treatment spx_change_pct already gets above (2026-11-01 fix). See
+    // fetchVixPriorDayCached's header for why a transported vixSnap?.change_pct is untrustworthy.
+    vix_change_pct: pulseChangePctFromPriorClose(vixSnap?.price ?? null, priorVix.pdc, vixSnap?.change_pct),
     above_vwap: vwap != null ? price >= vwap : false,
     lod: sessionExtremes.lod,
     hod: sessionExtremes.hod,
@@ -2422,7 +2520,10 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
   // Computed once and threaded through — `fetchPriorDayCached` needs to know whether a genuine
   // in-progress "today" bar can be assumed (RTH) or not (see its own header).
   const rthOpenNow = isSpxRthActive(new Date(), null);
-  const prior = await priorDayForPulseLane(rthOpenNow);
+  const [prior, priorVix] = await Promise.all([
+    priorDayForPulseLane(rthOpenNow),
+    vixPriorDayForPulseLane(rthOpenNow),
+  ]);
 
   const raced = await Promise.race([
     (async () => {
@@ -2438,7 +2539,14 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
         prior_close: prior.pdc,
         spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
         vix: snapsRaw[VIX]?.price ?? null,
-        vix_change_pct: snapsRaw[VIX]?.change_pct ?? null,
+        // Derived from priorVix.pdc — same "derive, don't transport" treatment spx_change_pct
+        // gets two lines up (2026-11-01 fix). See fetchVixPriorDayCached's header for why a
+        // transported change_pct is untrustworthy.
+        vix_change_pct: pulseChangePctFromPriorClose(
+          snapsRaw[VIX]?.price ?? null,
+          priorVix.pdc,
+          snapsRaw[VIX]?.change_pct ?? null
+        ),
         vwap: structure.vwap,
         ema20: structure.ema20,
         ema50: structure.ema50,
