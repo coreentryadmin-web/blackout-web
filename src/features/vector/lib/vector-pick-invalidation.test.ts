@@ -14,6 +14,19 @@ test("parseInvalidationTimeframeMinutes: 5m and 15m and 1H", () => {
   assert.equal(parseInvalidationTimeframeMinutes("Setup invalidated"), null);
 });
 
+test("parseInvalidationTimeframeMinutes: FRACTIONAL hour labels from a custom chart timeframe", () => {
+  // `tfLabel` in vector-play-engine.ts emits e.g. "1.5H" for a 90-minute custom candle interval
+  // (any whole-minute custom interval up to 240 is selectable — vector-bar-timeframes.ts). The old
+  // hour regex `/(\d+)\s*h\b/i` has no decimal-point handling, so `\d+` cannot span the "." and the
+  // engine restarts matching AFTER it — "1.5H" was parsed as "5H" (300 minutes) instead of the real
+  // 90, and "2.5H"/"3.3H" collapsed to "5H"/"3H" the same way. That feeds straight into
+  // `resolveInvalidationSpot` -> `lastClosedTimeframeBarClose`, which then reads the WRONG bar
+  // bucket when deciding setup_invalidated on a live Vector pick.
+  assert.equal(parseInvalidationTimeframeMinutes("1.5H close < 363.47"), 90);
+  assert.equal(parseInvalidationTimeframeMinutes("2.5H close > 100"), 150);
+  assert.equal(parseInvalidationTimeframeMinutes("3.3H close > 7600"), 198);
+});
+
 test("lastClosedTimeframeBarClose: uses last 1m close inside prior 5m bucket", () => {
   const tf = 5;
   const tfSec = tf * 60;
