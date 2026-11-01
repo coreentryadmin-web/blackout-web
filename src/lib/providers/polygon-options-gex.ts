@@ -4706,11 +4706,19 @@ export function summarizeOiByStrike(contracts: ChainContract[], limit = 20) {
 export function computeMaxPainFromChain(contracts: ChainContract[]): number | null {
   const byStrike = summarizeOiByStrike(contracts, 500);
   if (!byStrike.length) return null;
+  // Scan in STRIKE-ascending order, not summarizeOiByStrike's own return order. That helper sorts
+  // its rows by DESCENDING total_oi for its own OI-ranked-display callers — unrelated to strike
+  // price — so scanning its output directly let an exact pain tie between two strikes resolve to
+  // whichever one happened to carry MORE total open interest, not a function of the actual
+  // max-pain data at all. Same bug class, same fix (sort ascending by strike before the strict-`<`
+  // argmin scan keeps the tie on the LOWER strike, deterministically, regardless of OI) as
+  // wallsFromStrikeTotals's documented fix in gex-cross-validation-core.ts.
+  const sortedByStrike = [...byStrike].sort((a, b) => a.strike - b.strike);
   let bestStrike: number | null = null;
   let bestPain = Infinity;
-  for (const candidate of byStrike) {
+  for (const candidate of sortedByStrike) {
     let pain = 0;
-    for (const row of byStrike) {
+    for (const row of sortedByStrike) {
       if (row.strike < candidate.strike) pain += (candidate.strike - row.strike) * row.call_oi;
       if (row.strike > candidate.strike) pain += (row.strike - candidate.strike) * row.put_oi;
     }
