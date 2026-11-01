@@ -1,4 +1,4 @@
-import { test, after } from "node:test";
+import { test, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { Socket } from "node:net";
@@ -32,6 +32,11 @@ const server = createServer(() => {
 server.on("connection", (sock) => {
   sockets.push(sock);
 });
+
+/** Under `npm test` the whole suite shares one polygon-rate-limiter module; parallel files can
+ *  queue `acquirePolygonSlot` for seconds before TCP connect starts — 2s was too tight (verify
+ *  flake on main @7f5519c17: ticker-details subtest timed out while news passed). */
+const CONNECTION_WAIT_MS = 20_000;
 
 function waitForNextConnection(sinceCount: number, timeoutMs: number): Promise<Socket | null> {
   return new Promise((resolve) => {
@@ -67,6 +72,14 @@ after(() => {
   server.close();
 });
 
+beforeEach(async () => {
+  const { resetPolygonCircuitForTest, resetQueueTimeoutAlertForTest } = await import(
+    "./polygon-rate-limiter"
+  );
+  resetPolygonCircuitForTest();
+  resetQueueTimeoutAlertForTest();
+});
+
 test("fetchPolygonNews: aborting the caller's signal terminates the real underlying connection", async () => {
   const { fetchPolygonNews } = await polygonLargoPromise;
   const sinceCount = sockets.length;
@@ -75,7 +88,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECTION_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -109,7 +122,7 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECTION_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
