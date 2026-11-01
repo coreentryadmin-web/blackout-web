@@ -1875,6 +1875,45 @@ async function evaluateSpxPlayCore(
     return scanningPayload(desk, null, pickIdleMessage());
   }
 
+  // BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro): discloseStaleGexFactors
+  // / discloseStaleVwapFactor / discloseStaleFlowFactors (defined above) were wired into exactly
+  // ONE call site — the `!desk.market_open && !premarket` closed-market branch above. This live
+  // path (which feeds evaluateOpenPlay/evaluateFlatPlay — the real member-facing BUY/WATCH/
+  // SCANNING payload during RTH) never called any of them, so a GEX/VWAP/flow-derived factor
+  // built from stale desk data during RTH rendered with zero staleness disclosure anywhere in the
+  // response. This is a real, reachable window, not a closed-market-only edge case:
+  // `desk.gex_stale` flips true once the GEX snapshot age exceeds GEX_STALE_MS (30s default,
+  // spx-desk-numerics.ts), while evaluatePlayGates's own "Desk data stale (Xs)" hard block
+  // doesn't fire until deskStaleSec > playGexStaleMaxSec() (90s default, spx-play-config.ts) — a
+  // live 30-90s span where a GEX-derived factor shows a specific strike/level with no disclosure
+  // anywhere. `desk.vwap_stale` (spx-desk-merge.ts's sticky-fallback signal) carries no
+  // market_open gating at all, and `isFlowDataStale` is the exact predicate the live BUY-intent
+  // hard block already applies to flow data, so a flow-derived factor could be just as stale on
+  // this path without ever reaching that hard block (WATCH/SCANNING never evaluates a BUY-intent
+  // gate at all, and even a BUY only hard-blocks past isFlowDataStale's own 300s floor).
+  //
+  // Fix: apply the exact same disclosure idiom here, mutating `confluence.factors` once — before
+  // it fans out into evaluateOpenPlay/evaluateFlatPlay's many `factors: confluence.factors` call
+  // sites — rather than duplicating the three staleness checks at each one. Same gating as the
+  // closed-market branch: only disclose a data family that actually produced a factor, so a live
+  // read with no GEX/VWAP/flow factor present never grows a confusing clause about data it never
+  // showed. None of the three disclose* helpers touch `.label`/`.weight` (only `.detail` text),
+  // so this cannot change score/grade/direction/conflicts — see computeWeightedConflicts and
+  // reclassifyConfluenceScore (spx-play-conflicts.ts/spx-signals.ts), both of which read only
+  // `.label`/`.weight` off these same factors, downstream of this mutation.
+  if (desk.gex_stale === true && confluence.factors.some((f) => GEX_DERIVED_FACTOR_LABELS.has(f.label))) {
+    confluence.factors = discloseStaleGexFactors(confluence.factors);
+  }
+  if (desk.vwap_stale === true && confluence.factors.some((f) => f.label === VWAP_FACTOR_LABEL)) {
+    confluence.factors = discloseStaleVwapFactor(confluence.factors);
+  }
+  if (
+    isFlowDataStale(desk.flow_data_age_ms, desk.flow_cluster_live === true) &&
+    confluence.factors.some((f) => FLOW_DERIVED_FACTOR_LABELS.has(f.label))
+  ) {
+    confluence.factors = discloseStaleFlowFactors(confluence.factors);
+  }
+
   // SHADOW-MODE factor logging (src/lib/spx-signals-shadow.ts) — fire-and-forget,
   // purely observational. Captures the RAW confluence.score/grade from
   // computeSpxConfluence() above, BEFORE the Night Hawk prior bonus just below
