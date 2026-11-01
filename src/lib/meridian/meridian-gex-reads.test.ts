@@ -33,6 +33,33 @@ test("summarizeHeatmapGammaByExpiry returns null on empty cells", () => {
   assert.equal(summarizeHeatmapGammaByExpiry({}, "2026-08-15"), null);
 });
 
+test("summarizeHeatmapGammaByExpiry breaks an exact gamma tie deterministically by expiry, not strike-insertion order", () => {
+  // The defect: two expiries with an EXACT, equal share of near-spot gamma used to pick
+  // `pinned_expiry` off whichever one the `Map` happened to insert first — and that insertion
+  // order tracks the order `cells`' STRIKE keys were enumerated, which for a non-integer strike
+  // axis (SPX's "7700.5" shape) is caller-supplied insertion order, not numeric order. Two
+  // payloads describing the IDENTICAL 50/50 split, differing only in which strike's row comes
+  // first in the object literal, must agree on `pinned_expiry` — the exact vein #7 argmax
+  // tie-break bug (kingFromStrikeTotals/wallsFromStrikeTotals), applied here to an expiry-keyed
+  // sum instead of a strike-keyed one.
+  const cellsStrikeAscending = {
+    "100.5": { "2026-01-01": 50 },
+    "200.5": { "2026-01-02": 50 },
+  };
+  const cellsStrikeDescending = {
+    "200.5": { "2026-01-02": 50 },
+    "100.5": { "2026-01-01": 50 },
+  };
+
+  const a = summarizeHeatmapGammaByExpiry(cellsStrikeAscending, "2026-01-01");
+  const b = summarizeHeatmapGammaByExpiry(cellsStrikeDescending, "2026-01-01");
+  assert.ok(a && b);
+  // Deterministic: earlier expiry wins the tie, regardless of strike-insertion order.
+  assert.equal(a!.pinned_expiry, "2026-01-01");
+  assert.equal(b!.pinned_expiry, "2026-01-01");
+  assert.equal(a!.pinned_expiry, b!.pinned_expiry);
+});
+
 test("maxPainForExpiryStrict refuses the whole-book fallback for a settled expiry", () => {
   // The defect this guards: a PAST OpEx has no strikes in the current chain, so
   // max_pain_by_expiry never carries it and the fallback stamped TODAY's book-wide max pain
