@@ -155,6 +155,14 @@ export function managementFor(
       progress: null,
     };
   }
+  const p = pnlPct ?? 0;
+  // RATCHET track position: map −50%→0, +100%→1 (the stop and target of the fast 0DTE ratchet).
+  // Computed unconditionally (including for CLOSED) because callers pass the blended as-managed
+  // P&L for closed rows specifically so a historical RATCHET-track marker lands at the real
+  // outcome, not the raw mechanical stop (ZeroDteCommandPanel.tsx's closedRealizedPct feed —
+  // see its own test "verdict band + ratchet marker use the trim-scale as-managed blend").
+  const progress = exitModel === "RATCHET" ? Math.max(0, Math.min(1, (p + 50) / 150)) : null;
+
   // CLOSED has no live position left to manage — without this branch, CLOSED fell into the
   // general P&L logic below (`Recommendation` has no "closed" value, so there was never a
   // deliberate choice to route it elsewhere). That meant a profitable CLOSED row silently kept
@@ -165,10 +173,13 @@ export function managementFor(
   // Deck's own Manage tab (PlayTerminal.tsx's `ManagePanel`, which renders for every status) and
   // in both board-row badges that call this directly on a CLOSED row (0DTE adapters.ts ~line 515,
   // Swing adapters.ts ~line 968), not just the Ask Largo swing brief this gap was found from.
+  // `progress` is still returned (not nulled) — it only feeds the historical track-marker
+  // position, which is correct and intentional for a closed row; the bug was the live-sounding
+  // recommendation/recNote text, not the marker.
   if (status === "CLOSED") {
-    return { recommendation: "HOLD", recNote: "Position closed — nothing left to manage.", progress: null };
+    return { recommendation: "HOLD", recNote: "Position closed — nothing left to manage.", progress };
   }
-  const p = pnlPct ?? 0;
+
   let recommendation: Recommendation = "HOLD";
   if (status === "TRIM") recommendation = "TRIM";
   else if (exitModel === "RATCHET" && p >= 90) recommendation = "TRIM"; // doubled → take partial, trail
@@ -185,8 +196,6 @@ export function managementFor(
           ? "In profit — let it work while the thesis holds; exit engine is trailing the stop."
           : "Managing to the plan — hold while the thesis is intact.";
 
-  // RATCHET track position: map −50%→0, +100%→1 (the stop and target of the fast 0DTE ratchet).
-  const progress = exitModel === "RATCHET" ? Math.max(0, Math.min(1, (p + 50) / 150)) : null;
   return { recommendation, recNote, progress };
 }
 

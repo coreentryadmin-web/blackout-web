@@ -55,7 +55,16 @@ function stamps via `refreshSwingManagement`/`refreshZeroDteManagement`).
 case (structural `recommendation: "HOLD"` — `Recommendation` has no "closed" value and widening
 that type is a bigger change, out of scope here — differentiated by an honest `recNote`):
 `"Position closed — nothing left to manage."` This single fix point covers every call site above,
-since they all go through this one function.
+since they all go through this one function. **`progress` is still computed, not nulled** — an
+earlier version of this fix nulled it unconditionally for CLOSED and broke a prior, deliberate fix
+(PR #6619/#6625, task #106): `ZeroDteCommandPanel.tsx` feeds `managementFor` the *blended*
+as-managed P&L for closed rows specifically so its RATCHET-track marker lands at the real outcome
+(e.g. the historical +6.7% banked via trim-scale) rather than the raw mechanical −50% stop pin.
+Caught by that panel's own regression test
+(`ZeroDteCommandPanel.test.ts` — "verdict band + ratchet marker use the trim-scale as-managed
+blend for a stopped CLOSED row") going red in CI on the first push; fixed by moving the
+RATCHET-track `progress` computation above the CLOSED branch and returning it unchanged, so only
+`recommendation`/`recNote` are overridden for CLOSED.
 
 **Fix rationale:** matches the existing `WATCH`/`SKIP` pattern exactly rather than inventing a new
 convention. Chose a fix at the shared function (the root) over patching each of the 5 call sites
@@ -66,5 +75,8 @@ already exists to prevent for WATCH/SKIP.
 **Evidence (RED → GREEN):** extended `adapters.test.ts` with a new test exercising all three P&L
 extremes. RED (pre-fix, fix stashed): `managementFor("RATCHET", "CLOSED", -60).recommendation ===
 "SELL"` (asserted `"HOLD"`, got `"SELL"` — confirmed the exact wrong-guidance bug). GREEN
-(post-fix): same test, 163/163 pass in the file (including all pre-existing tests, unaffected).
+(post-fix, corrected version — see the `progress` note above): same test (now also asserting
+`progress` is `0`/`>0.9` for the two RATCHET cases and `null` for the SCALE_OUT case, matching the
+preserved track-marker math), plus the full `adapters.test.ts` + `ZeroDteCommandPanel.test.ts`
+run: 170/170 pass.
 `npx tsc --noEmit`: clean.
