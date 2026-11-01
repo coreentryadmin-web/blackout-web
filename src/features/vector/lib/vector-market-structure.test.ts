@@ -27,6 +27,28 @@ test("labelPivots: HH/LH/HL/LL vs same-kind predecessor; first of each kind plai
   );
 });
 
+// Two separate double-bottom pivot lows at the EXACT same price (100.5), far enough apart (k=2,
+// span 6 bars) that their confirmation windows don't overlap and the tie-breaking rule inside
+// detectPivots (ties disqualify on the LEFT, allowed on the RIGHT — same window only) never
+// applies across them. Hand-traced: lows at i=2 and i=8, both price 100.5; one pivot high at
+// i=5 (107.5) in between, irrelevant to the low-label mirror being tested here.
+const EQUAL_LOW_PATH = [105, 103, 101, 103, 105, 107, 105, 103, 101, 103, 105];
+
+test("labelPivots: an equal low mirrors an equal high — counts as HL (no LOWER low was made), not LL", () => {
+  // The file's own header states the rule explicitly: "equal counts as LH — no higher high was
+  // made. Pivot LOWS mirror: HL / LL." An equal HIGH already falls on the LH side (no new high);
+  // the mirror for an equal LOW is HL (no new low), never LL. A double-bottom at the identical
+  // support level is real market structure (not a new lower low), and mislabeling it LL flows
+  // straight into vector-structure-markers.ts, which colors HL green and LL red — painting
+  // intact support as a fresh bearish break.
+  const pivots = labelPivots(barsFrom(EQUAL_LOW_PATH), 2);
+  const lows = pivots.filter((p) => p.kind === "low").map((p) => [p.index, p.label, p.price]);
+  assert.deepEqual(lows, [
+    [2, "L", 100.5],
+    [8, "HL", 100.5],
+  ]);
+});
+
 test("detectStructureEvents: first break is BOS (establishes trend), break against trend is CHOCH", () => {
   const events = detectStructureEvents(barsFrom(PATH), 2);
   // j=6: first close (105) above the confirmed i=2 high (104.5) → BOS up.
