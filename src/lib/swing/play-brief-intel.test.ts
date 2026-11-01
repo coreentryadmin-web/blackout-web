@@ -9842,6 +9842,39 @@ test("bookContextSection: a same-ticker/same-direction duplicate renders the sha
   );
   assert.match(section!.body, /This is the identical name, not just the same sector/);
   assert.doesNotMatch(section!.body, /theme "/i, "must not fall back to generic theme framing for a pure same-ticker duplicate");
+  assert.match(section!.body, /stacks the identical wager twice, not diversifying/, `got: ${section!.body}`);
+});
+
+// BUG FIX (2026-11-01, Ask Largo standing mandate, live repro MRNA positionId 2240): the closer
+// sentence above was a bare literal "twice" no matter how many same-ticker/same-direction rows
+// actually overlapped — correct only for exactly ONE pre-existing position (2 total), which is all
+// the test above covers. The real MRNA book already held TWO prior MRNA LONG positions (#68,
+// #2167) before this third one, so the honest count is three total, not two.
+test("bookContextSection: three total same-ticker/same-direction positions says 'three times', not a hardcoded 'twice' (2026-11-01, live MRNA repro)", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "MRNA", direction: "LONG", positionId: 68 },
+    { ticker: "MRNA", direction: "LONG", positionId: 2167 },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:MRNA:2240", ticker: "MRNA", direction: "LONG", status: "HOLD" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /stacks the identical wager 3 times, not diversifying/, `got: ${section!.body}`);
+  assert.doesNotMatch(section!.body, /stacks the identical wager twice/, `got: ${section!.body}`);
+});
+
+test("bookContextSection: a pending WATCH candidate with two prior same-ticker/same-direction positions also says 'three times' (not 'twice')", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "MRNA", direction: "LONG", positionId: 68 },
+    { ticker: "MRNA", direction: "LONG", positionId: 2167 },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:MRNA", ticker: "MRNA", direction: "LONG", status: "WATCH" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Adding MRNA stacks the identical wager 3 times, not diversifying/, `got: ${section!.body}`);
 });
 
 // Live repro (2026-10-21, Ask Largo standing mandate): CRWV HOLD (positionId 63) — a SAME-TICKER
