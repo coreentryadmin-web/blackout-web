@@ -1799,12 +1799,31 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   // get a matching evidence entry. Same gating as the sections themselves (CLOSED excluded,
   // checkPortfolioOverlap's own excludePositionId) so this can never disagree with what the member
   // reads in the section body.
+  //
+  // BUG FIX (2026-11-01, Ask Largo standing mandate, cycle-66 follow-up): that "can never disagree"
+  // claim was false for one shape. `bookContextSection`'s own 2026-09-21 fix (see that function,
+  // play-brief-intel.ts) passes `excludeSelfMatch: false` whenever the reviewed play has no real
+  // ledger positionId AND is still a pending entry decision (WATCH) — a WATCH play's id never
+  // carries a positionId suffix, so a matching book row can only be a genuine distinct position,
+  // never "the candidate re-reading itself". This call never ported that branch: it fell straight
+  // to `undefined` whenever positionId was null, which defaults checkPortfolioOverlap to
+  // excludeSelfMatch:true — so a WATCH candidate on a ticker already held in the SAME direction had
+  // its one matching book row silently treated as "self" and dropped. When that was the ONLY
+  // overlapping row, `overlap.hasOverlap` read false here while `bookContextSection` (seeing
+  // excludeSelfMatch:false) correctly rendered a "Concentration — same underlying" sentence in the
+  // section body — exactly the body-vs-evidence split this file's own Largo C7 doctrine two
+  // paragraphs up says must never happen.
   if (statusBucket(ctx.play) !== "closed" && ctx.openBook != null && ctx.openBook.length) {
     const { positionId } = parseSwingPlayId(ctx.play.id);
+    const isPendingEntryDecision = ctx.play.status === "WATCH";
     const overlap = checkPortfolioOverlap(
       { ticker: ctx.play.ticker, direction: ctx.play.direction },
       ctx.openBook,
-      positionId != null ? { excludePositionId: positionId } : undefined,
+      positionId != null
+        ? { excludePositionId: positionId }
+        : isPendingEntryDecision
+          ? { excludeSelfMatch: false }
+          : undefined,
     );
     if (overlap.hasOverlap) {
       const parts: string[] = [];

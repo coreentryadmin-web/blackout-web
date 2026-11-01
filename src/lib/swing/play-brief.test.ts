@@ -818,6 +818,46 @@ test("composeSwingPlayBrief: Book overlap evidence distinguishes a same-underlyi
   );
 });
 
+// BUG FOUND (Ask Largo standing mandate, cycle-66 follow-up fork, live-verified against source):
+// bookContextSection's 2026-09-21 WATCH-candidate fix (excludeSelfMatch:false whenever there is no
+// real ledger id AND the play is still a pending entry decision — see that function's own doc
+// comment, play-brief-intel.ts) was never mirrored into evidenceFromContext's own, independent
+// checkPortfolioOverlap call a few lines above this test (play-brief.ts). That call still passes
+// `undefined` whenever positionId is null, which defaults checkPortfolioOverlap to
+// excludeSelfMatch:true. For a WATCH candidate on a ticker the trader already holds in the SAME
+// direction, that default treats the one existing book row as "self" and drops it entirely before
+// this fact-feeder ever sees it — so when that is the ONLY overlapping row, overlap.hasOverlap
+// here reads false and no "Book overlap:" evidence entry is emitted at all, even though
+// bookContextSection (seeing excludeSelfMatch:false) correctly renders a "Concentration — same
+// underlying" sentence in the section body for the exact same fact. This is precisely the
+// divergence the Largo C7 comment immediately above evidenceFromContext's overlap block claims is
+// structurally impossible ("Same gating as the sections themselves... so this can never disagree
+// with what the member reads in the section body") — it is possible, for this one shape (WATCH +
+// no positionId + exactly one same-ticker/same-direction book row).
+test("composeSwingPlayBrief: a WATCH candidate already held in the book carries a matching Book overlap evidence entry, not a silent self-exclusion (Largo C7)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ id: "SWING:AAPL", ticker: "AAPL", direction: "LONG", status: "WATCH" }),
+    asOf: "2026-11-01T15:00:00.000Z",
+    sessionDate: "2026-11-01",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    openBook: [{ ticker: "AAPL", direction: "LONG", positionId: 500 }],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const book = brief.envelope.sections.find((s) => s.title === "Book context");
+  assert.ok(book, "sanity: the section itself must flag the already-held same-ticker/same-direction row");
+  assert.match(book!.body, /same underlying/i);
+  const overlapEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Book overlap:"));
+  assert.ok(
+    overlapEvidence,
+    "the section body's concentration claim must carry a matching evidence entry (Largo C7) — it must not be silently self-excluded for a WATCH candidate",
+  );
+});
+
 test("composeSwingPlayBrief: CLOSED play never surfaces a Book overlap evidence entry (matches the section's own gating)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ ticker: "NVDA", direction: "LONG", status: "CLOSED" }),
