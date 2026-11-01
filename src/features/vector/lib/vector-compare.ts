@@ -83,6 +83,37 @@ export function deskPath(ticker: string): string {
   return t === "SPX" ? "/vector" : `/vector?ticker=${encodeURIComponent(t)}`;
 }
 
+/**
+ * Drop any per-ticker record (meta/regime, play-desk snapshot, …) whose ticker is no longer in
+ * the active compare set, returning the SAME object reference when nothing changed so callers can
+ * skip a redundant re-render.
+ *
+ * THE BUG THIS FIXES (member-visible, VectorCompareDesk). `metaByTicker` (regime posture + spot,
+ * shown as the long-γ/short-γ chip in the compare summary footer) was ONLY ever pruned inside
+ * `removeTicker`'s own explicit `delete`. That covers removing one pane via its own ✕ button, but
+ * not `applyPreset` swapping the whole seeds array at once (e.g. "Big Tech" → "Indices" → "Big
+ * Tech" again) — a stale posture for a ticker that left and came back could sit in state and render
+ * for however long it took the freshly-mounted pane's OWN regime fetch to overwrite it, showing a
+ * real but OUTDATED gamma posture as if it were current. `playByTicker` already had exactly this
+ * cleanup (a `useEffect` keyed on `seeds` that prunes anything not in the live ticker set) added
+ * alongside it later — `metaByTicker`, the older of the two sibling per-ticker records, never got
+ * the same treatment. This helper is shared by both so they can't drift apart again.
+ */
+export function pruneStaleTickerEntries<T>(
+  entries: Readonly<Record<string, T>>,
+  activeTickers: ReadonlySet<string>
+): Record<string, T> {
+  let changed = false;
+  const next: Record<string, T> = { ...entries };
+  for (const key of Object.keys(next)) {
+    if (!activeTickers.has(key)) {
+      delete next[key];
+      changed = true;
+    }
+  }
+  return changed ? next : (entries as Record<string, T>);
+}
+
 /** Load compare seeds with bounded concurrency — 4× parallel burst was tripping ALB 502s. */
 export async function loadCompareSeedsBounded<T>(
   tickers: string[],

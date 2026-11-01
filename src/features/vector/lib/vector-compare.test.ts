@@ -8,6 +8,7 @@ import {
   deskPath,
   isCompareMode,
   parseCompareTickers,
+  pruneStaleTickerEntries,
 } from "./vector-compare";
 
 test("parseCompareTickers: normalizes, dedupes, caps at max panes", () => {
@@ -164,6 +165,38 @@ test("loadCompareSeedsBounded: ALL failing still resolves — never rejects", as
   // Resolving with all-nulls lets the caller fall back to the primary seed it already holds.
   // Rejecting here is what stranded the UI, so the loader must never do it.
   assert.deepEqual(loaded, [null, null]);
+});
+
+test("pruneStaleTickerEntries: drops entries whose ticker left the active set", () => {
+  // THE BUG (member-visible, VectorCompareDesk): metaByTicker (drives the compare summary
+  // footer's long-γ/short-γ chip) had no general cleanup when the whole seeds array was swapped
+  // (applyPreset) — only removeTicker's own targeted delete. A ticker that left via a preset swap
+  // and later came back could render a real but STALE posture left over from its earlier mount.
+  const entries = { NVDA: "long", TSLA: "short", META: "unknown" };
+  const active = new Set(["NVDA", "META"]);
+  const next = pruneStaleTickerEntries(entries, active);
+  assert.deepEqual(next, { NVDA: "long", META: "unknown" });
+  assert.ok(!("TSLA" in next));
+});
+
+test("pruneStaleTickerEntries: returns the SAME reference when nothing is stale", () => {
+  const entries = { NVDA: "long", META: "unknown" };
+  const active = new Set(["NVDA", "META", "AMD"]); // AMD not present yet — not a reason to prune
+  const next = pruneStaleTickerEntries(entries, active);
+  assert.strictEqual(next, entries, "unchanged input must not force a new object (avoids an extra re-render)");
+});
+
+test("pruneStaleTickerEntries: an empty active set clears every entry", () => {
+  const entries = { NVDA: "long", TSLA: "short" };
+  const next = pruneStaleTickerEntries(entries, new Set());
+  assert.deepEqual(next, {});
+});
+
+test("pruneStaleTickerEntries: does not mutate the input record", () => {
+  const entries = { NVDA: "long", TSLA: "short" };
+  const snapshot = { ...entries };
+  pruneStaleTickerEntries(entries, new Set(["NVDA"]));
+  assert.deepEqual(entries, snapshot);
 });
 
 test("loadCompareSeedsBounded: a failure does not stall the concurrency window", async () => {
