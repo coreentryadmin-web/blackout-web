@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T22:12:26.739Z",
+  "updated_at": "2026-11-01T23:08:05.199Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "49aba730b344d66f4cb42bbc1f27aa927e8fcb1d",
+    "last_main_sha": "e43998a90ed8e82d8c19eb45bfadf15012977977",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T22:10:40.111Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-25T22:10:45.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-25T22:51:59.341Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-25T22:52:04.141Z",
       "type": "context_sync",
@@ -1271,28 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T23:07:55.421Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T23:08:00.444Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T23:08:05.199Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 7310,
-      "title": "Fix SPX desk peek fast-path serving degraded pulse-only shell as live",
-      "branch": "fix/spx-desk-degraded-shell-source-none",
+      "number": 7318,
+      "title": "Fix SPX vix_change_pct transporting Polygon's fabricated-0 artifact",
+      "branch": "fix/spx-vix-change-pct-fabricated-zero",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T22:09:50Z"
+      "updated_at": "2026-11-01T23:04:18Z"
     },
     {
-      "number": 7309,
-      "title": "fix(uw-ws): never default an unresolvable net_flow row's ticker to SPX",
-      "branch": "fix/net-flow-ws-ticker-scope",
+      "number": 7317,
+      "title": "fix(lib): readCrossInstanceTelemetry returns null, not a hollow object, when every registered instance id's data key has expired",
+      "branch": "fix/telemetry-redis-stale-instance-ids",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T22:03:52Z"
+      "updated_at": "2026-11-01T22:56:33Z"
     },
     {
       "number": 5547,
