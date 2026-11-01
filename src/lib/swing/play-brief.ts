@@ -24,6 +24,7 @@ import { swingPlayBriefConfidence } from "./play-brief-confidence";
 import {
   collectBriefUnavailableSources,
   confluenceZoneKindsLabel,
+  freshUnderlyingExcursion,
   fundamentalsAncient,
   fundamentalsFreshnessTag,
   gexMarketSessionNote,
@@ -238,7 +239,34 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
   };
 }
 
-function managementSection(play: TerminalPlay): RichSection {
+/**
+ * BUG FIX (2026-11-01, Ask Largo x Night Hawk Swings standing mandate, live repro META
+ * SWING:META:69 / TSM COMMIT briefs). `managementSection`'s "Underlying excursion since entry"
+ * line reads `play.underlyingExcursion`, computed upstream at RESOLVE time off a cron-cached spot
+ * that can disagree with the fresh, per-request Vector/GEX spot `levelsFromContext` (below)
+ * resolves for this SAME response's `envelope.levels[0]`/`structureLadder.spot` — see
+ * `freshUnderlyingExcursion`'s own doc comment (play-brief-absence.ts) for the full live-repro
+ * write-up and why this recompute is mathematically exact, not an approximation.
+ *
+ * This resolves the SAME fresh spot `levelsFromContext` does (vector-then-GEX fallback,
+ * staleness-gated) — a second, independently-computed copy of that formula, matching the existing
+ * pattern `watchForSection` (play-brief-intel.ts) already established for its own "Since flag" fix
+ * rather than introducing a cross-file refactor of the spot resolution itself in this PR.
+ */
+function freshSpotForManagementExcursion(ctx: SwingPlayBriefContext, readMs: number): number | null {
+  const vec = (ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null) as
+    | (VectorFullState & Partial<VectorFreshnessBlock>)
+    | null;
+  const gex = ctx.ecosystem?.gex_positioning;
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  const gexStale = gexMatrixStale(gex, readMs);
+  const vecSpot = vectorStale ? undefined : vec?.spot;
+  return vecSpot ?? (gexStale ? undefined : gex?.spot) ?? null;
+}
+
+function managementSection(ctx: SwingPlayBriefContext): RichSection {
+  const { play } = ctx;
+  const readMs = ctx.readMs ?? Date.now();
   const action = swingActionDisplay(play);
   const lines: string[] = [];
   lines.push(`**Recommended:** ${play.recommendation ?? action?.label ?? "HOLD"}`);
@@ -345,9 +373,18 @@ function managementSection(play: TerminalPlay): RichSection {
   // `archetypeNearTie`/`topFlowProvenance` above. Only rendered once both extremes are known (never
   // a fabricated 0% when the underlying excursion isn't yet computable).
   if (play.underlyingExcursion) {
-    const { mfePct, maePct } = play.underlyingExcursion;
+    // See freshUnderlyingExcursion's own doc comment (play-brief-absence.ts) for the full
+    // live-repro write-up (META/TSM) this recompute fixes — reconciles against THIS brief's own
+    // fresh Vector/GEX spot rather than echoing the upstream, cron-cached-spot figure verbatim.
+    const freshSpot = freshSpotForManagementExcursion(ctx, readMs);
+    const excursion = freshUnderlyingExcursion(
+      play.underlyingExcursion,
+      play.entryTriggerUnderlyingPx,
+      play.direction,
+      freshSpot,
+    )!;
     lines.push(
-      `Underlying excursion since entry: **${fmtPct(mfePct)} favorable** / **${fmtPct(maePct)} adverse**.`,
+      `Underlying excursion since entry: **${fmtPct(excursion.mfePct)} favorable** / **${fmtPct(excursion.maePct)} adverse**.`,
     );
   }
   return { title: "Management", body: lines.join("\n\n") };
@@ -2243,7 +2280,7 @@ export function composeSwingPlayBrief(
     const watchSiblings = safeCompose("Other concurrent position(s)", () => siblingPositionsNote(ctx), null, trackBuildFailure);
     if (watchSiblings) sections.push(watchSiblings);
   } else if (bucket === "open") {
-    const mgmt = safeCompose("Management", () => managementSection(play), null, trackBuildFailure);
+    const mgmt = safeCompose("Management", () => managementSection(ctx), null, trackBuildFailure);
     if (mgmt) sections.push(mgmt);
     const th = safeCompose("Thesis health", () => thesisHealthSection(play), null, trackBuildFailure);
     if (th) sections.push(th);

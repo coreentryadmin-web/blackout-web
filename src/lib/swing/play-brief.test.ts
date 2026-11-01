@@ -5688,6 +5688,73 @@ test("composeSwingPlayBrief: play.underlyingExcursion present -> Management sect
   );
 });
 
+// BUG FIX (2026-11-01, Ask Largo x Night Hawk Swings standing mandate, live repro META
+// SWING:META:69 / TSM COMMIT briefs). `play.underlyingExcursion` is computed upstream off the
+// cron-cached serving-snapshot spot (play-brief-resolve.ts's `readSwingServingSnapshot()`), a
+// DIFFERENT spot resolution than the fresh, per-request Vector/GEX spot this SAME brief displays
+// everywhere else (envelope.levels[0]/structureLadder.spot). The Management section must recompute
+// using that same fresh spot rather than echoing the stale figure verbatim — see
+// `freshSpotForManagementExcursion`'s own doc comment (play-brief.ts) for the full write-up.
+test("composeSwingPlayBrief: Underlying excursion recomputes off THIS brief's own fresh Vector/GEX spot, not the stale cron-cached spot play.underlyingExcursion was computed from (LONG)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      manageAction: "HOLD",
+      direction: "LONG",
+      entryTriggerUnderlyingPx: 100,
+      // Stale cron-cached read: mfePct 5 (hi=105) / maePct -2 (lo=98).
+      underlyingExcursion: { mfePct: 5, maePct: -2 },
+    }),
+    asOf: "2026-11-01T20:00:00.000Z",
+    sessionDate: "2026-11-01",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    // Fresh per-request spot (97) is BELOW the stale-derived low (98) — a genuine new adverse
+    // extreme the cron cache never saw. The favorable extreme (105) is untouched since 97 < 105.
+    ecosystem: { gex_positioning: { spot: 97 } } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.match(
+    management!.body,
+    /Underlying excursion since entry: \*\*\+5\.0% favorable\*\* \/ \*\*-3\.0% adverse\*\*\./,
+    `got: ${management!.body}`,
+  );
+  assert.doesNotMatch(management!.body, /-2\.0% adverse/, `got: ${management!.body}`);
+});
+
+test("composeSwingPlayBrief: Underlying excursion falls back to the stale cron-cached value when no fresh Vector/GEX spot is available at all", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      manageAction: "HOLD",
+      direction: "LONG",
+      entryTriggerUnderlyingPx: 100,
+      underlyingExcursion: { mfePct: 5, maePct: -2 },
+    }),
+    asOf: "2026-11-01T20:00:00.000Z",
+    sessionDate: "2026-11-01",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.match(
+    management!.body,
+    /Underlying excursion since entry: \*\*\+5\.0% favorable\*\* \/ \*\*-2\.0% adverse\*\*\./,
+    `got: ${management!.body}`,
+  );
+});
+
 test("composeSwingPlayBrief: play.underlyingExcursion absent -> no Underlying excursion line (honest absence, never a fabricated 0%)", () => {
   const brief = composeSwingPlayBrief({
     play: fixturePlay({ status: "HOLD", recommendation: "HOLD", manageAction: "HOLD" }),

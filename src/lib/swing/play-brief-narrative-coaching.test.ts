@@ -3487,6 +3487,43 @@ test("ivLeverageDivergenceCoaching: symmetric on the gain side — a win far bey
   assert.match(line!, /not extra thesis confirmation/i);
 });
 
+// BUG FIX (2026-11-01, Ask Largo x Night Hawk Swings standing mandate): `play.underlyingExcursion`
+// used to be read raw here, exposing it to the SAME cron-cached-spot staleness bug
+// `freshUnderlyingExcursion`'s own doc comment (play-brief-absence.ts) documents for play-brief.ts's
+// Management section. The optional 3rd `spot` param (collectCoachingBullets' own fresh, per-request
+// Vector/GEX spot) lets this bullet reconcile with the rest of "Trade manager read" instead of
+// citing a stale underlying move for the identical comparison.
+test("ivLeverageDivergenceCoaching: reconciles the underlying move against THIS brief's own fresh spot, not the stale cron-cached excursion", () => {
+  const line = ivLeverageDivergenceCoaching(
+    play({
+      pnlPct: -40,
+      entryTriggerUnderlyingPx: 100,
+      // Stale cron-cached read: maePct -2.6 (lo=97.4).
+      underlyingExcursion: { mfePct: 0, maePct: -2.6 },
+      greeks: { delta: 0.5, gamma: 0.02, theta: -0.13, vega: 0.1, iv: 0.75 },
+    }),
+    "open",
+    // Fresh per-request spot (90) is BELOW the stale-derived low (97.4) — a genuine new adverse
+    // extreme the cron cache never saw.
+    90,
+  );
+  assert.match(line!, /-10\.0/, `got: ${line}`);
+  assert.doesNotMatch(line!, /-2\.6/, `got: ${line}`);
+});
+
+test("ivLeverageDivergenceCoaching: falls back to the raw underlyingExcursion when no fresh spot is supplied (existing 2-arg call sites unaffected)", () => {
+  const line = ivLeverageDivergenceCoaching(
+    play({
+      pnlPct: -40,
+      entryTriggerUnderlyingPx: 100,
+      underlyingExcursion: { mfePct: 0, maePct: -2.6 },
+      greeks: { delta: 0.5, gamma: 0.02, theta: -0.13, vega: 0.1, iv: 0.75 },
+    }),
+    "open",
+  );
+  assert.match(line!, /-2\.6/, `got: ${line}`);
+});
+
 test("ivLeverageDivergenceCoaching: silent when the option moved roughly in proportion with the underlying (ratio floor)", () => {
   // -20% option vs -10% underlying is only a 2x ratio, under the 3x floor.
   assert.equal(

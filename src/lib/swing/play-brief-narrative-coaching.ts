@@ -7,6 +7,7 @@ import {
   collectOptionMarkStalenessAbsence,
   ageSecondsLabel,
   confluenceZoneKindsLabel,
+  freshUnderlyingExcursion,
   fundamentalsAncient,
   gexMarketSessionNote,
   gexMatrixAgeMs,
@@ -1314,15 +1315,31 @@ export function ivRankCoaching(play: TerminalPlay): string | null {
  * matching-direction move, that move floored at 1pt so a near-zero denominator can't produce a
  * meaningless ratio) — a position where premium and underlying moved roughly in proportion needs
  * no special explanation; that's just delta working normally.
+ *
+ * BUG FIX (2026-11-01, Ask Largo x Night Hawk Swings standing mandate): `play.underlyingExcursion`
+ * used to be read raw here — the SAME cron-cached-spot staleness bug `freshUnderlyingExcursion`'s
+ * own doc comment (play-brief-absence.ts) documents for play-brief.ts's Management section, just
+ * reached through this second call site instead. `spot` (new 4th param, optional — every existing
+ * 2-arg call site keeps working, falling back to the raw figure exactly as before) is the SAME
+ * fresh, per-request Vector/GEX spot `collectCoachingBullets` already resolves and threads through
+ * for its own use (`closedCoaching`) — passed through here so this bullet reconciles with the rest
+ * of "Trade manager read" instead of citing a different, stale underlying move for the identical
+ * comparison.
  */
 export function ivLeverageDivergenceCoaching(
   play: TerminalPlay,
   bucket: "watch" | "open" | "closed",
+  spot: number | null = null,
 ): string | null {
   if (bucket !== "open") return null;
   const pnlPct = fin(play.pnlPct);
   if (pnlPct == null || pnlPct === 0) return null;
-  const excursion = play.underlyingExcursion;
+  const excursion = freshUnderlyingExcursion(
+    play.underlyingExcursion,
+    play.entryTriggerUnderlyingPx,
+    play.direction,
+    spot,
+  );
   if (!excursion) return null;
   // mfePct is the favorable extreme (>= 0 by construction), maePct the adverse one (<= 0) —
   // match the excursion figure to the CURRENT P&L's own sign (signedExcursionPct's doc comment).
@@ -1848,7 +1865,7 @@ export function collectCoachingBullets(
   push(thesisBreakCoaching(play));
   push(thesisPillarCoaching(play));
   push(troughResilienceCoaching(play, bucket));
-  push(ivLeverageDivergenceCoaching(play, bucket));
+  push(ivLeverageDivergenceCoaching(play, bucket, spot));
 
   if (bucket === "watch") {
     // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `morningConfirmCoaching` (formerly
