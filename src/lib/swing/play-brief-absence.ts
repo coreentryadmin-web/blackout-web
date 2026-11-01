@@ -1178,6 +1178,27 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       what_is_missing: "a fresh Meridian catalyst timeline read for this ticker",
       retryable: true,
     });
+  } else if (ctx.meridian?.window_truncated && !ctx.meridian.items.length) {
+    // BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro TSM/PANW, Largo C3 absence
+    // violation): `window_truncated` is set when the market-wide Benzinga earnings-window fetch
+    // feeding `ctx.meridian` hit its own pagination cap (PR #7154, `play-brief-meridian.ts`), and
+    // `meridianCatalystSection`/`meridianPeerSection` (play-brief-intel.ts) already render an
+    // honest "cannot confirm — truncated" caveat in the narrative for exactly this shape — but
+    // this function, the sole feeder of `envelope.unavailableSources` (the UI's `UnavailableChip`
+    // and the structured absence channel the Largo product contract's C3 names), never checked
+    // this field at all. A reader consulting only the chip row would wrongly conclude the
+    // Meridian catalyst/peer read for this ticker is trustworthy, directly contradicting the
+    // brief's own narrative two sections away. Gated on `!items.length` (not `unavailable`/
+    // `stale`, both already handled above) because a ticker whose row WAS found before the fetch
+    // hit its cap has a genuinely confirmed read — truncation elsewhere in the window is
+    // irrelevant to this ticker's own, already-known items, matching
+    // `meridianCatalystSection`'s own `!slice?.items.length` gate on its truncation caveat.
+    out.push({
+      source: "Meridian catalysts",
+      reason: "calendar fetch truncated — cannot confirm this ticker has no catalyst in the window",
+      what_is_missing: "a non-truncated Meridian earnings-window fetch for this ticker",
+      retryable: true,
+    });
   }
   // Largo C2/C3 (2026-09-18, Ask Largo standing mandate): #5166 disclosed ticker-news staleness
   // INLINE in the narrative (play-brief-intel.ts's `staleLead` prefix on the Headlines section,
