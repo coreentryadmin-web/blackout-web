@@ -30,6 +30,7 @@ let dexCharmCrossToolChecks: typeof import("./heatmap-verifier").dexCharmCrossTo
 let spxDeskCrossToolChecks: typeof import("./heatmap-verifier").spxDeskCrossToolChecks;
 let deriveCumulativeGammaFlip: typeof import("./heatmap-verifier").deriveCumulativeGammaFlip;
 let deriveWalls: typeof import("./heatmap-verifier").deriveWalls;
+let freshnessCheck: typeof import("./heatmap-verifier").freshnessCheck;
 
 before(async () => {
   ({
@@ -38,6 +39,7 @@ before(async () => {
     dexCharmCrossToolChecks,
     spxDeskCrossToolChecks,
     deriveCumulativeGammaFlip,
+    freshnessCheck,
     deriveWalls,
   } = await import("./heatmap-verifier"));
 });
@@ -556,4 +558,50 @@ test("deriveCumulativeGammaFlip matches production lowest-plausible selection (n
       `verifier oracle must track production flip at spot ${spot}`
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// freshnessCheck — future-dated `asof` clock-skew guard (BUG FIX, 2026-11-01)
+// ---------------------------------------------------------------------------
+
+test("freshnessCheck: ordinary past asof during RTH is fresh (consistency-only, not a flag)", () => {
+  const ctx = makeCtx({ now: Date.UTC(2026, 10, 1, 14, 0, 0) });
+  const hm = makeHeatmap({ asof: new Date(ctx.now - 5 * 60_000).toISOString() }); // 5m old
+  const out = freshnessCheck(ctx, hm, true);
+  assert.equal(out.outcome, "consistency-only");
+});
+
+test("freshnessCheck: genuinely stale asof during RTH flags (the baseline this check exists for)", () => {
+  const ctx = makeCtx({ now: Date.UTC(2026, 10, 1, 14, 0, 0) });
+  const hm = makeHeatmap({ asof: new Date(ctx.now - 30 * 60_000).toISOString() }); // 30m old
+  const out = freshnessCheck(ctx, hm, true);
+  assert.equal(out.outcome, "flag");
+});
+
+test("freshnessCheck: a small future-clock-skew asof (well within tolerance) still reads as fresh", () => {
+  const ctx = makeCtx({ now: Date.UTC(2026, 10, 1, 14, 0, 0) });
+  // 10s ahead of ctx.now — ordinary clock skew between the replica that wrote the matrix and
+  // this verifier's own clock, nowhere near ZERODTE_MARK_FUTURE_TOLERANCE_MS (60s).
+  const hm = makeHeatmap({ asof: new Date(ctx.now + 10_000).toISOString() });
+  const out = freshnessCheck(ctx, hm, true);
+  assert.equal(out.outcome, "consistency-only");
+});
+
+test("freshnessCheck: BUG FIX — an asof far in the future (beyond clock-skew tolerance) FLAGS, not a false fresh PASS", () => {
+  const ctx = makeCtx({ now: Date.UTC(2026, 10, 1, 14, 0, 0) });
+  // 20 minutes ahead of ctx.now — far beyond ordinary clock skew; this is the exact shape a
+  // corrupted/miswritten `asof` or a badly-skewed replica clock would produce. Before the fix,
+  // `(ctx.now - asofMs) / 60000` here was -20, and `-20 <= TOL.freshnessMin (15)` is TRUE, so this
+  // served a false "consistency-only" (fresh) verdict on data this layer's whole job is to catch.
+  const hm = makeHeatmap({ asof: new Date(ctx.now + 20 * 60_000).toISOString() });
+  const out = freshnessCheck(ctx, hm, true);
+  assert.equal(out.outcome, "flag");
+  assert.match(out.detail, /stale during RTH/);
+});
+
+test("freshnessCheck: a future asof off-RTH is skipped (not a flag), same honest-absence contract as the past-stale off-RTH case", () => {
+  const ctx = makeCtx({ now: Date.UTC(2026, 10, 1, 14, 0, 0) });
+  const hm = makeHeatmap({ asof: new Date(ctx.now + 20 * 60_000).toISOString() });
+  const out = freshnessCheck(ctx, hm, false);
+  assert.equal(out.outcome, "skipped");
 });
