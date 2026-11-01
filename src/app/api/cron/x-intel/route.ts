@@ -15,7 +15,13 @@ import { checkPostGuard, isTweetContentValid } from "@/lib/x-post-guard";
 import { xMarketingPostsPaused } from "@/lib/x-marketing-env";
 import { saveQueueRow } from "@/lib/x-intel/queue-store";
 import type { XIntelQueueDraft } from "@/lib/x-intel/queue-types";
-import { etDateString, etTimeString, cycleName, attachmentImagePath } from "./x-intel-time";
+import {
+  etDateString,
+  etTimeString,
+  cycleName,
+  attachmentImagePath,
+  noPostTypeSkipReason,
+} from "./x-intel-time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,9 +102,7 @@ export async function GET(req: NextRequest) {
     await logCronRun("x-intel", started, {
       ok: true,
       skipped: true,
-      reason: inWindow
-        ? "Outside 2-hour post window"
-        : `No post slot at hour ${et.getHours()}`,
+      reason: noPostTypeSkipReason(inWindow, et.getHours()),
     });
     return NextResponse.json({
       ok: true,

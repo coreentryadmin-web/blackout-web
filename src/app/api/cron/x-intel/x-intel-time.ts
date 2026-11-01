@@ -64,3 +64,30 @@ export function cycleName(et: Date, postType: string): string {
 export function attachmentImagePath(et: Date, postType: string): string {
   return `/x-intel/${etDateString(et)}T${hourBucket(et)}/${postType}-desk.png`;
 }
+
+/**
+ * The skip reason to log when `route.ts` found no `postType` (no `forceType` override, and
+ * `selectPostType(et)` returned null).
+ *
+ * ROOT CAUSE this fixes: `route.ts` previously inlined this as
+ * `inWindow ? "Outside 2-hour post window" : "No post slot at hour ${h}"` — backwards.
+ * `selectPostType`'s own guard (`if (!isPostWindow(nowEt)) return null`) means a null
+ * `postType` can ONLY happen when `isPostWindow(et)` is false — `EDT_HOUR_TO_TYPE` /
+ * `EST_HOUR_TO_TYPE` / `WEEKEND_POST_HOURS` (x-content-schedule.ts) cover every hour
+ * `isPostWindow` admits, so there is no "in window but no matching post type" hour. That makes
+ * `inWindow` provably `false` every time this branch runs, so the inline ternary's TRUE branch
+ * ("Outside 2-hour post window") was dead code and every real skip was mis-logged as
+ * "No post slot at hour N" — the wrong diagnosis for an operator reading `cron_job_runs`/the
+ * admin cron-health dashboard, since "no post slot" reads as a missing hour->type mapping bug,
+ * not as "it just isn't post time". `route.ts`'s own `x-autopost` sibling already gets this
+ * right (it never calls `isPostWindow` again at all — see its comment: "selectPostType returned
+ * null, which means isPostWindow(et) is false").
+ *
+ * The conditional is kept (rather than collapsed to the single reachable branch) as a canary:
+ * if `isPostWindow`/`selectPostType`'s hour sets ever drift apart in the future, `inWindow`
+ * becoming true here would be a genuinely new, more specific failure worth its own message
+ * instead of silently reporting the generic "outside window" reason.
+ */
+export function noPostTypeSkipReason(inWindow: boolean, hour: number): string {
+  return inWindow ? `No post slot at hour ${hour}` : "Outside 2-hour post window";
+}

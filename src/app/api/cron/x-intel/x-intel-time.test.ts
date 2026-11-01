@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { etDateString, etTimeString, cycleName, attachmentImagePath } from "./x-intel-time";
+import {
+  etDateString,
+  etTimeString,
+  cycleName,
+  attachmentImagePath,
+  noPostTypeSkipReason,
+} from "./x-intel-time";
 
 describe("x-intel-time", () => {
   it("zero-pads month/day in etDateString", () => {
@@ -57,5 +63,24 @@ describe("x-intel-time", () => {
       assert.equal(cycleName(et, "desk_open"), firstKey);
       assert.equal(attachmentImagePath(et, "desk_open"), firstPath);
     }
+  });
+
+  // ROOT-CAUSE REGRESSION: route.ts used to inline this as
+  // `inWindow ? "Outside 2-hour post window" : "No post slot at hour ${h}"` — backwards.
+  // `selectPostType`'s own guard means a null postType (the only way this branch is reached,
+  // with no forceType override) ALWAYS coincides with `isPostWindow(et) === false`, so
+  // `inWindow` is provably false every real time this runs. The old ternary's "false" arm —
+  // the one that always fired — read "No post slot at hour N", which reads as a missing
+  // hour->type mapping bug to anyone debugging cron_job_runs/admin cron-health, when the real
+  // (and only reachable) reason is simply that it isn't post time.
+  describe("noPostTypeSkipReason", () => {
+    it("reports the genuinely-outside-window case (inWindow=false) as outside the window, not as a missing hour mapping", () => {
+      assert.equal(noPostTypeSkipReason(false, 3), "Outside 2-hour post window");
+      assert.equal(noPostTypeSkipReason(false, 21), "Outside 2-hour post window");
+    });
+
+    it("reports the (structurally unreachable, but still correctly labeled) in-window/no-type case distinctly", () => {
+      assert.equal(noPostTypeSkipReason(true, 9), "No post slot at hour 9");
+    });
   });
 });
