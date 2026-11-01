@@ -12,6 +12,7 @@ import {
   ruleBadge,
   executionRouteKey,
   fmtIv,
+  fmtOi,
   fmtAskPct,
   ALERT_RULE_WORD_KEYS,
   sortFlows,
@@ -364,6 +365,27 @@ test("the NEW badge carries its reasoning as hover text, not a repeat of the lab
   assert.ok(badge, "badge present");
   assert.ok(badge!.title && badge!.title !== badge!.label, "title must explain, not echo the label");
   assert.ok(badge!.title!.includes("108"), "title must carry the real open interest");
+});
+
+test("fmtOi renders a genuine 0 open-interest reading, not absence", () => {
+  // open_interest === 0 is the strongest "every lot is new" reading (see helix-position-intent.ts's
+  // `positionIntent`, basis "no_open_interest") — it must render as real data, not the "—" glyph
+  // used when OI was never reported at all.
+  assert.equal(fmtOi(0), "0");
+});
+
+test("fmtOi still withholds for values the field cannot legitimately take", () => {
+  assert.equal(fmtOi(null), "—");
+  assert.equal(fmtOi(undefined), "—");
+  assert.equal(fmtOi(-1), "—");
+  assert.equal(fmtOi(Number.NaN), "—");
+  assert.equal(fmtOi(Number.POSITIVE_INFINITY), "—");
+});
+
+test("fmtOi still abbreviates large open-interest counts", () => {
+  assert.equal(fmtOi(500), "500");
+  assert.equal(fmtOi(12_345), "12.3K");
+  assert.equal(fmtOi(2_500_000), "2.5M");
 });
 
 test("no NEW badge on prints the data cannot prove — 70% of the live tape", () => {
