@@ -18,6 +18,7 @@ import {
   isDegenerateFlowAggregate,
   fetchUwMacroIndicators,
   fetchUwGreekExposureExpiry,
+  pickUwNextEarningsRow,
 } from "./unusual-whales";
 import { shapeMeridianDarkPool } from "../meridian/meridian-earnings-intel-core";
 import { UW_REST_SECTIONS } from "../uw-docs-catalog";
@@ -636,4 +637,46 @@ test("the Meridian shaper makes no claim when handed an unknown", () => {
   const answered = shapeMeridianDarkPool(emptyDarkPoolSnapshot());
   assert.equal(answered.available, false);
   assert.equal(answered.detail, "No large dark pool prints today");
+});
+
+// ── pickUwNextEarningsRow: `/api/earnings/{ticker}` carries BOTH past prints and the future
+// estimate in one array, keyed only by date — a same-day row that has already reported keeps
+// `report_date === today`, so a bare `date >= today` filter (the bug this fixes) returns it as
+// "next" for the rest of the day. Same shape already fixed in meridian-ticker-lookup-core.ts
+// (#7100) and meridian-benzinga-earnings-core.ts (#7101).
+
+test("pickUwNextEarningsRow: a same-day row that already reported is NOT returned as next", () => {
+  // RED on the pre-fix body (`d >= today` alone): this WMT-shaped row would have been returned,
+  // even though `actual_eps` is populated, because BMO prints keep their report_date unchanged.
+  const rows = [
+    { symbol: "WMT", report_date: "2026-08-20", actual_eps: 2.45 }, // already printed this morning
+    { symbol: "WMT", report_date: "2026-11-19", actual_eps: null }, // the real next print
+  ];
+  const picked = pickUwNextEarningsRow(rows, "2026-08-20");
+  assert.equal(picked?.report_date, "2026-11-19", "must skip the already-reported same-day row");
+});
+
+test("pickUwNextEarningsRow: a future, not-yet-reported row is returned normally", () => {
+  const rows = [
+    { symbol: "NVDA", earnings_date: "2026-05-20", actual_eps: 1.1 }, // past print
+    { symbol: "NVDA", earnings_date: "2026-08-27", actual_eps: null }, // upcoming
+  ];
+  const picked = pickUwNextEarningsRow(rows, "2026-07-01");
+  assert.equal(picked?.earnings_date, "2026-08-27");
+});
+
+test("pickUwNextEarningsRow: a genuine EPS of 0 still counts as reported, not missing", () => {
+  // `== null` (not a falsy check) — a real zero print must not be misread as "no actual yet"
+  // and incorrectly kept as upcoming.
+  const rows = [
+    { symbol: "X", report_date: "2026-08-20", actual_eps: 0 },
+    { symbol: "X", report_date: "2026-11-19", actual_eps: null },
+  ];
+  const picked = pickUwNextEarningsRow(rows, "2026-08-20");
+  assert.equal(picked?.report_date, "2026-11-19");
+});
+
+test("pickUwNextEarningsRow: no qualifying row returns null", () => {
+  const rows = [{ symbol: "Y", report_date: "2026-01-01", actual_eps: 1.0 }];
+  assert.equal(pickUwNextEarningsRow(rows, "2026-08-20"), null);
 });
