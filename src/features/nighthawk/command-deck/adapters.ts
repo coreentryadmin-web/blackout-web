@@ -155,6 +155,19 @@ export function managementFor(
       progress: null,
     };
   }
+  // CLOSED has no live position left to manage — without this branch, CLOSED fell into the
+  // general P&L logic below (`Recommendation` has no "closed" value, so there was never a
+  // deliberate choice to route it elsewhere). That meant a profitable CLOSED row silently kept
+  // "HOLD"/"Managing to the plan — hold while the thesis is intact" forever, a deep-loss CLOSED
+  // row (pnlPct <= -45) showed "SELL"/"Near the stop — the ratchet says cut and preserve
+  // capital", and a RATCHET CLOSED row with pnlPct >= 90 showed "TRIM"/"Bank a tranche..." — all
+  // live-position instructions for a position that no longer exists. Reachable in the Command
+  // Deck's own Manage tab (PlayTerminal.tsx's `ManagePanel`, which renders for every status) and
+  // in both board-row badges that call this directly on a CLOSED row (0DTE adapters.ts ~line 515,
+  // Swing adapters.ts ~line 968), not just the Ask Largo swing brief this gap was found from.
+  if (status === "CLOSED") {
+    return { recommendation: "HOLD", recNote: "Position closed — nothing left to manage.", progress: null };
+  }
   const p = pnlPct ?? 0;
   let recommendation: Recommendation = "HOLD";
   if (status === "TRIM") recommendation = "TRIM";
