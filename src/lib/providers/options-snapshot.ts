@@ -414,8 +414,32 @@ export function reliableMarkFromQuote(
  * there was no mark to compare against in the first place.
  */
 export function reliableAskFromSnapshot(snap: OptionSnapshot): number | null {
-  if (snap.bid !== 0 || snap.mark == null) return snap.ask;
-  return reliableMarkFromSnapshot(snap) === snap.mark ? snap.ask : null;
+  return reliableAskFromQuote(snap.ask, snap.bid, snap.mark, snap.last ?? snap.dayClose, snap.askSize);
+}
+
+/**
+ * Generic form of `reliableAskFromSnapshot`, extracted (2026-11-01) the same way
+ * `reliableMarkFromSnapshot` delegates to `reliableMarkFromQuote` below it — so a caller with a
+ * different quote shape than `OptionSnapshot` (e.g. the Legacy WS mark stream's `{mark, bid, ask,
+ * last}`, which has no `dayClose`/`askSize`) can apply the identical ask-side guard without
+ * constructing a fake `OptionSnapshot`.
+ *
+ * The ask is "reliable" exactly when `reliableMarkFromQuote` did NOT substitute `reference` for
+ * the naive doc-priority `mark` (the identical bid===0 + magnitude check, including the thin-
+ * one-lot 3x bar when a real `askSize` is known) — reusing that comparison rather than
+ * reimplementing the divergence math, so the mark guard and the ask guard cannot drift apart.
+ * Returns `ask` unchanged whenever `bid !== 0` (a real two-sided market is never second-guessed)
+ * or when there is no `mark` to compare against in the first place.
+ */
+export function reliableAskFromQuote(
+  ask: number | null,
+  bid: number | null,
+  mark: number | null,
+  reference: number | null,
+  askSize?: number | null
+): number | null {
+  if (bid !== 0 || mark == null) return ask;
+  return reliableMarkFromQuote(mark, bid, reference, askSize) === mark ? ask : null;
 }
 
 /** Split an array into chunks of at most `size`. Exported for chunking tests. */

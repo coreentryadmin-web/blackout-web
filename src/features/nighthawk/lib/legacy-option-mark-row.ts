@@ -4,6 +4,8 @@
  */
 import {
   midOf,
+  reliableAskFromQuote,
+  reliableAskFromSnapshot,
   reliableMarkFromQuote,
   reliableMarkFromSnapshot,
   type OptionSnapshot,
@@ -58,6 +60,17 @@ type WsMark = {
  * FIRST in the `??` chain below, it would never even reach the REST-side guard. `reliableMarkFromQuote`
  * (the generic form `reliableMarkFromSnapshot` now delegates to) applies the same rule using
  * `ws.last` as the reference price — the WS stream has no `dayClose` to fall back to, unlike REST.
+ *
+ * Ask-side guard extended to this row's own `ask` field (2026-11-01): `mark` above was already
+ * protected by `reliableMarkFromQuote`/`reliableMarkFromSnapshot`, but the row's `bid`/`ask`
+ * fields were set directly from the raw `ws?.ask ?? snap?.ask ?? null` with no equivalent check —
+ * so a bid=0 backstop ask (CRSR/CRI shape — see `reliableAskFromSnapshot`'s own doc comment,
+ * options-snapshot.ts) was served raw in the publicly-polled `GET /api/market/nighthawk/legacy-marks`
+ * response even though `mark` on the SAME row had already been corrected away from it. `bid` needs
+ * no equivalent guard — it is never the fabricated side of a backstop quote (the guard only ever
+ * engages when `bid === 0`, which is already the true, un-fabricated bid). Mirrors `wsMark`/`snapMark`
+ * below: `reliableAskFromQuote` for the WS tick (no `dayClose`/`askSize`, same as its mark sibling),
+ * `reliableAskFromSnapshot` for the REST snapshot (which does carry both).
  */
 export function buildLegacyOptionMarkRow(
   occ: string,
@@ -66,7 +79,12 @@ export function buildLegacyOptionMarkRow(
   nowMs = Date.now()
 ): LegacyOptionMarkRow {
   const bid = ws?.bid ?? snap?.bid ?? null;
-  const ask = ws?.ask ?? snap?.ask ?? null;
+  const ask =
+    ws?.ask != null
+      ? reliableAskFromQuote(ws.ask, ws.bid ?? null, ws.mark ?? null, ws.last ?? null)
+      : snap?.ask != null
+        ? reliableAskFromSnapshot(snap)
+        : null;
   const wsMark = ws ? reliableMarkFromQuote(ws.mark ?? null, ws.bid ?? null, ws.last ?? null) : null;
   const snapMark = snap ? reliableMarkFromSnapshot(snap) : null;
   // BUG (found 2026-09-16): this last-resort fallback used to average bid/ask directly
