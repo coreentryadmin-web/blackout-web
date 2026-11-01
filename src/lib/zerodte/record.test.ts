@@ -735,6 +735,68 @@ test("managedOutcomeLabel: a genuine target win still buckets as 'doubled'", () 
   assert.equal(rec.wins, 1);
 });
 
+// ── FINDINGS 2026-11-01: the SAME sign contradiction, but through the RECONSTRUCTED (WS-11)
+// path, not managedOutcomeLabel/the live engine exit — #7133 fixed only the latter. ───────────
+test("reconstructedOutcomeLabel: a WS-11 trim-scale reconstruction with a POSITIVE blended pnl buckets by sign, not 'stopped' — live META 2026-08-03 evidence, bypasses #7133", () => {
+  // Live GET /api/market/zerodte/record?days=90 (2026-11-01), play index 588: META,
+  // session_date 2026-08-03, managed_source:"reconstructed" (entry_context carries NO
+  // top-level `exit` key at all — readManagedExit returns null, so managedOutcomeLabel is
+  // NEVER invoked for this row; #7133's sign guard lives entirely inside that function and
+  // cannot reach this path). Two early trims banked large gains; the final tranche hit the
+  // hard stop — but the BLENDED pnl across all three legs is still positive, while the
+  // reconstruction's own `outcome` is the runner (final leg)'s bare reason, "stopped".
+  const tranches = [
+    { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 19.32, exit_reason: "trim_scale_first", at_et: "10:05" },
+    { tranche: 2, fraction: 1 / 3, exit_pnl_pct: 43.18, exit_reason: "trim_scale_second", at_et: "10:12" },
+    { tranche: 3, fraction: 1 / 3, exit_pnl_pct: -52.27, exit_reason: "stopped", at_et: "11:40" },
+  ];
+  const r = withReconstruction(
+    { ticker: "META", plan_outcome: "stopped", plan_pnl_pct: -50 },
+    { plan_outcome: "stopped", plan_pnl_pct: 3.41, tranches }
+  );
+  // Blend check: (19.32 + 43.18 - 52.27) / 3 == 3.41666... -> rounds to 3.42, but the
+  // frozen blob already carries the grader's own rounded 3.41 (round2 applied once, at
+  // write time) — read verbatim, never re-derived here.
+  assert.equal(officialPlanPnlPct(r), 3.41);
+  assert.equal(asManagedPnlPct(r), 3.41);
+  const rec = buildZeroDteRecord([r], WINDOW);
+  const play = rec.plays[0]!;
+  assert.equal(play.managed_source, "reconstructed");
+  assert.equal(play.managed_pnl_pct, 3.41, "a real, positive blended win");
+  // THE BUG: pre-fix this asserted "stopped" (the runner-leg label, sign-contradicting its
+  // own positive pnl) — post-fix it falls back to the bare sign label, matching
+  // managedOutcomeLabel's own "stop"/"target" sign-guard discipline (#7133).
+  assert.equal(play.managed_outcome, "win", "a positive blended reconstruction must never render under the loss-implying 'stopped' label");
+  assert.equal(play.plan_outcome, "win", "the OFFICIAL lane (calibration/feature-store/Largo) must agree with the as-managed headline");
+  assert.equal(rec.wins, 1);
+  assert.equal(rec.losses, 0);
+  // The by_outcome bucket that used to silently carry a contradictory win: "stopped" must
+  // now have NO rows at all for this single-row record, and "win" must carry it instead.
+  const stoppedBucket = rec.by_outcome.find((b) => b.label === "stopped");
+  assert.equal(stoppedBucket, undefined, "the loss-implying bucket must not carry this real win");
+  const winBucket = rec.by_outcome.find((b) => b.label === "win");
+  assert.ok(winBucket, "the sign-correct bucket must carry it instead");
+  assert.equal(winBucket!.wins, 1);
+});
+
+test("reconstructedOutcomeLabel: a WS-11 reconstruction with a NON-POSITIVE blended pnl still buckets as 'stopped' (no regression)", () => {
+  // Symmetric control: when the runner's reason and the blended sign actually agree (a
+  // genuine stop-out), the label must be unchanged.
+  const tranches = [
+    { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 5.0, exit_reason: "trim_scale_first", at_et: "10:05" },
+    { tranche: 2, fraction: 2 / 3, exit_pnl_pct: -52.27, exit_reason: "stopped", at_et: "11:40" },
+  ];
+  const r = withReconstruction(
+    { ticker: "COIN", plan_outcome: "stopped", plan_pnl_pct: -50 },
+    { plan_outcome: "stopped", plan_pnl_pct: -33.18, tranches }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_outcome, "stopped");
+  assert.equal(rec.plays[0]!.plan_outcome, "stopped");
+  assert.equal(rec.losses, 1);
+  assert.equal(rec.wins, 0);
+});
+
 test("FINDINGS 2026-08-27: a real FLAT-TIMEOUT exit outranks a genuine reconstruction (live-only reason, unreproducible by the bar-walk)", () => {
   const r = row({
     ticker: "MU",
