@@ -36,3 +36,41 @@ export async function runGuardedUsersFetch<T>(
   }
   applyResult(result);
 }
+
+/**
+ * Guards the admin User Management DETAIL PANEL against the same class of race, keyed by
+ * which user id is "current" rather than a bare counter.
+ *
+ * `openUserDetail(userId)` used to be a bare `fetch(...).then(setSelectedUser)` with no guard
+ * at all — clicking row A then row B before A's (slower) response arrived started a second,
+ * independent fetch, and if A's response resolved AFTER B's, `setSelectedUser(A)` fired last
+ * and silently swapped the open panel from B back to A while it was still titled/keyed for B.
+ * Same shape as `loadEventDetailIfCurrent` in `AdminApiEventDetail.tsx` (#6926), keyed by user
+ * id instead of event id.
+ *
+ * `syncWhop`'s own post-sync detail refresh races the SAME `openUserDetail` calls: it starts a
+ * fetch for whichever user was selected when Sync was clicked, and if the admin opens a
+ * DIFFERENT user's panel while that refresh is still in flight, the refresh's eventual
+ * `setSelectedUser` must not overwrite the newly-opened panel either. Sharing this one guard
+ * (keyed by the same "current user id" ref) across both call sites closes the race for each
+ * independently and for the two together.
+ *
+ * `getCurrentUserId` returning `null` (panel closed in the meantime) also drops the response —
+ * reopening a panel the admin already dismissed would be the same stale-overwrite bug in a
+ * different guise.
+ */
+export async function applyUserDetailIfCurrent<T>(
+  userId: string,
+  fetchFn: (id: string) => Promise<T | null>,
+  getCurrentUserId: () => string | null,
+  apply: (detail: T) => void
+): Promise<void> {
+  const data = await fetchFn(userId);
+  if (data == null) return;
+  if (getCurrentUserId() !== userId) {
+    // Superseded by a different user's panel (or the panel was closed) since this fetch
+    // started — drop it rather than reopening/overwriting with the wrong user's data.
+    return;
+  }
+  apply(data);
+}

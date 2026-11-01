@@ -13,7 +13,10 @@ import {
   ConfirmModal,
 } from "@/components/admin/AdminUi";
 import { AdminToolsPanel, UserToolAccessEditor } from "@/components/admin/AdminToolsPanel";
-import { runGuardedUsersFetch } from "@/components/admin/user-management-request-guard";
+import {
+  runGuardedUsersFetch,
+  applyUserDetailIfCurrent,
+} from "@/components/admin/user-management-request-guard";
 import { Modal } from "@/components/ui";
 import type { ToolKey } from "@/lib/tool-access";
 import type { ToolAccessMode, ToolAccessRow } from "@/lib/tool-user-access";
@@ -98,6 +101,14 @@ export function UserManagement() {
   // the screen with stale results).
   const latestUsersRequestIdRef = useRef(0);
 
+  // Tracks which user's detail panel is CURRENTLY open (or null when closed), so an
+  // out-of-order `openUserDetail` response — or `syncWhop`'s own post-sync detail refresh,
+  // which races those same calls — can tell whether it's still the one the admin wants
+  // applied before overwriting `selectedUser`. See `applyUserDetailIfCurrent` for the race
+  // this closes (clicking user A then user B before A's slower response arrives must not
+  // let A's response silently reopen/overwrite B's panel).
+  const selectedUserIdRef = useRef<string | null>(null);
+
   const fetchUsers = useCallback(async () => {
     const requestId = ++latestUsersRequestIdRef.current;
     setLoading(true);
@@ -140,11 +151,19 @@ export function UserManagement() {
   };
 
   const openUserDetail = async (userId: string) => {
-    const res = await fetch(`/api/admin/users/${userId}`);
-    if (!res.ok) return;
-    const data: UserDetail = await res.json();
-    setSelectedUser(data);
-    setEditOpen(true);
+    selectedUserIdRef.current = userId;
+    await applyUserDetailIfCurrent<UserDetail>(
+      userId,
+      async (id) => {
+        const res = await fetch(`/api/admin/users/${id}`);
+        return res.ok ? ((await res.json()) as UserDetail) : null;
+      },
+      () => selectedUserIdRef.current,
+      (data) => {
+        setSelectedUser(data);
+        setEditOpen(true);
+      }
+    );
   };
 
   const syncWhop = async (email: string) => {
@@ -162,9 +181,22 @@ export function UserManagement() {
         return;
       }
       await fetchUsers();
+      // `selectedUser` here is the value captured when `syncWhop` was invoked — it does NOT
+      // track the admin opening a different user's panel mid-sync (plain closures don't), so
+      // this only decides WHETHER to refresh. `applyUserDetailIfCurrent` is what guards the
+      // refresh's own stale-overwrite risk, re-checking the LIVE `selectedUserIdRef` right
+      // before applying the response.
       if (selectedUser?.email === email) {
-        const detail = await fetch(`/api/admin/users/${selectedUser.id}`);
-        if (detail.ok) setSelectedUser(await detail.json());
+        const userId = selectedUser.id;
+        await applyUserDetailIfCurrent<UserDetail>(
+          userId,
+          async (id) => {
+            const detail = await fetch(`/api/admin/users/${id}`);
+            return detail.ok ? ((await detail.json()) as UserDetail) : null;
+          },
+          () => selectedUserIdRef.current,
+          (data) => setSelectedUser(data)
+        );
       }
     } finally {
       setSyncing(null);
@@ -200,6 +232,7 @@ export function UserManagement() {
     setDeleteConfirm(null);
     setEditOpen(false);
     setSelectedUser(null);
+    selectedUserIdRef.current = null;
     fetchUsers();
   };
 
@@ -452,8 +485,8 @@ export function UserManagement() {
         <EditUserModal
           user={selectedUser}
           open={editOpen}
-          onClose={() => { setEditOpen(false); setSelectedUser(null); }}
-          onSaved={() => { fetchUsers(); setEditOpen(false); setSelectedUser(null); }}
+          onClose={() => { setEditOpen(false); setSelectedUser(null); selectedUserIdRef.current = null; }}
+          onSaved={() => { fetchUsers(); setEditOpen(false); setSelectedUser(null); selectedUserIdRef.current = null; }}
           onSync={() => selectedUser.email ? syncWhop(selectedUser.email) : undefined}
           onDelete={() => setDeleteConfirm(selectedUser)}
           syncing={syncing === selectedUser.email}
