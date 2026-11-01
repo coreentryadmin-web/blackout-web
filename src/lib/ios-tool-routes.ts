@@ -124,26 +124,37 @@ const IOS_UTILITY_META: Record<
 
 /** Maps URL path → `data-ios-route` key (used by chrome + CSS). */
 export function getIosRouteKey(path: string): IosRouteKey {
-  // Strip a query string/hash before matching — same bug class, same sibling file, as the
-  // isIosNativeShellPath fix above. The "/dashboard" branch below is the one check in this
-  // function that requires an EXACT match or a startsWith(`${prefix}/`) match (every other
-  // branch here is a bare startsWith, which already tolerates a suffix appended directly
-  // after the prefix), so an un-stripped query string or hash on "/dashboard" itself
-  // ("/dashboard?ref=upgrade", "/dashboard#widgets") failed both checks and fell through
-  // every branch to "other" instead of "dashboard".
+  // EXACT match or startsWith(`${prefix}/`) for every branch — never a bare `startsWith(prefix)`.
+  //
+  // BUG THIS FIXES: every branch below used to be a bare `p.startsWith(prefix)`, which the
+  // "/dashboard" branch alone was already fixed away from (see the query/hash fix this comment
+  // used to describe) — but that same fix was never applied to the other eleven branches, and the
+  // original comment even framed the bare form as deliberately "tolerating a suffix appended
+  // directly after the prefix". That tolerance is wrong whenever a REAL route's path happens to
+  // share a prefix with a tool/utility route without a `/` boundary. Two such routes already exist
+  // in this app: `/nighthawk-boards-preview` and `/vector-board-preview` (both top-level marketing
+  // preview pages under src/app/, siblings of `/nighthawk` and `/vector`, not sub-routes of them).
+  // `getIosRouteKey("/nighthawk-boards-preview")` returned `"nighthawk"` and
+  // `getIosRouteKey("/vector-board-preview")` returned `"vector"` — both wrong; a marketing preview
+  // page is not the Night Hawk or Vector tool. This is the exact inconsistency every sibling
+  // matcher in this file (`isIosToolRoute`, `getIosToolRouteIndex`, `getIosToolMeta`,
+  // `isIosNativeShellPath`) was already written to avoid via `p === prefix || p.startsWith(prefix + "/")`
+  // — this function is the one holdout. Unifying on that same rule fixes both real collisions and
+  // keeps the "/dashboard" branch's own query/hash handling (already correct) unchanged.
   const p = normalizeIosPath(path);
-  if (p === "/dashboard" || p.startsWith("/dashboard/")) return "dashboard";
-  if (p.startsWith("/flows")) return "flows";
-  if (p.startsWith("/heatmap")) return "heatmap";
-  if (p.startsWith("/terminal")) return "largo";
-  if (p.startsWith("/nighthawk")) return "nighthawk";
-  if (p.startsWith("/vector")) return "vector";
-  if (p.startsWith("/meridian")) return "meridian";
-  if (p.startsWith("/account")) return "account";
-  if (p.startsWith("/faq")) return "faq";
-  if (p.startsWith("/learn")) return "learn";
-  if (p.startsWith("/upgrade")) return "upgrade";
-  if (p.startsWith("/admin")) return "admin";
+  const matches = (prefix: string) => p === prefix || p.startsWith(`${prefix}/`);
+  if (matches("/dashboard")) return "dashboard";
+  if (matches("/flows")) return "flows";
+  if (matches("/heatmap")) return "heatmap";
+  if (matches("/terminal")) return "largo";
+  if (matches("/nighthawk")) return "nighthawk";
+  if (matches("/vector")) return "vector";
+  if (matches("/meridian")) return "meridian";
+  if (matches("/account")) return "account";
+  if (matches("/faq")) return "faq";
+  if (matches("/learn")) return "learn";
+  if (matches("/upgrade")) return "upgrade";
+  if (matches("/admin")) return "admin";
   return "other";
 }
 

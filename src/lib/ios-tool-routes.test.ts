@@ -149,17 +149,29 @@ describe("getIosRouteKey", () => {
   });
 
   // Same bug class, same sibling file, as the isIosNativeShellPath query/hash fix above:
-  // getIosRouteKey's "/dashboard" branch is the one check in this function that requires an
-  // EXACT match or a startsWith(`${prefix}/`) match (every other branch here is a bare
-  // startsWith, which already tolerates a query/hash suffix appended directly after the
-  // prefix). A query string or hash on "/dashboard" itself ("/dashboard?ref=upgrade",
-  // "/dashboard#widgets") fails both of those checks and falls through every other branch to
-  // "other" instead of "dashboard" — the exact-match requirement is what makes this branch,
-  // alone among the ones here, sensitive to an un-stripped suffix.
+  // getIosRouteKey's "/dashboard" branch requires an EXACT match or a startsWith(`${prefix}/`)
+  // match. A query string or hash on "/dashboard" itself ("/dashboard?ref=upgrade",
+  // "/dashboard#widgets") must still resolve to "dashboard".
   it("strips a query string or hash before matching the exact-match /dashboard branch", () => {
     assert.equal(getIosRouteKey("/dashboard?ref=upgrade"), "dashboard");
     assert.equal(getIosRouteKey("/dashboard#widgets"), "dashboard");
     assert.equal(getIosRouteKey("/dashboard/positions?tab=open"), "dashboard");
+  });
+
+  // BUG FIX: every other branch used to be a bare `p.startsWith(prefix)` (no `/` boundary
+  // requirement), unlike this function's own "/dashboard" branch and every sibling matcher in
+  // this file (isIosToolRoute/getIosToolRouteIndex/getIosToolMeta/isIosNativeShellPath, all of
+  // which require an exact match or a `/`-bounded prefix). Two REAL top-level routes in this app
+  // share a prefix with a tool route without a `/` boundary — src/app/nighthawk-boards-preview
+  // and src/app/vector-board-preview, both public marketing preview pages, not sub-routes of
+  // `/nighthawk` or `/vector` — so the bare startsWith misclassified them as the Night Hawk and
+  // Vector TOOL routes instead of "other". Also confirms the fix doesn't break the other
+  // direction: a real sub-route of a tool (e.g. "/nighthawk/edition") still resolves correctly.
+  it("does not misclassify a sibling route that merely shares a tool's prefix", () => {
+    assert.equal(getIosRouteKey("/nighthawk-boards-preview"), "other");
+    assert.equal(getIosRouteKey("/vector-board-preview"), "other");
+    assert.equal(getIosRouteKey("/nighthawk/edition"), "nighthawk");
+    assert.equal(getIosRouteKey("/vector?ticker=SPY"), "vector");
   });
 });
 
