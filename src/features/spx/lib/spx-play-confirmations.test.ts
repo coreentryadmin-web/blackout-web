@@ -117,6 +117,29 @@ test("Dealer GEX (short): a resistance wall far below price does not satisfy the
   assert.equal(gex.passed, false);
 });
 
+function internalsCheck(result: ReturnType<typeof evaluatePlayConfirmations>) {
+  const check = result.checks.find((c) => c.label === "Internals");
+  assert.ok(check, "Internals check must be present");
+  return check!;
+}
+
+test("Internals check: discloses when desk.internals_estimated.tick flags a breadth-derived proxy (same root cause as spx-signals.ts, regression 2026-11-01)", () => {
+  // Member-rendered (SpxDeskTerminal.tsx/SpxTradeAlerts.tsx read confirmations.checks[].detail
+  // directly) — this must not present a breadth-proxy TICK as a real NYSE print, same as the
+  // computeSpxConfluence TICK factor fix in spx-signals.test.ts.
+  const desk = baseDesk({ tick: 176, internals_estimated: { tick: true, trin: false, add: false } as never });
+  const result = evaluatePlayConfirmations(desk, baseConfluence(), baseTechnicals());
+  const internals = internalsCheck(result);
+  assert.match(internals.detail, /estimated, not live/);
+});
+
+test("Internals check: does NOT disclose when desk.internals_estimated.tick is absent/false (a real exchange print stays undecorated)", () => {
+  const desk = baseDesk({ tick: 176 });
+  const result = evaluatePlayConfirmations(desk, baseConfluence(), baseTechnicals());
+  const internals = internalsCheck(result);
+  assert.equal(internals.detail, "TICK +176");
+});
+
 function newsCatalystCheck(result: ReturnType<typeof evaluatePlayConfirmations>) {
   const check = result.checks.find((c) => c.label === "News catalyst");
   assert.ok(check, "News catalyst check must be present");

@@ -644,6 +644,38 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
     }
   }
 
+  // BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro): `desk.tick`/`trin`/
+  // `add` can be a breadth-derived PROXY (estimateTickFromBreadth/estimateTrinFromBreadth/
+  // estimateAddFromBreadth, src/lib/market-internals.ts, built from adv/dec counts) substituted
+  // when the real Polygon I:TICK/I:TRIN/I:ADD print was unavailable — `desk.internals_estimated`
+  // (SpxDeskPayload, spx-desk.ts) carries exactly which of the three were substituted, and
+  // market-internals.ts's own doc comment is explicit about why: "so the UI can badge estimated
+  // readings instead of presenting a computed proxy in the same field as a real internal (truth
+  // mandate)". The three blocks below read desk.tick/trin/add directly into a scored factor
+  // `detail` string ("NYSE TICK +176", "TRIN 0.50 — broad buying", "Advance/decline +800") with
+  // no reference to that flag at all — the ONE place in the codebase that did honor it
+  // (spx-internals-display.ts's formatInternalReading/internalEstimatedTip, appends " est." + a
+  // tooltip) is consumed only by the raw dashboard internals widget, never by this scoring
+  // engine, so the same breadth proxy reaches Ask Largo and the trade-alert panel presented as a
+  // real exchange print. Confirmed live 2026-11-01: GET /api/market/spx/desk returned
+  // `internals_estimated:{tick:true,trin:true,add:true}` alongside tick:176/trin:0.5/add:800,
+  // while the paired GET /api/market/spx/play scored all three with zero disclosure (the SAME
+  // response's "0DTE flow" factor, two lines away, correctly appended "— Flow stale, not live"
+  // for its own merely-old, non-synthetic data).
+  //
+  // Fix at the one shared root: computeSpxConfluence is the only place these factors are ever
+  // built — the open-market branch, the closed-market branch (spx-play-engine.ts), and Largo's
+  // `get_spx_confluence` tool (run-tool.ts) all read `.factors` off its return value with no
+  // wrapper of their own — so appending the disclosure to the `detail` string here, gated on the
+  // exact `internals_estimated` flag already computed for this exact purpose, reaches every
+  // consumer without a second disclosure mechanism to keep in sync (the "— GEX/VWAP/Flow stale,
+  // not live" idiom this codebase already uses for the three sibling data families is deliberately
+  // NOT reused as-is: this isn't stale data going lagged, it's a different VALUE — a computed
+  // proxy — standing in for the real one, so "estimated" rather than "stale" is the honest word).
+  const tickEstimated = desk.internals_estimated?.tick === true;
+  const trinEstimated = desk.internals_estimated?.trin === true;
+  const addEstimated = desk.internals_estimated?.add === true;
+
   // C8: NaN guard for tick.
   // ISSUE-05: The `if (Math.abs(w) >= 4)` guard was always true (smallest w is ±4).
   // Removed the dead conditional; just apply the weight directly.
@@ -654,7 +686,7 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
     factors.push({
       label: "TICK",
       weight: w,
-      detail: `NYSE TICK ${desk.tick > 0 ? "+" : ""}${desk.tick.toFixed(0)}`,
+      detail: `NYSE TICK ${desk.tick > 0 ? "+" : ""}${desk.tick.toFixed(0)}${tickEstimated ? " — estimated, not live" : ""}`,
     });
   }
 
@@ -666,7 +698,7 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
       factors.push({
         label: "TRIN",
         weight: w,
-        detail: `TRIN ${desk.trin.toFixed(2)} — ${w > 0 ? "broad buying" : "broad selling"}`,
+        detail: `TRIN ${desk.trin.toFixed(2)} — ${w > 0 ? "broad buying" : "broad selling"}${trinEstimated ? " — estimated, not live" : ""}`,
       });
     }
   }
@@ -680,7 +712,7 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
       factors.push({
         label: "ADD",
         weight: w,
-        detail: `Advance/decline ${desk.add > 0 ? "+" : ""}${desk.add.toFixed(0)}`,
+        detail: `Advance/decline ${desk.add > 0 ? "+" : ""}${desk.add.toFixed(0)}${addEstimated ? " — estimated, not live" : ""}`,
       });
     }
   }

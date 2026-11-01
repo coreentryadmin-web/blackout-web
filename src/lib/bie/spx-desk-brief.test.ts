@@ -132,6 +132,35 @@ describe("composeSpxDeskBrief", () => {
     assert.match(result.body, /HOD|PDH/);
   });
 
+  test("INTERNALS line discloses when desk.internals_estimated flags a breadth-derived TICK/TRIN proxy (same root cause as spx-signals.ts, regression 2026-11-01)", () => {
+    // This member-facing "Live Desk AI brief" (the AI-commentary surface on /api/market/spx/commentary)
+    // must not cite a breadth-derived proxy as a real NYSE print either — same truth-mandate gap as
+    // the computeSpxConfluence TICK/TRIN/ADD score factors, different render surface.
+    const desk = fakeDesk();
+    desk.tick = 176;
+    desk.trin = 0.5;
+    desk.internals_estimated = { tick: true, trin: true, add: false } as never;
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "mid-morning");
+
+    assert.match(result.body, /INTERNALS.*TICK \+176 est\..*TRIN 0\.50 est\./);
+  });
+
+  test("INTERNALS line does NOT disclose when desk.internals_estimated is absent (real exchange prints stay undecorated)", () => {
+    const desk = fakeDesk();
+    desk.tick = 176;
+    desk.trin = 0.5;
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "mid-morning");
+
+    assert.match(result.body, /INTERNALS {2}TICK \+176 · TRIN 0\.50/);
+    assert.doesNotMatch(result.body, /est\./);
+  });
+
   test("WHY and LEVELS name GEX king node — not generic pin — when gex_king is the magnet", () => {
     const desk = fakeDesk();
     desk.gex_king = 5900;

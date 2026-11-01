@@ -232,6 +232,53 @@ test("computeSpxConfluence: calling it twice in a row (as the shadow wiring's fi
   assert.deepEqual(JSON.parse(JSON.stringify(first)), JSON.parse(JSON.stringify(second)));
 });
 
+test("TICK/TRIN/ADD factors disclose when desk.internals_estimated flags a breadth-derived proxy (regression for the truth-mandate gap, live repro 2026-11-01)", (t) => {
+  // Live evidence: GET /api/market/spx/desk returned tick:176/trin:0.5/add:800 alongside
+  // internals_estimated:{tick:true,trin:true,add:true} (estimateTickFromBreadth/
+  // estimateTrinFromBreadth/estimateAddFromBreadth substituted for a missing real Polygon
+  // I:TICK/I:TRIN/I:ADD print), and the paired GET /api/market/spx/play scored all three with
+  // detail text ("NYSE TICK +176", "TRIN 0.50 — broad buying", "Advance/decline +800") carrying
+  // ZERO disclosure of the substitution — contributing +15 of +29 (52%) of the published score.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  desk.tick = 176;
+  desk.trin = 0.5;
+  desk.add = 800;
+  desk.internals_estimated = { tick: true, trin: true, add: true };
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+
+  const tickFactor = result.factors.find((f) => f.label === "TICK");
+  assert.ok(tickFactor, "TICK factor must fire on tick=176");
+  assert.match(
+    tickFactor!.detail,
+    /estimated, not live/,
+    "an internals_estimated.tick:true desk must disclose the breadth-proxy substitution, not present it as a real NYSE TICK print"
+  );
+
+  const trinFactor = result.factors.find((f) => f.label === "TRIN");
+  assert.ok(trinFactor, "TRIN factor must fire on trin=0.5 (< 0.85 threshold)");
+  assert.match(trinFactor!.detail, /estimated, not live/);
+
+  const addFactor = result.factors.find((f) => f.label === "ADD");
+  assert.ok(addFactor, "ADD factor must fire on add=800 (> 500 threshold)");
+  assert.match(addFactor!.detail, /estimated, not live/);
+});
+
+test("TICK/TRIN/ADD factors do NOT disclose when desk.internals_estimated is absent/false (real exchange prints stay undecorated)", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  // richDesk() never sets internals_estimated — i.e. a real desk reporting genuine live prints.
+  const result = computeSpxConfluence(richDesk());
+  assert.ok(result);
+  const tickFactor = result.factors.find((f) => f.label === "TICK");
+  const trinFactor = result.factors.find((f) => f.label === "TRIN");
+  const addFactor = result.factors.find((f) => f.label === "ADD");
+  assert.ok(tickFactor && trinFactor && addFactor);
+  assert.doesNotMatch(tickFactor!.detail, /estimated/);
+  assert.doesNotMatch(trinFactor!.detail, /estimated/);
+  assert.doesNotMatch(addFactor!.detail, /estimated/);
+});
+
 test("HELIX sweeps factor: aggressively SOLD calls read BEARISH, not bullish (regression for the option-type-only bug)", (t) => {
   t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
   const desk = richDesk();
