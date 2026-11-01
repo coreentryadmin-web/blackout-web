@@ -179,6 +179,34 @@ test("the bulk 'rest' ticker fetch is bounded by the shared Polygon pool, not an
   );
 });
 
+// Regression: the per-ticker `gex-matrix-snapshot:<ticker>` cache entry used to carry a bare
+// `120` TTL justified by a comment claiming "cron fires ~every 30-45s" — a SECOND copy of the
+// exact stale cadence claim the header comment above was already corrected to retract
+// (2026-10-08, real measured p50=46.5s/p90=81.1s/p99=181.1s/max=209.2s). Left as-is, 120s was
+// under-provisioned against the real worst case: OVERLAP_LOCK serializes runs and EventBridge
+// only ticks once a minute, so a slow run can push the actual gap between writing this snapshot
+// and reading it back as "previous" next run out to ~240s (ceil(209.2s / 60s) * 60s) — well past
+// a 120s TTL, which would silently drop `calculateMatrixDelta`'s "previous" input (its own
+// early-return on a null previous) and skip the delta broadcast for that ticker that cycle.
+test("the gex-matrix-snapshot TTL matches the overlap lock's already-established worst-case ceiling, not a stale cadence guess", () => {
+  assert.doesNotMatch(
+    routeSrc,
+    /\bsnapshotTtlSec\s*=\s*120\b/,
+    "the old under-provisioned literal TTL (justified by the stale '~30-45s' cadence comment) must be gone"
+  );
+  assert.match(
+    routeSrc,
+    /const GEX_MATRIX_SNAPSHOT_TTL_SEC = OVERLAP_LOCK_TTL_SEC;/,
+    "the snapshot TTL must be tied to OVERLAP_LOCK_TTL_SEC (240s), the one already-measured safety ceiling for this route, not an independently-invented number"
+  );
+  // Must actually be the value sharedCacheSet is called with, not just defined and unused.
+  assert.match(
+    routeSrc,
+    /sharedCacheSet\(cacheKey, currentSnapshot, GEX_MATRIX_SNAPSHOT_TTL_SEC\)/,
+    "the snapshot-store call must use the named constant, not a re-inlined literal"
+  );
+});
+
 test("the cooldown primitive genuinely refuses a second claim of the same key inside its TTL", async () => {
   const { sharedCacheSetNx, sharedCacheDel } = await import("@/lib/shared-cache");
   const key = `heatmap-warm:cooldown:test:${Date.now()}:${Math.random()}`;

@@ -66,6 +66,27 @@ const OVERLAP_LOCK_KEY = "heatmap-warm:running";
 const OVERLAP_LOCK_TTL_SEC = 240;
 
 /**
+ * TTL for the per-ticker `gex-matrix-snapshot:<ticker>` cache entry (the "previous" snapshot
+ * `calculateMatrixDelta` diffs the new one against, below). This used to be a bare `120` with a
+ * comment claiming "cron fires ~every 30-45s" — the same stale cadence claim the header comment
+ * above already corrected on 2026-10-08 (real full-sweep runtime: p50=46.5s, p90=81.1s,
+ * p99=181.1s, max=209.2s) but this second copy of the claim was missed.
+ *
+ * Fixing the comment alone would leave 120s under-provisioned: OVERLAP_LOCK above serializes
+ * runs (no two ever overlap) and EventBridge only ticks once a minute, so a slow run pushes the
+ * NEXT actual run's start out to the next 60s-aligned tick after this one finishes — at the
+ * measured max (209.2s) that is a real, observable gap of up to ~240s between this ticker's
+ * snapshot being written and the same ticker being read again as "previous" next run. A TTL of
+ * 120s expires inside that gap: not a crash, but `calculateMatrixDelta` silently returns `null`
+ * for a null `previous` (see its own early-return), so the real-time delta broadcast this whole
+ * route exists to drive (see "DELTA BROADCAST" in the header) quietly skips a cycle for that
+ * ticker — and does so most on exactly the slow/congested runs where a fresher delta matters most.
+ * Matches OVERLAP_LOCK_TTL_SEC (240s), the already-established safety-net ceiling for this exact
+ * route's own measured worst case, rather than inventing a second, independently-tuned number.
+ */
+const GEX_MATRIX_SNAPSHOT_TTL_SEC = OVERLAP_LOCK_TTL_SEC;
+
+/**
  * Minimum re-run floor — independent of, and IN ADDITION TO, the hours gate above.
  *
  * Same structural gap fixed for desk-warm (#3540): `force=1` completely bypasses
@@ -273,8 +294,7 @@ async function runHeatmapWarm(req: NextRequest, started: number): Promise<NextRe
 
       // Store current snapshot for next delta calculation
       try {
-        const snapshotTtlSec = 120; // 2 minutes; cron fires ~every 30-45s
-        await sharedCacheSet(cacheKey, currentSnapshot, snapshotTtlSec).catch(() => {
+        await sharedCacheSet(cacheKey, currentSnapshot, GEX_MATRIX_SNAPSHOT_TTL_SEC).catch(() => {
           // Redis optional; log but continue
           console.warn(`[cron/heatmap-warm] Failed to cache snapshot for ${ticker}`);
         });
