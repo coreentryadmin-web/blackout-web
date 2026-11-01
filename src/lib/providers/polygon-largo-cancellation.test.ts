@@ -25,19 +25,19 @@ function listen(server: Server): Promise<string> {
   });
 }
 
-const sockets: Socket[] = [];
-const server = createServer(() => {
+const requestSockets: Socket[] = [];
+const server = createServer((req) => {
   // Never respond — every test below aborts before a real Polygon would ever have answered.
-});
-server.on("connection", (sock) => {
-  sockets.push(sock);
+  // Track req.socket (not server 'connection') so a keep-alive reuse on the second subtest
+  // still registers — waiting only for a new TCP connection flakes under undici pooling.
+  requestSockets.push(req.socket);
 });
 
-function waitForNextConnection(sinceCount: number, timeoutMs: number): Promise<Socket | null> {
+function waitForNextRequestSocket(sinceCount: number, timeoutMs: number): Promise<Socket | null> {
   return new Promise((resolve) => {
     const deadline = Date.now() + timeoutMs;
     const tick = () => {
-      if (sockets.length > sinceCount) return resolve(sockets[sinceCount]!);
+      if (requestSockets.length > sinceCount) return resolve(requestSockets[sinceCount]!);
       if (Date.now() >= deadline) return resolve(null);
       setTimeout(tick, 2);
     };
@@ -69,13 +69,13 @@ after(() => {
 
 test("fetchPolygonNews: aborting the caller's signal terminates the real underlying connection", async () => {
   const { fetchPolygonNews } = await polygonLargoPromise;
-  const sinceCount = sockets.length;
+  const sinceCount = requestSockets.length;
 
   const controller = new AbortController();
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextRequestSocket(sinceCount, 2000);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -103,13 +103,13 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
 
 test("fetchPolygonTickerDetails: aborting the caller's signal terminates the real underlying connection", async () => {
   const { fetchPolygonTickerDetails } = await polygonLargoPromise;
-  const sinceCount = sockets.length;
+  const sinceCount = requestSockets.length;
 
   const controller = new AbortController();
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextRequestSocket(sinceCount, 2000);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
