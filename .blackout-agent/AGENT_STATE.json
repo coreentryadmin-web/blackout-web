@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T18:38:35.204Z",
+  "updated_at": "2026-11-01T18:50:23.475Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "5bf0680a310a3ba8fd04e6a1bcc4026eff7a8b3b",
+    "last_main_sha": "df2e18fe3ad5fe04b13d8bf270e362ad880827d9",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T17:23:57.030Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T17:24:00.839Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T18:06:50.939Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-25T18:06:55.441Z",
       "type": "context_sync",
@@ -1271,18 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T18:50:11.620Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T18:50:17.878Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T18:50:23.475Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 7266,
-      "title": "fix: Vector pick evidence HELIX flow showed raw-option_type prints, not aggressor-aware",
-      "branch": "fix/vector-wall-rail-audit",
+      "number": 7268,
+      "title": "chore: sync ambient agent-state heartbeat files",
+      "branch": "agent-state-heartbeat-sync-2026-11-01-1849",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T18:49:03Z"
+    },
+    {
+      "number": 7267,
+      "title": "fix(vector): magnet-mean contract-pick direction was inverted vs its own reversion thesis",
+      "branch": "fix/vector-magnet-mean-direction",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-11-01T18:23:24Z"
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T18:45:06Z"
     },
     {
       "number": 5547,
