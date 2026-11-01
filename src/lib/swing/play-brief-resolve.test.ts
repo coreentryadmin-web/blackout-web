@@ -1034,3 +1034,100 @@ describe("resolveSwingPlayForBrief: an explicit live-lane status (WATCH/etc.) wi
     assert.notEqual(resolved!.play.status, "CLOSED", "a real live lane match must still win over the closed trade");
   });
 });
+
+// BUG FOUND 2026-11-01 (Ask Largo standing mandate, two independent live audits, live-reproduced
+// on 3/3 real rolled chains: AMZN root 44 vs terminal 48, AAPL root 37 vs terminal 40, INTC root 30
+// vs terminal 35). `loadClosedPlay`'s old `graded.find((r) => r.id === positionId ||
+// r.root_position_id === positionId)` had no precedence between its two disjuncts. `graded` comes
+// from `fetchSwingPositionsRange` (db.ts: `ORDER BY session_date DESC, id DESC`), so a rolled
+// chain's later/CHILD leg sorts BEFORE the earlier leg it rolled from — a caller asking for the
+// EARLIER leg's own id got the LATER leg's entire outcome instead, because `find()` hit the later
+// row's `root_position_id === positionId` match first and never reached the true exact-id match
+// sitting further down the array. Live-confirmed on AAPL: requesting positionId=37 (root, real
+// outcome -22.3%/"stopped") returned leg 40's data (+47.4%/"target") — the OPPOSITE outcome, a
+// documented loss reported as a win.
+describe("resolveSwingPlayForBrief: an exact positionId match must win over a later leg whose root_position_id happens to equal it (live AAPL repro)", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("requesting the EARLIER (root) leg's own id resolves THAT leg's own outcome, not the later child's", async () => {
+    mockOpenRows = [];
+    const rootLeg = {
+      ...openRow("AAPL", 37),
+      status: "CLOSED",
+      graded_at: "2026-10-20T20:00:00.000Z",
+      closed_at: "2026-10-20T20:00:00.000Z",
+      realized_pnl_pct: -22.3,
+      root_position_id: null, // the root leg is its own chain root
+    };
+    const rolledChildLeg = {
+      ...openRow("AAPL", 40),
+      status: "CLOSED",
+      graded_at: "2026-10-25T20:00:00.000Z",
+      closed_at: "2026-10-25T20:00:00.000Z",
+      realized_pnl_pct: 47.4,
+      root_position_id: 37, // rolled forward from leg 37 — sticky chain-root reference
+    };
+    // Array order mirrors the REAL `fetchSwingPositionsRange` ordering (`ORDER BY session_date
+    // DESC, id DESC`): the higher-id child leg sorts BEFORE the lower-id root leg it rolled from.
+    // Without the fix, `graded.find((r) => r.id === 37 || r.root_position_id === 37)` hits
+    // `rolledChildLeg` first (its `root_position_id === 37` satisfies the OR) and never reaches
+    // `rootLeg`'s own exact `id === 37` match.
+    mockClosedRows = [rolledChildLeg, rootLeg];
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:AAPL:37",
+      ticker: "AAPL",
+      positionId: 37,
+    });
+
+    assert.ok(resolved, "must resolve to something");
+    assert.equal(
+      resolved!.play.exitPnlPct,
+      -22.3,
+      `must resolve leg 37's OWN outcome (-22.3%, stopped), not leg 40's (+47.4%, target) — got exitPnlPct ${resolved!.play.exitPnlPct}`,
+    );
+    assert.equal(
+      resolved!.play.closedReason,
+      "stopped",
+      `must carry leg 37's own closedReason ("stopped"), not leg 40's ("target") — got "${resolved!.play.closedReason}"`,
+    );
+  });
+
+  test("requesting the LATER (child) leg's own id still resolves that leg's own outcome (unchanged — sanity check)", async () => {
+    mockOpenRows = [];
+    const rootLeg = {
+      ...openRow("AAPL", 37),
+      status: "CLOSED",
+      graded_at: "2026-10-20T20:00:00.000Z",
+      closed_at: "2026-10-20T20:00:00.000Z",
+      realized_pnl_pct: -22.3,
+      root_position_id: null,
+    };
+    const rolledChildLeg = {
+      ...openRow("AAPL", 40),
+      status: "CLOSED",
+      graded_at: "2026-10-25T20:00:00.000Z",
+      closed_at: "2026-10-25T20:00:00.000Z",
+      realized_pnl_pct: 47.4,
+      root_position_id: 37,
+    };
+    mockClosedRows = [rolledChildLeg, rootLeg];
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:AAPL:40",
+      ticker: "AAPL",
+      positionId: 40,
+    });
+
+    assert.ok(resolved, "must resolve to something");
+    assert.equal(resolved!.play.exitPnlPct, 47.4, "requesting leg 40 directly must still resolve leg 40's own outcome");
+  });
+});
