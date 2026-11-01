@@ -143,6 +143,24 @@ export async function diffEstimateRevisionTimeline(
         );
       }
       changed = true;
+    } else if (
+      row.estimated_revenue != null &&
+      prev.estimated_revenue == null &&
+      row.actual_revenue == null
+    ) {
+      // Mirrors the EPS "estimate set" branch above (first time a street revenue estimate
+      // appears for this print, before any actual has landed). Without this branch a revenue
+      // estimate arriving for the first time is silently absorbed into the snapshot update below
+      // with no timeline entry ever emitted for it, while the identical EPS case already gets one
+      // — an estimate-set event for EPS is member-visible news ("NVDA EPS est set · 1.2") and the
+      // same event for revenue was invisible, even though both legs of a print's consensus are
+      // equally newsworthy the first time Benzinga publishes them.
+      out.push(
+        revisionEntry(row, "revenue", {
+          headline: `${row.ticker} Rev est set · ${row.estimated_revenue}`,
+        })
+      );
+      changed = true;
     }
 
     if (changed || row.last_updated) {
