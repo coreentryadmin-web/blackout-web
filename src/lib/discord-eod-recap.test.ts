@@ -7,6 +7,7 @@ import {
   buildHelixEodRecapEmbed,
   filterDarkpoolSessionPrints,
   filterHelixSessionFlows,
+  hoursSinceSessionOpenEt,
   isDiscordEodRecapWindow,
 } from "./discord-eod-recap.ts";
 import type { HelixDiscordFlowInput } from "./helix-discord-format.ts";
@@ -104,6 +105,32 @@ test("filterHelixSessionFlows mirrors session window", () => {
     now
   );
   assert.equal(flows.length, 1);
+});
+
+// Regression: the helix-discord-digest cron's EOD branch used to reuse `inputs`, fetched with
+// a fixed `since_hours: 6` sized for the 15/30-min live digest. At the earliest EOD window tick
+// (4:04 PM ET, EDT), that is 6h34m after a 9:30 AM open — more than the 6h the live-digest fetch
+// requested — so the first ~34 minutes of the session's flow was silently excluded from the DB
+// query itself, before the in-process session filter ever saw those rows. This asserts the gap
+// `hoursSinceSessionOpenEt` exists to close: a caller sizing its fetch off this value (rounded up
+// + 1h buffer, as the route now does) always covers the full session, where a bare `6` would not.
+test("hoursSinceSessionOpenEt exceeds 6h at the earliest EOD recap tick (EDT)", () => {
+  const sessionDate = "2026-08-04"; // EDT in effect
+  const hours = hoursSinceSessionOpenEt(sessionDate, new Date("2026-08-04T20:04:00.000Z")); // 4:04 PM ET
+  assert.ok(hours > 6, `expected >6h since 9:30 AM open, got ${hours}`);
+  assert.ok(hours < 7, `expected <7h at 4:04 PM ET, got ${hours}`);
+});
+
+test("hoursSinceSessionOpenEt exceeds 6h at the earliest EOD recap tick (EST)", () => {
+  const sessionDate = "2026-11-16"; // after DST ends — EST in effect
+  const hours = hoursSinceSessionOpenEt(sessionDate, new Date("2026-11-16T21:04:00.000Z")); // 4:04 PM ET
+  assert.ok(hours > 6, `expected >6h since 9:30 AM open, got ${hours}`);
+});
+
+test("hoursSinceSessionOpenEt is exactly 0 at session open and floors at 0 beforehand", () => {
+  const sessionDate = "2026-08-04";
+  assert.equal(hoursSinceSessionOpenEt(sessionDate, new Date("2026-08-04T13:30:00.000Z")), 0);
+  assert.equal(hoursSinceSessionOpenEt(sessionDate, new Date("2026-08-04T12:00:00.000Z")), 0);
 });
 
 test("buildDarkpoolEodRecapEmbed includes buy/sell counts", () => {
