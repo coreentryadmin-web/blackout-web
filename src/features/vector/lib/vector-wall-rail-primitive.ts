@@ -874,7 +874,20 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
 
     const glyphs: ProjectedGlyph[] = [];
     for (const g of rawGlyphs) {
-      const x = ts.timeToCoordinate(g.time as Time);
+      // Same sub-bar interpolation as the bead path (see addTrail's `x` above / #2328) — a bare
+      // `ts.timeToCoordinate(g.time)` only resolves when `g.time` is an EXACT bar timestamp, and
+      // `composeWallEventGlyphs` stamps glyphs at the same sub-bar recorder-bucket granularity as
+      // bead points. Without this, nearly every birth/death/handover/wall-shift glyph a real
+      // session produces fails to resolve and is silently dropped by the `x == null` check below.
+      const x = barTimes?.length
+        ? projectBucketX(
+            g.time,
+            barTimes,
+            (t) => ts.timeToCoordinate(t as Time),
+            barSpacingPx,
+            intervalSec ?? 0
+          )
+        : ts.timeToCoordinate(g.time as Time);
       const y = series.priceToCoordinate(g.strike);
       if (x == null || y == null) continue;
       const color =
