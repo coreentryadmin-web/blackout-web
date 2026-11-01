@@ -39,7 +39,7 @@ export function welcomePremiumEmail(ctx: WelcomePremiumContext): {
 
   const annualLine =
     ctx.billingInterval === "yearly"
-      ? `<p style="margin:0 0 18px;color:${EMAIL_BRAND.body};">You're locked in at ${usd(MEMBERSHIP_PRICING.yearly)} for the full year — the 7-day guarantee's already come and gone, satisfied. Nothing left to decide. The desk's open. Go trade.</p>`
+      ? `<p style="margin:0 0 18px;color:${EMAIL_BRAND.body};">You're locked in at ${usd(MEMBERSHIP_PRICING.yearly)} for the full year — and you've got a 7-day money-back guarantee starting today if it's not the right fit. After that, the rate's locked for the full twelve months. Nothing to decide right now. The desk's open. Go trade.</p>`
       : "";
 
   const body = `
