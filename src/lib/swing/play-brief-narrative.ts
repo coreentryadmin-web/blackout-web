@@ -1872,8 +1872,22 @@ export function tradeManagerNarrativeSection(
     }
   }
 
+  // reserved: true (Ask Largo standing mandate, 2026-11-01, same bug class/fix shape as
+  // dealerPostureLine's own reserved fix a few lines above — see this function's own doc
+  // comment on `add` for the general rule). `flowNarrative`'s own doc comment (above) states
+  // this bullet is "the ONLY flow content that survives `collapseRedundantIntelSections` for
+  // OPEN/WATCH buckets" — collapseRedundantIntelSections (play-brief-intel-collapse.ts) deletes
+  // the dedicated "Flow & positioning" section whenever a narrative exists, replacing it with a
+  // note claiming the detail was "folded into Trade manager read above." That claim is only true
+  // if THIS bullet actually renders. Pre-fix, `add(flow)` was non-reserved, so any realistic
+  // combination of action/collectCoachingBullets/dealerPosture/focal-level bullets ahead of it
+  // (collectCoachingBullets alone can push 20+ candidates, none cap-aware) could fill all 14
+  // non-reserved slots first, silently dropping the flow bullet while the collapse note still
+  // asserted it was covered — live-reproduced with the exact "rich Vector data" MAX_BULLETS
+  // fixture below plus a real, conflicting `recent_flow`: 14 non-reserved bullets fire before
+  // this call is ever reached, so the HELIX tape bullet became candidate #15 and was dropped.
   const flow = flowNarrative(ctx, play);
-  if (flow && !bullets.some((b) => /HELIX tape/i.test(b))) add(flow);
+  if (flow && !bullets.some((b) => /HELIX tape/i.test(b))) add(flow, { reserved: true });
 
   const gexForFlip = ctx.ecosystem?.gex_positioning;
   const vecFlipRaw = vectorStale ? undefined : vec?.gammaFlip;
