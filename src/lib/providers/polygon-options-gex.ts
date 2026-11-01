@@ -2766,8 +2766,23 @@ function computeMetricShift(
   // Each side is constrained against ITS OWN spot at that moment — the current wall against
   // current.spot, the earlier wall against the baseline snapshot's own spot — not a shared spot,
   // since spot has moved between the two snapshots being diffed.
+  //
+  // BUT: `baselineSnap.spot` (GexHistorySnapshot.spot) is a REQUIRED field, always a real number,
+  // regardless of which metric this is — unlike `current.spot`, which VEX/DEX/CHARM callers never
+  // supply (see this function's own `current` param comment: "VEX/DEX/CHARM shifts have no
+  // spot-relative resistance/support concept... stay unconstrained... exactly as before"). Passing
+  // `baselineSnap.spot` unconditionally here constrained the EARLIER wall to one side of spot for
+  // EVERY metric while the CURRENT wall stayed unconstrained for VEX/DEX/CHARM (current.spot
+  // undefined) — comparing an unconstrained global-max pick (now) against a side-restricted pick
+  // (earlier) for the exact same metric, which can surface a phantom wall "migration" (or mask a
+  // real one) whenever that period's true strongest strike sat on the "wrong" side of spot at one
+  // of the two timestamps but not the other. Gate the earlier side on the SAME spot-applicability
+  // this function already uses for the current side, so VEX/DEX/CHARM stay unconstrained on BOTH
+  // sides (true "exactly as before" symmetry) while GEX keeps its full #3214 side-constraint on
+  // both sides unchanged.
+  const spotConstrained = typeof current.spot === "number";
   const curWalls = wallsOf(now, current.spot);
-  const earWalls = wallsOf(earlier, baselineSnap.spot);
+  const earWalls = wallsOf(earlier, spotConstrained ? baselineSnap.spot : undefined);
   const wall_changes = {
     call_wall: wallChange(curWalls.callWall, earWalls.callWall, now, earlier),
     put_wall: wallChange(curWalls.putWall, earWalls.putWall, now, earlier),
@@ -2837,8 +2852,12 @@ function computeGexShift(
  * VEX shift — same diff over each snapshot's `vex_strike_totals` / `vex_flip`. A snapshot is only
  * a usable baseline when it carries vex totals (legacy snapshots without them are skipped), so the
  * VEX shift stays 'collecting' until ≥2 snapshots written WITH vex totals exist. Never fabricated.
+ *
+ * Exported (same precedent as `computeGexEvents` above) so polygon-options-gex.test.ts can
+ * exercise the shared `computeMetricShift` wall-pick logic directly with ring/current fixtures,
+ * without having to drive the whole chain-building pipeline just to reach it.
  */
-function computeVexShift(
+export function computeVexShift(
   ring: GexHistorySnapshot[],
   current: { ts: number; flip: number | null; strike_totals: Record<string, number> }
 ): GexShift {

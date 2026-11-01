@@ -9,6 +9,7 @@ import {
   __test_heatmapUnfilteredPageGuard,
   __test_heatmapBandPct as heatmapBandPct,
   computeGexEvents,
+  computeVexShift,
   computeMaxPainFromChain,
   resolveExpiryAxis,
   resolveOptionsRoot,
@@ -460,6 +461,39 @@ test("computeGexEvents: net GEX flipping sign produces net_gex_sign_flipped with
   assert.equal(flipped.severity, "info");
   assert.equal(flipped.from_value, -50_000);
   assert.equal(flipped.to_value, 30_000);
+});
+
+// ── VEX/DEX/CHARM shift wall picks must stay unconstrained on BOTH sides, not just the
+// current one (PR #3214 fixed wallsOf()'s unconstrained-argmax bug for GEX by threading a real
+// spot through BOTH the current and earlier wall picks — but `baselineSnap.spot` is a required
+// field on every GexHistorySnapshot regardless of metric, so passing it unconditionally for the
+// EARLIER wall silently side-constrained VEX/DEX/CHARM's earlier pick even though their CURRENT
+// pick stayed unconstrained (current.spot is never supplied for these metrics) — comparing an
+// unconstrained global-max pick against a side-restricted one for the same metric.) ──
+test("computeVexShift: earlier wall pick stays UNCONSTRAINED (same as current), not silently side-constrained by the baseline snapshot's spot", () => {
+  // Strike 90 carries the biggest-magnitude positive vanna at BOTH timestamps, but it sits BELOW
+  // the baseline snapshot's own spot (100). VEX has no spot-relative resistance/support concept
+  // (unlike GEX), so the TRUE "pos-vanna wall" at every timestamp is the global max: strike 90.
+  const vexTotals = { "90": 900, "110": 500 };
+  const ring: GexHistorySnapshot[] = [
+    { ts: 1000, spot: 100, flip: null, strike_totals: {}, vex_strike_totals: vexTotals },
+    { ts: 2000, spot: 105, flip: null, strike_totals: {}, vex_strike_totals: vexTotals },
+  ];
+  const result = computeVexShift(ring, { ts: 2000, flip: null, strike_totals: vexTotals });
+  assert.ok(result.available, "two usable VEX snapshots exist — must not read as 'collecting'");
+  assert.equal(
+    result.wall_changes.call_wall.from,
+    90,
+    "earlier pos-vanna wall must be the real global max (90), not 110 — a spot-side-constrained " +
+      "pick that VEX never asked for and that the current-side pick (also 90, unconstrained) " +
+      "disagrees with"
+  );
+  assert.equal(result.wall_changes.call_wall.to, 90, "current pick (always unconstrained for VEX) is 90");
+  assert.equal(
+    result.wall_changes.call_wall.moved_pts,
+    0,
+    "the wall never actually moved — nothing should be reported as having migrated"
+  );
 });
 
 // ── Max pain must be scoped to ONE expiry (docs/audit/FINDINGS.md) ──────────────────
