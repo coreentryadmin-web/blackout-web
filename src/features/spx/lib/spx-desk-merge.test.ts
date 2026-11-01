@@ -211,6 +211,40 @@ describe("mergePulseIntoDesk off-hours derived-field fallback", () => {
     assert.equal(merged.vix_change_pct, -1.3);
   });
 
+  // BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro): a cold ECS replica
+  // serves deskShellFromPulse/emptyDeskPayload() as `base` (vix seeded null there), and when
+  // pulse's own vix read is ALSO momentarily unavailable that cycle, the old
+  // `pulseVixLive ? pulse.vix : base.vix` fallback had nowhere left to go — vix served a bare
+  // null right next to other populated fields (available:true, price:7580.07) on the SAME
+  // payload. Reproduced live: 25/30 polls in a tight burst returned vix:null while a poll
+  // seconds earlier (a different replica) returned vix:19.42. vix now routes through the same
+  // cross-instance sticky cache vwap/pdh/pdl/emas/smas already use.
+  it("falls back to the cross-instance sticky cache when BOTH pulse.vix and base.vix are unavailable (cold-replica/cold-pulse overlap)", () => {
+    // Prior cycle: a real vix seeds the sticky cache (via either pulse or base).
+    mergePulseIntoDesk(deskStub({ vix: 19.42 }), pulseStub({ vix: 19.42 }));
+
+    // This cycle: a cold replica's empty-shell base (vix:null) overlaps with a pulse whose own
+    // vix read also came back unavailable this tick.
+    const coldBase = deskStub({ vix: null, vix_change_pct: null, available: false, price: 0 });
+    const coldPulse = pulseStub({ vix: null, vix_change_pct: null });
+    const merged = mergePulseIntoDesk(coldBase, coldPulse);
+
+    assert.equal(merged.vix, 19.42, "sticky fallback must still carry the last-known vix forward");
+    assert.equal(
+      merged.vix_change_pct,
+      null,
+      "vix_change_pct must not fabricate a fresh-looking value for a sticky-carried vix"
+    );
+  });
+
+  it("never fabricates a vix the sticky cache has also never seen (honest absence, no regression)", () => {
+    const base = deskStub({ vix: null, vix_change_pct: null });
+    const pulse = pulseStub({ vix: null, vix_change_pct: null });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.vix, null);
+    assert.equal(merged.vix_change_pct, null);
+  });
+
   // BUG FOUND (Ask Largo standing mandate, 2026-10-09, live repro mid an ECS rolling deploy):
   // mergePulseIntoDesk never assigned prior_close/gap_pct/gap_source at all, so the `...base`
   // spread silently carried whatever base already had forever, with no fallback to pulse's own

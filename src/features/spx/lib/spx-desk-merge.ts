@@ -86,6 +86,7 @@ const lastGoodStructure: {
   ema200: number | null;
   sma50: number | null;
   sma200: number | null;
+  vix: number | null;
 } = {
   hod: null,
   lod: null,
@@ -97,6 +98,7 @@ const lastGoodStructure: {
   ema200: null,
   sma50: null,
   sma200: null,
+  vix: null,
 };
 
 let lastGoodStructureSessionDate: string | null = null;
@@ -175,6 +177,7 @@ function seedStructureCacheFromBase(base: {
   ema200: number | null;
   sma50: number | null;
   sma200: number | null;
+  vix: number | null;
 }): void {
   // C7: If local structure is entirely null (worker that hasn't run a full desk build),
   // attempt to load from Redis before seeding from base. Fire-and-forget async load;
@@ -365,8 +368,28 @@ export function mergePulseIntoDesk(
   // against pulse's (now-discarded) vix, not against base.vix. Serving pulse.vix_change_pct
   // unconditionally here let a null/stale pulse-side change% silently overwrite a perfectly
   // good base-side one whenever `vix` itself correctly fell back to base.
+  //
+  // BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro): when BOTH pulse.vix
+  // and base.vix are unavailable this cycle — e.g. a cold ECS replica serving the
+  // deskShellFromPulse/emptyDeskPayload() fallback shell as `base` (vix seeded null there) while
+  // pulse's own vix read is also momentarily unavailable — vix served a bare `null` right next
+  // to other populated numeric fields (`available:true`, `price:7580.07`) on the SAME payload.
+  // Reproduced live: 25/30 polls in a tight burst returned `vix:null` while a poll seconds
+  // earlier (a different replica, cycling `as_of` timestamps) returned `vix:19.42`. vwap/pdh/
+  // pdl/emas/smas already had exactly this gap closed via `stickyStructureLevel`'s cross-
+  // instance Redis-backed last-known-good cache (`seedStructureCacheFromBase`/
+  // `loadStructureFromRedis`); vix never got the same treatment. Route vix through the
+  // identical mechanism as a third-tier fallback — it never fabricates a value no replica has
+  // ever actually seen (lastGoodStructure.vix starts null, same as every sibling sticky field),
+  // it only prevents a transient cold-replica/cold-pulse overlap from serving null next to an
+  // otherwise fully-populated desk.
   const pulseVixLive = pulse.vix != null && pulse.vix > 0;
-  const vix = pulseVixLive ? pulse.vix : base.vix;
+  const baseVixLive = base.vix != null && base.vix > 0;
+  const vix = stickyStructureLevel(
+    "vix",
+    pulseVixLive ? pulse.vix : null,
+    baseVixLive ? base.vix : null
+  );
   return {
     ...base,
     // BUG FIX (Ask Largo standing mandate, 2026-10-25): same "never reassigned, inherited from
@@ -387,7 +410,16 @@ export function mergePulseIntoDesk(
     // payload reports.
     spx_change_pct: pulse.spx_change_pct ?? base.spx_change_pct,
     vix,
-    vix_change_pct: pulseVixLive ? pulse.vix_change_pct : base.vix_change_pct,
+    // Only pulse/base carry a change% that's actually anchored to a fresh read THIS cycle —
+    // the sticky-cache tier above never computes one, so when neither pulse nor base had a
+    // live vix (the case the sticky fallback exists for), serve change_pct honestly as null
+    // rather than reusing a stale base.vix_change_pct that was itself null right alongside the
+    // null base.vix.
+    vix_change_pct: pulseVixLive
+      ? pulse.vix_change_pct
+      : baseVixLive
+        ? base.vix_change_pct
+        : null,
     // BUG FIX (Ask Largo standing mandate, 2026-10-09): this function never assigned
     // prior_close/gap_pct/gap_source at all — the `...base` spread above silently carried
     // whatever `base` already had, forever, with no fallback to `pulse`'s own values the way
