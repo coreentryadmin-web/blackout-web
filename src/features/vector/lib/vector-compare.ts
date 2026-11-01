@@ -114,6 +114,38 @@ export function pruneStaleTickerEntries<T>(
   return changed ? next : (entries as Record<string, T>);
 }
 
+/**
+ * `pruneStaleTickerEntries`'s sibling for a `Map` — same same-reference-when-unchanged contract,
+ * for callers that key per-ticker state by a `Map` rather than a plain `Record` (VectorCompareDesk's
+ * `timelinesRef`, which tracks each pane's own replay timeline for the linked-replay scrubber).
+ *
+ * THE GAP THIS CLOSES (VectorCompareDesk's `timelinesRef`). `handleReplayTimeline` already pruned
+ * stale keys out of `timelinesRef.current` — but only as a side effect of the NEXT call to
+ * `handleReplayTimeline` for some OTHER ticker, which only fires again once that pane's chart
+ * receives a new bar. Removing a pane (via `removeTicker` or a preset swap) did not itself prune
+ * the ref. During live RTH with other panes still ticking, this self-healed within seconds — but
+ * off-hours, with replay data static, or if the removed pane was the only one producing updates,
+ * the stale timeline could sit in `timelinesRef.current` indefinitely, inflating `unionTimeline`
+ * (and therefore the linked-replay scrubber's range) with steps belonging to a pane that's no
+ * longer on screen. Mirrors the same fix already applied to `metaByTicker`/`playByTicker` via
+ * `pruneStaleTickerEntries` above — this lets `timelinesRef` get the identical proactive,
+ * `seeds`-keyed cleanup instead of waiting on an unrelated pane's next tick.
+ */
+export function pruneStaleTickerMapEntries<T>(
+  entries: ReadonlyMap<string, T>,
+  activeTickers: ReadonlySet<string>
+): Map<string, T> {
+  let changed = false;
+  const next = new Map(entries);
+  for (const key of next.keys()) {
+    if (!activeTickers.has(key)) {
+      next.delete(key);
+      changed = true;
+    }
+  }
+  return changed ? next : (entries as Map<string, T>);
+}
+
 /** Load compare seeds with bounded concurrency — 4× parallel burst was tripping ALB 502s. */
 export async function loadCompareSeedsBounded<T>(
   tickers: string[],

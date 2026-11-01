@@ -9,6 +9,7 @@ import {
   isCompareMode,
   parseCompareTickers,
   pruneStaleTickerEntries,
+  pruneStaleTickerMapEntries,
 } from "./vector-compare";
 
 test("parseCompareTickers: normalizes, dedupes, caps at max panes", () => {
@@ -196,6 +197,52 @@ test("pruneStaleTickerEntries: does not mutate the input record", () => {
   const entries = { NVDA: "long", TSLA: "short" };
   const snapshot = { ...entries };
   pruneStaleTickerEntries(entries, new Set(["NVDA"]));
+  assert.deepEqual(entries, snapshot);
+});
+
+// Regression for VectorCompareDesk's `timelinesRef`: removing a pane (removeTicker / a preset
+// swap) did not itself prune the departed ticker's entry out of the Map — only the NEXT call to
+// handleReplayTimeline for some OTHER ticker did, as an unrelated side effect. This is
+// pruneStaleTickerEntries's exact same contract, just for the Map-keyed timelinesRef instead of a
+// plain Record — see pruneStaleTickerMapEntries's own doc comment for the full account.
+test("pruneStaleTickerMapEntries: drops entries whose ticker left the active set", () => {
+  const entries = new Map([
+    ["NVDA", [1, 2, 3]],
+    ["TSLA", [4, 5, 6]],
+    ["META", [7, 8, 9]],
+  ]);
+  const active = new Set(["NVDA", "META"]);
+  const next = pruneStaleTickerMapEntries(entries, active);
+  assert.deepEqual([...next.keys()], ["NVDA", "META"]);
+  assert.ok(!next.has("TSLA"), "a removed ticker's stale replay timeline must not survive");
+});
+
+test("pruneStaleTickerMapEntries: returns the SAME reference when nothing is stale", () => {
+  const entries = new Map([
+    ["NVDA", [1, 2, 3]],
+    ["META", [7, 8, 9]],
+  ]);
+  const active = new Set(["NVDA", "META", "AMD"]); // AMD not present yet — not a reason to prune
+  const next = pruneStaleTickerMapEntries(entries, active);
+  assert.strictEqual(next, entries, "unchanged input must not force a new Map (avoids a redundant unionTimeline recompute)");
+});
+
+test("pruneStaleTickerMapEntries: an empty active set clears every entry", () => {
+  const entries = new Map([
+    ["NVDA", [1, 2, 3]],
+    ["TSLA", [4, 5, 6]],
+  ]);
+  const next = pruneStaleTickerMapEntries(entries, new Set());
+  assert.deepEqual([...next.keys()], []);
+});
+
+test("pruneStaleTickerMapEntries: does not mutate the input Map", () => {
+  const entries = new Map([
+    ["NVDA", [1, 2, 3]],
+    ["TSLA", [4, 5, 6]],
+  ]);
+  const snapshot = new Map(entries);
+  pruneStaleTickerMapEntries(entries, new Set(["NVDA"]));
   assert.deepEqual(entries, snapshot);
 });
 
