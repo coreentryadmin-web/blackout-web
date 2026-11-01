@@ -25,14 +25,36 @@ export function legacyPrimaryPnlPct(play: TerminalPlay): number | null {
   return play.pnlPct ?? play.stockMovePct ?? null;
 }
 
+/**
+ * BUG FIX (2026-11-01, Night Hawk Legacy / Ask Largo standing mandate — 5th instance of this
+ * exact WATCH/SKIP-exclusion defect in this file family, found during the same audit pass that
+ * found the 4th instance above in `legacyPrimaryPnlPct` / fixed by #7164): this function has the
+ * identical unconditional fallback-to-stock-derived-number shape `legacyPrimaryPnlPct` had before
+ * that fix, but never got the matching status gate. `play.stockPeakPct` — the session-high
+ * excursion of the UNDERLYING from the published entry-band midpoint — is computed
+ * UNCONDITIONALLY for every status by the same `overlayLegacyQuotes` (use-legacy-quotes.ts) that
+ * nulls `pnlPct`/`peak`/`trough` for WATCH/SKIP, so a WATCH (never entered) or SKIP
+ * (invalidated/pulled, never entered) play used to silently resolve to a fabricated "Best"
+ * position excursion here. Reached through `TradeExcursionGraphic` (TerminalPremiumPanels.tsx),
+ * mounted unconditionally by both `LegacyPlayDetailPanel` (the sole Legacy detail render path)
+ * and `LegacyPlayManageRail`'s trade-management rail whenever a live stock quote exists — right
+ * next to the now-honestly-null "Current" from the sibling fix above, an internally contradictory
+ * render on the same card.
+ */
 export function legacyPrimaryPeakPct(play: TerminalPlay): number | null {
+  if (play.status === "WATCH" || play.status === "SKIP") return null;
   if (play.pnlPct != null && Number.isFinite(play.pnlPct)) {
     return play.peak ?? play.pnlPct;
   }
   return play.stockPeakPct ?? play.peak ?? null;
 }
 
+/** Mirrors legacyPrimaryPeakPct's WATCH/SKIP gate — see its doc comment for the full root cause
+ * (5th instance of this file family's WATCH/SKIP-exclusion defect; `stockTroughPct` is the same
+ * unconditionally-computed underlying excursion, fabricating a "Worst" for a never-entered play).
+ */
 export function legacyPrimaryTroughPct(play: TerminalPlay): number | null {
+  if (play.status === "WATCH" || play.status === "SKIP") return null;
   if (play.pnlPct != null && Number.isFinite(play.pnlPct)) {
     // Mirror legacyPrimaryPeakPct's fallback: when no trough has been latched yet
     // (fresh position, live-sync hasn't ticked), the worst-so-far is honestly the
