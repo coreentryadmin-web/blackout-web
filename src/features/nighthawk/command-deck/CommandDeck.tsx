@@ -839,6 +839,31 @@ export const PlayCard = memo(function PlayCard({
             </span>
             <span className="nh-deck-premlab">{primaryReturnLabel(p)}</span>
           </>
+        ) : p.horizon === "LEGACY" && isWatchTrackStatus(p.status) && p.stockMovePct != null ? (
+          // BUG FIX (2026-11-01, 4th instance of the WATCH/SKIP-exclusion defect in this file
+          // family; same root cause as LegacyPlayDetailPanel.tsx/PlayTerminal.tsx). Legacy never
+          // populates `trackPct` (terminalPlayFromEdition, adapters.ts — unlike SWING/LEAPS's
+          // overlayHorizonWatchTrack), so the generic isWatchTrackStatus+trackPct branch above
+          // never fires for a Legacy WATCH/SKIP row; this branch used to fall straight through to
+          // the one below instead, which called `legacyPrimaryPnlPct(p)` with no status gate —
+          // rendering the underlying's hypothetical move from the published entry-band midpoint as
+          // if it were a real position's return. Reuses the exact "Since flag" framing/markup the
+          // branch above already uses for this identical concept, fed from `stockMovePct` (the
+          // field Legacy actually populates) instead of `trackPct`.
+          <>
+            <span
+              className={clsx(
+                "nh-deck-prem nh-deck-prem-lg",
+                p.stockMovePct > 0 && "nh-deck-pos",
+                p.stockMovePct < 0 && "nh-deck-neg",
+                markFlash && "neon",
+              )}
+            >
+              {p.stockMovePct > 0 ? "▲ " : ""}
+              {formatReturnPct(p.stockMovePct)}
+            </span>
+            <span className="nh-deck-premlab">Since flag</span>
+          </>
         ) : p.horizon === "LEGACY" && p.stockPrice != null ? (
           <>
             <span className="nh-deck-prem" style={{ display: "block" }}>

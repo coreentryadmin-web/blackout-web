@@ -28,6 +28,28 @@ test("legacyPrimaryPnlPct prefers option premium over stock move", () => {
   assert.equal(legacyPrimaryPnlPct(play({ stockMovePct: 2 })), 2);
 });
 
+// BUG FIX (2026-11-01, Night Hawk Legacy / Ask Largo standing mandate — 4th instance of this
+// exact WATCH/SKIP-exclusion defect in this file family): `stockMovePct` is computed
+// unconditionally for every status (use-legacy-quotes.ts), so a WATCH (never entered) or SKIP
+// (invalidated/pulled, never entered) play used to resolve to a fabricated "position" P&L here —
+// the underlying's hypothetical move from the published entry-band midpoint, rendered as if a real
+// position existed. Mirrors the identical WATCH/SKIP gate already applied to pnlPct/execPnlPct
+// (use-legacy-option-marks.ts, #7105).
+test("legacyPrimaryPnlPct returns null for WATCH/SKIP even when stockMovePct is a real non-null number — no position was ever entered to report a return on", () => {
+  assert.equal(legacyPrimaryPnlPct(play({ status: "WATCH", stockMovePct: 14.2 })), null);
+  assert.equal(legacyPrimaryPnlPct(play({ status: "SKIP", stockMovePct: -9.1 })), null);
+  // Even if some caller populated pnlPct too (shouldn't happen upstream — overlayLegacyOptionMarks/
+  // overlayLegacyQuotes already null it for these statuses — the gate must hold regardless).
+  assert.equal(legacyPrimaryPnlPct(play({ status: "WATCH", pnlPct: 50, stockMovePct: 14.2 })), null);
+});
+
+test("legacyPrimaryPnlPct is unaffected for real-position statuses (OPEN/HOLD/TRIM/CLOSED) — no regression", () => {
+  assert.equal(legacyPrimaryPnlPct(play({ status: "OPEN", stockMovePct: 14.2 })), 14.2);
+  assert.equal(legacyPrimaryPnlPct(play({ status: "HOLD", pnlPct: 7, stockMovePct: 14.2 })), 7);
+  assert.equal(legacyPrimaryPnlPct(play({ status: "TRIM", stockMovePct: 3 })), 3);
+  assert.equal(legacyPrimaryPnlPct(play({ status: "CLOSED", stockMovePct: 3 })), 3);
+});
+
 test("legacyPrimaryPeakPct uses option peak when premium PnL is live", () => {
   assert.equal(legacyPrimaryPeakPct(play({ pnlPct: 10, peak: 80, stockPeakPct: 3 })), 80);
   assert.equal(legacyPrimaryPeakPct(play({ stockPeakPct: 3, peak: 1 })), 3);

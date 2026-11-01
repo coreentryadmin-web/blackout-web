@@ -313,6 +313,14 @@ export function PlayTerminal({
                 <span className={clsx(legacyPrimaryPnlPct(play)! > 0 ? "nh-deck-pos" : legacyPrimaryPnlPct(play)! < 0 ? "nh-deck-neg" : "")}>
                   {" "}{legacyPrimaryPnlPct(play)! >= 0 ? "+" : ""}{legacyPrimaryPnlPct(play)!.toFixed(1)}% from entry
                 </span>
+              ) : (play.status === "WATCH" || play.status === "SKIP") && play.stockMovePct != null ? (
+                // BUG FIX (2026-11-01, 4th instance of the WATCH/SKIP-exclusion defect in this file
+                // family): same root cause/fix as LegacyPlayDetailPanel.tsx's verdict band — no
+                // position was ever entered, so `stockMovePct` is a hypothetical move, not P&L.
+                // Reuses the exact "Since flag" framing instead of the "from entry" text above.
+                <span className={clsx(play.stockMovePct > 0 ? "nh-deck-pos" : play.stockMovePct < 0 ? "nh-deck-neg" : "")}>
+                  {" "}{play.stockMovePct >= 0 ? "+" : ""}{play.stockMovePct.toFixed(1)}% · Since flag
+                </span>
               ) : play.stockChangePct != null ? (
                 <span className={clsx(play.stockChangePct > 0 ? "nh-deck-pos" : play.stockChangePct < 0 ? "nh-deck-neg" : "")}>
                   {" "}{play.stockChangePct >= 0 ? "+" : ""}{play.stockChangePct.toFixed(1)}% today
