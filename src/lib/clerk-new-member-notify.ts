@@ -20,9 +20,11 @@
  * and the exact "unescaped user-controlled text reaching a rendered-as-markup surface" bug
  * shape as the welcome-sequence.ts firstName HTML-XSS gap fixed in PR #6929, just on the
  * Discord-markdown surface instead of HTML. No shared Discord-markdown-escaping helper existed
- * anywhere in the codebase (every other Discord notifier only ever interpolates
- * server-computed tickers/numbers, never free-text a member can set), so `escapeDiscordMarkdown`
- * is introduced here rather than reused.
+ * anywhere in the codebase when this was written (every other Discord notifier only ever
+ * interpolated server-computed tickers/numbers, never free-text a member can set), so
+ * `escapeDiscordMarkdown` was introduced here. It is now also reused by
+ * `whop-cancellation-notify.ts`, whose free-text `cancellation_reason` field is the same
+ * attacker-controlled-text-into-markdown-surface shape and had shipped without escaping.
  */
 
 export interface OpsNotificationField {
@@ -40,7 +42,7 @@ export interface OpsNotificationField {
  * syntax (`[`, `]`, `<`, `>`) — `<@123>`/`<#123>`/`<@&123>` mention syntax and `[label](url)`
  * links both require one of these characters, so escaping them closes both surfaces at once.
  */
-function escapeDiscordMarkdown(value: string): string {
+export function escapeDiscordMarkdown(value: string): string {
   return value.replace(/[\\*_~`|<>[\]]/g, (ch) => `\\${ch}`);
 }
 
