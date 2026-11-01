@@ -2032,7 +2032,7 @@ test("Legacy adapter: resolves OCC from options_play for live mark subscription"
   assert.match(play.occ!, /^NVDA/);
 });
 
-test("overlayLegacyOptionMarks: populates option pnlPct from live mark", () => {
+test("overlayLegacyOptionMarks: populates option pnlPct from live mark once morning-confirmed OPEN", () => {
   const { overlayLegacyOptionMarks } = require("./use-legacy-option-marks.ts") as typeof import("./use-legacy-option-marks");
   const play = terminalPlayFromEdition({
     ticker: "NVDA",
@@ -2041,7 +2041,12 @@ test("overlayLegacyOptionMarks: populates option pnlPct from live mark", () => {
     score: 70,
     options_play: "NVDA $500 CALL @ $3.33 — Aug 10",
     entry_premium: 2.0,
+    // morning_status: "CONFIRMED" -> status "OPEN" — a real, entered position, so a live
+    // premium % against the published entry is honest. See the sibling WATCH test below for
+    // the overnight/pre-morning-confirm case this same play would carry before confirm runs.
+    morning_status: "CONFIRMED",
   });
+  assert.equal(play.status, "OPEN");
   const marks = new Map([
     [play.occ!, { occ: play.occ!, mark: 3.0, bid: 2.9, ask: 3.1, asof: "2026-09-01T15:00:00.000Z", stale: false }],
   ]);
@@ -2049,6 +2054,34 @@ test("overlayLegacyOptionMarks: populates option pnlPct from live mark", () => {
   assert.equal(result.mark, 3.0);
   assert.equal(result.pnlPct, 50, "entry $2 → mark $3 = +50%");
   assert.equal(result.execPnlPct, 45, "entry $2 → bid $2.9 = +45%");
+});
+
+// BUG FIX regression (2026-10-31): before the 9:15am ET morning-confirm cron runs the next day
+// (no `morning_status` yet), terminalPlayFromEdition leaves this exact play at status "WATCH" —
+// not yet entered. overlayLegacyOptionMarks used to compute a real pnlPct against the published
+// entry premium here with no status check at all, i.e. the SAME play/marks as the test above but
+// one night earlier would have shown a live, colored "Premium vs entry" % for a setup the system
+// had explicitly not confirmed/entered yet. See use-legacy-option-marks.ts for the full fix.
+test("overlayLegacyOptionMarks: WATCH (morning confirm not yet run) withholds pnlPct/execPnlPct for the same play/marks", () => {
+  const { overlayLegacyOptionMarks } = require("./use-legacy-option-marks.ts") as typeof import("./use-legacy-option-marks");
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA",
+    direction: "long",
+    rank: 1,
+    score: 70,
+    options_play: "NVDA $500 CALL @ $3.33 — Aug 10",
+    entry_premium: 2.0,
+    // no morning_status -> status "WATCH" (adapters.ts: `ms == null` falls to "WATCH")
+  });
+  assert.equal(play.status, "WATCH");
+  const marks = new Map([
+    [play.occ!, { occ: play.occ!, mark: 3.0, bid: 2.9, ask: 3.1, asof: "2026-09-01T15:00:00.000Z", stale: false }],
+  ]);
+  const [result] = overlayLegacyOptionMarks([play], marks);
+  // The live quote is still informational (mark stays populated) — only the computed return is withheld.
+  assert.equal(result.mark, 3.0);
+  assert.equal(result.pnlPct, null, "not-yet-entered WATCH play must not show a live premium %");
+  assert.equal(result.execPnlPct, null);
 });
 
 test("Legacy adapter: confirming_signals → confluence badge, not a factor", () => {

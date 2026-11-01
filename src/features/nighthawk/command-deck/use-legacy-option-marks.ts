@@ -91,16 +91,34 @@ export function overlayLegacyOptionMarks(
       return { ...p, mark: row.mark ?? p.mark, markAsOf: row.asof ?? p.markAsOf };
     }
 
+    // BUG FIX (2026-10-31, Ask Largo standing mandate): a WATCH play has not been entered yet —
+    // status stays WATCH from publish (~8pm ET) until the next morning's 9:15am ET morning-confirm
+    // cron runs, and stays WATCH afterward for DEGRADED/UNVERIFIED verdicts too (terminalPlayFromEdition,
+    // adapters.ts — only INVALIDATED/severe-pulled maps to SKIP, only CONFIRMED maps to OPEN). SKIP means
+    // invalidated/pulled. `entryCostPerContract` is the PUBLISHED entry premium, not a real fill, so this
+    // overlay used to compute a live premium % against it with NO status check at all — presenting a
+    // not-yet-actionable (or invalidated) setup as an open position with a real, colored P&L, exactly the
+    // "never WATCH" invariant legacyVectorStatus's own status badge already protects (legacy-board-table-
+    // utils.ts) but that this overlay bypassed by writing straight into `premiumPct`/`execPnlPct`, which
+    // feed the board's "Premium vs entry" column (legacy-board-columns.tsx) and the detail panel's hero
+    // P&L (legacyPrimaryPnlPct, legacy-primary-pnl.ts) with no status gate of their own. Mirrors
+    // terminalPlayFromHorizon's own WATCH/SKIP gate on pnlPct/execMark/execPnlPct (adapters.ts) — `mark`/
+    // `markAsOf` stay live (same as that precedent) so the "Entry → mark" display and freshness label
+    // keep working; only the computed PERCENTAGE return is withheld. `peak`/`trough` fall out of this for
+    // free: `latchLiveExcursion` with a null `pnlPct` just carries over the play's existing (always-null,
+    // pre-overlay) peak/trough rather than latching a new excursion.
+    const notYetEntered = p.status === "WATCH" || p.status === "SKIP";
+
     const mark = row.mark ?? p.mark ?? null;
-    const pnlPct = pinnedLivePnlPct(entryPrem, mark);
-    const execPnlPct = pinnedLivePnlPct(entryPrem, row.bid ?? null);
+    const pnlPct = notYetEntered ? null : pinnedLivePnlPct(entryPrem, mark);
+    const execPnlPct = notYetEntered ? null : pinnedLivePnlPct(entryPrem, row.bid ?? null);
     const latch = latchLiveExcursion({ ...p, mark, pnlPct }, pnlPct);
 
     return {
       ...p,
       mark,
       pnlPct,
-      execMark: row.bid ?? p.execMark,
+      execMark: notYetEntered ? null : (row.bid ?? p.execMark),
       execPnlPct,
       markAsOf: row.asof ?? p.markAsOf,
       markIsSync: row.stale,
