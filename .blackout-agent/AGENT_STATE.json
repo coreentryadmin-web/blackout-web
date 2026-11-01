@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T06:37:48.031Z",
+  "updated_at": "2026-11-01T09:04:51.932Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c19c8eab110ed80d51eb6dd275287e612389a184",
+    "last_main_sha": "5ff2eac26f9fb63880e6ff4d7ef823b3c20d7a36",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T07:36:56.045Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T07:36:59.640Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T08:06:55.526Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-25T08:06:59.245Z",
       "type": "context_sync",
@@ -1271,18 +1253,56 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T09:04:40.725Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-01T09:04:46.412Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-01T09:04:51.931Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 7169,
-      "title": "fix: guard AdminNightHawkDashboard load() against a stale window-switch race",
-      "branch": "fix/admin-nighthawk-window-race",
+      "number": 7189,
+      "title": "fix(meridian): revenue estimate-set event never emitted in revision timeline",
+      "branch": "fix/meridian-revenue-estimate-set-timeline",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T06:32:36Z"
+      "updated_at": "2026-11-01T09:50:13Z"
+    },
+    {
+      "number": 7190,
+      "title": "fix(meridian): signal weight:0 (informational-only pillars) promoted to weight:1",
+      "branch": "fix/meridian-viz-bug",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T09:01:49Z"
+    },
+    {
+      "number": 7181,
+      "title": "fix(swing): dedup envelope.levels GEX-king/wall and confluence/max-pain collisions",
+      "branch": "fix/largo-swing-envelope-levels-dedup",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T07:30:29Z"
     },
     {
       "number": 5547,
