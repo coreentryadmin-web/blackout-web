@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T16:15:23.886Z",
+  "updated_at": "2026-11-01T16:38:11.572Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "62a12c90e0939e0052f7921fa4cef3917ee6b8de",
+    "last_main_sha": "7a68a8c28989185fb338ca933961cc329e797a4b",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T13:21:07.799Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T13:21:11.385Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T14:07:42.676Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-25T14:07:46.562Z",
       "type": "context_sync",
@@ -1271,49 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
+    },
+    {
+      "at": "2026-11-01T16:38:04.840Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-01T16:38:08.296Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-01T16:38:11.572Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 7252,
-      "title": "fix: deterministic tie-break for Meridian OPEX top gainer/loser pick",
-      "branch": "fix/opex-mover-tiebreak",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T16:12:21Z"
-    },
-    {
-      "number": 7251,
-      "title": "fix(swing): ADRs with no Polygon SIC (TSM/ASML/ARM) mislabel SECTOR_ROTATION as Tech instead of Semiconductors",
-      "branch": "fix/industry-rs-adr-sic-override",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T16:12:42Z"
-    },
-    {
-      "number": 7250,
-      "title": "fix(gex): summarizeGreekExposureByExpiry picked pinned_expiry non-deterministically on an exact gamma tie",
-      "branch": "fix/greek-expiry-tiebreak",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T16:06:19Z"
-    },
-    {
-      "number": 7249,
-      "title": "fix(helix): OI column rendered a genuine 0 open-interest print as absent data",
-      "branch": "fix/helix-oi-zero-absence",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T16:12:01Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
