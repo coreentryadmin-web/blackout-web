@@ -58,6 +58,20 @@ export function playMinGradeRank(): number {
 }
 
 /**
+ * The human-readable label for the floor playMinGradeRank() resolves to — "B" by default, but
+ * "A" if SPX_PLAY_MIN_GRADE=A, etc. Exists so a gate block message can state the REAL configured
+ * threshold instead of a hardcoded grade letter (see spx-play-gates.ts's "Grade X below minimum"
+ * block, which used to hardcode "need B or better" even when SPX_PLAY_MIN_GRADE overrode the
+ * floor to something else). Falls back to "B" for the same unrecognized-env-value case
+ * playMinGradeRank() itself falls back to rank 2, so the label always matches the rank actually
+ * used by the gate condition.
+ */
+export function playMinGradeLabel(): string {
+  const labels = ["D", "C", "B", "A", "A+"];
+  return labels[playMinGradeRank()] ?? "B";
+}
+
+/**
  * When true, only A/A+ full-size entries are allowed — starter/half-size entries are
  * suppressed. Default false (starter entries enabled at lower score thresholds).
  */

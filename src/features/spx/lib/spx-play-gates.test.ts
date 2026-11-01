@@ -242,6 +242,31 @@ test("evaluatePlayGates: grade below B blocks BUY", () => {
   assert.match(result.blocks.join(" "), /below minimum/i);
 });
 
+test("evaluatePlayGates: grade-below-minimum block states the REAL configured floor, not a hardcoded B (regression)", () => {
+  // BUG FIX (2026-10-31): the block message used to hardcode "need B or better" literally,
+  // regardless of what playMinGradeRank() (SPX_PLAY_MIN_GRADE) actually resolved to. The gate
+  // CONDITION already used the real configured rank, so it would correctly fire a B-grade play
+  // as below-minimum once the floor was raised to A — but the displayed reason kept claiming the
+  // floor was still B, a factually wrong reason for the block that actually fired.
+  mockHaltBlock = { block: false, reason: null };
+  const prevMinGrade = process.env.SPX_PLAY_MIN_GRADE;
+  process.env.SPX_PLAY_MIN_GRADE = "A";
+  try {
+    const result = evaluatePlayGates(
+      baseDesk(),
+      baseConfluence({ grade: "B" }),
+      emptySession,
+      passingConfirmations
+    );
+    const joined = result.blocks.join(" ");
+    assert.match(joined, /Grade B below minimum \(need A or better\)/);
+    assert.doesNotMatch(joined, /need B or better/i);
+  } finally {
+    if (prevMinGrade === undefined) delete process.env.SPX_PLAY_MIN_GRADE;
+    else process.env.SPX_PLAY_MIN_GRADE = prevMinGrade;
+  }
+});
+
 test("evaluatePlayGates: opening range blocks BUY before 9:45 (user-directed 2026-07-13 — was 9:50)", () => {
   mockHaltBlock = { block: false, reason: null };
   mockEtMinutes = 9 * 60 + 35;
