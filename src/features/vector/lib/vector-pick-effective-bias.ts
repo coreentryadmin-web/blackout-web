@@ -24,7 +24,12 @@ export function effectivePickBias(
   if (play.bias !== "neutral") return play.bias;
   if (play.setup !== "pivot") return null;
   const flip = gammaFlip;
-  if (flip == null || !(spot != null && spot > 0)) return null;
+  // `flip == null` alone lets a NaN flip (NaN !== null) fall through — see this file's own
+  // `pivotPickWaitingCopy` below, which already guards `Number.isFinite(gammaFlip)` for the
+  // identical field. Without it, `Math.abs(spot - NaN) / NaN` is NaN, the commit-distance check
+  // never fires (NaN is never `<` anything), and `spot > NaN` resolves to false — fabricating a
+  // confident "short" from a genuinely unknown flip instead of returning "undetermined".
+  if (flip == null || !Number.isFinite(flip) || !(spot != null && spot > 0)) return null;
   const dist = Math.abs(spot - flip) / flip;
   if (dist < PIVOT_PICK_COMMIT_EPS) return null;
   return spot > flip ? "long" : "short";
