@@ -544,6 +544,40 @@ test("computeMaxPainFromChain: empty input returns null, never a fabricated stri
   assert.equal(computeMaxPainFromChain([]), null);
 });
 
+// ── An exact pain tie must resolve to the LOWER strike, not whichever strike happens to carry
+// more total open interest (docs/audit/findings-staging/2026-11-01-maxpain-strike-tiebreak.md).
+// `computeMaxPainFromChain` scans `summarizeOiByStrike`'s own return array — which that helper
+// sorts by DESCENDING total_oi for ITS OWN callers (an OI-ranked display list) — so on an exact
+// pain tie between two strikes, the `pain < bestPain` strict comparison keeps whichever strike
+// summarizeOiByStrike happened to place first, i.e. whichever has the LARGER total open interest.
+// That is a correlate of nothing in the actual max-pain decision. Same bug class, same fix
+// (sort ascending by strike before the scan), as wallsFromStrikeTotals's documented fix in
+// gex-cross-validation-core.ts.
+test("computeMaxPainFromChain: an exact pain tie resolves to the LOWER strike, not the higher-OI one", () => {
+  // Strike 100: 100 call OI, 0 put OI.
+  // Strike 110: 9900 call OI (irrelevant to either candidate's pain — only matters for a
+  //             candidate strike above 110, which doesn't exist here; it exists purely to make
+  //             strike 110's TOTAL open interest dwarf strike 100's) + 100 put OI.
+  //
+  // pain(100) = (110-100) * put_oi(110) = 10 * 100 = 1000
+  // pain(110) = (110-100) * call_oi(100) = 10 * 100 = 1000
+  // → an exact tie, by construction.
+  //
+  // total_oi(100) = 100; total_oi(110) = 10000 — so summarizeOiByStrike's OI-descending sort
+  // places the strike-110 row FIRST. Before the fix, that row wins the tie (iterated first);
+  // after the fix (scan sorted ascending by strike instead), strike 100 always wins the tie.
+  const contracts = [
+    contract(100, "call", 100, "2026-07-10"),
+    contract(110, "put", 100, "2026-07-10"),
+    contract(110, "call", 9900, "2026-07-10"),
+  ];
+  assert.equal(
+    computeMaxPainFromChain(contracts),
+    100,
+    "an exact pain tie must deterministically keep the lower strike, regardless of which strike carries more total OI"
+  );
+});
+
 // ── resolveOptionsRoot: `ticker` is untrusted, user-supplied input (the query param on every
 // /api/market/gex-* route) that becomes a URL PATH segment in every downstream Polygon chain
 // fetch. CodeQL flagged this as a request-forgery sink — a crafted ticker must not be able to
