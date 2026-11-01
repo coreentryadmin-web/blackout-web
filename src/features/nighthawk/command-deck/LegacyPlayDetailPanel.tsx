@@ -47,6 +47,15 @@ function whyPickedSummary(play: TerminalPlay): string {
 export function LegacyPlayDetailPanel({ play }: { play: TerminalPlay }) {
   const markFlash = useFlash(legacyPrimaryPnlPct(play));
   const movePct = legacyPrimaryPnlPct(play);
+  // BUG FIX (2026-11-01, Night Hawk Legacy / Ask Largo standing mandate, 4th instance of the
+  // WATCH/SKIP-exclusion defect in this file family): `movePct` is now correctly null for WATCH/
+  // SKIP (legacyPrimaryPnlPct.ts), but `play.stockMovePct` is still a real, honest number — the
+  // underlying's hypothetical move from the published entry-band midpoint. Rendering it with the
+  // same "Since flag" framing primaryReturnLabel/CommandDeck's WATCH-track branch already use for
+  // this identical concept on other horizons (play-card-display.ts) keeps the information visible
+  // without implying a real, entered position's "from entry" P&L.
+  const notYetEntered = play.status === "WATCH" || play.status === "SKIP";
+  const sinceFlagPct = notYetEntered ? play.stockMovePct ?? null : null;
   const dayChg = play.stockChangePct;
   const spot = play.stockPrice;
   const reachability =
@@ -86,7 +95,14 @@ export function LegacyPlayDetailPanel({ play }: { play: TerminalPlay }) {
                 {movePct.toFixed(1)}% from entry
               </span>
             )}
-            {movePct == null && dayChg != null && (
+            {movePct == null && sinceFlagPct != null && (
+              <span className={clsx(sinceFlagPct > 0 && "nh-deck-pos", sinceFlagPct < 0 && "nh-deck-neg")}>
+                {" "}
+                {sinceFlagPct >= 0 ? "+" : ""}
+                {sinceFlagPct.toFixed(1)}% · Since flag
+              </span>
+            )}
+            {movePct == null && sinceFlagPct == null && dayChg != null && (
               <span className={clsx(dayChg > 0 && "nh-deck-pos", dayChg < 0 && "nh-deck-neg")}>
                 {" "}
                 {dayChg >= 0 ? "+" : ""}

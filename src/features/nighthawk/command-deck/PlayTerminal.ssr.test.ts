@@ -435,6 +435,34 @@ test("Legacy single panel: stock move uses from-entry label in header stream", a
   assert.match(html, /stock entry/);
 });
 
+// BUG FIX (2026-11-01, Night Hawk Legacy / Ask Largo standing mandate — 4th instance of this
+// exact WATCH/SKIP-exclusion defect in this file family): WATCH/SKIP never had a position entered
+// — `stockMovePct` is a real, honest number (the underlying's hypothetical move from the published
+// entry-band midpoint), but legacyPrimaryPnlPct used to fall back to it with no status gate, so
+// BOTH the header stream above (PlayTerminal.tsx) and the verdict band below (LegacyPlayDetailPanel,
+// rendered right underneath on the same single-panel view) printed it as "{X}% from entry" — reading
+// as a real, entered position's return. Fixed at the shared `legacyPrimaryPnlPct` helper, with the
+// honest "Since flag" framing (reusing primaryReturnLabel/CommandDeck's WATCH-track label verbatim)
+// swapped in at both render sites instead of silently showing nothing.
+test("Legacy single panel: WATCH status never shows a fabricated 'from entry' P&L — stockMovePct is a real number but no position was ever entered", async () => {
+  const html = await render(legacyPlay({ status: "WATCH", stockMovePct: 4.2, pnlPct: null }));
+  assert.doesNotMatch(html, /% from entry/, `must never render a hypothetical move as real P&L, got: ${html}`);
+  assert.match(html, /Since flag/, `expected the honest "Since flag" framing, got: ${html}`);
+  assert.match(html, /\+4\.2%/);
+});
+
+test("Legacy single panel: SKIP status never shows a fabricated 'from entry' P&L either", async () => {
+  const html = await render(legacyPlay({ status: "SKIP", stockMovePct: -3.5, pnlPct: null }));
+  assert.doesNotMatch(html, /% from entry/, `must never render a hypothetical move as real P&L, got: ${html}`);
+  assert.match(html, /Since flag/, `expected the honest "Since flag" framing, got: ${html}`);
+  assert.match(html, /-3\.5%/);
+});
+
+test("Legacy single panel: OPEN status is unaffected by the WATCH/SKIP gate — still shows the real 'from entry' P&L text (no regression)", async () => {
+  const html = await render(legacyPlay({ status: "OPEN", stockMovePct: 4.2, pnlPct: 4.2 }));
+  assert.match(html, /4\.2% from entry/);
+});
+
 // Mobile fallback for the Structure Ladder / Ask Largo read (2026-09-13, operator report: tapping
 // a Swing play on a phone showed the position stats but never the Largo panel — the desktop-only
 // 3-column `.nh-deck-largo` rail is CSS-hidden below 1100px with no fallback). PlayTerminal now
