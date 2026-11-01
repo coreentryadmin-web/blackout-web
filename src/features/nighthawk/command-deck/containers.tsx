@@ -43,6 +43,7 @@ import {
 } from "./adapters";
 import { fetchNightHawkEdition, fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition, NightHawkRecordResponse } from "@/features/nighthawk/lib/types";
+import { withRecapOnlyReason } from "./deck-session-ui";
 import { LegacyPickLogBoard } from "@/features/nighthawk/components/LegacyPickLogBoard";
 import { legacyEditionSessionDates } from "@/features/nighthawk/lib/legacy-board-calendar";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
@@ -474,7 +475,7 @@ export function LegacyDeck() {
         : isCarry
           ? `Carrying ${edition?.served_for ?? "prior"} plays until their session closes at 4 PM ET.`
           : isRecapOnly
-            ? "Recap published — no plays cleared the funnel tonight."
+            ? withRecapOnlyReason("Recap published — no plays cleared the funnel tonight.", edition?.recap_only_reason)
             : null;
 
   const editionLabel =
@@ -499,7 +500,10 @@ export function LegacyDeck() {
   const emptyDescription = hasFetchError
     ? "Edition data unavailable right now — retrying. Check back shortly."
     : isRecapOnly
-      ? "No plays cleared the scoring funnel tonight — market recap is above."
+      ? withRecapOnlyReason(
+          "No plays cleared the scoring funnel tonight — market recap is above.",
+          edition?.recap_only_reason,
+        )
       : "Five ranked setups land here after the evening scan · ~5:30 PM ET.";
 
   const bannerSlot = (
