@@ -78,8 +78,31 @@ const TOL = {
  * When `spot` is supplied, call/put walls are SIDE-CONSTRAINED (call above spot, put below) —
  * the same contract production serves via `wallsFromStrikeTotals(strikeTotals, spot)` since #2417.
  * King stays unconstrained argmax |net|. Unconstrained argmax false-flagged inverted walls (ops-auto-fix #2503).
+ *
+ * SORTED ASCENDING BY STRIKE BEFORE THE SCAN — exported + tested (BUG FIX, 2026-11-01). This
+ * verifier's OWN two neighboring oracles (`deriveFlip` above, `deriveCumulativeGammaFlip` below)
+ * already sort their `Object.entries(strikeTotals)` scan by strike before reducing, with an
+ * in-code comment explaining exactly why: `strikeTotals` carries SPX-style decimal strike keys
+ * ("7700.5"), which are NOT JS integer-index keys, so `Object.entries()`/`Object.keys()` enumerates
+ * them in INSERTION order, not numeric order (confirmed: `Object.keys({"720.5":1,"700.5":1})` ->
+ * `["720.5","700.5"]`, build order, not sorted). `deriveWalls` — sitting directly above those two
+ * already-fixed siblings in this same file — never got the same fix: its `g > maxPos` / `g < maxNeg`
+ * STRICT-comparison scan ran over the UNSORTED `Object.entries(strikeTotals)` order, so on an exact
+ * tie between two strikes' net gamma the result depended on which strike `strike_totals` happened
+ * to insert first, not on the data. This is the identical root cause already fixed in production
+ * for `wallsFromStrikeTotals`/`kingFromStrikeTotals` (gex-cross-validation-core.ts) and in this
+ * verifier's own `deriveFlip`/`deriveCumulativeGammaFlip` — just never propagated to this sibling.
+ *
+ * WHY THIS MATTERS HERE SPECIFICALLY. `deriveWalls` is the INV-3a/INV-3b oracle that INV-3 compares
+ * against the served `hm.gex.call_wall`/`hm.gex.put_wall` (now deterministically "lowest strike on
+ * a tie" per the production fix). An insertion-order-dependent oracle can disagree with a correct,
+ * deterministic production value purely from how `strike_totals` happened to be built that request —
+ * a FALSE "INV-3a: Call wall != independent max(+net_gex)" flag on a tick where nothing was actually
+ * wrong, which is exactly the "flicker" failure mode this whole vein of fixes exists to remove. The
+ * same unsorted scan also drives `king` (INV-3c, plus the raw-chain and 0DTE-scope King cross-checks
+ * at lines ~1106/~1282), so a tied King strike was equally exposed to this.
  */
-function deriveWalls(
+export function deriveWalls(
   strikeTotals: Record<string, number>,
   spot?: number
 ): {
@@ -94,7 +117,8 @@ function deriveWalls(
   let maxPos = 0;
   let maxNeg = 0;
   let maxAbs = -1;
-  for (const [s, gRaw] of Object.entries(strikeTotals)) {
+  const sortedEntries = Object.entries(strikeTotals).sort(([sa], [sb]) => Number(sa) - Number(sb));
+  for (const [s, gRaw] of sortedEntries) {
     const strike = Number(s);
     const g = Number(gRaw);
     if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;

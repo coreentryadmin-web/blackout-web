@@ -29,6 +29,7 @@ let dexCharmSanityChecks: typeof import("./heatmap-verifier").dexCharmSanityChec
 let dexCharmCrossToolChecks: typeof import("./heatmap-verifier").dexCharmCrossToolChecks;
 let spxDeskCrossToolChecks: typeof import("./heatmap-verifier").spxDeskCrossToolChecks;
 let deriveCumulativeGammaFlip: typeof import("./heatmap-verifier").deriveCumulativeGammaFlip;
+let deriveWalls: typeof import("./heatmap-verifier").deriveWalls;
 
 before(async () => {
   ({
@@ -37,6 +38,7 @@ before(async () => {
     dexCharmCrossToolChecks,
     spxDeskCrossToolChecks,
     deriveCumulativeGammaFlip,
+    deriveWalls,
   } = await import("./heatmap-verifier"));
 });
 
@@ -499,6 +501,43 @@ test("INV-3 call/put wall checks use side-constrained deriveWalls (spot passed �
     /deriveWalls\(\s*hm\.gex\.strike_totals,\s*spot\s*\)/
   );
   assert.match(src, /cross-provider[\s\S]*odte_overlay\?\.applied !== true/);
+});
+
+// ── deriveWalls: deterministic tiebreak on an exact tie (BUG FIX, 2026-11-01) ──
+// `strikeTotals` carries SPX-style decimal strike keys ("720.5"), which are NOT JS integer-index
+// keys, so `Object.entries()` enumerates them in INSERTION order, not numeric order. Before the
+// fix, `deriveWalls` scanned that unsorted order with a strict `>`/`<` comparison, so two fixtures
+// with IDENTICAL data but swapped insertion order resolved to DIFFERENT walls/king — the exact bug
+// class already fixed for `wallsFromStrikeTotals`/`kingFromStrikeTotals` in production and for this
+// verifier's own neighboring `deriveFlip`/`deriveCumulativeGammaFlip`, just never propagated here.
+test("deriveWalls: exact call-wall tie between two strikes always keeps the LOWER one, regardless of insertion order", () => {
+  const tiedHighFirst = { "720.5": 1e9, "700.5": 1e9, "710.5": 5e8 };
+  const tiedLowFirst = { "700.5": 1e9, "720.5": 1e9, "710.5": 5e8 };
+  assert.equal(deriveWalls(tiedHighFirst).callWall, 700.5);
+  assert.equal(deriveWalls(tiedLowFirst).callWall, 700.5);
+});
+
+test("deriveWalls: exact put-wall tie between two strikes always keeps the LOWER one, regardless of insertion order", () => {
+  const tiedHighFirst = { "720.5": -1e9, "700.5": -1e9, "710.5": -5e8 };
+  const tiedLowFirst = { "700.5": -1e9, "720.5": -1e9, "710.5": -5e8 };
+  assert.equal(deriveWalls(tiedHighFirst).putWall, 700.5);
+  assert.equal(deriveWalls(tiedLowFirst).putWall, 700.5);
+});
+
+test("deriveWalls: exact |GEX| king tie between two strikes always keeps the LOWER one, regardless of insertion order", () => {
+  const tiedHighFirst = { "720.5": 2e9, "700.5": -2e9, "710.5": 1e9 };
+  const tiedLowFirst = { "700.5": -2e9, "720.5": 2e9, "710.5": 1e9 };
+  assert.equal(deriveWalls(tiedHighFirst).king, 700.5);
+  assert.equal(deriveWalls(tiedLowFirst).king, 700.5);
+});
+
+test("deriveWalls: tie-break determinism holds under the spot side-constraint too", () => {
+  const tiedHighFirst = { "720.5": 1e9, "710.5": 1e9 };
+  const tiedLowFirst = { "710.5": 1e9, "720.5": 1e9 };
+  // Both strikes are above spot 700, so the constraint admits either — the tie-break must still
+  // pick the lower one regardless of insertion order.
+  assert.equal(deriveWalls(tiedHighFirst, 700).callWall, 710.5);
+  assert.equal(deriveWalls(tiedLowFirst, 700).callWall, 710.5);
 });
 
 test("deriveCumulativeGammaFlip matches production lowest-plausible selection (not nearest spot)", async () => {
