@@ -374,9 +374,18 @@ function managedOutcomeLabel(reason: string | null, pnl: number): string {
   if (reason == null) return bySign;
   switch (categorizeExitReason(reason)) {
     case "stop":
-      return "stopped";
+      // "stop" is EXCLUSIVELY plan_stop, which only ever fires when the mark has fallen
+      // to/below the fixed -50% plan stop (exit-engine.ts) — a positive pnl under this reason
+      // is a pre-existing frozen-data contradiction (e.g. the entryBasisDiverged-era rows this
+      // module's own history already names), not a genuine stop-out. Read-time reconciliation,
+      // same discipline as clampManagedPnlToPeak/withRoundedTrailingRuleDisplay elsewhere in
+      // this file — never mutates the stored row, only the label a future read renders.
+      return pnl > 0 ? bySign : "stopped";
     case "target":
-      return "doubled";
+      // "target" (plan_target*/trim_scale*, dead-zone floor excluded above) is exclusively a
+      // profit-taking exit — a non-positive pnl under this reason is the same contradiction
+      // class, the other direction.
+      return pnl > 0 ? "doubled" : bySign;
     case "ratchet":
       return "ratchet";
     case "thesis":

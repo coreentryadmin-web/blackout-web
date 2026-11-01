@@ -684,6 +684,57 @@ test("managedOutcomeLabel: a real trim_scale_dead_zone_floor exit (no reconstruc
   assert.equal(rec.wins, 1);
 });
 
+test("managedOutcomeLabel: a plan_stop reason with a POSITIVE pnl buckets by sign, not 'stopped' (frozen pre-existing-bug data, live 2026-11-01)", () => {
+  // plan_stop (exit-engine.ts) only ever fires when the mark has fallen to/below the fixed
+  // -50% plan stop — a positive pnl under this reason is impossible for a genuine stop-out.
+  // Live 2026-11-01: a real META row from 2026-08-03 carries managed_pnl_pct=+3.41 with
+  // managed_outcome="stopped" — the exact entryBasisDiverged-era contradiction this module's
+  // own history already names (fixed going forward, 2026-08-06, but this frozen row predates
+  // it and is never rebuilt). Read-time reconciliation prevents a future read from rendering
+  // a self-contradictory label/bucket, without touching the frozen entry_context.exit data.
+  const r = withExit(
+    { ticker: "META", plan_outcome: "stopped", plan_pnl_pct: -50 },
+    { reason: "plan_stop", pnl_pct: 3.41 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_outcome, "win");
+  assert.equal(rec.wins, 1);
+  assert.equal(rec.losses, 0);
+});
+
+test("managedOutcomeLabel: a genuine plan_stop loss still buckets as 'stopped'", () => {
+  const r = withExit(
+    { ticker: "AMD", plan_outcome: "stopped", plan_pnl_pct: -50 },
+    { reason: "plan_stop", pnl_pct: -48.2 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_outcome, "stopped");
+  assert.equal(rec.losses, 1);
+});
+
+test("managedOutcomeLabel: a target reason with a NON-POSITIVE pnl buckets by sign, not 'doubled'", () => {
+  // plan_target*/trim_scale* are exclusively profit-taking exits — the symmetric contradiction
+  // to the plan_stop case above.
+  const r = withExit(
+    { ticker: "NVDA", plan_outcome: "time_stop", plan_pnl_pct: 100 },
+    { reason: "plan_target_final", pnl_pct: -1.2 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_outcome, "loss");
+  assert.equal(rec.losses, 1);
+  assert.equal(rec.wins, 0);
+});
+
+test("managedOutcomeLabel: a genuine target win still buckets as 'doubled'", () => {
+  const r = withExit(
+    { ticker: "TSLA", plan_outcome: "time_stop", plan_pnl_pct: 100 },
+    { reason: "plan_target_final", pnl_pct: 103.5 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_outcome, "doubled");
+  assert.equal(rec.wins, 1);
+});
+
 test("FINDINGS 2026-08-27: a real FLAT-TIMEOUT exit outranks a genuine reconstruction (live-only reason, unreproducible by the bar-walk)", () => {
   const r = row({
     ticker: "MU",
