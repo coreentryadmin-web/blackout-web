@@ -3074,13 +3074,20 @@ export function GexHeatmap({
   const showViewTabs = !((isLoading && !data) || stale) && !empty && !blockEmpty;
   const showMatrixTabs = showViewTabs;
 
+  // BUG FIX (2026-11-01): pair-d (Greeks Distribution tab) had no branch here and fell through
+  // to the final `: "matrix"` default — downloading a PNG while on that tab produced a filename
+  // claiming `...-matrix-...png` even though `thermal-desk-capture-root` (what actually gets
+  // rasterized) is NOT gated on pairView, so the captured image was really the distribution
+  // panel. See thermalCaptureFilename() in capture-desk-png.ts.
   const captureView: ThermalCaptureView = compare
     ? "grid"
     : pairView === "pair-b"
       ? "profile"
       : pairView === "pair-c"
         ? "depth"
-        : "matrix";
+        : pairView === "pair-d"
+          ? "distribution"
+          : "matrix";
   const canCaptureDesk = showViewTabs || (compare && !((isLoading && !data) || stale) && !empty);
 
   const onDownloadCapture = useCallback(async () => {
