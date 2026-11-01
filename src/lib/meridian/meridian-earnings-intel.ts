@@ -23,6 +23,7 @@ import {
   coerceMeridianWallLevels,
   flowWindowHours,
   resolveIntelExpectedMove,
+  resolveVectorDeskMove,
   shapeMeridianDarkPool,
 } from "@/lib/meridian/meridian-earnings-intel-core";
 import { shapeMeridianVectorDeskRead } from "@/lib/meridian/meridian-vector-for-earnings-core";
@@ -36,6 +37,7 @@ import { getSpxSlayerBadgeSnapshot } from "@/features/spx/lib/spx-slayer-badge";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { buildMeridianEarningsReport } from "@/lib/meridian/meridian-earnings-report-core";
 import type { PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
+import type { ExpectedMove } from "@/features/vector/lib/vector-expected-move";
 import type {
   MeridianEarningsEnrichment,
   MeridianEarningsIntel,
@@ -270,6 +272,37 @@ export async function loadMeridianEarningsIntel(input: {
       ? Number((vectorEm.movePct * 100).toFixed(1))
       : null;
 
+  // `fetchVectorFullState`'s `expectedMove` is a SECOND, independent call to the same
+  // `getVectorExpectedMove(ticker, "weekly")` this module calls directly as `vectorEm` (see
+  // vector-full-state.ts) and carries the identical runtime `expiry` field despite the narrower
+  // `ExpectedMove` type it's declared with — needed here so the fallback below can be held to the
+  // SAME expiry-coverage bar `vectorCoversPrint` already applies to the primary read.
+  const vectorFullStateEm = (vectorFullState?.expectedMove ?? null) as
+    | (ExpectedMove & { expiry?: string })
+    | null;
+  const vectorDeskMove = resolveVectorDeskMove({
+    vectorCoversPrint,
+    primaryMovePct: vector_move_pct,
+    primaryBands:
+      vectorEm?.bands?.map((b) => ({
+        sigma: b.sigma,
+        low: Number(b.low.toFixed(2)),
+        high: Number(b.high.toFixed(2)),
+      })) ?? null,
+    fallbackMovePct:
+      vectorFullStateEm?.movePct != null && Number.isFinite(vectorFullStateEm.movePct)
+        ? Number((vectorFullStateEm.movePct * 100).toFixed(1))
+        : null,
+    fallbackBands:
+      vectorFullStateEm?.bands?.map((b) => ({
+        sigma: b.sigma,
+        low: Number(b.low.toFixed(2)),
+        high: Number(b.high.toFixed(2)),
+      })) ?? null,
+    fallbackExpiry: vectorFullStateEm?.expiry ?? null,
+    earningsDate: input.pack.earnings_date,
+  });
+
   const report = buildMeridianEarningsReport({
     ticker: sym,
     days_until: input.pack.days_until,
@@ -393,24 +426,8 @@ export async function loadMeridianEarningsIntel(input: {
       horizon: vectorFullState?.horizon ?? "weekly",
       spot: vectorFullState?.spot ?? spot,
       expiry: vectorEm?.expiry ?? null,
-      move_pct:
-        vector_move_pct ??
-        (vectorFullState?.expectedMove?.movePct != null &&
-        Number.isFinite(vectorFullState.expectedMove.movePct)
-          ? Number((vectorFullState.expectedMove.movePct * 100).toFixed(1))
-          : null),
-      bands:
-        vectorEm?.bands?.map((b) => ({
-          sigma: b.sigma,
-          low: Number(b.low.toFixed(2)),
-          high: Number(b.high.toFixed(2)),
-        })) ??
-        vectorFullState?.expectedMove?.bands?.map((b) => ({
-          sigma: b.sigma,
-          low: Number(b.low.toFixed(2)),
-          high: Number(b.high.toFixed(2)),
-        })) ??
-        null,
+      move_pct: vectorDeskMove.move_pct,
+      bands: vectorDeskMove.bands,
       regime: vectorFullState?.regime?.posture,
       gexWalls: vectorFullState?.gexWalls,
       gammaFlip: vectorFullState?.gammaFlip,

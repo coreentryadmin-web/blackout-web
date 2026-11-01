@@ -9,6 +9,7 @@ import {
   flowWindowHours,
   moveArrow,
   resolveIntelExpectedMove,
+  resolveVectorDeskMove,
   shapeMeridianDarkPool,
 } from "./meridian-earnings-intel-core";
 import { buildMeridianFinancialsContext } from "./meridian-financials-context";
@@ -413,4 +414,67 @@ test("resolveIntelExpectedMove returns null/null when no source is available and
   });
   assert.equal(result.expected_move_pct, null);
   assert.equal(result.expected_move_source, null);
+});
+
+// resolveVectorDeskMove — regression for the live PDD/XPEV/SMTC-shaped defect
+// (meridian-em-scope.ts's own header) reappearing through TWO unguarded paths this function
+// closes: the `bands` sibling of the already-gated `move_pct`, and the independent
+// `fetchVectorFullState` fallback for both fields.
+test("resolveVectorDeskMove uses the primary (gated) read when its expiry covers the print", () => {
+  const result = resolveVectorDeskMove({
+    vectorCoversPrint: true,
+    primaryMovePct: 9.1,
+    primaryBands: [{ sigma: 1, low: 95, high: 105 }],
+    fallbackMovePct: 0.1, // stale fallback value — must be ignored when the primary covers
+    fallbackBands: [{ sigma: 1, low: 99.9, high: 100.1 }],
+    fallbackExpiry: "2026-08-21",
+    earningsDate: "2026-08-24",
+  });
+  assert.equal(result.move_pct, 9.1);
+  assert.deepEqual(result.bands, [{ sigma: 1, low: 95, high: 105 }]);
+});
+
+test("resolveVectorDeskMove falls through to the fetchVectorFullState read when IT covers the print", () => {
+  const result = resolveVectorDeskMove({
+    vectorCoversPrint: false,
+    primaryMovePct: null,
+    primaryBands: null,
+    fallbackMovePct: 7.2,
+    fallbackBands: [{ sigma: 1, low: 93, high: 107 }],
+    fallbackExpiry: "2026-08-28",
+    earningsDate: "2026-08-24",
+  });
+  assert.equal(result.move_pct, 7.2);
+  assert.deepEqual(result.bands, [{ sigma: 1, low: 93, high: 107 }]);
+});
+
+// THE BUG: before this function existed, `bands` was wired straight off the primary source with
+// no gate at all, and the fetchVectorFullState fallback backstopped both fields with no gate
+// either — so a dead front expiry (PDD/XPEV/SMTC's exact live shape) still rendered a cone.
+test("resolveVectorDeskMove withholds move_pct AND bands when neither source covers the print (the PDD/XPEV/SMTC shape)", () => {
+  const result = resolveVectorDeskMove({
+    vectorCoversPrint: false,
+    primaryMovePct: null,
+    primaryBands: null,
+    fallbackMovePct: 0.1, // the exact order-of-magnitude-too-small value measured live
+    fallbackBands: [{ sigma: 1, low: 99.9, high: 100.1 }],
+    fallbackExpiry: "2026-08-21", // the series that already expired that afternoon
+    earningsDate: "2026-08-24",
+  });
+  assert.equal(result.move_pct, null, "a dead-expiry fallback quote must be withheld, not rendered");
+  assert.equal(result.bands, null, "bands must be withheld in lockstep with move_pct, not leaked separately");
+});
+
+test("resolveVectorDeskMove withholds when the fallback has no expiry to check at all", () => {
+  const result = resolveVectorDeskMove({
+    vectorCoversPrint: false,
+    primaryMovePct: null,
+    primaryBands: null,
+    fallbackMovePct: 4.4,
+    fallbackBands: [{ sigma: 1, low: 96, high: 104 }],
+    fallbackExpiry: null,
+    earningsDate: "2026-08-24",
+  });
+  assert.equal(result.move_pct, null);
+  assert.equal(result.bands, null);
 });
