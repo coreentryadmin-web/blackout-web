@@ -136,9 +136,36 @@ function briefThesis(
  * play, in the SAME brief this fix already corrects the headline/Verdict copy of. Exported so
  * those two call sites can reuse this exact function rather than re-deriving (and risking
  * re-diverging from) the SKIP special case a second and third time.
+ *
+ * BUG FIX (2026-11-01, Ask Largo x Night Hawk Swings standing mandate, live repro PANW:67,
+ * status CLOSED): the doc comment above claims every non-SKIP `deckStatus` "falls through to the
+ * identical, unchanged `action?.label ?? play.recommendation ?? play.status` chain... a real
+ * OPEN/HOLD position still reads HOLD exactly as it must" — which silently assumes
+ * `play.recommendation` is a trustworthy LIVE-state field for every one of those statuses. It
+ * isn't for CLOSED: `swingActionDisplay` (play-card-lifecycle.ts) now returns `null` for a CLOSED
+ * row whenever `closedReason==="target"` but `trimEnforcedBeforeClose !== true` (added by the
+ * 2026-11-01 fix in that file — a "closed green" is not necessarily a mechanical ladder exit), and
+ * also for an unclassified/unknown `closedReason`. `play.recommendation` for a CLOSED row is built
+ * by `managementFor("SCALE_OUT", status, pnlPct)` (adapters.ts), which has branches only for
+ * WATCH/SKIP/TRIM/doubled-RATCHET/deep-loss and otherwise DEFAULTS to the literal string "HOLD" —
+ * CLOSED hits none of those branches, so it is never reset to reflect the close. Before this fix,
+ * a null `action` on a CLOSED row fell straight through to that stale default, so the headline,
+ * `thesis`, and the Verdict section's opening line all read "HOLD — PANW 370C 1DTE" directly above
+ * the SAME brief's own Outcome section reporting "Exit P&L: +10.0%" / "Reason: target" / "Closed:
+ * 2026-10-29" — a closed position narrated as a still-open live hold. Live cross-check against
+ * `/api/market/swing/record?days=90`: 17/64 closedDeck rows have `closedReason==="target"`, and
+ * 0 of those 17 have `trimEnforcedBeforeClose===true` — i.e. 100% of the currently-live winning
+ * closed Swing positions hit this exact path. Fixed the same way as SKIP: a null `action` on a
+ * CLOSED row falls to the generic, already-shipped `playStatusDisplay`-style "CLOSED" label
+ * instead of the untrustworthy `recommendation` field — never claims a mechanical exit (TARGET/
+ * STOPPED/SCRATCH) the evidence doesn't confirm, matching `swingActionDisplay`'s own "fall back to
+ * the generic CLOSED pill... rather than claim a ladder exit that may never have happened"
+ * discipline. WATCH/OPEN/HOLD/TRIM are untouched — `play.recommendation` is a live, meaningfully
+ * maintained field for those statuses.
  */
 export function swingVerdictVerb(play: TerminalPlay, action: { label: string } | null): string {
   if (play.status === "SKIP") return "PASSED";
+  if (play.status === "CLOSED") return action?.label ?? play.status;
   return action?.label ?? play.recommendation ?? play.status;
 }
 

@@ -1040,6 +1040,61 @@ test("composeSwingPlayBrief: a genuine OPEN/HOLD position still reads HOLD, unaf
   assert.match(verdict!.body, /· HOLD$/m, `Verdict must still read HOLD for a real open position, got: ${verdict!.body}`);
 });
 
+// BUG FIX regression (2026-11-01, Ask Largo x Night Hawk Swings standing mandate, live repro
+// PANW:67): a CLOSED position whose `closedReason==="target"` never crossed the scale-out ladder's
+// own +100% trigger (`trimEnforcedBeforeClose:false`) leaves `swingActionDisplay` returning null
+// (play-card-lifecycle.ts, 2026-11-01 fix) — before THIS fix, that null `action` fell through to
+// the stale `play.recommendation` default ("HOLD", stamped by adapters.ts's `managementFor` for a
+// CLOSED row that hits none of its WATCH/SKIP/TRIM/RATCHET/deep-loss branches), so the headline,
+// thesis, and Verdict line all read "HOLD" for a position that already closed +10% — directly
+// contradicting the SAME brief's own Outcome section ("Exit P&L: +10.0%", "Closed: ..."). Real
+// production population: 17/64 closedDeck rows carry `closedReason==="target"`, and 0 of those 17
+// have `trimEnforcedBeforeClose===true` — every one of them hit this exact path.
+test("composeSwingPlayBrief: CLOSED position with an unconfirmed 'target' close (never crossed the trim ladder) does not leak stale HOLD", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      ticker: "PANW",
+      direction: "LONG",
+      status: "CLOSED",
+      recommendation: "HOLD",
+      closedReason: "target",
+      trimEnforcedBeforeClose: false,
+      exitPnlPct: 10.0,
+      peak: 96.2,
+    }),
+    asOf: "2026-10-29T15:00:00.000Z",
+    sessionDate: "2026-10-29",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.doesNotMatch(
+    brief.envelope.headline,
+    /^HOLD — /,
+    `a CLOSED position must never read HOLD in the headline — it is no longer live, got: ${brief.envelope.headline}`,
+  );
+  assert.doesNotMatch(
+    brief.envelope.thesis ?? "",
+    /— HOLD\./,
+    `thesis must never claim a closed position is being HOLD, got: ${brief.envelope.thesis}`,
+  );
+  const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
+  assert.ok(verdict, "expected Verdict section");
+  assert.doesNotMatch(
+    verdict!.body,
+    /· HOLD$/m,
+    `Verdict must not claim a closed position is being HOLD, got: ${verdict!.body}`,
+  );
+  // Falls to the generic, honest CLOSED label — matching swingActionDisplay's own "fall back to
+  // the generic CLOSED pill... rather than claim a ladder exit that may never have happened".
+  assert.match(brief.envelope.headline, /^CLOSED — /);
+  assert.match(verdict!.body, /· CLOSED$/m);
+});
+
 // Live repro 2026-09-13 (COIN, WATCH, real production play-brief): the same PULLBACK_CONTINUATION
 // archetype rendered as raw-enum "PULLBACK_CONTINUATION" here in Verdict, underscore-replaced-only
 // "PULLBACK CONTINUATION" in Why-this-setup's own Archetype line, and the already-humanized
