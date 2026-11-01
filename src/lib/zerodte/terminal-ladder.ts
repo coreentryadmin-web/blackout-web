@@ -175,7 +175,26 @@ export type ExecutableFill = {
   mid: number | null;
   /** The BID a member actually EXITS a long into (the honest fill). Null without a bid. */
   fill: number | null;
-  /** Executable P&L % = (bid − entry)/entry against the PINNED entry. Null without both. */
+  /**
+   * Executable P&L % = (bid − entry)/entry against the PINNED entry. Null without both.
+   *
+   * DELIBERATELY UNROUNDED (Ask Largo standing mandate, 2026-11-01, live repro QXO SWING
+   * positionId 2299) — this used to be pre-rounded to 2dp-of-percent right here
+   * (`Math.round(x * 10000) / 100`), which reads as harmless extra precision but is a real
+   * Largo Product Contract C9 violation ("round exactly once, at the final display boundary"):
+   * every caller that later formats this for display (fmtPct at 1dp for the swing/LEAPS play-
+   * brief narrative, `toFixed(1)` for the Command Deck's LEAPS PnlPanel) was then rounding it a
+   * SECOND time. Two successive roundings of the same fact can disagree with a single rounding
+   * of it whenever the first round lands exactly on the second round's tie boundary — live repro:
+   * entry $0.22 / bid $0.10 → raw ratio -54.545...%, which single-rounds to -54.5% (the identical
+   * ratio adapters.ts's troughDisplay/peakDisplay compute, with a single round straight from raw
+   * inputs), but pre-rounding to 2dp here first lands on the EXACT tie -54.55, which fmtPct's
+   * ties-away-from-zero algorithm then pushes to -54.6% — one tenth of a point off the
+   * mathematically identical fact, rendered a few lines apart in the SAME play-brief markdown
+   * ("Trough: -54.5%" vs "Exec P&L: -54.6%"). `mid`/`fill` above still round to the cent — a
+   * legitimate, DIFFERENT boundary (NBBO premiums are penny-quoted) — but `pnl_pct` is now the
+   * raw ratio, rounded only once, by whichever renderer finally displays it.
+   */
   pnl_pct: number | null;
   // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: bid $0.00 / ask $1.20 /
   // mid $0.60 — a real, live two-sided quote, not a missing one). `fill`/`pnl_pct` above are null
@@ -215,9 +234,11 @@ export function executableFill(
   const mid = validBook ? round2((bid + ask) / 2) : null;
   // A one-sided book (ask only) still has no bid to sell into → no honest fill.
   const fill = validBook && bid > 0 ? round2(bid) : null;
+  // No pre-rounding — see the `pnl_pct` field's own doc comment above (ExecutableFill) for why:
+  // the ONE legitimate round happens wherever this is finally displayed, never here.
   const pnl_pct =
     fill != null && entryPremium != null && entryPremium > 0
-      ? Math.round(((fill - entryPremium) / entryPremium) * 10000) / 100
+      ? ((fill - entryPremium) / entryPremium) * 100
       : null;
   const bidConfirmedZero = validBook && bid === 0;
   return { mid, fill, pnl_pct, bidConfirmedZero };
