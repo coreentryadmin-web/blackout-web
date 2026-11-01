@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { NighthawkMetrics } from "@/features/nighthawk/lib/analytics";
 import type { NighthawkPublishPreview } from "@/features/nighthawk/lib/publish-preview";
@@ -21,6 +21,7 @@ import {
   WinRateRing,
   pct,
 } from "@/components/admin/AdminUi";
+import { runGuardedNighthawkLoad } from "@/components/admin/admin-nighthawk-dashboard-request-guard";
 
 const WINDOW_OPTIONS = [7, 30, 90] as const;
 
@@ -234,32 +235,63 @@ export function AdminNightHawkDashboard() {
   const [runMsg, setRunMsg] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<OptionsWsStatus | null>(null);
 
+  // Bumped once per load() call so a response can tell whether a newer call
+  // has superseded it before applying its data — see
+  // admin-nighthawk-dashboard-request-guard.ts for why this exists. `load`
+  // is recreated (and re-run) every time `windowDays` changes, the 30s poll
+  // below also calls it on its own schedule, and "Run now" calls it again
+  // after kicking off the pipeline — three independent triggers that can
+  // all be in flight at once, with nothing previously stopping a STALE
+  // window's slower response from landing after a NEWER window's response
+  // and silently reverting the dashboard to the wrong window's numbers.
+  const loadGenerationRef = useRef(0);
+
   const load = useCallback(async (initial = false) => {
+    const requestId = ++loadGenerationRef.current;
     if (initial) setLoading(true);
     setError(null);
     try {
-      const [metricsRes, previewRes, wsRes] = await Promise.all([
-        fetch(`/api/admin/nighthawk/analytics?window=${windowDays}`, { cache: "no-store" }),
-        fetch("/api/admin/nighthawk/publish-preview", { cache: "no-store" }),
-        fetch("/api/admin/options-socket", { cache: "no-store" }),
-      ]);
-      if (!metricsRes.ok) throw new Error(metricsRes.status === 403 ? "Not authorized" : `HTTP ${metricsRes.status}`);
-      setData((await metricsRes.json()) as NighthawkMetrics);
-      if (previewRes.ok) {
-        setPreview((await previewRes.json()) as NighthawkPublishPreview);
-      } else {
-        // publish-preview unavailable (404 / route error). Fall back to the PUBLISHED edition so the
-        // "Latest edition" panel still reflects reality (#77) instead of showing "no edition yet" while
-        // the user-facing page already serves a recap. The public edition endpoint reads the same row.
-        const fallback = await loadPreviewFromEdition();
-        setPreview(fallback);
-      }
-      // Live Options-WS status (secondary — never fails the dashboard load).
-      setWsStatus(wsRes.ok ? ((await wsRes.json().catch(() => null)) as OptionsWsStatus | null) : null);
+      await runGuardedNighthawkLoad(
+        requestId,
+        () => loadGenerationRef.current,
+        async () => {
+          const [metricsRes, previewRes, wsRes] = await Promise.all([
+            fetch(`/api/admin/nighthawk/analytics?window=${windowDays}`, { cache: "no-store" }),
+            fetch("/api/admin/nighthawk/publish-preview", { cache: "no-store" }),
+            fetch("/api/admin/options-socket", { cache: "no-store" }),
+          ]);
+          if (!metricsRes.ok) {
+            throw new Error(metricsRes.status === 403 ? "Not authorized" : `HTTP ${metricsRes.status}`);
+          }
+          const metrics = (await metricsRes.json()) as NighthawkMetrics;
+          let preview: NighthawkPublishPreview | null;
+          if (previewRes.ok) {
+            preview = (await previewRes.json()) as NighthawkPublishPreview;
+          } else {
+            // publish-preview unavailable (404 / route error). Fall back to the PUBLISHED edition so
+            // the "Latest edition" panel still reflects reality (#77) instead of showing "no edition
+            // yet" while the user-facing page already serves a recap. The public edition endpoint
+            // reads the same row.
+            preview = await loadPreviewFromEdition();
+          }
+          // Live Options-WS status (secondary — never fails the dashboard load).
+          const ws = wsRes.ok ? ((await wsRes.json().catch(() => null)) as OptionsWsStatus | null) : null;
+          return { metrics, preview, ws };
+        },
+        ({ metrics, preview, ws }) => {
+          setData(metrics);
+          setPreview(preview);
+          setWsStatus(ws);
+        }
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
+      // A superseded request's own error must not clobber whatever the request
+      // that replaced it already rendered (including a clean success).
+      if (loadGenerationRef.current === requestId) {
+        setError(err instanceof Error ? err.message : "Failed to load");
+      }
     } finally {
-      setLoading(false);
+      if (loadGenerationRef.current === requestId) setLoading(false);
     }
   }, [windowDays]);
 
