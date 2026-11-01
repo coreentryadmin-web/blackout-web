@@ -2,14 +2,17 @@
  * Seed Redis uw_cache:* from in-process UW WebSocket stores when channels are fresh.
  * Keeps the 2-RPS REST budget for paths the multiplex socket already delivers.
  */
-import type { DarkPoolSnapshot } from "@/lib/providers/unusual-whales";
+import type { DarkPoolSnapshot, DarkPoolPrint } from "@/lib/providers/unusual-whales";
 import type { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import {
   aggregateFlowPerStrikeRows,
   aggregateOptionTradesToStrikeRows,
+  coerceDarkPoolRecentRows,
+  darkPoolBias,
   type NetPremTick,
 } from "@/lib/providers/unusual-whales";
 import { UW_CACHE_TTL, UW_KEYS, uwCacheRead, uwCacheSet } from "@/lib/providers/uw-shared-cache";
+import { execAtEtYmd, todayEt } from "@/lib/et-date";
 import {
   darkPoolRecentRing,
   darkPoolStore,
@@ -101,10 +104,79 @@ export async function readUwMarketTideFromRedis(): Promise<{
   return readUwDeskLaneFromRedis(UW_KEYS.marketTide());
 }
 
+/** Same $5 strike rounding `unusual-whales.ts`'s dark-pool shapers use (bucketPrice there). */
+function bucketStrike(price: number, step = 5): number {
+  return Math.round(Math.round(price / step) * step * 100) / 100;
+}
+
+/**
+ * Reshape raw UW dark-pool rows (the `dark_pool_recent` cache contract — see
+ * `coerceDarkPoolRecentRows`'s own doc comment: "that key stores raw API rows for Largo/tools",
+ * NOT a `DarkPoolSnapshot`) into the `DarkPoolSnapshot` shape callers actually expect. Mirrors
+ * `fetchUwDarkPoolMarketWide`'s today-ET-session + positive-premium filtering so a row from a
+ * prior session (the ring can carry stale rows across a cold Redis TTL boundary) or a malformed
+ * zero-premium row never masquerades as a live print. Pure — exported for unit tests.
+ */
+export function darkPoolSnapshotFromRecentRows(
+  rows: Record<string, unknown>[],
+  today: string = todayEt()
+): DarkPoolSnapshot | null {
+  const prints: DarkPoolPrint[] = [];
+  let callPrem = 0;
+  let putPrem = 0;
+  let total = 0;
+
+  for (const row of rows) {
+    const execAt = String(row.executed_at ?? row.date ?? "");
+    if (!execAt) continue;
+    const execDay = execAtEtYmd(execAt);
+    if (execDay !== today) continue;
+
+    const premium = Number(row.premium ?? row.size ?? row.notional ?? 0);
+    if (!(premium > 0)) continue;
+
+    const strikeRaw = Number(row.strike ?? row.price ?? row.ref_price ?? 0);
+    const strike = Number.isFinite(strikeRaw) ? bucketStrike(strikeRaw) : 0;
+    const side = String(row.side ?? row.direction ?? "unknown").toLowerCase();
+    const optType = String(row.type ?? row.option_type ?? "").toLowerCase();
+    const ticker = row.ticker ? String(row.ticker) : undefined;
+
+    prints.push({ strike, premium, side, executed_at: execAt, ticker });
+    total += premium;
+    if (optType.includes("call")) callPrem += premium;
+    else if (optType.includes("put")) putPrem += premium;
+  }
+
+  if (!prints.length) return null;
+  const bias = darkPoolBias(callPrem, putPrem, total);
+  return {
+    prints: prints.slice(0, 20),
+    total_premium: total,
+    call_premium: callPrem,
+    put_premium: putPrem,
+    bias,
+    pcr: callPrem > 0 ? Math.round((putPrem / callPrem) * 100) / 100 : null,
+    detail: `${prints.length} print(s) | $${(total / 1_000_000).toFixed(2)}M`,
+  };
+}
+
+/**
+ * BUG FIX (round 329): this used to read `UW_KEYS.darkPoolRecent()` and cast the result straight
+ * to `DarkPoolSnapshot` — but that key's documented, actual contract (`coerceDarkPoolRecentRows`'s
+ * own header, and both of this key's writers: `seedUwCacheFromWsStores` above and
+ * `fetchUwDarkPoolRecent` in unusual-whales.ts) is a RAW ARRAY of UW rows, never a
+ * `DarkPoolSnapshot` object. A JS array has no `.prints` field, so every caller's own freshness
+ * guard (`spx-desk.ts`'s `resolveDarkPool`: `if (redisDp?.prints?.length) return redisDp;`)
+ * evaluated falsy on every single call — the fallback silently never activated, even when the
+ * cache held perfectly good, fresh, WS-seeded market-wide dark-pool rows. Reshape the raw rows
+ * into a real snapshot instead of mis-typing the cache value.
+ */
 export async function readUwDarkPoolFromRedis(ticker = "SPX"): Promise<DarkPoolSnapshot | null> {
   const tickerSnap = await readUwDeskLaneFromRedis<DarkPoolSnapshot>(UW_KEYS.darkPoolTicker(ticker));
   if (tickerSnap?.prints?.length) return tickerSnap;
-  return readUwDeskLaneFromRedis<DarkPoolSnapshot>(UW_KEYS.darkPoolRecent());
+  const recentRaw = await readUwDeskLaneFromRedis<unknown>(UW_KEYS.darkPoolRecent());
+  const rows = coerceDarkPoolRecentRows(recentRaw);
+  return rows ? darkPoolSnapshotFromRecentRows(rows) : null;
 }
 
 /** Freshness for `dark_pool_recent` — gated on `darkPoolRecentRing`, the exact store
