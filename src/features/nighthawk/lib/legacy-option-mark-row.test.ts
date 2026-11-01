@@ -297,3 +297,127 @@ test("buildLegacyOptionMarkRow: a crossed book (ask < bid) with no mark/last/day
     "a crossed book must fall to a single real quoted value (bid), never an average of two numbers midOf itself rejected as unreliable"
   );
 });
+
+// ── 2026-11-01: the row's own `ask` field served a raw, unguarded backstop quote ───────────────
+//
+// `mark` is correctly guarded (reliableMarkFromQuote/reliableMarkFromSnapshot — see the fixes
+// above), but the row's `bid`/`ask` fields were read straight off `ws?.ask ?? snap?.ask ?? null`
+// with no equivalent check, even though `reliableAskFromSnapshot` (options-snapshot.ts) already
+// exists and is already wired into swing-active-refresh/banger-live-sync for exactly this shape.
+// Live incident this reproduces: CRSR 260918C00015000, bid:0/ask:15 vs a real last trade of $0.07
+// (a 107x divergence) — `mark` falls through to $0.07 correctly, but `ask` must not still read 15.
+
+test("buildLegacyOptionMarkRow (REST): a bid=0 backstop ask is NOT served raw even though mark is already guarded (CRSR live repro, 2026-11-01)", () => {
+  const row = buildLegacyOptionMarkRow(
+    "CRSR260918C00015000",
+    null,
+    {
+      ticker: "O:CRSR260918C00015000",
+      mark: 7.5,
+      bid: 0,
+      ask: 15,
+      last: 0.07,
+      dayClose: 0.07,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: null,
+      bidSize: null,
+      askSize: null,
+      dayVolume: null,
+      underlyingPrice: null,
+      strike: 15,
+      optionType: "call",
+      expiry: "2026-09-18",
+      sharesPerContract: 100,
+      quoteUpdatedMs: NOW,
+      observedAtMs: NOW,
+    },
+    NOW
+  );
+  assert.equal(row.mark, 0.07, "sanity: mark is already correctly guarded");
+  assert.equal(row.bid, 0, "bid is the true, un-fabricated side — never guarded");
+  assert.notEqual(row.ask, 15, "the row's own ask field must not still carry the raw 107x-divergent backstop quote");
+  assert.equal(row.ask, null, "a nulled-out backstop ask (no honest ask value to serve) is the correct result, matching reliableAskFromSnapshot");
+});
+
+test("buildLegacyOptionMarkRow (WS): a bid=0 backstop ask arriving over the WS tick is NOT served raw either (2026-11-01)", () => {
+  const row = buildLegacyOptionMarkRow(
+    "CRSR260918C00015000",
+    { mark: 7.5, bid: 0, ask: 15, last: 0.07, ts: NOW },
+    null,
+    NOW
+  );
+  assert.equal(row.mark, 0.07, "sanity: mark is already correctly guarded on the WS branch");
+  assert.equal(row.bid, 0, "bid is the true, un-fabricated side — never guarded");
+  assert.notEqual(row.ask, 15, "the WS-sourced ask must not still carry the raw 107x-divergent backstop quote");
+  assert.equal(row.ask, null, "a nulled-out backstop ask is the correct result on the WS branch too");
+});
+
+test("buildLegacyOptionMarkRow: a real two-sided ask (bid>0) is never second-guessed, even with a large mid-vs-last divergence", () => {
+  const row = buildLegacyOptionMarkRow(
+    "MRNA260904C00155000",
+    null,
+    {
+      ticker: "O:MRNA260904C00155000",
+      mark: 7.5,
+      bid: 5,
+      ask: 10,
+      last: 0.07,
+      dayClose: 0.07,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: null,
+      bidSize: null,
+      askSize: null,
+      dayVolume: null,
+      underlyingPrice: null,
+      strike: 155,
+      optionType: "call",
+      expiry: "2026-09-04",
+      sharesPerContract: 100,
+      quoteUpdatedMs: NOW,
+      observedAtMs: NOW,
+    },
+    NOW
+  );
+  assert.equal(row.ask, 10, "a real bid behind the quote means the ask is never second-guessed");
+});
+
+test("buildLegacyOptionMarkRow: a bid=0 legitimate deep-OTM ask (mid close to last) keeps the real ask, not nulled", () => {
+  const row = buildLegacyOptionMarkRow(
+    "MRNA260904C00155000",
+    null,
+    {
+      ticker: "O:MRNA260904C00155000",
+      mark: 0.025,
+      bid: 0,
+      ask: 0.05,
+      last: 0.03,
+      dayClose: 0.03,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: null,
+      bidSize: null,
+      askSize: null,
+      dayVolume: null,
+      underlyingPrice: null,
+      strike: 155,
+      optionType: "call",
+      expiry: "2026-09-04",
+      sharesPerContract: 100,
+      quoteUpdatedMs: NOW,
+      observedAtMs: NOW,
+    },
+    NOW
+  );
+  assert.equal(row.ask, 0.05, "a legitimate deep-OTM bid=0 quote (mid within the divergence bar) must keep its real ask");
+});
