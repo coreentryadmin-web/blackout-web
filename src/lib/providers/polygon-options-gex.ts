@@ -1040,7 +1040,7 @@ function computeGexRegime(
  * (hedging adds to / reinforces the move); NEGATIVE → dealers fade the move as IV rises.
  * Vanna matters most into OPEX and around vol spikes.
  */
-function computeVexRegime(
+export function computeVexRegime(
   strikeTotals: Record<string, number>,
   total: number
 ): { posWall: number | null; negWall: number | null; regime: VexRegime } {
@@ -1048,7 +1048,25 @@ function computeVexRegime(
   let negWall: number | null = null;
   let maxPos = 0;
   let maxNeg = 0;
-  for (const [s, v] of Object.entries(strikeTotals)) {
+  // Sort ascending by strike before the argmax/argmin scan — same fix, same reasoning, as
+  // wallsFromStrikeTotals/kingFromStrikeTotals (gex-cross-validation-core.ts) and
+  // topGexPinStrikes (strike-gex-lookup.ts): Object.entries() on a Record<string, number>
+  // enumerates integer-index-like keys ("480") in ascending numeric order per spec, but
+  // decimal keys ("480.5" — the normal case for SPX/SPY's half-dollar-wide chain) in
+  // INSERTION order instead, which depends on how the caller happened to build the object
+  // (buildGexHeatmapUncached's buildMetric inserts strikes descending;
+  // buildGexHeatmapFromUwStrikeExposures inserts in whatever order its upstream UW rows
+  // arrive — a different order for the identical strike set). So on an exact vanna tie
+  // between two strikes, the un-sorted `v > maxPos` / `v < maxNeg` strict-comparison scan
+  // resolved to whichever strike happened to be enumerated first — not a function of the
+  // actual vanna data — and this function's posWall/negWall are published directly as
+  // vex.pos_wall/vex.neg_wall (served to the UI's VEX panel and every API consumer), so a
+  // tie could flicker between two strikes across rebuilds purely from incidental key order.
+  // Sorting first makes a tie deterministically keep the LOWER strike, always.
+  const sortedEntries = Object.entries(strikeTotals).sort(
+    ([sa], [sb]) => Number(sa) - Number(sb)
+  );
+  for (const [s, v] of sortedEntries) {
     const strike = Number(s);
     if (!Number.isFinite(strike) || !Number.isFinite(v)) continue;
     if (v > maxPos) {
