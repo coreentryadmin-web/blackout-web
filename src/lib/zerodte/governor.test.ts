@@ -915,6 +915,43 @@ test("timeOfDaySizingFactor reduces cap during lunch chop", () => {
   assert.match(lunch.label ?? "", /lunch/i);
 });
 
+// FINDINGS 2026-11-01 (P2, disclosure gap). The "opening chop" factor branch had no
+// RTH_OPEN floor, so it ALSO fired pre-market (midnight..9:30 ET) — a window where
+// `timeOfDayFactor`'s own `label` is correctly null ("market hasn't opened yet"). The two
+// return values must never disagree about whether a reduction is in effect: whenever the
+// label is null (nothing to disclose), the factor must be the unreduced 1 so
+// `effective_max_concurrent` never silently reads lower than the real cap.
+test("timeOfDaySizingFactor: pre-market has NO cap reduction (factor/label must agree before the open)", () => {
+  // 09:14 ET (the live-confirmed repro instant) and the start of the trading day alike —
+  // both are before RTH_OPEN (9:30 ET) and must report an unreduced cap.
+  for (const etMinutes of [0, 8 * 60, 9 * 60 + 14, 9 * 60 + 29]) {
+    const pre = timeOfDaySizingFactor(etMinutes);
+    assert.equal(pre.label, null, `label must be null pre-open at ${etMinutes}`);
+    // The real bug: this used to read 0.85 here, silently disagreeing with the null label.
+    assert.equal(pre.factor, 1, `factor must be unreduced pre-open at ${etMinutes}`);
+    assert.equal(
+      pre.effective_max_concurrent,
+      GOVERNOR_MAX_CONCURRENT_PLANS,
+      `effective_max_concurrent must equal the real cap pre-open at ${etMinutes}`
+    );
+  }
+  // The "opening chop" reduction must still fire once the market is actually open (9:30-10:00
+  // ET) — this guards against over-correcting the fix into never firing at all.
+  const openingChop = timeOfDaySizingFactor(9 * 60 + 45);
+  assert.equal(openingChop.factor, 0.85);
+  assert.match(openingChop.label ?? "", /opening chop/i);
+  assert.ok(openingChop.effective_max_concurrent < GOVERNOR_MAX_CONCURRENT_PLANS);
+});
+
+test("summarizeGovernorForBoard: pre-market board payload never shows a reduced cap with no label (live repro, 2026-11-01)", () => {
+  // Reproduces the exact live payload shape seen at ~09:14 ET: governor.max_concurrent=100,
+  // time_of_day_label=null, effective_max_concurrent=85, time_of_day_sizing_factor=0.85.
+  const s = summarizeGovernorForBoard([], [], { etMinutes: 9 * 60 + 14 });
+  assert.equal(s.time_of_day_label, null);
+  assert.equal(s.time_of_day_sizing_factor, 1);
+  assert.equal(s.effective_max_concurrent, s.max_concurrent);
+});
+
 test("summarizeGovernorForBoard: surfaces premium + TOD sizing fields", () => {
   const s = summarizeGovernorForBoard(
     [row({ ticker: "NVDA", status: "OPEN", entry_premium: 50_000 })],
