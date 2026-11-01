@@ -108,13 +108,23 @@ export function pickGexShiftLeaders(
 
   const rows: Array<{ strike: number; delta: number; current: number }> = [];
   const useScoped = opts?.cells != null && opts.selectedExpiries != null && opts.selectedExpiries.length > 0;
-  const strikeKeys = useScoped
-    ? new Set(
-        Object.keys(opts.cells!)
-          .map(Number)
-          .filter(Number.isFinite),
-      )
-    : new Set(Object.keys(shift.delta_by_strike).map(Number));
+  // Sorted ascending by strike, not just de-duped: the final |delta|-descending sorts below are
+  // STABLE (Array.prototype.sort, ES2019+), so on an exact |delta| tie they keep whichever row was
+  // pushed first — i.e. whichever key `Object.keys()` enumerated first. Integer-index-like keys
+  // ("100") always enumerate ascending by numeric value regardless of source-object insertion
+  // order (per the JS spec), so the bug is invisible on whole-dollar chains; SPX's real
+  // half-strikes ("100.5") are NOT integer-index keys and enumerate in INSERTION order instead,
+  // which is a function of whatever upstream order built `cells`/`delta_by_strike` this call.
+  // Pre-sorting here makes a tie deterministically keep the LOWER strike regardless of that
+  // upstream order — the same fix already applied to this bug's sibling rankers (computeGexWalls,
+  // topGexPinStrikes, computeMaxPainFromChain, computeVexRegime, deriveWalls) across this lane.
+  const strikeKeys = [
+    ...new Set(
+      (useScoped ? Object.keys(opts.cells!) : Object.keys(shift.delta_by_strike))
+        .map(Number)
+        .filter(Number.isFinite),
+    ),
+  ].sort((a, b) => a - b);
 
   for (const strike of strikeKeys) {
     const key = String(strike);
