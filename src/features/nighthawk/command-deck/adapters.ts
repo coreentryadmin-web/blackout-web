@@ -44,7 +44,7 @@ import type {
 } from "./types";
 import { readCortexView } from "@/lib/zerodte/pane";
 import { parseBudgetVerdictStamp } from "@/lib/swing/swing-portfolio-budget";
-import { parseLaneRankAtCommit } from "@/lib/swing/commit";
+import { parseLaneRankAtCommit } from "@/lib/swing/lane-rank-at-commit";
 import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
 import type { ThesisPipelineResult } from "@/lib/zerodte/thesis/types";
