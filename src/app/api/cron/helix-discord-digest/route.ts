@@ -41,6 +41,7 @@ import {
   buildHelixEodRecapEmbed,
   claimDiscordEodRecap,
   currentSessionDateEt,
+  hoursSinceSessionOpenEt,
   isDiscordEodRecapWindow,
 } from "@/lib/discord-eod-recap";
 import { deliverHelixBurstItems } from "@/lib/helix-discord-notify";
@@ -298,7 +299,24 @@ export async function GET(req: NextRequest) {
       const sessionDate = currentSessionDateEt(now);
       const eodClaimed = await claimDiscordEodRecap("helix", sessionDate, bypassDedup);
       if (eodClaimed) {
-        const sessionFlows = inputs.filter((f) => passesHelixDiscordFilters(f, now));
+        // `inputs` above was fetched with `since_hours: 6`, sized for the 15/30-min live
+        // digest windows — by the time this EOD window opens (~4:04-4:14 PM ET, 6h34m-6h44m
+        // after a 9:30 AM open), that 6h lookback silently excludes the first ~35-45 minutes
+        // of the session's flow at the DB WHERE clause, before filterHelixSessionFlows (inside
+        // buildHelixEodRecapEmbed) ever sees those rows — same bug shape the dark-pool cron's
+        // EOD branch already avoids by doing its own dedicated full-session fetch instead of
+        // reusing the live-scan window. Fetch a session-wide window just for the recap.
+        const sessionSinceHours = Math.ceil(hoursSinceSessionOpenEt(sessionDate, now)) + 1;
+        const sessionRows = await fetchRecentFlows({
+          limit: 400,
+          min_premium: HELIX_DISCORD_MIN_PREMIUM,
+          max_dte: HELIX_DISCORD_MAX_DTE,
+          since_hours: sessionSinceHours,
+          order: "recent",
+        });
+        const sessionFlows = sessionRows
+          .map(toInput)
+          .filter((f) => passesHelixDiscordFilters(f, now));
         const eodEmbed = buildHelixEodRecapEmbed({
           flows: sessionFlows,
           sessionDate,
