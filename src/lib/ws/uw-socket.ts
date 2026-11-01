@@ -1438,7 +1438,10 @@ export function initUwSocket() {
       return;
     }
     pushDarkPoolRawRows(extractDarkPoolRawRows(payload));
-    const normalized = normalizeDarkPoolWsPayload(payload);
+    // off_lit_trades is a MARKET-WIDE channel (no `:TICKER` join suffix, see
+    // joinWiresForChannel) — scope the snapshot stamped onto the "SPX" cache key to actual
+    // SPX prints, else another ticker's frame silently overwrites SPX's own dark-pool read.
+    const normalized = normalizeDarkPoolWsPayload(payload, "SPX");
     if (normalized) {
       recordUwDelivery("off_lit_trades");
       darkPoolStore.data = normalized;

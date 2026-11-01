@@ -103,6 +103,46 @@ test("normalizeDarkPoolWsPayload keeps executed_at VERBATIM — does not strip t
   assert.equal(Date.parse(rows!.prints[0]!.executed_at), Date.parse(precise));
 });
 
+// BUG FIX: `off_lit_trades` is a MARKET-WIDE UW WS channel (joined with no `:TICKER` suffix —
+// see `joinWiresForChannel` in uw-socket.ts, which has a per-channel ticker-scoping branch for
+// every OTHER channel but none for `off_lit_trades`), yet `normalizeDarkPoolWsPayload` had no
+// ticker filter and its one real caller (the `off_lit_trades` subscribe handler) stamped
+// whatever it returned onto the "SPX" cache key (`UW_KEYS.darkPoolTicker("SPX")` via
+// `uw-ws-cache-bridge.ts`). A single WS frame carrying a non-SPX print (AAPL, in this test)
+// alongside a real SPX print got silently blended into the "SPX" snapshot's total_premium/bias,
+// and a frame with ONLY non-SPX prints silently overwrote the SPX slot with another ticker's
+// tape entirely. The optional `onlyTicker` param scopes the snapshot to the real caller's
+// ticker, while staying unfiltered (default) for every other caller — incl. the precision test
+// above, which deliberately uses a non-SPX `symbol`.
+test("normalizeDarkPoolWsPayload scopes to onlyTicker — a market-wide WS frame does not blend another ticker's prints into the SPX snapshot", () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const mixed = [
+    { ticker: "AAPL", executed_at: `${today}T15:04:00Z`, premium: 5_000_000, type: "call" },
+    { ticker: "SPX", executed_at: `${today}T15:05:00Z`, premium: 1_000_000, type: "put" },
+  ];
+
+  // Unfiltered (no onlyTicker) still aggregates BOTH tickers — pre-existing, documented behavior
+  // for any direct caller that wants the whole market-wide tape (e.g. dark_pool_recent).
+  const unfiltered = normalizeDarkPoolWsPayload(mixed);
+  assert.equal(unfiltered?.prints.length, 2);
+  assert.equal(unfiltered?.total_premium, 6_000_000);
+
+  // Scoped to "SPX" (what the off_lit_trades handler now passes) must see ONLY the real SPX
+  // print — the AAPL print's $5M must never reach the snapshot cached under the SPX key.
+  const scoped = normalizeDarkPoolWsPayload(mixed, "SPX");
+  assert.equal(scoped?.prints.length, 1);
+  assert.equal(scoped?.prints[0]?.ticker, "SPX");
+  assert.equal(scoped?.total_premium, 1_000_000);
+
+  // A frame carrying ONLY a non-SPX ticker must return null (never overwrite the SPX cache key
+  // with another ticker's tape) rather than silently aggregating it under "SPX".
+  const onlyOther = normalizeDarkPoolWsPayload(
+    [{ ticker: "TSLA", executed_at: `${today}T15:06:00Z`, premium: 2_000_000 }],
+    "SPX"
+  );
+  assert.equal(onlyOther, null);
+});
+
 test("aggregateOptionTradesToStrikeRows buckets call/put premium by strike", () => {
   const rows = aggregateOptionTradesToStrikeRows(
     [
