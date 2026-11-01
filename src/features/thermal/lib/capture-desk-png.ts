@@ -1,6 +1,6 @@
 /** Client-only Thermal desk PNG export — captures the live DOM the member sees. */
 
-export type ThermalCaptureView = "matrix" | "profile" | "depth" | "grid";
+export type ThermalCaptureView = "matrix" | "profile" | "depth" | "distribution" | "grid";
 
 const FILENAME_SAFE = /[^a-z0-9._-]+/gi;
 
