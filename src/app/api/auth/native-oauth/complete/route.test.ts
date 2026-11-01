@@ -1,6 +1,7 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
+import { splitCookieHeader } from "./cookie-split";
 
 // Regression: POST /api/auth/native-oauth/complete was the one public, mutating
 // route in this codebase with NEITHER a per-IP rate limit NOR a body/field-size
@@ -154,7 +155,6 @@ test("a normal, small Google sign-in still succeeds", async () => {
 // cookie reader, which deliberately uses `indexOf("=")` + `slice` for exactly this reason. Fixed
 // by switching `splitCookieHeader` to the same `indexOf`-based split.
 test("splitCookieHeader preserves a cookie value that itself contains '='", async () => {
-  const { splitCookieHeader } = await import("./route.ts");
   const [session, uat] = splitCookieHeader("session=abc.def=ghi; __client_uat=123");
   assert.equal(
     session,
@@ -165,7 +165,6 @@ test("splitCookieHeader preserves a cookie value that itself contains '='", asyn
 });
 
 test("splitCookieHeader is unaffected on ordinary '='-free values", async () => {
-  const { splitCookieHeader } = await import("./route.ts");
   const [session] = splitCookieHeader("__session=header.payload.signature; __client_uat=1700000000");
   assert.equal(session, "__session=header.payload.signature; Path=/; Secure; HttpOnly; SameSite=Lax");
 });
