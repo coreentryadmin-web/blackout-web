@@ -964,6 +964,59 @@ test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope h
   assert.doesNotMatch(verdict!.body, /· SKIP/, "Verdict must not show the raw internal SKIP deckStatus");
 });
 
+// BUG FIX (2026-11-01, Ask Largo standing mandate, live repro PANW:67 CLOSED): the exact same
+// headline-leak shape as the SKIP fix above, one `play.status` value over. `swingActionDisplay`'s
+// CLOSED branch (play-card-lifecycle.ts) was fixed the same day to return null — rather than a
+// false "TARGET" pill — whenever `closedReason==="target"` but `trimEnforcedBeforeClose` doesn't
+// confirm a real ladder exit (PANW:67: peak +96.2% never crossed the ladder's own +100% trigger,
+// exit +10.03%). That fix stopped the wrong PILL, but `swingVerdictVerb`'s fallback chain still
+// fell through the now-null `action` straight to `play.recommendation` — a live-management-only
+// "BUY"|"HOLD"|"TRIM"|"SELL" vocabulary with no "closed" value, frozen stale at whatever it was
+// before the play exited. Live-confirmed: the real PANW:67 brief rendered headline
+// "HOLD — PANW 370C 1DTE" directly above its own Outcome section reading "Exit P&L: +10.0% ·
+// Closed: 2026-10-29" — a trader skimming only the headline has no way to tell an exited position
+// from one still being actively held.
+test("composeSwingPlayBrief: CLOSED headline/Verdict never leak a stale pre-close recommendation (live repro PANW:67)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "CLOSED",
+      recommendation: "HOLD",
+      closedReason: "target",
+      trimEnforcedBeforeClose: false,
+      exitPnlPct: 10.0,
+      exitAt: "2026-10-29T14:00:00.000Z",
+    }),
+    asOf: "2026-10-29T14:05:00.000Z",
+    sessionDate: "2026-10-29",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.match(brief.envelope.headline, /^CLOSED — /);
+  assert.doesNotMatch(
+    brief.envelope.headline,
+    /^HOLD — /,
+    "an exited, CLOSED position must never read HOLD in the headline — it is no longer being managed live",
+  );
+  assert.match(
+    brief.envelope.thesis ?? "",
+    /— CLOSED/,
+    `thesis must agree with the headline, got: ${brief.envelope.thesis}`,
+  );
+  const verdict = brief.envelope.sections.find((s) => s.title === "Verdict");
+  assert.ok(verdict, "expected Verdict section");
+  assert.match(verdict!.body, /· CLOSED$/m, `Verdict must agree with the headline, got: ${verdict!.body}`);
+  assert.doesNotMatch(
+    verdict!.body,
+    /· HOLD$/m,
+    "Verdict must not leak the stale pre-close recommendation:HOLD value for an exited CLOSED position",
+  );
+});
+
 // BUG FIX (2026-10-25, Ask Largo standing mandate, live repro TSLA 377.5P 7DTE): watchEntrySection's
 // own "Entry stance:" label (the "Entry" section, separate from Verdict/headline above) carries the
 // IDENTICAL `action?.label ?? play.swingEntryAction?.toUpperCase() ?? play.recommendation ?? "WAIT"`

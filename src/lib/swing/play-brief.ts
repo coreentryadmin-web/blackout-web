@@ -136,9 +136,26 @@ function briefThesis(
  * play, in the SAME brief this fix already corrects the headline/Verdict copy of. Exported so
  * those two call sites can reuse this exact function rather than re-deriving (and risking
  * re-diverging from) the SKIP special case a second and third time.
+ *
+ * BUG FIX (2026-11-01, Ask Largo x Night Hawk Swings standing mandate, live repro PANW:67): the
+ * exact same shape of leak reproduces for CLOSED. `swingActionDisplay`'s CLOSED branch
+ * (play-card-lifecycle.ts) was fixed the same day to return `null` rather than a false "TARGET"
+ * pill when `trimEnforcedBeforeClose` doesn't confirm a real ladder exit (PANW:67:
+ * closedReason==="target", trimEnforcedBeforeClose:false, exit +10.03% off a peak that never
+ * crossed the +100% trigger) — but that fix only stopped the WRONG label; it didn't stop this
+ * function's fallback chain from falling through the now-null `action` straight to
+ * `play.recommendation`, which is `Recommendation` ("BUY"|"HOLD"|"TRIM"|"SELL") — a live-
+ * management-only vocabulary with no "closed" value, so it's whatever was last stamped while the
+ * play was still OPEN/HOLD/TRIM, frozen stale at close. Live-confirmed: PANW:67's brief rendered
+ * headline "HOLD — PANW 370C 1DTE" directly above its own Outcome section reading "Exit P&L:
+ * +10.0% · Closed: 2026-10-29" — the identical headline-says-still-live-while-Outcome-says-exited
+ * contradiction the SKIP fix above exists to prevent, one `play.status` value over. Any other
+ * CLOSED reason `swingActionDisplay` DOES confirm (STOPPED/SCRATCH, or a confirmed TARGET) still
+ * supplies a real `action.label` and is unaffected — this only changes the case action is null.
  */
 export function swingVerdictVerb(play: TerminalPlay, action: { label: string } | null): string {
   if (play.status === "SKIP") return "PASSED";
+  if (play.status === "CLOSED") return action?.label ?? "CLOSED";
   return action?.label ?? play.recommendation ?? play.status;
 }
 
