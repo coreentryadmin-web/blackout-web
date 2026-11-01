@@ -9339,3 +9339,26 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   always render even when numerically close to a structural level (the specific regression the
   first cut introduced) — a WATCH-bucket play whose flag anchor or entry trigger silently vanished
   from `envelope.levels` would be a reintroduction of that bug, not a fix holding.
+
+## WATCH LIST — 2026-11-01 (SPX Slayer vix cold-replica/cold-pulse sticky fallback, PR TBD)
+
+- **SPX Slayer — `GET /api/market/spx/desk`'s `vix`/`vix_change_pct` could intermittently serve
+  `null` on a cold ECS replica even while every other field on the same payload (`available`,
+  `price`, `market_status`) was fully populated.** Live-reproduced (2026-11-01, market closed/
+  Sunday): a 30-poll burst returned `vix:null` on 25/30 polls, cycling through ~5 distinct
+  recurring `as_of` timestamps (round-robin across ECS replicas), while a poll seconds earlier on
+  a different replica returned `vix:19.42`. Root cause: `mergePulseIntoDesk()` resolved `vix` as a
+  flat two-tier fallback (`pulseVixLive ? pulse.vix : base.vix`) with no third-tier cross-instance
+  sticky cache — unlike `vwap`/`pdh`/`pdl`/`ema20`/`ema50`/`ema200`/`sma50`/`sma200`/`hod`/`lod`,
+  which all already route through `stickyStructureLevel()`'s Redis-backed last-known-good cache.
+  `deskShellFromPulse()`'s cold-replica fallback shell seeds `vix: null`, so whenever that same
+  cycle's `pulse.vix` was also unavailable, both tiers were null. Fixed: `vix` now routes through
+  `stickyStructureLevel("vix", ...)` as a third tier, same as its siblings; `vix_change_pct` stays
+  honestly `null` whenever the sticky tier supplied `vix` (a change% is only meaningful against a
+  value computed fresh that cycle). **Re-check once the market opens:** poll
+  `GET /api/market/spx/desk` repeatedly (a tight burst, 20-30 calls) during RTH and off-hours alike
+  and confirm `vix`/`vix_change_pct` never go bare `null` while `available:true` and `price` are
+  populated on the same payload — especially right after a deploy (cold replicas), when this was
+  most reproducible live. Separately confirm no regression: `vix` should still reflect a genuinely
+  fresh pulse/base read whenever one exists this cycle, not a stale sticky value masking a real
+  live change.
