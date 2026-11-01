@@ -17,6 +17,10 @@ export type RegimeStripSegment = {
   tone?: "bull" | "bear" | "flip" | "wall" | "sky" | "neutral";
   /** Intraday / vs-prior delta chip — never fabricated. */
   delta?: string | null;
+  /** Delta chip's OWN color — the delta's direction, independent of the metric's absolute-level
+   *  `tone` above. A metric can be net-positive (bull level) while down vs prior close (bear
+   *  delta); without this field the chip borrowed the level's tone and could render a green ↓. */
+  deltaTone?: "bull" | "bear" | "neutral" | null;
 };
 
 export type RegimeStripBadge = {
@@ -72,6 +76,14 @@ function fmtSignedMoney(n: number): string {
   if (n === 0) return fmtPremium(0);
   if (n < 0) return fmtPremium(n);
   return `+${fmtPremium(n)}`;
+}
+
+/** Arrow glyph for a signed delta chip — the chip's own sign decides direction; the arrow was
+ *  previously hardcoded to "up" regardless of sign, so a negative delta (e.g. "-$3.7B") rendered
+ *  as "↑-$3.7B", an up arrow glued to a decrease. */
+export function deltaArrowText(delta: string): string {
+  const negative = delta.startsWith("-");
+  return `${negative ? "↓" : "↑"}${delta.replace(/^[+-]/, "")}`;
 }
 
 function volLabelForGamma(posture: "long" | "short" | null | undefined): string | null {
@@ -148,7 +160,7 @@ function segment(
   key: string,
   label: string,
   value: string,
-  opts?: Partial<Pick<RegimeStripSegment, "icon" | "tone" | "delta" | "strike" | "title">>
+  opts?: Partial<Pick<RegimeStripSegment, "icon" | "tone" | "delta" | "deltaTone" | "strike" | "title">>
 ): RegimeStripSegment {
   return { key, label, value, ...opts };
 }
@@ -192,6 +204,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
       segment("netGex", "Net GEX", fmtSignedMoney(netTotal), {
         tone: netTotal >= 0 ? "bull" : "bear",
         delta: netDeltaChip,
+        deltaTone: netDeltaTone ?? null,
       }),
     ];
     if (magnetStrike != null) {
@@ -262,6 +275,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
       segment("netVex", "Net VEX", fmtSignedMoney(netTotal), {
         tone: netTotal >= 0 ? "sky" : "bear",
         delta: netDeltaChip,
+        deltaTone: netDeltaTone ?? null,
       }),
     ];
     if (callWall != null) {
@@ -304,6 +318,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
       segment("netDex", "Net DEX", fmtSignedMoney(netTotal), {
         tone: netTotal >= 0 ? "flip" : "bear",
         delta: netDeltaChip,
+        deltaTone: netDeltaTone ?? null,
       }),
     ];
     if (flip != null) {
@@ -326,6 +341,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
     segment("netCharm", "Net CHARM", fmtSignedMoney(netTotal), {
       tone: netTotal >= 0 ? "wall" : "bear",
       delta: netDeltaChip,
+      deltaTone: netDeltaTone ?? null,
     }),
   ];
   if (flip != null) {

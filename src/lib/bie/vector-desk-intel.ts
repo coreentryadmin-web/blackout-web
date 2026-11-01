@@ -11,10 +11,31 @@
 // vector-full-state.ts) and formats it.
 
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import { DARK_POOL_STALE_MS } from "@/lib/bie/vector-absent-sections";
 import { fmtPremium } from "@/lib/fmt-money";
 
 function num(v: number | null | undefined): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * BUG FIX (2026-10-06, Ask Largo standing mandate — mirror of #5608's swing-side fix). This
+ * module's own header says it is "deterministic, no LLM, no network" and reads purely off the
+ * passed-in `VectorFullState`, so unlike swing's `play-brief-absence.ts` (which reads the
+ * already-attached `dark_pool_stale`/`darkPoolAsOf` read-context fields `withReadContext` adds on
+ * the way OUT of `fetchVectorFullState`), this file computes staleness itself from the two raw
+ * fields every `VectorFullState` carries: `asOf` (when the state was measured) and `darkPoolAsOf`
+ * (when the dark-pool CACHE ENTRY was actually fetched — can lag `asOf` by the warm cron's cadence,
+ * see vector-absent-sections.ts for the full rationale). Before this fix, `darkPoolBriefLine` and
+ * `knownVectorNumbers` both read `state.darkPoolLevels` directly with no staleness check at all —
+ * the identical gap #5608 fixed for swing's play-brief construction, left open here as a documented
+ * follow-up pending #5608 landing on `main` (confirmed merged, f08c1cd99).
+ */
+function darkPoolIsStale(state: VectorFullState): boolean {
+  const asOfMs = Date.parse(state.asOf);
+  const darkPoolAsOf = state.darkPoolAsOf ?? 0;
+  if (!Number.isFinite(asOfMs) || !darkPoolAsOf) return false;
+  return asOfMs - darkPoolAsOf > DARK_POOL_STALE_MS;
 }
 
 /** Grounded number token — mirrors spx-desk-intel.ts's `n()`. */
@@ -179,6 +200,10 @@ export function vexBriefLine(state: VectorFullState): string | null {
 export function darkPoolBriefLine(state: VectorFullState): string | null {
   const levels = state.darkPoolLevels ?? [];
   if (levels.length === 0) return null;
+  // Omit (not disclose-as-stale): this module has no unavailableSources/absence-note channel of
+  // its own to carry a "stale — last synced HH:MM" disclosure the way swing's play-brief does, so
+  // the honest move here is silence rather than serving a 20+min-old read as current.
+  if (darkPoolIsStale(state)) return null;
   const parts = levels.slice(0, 3).map((l) => `${n(l.strike)} (${l.pct.toFixed(0)}%)`);
   return `DARK POOL  ${parts.join(" · ")}`;
 }
@@ -299,10 +324,14 @@ export function knownVectorNumbers(state: VectorFullState): number[] {
     add(w.pct);
   }
 
-  // Dark-pool strike levels + their premium-share pct.
-  for (const l of state.darkPoolLevels ?? []) {
-    add(l.strike);
-    add(l.pct);
+  // Dark-pool strike levels + their premium-share pct — omitted (not grounded) when stale, same
+  // gate as darkPoolBriefLine so a stale level can never be quoted even if some other caller
+  // bypasses that line's own omission.
+  if (!darkPoolIsStale(state)) {
+    for (const l of state.darkPoolLevels ?? []) {
+      add(l.strike);
+      add(l.pct);
+    }
   }
 
   // Server-computed chart technicals the TECHNICALS line cites (VWAP, RSI, golden-pocket edges,

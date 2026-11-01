@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitEntries, requiredCounts, headingCounts, lostEntries, alreadyPresent } from "./findings-entry-set.mjs";
+import {
+  splitEntries,
+  splitAtHeadingBoundaries,
+  requiredCounts,
+  headingCounts,
+  lostEntries,
+  alreadyPresent,
+} from "./findings-entry-set.mjs";
 
 const H1 = "## 2026-08-23 — [FINDING, P2 X] first";
 const H2 = "## 2026-08-22 — [FINDING, P1 Y] second";
@@ -60,4 +67,44 @@ test("alreadyPresent compares whole entries, so a changed body still folds", () 
   assert.equal(alreadyPresent(target, A2), false, "an edited entry is NOT already present");
   assert.equal(alreadyPresent(target, entry("## 2026-08-01 — [FINDING, P3 Z] new", "x")), false);
   assert.equal(alreadyPresent(target, ""), false, "empty input is never 'already present'");
+});
+
+test("splitAtHeadingBoundaries matches native text.split(/\\n(?=## )/) on plain input", () => {
+  const cases = [
+    "a\n## b\nc\n## d\ne",
+    "## first\nbody",
+    "no heading at all",
+    "",
+    "## a\n\n## b\n\n## c",
+  ];
+  for (const text of cases) {
+    assert.deepEqual(
+      splitAtHeadingBoundaries(text),
+      text.split(/\n(?=## )/),
+      `mismatch for: ${JSON.stringify(text)}`
+    );
+  }
+});
+
+test("splitAtHeadingBoundaries does not split on a '## ' line quoted inside a fenced code block", () => {
+  // Live repro (2026-09-17): a finding's Evidence section quotes a real product's own markdown
+  // (a normal, encouraged evidence pattern) containing real `## `-level headings inside a ``` fence
+  // — those must not read as document-structure boundaries.
+  const text = "## Title\nbody\n```\n## Quoted\nmore\n```\nafter\n## Next\ntail";
+  const parts = splitAtHeadingBoundaries(text);
+  assert.equal(parts.length, 2, "the fenced '## Quoted' must not create a third chunk");
+  assert.ok(parts[0].includes("## Quoted"), "the quoted heading must survive, verbatim, inside its chunk");
+  assert.equal(parts[1], "## Next\ntail");
+});
+
+test("splitEntries does not fragment an entry whose evidence quotes a heading inside a fence", () => {
+  const withFencedQuote = entry(
+    H1,
+    "Evidence:\n\n```\n## Why this setup\nsome quoted content\n## Trade manager read\nmore\n```\n\nFix rationale."
+  );
+  const es = splitEntries(doc(withFencedQuote, B));
+  assert.equal(es.length, 2, "must be exactly 2 real entries, not fragmented by the quoted headings");
+  assert.equal(es[0].heading, H1);
+  assert.ok(es[0].body.includes("## Why this setup"), "the quoted content itself must survive inside the entry");
+  assert.equal(es[1].heading, H2);
 });

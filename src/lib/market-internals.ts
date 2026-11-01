@@ -31,14 +31,28 @@ export function estimateAddFromBreadth(samples: BreadthSample[]): number | null 
   return (adv - dec) * 200;
 }
 
-/** Rough TRIN proxy from adv/dec ratio (typical range 0.5–2.0). */
+/**
+ * Rough TRIN proxy from adv/dec ratio (typical range 0.5–2.0). TRIN has FIXED, published
+ * polarity used everywhere else in this codebase (features/largo/answer/signal-rows.ts:
+ * "TRIN below 1.0 means volume favours advancing issues" = bullish; features/spx/lib/
+ * spx-signals.ts: trin < 0.85 scores bullish, trin > 1.15 scores bearish) — low = bullish,
+ * high = bearish. This proxy's own edge cases already encode that direction (all-advancing
+ * -> 0.65 low/bullish, all-declining -> 1.45 high/bearish); the general-ratio branch below
+ * must agree with those anchors.
+ */
 export function estimateTrinFromBreadth(samples: BreadthSample[]): number | null {
   if (!samples.length) return null;
   const { adv, dec } = countAdvDec(samples);
   if (adv === 0 && dec === 0) return 1;
   if (dec === 0) return 0.65;
   if (adv === 0) return 1.45;
-  const ratio = adv / dec;
+  // BUG FIX (round 142): this was `adv / dec`, the inverse of the mapping above — a breadth
+  // one tick away from all-advancing (e.g. 9 adv / 1 dec) produced ratio=9, clamped to the
+  // BEARISH ceiling (2.0), directly contradicting the all-advancing edge case one line above
+  // it (0.65, bullish). `dec / adv` keeps the ratio on the same side as those anchors: heavy
+  // advancing -> ratio near 0 (clamped to the bullish floor 0.5), heavy declining -> ratio
+  // large (clamped to the bearish ceiling 2.0).
+  const ratio = dec / adv;
   return Math.round(Math.min(2, Math.max(0.5, ratio)) * 100) / 100;
 }
 

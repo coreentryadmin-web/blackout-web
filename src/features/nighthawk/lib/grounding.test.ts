@@ -185,6 +185,32 @@ test("groundPlay drops contradictory user-visible prose strike claims", () => {
   assert.match(result.issues.map((i) => i.detail).join(" "), /contradictory setup text/);
 });
 
+// CHECK 6 is sentence-scoped (fixed 2026-10-13, live AXTI/BE false-drop — both scored higher
+// than every play that actually published in the 2026-10-14 edition; see
+// docs/audit/nighthawk-legacy-live-journal.json "legacyGroundingDropsTopScoredCandidates"). A
+// genuine strike-echo claim MUST still drop when the number and the strike-word share a sentence
+// — that's the test above. This test is its mirror: an unrelated catalyst/guidance figure in one
+// sentence must NOT be hard-dropped just because "call"/"put"/"strike" appears in a different,
+// unrelated sentence elsewhere in the same thesis+key_signal text.
+test("groundPlay does NOT drop an unrelated catalyst number merely because a strike word appears in a different sentence", () => {
+  const affordableRow: ChainStrikeRow = {
+    ...nbisSep300Call,
+    call_bid: 6.1,
+    call_ask: 6.55,
+    call_oi: 10_647,
+  };
+  const crossSentence = {
+    ...play(6.32),
+    thesis: "Heavy call buying ahead of earnings signals bullish positioning.",
+    key_signal: "Management raised full-year guidance to 410 in yesterday's update.",
+  };
+
+  const result = groundPlay(crossSentence, { spot: 296, rows: [frontExpiryRow, affordableRow] }, dossier);
+
+  assert.equal(result.severity, "ok");
+  assert.equal(result.issues.length, 0);
+});
+
 // ── tieredMinOi ─────────────────────────────────────────────────────────────────
 
 test("tieredMinOi: large-cap (>=$200) uses 500", () => {

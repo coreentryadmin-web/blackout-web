@@ -67,6 +67,7 @@ import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import { todayEt } from "@/lib/et-date";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { rebaseChangePct, referenceCloseFromSnapshot } from "@/lib/providers/change-pct";
 import {
   pulseChangePctFromPriorClose,
@@ -455,19 +456,56 @@ function fmtExpiry(ymd: string): string {
   return `${months[m - 1]} ${d}`;
 }
 
+/** The raw third Friday of a calendar month, as YYYY-MM-DD (no holiday adjustment). */
+function thirdFridayYmdClient(year: number, month1: number): string {
+  const first = new Date(Date.UTC(year, month1 - 1, 1));
+  const dow = first.getUTCDay(); // 0=Sun..6=Sat
+  const firstFriday = 1 + ((5 - dow + 7) % 7);
+  const day = firstFriday + 14;
+  return `${year}-${String(month1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 /**
- * True when a YYYY-MM-DD is a standard US monthly options expiration (the THIRD FRIDAY) — the
- * far-dated columns the server now appends (monthly + quarterly OpEx carry the dominant dealer
- * walls). Mirrors the server's thirdFridayYmd calendar math. Used to classify expiries into the
- * "monthly" horizon and to badge the far-dated matrix columns. Tolerant: a malformed date → false.
+ * The REAL standard-monthly options expiration for a month — the third Friday, ROLLED BACK to
+ * the preceding trading day when that Friday is a market holiday.
+ *
+ * BUG THIS FIXES. `isMonthlyExpiry` used to test `d === firstFriday + 14` with no holiday
+ * adjustment, so it mislabeled the two real holiday-landing months swept 2024-2028 — 2026-06-19
+ * and 2027-06-18 (both Juneteenth) — where the LISTED contract settles the preceding trading day
+ * instead (equity/index options can never expire on a day the market is closed). On those two
+ * expiries this function returned false for the column that actually IS that month's monthly
+ * OpEx, so it lost the gold far-dated tint, dropped out of `monthlyExpiries` (undercounting the
+ * "Monthly" horizon preset and the per-expiry chip badge), and was wrongly folded into
+ * `nearExpiries` — diluting the walls/flip/net-GEX levels a member sees under the "Near"
+ * horizon filter with the dominant OpEx column that filter exists to exclude.
+ *
+ * Mirrors the server-side `monthlyExpiryYmd` (meridian-timeline.ts) holiday-roll exactly, same
+ * `isTradingDayEt` source of truth — reimplemented here (not imported) because that module
+ * transitively imports `server-only` and this component is "use client".
+ */
+function monthlyExpiryYmdClient(year: number, month1: number): string {
+  const friday = thirdFridayYmdClient(year, month1);
+  if (isTradingDayEt(friday)) return friday;
+  const [y, m, d] = friday.split("-").map(Number) as [number, number, number];
+  for (let back = 1; back <= 7; back += 1) {
+    const dt = new Date(Date.UTC(y, m - 1, d - back));
+    const ymd = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+    if (isTradingDayEt(ymd)) return ymd;
+  }
+  return friday;
+}
+
+/**
+ * True when a YYYY-MM-DD is a standard US monthly options expiration (the THIRD FRIDAY, holiday-
+ * rolled when needed — see `monthlyExpiryYmdClient`) — the far-dated columns the server now
+ * appends (monthly + quarterly OpEx carry the dominant dealer walls). Used to classify expiries
+ * into the "monthly" horizon and to badge the far-dated matrix columns. Tolerant: a malformed
+ * date → false.
  */
 function isMonthlyExpiry(ymd: string): boolean {
   const [y, m, d] = ymd.split("-").map(Number);
   if (!y || !m || !d) return false;
-  const first = new Date(Date.UTC(y, m - 1, 1));
-  const dow = first.getUTCDay(); // 0=Sun..6=Sat
-  const firstFriday = 1 + ((5 - dow + 7) % 7);
-  return d === firstFriday + 14; // third Friday
+  return monthlyExpiryYmdClient(y, m) === ymd;
 }
 
 type Lens = "gex" | "vex" | "dex" | "charm";
@@ -783,9 +821,26 @@ function ExposureProfile({
 
   // Resolve each dark-pool price level to the nearest profile-row index so the line is
   // drawn across that strike band. Only levels inside the rendered strike range appear.
+  //
+  // `darkPoolLevels` is built server-side from the ticker's raw dark-pool TAPE (top-5 prints by
+  // notional over the lookback window, buildDarkPoolLevels() in gex-heatmap/route.ts) — it is NOT
+  // constrained to `strikes`/`rows` the way the flow overlay is (buildFlowByStrike IS passed
+  // `strikes`). A print from a materially different price than today's (a pre-earnings-gap print,
+  // a thinly-traded name whose strike band is narrow) can sit far outside the rendered band, so
+  // without the distance guard below every level — however far away — snapped to whichever row
+  // happened to be nearest (often the top or bottom edge row), drawing it as if that dark-pool
+  // print occurred AT that strike. The step is derived from the rows themselves (same technique
+  // `depthBandForPrice`/gex-depth.ts uses for its own band step) since different tickers/strike
+  // bands have different spacing.
   const darkPoolByRow = useMemo(() => {
     const map = new Map<number, DarkPoolLevel>();
     if (!showDarkPool || !darkPoolLevels?.length || rows.length === 0) return map;
+    let step = Infinity;
+    for (let i = 1; i < rows.length; i++) {
+      const gap = Math.abs(rows[i - 1].strike - rows[i].strike);
+      if (gap > 0 && gap < step) step = gap;
+    }
+    const maxDist = Number.isFinite(step) ? step / 2 : Infinity;
     for (const level of darkPoolLevels) {
       let bestIdx = -1;
       let bestDist = Infinity;
@@ -796,8 +851,10 @@ function ExposureProfile({
           bestIdx = i;
         }
       }
-      // Skip levels far outside the band (> half the strike step from any row).
-      if (bestIdx >= 0 && !map.has(bestIdx)) map.set(bestIdx, level);
+      // Skip levels far outside the band (> half the strike step from any row) — this was a
+      // comment describing intent with no enforcing code (FINDING 2026-10-31); see the block
+      // comment above for why that silently mislabeled far-away prints.
+      if (bestIdx >= 0 && bestDist <= maxDist && !map.has(bestIdx)) map.set(bestIdx, level);
     }
     return map;
   }, [darkPoolLevels, rows, showDarkPool]);
@@ -2505,6 +2562,11 @@ export function GexHeatmap({
   // picker shows the real date and its real DTE instead. `expiryScope` is resolved against the live
   // axis in an effect below, since `expiries` is not known at mount.
   const [expiryScope, setExpiryScope] = useState<string>("all");
+  // Guards the ONE-TIME "all" -> nearest-expiry default resolution below (Rank 5's own effect
+  // re-arms it per ticker — see the reset effect further down). Declared here, not beside its
+  // resolution effect, so the ticker-switch reset effect (which runs earlier in render order)
+  // can clear it without a forward reference.
+  const scopeResolvedRef = useRef(false);
   const [highlightStrike, setHighlightStrike] = useState<number | null>(() => urlBoot.strike);
   const pendingStrikeScrollRef = useRef<number | null>(urlBoot.strike);
   const matrixPollMs = usePollIntervalMs(2_000, 5_000);
@@ -2726,11 +2788,21 @@ export function GexHeatmap({
   // Reset throttle + force state when the ticker changes so a switch starts clean.
   // Also reset the expiry scope back to "All" — the expiry axis differs per chain, so a
   // per-expiry chip from the previous ticker would be stale against the new one (Rank 5).
+  //
+  // BUG FIX (2026-11-01): `scopeResolvedRef` previously was NEVER reset here, so the "all" ->
+  // nearest-expiry default resolution below (#2103, "Default scope is the NEAREST expiry, not
+  // 'all'") only ever fired for the FIRST ticker the component mounted with. Every ticker
+  // switch reset `expiryScope` to "all" via this effect, but with `scopeResolvedRef.current`
+  // stuck `true` from the first resolution, the resolution effect's one-time guard
+  // (`!scopeResolvedRef.current && expiryScope === "all"`) never re-armed — so Key Levels/
+  // profile/curve silently stayed on the unscoped near-term aggregate for every ticker after
+  // the first, instead of resolving to that ticker's own nearest expiry like the first one did.
   useEffect(() => {
     lastForceAtRef.current = 0;
     setForceNonce(0);
     setFastFlash(false);
     setExpiryScope("all");
+    scopeResolvedRef.current = false;
   }, [ticker]);
 
   // Clear any pending timers on unmount.
@@ -2901,8 +2973,8 @@ export function GexHeatmap({
 
   // Resolve the default to the real nearest expiry once the axis is known, and re-resolve whenever
   // the current pick falls off it — the ET rollover prunes settled expiries, and a scope pointing at
-  // a settled date would render every tile as a dash with no explanation.
-  const scopeResolvedRef = useRef(false);
+  // a settled date would render every tile as a dash with no explanation. `scopeResolvedRef` itself
+  // is declared earlier (beside `expiryScope`) so the ticker-switch reset effect above can clear it.
   useEffect(() => {
     if (expiries.length === 0) return;
     const isPreset = expiryScope === "near" || expiryScope === "monthly" || expiryScope === "0dte";
@@ -3040,13 +3112,20 @@ export function GexHeatmap({
   const showViewTabs = !((isLoading && !data) || stale) && !empty && !blockEmpty;
   const showMatrixTabs = showViewTabs;
 
+  // BUG FIX (2026-11-01): pair-d (Greeks Distribution tab) had no branch here and fell through
+  // to the final `: "matrix"` default — downloading a PNG while on that tab produced a filename
+  // claiming `...-matrix-...png` even though `thermal-desk-capture-root` (what actually gets
+  // rasterized) is NOT gated on pairView, so the captured image was really the distribution
+  // panel. See thermalCaptureFilename() in capture-desk-png.ts.
   const captureView: ThermalCaptureView = compare
     ? "grid"
     : pairView === "pair-b"
       ? "profile"
       : pairView === "pair-c"
         ? "depth"
-        : "matrix";
+        : pairView === "pair-d"
+          ? "distribution"
+          : "matrix";
   const canCaptureDesk = showViewTabs || (compare && !((isLoading && !data) || stale) && !empty);
 
   const onDownloadCapture = useCallback(async () => {
@@ -4547,7 +4626,6 @@ export function GexHeatmap({
                   <GreeksDistributionPanel
                     cells={cells}
                     spot={data?.spot ?? null}
-                    ticker={ticker}
                   />
                 )}
               </TabPanel>

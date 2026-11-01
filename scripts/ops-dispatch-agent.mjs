@@ -180,8 +180,26 @@ const resp = spawnSync(
 );
 
 if (resp.status !== 0) {
-  console.error("[ops-dispatch] Cloud Agent launch failed:", resp.stderr || resp.stdout);
-  process.exit(1);
+  const errText = (resp.stderr || resp.stdout || "curl failed").trim();
+  console.error("[ops-dispatch] Cloud Agent launch failed:", errText);
+  if (issueUrl && ghToken) {
+    try {
+      gh([
+        "issue",
+        "comment",
+        issueUrl,
+        "--body",
+        `⚠️ Cloud Agent dispatch failed (Cursor API). The issue remains open — re-dispatch manually or wait for autopilot.\n\n\`\`\`\n${errText.slice(0, 800)}\n\`\`\``,
+      ]);
+    } catch (commentErr) {
+      console.error("[ops-dispatch] Could not comment launch failure on issue:", commentErr.message);
+    }
+  }
+  // Durable artifact is the GitHub issue; transient Cursor API errors must not fail the workflow.
+  console.warn(
+    `[ops-dispatch] Continuing — GitHub issue #${issueNumber} was created; fix or re-dispatch manually.`
+  );
+  process.exit(issueNumber ? 0 : 1);
 }
 
 const agent = JSON.parse(resp.stdout);

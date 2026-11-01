@@ -38,7 +38,33 @@ export function mapSpxPlayToBadge(payload: SpxPlayPayload): SpxSlayerBadge {
     score: payload.score,
     headline: payload.headline,
     as_of: payload.as_of,
-    unavailable_reason: payload.available ? null : payload.idle_message ?? "SPX Slayer desk unavailable",
+    // BUG FOUND 2026-09-12 (Ask Largo × Night Hawk standing mandate, 5-engine health sweep):
+    // this used to read `payload.idle_message ?? "SPX Slayer desk unavailable"` — but
+    // `idle_message` is deliberately left `null` on the CLOSED-SESSION terminal branch
+    // (spx-play-engine.ts's `evaluateSpxPlayCore`, the `!desk.market_open && !premarket` path)
+    // even though that SAME branch sets a perfectly good, specific `headline: "Session closed"`.
+    // The two `available:false` payload builders that actually run in production both carry a
+    // real, non-generic `headline` (the other is "Desk warming — play state unavailable", where
+    // idle_message already equals headline, so this change is a no-op there) — so preferring
+    // `headline` before the last-resort generic string costs nothing on the paths that already
+    // worked and fixes the one that didn't.
+    //
+    // Blast radius: this is EVERY evening (~4pm-6:30am PT) and all weekend, whenever there is no
+    // open play — i.e. most hours in a week. Confirmed live 2026-09-12 (Saturday):
+    // GET /api/market/zerodte/board -> spx_slayer_badge.headline: "Session closed" but
+    // .unavailable_reason: "SPX Slayer desk unavailable" — the badge's own tooltip (`title` in
+    // zerodte-board-strips.tsx's SpxSlayerBadgeStrip) told the member the desk was BROKEN
+    // ("unavailable... retrying" is the sibling string's own connotation) on every single routine
+    // market-closed render, discarding the honest, already-computed "Session closed" reason that
+    // sat right next to it in the same payload.
+    //
+    // `||` (not `??`) guards against a theoretical empty-string headline the same way the final
+    // generic fallback does — `SpxPlayPayload.headline` is typed as a required `string`, but
+    // nothing enforces it is non-empty at every call site, so this never regresses to a blank
+    // tooltip even in that hypothetical case.
+    unavailable_reason: payload.available
+      ? null
+      : payload.idle_message || payload.headline || "SPX Slayer desk unavailable",
   };
 }
 

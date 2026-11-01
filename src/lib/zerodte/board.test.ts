@@ -11,6 +11,8 @@ import {
   noteOriginDirectionConflict,
   mergeSameTickerDiscovery,
   summarizeDiscoveryRailMix,
+  unionDiscoveryOrigins,
+  discoveryOriginLabel,
   type EnrichedZeroDteSetup,
   matchEarnings,
   matchHotNews,
@@ -340,7 +342,7 @@ test("setups: put-dominant tape produces a short setup", () => {
 test("setups: far-dated and thin tickers are excluded", () => {
   const rows = [
     row({ dte: 14 }), // not 0-1 DTE
-    row({ ticker: "TINY", premium: 150_000 }), // below gross floor
+    row({ ticker: "TINY", premium: 100_000 }), // below gross floor (SETUP_MIN_GROSS = 150k)
   ];
   assert.equal(deriveZeroDteSetups(rows).length, 0);
 });
@@ -348,6 +350,24 @@ test("setups: far-dated and thin tickers are excluded", () => {
 test("setups: excluded tickers (SPX handled by its own engines) are skipped", () => {
   const rows = [row({ ticker: "SPY", premium: 2_000_000 })];
   assert.equal(deriveZeroDteSetups(rows, { excludeTickers: new Set(["SPY"]) }).length, 0);
+});
+
+test("setups: includeTickers restricts to an explicit allowlist — a ticker outside it is skipped even with a strong tape", () => {
+  const rows = [row({ ticker: "AMD", premium: 2_000_000 })];
+  assert.equal(deriveZeroDteSetups(rows, { includeTickers: new Set(["NVDA", "SPY"]) }).length, 0);
+});
+
+test("setups: includeTickers lets a listed ticker through unaffected", () => {
+  const rows = [row({ ticker: "NVDA", premium: 2_000_000 })];
+  const out = deriveZeroDteSetups(rows, { includeTickers: new Set(["NVDA", "SPY"]) });
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.ticker, "NVDA");
+});
+
+test("setups: includeTickers omitted (null/undefined) is unrestricted — unchanged prior behavior", () => {
+  const rows = [row({ ticker: "AMD", premium: 2_000_000 })];
+  assert.equal(deriveZeroDteSetups(rows, { includeTickers: null }).length, 1);
+  assert.equal(deriveZeroDteSetups(rows).length, 1);
 });
 
 test("setups: sudden flow spike flagged when ≥half the tape lands in the last 30m", () => {
@@ -370,7 +390,7 @@ test("setups: sudden flow spike flagged when ≥half the tape lands in the last 
 test("setups: prints for contracts that expired a prior session are dropped", () => {
   const rows = [
     row({ premium: 2_000_000, expiry: "2026-07-02", dte: 0 }), // expired yesterday
-    row({ premium: 150_000, expiry: "2026-07-06", dte: 0 }), // today — below gross floor alone
+    row({ premium: 100_000, expiry: "2026-07-06", dte: 0 }), // today — below gross floor alone (SETUP_MIN_GROSS = 150k)
   ];
   assert.equal(deriveZeroDteSetups(rows, { todayYmd: "2026-07-06" }).length, 0);
   // Without the session guard the expired tape would have qualified.
@@ -518,6 +538,45 @@ test("ledger grade: a flat close (signed exactly 0) is a breakeven, not a direct
   // A non-zero move is still a clean true/false either way.
   assert.equal(computeLedgerGrade("long", 100, 100.01).direction_hit, true);
   assert.equal(computeLedgerGrade("long", 100, 99.99).direction_hit, false);
+});
+
+// A move inside the DISPLAY ROUNDING BAND (|signed| < 0.005%) must grade identically to
+// an exactly-flat close: the served move_pct rounds to 0, so direction_hit must also be
+// null, never true/false. Deciding direction_hit off the raw unrounded `signed` instead
+// of the rounded `move_pct` let a genuinely tiny move (e.g. signed=0.0049) display as
+// `move_pct: 0, direction_hit: true` — a served row claiming "breakeven" (0) and
+// "directional hit" (true) at once. Confirmed live on production (2026-10-31,
+// GET /api/market/zerodte/record?days=90): the SPXW 2026-08-12 row served exactly this
+// combination, the only violation in 589 graded rows.
+test("ledger grade: a move inside the rounding band (rounds to move_pct 0) is a breakeven, not a hit/miss", () => {
+  // underlyingAtFlag=100000, close +$4.90 -> raw = 4.90/100000*100 = 0.0049% -> rounds to 0.00.
+  const tinyFavorableLong = computeLedgerGrade("long", 100000, 100004.9);
+  assert.equal(tinyFavorableLong.move_pct, 0, "a 0.0049% move displays as 0");
+  assert.equal(
+    tinyFavorableLong.direction_hit,
+    null,
+    "a row displaying move_pct:0 must never also claim a directional hit"
+  );
+
+  // Same tiny move, unfavorable for a short (raw positive, signed negative but still
+  // inside the rounding band) — must also collapse to breakeven, not a miss. Math.round
+  // of a small negative fraction can yield -0 (e.g. Math.round(-0.49) === -0); that is
+  // numerically zero (JSON/display both render it as "0") even though `assert.equal`
+  // (strict, Object.is-based) distinguishes it from +0 — so compare with `===`, the
+  // same operator `direction_hit`'s own `>`/`<` checks use, not Object.is identity.
+  const tinyUnfavorableShort = computeLedgerGrade("short", 100000, 100004.9);
+  assert.ok(
+    tinyUnfavorableShort.move_pct === 0,
+    `expected move_pct to be (positive-or-negative) zero, got ${tinyUnfavorableShort.move_pct}`
+  );
+  assert.equal(tinyUnfavorableShort.direction_hit, null);
+
+  // Just OUTSIDE the band (signed exactly 0.005%, which rounds UP to 0.01) still
+  // resolves to a clean, non-null hit — the fix narrows the null case to the rounding
+  // band only, it does not swallow genuine small-but-displayed moves.
+  const justOutsideBand = computeLedgerGrade("long", 100000, 100005);
+  assert.equal(justOutsideBand.move_pct, 0.01);
+  assert.equal(justOutsideBand.direction_hit, true);
 });
 
 // ── earnings + hot-news flags ────────────────────────────────────────────────────
@@ -669,6 +728,26 @@ test("enrich: full dossier merges score, factors, technicals, streak, dark pool"
   assert.equal(e.news_hot, null);
 });
 
+// Live repro 2026-10-21: QQQ key_supports=[707.23, 707.23], AMD key_supports=[524.6, 524.6] —
+// technicals.ts's support_levels/resistance_levels concatenate THREE independent sources
+// (swing/weekly/monthly) that can legitimately coincide at the same round-number price, and
+// enrichSetup's top-2 slice had no dedup before it, so a coincidence showed one real level
+// twice and silently dropped the actual second-best level. Fixture: weekly support resolves
+// to the SAME price as the nearest swing support (both 186.5); a real, distinct second-best
+// support (184.1) must still surface instead of a duplicated 186.5.
+test("enrich: duplicate support/resistance levels from coincident sources are deduped before top-2", () => {
+  const dossier = fakeDossier({
+    tech: {
+      ...fakeDossier().tech!,
+      support_levels: [186.5, 186.5, 184.1, 179.9],
+      resistance_levels: [190.2, 190.2, 193.5, 175.0],
+    },
+  });
+  const e = enrichSetup(baseSetup(), dossier);
+  assert.deepEqual(e.key_supports, [186.5, 184.1]);
+  assert.deepEqual(e.key_resistances, [190.2, 193.5]);
+});
+
 // 9-8: scoreCandidate (scorer.ts) always folds fundamental/catalyst/short_interest/
 // wall_proximity/vex_alignment/skew into `score` alongside the original five — enrichSetup
 // dropped all six when building factor_breakdown, so the "Why this play was picked" panel
@@ -764,6 +843,55 @@ test("enrich: factor_breakdown omits (not zero-fills) subscores the scorer never
   assert.ok(!("skew" in (e.factor_breakdown ?? {})));
 });
 
+// Ask Largo standing mandate (2026-10-14, live 5-engine monitor cycle, real-board repro):
+// scoreCandidate (scorer.ts) folds a SEVENTH component — momentum_score — into `preRegimeSum`
+// (and therefore `total`/dossier_score) and even counts it in `confirmingSignals`
+// (`momentumScore >= 5`), but neither `SetupDossierView["scored"]` nor enrichSetup's
+// factor_breakdown mapping ever declared or read it — the exact same "real score component with
+// no rendered line item" defect already fixed twice in this file (the 9-8 six-subscore gap above
+// and the 9-9 iv/anomaly/flow-conviction/regime-adjustment gap above), recurring because this one
+// field was added to scorer.ts without the same mirroring pass. deterministic-edition.ts (Legacy's
+// two factor_breakdown builders — the "already-shipped mapping" the 9-8 comment above references)
+// already carries `momentum: scored.momentum_score` at both its own call sites; board.ts is the
+// one surface that drifted out of sync again. Live measured 2026-10-14 ~19:52 ET: QQQ
+// factor_breakdown summed to 56.2 against a live dossier_score of 61 (gap 4.8), SMH 56.0 vs 61
+// (gap 5.0), SPY 25.6 vs 31 (gap 5.4), IWM 39.6 vs 45 (gap 5.4) — all FLOW-origin setups with a
+// real nonzero momentum_score never surfaced; SPXW/MU/TSLA (momentum ≈ 0 that cycle) showed no gap.
+test("enrich: factor_breakdown carries momentum_score and sums to dossier_score (7th scorer component)", () => {
+  const dossier = fakeDossier({
+    scored: {
+      score: 66,
+      direction: "long",
+      conviction: "HIGH",
+      flow_score: 30,
+      tech_score: 18,
+      pos_score: 10,
+      news_score: 8,
+      smart_money_score: 12,
+      momentum_score: -12,
+    },
+  });
+  const e = enrichSetup(baseSetup(), dossier);
+  assert.deepEqual(e.factor_breakdown, {
+    flow: 30,
+    tech: 18,
+    positioning: 10,
+    news: 8,
+    smart_money: 12,
+    momentum: -12,
+  });
+  const sum = Object.values(e.factor_breakdown ?? {}).reduce((a, b) => a + b, 0);
+  assert.equal(sum, e.dossier_score, "factor_breakdown must reconcile to dossier_score once momentum is included");
+});
+
+// Same "absent vs real zero" convention as the other optional dimensions: a dossier whose scorer
+// never evaluated momentum (field absent, matching every pre-existing `scored` fixture in this
+// file) must not render a fabricated "momentum: 0" bar.
+test("enrich: factor_breakdown omits momentum when the scorer never returned it", () => {
+  const e = enrichSetup(baseSetup(), fakeDossier());
+  assert.ok(!("momentum" in (e.factor_breakdown ?? {})));
+});
+
 test("enrich: earnings + hot-news extras pass through", () => {
   const e = enrichSetup(baseSetup(), null, {
     earnings: { when: "afterhours", report_date: "2026-07-06", expected_move_pct: 8.2 },
@@ -841,6 +969,69 @@ test("enrich: with no chart walls the condor falls back to the target-width floo
 test("enrich: condor is null when spot is unknown (no fabricated geometry)", () => {
   const e = enrichSetup(baseSetup({ underlying_price: null }), null);
   assert.equal(e.condor, null);
+});
+
+// ── condor_basis_price/_as_of (stale-spot disclosure) ────────────────────────────────
+// Root cause: enrichSetup runs BEFORE scan.ts's attachContractPlans ever calls
+// refreshUnderlyingFromLiveSpot, and that refresh mutates underlying_price/_as_of IN PLACE
+// afterward — but nothing ever recomputes `condor` to match. These prove condor_basis_price/
+// _as_of freeze the exact price condor was built from and survive that later mutation, so a
+// consumer can always tell whether condor.est_win_rate is on the same clock as the setup's own
+// (possibly refreshed) underlying_price.
+test("enrich: condor_basis_price/_as_of freeze the EXACT price+as-of condor was built from", () => {
+  const e = enrichSetup(
+    baseSetup({ underlying_price: 188.2, underlying_price_as_of: "2026-10-26T13:30:00Z" }),
+    fakeDossier()
+  );
+  assert.ok(e.condor);
+  assert.equal(e.condor_basis_price, 188.2);
+  assert.equal(e.condor_basis_as_of, "2026-10-26T13:30:00Z");
+});
+
+test("enrich: condor_basis_price survives a LATER live-spot refresh that mutates underlying_price out from under it", () => {
+  // Reproduces the live bug end-to-end: enrichSetup runs first (condor built off 188.2), then
+  // scan.ts's attachContractPlans calls refreshUnderlyingFromLiveSpot and Object.assigns the
+  // patch onto the SAME setup object — the exact in-place mutation that moves underlying_price
+  // to a fresh live mark. Before this fix, nothing on the setup recorded which price condor's
+  // own strikes/win-rate actually came from, so a consumer re-deriving condor width from the
+  // setup's (now live) underlying_price would silently compute a different number than
+  // condor.est_win_rate actually reports.
+  const e = enrichSetup(
+    baseSetup({ underlying_price: 188.2, underlying_price_as_of: "2026-10-26T13:30:00Z" }),
+    fakeDossier()
+  );
+  const refreshed = refreshUnderlyingFromLiveSpot({
+    livePrice: 192.8, // moved materially since qualification
+    liveObservedAtMs: Date.parse("2026-10-26T13:41:00Z"),
+    direction: e.direction,
+    topStrike: e.top_strike,
+    hasSingleStrikeMoneyness: true,
+  });
+  assert.ok(refreshed);
+  Object.assign(e, refreshed); // exactly what attachContractPlans does to the live setup object
+  assert.equal(e.underlying_price, 192.8); // live-refreshed, as the board actually serves it
+  // condor's OWN basis must not silently follow along — it is still the 188.2 geometry, and
+  // condor_basis_price proves that fact rather than leaving it undisclosed.
+  assert.equal(e.condor_basis_price, 188.2);
+  assert.equal(e.condor_basis_as_of, "2026-10-26T13:30:00Z");
+  assert.notEqual(e.condor_basis_price, e.underlying_price);
+});
+
+test("enrich: condor_basis_as_of is honestly null when price came from the tech fallback (no as-of to report)", () => {
+  // underlying_price absent → price falls back to tech.price (188.2 in fakeDossier), which
+  // carries no as-of stamp of its own — must not borrow setup.underlying_price_as_of (absent
+  // here anyway) or fabricate one.
+  const e = enrichSetup(baseSetup({ underlying_price: null }), fakeDossier());
+  assert.ok(e.condor);
+  assert.equal(e.condor_basis_price, 188.2);
+  assert.equal(e.condor_basis_as_of, null);
+});
+
+test("enrich: condor_basis_price/_as_of are null when condor itself is null", () => {
+  const e = enrichSetup(baseSetup({ underlying_price: null }), null);
+  assert.equal(e.condor, null);
+  assert.equal(e.condor_basis_price, null);
+  assert.equal(e.condor_basis_as_of, null);
 });
 
 // ── contract plans ───────────────────────────────────────────────────────────────
@@ -996,26 +1187,63 @@ test("resolveLedgerEntryPremium: floors the graded basis at the flag-time mark w
 // same instant — plan_stop fired 1.2s after commit at -53%. Both losses were fake: the
 // underlying barely moved in either case (verified against real 1-min Polygon bars), so a
 // hard stop breaching within ~1 second of a fresh commit is a mispriced entry, not real
-// decay. The threshold reuses CHASE_PCT (55) — the SAME magnitude this file already
-// treats as "too extreme to trust" for the opposite (MOVED) direction.
+// decay.
+//
+// Threshold history: originally reused CHASE_PCT (55%, wrong — tuned for gamma-swing chase
+// logic, not achievability), then moved to STOP_TRIGGER_PCT (50%, 2026-09-11 — closed the
+// 50-54.99% dead zone where the mark was already past the play's own hard stop). LOWERED
+// AGAIN to a standalone ACHIEVABILITY_CEILING_PCT=20 (2026-10-19, live finding): a 32-row
+// probe of every real same-day-expiry 0DTE commit over 14 sessions
+// (scripts/audit/zerodte-entry-dislocation-probe.mjs) found 3 commits with dislocation
+// 33.5-37.1% — all below the old 50% trigger, all graded a hard "-50%"-floor stop off the
+// inflated basis — against 29 clean commits all measuring <15% (real bid/ask noise, worst
+// case 14.3%). The 20-point gap between 14.3% and 33.5% is why 20 was chosen rather than
+// guessed. See plan.ts's ACHIEVABILITY_CEILING_PCT comment for the full TSLA counterfactual
+// (ledger entry 3.50 vs real NBBO 2.28/2.30 at the commit instant — the SAME real exit mark
+// that graded -22.57% off the inflated basis would have graded +18.3%, a win, off the real one).
 test("resolveLedgerEntryPremium: caps the graded basis DOWN at the flag-time mark when the mark is FAR BELOW the flow fill (outlier fill, achievability ceiling)", () => {
   // The live QQQ shape: flow fill 3.27, live mark 0.88 (~73% below) — outlier, cap to mark.
   assert.equal(resolveLedgerEntryPremium(3.27, 3.27, 0.88), 0.88);
-  // A comparable outlier shape well past the CHASE_PCT magnitude (5.86 -> 2.0, ~66% below).
+  // A comparable outlier shape well past the threshold (5.86 -> 2.0, ~66% below).
   assert.equal(resolveLedgerEntryPremium(5.86, 5.86, 2.0), 2.0);
   // Ordinary CHEAPER (real front-running): mark modestly below the fill, well inside the
-  // CHASE_PCT band — untouched, matches the existing CHEAPER test above.
+  // band — untouched, matches the existing CHEAPER test above.
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 3.5), 4.0);
-  // Exactly at the CHASE_PCT boundary (45% of the fill remains, i.e. 55% below) — the
-  // ceiling fires (>=), consistent with the existing >= comparison at the MOVED boundary.
-  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.5), 4.5);
-  // Just inside the boundary (45.01% remains, i.e. 54.99% below) — no ceiling.
-  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.501), 10.0);
+  // Exactly at the NEW 20%-ceiling boundary (80% of the fill remains, i.e. 20% below) — the
+  // ceiling fires (>=): this is the real TSLA/SPXW dead-zone shape (33.5-37.1% dislocation,
+  // all graded "stopped" off an unachievable basis) that the old 50%-coupled threshold let
+  // straight through uncorrected.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 8.0), 8.0);
+  // Just inside the NEW boundary (80.01% of the fill remains, i.e. 19.99% below) — no
+  // ceiling; the measured "clean" population (real bid/ask noise) tops out at 14.3%, well
+  // under this boundary, so ordinary front-running stays untouched.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 8.001), 10.0);
+  // The OLD 50%-threshold boundary (50% below) still correctly corrects — lowering the
+  // trigger only ever ADDS coverage, it never loses a case the old threshold already caught.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 5.0), 5.0);
+  // The OLD 55%-threshold boundary (54.99% below) still correctly corrects too — this was
+  // the live dead-zone shape (QQQ 2026-09-09 -51.42%, SPXW 2026-08-12 -52.96%, etc.): a
+  // mark this far below the fill was already an instant, unachievable stop under the old
+  // CHASE_PCT-based threshold, and still gets capped to the achievable mark
+  // (round2(4.501) = 4.5 — the cap rounds like every other premium here).
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.501), 4.5);
   // A malformed non-positive mark never drags the basis down via this path either.
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 0), 4.0);
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, -1), 4.0);
   // No mark supplied → legacy behavior, unaffected.
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0), 4.0);
+});
+
+// The real 2026-10-19 TSLA shape, reproduced mechanically: a 34.6% dislocation (entry 3.50,
+// real mark ~2.29) now corrects under the new ceiling, where it previously passed through
+// unchanged under the old 50%-coupled threshold.
+test("resolveLedgerEntryPremium: the real TSLA 2026-10-19 dislocation (34.6%) now corrects — it did not under the old 50% threshold", () => {
+  const oldThresholdBehavior = (base, mark) => {
+    const pctBelow = ((base - mark) / base) * 100;
+    return pctBelow >= 50 ? mark : base;
+  };
+  assert.equal(oldThresholdBehavior(3.5, 2.29), 3.5); // old threshold: never fired (34.6% < 50%)
+  assert.equal(resolveLedgerEntryPremium(3.5, 3.5, 2.29), 2.29); // new threshold: fires (34.6% >= 20%)
 });
 
 // Fix 3, end-to-end: the achievable-entry floor flips a flattered "doubled" into the honest
@@ -1279,10 +1507,11 @@ test("gates: deep-ITM top strike (stock replacement) is excluded", () => {
 });
 
 test("gates: far-OTM lotto stack is excluded by the RUNNER_SETUP_MAX_OTM_PCT cap at discovery", () => {
-  // A big CALL stack whose strike sits ~24% OTM (235 vs stock 190): clears premium +
+  // A big CALL stack whose strike sits ~31.6% OTM (250 vs stock 190): clears premium +
   // dominance on size alone but is an egregious 0DTE lottery ticket, not a momentum play.
+  // (RUNNER_SETUP_MAX_OTM_PCT = 26 as of 2026-09-08.)
   const rejections: ZeroDteGateRejection[] = [];
-  const lotto = [row({ premium: 3_000_000, option_type: "call", strike: 235, underlying_price: 190 })];
+  const lotto = [row({ premium: 3_000_000, option_type: "call", strike: 250, underlying_price: 190 })];
   const out = deriveZeroDteSetups(lotto, { rejections });
   assert.equal(out.length, 0, "a far-OTM lotto stack must not reach the board");
   assert.equal(rejections.length, 1);
@@ -1293,8 +1522,8 @@ test("gates: far-OTM lotto stack is excluded by the RUNNER_SETUP_MAX_OTM_PCT cap
     `otm_pct ${rejections[0]!.otm_pct} should exceed the discovery cap`
   );
 
-  // 13–20% OTM can reach commit gates (tighter SETUP_MAX_OTM_PCT applies unless Vector runner relax).
-  const runnerZone = [row({ premium: 3_000_000, option_type: "call", strike: 215, underlying_price: 190 })];
+  // ~18% OTM can reach commit gates (tighter SETUP_MAX_OTM_PCT=16 applies unless Vector runner relax).
+  const runnerZone = [row({ premium: 3_000_000, option_type: "call", strike: 225, underlying_price: 190 })];
   const runnerOut = deriveZeroDteSetups(runnerZone);
   assert.equal(runnerOut.length, 1);
   assert.ok(runnerOut[0]!.otm_pct! > SETUP_MAX_OTM_PCT);
@@ -1361,13 +1590,13 @@ test("rejections: omitted opts.rejections — deriveZeroDteSetups behaves identi
   // Every OTHER test in this file calls deriveZeroDteSetups without opts.rejections
   // at all and already proves the return value is unaffected; this test just makes
   // the "no rejections array supplied" no-op explicit for a rejecting candidate.
-  const rows = [row({ ticker: "TINY", premium: 150_000 })];
+  const rows = [row({ ticker: "TINY", premium: 100_000 })];
   assert.equal(deriveZeroDteSetups(rows).length, 0);
 });
 
 test("rejections: gross-premium gate failure — only gross_premium/prints known, everything gate-B-onward is null", () => {
   const rejections: ZeroDteGateRejection[] = [];
-  const rows = [row({ ticker: "TINY", premium: 150_000, alerted_at: "2026-07-06T14:00:00Z" })];
+  const rows = [row({ ticker: "TINY", premium: 100_000, alerted_at: "2026-07-06T14:00:00Z" })];
   const out = deriveZeroDteSetups(rows, { rejections });
 
   assert.equal(out.length, 0, "TINY must not appear in setups");
@@ -1376,7 +1605,7 @@ test("rejections: gross-premium gate failure — only gross_premium/prints known
   assert.equal(r.ticker, "TINY");
   assert.equal(r.gate_failed, "min_gross");
   assert.equal(r.threshold, SETUP_MIN_GROSS);
-  assert.equal(r.gross_premium, 150_000);
+  assert.equal(r.gross_premium, 100_000);
   assert.equal(r.prints, 1);
   // The scan never reaches the aggression/dominance/otm gates for this candidate —
   // the real code never computes these values either, so they must be null, not 0
@@ -1469,7 +1698,7 @@ test("rejections: a mixed batch only logs the ticker that actually failed a gate
     row({ ticker: "NVDA", premium: 900_000, strike: 190 }),
     row({ ticker: "NVDA", premium: 700_000, strike: 190, alert_rule: "SweepsFollowedByFloor" }),
     // TINY fails the gross-premium floor.
-    row({ ticker: "TINY", premium: 150_000 }),
+    row({ ticker: "TINY", premium: 100_000 }),
   ];
   const out = deriveZeroDteSetups(rows, { rejections });
 
@@ -1832,7 +2061,27 @@ test("summarizeDiscoveryRailMix counts per-rail presence and multi-rail rows", (
     { discovery_origin: ["PIN"] },
     { discovery_origin: ["BREAKOUT"] },
   ] as EnrichedZeroDteSetup[]);
-  assert.deepEqual(mix, { FLOW: 2, BREAKOUT: 2, PIN: 1, multi: 1, total: 4 });
+  assert.deepEqual(mix, { FLOW: 2, BREAKOUT: 2, PIN: 1, MOMENTUM: 0, multi: 1, total: 4 });
+});
+
+test("summarizeDiscoveryRailMix counts a MOMENTUM-origin setup", () => {
+  const mix = summarizeDiscoveryRailMix([
+    { discovery_origin: ["FLOW"] },
+    { discovery_origin: ["MOMENTUM"] },
+  ] as EnrichedZeroDteSetup[]);
+  assert.deepEqual(mix, { FLOW: 1, BREAKOUT: 0, PIN: 0, MOMENTUM: 1, multi: 0, total: 2 });
+});
+
+test("unionDiscoveryOrigins: MOMENTUM survives a union with another origin, never silently dropped", () => {
+  assert.deepEqual(unionDiscoveryOrigins(["FLOW"], ["MOMENTUM"]), ["FLOW", "MOMENTUM"]);
+  assert.deepEqual(unionDiscoveryOrigins(["MOMENTUM"], ["MOMENTUM"]), ["MOMENTUM"]);
+  assert.deepEqual(unionDiscoveryOrigins(["BREAKOUT", "PIN"], ["MOMENTUM"]), ["BREAKOUT", "PIN", "MOMENTUM"]);
+});
+
+test("discoveryOriginLabel: a pure-MOMENTUM origin set labels as \"MOMENTUM\", never \"no_origin\"", () => {
+  assert.equal(discoveryOriginLabel(["MOMENTUM"]), "MOMENTUM");
+  assert.equal(discoveryOriginLabel(["FLOW", "MOMENTUM"]), "FLOW+MOMENTUM");
+  assert.equal(discoveryOriginLabel([]), "no_origin");
 });
 
 test("mergeSameTickerDiscovery: same-dir FLOW + CONDOR keeps CONDOR structure (never drops condor_plan)", () => {
@@ -1900,6 +2149,92 @@ test("mergeSameTickerDiscovery: opposing-dir score tie prefers CONDOR structure"
   assert.ok(winner.origin_direction_conflict);
 });
 
+test("mergeSameTickerDiscovery: opposing-dir fight where INCOMING wins must preserve the losing kept FLOW origin's real gross_premium/flow_quality (2026-10-16 evidence-drop)", () => {
+  // Reproduces the live GOOGL 2026-10-01 shape: FLOW discovers long at score 49 with real
+  // premium; BREAKOUT discovers short at score 50 and wins the direction fight. Before the fix,
+  // `mergeSameTickerDiscovery`'s opposing-direction branch only ever called
+  // `stampFlowEvidenceFromIncoming` on the SAME-direction paths — the fight branch dropped the
+  // losing FLOW origin's own gross_premium/flow_quality entirely, because the final object here
+  // is `incoming` (BREAKOUT), which carries gross_premium=0 by construction. That zeroed premium
+  // then trips `scoreFlowRail`'s own suppression gate downstream (< $200k AND quality < 50 →
+  // null), so the real disagreement never reaches `disagreeing_rails` even though
+  // `origin_contributions`/`buildOriginMaps` correctly recorded the conflict.
+  const flow = {
+    ticker: "GOOGL",
+    direction: "long",
+    discovery_origin: ["FLOW"],
+    score: 49,
+    play_type: "DIRECTIONAL",
+    gross_premium: 620_000,
+    prints: 4,
+    sweep_pct: 0.6,
+    side_dominance: 0.7,
+    aggression: 0.55,
+    flow_quality: { score: 54, reason: "building call tape" },
+    new_money: true,
+    spike: false,
+    recent_premium_30m: 200_000,
+    net_premium: 600_000,
+    first_seen: "2026-10-01T13:35:00Z",
+    last_seen: "2026-10-01T13:50:00Z",
+  } as unknown as EnrichedZeroDteSetup;
+  const breakout = {
+    ticker: "GOOGL",
+    direction: "short",
+    discovery_origin: ["BREAKOUT"],
+    score: 50,
+    play_type: "DIRECTIONAL",
+    gross_premium: 0, // breakouts carry no flow evidence by construction (board.ts's own comment)
+  } as unknown as EnrichedZeroDteSetup;
+
+  const merged = mergeSameTickerDiscovery(flow, breakout);
+  assert.equal(merged.direction, "short", "BREAKOUT's higher score wins the direction fight");
+  assert.ok(
+    merged.discovery_origin.includes("FLOW"),
+    "the losing FLOW origin is still unioned onto discovery_origin"
+  );
+  assert.equal(
+    merged.gross_premium,
+    620_000,
+    "the losing FLOW origin's real gross_premium must survive the fight, not be zeroed out by the winning BREAKOUT setup"
+  );
+  assert.ok(merged.flow_quality, "the losing FLOW origin's flow_quality must also survive the fight");
+  assert.equal((merged.flow_quality as { score: number }).score, 54);
+});
+
+test("mergeSameTickerDiscovery: opposing-dir fight where KEPT wins must preserve the losing incoming FLOW origin's real gross_premium/flow_quality (2026-10-16 evidence-drop)", () => {
+  // Mirror case: this time the non-FLOW origin (PIN) is seated first (kept) and wins the fight on
+  // a higher score, while the incoming FLOW origin loses. Pre-fix, the "kept wins" branch only
+  // calls `noteOriginDirectionConflict` — it never pulls the losing incoming FLOW's own evidence
+  // onto `kept`, so `kept.gross_premium` stays at whatever PIN's setup carried (0 by construction).
+  const pin = {
+    ticker: "AMD",
+    direction: "short",
+    discovery_origin: ["PIN"],
+    score: 55,
+    play_type: "DIRECTIONAL",
+    gross_premium: 0,
+  } as unknown as EnrichedZeroDteSetup;
+  const flow = {
+    ticker: "AMD",
+    direction: "long",
+    discovery_origin: ["FLOW"],
+    score: 50,
+    play_type: "DIRECTIONAL",
+    gross_premium: 540_000,
+    flow_quality: { score: 51, reason: "call sweep cluster" },
+  } as unknown as EnrichedZeroDteSetup;
+
+  const merged = mergeSameTickerDiscovery(pin, flow);
+  assert.equal(merged.direction, "short", "PIN's higher score wins the direction fight (kept retained)");
+  assert.ok(merged.discovery_origin.includes("FLOW"));
+  assert.equal(
+    merged.gross_premium,
+    540_000,
+    "the losing incoming FLOW origin's real gross_premium must survive onto the kept PIN setup"
+  );
+  assert.ok(merged.flow_quality, "the losing incoming FLOW origin's flow_quality must also survive");
+});
 
 test("setups (9-1): a tape with NO aggressor metadata (all ask_pct missing) is rejected, not committed on the 0.5 default", () => {
   // Every print lacks ask_pct → each gets the neutral 0.5 weight → aggression share ≈ 0.5 clears the

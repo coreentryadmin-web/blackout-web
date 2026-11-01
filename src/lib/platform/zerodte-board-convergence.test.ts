@@ -103,6 +103,23 @@ mock.module("../../features/nighthawk/lib/session", {
     nextTradingDayEt: () => "2026-07-08",
   },
 });
+// getZeroDteBoardPayload()'s off-hours branch calls isEtExtendedWarmHours() with NO `now`
+// argument, so it defaults to the REAL `new Date()` — the session mock above (fixed at a
+// simulated 11:30 ET) never reaches it. Left unmocked, this file's assertions pass or fail
+// depending on the REAL wall-clock time the suite happens to run at: outside the real
+// 4:00 AM-8:00 PM ET window, getZeroDteBoardPayload() serves the remembered
+// `lastGoodBoardLocal` instead of cold-building, so a second call within the SAME test (e.g.
+// "liveness: ... ADVANCES across cycles", after `sharedState.store.clear()` simulates a
+// shared-snapshot expiry) wrongly returns the FIRST call's board instead of rebuilding.
+// Mocked true so every test in this file exercises the warm-hours (cold-build) path regardless
+// of when it actually runs — the same hermeticity this file's own header claims.
+// isEtCashRth is mocked too (also true) since replacing a module's named exports drops any NOT
+// listed here to undefined — live-marks.ts's background mark refresh (reached via async
+// activity this file's board builds kick off) calls isEtCashRth() and would otherwise throw
+// "is not a function" after the triggering test has already ended.
+mock.module("../et-market-hours", {
+  namedExports: { isEtExtendedWarmHours: () => true, isEtCashRth: () => true },
+});
 
 async function waitFor(pred: () => boolean, ms = 1_000): Promise<void> {
   const deadline = Date.now() + ms;
@@ -200,6 +217,11 @@ test("never-block: cold miss past maxBlockMs returns minimal fallback immediatel
   process.env.ZERODTE_BOARD_MAX_BLOCK_MS = "500";
   sharedState.slowScanMs = 1_200;
 
+  const warnCalls: unknown[][] = [];
+  const restore = mock.method(console, "warn", (...args: unknown[]) => {
+    warnCalls.push(args);
+  });
+
   try {
     const { getZeroDteBoardPayload } = await import("./zerodte-service");
     const t0 = Date.now();
@@ -211,7 +233,15 @@ test("never-block: cold miss past maxBlockMs returns minimal fallback immediatel
     assert.equal(board.upstream_ok, false, "minimal fallback while cold build still running");
     assert.deepEqual(board.setups, []);
     assert.equal(board.session.heat.state, "RTH", "minimal fallback uses live ET clock, not a hardcoded noon");
+
+    // 2026-10-02: this fallback fired live in production with ZERO matching CloudWatch Logs
+    // lines — the other upstream_ok:false route (readZeroDteLedgerChecked) had just been fixed
+    // to log its error, which made the silence on THIS route conspicuous. Asserts it now logs.
+    const fallbackWarn = warnCalls.find((args) => String(args[0]).includes("[zerodte-board-fallback]"));
+    assert.ok(fallbackWarn, "the minimal-fallback path must log when it fires, not fail silently");
+    assert.match(String(fallbackWarn![0]), /maxBlockMs=500ms/);
   } finally {
+    restore.mock.restore();
     sharedState.slowScanMs = 0;
     if (prev === undefined) delete process.env.ZERODTE_BOARD_MAX_BLOCK_MS;
     else process.env.ZERODTE_BOARD_MAX_BLOCK_MS = prev;
@@ -316,4 +346,46 @@ test("stale local fallback: the per-replica last-good board is bounded by age, n
   // An undateable board can't be shown to be current, so it is not servable as one.
   assert.equal(localBoardIsServable(null, now), false);
   assert.equal(localBoardIsServable("not-a-date", now), false);
+});
+
+// BUG FIXED 2026-10-08: the shared Redis snapshot's "soft-stale, serve anyway" branch
+// (getZeroDteBoardPayload's second `if`) used to be unreachable — its ceiling equaled BOTH
+// the "fully fresh" ceiling above it AND the Redis TTL the snapshot was published with, so by
+// the instant a snapshot's age would have qualified for "stale but servable", the key had ALSO
+// just expired out of Redis and `readSharedBoardSnapshot()` returned null. Every read of a
+// snapshot older than 10 minutes therefore fell straight through to the cold-build-and-block
+// path, which under real load (board builds measured live at 20-45s) routinely blocks past
+// `maxBlockMs` (default 3s) and serves the synthetic `upstream_ok:false` empty fallback —
+// confirmed live 2026-10-08: 11 "cold build still running past maxBlockMs" log lines in one
+// 30-minute RTH CloudWatch window while the real discovery pipeline was finding 180-200+ real
+// setups every cycle in the same window. This proves the fix restores the two-tier design the
+// code's own comments already described: fresh (<=10m) served instantly; stale-but-present
+// (10m-20m, now genuinely reachable because the Redis TTL was widened to outlive it) served
+// immediately too, just with a background rebuild kicked rather than blocking on one.
+test("stale-while-revalidate: a shared snapshot older than the fresh ceiling but still within the (now-widened) Redis TTL is served as-is, not replaced by the empty upstream_ok:false fallback", async () => {
+  const { getZeroDteBoardPayload } = await import("./zerodte-service");
+  const key = "zerodte:board:snapshot:v1";
+
+  const twelveMinAgo = Date.now() - 12 * 60_000; // past the 10m "fresh" ceiling...
+  const asOf = new Date(twelveMinAgo).toISOString();
+  const staleBoard = {
+    available: true,
+    as_of: asOf,
+    upstream_ok: true,
+    setups: [{ ticker: "STALE" }],
+    discovery_health: { BREAKOUT: { status: "ok", setups: 1 }, PIN: { status: "ok", setups: 0 } },
+  };
+  // ...but published with the PRODUCTION Redis TTL (1200s from its own as_of), so it is still
+  // present in the store right now — exactly the window the dead branch was supposed to cover.
+  sharedState.store.set(key, { value: JSON.stringify(staleBoard), expiresAt: twelveMinAgo + 1_200_000 });
+
+  const served = await getZeroDteBoardPayload();
+
+  assert.equal(served.upstream_ok, true, "the real stale board's own upstream_ok must be served, not the fail-closed fallback's `false`");
+  assert.deepEqual(served.setups, [{ ticker: "STALE" }], "the real stale board's own setups must be served — an empty [] means the dead branch swallowed it and fell to the synthetic fallback instead");
+
+  // The stale-serve branch kicks an UNLOCKED cold rebuild (kickColdBoardBuild) rather than
+  // just serving the old copy forever — confirm that actually fired.
+  await waitFor(() => sharedState.scanCalls >= 1, 1_000);
+  assert.equal(sharedState.scanCalls >= 1, true, "serving the stale snapshot must still kick a background rebuild so the cycle advances");
 });

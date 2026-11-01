@@ -2,12 +2,12 @@ import { CRON_JOBS, type CronJobDefinition } from "@/lib/cron-registry";
 import {
   dbConfigured,
   fetchCronJobLastRuns,
-  fetchCronJobRecentRuns,
   fetchCronJobRunCount,
+  fetchCronJobRunsLast24h,
   fetchLatestNighthawkJob,
   type CronJobRunRow,
 } from "@/lib/db";
-import { loadPlayEngineHeartbeat } from "@/lib/play-engine-heartbeat";
+import { loadPlayEngineHeartbeat, loadZeroDteScanHeartbeat } from "@/lib/play-engine-heartbeat";
 import {
   formatEtDate,
   isTradingDayEt,
@@ -22,6 +22,36 @@ import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
+import { sharedCacheGet, sharedCacheGetWithTtl } from "@/lib/shared-cache";
+import {
+  SWING_DISCOVERY_SCAN_MAX_MS,
+  SWING_FORCE_CLEAR_RUNNING_BUFFER_MS,
+  type SwingDiscoveryPhaseClaim,
+} from "@/lib/swing/discovery-claim";
+import { phaseRunKey } from "@/lib/swing/scan-cadence";
+import type { SwingDiscoveryPhase } from "@/lib/swing/discovery";
+import { todayEt } from "@/lib/et-date";
+
+const SWING_DISCOVERY_PHASES: readonly SwingDiscoveryPhase[] = [
+  "POST_CLOSE",
+  "PRE_OPEN",
+  "MIDDAY",
+  "POWER_HOUR",
+  "OVERNIGHT",
+];
+
+async function isSwingDiscoveryScanInFlight(now = new Date()): Promise<boolean> {
+  const sessionDay = todayEt(now);
+  const nowMs = now.getTime();
+  for (const phase of SWING_DISCOVERY_PHASES) {
+    const key = phaseRunKey(sessionDay, phase);
+    const entry = await sharedCacheGetWithTtl<SwingDiscoveryPhaseClaim>(key).catch(() => null);
+    if (!entry?.value || entry.value.status !== "running" || entry.remainingTtlSec <= 0) continue;
+    const ageMs = nowMs - (Number.isFinite(entry.value.at) ? entry.value.at : 0);
+    if (ageMs < SWING_DISCOVERY_SCAN_MAX_MS + SWING_FORCE_CLEAR_RUNNING_BUFFER_MS) return true;
+  }
+  return false;
+}
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
@@ -326,7 +356,7 @@ export function evaluateJob(
 
 export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   let lastRuns: Awaited<ReturnType<typeof fetchCronJobLastRuns>> = [];
-  let recentRuns: Awaited<ReturnType<typeof fetchCronJobRecentRuns>> = [];
+  let recentRuns: Awaited<ReturnType<typeof fetchCronJobRunsLast24h>> = [];
   let latestNhJob: Awaited<ReturnType<typeof fetchLatestNighthawkJob>> = null;
   let dbSnapshotError: string | null = null;
 
@@ -334,7 +364,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     try {
       [lastRuns, recentRuns, latestNhJob] = await Promise.all([
         fetchCronJobLastRuns(),
-        fetchCronJobRecentRuns(48),
+        fetchCronJobRunsLast24h(),
         fetchLatestNighthawkJob(),
       ]);
     } catch (error) {
@@ -344,18 +374,77 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   }
 
   const lastByKey = Object.fromEntries(lastRuns.map((r) => [r.job_key, r]));
-  const since24h = Date.now() - 24 * 60 * 60_000;
+  // `fetchCronJobRunsLast24h` already bounds by time, per job — no further filtering needed here.
   const runs24hByKey = new Map<string, CronJobRunRow[]>();
   for (const r of recentRuns) {
-    if (new Date(r.started_at).getTime() < since24h) continue;
     const list = runs24hByKey.get(r.job_key) ?? [];
     list.push(r);
     runs24hByKey.set(r.job_key, list);
   }
 
   const playHb = await loadPlayEngineHeartbeat();
+  const zeroDteScanHb = await loadZeroDteScanHeartbeat();
+  // Must match OVERLAP_LOCK_KEY in src/app/api/cron/zerodte-warm/route.ts — held for the whole
+  // background scan+snapshot chain. Heartbeat ticks only after scanZeroDteBoard() returns, so a
+  // legitimately long in-flight scan can exceed the 10m critical_stale window without being a stall.
+  const zerodteWarmInFlight = Boolean(
+    await sharedCacheGet("zerodte-warm:running").catch(() => null)
+  );
+  const swingDiscoveryInFlight = await isSwingDiscoveryScanInFlight();
   const jobs = CRON_JOBS.map((job) => {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
+
+    // zerodte-warm's cron_job_runs handshake (logCronRun) fires on the route's FAST
+    // synchronous path — auth + cooldown/lock gate + the cheap earnings-cache warm — before
+    // the heavy scanner+persist chain (warmZeroDteBoard -> scanZeroDteBoard ->
+    // persistZeroDteScan -> discovery-events) is even dispatched in the background. So the
+    // handshake reads "on schedule" even when that background chain silently stalls for
+    // tens of minutes: measured live 2026-09-16, a ~35min gap in zerodte_discovery_events
+    // writes (confirmed via CloudWatch: only 2 "[cron/zerodte-warm] background done"
+    // completions logged across a 46-minute span against many fast "accepted" handshakes in
+    // between) produced ZERO cron_job_runs staleness — the exact blind spot
+    // recordZeroDteScanTick("cron") (scan.ts) was built to catch, but its heartbeat was never
+    // read anywhere until now. Unlike spx-evaluate below, this does NOT gate on the
+    // cron_job_runs handshake ALSO looking stale first (`cronStale`) — that signal is the
+    // known-unreliable one here, so the scan heartbeat's own staleness is authoritative
+    // in-window.
+    if (job.key === "zerodte-warm" && zeroDteScanHb.last_tick_at) {
+      const hbAgeMin = zeroDteScanHb.age_ms != null ? Math.round(zeroDteScanHb.age_ms / 60_000) : null;
+      const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+      if (!offWindow && hbAgeMin != null && (zeroDteScanHb.stale || zeroDteScanHb.critical_stale)) {
+        const IN_FLIGHT_GRACE_MIN = 18;
+        if (
+          zerodteWarmInFlight &&
+          zeroDteScanHb.critical_stale &&
+          hbAgeMin < IN_FLIGHT_GRACE_MIN
+        ) {
+          return {
+            ...health,
+            status: "warning" as const,
+            market_hours_stale: false,
+            status_label: `Scanner in flight · last scan tick ${hbAgeMin}m ago (overlap lock held)`,
+            meta: {
+              ...(health.meta ?? {}),
+              zerodte_scan_heartbeat: zeroDteScanHb,
+              zerodte_warm_in_flight: true,
+            },
+          };
+        }
+        const overrideStatus = zeroDteScanHb.critical_stale ? ("stale" as const) : ("warning" as const);
+        return {
+          ...health,
+          status: overrideStatus,
+          market_hours_stale: overrideStatus === "stale",
+          status_label: zeroDteScanHb.critical_stale
+            ? `Scanner stale · last scan tick ${hbAgeMin}m ago (discovery/commit path stalled)`
+            : `Scanner slow · last scan tick ${hbAgeMin}m ago (heartbeat warning)`,
+          meta: {
+            ...(health.meta ?? {}),
+            zerodte_scan_heartbeat: zeroDteScanHb,
+          },
+        };
+      }
+    }
 
     if (job.key === "spx-evaluate" && playHb.last_tick_at) {
       const hbAgeMin = playHb.age_ms != null ? Math.round(playHb.age_ms / 60_000) : null;
@@ -383,6 +472,21 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
           },
         };
       }
+    }
+
+    if (
+      job.key === "swing-discovery" &&
+      swingDiscoveryInFlight &&
+      (health.status === "failed" || health.status === "stale")
+    ) {
+      return {
+        ...health,
+        status: "warning" as const,
+        market_hours_stale: false,
+        status_label:
+          "Phase scan in flight (running claim held) — prior cron handshake not authoritative",
+        meta: { ...(health.meta ?? {}), swing_discovery_in_flight: true },
+      };
     }
 
     if (job.key === "nighthawk-playbook" && latestNhJob) {
@@ -479,10 +583,15 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     "uw-cache-refresh",
     "vector-bead-record",
     "vector-walls-warm",
+    "swing-discovery",
   ]);
   await Promise.all(
     jobs.map(async (health, index) => {
-      if (!health.market_hours_stale && health.status !== "stale") return;
+      const handshakeProblem =
+        health.market_hours_stale ||
+        health.status === "stale" ||
+        (health.key === "swing-discovery" && health.status === "failed");
+      if (!handshakeProblem) return;
       if (!TARGET_FRESH_OVERRIDE_KEYS.has(health.key)) return;
       const { probeWriterTargetFresh } = await import("@/lib/cron-writer-target-fresh");
       const probe = await probeWriterTargetFresh(health.key);

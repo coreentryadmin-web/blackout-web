@@ -63,6 +63,7 @@ import type { SwingPillarSignals } from "./swing-pillars";
 import { buildSwingFeatureVector } from "./feature-vector";
 import {
   evaluateSwingCommitBudget,
+  budgetVerdictStamp,
   DEFAULT_PORTFOLIO_BUDGET,
   type PortfolioBudget,
   type BudgetPosition,
@@ -79,6 +80,14 @@ import type { SwingDiscoveryPath } from "./discovery";
 import { blockedByFromSwingGates, failingSwingCommitGates } from "./v2/gates";
 import { cortexEntryContextFor } from "@/lib/zerodte/cortex-gate";
 import type { ZeroDteCortexAssessment } from "@/lib/zerodte/cortex-gate";
+// `LaneRankAtCommit`/`parseLaneRankAtCommit` live in their own zero-dependency module (not inlined
+// here) so a consumer that only needs the stamp's shape — `adapters.ts`, shared into a client
+// component — never has to pull in this file's server-only import graph (cortex-gate.ts and
+// everything downstream of it). Re-exported here so this module stays the one place that imports
+// both halves (the pure helper below and the parser), and so `commit.test.ts`'s existing import
+// keeps working unchanged.
+export { parseLaneRankAtCommit, type LaneRankAtCommit } from "./lane-rank-at-commit";
+import type { LaneRankAtCommit } from "./lane-rank-at-commit";
 
 /** Shares per option contract — the standard US equity-option multiplier. */
 export const OPTION_CONTRACT_MULTIPLIER = 100;
@@ -250,6 +259,27 @@ export interface SwingCommitPlan {
 
 const isFin = (x: number | null | undefined): x is number => x != null && Number.isFinite(x);
 
+/**
+ * Pin the real bid/ask/spread at commit time, alongside `entry_premium` (which is always the raw
+ * mid — see grade.ts's own header comment, dated FINDINGS 2026-07-30, for why that is a disclosed,
+ * intentional simplification and not a bug). `entry_premium` alone cannot tell a later audit how
+ * FAR a realistic fill (near the ask, on a long) would have sat from that mid — on a wide-spread
+ * name the two can differ enormously (e.g. a book snapshot 2026-09-10: bid 0.25 / ask 1.95 / mid
+ * 1.10, a spread wider than the mid itself). Without this, that question is unanswerable after the
+ * fact because bid/ask are never stored anywhere past the commit tick, only re-derivable if you
+ * happened to be polling at that exact moment. Purely additive to `entry_context` — nothing reads
+ * or writes over it, same idiom as `entry_context.exit`/`entry_context.executable` elsewhere.
+ */
+function fillQualityAtCommit(c: ChainContract): Record<string, unknown> | null {
+  if (!isFin(c.bid) || !isFin(c.ask) || !isFin(c.mid) || c.mid <= 0) return null;
+  return {
+    entry_bid: c.bid,
+    entry_ask: c.ask,
+    entry_mid: c.mid,
+    entry_spread_fraction: (c.ask - c.bid) / c.mid,
+  };
+}
+
 /** Stable idempotency key: one per (session, name, archetype, sub-lane, side). Matches ledger commit_key (Q20). */
 export function swingCommitKey(
   sessionDate: string,
@@ -274,6 +304,29 @@ export function swingRollCommitKey(
   archetype: SwingArchetype | string | null | undefined = null,
 ): string {
   return `${swingCommitKey(sessionDate, ticker, subLane, dir, archetype)}:r${Math.max(1, Math.floor(rollSeq))}`;
+}
+
+/** Pure: rank/median stats for `cand` within `ordered` (the SAME score-desc, ticker-tie-break list
+ *  computeSwingCommitPlan already built). Null when the batch has fewer than 2 candidates — ranking
+ *  a lone candidate against itself would be a fabricated "#1 of 1", not a real comparison. */
+function laneRankAtCommitFor(cand: SwingCommitCandidate, ordered: SwingCommitCandidate[]): LaneRankAtCommit | null {
+  if (ordered.length < 2) return null;
+  const idx = ordered.findIndex((c) => c === cand);
+  if (idx < 0) return null; // should not happen — cand is always drawn from ordered
+  const scores = ordered.map((c) => c.score);
+  const n = scores.length;
+  const rawMedian =
+    n % 2 === 1
+      ? (scores[Math.floor(n / 2)] ?? cand.score)
+      : ((scores[n / 2 - 1] ?? cand.score) + (scores[n / 2] ?? cand.score)) / 2;
+  const medianScore = Math.round(rawMedian * 10) / 10;
+  return {
+    rank: idx + 1,
+    total: n,
+    score: cand.score,
+    medianScore,
+    deltaFromMedian: Math.round((cand.score - medianScore) * 10) / 10,
+  };
 }
 
 /**
@@ -337,6 +390,9 @@ export function computeSwingCommitPlan(args: {
     const grad = isCommitGraduated(report, cand.archetype, gradeSubLane);
     const blockedBy: string[] = [];
     const riskUsd = modelRiskUsd(cand.contract?.mid ?? null);
+    // Observability-only (Largo C10) — this candidate's standing among the SAME-SCAN WATCH batch,
+    // frozen at the exact moment of this decision. Computed from `ordered`, never gates anything.
+    const laneRankAtCommit = laneRankAtCommitFor(cand, ordered);
 
     // GRADUATION is evidence-only (see the file header) — pinned for observability, never gates the open.
     // commitEligibleCount keeps its original meaning (the count that has cleared the calibration ladder) as
@@ -467,7 +523,7 @@ export function computeSwingCommitPlan(args: {
     const committable = blockedBy.length === 0 && cand.contract != null && dirLc != null && subLane != null && isFin(riskUsd);
     let insert: SwingPositionInsert | undefined;
     if (committable && cand.contract && dirLc && subLane) {
-      insert = buildCommitInsert(cand, subLane, dirLc, commitKey, riskUsd as number, grad, budget, budgetVerdict);
+      insert = buildCommitInsert(cand, subLane, dirLc, commitKey, riskUsd as number, grad, budget, budgetVerdict, laneRankAtCommit);
       committableCount += 1;
       openThesis.add(thesisKey);
       runningBook.push({
@@ -514,6 +570,7 @@ function buildCommitInsert(
   grad: { graduated: boolean; reason: string },
   budget: PortfolioBudget,
   budgetVerdict: SwingCommitBudgetVerdict | undefined,
+  laneRankAtCommit: LaneRankAtCommit | null,
 ): SwingPositionInsert {
   const c = cand.contract!;
   return {
@@ -549,6 +606,7 @@ function buildCommitInsert(
       contract_multiplier: OPTION_CONTRACT_MULTIPLIER,
       is_event: isEventArchetype(cand.archetype),
       is_overnight: true,
+      fill_quality: fillQualityAtCommit(c),
       budget: {
         capitalUsd: budget.capitalUsd,
         maxPortfolioLossPct: budget.maxPortfolioLossPct,
@@ -557,8 +615,26 @@ function buildCommitInsert(
         overnightCap: budget.overnightCap,
         enforce: budget.enforce,
       },
-      budget_verdict: budgetVerdict ? { blocked: budgetVerdict.blocked, blockedDimensions: budgetVerdict.blockedDimensions } : null,
+      // Ask Largo standing mandate, 2026-10-26 (#4076 comment 6410025245): this used to stamp only
+      // {blocked, blockedDimensions} — `budgetVerdictStamp` additionally persists the per-position/
+      // portfolio limits + candidateRiskUsd/portfolioObservedUsd already computed one call above,
+      // so the brief can finally cite real "X% of the reference cap" numbers (`bookRiskLine`)
+      // instead of the data being computed and discarded. No new computation, no sizing change.
+      budget_verdict: budgetVerdict ? budgetVerdictStamp(budgetVerdict) : null,
       cortex: cortexEntryContextFor(cand.cortexAssessment ?? null),
+      // Pin the SAME discovery-provenance kinds already computed for the G-S6 confluence gate
+      // (`discoveryPathsForConfluence`, assembled onto `cand.discoveryPaths` in discovery.ts) so
+      // computeSwingThesisHealth's `flow_corroboration` pillar can read it after commit — before
+      // this, the value existed at commit time (used to DECIDE whether to commit) but was thrown
+      // away, so `thesisHealthUncalibrated` treated every committed position as forever unknown on
+      // this pillar. Reusing the gate's own already-graduated value rather than recomputing keeps
+      // this consistent with what actually cleared G-S6, not a fresh re-derivation.
+      signal_kinds: cand.discoveryPaths ?? null,
+      // Largo C10 (Ask Largo standing mandate) — this candidate's rank among the SAME-SCAN
+      // WATCH-candidate batch, frozen at the exact moment of commit (see `LaneRankAtCommit`'s own
+      // doc comment for why this is distinct from the live, OPEN/WATCH-only lane rank). Null when
+      // the batch had fewer than 2 candidates — never a fabricated "#1 of 1".
+      lane_rank_at_commit: laneRankAtCommit,
     },
     gate_calibration_json: {
       methodology: "swing.commit.graduation.v1",
@@ -630,6 +706,7 @@ function buildShadowInsert(
       contract_multiplier: OPTION_CONTRACT_MULTIPLIER,
       is_event: isEventArchetype(cand.archetype),
       is_overnight: true,
+      fill_quality: fillQualityAtCommit(c),
       blocked_by: blockedBy,
     },
     gate_calibration_json: {

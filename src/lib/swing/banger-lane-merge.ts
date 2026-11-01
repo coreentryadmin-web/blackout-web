@@ -22,9 +22,28 @@ import { calendarDte } from "../horizon-fanout";
 import { HORIZONS } from "../horizons";
 import { subLaneForDte } from "./taxonomy";
 import type { BangerMover } from "../banger/discovery";
+import type { ScaleOutAction } from "../zerodte/scale-out";
+
+/** The real, current `ScaleOutAction` values `deriveScaleOutAction` ever persists onto
+ *  `row.scale_out_action` (banger-live-sync.ts) — used to validate the raw DB string below rather
+ *  than trusting it blindly (the column is typed `string | null` in positions-db.ts, not the enum
+ *  itself, since it round-trips through Postgres). */
+const REAL_SCALE_OUT_ACTIONS = new Set<ScaleOutAction>(["HOLD", "TAKE_PARTIAL", "EXIT_RUNNER", "STOP_OUT"]);
 
 const BANGER_SIGNAL = "BANGER";
 const LIVE_BANGER = new Set(["OPEN", "PARTIAL"]);
+
+/**
+ * Fixed `regime` sentinel stamped on EVERY banger_positions ledger row (see the two literal call
+ * sites below) — there is no real per-position 7-pillar dossier for this lane, so this string marks
+ * "no calibrated regime read exists for this play" rather than a real market-regime fact.
+ * `thesis-health.ts`'s `thesisHealthUncalibrated()` matches on this EXACT string to correctly OMIT
+ * (never fabricate) an aggregate thesis-health score for a banger-origin position — see its own doc
+ * comment. Exported (not a private literal duplicated in two files) so every reader of this sentinel
+ * shares one definition instead of independently re-typing the string, which is exactly what let it
+ * drift undetected in the first place (see `serving-lane.ts`'s `attachThesisExplanation` guard).
+ */
+export const BANGER_LEDGER_REGIME_LABEL = "BREAKOUT · BANGER";
 
 function etYmd(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
@@ -44,24 +63,109 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
   // continuity for an already-open position, not a new discovery admission.
   if (!Number.isFinite(dte) || dte < 0 || dte > HORIZONS.SWING.dteMax) return null;
   const closingSoon = dte < HORIZONS.SWING.dteMin;
+  // FIX (found live 2026-10-09, Ask Largo standing mandate): subLane must be derived from the
+  // DTE AT ENTRY (`row.session_date`, first-write-wins pinned — see this module's own accessor
+  // header), never from today's live `dte`. `banger_positions` has no persisted `sub_lane` column
+  // (unlike `swing_positions.sub_lane`, which `live-plays.ts` reads as-stored and never
+  // recomputes), so this used to call `subLaneForDte(dte)` with the LIVE dte every tick — which
+  // silently reclassifies an aging position (STANDARD -> TACTICAL as dte crosses 7) and then
+  // DROPS the classification entirely (`undefined`) once dte falls under TACTICAL's own 5-day
+  // floor, exactly the "closing soon" window the header comment above says must stay visible.
+  // Reproduced live 2026-10-09: every BANGER-origin dte=0 "closing soon" row on prod
+  // (XP/PBR/CIEN/SG/PSX/PSKY) served `subLane: undefined`. This isn't cosmetic:
+  // `play-brief.ts` looks up `SWING_SUB_LANES[play.subLane]?.liquidity.maxSpreadPct` to compare
+  // the CURRENT spread against the entry-time liquidity bar the contract was picked under — once
+  // subLane goes undefined that comparison silently disappears from the brief, precisely on the
+  // final-day positions where spread-vs-liquidity scrutiny matters most. Falls back to the live
+  // `dte` only if `session_date` is somehow unparseable, so a malformed row still gets a best-effort
+  // read rather than silently losing subLane altogether.
+  const entryDte = calendarDte(row.session_date, row.contract_expiry);
+  const subLaneDte = Number.isFinite(entryDte) ? entryDte : dte;
 
   const entry = row.entry_premium;
   const mark = row.last_mark;
-  const mid = mark ?? entry;
+  // BUG (found live 2026-10-08, Ask Largo standing mandate): this used to be `mark ?? entry` — the
+  // EXACT SEV-1 pattern FINDINGS 2026-08-06 already found and fixed in this file's sibling,
+  // live-plays.ts's `contractFromRow` ("this was `mark ?? entry`, which LAUNDERED 'no live mark
+  // yet' into 'the mark is exactly the entry'... NEVER substitute entry for an absent mark — a
+  // fabricated mark is worse than a missing one") — but that fix never touched this file, so the
+  // identical bug has been live here the whole time, on the lane that dominates the committed
+  // Swing book. Confirmed live 2026-10-08: every BANGER-origin MANAGING/SCALING_OUT row with no
+  // live mark sync (e.g. CIEG/APPX/FUBO/CRNC/GO/CAPR/... the overwhelming majority of the
+  // committed book — the "~85 of ~90" figure the `factors` comment a few lines below already
+  // measured) carried `contract.mid === entry_premium` exactly, `markAsOf: null`. Downstream,
+  // `markDollarPnl` (terminal-display.ts) computes `mark - entry` and TradeSummaryHero's PRIMARY
+  // "Current" P&L tile renders whatever that returns UNLESS it is `null` — so a fabricated
+  // mid-equals-entry made it compute `0`, not `null`, and the live Command Deck showed a
+  // confident "+$0.00" instead of the honest "—" (unknown) its own null-mark fallback already
+  // provides and already uses correctly for every non-banger-origin row. `markIsSync`
+  // (adapters.ts, keyed on `markAsOf == null`) already lets Ask Largo's play-brief narrative
+  // correctly say "Mark: unknown" in prose — but that guard was never applied to this raw numeric
+  // field, so any consumer reading `play.mark`/`contract.mid` directly (not just the narrative)
+  // got fooled. `livePnlPct` two lines below already uses the honest `mark` (not this `mid`), so
+  // it was never affected — only this one field needed the fix.
+  const mid = mark;
   const gainPct = row.discovery_gain != null ? Math.round(row.discovery_gain * 1000) / 10 : null;
   const liveStatus = row.status === "PARTIAL" || row.scaled_already ? "TRIM" : "OPEN";
-  const manageAction =
-    row.scale_out_action === "TRIM" || row.scaled_already
-      ? "TAKE_PARTIAL"
-      : row.scale_out_action === "EXIT"
-        ? "EXIT"
-        : "HOLD";
+  // BUG FIX (found live 2026-10-16, Ask Largo standing mandate): this used to check
+  // `row.scale_out_action === "TRIM"` (never true — "TRIM" is a `liveStatus`/serving-section value,
+  // never a member of the real `ScaleOutAction` enum returned by `deriveScaleOutAction`) and
+  // `row.scale_out_action === "EXIT"` (also never true — `deriveScaleOutAction` only ever returns
+  // the string "EXIT_RUNNER", never bare "EXIT") `|| row.scaled_already`. Because `scaled_already`
+  // is a sticky "has this position EVER taken its first partial" latch that stays `true` for the
+  // rest of a runner's life (positions-db.ts), that `||` meant `manageAction` was permanently
+  // hardcoded to `"TAKE_PARTIAL"` for every already-scaled row, regardless of what the real,
+  // live-ticked state machine (`deriveScaleOutAction`, invoked every tick by banger-live-sync.ts and
+  // persisted onto this exact `row.scale_out_action` column) currently says. Live repro
+  // (2026-10-16, `GET /api/market/nighthawk/horizons?view=swings`): 17/17 open SCALING_OUT
+  // Banger-lane rows showed `manageAction:"TAKE_PARTIAL"` while the SAME row's `thesisNote` (sourced
+  // from `row.scale_out_reason`, the real text the state machine wrote that tick) read "runner still
+  // above its trailing stop" — the literal `HOLD`-reason string from scale-out.ts. Fix: read the
+  // REAL current `row.scale_out_action` value directly — it already carries exactly the
+  // member-facing semantics this field needs (`HOLD`/`TAKE_PARTIAL`/`EXIT_RUNNER`/`STOP_OUT`, the
+  // same `ScaleOutAction` union `SwingManageAction` is built from, manage.ts) — falling back to
+  // `"HOLD"` only when no tick has landed yet (`null`) or the stored string is somehow outside the
+  // real enum (defensive; `banger-live-sync.ts` never writes anything else). Mirrors the intent of
+  // the sibling fix already shipped for the native-swing path (`live-plays.ts`'s
+  // `manageObservablesFromEvent`, PR #4178/FINDINGS "TRIM manageAction stuck on TAKE_PARTIAL (#5)"):
+  // an honest current verdict must replace a stale status-seeded fallback, never be ORed with one.
+  // EXIT_RUNNER/STOP_OUT are included for completeness/type-correctness even though in practice a
+  // row carrying either already flips `row.status` away from OPEN/PARTIAL in the same update
+  // (`statusForAction`, live-sync.ts) and is filtered out above before reaching this line — there is
+  // no banger-lane analogue of the native path's thesis-break-driven "EXIT"/"ADD" verdicts, so this
+  // lane's `manageAction` only ever needs the plain `ScaleOutAction` domain, never the wider
+  // `SwingManageAction` superset.
+  const manageAction: ScaleOutAction = REAL_SCALE_OUT_ACTIONS.has(row.scale_out_action as ScaleOutAction)
+    ? (row.scale_out_action as ScaleOutAction)
+    : "HOLD";
+  // score IS the whole banger read (there is no separate 7-pillar dossier for this lane), so the
+  // "factors" breakdown below must attribute the ENTIRE score to this one signal — see the
+  // FINDINGS 2026-09-12 note on `factors` a few lines down for why this must equal `score` exactly.
+  const score =
+    gainPct != null ? Math.min(99, Math.max(60, 60 + Math.round(gainPct / 2))) : HORIZONS.SWING.scoreFloor;
 
   return {
     ticker: row.ticker.toUpperCase(),
+    // Banger's own primary key, doubling as the swing HorizonPlay's `positionId`. WITHOUT this,
+    // CommandDeck's row identity — `id: ${horizon}:${ticker}${positionId ? `:${positionId}` : ""}`
+    // (adapters.ts terminalPlayFromHorizon) — collapses to the bare `SWING:TICKER` for every
+    // banger-origin row, because this function used to omit positionId entirely. Two banger
+    // legs on the same ticker (e.g. one MANAGING, one already SCALING_OUT after a partial) then
+    // share ONE React key, and React's reconciliation does not "double render" on a key
+    // collision — it silently reuses/misattributes DOM state across re-renders (confirmed live
+    // 2026-09-20: searching the Swings desk's ticker box for one real position returned SEVEN
+    // unrelated tickers alongside it, all of them banger-origin MANAGING/SCALING_OUT rows sharing
+    // this same collapsed id, and the extraneous rows kept accumulating across successive
+    // searches in one session — a live symptom of the identity collision, not a filter-logic
+    // bug in DeckSearchBox itself, which was independently verified correct against ordinary
+    // non-colliding tickers). `row.id` is banger_positions' own auto-increment primary key, so it
+    // is unique per banger row the same way swing_positions.id already is for
+    // livePlaysFromOpenPositions (live-plays.ts) — the two id spaces are namespaced by `ticker`
+    // in the same template, so a numeric coincidence across the two tables still cannot collide.
+    positionId: row.id,
     direction: "LONG",
     horizon: "SWING",
-    score: gainPct != null ? Math.min(99, Math.max(60, 60 + Math.round(gainPct / 2))) : HORIZONS.SWING.scoreFloor,
+    score,
     status: "COMMIT",
     scoreFloor: HORIZONS.SWING.scoreFloor,
     reason: `Banger breakout +${gainPct ?? "—"}% · ${row.contract_strike}C ${row.contract_expiry}${closingSoon ? " · closing soon" : ""}`,
@@ -72,17 +176,24 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
       right: "C",
       dte,
       mid,
-      delta: null,
-      gamma: null,
-      theta: null,
-      vega: null,
-      iv: null,
-      bid: null,
-      ask: null,
-      openInterest: 0,
+      // FIX (2026-10-09, Ask Largo standing mandate — FINDINGS 2026-10-09 / migration 017): these
+      // used to be hardcoded null/0 regardless of what the provider actually quoted — not because
+      // the data was unavailable, but because banger_positions had no column to hold it. The cron
+      // (banger-live-sync) already fetches this exact snapshot every tick for the quote-tick log;
+      // `updateBangerQuoteFields` now carries it onto this row instead of discarding it. Honest
+      // null when a tick hasn't landed yet (pre-migration row, or a quote-less tick) — never
+      // fabricated, same discipline every other field on this row already follows.
+      delta: row.quote_delta,
+      gamma: row.quote_gamma,
+      theta: row.quote_theta,
+      vega: row.quote_vega,
+      iv: row.quote_iv,
+      bid: row.bid,
+      ask: row.ask,
+      openInterest: row.open_interest ?? 0,
     },
     archetype: "BREAKOUT",
-    subLane: subLaneForDte(dte) ?? undefined,
+    subLane: subLaneForDte(subLaneDte) ?? undefined,
     setupState: "TRIGGERED",
     entryStatus: "AT_TRIGGER",
     serving: row.scaled_already ? "SCALING_OUT" : "MANAGING",
@@ -91,14 +202,62 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
     entryPremium: entry,
     livePnlPct: livePnlPct(entry, mark),
     peakPremium: row.peak_premium,
+    // FINDINGS 2026-09-21: banger_positions never carried a trough_premium column at all (only
+    // peak), so this field was previously omitted here — not merely null, ABSENT from the
+    // object — which read to the play-brief as "field never wired" and rendered "Trough: —" on
+    // every BANGER-origin swing play regardless of whether the position had genuinely dipped
+    // below entry. Now that the column + latch exist (db.ts / positions-db.ts), forward it
+    // through same as peakPremium.
+    troughPremium: row.trough_premium,
     signalKinds: [BANGER_SIGNAL],
     bucketGraduated: false,
     liveStatus,
     manageAction,
-    thesisLevel: "intact",
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro WEN positionId 2098, -58.3% P&L):
+    // this was the literal `"intact"` — there is no real per-position thesis dossier for this lane
+    // (a single mechanical price trigger, per this file's own header), so "intact" was always a
+    // fabricated claim, not a measured one, for EVERY row this function produces. Three downstream
+    // consumers of the exact same fabrication have each independently had to guard against it —
+    // play-brief-intel.ts's `watchForSection` (#5693), thesis-health.ts's `calibratedThesisPillars`
+    // (omits the whole pillar breakdown for a Banger-origin row), and adapters.ts's
+    // `thesisBreakResolved` (PR #6671, merged earlier today) — but all three guard DOWNSTREAM
+    // consumers of this field, never the source. `GET /api/market/nighthawk/horizons?view=swings`
+    // itself (and any other direct reader of this route's JSON, Ask Largo's tooling included) still
+    // served the raw fabricated "intact" unguarded, because adapters.ts's guard runs client-side
+    // ("use client") on an already-fetched payload and cannot retroactively fix what the API itself
+    // returned. Fixing it here, at the one place this sentinel actually originates, means every
+    // future consumer inherits the honest value for free instead of needing its own guard — the
+    // same "fix the source, not every reader" principle CLAUDE.md's PR write-up policy calls for.
+    // "unknown" is the established, already-rendered-correctly value for exactly this case (see
+    // serving-ingest.ts's own "thesisLevel degrades to 'unknown' when no [dossier] data... NEVER a
+    // fabricated 'intact'" comment, and ZeroDteCommandPanel.tsx's existing `level === "unknown"`
+    // branch) — the real mechanical `thesisNote` below is kept untouched; only the fabricated level
+    // changes.
+    thesisLevel: "unknown",
     thesisNote: row.scale_out_reason ?? "Engine B scale-out — whole-market breakout",
-    regime: "BREAKOUT · BANGER",
-    factors: gainPct != null ? [{ label: "Discovery gain", points: Math.round(gainPct) }] : [],
+    regime: BANGER_LEDGER_REGIME_LABEL,
+    // FINDINGS 2026-09-12: this used to be `points: Math.round(gainPct)` — the RAW underlying %
+    // gain since discovery, a completely different quantity (and roughly half the magnitude, since
+    // `score` above compounds it as `60 + gainPct/2`) from what every OTHER lane's `factors[].points`
+    // means (swing-pillars.ts: "points actually contributed" to `score`, where the two always sum
+    // exactly — see SwingPillarContribution). Both PlayTerminal.tsx's "Why this play was picked"
+    // panel and Ask Largo's play-brief `whyThisSetupSection` ("**Score pillars:**") render this
+    // array as if it explains `score` (a bar sized by `points`, a running "N factors" count) — so a
+    // live banger-origin commit rendered e.g. "SCORE 66" next to "Discovery gain +13 pts", which
+    // reads as "53 of the 66 points are unexplained". Live prod snapshot 2026-09-12 (`?view=swings`,
+    // committed SWING lane): ~85 of ~90 committed rows are this exact BREAKOUT/Banger pattern, every
+    // one short by roughly half its own score (e.g. ODD 66 vs 13pt, HPE 65 vs 10pt, DLLL 69 vs 18pt).
+    // Fix: attribute the WHOLE score to this one signal — there is no second pillar in this lane, so
+    // that is also the honest read, not just an arithmetic patch. Raw gain% stays visible via
+    // `reason` ("Banger breakout +N% · ...") a few lines above, so no information is lost.
+    factors: gainPct != null ? [{ label: "Discovery gain", points: score }] : [],
+    // FINDINGS 2026-09-11: this was omitted entirely, so every banger-origin Swing position (the
+    // majority of the live MANAGING/SCALING_OUT book once Engine B is merged in) served NO mark
+    // freshness signal at all — indistinguishable from "genuinely unknown" to both the
+    // swing-e2e-healthcheck Stage F staleness check and Ask Largo's own play-brief mark narrative.
+    // row.last_mark_at is the banger-table sibling of swing_positions.last_mark_at, added in the
+    // same fix, CASE-guarded in updateBangerLiveState to advance only on an actual fresh quote.
+    markAsOf: row.last_mark_at ?? null,
   };
 }
 
@@ -118,11 +277,14 @@ export function horizonPlayFromBangerWatch(
   const dte = calendarDte(sessionDay, pick.expiry);
   if (!Number.isFinite(dte) || dte < HORIZONS.SWING.dteMin || dte > HORIZONS.SWING.dteMax) return null;
   const gainPct = Math.round(mover.gain * 1000) / 10;
+  // See horizonPlayFromBangerPosition's matching comment: `factors[].points` must equal `score`
+  // (the whole banger read IS this one signal), not the raw gain% — a different, smaller quantity.
+  const score = Math.min(99, Math.max(58, 58 + Math.round(gainPct / 3)));
   return {
     ticker: mover.ticker.toUpperCase(),
     direction: "LONG",
     horizon: "SWING",
-    score: Math.min(99, Math.max(58, 58 + Math.round(gainPct / 3))),
+    score,
     status: "WATCH",
     scoreFloor: HORIZONS.SWING.scoreFloor,
     reason: `Banger screen +${gainPct}% · ${pick.strike}C ${pick.expiry}`,
@@ -149,15 +311,39 @@ export function horizonPlayFromBangerWatch(
     serving: "WATCH",
     signalKinds: [BANGER_SIGNAL],
     bucketGraduated: false,
-    regime: "BREAKOUT · BANGER",
-    factors: [{ label: "Discovery gain", points: Math.round(gainPct) }],
+    regime: BANGER_LEDGER_REGIME_LABEL,
+    factors: [{ label: "Discovery gain", points: score }],
   };
 }
 
 /**
- * Merge banger open-book rows into an existing SWING play list. Banger rows win on ticker collision only
- * against pre-entry WATCH/SKIP rows — a live swing ledger OPEN/HOLD/TRIM position is canonical and must
- * not be evicted when Engine B also has capital on the same symbol.
+ * Merge banger open-book rows into an existing SWING play list. A live swing ledger OPEN/HOLD/TRIM
+ * position is always canonical and is never evicted — but a genuinely separate, already-open Engine B
+ * (Banger) position on the SAME ticker is ALSO real member capital, entered independently with its own
+ * contract/strike/premium, and must not be dropped just because the native engine happens to manage a
+ * (different) position in that name too. The only row a banger OPEN play legitimately replaces is a
+ * PRE-ENTRY one (WATCH, or a discovery COMMIT with no real ledger capital yet) on the same ticker —
+ * that row never held any capital, so nothing is lost by retiring it in favor of the real position.
+ *
+ * BUG FIX (Ask Largo standing mandate, live repro 2026-10-26): the pre-fix version built
+ * `managingTickers` from every already-live NATIVE play and used it to EXCLUDE any banger play sharing
+ * that ticker from ever being added — so once a native position existed on a name, EVERY banger-origin
+ * row on that same name was dropped outright, even a genuinely different, separately-entered position.
+ * Live repro: PANW carried a native `swing_positions` COMMIT row (id 67, 370-strike call, entry 17.70,
+ * committed 16:46Z) and a separate, fully live `banger_positions` OPEN row (id 2103, 400-strike call,
+ * entry 5.90, committed 20:15Z the same day) — two real, independently-sized option positions on the
+ * same underlying, confirmed via `GET /api/market/banger/board`. `GET
+ * /api/market/nighthawk/horizons?view=swings` showed only id 67 in `committed[]`/`watch[]`; id 2103
+ * never appeared anywhere on the board, while `GET /api/market/swing/record`'s `summary.bangerOpens`
+ * correctly counted it as one of 91 real open Banger positions — a real, open position with real member
+ * capital that had zero visibility on the live Swing Command board. Two prior PRs (#6656, #6767) treated
+ * this merge's per-ticker drop as a given and worked around its DOWNSTREAM symptom (the play-brief
+ * resolver 404ing on the hidden row's positionId) without revisiting the drop itself; this fix addresses
+ * the root cause those two PRs scoped around. The "two banger-origin plays on the same ticker get
+ * distinct positionIds" test below already proves the rest of the pipeline (CommandDeck row identity,
+ * `pickLanePlayForBrief`'s positionId-exact-match path) handles multiple same-ticker rows correctly once
+ * they are BOTH actually present — this function was the one place still silently discarding the second
+ * one.
  */
 /** True when the row represents live swing ledger capital (not discovery-only pre-entry). */
 export function isLiveManagingSwingPlay(play: HorizonPlay): boolean {
@@ -178,18 +364,18 @@ export function mergeBangerPositionsIntoSwingPlays(
   bangerRows: readonly BangerPositionRow[],
   now = new Date(),
 ): HorizonPlay[] {
-  const bangerPlays = bangerRows
+  // Every real, open banger row is added — a banger play is never excluded just because the native
+  // engine already manages a (different) position on the same ticker (see header: that used to drop
+  // real member capital, PANW id 2103 being the live repro).
+  const bangerToAdd = bangerRows
     .map((r) => horizonPlayFromBangerPosition(r, now))
     .filter((p): p is HorizonPlay => p != null);
-  if (bangerPlays.length === 0) return [...plays];
+  if (bangerToAdd.length === 0) return [...plays];
 
-  const managingTickers = new Set(
-    plays
-      .filter((p) => !isPreEntrySwingPlay(p))
-      .map((p) => p.ticker.toUpperCase()),
-  );
-  const bangerToAdd = bangerPlays.filter((p) => !managingTickers.has(p.ticker.toUpperCase()));
   const bangerTickers = new Set(bangerToAdd.map((p) => p.ticker.toUpperCase()));
+  // Eviction only ever removes a PRE-ENTRY native row (WATCH, or a discovery COMMIT with no ledger
+  // capital) on a ticker a banger OPEN row now covers — that pre-entry row held no capital, so nothing
+  // real is lost. An already-live native row is never evicted, exactly as before this fix.
   const kept = plays.filter(
     (p) => !bangerTickers.has(p.ticker.toUpperCase()) || !isPreEntrySwingPlay(p),
   );

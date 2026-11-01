@@ -38,6 +38,8 @@ import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
+import { emptyOrBreakMemory } from "@/features/spx/lib/playbook-break-memory";
+import type { ResolvedPlaybookMatch } from "@/features/spx/lib/playbook-match-resolver";
 
 let mockForceExit = false;
 
@@ -258,6 +260,491 @@ test("evaluateOpenPlay TARGET hit, mutate:true: SELL is real — signal_committe
 
   const stillOpen = await loadOpenPlay();
   assert.equal(stillOpen, null, "mutate:true must actually close the play");
+});
+
+// BUG FIX (2026-10-26): the closed-market SCANNING branch computed confluence off
+// `desk.price > 0` alone. A cold-cache bootstrap shell (buildBootstrapFastLane() /
+// deskShellFromPulse() in spx-desk-loader.ts / spx-desk.ts — a real price from the
+// pulse layer, but no GEX/flow layer ever merged in, `source` left at its
+// documented "none" degraded-shell marker — see the comment block in
+// spx-desk-merge.ts's mergePulseIntoDesk/mergeDeskLayers) still has `available:
+// true` (mergePulseIntoDesk reassigns `available: pulse.available || base
+// .available`, but never reassigns `source`), so computeSpxConfluence's own
+// `!desk.available` guard never fires and it returns a non-null object with
+// `factors: []`/`score: 0` instead of null. `assessed: closedConfluence != null`
+// then read true off that empty object — the dashboard reported "session
+// assessed, grade D" for a tick the desk never actually built a real read on.
+test("evaluateOpenPlay closed-market SCANNING, bootstrap-shell desk (source:none): assessed is false, not a confluence computed off an empty shell", async () => {
+  const shellDesk = desk(5000, {
+    market_open: false,
+    source: "none",
+    vwap: null,
+    gamma_flip: null,
+    gex_king: null,
+    gex_net: null,
+    tick: null,
+    trin: null,
+    add: null,
+  });
+
+  const payload = await evaluateSpxPlay(shellDesk, EMPTY_TECHNICALS, { mutate: false });
+
+  assert.equal(payload.phase, "SCANNING");
+  assert.equal(
+    payload.assessed,
+    false,
+    "a source:none bootstrap shell has no real confluence to close out on — must not report assessed:true off an empty factors:[] object"
+  );
+  assert.deepEqual(payload.factors, []);
+});
+
+// BUG FIX (2026-10-26): the closed-market branch hand-built `gates: {blocks:["Session
+// closed"], warnings:[]}` and never ran the mixed-tape sub-check that `evaluatePlayGates`
+// applies on every other path — so a real closed-market response could show
+// `desk_context.mixed_tape_blocked:true` (computed independently and unconditionally by
+// buildSpxPlayDeskContext, spx-play-context.ts) alongside `gates.warnings:[]`, no "Tape's
+// mixed" text anywhere. Confirmed live via GET /api/market/spx/play.
+//
+// Driving this end-to-end through the real signal engine (computeSpxConfluence) would make
+// the test depend on wall-clock ET time (computeSpxConfluence's own session-quality/live-tape
+// factors shift with time of day) — see spx-play-context.test.ts's "mixed-tape coherence"
+// test for the deterministic behavioral proof that buildSpxPlayDeskContext and
+// mixedTapeGateMessage agree on the SAME confluence-shaped data. This is the narrower,
+// source-text companion (same idiom as getNhConfluenceBonus below): it pins that the
+// closed-market branch actually WIRES mixedTapeGateMessage's result into gates.warnings,
+// which that behavioral test alone cannot catch — it only exercises the two shared
+// functions in isolation, not whether spx-play-engine.ts's closed-market branch still calls
+// either of them.
+test("evaluateSpxPlayCore closed-market branch runs the shared mixed-tape check and wires it into gates.warnings", () => {
+  const src = readFileSync(fileURLToPath(new URL("./spx-play-engine.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("if (!desk.market_open && !premarket) {");
+  assert.ok(start > 0, "closed-market branch exists");
+  const end = src.indexOf("\n  const technicals =", start);
+  assert.ok(end > start, "closed-market branch's early-return block ends before the open-market path resumes");
+  const body = src.slice(start, end);
+  assert.match(
+    body,
+    /mixedTapeGateMessage\(closedConfluence\)/,
+    "closed-market branch must run the shared mixed-tape sub-check, not skip it entirely"
+  );
+  assert.match(
+    body,
+    /warnings:\s*mixedTapeMsg\s*!=\s*null\s*\?\s*\[mixedTapeMsg\]\s*:\s*\[\]/,
+    "gates.warnings must surface the mixed-tape message instead of being hardcoded to []"
+  );
+});
+
+// BUG FIX (2026-10-26, Ask Largo/5-engine standing mandate, live repro): the closed-market
+// SCANNING branch serves a GEX-derived factor/play-idea built from `desk.gex_walls`, which on
+// this path peekMergedSpxDesk() deliberately tolerates up to 24h stale (an intentional,
+// unchanged design choice — "once the market is genuinely closed, stale and correct are the same
+// thing"). The bug was that the factor/play-idea/thesis never consulted desk.gex_stale before
+// presenting a specific GEX level, so a member saw "At 0DTE support node 7675 (+5 pts)" with zero
+// indication it could be hours old. Live repro: the sibling GET /api/market/spx/desk route
+// (peekSpxDesk(), NOT 24h-tolerant) reported gex_stale:true/gex_walls:[] at virtually the same
+// instant /play served this exact idea undisclosed.
+function closedDeskWithGexSupport(overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
+  return desk(7680, {
+    market_open: false,
+    source: "test",
+    gex_walls: [{ strike: 7675, net_gex: 500_000, kind: "support", distance_pts: 5 }],
+    ...overrides,
+  });
+}
+
+test("evaluateOpenPlay closed-market SCANNING, desk.gex_stale:true: the GEX-derived factor/thesis/play-idea disclose staleness", async () => {
+  const stalePayload = await evaluateSpxPlay(
+    closedDeskWithGexSupport({ gex_stale: true, gex_age_ms: 26 * 3_600_000 }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+
+  assert.equal(stalePayload.phase, "SCANNING");
+  const gexFactor = stalePayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  assert.ok(gexFactor, "fixture must actually fire a GEX-derived factor to test disclosure on");
+  assert.match(
+    gexFactor!.detail,
+    /GEX stale, not live/,
+    "a GEX-derived factor built from stale desk data must disclose it rather than present a specific level as if live"
+  );
+  assert.match(
+    stalePayload.thesis,
+    /GEX stale, not live/,
+    "the closed-market thesis must also carry the staleness clause"
+  );
+  assert.ok(stalePayload.gates.play_idea, "fixture must produce a play idea to test disclosure on");
+  assert.match(stalePayload.gates.play_idea!, /GEX stale, not live/);
+});
+
+test("evaluateOpenPlay closed-market SCANNING, desk.gex_stale:false (or absent): the SAME GEX-derived factor renders unchanged, with no staleness disclosure", async () => {
+  const freshPayload = await evaluateSpxPlay(
+    closedDeskWithGexSupport({ gex_stale: false, gex_age_ms: 1000 }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const freshGexFactor = freshPayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  assert.ok(freshGexFactor);
+  assert.doesNotMatch(freshGexFactor!.detail, /GEX stale/);
+  assert.doesNotMatch(freshPayload.thesis, /GEX stale/);
+  assert.ok(freshPayload.gates.play_idea);
+  assert.doesNotMatch(freshPayload.gates.play_idea!, /GEX stale/);
+
+  // gex_stale entirely absent from the desk payload must behave identically to explicit false —
+  // this is the live production shape (older/degraded desk snapshots may never set the field).
+  const absentPayload = await evaluateSpxPlay(
+    closedDeskWithGexSupport(),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const absentGexFactor = absentPayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  assert.ok(absentGexFactor);
+  assert.doesNotMatch(absentGexFactor!.detail, /GEX stale/);
+  assert.doesNotMatch(absentPayload.thesis, /GEX stale/);
+});
+
+// BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
+// closed): same bug class as the GEX staleness disclosure above, for the VWAP factor instead.
+// The closed-market branch's "VWAP" factor is built straight off `desk.vwap`, which on this path
+// can be a cross-request sticky "last-known-good" fallback (spx-desk-merge.ts's
+// mergePulseIntoDesk -> stickyStructureLevel) serving a prior session's VWAP INDEFINITELY once
+// both pulse.vwap and base.vwap go null (any non-trading day) — with nothing on the desk
+// disclosing it before `vwap_stale` (spx-desk.ts/spx-desk-merge.ts) was added alongside this
+// fix. Live repro: GET /api/market/spx/play served a "VWAP" factor (weight -12, "Below VWAP
+// 7580.87 — sellers pressing") contributing to the closed-market score/grade on a Saturday,
+// while the sibling GET /api/market/spx/desk route (peekSpxDesk(), no sticky merge) correctly
+// reported vwap:null at the same instant.
+function closedDeskWithVwap(overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
+  return desk(7500, {
+    market_open: false,
+    source: "test",
+    vwap: 7580.87,
+    ...overrides,
+  });
+}
+
+test("evaluateOpenPlay closed-market SCANNING, desk.vwap_stale:true: the VWAP factor/thesis/play-idea disclose staleness", async () => {
+  const stalePayload = await evaluateSpxPlay(
+    closedDeskWithVwap({ vwap_stale: true }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+
+  assert.equal(stalePayload.phase, "SCANNING");
+  const vwapFactor = stalePayload.factors.find((f) => f.label === "VWAP");
+  assert.ok(vwapFactor, "fixture must actually fire a VWAP factor to test disclosure on");
+  assert.match(
+    vwapFactor!.detail,
+    /VWAP stale, not live/,
+    "a VWAP factor built from a sticky-fallback vwap must disclose it rather than present a prior session's level as if live"
+  );
+  assert.match(
+    stalePayload.thesis,
+    /VWAP stale, not live/,
+    "the closed-market thesis must also carry the VWAP staleness clause"
+  );
+  assert.ok(stalePayload.gates.play_idea, "fixture must produce a play idea to test disclosure on");
+  assert.match(stalePayload.gates.play_idea!, /VWAP stale, not live/);
+});
+
+test("evaluateOpenPlay closed-market SCANNING, desk.vwap_stale:false (or absent): the SAME VWAP factor renders unchanged, with no staleness disclosure", async () => {
+  const freshPayload = await evaluateSpxPlay(
+    closedDeskWithVwap({ vwap_stale: false }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const freshVwapFactor = freshPayload.factors.find((f) => f.label === "VWAP");
+  assert.ok(freshVwapFactor);
+  assert.doesNotMatch(freshVwapFactor!.detail, /VWAP stale/);
+  assert.doesNotMatch(freshPayload.thesis, /VWAP stale/);
+  assert.ok(freshPayload.gates.play_idea);
+  assert.doesNotMatch(freshPayload.gates.play_idea!, /VWAP stale/);
+
+  // vwap_stale entirely absent from the desk payload must behave identically to explicit false —
+  // the live production shape whenever vwap came from a fresh pulse/base read this cycle.
+  const absentPayload = await evaluateSpxPlay(
+    closedDeskWithVwap(),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const absentVwapFactor = absentPayload.factors.find((f) => f.label === "VWAP");
+  assert.ok(absentVwapFactor);
+  assert.doesNotMatch(absentVwapFactor!.detail, /VWAP stale/);
+  assert.doesNotMatch(absentPayload.thesis, /VWAP stale/);
+});
+
+// Proves the two disclosure checks are independent and COMPOSE rather than one overwriting the
+// other — a closed-market read that's stale on both the GEX wall and the VWAP level at once
+// must disclose both clauses, not just whichever check happened to run last.
+test("evaluateOpenPlay closed-market SCANNING, BOTH desk.gex_stale and desk.vwap_stale true: both staleness clauses are disclosed together", async () => {
+  const bothStalePayload = await evaluateSpxPlay(
+    closedDeskWithGexSupport({
+      gex_stale: true,
+      gex_age_ms: 26 * 3_600_000,
+      vwap: 7580.87,
+      vwap_stale: true,
+    }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+
+  const gexFactor = bothStalePayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  const vwapFactor = bothStalePayload.factors.find((f) => f.label === "VWAP");
+  assert.ok(gexFactor, "fixture must fire a GEX-derived factor");
+  assert.ok(vwapFactor, "fixture must fire a VWAP factor");
+  assert.match(gexFactor!.detail, /GEX stale, not live/);
+  assert.match(vwapFactor!.detail, /VWAP stale, not live/);
+  assert.match(bothStalePayload.thesis, /GEX stale, not live/);
+  assert.match(bothStalePayload.thesis, /VWAP stale, not live/);
+  assert.ok(bothStalePayload.gates.play_idea);
+  assert.match(bothStalePayload.gates.play_idea!, /GEX stale, not live/);
+  assert.match(bothStalePayload.gates.play_idea!, /VWAP stale, not live/);
+});
+
+// BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
+// closed): same bug class as the GEX/VWAP staleness disclosure above, for flow/tape-derived
+// factors instead. The closed-market branch's "0DTE flow" factor is built straight off
+// `desk.flow_0dte_net` with no freshness check at all — unlike GEX/VWAP, there was never even a
+// boolean on the desk payload for this; `desk.flow_data_age_ms` was read nowhere in this branch
+// (only in a debug log elsewhere). Live repro: GET /api/market/spx/play served a +14-weight
+// "0DTE flow" factor ("Call premium leading 0DTE tape") — 35% of the published score of 40 — on
+// a Saturday whose `flow_data_age_ms` the sibling GET /api/market/spx/desk route reported as
+// ~17.4h (62,672,013ms) old, with zero disclosure anywhere in the response.
+function closedDeskWithFlowNet(overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
+  return desk(7500, {
+    market_open: false,
+    source: "test",
+    flow_0dte_net: 500_000,
+    ...overrides,
+  });
+}
+
+test("evaluateOpenPlay closed-market SCANNING, stale flow (age past threshold, no live cluster heartbeat): the 0DTE-flow factor/thesis/play-idea disclose staleness", async () => {
+  const stalePayload = await evaluateSpxPlay(
+    closedDeskWithFlowNet({ flow_data_age_ms: 62_672_013, flow_cluster_live: false }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+
+  assert.equal(stalePayload.phase, "SCANNING");
+  const flowFactor = stalePayload.factors.find((f) => f.label === "0DTE flow");
+  assert.ok(flowFactor, "fixture must actually fire the 0DTE-flow factor to test disclosure on");
+  assert.match(
+    flowFactor!.detail,
+    /Flow stale, not live/,
+    "a flow-derived factor built from hours-old flow data must disclose it rather than present it as if live"
+  );
+  assert.match(
+    stalePayload.thesis,
+    /Flow stale, not live/,
+    "the closed-market thesis must also carry the flow staleness clause"
+  );
+  assert.ok(stalePayload.gates.play_idea, "fixture must produce a play idea to test disclosure on");
+  assert.match(stalePayload.gates.play_idea!, /Flow stale, not live/);
+});
+
+test("evaluateOpenPlay closed-market SCANNING, fresh flow (age below threshold): the SAME 0DTE-flow factor renders unchanged, with no staleness disclosure", async () => {
+  const freshPayload = await evaluateSpxPlay(
+    closedDeskWithFlowNet({ flow_data_age_ms: 1000, flow_cluster_live: true }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const freshFlowFactor = freshPayload.factors.find((f) => f.label === "0DTE flow");
+  assert.ok(freshFlowFactor);
+  assert.doesNotMatch(freshFlowFactor!.detail, /Flow stale/);
+  assert.doesNotMatch(freshPayload.thesis, /Flow stale/);
+  assert.ok(freshPayload.gates.play_idea);
+  assert.doesNotMatch(freshPayload.gates.play_idea!, /Flow stale/);
+
+  // Old age but a live SPX/SPXW flow-cohort heartbeat (flow_cluster_live:true) must also NOT
+  // disclose — the exact same "another replica is delivering a live frame" override the live
+  // BUY-intent gate (isFlowDataStale, spx-play-gates.ts) already respects.
+  const liveClusterPayload = await evaluateSpxPlay(
+    closedDeskWithFlowNet({ flow_data_age_ms: 62_672_013, flow_cluster_live: true }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+  const liveClusterFlowFactor = liveClusterPayload.factors.find((f) => f.label === "0DTE flow");
+  assert.ok(liveClusterFlowFactor);
+  assert.doesNotMatch(liveClusterFlowFactor!.detail, /Flow stale/);
+  assert.doesNotMatch(liveClusterPayload.thesis, /Flow stale/);
+});
+
+// Proves the three disclosure checks are independent and COMPOSE rather than one overwriting
+// another — a closed-market read that's stale on GEX, VWAP, AND flow at once must disclose all
+// three clauses, not just whichever check happened to run last.
+test("evaluateOpenPlay closed-market SCANNING, GEX + VWAP + flow all stale: all three staleness clauses are disclosed together", async () => {
+  const allStalePayload = await evaluateSpxPlay(
+    desk(7680, {
+      market_open: false,
+      source: "test",
+      gex_walls: [{ strike: 7675, net_gex: 500_000, kind: "support", distance_pts: 5 }],
+      gex_stale: true,
+      gex_age_ms: 26 * 3_600_000,
+      vwap: 7580.87,
+      vwap_stale: true,
+      flow_0dte_net: 500_000,
+      flow_data_age_ms: 62_672_013,
+      flow_cluster_live: false,
+    }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+
+  const gexFactor = allStalePayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  const vwapFactor = allStalePayload.factors.find((f) => f.label === "VWAP");
+  const flowFactor = allStalePayload.factors.find((f) => f.label === "0DTE flow");
+  assert.ok(gexFactor, "fixture must fire a GEX-derived factor");
+  assert.ok(vwapFactor, "fixture must fire a VWAP factor");
+  assert.ok(flowFactor, "fixture must fire the 0DTE-flow factor");
+  assert.match(gexFactor!.detail, /GEX stale, not live/);
+  assert.match(vwapFactor!.detail, /VWAP stale, not live/);
+  assert.match(flowFactor!.detail, /Flow stale, not live/);
+  assert.match(allStalePayload.thesis, /GEX stale, not live/);
+  assert.match(allStalePayload.thesis, /VWAP stale, not live/);
+  assert.match(allStalePayload.thesis, /Flow stale, not live/);
+  assert.ok(allStalePayload.gates.play_idea);
+  assert.match(allStalePayload.gates.play_idea!, /GEX stale, not live/);
+  assert.match(allStalePayload.gates.play_idea!, /VWAP stale, not live/);
+  assert.match(allStalePayload.gates.play_idea!, /Flow stale, not live/);
+});
+
+// BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live audit): discloseStaleGexFactors/
+// discloseStaleVwapFactor/discloseStaleFlowFactors above were wired into exactly ONE call site —
+// the closed-market (`!desk.market_open && !premarket`) branch the tests above exercise. The
+// LIVE path (market_open:true, no premarket — the real member-facing BUY/WATCH/SCANNING payload
+// during RTH, via evaluateOpenPlay/evaluateFlatPlay) never consulted desk.gex_stale/vwap_stale/
+// isFlowDataStale at all, so a GEX/VWAP/flow-derived factor built from stale desk data during RTH
+// rendered with ZERO staleness disclosure anywhere in the response — a real, reachable window
+// (desk.gex_stale flips true past GEX_STALE_MS=30s while evaluatePlayGates's own "Desk data
+// stale" hard block doesn't fire until playGexStaleMaxSec()=90s), not a closed-market-only edge
+// case. These tests are the live-path siblings of the closed-market ones above, proving the exact
+// same disclosure fires on the `market_open:true` path too.
+//
+// evaluateFlatPlay (the branch a flat, no-open-play desk like these takes) calls two DB-backed
+// resolvers this test file cannot leave real: refreshOrBreakMemory's own loadOrBreakMemory has NO
+// dbConfigured() guard around its getMeta() call (unlike every other DB read in this suite), and
+// resolveGuardedPlaybookMatch reads playbook instance state when dbConfigured() is true. Both
+// would throw/attempt a real Postgres connection under this file's DATABASE_URL="" setup. Rather
+// than mock out more modules, these tests use the exact public bypass evaluateSpxPlay already
+// exposes for this ("Shared OR memory from caller" / "Pre-resolved playbook match — skips
+// redundant resolver when set", EvaluateSpxPlayOptions above) — the same mechanism a real caller
+// uses to avoid a double-resolve, not a test-only shim.
+function liveFlatPathBypassOptions() {
+  const playbookResolved: ResolvedPlaybookMatch = {
+    verdicts: [],
+    primary_playbook_id: null,
+    raw_verdicts: [],
+    instance_snapshots: [],
+    prev_by_instance: new Map(),
+    armed_poll_counts: new Map(),
+    next_armed_poll_counts: new Map(),
+    triggers_today_by_pb: new Map(),
+  };
+  return {
+    or_break_memory: emptyOrBreakMemory("2026-07-06"),
+    playbook_resolved: playbookResolved,
+  };
+}
+
+function liveDeskWithGexSupport(overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
+  return desk(7680, {
+    market_open: true,
+    source: "test",
+    gex_walls: [{ strike: 7675, net_gex: 500_000, kind: "support", distance_pts: 5 }],
+    ...overrides,
+  });
+}
+
+test("evaluateFlatPlay LIVE (market_open:true), desk.gex_stale:true: the GEX-derived factor discloses staleness during RTH, not just after close", async () => {
+  const stalePayload = await evaluateSpxPlay(
+    liveDeskWithGexSupport({ gex_stale: true, gex_age_ms: 45_000 }),
+    EMPTY_TECHNICALS,
+    { mutate: false, ...liveFlatPathBypassOptions() }
+  );
+
+  const gexFactor = stalePayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  assert.ok(gexFactor, "fixture must actually fire a GEX-derived factor to test disclosure on");
+  assert.match(
+    gexFactor!.detail,
+    /GEX stale, not live/,
+    "a GEX-derived factor built from a stale desk snapshot must disclose it during RTH, exactly like the closed-market path already does"
+  );
+});
+
+test("evaluateFlatPlay LIVE (market_open:true), desk.gex_stale:false (or absent): the SAME GEX-derived factor renders unchanged, with no staleness disclosure", async () => {
+  const freshPayload = await evaluateSpxPlay(
+    liveDeskWithGexSupport({ gex_stale: false, gex_age_ms: 1000 }),
+    EMPTY_TECHNICALS,
+    { mutate: false, ...liveFlatPathBypassOptions() }
+  );
+  const freshGexFactor = freshPayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  assert.ok(freshGexFactor);
+  assert.doesNotMatch(freshGexFactor!.detail, /GEX stale/);
+
+  const absentPayload = await evaluateSpxPlay(
+    liveDeskWithGexSupport(),
+    EMPTY_TECHNICALS,
+    { mutate: false, ...liveFlatPathBypassOptions() }
+  );
+  const absentGexFactor = absentPayload.factors.find(
+    (f) => f.label === "GEX support" || f.label === "GEX resistance"
+  );
+  assert.ok(absentGexFactor);
+  assert.doesNotMatch(absentGexFactor!.detail, /GEX stale/);
+});
+
+test("evaluateFlatPlay LIVE (market_open:true), desk.vwap_stale:true: the VWAP factor discloses staleness during RTH, not just after close", async () => {
+  const stalePayload = await evaluateSpxPlay(
+    desk(7500, { market_open: true, source: "test", vwap: 7580.87, vwap_stale: true }),
+    EMPTY_TECHNICALS,
+    { mutate: false, ...liveFlatPathBypassOptions() }
+  );
+
+  const vwapFactor = stalePayload.factors.find((f) => f.label === "VWAP");
+  assert.ok(vwapFactor, "fixture must actually fire a VWAP factor to test disclosure on");
+  assert.match(
+    vwapFactor!.detail,
+    /VWAP stale, not live/,
+    "a VWAP factor built off the sticky-fallback vwap must disclose it during RTH too"
+  );
+});
+
+test("evaluateFlatPlay LIVE (market_open:true), stale flow (age past threshold, no live cluster heartbeat): the 0DTE-flow factor discloses staleness during RTH, not just after close", async () => {
+  const stalePayload = await evaluateSpxPlay(
+    desk(7500, {
+      market_open: true,
+      source: "test",
+      flow_0dte_net: 500_000,
+      flow_data_age_ms: 62_672_013,
+      flow_cluster_live: false,
+    }),
+    EMPTY_TECHNICALS,
+    { mutate: false, ...liveFlatPathBypassOptions() }
+  );
+
+  const flowFactor = stalePayload.factors.find((f) => f.label === "0DTE flow");
+  assert.ok(flowFactor, "fixture must actually fire the 0DTE-flow factor to test disclosure on");
+  assert.match(
+    flowFactor!.detail,
+    /Flow stale, not live/,
+    "a flow-derived factor built from hours-old flow data must disclose it during RTH too — this " +
+      "live BUY/WATCH/SCANNING path never even HAD a flow-staleness check before this fix, unlike " +
+      "the GEX/VWAP cases which at least had the check gated to the wrong branch"
+  );
 });
 
 // BUG FIX (2026-09-03): getNhConfluenceBonus's staleness check used a raw

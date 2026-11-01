@@ -240,6 +240,84 @@ function midOf(bid: number | null, ask: number | null): number | null {
   return null;
 }
 
+/**
+ * Merge a Trade ("T") print onto the existing option mark entry, if any.
+ *
+ * BUG (found 2026-09-17, live audit — same root cause as the 2026-09-13 REST-side fix in
+ * legacy-option-mark-row.ts's doc comment: "own event clock" mistaken for "quote clock"):
+ * `OptionMark.ts` is documented as "epoch ms when this mark was received/updated", and every
+ * staleness check downstream (`isWsUpdatedAtFresh`/`isZeroDteMarkStale`) trusts it to mean
+ * exactly that. The previous inline version of this merge always stamped `ts: Date.now()` on
+ * ANY trade print, while carrying `bid`/`ask`/`mark` forward UNCHANGED from the last Quote
+ * (`prev?.bid`/`prev?.ask`/`prev?.mark`) whenever one already existed. A contract can print
+ * trades — even sporadically — for a long stretch with no accompanying fresh NBBO quote (a
+ * resting two-sided market that isn't moving), and each such trade would re-stamp `ts` to
+ * "now" even though the mark it was measured against had not actually changed. That makes a
+ * genuinely stale mark read as fresh indefinitely, defeating `getLiveOptionMarkSync`'s whole
+ * purpose — the exact failure mode already fixed once on the REST ingestion path
+ * (`legacy-option-mark-row.ts`, 2026-09-13) but left unaddressed here on the WS ingestion path,
+ * which every Legacy mark read (`legacy-marks` route, `legacy-option-marks-server.ts`'s
+ * live-sync cron feed) goes through via `getLiveOptionMarkSync`.
+ *
+ * Fix: `ts` only advances to `now` when this trade is the thing that actually established the
+ * mark (no prior quote-derived mark existed, so `mark` falls back to the trade's own `last`).
+ * When a real mark already exists, carrying it forward must carry its own timestamp forward
+ * too — `last` (the raw trade print) is still updated either way, since it never claimed to be
+ * a staleness signal on its own.
+ */
+export function mergeTradeIntoOptionMark(
+  prev: OptionMark | undefined,
+  last: number,
+  now: number
+): OptionMark {
+  const hasEstablishedMark = prev?.mark != null;
+  return {
+    bid: prev?.bid ?? null,
+    ask: prev?.ask ?? null,
+    mark: prev?.mark ?? last,
+    last,
+    ts: hasEstablishedMark ? prev!.ts : now,
+  };
+}
+
+/**
+ * Merge a Quote ("Q") frame onto the existing option mark entry, if any.
+ *
+ * BUG (found 2026-11-01, live audit — the Quote-side mirror of the Trade-side fix immediately
+ * above). A Massive Q frame is NBBO-only (module doc: "Q.O:SPXW...,...", fields `bp`/`ap` — a
+ * quote never carries a trade price), so `handleQuote`'s own `finiteOrNull(msg.lp ?? msg.last ??
+ * msg.p)` resolves to null on essentially every real quote tick. The previous inline version of
+ * this merge built a brand-new `OptionMark` straight from that null, discarding whatever `last`
+ * the most recent Trade ("T") frame had just established — on a contract quoting far more often
+ * than it trades (the common case), `last` was wiped back to null within milliseconds of being
+ * set by `mergeTradeIntoOptionMark`. `last` was added to `OptionMark`/`getLiveOptionMarkSync`
+ * specifically (2026-09-15, see that function's own doc comment) "so a caller can apply the same
+ * bid=0 backstop-quote divergence guard (`reliableMarkFromQuote`, options-snapshot.ts) to this WS
+ * mark too" — a guard that needs `last` to actually be present, which this clobbering defeated in
+ * practice for any consumer polling between quote ticks.
+ *
+ * Fix: a Quote frame carrying no trade price of its own CARRIES FORWARD the previous entry's
+ * `last` instead of overwriting it with null — mirroring `mergeTradeIntoOptionMark`'s own
+ * carry-forward discipline for bid/ask/mark, just in the opposite direction. `bid`/`ask`/`mark`
+ * and `ts` still update unconditionally on every quote — a Quote frame IS the fresh NBBO, exactly
+ * as before this fix.
+ */
+export function mergeQuoteIntoOptionMark(
+  prev: OptionMark | undefined,
+  bid: number | null,
+  ask: number | null,
+  quoteLast: number | null,
+  now: number
+): OptionMark {
+  return {
+    bid,
+    ask,
+    mark: midOf(bid, ask),
+    last: quoteLast ?? prev?.last ?? null,
+    ts: now,
+  };
+}
+
 async function writeMarkThrough(occ: string, m: OptionMark): Promise<void> {
   try {
     const { sharedCacheSet } = await import("../shared-cache");
@@ -278,14 +356,23 @@ export async function getLiveOptionMark(
   return null;
 }
 
-/** Synchronous in-memory-only read (no Redis). Used by hot batch paths. */
+/**
+ * Synchronous in-memory-only read (no Redis). Used by hot batch paths.
+ *
+ * Carries `last` (the last-trade price) alongside `mark`/`bid`/`ask` — added 2026-09-15 so a
+ * caller can apply the same bid=0 backstop-quote divergence guard `reliableMarkFromSnapshot`
+ * already applies to the REST snapshot path (`reliableMarkFromQuote`, options-snapshot.ts) to
+ * this WS mark too: `handleQuote`'s `midOf(bp, ap)` computation has the identical exposure to a
+ * market-maker backstop ask, and until this field existed there was no way for a downstream
+ * consumer to even attempt the check.
+ */
 export function getLiveOptionMarkSync(
   occ: string,
   maxAgeMs: number = OPTION_MARK_FRESH_MS
-): { mark: number; bid: number | null; ask: number | null; ts: number } | null {
+): { mark: number; bid: number | null; ask: number | null; last: number | null; ts: number } | null {
   const local = optionMarks.get(occ);
   if (local && local.mark != null && isWsUpdatedAtFresh(local.ts, maxAgeMs)) {
-    return { mark: local.mark, bid: local.bid, ask: local.ask, ts: local.ts };
+    return { mark: local.mark, bid: local.bid, ask: local.ask, last: local.last, ts: local.ts };
   }
   return null;
 }
@@ -562,6 +649,9 @@ class OptionsShard {
     }
   }
 
+  /** Quote (NBBO) update — see mergeQuoteIntoOptionMark's own doc for why `last` is carried
+   *  forward from the prior entry rather than overwritten, even though bid/ask/mark/ts refresh
+   *  unconditionally on every quote. */
   private handleQuote(msg: Record<string, unknown>) {
     // OCC symbol — Massive uses `sym`; tolerate `T`/`ticker` aliases.
     const occ = String(msg.sym ?? msg.T ?? msg.ticker ?? "");
@@ -571,33 +661,29 @@ class OptionsShard {
     // bid/ask aliases. Sizes (bs/as) are ignored — we only need the NBBO prices.
     const bid = finiteOrNull(msg.bp ?? msg.bid);
     const ask = finiteOrNull(msg.ap ?? msg.ask);
-    const last = finiteOrNull(msg.lp ?? msg.last ?? msg.p);
-    const mark = midOf(bid, ask);
-    // A Q frame with no usable price at all is dropped — never store a fabricated mark.
-    if (mark == null && bid == null && ask == null && last == null) return;
+    // A real Quote frame never carries one of these (they're Trade-frame fields) — this almost
+    // always resolves to null, which is exactly why mergeQuoteIntoOptionMark must carry the prior
+    // entry's `last` forward instead of overwriting it with this.
+    const quoteLast = finiteOrNull(msg.lp ?? msg.last ?? msg.p);
+    // A Q frame with no usable price at all (checked on the FRAME's own fields, not whatever gets
+    // carried forward below) is dropped — never store a fabricated mark.
+    if (bid == null && ask == null && quoteLast == null) return;
 
     const now = Date.now();
     // (liveness is tracked in handleMessage on ANY frame; here we only need `now` for the ts)
-    const entry: OptionMark = { bid, ask, mark, last, ts: now };
+    const entry = mergeQuoteIntoOptionMark(optionMarks.get(occ), bid, ask, quoteLast, now);
     optionMarks.set(occ, entry);
     void writeMarkThrough(occ, entry);
   }
 
-  /** Trade print — refreshes last/mark when quotes are quiet (RT-1 liveness + mark fallback). */
+  /** Trade print — refreshes last/mark when quotes are quiet (RT-1 liveness + mark fallback).
+   *  See mergeTradeIntoOptionMark's own doc for why `ts` does NOT simply become Date.now(). */
   private handleTrade(msg: Record<string, unknown>) {
     const occ = String(msg.sym ?? msg.T ?? msg.ticker ?? "");
     if (!occ) return;
     const last = finiteOrNull(msg.p ?? msg.price);
     if (last == null) return;
-    const now = Date.now();
-    const prev = optionMarks.get(occ);
-    const entry: OptionMark = {
-      bid: prev?.bid ?? null,
-      ask: prev?.ask ?? null,
-      mark: prev?.mark ?? last,
-      last,
-      ts: now,
-    };
+    const entry = mergeTradeIntoOptionMark(optionMarks.get(occ), last, Date.now());
     optionMarks.set(occ, entry);
     void writeMarkThrough(occ, entry);
   }

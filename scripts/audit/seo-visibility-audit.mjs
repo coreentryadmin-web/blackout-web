@@ -105,12 +105,15 @@ const backend = (m, p, body) =>
 
 async function fetchPublic(path) {
   const bust = path.includes("?") ? "&" : "?";
-  const r = curl({ url: `${APP}${path}${bust}_=${Date.now()}` });
+  // Deploy-smoke observed two real RED runs (2026-09-13 22:38, 2026-09-14 06:48 UTC) on a bare
+  // "Recv failure: Connection reset by peer" — the exact transient the FAPI mint path below
+  // already retries via curlRetry/isRetryableCurlResult. This path just wasn't wired up to it.
+  const r = await curlRetry({ url: `${APP}${path}${bust}_=${Date.now()}` });
   return { status: r.s, html: r.b, text: r.b };
 }
 
 async function fetchAuthed(path, sessionCookie, clientUat) {
-  const r = curl({
+  const r = await curlRetry({
     url: `${APP}${path}`,
     headers: { Cookie: `__session=${sessionCookie}; __client_uat=${clientUat}` },
   });

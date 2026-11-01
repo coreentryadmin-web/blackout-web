@@ -74,6 +74,38 @@ test("extractConsensusFromTools: THERMAL never casts a bullish/bearish vote off 
   assert.equal(stale.agreement.bullish, 0);
 });
 
+test("extractConsensusFromTools: NIGHT_HAWK never casts a bullish/bearish vote off a committed CONDOR", () => {
+  // Same class of bug as the THERMAL test above, same root cause as product-adapters.ts's
+  // nighthawkContribution fix: a committed 0DTE iron condor is a delta-neutral 4-leg structure
+  // sold for a credit whose `direction` field is the pin's nominal fade side — condor.ts's own
+  // doc says it is "UNUSED by the neutral structure's gates/grader", never a real directional
+  // stance. This extractor used to count every play's `direction` toward bullish/bearish
+  // regardless of structure, so a board carrying ONLY condors could still fabricate a confident
+  // NIGHT_HAWK bullish/bearish vote into the whole-ecosystem consensus matrix.
+  const onlyCondor = extractConsensusFromTools({
+    get_zerodte_plays: { plays: [{ ticker: "SPX", is_condor: true, play_type: "CONDOR", direction: "short" }] },
+  });
+  assert.equal(onlyCondor.reads[0]?.system, "NIGHT_HAWK");
+  assert.equal(onlyCondor.reads[0]?.direction, "neutral", "a lone condor must read neutral, never a fabricated directional vote");
+  assert.equal(onlyCondor.agreement.bullish, 0);
+  assert.equal(onlyCondor.agreement.bearish, 0);
+  assert.match(onlyCondor.reads[0]?.basis ?? "", /delta-neutral|no directional/);
+
+  // A REAL directional play alongside a condor on the same board must still vote correctly, and
+  // the condor must not be silently folded into the denominator/tally.
+  const mixed = extractConsensusFromTools({
+    get_zerodte_plays: {
+      plays: [
+        { ticker: "SPX", direction: "bullish" },
+        { ticker: "NDX", is_condor: true, play_type: "CONDOR", direction: "short" },
+      ],
+    },
+  });
+  assert.equal(mixed.reads[0]?.direction, "bullish", "the one real directional play must win, unopposed by the condor's nominal fade");
+  assert.equal(mixed.agreement.bullish, 1);
+  assert.equal(mixed.agreement.bearish, 0);
+});
+
 // 2026-09-04 audit finding — regression pin, same class of bug as the THERMAL one above.
 // extractHelixRead used to read invented field names (call_volume/calls_premium/call_prints/
 // put_prints) that exist on NEITHER real HELIX tool payload, so every real call silently fell

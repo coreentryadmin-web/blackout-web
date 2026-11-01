@@ -131,7 +131,12 @@ export const LEGACY_BOARD_DEV_PLAYS: TerminalPlay[] = [
     mark: 3.2,
     pnlPct: -45,
     peak: 8,
-    stockMovePct: 2.1,
+    // SHORT (put-thesis) play: overlayLegacyQuotes.ts computes stockMovePct as
+    // ((entryMid - price) / entryMid) * 100 for SHORT, so a positive value means the stock fell
+    // (favorable) and negative means it rose (adverse). This row's own narrative ("Opened above
+    // stop — setup broken") describes an adverse upward gap, matching its losing pnlPct (-45%) —
+    // stockMovePct must be negative to agree, not the positive +2.1 this previously read as.
+    stockMovePct: -2.1,
     morningStatus: "INVALIDATED",
     pulled: true,
     markAsOf: `${SESSION}T09:05:00.000Z`,

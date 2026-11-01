@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { TerminalPlay } from "./types";
@@ -7,6 +7,15 @@ import type { TerminalPlay } from "./types";
 // Classic JSX runtime in this test context expects a global React (same idiom as
 // PlaybookBoard.test.ts) — set it BEFORE importing the component.
 (globalThis as unknown as { React: typeof React }).React = React;
+
+// PlayTerminal now mounts SwingLargoInsightsPanel (mobile fallback for the 3-column desktop rail
+// — see globals.css's `.nh-deck-right-largo-mobile`), which calls next/navigation's useRouter()
+// for its follow-up-chip links. A real App Router context is only ever absent in this raw
+// renderToStaticMarkup harness, never in production (every real page has one) — mock it here
+// rather than reach for AppRouterContext.Provider boilerplate this file has never needed before.
+mock.module("next/navigation", {
+  namedExports: { useRouter: () => ({ push: () => {} }) },
+});
 
 const load = () => import("./PlayTerminal");
 
@@ -259,6 +268,54 @@ test("Thesis tab: R:R ratio appears in technicals when expanded (CLOSED play)", 
   assert.match(html, /2\.4:1/);
 });
 
+test("Thesis tab: R:R display floors instead of rounding — 1.96 must NOT display as the 2.0 threshold it hasn't reached", async () => {
+  const html = await render(play({ rrRatio: 1.96, status: "CLOSED" }));
+  assert.match(html, /1\.9:1/);
+  assert.doesNotMatch(html, /2\.0:1/);
+});
+
+// ZeroDtePreEntryContext (the !has && play.mark != null branch) lives inside PnlPanel, mounted on
+// the "pnl" tab — and only for a horizon that falls through to the tabbed layout at all (ZERO_DTE/
+// SWING/LEGACY all divert to their own single-panel components before the tab bar is reached), so
+// LEAPS + initialTab:"pnl" (the SSR test-only escape hatch — no click simulation under
+// renderToStaticMarkup) is what actually exercises it in this test file.
+test("pre-entry (not-yet-committed), PnL tab: R:R display floors instead of rounding — 0.96 must NOT display as the 1.0 'favorable' threshold, label still reads 'acceptable'", async () => {
+  const html = await render(play({ horizon: "LEAPS", entry: null, mark: 2.6, rrRatio: 0.96 }), { initialTab: "pnl" });
+  assert.match(html, /Risk : Reward/);
+  assert.match(html, /0\.9:1\s*\(acceptable\)/);
+  assert.doesNotMatch(html, /1\.0:1/);
+});
+
+test("pre-entry (not-yet-committed), PnL tab: R:R display floors instead of rounding — 1.96 must NOT display as the 2.0 'strong' threshold, label still reads 'favorable'", async () => {
+  const html = await render(play({ horizon: "LEAPS", entry: null, mark: 2.6, rrRatio: 1.96 }), { initialTab: "pnl" });
+  assert.match(html, /1\.9:1\s*\(favorable\)/);
+  assert.doesNotMatch(html, /2\.0:1/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-24): PnlPanel's "Live P&L" headline used to read
+// bare `play.pnlPct` unconditionally — for a CLOSED play with a real recorded `exitPnlPct` that
+// disagrees with the last live mid (stale -50% mid vs a +42% actual exit fill), the headline
+// showed the stale number instead of the real outcome. LEAPS is the only horizon that reaches
+// this branch (see the reachability comment a few tests above).
+test("PnL tab, CLOSED LEAPS play: Live P&L headline prefers the recorded exitPnlPct over a stale pnlPct mid", async () => {
+  const html = await render(
+    play({ horizon: "LEAPS", status: "CLOSED", pnlPct: -50, exitPnlPct: 42 }),
+    { initialTab: "pnl" },
+  );
+  assert.match(html, /\+42\.0%/, `expected the real exit fill +42.0%, got: ${html}`);
+  assert.doesNotMatch(html, />-50\.0%</, `must not show the stale mechanical mid as the headline, got: ${html}`);
+});
+
+// Sibling case: an OPEN (not yet closed) LEAPS play must still show the live mid unchanged —
+// exitPnlPct is only ever meaningful once the play has actually closed.
+test("PnL tab, OPEN LEAPS play: Live P&L headline still shows the live pnlPct mid, unaffected by this fix", async () => {
+  const html = await render(
+    play({ horizon: "LEAPS", status: "OPEN", pnlPct: 18, exitPnlPct: null }),
+    { initialTab: "pnl" },
+  );
+  assert.match(html, /\+18\.0%/, `expected the live mid +18.0%, got: ${html}`);
+});
+
 test("OCC copy: absent OCC → no control rendered (graceful, no dead button)", async () => {
   const html = await render(play({ occ: null }));
   assert.doesNotMatch(html, /nh-deck-occcopy/);
@@ -312,6 +369,50 @@ test("nowMs prop: an injected clock drives staleness detection instead of the co
   assert.match(staleHtml, /STALE/);
 });
 
+// ── Greek strip IV placeholder-scale guard (Ask Largo standing mandate, 2026-09-20) ──────
+// BUG FOUND: `normalizeImpliedVol` (options-snapshot.ts) exists specifically to catch a real
+// provider placeholder — some expired/edge-row option snapshots return `implied_volatility` on
+// the PERCENT scale (20 = 2000%) instead of the normal DECIMAL scale (0.20 = 20%) — but that
+// function's own doc comment says every consumer must pass IV "through normalizeImpliedVol()...
+// at the point IV is displayed", and this greek strip (`fmtGreek`) never did: it formatted the
+// raw value straight through `Math.round(v * 100)`. A placeholder would have rendered here as
+// "IV 2000%" on a live position instead of "IV 20%". The guard is duplicated locally
+// (`normalizeIvForDisplay`) rather than importing the heavy server-only options-snapshot module
+// into this client component.
+// LEAPS is the only horizon that ever reaches this classic greek strip: `isZeroDtePremiumTerminal`
+// (terminal-display.ts) is true for ZERO_DTE/SWING, and BOTH of those are also `commandSinglePanel`
+// (PlayTerminal.tsx), so neither the `!premium` branch nor the `premium && !commandSinglePanel`
+// branch that render this strip is ever reachable for them — only LEAPS (not premium, not legacy,
+// not single-panel) actually paints it today.
+test("Greek strip: a percent-scale IV placeholder (>= 500% decimal-equivalent) is rescaled, never shown as a four-digit percent", async () => {
+  const markAsOf = new Date().toISOString();
+  const html = await render(
+    play({
+      horizon: "LEAPS",
+      status: "OPEN",
+      markAsOf,
+      greeks: { delta: 0.62, gamma: 0.031, theta: -0.084, vega: 0.112, iv: 20 },
+    }),
+    { nowMs: Date.parse(markAsOf) },
+  );
+  assert.match(html, />20%</, `expected rescaled 20%, got greek strip in: ${html}`);
+  assert.doesNotMatch(html, />2000%</, `must never render the raw percent-scale placeholder, got: ${html}`);
+});
+
+test("Greek strip: a normal decimal-scale IV renders unchanged", async () => {
+  const markAsOf = new Date().toISOString();
+  const html = await render(
+    play({
+      horizon: "LEAPS",
+      status: "OPEN",
+      markAsOf,
+      greeks: { delta: 0.62, gamma: 0.031, theta: -0.084, vega: 0.112, iv: 0.485 },
+    }),
+    { nowMs: Date.parse(markAsOf) },
+  );
+  assert.match(html, />49%</, `expected 49% unrescaled, got: ${html}`);
+});
+
 test("nowMs prop: omitted → renders without throwing (falls back to the component's own tick)", async () => {
   const html = await render(play({ markAsOf: new Date().toISOString(), status: "OPEN" }));
   assert.match(html, /<div/); // sanity: still produces real markup, not a crash
@@ -332,4 +433,78 @@ test("Legacy single panel: stock move uses from-entry label in header stream", a
   const html = await render(legacyPlay({ stockMovePct: 4.2, pnlPct: 4.2 }));
   assert.match(html, /4\.2% from entry/);
   assert.match(html, /stock entry/);
+});
+
+// BUG FIX (2026-11-01, Night Hawk Legacy / Ask Largo standing mandate — 4th instance of this
+// exact WATCH/SKIP-exclusion defect in this file family): WATCH/SKIP never had a position entered
+// — `stockMovePct` is a real, honest number (the underlying's hypothetical move from the published
+// entry-band midpoint), but legacyPrimaryPnlPct used to fall back to it with no status gate, so
+// BOTH the header stream above (PlayTerminal.tsx) and the verdict band below (LegacyPlayDetailPanel,
+// rendered right underneath on the same single-panel view) printed it as "{X}% from entry" — reading
+// as a real, entered position's return. Fixed at the shared `legacyPrimaryPnlPct` helper, with the
+// honest "Since flag" framing (reusing primaryReturnLabel/CommandDeck's WATCH-track label verbatim)
+// swapped in at both render sites instead of silently showing nothing.
+test("Legacy single panel: WATCH status never shows a fabricated 'from entry' P&L — stockMovePct is a real number but no position was ever entered", async () => {
+  const html = await render(legacyPlay({ status: "WATCH", stockMovePct: 4.2, pnlPct: null }));
+  assert.doesNotMatch(html, /% from entry/, `must never render a hypothetical move as real P&L, got: ${html}`);
+  assert.match(html, /Since flag/, `expected the honest "Since flag" framing, got: ${html}`);
+  assert.match(html, /\+4\.2%/);
+});
+
+test("Legacy single panel: SKIP status never shows a fabricated 'from entry' P&L either", async () => {
+  const html = await render(legacyPlay({ status: "SKIP", stockMovePct: -3.5, pnlPct: null }));
+  assert.doesNotMatch(html, /% from entry/, `must never render a hypothetical move as real P&L, got: ${html}`);
+  assert.match(html, /Since flag/, `expected the honest "Since flag" framing, got: ${html}`);
+  assert.match(html, /-3\.5%/);
+});
+
+test("Legacy single panel: OPEN status is unaffected by the WATCH/SKIP gate — still shows the real 'from entry' P&L text (no regression)", async () => {
+  const html = await render(legacyPlay({ status: "OPEN", stockMovePct: 4.2, pnlPct: 4.2 }));
+  assert.match(html, /4\.2% from entry/);
+});
+
+// Mobile fallback for the Structure Ladder / Ask Largo read (2026-09-13, operator report: tapping
+// a Swing play on a phone showed the position stats but never the Largo panel — the desktop-only
+// 3-column `.nh-deck-largo` rail is CSS-hidden below 1100px with no fallback). PlayTerminal now
+// mounts a second SwingLargoInsightsPanel wrapped in `.nh-deck-right-largo-mobile`, CSS-gated the
+// opposite way so it fills exactly that gap without duplicating the desktop rail. See globals.css.
+test("Swing play: mobile Largo fallback mounts (fills the gap below the 1100px 3-column breakpoint)", async () => {
+  const html = await render(play({ horizon: "SWING", status: "OPEN" }));
+  assert.match(html, /nh-deck-right-largo-mobile/);
+  assert.match(html, /nh-deck-largo/); // SwingLargoInsightsPanel's own root class
+});
+
+test("0DTE play: no mobile Largo fallback mounted (Swing-only feature)", async () => {
+  const html = await render(play({ horizon: "ZERO_DTE", status: "OPEN" }));
+  assert.doesNotMatch(html, /nh-deck-right-largo-mobile/);
+});
+
+test("Legacy play: no mobile Largo fallback mounted (Swing-only feature)", async () => {
+  const html = await render(legacyPlay());
+  assert.doesNotMatch(html, /nh-deck-right-largo-mobile/);
+});
+
+// DEAD-CODE REMOVAL (Ask Largo standing mandate, 2026-10-24): `legacySinglePanel` unconditionally
+// routes every Legacy play to LegacyPlayDetailPanel, even when `initialTab="pnl"` asks for the
+// tab bar explicitly — that is exactly why the now-deleted `LegacyPnlPanel` (PnlPanel's old
+// LEGACY branch) could never render in production. Pins that behavior: no tab bar markup, and
+// the single-panel's own excursion bar (sourced from legacyPrimaryPeakPct/TroughPct, matching
+// TradeExcursionGraphic's existing fix from PR #6619) still renders correctly with pnlPct/peak/
+// trough null and only the stock* fields populated — proving the deletion changed nothing a real
+// Legacy play ever showed.
+test("Legacy play: initialTab='pnl' still renders the single-panel view, never a tab bar — stock-fallback excursion bar renders correctly", async () => {
+  const html = await render(
+    legacyPlay({
+      pnlPct: null,
+      peak: null,
+      trough: null,
+      stockMovePct: 6.4,
+      stockPeakPct: 11.2,
+      stockTroughPct: -3.5,
+    }),
+    { initialTab: "pnl" },
+  );
+  assert.doesNotMatch(html, /nh-deck-tabs/);
+  assert.match(html, /nh-deck-excursion-graphic/);
+  assert.match(html, /\+6\.4%/);
 });

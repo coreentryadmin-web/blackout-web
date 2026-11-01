@@ -1,0 +1,183 @@
+// Regression for the recap_summary double-period bug (2026-09-10 5-engine live monitor sweep):
+// GET /api/market/nighthawk/edition served "Market tide unavailable.. SPX ..." to every member
+// and Largo caller whenever ctx.tide was null, because tideSummary() baked its own trailing
+// period into two of its three branches while buildMarketRecap's summary template also appended
+// one (`${tide}. ${spx}.`). The third branch (a real computed tide) never had a trailing period,
+// so the bug was branch-specific, not a universal template issue.
+import assert from "node:assert/strict";
+import test from "node:test";
+import { buildMarketRecap, flowByExpiryPremium, tideBias } from "./format";
+import type { MarketWideContext } from "./market-wide";
+
+function baseCtx(overrides: Partial<MarketWideContext> = {}): MarketWideContext {
+  return {
+    today: "2026-09-09",
+    tomorrow: "2026-09-10",
+    tide: null,
+    stock_flows: [],
+    hot_chains: [],
+    index_flows: {},
+    spx_bars: [{ o: 7670, h: 7680, l: 7620, c: 7636.36, t: 1 }],
+    spx_intraday_5m: [],
+    spx_gap: null,
+    vix_bars: [{ o: 15.7, h: 16.6, l: 15.6, c: 16.46, t: 1 }],
+    market_news: [],
+    macro_events: [],
+    tomorrow_earnings: [],
+    sector_tides: [],
+    etf_tides: {},
+    sector_performance: [],
+    top_net_impact: [],
+    vix_term: [],
+    vix_iv_rank: null,
+    market_breadth: null,
+    predictions_consensus: [],
+    mag7_greek_flow: null,
+    macro_indicators: [],
+    after_hours_catalysts: [],
+    total_options_volume: null,
+    market_oi_change: [],
+    platform_intel: null,
+    unusual_trades: [],
+    market_movers: [],
+    breakout_movers: [],
+    ...overrides,
+  };
+}
+
+test("recap summary never double-periods when tide is unavailable", () => {
+  const { summary, tide } = buildMarketRecap(baseCtx({ tide: null }));
+  assert.equal(tide, "Market tide unavailable");
+  assert.ok(!summary.includes(".."), `expected no double period, got: ${summary}`);
+  assert.ok(summary.startsWith("Market tide unavailable. SPX"));
+});
+
+test("recap summary never double-periods when tide is flat/zero", () => {
+  const { summary, tide } = buildMarketRecap(baseCtx({ tide: { call_premium: 0, put_premium: 0 } }));
+  assert.equal(tide, "Market tide flat / no premium");
+  assert.ok(!summary.includes(".."), `expected no double period, got: ${summary}`);
+});
+
+test("recap summary still reads correctly for a real computed tide", () => {
+  const { summary, tide } = buildMarketRecap(
+    baseCtx({ tide: { call_premium: 6_000_000, put_premium: 4_000_000 } })
+  );
+  assert.equal(tide, "BULLISH — calls 60% ($6.0M) vs puts $4.0M");
+  assert.ok(!summary.includes(".."), `expected no double period, got: ${summary}`);
+  assert.ok(summary.startsWith("BULLISH — calls 60% ($6.0M) vs puts $4.0M. SPX"));
+});
+
+// Regression (correctness audit, 2026-11-01): tideBias()/tideSummary() treat `call_premium`/
+// `put_premium` as if they were non-negative gross premiums, computing `total = call + put` and
+// reading `total <= 0` as "no real premium at all". The real field (fetchUwMarketTide, src/lib/
+// providers/unusual-whales.ts) is UW's SIGNED NET premium — net call-SELLING is routine and
+// genuinely negative. Live-verified 2026-10-21: the real market-tide row behind that day's Legacy
+// edition had call_premium = -$10.1M / put_premium = $32.0M and correctly read BEARISH (its signed
+// sum, $21.9M, stayed positive). A MORE one-sided version of that exact same bearish pattern —
+// heavier net call-selling that pushes the signed sum through zero — used to flip the verdict
+// backward to NEUTRAL/"flat, no premium" purely because of which side of zero the raw sum landed
+// on, not because the market became less directional.
+test("tideBias: a more one-sided bearish tide (net call-selling heavier than net put-buying) stays BEARISH, not NEUTRAL", () => {
+  // Same sign pattern as the real live 2026-10-21 tide (net call-selling + net put-buying), just
+  // large enough in magnitude that call_premium + put_premium crosses through zero.
+  assert.equal(tideBias({ call_premium: -50_000_000, put_premium: 10_000_000 }), "BEARISH");
+  // The real live 2026-10-21 case itself must keep reading BEARISH (it already did pre-fix,
+  // because its signed sum happened to stay positive — this guards against a regression that
+  // flips this known-good case while fixing the one above).
+  assert.equal(tideBias({ call_premium: -10_100_000, put_premium: 32_000_000 }), "BEARISH");
+});
+
+test("tideBias: the mirror-image bullish case (net call-buying + net put-selling summing negative) stays BULLISH, not NEUTRAL", () => {
+  // call bought (+110M bullish) and put sold (-120M, also bullish) sum to a NEGATIVE total
+  // (-10M) under the old call+put math, which used to read NEUTRAL despite both signals
+  // pointing bullish.
+  assert.equal(tideBias({ call_premium: 110_000_000, put_premium: -120_000_000 }), "BULLISH");
+});
+
+test("tideSummary (via buildMarketRecap): the one-sided bearish net-call-selling tide renders BEARISH text, not 'flat / no premium'", () => {
+  const { tide } = buildMarketRecap(
+    baseCtx({ tide: { call_premium: -50_000_000, put_premium: 10_000_000 } })
+  );
+  assert.ok(tide.startsWith("BEARISH"), `expected a BEARISH verdict, got: ${tide}`);
+  assert.notEqual(tide, "Market tide flat / no premium");
+});
+
+test("tideBias: a genuinely flat tide (both sides zero) is still NEUTRAL", () => {
+  assert.equal(tideBias({ call_premium: 0, put_premium: 0 }), "NEUTRAL");
+});
+
+// Task #31 (Ask Largo x Night Hawk Legacy standing mandate, 2026-09-18): platform_intel.playbook
+// (deriveComposite's own authored regime strategy line) was already computed and already fed into
+// the Claude edition prompt as advisory context, but nothing guaranteed it reached the member-facing
+// recap deterministically — buildMarketRecap now surfaces it as its own field, same "only non-empty
+// strings render" convention as tide/spx_vix/catalysts.
+test("buildMarketRecap surfaces platform_intel.playbook as desk_playbook", () => {
+  const { desk_playbook } = buildMarketRecap(
+    baseCtx({
+      platform_intel: {
+        composite_regime: "AMPLIFY_BREAKOUT",
+        gex_regime: "amplification",
+        flow_regime: "bullish",
+        playbook: "Dealers short gamma — moves amplify. Trend up with breakout risk; calls favored; ride momentum, avoid fades.",
+        net_gex: null,
+        above_vwap: null,
+        iv_percentile: null,
+        regime_stale: false,
+        critical_anomaly_count: 0,
+        anomaly_tickers: [],
+        signal_recommendation: null,
+        last_brief: null,
+      },
+    })
+  );
+  assert.equal(
+    desk_playbook,
+    "Dealers short gamma — moves amplify. Trend up with breakout risk; calls favored; ride momentum, avoid fades."
+  );
+});
+
+test("buildMarketRecap: desk_playbook is empty string (never null) when platform_intel is unavailable", () => {
+  const { desk_playbook } = buildMarketRecap(baseCtx({ platform_intel: null }));
+  assert.equal(desk_playbook, "");
+});
+
+// Regression (Ask Largo standing mandate, 5-engine live monitor, 2026-09-11): live repro on
+// GET /api/market/nighthawk/edition printed "Macro: GDP 23850.442 · CPI 333.918" straight in the
+// member-facing recap_summary — buildMarketRecap's own macroLine read `m.latest_value` raw with no
+// rounding, while the sibling formatMacroIndicators() two functions above (used elsewhere in this
+// same file) already does `.toFixed(2)` on the identical UwMacroIndicatorSnapshot field. Same data,
+// two renderers in one file, only one rounds — exactly CLAUDE.md's documented "round at the data
+// layer" class of bug (`7499.360000000001`), just in a new spot. Members and Largo both read
+// recap_summary verbatim, so the raw float reached both. Fixed by rounding macroLine the same way.
+test("recap summary rounds macro indicator values instead of printing raw floats", () => {
+  const { summary } = buildMarketRecap(
+    baseCtx({
+      macro_indicators: [
+        { label: "GDP", latest_value: 23850.442, change_pct: null } as never,
+        { label: "CPI", latest_value: 333.918, change_pct: null } as never,
+      ],
+    })
+  );
+  assert.ok(summary.includes("Macro: GDP 23850.44 · CPI 333.92."), `expected rounded macro values, got: ${summary}`);
+  assert.ok(!summary.includes("23850.442"), `expected no raw unrounded float, got: ${summary}`);
+  assert.ok(!summary.includes("333.918"), `expected no raw unrounded float, got: ${summary}`);
+});
+
+// Live-verified 2026-09-12: real UW `/api/stock/{ticker}/flow-per-expiry` rows carry
+// `call_premium`/`put_premium` (separate string fields), never a single `premium`/
+// `total_premium` field. flowByExpiryPremium's old guessed field names always evaluated to 0,
+// so every "Flow by expiry" line in the Legacy dossier text (fed into the edition's Claude
+// prompt) silently read "$0" for every expiry regardless of real flow.
+test("flowByExpiryPremium: real flow-per-expiry shape sums call_premium + put_premium", () => {
+  const row = { expiry: "2026-09-14", call_premium: "47977407.00", put_premium: "23757826.00" };
+  assert.equal(flowByExpiryPremium(row), 47977407 + 23757826);
+});
+
+test("flowByExpiryPremium: falls back to premium/total_premium when call/put premium absent", () => {
+  assert.equal(flowByExpiryPremium({ premium: 500 }), 500);
+  assert.equal(flowByExpiryPremium({ total_premium: 700 }), 700);
+});
+
+test("flowByExpiryPremium: no matching field at all returns 0, not NaN", () => {
+  assert.equal(flowByExpiryPremium({ expiry: "2026-09-14" }), 0);
+});

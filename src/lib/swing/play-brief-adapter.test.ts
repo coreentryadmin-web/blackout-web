@@ -1,0 +1,545 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { composeSwingPlayBrief } from "./play-brief";
+import { adaptSwingBriefToLargo } from "./play-brief-adapter";
+import type { SwingPlayBriefContext } from "./play-brief-types";
+import { contractViolations } from "@/lib/largo/contract/product-read";
+
+function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
+  return {
+    id: "SWING:INTC",
+    ticker: "INTC",
+    direction: "LONG",
+    contract: "90C · 13DTE",
+    score: 72,
+    tierLabel: "B",
+    status: "WATCH",
+    horizon: "SWING",
+    exitModel: "SCALE_OUT",
+    recommendation: "BUY",
+    recNote: "Pullback to entry zone — persistence confirmed.",
+    factors: [
+      { label: "Rel. strength", points: 18 },
+      { label: "Regime", points: 12 },
+    ],
+    regime: "Sector rotation · regime 0.82",
+    archetype: "BREAKOUT",
+    servingSection: "WAITING_FOR_ENTRY",
+    setupState: "FORMING",
+    entryStatus: "PRE_TRIGGER",
+    swingEntryAction: "buy",
+    gateBlocks: [{ code: "G-S6", reason: "Bucket not graduated" }],
+    thesisBreak: { level: "intact", note: "Structure holding" },
+    ...overrides,
+  };
+}
+
+function fixtureCtx(overrides: Partial<SwingPlayBriefContext> = {}): SwingPlayBriefContext {
+  return {
+    play: fixturePlay(),
+    // Real shape, not a raw ISO instant: `loadSwingPlayBriefContext` always sets this via
+    // `etStamp(nowMs)` (play-brief-context.ts), which is already "YYYY-MM-DD HH:mm ET" — the
+    // prior ISO-string fixture here let adaptSwingBriefToLargo's now-removed re-parse-as-ISO
+    // bug ship to production undetected (every real request threw `Invalid time value`).
+    asOf: "2026-09-07 02:59 ET",
+    sessionDate: "2026-09-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    ...overrides,
+  };
+}
+
+// BUG (found during the 2026-10-19 Ask Largo cycle, same live-repro ticker as play-brief.ts's own
+// 2026-10-17 ticker_class fix): adaptSwingBriefToLargo reimplemented its OWN tiny, separately
+// hardcoded ticker-class classifier (`tickerClassFromTicker`, a 6-ETF allowlist) instead of reusing
+// `SwingPlayBriefResult.ticker_class` — the single, already-correct, already-tested source of truth
+// `composeSwingPlayBrief` derives from the shared `canonicalTicker` (largo/core/entities.ts). SQQQ
+// (a leveraged ETF, not in the adapter's own list) is misclassified "equity" by the adapter while
+// the SAME response's native `brief.ticker_class` correctly says "etf" — a contract-required C4
+// identity field disagreeing with itself inside one HTTP response.
+test("adaptSwingBriefToLargo: ticker_class must match the brief's own classification (C4 identity), not a second independent guess", () => {
+  const brief = composeSwingPlayBrief(fixtureCtx({ play: fixturePlay({ ticker: "SQQQ", id: "SWING:SQQQ" }) }));
+  assert.equal(brief.ticker_class, "etf", "sanity: SQQQ must classify as etf via the native path");
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.equal(
+    largoRead.data.ticker_class,
+    "etf",
+    "Largo-facing ticker_class must agree with the brief's own ticker_class for the same response"
+  );
+  assert.equal(
+    largoRead.data.ticker_class,
+    brief.ticker_class,
+    "adapter must never compute a ticker_class independently of the already-classified brief"
+  );
+});
+
+test("adaptSwingBriefToLargo: ticker_class still agrees with the brief for a plain equity", () => {
+  const brief = composeSwingPlayBrief(fixtureCtx({ play: fixturePlay({ ticker: "NVDA", id: "SWING:NVDA" }) }));
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.equal(largoRead.data.ticker_class, "equity");
+  assert.equal(largoRead.data.ticker_class, brief.ticker_class);
+});
+
+// BUG (production 2026-10-20): every swing play-brief 503'd with "Invalid time value" — the
+// adapter re-parsed `asOf` with `new Date(asOf)` as if it were a raw ISO instant, but `asOf` is
+// always already the Largo C1 "YYYY-MM-DD HH:mm ET" stamp (`etStamp(nowMs)` in
+// play-brief-context.ts). `new Date("2026-10-20 00:41 ET")` is an Invalid Date, and
+// `Intl.DateTimeFormat.formatToParts()` throws `RangeError: Invalid time value` on one — every
+// ticker, every status, 100% of requests, since this runs on every single composed brief. The
+// fixture above used to paper over this with a hand-written ISO string no real caller ever
+// passes; it now matches production's actual shape.
+test("adaptSwingBriefToLargo: does not throw on the real ET-stamp asOf shape, and passes it through as C1 as_of verbatim", () => {
+  const ctx = fixtureCtx({ asOf: "2026-10-20 00:41 ET" });
+  const brief = composeSwingPlayBrief(ctx);
+  assert.doesNotThrow(() => adaptSwingBriefToLargo(brief));
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.as_of, "2026-10-20 00:41 ET");
+  assert.deepEqual(contractViolations(largoRead), [], "must be a fully C1-compliant as_of, not just non-throwing");
+});
+
+// BUG FIX (Largo C2, 2026-10-21, Ask Largo standing mandate — live 6-brief repro CRWV:61/CRWV:63/
+// GOOG:59/NVDA:62/TSLA:60/AMZN:48): `freshness`/`age_seconds` used to be hardcoded ("cached"/null)
+// on EVERY response, even when a per-source age was already known and already disclosed in the
+// SAME response's own "Data freshness" prose (e.g. real TSLA:60 brief: "Vector data **8642s** old
+// — levels may lag live spot"). This pins the live repro's exact number: a HOLD play (today's live
+// desk state IS load-bearing — `isSwingPlayStaleCheckExempt` is false for HOLD) whose only known
+// source is a Vector snapshot stamped `dataAgeMs: 8_642_000` must surface that same age through the
+// structured contract field, not silently drop it.
+test("adaptSwingBriefToLargo: surfaces a known stale Vector age as age_seconds/freshness instead of the hardcoded cached/null constant (Largo C2)", () => {
+  const ctx = fixtureCtx({
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    sessionDate: "2026-10-21",
+    ecosystem: null,
+    vector: {
+      asOf: "2026-10-21T16:30:00.000Z",
+      asOfEt: "2026-10-21 12:30 ET",
+      sessionDate: "2026-10-21",
+      spot: 24.5,
+      // The exact age the live TSLA:60 repro's own "Data freshness" prose disclosed.
+      dataAgeMs: 8_642_000,
+      freshness: "stale",
+      regime: { posture: "long" },
+      gexWalls: { callWalls: [{ strike: 26, pct: 8 }], putWalls: [{ strike: 22, pct: 7 }] },
+      gammaFlip: 24,
+      maxPain: 23.5,
+      confluenceZones: [],
+      magnet: null,
+    } as SwingPlayBriefContext["vector"],
+  });
+  const brief = composeSwingPlayBrief(ctx);
+  // Sanity: the brief's own prose must have actually flagged this as stale — otherwise this test
+  // would pass for the wrong reason (no genuine known-stale source in play at all).
+  const freshnessSection = brief.envelope.sections.find((s) => s.title === "Data freshness");
+  assert.ok(freshnessSection, "expected a Data freshness section disclosing the stale Vector read");
+  assert.match(freshnessSection!.body, /Vector data \*\*8642s\*\* old/);
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.equal(largoRead.age_seconds, 8642, "age_seconds must reflect the real known Vector age, not null");
+  assert.equal(largoRead.freshness, "stale", "freshness must be derived from the real age, not hardcoded cached");
+});
+
+// BUG (found during the 2026-10-22 Ask Largo cycle): `extractEvidence` never read
+// `envelope.evidence` — the REAL, sourced evidence array `evidenceFromContext` (play-brief.ts)
+// builds (dealer-posture strike/γ reads, HELIX flow premiums, earnings dates, peer lists — the
+// literal "specific numbers behind the claim" `ProductSignal.evidence`'s own doc comment names for
+// Largo C7). Instead it manufactured a list out of restatements the SAME C7 doc comment explicitly
+// disclaims (the headline+bias repeated verbatim, each section's bare bias word, confidence
+// prose) — a model reading the structured `evidence` field saw zero of the brief's real sourced
+// numbers, only a paraphrase of the claim those numbers are supposed to back up.
+test("adaptSwingBriefToLargo: evidence[] surfaces the brief's REAL sourced evidence (Largo C7), not a bias/headline restatement", () => {
+  // `arsenal.earnings.earnings_date` -> evidenceFromContext's unconditional "Next earnings ..."
+  // fact (play-brief.ts) — deterministic regardless of wall-clock staleness, unlike the Vector/GEX
+  // calc facts, which this fixture deliberately avoids depending on for that reason.
+  const ctx = fixtureCtx({
+    ecosystem: {
+      gex_positioning: null,
+      vector_full_state: null,
+      arsenal: {
+        scope: "single_name",
+        earnings: { earnings_date: "2026-09-12", days_until: 7, report_time: "AMC", is_confirmed: true },
+        fundamentals: { days_to_cover: 2.1, short_volume_ratio: 0.35, price_target: null, as_of: "2026-09-05" },
+        related: ["AMD", "NVDA"],
+        news: { count: 2, newest: "2026-09-05", headlines: [{ headline: "INTC restructures fab unit", publishedAt: null }] },
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+  });
+  const brief = composeSwingPlayBrief(ctx);
+  // Sanity: the brief's own real evidence[] must genuinely carry this fact — otherwise this test
+  // would pass for the wrong reason (no real evidence in play at all).
+  assert.ok(
+    brief.envelope.evidence.some((e) => e.text.includes("Next earnings 2026-09-12")),
+    "expected composeSwingPlayBrief's real evidence[] to carry the earnings-calendar fact"
+  );
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.ok(
+    largoRead.data.evidence.some((e) => e.includes("Next earnings 2026-09-12")),
+    "Largo-facing evidence[] must carry the brief's real sourced fact, not just a headline/bias restatement"
+  );
+});
+
+// BUG FIX (2026-10-24, Ask Largo fan-out audit, live repro SOXX): `extractEvidence`'s levels loop
+// called `level.price.toFixed(2)` directly on the raw, pre-rounded float — the API route rounds
+// that SAME field via `roundFloats`'s `Math.round(n*100)/100` elsewhere in the response
+// (`envelope.levels[].price`), so a price sitting on a half-cent boundary can disagree between
+// the two: `(479.205).toFixed(2)` => "479.20" while `Math.round(479.205*100)/100` => 479.21.
+test("adaptSwingBriefToLargo: evidence_numbers' level prices use the same rounding as envelope.levels, not a raw toFixed (live repro SOXX)", () => {
+  const ctx = fixtureCtx();
+  const brief = composeSwingPlayBrief(ctx);
+  // Inject a level sitting exactly on the toFixed-vs-round-first boundary this bug depends on —
+  // deterministic regardless of what the real pipeline happens to compute this cycle.
+  brief.envelope.levels = [{ label: "flag anchor", price: 479.205 }];
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.ok(
+    largoRead.data.evidence.some((e) => e === "flag anchor: $479.21"),
+    `expected "flag anchor: $479.21" (matching envelope.levels' own rounding), got: ${JSON.stringify(largoRead.data.evidence)}`
+  );
+  assert.ok(
+    !largoRead.data.evidence.some((e) => e.includes("$479.20")),
+    "must not disagree with envelope.levels[].price by using a raw toFixed(2)"
+  );
+});
+
+// BUG FIX (2026-10-31, live-audit finding, Ask Largo standing mandate): `envelope.levels`
+// (levelsFromContext, play-brief.ts) resolves call wall / put wall / GEX king etc. independently,
+// so a GEX king strike coinciding with a wall produced TWO envelope.levels entries at the same
+// price, and this loop pushed both verbatim — restating the identical real price twice under two
+// different labels. Isolated unit test (hand-built envelope.levels, mirroring the SOXX precision
+// test above) proving extractEvidence's own loop dedupes by price, independent of upstream.
+test("adaptSwingBriefToLargo: evidence_numbers dedupes two envelope.levels entries at the same price under different labels (2026-10-31, live repro META/MRNA)", () => {
+  const ctx = fixtureCtx();
+  const brief = composeSwingPlayBrief(ctx);
+  // Live META shape: call wall AND GEX king both resolve to 700.00.
+  brief.envelope.levels = [
+    { label: "call wall", price: 700 },
+    { label: "put wall", price: 610 },
+    { label: "GEX king", price: 700 },
+  ];
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  const at700 = largoRead.data.evidence.filter((e) => e.includes("$700.00"));
+  assert.equal(
+    at700.length,
+    1,
+    `expected exactly one evidence line for the colliding $700.00 price, got: ${JSON.stringify(at700)}`
+  );
+  assert.ok(
+    at700[0].startsWith("call wall"),
+    `expected the earlier-pushed label (call wall) to survive the collision, got: ${at700[0]}`
+  );
+  assert.ok(
+    largoRead.data.evidence.some((e) => e === "put wall: $610.00"),
+    "a non-colliding level must still come through unchanged"
+  );
+});
+
+// Same bug, driven through the REAL end-to-end pipeline (composeSwingPlayBrief ->
+// adaptSwingBriefToLargo, not a hand-built envelope.levels) — proving the fix holds for the
+// actual production code path, not just extractEvidence's own loop in isolation. This is the
+// `levelsFromContext` (play-brief.ts) sibling of the `collectFocalLevels` collision PR #7000 fixed
+// the same day for the structure-ladder rungs — that PR's own write-up explicitly named
+// `envelope.levels` as a separate, independently-computed list left out of scope.
+//
+// UPDATED (2026-11-01, same day): `levelsFromContext` itself now dedupes a GEX-king/wall
+// collision AT THE SOURCE (`pushLevel`, play-brief.ts) rather than leaving it for this adapter's
+// own `extractEvidence` loop to clean up downstream — so the real pipeline's `envelope.levels`
+// now carries exactly ONE entry at the colliding price, not two. The sanity check below was
+// updated to match (was asserting on the PRE-fix shape, which no longer occurs); the actual
+// end-to-end assertion this test exists for (exactly one evidence line at the colliding price)
+// is unchanged and, if anything, now a stronger proof — it holds with defense-in-depth at TWO
+// independent layers (source dedup here, the adapter's own dedup loop above) rather than relying
+// on the adapter alone to paper over a duplicate upstream.
+test("adaptSwingBriefToLargo: a GEX king coinciding with a wall in envelope.levels (real pipeline) cites ONE evidence line for that price, not two", () => {
+  const ctx = fixtureCtx({
+    vector: {
+      spot: 100,
+      gexWalls: { callWalls: [{ strike: 110, pct: 8 }], putWalls: [] },
+      ladder: { rows: [{ strike: 110, isKing: true }] },
+    } as SwingPlayBriefContext["vector"],
+  });
+  const brief = composeSwingPlayBrief(ctx);
+
+  // Sanity: the real levelsFromContext must have actually resolved call wall and GEX king to the
+  // SAME price and merged them into one entry (not dropped the level entirely) — otherwise this
+  // test would pass for the wrong reason.
+  const levelsAt110 = brief.envelope.levels?.filter((l) => Math.abs(l.price - 110) < 0.01) ?? [];
+  assert.equal(
+    levelsAt110.length,
+    1,
+    `expected the real pipeline to already merge the call-wall/king collision in envelope.levels, got: ${JSON.stringify(levelsAt110)}`
+  );
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  // Scoped to the bare "label: $price" lines this loop produces — the real pipeline also cites
+  // "R:R to call wall ($110.00): 4.4R" at the same price via a DIFFERENT, independent evidence
+  // source (the structure-ladder reward:risk line, already deduped by PR #7000 upstream), which
+  // is not the collision this test targets.
+  const at110 = largoRead.data.evidence.filter((e) => e.includes("$110.00") && !e.startsWith("R:R"));
+  assert.equal(
+    at110.length,
+    1,
+    `expected exactly one bare level evidence_numbers line for the colliding $110.00 price, got: ${JSON.stringify(at110)}`
+  );
+});
+
+// Ask Largo standing mandate, 2026-10-26 (follow-up to #4076 comment 6324494558's enhancement idea
+// #1): buildStructureLadder already computes a real reward:risk per favorable-side rung and
+// BieStructureLadder.tsx already renders it visually ("X.XR" chip), but it never reached the
+// plain-text evidence array a trader (or Largo's own answer-engine context) actually cites numbers
+// from.
+test("adaptSwingBriefToLargo: evidence_numbers cites each favorable-side structure-ladder rung's own reward:risk, not just its price", () => {
+  const ctx = fixtureCtx();
+  const brief = composeSwingPlayBrief(ctx);
+  brief.envelope.structureLadder = {
+    spot: 100,
+    direction: "long",
+    stop: 95,
+    stopIsCommitted: false,
+    atr: 5,
+    positionState: "watch",
+    rungs: [
+      {
+        kind: "call_wall",
+        label: "call wall",
+        price: 110,
+        distancePct: 10,
+        role: "resistance",
+        target: { rewardRisk: 2, horizon: "swing", gatekeeper: false },
+      },
+      // Unfavorable-side rung (behind spot for a LONG) — correctly carries no `target`, so it
+      // must contribute a plain level-style absence here, never a fabricated R:R.
+      { kind: "put_wall", label: "put wall", price: 90, distancePct: -10, role: "support" },
+    ],
+  };
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.ok(
+    largoRead.data.evidence.some((e) => e === "R:R to call wall ($110.00): 2.0R"),
+    `expected the favorable-side rung's own reward:risk cited, got: ${JSON.stringify(largoRead.data.evidence)}`
+  );
+  assert.ok(
+    !largoRead.data.evidence.some((e) => e.includes("put wall") && e.includes("R:R")),
+    "the unfavorable-side rung (no target) must never get a fabricated R:R line"
+  );
+});
+
+// BUG FIX (2026-10-31, live-audit finding, Ask Largo standing mandate): for a Banger-origin OPEN
+// position, `structureLadder.stop` is NOT the real, committed invalidation level — it is
+// `deriveSwingPlanLevels`'s live-spot-anchored heuristic (horizonPlayFromBangerPosition never
+// populates entryTriggerUnderlyingPx/invalidationUnderlyingPx, so buildStructureLadder's
+// useRealPlan gate is always false for these rows). BieStructureLadder.tsx already discloses this
+// risk right next to the R:R chip ("Recomputed from today's spot... may differ") whenever
+// `positionState === "open" && !stopIsCommitted`, but extractEvidence's R:R loop above used to copy
+// only the bare reward:risk ratio into evidence_numbers with no caveat — Largo's answer-engine
+// context reads evidence_numbers, not the rendered widget, so it cited a basis-less R:R as if it
+// were real. Mirror the UI's own disclosure condition exactly.
+test("adaptSwingBriefToLargo: an OPEN position's R:R evidence discloses an uncommitted (live-spot-recomputed) reference stop", () => {
+  const ctx = fixtureCtx();
+  const brief = composeSwingPlayBrief(ctx);
+  brief.envelope.structureLadder = {
+    spot: 100,
+    direction: "long",
+    stop: 95,
+    stopIsCommitted: false,
+    atr: 5,
+    positionState: "open",
+    rungs: [
+      {
+        kind: "call_wall",
+        label: "call wall",
+        price: 110,
+        distancePct: 10,
+        role: "resistance",
+        target: { rewardRisk: 2, horizon: "swing", gatekeeper: false },
+      },
+    ],
+  };
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.ok(
+    largoRead.data.evidence.some(
+      (e) =>
+        e.startsWith("R:R to call wall ($110.00): 2.0R") &&
+        e.includes("not this position's committed invalidation level"),
+    ),
+    `expected the uncommitted-stop caveat on the OPEN R:R line, got: ${JSON.stringify(largoRead.data.evidence)}`,
+  );
+});
+
+// BUG FIX (2026-10-31, same finding as above): a COMMITTED OPEN position's R:R line must stay bare
+// — the UI's own disclosure never fires when `stopIsCommitted:true`, and this is a real, pinned
+// invalidation level, not a heuristic, so no caveat is honest here.
+test("adaptSwingBriefToLargo: an OPEN position's R:R evidence stays bare when the stop IS committed (real entry-pinned invalidation)", () => {
+  const ctx = fixtureCtx();
+  const brief = composeSwingPlayBrief(ctx);
+  brief.envelope.structureLadder = {
+    spot: 100,
+    direction: "long",
+    stop: 95,
+    stopIsCommitted: true,
+    atr: 5,
+    positionState: "open",
+    rungs: [
+      {
+        kind: "call_wall",
+        label: "call wall",
+        price: 110,
+        distancePct: 10,
+        role: "resistance",
+        target: { rewardRisk: 2, horizon: "swing", gatekeeper: false },
+      },
+    ],
+  };
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.ok(
+    largoRead.data.evidence.some((e) => e === "R:R to call wall ($110.00): 2.0R"),
+    `expected the bare committed-stop R:R line, got: ${JSON.stringify(largoRead.data.evidence)}`,
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-31, live repro META/CC/TSM — a GEX king strike
+// coinciding with the call/put wall price, e.g. META:69 where call wall AND king both resolve to
+// 700): unlike the test above (which hand-builds `structureLadder` to isolate extractEvidence's own
+// per-rung mapping), this one drives the REAL pipeline end to end — collectFocalLevels merges the
+// collision (play-brief-narrative.ts's `pushFocalLevel`), buildStructureLadder maps the already-
+// merged focal array into rungs, and extractEvidence (this file) walks those rungs into evidence
+// strings — proving the fix holds through the whole chain, not just at the one layer this file
+// owns.
+test("adaptSwingBriefToLargo: a GEX king coinciding with a wall cites ONE R:R evidence string for that price, not two (2026-10-31, live repro META/CC/TSM)", () => {
+  const ctx = fixtureCtx({
+    vector: {
+      spot: 100,
+      gexWalls: { callWalls: [{ strike: 110, pct: 8 }], putWalls: [] },
+      ladder: { rows: [{ strike: 110, isKing: true }] },
+    } as SwingPlayBriefContext["vector"],
+  });
+  const brief = composeSwingPlayBrief(ctx);
+
+  // Sanity: the real upstream pipeline must have actually merged the collision (collectFocalLevels/
+  // pushFocalLevel) into one rung — otherwise this test would pass for the wrong reason.
+  const rungsAt110 = brief.envelope.structureLadder?.rungs.filter((r) => Math.abs(r.price - 110) < 0.01) ?? [];
+  assert.equal(
+    rungsAt110.length,
+    1,
+    `expected the real pipeline to merge the wall/king collision into one rung, got: ${JSON.stringify(rungsAt110)}`,
+  );
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  const rrLines = largoRead.data.evidence.filter((e) => e.startsWith("R:R to") && e.includes("$110.00"));
+  assert.equal(
+    rrLines.length,
+    1,
+    `expected exactly one R:R evidence string for 110.00, got: ${JSON.stringify(rrLines)}`,
+  );
+});
+
+// BUG FIX (Largo C2, 2026-10-26, Ask Largo standing mandate — live repro
+// SWING:CLF:2116): worstKnownSwingDataAgeMs's option-mark branch only contributed an age when
+// `play.markIsSync !== true && play.markAsOf` — the ordinary "aged timestamp" case. It silently
+// skipped the `markIsSync === true` case entirely, INCLUDING the specific sub-case
+// `optionMarkGenuinelyUnknown` already names elsewhere in this file: a committed row whose option
+// mark has LITERALLY NEVER synced a live quote (`markIsSync:true`, `pnlPct:null`). When that's the
+// only genuinely-unknown source on a brief and Vector/GEX happen to be fresh, the function fell
+// through to just the Vector/GEX ages, so the Largo-contract `freshness`/`age_seconds` fields
+// reported "live" even though the brief's own Position section said "Mark: unknown ... do not read
+// as current" — the exact narrative-vs-structured mismatch this C2 surface exists to prevent. A
+// freshly Banger-committed OPEN/HOLD/TRIM position before its first `swing-active-refresh` tick is
+// in exactly this state.
+test("adaptSwingBriefToLargo: a genuinely-unknown option mark (never synced a live quote) must not read freshness:'live' even when Vector/GEX are fresh this cycle (Largo C2)", () => {
+  const ctx = fixtureCtx({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      markIsSync: true,
+      pnlPct: null,
+    }),
+    sessionDate: "2026-10-26",
+    ecosystem: null,
+    vector: {
+      asOf: "2026-10-26T16:30:00.000Z",
+      asOfEt: "2026-10-26 12:30 ET",
+      sessionDate: "2026-10-26",
+      spot: 24.5,
+      // Deliberately FRESH — well under freshnessFromAgeSeconds' 120s "live" cutoff. If the fix
+      // regresses, this fresh Vector age is the only thing the function sees and the test fails by
+      // reading "live" instead of "stale".
+      dataAgeMs: 5_000,
+      freshness: "live",
+      regime: { posture: "long" },
+      gexWalls: { callWalls: [{ strike: 26, pct: 8 }], putWalls: [{ strike: 22, pct: 7 }] },
+      gammaFlip: 24,
+      maxPain: 23.5,
+      confluenceZones: [],
+      magnet: null,
+    } as SwingPlayBriefContext["vector"],
+  });
+  const brief = composeSwingPlayBrief(ctx);
+  // Sanity: the brief's own Position prose must actually say the mark is unknown — otherwise this
+  // test would pass for the wrong reason (no genuine genuinely-unknown mark in play at all).
+  const positionSection = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(positionSection, "expected a Position section");
+  assert.match(positionSection!.body, /Mark: \*\*unknown\*\*/);
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.notEqual(
+    largoRead.freshness,
+    "live",
+    `freshness must not read "live" when the option mark has never synced a quote, got age_seconds=${largoRead.age_seconds}`
+  );
+  assert.equal(
+    largoRead.freshness,
+    "stale",
+    "a genuinely-unknown option mark is the worst known case this cycle and must bucket as stale"
+  );
+});
+
+// Sibling case: the pre-existing honest-omission behavior must survive this fix — a brief with
+// genuinely NO knowable per-source age (a fresh WATCH candidate, no Vector/GEX/option-mark read at
+// all this cycle) must still fall back to "cached"/null rather than fabricating an age of 0.
+test("adaptSwingBriefToLargo: falls back to cached/null when no per-source age is genuinely knowable this cycle (Largo C6 applied to C2)", () => {
+  const ctx = fixtureCtx(); // default fixture: vector/ecosystem both null, no markAsOf on the play
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.dataAgeMs, null, "sanity: nothing knowable this cycle in the default fixture");
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  assert.equal(largoRead.age_seconds, null);
+  assert.equal(largoRead.freshness, "cached");
+});

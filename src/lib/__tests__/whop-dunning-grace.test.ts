@@ -143,6 +143,25 @@ test("clear removes from both Postgres and Redis", async () => {
   assert.equal(await isMembershipInDunningGrace("mem_8"), false);
 });
 
+test("clear: throws when Postgres delete fails, so the webhook caller can retry", async () => {
+  const { markMembershipDunningGrace, clearMembershipDunningGrace } = await mod();
+  resetState();
+  await markMembershipDunningGrace("mem_10");
+  state.dbThrows = true;
+  await assert.rejects(clearMembershipDunningGrace("mem_10"), /Postgres delete failed/);
+  // Redis was still cleared even though Postgres failed — no reason to leave the hot
+  // cache stale when only the durable delete is what needs a retry.
+  assert.equal(state.cache.has("whop:dunning:mem_10"), false);
+});
+
+test("clear: does not throw when Postgres succeeds (or is not configured)", async () => {
+  const { markMembershipDunningGrace, clearMembershipDunningGrace } = await mod();
+  resetState();
+  await markMembershipDunningGrace("mem_11");
+  await assert.doesNotReject(clearMembershipDunningGrace("mem_11"));
+  assert.equal(state.dbRows.has("mem_11"), false);
+});
+
 test("db not configured degrades to Redis-only (no Postgres calls on read)", async () => {
   const { isMembershipInDunningGrace, markMembershipDunningGrace } = await mod();
   resetState();

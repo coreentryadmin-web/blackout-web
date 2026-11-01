@@ -2,6 +2,8 @@
 // All UW calls for market-wide and per-ticker data go through here.
 // TTLs are chosen so data is fresh enough for trading while staying under the 120/min UW plan cap.
 
+import { createCoalescedRequestGroup, type CoalescedRequestGroup } from './coalesced-abort-group'
+
 // Redis client type matches the lazy-connect ioredis pattern used across this project
 // (uw-rate-limiter.ts, shared-cache.ts, redis-pubsub.ts all use the same dynamic import approach).
 type RedisClient = {
@@ -50,7 +52,7 @@ const CACHE_PREFIX = 'uw_cache:'
 // would blow the 120/min plan cap). Mirrors withServerCache's inflight Map in
 // src/lib/server-cache.ts. Keyed by the logical cache key (not the Redis key) so
 // it works identically whether or not Redis is configured.
-const _inflight = new Map<string, Promise<unknown>>()
+const _inflight = new Map<string, CoalescedRequestGroup<unknown>>()
 
 let _redis: RedisClient | null | undefined
 let _redisInit: Promise<RedisClient | null> | null = null
@@ -82,11 +84,20 @@ async function getUwCacheRedis(): Promise<RedisClient | null> {
 }
 
 // Get or set a cached value. Calls fetcher() only on cache miss.
+/**
+ * `signal`, when supplied, is THIS caller's own cancellation intent — not a direct
+ * abort of the underlying fetch. Multiple callers (different Night Hawk Legacy
+ * candidates, or entirely different products) can share one in-flight `fetcher()` call
+ * for the same `key`; the underlying call is only actually aborted once every attached
+ * caller has detached (see coalesced-abort-group.ts), so one caller's timeout can never
+ * cancel a request a different, still-active caller is legitimately waiting on.
+ */
 export async function uwCacheGet<T>(
   redis: RedisClient | null,
   key: string,
   ttlSeconds: number,
-  fetcher: () => Promise<T>
+  fetcher: (signal?: AbortSignal) => Promise<T>,
+  signal?: AbortSignal
 ): Promise<T> {
   if (redis) {
     try {
@@ -95,26 +106,32 @@ export async function uwCacheGet<T>(
     } catch { /* Redis miss — fall through to fetcher */ }
   }
 
-  // Cold miss: dedup concurrent fetches for the same key. The first caller
-  // creates the in-flight promise (which also performs the cache write);
-  // concurrent callers await the same promise instead of stampeding upstream.
-  const existing = _inflight.get(key) as Promise<T> | undefined
-  if (existing) return existing
+  // Cold miss: dedup concurrent fetches for the same key. The first caller creates the
+  // coalesced group (which also performs the cache write); concurrent callers attach to
+  // the same group instead of stampeding upstream.
+  let group = _inflight.get(key) as CoalescedRequestGroup<T> | undefined
+  if (!group) {
+    group = createCoalescedRequestGroup<T>(async (groupSignal) => {
+      const result = await fetcher(groupSignal)
+      if (redis && result != null) {
+        try {
+          await redis.setex(CACHE_PREFIX + key, ttlSeconds, JSON.stringify(result))
+        } catch { /* Cache write failure is non-fatal */ }
+      }
+      return result
+    })
+    _inflight.set(key, group)
+    void group.promise.catch(() => {}).finally(() => {
+      if (_inflight.get(key) === group) _inflight.delete(key)
+    })
+  }
 
-  const pending = (async (): Promise<T> => {
-    const result = await fetcher()
-    if (redis && result != null) {
-      try {
-        await redis.setex(CACHE_PREFIX + key, ttlSeconds, JSON.stringify(result))
-      } catch { /* Cache write failure is non-fatal */ }
-    }
-    return result
-  })().finally(() => {
-    _inflight.delete(key)
-  })
-
-  _inflight.set(key, pending)
-  return pending
+  const detach = group.attach(signal)
+  try {
+    return await group.promise
+  } finally {
+    detach()
+  }
 }
 
 /** Read Redis uw_cache without calling upstream — cross-replica WS snapshot lane. */

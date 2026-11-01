@@ -5,6 +5,8 @@ import {
   isZeroDteSessionActive,
   markStreamKind,
   preferredPlayId,
+  resolveFocusTickerMatch,
+  withRecapOnlyReason,
 } from "./deck-session-ui.ts";
 
 test("isZeroDteSessionActive: RTH heat states are active; CLOSED/PRE_MARKET are not", () => {
@@ -56,4 +58,51 @@ test("preferredPlayId: working beats watch beats closed", () => {
     ]),
     "w",
   );
+});
+
+test("resolveFocusTickerMatch: matches by ticker case-insensitively and returns null with no focusTicker", () => {
+  const plays = [
+    { id: "a", ticker: "AAPL" },
+    { id: "b", ticker: "TSLA" },
+  ];
+  assert.deepEqual(resolveFocusTickerMatch(plays, "aapl", null), { id: "a" });
+  assert.equal(resolveFocusTickerMatch(plays, null, null), null);
+  assert.equal(resolveFocusTickerMatch(plays, "NVDA", null), null);
+});
+
+test("resolveFocusTickerMatch: fires even when the focus target is ALREADY selected by coincidence", () => {
+  // Live repro 2026-09-13 (`/nighthawk?view=swings&ticker=AAPL`): the board's own default
+  // selection can independently land on the exact ticker a focus request names. The OLD guard
+  // (`selId !== match.id`) misread that as "already handled" and never opened mobile detail —
+  // this decouples the decision from `selId` entirely, so a real navigation always fires once.
+  const plays = [{ id: "a", ticker: "AAPL" }];
+  assert.deepEqual(resolveFocusTickerMatch(plays, "AAPL", null), { id: "a" });
+});
+
+test("resolveFocusTickerMatch: does not re-fire for a focusTicker value already handled (poll refresh, member closed the detail view)", () => {
+  const plays = [
+    { id: "a", ticker: "AAPL" },
+    { id: "t", ticker: "TSLA" },
+  ];
+  assert.equal(resolveFocusTickerMatch(plays, "AAPL", "AAPL"), null);
+  // A DIFFERENT focus request (e.g. a fresh Legacy hand-off) still fires.
+  assert.deepEqual(resolveFocusTickerMatch(plays, "TSLA", "AAPL"), { id: "t" });
+});
+
+test("withRecapOnlyReason: appends the edition's real funnel-stage reason when present", () => {
+  assert.equal(
+    withRecapOnlyReason(
+      "Recap published — no plays cleared the funnel tonight.",
+      "No scored dossiers after 2 dossier-fetch attempt(s) (20 candidate(s)).",
+    ),
+    "Recap published — no plays cleared the funnel tonight. No scored dossiers after 2 dossier-fetch attempt(s) (20 candidate(s)).",
+  );
+});
+
+test("withRecapOnlyReason: leaves the base text unchanged when the reason is absent/blank (never fabricates one)", () => {
+  const base = "No plays cleared the scoring funnel tonight — market recap is above.";
+  assert.equal(withRecapOnlyReason(base, null), base);
+  assert.equal(withRecapOnlyReason(base, undefined), base);
+  assert.equal(withRecapOnlyReason(base, ""), base);
+  assert.equal(withRecapOnlyReason(base, "   "), base);
 });

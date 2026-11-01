@@ -18,6 +18,7 @@
 // trim_scale IS the frozen policy) matches the strategy the engine ran.
 
 import { PLAN_RULES } from "./plan";
+import { SCALE_OUT_RULES } from "./scale-out";
 
 /** One profit-taking rung of the resolved trim ladder for the terminal. `premium` is the
  *  ABSOLUTE per-contract level (entry × (1 + trigger_pct/100)) the tranche banks at; `fired`
@@ -107,6 +108,31 @@ export function buildTerminalExitLadder(
   };
 }
 
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro MRNA TRIM/positionId 1958): once a
+// trim tranche has fired, the exit engine's own live state machine (`deriveScaleOutAction`/
+// `computeScaleOutTriggerInfo`, scale-out.ts) permanently disables the pre-scale hard stop — it is
+// gated `if (!scaledAlready)` and post-scale `computeScaleOutTriggerInfo` literally returns
+// `hard_stop_price: null` ("the hard stop no longer applies"). `stop_premium` above is computed
+// unconditionally with no equivalent awareness, so a brief rendering it post-scale states a dead
+// trigger as live. These two helpers let a renderer ask "has this ladder's hard stop already gone
+// inert" and, if so, what the REAL governing floor is now (the runner's trailing stop off its
+// peak) — mirroring the exact rule `computeScaleOutTriggerInfo` already encodes, so a renderer
+// can't independently drift from the engine that actually manages the position.
+
+/** True once any trim tranche has fired — the ladder's `stop_premium` (pre-scale hard stop) is
+ *  structurally dead from this point on; see the engine citations above. */
+export function hasScaledOut(ladder: Pick<TerminalExitLadder, "trim_levels">): boolean {
+  return ladder.trim_levels.some((t) => t.fired === true);
+}
+
+/** The runner's real governing floor once scaled out: peakPremium × SCALE_OUT_RULES.trail_from_peak
+ *  — the same level `computeScaleOutTriggerInfo` returns as `next_trigger_price` post-scale. Null
+ *  without a usable peak premium — never a guess. */
+export function runnerTrailingStopPremium(peakPremium: number | null | undefined): number | null {
+  if (peakPremium == null || !Number.isFinite(peakPremium) || peakPremium <= 0) return null;
+  return round2(peakPremium * SCALE_OUT_RULES.trail_from_peak);
+}
+
 // ── Time-stop clock (item 4) ────────────────────────────────────────────────────────────
 /** RTH open in ET minutes-since-midnight — the session-decay bar's left edge (09:30). */
 export const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
@@ -149,8 +175,47 @@ export type ExecutableFill = {
   mid: number | null;
   /** The BID a member actually EXITS a long into (the honest fill). Null without a bid. */
   fill: number | null;
-  /** Executable P&L % = (bid − entry)/entry against the PINNED entry. Null without both. */
+  /**
+   * Executable P&L % = (bid − entry)/entry against the PINNED entry. Null without both.
+   *
+   * DELIBERATELY UNROUNDED (Ask Largo standing mandate, 2026-11-01, live repro QXO SWING
+   * positionId 2299) — this used to be pre-rounded to 2dp-of-percent right here
+   * (`Math.round(x * 10000) / 100`), which reads as harmless extra precision but is a real
+   * Largo Product Contract C9 violation ("round exactly once, at the final display boundary"):
+   * every caller that later formats this for display (fmtPct at 1dp for the swing/LEAPS play-
+   * brief narrative, `toFixed(1)` for the Command Deck's LEAPS PnlPanel) was then rounding it a
+   * SECOND time. Two successive roundings of the same fact can disagree with a single rounding
+   * of it whenever the first round lands exactly on the second round's tie boundary — live repro:
+   * entry $0.22 / bid $0.10 → raw ratio -54.545...%, which single-rounds to -54.5% (the identical
+   * ratio adapters.ts's troughDisplay/peakDisplay compute, with a single round straight from raw
+   * inputs), but pre-rounding to 2dp here first lands on the EXACT tie -54.55, which fmtPct's
+   * ties-away-from-zero algorithm then pushes to -54.6% — one tenth of a point off the
+   * mathematically identical fact, rendered a few lines apart in the SAME play-brief markdown
+   * ("Trough: -54.5%" vs "Exec P&L: -54.6%"). `mid`/`fill` above still round to the cent — a
+   * legitimate, DIFFERENT boundary (NBBO premiums are penny-quoted) — but `pnl_pct` is now the
+   * raw ratio, rounded only once, by whichever renderer finally displays it.
+   */
   pnl_pct: number | null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE: bid $0.00 / ask $1.20 /
+  // mid $0.60 — a real, live two-sided quote, not a missing one). `fill`/`pnl_pct` above are null
+  // in TWO genuinely different situations that downstream consumers (adapters.ts, the swing
+  // play-brief narrative/rail layers) had no way to tell apart: (1) no usable book at all
+  // (`validBook` false — bid/ask missing, one-sided, or crossed) and (2) a real, valid two-sided
+  // book whose bid happens to be a genuine zero (no buyer at any price — the WORST real
+  // executable state, strictly worse than any positive-but-low bid). Both collapsed to
+  // `fill: null`, so a confirmed $0.00 bid silently read as "we don't have a quote" instead of
+  // "we have a quote and it says this is worthless" — weaker disclosure than a comparable
+  // position with a nonzero low bid, which correctly got the strong "no real cushion" / "stop
+  // already breached" language. `fill`/`pnl_pct`'s own null-for-zero-bid behavior is UNCHANGED
+  // (locked in by the "executable: one-sided / no book" test below — a long genuinely cannot be
+  // SOLD at $0, so there is still no honest nonzero fill price to report) — this field is purely
+  // additive so a caller that cares can distinguish the two null-shaped cases without this
+  // function fabricating a fill that doesn't exist.
+  /** True iff the book is a real, valid two-sided quote (`validBook`) AND the bid is a genuine
+   *  zero — distinct from `fill == null` meaning "no quote at all". Callers that disclose
+   *  executable risk (the swing play-brief) must treat this as the MOST severe state, not an
+   *  absence. */
+  bidConfirmedZero: boolean;
 };
 
 /**
@@ -169,9 +234,12 @@ export function executableFill(
   const mid = validBook ? round2((bid + ask) / 2) : null;
   // A one-sided book (ask only) still has no bid to sell into → no honest fill.
   const fill = validBook && bid > 0 ? round2(bid) : null;
+  // No pre-rounding — see the `pnl_pct` field's own doc comment above (ExecutableFill) for why:
+  // the ONE legitimate round happens wherever this is finally displayed, never here.
   const pnl_pct =
     fill != null && entryPremium != null && entryPremium > 0
-      ? Math.round(((fill - entryPremium) / entryPremium) * 10000) / 100
+      ? ((fill - entryPremium) / entryPremium) * 100
       : null;
-  return { mid, fill, pnl_pct };
+  const bidConfirmedZero = validBook && bid === 0;
+  return { mid, fill, pnl_pct, bidConfirmedZero };
 }

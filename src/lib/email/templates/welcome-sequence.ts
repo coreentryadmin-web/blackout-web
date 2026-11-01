@@ -1,7 +1,7 @@
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 import { manifestProductCount, PRODUCT_MANIFEST } from "@/lib/marketing/product-manifest";
-import { emailLayout, emailCta, emailHighlight, emailScreenshot, ENGINE_ACCENT, EMAIL_BRAND } from "@/lib/email/layout";
+import { emailLayout, emailCta, emailHighlight, emailScreenshot, ENGINE_ACCENT, EMAIL_BRAND, substituteTokens } from "@/lib/email/layout";
 import { spxDeskHeroAsset, thermalKeyLevelsAsset, vectorChartAsset, nighthawkPlaysAsset } from "@/lib/email/inline-assets";
 import { marketingUnsubscribe } from "@/lib/email/unsubscribe-token";
 import type { EmailAttachment } from "@/lib/email/resend-client";
@@ -18,10 +18,22 @@ export type WelcomeEmailStep = {
 
 /** Substitutes the {{firstName}} token used throughout this file's copy.
  *  "Trader" (capitalized — it doubles as a direct-address nickname, not just
- *  a noun) covers members Clerk didn't capture a first name for. */
+ *  a noun) covers members Clerk didn't capture a first name for.
+ *
+ *  Routed through layout.ts's `substituteTokens` (HTML-escaped) rather than a bare
+ *  `.replace()` — this file's `ctx.firstName` comes straight off the Clerk
+ *  `user.created` webhook's `data.first_name` (src/app/api/webhooks/clerk/route.ts), a
+ *  member's own self-settable Clerk profile field. Every sibling billing-lifecycle
+ *  template (welcome-premium.ts, downgrade.ts, scheduled-cancel.ts, payment-failed.ts,
+ *  access-ended.ts, welcome-community.ts, cancel-reversed.ts, trial-ending-soon.ts)
+ *  already routes firstName through `substituteTokens` for exactly this reason — this
+ *  file had its own hand-rolled, unescaped substitution instead, so a Clerk first name
+ *  of `<script>...</script>` or an `onerror=` payload rendered live, unescaped, into
+ *  every one of this 5-step drip's HTML bodies (the highest-volume template of the
+ *  bunch — it fires on every signup). See welcome-sequence-firstname-xss.test.ts. */
 function personalize(text: string, ctx: WelcomeEmailContext): string {
   const name = ctx.firstName?.trim() || "Trader";
-  return text.replace(/\{\{firstName\}\}/g, name);
+  return substituteTokens(text, { firstName: name });
 }
 
 function h1(text: string): string {
@@ -141,7 +153,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
         ],
         [
           "Night Hawk",
-          "0DTE Command scans the whole market intraday with Cortex gates on every commit; Evening Edition publishes prep for the next session after the close.",
+          "0DTE Command scans the whole market intraday with Cortex gates on every commit; Swing Command tracks multi-day positions; Evening Edition publishes prep for the next session after the close.",
           ENGINE_ACCENT.red,
         ],
         [
@@ -166,7 +178,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       const body =
         h1("Every light on the board is live, {{firstName}}.") +
         p(
-          `Four days ago we handed you the gamma read — the current under the price action nobody else points at. That was one tool. Here's the other ${manifestProductCount() - 1}. ${manifestProductCount()} products, one login, zero dead weight, every instrument built for the hours that actually move your account. No fluff modules nobody opens twice. Just the tape, read straight.`
+          `Four days ago we handed you the gamma read — the current under the price action nobody else points at. That's one piece of a bigger board. Here's the whole thing: all ${engines.length}. ${manifestProductCount()} products, one login, zero dead weight, every instrument built for the hours that actually move your account. No fluff modules nobody opens twice. Just the tape, read straight.`
         ) +
         emailScreenshot(vectorShot, "Live Vector chart — dealer gamma structure on SPX") +
         `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">${items}</table>` +
@@ -181,9 +193,13 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       return { subject: personalize(subject, ctx), html: layout.html, attachments: [...layout.attachments, vectorShot], headers: unsubHeaders };
     },
   },
-  // Day 6 — trust/honesty angle (track record itself is member/admin-only, not public — see
-  // docs/marketing/SEO-GROWTH.md finding #2; this deliberately does NOT link to a public
-  // track-record page, it points at /pricing and /vs/others).
+  // Day 6 — trust/honesty angle. The `/track-record` URL itself redirects to
+  // `/admin?tab=track-record`, guarded by requireAdmin() (src/app/(site)/track-record) — a
+  // non-admin member can never reach it. The genuinely public win/loss record lives at
+  // `/methodology` (buildPublicTrackRecord — same route RedesignHome.tsx links as "Public track
+  // record"). This caption's "full record ... is public" claim must point there, not at
+  // `/track-record` — the strongest trust claim in this whole sequence was pointing at a page
+  // its own reader could never open.
   {
     step: 4,
     delayDays: 6,
@@ -211,7 +227,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
         // otherwise the strongest claim in the sequence rests on a screenshot that happens to be
         // all green, which is precisely the "highlight reel" the copy is arguing against.
         caption(
-          `Recent closed plays. The <a href="${SITE.url}/track-record" style="color:${EMAIL_BRAND.muted};">full record</a> — every win and every loss, with the grade each play was given before the outcome — is public.`
+          `Recent closed plays. The <a href="${SITE.url}/methodology" style="color:${EMAIL_BRAND.muted};">full record</a> — every win and every loss, with the grade each play was given before the outcome — is public.`
         ) +
         p("That's not a tagline — that's the whole build. No revision history, no highlight reel, no do-overs. Go pull up the receipts and see how that holds up against the way everyone else keeps score.") +
         emailCta(`${SITE.url}/vs/others`, "See How We Stack Up") +
@@ -237,7 +253,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
           "Eight days ago you walked onto the floor, {{firstName}}. Since then you've watched us call a regime and grade a setup A through F before a single candle confirms anything — then show you exactly how it landed. Win or lose. Losses sit right next to wins, untouched, un-hidden. No quiet deletes, no highlight reel dressed up as a track record. That's not marketing. That's the whole book, open, every single day."
         ) +
         p(
-          `Here's the structure, plain: SPX Slayer — the 0DTE desk, live SPX regime read, GEX, every setup graded before anyone knows if it wins — starts at ${usd(MEMBERSHIP_PRICING.community)}/mo. Want the full terminal? Premium unlocks all ${manifestProductCount()} products: SPX Slayer, Thermal's GEX/VEX/DEX/CHARM heatmaps, HELIX flagging sweeps and dark-pool prints, Night Hawk 0DTE Command + Evening Edition, Largo AI riding the live data, Vector universe scanner, and Meridian catalyst desk. ${usd(MEMBERSHIP_PRICING.monthly)}/mo, or ${usd(MEMBERSHIP_PRICING.yearly)}/yr if you're all-in — annual carries a 7-day money-back guarantee. Monthly cancels anytime. No contract, no hooks in you.`
+          `Here's the structure, plain: SPX Slayer — the 0DTE desk, live SPX regime read, GEX, every setup graded before anyone knows if it wins — starts at ${usd(MEMBERSHIP_PRICING.community)}/mo. Want the full terminal? Premium unlocks all ${manifestProductCount()} products: SPX Slayer, Thermal's GEX/VEX/DEX/CHARM heatmaps, HELIX flagging sweeps and dark-pool prints, Night Hawk 0DTE Command + Swing Command + Evening Edition, Largo AI riding the live data, Vector universe scanner, and Meridian catalyst desk. ${usd(MEMBERSHIP_PRICING.monthly)}/mo, or ${usd(MEMBERSHIP_PRICING.yearly)}/yr if you're all-in — annual carries a 7-day money-back guarantee. Monthly cancels anytime. No contract, no hooks in you.`
         ) +
         p(
           "We're not asking you to trust a highlight reel. Every grade we issue gets marked to market — wins post, losses post, same ticker, same grade, logged before the candle closes and never touched after. That's the edge. The desk doesn't wait around for you to catch up."

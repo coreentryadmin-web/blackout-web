@@ -30,6 +30,32 @@ test("rankOpexSessionMovers: filters illiquid and picks extremes", () => {
   assert.equal(top_loser?.session_pct, -5);
 });
 
+test("rankOpexSessionMovers: exact-tie winner is deterministic regardless of input order", () => {
+  // Two liquid tickers moving by the exact same session_pct (realistic: pctChange rounds to
+  // 2 decimals, so many distinct price pairs collide on the same rounded percentage across a
+  // whole-market scan). With no secondary tie-break, Array#sort is stable, so the "winner"
+  // silently depends on which row Polygon's grouped-daily happened to list first that day —
+  // a meaningless, non-deterministic pick, not a real "top gainer".
+  const rowsA = [
+    { T: "ZEBRA", o: 100, c: 105, v: 2_000_000, h: 105, l: 100, vw: 102 },
+    { T: "ALPHA", o: 100, c: 105, v: 2_000_000, h: 105, l: 100, vw: 102 },
+  ] as never;
+  const rowsB = [
+    { T: "ALPHA", o: 100, c: 105, v: 2_000_000, h: 105, l: 100, vw: 102 },
+    { T: "ZEBRA", o: 100, c: 105, v: 2_000_000, h: 105, l: 100, vw: 102 },
+  ] as never;
+
+  const resultA = rankOpexSessionMovers(rowsA);
+  const resultB = rankOpexSessionMovers(rowsB);
+
+  // Same tied data, only input order differs — the reported top_gainer/top_loser must not flip.
+  assert.equal(resultA.top_gainer?.ticker, resultB.top_gainer?.ticker);
+  assert.equal(resultA.top_loser?.ticker, resultB.top_loser?.ticker);
+  // Pin the deterministic tie-break explicitly: alphabetically-first ticker wins the tie.
+  assert.equal(resultA.top_gainer?.ticker, "ALPHA");
+  assert.equal(resultA.top_loser?.ticker, "ZEBRA");
+});
+
 test("summarizeMag7Sessions: avg best worst", () => {
   const summary = summarizeMag7Sessions([
     { ticker: "NVDA", session_pct: 2 },

@@ -5,7 +5,7 @@ import { guideFaqs } from "./types";
 import { LEARN_NAV } from "./nav";
 
 // Regression: /learn/[slug]'s guide branch rendered <ArticleJsonLd> but never
-// <FAQPageJsonLd>, even though 6 of the 7 guides (all but glossary) carry a real
+// <FAQPageJsonLd>, even though 8 of the 9 guides (all but glossary) carry a real
 // `faq`-type section already visible on the page — free FAQ rich-snippet eligibility
 // left on the table for content that already existed. guideFaqs() is what the page
 // now calls to build that structured data from the same section the page renders.

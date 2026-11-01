@@ -169,13 +169,21 @@ async function dispatchTransitionEmail(input: {
  *  not a tier change (they keep access until the period ends), so this is
  *  dispatched directly from the webhook route rather than through the
  *  tier-diff wrapper above. Looks up firstName since the webhook payload
- *  only carries the triggering email. */
+ *  only carries the triggering email. `billingKind` must be the plan actually
+ *  winding down (caller already resolved it from the same sync call) — the
+ *  email's engine list depends on it so a community ($49/mo SPX Slayer-only)
+ *  member isn't told six engines they never had "stay live." */
 export async function notifyScheduledCancellation(input: {
   email: string;
   accessUntil: Date | null;
+  billingKind: Extract<BillingKind, "premium" | "community">;
 }): Promise<void> {
   const user = await lookupUserByEmail(input.email);
-  const { subject, html, attachments } = scheduledCancelEmail({ firstName: user?.firstName ?? null, accessUntil: input.accessUntil });
+  const { subject, html, attachments } = scheduledCancelEmail({
+    firstName: user?.firstName ?? null,
+    accessUntil: input.accessUntil,
+    billingKind: input.billingKind,
+  });
   const result = await sendEmail({ to: input.email, subject, html, attachments, tag: "scheduled-cancel" });
   if (!result.ok) console.warn("[billing-lifecycle-email] scheduled-cancel send failed", result.error);
 }

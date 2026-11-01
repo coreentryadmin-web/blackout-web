@@ -5,6 +5,7 @@ import {
   applyNighthawkPublishGates,
   evaluateNighthawkPublishGates,
   GATE_BAND_MAX_DISTANCE_PCT,
+  GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE,
   GATE_TARGET_MAX_ATR_MULTIPLE,
   promoteTopBlocked,
   publishGateRecapReason,
@@ -209,6 +210,34 @@ test("G-N2 boundary: target exactly K×ATR14 from the fill edge passes; beyond b
   assert.equal(beyond.blocks[0]!.threshold, GATE_TARGET_MAX_ATR_MULTIPLE);
 });
 
+// REGRESSION (2026-11-01, cycle-67 live audit, confirmed on four published scale_out plays:
+// STM/AXTI/ORCL 2026-10-30 edition, NU 2026-10-27 edition): the gate_warning reason string
+// embedded the raw round4 (4-decimal) targetAtrMultiple, while the sibling structured field
+// play.target_atr_multiple is rounded to 2dp by roundFloats() before serialization —
+// roundFloats()'s walk() only rewrites typeof number, never a number already baked into a
+// string, so the two member-facing surfaces showed different precision for the identical
+// quantity (e.g. "target_atr_multiple": 2.4 next to "...is 2.4019× ATR14..."). The gate's
+// pass/fail verdict and the calibration-facing checks[]/blocks[].value must stay full-precision
+// (round4) — only the member-facing reason TEXT is re-rounded to 2dp to match.
+test("G-N2 gate_warning text shows the SAME precision as the sibling target_atr_multiple field (2dp), not the raw round4 value", () => {
+  // Same 2.025× fixture as the boundary test above — chosen because round4→round2 actually
+  // changes the printed digits here (2.025 rounds to 2.03, not 2.02 or 2.03 by truncation),
+  // so a regression that reverts to the raw value is caught by string content, not just by
+  // the structured `value` field (which is deliberately unchanged, see below).
+  const result = evaluate(
+    play({ entry_range: "$99.50-$100.00", target: "$108.10", stop: "$97.00" }),
+    dossier({ price: 100, atr14: 4 })
+  );
+  const block = result.blocks.find((b) => b.code === "target_unreachable");
+  assert.ok(block);
+  // The reason string shows the 2dp-rounded value...
+  assert.match(block!.reason, /is 2\.03× ATR14/);
+  // ...and never the raw 4-decimal value that used to leak into member-facing copy.
+  assert.doesNotMatch(block!.reason, /2\.025×/);
+  // The structured, calibration-facing value is untouched — still full round4 precision.
+  assert.equal(block!.value, 2.025);
+});
+
 test("G-N2 SHORT mirror: distance is absolute, so a downside target measures the same", () => {
   // fill edge 100.00, ATR14 4 → allowance 2.0 × 4 = 8.00. Target 92.00 → exactly 2.0×.
   const at = evaluate(
@@ -224,6 +253,55 @@ test("G-N2 SHORT mirror: distance is absolute, so a downside target measures the
   );
   assert.equal(beyond.verdict, "BLOCK");
   assert.deepEqual(beyond.blocks.map((b) => b.code), ["target_unreachable"]);
+});
+
+// REGRESSION (2026-10-31, live repro STM/AXTI/ORCL 2026-10-30 edition, NU 2026-10-27 edition):
+// every currently-published scale_out ("Banger exit") play's target_unreachable gate_warning
+// still asserted the superseded single-session grading model ("not achievable in the
+// one-session grading horizon"), directly contradicting the SAME play's own risk_note, which
+// correctly says this play is graded on a multi-day option scale-out (2x partial, trailing
+// runner, -60% stop) — see play-outcomes.ts's resolveBangerScaleOutGrades/gradeBangerScaleOut.
+// The gate's pass/fail VERDICT must not change for either play type — only the warning TEXT.
+test("G-N2 scale_out play: gate_warning text describes the scale-out grading rule, not the one-session horizon", () => {
+  // Same geometry as the non-scale_out case below (2.025× — just past the 2.0× threshold),
+  // but exit_style:"scale_out" — the banger-exit marker set in deterministic-edition.ts before
+  // this play ever reaches the publish gates.
+  const result = evaluate(
+    play({
+      entry_range: "$99.50-$100.00",
+      target: "$108.10",
+      stop: "$97.00",
+      exit_style: "scale_out",
+    }),
+    dossier({ price: 100, atr14: 4 })
+  );
+  assert.equal(result.verdict, "BLOCK");
+  const block = result.blocks.find((b) => b.code === "target_unreachable");
+  assert.ok(block, "target_unreachable must still fire — exit_style changes TEXT, not the verdict");
+  // The misleading claim must be gone...
+  assert.doesNotMatch(block!.reason, /one-session grading horizon/);
+  // ...replaced with an accurate description of how a scale_out play is actually graded.
+  assert.match(block!.reason, /scale-out/i);
+  assert.match(block!.reason, /option's own forward bars/);
+  // The numeric value/threshold feeding promotion eligibility and the admin histogram must be
+  // byte-identical to the non-scale_out case — only the member-facing prose changed.
+  assert.equal(block!.value, 2.025);
+  assert.equal(block!.threshold, GATE_TARGET_MAX_ATR_MULTIPLE);
+});
+
+test("G-N2 non-scale_out play: gate_warning text is UNCHANGED (still the one-session-horizon wording)", () => {
+  // Identical geometry to the scale_out test above, no exit_style — this play really IS graded
+  // on the stock target touching in one session (play-outcomes.ts's stock-outcome pass), so the
+  // original wording must survive exactly as before.
+  const result = evaluate(
+    play({ entry_range: "$99.50-$100.00", target: "$108.10", stop: "$97.00" }),
+    dossier({ price: 100, atr14: 4 })
+  );
+  assert.equal(result.verdict, "BLOCK");
+  const block = result.blocks.find((b) => b.code === "target_unreachable");
+  assert.ok(block);
+  assert.match(block!.reason, /not achievable in the one-session grading horizon/);
+  assert.doesNotMatch(block!.reason, /scale-out/i);
 });
 
 // ── G-N3 stale-quote guard ──────────────────────────────────────────────────────────────
@@ -553,12 +631,18 @@ test("promoteTopBlocked ranks promotable plays by fewer gate failures first, the
 });
 
 test("promoteTopBlocked promotes target_unreachable only when multiple ≤ rescue cap", () => {
+  // value must exceed GATE_TARGET_MAX_ATR_MULTIPLE (2.0) — a real target_unreachable block
+  // can never carry a value at or below the primary gate's own threshold (see
+  // evaluateNighthawkPublishGates: the block is only pushed when `!targetOk`, i.e.
+  // targetAtrMultiple > GATE_TARGET_MAX_ATR_MULTIPLE). A fixture below 2.0 here would
+  // silently pass even with GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE regressed to be <= the
+  // primary threshold — exactly the dead-rescue-path bug this test exists to catch.
   const promotable = [{
     ticker: "NVDA",
     play: play({ ticker: "NVDA", score: 60, conviction: "B" }),
     result: {
       verdict: "BLOCK" as const,
-      blocks: [{ code: "target_unreachable" as const, reason: "too far", threshold: 2.0, value: 1.8 }],
+      blocks: [{ code: "target_unreachable" as const, reason: "too far", threshold: 2.0, value: 2.2 }],
       checks: [],
     },
     scored: null,
@@ -582,6 +666,23 @@ test("promoteTopBlocked promotes target_unreachable only when multiple ≤ rescu
   assert.equal(isPromotableBlockedPlay(unreachable[0]), false);
 });
 
+test("GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE must stay strictly above GATE_TARGET_MAX_ATR_MULTIPLE", () => {
+  // Structural invariant, not a calibration opinion: evaluateNighthawkPublishGates only ever
+  // creates a target_unreachable block when targetAtrMultiple > GATE_TARGET_MAX_ATR_MULTIPLE,
+  // so a rescue cap at or below that same threshold makes isPromotableBlockedPlay reject
+  // EVERY real target_unreachable block unconditionally — the rescue path NON_PROMOTABLE_
+  // GATE_CODES deliberately keeps this gate out of (to avoid repeating the Jul 27 zero-play
+  // edition) silently becomes dead code again. This regressed twice already (2026-09-17's
+  // gatePromoteTargetUnreachableDeadCode finding, then again via the 2026-09/10 engine
+  // overhaul that reintroduced both constants at 2.0/2.0) — assert the invariant directly so
+  // a third reintroduction fails CI instead of surfacing as a live thin edition.
+  assert.ok(
+    GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE > GATE_TARGET_MAX_ATR_MULTIPLE,
+    `rescue cap (${GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE}) must exceed the primary gate ` +
+      `(${GATE_TARGET_MAX_ATR_MULTIPLE}) or every real target_unreachable block becomes unrescuable`
+  );
+});
+
 test("promoteTopBlocked returns empty when every block fails hard geometry gates", () => {
   const blocked = [{
     ticker: "NVDA",
@@ -603,6 +704,42 @@ test("capGatePromotedConviction leaves organic plays untouched", () => {
     capGatePromotedConviction(play({ conviction: "A", gate_promoted: true })).conviction,
     "B"
   );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro MSTR score 52): the cap only ever
+// rewrote `conviction` -- `key_signal`'s own "score N (LETTER)" trailer embeds the SAME pre-cap
+// letter (buildDeterministicThesis, deterministic-edition.ts) and was never kept in sync, so a
+// capped A->B play kept citing its own uncapped "(A)"/"(A+)" grade in the member-facing summary
+// sentence right next to the correctly-capped badge -- a direct, visible self-contradiction.
+test("capGatePromotedConviction also rewrites key_signal's trailing grade token to stay in sync", () => {
+  const capped = capGatePromotedConviction(
+    play({
+      conviction: "A",
+      gate_promoted: true,
+      key_signal: "BULLISH — flow + positioning · score 52 (A)",
+    })
+  );
+  assert.equal(capped.conviction, "B");
+  assert.equal(capped.key_signal, "BULLISH — flow + positioning · score 52 (B)");
+});
+
+test("capGatePromotedConviction rewrites an (A+) key_signal trailer too", () => {
+  const capped = capGatePromotedConviction(
+    play({
+      conviction: "A+",
+      gate_promoted: true,
+      key_signal: "BEARISH — technicals · score 71 (A+)",
+    })
+  );
+  assert.equal(capped.conviction, "B");
+  assert.equal(capped.key_signal, "BEARISH — technicals · score 71 (B)");
+});
+
+test("capGatePromotedConviction never touches key_signal when not gate_promoted or not A/A+", () => {
+  const untouched = capGatePromotedConviction(
+    play({ conviction: "B", gate_promoted: true, key_signal: "BULLISH — flow · score 45 (B)" })
+  );
+  assert.equal(untouched.key_signal, "BULLISH — flow · score 45 (B)");
 });
 
 test("promoteTopBlocked caps at count", () => {

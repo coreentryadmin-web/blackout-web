@@ -149,17 +149,3 @@ export function thesisFirstEnv(): ThesisFirstEnv {
   const shadowOff = shadowRaw === "0" || shadowRaw === "false" || shadowRaw === "off";
   return { enabled: false, shadow: !shadowOff };
 }
-
-/** Map legacy PIN origin to POSITIONING rail. */
-export function legacyOriginToRail(origin: string): ThesisRail | null {
-  switch (origin) {
-    case "FLOW":
-      return "FLOW";
-    case "BREAKOUT":
-      return "BREAKOUT";
-    case "PIN":
-      return "POSITIONING";
-    default:
-      return null;
-  }
-}

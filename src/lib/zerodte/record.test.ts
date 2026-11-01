@@ -7,15 +7,18 @@ import type { ZeroDteSetupLogRow } from "@/lib/db";
 import {
   asManagedPnlPct,
   buildZeroDteRecord,
+  extractMaxFavorablePct,
   isGradedZeroDteRow,
   isZeroDteWin,
   LOW_N_THRESHOLD,
   officialPlanPnlPct,
+  readManagedExit,
   scoreBand,
   scoreForBanding,
   todBucket,
   ZERODTE_RECORD_METHODOLOGY,
 } from "./record";
+import { tierFromEntryContext } from "./tiers";
 
 function row(overrides: Partial<ZeroDteSetupLogRow>): ZeroDteSetupLogRow {
   return {
@@ -147,8 +150,52 @@ test("per-play rows: rounding at the data layer + ET rendering + context passthr
   const mu = rec.plays.find((p) => p.ticker === "MU");
   assert.ok(mu);
   assert.deepEqual(mu.entry_context, { score: 54, vix_open: 17.2, spy_bias: "down" });
+  // MU's top-level `score` is the ratcheted peak (61); `committed_score` must disclose
+  // the real commit-time number (54) that `by_score_band` actually banded it by —
+  // see the dedicated OKLO-shaped test below for the full live-bug reproduction.
+  assert.equal(mu.score, 61);
+  assert.equal(mu.committed_score, 54);
   const amd = rec.plays.find((p) => p.ticker === "AMD");
   assert.equal(amd?.flagged_et, "09:50 ET");
+});
+
+// Live bug (found 2026-11-01, docs/audit/findings-staging/2026-11-01-zerodte-record-committed-score-disclosure.md):
+// GET /api/market/zerodte/record served a top-level `score` (always score_max, the
+// ratcheted peak) alongside a `by_score_band` aggregate that silently banded every row
+// by the DIFFERENT entry_context.score (via scoreForBanding) — with no field on the
+// wire reconciling the two. Live production shape: OKLO 2026-08-25 carried top-level
+// `score: 100` yet was counted in the response's own "score <55" bucket because its
+// real commit-time score was 50. 13/589 rows in a 90-day window crossed a band
+// boundary this way. This reproduces that exact shape against the real `toPlay`/
+// `buildZeroDteRecord` pipeline (not a reimplementation) and asserts the per-play row
+// now carries the disclosure that makes the two numbers reconcilable.
+test("toPlay: committed_score discloses the real commit-time score when it diverges from the ratcheted peak (OKLO 2026-08-25 live bug shape)", () => {
+  const rows = [
+    row({ ticker: "OKLO", session_date: "2026-08-25", score_max: 100, entry_context: { score: 50 } }),
+  ];
+  const rec = buildZeroDteRecord(rows, WINDOW);
+  const oklo = rec.plays.find((p) => p.ticker === "OKLO");
+  assert.ok(oklo);
+  // The exact disagreement a consumer previously had no way to detect.
+  assert.equal(oklo.score, 100);
+  assert.equal(oklo.committed_score, 50);
+  // And it is the committed_score (not the top-level score) that explains why this
+  // row lands in the API's own <55 aggregate bucket — no more silent disagreement.
+  assert.equal(scoreBand(oklo.committed_score as number), "score <55");
+  assert.equal(rec.by_score_band.find((b) => b.label === "score <55")?.n, 1);
+  assert.equal(rec.by_score_band.find((b) => b.label === "score 65+"), undefined);
+});
+
+test("toPlay: committed_score is OMITTED (never a fabricated/redundant duplicate) when there's nothing new to say", () => {
+  const noContext = row({ ticker: "NOCTX", entry_context: null });
+  const nonNumericScore = row({ ticker: "BADTYPE", entry_context: { score: "58" } });
+  const noRatchet = row({ ticker: "SAME", score_max: 70, entry_context: { score: 70 } });
+  const rec = buildZeroDteRecord([noContext, nonNumericScore, noRatchet], WINDOW);
+  for (const ticker of ["NOCTX", "BADTYPE", "SAME"]) {
+    const play = rec.plays.find((p) => p.ticker === ticker);
+    assert.ok(play, ticker);
+    assert.equal("committed_score" in play!, false, `${ticker} must omit committed_score`);
+  }
 });
 
 test("ungraded and ungradeable rows appear per-play but never in aggregates", () => {
@@ -207,6 +254,140 @@ test("scoreBand + scoreForBanding + graded/win predicates", () => {
   assert.equal(isZeroDteWin(row({ plan_pnl_pct: 0 })), false);
   assert.equal(isZeroDteWin(row({ plan_pnl_pct: null })), false);
   assert.equal(LOW_N_THRESHOLD, 5);
+});
+
+// ── conviction:null for BREAKOUT/PIN origins — RED→GREEN for the 2026-09-09 fix ─────────
+// Root cause: board.ts's enrichSetup(setup, dossier) always resolves `conviction` from
+// `dossier?.scored?.conviction`, and breakout-source.ts/pin-source.ts both call it with a
+// hardcoded `null` dossier (no options-flow evidence exists to score for a bare price/volume
+// breakout or a GEX pin) — so the DB `conviction` column is null for every BREAKOUT/PIN
+// commit, forever, regardless of how strong the play was. Measured live 2026-09-09:
+// GET /api/market/zerodte/record?days=14 showed 36/57 (63.2%) committed plays with
+// conviction:null, essentially all BREAKOUT-origin, vs 18/18 FLOW-origin plays with a real
+// letter. Fix: toPlay() falls back to the PR-F merit tier (tierFromEntryContext, the same
+// origin-agnostic adapter the `tier` field already uses) instead of passing the null column
+// straight through — a real signal, not a fabricated one.
+test("toPlay: a null DB conviction (BREAKOUT/PIN, no dossier) falls back to the merit tier, not a bare null", () => {
+  // Same shape a real BREAKOUT/PIN commit pins (buildZeroDteEntryContext runs unconditionally
+  // on every origin) — prime score band + calm VIX + clean Cortex + midday commit → tier A,
+  // the exact PINNED_FULL fixture tiers.test.ts already proves resolves to "A".
+  const entryContext = {
+    vix_open: 16.2,
+    spy_bias: "up",
+    score: 78,
+    committed_at_et: "2026-07-10 12:10 ET",
+    discovery_origin: ["BREAKOUT"],
+    cortex: {
+      abstained: false,
+      score: 1.85,
+      vetoes: [],
+      supports: [{ source: "positioning" }, { source: "flow" }],
+      absent: [],
+    },
+  };
+  // Independently confirm what tier this blob resolves to, rather than hardcoding "A" twice —
+  // a change to tiers.ts's bands would then fail this assertion instead of silently drifting.
+  const expectedTier = tierFromEntryContext(entryContext)?.tier;
+  assert.equal(expectedTier, "A");
+
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "BRKO", conviction: null, entry_context: entryContext })],
+    WINDOW
+  );
+  const play = rec.plays[0]!;
+  assert.equal(play.conviction, "A", "null DB conviction must fall back to the real merit tier, not stay null");
+  assert.equal(play.tier, "A", "conviction's fallback must agree with the independently-rendered tier field");
+});
+
+test("toPlay: a real dossier conviction (FLOW origin) is NEVER overridden by the merit tier", () => {
+  // Same entry_context as above (would tier "A"), but the DB column already carries the
+  // dossier-scored FLOW letter — that letter is the more specific signal and must win.
+  const entryContext = {
+    vix_open: 16.2,
+    score: 78,
+    committed_at_et: "2026-07-10 12:10 ET",
+    cortex: { abstained: false, score: 1.85, vetoes: [], supports: [{ source: "positioning" }, { source: "flow" }], absent: [] },
+  };
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "FLOWX", conviction: "B", entry_context: entryContext })],
+    WINDOW
+  );
+  assert.equal(rec.plays[0]!.conviction, "B");
+});
+
+// ── Fix (2026-10-26): historical pre-2026-10-06 rows still leaked the raw unrounded
+// tranche_fraction float through the READ path (follow-up to the 2026-10-06 write-time fix
+// in strategy-version.ts's buildResolvedExitPolicy) ───────────────────────────────────────
+test("toPlay: a historical row's frozen exit_policy_snapshot.trailing_rule (pre-2026-10-06, raw unrounded float) is rounded for display WITHOUT touching config_hash", () => {
+  // This is byte-for-byte what a row committed BEFORE 2026-10-06 froze into
+  // entry_context.exit_policy_snapshot at commit time (scan.ts) — immutable, never rebuilt —
+  // carrying the exact raw 16-digit IEEE-754 float the 2026-10-06 fix found
+  // (tranche_fraction=0.3333333333333333). config_hash here is an arbitrary but REALISTIC
+  // frozen fingerprint; the test's whole point is that this exact string must survive
+  // byte-identical through the read path no matter what display fix runs alongside it.
+  const staleSnapshot = {
+    policy: "trim_scale",
+    version: "ws02-v1",
+    hard_stop_pct: -50,
+    target_pct: 100,
+    trim_levels: [
+      { trigger_pct: 25, fraction: 0.3333333333333333 },
+      { trigger_pct: 50, fraction: 0.3333333333333333 },
+    ],
+    runner_fraction: 0.3333333333333333,
+    trailing_rule:
+      "trim_scale:no_trailing_stop;active_regime=neutral;tranche_fraction=0.3333333333333333;" +
+      "tranches trend=[25,50] neutral=[25,50] range=[25,50]",
+    time_stop_et: "15:50",
+    collision_rule: "stop_before_target_same_bar",
+    config_hash: "exitcfg-deadbeef12",
+  };
+  const entryContext = {
+    score: 70,
+    exit_policy_at_commit: "trim_scale",
+    exit_policy_snapshot: staleSnapshot,
+  };
+
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "STALEHIST", entry_context: entryContext })],
+    WINDOW
+  );
+  const play = rec.plays[0]!;
+  const servedSnapshot = (play.entry_context as Record<string, unknown>)
+    .exit_policy_snapshot as Record<string, unknown>;
+
+  assert.equal(
+    servedSnapshot.trailing_rule,
+    "trim_scale:no_trailing_stop;active_regime=neutral;tranche_fraction=0.33;" +
+      "tranches trend=[25,50] neutral=[25,50] range=[25,50]",
+    "the served display copy must round tranche_fraction to 2dp, same as a fresh commit"
+  );
+  // THE critical invariant: config_hash fingerprints the calibration cohort — a display-only
+  // read-time fix must never move it, or a historical row would silently fork into a
+  // different cohort than the one it actually graded under.
+  assert.equal(
+    servedSnapshot.config_hash,
+    staleSnapshot.config_hash,
+    "config_hash must be byte-identical to the frozen fixture value — this fix is display-only"
+  );
+  // And the original fixture object itself must be untouched (no in-place mutation of the
+  // row's own entry_context — a sibling consumer of the SAME row object must never see this
+  // read path's rounding bleed into its own, unrelated read).
+  assert.equal(
+    staleSnapshot.trailing_rule,
+    "trim_scale:no_trailing_stop;active_regime=neutral;tranche_fraction=0.3333333333333333;" +
+      "tranches trend=[25,50] neutral=[25,50] range=[25,50]",
+    "the original fixture's trailing_rule must be unmutated"
+  );
+});
+
+test("toPlay: a row with genuinely no pinned evidence stays honestly null (never fabricated)", () => {
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "PRECTX", conviction: null, entry_context: null })],
+    WINDOW
+  );
+  assert.equal(rec.plays[0]!.conviction, null);
+  assert.equal(rec.plays[0]!.tier, null);
 });
 
 // ── Fix 5: the graded predicate requires a FINITE plan_pnl_pct (partial-write guard) ──
@@ -504,6 +685,162 @@ test("FINDINGS 2026-08-27: a real RATCHET-FLOOR exit (exactly breakeven) outrank
   assert.equal(rec.breakeven, 1, "breakeven, neither win nor loss — not the fictitious +56% the reconstruction alone would report");
 });
 
+test("managedOutcomeLabel: a real trim_scale_runner_target exit (no reconstruction) buckets as 'doubled', not 'ratchet'", () => {
+  // trim_scale_runner_target fires when BOTH tranches are already banked and the LAST third
+  // also tags the plan target (exit-engine.ts decideTrimScale, action EXIT reason
+  // "trim_scale_runner_target") — the trim-scale-mode analogue of ratchet mode's
+  // "plan_target_final" ("doubled"): the position captured its full bullish target, just via
+  // banked tranches instead of one lump. The OLD code bucketed it under "ratchet" purely
+  // because its own ad hoc /ratchet|runner/ regex substring-matched "runner" inside
+  // "trim_scale_runner_target" — conflating a profit-TARGET hit with a defensive ratchet
+  // FLOOR exit, two economically different outcome shapes the by_outcome breakdown exists
+  // specifically to keep apart (see BUCKET_ORDER's own doc comment). Reachable live any time
+  // a trim_scale row's WS-11 reconstruction is absent/degenerate (readReconstructedTrimScale
+  // returns null, or reconstructionShowsGenuinePartialBank is false) so managedGradeView falls
+  // through to the real engine exit stamp instead of the reconstruction.
+  const r = withExit(
+    { ticker: "AAPL", plan_outcome: "time_stop", plan_pnl_pct: 60 },
+    { reason: "trim_scale_runner_target", pnl_pct: 60 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_outcome, "doubled");
+  assert.equal(rec.wins, 1);
+});
+
+test("managedOutcomeLabel: a real trim_scale_dead_zone_floor exit (no reconstruction) buckets as 'ratchet', not a bare win/loss/breakeven sign", () => {
+  // trim_scale_dead_zone_floor is the trim-scale-mode protective floor for the regime-
+  // conditioned dead zone (exit-engine.ts's decideTrimScale, floored at HALF the peak when no
+  // tranche has armed yet) — the trim-scale analogue of ratchet mode's
+  // "ratchet_breakeven_floor"/"ratchet_early_profit_floor"/"ratchet_profit_floor" (all bucket
+  // "ratchet"). The OLD code's ad hoc /ratchet|runner/ regex does not match this exact string
+  // at all (no "ratchet" or "runner" substring), so it silently fell through to the bare
+  // win/loss/breakeven-by-sign label instead of the named "ratchet" bucket every other
+  // protective-floor exit gets — the ONE real EXIT reason exit-engine.ts can stamp that this
+  // record.ts label function had no case for at all.
+  const r = withExit(
+    { ticker: "META", plan_outcome: "time_stop", plan_pnl_pct: 30 },
+    { reason: "trim_scale_dead_zone_floor", pnl_pct: 5 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_outcome, "ratchet");
+  assert.equal(rec.wins, 1);
+});
+
+test("managedOutcomeLabel: a plan_stop reason with a POSITIVE pnl buckets by sign, not 'stopped' (frozen pre-existing-bug data, live 2026-11-01)", () => {
+  // plan_stop (exit-engine.ts) only ever fires when the mark has fallen to/below the fixed
+  // -50% plan stop — a positive pnl under this reason is impossible for a genuine stop-out.
+  // Live 2026-11-01: a real META row from 2026-08-03 carries managed_pnl_pct=+3.41 with
+  // managed_outcome="stopped" — the exact entryBasisDiverged-era contradiction this module's
+  // own history already names (fixed going forward, 2026-08-06, but this frozen row predates
+  // it and is never rebuilt). Read-time reconciliation prevents a future read from rendering
+  // a self-contradictory label/bucket, without touching the frozen entry_context.exit data.
+  const r = withExit(
+    { ticker: "META", plan_outcome: "stopped", plan_pnl_pct: -50 },
+    { reason: "plan_stop", pnl_pct: 3.41 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_outcome, "win");
+  assert.equal(rec.wins, 1);
+  assert.equal(rec.losses, 0);
+});
+
+test("managedOutcomeLabel: a genuine plan_stop loss still buckets as 'stopped'", () => {
+  const r = withExit(
+    { ticker: "AMD", plan_outcome: "stopped", plan_pnl_pct: -50 },
+    { reason: "plan_stop", pnl_pct: -48.2 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_outcome, "stopped");
+  assert.equal(rec.losses, 1);
+});
+
+test("managedOutcomeLabel: a target reason with a NON-POSITIVE pnl buckets by sign, not 'doubled'", () => {
+  // plan_target*/trim_scale* are exclusively profit-taking exits — the symmetric contradiction
+  // to the plan_stop case above.
+  const r = withExit(
+    { ticker: "NVDA", plan_outcome: "time_stop", plan_pnl_pct: 100 },
+    { reason: "plan_target_final", pnl_pct: -1.2 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_outcome, "loss");
+  assert.equal(rec.losses, 1);
+  assert.equal(rec.wins, 0);
+});
+
+test("managedOutcomeLabel: a genuine target win still buckets as 'doubled'", () => {
+  const r = withExit(
+    { ticker: "TSLA", plan_outcome: "time_stop", plan_pnl_pct: 100 },
+    { reason: "plan_target_final", pnl_pct: 103.5 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_outcome, "doubled");
+  assert.equal(rec.wins, 1);
+});
+
+// ── FINDINGS 2026-11-01: the SAME sign contradiction, but through the RECONSTRUCTED (WS-11)
+// path, not managedOutcomeLabel/the live engine exit — #7133 fixed only the latter. ───────────
+test("reconstructedOutcomeLabel: a WS-11 trim-scale reconstruction with a POSITIVE blended pnl buckets by sign, not 'stopped' — live META 2026-08-03 evidence, bypasses #7133", () => {
+  // Live GET /api/market/zerodte/record?days=90 (2026-11-01), play index 588: META,
+  // session_date 2026-08-03, managed_source:"reconstructed" (entry_context carries NO
+  // top-level `exit` key at all — readManagedExit returns null, so managedOutcomeLabel is
+  // NEVER invoked for this row; #7133's sign guard lives entirely inside that function and
+  // cannot reach this path). Two early trims banked large gains; the final tranche hit the
+  // hard stop — but the BLENDED pnl across all three legs is still positive, while the
+  // reconstruction's own `outcome` is the runner (final leg)'s bare reason, "stopped".
+  const tranches = [
+    { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 19.32, exit_reason: "trim_scale_first", at_et: "10:05" },
+    { tranche: 2, fraction: 1 / 3, exit_pnl_pct: 43.18, exit_reason: "trim_scale_second", at_et: "10:12" },
+    { tranche: 3, fraction: 1 / 3, exit_pnl_pct: -52.27, exit_reason: "stopped", at_et: "11:40" },
+  ];
+  const r = withReconstruction(
+    { ticker: "META", plan_outcome: "stopped", plan_pnl_pct: -50 },
+    { plan_outcome: "stopped", plan_pnl_pct: 3.41, tranches }
+  );
+  // Blend check: (19.32 + 43.18 - 52.27) / 3 == 3.41666... -> rounds to 3.42, but the
+  // frozen blob already carries the grader's own rounded 3.41 (round2 applied once, at
+  // write time) — read verbatim, never re-derived here.
+  assert.equal(officialPlanPnlPct(r), 3.41);
+  assert.equal(asManagedPnlPct(r), 3.41);
+  const rec = buildZeroDteRecord([r], WINDOW);
+  const play = rec.plays[0]!;
+  assert.equal(play.managed_source, "reconstructed");
+  assert.equal(play.managed_pnl_pct, 3.41, "a real, positive blended win");
+  // THE BUG: pre-fix this asserted "stopped" (the runner-leg label, sign-contradicting its
+  // own positive pnl) — post-fix it falls back to the bare sign label, matching
+  // managedOutcomeLabel's own "stop"/"target" sign-guard discipline (#7133).
+  assert.equal(play.managed_outcome, "win", "a positive blended reconstruction must never render under the loss-implying 'stopped' label");
+  assert.equal(play.plan_outcome, "win", "the OFFICIAL lane (calibration/feature-store/Largo) must agree with the as-managed headline");
+  assert.equal(rec.wins, 1);
+  assert.equal(rec.losses, 0);
+  // The by_outcome bucket that used to silently carry a contradictory win: "stopped" must
+  // now have NO rows at all for this single-row record, and "win" must carry it instead.
+  const stoppedBucket = rec.by_outcome.find((b) => b.label === "stopped");
+  assert.equal(stoppedBucket, undefined, "the loss-implying bucket must not carry this real win");
+  const winBucket = rec.by_outcome.find((b) => b.label === "win");
+  assert.ok(winBucket, "the sign-correct bucket must carry it instead");
+  assert.equal(winBucket!.wins, 1);
+});
+
+test("reconstructedOutcomeLabel: a WS-11 reconstruction with a NON-POSITIVE blended pnl still buckets as 'stopped' (no regression)", () => {
+  // Symmetric control: when the runner's reason and the blended sign actually agree (a
+  // genuine stop-out), the label must be unchanged.
+  const tranches = [
+    { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 5.0, exit_reason: "trim_scale_first", at_et: "10:05" },
+    { tranche: 2, fraction: 2 / 3, exit_pnl_pct: -52.27, exit_reason: "stopped", at_et: "11:40" },
+  ];
+  const r = withReconstruction(
+    { ticker: "COIN", plan_outcome: "stopped", plan_pnl_pct: -50 },
+    { plan_outcome: "stopped", plan_pnl_pct: -33.18, tranches }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_outcome, "stopped");
+  assert.equal(rec.plays[0]!.plan_outcome, "stopped");
+  assert.equal(rec.losses, 1);
+  assert.equal(rec.wins, 0);
+});
+
 test("FINDINGS 2026-08-27: a real FLAT-TIMEOUT exit outranks a genuine reconstruction (live-only reason, unreproducible by the bar-walk)", () => {
   const r = row({
     ticker: "MU",
@@ -722,3 +1059,261 @@ test("buildZeroDteRecord: an all-directional window reports an empty condor lane
     assert.equal(rec.condor.committed, 0);
     assert.equal(rec.condor.no_live_record, true);
   });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// max_favorable_pct / extractMaxFavorablePct — reporting that separates REALIZED exits
+// from MAXIMUM FAVORABLE EXCURSION (member audit directive, point 6 of the original brief:
+// "separate realized exits from maximum potential gains").
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("readManagedExit: carries peak_pnl_pct alongside pnl_pct/reason when the row has a real exit stamp", () => {
+  const exit = readManagedExit({ exit: { reason: "thesis_break:gex-walls", pnl_pct: -22.57, peak_pnl_pct: 0 } });
+  assert.deepEqual(exit, { reason: "thesis_break:gex-walls", pnl_pct: -22.57, peak_pnl_pct: 0 });
+});
+
+test("readManagedExit: a non-finite/missing peak_pnl_pct reads null, never fabricated", () => {
+  assert.equal(readManagedExit({ exit: { reason: "plan_stop", pnl_pct: -50 } })?.peak_pnl_pct, null);
+  assert.equal(readManagedExit({ exit: { reason: "plan_stop", pnl_pct: -50, peak_pnl_pct: "NaN" } })?.peak_pnl_pct, null);
+});
+
+test("extractMaxFavorablePct: reads the real peak off a live-managed exit stamp", () => {
+  assert.equal(extractMaxFavorablePct({ exit: { reason: "ratchet_profit_floor", pnl_pct: 34.54, peak_pnl_pct: 86.27 } }), 86.27);
+});
+
+test("extractMaxFavorablePct: null when the row never carried a live-managed exit at all (absence, not zero)", () => {
+  assert.equal(extractMaxFavorablePct(null), null);
+  assert.equal(extractMaxFavorablePct({}), null);
+  assert.equal(extractMaxFavorablePct({ exit: "not-an-object" }), null);
+});
+
+test("buildZeroDteRecord: a play's max_favorable_pct is reported SEPARATELY from managed_pnl_pct, never conflated", () => {
+  // The real TSLA 2026-10-19 shape investigated this session: peak_pnl_pct=0 ("never moved
+  // favorably") alongside a -22.57% realized exit -- both numbers are real and must both survive
+  // to the public record, not be collapsed into one.
+  const rec = buildZeroDteRecord(
+    [
+      row({
+        ticker: "TSLA",
+        plan_outcome: "stopped",
+        plan_pnl_pct: -22.57,
+        entry_context: {
+          exit: { reason: "thesis_break:gex-walls", pnl_pct: -22.57, peak_pnl_pct: 0 },
+        } as unknown as ZeroDteSetupLogRow["entry_context"],
+      }),
+    ],
+    { since: "2026-10-19", through: "2026-10-19", days: 1 },
+  );
+  const play = rec.plays.find((p) => p.ticker === "TSLA");
+  assert.ok(play);
+  assert.equal(play!.max_favorable_pct, 0);
+  assert.equal(play!.managed_pnl_pct, -22.57);
+});
+
+test("buildZeroDteRecord: max_favorable_pct is null (not 0) for a row with no live-managed exit stamp", () => {
+  const rec = buildZeroDteRecord(
+    [row({ ticker: "NVDA", plan_outcome: "stopped", plan_pnl_pct: -50, entry_context: null })],
+    { since: "2026-07-13", through: "2026-07-13", days: 1 },
+  );
+  const play = rec.plays.find((p) => p.ticker === "NVDA");
+  assert.ok(play);
+  assert.equal(play!.max_favorable_pct, null);
+});
+
+// ── FINDINGS 2026-10-31: managed_pnl_pct must never display as exceeding its own peak ──
+// A live audit of GET /api/market/zerodte/record?days=90 found 7 real rows where the
+// as-managed headline read BETTER than the position's own recorded maximum favorable
+// excursion -- a mathematical impossibility (see clampManagedPnlToPeak's doc). Every one
+// of the 7 was a frozen pre-2026-09-04 cent-rounding artifact (exit-engine.ts's
+// buildExitContext, commit f42a3892b/#3445); this reproduces the exact shape (NVDA
+// 2026-08-28: managed 0 vs peak -1.14) off a bare fixture, not live data, so the test
+// stays meaningful even after that row ages out of any live 90-day window.
+
+test("buildZeroDteRecord: a frozen pre-2026-09-04 exit stamp whose pnl_pct exceeds its own peak_pnl_pct is clamped to the peak (NVDA 2026-08-28 repro)", () => {
+  const rec = buildZeroDteRecord(
+    [
+      withExit(
+        { ticker: "NVDA", session_date: "2026-08-28", plan_outcome: "stopped", plan_pnl_pct: -50 },
+        { reason: "plan_stop", pnl_pct: 0, peak_pnl_pct: -1.14 } as unknown as { reason: string; pnl_pct: number }
+      ),
+    ],
+    { since: "2026-08-28", through: "2026-08-28", days: 1 },
+  );
+  const play = rec.plays.find((p) => p.ticker === "NVDA");
+  assert.ok(play);
+  // The peak (reliable — the 09-04 bug never touched peak_pnl_pct's own formula) is
+  // reported unchanged; the realized number is capped to agree with it, never left to
+  // claim a better outcome than the row's own documented best moment.
+  assert.equal(play!.max_favorable_pct, -1.14);
+  assert.equal(play!.managed_pnl_pct, -1.14, "managed_pnl_pct must never exceed max_favorable_pct");
+  assert.equal(play!.managed_source, "engine");
+  assert.equal(rec.wins, 0);
+  assert.equal(rec.losses, 1, "a clamped-negative exit must book as a loss, not the pre-clamp breakeven");
+  assert.equal(rec.avg_pnl_pct, -1.14);
+});
+
+test("buildZeroDteRecord: the same clamp caps a POSITIVE frozen pnl_pct to its own peak too (HIMS 2026-08-19 repro) — still a win, just not an impossible one", () => {
+  const rec = buildZeroDteRecord(
+    [
+      withExit(
+        { ticker: "HIMS", session_date: "2026-08-19", plan_outcome: "doubled", plan_pnl_pct: 100 },
+        { reason: "ratchet_profit_floor", pnl_pct: 5.68, peak_pnl_pct: 5.11 } as unknown as {
+          reason: string;
+          pnl_pct: number;
+        }
+      ),
+    ],
+    { since: "2026-08-19", through: "2026-08-19", days: 1 },
+  );
+  const play = rec.plays.find((p) => p.ticker === "HIMS");
+  assert.ok(play);
+  assert.equal(play!.max_favorable_pct, 5.11);
+  assert.equal(play!.managed_pnl_pct, 5.11);
+  assert.equal(rec.wins, 1, "still a real win — clamping only removes the impossible excess, not the win itself");
+  assert.equal(rec.avg_pnl_pct, 5.11);
+});
+
+test("buildZeroDteRecord: the clamp is a no-op when pnl_pct already sits at or below its own peak (the correct, post-fix and honored-floor shape)", () => {
+  // Same TSLA shape as the "reported SEPARATELY" test above (peak=0, realized=-22.57) plus
+  // a second, POSITIVE-peak row (ratchet-floor exit at +22.5%, peak +30% — the ordinary
+  // "closed off the all-time high" shape) — neither should move under the clamp.
+  const rec = buildZeroDteRecord(
+    [
+      withExit(
+        { ticker: "TSLA", session_date: "2026-10-19", plan_outcome: "stopped", plan_pnl_pct: -22.57 },
+        { reason: "thesis_break:gex-walls", pnl_pct: -22.57, peak_pnl_pct: 0 } as unknown as {
+          reason: string;
+          pnl_pct: number;
+        }
+      ),
+      withExit(
+        { ticker: "AMZN", session_date: "2026-10-19", plan_outcome: "stopped", plan_pnl_pct: -50 },
+        { reason: "ratchet_profit_floor", pnl_pct: 22.5, peak_pnl_pct: 30 } as unknown as {
+          reason: string;
+          pnl_pct: number;
+        }
+      ),
+    ],
+    { since: "2026-10-19", through: "2026-10-19", days: 1 },
+  );
+  const tsla = rec.plays.find((p) => p.ticker === "TSLA");
+  const amzn = rec.plays.find((p) => p.ticker === "AMZN");
+  assert.equal(tsla!.managed_pnl_pct, -22.57);
+  assert.equal(amzn!.managed_pnl_pct, 22.5);
+});
+
+// ── FINDINGS 2026-11-01: officialOverridingRealExit (the calibration/feature-store/Largo lane)
+// must apply the SAME peak clamp managedGradeView() already does (clampManagedPnlToPeak,
+// 2026-10-31) to the IDENTICAL frozen entry_context.exit blob, on the same rows — otherwise the
+// two "official" numbers for one position disagree, and plan_pnl_pct (the number calibration/
+// feature-store/Largo's get_zerodte_record read, per the module comment near line 193) can read
+// as BETTER than the position's own highest-ever recorded excursion, which is impossible. Live
+// audit (GET /api/market/zerodte/record?days=90, 2026-11-01) found 8 real violating rows; 5 of
+// them (HIMS/KORU/SPCH/RIOT/FIG) are the EXACT rows the 2026-10-31 fix already named as fixed for
+// managed_pnl_pct — proving that fix's blast radius never reached this sibling lane.
+
+test("FINDINGS 2026-11-01: officialPlanPnlPct clamps a real-exit-outranking-a-GENUINE-reconstruction row to its own peak (HIMS 2026-08-19 live-shape repro)", () => {
+  // Live shape: HIMS 2026-08-19 — a GENUINE (2-tranche) reconstruction exists, but a real,
+  // live-only ratchet-floor exit outranks it (officialOverridingRealExit's own precedence,
+  // identical to managedGradeView's) — and that real exit's raw pnl_pct (5.68) sits ABOVE its
+  // own recorded peak (5.11), the exact frozen pre-2026-09-04 cent-rounding artifact
+  // clampManagedPnlToPeak's doc describes. Before this fix, officialPlanPnlPct returned the raw
+  // 5.68 while the sibling asManagedPnlPct (already fixed 2026-10-31) returned the clamped
+  // 5.11 — the two "official" numbers for the SAME position disagreed.
+  const r = row({
+    ticker: "HIMS",
+    session_date: "2026-08-19",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: 40,
+    entry_context: {
+      exit: { reason: "ratchet_profit_floor", pnl_pct: 5.68, peak_pnl_pct: 5.11 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: 25.61,
+        tranches: [
+          { tranche: 1, fraction: 1 / 2, exit_pnl_pct: 10.0, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 1 / 2, exit_pnl_pct: 41.22, exit_reason: "time_stop", at_et: "15:15" },
+        ],
+      },
+    },
+  });
+  assert.equal(officialPlanPnlPct(r), 5.11, "plan_pnl_pct must never exceed the row's own peak_pnl_pct");
+  assert.equal(asManagedPnlPct(r), 5.11, "the sibling as-managed lane was already clamped 2026-10-31");
+  assert.equal(
+    officialPlanPnlPct(r),
+    asManagedPnlPct(r),
+    "the calibration/feature-store/Largo number and the member-facing number must agree for the same frozen exit"
+  );
+
+  const rec = buildZeroDteRecord([r], { since: "2026-08-19", through: "2026-08-19", days: 1 });
+  const play = rec.plays[0]!;
+  assert.equal(play.plan_pnl_pct, 5.11);
+  assert.equal(play.managed_pnl_pct, 5.11);
+  assert.equal(play.max_favorable_pct, 5.11);
+});
+
+test("FINDINGS 2026-11-01: officialPlanPnlPct is unaffected when the real exit already sits within its own peak (no regression)", () => {
+  // Same APLD-shaped real-thesis-break-outranks-a-GENUINE-reconstruction case this module's own
+  // 2026-08-27 fix covers, now carrying a peak (25.0) comfortably ABOVE the real exit's pnl
+  // (19.0) — the ordinary, correct shape every post-2026-09-04 fresh exit produces. The clamp
+  // must be a provable no-op here, exactly like clampManagedPnlToPeak's own doc promises.
+  const r = row({
+    ticker: "APLD",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: -0.98,
+    entry_context: {
+      exit: { reason: "thesis_break:gex-walls", pnl_pct: 19.0, peak_pnl_pct: 25.0 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: -0.98,
+        tranches: [
+          { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 10.0, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 2 / 3, exit_pnl_pct: -6.47, exit_reason: "time_stop", at_et: "15:15" },
+        ],
+      },
+    },
+  });
+  assert.equal(officialPlanPnlPct(r), 19.0, "pnl already sits below its own peak — the clamp must not move it");
+  assert.equal(asManagedPnlPct(r), 19.0);
+  assert.equal(isZeroDteWin(r), true, "a correctly-unclamped real win must still grade as a win");
+});
+
+test("FINDINGS 2026-11-01: plan_pnl_pct and managed_pnl_pct agree on a negative-peak override row too (CRCL 2026-09-03 live-shape repro)", () => {
+  // CRCL 2026-09-03 live shape: a position that never moved favorably (peak -0.22) whose real
+  // exit's raw pnl_pct (0) would otherwise read as a false breakeven instead of its own honest
+  // small loss — the negative-peak analogue of the HIMS repro above, and the sign this bug's
+  // clamp must handle correctly (peak itself negative, not just smaller than a positive pnl).
+  const crcl = row({
+    ticker: "CRCL",
+    session_date: "2026-09-03",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: 40,
+    entry_context: {
+      exit: { reason: "flat_theta_bleed", pnl_pct: 0, peak_pnl_pct: -0.22 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: 27.07,
+        tranches: [
+          { tranche: 1, fraction: 1 / 2, exit_pnl_pct: 20.0, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 1 / 2, exit_pnl_pct: 34.14, exit_reason: "time_stop", at_et: "15:15" },
+        ],
+      },
+    },
+  });
+  const rec = buildZeroDteRecord([crcl], { since: "2026-09-03", through: "2026-09-03", days: 1 });
+  const play = rec.plays[0]!;
+  assert.equal(
+    play.plan_pnl_pct,
+    play.managed_pnl_pct,
+    "the two official lanes must never disagree for the same frozen exit"
+  );
+  assert.equal(play.plan_pnl_pct, -0.22);
+  assert.equal(play.managed_pnl_pct, -0.22);
+  assert.equal(officialPlanPnlPct(crcl), asManagedPnlPct(crcl));
+  assert.equal(rec.losses, 1, "a clamped-negative override must book as a loss, not the pre-clamp breakeven");
+});

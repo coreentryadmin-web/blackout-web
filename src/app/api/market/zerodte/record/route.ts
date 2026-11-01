@@ -10,7 +10,7 @@ import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
-import { roundFloats } from "@/lib/round-floats";
+import { roundFloats, reconcileTrancheFractions } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +50,24 @@ export async function GET(req: NextRequest) {
     const record = buildZeroDteRecord(rows, { since, through, days });
     // Numbers are rounded at the data layer (record.ts); roundFloats is the same
     // response-boundary backstop every other market endpoint ships with.
-    return NextResponse.json(roundFloats(record), { headers: NO_STORE_HEADERS });
+    const rounded = roundFloats(record);
+    // A WS-11 reconstructed TRIM-SCALE play's `entry_context.executable.tranches[]` audit
+    // trail just had each leg's `fraction` rounded INDEPENDENTLY by roundFloats() above — a
+    // fully-fired ⅓/⅓/⅓ play now displays 0.33/0.33/0.33, which sums to 0.99, not 1.00
+    // (live-caught 2026-10-25). The official `managed_pnl_pct` headline is unaffected (it
+    // blends the exact, unrounded fractions before this rounding pass ever runs) — only this
+    // served audit trail drifts. reconcileTrancheFractions (round-floats.ts) adjusts the
+    // runner leg to absorb the residual, same rounding-composition fix as
+    // reconcileStrikeTotal/reconcileCellStrikeTotals one level deeper.
+    for (const play of rounded.plays) {
+      const ex = play.entry_context?.executable;
+      if (ex && typeof ex === "object" && Array.isArray((ex as Record<string, unknown>).tranches)) {
+        (ex as Record<string, unknown>).tranches = reconcileTrancheFractions(
+          (ex as Record<string, unknown>).tranches as { fraction: number }[]
+        );
+      }
+    }
+    return NextResponse.json(rounded, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[market/zerodte/record]", error);
     return NextResponse.json(

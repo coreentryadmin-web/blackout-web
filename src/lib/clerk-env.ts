@@ -83,14 +83,6 @@ export function clerkAllowedRedirectOrigins(): string[] | undefined {
   return ["https://staging.blackouttrades.com"];
 }
 
-export function clerkFrontendApiHost(): string {
-  if (clerkProxyUrl()) return clerkProxyUrl()!;
-  if (clerkIsSatellite() && isStagingDeploy()) {
-    return "https://clerk.staging.blackouttrades.com";
-  }
-  return "https://clerk.blackouttrades.com";
-}
-
 export type ClerkSatelliteProviderProps = {
   isSatellite?: true;
   domain?: string;

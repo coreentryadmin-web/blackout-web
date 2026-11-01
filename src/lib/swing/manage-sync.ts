@@ -33,6 +33,12 @@
 import type { SwingPositionRow, SwingSnapshotInsert } from "../db";
 import type { SwingLiveQuote } from "./live-plays";
 import { structuralBreakFromSpot } from "./live-plays";
+// Moved out of this file 2026-10-26 (see that module's own header) so live-plays.ts's serve-time
+// fold-in can share the identical math without a circular import (this file already imports
+// `structuralBreakFromSpot` FROM live-plays.ts).
+import { signedExcursionPct } from "./underlying-excursion";
+export { signedExcursionPct } from "./underlying-excursion";
+import { underlyingPriceForStructuralStop } from "./ex-dividend-adjustment";
 import type { PlayDirection } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { SWING_ARCHETYPES } from "./taxonomy";
@@ -71,22 +77,29 @@ function coerceArchetype(raw: string | null | undefined): SwingArchetype | null 
 
 /**
  * Map a manage verdict onto the next live status for the latch. TRIM is sticky once a scale-out fires
- * (TAKE_PARTIAL / EXIT_RUNNER) — but ONLY when the rung that fired it is ENFORCED. TAKE_PARTIAL/
- * EXIT_RUNNER are exclusively edge-rung actions (catalyst_shift/regime_shift/profit_ladder/flow_decay/
- * rel_strength_loss/vol_collapse — see manage.ts's GATING_RUNGS, none of which ever return these two
- * actions), so `verdict.enforced` is false until the PR-16 calibration ladder graduates that specific
- * rung. An un-enforced TAKE_PARTIAL is advisory only — nothing actually sold a tranche — so latching
- * to TRIM here would be fabricating a scale-out that never happened. That matters beyond the status
- * label: the very next refresh tick derives `scaledAlready` from `row.status === "TRIM"` (below), and
- * `deriveScaleOutAction` disables the −60% `premium_stop` hard-stop entirely once `scaledAlready` is
- * true (it only re-arms the trailing-stop check for a runner that already banked a partial). Latching
- * TRIM off an un-enforced advisory would silently and permanently disable capital-preservation on a
- * position that is, in reality, still 100% open and exposed to the full downside that gate exists to
- * catch. HOLD promotes OPEN→HOLD. EXIT/STOP_OUT keep the current status — terminals are written only
- * by the roll executor. Never invents CLOSED/ROLLED here.
+ * (TAKE_PARTIAL / EXIT_RUNNER) — but ONLY when the rung that fired it is BOTH enforced AND
+ * `profit_ladder` specifically. TAKE_PARTIAL/EXIT_RUNNER are produced by six independent edge rungs
+ * (catalyst_shift/regime_shift/profit_ladder/flow_decay/rel_strength_loss/vol_collapse — see
+ * manage.ts's SWING_EDGE_RUNGS), each graduating on its own evidence bucket once the PR-16
+ * calibration ladder enforces it. `scaledAlready` (derived from `row.status === "TRIM"` below) is
+ * read by `deriveScaleOutAction` to permanently disable the −60% `premium_stop` hard-stop once true
+ * (it only re-arms the trailing-stop check for a runner that already banked a partial) — but that
+ * meaning ("a real premium partial was taken") only actually holds for `profit_ladder`. The other
+ * five edge rungs are advisory de-risking signals unrelated to premium — e.g. a `regime_shift`
+ * firing an enforced TAKE_PARTIAL says nothing sold, yet would otherwise latch TRIM and silently
+ * disable capital-preservation on a position still 100% open to the full downside that gate exists
+ * to catch (found live, 2026-09-15). Gating on `rung === "profit_ladder"` restores the latch to only
+ * the one rung whose semantics actually match "a partial already happened." HOLD promotes
+ * OPEN→HOLD. EXIT/STOP_OUT keep the current status — terminals are written only by the roll
+ * executor. Never invents CLOSED/ROLLED here.
  */
 export function latchSwingLiveStatus(current: string, verdict: SwingManageVerdict): string {
-  if (verdict.enforced && (verdict.action === "TAKE_PARTIAL" || verdict.action === "EXIT_RUNNER")) return "TRIM";
+  if (
+    verdict.enforced &&
+    verdict.rung === "profit_ladder" &&
+    (verdict.action === "TAKE_PARTIAL" || verdict.action === "EXIT_RUNNER")
+  )
+    return "TRIM";
   if (current === "TRIM") return "TRIM";
   if (verdict.action === "HOLD" || verdict.action === "ADD") {
     return current === "OPEN" ? "HOLD" : current;
@@ -186,7 +199,22 @@ function syntheticDossierFromPosition(row: SwingPositionRow): SwingDossier {
   };
 }
 
-/** Map a management verdict → a coarse thesis_state tag for the snapshot (surfaced to the desk/grader). */
+/**
+ * Map a management verdict → a coarse thesis_state tag for the snapshot (surfaced to the desk/grader).
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-25): "hold" and "insufficient_data" used to share the
+ * SAME "INTACT" tag, but they are not the same claim. "hold" means `evaluateSwingManagement` actually
+ * checked the structural/thesis/premium rails against real reads and none fired — a genuinely
+ * evaluated, passed check. "insufficient_data" means NOTHING was evaluable this tick (manage.ts's own
+ * doc: "a hollow read, not a confident HOLD") — e.g. a total provider-fetch outage with no mark, no
+ * spot, no DTE, no advisory read at all. `live-plays.ts`'s INTACT-override fix (2026-10-15) trusts
+ * thesis_state:"INTACT" to reset a cruder spot-only "break" read back to "intact", on the documented
+ * assumption that INTACT specifically means "the real check ran and did NOT find a break." That
+ * assumption was false for insufficient_data: a stale/outage tick with ZERO evidence either way could
+ * silently mask a real, live-detected structural break from the member. "UNKNOWN" is honest about
+ * having no evaluated claim at all, and deliberately matches none of live-plays.ts's override branches
+ * — on this tag the serving layer falls through and keeps trusting the live spot-only read instead.
+ */
 function thesisStateOf(v: SwingManageVerdict): string {
   switch (v.rung) {
     case "structural_stop":
@@ -197,45 +225,45 @@ function thesisStateOf(v: SwingManageVerdict): string {
     case "premium_stop":
       return "STOPPED";
     case "hold":
-    case "insufficient_data":
       return "INTACT";
+    case "insufficient_data":
+      return "UNKNOWN"; // no evaluated claim — must never read as a passed "thesis intact" check
     default:
       return "WATCH"; // an advisory edge rung fired — worth watching, thesis not (yet) broken
   }
 }
 
 /**
- * Signed favorable/adverse excursion (% vs entry), direction-aware, from the ratcheted price extremes plus
- * this tick's spot. The ledger keeps underlying_mfe/underlying_mae as PRICE high/low-water marks; this turns
- * those into the excursion the snapshot's running_mfe/running_mae must carry (feature-store.ts's trajectory
- * studies read them as PERCENTS — `studyTwoStagnantSessions` compares running_mfe across sessions, and
- * `studyIvKillsGoodSetups` compares running_mae to a −3% threshold; both are meaningless against raw prices).
- *
- * Seeded with `entry` on both extremes so a fresh position starts at MFE ≥ 0 / MAE ≤ 0 (the documented sign
- * convention), and includes `spot` so this tick counts even before the ledger ratchet runs. Honest-null when
- * entry or spot is missing/invalid — never a fabricated 0.
+ * Rebuild a snapshot's VERDICT-DERIVED fields (thesis_state, feature_vector.thesis_state, and the
+ * verdict-sourced keys inside event_json) for a DIFFERENT verdict than the one the snapshot was
+ * originally built from. Needed because `syncSwingManagement`'s roll-execution path re-arbitrates the
+ * verdict at execution time (`executionVerdictForGating`, Q37 — a concurrent pass or slow chain fetch
+ * can leave a stale verdict by the time the roll/close actually executes), but the snapshot handed to
+ * the roll executor had already been built from the PRE-arbitration verdict. Without this, the
+ * append-only evidence trail (`event_json.rung/action/reason/roll_intent`, `thesis_state`) would
+ * document a verdict the system did NOT actually act on — exactly the kind of narrative-vs-reality
+ * mismatch already fixed once in `live-plays.ts` (the 2026-10-15 INTC repro). Every OTHER field (marks,
+ * DTE, excursion, quote) is a READ, not a verdict derivation, so it is carried through unchanged.
  */
-export function signedExcursionPct(args: {
-  direction: "long" | "short";
-  entryPx: number | null;
-  spot: number | null;
-  /** Prior ratcheted high-water PRICE (row.underlying_mfe) — optional; seeded from entry/spot when absent. */
-  priorMfePx?: number | null;
-  /** Prior ratcheted low-water PRICE (row.underlying_mae) — optional; seeded from entry/spot when absent. */
-  priorMaePx?: number | null;
-}): { mfePct: number | null; maePct: number | null } {
-  const { entryPx: entry, spot } = args;
-  if (entry == null || !Number.isFinite(entry) || entry <= 0 || spot == null || !Number.isFinite(spot)) {
-    return { mfePct: null, maePct: null };
-  }
-  const fin = (n: number | null | undefined): n is number => n != null && Number.isFinite(n);
-  const hi = Math.max(...[args.priorMfePx, spot, entry].filter(fin)); // favorable extreme (highest price)
-  const lo = Math.min(...[args.priorMaePx, spot, entry].filter(fin)); // adverse extreme (lowest price)
-  const pct = (px: number) => Math.round(((px - entry) / entry) * 100 * 1e4) / 1e4; // round — no unrounded floats
-  // SHORT profits when price FALLS, so its favorable/adverse extremes are the mirror of a LONG's.
-  return args.direction === "short"
-    ? { mfePct: -pct(lo), maePct: -pct(hi) }
-    : { mfePct: pct(hi), maePct: pct(lo) };
+function snapshotWithVerdict(snapshot: SwingSnapshotInsert, verdict: SwingManageVerdict): SwingSnapshotInsert {
+  const thesisState = thesisStateOf(verdict);
+  const priorEvent = (snapshot.event_json ?? {}) as Record<string, unknown>;
+  const priorFeatureVector = (snapshot.feature_vector ?? {}) as Record<string, unknown>;
+  return {
+    ...snapshot,
+    thesis_state: thesisState,
+    feature_vector: { ...priorFeatureVector, thesis_state: thesisState },
+    event_json: {
+      ...priorEvent,
+      rung: verdict.rung,
+      action: verdict.action,
+      enforced: verdict.enforced,
+      gating: GATING_RUNGS.has(verdict.rung),
+      reason: verdict.reason,
+      dte_migration: verdict.dteMigration,
+      roll_intent: verdict.rollIntent,
+    },
+  };
 }
 
 /**
@@ -379,6 +407,7 @@ export function planManageSync(
     dte_remaining: numOrNull(reads.dte),
     underlying_px: numOrNull(reads.underlyingPrice),
     option_mark: numOrNull(reads.mark),
+    mark_as_of: reads.quote?.asOf ?? null,
     running_mfe: excursion.mfePct,
     running_mae: excursion.maePct,
     thesis_state: thesisState,
@@ -451,7 +480,20 @@ function hasRollLedger(deps: ManageSyncDeps): deps is ManageSyncDeps & RollLedge
 
 /**
  * Q37: re-arbitrate at roll execution time. A concurrent pass or slow chain fetch can leave a ROLL plan
- * built while the structural stop has since broken — CLOSE must win over ROLL.
+ * built while the structural stop has since broken.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-09-20): this re-check used to compare `reads.underlyingPrice`
+ * against `row.thesis_invalidation_px` RAW, via `structuralBreakFromSpot` alone — bypassing the same
+ * ex-dividend adjustment (Q39, ex-dividend-adjustment.ts) that manage.ts's `structuralStopBroken` applies
+ * when building the ORIGINAL verdict this function re-arbitrates. A LONG position that is a genuine roll
+ * candidate (still-valid thesis, e.g. an `expiry_risk` gate with `rollIntent.roll === true`) could have its
+ * roll wrongly forced into a CLOSE here on an ordinary ex-dividend session: the mechanical open-gap moves
+ * raw spot below the stop even though the thesis never broke — exactly the false breach Q39 exists to
+ * prevent, reintroduced one layer up because this is a separate raw compare, not a call into that function.
+ * Fixed by applying the same `underlyingPriceForStructuralStop` adjustment (and the same Q39 fail-safe:
+ * skip the LONG re-check entirely when this cycle's ex-div read itself failed, rather than enforce a stop
+ * we can't verify isn't a mechanical gap) before the compare — this re-check now agrees with the primary
+ * path on every input, as a re-arbitration should.
  */
 export function executionVerdictForGating(
   row: SwingPositionRow,
@@ -459,13 +501,14 @@ export function executionVerdictForGating(
   verdict: SwingManageVerdict,
 ): SwingManageVerdict {
   const direction = row.direction === "short" ? "short" : "long";
-  if (
-    !structuralBreakFromSpot(
-      direction,
-      reads.underlyingPrice ?? null,
-      row.thesis_invalidation_px,
-    )
-  ) {
+  const spot = numOrNull(reads.underlyingPrice);
+  if (spot == null) return verdict;
+  if (direction === "long" && reads.exDividendDataUnavailable === true) return verdict;
+  const comparePx = underlyingPriceForStructuralStop(spot, direction === "long" ? "LONG" : "SHORT", {
+    exDividendSession: reads.exDividendSession === true,
+    exDividendCash: reads.exDividendCash,
+  }).price;
+  if (!structuralBreakFromSpot(direction, comparePx, row.thesis_invalidation_px)) {
     return verdict;
   }
   return {
@@ -517,7 +560,9 @@ export async function syncSwingManagement(
           verdict: executionVerdict,
           parentGrade: rollPlan.parentGrade,
           childSpec: executionDecision.action === "ROLL" ? rollPlan.childSpec : undefined,
-          snapshot: plan.snapshot,
+          // snapshotWithVerdict: the snapshot must document the verdict actually acted on
+          // (executionVerdict, post-Q37), not the stale pre-arbitration plan.verdict — see its doc.
+          snapshot: snapshotWithVerdict(plan.snapshot, executionVerdict),
         });
         return {
           positionId: plan.positionId,

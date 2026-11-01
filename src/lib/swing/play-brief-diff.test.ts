@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
+  briefContentKey,
   diffBriefSnapshots,
   envelopeWithDiffSection,
   envelopeWithNarrativePulse,
   extrasFromBriefResponse,
   briefSnapshotStorageKey,
+  loadPersistedBriefSnapshot,
   snapshotFromBrief,
 } from "./play-brief-diff";
 
@@ -114,6 +116,108 @@ test("diffBriefSnapshots: omits thesis health delta when uncalibrated (extends #
   assert.ok(lines.some((l) => l.includes("P&L")), "P&L diff still fires on uncalibrated rows");
 });
 
+function thesisPayload(health: number, overrides: Record<string, unknown> = {}) {
+  return {
+    health,
+    rungLabel: "ok",
+    pillars: [],
+    moves: [],
+    advisory: "",
+    entryIndex: 60,
+    currentIndex: health,
+    delta: health - 60,
+    rung: "OK",
+    committedAtEt: "",
+    computedAtEt: "",
+    ...overrides,
+  };
+}
+
+// HARDENING, NOT A PROVEN LIVE BUG (corrected 2026-09-21 after PR #5387's own comment thread —
+// see that PR for the full correction). Unlike #5380/#5383/#5384's genuinely live repros,
+// diffBriefSnapshots/narrateSpotShift are called from exactly one place — src/hooks/
+// useSwingPlayBrief.ts, a CLIENT-side hook, fed `raw = data?.envelope` (the SWR-fetched JSON the
+// API route already ran through roundFloats() before sending). By the time a snapshot's spot/mark
+// values reach these narration functions they are already 2dp-clean, so plain .toFixed(2) cannot
+// reproduce the half-cent-boundary disagreement — that requires a raw, many-decimal-digit float
+// BEFORE any rounding, which this call path never delivers. #5385 (a parallel session) correctly
+// traced this and left play-brief-diff.ts untouched for exactly this reason. This test still
+// exercises a real, worth-keeping invariant — the function's OWN behavior when handed an unrounded
+// input (e.g. a future refactor that feeds it fresh provider data) — kept as defensive coverage,
+// not as evidence of a member-visible defect.
+test("diffBriefSnapshots: 'Spot drifted' matches roundFloats' rounding, not plain toFixed(2), at a half-cent boundary (defensive — see note above, not a live repro)", () => {
+  const prev = snapshotFromBrief(env(), play({ direction: "LONG" }), { spot: 100 });
+  const next = snapshotFromBrief(env(), play({ direction: "LONG" }), { spot: 152.035 });
+  const lines = diffBriefSnapshots(prev, next);
+  const spotLine = lines.find((l) => l.includes("Spot drifted"));
+  assert.ok(spotLine, `expected a spot-drift line, got: ${JSON.stringify(lines)}`);
+  assert.match(spotLine!, /\$152\.04/, "must round like roundFloats (152.04), not plain toFixed(2) (152.03)");
+  assert.doesNotMatch(spotLine!, /152\.03/);
+});
+
+test("diffBriefSnapshots: cross-field synthesis — thesis fade + FAVORABLE price move stay independent", () => {
+  // Thesis fades AND spot moves, but UP (favorable for a LONG) — the two facts pull in
+  // different directions, so this must read as two separate bullets, never a forced
+  // "thesis fading AND price moved" causal line (see synthesizeThesisAndPrice's doc comment).
+  const prev = snapshotFromBrief(
+    env(),
+    play({ direction: "LONG", thesisHealth: thesisPayload(60) as any }),
+    { spot: 100, putWall: 95 },
+  );
+  const next = snapshotFromBrief(
+    env(),
+    play({ direction: "LONG", thesisHealth: thesisPayload(54, { rungLabel: "fade", rung: "DEGRADED" }) as any }),
+    { spot: 103, putWall: 95 },
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l.includes("Thesis fading")), `expected an independent thesis line, got: ${JSON.stringify(lines)}`);
+  assert.ok(lines.some((l) => l.includes("Spot drifted higher")), `expected an independent spot line, got: ${JSON.stringify(lines)}`);
+  assert.ok(
+    !lines.some((l) => l.includes("Thesis fading") && l.includes("Spot drifted")),
+    "a favorable price move must never be stitched to a fading thesis as one causal line",
+  );
+});
+
+test("diffBriefSnapshots: cross-field synthesis — thesis fade + adverse price drift reads as one connected line naming the downgrade", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({ direction: "LONG", recommendation: "HOLD", thesisHealth: thesisPayload(60) as any }),
+    { spot: 100, putWall: 95, gammaFlip: 99 },
+  );
+  const next = snapshotFromBrief(
+    env(),
+    play({ direction: "LONG", recommendation: "TRIM", thesisHealth: thesisPayload(54, { rungLabel: "fade", rung: "DEGRADED" }) as any }),
+    { spot: 97, putWall: 95, gammaFlip: 99 },
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  const combined = lines.find((l) => l.includes("Thesis fading") && l.includes("put wall"));
+  assert.ok(combined, `expected one connected thesis+price line, got: ${JSON.stringify(lines)}`);
+  assert.match(combined!, /through the gamma flip toward/, "spot crossed the flip on the way to the wall — the connected line should say so");
+  assert.match(combined!, /desk downgraded to \*\*TRIM\*\*/);
+  assert.equal(
+    lines.filter((l) => l.includes("Thesis")).length,
+    1,
+    "the thesis fact must not ALSO appear as its own separate bullet once synthesized",
+  );
+  assert.ok(
+    !lines.some((l) => l.startsWith("**Desk action shifted**")),
+    "the downgrade is folded into the connected line, not repeated as its own bullet",
+  );
+});
+
+test("diffBriefSnapshots: cross-field synthesis — P&L building + desk upgrade reads as one connected line", () => {
+  const prev = snapshotFromBrief(env(), play({ recommendation: "HOLD", pnlPct: 8 }));
+  const next = snapshotFromBrief(env(), play({ recommendation: "BUY", pnlPct: 14 }));
+  const lines = diffBriefSnapshots(prev, next);
+  const combined = lines.find((l) => l.includes("P&L building") && l.includes("desk upgraded"));
+  assert.ok(combined, `expected one connected P&L+upgrade line, got: ${JSON.stringify(lines)}`);
+  assert.match(combined!, /\*\*HOLD\*\* → \*\*BUY\*\*/);
+  assert.ok(
+    !lines.some((l) => l.startsWith("**Desk action shifted**")),
+    "the upgrade is folded into the connected line, not repeated as its own bullet",
+  );
+});
+
 test("envelopeWithDiffSection: prepends change section", () => {
   const out = envelopeWithDiffSection(env(), ["Spot moved"]);
   assert.equal(out.sections[0]?.title, "What changed");
@@ -161,6 +265,252 @@ test("diffBriefSnapshots: detects trim rail fires", () => {
   const next = snapshotFromBrief(env(), play(), { trimsFired: 1 });
   const lines = diffBriefSnapshots(prev, next);
   assert.ok(lines.some((l) => l.includes("Trim rail")));
+});
+
+test("diffBriefSnapshots: detects a roll watch triggering (theta outpacing thesis, newly weighed)", () => {
+  const prev = snapshotFromBrief(env(), play({ rollCandidate: null }));
+  const next = snapshotFromBrief(
+    env(),
+    play({ rollCandidate: { reason: "DTE 6 inside migration window, thesis progress lagging theta decay" } }),
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l.includes("Roll watch triggered") && l.includes("DTE 6 inside migration window")));
+});
+
+test("diffBriefSnapshots: detects a roll watch clearing", () => {
+  const prev = snapshotFromBrief(env(), play({ rollCandidate: { reason: "DTE 6 inside migration window" } }));
+  const next = snapshotFromBrief(env(), play({ rollCandidate: null }));
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l.includes("Roll watch cleared")));
+});
+
+// BUG FIX (2026-09-18, peer review on PR #5191): detectRollCandidate() (manage.ts) returns
+// roll:false for THREE distinct causes -- back in range, thesis broken, or the structural stop
+// hit. The latter two are the capital-preservation gates, where a roll clears because the
+// position is being CLOSED, not because anything improved. Must never assert a specific "back in
+// range" cause -- that would contradict the separate "Desk action shifted" line narrating the
+// same exit in the same pulse.
+test("diffBriefSnapshots: a roll watch clearing alongside a shift to SELL never asserts 'back in range'", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({ rollCandidate: { reason: "DTE 6 inside migration window" }, recommendation: "HOLD" }),
+  );
+  const next = snapshotFromBrief(env(), play({ rollCandidate: null, recommendation: "SELL" }));
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l.includes("Roll watch cleared")));
+  assert.ok(
+    !lines.some((l) => l.includes("back in range")),
+    "must never assert an improving cause when the clear coincides with an exit recommendation",
+  );
+  assert.ok(
+    lines.some((l) => l.includes("Desk action shifted") && l.includes("SELL")),
+    "the real story (exit) is carried by the existing recommendation-shift line",
+  );
+});
+
+test("diffBriefSnapshots: a roll watch reason restating tick-to-tick (still weighed) does not double-narrate", () => {
+  const prev = snapshotFromBrief(env(), play({ rollCandidate: { reason: "DTE 6 inside migration window" } }));
+  const next = snapshotFromBrief(env(), play({ rollCandidate: { reason: "DTE 5 inside migration window" } }));
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(!lines.some((l) => l.includes("Roll watch")));
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-15): gateBlocks narrowing (still net-blocked)
+// used to produce no diff line at all -- recommendation stays HOLD/WAIT the whole time, so
+// nothing else diffed here ever caught it. See BriefSnapshot.gateBlocks' own doc comment.
+test("diffBriefSnapshots: a blocking-gate set narrowing (still net-blocked) is narrated", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({
+      gateBlocks: [
+        { code: "g_s12_halt", reason: "halted" },
+        { code: "g_s4_regime", reason: "regime mismatch" },
+        { code: "g_s6_confluence", reason: "thin confluence" },
+      ],
+    }),
+  );
+  const next = snapshotFromBrief(env(), play({ gateBlocks: [{ code: "g_s4_regime", reason: "regime mismatch" }] }));
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Entry gates shifted"));
+  assert.ok(line, "must narrate the gate-set narrowing even though the play is still blocked");
+  assert.match(line!, /cleared g_s12_halt, g_s6_confluence/);
+  assert.match(line!, /3 → 1 gate blocking entry/);
+});
+
+test("diffBriefSnapshots: a new gate appearing is narrated", () => {
+  const prev = snapshotFromBrief(env(), play({ gateBlocks: [{ code: "g_s4_regime", reason: "regime mismatch" }] }));
+  const next = snapshotFromBrief(
+    env(),
+    play({
+      gateBlocks: [
+        { code: "g_s4_regime", reason: "regime mismatch" },
+        { code: "g_s6_confluence", reason: "thin confluence" },
+      ],
+    }),
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Entry gates shifted"));
+  assert.ok(line);
+  assert.match(line!, /now also blocked by g_s6_confluence/);
+  assert.match(line!, /1 → 2 gates blocking entry/);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-18): a gate-set change on a play that remains
+// categorically moot throughout (still FORMING, below the lane score floor, or legacy_exempt-
+// only) used to read as meaningful progress/regression toward commit-eligibility with zero
+// awareness that clearing those gates would not open entry anyway. See
+// BriefSnapshot.gateFramingMoot's own doc comment for the full gap — constructed from real ARKG
+// field values (score 39.9 vs scoreFloor 60, setupState FORMING) live-pulled the same day.
+test("diffBriefSnapshots: a gate-set change on a still-FORMING play is qualified as moot", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({
+      setupState: "FORMING",
+      aboveFloor: false,
+      gateBlocks: [
+        { code: "gate:G-S4:regime_degraded", reason: "regime degraded" },
+        { code: "gate:G-S6:confluence", reason: "thin confluence" },
+        { code: "gate:G-S14:cortex_net_negative", reason: "cortex net negative" },
+      ],
+    }),
+  );
+  const next = snapshotFromBrief(
+    env(),
+    play({
+      setupState: "FORMING",
+      aboveFloor: false,
+      gateBlocks: [
+        { code: "gate:G-S6:confluence", reason: "thin confluence" },
+        { code: "gate:G-S14:cortex_net_negative", reason: "cortex net negative" },
+      ],
+    }),
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Entry gates shifted"));
+  assert.ok(line, "must still narrate the gate-set change");
+  assert.match(line!, /\*\*Entry gates shifted \(moot — thesis still forming — not yet at trigger\)\*\*/);
+  assert.match(line!, /cleared gate:G-S4:regime_degraded/);
+  assert.match(line!, /clearing them would not open entry/);
+});
+
+// A gate-set change on a play that is genuinely TRIGGERED/above-floor (not categorically moot)
+// must keep the original, unqualified line — this fix must not soften a claim that is true.
+test("diffBriefSnapshots: a gate-set change on a live, enterable play keeps the unqualified line", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({
+      setupState: "TRIGGERED",
+      aboveFloor: true,
+      gateBlocks: [
+        { code: "g_s12_halt", reason: "halted" },
+        { code: "g_s4_regime", reason: "regime mismatch" },
+      ],
+    }),
+  );
+  const next = snapshotFromBrief(
+    env(),
+    play({ setupState: "TRIGGERED", aboveFloor: true, gateBlocks: [{ code: "g_s4_regime", reason: "regime mismatch" }] }),
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Entry gates shifted"));
+  assert.ok(line);
+  assert.doesNotMatch(line!, /moot/);
+  assert.match(line!, /\*\*Entry gates shifted\*\* — cleared g_s12_halt/);
+});
+
+test("diffBriefSnapshots: the same gate set (even a different order) is not re-narrated", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({
+      gateBlocks: [
+        { code: "g_s4_regime", reason: "regime mismatch" },
+        { code: "g_s6_confluence", reason: "thin confluence" },
+      ],
+    }),
+  );
+  const next = snapshotFromBrief(
+    env(),
+    play({
+      gateBlocks: [
+        { code: "g_s6_confluence", reason: "thin confluence" },
+        { code: "g_s4_regime", reason: "regime mismatch" },
+      ],
+    }),
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(!lines.some((l) => l.includes("Entry gates shifted")));
+});
+
+test("diffBriefSnapshots: all gates clearing still names which ones cleared, alongside the recommendation shift", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({ gateBlocks: [{ code: "g_s4_regime", reason: "regime mismatch" }], recommendation: "HOLD" }),
+  );
+  const next = snapshotFromBrief(env(), play({ gateBlocks: [], recommendation: "BUY" }));
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l.includes("Entry gates shifted") && l.includes("cleared g_s4_regime")));
+  assert.ok(lines.some((l) => l.includes("Desk action shifted") && l.includes("BUY")));
+});
+
+test("diffBriefSnapshots: option mark shift narrates built/slipped, not a bare delta", () => {
+  const up = diffBriefSnapshots(
+    snapshotFromBrief(env(), play({ mark: 5.9 })),
+    snapshotFromBrief(env(), play({ mark: 6.18 })),
+  );
+  const upLine = up.find((l) => l.includes("Option mark"));
+  assert.ok(upLine, `expected an option-mark line, got: ${JSON.stringify(up)}`);
+  assert.match(upLine!, /\*\*Option mark built\*\*/);
+  assert.match(upLine!, /\$5\.90 → \$6\.18/);
+
+  const down = diffBriefSnapshots(
+    snapshotFromBrief(env(), play({ mark: 6.18 })),
+    snapshotFromBrief(env(), play({ mark: 5.9 })),
+  );
+  const downLine = down.find((l) => l.includes("Option mark"));
+  assert.match(downLine!, /\*\*Option mark slipped\*\*/);
+});
+
+test("diffBriefSnapshots: a structural wall closing in on spot reads as compressing room, not a bare delta", () => {
+  const prev = snapshotFromBrief(env(), play(), { spot: 100, callWall: 110 });
+  const next = snapshotFromBrief(env(), play(), { spot: 100, callWall: 104 });
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Call wall"));
+  assert.ok(line, `expected a call-wall line, got: ${JSON.stringify(lines)}`);
+  assert.match(line!, /\*\*Call wall closing in\*\*/);
+  assert.match(line!, /\$110\.00 → \$104\.00/);
+  assert.match(line!, /now \$4\.00 away \(was \$10\.00\)/);
+  assert.match(line!, /less room before it matters/);
+});
+
+test("diffBriefSnapshots: a structural wall receding from spot reads as more room, not a bare delta", () => {
+  const prev = snapshotFromBrief(env(), play(), { spot: 100, putWall: 95 });
+  const next = snapshotFromBrief(env(), play(), { spot: 100, putWall: 88 });
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Put wall"));
+  assert.ok(line, `expected a put-wall line, got: ${JSON.stringify(lines)}`);
+  assert.match(line!, /\*\*Put wall receding\*\*/);
+  assert.match(line!, /now \$12\.00 away \(was \$5\.00\)/);
+  assert.match(line!, /more room before it matters/);
+});
+
+test("diffBriefSnapshots: a wall move falls back to a plain delta when spot is unavailable", () => {
+  const prev = snapshotFromBrief(env(), play(), { gammaFlip: 99 });
+  const next = snapshotFromBrief(env(), play(), { gammaFlip: 101 });
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Gamma flip"));
+  assert.ok(line, `expected a gamma-flip line, got: ${JSON.stringify(lines)}`);
+  assert.equal(line, "Gamma flip moved 99 → 101 (+2.0)");
+});
+
+test("diffBriefSnapshots: a wall move falls back to a plain delta when the room-to-spot is actually unchanged", () => {
+  // Spot and the wall both drift up by the same amount — the level moved, but the cushion to
+  // spot never actually changed, so the room-framed read would be misleading; must fall back.
+  const prev = snapshotFromBrief(env(), play(), { spot: 100, callWall: 110 });
+  const next = snapshotFromBrief(env(), play(), { spot: 103, callWall: 113 });
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Call wall"));
+  assert.ok(line, `expected a call-wall line, got: ${JSON.stringify(lines)}`);
+  assert.equal(line, "Call wall moved 110 → 113 (+3.0)");
 });
 
 test("envelopeWithNarrativePulse: weaves pulse into Trade manager read", () => {
@@ -213,8 +563,306 @@ test("diffBriefSnapshots: detects HELIX put-only flow build when call premium is
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-26): the HELIX call/put flow narration used an
+// if/else-if/else-if chain, so when BOTH sides move materially in the SAME refresh (one side
+// collapsing while the other builds — a real, independent sentiment shift, not a coupled one),
+// only whichever branch the chain reached first ever got narrated; the other equally material
+// move was silently dropped, identical in shape to every other "a real change goes unnarrated"
+// bug already fixed in this file (missed section removals, missed roll-watch clears, missed
+// gate-set shifts). Call flow collapsing 80% while put flow builds 125% in the same tick must
+// produce BOTH lines, not just the put one.
+test("diffBriefSnapshots: HELIX call collapsing AND put building in the SAME refresh must both be narrated, not just one", () => {
+  const baseEnvelope = env();
+  const prevResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 500_000, putPremium: 400_000 } };
+  const nextResponse = { envelope: baseEnvelope, flowSnapshot: { callPremium: 100_000, putPremium: 900_000 } };
+  const prevSnap = snapshotFromBrief(baseEnvelope, play(), extrasFromBriefResponse(prevResponse));
+  const nextSnap = snapshotFromBrief(baseEnvelope, play(), extrasFromBriefResponse(nextResponse));
+  const lines = diffBriefSnapshots(prevSnap, nextSnap);
+  assert.ok(
+    lines.some((l) => l.includes("HELIX tape") && l.toLowerCase().includes("call")),
+    `expected a call-side HELIX line (call premium collapsed 500k -> 100k), got: ${JSON.stringify(lines)}`,
+  );
+  assert.ok(
+    lines.some((l) => l.includes("HELIX tape") && l.toLowerCase().includes("put")),
+    `expected a put-side HELIX line (put premium built 400k -> 900k), got: ${JSON.stringify(lines)}`,
+  );
+});
+
+test("diffBriefSnapshots: narrates a WATCH-candidate direction flip (same play.id, reversed net flow)", () => {
+  // Same ticker/play.id as a WATCH candidate would keep across discovery cycles (no positionId
+  // suffix pre-commit) — only `direction` differs, exactly what a real net-flow reversal produces.
+  const baseEnvelope = env();
+  const prevSnap = snapshotFromBrief(baseEnvelope, play({ id: "SWING:NVDA", direction: "LONG" }));
+  const nextSnap = snapshotFromBrief(baseEnvelope, play({ id: "SWING:NVDA", direction: "SHORT" }));
+  const lines = diffBriefSnapshots(prevSnap, nextSnap);
+  assert.ok(
+    lines.some((l) => l.includes("Direction flipped") && l.includes("LONG") && l.includes("SHORT")),
+    `expected a direction-flip line, got: ${JSON.stringify(lines)}`,
+  );
+});
+
+test("diffBriefSnapshots: does not narrate a direction flip when direction is unchanged", () => {
+  const baseEnvelope = env();
+  const prevSnap = snapshotFromBrief(baseEnvelope, play({ direction: "LONG" }));
+  const nextSnap = snapshotFromBrief(baseEnvelope, play({ direction: "LONG" }));
+  const lines = diffBriefSnapshots(prevSnap, nextSnap);
+  assert.ok(
+    !lines.some((l) => l.includes("Direction flipped")),
+    `expected no direction-flip line, got: ${JSON.stringify(lines)}`,
+  );
+});
+
+test("diffBriefSnapshots: does not fabricate a flip when one side's direction is missing", () => {
+  const baseEnvelope = env();
+  const prevSnap = snapshotFromBrief(baseEnvelope, play({ direction: null as unknown as TerminalPlay["direction"] }));
+  const nextSnap = snapshotFromBrief(baseEnvelope, play({ direction: "LONG" }));
+  const lines = diffBriefSnapshots(prevSnap, nextSnap);
+  assert.ok(
+    !lines.some((l) => l.includes("Direction flipped")),
+    `expected no direction-flip line when a side is null, got: ${JSON.stringify(lines)}`,
+  );
+});
+
+test("briefContentKey: rounds raw floats — never leaks full-precision numbers past the route's own roundFloats pass", () => {
+  // Real repro shape: AAPL closed-play pnlPct computed as mark/entry - 1, e.g. 4.5/10.275 - 1.
+  const snap = snapshotFromBrief(env(), play({ pnlPct: -56.18644067796611 }));
+  const key = briefContentKey(snap);
+  assert.ok(!key.includes("56.18644067796611"), `raw unrounded float leaked into content key: ${key}`);
+  const parsed = JSON.parse(key) as { pnlPct: number };
+  assert.equal(parsed.pnlPct, -56.19, "pnlPct must be rounded to 2dp, same precision the route applies everywhere else");
+});
+
 test("briefSnapshotStorageKey: requires play id and session date", () => {
   assert.equal(briefSnapshotStorageKey("SWING:INTC:1", "2026-09-06"), "swing-brief-snap:SWING:INTC:1:2026-09-06");
   assert.equal(briefSnapshotStorageKey("", "2026-09-06"), null);
   assert.equal(briefSnapshotStorageKey("SWING:INTC:1", null), null);
+});
+
+test("loadPersistedBriefSnapshot: rejects a stored snapshot missing sectionTitles instead of returning it", () => {
+  // Real failure mode: sessionStorage survives a deploy (it's per-tab/session, not per-release),
+  // so a snapshot written by an older schema version (or corrupted by an extension/devtools edit)
+  // can be missing a field the current diffBriefSnapshots unconditionally reads. The prior
+  // validation only checked `headline` was a string and returned everything else as-is, so a
+  // stored object like `{ headline: "x" }` (no sectionTitles) sailed through as a valid `prev`
+  // snapshot, and diffBriefSnapshots's `next.sectionTitles.filter((t) => !prev.sectionTitles...)`
+  // (play-brief-diff.ts) then threw `Cannot read properties of undefined (reading 'includes')`
+  // inside useSwingPlayBrief's uncaught effect — crashing the whole play-brief render.
+  const store = new Map<string, string>();
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          store.set(k, v);
+        },
+      },
+    },
+  });
+  try {
+    store.set("swing-brief-snap:SWING:TEST:1:2026-09-14", JSON.stringify({ headline: "old schema" }));
+    const stored = loadPersistedBriefSnapshot("swing-brief-snap:SWING:TEST:1:2026-09-14");
+    assert.equal(stored, null, "a malformed stored snapshot must be rejected, not handed back as a usable prev");
+
+    // Confirm the crash this guards against, so the test can't pass on a coincidence: a stored
+    // snapshot missing sectionTitles fed straight into diffBriefSnapshots as `prev` throws.
+    const nextSnap = snapshotFromBrief(env(), play());
+    assert.throws(() => diffBriefSnapshots({ headline: "old schema" } as never, nextSnap));
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-15): same shape as the sectionTitles guard above,
+// for the gateBlocks field this same PR adds — a snapshot persisted by OLDER client code (before
+// this field existed) would parse back with `gateBlocks: undefined`, and diffBriefSnapshots's
+// `prev.gateBlocks.join(",")` would throw. Caught and fixed before shipping, not found live.
+test("loadPersistedBriefSnapshot: rejects a stored snapshot missing gateBlocks (pre-dates this field) instead of returning it", () => {
+  const store = new Map<string, string>();
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          store.set(k, v);
+        },
+      },
+    },
+  });
+  try {
+    store.set(
+      "swing-brief-snap:SWING:TEST:2:2026-09-14",
+      JSON.stringify({ headline: "old schema", sectionTitles: ["Verdict"] }),
+    );
+    const stored = loadPersistedBriefSnapshot("swing-brief-snap:SWING:TEST:2:2026-09-14");
+    assert.equal(stored, null, "a snapshot missing gateBlocks must be rejected, not handed back as a usable prev");
+
+    const nextSnap = snapshotFromBrief(env(), play());
+    assert.throws(() =>
+      diffBriefSnapshots({ headline: "old schema", sectionTitles: ["Verdict"] } as never, nextSnap),
+    );
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-18): same guard shape as gateBlocks above, for the
+// gateFramingMoot field this same PR adds. Unlike gateBlocks/sectionTitles, this field has no
+// crash risk of its own (diffBriefSnapshots only ever reads `next.gateFramingMoot`, never a
+// possibly-stale `prev`'s) — the guard exists for type-schema honesty, not crash prevention, so
+// this test (correctly) does not assert a throw the way the two tests above do.
+test("loadPersistedBriefSnapshot: rejects a stored snapshot missing gateFramingMoot (pre-dates this field) instead of returning it", () => {
+  const store = new Map<string, string>();
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          store.set(k, v);
+        },
+      },
+    },
+  });
+  try {
+    store.set(
+      "swing-brief-snap:SWING:TEST:3:2026-10-17",
+      JSON.stringify({ headline: "old schema", sectionTitles: ["Verdict"], gateBlocks: [] }),
+    );
+    const stored = loadPersistedBriefSnapshot("swing-brief-snap:SWING:TEST:3:2026-10-17");
+    assert.equal(stored, null, "a snapshot missing gateFramingMoot must be rejected, not handed back as a usable prev");
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
+});
+
+test("diffBriefSnapshots: a DTE-only headline change (day rollover) produces no lines", () => {
+  // BUG FIX (Ask Largo standing mandate, 2026-09-18): `playContractHeadline` bakes the contract's
+  // own DTE into the headline (e.g. "HOLD — TEST 100C 13DTE"), and DTE decrements every session
+  // day on its own with nothing else about the position changing. Before this fix, the bare
+  // `prev.headline !== next.headline` check fired "Verdict headline updated" on every such
+  // rollover — the one line in this whole diff engine that named no before/after value, so on a
+  // quiet day it could be the ONLY thing "What changed" showed: "something changed", with zero
+  // information on what. Nothing else moved here (same recommendation/thesis/pnl/mark/spot), so a
+  // fixed engine reports no material change at all.
+  const prev = snapshotFromBrief(env("HOLD — TEST 100C 13DTE"), play({ pnlPct: 20 }));
+  const next = snapshotFromBrief(env("HOLD — TEST 100C 12DTE"), play({ pnlPct: 20 }));
+  assert.deepEqual(diffBriefSnapshots(prev, next), []);
+});
+
+test("diffBriefSnapshots: a real headline change (not just DTE) still fires the bullet", () => {
+  const prev = snapshotFromBrief(env("HOLD — TEST 100C 13DTE"), play({ pnlPct: 20 }));
+  const next = snapshotFromBrief(env("TRIM — TEST 100C 13DTE"), play({ pnlPct: 20 }));
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.includes("Verdict headline updated"));
+});
+
+function envWithSections(titles: string[]): BieAnswerEnvelope {
+  return { ...env(), sections: titles.map((title) => ({ title, body: "x" })) };
+}
+
+test("diffBriefSnapshots: detects a new section appearing", () => {
+  const prev = snapshotFromBrief(envWithSections(["Verdict"]), play());
+  const next = snapshotFromBrief(envWithSections(["Verdict", "Book context"]), play());
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l === "New sections: Book context"));
+});
+
+// GAP FIX (Ask Largo standing mandate, 2026-09-20): `composeSwingPlayBrief` conditionally
+// `sections.push(...)`s intel sections only when the underlying data is present (Book context
+// only while a real portfolio overlap exists, Cortex read only while a cortex blob is pinned,
+// etc. — the LARGO-PRODUCT-CONTRACT.md absence principle). A section can therefore genuinely
+// DISAPPEAR between two refreshes of the same play, and before this fix `diffBriefSnapshots`
+// only ever looked for ADDED titles (`next` minus `prev`) — a section vanishing produced ZERO
+// lines, silently identical to "nothing changed", even though the "Book context" concentration
+// warning was real information a member had been shown and then lost with no notice. Proves the
+// removal path fires symmetrically with the addition path already tested above.
+test("diffBriefSnapshots: detects a section disappearing (was silently unnarrated before this fix)", () => {
+  const prev = snapshotFromBrief(envWithSections(["Verdict", "Book context"]), play());
+  const next = snapshotFromBrief(envWithSections(["Verdict"]), play());
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(
+    lines.some((l) => l === "No longer showing: Book context"),
+    `expected a "No longer showing" line, got: ${JSON.stringify(lines)}`,
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, Largo C3 absence violation): diffBriefSnapshots
+// used to be a bare `lines.slice(0, 8)` with no disclosure when more than 8 real changes fired in
+// one pulse. A refresh after a long gap (overnight, multi-hour stall) can legitimately produce more
+// than 8 independent facts at once, and the lowest-priority ones were silently dropped with zero
+// indication to the member — the exact silent-truncation shape `largo-truncation-probe.mjs` exists
+// to catch on other Largo surfaces (three real shipped bugs: #2433, #2436, #2480).
+test("diffBriefSnapshots: more than 8 simultaneous changes discloses the overflow instead of silently dropping it", () => {
+  const calibratedThesis = (health: number) => ({
+    health,
+    rungLabel: "ok",
+    pillars: [],
+    moves: [],
+    advisory: "",
+    entryIndex: health,
+    currentIndex: health,
+    delta: 0,
+    rung: "OK" as const,
+    committedAtEt: "",
+    computedAtEt: "",
+  });
+  const prev = snapshotFromBrief(
+    env("HOLD — TEST"),
+    play({
+      recommendation: "HOLD",
+      thesisHealth: calibratedThesis(60),
+      pnlPct: 10,
+      mark: 1.0,
+      gateBlocks: [{ code: "gate_a", reason: "x" }],
+      rollCandidate: null,
+    }),
+    { gammaFlip: 100, callWall: 110, putWall: 90, flowCallPremium: 100_000, flowPutPremium: 50_000, trimsFired: 0 },
+  );
+  const next = snapshotFromBrief(
+    env("TRIM — TEST"),
+    play({
+      recommendation: "TRIM",
+      thesisHealth: calibratedThesis(50),
+      pnlPct: 5,
+      mark: 1.3,
+      gateBlocks: [{ code: "gate_b", reason: "y" }],
+      rollCandidate: { reason: "theta outpacing thesis" },
+    }),
+    { gammaFlip: 105, callWall: 120, putWall: 80, flowCallPremium: 200_000, flowPutPremium: 50_000, trimsFired: 1 },
+  );
+
+  const lines = diffBriefSnapshots(prev, next);
+  assert.equal(lines.length, 9, "capped array must be exactly 8 real lines + 1 disclosure line");
+  const disclosure = lines[8]!;
+  assert.match(disclosure, /^\+\d+ more changes? this refresh/, `last line must disclose the overflow count, got: ${disclosure}`);
+  assert.doesNotMatch(disclosure, /^\+0 /, "disclosure must never claim zero overflow");
+});
+
+test("loadPersistedBriefSnapshot: still accepts a well-formed stored snapshot", () => {
+  const store = new Map<string, string>();
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          store.set(k, v);
+        },
+      },
+    },
+  });
+  try {
+    const snap = snapshotFromBrief(env(), play());
+    store.set("swing-brief-snap:SWING:TEST:1:2026-09-14", JSON.stringify(snap));
+    const stored = loadPersistedBriefSnapshot("swing-brief-snap:SWING:TEST:1:2026-09-14");
+    assert.deepEqual(stored, snap);
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
 });

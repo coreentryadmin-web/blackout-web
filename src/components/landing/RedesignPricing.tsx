@@ -79,7 +79,7 @@ export function RedesignPricing() {
             <div className="rl-plan">
               <div className="pl">Premium · Yearly</div>
               <div className="amt">{usd(MEMBERSHIP_PRICING.yearly)}<span> / yr</span></div>
-              <div className="save">≈ ${MEMBERSHIP_PRICING.yearlyEffectiveMonthly}/mo · save ${MEMBERSHIP_PRICING.yearlySavingsVsMonthly} vs monthly</div>
+              <div className="save">≈ {usd(MEMBERSHIP_PRICING.yearlyEffectiveMonthly)}/mo · save {usd(MEMBERSHIP_PRICING.yearlySavingsVsMonthly)} vs monthly</div>
               <ul className="perks">
                 {DESK_PERKS.map((p) => <li key={p}>{p}</li>)}
               </ul>

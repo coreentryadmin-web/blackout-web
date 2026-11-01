@@ -4,8 +4,24 @@ import {
   soundsLikeBot,
   deterministicHumanize,
 } from "./x-content-humanize";
+import * as xContentHumanize from "./x-content-humanize";
 
 describe("x-content-humanize", () => {
+  it("does not re-export the dead footer-splitting pair (splitContentWithFooter/stripFooter)", () => {
+    // splitContentWithFooter was added in #848 (2026-07-20) alongside attachFooter
+    // (its intended inverse) but attachFooter is the only one ever wired into a
+    // caller (x-content.ts). splitContentWithFooter — and the private stripFooter
+    // helper it alone called — had zero call sites anywhere in the repo from the
+    // moment they were introduced. This guards against either being silently
+    // re-added without ever being wired into a real caller.
+    assert.equal(
+      "splitContentWithFooter" in xContentHumanize,
+      false,
+      "splitContentWithFooter should stay removed unless a real caller wires it in",
+    );
+    assert.equal("attachFooter" in xContentHumanize, true);
+  });
+
   it("flags bot-like product spam", () => {
     assert.equal(
       soundsLikeBot(

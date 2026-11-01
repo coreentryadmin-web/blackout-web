@@ -22,6 +22,7 @@
  * notePolygon429()/notePolygonOk() does NOT double-count: there is exactly one breaker.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { trackedFetch, type TrackedFetchOptions } from "@/lib/api-tracked-fetch";
 import { mergePolyBreakerOpenUntil } from "./polygon-breaker-merge";
 import {
@@ -36,7 +37,7 @@ import {
 // Hooked in alongside notePolygon429/notePolygonOk below since those are already the ONE place every
 // Polygon REST call's success/failure is observed; this does not change any control flow or throw path.
 import { polygonUpstreamHealth, type PolygonUpstreamHealthSnapshot } from "./polygon-rest-health";
-import { QueueBudget, resolveQueueBudgetMs } from "./queue-budget";
+import { QueueBudget, resolveQueueBudgetMs, isQueueTimeout } from "./queue-budget";
 
 export { computeDegradedLocalRps } from "./provider-rate-limiter-shared";
 
@@ -82,6 +83,82 @@ const MIN_SPACING_MS = Math.max(0, Math.floor(envNumber("POLYGON_MIN_SPACING_MS"
 /** Absorbs the old reactive breaker: 5 CONSECUTIVE 429s → pause. */
 const CIRCUIT_429_THRESHOLD = Math.max(3, Math.floor(envNumber("POLYGON_CIRCUIT_429_THRESHOLD", 5)));
 const CIRCUIT_PAUSE_MS = Math.max(10_000, Math.floor(envNumber("POLYGON_CIRCUIT_PAUSE_MS", 60_000)));
+
+/**
+ * Background-sweep admission reservation — guarantees live/foreground traffic can always reach a
+ * meaningful share of this shared limiter even while a continuous background sweep is at its own
+ * ceiling. Mirrors `reserveForLiveTraffic`/`runWithBackgroundUwSweep` in uw-rate-limiter.ts
+ * (AsyncLocalStorage tag, not a threaded parameter, for the same reason that file gives: a sweep
+ * calls many layers deep into shared library code — recordSharedUniverseWallSamples ->
+ * recordVectorUniverseWallSample -> buildVectorUniverseRow -> fetchGexHeatmap -> polygonTrackedFetch
+ * — that cannot practically be threaded with an explicit flag).
+ *
+ * WHY THIS EXISTS (live incident, 2026-10-15; FINDINGS.md "Live ALB tail-latency incident"
+ * entry + #4076 comments 6197984130/6199692739). `vector-bead-recorder-leader.ts` sweeps the
+ * shared ~100-122-ticker Vector universe every 5s and calls the same shared `fetchGexHeatmap()`
+ * this limiter guards for every ticker; the cache's own TTL is also 5s, so on nearly every tick
+ * the whole universe is already stale and re-triggers a real rebuild. Measured live: 47-87
+ * full-chain escalations/min sustained for 3.5+ hours, and dozens of UNRELATED tickers (names
+ * outside Vector's own universe — 0DTE/SPX/Thermal/other desks' own GEX reads) hitting
+ * `rate-limiter queue budget exceeded at global_rps`/`at local_slot` in the same millisecond as
+ * the recorder's own churn. Two confirmed live-RTH incidents of `GET /api/market/zerodte/board`
+ * returning `upstream_ok:false` with empty discovery/governor output (both self-healed in
+ * minutes) were time-correlated with this same saturation window.
+ *
+ * WHY A FRACTION, NOT UW's FLAT "-1". UW's version of this mechanism reserves exactly one unit
+ * (`Math.max(1, ceiling - 1)`), which is a real ~50% reservation there because
+ * `UW_GLOBAL_MAX_CONCURRENCY` defaults to 2. Polygon's ceilings are 24-75x larger
+ * (`MAX_CONCURRENCY`=48, `GLOBAL_MAX_RPS`=150) — subtracting a flat 1 would reserve under ~2% of
+ * the budget, which the measured incident (a continuous tens-of-req/s structural saturator) would
+ * blow through immediately, making the "fix" a no-op in practice while looking identical to UW's
+ * proven pattern in the diff. A FRACTION of the ceiling scales with whichever value is configured
+ * (either ceiling is independently env-overridable) and stays a meaningful floor regardless.
+ *
+ * DEFAULT-SAFE: `reserveForLiveTraffic` returns the ceiling UNCHANGED for any caller that is not
+ * explicitly wrapped in `runWithBackgroundPolygonSweep` — i.e. every existing caller (0DTE, SPX,
+ * Thermal, Helix, Meridian, Largo tools, interactive member reads, and even Vector's OWN
+ * interactive reads) is completely unaffected by this change until a call site opts in. The one
+ * call site wired to opt in by this same fix (vector-bead-recorder-leader.ts's tick()/activeTick())
+ * never has its ceiling reduced to zero (`Math.max(1, ...)`), so a sweep can always make SOME
+ * progress — it is reallocated, never starved, and a misconfigured `POLYGON_BACKGROUND_SWEEP_MAX_SHARE`
+ * can only ever move the split, never block the recorder outright or drop a request that would
+ * otherwise have been admitted (the existing QueueBudget timeout/retry handling is unchanged).
+ */
+const BACKGROUND_SWEEP_MAX_SHARE = clampShare(envNumber("POLYGON_BACKGROUND_SWEEP_MAX_SHARE", 0.5));
+
+/** Clamp to a sane (0, 1) band so a misconfigured env value can't reserve ~0% (no protection for
+ *  live traffic) or ~100% (the sweep could never make progress at all). */
+function clampShare(x: number): number {
+  if (!Number.isFinite(x)) return 0.5;
+  return Math.min(0.95, Math.max(0.05, x));
+}
+
+const backgroundPolygonSweepStore = new AsyncLocalStorage<true>();
+
+/**
+ * Run `fn` tagged as a bulk background sweep rather than live/foreground traffic — see the block
+ * comment on BACKGROUND_SWEEP_MAX_SHARE above. Use for whole-universe background pollers (the
+ * Vector bead-recorder's 5s/15s universe sweeps); do NOT use for a live per-request code path,
+ * which must always compete for the FULL ceiling.
+ */
+export function runWithBackgroundPolygonSweep<T>(fn: () => Promise<T>): Promise<T> {
+  return backgroundPolygonSweepStore.run(true, fn);
+}
+
+/** True while executing inside `runWithBackgroundPolygonSweep`. */
+function isBackgroundPolygonSweep(): boolean {
+  return backgroundPolygonSweepStore.getStore() === true;
+}
+
+/**
+ * Reserve a meaningful share of `ceiling` for live traffic when the caller is a tagged background
+ * sweep; returns `ceiling` UNCHANGED for every untagged (i.e. every EXISTING) caller. Exported so
+ * the reservation math + AsyncLocalStorage isolation are unit-testable directly, without needing
+ * to mock Redis or the local token bucket — mirrors uw-rate-limiter.ts's identically-named export.
+ */
+export function reserveForLiveTraffic(ceiling: number): number {
+  return isBackgroundPolygonSweep() ? Math.max(1, Math.floor(ceiling * BACKGROUND_SWEEP_MAX_SHARE)) : ceiling;
+}
 
 const SUMMARY_WINDOW_MS = 60_000;
 
@@ -182,12 +259,49 @@ function waitMsForToken(): number {
   return Math.max(25, Math.ceil((deficit / rate) * 1000));
 }
 
+/** DOMException a caller sees when its own signal aborts while queued for admission --
+ *  distinct from RateLimiterQueueTimeoutError (the budget itself expiring). Mirrors
+ *  uw-rate-limiter.ts's identically-named helper. */
+function abortedWhileQueuedError(signal: AbortSignal): DOMException {
+  return signal.reason instanceof DOMException
+    ? signal.reason
+    : new DOMException("Aborted while waiting for Polygon admission", "AbortError");
+}
+
+/**
+ * Sleep that resolves early -- REJECTING, not silently resolving -- the instant `signal`
+ * aborts, instead of only being checked at the top of the NEXT loop iteration. Mirrors
+ * uw-rate-limiter.ts's identically-named helper exactly (see that file's doc comment and
+ * uw-rate-limiter-abort-latency.test.ts for the deterministic bound this gives; the same
+ * bound is proven here in polygon-rate-limiter-abort-latency.test.ts).
+ */
+function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(abortedWhileQueuedError(signal));
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      reject(abortedWhileQueuedError(signal!));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 async function acquireGlobalRedisSlot(): Promise<boolean> {
   const client = await getSharedRedis();
   if (!client) return true; // FAIL-OPEN: no Redis → no global ceiling.
 
   try {
-    return await acquireSlidingWindowRedisSlot(client, "blackout:polygon:rps", GLOBAL_MAX_RPS);
+    // reserveForLiveTraffic: a background-sweep-tagged caller (vector-bead-recorder) compares the
+    // SAME shared sliding-window counter against a reduced ceiling, so it can never claim more
+    // than its reserved share — live/foreground traffic (which always checks the FULL
+    // GLOBAL_MAX_RPS) is unaffected and can still take the rest. See the block comment on
+    // BACKGROUND_SWEEP_MAX_SHARE above for the live incident this fixes and why a fraction (not
+    // UW's flat "-1") is the right shape at Polygon's much larger ceiling.
+    return await acquireSlidingWindowRedisSlot(client, "blackout:polygon:rps", reserveForLiveTraffic(GLOBAL_MAX_RPS));
   } catch {
     // Redis died mid-session: arm the backoff so getSharedRedis() falls back to
     // local-only pacing for SHARED_REDIS_RETRY_BACKOFF_MS instead of awaiting a
@@ -209,41 +323,53 @@ async function acquireGlobalRedisSlot(): Promise<boolean> {
   }
 }
 
-async function waitForCircuit(budget: QueueBudget): Promise<void> {
+async function waitForCircuit(budget: QueueBudget, signal?: AbortSignal): Promise<void> {
   for (;;) {
+    if (signal?.aborted) throw abortedWhileQueuedError(signal);
     const now = Date.now();
     if (now >= circuitOpenUntil) return;
     // Bounded: the breaker pause is 60s, so an unbudgeted wait here alone could
     // consume half the ALB's 120s before the 15s fetch timeout even starts.
     budget.assertWithinBudget("circuit");
-    await new Promise((r) =>
-      setTimeout(r, budget.clampSleepMs(Math.min(500, circuitOpenUntil - now)))
-    );
+    await sleepAbortable(budget.clampSleepMs(Math.min(500, circuitOpenUntil - now)), signal);
   }
 }
 
-async function waitMinSpacing(): Promise<void> {
+async function waitMinSpacing(signal?: AbortSignal): Promise<void> {
   if (MIN_SPACING_MS <= 0) return;
   const now = Date.now();
   const wait = MIN_SPACING_MS - (now - lastStartMs);
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  if (wait > 0) await sleepAbortable(wait, signal);
   lastStartMs = Date.now();
 }
 
-async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
+/** Per-process concurrency cap this caller is admitted against — reduced for a tagged background
+ *  sweep via reserveForLiveTraffic (see the block comment on BACKGROUND_SWEEP_MAX_SHARE above),
+ *  unchanged (MAX_CONCURRENCY) for every other caller. This is the LOCAL half of the same
+ *  reservation whose Redis-global half lives in acquireGlobalRedisSlot — Polygon has no Redis
+ *  concurrency semaphore (unlike UW's acquireGlobalRedisConcurrencySlot), so this per-process
+ *  check is the only concurrency gate there is, and the live incident's own evidence showed BOTH
+ *  `global_rps` and `local_slot` admission failing in the same millisecond. */
+function effectiveMaxConcurrency(): number {
+  return reserveForLiveTraffic(MAX_CONCURRENCY);
+}
+
+async function acquireLocalSlot(budget: QueueBudget, signal?: AbortSignal): Promise<void> {
   for (;;) {
+    if (signal?.aborted) throw abortedWhileQueuedError(signal);
     // Checked BEFORE the admission test, never after reserving, so a caller that
     // would have been admitted this iteration still is -- the budget only ever
     // truncates waiting, never a successful acquisition.
     budget.assertWithinBudget("local_slot");
     refillTokens();
-    if (inFlight < MAX_CONCURRENCY && tokens >= 1) {
+    const concurrencyCap = effectiveMaxConcurrency();
+    if (inFlight < concurrencyCap && tokens >= 1) {
       // Reserve the slot synchronously BEFORE pacing so no concurrent acquirer can
       // observe the un-consumed token/concurrency across the await and overshoot.
       tokens -= 1;
       inFlight += 1;
       try {
-        await waitMinSpacing();
+        await waitMinSpacing(signal);
       } catch (err) {
         // Release concurrency on failure; do NOT refund the token (rate budget is
         // consumed per admitted call, mirroring releaseSlot which never refunds tokens).
@@ -252,8 +378,8 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
       }
       return;
     }
-    const delay = inFlight >= MAX_CONCURRENCY ? 50 : waitMsForToken();
-    await new Promise((r) => setTimeout(r, budget.clampSleepMs(delay)));
+    const delay = inFlight >= concurrencyCap ? 50 : waitMsForToken();
+    await sleepAbortable(budget.clampSleepMs(delay), signal);
   }
 }
 
@@ -274,22 +400,30 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
  * On the uncontended path this adds one Date.now() and changes nothing.
  *
  * @throws {RateLimiterQueueTimeoutError} when the queue budget is exhausted.
+ * @throws {DOMException} named "AbortError" when `signal` fires while still queued --
+ *   checked at the top of every loop iteration AND races every sleep inside them
+ *   (`sleepAbortable`), mirroring uw-rate-limiter.ts's acquireSlot exactly.
  */
-export async function acquirePolygonSlot(_lane?: "default" | "nights-watch"): Promise<void> {
+export async function acquirePolygonSlot(
+  _lane?: "default" | "nights-watch",
+  signal?: AbortSignal
+): Promise<void> {
   ensureBreakerSubscription();
+  if (signal?.aborted) throw abortedWhileQueuedError(signal);
   const budget = new QueueBudget("polygon", queueBudgetMs());
-  await waitForCircuit(budget);
+  await waitForCircuit(budget, signal);
   if (process.env.REDIS_URL?.trim()) {
     for (;;) {
+      if (signal?.aborted) throw abortedWhileQueuedError(signal);
       if (await acquireGlobalRedisSlot()) {
-        await acquireLocalSlot(budget);
+        await acquireLocalSlot(budget, signal);
         return;
       }
       budget.assertWithinBudget("global_rps");
-      await new Promise((r) => setTimeout(r, budget.clampSleepMs(40)));
+      await sleepAbortable(budget.clampSleepMs(40), signal);
     }
   }
-  await acquireLocalSlot(budget);
+  await acquireLocalSlot(budget, signal);
 }
 
 function releaseSlot(): void {
@@ -374,6 +508,88 @@ export function resetPolygonCircuitForTest(): void {
  *
  * FAIL-OPEN: acquirePolygonSlot never throws; if Redis is down it degrades to local pacing.
  */
+/**
+ * Rolling window for detecting a SUSTAINED queue-timeout surge — mirrors
+ * uw-rate-limiter.ts's own alert (added 2026-09-15/16 after that limiter's own sustained-surge
+ * incident) exactly, ported here after live evidence this limiter needs it too: a 2026-09-16 RTH
+ * P0 (`zerodte-warm` reported stale by the cron watchdog) traced to `[polygon-gex]` chain fetches
+ * failing at the `global_rps` admission stage across 450+ distinct tickers within a single hour —
+ * a real, sustained surge on a "generous, not provider-limited" 150 RPS self-cap, with no alert
+ * anywhere to page ops about it. A single isolated timeout is normal/expected burst behavior (per
+ * queue-budget.ts's own framing) and must never page on its own.
+ */
+const QUEUE_TIMEOUT_ALERT_WINDOW_MS = 60_000;
+/** Timeouts within the window before paging. */
+const QUEUE_TIMEOUT_ALERT_THRESHOLD = 5;
+
+let queueTimeoutTimestamps: number[] = [];
+let queueTimeoutAlerted = false;
+
+/** Pure: drop timestamps outside the window. Unit-testable without a real clock. */
+export function pruneQueueTimeoutWindow(
+  timestamps: readonly number[],
+  nowMs: number,
+  windowMs: number = QUEUE_TIMEOUT_ALERT_WINDOW_MS
+): number[] {
+  return timestamps.filter((t) => nowMs - t < windowMs);
+}
+
+/** True once the sustained-surge alert is latched. Exported for tests only. */
+export function isQueueTimeoutAlertLatched(): boolean {
+  return queueTimeoutAlerted;
+}
+
+/** Test-only reset of the rolling window + latch. */
+export function resetQueueTimeoutAlertForTest(): void {
+  queueTimeoutTimestamps = [];
+  queueTimeoutAlerted = false;
+}
+
+/** Page ops once when the rolling queue-timeout count crosses the sustained-surge threshold.
+ *  Fire-once latch: pages once on the transition INTO surge, then stays silent until
+ *  noteQueueAdmissionRecoveryForAlert observes the rolling count has dropped back under
+ *  threshold. */
+function alertQueueTimeoutSurgeOnce(countInWindow: number): void {
+  if (queueTimeoutAlerted) return;
+  queueTimeoutAlerted = true;
+  void import("@/features/spx/lib/spx-play-notify")
+    .then(({ notifyOpsDiscord }) =>
+      notifyOpsDiscord({
+        title: "Polygon rate-limiter queue timeouts surging",
+        body:
+          `${countInWindow} callers exceeded the ${queueBudgetMs()}ms admission queue budget within the ` +
+          `last ${Math.round(QUEUE_TIMEOUT_ALERT_WINDOW_MS / 1000)}s (GLOBAL_MAX_RPS=${GLOBAL_MAX_RPS}). Real ` +
+          `demand is exceeding the shared Polygon rate-limiter ceiling — requests are being DROPPED, not just ` +
+          `slow. Re-arms once the rate drops back under ${QUEUE_TIMEOUT_ALERT_THRESHOLD} in a ` +
+          `${Math.round(QUEUE_TIMEOUT_ALERT_WINDOW_MS / 1000)}s window.`,
+        severity: "warning",
+      })
+    )
+    .catch(() => {
+      queueTimeoutAlerted = false; // alert never delivered — allow a later retry
+    });
+}
+
+/** Record one queue-timeout occurrence; pages ops once the rolling window crosses the sustained
+ *  threshold. Called from polygonTrackedFetch's catch — never changes admission behavior itself. */
+export function noteQueueTimeoutForAlert(now: () => number = Date.now): void {
+  const nowMs = now();
+  queueTimeoutTimestamps = pruneQueueTimeoutWindow([...queueTimeoutTimestamps, nowMs], nowMs);
+  if (queueTimeoutTimestamps.length >= QUEUE_TIMEOUT_ALERT_THRESHOLD) {
+    alertQueueTimeoutSurgeOnce(queueTimeoutTimestamps.length);
+  }
+}
+
+/** Re-arm the surge latch once the rolling count has genuinely dropped back under threshold.
+ *  Cheap no-op on the common healthy path. */
+export function noteQueueAdmissionRecoveryForAlert(now: () => number = Date.now): void {
+  if (!queueTimeoutAlerted) return;
+  queueTimeoutTimestamps = pruneQueueTimeoutWindow(queueTimeoutTimestamps, now());
+  if (queueTimeoutTimestamps.length < QUEUE_TIMEOUT_ALERT_THRESHOLD) {
+    queueTimeoutAlerted = false;
+  }
+}
+
 export async function polygonTrackedFetch(
   endpointKey: string,
   url: string,
@@ -384,7 +600,19 @@ export async function polygonTrackedFetch(
     throw new Error(`[polygon] Circuit open — rate limited, pausing ${waitSec}s`);
   }
 
-  await acquirePolygonSlot();
+  // A caller's own signal (if any) also governs admission-queue waiting, not just the
+  // eventual fetch() call — mirrors polygonTrackedFetch's UW sibling (uw-rate-limiter.ts's
+  // throttleUw), fixed there in PR #5111 for the identical reason: without this, aborting
+  // during a contended admission wait only stopped the CALLER from waiting, never actually
+  // freed the slot machinery or avoided the (still-forthcoming) real HTTP request.
+  const signal = init?.signal ?? undefined;
+  try {
+    await acquirePolygonSlot(undefined, signal);
+  } catch (err) {
+    if (isQueueTimeout(err)) noteQueueTimeoutForAlert();
+    throw err;
+  }
+  noteQueueAdmissionRecoveryForAlert();
   try {
     // RT-2 resilience: retry TRANSIENT failures (connect errors like UND_ERR_CONNECT_TIMEOUT /
     // EHOSTUNREACH, plus 5xx and 429) once with a short backoff, so a momentary api.massive.com
@@ -436,6 +664,10 @@ export function polygonRateLimiterStats(): {
   consecutive429: number;
   /** NH-R3: the additive upstream health snapshot (evidence-only — see polygon-rest-health.ts). */
   upstreamHealth: PolygonUpstreamHealthSnapshot;
+  /** Fraction of a ceiling a tagged background sweep (vector-bead-recorder) may use at admission —
+   *  see BACKGROUND_SWEEP_MAX_SHARE's block comment. Exposed so a live post-deploy check (e.g.
+   *  /api/admin/health) can confirm the configured split without reading env vars off the task. */
+  backgroundSweepMaxShare: number;
 } {
   refillTokens();
   const now = Date.now();
@@ -457,6 +689,7 @@ export function polygonRateLimiterStats(): {
     circuitOpenUntil: now < circuitOpenUntil ? circuitOpenUntil : null,
     consecutive429,
     upstreamHealth: polygonUpstreamHealth().snapshot(),
+    backgroundSweepMaxShare: BACKGROUND_SWEEP_MAX_SHARE,
   };
 }
 

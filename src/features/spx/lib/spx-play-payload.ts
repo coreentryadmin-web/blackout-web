@@ -6,9 +6,13 @@ import type {
   SpxSignalFactor,
 } from "@/features/spx/lib/spx-signals";
 import type { PlayGateResult } from "@/features/spx/lib/spx-play-gates";
-import { emptyCategorizedGateBlocks } from "@/features/spx/lib/playbook-gate-categories";
+import {
+  categorizeGateBlocks,
+  emptyCategorizedGateBlocks,
+  firstGateBlockCategory,
+} from "@/features/spx/lib/playbook-gate-categories";
 import { isBeforeCashOpen, isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
-import type { LottoPlayPayload } from "@/features/spx/lib/spx-play-lotto";
+import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
 import type { PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
 import type { PlayConfirmationResult } from "@/features/spx/lib/spx-play-confirmations";
@@ -150,18 +154,57 @@ export function intelGates(
   gates: PlayGateResult
 ): SpxPlayPayload["gates"] {
   const play_idea = gates.play_idea ?? buildPlayIdeaIntel(desk, confluence);
+  // Dedupe exact duplicates so the payload (and every consumer — desk panel,
+  // Largo get_spx_play) never carries repeated gate lines. Display-only: the
+  // pass/fail decision is computed from the raw blocks in evaluatePlayGates.
+  const blocks = Array.from(new Set(humanizeGateBlocks(gates.blocks, desk, confluence)));
   return {
     passed: gates.passed,
-    // Dedupe exact duplicates so the payload (and every consumer — desk panel,
-    // Largo get_spx_play) never carries repeated gate lines. Display-only: the
-    // pass/fail decision is computed from the raw blocks in evaluatePlayGates.
-    blocks: Array.from(new Set(humanizeGateBlocks(gates.blocks, desk, confluence))),
-    blocks_by_category: gates.blocks_by_category,
-    first_block_category: gates.first_block_category,
+    blocks,
+    // BUG FIX (2026-10-09, Ask Largo/5-engine standing mandate, live repro on GET
+    // /api/market/spx/play): these two MUST be re-derived from the FINAL humanized+deduped
+    // `blocks` above, not `gates.blocks_by_category`/`gates.first_block_category` — those were
+    // computed by evaluatePlayGates() in spx-play-gates.ts from the RAW, pre-humanization blocks
+    // list. humanizeGateBlocks() (spx-play-intel.ts, fixed 2026-09-28) collapses any two raw
+    // reasons that resolve to the same buildPlayIdeaIntel() line — e.g. "Grade D below minimum"
+    // and "Score N too low — quality setups only" both become one idea line when a weak setup
+    // fails both gates at once, which is the common case. Reusing the stale categorized fields
+    // left the exact duplicate the 2026-09-28 fix was meant to kill sitting in the parallel
+    // `blocks_by_category.quality` array (and `first_block_category`, when it was the only
+    // populated layer) — a consumer reading the categorized view (Largo's get_spx_play passes
+    // it through verbatim, uncapped) saw two "reasons" for what `blocks` already shows as one.
+    blocks_by_category: categorizeGateBlocks(blocks),
+    first_block_category: firstGateBlockCategory(blocks),
     warnings: gates.warnings,
     entry_mode: gates.entry_mode,
     play_idea,
   };
+}
+
+/**
+ * Honest headline/idle_message for a degraded play-eval payload reached via one of the known
+ * "the EVAL PIPELINE failed to produce a timely result" paths — route.ts's
+ * ServerCacheTimeoutError catch block, and spx-service.ts's spxPlayReadDegraded() (the routine
+ * cross-replica-lock-loss-with-no-stale/peer-snapshot fallback). NEVER use
+ * degradedPlayPayload()'s bare default instead: that default's "Desk warming — play state
+ * unavailable" asserts the DESK itself is cold, which is a claim neither of these paths ever
+ * actually checks — both are reached purely because the eval/cache/lock chain didn't finish in
+ * time, which says nothing about whether the underlying desk/session is live.
+ *
+ * BUG FIX (2026-10-26, Ask Largo/5-engine standing mandate, live repro during RTH): the
+ * 2026-10-16 fix corrected this text ONLY at the route.ts call site (inline literals). A live
+ * audit on 2026-10-26 found spxPlayReadDegraded() in spx-service.ts — reached on every ordinary
+ * lock-loss-with-no-peer outcome, not a rare error — still falling through to the bare "Desk
+ * warming" default, mid-RTH, while a parallel GET /api/market/spx/desk call at the same instant
+ * showed the real desk fully live. This is the SECOND time one call site got fixed while a
+ * sibling kept the stale default (the first time was `session_phase`, fixed 2026-10-21 at both
+ * sites independently). Centralizing the message here — one definition, both call sites import
+ * it — removes the ability for a third call site, or a future edit to either existing one, to
+ * drift the same way again.
+ */
+export function degradedPlayCatchingUpMessage(): Pick<SpxPlayPayload, "headline" | "idle_message"> {
+  const message = "Play scan still catching up — retry shortly";
+  return { headline: message, idle_message: message };
 }
 
 /** Safe fallback when play eval times out or the route errors — must satisfy SpxPlayPayload so UI never crashes on missing `levels`. */

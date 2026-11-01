@@ -15,12 +15,19 @@ function spxPlayDebug(...args: unknown[]) {
 }
 import {
   computeSpxConfluence,
+  reclassifyConfluenceScore,
   type SpxConfluence,
   type SpxPlayAction,
   type SpxPlayDirection,
   type SpxSignalFactor,
 } from "@/features/spx/lib/spx-signals";
-import { evaluatePlayGates, GATE_BLOCK, type PlayGateResult } from "@/features/spx/lib/spx-play-gates";
+import {
+  evaluatePlayGates,
+  mixedTapeGateMessage,
+  isFlowDataStale,
+  GATE_BLOCK,
+  type PlayGateResult,
+} from "@/features/spx/lib/spx-play-gates";
 import {
   categorizeGateBlocks,
   emptyCategorizedGateBlocks,
@@ -28,7 +35,7 @@ import {
 } from "@/features/spx/lib/playbook-gate-categories";
 import type { PlaybookId } from "@/features/spx/lib/playbook-registry";
 import { forceExitCutoffLabel, isPastForceExitCutoff, isBeforeCashOpen, isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
-import type { LottoPlayPayload } from "@/features/spx/lib/spx-play-lotto";
+import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
 import { evaluatePlayConfirmations, flowAlignedForDirection } from "@/features/spx/lib/spx-play-confirmations";
 import { buildPlayTechnicals, type PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
@@ -1605,6 +1612,105 @@ export async function evaluateSpxPlay(
   return enrichPlayPayload(payload, desk, session);
 }
 
+/**
+ * Labels of the `SpxSignalFactor`s computeSpxConfluence()/buildLevels() (spx-signals.ts) build
+ * directly from `desk.gex_walls`/`desk.gex_king` — i.e. the factors whose own `detail` text cites
+ * a specific GEX strike/node. Kept as one named list so the closed-market staleness disclosure
+ * below and any future caller agree on exactly which factors are "GEX-derived" rather than
+ * re-deriving the same judgment call ad hoc at each call site.
+ */
+const GEX_DERIVED_FACTOR_LABELS = new Set(["GEX support", "GEX resistance", "King node · GEX anchor"]);
+
+/**
+ * BUG FIX (2026-10-26, Ask Largo/5-engine standing mandate, live repro): the closed-market
+ * branch of evaluateSpxPlayCore below serves a GEX-derived factor/play-idea built from
+ * `desk.gex_walls` via peekMergedSpxDesk()'s deliberate 24h closed-market staleness tolerance
+ * (spx-desk-loader.ts — "once the market is genuinely closed, stale and correct are the same
+ * thing", NOT changed by this fix) — but never consulted `desk.gex_stale`/`gex_age_ms`
+ * (SpxDeskPayload, spx-desk.ts) before presenting it, so a member could see a specific "At 0DTE
+ * support node 7675 (+2 pts)" factor sourced from hours-old walls with zero staleness disclosure
+ * anywhere in the response. Confirmed live: the sibling GET /api/market/spx/desk route
+ * (peekSpxDesk(), NOT 24h-tolerant) reported gex_walls:[]/gex_stale:true/gex_age_ms:null at
+ * virtually the same instant /play served this exact idea undisclosed.
+ *
+ * Appends the same "stale, not live" disclosure idiom this codebase already uses elsewhere for
+ * stale GEX (spx-invalidation.ts's "Data stale — GEX/feed lagging", spx-desk-brief.ts's "GEX/feed
+ * stale — lighter size until refresh") to each GEX-derived factor's own `detail` text, rather than
+ * inventing a new phrasing. Non-GEX factors (VWAP, γ regime, max pain, …) are left untouched —
+ * their own data freshness is a separate concern this fix does not touch.
+ */
+function discloseStaleGexFactors(factors: SpxSignalFactor[]): SpxSignalFactor[] {
+  return factors.map((f) =>
+    GEX_DERIVED_FACTOR_LABELS.has(f.label) ? { ...f, detail: `${f.detail} — GEX stale, not live` } : f
+  );
+}
+
+/**
+ * Label of the `SpxSignalFactor` computeSpxConfluence() (spx-signals.ts) builds directly from
+ * `desk.vwap` — the sibling of GEX_DERIVED_FACTOR_LABELS above, for the VWAP factor specifically.
+ */
+const VWAP_FACTOR_LABEL = "VWAP";
+
+/**
+ * BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
+ * closed): same bug class as discloseStaleGexFactors above, for the VWAP factor instead of the
+ * GEX-derived ones. `desk.vwap` on this closed-market path comes from peekMergedSpxDesk() ->
+ * mergePulseIntoDesk() (spx-desk-merge.ts), whose `stickyStructureLevel` cross-request
+ * "last-known-good" fallback keeps serving a prior session's VWAP INDEFINITELY once both
+ * `pulse.vwap` and `base.vwap` go null (any non-trading day — weekend/holiday) — but unlike
+ * `gex_stale`, nothing on `SpxDeskPayload` disclosed that until `vwap_stale` was added
+ * (spx-desk.ts/spx-desk-merge.ts) alongside this fix. Confirmed live: GET /api/market/spx/play
+ * served a "VWAP" factor (weight -12, "Below VWAP 7580.87 — sellers pressing") contributing to
+ * the closed-market score/grade on a Saturday, while the sibling GET /api/market/spx/desk route
+ * (peekSpxDesk(), NOT merged, no sticky fallback) reported vwap:null at the same instant — a
+ * stale Friday close presented as a live sell signal with zero disclosure.
+ *
+ * discloseStaleGexFactors()'s own doc comment explicitly notes "Non-GEX factors (VWAP, γ
+ * regime, max pain, …) are left untouched — their own data freshness is a separate concern this
+ * fix does not touch" — this is that separate fix, for the one non-GEX factor whose own
+ * desk-level staleness signal (`vwap_stale`) now exists. Same disclosure idiom (append
+ * "— <X> stale, not live" to the factor's own `detail`), not a new strategy.
+ */
+function discloseStaleVwapFactor(factors: SpxSignalFactor[]): SpxSignalFactor[] {
+  return factors.map((f) =>
+    f.label === VWAP_FACTOR_LABEL ? { ...f, detail: `${f.detail} — VWAP stale, not live` } : f
+  );
+}
+
+/**
+ * Labels of the `SpxSignalFactor`s computeSpxConfluence() (spx-signals.ts) builds directly from
+ * flow/tape-derived desk fields — `desk.flow_0dte_net` ("0DTE flow"), `desk.spx_flows`' matched
+ * sweeps ("HELIX sweeps"), `desk.unified_tape` ("Live tape"), and `desk.net_prem_ticks` ("Net
+ * prem"). Sibling of GEX_DERIVED_FACTOR_LABELS/VWAP_FACTOR_LABEL above, for the one remaining
+ * data family those two comments explicitly called out as untouched ("Non-GEX factors... are
+ * left untouched — their own data freshness is a separate concern this fix does not touch").
+ */
+const FLOW_DERIVED_FACTOR_LABELS = new Set(["0DTE flow", "HELIX sweeps", "Live tape", "Net prem"]);
+
+/**
+ * BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
+ * closed): same bug class as discloseStaleGexFactors/discloseStaleVwapFactor above, for the
+ * flow/tape-derived factors instead. Unlike GEX and VWAP, nothing on `SpxDeskPayload` had ever
+ * disclosed flow staleness in this closed-market branch at all — `desk.flow_data_age_ms` was
+ * read nowhere in this branch (only a debug log elsewhere), despite the live-market gate stack
+ * (`evaluatePlayGates` / `isFlowDataStale`, spx-play-gates.ts) already treating stale flow as
+ * unreliable enough to hard-block a BUY. Confirmed live: GET /api/market/spx/play served a
+ * +14-weight "0DTE flow" factor ("Call premium leading 0DTE tape") — 35% of the published score
+ * of 40 — built from data `flow_data_age_ms` reported as ~17.4h (62,672,013ms) old, with zero
+ * staleness disclosure anywhere in the response, while the sibling GET /api/market/spx/desk
+ * route reported the same age.
+ *
+ * Reuses `isFlowDataStale` (spx-play-gates.ts) rather than inventing a second threshold, so the
+ * live BUY-intent hard-block boundary and this closed-market disclosure can never drift apart —
+ * the same "extract once, consult from both paths" idiom `mixedTapeGateMessage` already
+ * established for the mixed-tape check.
+ */
+function discloseStaleFlowFactors(factors: SpxSignalFactor[]): SpxSignalFactor[] {
+  return factors.map((f) =>
+    FLOW_DERIVED_FACTOR_LABELS.has(f.label) ? { ...f, detail: `${f.detail} — Flow stale, not live` } : f
+  );
+}
+
 async function evaluateSpxPlayCore(
   desk: SpxDeskPayload,
   prefetchedTechnicals?: PlayTechnicals | null,
@@ -1620,9 +1726,27 @@ async function evaluateSpxPlayCore(
     // settle. No open play → plain closed-session SCANNING as before.
     const openAfterClose = desk.price > 0 ? await loadOpenPlay() : null;
     if (!openAfterClose) {
-    const closedConfluence = desk.price > 0 ? computeSpxConfluence(desk) : null;
+    const closedConfluence =
+      desk.price > 0 && desk.source !== "none" ? computeSpxConfluence(desk) : null;
     const playIdea =
       closedConfluence != null ? buildPlayIdeaIntel(desk, closedConfluence) : null;
+    // BUG FIX (2026-10-26): this closed-market branch hand-builds `gates` instead of calling
+    // evaluatePlayGates — it never ran the trade-governor/halt/playbook machinery that's
+    // meaningless with no entry possible at all, which is correct. But `evaluatePlayGates` is
+    // ALSO the only place that applies the mixed-tape sub-check, and `spx-play-context.ts`'s
+    // `buildSpxPlayDeskContext` independently recomputes `desk_context.mixed_tape_blocked` off
+    // the identical weighted_conflicts/threshold condition UNCONDITIONALLY, regardless of
+    // whether gates ever ran — so a real closed-market response could show
+    // `mixed_tape_blocked:true` in desk_context with no "Tape's mixed" text anywhere in
+    // `gates.blocks`/`warnings`. Confirmed live via GET /api/market/spx/play.
+    // Fix: run the shared, extracted mixed-tape sub-check here too (mixedTapeGateMessage —
+    // the exact condition evaluatePlayGates applies, factored out so the two can never drift
+    // apart) and surface it in `warnings`, not `blocks` — "Session closed" already fully
+    // explains why no new entry is possible, so the mixed-tape read isn't an ADDITIONAL block,
+    // it's the same informational-only treatment evaluatePlayGates itself gives this check on
+    // its non-buy (entry_intent:"watch") path, which is the closer analogue here (no BUY is
+    // ever being evaluated once the market is closed).
+    const mixedTapeMsg = closedConfluence != null ? mixedTapeGateMessage(closedConfluence) : null;
     const dir = closedConfluence?.direction;
     const entry = desk.price > 0 ? desk.price : null;
     const idealTarget =
@@ -1631,6 +1755,52 @@ async function evaluateSpxPlayCore(
           ? entry + playIdealTargetPts()
           : entry - playIdealTargetPts()
         : null;
+
+    // See discloseStaleGexFactors()'s own doc comment above for the full bug account. Short
+    // version: `closedConfluence` above was built off `desk.gex_walls`, which on THIS path can
+    // legitimately be up to 24h old (peekMergedSpxDesk's deliberate closed-market tolerance,
+    // unchanged here) — gate disclosure on whether a GEX-derived factor actually fired, not on
+    // `gex_stale` alone, so a closed-market read with no GEX factor present (e.g. only VWAP/max-
+    // pain fired) never grows a confusing "stale" clause about data it never showed.
+    const closedGexFactorStale =
+      desk.gex_stale === true &&
+      (closedConfluence?.factors.some((f) => GEX_DERIVED_FACTOR_LABELS.has(f.label)) ?? false);
+    // See discloseStaleVwapFactor()'s own doc comment above — the sibling check for the VWAP
+    // factor, gated on `desk.vwap_stale` (spx-desk-merge.ts's sticky-fallback signal) the same
+    // way the GEX check above is gated on `desk.gex_stale`, and likewise only when the VWAP
+    // factor actually fired so a closed-market read with no VWAP factor present never grows a
+    // staleness clause about data it never showed.
+    const closedVwapFactorStale =
+      desk.vwap_stale === true &&
+      (closedConfluence?.factors.some((f) => f.label === VWAP_FACTOR_LABEL) ?? false);
+    // See discloseStaleFlowFactors()'s own doc comment above — the sibling check for the
+    // flow/tape-derived factors, gated on `isFlowDataStale` (spx-play-gates.ts, the same
+    // predicate the live BUY-intent hard block consults) rather than a boolean already carried
+    // on the desk payload, because unlike GEX/VWAP no such boolean existed — and likewise only
+    // when a flow-derived factor actually fired so a closed-market read with none present never
+    // grows a staleness clause about data it never showed.
+    const closedFlowFactorStale =
+      isFlowDataStale(desk.flow_data_age_ms, desk.flow_cluster_live === true) &&
+      (closedConfluence?.factors.some((f) => FLOW_DERIVED_FACTOR_LABELS.has(f.label)) ?? false);
+    let closedFactors = closedGexFactorStale
+      ? discloseStaleGexFactors(closedConfluence!.factors)
+      : (closedConfluence?.factors ?? []);
+    if (closedVwapFactorStale) closedFactors = discloseStaleVwapFactor(closedFactors);
+    if (closedFlowFactorStale) closedFactors = discloseStaleFlowFactors(closedFactors);
+    // Compose all disclosure clauses (independent conditions — any combination can fire) into
+    // one "· <clause> · <clause>" suffix shared by the thesis and the play idea, so a
+    // closed-market read that's stale on more than one data family discloses all of them rather
+    // than only whichever check happened to run last.
+    const staleClauses = [
+      closedGexFactorStale ? "GEX stale, not live" : null,
+      closedVwapFactorStale ? "VWAP stale, not live" : null,
+      closedFlowFactorStale ? "Flow stale, not live" : null,
+    ].filter((c): c is string => c != null);
+    const closedPlayIdea =
+      staleClauses.length && playIdea ? `${playIdea} · ${staleClauses.join(" · ")}` : playIdea;
+    const closedThesis = staleClauses.length
+      ? `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT · ${staleClauses.join(" · ")}`
+      : `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT`;
 
     return {
       available: false,
@@ -1642,11 +1812,17 @@ async function evaluateSpxPlayCore(
       rawScore: closedConfluence?.rawScore ?? 0,
       // Off-hours the desk may have no confluence to close out on; when it doesn't, the three
       // `??` fallbacks above are placeholders and must not be read as a grade of the session.
+      // A cold-cache bootstrap shell (buildBootstrapFastLane/deskShellFromPulse,
+      // spx-desk-loader.ts/spx-desk.ts) has a real price and available:true but no GEX/flow
+      // layer ever merged in — `source` stays at its documented "none" degraded-shell marker
+      // (spx-desk-merge.ts). computeSpxConfluence's own `!desk.available` guard doesn't catch
+      // that shape, so closedConfluence is gated on `desk.source !== "none"` above as well,
+      // rather than reading assessed:true off a confluence object with an empty factors: [].
       assessed: closedConfluence != null,
       headline: "Session closed",
-      thesis: `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT`,
+      thesis: closedThesis,
       idle_message: null,
-      factors: closedConfluence?.factors ?? [],
+      factors: closedFactors,
       levels: {
         entry,
         stop: closedConfluence?.levels.stop ?? null,
@@ -1658,9 +1834,9 @@ async function evaluateSpxPlayCore(
         blocks: ["Session closed"],
         blocks_by_category: categorizeGateBlocks(["Session closed"]),
         first_block_category: firstGateBlockCategory(["Session closed"]),
-        warnings: [],
+        warnings: mixedTapeMsg != null ? [mixedTapeMsg] : [],
         entry_mode: "none",
-        play_idea: playIdea,
+        play_idea: closedPlayIdea,
       },
       claude: null,
       cortex: null,
@@ -1697,6 +1873,45 @@ async function evaluateSpxPlayCore(
   const confluence = rawConfluence;
   if (!confluence) {
     return scanningPayload(desk, null, pickIdleMessage());
+  }
+
+  // BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro): discloseStaleGexFactors
+  // / discloseStaleVwapFactor / discloseStaleFlowFactors (defined above) were wired into exactly
+  // ONE call site — the `!desk.market_open && !premarket` closed-market branch above. This live
+  // path (which feeds evaluateOpenPlay/evaluateFlatPlay — the real member-facing BUY/WATCH/
+  // SCANNING payload during RTH) never called any of them, so a GEX/VWAP/flow-derived factor
+  // built from stale desk data during RTH rendered with zero staleness disclosure anywhere in the
+  // response. This is a real, reachable window, not a closed-market-only edge case:
+  // `desk.gex_stale` flips true once the GEX snapshot age exceeds GEX_STALE_MS (30s default,
+  // spx-desk-numerics.ts), while evaluatePlayGates's own "Desk data stale (Xs)" hard block
+  // doesn't fire until deskStaleSec > playGexStaleMaxSec() (90s default, spx-play-config.ts) — a
+  // live 30-90s span where a GEX-derived factor shows a specific strike/level with no disclosure
+  // anywhere. `desk.vwap_stale` (spx-desk-merge.ts's sticky-fallback signal) carries no
+  // market_open gating at all, and `isFlowDataStale` is the exact predicate the live BUY-intent
+  // hard block already applies to flow data, so a flow-derived factor could be just as stale on
+  // this path without ever reaching that hard block (WATCH/SCANNING never evaluates a BUY-intent
+  // gate at all, and even a BUY only hard-blocks past isFlowDataStale's own 300s floor).
+  //
+  // Fix: apply the exact same disclosure idiom here, mutating `confluence.factors` once — before
+  // it fans out into evaluateOpenPlay/evaluateFlatPlay's many `factors: confluence.factors` call
+  // sites — rather than duplicating the three staleness checks at each one. Same gating as the
+  // closed-market branch: only disclose a data family that actually produced a factor, so a live
+  // read with no GEX/VWAP/flow factor present never grows a confusing clause about data it never
+  // showed. None of the three disclose* helpers touch `.label`/`.weight` (only `.detail` text),
+  // so this cannot change score/grade/direction/conflicts — see computeWeightedConflicts and
+  // reclassifyConfluenceScore (spx-play-conflicts.ts/spx-signals.ts), both of which read only
+  // `.label`/`.weight` off these same factors, downstream of this mutation.
+  if (desk.gex_stale === true && confluence.factors.some((f) => GEX_DERIVED_FACTOR_LABELS.has(f.label))) {
+    confluence.factors = discloseStaleGexFactors(confluence.factors);
+  }
+  if (desk.vwap_stale === true && confluence.factors.some((f) => f.label === VWAP_FACTOR_LABEL)) {
+    confluence.factors = discloseStaleVwapFactor(confluence.factors);
+  }
+  if (
+    isFlowDataStale(desk.flow_data_age_ms, desk.flow_cluster_live === true) &&
+    confluence.factors.some((f) => FLOW_DERIVED_FACTOR_LABELS.has(f.label))
+  ) {
+    confluence.factors = discloseStaleFlowFactors(confluence.factors);
   }
 
   // SHADOW-MODE factor logging (src/lib/spx-signals-shadow.ts) — fire-and-forget,
@@ -1771,12 +1986,37 @@ async function evaluateSpxPlayCore(
   // Bounded at ±3 — a soft prior, not an override. Only applies when the edition is fresh
   // (< 20h old) and shows a clear directional A-grade cluster.
   if (nhBonus && nhBonus.bonus !== 0) {
-    confluence.score += nhBonus.bonus;
     confluence.factors.push({
       label: "Night Hawk prior",
       weight: nhBonus.bonus,
       detail: nhBonus.label,
     });
+    // BUG FIX (2026-09-22): mutating `score`/`factors` alone left `grade`/`direction`/`agreeing`/
+    // `conflicts`/`weighted_conflicts` frozen at their PRE-bonus values (computed once inside
+    // computeSpxConfluence) — see reclassifyConfluenceScore's own header for the full trace.
+    // evaluatePlayGates gates on confluence.grade/direction directly and evaluateMtfHybrid below
+    // is called with both confluence.grade (would have been stale) and confluence.score (already
+    // mutated) — reassign every derived field together so they can never disagree with score.
+    // BUG FIX (2026-10-18): `rawScore` was the one field this fix's own Pick<...> omitted, so it
+    // stayed frozen at the pre-bonus value (persisted downstream as "confidence" — see
+    // reclassifyConfluenceScore's updated header) while every other field here was already fresh.
+    // Now included in `reclass` and reassigned alongside the rest.
+    // BUG FIX (2026-11-01): `levels` (entry/stop/target/invalidation) was the SECOND field this
+    // fix's Pick<...> omitted — buildLevels's stop/target geometry is keyed directly off
+    // action/bias, so a bonus that flips action across a boundary left members looking at a
+    // target/invalidation still built for the pre-bonus action while grade/direction had already
+    // moved on. Now included in `reclass` and reassigned alongside the rest.
+    const reclass = reclassifyConfluenceScore(desk, confluence.score + nhBonus.bonus, confluence.factors);
+    confluence.score = reclass.score;
+    confluence.rawScore = reclass.rawScore;
+    confluence.bias = reclass.bias;
+    confluence.action = reclass.action;
+    confluence.grade = reclass.grade;
+    confluence.direction = reclass.direction;
+    confluence.agreeing = reclass.agreeing;
+    confluence.conflicts = reclass.conflicts;
+    confluence.weighted_conflicts = reclass.weighted_conflicts;
+    confluence.levels = reclass.levels;
   }
 
   const confirmations = evaluatePlayConfirmations(desk, confluence, technicals);

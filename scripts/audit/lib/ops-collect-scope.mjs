@@ -15,6 +15,23 @@ export function watchdogHttpPriority(status) {
   return "P0";
 }
 
+/** Public liveness — when this fails, every deploy smoke and most crons fail together. */
+export function isOriginHealthOk(status, json) {
+  return status === 200 && json?.ok === true;
+}
+
+/**
+ * Priority for GET /api/health failures. Unlike the cron watchdog (P2 on 503 during
+ * rolling deploy), a sustained Cloudflare 503 with no JSON body is a site-wide outage.
+ */
+export function originHealthFailurePriority(status, json) {
+  if (isOriginHealthOk(status, json)) return null;
+  if (status === 200) return "P0";
+  if (isTransientOriginError(status)) return "P0";
+  if (isAuthFailureStatus(status)) return "P2";
+  return "P0";
+}
+
 /** Parse ops:collect JSON from stdout (stderr may carry postgres-skip info). */
 export function parseOpsCollectPayload(stdout, stderr) {
   const blob = `${stdout}\n${stderr}`;

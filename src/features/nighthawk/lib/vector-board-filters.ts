@@ -120,24 +120,6 @@ export function filterVectorBoardRowsAdvanced(
   });
 }
 
-/** Equal-weight net premium % across rows with a P&L reading — session diagnostic strip. */
-export function vectorBoardNetPnl(rows: VectorBoardTableRow[]): number | null {
-  let sum = 0;
-  let n = 0;
-  for (const row of rows) {
-    if (row.premiumPct == null || !Number.isFinite(row.premiumPct)) continue;
-    sum += row.premiumPct;
-    n += 1;
-  }
-  if (n === 0) return null;
-  return Math.round(sum);
-}
-
-export function vectorBoardSessionPnl(rows: VectorBoardTableRow[], sessionDate: string | null): number | null {
-  if (!sessionDate) return null;
-  return vectorBoardNetPnl(rows.filter((r) => r.sessionDate.startsWith(sessionDate)));
-}
-
 export function vectorBoardActiveFilterCount(opts: {
   statusFilter: VectorBoardStatusFilter;
   tierFilter: VectorBoardTierFilter;
@@ -152,4 +134,20 @@ export function vectorBoardActiveFilterCount(opts: {
   if (opts.selectedDate) n += 1;
   if (opts.tickerQuery.trim()) n += 1;
   return n;
+}
+
+/** ArrowUp/ArrowDown keyboard-nav index step for a filtered board list. Re-clamps the
+ *  CURRENT index into the list's present range BEFORE stepping — a `currentIndex` left
+ *  over from before a filter/tab/search change shrank the list must not need several
+ *  extra keypresses (stepping through now-out-of-range positions where no row exists)
+ *  before any row becomes selectable again. Both directions land on a real row in one
+ *  keypress from any stale starting index. */
+export function stepBoardSelectionIndex(
+  currentIndex: number,
+  listLength: number,
+  direction: 1 | -1
+): number {
+  if (listLength <= 0) return 0;
+  const clamped = Math.min(Math.max(0, currentIndex), listLength - 1);
+  return Math.min(listLength - 1, Math.max(0, clamped + direction));
 }

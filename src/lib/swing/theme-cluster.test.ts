@@ -6,6 +6,8 @@ import {
   BROAD_MARKET_THEME,
   ETF_PROXY_THEMES,
   CORRELATION_THEMES,
+  isInverseLeverageEtf,
+  effectiveDirection,
 } from "./theme-cluster.ts";
 
 test("SEV-9 invariant: sameThesis('QQQ','NVDA') === true", () => {
@@ -56,4 +58,376 @@ test("themed sectors resolve via sectorFor (crypto-equity, china-adr)", () => {
   assert.equal(sameThesis("COIN", "MSTR"), true);
   assert.equal(resolveTheme("BABA"), "china-adr");
   assert.equal(sameThesis("BABA", "COIN"), false);
+});
+
+test("leveraged MSTR ETFs + Galaxy Digital + SBET cluster with crypto-equity (#4076 live finding: MSTU+MSTX book, no flag)", () => {
+  assert.equal(resolveTheme("MSTU"), "crypto-equity");
+  assert.equal(resolveTheme("MSTX"), "crypto-equity");
+  assert.equal(resolveTheme("GLXY"), "crypto-equity");
+  assert.equal(resolveTheme("SBET"), "crypto-equity");
+  assert.equal(sameThesis("MSTU", "MSTX"), true);
+  assert.equal(sameThesis("MSTU", "MSTR"), true);
+  assert.equal(sameThesis("GLXY", "COIN"), true);
+  assert.equal(sameThesis("SBET", "MSTR"), true);
+});
+
+test("single-stock leveraged ETFs cluster with their own underlying only, never each other (#4076 batch 26: RBLU/GMEU/SOFX live)", () => {
+  assert.equal(sameThesis("RBLU", "RBLX"), true);
+  assert.equal(sameThesis("GMEU", "GME"), true);
+  assert.equal(sameThesis("SOFX", "SOFI"), true);
+  assert.equal(sameThesis("RBLU", "GMEU"), false);
+  assert.equal(sameThesis("GMEU", "SOFX"), false);
+  // PLTU joins PLTR's existing software cluster.
+  assert.equal(sameThesis("PLTU", "PLTR"), true);
+  assert.equal(sameThesis("PLTU", "CRM"), true); // same "software" cluster as PLTR
+});
+
+test("XRP wrapper tickers cluster with each other, not with crypto-equity mining/holding names (#4076: XRP+XRPZ+XXRP book, no flag)", () => {
+  assert.equal(ETF_PROXY_THEMES.XRP, "crypto-xrp");
+  assert.equal(resolveTheme("XRP"), "crypto-xrp");
+  assert.equal(resolveTheme("xrpz"), "crypto-xrp"); // case-insensitive
+  assert.equal(sameThesis("XRP", "XRPZ"), true);
+  assert.equal(sameThesis("XRPZ", "XXRP"), true);
+  // Deliberately NOT the same cluster as equity crypto proxies — a token's own price is a different
+  // risk driver than mining/holding-company equity beta.
+  assert.equal(sameThesis("XRP", "COIN"), false);
+});
+
+test("crypto exchanges, miners, and BTC/ETH trust/ETF wrappers cluster with crypto-equity (2026-09-20 live finding: 2026-09-18 Banger batch undercounted real book concentration 11 vs ~25 same-direction positions)", () => {
+  // Exchanges/custodians — same risk bucket as COIN.
+  assert.equal(resolveTheme("GEMI"), "crypto-equity");
+  assert.equal(resolveTheme("BKKT"), "crypto-equity");
+  assert.equal(resolveTheme("ABTC"), "crypto-equity");
+  assert.equal(resolveTheme("BLSH"), "crypto-equity");
+  // Miners — same risk bucket as MARA/RIOT/CLSK/HUT/IREN.
+  assert.equal(resolveTheme("BMNR"), "crypto-equity");
+  assert.equal(resolveTheme("BTDR"), "crypto-equity");
+  // Direct BTC/ETH trust/ETF wrappers — not equities, but an even more direct crypto-price read than
+  // the mining/holding equities already in the bucket.
+  assert.equal(resolveTheme("ETH"), "crypto-equity");
+  assert.equal(resolveTheme("ETHE"), "crypto-equity");
+  assert.equal(resolveTheme("ETHU"), "crypto-equity");
+  assert.equal(resolveTheme("ETHA"), "crypto-equity");
+  assert.equal(resolveTheme("IBIT"), "crypto-equity");
+  assert.equal(resolveTheme("GBTC"), "crypto-equity");
+  assert.equal(resolveTheme("BITO"), "crypto-equity");
+  assert.equal(resolveTheme("BITX"), "crypto-equity");
+  assert.equal(sameThesis("GEMI", "COIN"), true);
+  assert.equal(sameThesis("BMNR", "RIOT"), true);
+  assert.equal(sameThesis("ETH", "IBIT"), true);
+  assert.equal(sameThesis("ETHE", "MSTR"), true);
+});
+
+test("quantum-computing pure-plays cluster together, not each in its own isolated cluster (2026-09-25 live finding: RGTI+QBTS+IONQ concurrent LONG book, no Book-context concentration flag)", () => {
+  assert.equal(resolveTheme("RGTI"), "quantum-computing");
+  assert.equal(resolveTheme("QBTS"), "quantum-computing");
+  assert.equal(resolveTheme("IONQ"), "quantum-computing");
+  assert.equal(resolveTheme("QUBT"), "quantum-computing");
+  assert.equal(sameThesis("RGTI", "QBTS"), true);
+  assert.equal(sameThesis("RGTI", "IONQ"), true);
+  assert.equal(sameThesis("QBTS", "QUBT"), true);
+  // Not merged into an unrelated theme (e.g. semis) just because both are "tech".
+  assert.equal(sameThesis("RGTI", "NVDA"), false);
+});
+
+test("AI-datacenter connectivity chips + semis-equipment names cluster into semis, not their own isolated clusters (2026-09-25 live finding: ALAB+CRDO+KLAC+LRCX+INTC concurrent LONG book, no Book-context concentration flag)", () => {
+  assert.equal(resolveTheme("ALAB"), "semis");
+  assert.equal(resolveTheme("CRDO"), "semis");
+  assert.equal(resolveTheme("KLAC"), "semis");
+  assert.equal(sameThesis("ALAB", "CRDO"), true);
+  assert.equal(sameThesis("ALAB", "NVDA"), true);
+  assert.equal(sameThesis("KLAC", "LRCX"), true);
+  // Not merged into an unrelated theme just because both are "tech".
+  assert.equal(sameThesis("ALAB", "AAPL"), false);
+});
+
+test("leveraged single-stock ETFs whose underlying ALREADY has a themed peer join that peer's bucket directly, not their own isolated pair (2026-10-07 live finding: SMCI+SMCX and MU+MULL concurrent LONG book, no Book-context concentration flag)", () => {
+  // SMCX ("Defiance Daily Target 2X Long SMCI ETF") is the same underlying as SMCI, already in semis.
+  assert.equal(resolveTheme("SMCX"), "semis");
+  assert.equal(sameThesis("SMCX", "SMCI"), true);
+  assert.equal(sameThesis("SMCX", "NVDA"), true); // joins the WHOLE semis cluster, not just SMCI
+  // MULL ("GraniteShares 2x Long MU Daily ETF") is the same underlying as MU, already in semis.
+  assert.equal(resolveTheme("MULL"), "semis");
+  assert.equal(sameThesis("MULL", "MU"), true);
+  // AVGX ("Defiance Daily Target 2X Long AVGO ETF") is the same underlying as AVGO, already in semis.
+  assert.equal(resolveTheme("AVGX"), "semis");
+  assert.equal(sameThesis("AVGX", "AVGO"), true);
+  // AMZU ("Direxion Daily AMZN Bull 2X ETF") is the same underlying as AMZN, already in megatech.
+  assert.equal(resolveTheme("AMZU"), "megatech");
+  assert.equal(sameThesis("AMZU", "AMZN"), true);
+});
+
+test("GLW + GLWG are the literal same stock (plain vs 2x-leveraged wrapper) and must cluster together, not into separate NAME: own-clusters (2026-10-07 live finding: GLW+GLWG concurrent LONG book, no Book-context concentration flag)", () => {
+  assert.equal(resolveTheme("GLW"), resolveTheme("GLWG"));
+  assert.equal(sameThesis("GLW", "GLWG"), true);
+  // Not merged into an unrelated theme just because both are "tech"-adjacent.
+  assert.equal(sameThesis("GLW", "NVDA"), false);
+});
+
+test("MTSI (MACOM Technology Solutions) clusters into semis, not its own isolated NAME: cluster (2026-10-08 live finding: MTSI LONG concurrent with SMCI/INTC/SMCX/MULL/AVGX/MRVL, no Book-context concentration flag on MTSI's own play-brief)", () => {
+  assert.equal(resolveTheme("MTSI"), "semis");
+  assert.equal(sameThesis("MTSI", "SMCI"), true);
+  assert.equal(sameThesis("MTSI", "NVDA"), true); // joins the WHOLE semis cluster, not just one peer
+  // Corroborated by the live play-brief's own independently-sourced peer list (LRCX, KLAC).
+  assert.equal(sameThesis("MTSI", "LRCX"), true);
+  assert.equal(sameThesis("MTSI", "KLAC"), true);
+  // Not merged into an unrelated theme just because both are "tech"-adjacent.
+  assert.equal(sameThesis("MTSI", "AAPL"), false);
+});
+
+test("CRWV (CoreWeave) and NBIS (Nebius) cluster into semis, not isolated NAME: clusters (2026-10-16 live finding: both LONG in the same discovery batch as a flagged 9-name semis cluster, no Book-context concentration flag on either play-brief)", () => {
+  assert.equal(resolveTheme("CRWV"), "semis");
+  assert.equal(resolveTheme("NBIS"), "semis");
+  assert.equal(sameThesis("CRWV", "NBIS"), true);
+  assert.equal(sameThesis("CRWV", "MRVL"), true); // joins the WHOLE semis cluster, not just one peer
+  assert.equal(sameThesis("NBIS", "NVDA"), true);
+  // Not merged into an unrelated theme just because both are "tech"-adjacent.
+  assert.equal(sameThesis("CRWV", "AAPL"), false);
+});
+
+test("DRAM (Roundhill Memory ETF) clusters into semis alongside MU (same memory-cycle names) — added proactively, same precedent as AVGX", () => {
+  assert.equal(resolveTheme("DRAM"), "semis");
+  assert.equal(sameThesis("DRAM", "MU"), true);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-09): SOXS correctly shares the "semis" theme
+// with NVDA/MRVL (it is driven by the exact same basket) but is a -3x INVERSE fund, so a nominal
+// LONG SOXS position is an economically BEARISH bet — the opposite of a nominal LONG NVDA/MRVL
+// position. `effectiveDirection` flips the nominal direction for exactly this case so a caller
+// comparing REAL economic bets (portfolio.ts's same/opposed-direction classification) gets the
+// right answer. Live-reproduced on a real MRVL play-brief: see portfolio.test.ts's sibling test
+// for the end-to-end narrative-level repro.
+test("SOXS is a known inverse-leverage ETF; its effective direction is the OPPOSITE of its nominal one", () => {
+  assert.equal(isInverseLeverageEtf("SOXS"), true);
+  assert.equal(isInverseLeverageEtf("soxs"), true); // case-insensitive
+  assert.equal(effectiveDirection("SOXS", "LONG"), "SHORT");
+  assert.equal(effectiveDirection("SOXS", "SHORT"), "LONG");
+});
+
+test("every other ticker's effective direction equals its nominal one, including SOXS's own bull sibling SOXL", () => {
+  assert.equal(isInverseLeverageEtf("SOXL"), false);
+  assert.equal(isInverseLeverageEtf("NVDA"), false);
+  assert.equal(isInverseLeverageEtf(null), false);
+  assert.equal(isInverseLeverageEtf(undefined), false);
+  assert.equal(effectiveDirection("SOXL", "LONG"), "LONG");
+  assert.equal(effectiveDirection("NVDA", "SHORT"), "SHORT");
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-11): this file's own SOXS doc comment already
+// named SQQQ as the obvious next candidate, but SQQQ wasn't in ETF_PROXY_THEMES at all — it
+// resolved to an isolated NAME:SQQQ cluster, so a member holding LONG SQQQ (bearish Nasdaq/semis)
+// alongside a LONG QQQ/NVDA swing play got no book-context flag whatsoever, not even a backwards
+// one (sameThesis never saw the two positions as related in the first place). TQQQ (the bullish
+// 3x sibling) had the identical same-direction-concentration gap. Both now cluster with QQQ,
+// mirroring the existing SOXL/SOXS pair exactly.
+test("SQQQ is a known inverse-leverage ETF clustering with QQQ/semis; its effective direction is the OPPOSITE of its nominal one", () => {
+  assert.equal(ETF_PROXY_THEMES.SQQQ, "semis");
+  assert.equal(resolveTheme("SQQQ"), "semis");
+  assert.equal(sameThesis("SQQQ", "QQQ"), true);
+  assert.equal(sameThesis("SQQQ", "NVDA"), true);
+  assert.equal(isInverseLeverageEtf("SQQQ"), true);
+  assert.equal(isInverseLeverageEtf("sqqq"), true); // case-insensitive
+  assert.equal(effectiveDirection("SQQQ", "LONG"), "SHORT");
+  assert.equal(effectiveDirection("SQQQ", "SHORT"), "LONG");
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-17): LABD (Direxion Daily S&P Biotech Bear 3X)
+// was in neither ETF_PROXY_THEMES nor INVERSE_LEVERAGE_ETFS — a member holding LONG LABD (bearish
+// biotech) alongside a LONG sectorFor-biotech name (e.g. IOVA, both real, live, currently-
+// committed positions in the same book at time of fix) got no book-context flag whatsoever.
+// Measured, not guessed: 96 real trading days of daily-return correlation vs sectorFor's biotech
+// names (NTLA/CRSP/VIR, avg |r|~0.61) is more than double the correlation vs large-cap diversified
+// healthcare (avg |r|~0.27), confirming "biotech" (not a separate "broad biotech" theme) is the
+// correct cluster — same pattern as the SQQQ/semis fix above.
+test("LABD is a known inverse-leverage ETF clustering with sectorFor's biotech names; its effective direction is the OPPOSITE of its nominal one", () => {
+  assert.equal(ETF_PROXY_THEMES.LABD, "biotech");
+  assert.equal(resolveTheme("LABD"), "biotech");
+  assert.equal(sameThesis("LABD", "IOVA"), true);
+  assert.equal(sameThesis("LABD", "NTLA"), true);
+  assert.equal(isInverseLeverageEtf("LABD"), true);
+  assert.equal(isInverseLeverageEtf("labd"), true); // case-insensitive
+  assert.equal(effectiveDirection("LABD", "LONG"), "SHORT");
+  assert.equal(effectiveDirection("LABD", "SHORT"), "LONG");
+});
+
+test("TQQQ clusters with QQQ/semis but is NOT inverse — its effective direction equals its nominal one, like SOXL", () => {
+  assert.equal(ETF_PROXY_THEMES.TQQQ, "semis");
+  assert.equal(resolveTheme("TQQQ"), "semis");
+  assert.equal(sameThesis("TQQQ", "QQQ"), true);
+  assert.equal(isInverseLeverageEtf("TQQQ"), false);
+  assert.equal(effectiveDirection("TQQQ", "LONG"), "LONG");
+  assert.equal(effectiveDirection("TQQQ", "SHORT"), "SHORT");
+});
+
+test("clinical/commercial-stage biotech names cluster together, not each in its own isolated cluster (2026-10-10 live finding: NTLA+CRSP+VIR+MIRM+IONS+NVAX+IOVA+PCVX+TNGX+RLAY concurrent LONG book, no Book-context concentration flag beyond the two same-ticker repeats)", () => {
+  assert.equal(resolveTheme("NTLA"), "biotech");
+  assert.equal(resolveTheme("CRSP"), "biotech");
+  assert.equal(resolveTheme("VIR"), "biotech");
+  assert.equal(resolveTheme("MIRM"), "biotech");
+  assert.equal(resolveTheme("IONS"), "biotech");
+  assert.equal(resolveTheme("NVAX"), "biotech");
+  assert.equal(resolveTheme("IOVA"), "biotech");
+  assert.equal(resolveTheme("PCVX"), "biotech");
+  assert.equal(resolveTheme("TNGX"), "biotech");
+  assert.equal(resolveTheme("RLAY"), "biotech");
+  assert.equal(sameThesis("NTLA", "CRSP"), true);
+  assert.equal(sameThesis("VIR", "IOVA"), true);
+  assert.equal(sameThesis("IONS", "RLAY"), true); // joins the WHOLE biotech cluster, not just one peer
+  // Not merged into an unrelated theme just because both are "healthcare"-adjacent.
+  assert.equal(sameThesis("NTLA", "MRNA"), false);
+  // Deliberately NOT folded in: different risk driver than a clinical/regulatory binary catalyst
+  // (bioprocessing tools, diagnostics services, and a drug-discovery platform business, not a
+  // trial-readout bet) — each stays its own isolated cluster rather than a false merge.
+  assert.equal(sameThesis("NTLA", "RGEN"), false);
+  assert.equal(sameThesis("NTLA", "GRAL"), false);
+  assert.equal(sameThesis("NTLA", "ABSI"), false);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-17, live finding while researching the sibling
+// LABD fix): ABVX (Abivax SA) was live, currently-committed LONG in the same book this bucket's
+// original 2026-10-10 fix was built from, but wasn't included — a France-based clinical-stage
+// biotech in Phase 3 trials for one drug candidate (obefazimod, ulcerative colitis), the exact same
+// binary clinical/regulatory catalyst risk driver as every other name in this bucket (verified via
+// Polygon reference, not guessed from the symbol).
+test("ABVX (clinical-stage biotech, Phase 3 single-asset bet) joins the same biotech cluster as the 2026-10-10 cohort", () => {
+  assert.equal(resolveTheme("ABVX"), "biotech");
+  assert.equal(sameThesis("ABVX", "NTLA"), true);
+  assert.equal(sameThesis("ABVX", "IOVA"), true);
+});
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-10-20 live finding): KGC and
+// AEM were concurrently LONG (both Banger-origin BREAKOUT calls) in the same committed book, but
+// neither ticker was mapped anywhere in sector-map.ts, so checkPortfolioOverlap resolved them to
+// isolated `NAME:KGC`/`NAME:AEM` own-clusters and neither play-brief rendered a "Book context"
+// section at all — the real same-commodity (gold) concentration was invisible to both members.
+test("KGC and AEM (large-cap gold-mining producers) cluster together as a precious-metals theme, not each in its own isolated cluster", () => {
+  assert.equal(resolveTheme("KGC"), "precious-metals");
+  assert.equal(resolveTheme("AEM"), "precious-metals");
+  assert.equal(sameThesis("KGC", "AEM"), true);
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("KGC", "NVDA"), false);
+  assert.equal(sameThesis("AEM", "XOM"), false);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-20, live finding): a real committed book held
+// TSLA and TSLL ("Direxion Daily TSLA Bull 2X ETF", confirmed via Polygon reference) concurrently
+// LONG. TSLL was in neither sector-map.ts nor ETF_PROXY_THEMES, so it resolved to an isolated
+// `NAME:TSLL` own-cluster and never flagged the real, literal-same-underlying concentration
+// against the TSLA position — the same single-stock leveraged-wrapper shape already fixed for
+// SMCX/MULL/AVGX/AMZU/GLWG, just TSLA's turn.
+test("TSLA and TSLL (plain stock vs its 2x-leveraged wrapper) cluster together, joining the whole ev-auto theme, not an isolated pair", () => {
+  assert.equal(resolveTheme("TSLA"), "ev-auto");
+  assert.equal(resolveTheme("TSLL"), "ev-auto");
+  assert.equal(sameThesis("TSLA", "TSLL"), true);
+  assert.equal(sameThesis("TSLL", "RIVN"), true); // joins the WHOLE ev-auto cluster, not just TSLA
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("TSLL", "NVDA"), false);
+  assert.equal(sameThesis("TSLA", "AAPL"), false);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-25, live finding): a real committed book held
+// PANW LONG alongside CRWD/ZS(x2)/SNOW/NET (all already in the software bucket) *and*
+// FTNT(x2)/OKTA(x2)/S/RBRK LONG in the same batch — all four cybersecurity/software names
+// unmapped, so PANW's live Book-context section reported only "5 same-direction positions in
+// theme 'software'" when the real concentration in the book was 9 positions across 8 names.
+// FTNT (Fortinet), OKTA (Okta), S (SentinelOne) and RBRK (Rubrik) confirmed via Polygon reference.
+test("cybersecurity/software names FTNT/OKTA/S/RBRK cluster into the software theme, not their own isolated clusters (2026-10-25 live finding: PANW+CRWD+ZS+SNOW+NET+FTNT+OKTA+S+RBRK concurrent LONG book, Book-context undercounted real concentration)", () => {
+  assert.equal(resolveTheme("FTNT"), "software");
+  assert.equal(resolveTheme("OKTA"), "software");
+  assert.equal(resolveTheme("S"), "software");
+  assert.equal(resolveTheme("RBRK"), "software");
+  assert.equal(sameThesis("FTNT", "PANW"), true);
+  assert.equal(sameThesis("OKTA", "CRWD"), true);
+  assert.equal(sameThesis("S", "ZS"), true);
+  assert.equal(sameThesis("RBRK", "NET"), true);
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("FTNT", "NVDA"), false);
+  assert.equal(sameThesis("S", "AAPL"), false);
+});
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-10-31, live finding): a
+// real committed book held VKTX+SRPT+SMMT+IBRX+CAPR+REPL concurrently LONG (6 names, all
+// unmapped) alongside NVAX (already in the biotech bucket, held twice) — the same
+// clinical/commercial-stage binary-catalyst risk driver as the existing NTLA/CRSP/VIR/.../ABVX
+// cohort, but each resolved to its own isolated `NAME:<ticker>` cluster, hiding a 7-position
+// single-thesis concentration from every one of those briefs. WGS (GeneDx Holdings) was live in
+// the same book but is deliberately NOT added — Polygon reference classifies it SIC 8000
+// "SERVICES-HEALTH SERVICES" (diagnostics/genetic testing), the same GRAL-shaped exclusion this
+// bucket's own sector-map.ts comment already documents, not a clinical-stage therapeutics name.
+test("clinical-stage biotech names VKTX/SRPT/SMMT/IBRX/CAPR/REPL join the biotech theme, not isolated clusters; diagnostics name WGS stays excluded (2026-10-31 live finding)", () => {
+  assert.equal(resolveTheme("VKTX"), "biotech");
+  assert.equal(resolveTheme("SRPT"), "biotech");
+  assert.equal(resolveTheme("SMMT"), "biotech");
+  assert.equal(resolveTheme("IBRX"), "biotech");
+  assert.equal(resolveTheme("CAPR"), "biotech");
+  assert.equal(resolveTheme("REPL"), "biotech");
+  assert.equal(sameThesis("VKTX", "NVAX"), true);
+  assert.equal(sameThesis("SRPT", "NTLA"), true);
+  assert.equal(sameThesis("CAPR", "ABVX"), true); // joins the WHOLE biotech cluster, not just one peer
+  // Diagnostics/genetic-testing names stay excluded, same rationale as the existing GRAL exclusion.
+  assert.equal(sameThesis("WGS", "VKTX"), false);
+  assert.equal(resolveTheme("WGS"), "NAME:WGS");
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("VKTX", "LLY"), false);
+  assert.equal(sameThesis("IBRX", "NVDA"), false);
+});
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-10-31, live finding): a
+// real committed book held SEDG and ENPH concurrently LONG with neither ticker mapped anywhere,
+// so both resolved to isolated `NAME:SEDG`/`NAME:ENPH` own-clusters and neither play-brief
+// rendered a "Book context" section at all. SEDG (SolarEdge) and ENPH (Enphase) are the two
+// dominant residential-solar power-electronics makers, correlated on rate sensitivity and
+// residential-solar policy news — a real shared thesis even though Polygon files both under the
+// same SIC code (3674) as the unrelated `semis` (AI-datacenter-capex) bucket, which is exactly why
+// they get their own small pair cluster rather than being folded into `semis` on SIC alone.
+test("SEDG and ENPH (residential-solar power-electronics makers) cluster together as a solar theme, not each in its own isolated cluster, and not folded into the unrelated semis bucket", () => {
+  assert.equal(resolveTheme("SEDG"), "solar");
+  assert.equal(resolveTheme("ENPH"), "solar");
+  assert.equal(sameThesis("SEDG", "ENPH"), true);
+  // Not merged into `semis` just because Polygon's SIC code for both happens to be 3674.
+  assert.equal(sameThesis("SEDG", "NVDA"), false);
+  assert.equal(sameThesis("ENPH", "AMD"), false);
+});
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-10-31, live finding): a
+// real committed book held CF (CF Industries) and MOS (The Mosaic Company) concurrently LONG
+// with neither ticker mapped anywhere in sector-map.ts, so both resolved to isolated
+// `NAME:CF`/`NAME:MOS` own-clusters and neither position's play-brief rendered a "Book context"
+// section at all — same gap shape as every other extension in this file. CF and MOS are
+// confirmed via Polygon reference (`/v3/reference/tickers/<T>`) as sharing the identical SIC
+// code 2870 "AGRICULTURAL CHEMICALS" — both are large-cap nitrogen/phosphate fertilizer
+// producers whose equity is dominated by the same ag-input commodity-price cycle, not by any
+// sector already listed above (not semis, not energy, not the diversified `financials`/
+// `consumer` buckets).
+test("CF and MOS (nitrogen/phosphate fertilizer producers) cluster together as an agricultural-chemicals theme, not each in its own isolated cluster", () => {
+  assert.equal(resolveTheme("CF"), "agricultural-chemicals");
+  assert.equal(resolveTheme("MOS"), "agricultural-chemicals");
+  assert.equal(sameThesis("CF", "MOS"), true);
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("CF", "XOM"), false);
+  assert.equal(sameThesis("MOS", "NVDA"), false);
+});
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-10-31, live finding): a
+// real committed book held KTOS (Kratos Defense) and RDW (Redwire) concurrently LONG with
+// neither ticker mapped anywhere in sector-map.ts, so both resolved to isolated
+// `NAME:KTOS`/`NAME:RDW` own-clusters and neither position's play-brief rendered a "Book
+// context" section at all — same gap shape as every other extension in this file. KTOS and RDW
+// are confirmed via Polygon reference (`/v3/reference/tickers/<T>`) as sharing the identical
+// SIC code 3760 "GUIDED MISSILES & SPACE VEHICLES & PARTS" — both small-cap tactical-systems/
+// space-component makers. LHX (SIC 3812, a $50B+ prime contractor — adjacent but NOT the same
+// SIC) and NN (SIC 3812 purely by generic-code coincidence, no real defense-prime overlap) are
+// deliberately excluded rather than folded in on a looser SIC match.
+test("KTOS and RDW (small-cap tactical/space-systems makers) cluster together as a defense-space-systems theme, not each in its own isolated cluster", () => {
+  assert.equal(resolveTheme("KTOS"), "defense-space-systems");
+  assert.equal(resolveTheme("RDW"), "defense-space-systems");
+  assert.equal(sameThesis("KTOS", "RDW"), true);
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("KTOS", "NVDA"), false);
+  assert.equal(sameThesis("RDW", "XOM"), false);
+  // LHX and NN stay excluded — adjacent/coincidental SIC match, not the same risk driver.
+  assert.equal(sameThesis("KTOS", "LHX"), false);
+  assert.equal(sameThesis("RDW", "NN"), false);
+  assert.equal(resolveTheme("LHX"), "NAME:LHX");
+  assert.equal(resolveTheme("NN"), "NAME:NN");
 });

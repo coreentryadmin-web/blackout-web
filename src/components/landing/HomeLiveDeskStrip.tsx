@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { PublicGexSnapshot, PublicGexTicker } from "@/lib/public-gex-snapshot-types";
-import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
+import { LIVE_MARKETING_PRODUCTS } from "@/lib/marketing/products";
 
 function fmtLevel(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -81,7 +81,7 @@ export function HomeLiveDeskStrip({ gamma: initial }: { gamma: PublicGexSnapshot
         ? `GEX · live · ${ageSec}s`
         : `GEX · ${ageSec}s ago`;
 
-  const modules = MARKETING_PRODUCTS.filter((p) => p.launchStatus === "live");
+  const modules = LIVE_MARKETING_PRODUCTS;
 
   return (
     <div className="home-live-strip" aria-label="Live desk snapshot">

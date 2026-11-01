@@ -16,6 +16,7 @@ import {
   playFullMinScore,
   playGexStaleMaxSec,
   playMinAgreeingFactors,
+  playMinGradeLabel,
   playMinGradeRank,
   playMinRiskReward,
   playOnlyFullEntry,
@@ -85,6 +86,67 @@ export const GATE_BLOCK = {
   REENTRY_LOCK: "Re-entry lock",
   MIXED_TAPE: "Tape's mixed",
 } as const;
+
+/**
+ * Mixed-tape sub-check as a standalone, pure verdict — the exact "weighted_conflicts has
+ * crossed the grade-scaled hard-block threshold" condition `evaluatePlayGates` below applies,
+ * extracted so a caller that cannot run the FULL gate stack (trade governor, halt checks,
+ * session-entry counters, playbook live-gate — all meaningless when no entry is possible at
+ * all, e.g. market closed) can still get the identical mixed-tape verdict instead of silently
+ * skipping it. Returns the block/warning text, or null when the tape isn't mixed enough to
+ * flag. `evaluatePlayGates` itself calls this (see below) so the two can never drift apart —
+ * extracting the shared math once up front, rather than hand-rolling two copies, is the point.
+ *
+ * Added 2026-10-26: this was the missing link behind a confirmed desk_context/gates
+ * incoherence — `spx-play-context.ts`'s `buildSpxPlayDeskContext` independently recomputes
+ * `desk_context.mixed_tape_blocked` off this same condition unconditionally (every response,
+ * gates evaluated or not), while `spx-play-engine.ts`'s closed-market branch hand-built a
+ * `{blocks:["Session closed"], warnings:[]}` gate result without ever calling this check — so a
+ * real closed-market response could show `mixed_tape_blocked:true` with no "Tape's mixed" text
+ * anywhere in `gates`. See `spx-play-engine.ts`'s closed-market branch for the consumer.
+ */
+export function mixedTapeGateMessage(
+  confluence: Pick<SpxConfluence, "weighted_conflicts" | "grade" | "score">
+): string | null {
+  const abs = Math.abs(confluence.score);
+  if (confluence.weighted_conflicts >= mixedTapeBlockThreshold(confluence.grade, abs)) {
+    return `${GATE_BLOCK.MIXED_TAPE} — too many conflicting signals for clean entry`;
+  }
+  return null;
+}
+
+/**
+ * Hard-stale threshold (ms) for the UW flow feed — beyond this (and with no live SPX/SPXW flow-
+ * cohort heartbeat), a BUY-intent entry is blocked below. Named so `isFlowDataStale` and the
+ * block message agree on one number instead of two copies of `300_000` drifting apart.
+ */
+export const FLOW_HARD_STALE_MS = 300_000;
+
+/**
+ * Pure "is flow data genuinely stale" verdict — the exact `flowAgeMs > FLOW_HARD_STALE_MS &&
+ * !clusterLive` condition the BUY-intent hard block below applies, extracted the same way
+ * `mixedTapeGateMessage` above was extracted: so a caller that cannot run the full gate stack
+ * (the closed-market branch — no entry is ever possible once the market's closed) can still ask
+ * the identical freshness question instead of inventing its own threshold, or skipping the
+ * question entirely.
+ *
+ * BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
+ * closed): before this existed, nothing played this role for the closed-market branch, so flow/
+ * tape-derived factors ("0DTE flow", "HELIX sweeps", "Live tape", "Net prem" — see
+ * FLOW_DERIVED_FACTOR_LABELS, spx-play-engine.ts) were served with zero staleness disclosure no
+ * matter how old `desk.flow_0dte_net`/`desk.unified_tape`/`desk.net_prem_ticks` actually were.
+ * Confirmed live: a Saturday GET /api/market/spx/play served a +14-weight "0DTE flow" factor
+ * ("Call premium leading 0DTE tape") built from data `flow_data_age_ms` reported as ~17.4h
+ * (62,672,013ms) old — 35% of the published score of 40 — with no disclosure anywhere in the
+ * response, while this exact live-market gate already treats anything past `FLOW_HARD_STALE_MS`
+ * as unreliable for a BUY. See `spx-play-engine.ts`'s closed-market branch for the consumer.
+ */
+export function isFlowDataStale(
+  flowAgeMs: number | null | undefined,
+  clusterLive: boolean
+): boolean {
+  return flowAgeMs != null && flowAgeMs > FLOW_HARD_STALE_MS && !clusterLive;
+}
 
 /** Grade-scaled mixed-tape hard block — A setups tolerate one extra soft counter-trend signal. */
 export function mixedTapeBlockThreshold(grade: string, absScore?: number): number {
@@ -311,8 +373,8 @@ export function evaluatePlayGates(
     blocks.push(`Desk data stale (${Math.round(deskStaleSec)}s)`);
   }
 
-  const mixedTapeMsg = `${GATE_BLOCK.MIXED_TAPE} — too many conflicting signals for clean entry`;
-  if (confluence.weighted_conflicts >= mixedTapeBlockThreshold(confluence.grade, abs)) {
+  const mixedTapeMsg = mixedTapeGateMessage(confluence);
+  if (mixedTapeMsg) {
     if (buyIntent) {
       blocks.push(mixedTapeMsg);
     } else {
@@ -321,7 +383,16 @@ export function evaluatePlayGates(
   }
 
   if (gradeRank(confluence.grade) < playMinGradeRank()) {
-    const gradeMsg = `Grade ${confluence.grade} below minimum (need B or better)`;
+    // BUG FIX (2026-10-31): this used to hardcode "need B or better" regardless of the actual
+    // configured floor. playMinGradeRank() reads SPX_PLAY_MIN_GRADE and defaults to B, so the
+    // message happened to be correct as long as that env var stayed unset — but the gate
+    // condition above always used the REAL configured rank, so an operator override (e.g.
+    // SPX_PLAY_MIN_GRADE=A) would fire this block correctly while the displayed reason kept
+    // claiming the floor was still B. Same bug class as the cold-BUY grade block below (fixed
+    // 2026-10-21 for "B setups" -> confluence.grade) — this earlier, more general block still
+    // hardcoded the floor's NAME. playMinGradeLabel() derives the label from the same rank the
+    // gate condition itself used, so the two can never disagree.
+    const gradeMsg = `Grade ${confluence.grade} below minimum (need ${playMinGradeLabel()} or better)`;
     if (buyIntent) {
       blocks.push(gradeMsg);
     } else {
@@ -349,7 +420,11 @@ export function evaluatePlayGates(
     );
   }
   if (buyIntent && opts?.cold_buy_path && !stagingLab && gradeRank(confluence.grade) < gradeRank("A")) {
-    blocks.push("Cold BUY requires grade A or better — B setups need WATCH→ENTRY");
+    // BUG FIX (2026-10-21): this message used to hardcode "B setups" regardless of the play's
+    // actual grade, even though the gate condition above fires for ANY sub-A grade (B, C, D, F
+    // alike) — a live production repro showed a grade-C play (score 40) surfacing a block that
+    // read as if the rule were about "B setups". Interpolate the real grade instead.
+    blocks.push(`Cold BUY requires grade A or better — ${confluence.grade} setups need WATCH→ENTRY`);
   }
 
   const etMins = etMinutes(new Date());
@@ -423,12 +498,18 @@ export function evaluatePlayGates(
   // Post-stop / re-entry locks enforced by Trade Governor
 
   // Flow staleness: if the UW flow feed has been silent > 5 min, entries are blocked —
-  // unless the cluster heartbeat confirms another replica is delivering live WS frames
-  // (this replica's in-memory stamp can lag even when the tape rows are current).
+  // unless the SPX/SPXW flow-cohort heartbeat confirms another replica is delivering a
+  // live WS frame for SPX's OWN tape specifically (this replica's in-memory stamp can lag
+  // even when SPX's own tape rows are current). `desk.flow_cluster_live` is sourced from
+  // isFlowFreshForSpxCohort (@/lib/flow-liveness), NOT the market-wide
+  // isFlowFrameFreshAnywhere — the latter is true whenever ANY ticker anywhere in the
+  // market delivered a frame recently and cannot tell "SPX is live" apart from "something
+  // unrelated is live", which silently disabled both gates below until the
+  // spx-flow-staleness-market-wide-signal fix (2026-10-26).
   const flowAgeMs = desk.flow_data_age_ms;
   const clusterLive = desk.flow_cluster_live === true;
-  if (buyIntent && flowAgeMs != null && flowAgeMs > 300_000 && !clusterLive) {
-    blocks.push(`Flow data stale (${Math.round(flowAgeMs / 60_000)}m) — tape and 0DTE signals unreliable`);
+  if (buyIntent && isFlowDataStale(flowAgeMs, clusterLive)) {
+    blocks.push(`Flow data stale (${Math.round(flowAgeMs! / 60_000)}m) — tape and 0DTE signals unreliable`);
   } else if (flowAgeMs != null && flowAgeMs > 120_000 && !clusterLive) {
     warnings.push(`Flow data ${Math.round(flowAgeMs / 60_000)}m old — tape signal may lag`);
   }

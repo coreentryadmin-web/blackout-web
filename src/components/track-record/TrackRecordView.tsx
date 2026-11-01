@@ -13,10 +13,7 @@ import type { FreshnessStatus } from "@/components/ui/FreshnessChip";
 import { TrackRecordSkeleton } from "./TrackRecordSkeleton";
 import { TrackRecordProductCard } from "./TrackRecordProductCard";
 import { PlayHistoryTable } from "./PlayHistoryTable";
-import {
-  TRACK_RECORD_EMBED_SNIPPET,
-  TRACK_RECORD_POLL_MS,
-} from "./format";
+import { TRACK_RECORD_POLL_MS } from "./format";
 import type { TrackRecordLoadState, TrackRecordPayload } from "./types";
 
 function freshnessForPayload(data: TrackRecordPayload, fetchedAt: Date): FreshnessStatus {
@@ -36,7 +33,6 @@ export function TrackRecordView({ embedded = false }: TrackRecordViewProps) {
   const loadedOnce = useRef(false);
   const inFlight = useRef(false);
   const pending = useRef(false);
-  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     if (inFlight.current) {
@@ -88,13 +84,6 @@ export function TrackRecordView({ embedded = false }: TrackRecordViewProps) {
       window.removeEventListener("focus", onFocus);
     };
   }, [load]);
-
-  const handleCopy = () => {
-    void navigator.clipboard.writeText(TRACK_RECORD_EMBED_SNIPPET).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
 
   const isInitialLoad = state.kind === "loading" && !loadedOnce.current;
 
@@ -190,24 +179,6 @@ export function TrackRecordView({ embedded = false }: TrackRecordViewProps) {
                   Showing cached snapshot while live scoring catches up.
                 </p>
               )}
-            </Card>
-
-            <Card padding="sm" accent="none">
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-secondary">
-                Embed on your site
-              </p>
-              <pre className="mt-3 overflow-x-auto rounded-lg border border-white/[0.08] bg-void-deep p-3 font-mono text-[11px] text-cyan-400">
-                {TRACK_RECORD_EMBED_SNIPPET}
-              </pre>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mt-3"
-                onClick={handleCopy}
-                aria-live="polite"
-              >
-                {copied ? "Copied" : "Copy snippet"}
-              </Button>
             </Card>
           </div>
         )}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { clsx } from "clsx";
 import { motion } from "framer-motion";
 
@@ -31,6 +32,16 @@ export function IosNativeSegment<T extends string>({
   variant = "default",
   "aria-label": ariaLabel = "View lens",
 }: Props<T>) {
+  // Framer Motion requires `layoutId` to be unique among simultaneously-mounted elements — when
+  // two carry the same id, it treats them as ONE logical element and only the most-recently-
+  // mounted copy's indicator stays visible; the other instance's active tab silently loses its
+  // pill. This component is reused for several independent segmented controls that DO render at
+  // once on the same screen (HelixPageShell mounts both `IosIntelligenceHubSegment`'s Flow/Thermal
+  // switcher and FlowFeed's own "Live tape / Analytics" lens switcher together on the native iOS
+  // /flows page), so a shared literal id here collided across instances. `useId()` scopes the
+  // layoutId to this component instance so the shared-layout slide animation still works WITHIN
+  // one segmented control while no longer colliding with any other instance on the page.
+  const uid = useId();
   return (
     <div
       className={clsx(
@@ -55,7 +66,7 @@ export function IosNativeSegment<T extends string>({
           >
             {active && (
               <motion.span
-                layoutId="ios-native-segment-indicator"
+                layoutId={`ios-native-segment-indicator-${uid}`}
                 className="ios-native-segment-indicator"
                 transition={SEGMENT_SPRING}
                 aria-hidden

@@ -5,6 +5,7 @@ import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
 import { isProductionRuntime, dbConfigured } from "@/lib/db";
 import { freshestFeedAgeMs, classifyFeedStaleness } from "@/lib/ws/feed-staleness";
 import { isFlowFrameFreshAnywhere } from "@/lib/flow-liveness";
+import { pushWithStableId } from "@/lib/admin-spx-issue-id";
 
 export type SpxIssueSeverity = "critical" | "warning" | "info";
 
@@ -32,14 +33,17 @@ export type SpxAdminIssuesPayload = {
   }>;
 };
 
+// The default-id assignment (and the BUG it fixes — the id used to bake in the array INDEX the
+// issue happened to land at) now lives in `pushWithStableId` (admin-spx-issue-id.ts, a
+// dependency-free sibling module), so the exact mechanism is unit-testable under the plain node
+// test runner without pulling in this file's "server-only"-guarded transitive imports
+// (buildMarketHealthSnapshot -> ... -> gex-positioning.ts). See that file's header for the full
+// root-cause writeup.
 function push(
   issues: SpxAdminIssue[],
   row: Omit<SpxAdminIssue, "id"> & { id?: string }
 ): void {
-  issues.push({
-    id: row.id ?? `${row.category}:${issues.length}:${row.title.slice(0, 24)}`,
-    ...row,
-  });
+  pushWithStableId(issues, row);
 }
 
 export async function buildSpxAdminIssues(input: {
@@ -144,6 +148,28 @@ export async function buildSpxAdminIssues(input: {
       detail: desk.data_quality.missing.length
         ? `Missing: ${desk.data_quality.missing.join(", ")}`
         : "VIX9D missing — using 3M only",
+    });
+  }
+
+  // `oi_changes`/`iv_term_structure` are PERMANENTLY absent from `desk.data_quality.missing`
+  // (buildDeskDataQuality() in spx-desk.ts pushes them unconditionally — no function anywhere
+  // computes real data for either field) — a standing structural gap, not a VIX feed outage.
+  // Surface it in its OWN, always-evaluated check rather than piggybacking on the
+  // `vix_term_partial` block above: that block only fires when the VIX curve itself is
+  // degraded, which is usually false, so gating this disclosure on it would mean the admin
+  // dashboard almost never shows these two fields are dead. `info`, not `warning` — this is
+  // known, standing behavior to track, not an incident to page on.
+  const deadFeeds = (desk.data_quality?.missing ?? []).filter(
+    (f) => f === "oi_changes" || f === "iv_term_structure"
+  );
+  if (deadFeeds.length) {
+    push(issues, {
+      severity: "info",
+      category: "desk",
+      title: "OI-change / IV-term-structure not computed",
+      detail: `${deadFeeds.join(", ")} always empty — no function computes real data for ${
+        deadFeeds.length > 1 ? "these fields" : "this field"
+      } yet (structural gap, not a feed fault)`,
     });
   }
 

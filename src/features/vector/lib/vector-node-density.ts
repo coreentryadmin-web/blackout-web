@@ -13,11 +13,14 @@
  *  - Measured row supply after the hysteresis pass (#2309): SPX carries ~28 continuously-present
  *    rows across both sides, single names 16-21. So 20/side is reachable on an index and
  *    saturating on a single name, which is exactly where a ladder should stop.
- *  - The chart's automatic count (`wallCountForTimeframe`) already walks 6 → 20 with the timeframe,
- *    because a wider price band deserves more, further-out walls. The manual steps are a subset of
- *    that same walk so AUTO and a manual pick are never in different units.
+ *  - The chart's automatic count (`wallCountForTimeframe`) already walks 8 → 20 with the timeframe
+ *    (8/11/13/16/20, see that function's own comments), because a wider price band deserves more,
+ *    further-out walls. The manual steps below are a DIFFERENT, member-facing ladder (6/8/12/16/20)
+ *    — not a subset of the auto walk's own values — so a manual pick and AUTO's resolved count can
+ *    land on different numbers; `nodeDensityLabel`'s "AUTO <n>" display is what keeps the two
+ *    legible against each other in the toolbar.
  *
- * AUTO (default) follows the timeframe walk (6 → 20) on dense ladders like SPX. On coarse single-name
+ * AUTO (default) follows the timeframe walk (8 → 20) on dense ladders like SPX. On coarse single-name
  * ladders it self-limits so candles keep ≥20% of the price-axis span (see vector-adaptive-nodes.ts).
  * Manual picks override and accept smaller candles.
  */

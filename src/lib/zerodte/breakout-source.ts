@@ -384,6 +384,16 @@ export function buildBreakoutSetup(input: {
     first_seen: null,
     last_seen: null,
     flow_quality: null,
+    // Real day % change magnitude off the SAME grouped-daily bar the whole-market screen already
+    // fetched (mover.gain) — no new fetch. screenBreakdownMovers stores `gain` as an absolute
+    // value (see its own doc), so `Math.abs` here is a no-op for breakouts and the correct
+    // magnitude for breakdowns; scoreMomentumRail only ever uses `Math.abs(change_pct)` anyway
+    // (rails/momentum.ts), so sign carries no information the rail would use. See the
+    // `change_pct` field doc on ZeroDteSetup (board.ts) for the full root-cause writeup this
+    // fixes: without this, the MOMENTUM rail had no third real input for this origin and was
+    // structurally capped near 62, tripping archetype-gates.ts's momentum_abs_floor (>=60) on
+    // real breakout continuations.
+    change_pct: Math.round(Math.abs(mover.gain) * 100 * 100) / 100,
   };
   // enrichSetup with a null dossier fills the enriched fields (condor from spot, technicals null,
   // gate/cortex/plan null) exactly as it does for an un-enriched flow setup — one code path.

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui";
 import {
   fmtSessionEventAge,
+  resolveSessionTimelineExpanded,
   sessionEventGlyph,
   sortSessionEventsNewestFirst,
   type ThermalSessionEvent,
@@ -22,7 +23,13 @@ export function ThermalSessionTimeline({
   className?: string;
 }) {
   const sorted = useMemo(() => sortSessionEventsNewestFirst(events), [events]);
-  const [expanded, setExpanded] = useState(() => sorted.length > 0 && sorted.length <= 3);
+  // Derived every render (not a `useState(() => ...)` lazy initializer, which froze this read
+  // at whatever `sorted.length` happened to be true on first mount — almost always 0, since the
+  // panel mounts empty before the session has produced any events, permanently defeating the
+  // short-list auto-expand for the rest of the day). `userOverride` lets a manual click win once
+  // the person has stated a preference; until then it tracks the live count every render.
+  const [userOverride, setUserOverride] = useState<boolean | null>(null);
+  const expanded = resolveSessionTimelineExpanded(sorted.length, userOverride);
   const nowMs = Date.now();
 
   if (sorted.length === 0) {
@@ -54,7 +61,7 @@ export function ThermalSessionTimeline({
         type="button"
         className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left outline-none transition-colors hover:bg-white/[0.03] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-400/60"
         aria-expanded={expanded}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setUserOverride(!expanded)}
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-sky-300/80">

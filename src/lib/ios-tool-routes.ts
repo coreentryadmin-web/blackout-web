@@ -124,24 +124,39 @@ const IOS_UTILITY_META: Record<
 
 /** Maps URL path → `data-ios-route` key (used by chrome + CSS). */
 export function getIosRouteKey(path: string): IosRouteKey {
-  if (path === "/dashboard" || path.startsWith("/dashboard/")) return "dashboard";
-  if (path.startsWith("/flows")) return "flows";
-  if (path.startsWith("/heatmap")) return "heatmap";
-  if (path.startsWith("/terminal")) return "largo";
-  if (path.startsWith("/nighthawk")) return "nighthawk";
-  if (path.startsWith("/vector")) return "vector";
-  if (path.startsWith("/meridian")) return "meridian";
-  if (path.startsWith("/account")) return "account";
-  if (path.startsWith("/faq")) return "faq";
-  if (path.startsWith("/learn")) return "learn";
-  if (path.startsWith("/upgrade")) return "upgrade";
-  if (path.startsWith("/admin")) return "admin";
+  // EXACT match or startsWith(`${prefix}/`) for every branch — never a bare `startsWith(prefix)`.
+  //
+  // BUG THIS FIXES: every branch below used to be a bare `p.startsWith(prefix)`, which the
+  // "/dashboard" branch alone was already fixed away from (see the query/hash fix this comment
+  // used to describe) — but that same fix was never applied to the other eleven branches, and the
+  // original comment even framed the bare form as deliberately "tolerating a suffix appended
+  // directly after the prefix". That tolerance is wrong whenever a REAL route's path happens to
+  // share a prefix with a tool/utility route without a `/` boundary. Two such routes already exist
+  // in this app: `/nighthawk-boards-preview` and `/vector-board-preview` (both top-level marketing
+  // preview pages under src/app/, siblings of `/nighthawk` and `/vector`, not sub-routes of them).
+  // `getIosRouteKey("/nighthawk-boards-preview")` returned `"nighthawk"` and
+  // `getIosRouteKey("/vector-board-preview")` returned `"vector"` — both wrong; a marketing preview
+  // page is not the Night Hawk or Vector tool. This is the exact inconsistency every sibling
+  // matcher in this file (`isIosToolRoute`, `getIosToolRouteIndex`, `getIosToolMeta`,
+  // `isIosNativeShellPath`) was already written to avoid via `p === prefix || p.startsWith(prefix + "/")`
+  // — this function is the one holdout. Unifying on that same rule fixes both real collisions and
+  // keeps the "/dashboard" branch's own query/hash handling (already correct) unchanged.
+  const p = normalizeIosPath(path);
+  const matches = (prefix: string) => p === prefix || p.startsWith(`${prefix}/`);
+  if (matches("/dashboard")) return "dashboard";
+  if (matches("/flows")) return "flows";
+  if (matches("/heatmap")) return "heatmap";
+  if (matches("/terminal")) return "largo";
+  if (matches("/nighthawk")) return "nighthawk";
+  if (matches("/vector")) return "vector";
+  if (matches("/meridian")) return "meridian";
+  if (matches("/account")) return "account";
+  if (matches("/faq")) return "faq";
+  if (matches("/learn")) return "learn";
+  if (matches("/upgrade")) return "upgrade";
+  if (matches("/admin")) return "admin";
   return "other";
 }
-
-export const IOS_TOOL_NAV_LABELS: Record<IosToolRoute, string> = Object.fromEntries(
-  IOS_TOOLS.map((t) => [t.href, t.label])
-) as Record<IosToolRoute, string>;
 
 export function isIosToolRoute(path: string): boolean {
   const p = normalizeIosPath(path);
@@ -245,8 +260,14 @@ export const IOS_NATIVE_SHELL_PATH_PREFIXES = [
 ] as const;
 
 export function isIosNativeShellPath(path: string): boolean {
+  // Strip a query string/hash before matching, same as isIosToolRoute/getIosToolMeta/
+  // getIosToolRouteIndex above (normalizeIosPath) — without it, a utility path carrying
+  // a query string or hash (e.g. "/account?from=upgrade", "/upgrade#plans") fails both the
+  // exact-match and the startsWith(`${prefix}/`) check and is wrongly read as not a
+  // native-shell path.
+  const p = normalizeIosPath(path);
   return IOS_NATIVE_SHELL_PATH_PREFIXES.some(
-    (prefix) => path === prefix || path.startsWith(`${prefix}/`)
+    (prefix) => p === prefix || p.startsWith(`${prefix}/`)
   );
 }
 

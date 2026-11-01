@@ -58,6 +58,20 @@ export function playMinGradeRank(): number {
 }
 
 /**
+ * The human-readable label for the floor playMinGradeRank() resolves to — "B" by default, but
+ * "A" if SPX_PLAY_MIN_GRADE=A, etc. Exists so a gate block message can state the REAL configured
+ * threshold instead of a hardcoded grade letter (see spx-play-gates.ts's "Grade X below minimum"
+ * block, which used to hardcode "need B or better" even when SPX_PLAY_MIN_GRADE overrode the
+ * floor to something else). Falls back to "B" for the same unrecognized-env-value case
+ * playMinGradeRank() itself falls back to rank 2, so the label always matches the rank actually
+ * used by the gate condition.
+ */
+export function playMinGradeLabel(): string {
+  const labels = ["D", "C", "B", "A", "A+"];
+  return labels[playMinGradeRank()] ?? "B";
+}
+
+/**
  * When true, only A/A+ full-size entries are allowed — starter/half-size entries are
  * suppressed. Default false (starter entries enabled at lower score thresholds).
  */
@@ -504,6 +518,20 @@ export function playbookFlowMaterialityMin(): number {
 /** Shared cache for GET /api/market/spx/play — collapses member polls into one eval per window. */
 export function playMemberReadCacheSec(): number {
   return num(process.env.SPX_PLAY_MEMBER_READ_CACHE_SEC, 5);
+}
+
+/**
+ * Fail-closed staleness bound for peekSpxPlayState()'s fast path (spx-service.ts). That path
+ * exists to serve `/api/market/spx/play` instantly without blocking on a fresh eval — but its
+ * underlying `peekServerCache` deliberately tolerates up to 10 minutes of staleness
+ * (`MAX_STALE_AGE_MS`, server-cache.ts) as a GENERIC worst case, which is 120x looser than this
+ * route's own claimed 5s freshness contract (`playMemberReadCacheSec`). A generous multiple of
+ * the real TTL — not the generic 10-minute ceiling — is what actually matches this route's
+ * intent: tolerate real refresh-latency jitter, not silently serve a many-minutes-old snapshot as
+ * if it were current.
+ */
+export function playMemberPeekMaxAgeSec(): number {
+  return num(process.env.SPX_PLAY_MEMBER_PEEK_MAX_AGE_SEC, 20);
 }
 
 export function gradeRank(grade: string): number {

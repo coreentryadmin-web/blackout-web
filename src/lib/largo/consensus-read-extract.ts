@@ -387,16 +387,38 @@ function extractNightHawkRead(result: any): SystemDirectionalRead | null {
     };
   }
 
-  const bullishCount = plays.filter((p: any) => p.direction === "long" || p.direction === "bullish").length;
-  const bearishCount = plays.filter((p: any) => p.direction === "short" || p.direction === "bearish").length;
+  // NEUTRAL-STRUCTURE FIX (same root cause as product-adapters.ts's nighthawkContribution): a
+  // committed 0DTE iron CONDOR is a delta-neutral 4-leg structure sold for a credit — condor.ts's
+  // own doc on its `direction` field: "carries the pin's nominal fade side for provenance but is
+  // UNUSED by the neutral structure's gates/grader". This extractor used to count every play's
+  // `direction` toward bullish/bearish regardless of structure, so a board with only condors (no
+  // real directional plays at all) could still report a confident "NIGHT_HAWK: bullish" or
+  // "bearish" system read into the whole-ecosystem consensus matrix below — fabricating a
+  // directional vote for a system that, on that board, actually had none. Condor rows are excluded
+  // from the tally the same way nighthawkContribution excludes them.
+  const directionalPlays = plays.filter((p: any) => !(p?.is_condor === true || String(p?.play_type ?? "").toUpperCase() === "CONDOR"));
+  if (directionalPlays.length === 0) {
+    return {
+      system: "NIGHT_HAWK",
+      direction: "neutral",
+      strength: 0,
+      basis: `${plays.length} committed 0DTE iron condor${plays.length === 1 ? "" : "s"} on the board (delta-neutral, no directional thesis) — no directional 0DTE plays`,
+      asOf: result.asOf ?? new Date().toISOString(),
+      sessionDate: etSessionDate(Date.now()) ?? undefined,
+      freshness: result.freshness ?? "live",
+    };
+  }
+
+  const bullishCount = directionalPlays.filter((p: any) => p.direction === "long" || p.direction === "bullish").length;
+  const bearishCount = directionalPlays.filter((p: any) => p.direction === "short" || p.direction === "bearish").length;
 
   const direction = bullishCount > bearishCount ? "bullish" : bullishCount < bearishCount ? "bearish" : "neutral";
-  const strength = Math.round((Math.abs(bullishCount - bearishCount) / plays.length) * 10);
+  const strength = Math.round((Math.abs(bullishCount - bearishCount) / directionalPlays.length) * 10);
 
   const basis =
     direction === "bullish"
-      ? `${bullishCount}/${plays.length} 0DTE plays bullish`
-      : `${bearishCount}/${plays.length} 0DTE plays bearish`;
+      ? `${bullishCount}/${directionalPlays.length} 0DTE plays bullish`
+      : `${bearishCount}/${directionalPlays.length} 0DTE plays bearish`;
 
   return {
     system: "NIGHT_HAWK",

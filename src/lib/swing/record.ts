@@ -27,7 +27,13 @@ export const SWING_RECORD_METHODOLOGY =
   "Swing records grade each roll-chain LEG independently against its own frozen multi-truth grade, then " +
   "form a chain composite that PRESERVES every leg's loss — a winning later leg never nets away a losing " +
   "earlier one (composite win = every graded leg positive). Sum / compounded returns are reported " +
-  "separately as the capital view and never relabel the outcome. A win is positive realized plan P&L.";
+  "separately as the capital view and never relabel the outcome. A win is positive realized plan P&L. " +
+  "NOTE: an exact 0% (breakeven) leg counts as a LOSS in this view (isSwingWin is deliberately binary — " +
+  "pnl>0 wins, everything else including exactly 0 does not) — see the summary's `breakevens` field for " +
+  "how many of the reported losses are exact breakevens rather than a real drawdown. The horizon-outcomes " +
+  "feed's mapSwingOutcome() reads the SAME realized_pnl_pct but classifies an exact 0% as its own " +
+  "\"breakeven\" label rather than a loss — the two views deliberately disagree on this one point rather " +
+  "than one silently overriding the other.";
 
 /** Win = positive realized plan P&L — identical to zerodte record.ts isZeroDteWin + the feature store. */
 export function isSwingWin(realizedPnlPct: number | null | undefined): boolean {
@@ -123,13 +129,24 @@ export function buildSwingRecord(chain: SwingLegRowLike[]): SwingRecord {
 
   const legs: SwingLegGrade[] = ordered.map((r) => {
     const graded = r.graded_at != null && finite(r.realized_pnl_pct);
+    // FIX (Ask Largo standing mandate, 2026-10-14): round at this SAME single point of truth as
+    // worstLegPnlPct below, for the identical reason — composite.sumPnlPct/compoundedReturnPct
+    // (further down) are computed from these per-leg values, and the API boundary's roundFloats()
+    // independently re-rounds this SAME field again for display. Without rounding here first, the
+    // composite (built from RAW per-leg P&Ls) can disagree with the DISPLAYED (separately-rounded)
+    // legs by a cent — live repro 2026-10-14: rootPositionId=37 (AAPL) legs shown as -22.3/47.37
+    // (sum 25.07 by hand) served composite.sumPnlPct 25.06, because rounding is not distributive
+    // over addition/compounding. `win` deliberately still checks the RAW `r.realized_pnl_pct`, not
+    // this rounded value — isSwingWin's strict `>0` must not flip on an ultra-tiny P&L that rounds
+    // to 0.00.
+    const realizedPnlPct = finite(r.realized_pnl_pct) ? round2(r.realized_pnl_pct) : null;
     return {
       positionId: r.id,
       rollSeq: r.roll_seq,
       ticker: r.ticker,
       direction: r.direction,
       status: r.status,
-      realizedPnlPct: finite(r.realized_pnl_pct) ? r.realized_pnl_pct : null,
+      realizedPnlPct,
       graded,
       win: graded && isSwingWin(r.realized_pnl_pct),
       grade: r.grade_json,
@@ -144,7 +161,18 @@ export function buildSwingRecord(chain: SwingLegRowLike[]): SwingRecord {
   const allLegsWon = gradedLegs.length > 0 && gradedLegs.every((l) => l.win);
 
   const pnls = gradedLegs.map((l) => l.realizedPnlPct!).filter(finite);
-  const worstLegPnlPct = pnls.length ? Math.min(...pnls) : null;
+  // FIX: round2'd, unlike a plain Math.min, so this matches what roundFloats() serves to the
+  // client at the API boundary (route.ts wraps the whole response in roundFloats(..., 2)). Before
+  // this fix, worstLegPnlPct was carried at full float precision while buildSwingRecordSummary's
+  // `breakevens` count (below) tested that RAW value for an exact 0. A tiny genuine non-zero P&L
+  // (e.g. -0.001%) rounds to a displayed "0" in the served `records[].composite.worstLegPnlPct" —
+  // JSON.stringify(-0) is even literally "0" — so a member/Largo reading the payload could count
+  // MORE records showing worstLegPnlPct:0 than summary.breakevens reports, a real self-contradiction
+  // within one response. Live-caught 2026-09-12: summary said breakevens:3, but 5 of 21 served
+  // records showed worstLegPnlPct:0. Rounding here first makes the exact-0 test (and every
+  // consumer of this field) agree with the number actually shown — roundFloats() at the API
+  // boundary is then a no-op on an already-2dp value, so this is the single point of truth.
+  const worstLegPnlPct = pnls.length ? round2(Math.min(...pnls)) : null;
   const sumPnlPct = pnls.length ? round2(pnls.reduce((a, b) => a + b, 0)) : null;
   // Compounded capital return — the honest money number. Deliberately SEPARATE from the outcome label:
   // it can be positive while the chain contains a real loss, and it is never allowed to relabel it.
@@ -196,11 +224,83 @@ export type SwingRecordSummary = {
   resolved_chains: number;
   wins: number;
   losses: number;
+  /**
+   * FIX (A) — docs/audit/findings-staging: how many of `losses` are chains whose composite outcome is
+   * "loss" ONLY because the worst graded leg's realized P&L was an exact 0% (never negative) — i.e. a
+   * breakeven, not a real drawdown. A SUBSET of `losses` (breakevens <= losses), not a separate bucket:
+   * `isSwingWin`'s deliberate binary semantics (pnl>0 wins, else loses — see this file's own doc comment
+   * on that function) are left UNCHANGED here, so `wins`/`losses`/`win_rate_pct` below are computed
+   * exactly as before this field was added. This surfaces, rather than silently resolves, the fact that
+   * `horizon-outcomes.ts`'s `mapSwingOutcome()` — the OTHER official swing grading path this repo ships,
+   * reading the SAME `realized_pnl_pct` — labels the identical input "breakeven", not "loss" (live
+   * 2026-09-09 30-day pull: 5 of 25 graded legs, all `swing.roll.markfreeze.v1` roll-freeze grades with
+   * `exit_mark === entry_premium` to the cent, landed in `losses` here). A chain qualifies exactly when
+   * `composite.outcome === "loss" && composite.worstLegPnlPct === 0` — since worstLegPnlPct is the MIN
+   * over every graded leg's P&L, a value of exactly 0 already proves no leg in that chain was negative
+   * (a negative min would report the real loss, not 0), so this is a precise, not approximate, count.
+   */
+  breakevens: number;
+  /**
+   * `opens` counts committed, still-live positions and is ADDITIVE across both live-trading
+   * engines this lane displays (Largo Product Contract: wrap, don't flatten). `buildSwingRecordSummary`
+   * itself only ever sees `swing_positions` chains, so it can only ever populate the native half
+   * (`nativeOpens`); the route layer (`@/app/api/market/swing/record/route.ts`) adds the Engine B
+   * (Banger) open count on top via `fetchBangerOpenCount()` — the same accessor
+   * `bookContextSection`'s live-book read already uses for this exact banger/swing split
+   * (`docs/audit/FINDINGS.md`, "Ask Largo swing Book context... blind to 94% of the live open
+   * book"). Without this, `opens` (and this panel's member-facing "Open" tile) undercounts by
+   * ~96% on a live book dominated by banger-origin positions — confirmed live 2026-09-23: 3
+   * native swing_positions opens vs 82 real committed positions on the board.
+   */
   opens: number;
+  /** Native `swing_positions`-only open count — exactly what `buildSwingRecordSummary` computes,
+   *  before the route layer adds banger opens into `opens` above. Kept for transparency per the
+   *  Largo Product Contract's additive principle. */
+  nativeOpens: number;
+  /** Engine B (Banger) open position count folded into `opens` above. 0 when the banger engine is
+   *  disabled (`BANGER_ENGINE_ENABLED=0`) or when `buildSwingRecordSummary` is called directly
+   *  (unit tests) rather than through the route. */
+  bangerOpens: number;
   win_rate_pct: number | null;
   avg_compounded_return_pct: number | null;
   low_n: boolean;
 };
+
+/** Statuses that mark a swing_positions row as a currently live, committed position — grading
+ *  only happens once a leg CLOSES or ROLLS, so a genuinely open row never has `graded_at` set. */
+const OPEN_SWING_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
+
+/** The subset of a swing_positions row {@link selectSwingRecordRootIds} needs. */
+export type SwingRecordRootSourceRow = {
+  id: number;
+  root_position_id: number | null;
+  graded_at: string | null;
+  status: string;
+};
+
+/**
+ * Root position ids to seed `/record`'s chain population from a page of swing_positions rows.
+ *
+ * A row seeds a root when it is GRADED (a closed/rolled leg, contributing a resolved chain) OR
+ * currently OPEN/HOLD/TRIM (a live, committed position — necessarily ungraded, since grading only
+ * happens once a leg closes or rolls; see this file's header). Before this function existed, the
+ * caller (the `/record` route) only seeded roots from graded rows, so a fresh position with no
+ * prior roll history — committed, live, but never yet graded — could never enter the chain
+ * population at all. `buildSwingRecordSummary`'s `opens` field (`records.length -
+ * resolved.length`) was then structurally guaranteed to read 0 regardless of how many positions
+ * were genuinely open — a dead counter presented to members/Largo as a measured fact (live repro
+ * 2026-09-16: 3 real OPEN/HOLD positions — CRWD#39, AAPL#38, AAPL#37 — with `summary.opens: 0`
+ * every single call, because none of the three has ever been graded or rolled).
+ */
+export function selectSwingRecordRootIds(rows: readonly SwingRecordRootSourceRow[]): number[] {
+  const roots = new Set<number>();
+  for (const row of rows) {
+    if (row.graded_at || OPEN_SWING_STATUSES.has(row.status)) {
+      roots.add(row.root_position_id ?? row.id);
+    }
+  }
+  return [...roots];
+}
 
 /** Aggregate member-facing summary over built chain records. */
 export function buildSwingRecordSummary(
@@ -210,6 +310,11 @@ export function buildSwingRecordSummary(
   const resolved = records.filter((r) => r.composite.chainResolved);
   const wins = resolved.filter((r) => r.composite.outcome === "win").length;
   const losses = resolved.filter((r) => r.composite.outcome === "loss").length;
+  // See the field's own doc comment above for why "outcome loss AND worstLegPnlPct === 0" is a precise
+  // (not approximate) test for "this chain lost purely on an exact breakeven leg, not a real drawdown".
+  const breakevens = resolved.filter(
+    (r) => r.composite.outcome === "loss" && r.composite.worstLegPnlPct === 0,
+  ).length;
   const opens = records.length - resolved.length;
   const decided = wins + losses;
   const compounded = resolved
@@ -226,7 +331,10 @@ export function buildSwingRecordSummary(
     resolved_chains: resolved.length,
     wins,
     losses,
+    breakevens,
     opens,
+    nativeOpens: opens,
+    bangerOpens: 0,
     win_rate_pct: decided > 0 ? Math.round((wins / decided) * 1000) / 10 : null,
     avg_compounded_return_pct: avgCompounded,
     low_n: decided < LOW_N_THRESHOLD,

@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 import type { PublicGexSnapshot, PublicGexTicker } from "@/lib/public-gex-snapshot-types";
 import { publicGexTickers } from "@/lib/public-gex-snapshot-types";
 import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
+import { runGuardedTickerLoad } from "@/components/landing/home-gamma-promo-ticker-guard";
 
 const TICKERS = publicGexTickers();
 
@@ -68,15 +69,33 @@ export function HomeGammaPromo({ initial, variant = "band" }: Props) {
   // directly contradicting the "Live" pill and "Refreshes live every 5 seconds" copy next to it.
   const [loading, setLoading] = useState(() => !hasLevels(initial));
 
+  // Guards a slower response for a ticker just switched away from overwriting a newer one —
+  // see home-gamma-promo-ticker-guard.ts for the race this prevents: the 5s background poll
+  // below and a manual ticker-pill click both call `loadTicker`, and without this, a stale poll
+  // tick for the ticker the member just clicked away from can resolve after the click's own
+  // fetch and repaint the wrong numbers under the newly-selected tab.
+  const wantedTickerRef = useRef<PublicGexTicker>(ticker);
+
   const loadTicker = useCallback(async (next: PublicGexTicker) => {
+    wantedTickerRef.current = next;
     setLoading(true);
     try {
-      const res = await fetch(`/api/public/gex-snapshot?ticker=${next}`, { cache: "no-store" });
-      if (res.ok) setSnapshot(await res.json());
+      await runGuardedTickerLoad(
+        next,
+        () => wantedTickerRef.current,
+        async () => {
+          const res = await fetch(`/api/public/gex-snapshot?ticker=${next}`, { cache: "no-store" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return (await res.json()) as PublicGexSnapshot;
+        },
+        (data) => setSnapshot(data)
+      );
     } catch {
       /* keep last good read */
     } finally {
-      setLoading(false);
+      // Only the still-current ticker's own call gets to clear the spinner — a superseded
+      // call's finally must not flip `loading` off while a newer request is still in flight.
+      if (wantedTickerRef.current === next) setLoading(false);
     }
   }, []);
 

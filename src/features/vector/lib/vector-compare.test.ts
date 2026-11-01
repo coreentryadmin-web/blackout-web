@@ -8,6 +8,8 @@ import {
   deskPath,
   isCompareMode,
   parseCompareTickers,
+  pruneStaleTickerEntries,
+  pruneStaleTickerMapEntries,
 } from "./vector-compare";
 
 test("parseCompareTickers: normalizes, dedupes, caps at max panes", () => {
@@ -91,6 +93,24 @@ test("fmtCompareSpot via compare-format: formats finite spot", async () => {
   assert.match(fmtCompareSpot(5432.1, "SPX"), /5,432\.10/);
 });
 
+test("fmtCompareSpot via compare-format: pins the en-US locale rather than deferring to the viewer's browser locale", async () => {
+  const { fmtCompareSpot } = await import("./vector-compare-format");
+  const original = Number.prototype.toLocaleString;
+  let capturedLocale: unknown = "not-called";
+  Number.prototype.toLocaleString = function (locale?: unknown, options?: unknown) {
+    capturedLocale = locale;
+    return original.call(this, locale as never, options as never);
+  };
+  try {
+    fmtCompareSpot(5432.1, "SPX");
+  } finally {
+    Number.prototype.toLocaleString = original;
+  }
+  // `undefined` here would mean "use the viewer's browser locale" (de-DE etc. flip the
+  // grouping/decimal separator meaning for a price figure) — must be pinned to "en-US".
+  assert.equal(capturedLocale, "en-US");
+});
+
 test("resolveCompareRaw: URL is the only source of truth for compare state", async () => {
   const { resolveCompareRaw, isCompareMode } = await import("./vector-compare");
 
@@ -146,6 +166,84 @@ test("loadCompareSeedsBounded: ALL failing still resolves — never rejects", as
   // Resolving with all-nulls lets the caller fall back to the primary seed it already holds.
   // Rejecting here is what stranded the UI, so the loader must never do it.
   assert.deepEqual(loaded, [null, null]);
+});
+
+test("pruneStaleTickerEntries: drops entries whose ticker left the active set", () => {
+  // THE BUG (member-visible, VectorCompareDesk): metaByTicker (drives the compare summary
+  // footer's long-γ/short-γ chip) had no general cleanup when the whole seeds array was swapped
+  // (applyPreset) — only removeTicker's own targeted delete. A ticker that left via a preset swap
+  // and later came back could render a real but STALE posture left over from its earlier mount.
+  const entries = { NVDA: "long", TSLA: "short", META: "unknown" };
+  const active = new Set(["NVDA", "META"]);
+  const next = pruneStaleTickerEntries(entries, active);
+  assert.deepEqual(next, { NVDA: "long", META: "unknown" });
+  assert.ok(!("TSLA" in next));
+});
+
+test("pruneStaleTickerEntries: returns the SAME reference when nothing is stale", () => {
+  const entries = { NVDA: "long", META: "unknown" };
+  const active = new Set(["NVDA", "META", "AMD"]); // AMD not present yet — not a reason to prune
+  const next = pruneStaleTickerEntries(entries, active);
+  assert.strictEqual(next, entries, "unchanged input must not force a new object (avoids an extra re-render)");
+});
+
+test("pruneStaleTickerEntries: an empty active set clears every entry", () => {
+  const entries = { NVDA: "long", TSLA: "short" };
+  const next = pruneStaleTickerEntries(entries, new Set());
+  assert.deepEqual(next, {});
+});
+
+test("pruneStaleTickerEntries: does not mutate the input record", () => {
+  const entries = { NVDA: "long", TSLA: "short" };
+  const snapshot = { ...entries };
+  pruneStaleTickerEntries(entries, new Set(["NVDA"]));
+  assert.deepEqual(entries, snapshot);
+});
+
+// Regression for VectorCompareDesk's `timelinesRef`: removing a pane (removeTicker / a preset
+// swap) did not itself prune the departed ticker's entry out of the Map — only the NEXT call to
+// handleReplayTimeline for some OTHER ticker did, as an unrelated side effect. This is
+// pruneStaleTickerEntries's exact same contract, just for the Map-keyed timelinesRef instead of a
+// plain Record — see pruneStaleTickerMapEntries's own doc comment for the full account.
+test("pruneStaleTickerMapEntries: drops entries whose ticker left the active set", () => {
+  const entries = new Map([
+    ["NVDA", [1, 2, 3]],
+    ["TSLA", [4, 5, 6]],
+    ["META", [7, 8, 9]],
+  ]);
+  const active = new Set(["NVDA", "META"]);
+  const next = pruneStaleTickerMapEntries(entries, active);
+  assert.deepEqual([...next.keys()], ["NVDA", "META"]);
+  assert.ok(!next.has("TSLA"), "a removed ticker's stale replay timeline must not survive");
+});
+
+test("pruneStaleTickerMapEntries: returns the SAME reference when nothing is stale", () => {
+  const entries = new Map([
+    ["NVDA", [1, 2, 3]],
+    ["META", [7, 8, 9]],
+  ]);
+  const active = new Set(["NVDA", "META", "AMD"]); // AMD not present yet — not a reason to prune
+  const next = pruneStaleTickerMapEntries(entries, active);
+  assert.strictEqual(next, entries, "unchanged input must not force a new Map (avoids a redundant unionTimeline recompute)");
+});
+
+test("pruneStaleTickerMapEntries: an empty active set clears every entry", () => {
+  const entries = new Map([
+    ["NVDA", [1, 2, 3]],
+    ["TSLA", [4, 5, 6]],
+  ]);
+  const next = pruneStaleTickerMapEntries(entries, new Set());
+  assert.deepEqual([...next.keys()], []);
+});
+
+test("pruneStaleTickerMapEntries: does not mutate the input Map", () => {
+  const entries = new Map([
+    ["NVDA", [1, 2, 3]],
+    ["TSLA", [4, 5, 6]],
+  ]);
+  const snapshot = new Map(entries);
+  pruneStaleTickerMapEntries(entries, new Set(["NVDA"]));
+  assert.deepEqual(entries, snapshot);
 });
 
 test("loadCompareSeedsBounded: a failure does not stall the concurrency window", async () => {

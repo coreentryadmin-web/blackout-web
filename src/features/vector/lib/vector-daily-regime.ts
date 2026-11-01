@@ -44,17 +44,27 @@ export function reduceSessionToDaily(date: string, samples: readonly WallHistory
     if (!last || s.time > last.time) last = s;
   }
   if (!last) return null;
+  // BUG FIX (round 254): `flip` was guarded with Number.isFinite before the "drop an empty row"
+  // check below, but `callWall`/`putWall` were only coerced with `?? null` at this point — which
+  // lets a non-null, NON-FINITE strike (e.g. NaN from a malformed upstream sample) slip past the
+  // `== null` test two lines down. The row then was NOT dropped there, yet still ended up with
+  // every field nulled out by the Number.isFinite guard that used to live only in the return
+  // statement — producing exactly the "row with no information" this function's own comment above
+  // says to drop rather than emit. Guard all three the same way, in the same place, before the
+  // drop check, so a non-finite callWall/putWall is treated identically to a non-finite flip.
   const flip = Number.isFinite(last.gammaFlip as number) ? (last.gammaFlip as number) : null;
-  const callWall = last.walls?.callWalls?.[0]?.strike ?? null;
-  const putWall = last.walls?.putWalls?.[0]?.strike ?? null;
+  const callWallRaw = last.walls?.callWalls?.[0]?.strike;
+  const callWall = Number.isFinite(callWallRaw) ? (callWallRaw as number) : null;
+  const putWallRaw = last.walls?.putWalls?.[0]?.strike;
+  const putWall = Number.isFinite(putWallRaw) ? (putWallRaw as number) : null;
   // A row with no level at all carries no information — drop it rather than emitting a gap the
   // chart would have to special-case.
   if (flip == null && callWall == null && putWall == null) return null;
   return {
     date,
     gammaFlip: flip,
-    callWall: Number.isFinite(callWall) ? callWall : null,
-    putWall: Number.isFinite(putWall) ? putWall : null,
+    callWall,
+    putWall,
     observed: last.modeled !== true,
   };
 }

@@ -249,6 +249,10 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
   color: var(--nh-desk-text-tertiary);
 }
 
+.nh-v2-page .vector-board-pick-scorecard {
+  color: var(--nh-desk-text-tertiary);
+}
+
 .nh-v2-page .vector-board-pnl.is-up {
   color: var(--nh-desk-up);
   text-shadow: none;

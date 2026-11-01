@@ -1,6 +1,7 @@
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxConfluence } from "@/features/spx/lib/spx-signals";
 import type { SpxPlayDirection } from "@/features/spx/lib/spx-signals";
+import { nearestWall } from "@/features/spx/lib/spx-signals";
 import { gradeRank } from "@/features/spx/lib/spx-play-config";
 import { keyLevelForDirection } from "@/features/spx/lib/spx-play-mtf";
 import { round5 } from "@/lib/round5";
@@ -23,7 +24,29 @@ function resolveLeanDirection(
   if (confluence.bias === "bearish") return "short";
   if (confluence.score >= 12) return "long";
   if (confluence.score <= -12) return "short";
-  return desk.above_vwap ? "long" : "short";
+  // Neutral bias, |score| < 12: still no "explicit lean" per the thresholds above, but the
+  // caller already computed and displays this score, so a fallback that CONTRADICTS its sign is
+  // actively misleading rather than merely uncertain. Live case that shipped this bug (2026-09-09
+  // audit cycle): score = +8 (net weakly bullish) with above_vwap = false (price below VWAP that
+  // snapshot) — the two disagree, and the old code used above_vwap unconditionally, producing a
+  // "Puts lean" line under a net-positive score. Prefer the score's own sign; only fall through to
+  // the VWAP-position proxy when the score carries no lean information at all (exactly zero).
+  if (confluence.score > 0) return "long";
+  if (confluence.score < 0) return "short";
+  // BUG FIX (2026-10-24, Ask Largo/5-engine standing mandate, live repro 2026-10-24 ~20:11 UTC
+  // closed-session SPX play: score=0, bias="neutral", confluence.direction=null — the exact
+  // all-neutral case this final fallback exists to handle): `desk.above_vwap` is NOT tri-state.
+  // Every writer of it (spx-desk.ts's `vwap != null ? price >= vwap : false`, mirrored in
+  // spx-desk-merge.ts/usePulseStream.ts) defaults it to the boolean `false` whenever `desk.vwap`
+  // itself is unknown (off-hours/pre-open, no sticky value either) — `false` there means "we don't
+  // know," not "price is below VWAP." Reading it unconditionally here treated that type-coercion
+  // artifact as a real directional signal, picking "short" ("Puts lean" in the rendered play idea)
+  // with ZERO actual evidence behind it. Gate on `desk.vwap != null` the same way `anchorPhrase`
+  // two functions down already does, and when VWAP is ALSO unknown, fall back to the day's real
+  // price change (`spx_change_pct`) — a genuine computed number, never a coerced placeholder.
+  if (desk.vwap != null) return desk.price >= desk.vwap ? "long" : "short";
+  if (desk.spx_change_pct != null) return desk.spx_change_pct >= 0 ? "long" : "short";
+  return "short";
 }
 
 function topFactorDetail(confluence: SpxConfluence, direction: SpxPlayDirection): string | null {
@@ -46,14 +69,28 @@ function anchorPhrase(
     if (desk.vwap != null && desk.price >= desk.vwap) {
       return `above VWAP ${desk.vwap.toFixed(0)}`;
     }
-    const support = desk.gex_walls?.find((w) => w.kind === "support");
+    // BUG FIX (2026-10-17, Ask Largo × Night Hawk Swings standing mandate, live repro 2026-10-17
+    // ~19:21 UTC SPX desk check): this used to be `desk.gex_walls?.find((w) => w.kind ===
+    // "support")` with no proximity selection. `gex_walls` is returned strike-descending, so
+    // `.find()` on the support-kind subset returned the FIRST support hit while scanning
+    // high-to-low — which, for the resistance branch below, is always the FARTHEST (highest-
+    // strike) resistance wall rather than the nearest one, producing an incoherent play_idea
+    // narrative (live repro: text cited "below 7900 resistance" — 240.56 pts from spot — while the
+    // factor that actually drove the score was "Into 0DTE resistance 7660", only 0.56 pts away).
+    // The support branch happened to get the nearest wall by coincidence of the descending sort
+    // order (supports sit below spot, so the first one scanning high-to-low is the closest), not
+    // by design, so it got the same proximity-aware fix for robustness rather than leaving it
+    // correct by accident. Reuses `nearestWall` (spx-signals.ts, exported for this call site) —
+    // the exact same resolver `buildLevels()` uses to pick the wall that drives the confluence
+    // score — so the narrative always cites the same level the score is keyed off of.
+    const support = nearestWall(desk.gex_walls ?? [], "support", desk.price, "below");
     if (support) return `above ${support.strike.toFixed(0)} support`;
     return `above ${key.toFixed(0)}`;
   }
   if (desk.vwap != null && desk.price <= desk.vwap) {
     return `below VWAP ${desk.vwap.toFixed(0)}`;
   }
-  const resist = desk.gex_walls?.find((w) => w.kind === "resistance");
+  const resist = nearestWall(desk.gex_walls ?? [], "resistance", desk.price, "above");
   if (resist) return `below ${resist.strike.toFixed(0)} resistance`;
   return `below ${key.toFixed(0)}`;
 }
@@ -128,7 +165,15 @@ export function humanizeGateBlock(
   desk: SpxDeskPayload,
   confluence: SpxConfluence
 ): string {
-  if (block.includes("headwinds") || block.includes("too many conflicts")) {
+  // BUG FIX (2026-10-20, Ask Largo/5-engine standing mandate, live repro): the real mixed-tape
+  // gate message (spx-play-gates.ts's mixedTapeMsg) reads "too many conflicting signals for clean
+  // entry" — this check matched "too many conflicts", a substring that never appears in it, so
+  // the mixed-tape block was NEVER humanized/deduped against the idea line produced by a separate
+  // gate (grade-below-minimum). Live evidence: gates.blocks carried both the raw, untouched
+  // mixed-tape string AND a humanized idea line for the same underlying condition, back to back,
+  // reading as two unrelated problems instead of one. "headwinds" never appears as a gate message
+  // anywhere in src/ (confirmed by grep) — dropped as dead code alongside the fix.
+  if (block.includes("too many conflicting signals")) {
     return buildPlayIdeaIntel(desk, confluence) ?? block;
   }
   if (block.includes("too low — quality setups only")) {
@@ -151,5 +196,27 @@ export function humanizeGateBlocks(
   desk: SpxDeskPayload,
   confluence: SpxConfluence
 ): string[] {
-  return blocks.map((b) => humanizeGateBlock(b, desk, confluence));
+  // BUG FIX (2026-09-28, Ask Largo/5-engine standing mandate, live repro): humanizeGateBlock
+  // replaces several UNRELATED raw gate reasons (grade-below-minimum, score-too-low, confirmations-
+  // too-weak, generic conflicts) with the SAME buildPlayIdeaIntel(desk, confluence) line, appending
+  // a different trailing clause per branch. Since it's a pure function of desk+confluence, any two
+  // raw gates that both blocked (a very common case — a weak setup usually fails grade AND score
+  // together) humanize to near-identical text, differing only by a trailing suffix — live repro:
+  // "Tape's mixed, but Calls lean — 7695 Call on watch · At 0DTE support node 7695 (+1 pts) ·
+  // waiting for grade confirmation" AND the same line without the suffix, back to back in the same
+  // gates.blocks array. A plain .map() had no way to notice the two calls converged on the same
+  // idea. Dedup by the idea line's own prefix (before any trailing " · ..." clause) rather than by
+  // the full humanized string, since the suffix carries no distinguishing information here — the
+  // FIRST occurrence is kept (raw gates are pushed in the order spx-play-gates.ts evaluates them,
+  // so the first one to reach this idea line is whichever gate rule ran first, not an arbitrary pick).
+  const seenIdeaPrefixes = new Set<string>();
+  const out: string[] = [];
+  for (const b of blocks) {
+    const humanized = humanizeGateBlock(b, desk, confluence);
+    const prefix = humanized.split(" · ")[0];
+    if (humanized !== b && seenIdeaPrefixes.has(prefix)) continue;
+    if (humanized !== b) seenIdeaPrefixes.add(prefix);
+    out.push(humanized);
+  }
+  return out;
 }

@@ -69,6 +69,34 @@ test("calculateMatrixDeltaFull: no previous matrix rounds every strike's gex sum
   assert.equal(s500.gex_call, 2000.01);
 });
 
+// BUG FIX (round 202): the array-cell-format branch of the shared `getGexRow` helper used to
+// index `previous.gex` with the loop index derived from CURRENT.strikes, silently assuming
+// previous.strikes[i] === current.strikes[i]. A strike window that shifts by one strike between
+// cron ticks (one strike rolls off, a new one appears) keeps the same strike COUNT (so the only
+// structural check in calculateMatrixDelta never catches it) while the strike AT a given index
+// changes — misattributing one snapshot's row to a different strike in the other snapshot.
+test("calculateMatrixDelta (array cell format): strikes are matched by VALUE, not raw array index — a shifted strike window must not misattribute an unchanged strike as updated", () => {
+  // Strike window shifted by one between ticks: 490 rolled off, 500 is newly in view.
+  // 495's own GEX did NOT change (2000 -> 2000) — only the WINDOW shifted.
+  const previous = matrix({
+    strikes: [490, 495],
+    expiries: ["2026-09-05"],
+    gex: [[1000], [2000]], // row 0 = strike 490, row 1 = strike 495
+  });
+  const current = matrix({
+    strikes: [495, 500],
+    expiries: ["2026-09-05"],
+    gex: [[2000], [3000]], // row 0 = strike 495 (unchanged), row 1 = strike 500 (new)
+  });
+  const delta = calculateMatrixDelta(previous, current);
+  assert.ok(delta, "strike 500 is brand new with real GEX, so a delta is still expected");
+  const s495 = delta.updated_strikes.find((s) => s.strike === 495);
+  assert.equal(s495, undefined, "strike 495's own GEX did not change — it must not be reported as updated");
+  const s500 = delta.updated_strikes.find((s) => s.strike === 500);
+  assert.ok(s500, "the newly-in-view strike 500 must be reported");
+  assert.equal(s500!.gex_call, 3000);
+});
+
 test("calculateMatrixDeltaFull: with a previous matrix, every strike is force-included and rounded", () => {
   const previous = matrix();
   const current = matrix({ gex: { "495": { "2026-09-05": 1_000 }, "500": { "2026-09-05": 2_000.005 } } });

@@ -1,7 +1,6 @@
 "use client";
 
 import { UserProfile } from "@clerk/nextjs";
-import { useAppAuth } from "@/lib/auth-client";
 
 const CLERK_APPEARANCE = {
   variables: {
@@ -52,7 +51,5 @@ const CLERK_APPEARANCE = {
 };
 
 export function AccountProfilePanel() {
-  const { email, tier, signOut, isLoaded } = useAppAuth();
-
   return <UserProfile appearance={CLERK_APPEARANCE} />;
 }

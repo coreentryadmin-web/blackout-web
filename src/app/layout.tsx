@@ -7,6 +7,7 @@ import { SITE } from "@/lib/site";
 import { Ga4Attribution } from "@/components/analytics/Ga4Attribution";
 import { OrganizationJsonLd, WebSiteJsonLd } from "@/components/seo/JsonLd";
 import { bingSiteVerificationToken, googleSiteVerificationToken } from "@/lib/seo/verification";
+import { manifestProductCount } from "@/lib/marketing/product-manifest";
 // PHOSPHOR LADDER token foundation — additive tokens + utility primitives, loaded
 // ONCE here so marketing = desk = ios all read the same instrument grid. Placed in
 // the root layout (globals.css is only imported per route-group) so the tokens are
@@ -87,7 +88,18 @@ export const metadata: Metadata = {
     description: SITE.tagline,
     siteName: SITE.name,
     url: SITE.url,
-    images: [{ url: IMAGES.ogImage, width: 1577, height: 997, alt: "BlackOut — 6 live engines, institutional-grade trading desk" }],
+    images: [
+      {
+        url: IMAGES.ogImage,
+        width: 1577,
+        height: 997,
+        // Derived from the manifest, not hand-typed — a hardcoded "6" here
+        // went stale the moment the catalog grew to 7 (same bug class as the
+        // 2026-09-04 Pricing SEO-description finding). See
+        // product-manifest-consistency.test.ts for the regression guard.
+        alt: `BlackOut — ${manifestProductCount()} live engines, institutional-grade trading desk`,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",

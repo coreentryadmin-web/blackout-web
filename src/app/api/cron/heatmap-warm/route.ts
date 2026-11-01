@@ -1,7 +1,11 @@
 // Cron: pre-warm the shared GEX heatmap matrix cache for the shared sticky universe
 // (static allowlist ∪ dynamic ≤100 / 14d — same set Vector records beads for).
-// Schedule: ~every 30-45s during market hours (registered in cron-registry.ts as
-// "heatmap-warm"; EventBridge wires the actual fire).
+// Schedule: EventBridge `cron(*/1 11-21 ? * MON-FRI *)` — 1/min, ~7am-5:59pm ET (registered in
+// cron-registry.ts as "heatmap-warm") — PLUS the in-app rth-warm-leader backing it up whenever a
+// run is overdue past its own ~81s p90 runtime (RTH_WRITER_HEAL_AFTER_MIN), including the wider
+// 4am-8pm ET pre-market/after-hours window EventBridge's own schedule doesn't cover at all. A
+// real full sweep itself takes ~60-110s (see OVERLAP_LOCK's doc comment below), so "~30-45s
+// cadence" (this comment's old claim) was never actually achieved — corrected 2026-10-08.
 //
 // THE POINT: the Heat Maps UI / Largo explain / gex-positioning all read fetchGexHeatmap(ticker),
 // which dedups per ticker through the in-memory + Redis matrix cache (and a single-flight guard).
@@ -14,12 +18,23 @@
 //
 // DELTA BROADCAST: after warming each ticker, calculate the delta vs. the previous snapshot
 // and broadcast to all active SSE subscribers (/api/market/gex-matrix-deltas). This gives
-// real-time perception (10-15s) while keeping the full rebuild to 30-45s cadence.
+// real-time perception (10-15s) while the full rebuild itself runs on a ~60-110s cadence (see
+// the schedule note above).
+//
+// CONCURRENCY (fixed 2026-10-08): the bulk "rest" of the universe (everything outside the small
+// priority/CORE set, typically 70-100+ names) used to fan out via a bare, unbounded
+// `Promise.allSettled` — every `fetchGexHeatmap` call fired at once, with nothing pacing how many
+// of their real per-ticker synchronous costs (chain-response JSON parse, GEX matrix build, depth
+// ladder) could land on this task's single event loop together. Now routed through the shared
+// `runPolygonPool` (POOL_MAX_CONCURRENCY=8), the same bounded-fan-out helper already used for the
+// Vector universe snapshot build for the identical reason. See the `restResults` call site below
+// for the full root-cause writeup.
 
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { runPolygonPool } from "@/lib/providers/polygon-rate-limiter";
 import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
 import { comparePresetWarmTickers } from "@/features/thermal/lib/thermal-compare-presets";
 import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
@@ -51,6 +66,27 @@ const OVERLAP_LOCK_KEY = "heatmap-warm:running";
 const OVERLAP_LOCK_TTL_SEC = 240;
 
 /**
+ * TTL for the per-ticker `gex-matrix-snapshot:<ticker>` cache entry (the "previous" snapshot
+ * `calculateMatrixDelta` diffs the new one against, below). This used to be a bare `120` with a
+ * comment claiming "cron fires ~every 30-45s" — the same stale cadence claim the header comment
+ * above already corrected on 2026-10-08 (real full-sweep runtime: p50=46.5s, p90=81.1s,
+ * p99=181.1s, max=209.2s) but this second copy of the claim was missed.
+ *
+ * Fixing the comment alone would leave 120s under-provisioned: OVERLAP_LOCK above serializes
+ * runs (no two ever overlap) and EventBridge only ticks once a minute, so a slow run pushes the
+ * NEXT actual run's start out to the next 60s-aligned tick after this one finishes — at the
+ * measured max (209.2s) that is a real, observable gap of up to ~240s between this ticker's
+ * snapshot being written and the same ticker being read again as "previous" next run. A TTL of
+ * 120s expires inside that gap: not a crash, but `calculateMatrixDelta` silently returns `null`
+ * for a null `previous` (see its own early-return), so the real-time delta broadcast this whole
+ * route exists to drive (see "DELTA BROADCAST" in the header) quietly skips a cycle for that
+ * ticker — and does so most on exactly the slow/congested runs where a fresher delta matters most.
+ * Matches OVERLAP_LOCK_TTL_SEC (240s), the already-established safety-net ceiling for this exact
+ * route's own measured worst case, rather than inventing a second, independently-tuned number.
+ */
+const GEX_MATRIX_SNAPSHOT_TTL_SEC = OVERLAP_LOCK_TTL_SEC;
+
+/**
  * Minimum re-run floor — independent of, and IN ADDITION TO, the hours gate above.
  *
  * Same structural gap fixed for desk-warm (#3540): `force=1` completely bypasses
@@ -65,12 +101,14 @@ const OVERLAP_LOCK_TTL_SEC = 240;
  * EventBridge, rth-warm-leader and the staleness watchdog all positively ruled out as the source).
  *
  * 10s sits safely BELOW every legitimate cadence for this specific cron so it never blocks real
- * traffic: rth-warm-leader's own heal threshold here is 20s (RTH_WRITER_HEAL_AFTER_MIN
- * ["heatmap-warm"], the TIGHTEST of any watched key — see rth-warm-leader-logic.ts) and its own
- * tick loop runs every 15s (TICK_MS, rth-warm-leader.ts); EventBridge's own schedule is ~30-45s
- * (this file's header comment). None of those legitimate paths re-requests this key sooner than
- * 10s ever would allow, so only an out-of-band replay loop tighter than the leader's own tick can
- * ever observe this floor.
+ * traffic: rth-warm-leader's own heal threshold here is 81s — the job's own p90 measured runtime
+ * (RTH_WRITER_HEAL_AFTER_MIN["heatmap-warm"], raised from a nonsensical 20s 2026-10-08 — see
+ * rth-warm-leader-logic.ts for why 20s let the leader re-dispatch a fresh full sweep on almost
+ * every tick) and its own tick loop runs every 15s (TICK_MS, rth-warm-leader.ts); EventBridge's
+ * OWN deployed schedule fires every 1 minute, 11:00-21:59 UTC Mon-Fri (confirmed live against the
+ * actual EventBridge rule, not this file's stale "~30-45s" header comment above). None of those
+ * legitimate paths re-requests this key sooner than 10s ever would allow, so only an out-of-band
+ * replay loop tighter than any of them can ever observe this floor.
  */
 const RERUN_COOLDOWN_KEY = "heatmap-warm:cooldown";
 const RERUN_COOLDOWN_SEC = 10;
@@ -174,7 +212,34 @@ async function runHeatmapWarm(req: NextRequest, started: number): Promise<NextRe
       coreResults.push({ status: "rejected", reason });
     }
   }
-  const restResults = await Promise.allSettled(rest.map((t) => fetchGexHeatmap(t)));
+  // `rest` is the BULK of the shared universe (everything outside the small priority/CORE set —
+  // typically 70-100+ names). This used to be a bare, unbounded `Promise.allSettled` over every
+  // `rest` ticker's `fetchGexHeatmap` call at once, with NO concurrency bound at all — exactly the
+  // "unbounded batch fan-out starves concurrent live traffic" bug class `runPolygonPool`'s own doc
+  // comment (polygon-rate-limiter.ts) says was already found and fixed for the Vector universe
+  // snapshot on 2026-09-04 (PR referenced there). This route was never migrated to the same fix:
+  // every one of those ~70-100 `fetchGexHeatmap` calls fired its real Polygon chain fetch at once,
+  // and however many landed in the same admission window resolved in a cluster and ran their (real,
+  // per-ticker: JSON-parse the chain response, build the GEX matrix, build the depth ladder —
+  // "~33x chain-size closed-form evaluations... 55-370ms", see the DEPTH_RANGE_PCT comment in
+  // polygon-options-gex.ts) SYNCHRONOUS post-processing back-to-back on this one task's single
+  // event loop, with nothing pacing how many landed together. Routing through `runPolygonPool`
+  // (POOL_MAX_CONCURRENCY=8 by default, the same helper and the same cap already proven safe for
+  // the Vector universe build) bounds how many of those synchronous bursts can ever be in flight
+  // at once, the same way it already does for that other call site.
+  const restResults = await runPolygonPool(
+    rest.map(
+      (t) =>
+        async (): Promise<PromiseSettledResult<Awaited<ReturnType<typeof fetchGexHeatmap>>>> => {
+          try {
+            const data = await fetchGexHeatmap(t);
+            return { status: "fulfilled", value: data };
+          } catch (reason) {
+            return { status: "rejected", reason };
+          }
+        }
+    )
+  );
   const orderedTickers = [
     ...priority.filter((t) => !coreSet.has(t)),
     ...core,
@@ -229,8 +294,7 @@ async function runHeatmapWarm(req: NextRequest, started: number): Promise<NextRe
 
       // Store current snapshot for next delta calculation
       try {
-        const snapshotTtlSec = 120; // 2 minutes; cron fires ~every 30-45s
-        await sharedCacheSet(cacheKey, currentSnapshot, snapshotTtlSec).catch(() => {
+        await sharedCacheSet(cacheKey, currentSnapshot, GEX_MATRIX_SNAPSHOT_TTL_SEC).catch(() => {
           // Redis optional; log but continue
           console.warn(`[cron/heatmap-warm] Failed to cache snapshot for ${ticker}`);
         });

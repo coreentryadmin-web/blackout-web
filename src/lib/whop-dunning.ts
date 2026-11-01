@@ -76,15 +76,27 @@ export async function markMembershipDunningGrace(membershipId: string): Promise<
 export async function clearMembershipDunningGrace(membershipId: string): Promise<void> {
   if (!membershipId) return;
 
+  let pgOk = true;
   if (dbConfigured()) {
     try {
       await dbQuery(`DELETE FROM whop_dunning_grace WHERE membership_id = $1`, [membershipId]);
     } catch (err) {
+      pgOk = false;
       console.error(`[whop-dunning] Postgres delete failed for ${membershipId}:`, err);
     }
   }
 
   await sharedCacheDel(DUNNING_PREFIX + membershipId);
+
+  // A failed Postgres delete leaves the durable row in place even though Redis was cleared —
+  // the member would appear out of grace until the next cache miss falls through to Postgres
+  // and finds the stale, not-yet-expired row, wrongly granting extra grace if they re-enter
+  // past_due before it naturally expires. Throw (mirroring markMembershipDunningGrace's own
+  // fail-on-store-failure pattern) so the webhook route's outer catch returns a 500, releases
+  // the idempotency claim, and lets Whop's redelivery retry this naturally-idempotent DELETE.
+  if (!pgOk) {
+    throw new Error(`Failed to clear dunning grace for ${membershipId} — Postgres delete failed`);
+  }
 }
 
 /** True when a past_due membership is within webhook-granted grace. Redis first (hot path),

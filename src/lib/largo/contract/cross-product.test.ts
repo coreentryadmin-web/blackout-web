@@ -111,6 +111,28 @@ test("zero contributions is well-formed, not a crash", () => {
   assert.equal(coverage(read).label, "0/0 products reporting");
 });
 
+test("confidence is REPORTED on the camp, not just withheld from the vote", () => {
+  // The module's own decision 2 says "Confidence is REPORTED, never multiplied by." The earlier
+  // test above ("confidence does NOT decide the outcome") only proved the second half; this proves
+  // the first half wasn't silently false — before the fix, `ProductSignal.confidence` was read by
+  // nothing in this file and never reached the caller at all.
+  const confident: ProductContribution = {
+    product: "helix",
+    signal: { ...sig("bullish", ["net premium +4.2M"]), confidence: { score: 0.95, basis: "n=200", sample_size: 200 } },
+  };
+  const silent: ProductContribution = {
+    product: "vector",
+    signal: sig("bullish", ["regime long-gamma"]), // honestly omitted — cannot calibrate
+  };
+  const read = joinProductSignals("SPX", [confident, silent]);
+  assert.equal(read.verdict, "aligned");
+  assert.equal(read.camps.length, 1);
+  const camp = read.camps[0];
+  assert.deepEqual(camp.confidence, [{ product: "helix", score: 0.95, basis: "n=200", sample_size: 200 }]);
+  // vector reported no confidence — it must NOT appear as a fabricated entry.
+  assert.equal(camp.confidence.some((c) => c.product === "vector"), false);
+});
+
 test("a three-way split keeps all three camps", () => {
   const read = joinProductSignals("SPX", [
     { product: "helix", signal: sig("bullish", ["a"]) },

@@ -1,5 +1,6 @@
 import { dbQuery, dbConfigured } from "@/lib/db";
 import { adminEmailAllowlist } from "@/lib/admin-emails";
+import { isInternalAuditEmail } from "@/lib/internal-audit-email";
 import type { Tier } from "@/lib/tiers";
 
 export type AdminUserRole = "admin" | "member";
@@ -23,6 +24,17 @@ export type AdminUserListStats = {
 export function parseAdminUserRole(value: unknown): AdminUserRole | undefined {
   if (value === "admin") return "admin";
   if (value === "member" || value === "" || value == null) return "member";
+  return undefined;
+}
+
+/**
+ * Strict allowlist for the admin tier-edit PATCH — unlike `parseTier` (which silently
+ * coerces any unrecognized value to "free" for callers that need a best-effort default,
+ * e.g. a Whop webhook payload), an admin mutation must REJECT a malformed/mistyped tier
+ * rather than silently demote the member to free with a 200 success response.
+ */
+export function parseAdminUserTier(value: unknown): Tier | undefined {
+  if (value === "free" || value === "community" || value === "premium") return value;
   return undefined;
 }
 
@@ -143,53 +155,68 @@ export async function listClerkUserIdsByDbFilters(
   };
 }
 
+type AdminUserStatsRow = {
+  email: string | null;
+  tier: string | null;
+  role: string | null;
+  membership_kind: string | null;
+};
+
+/**
+ * Bucket raw `users` rows into the same counts `AdminUserListStats` reports, excluding rows
+ * whose email is a recognized audit/test-harness account (`isInternalAuditEmail`) — the Clerk
+ * webhook already skips the welcome email/ops-Discord/Whop-sync for these accounts but still
+ * writes them into this Postgres mirror (`src/app/api/webhooks/clerk/route.ts`), so without this
+ * exclusion they silently accumulate here and corrupt the dashboard's stat tiles: a real-prod
+ * snapshot showed 1456/1600 rows counted as "admin" (an audit harness's default `publicMetadata`
+ * is `{role:"admin", tier:"premium"}`), driving Premium/Free/Community to 0 even though the user
+ * LIST underneath showed real `FREE`-access rows. Mirrors the bucket priority of the original SQL
+ * (`role='admin'`-or-allowlisted wins over every other bucket; the remaining three are each
+ * independently evaluated, matching `buildAdminUserFilterSql`'s own priority order).
+ */
+export function computeAdminUserListStats(
+  rows: AdminUserStatsRow[],
+  adminEmailsLower: string[]
+): AdminUserListStats {
+  let total = 0;
+  let premium = 0;
+  let admins = 0;
+  let community = 0;
+  let free = 0;
+
+  for (const row of rows) {
+    if (isInternalAuditEmail(row.email)) continue;
+    total++;
+
+    const isAdmin =
+      row.role === "admin" ||
+      (adminEmailsLower.length > 0 &&
+        row.email != null &&
+        adminEmailsLower.includes(row.email.toLowerCase()));
+    if (isAdmin) {
+      admins++;
+      continue;
+    }
+
+    if (row.tier === "premium") premium++;
+    if (row.membership_kind === "community" && (row.tier ?? "free") !== "premium") community++;
+    if (row.tier === "free" && !["community", "premium"].includes(row.membership_kind ?? "free")) {
+      free++;
+    }
+  }
+
+  return { total, premium, admins, community, free };
+}
+
 /** Global user counts for admin dashboard stats (Postgres mirror of Clerk metadata). */
 export async function getAdminUserListStats(): Promise<AdminUserListStats | null> {
   if (!dbConfigured()) return null;
 
-  const allow = adminEmailAllowlist();
-  const adminEmailClause =
-    allow.length > 0
-      ? `OR LOWER(email) = ANY($1::text[])`
-      : "";
-  const adminFilter = `(role = 'admin' ${adminEmailClause})`;
-  const params = allow.length > 0 ? [allow] : [];
-
-  const { rows } = await dbQuery<{
-    total: string;
-    premium: string;
-    admins: string;
-    community: string;
-    free: string;
-  }>(
-    `
-    SELECT
-      COUNT(*)::text AS total,
-      COUNT(*) FILTER (WHERE tier = 'premium' AND NOT ${adminFilter})::text AS premium,
-      COUNT(*) FILTER (WHERE ${adminFilter})::text AS admins,
-      COUNT(*) FILTER (
-        WHERE membership_kind = 'community' AND COALESCE(tier, 'free') <> 'premium' AND NOT ${adminFilter}
-      )::text AS community,
-      COUNT(*) FILTER (
-        WHERE tier = 'free'
-          AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium')
-          AND NOT ${adminFilter}
-      )::text AS free
-    FROM users
-  `,
-    params
+  const { rows } = await dbQuery<AdminUserStatsRow>(
+    `SELECT email, tier, role, membership_kind FROM users`
   );
 
-  const row = rows[0];
-  if (!row) return null;
-
-  return {
-    total: parseInt(row.total, 10),
-    premium: parseInt(row.premium, 10),
-    admins: parseInt(row.admins, 10),
-    community: parseInt(row.community, 10),
-    free: parseInt(row.free, 10),
-  };
+  return computeAdminUserListStats(rows, adminEmailAllowlist());
 }
 
 /** Keep Postgres users row aligned with Clerk metadata for admin search/reporting. */
@@ -246,4 +273,43 @@ export async function upsertAdminUserRow(input: {
   } catch (err) {
     console.warn("[admin-users] Postgres upsert failed:", err);
   }
+}
+
+/**
+ * Strict allowlist for the admin user-CREATE route's `tier` field — unlike `parseTier`
+ * (which silently coerces any unrecognized value to "free" for callers that need a
+ * best-effort default, e.g. a Whop webhook payload or legacy "pro"/"elite" aliases), an
+ * admin-initiated account creation must REJECT a malformed/mistyped tier rather than
+ * silently creating the member on "free" with a 201 success response that gives no
+ * indication anything was wrong.
+ */
+export function isValidCreateUserTier(value: unknown): boolean {
+  return value === "free" || value === "community" || value === "premium";
+}
+
+/**
+ * True only when `syncWhopMembershipForEmail`'s result actually updated THIS freshly-created
+ * user's Clerk metadata — i.e. it's safe to also mirror the resolved tier/billingKind into the
+ * `admin_users` DB cache row.
+ *
+ * WHY THIS EXISTS: `POST /api/admin/users/create` always writes `tier_managed_by: "admin"` into
+ * the new user's Clerk `publicMetadata` (a few lines before it calls `syncWhopMembershipForEmail`
+ * on the SAME email, without `{ ignoreAdminTierLock: true }`). `syncWhopMembershipForEmail`'s own
+ * admin-tier-lock guard (`isAdminManagedTier`) then finds that lock on every real run — the
+ * account it just created — and skips updating it, so its returned `tier`/`billingKind` default
+ * to "free" with an EMPTY `updatedUserIds`, regardless of whether the email actually has a real,
+ * active Whop membership. The create route used to write that resolved "free" into the
+ * `admin_users` row UNCONDITIONALLY (`upsertAdminUserRow({ tier: synced.tier, ... })`), silently
+ * stomping the tier/membershipKind the admin had just explicitly chosen (e.g. "premium") back to
+ * "free" in the DB cache on every single create — even though Clerk's own `publicMetadata.tier`
+ * (the real source of truth `GET /api/admin/users` reads) stayed correctly locked and untouched.
+ * The admin list's own tier/access FILTER is backed by this DB cache
+ * (`listClerkUserIdsByDbFilters`/`shouldUseDbAdminUserList`), so a freshly admin-created premium
+ * user would silently vanish from a "show premium users" filter immediately after creation.
+ */
+export function shouldApplyWhopSyncToCreatedUser(
+  createdUserId: string,
+  syncedUpdatedUserIds: string[]
+): boolean {
+  return syncedUpdatedUserIds.includes(createdUserId);
 }

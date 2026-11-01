@@ -13,8 +13,9 @@ export async function persistApiTelemetryEvent(event: ApiCallEvent): Promise<voi
       `INSERT INTO api_telemetry_events (
         event_id, correlation_id, provider, endpoint, method, status, ok,
         latency_ms, error, severity, rate_limited, sla_breach, attempt, max_attempts,
-        retry_status, phase, request_url, request_body, response_snippet, headers_sent, at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        retry_status, phase, request_url, request_body, response_snippet, headers_sent, at,
+        queue_wait_ms, cancel_reason
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
       ON CONFLICT (event_id) DO NOTHING`,
       [
         event.id,
@@ -38,6 +39,13 @@ export async function persistApiTelemetryEvent(event: ApiCallEvent): Promise<voi
         event.response_snippet,
         JSON.stringify(event.headers_sent),
         event.at,
+        // Phase 1 instrumentation (queue-wait vs. HTTP-execution split, cancel reason) —
+        // these two columns were added to the live in-memory event (api-telemetry.ts's
+        // recordApiCall) and to api-tracked-fetch.ts's callers, but this INSERT never
+        // carried them, so every persisted row silently dropped both fields. See the
+        // ALTER TABLE comment in db.ts's ensureSchema for the full incident this breaks.
+        event.queue_wait_ms ?? null,
+        event.cancel_reason ?? null,
       ]
     );
   } catch (err) {
@@ -72,6 +80,8 @@ export async function fetchPersistedApiEvent(eventId: string): Promise<ApiCallEv
       response_snippet: string | null;
       headers_sent: string[];
       at: Date;
+      queue_wait_ms: number | null;
+      cancel_reason: string | null;
     }>(
       `SELECT * FROM api_telemetry_events WHERE event_id = $1 LIMIT 1`,
       [eventId]
@@ -101,6 +111,8 @@ export async function fetchPersistedApiEvent(eventId: string): Promise<ApiCallEv
       severity: row.severity,
       request_body: row.request_body,
       sla_breach: row.sla_breach,
+      queue_wait_ms: row.queue_wait_ms ?? null,
+      cancel_reason: row.cancel_reason ?? null,
     };
   } catch {
     return null;

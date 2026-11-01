@@ -23,6 +23,25 @@ test("isCompleteBuild only passes a fan-out that lost nothing", () => {
   assert.equal(isCompleteBuild(0, 0), false);
 });
 
+// LIVE INCIDENT (2026-09-20): GET /api/market/vector/universe served 18/55 rows spot:null
+// (COIN, MSTR, PLTR, JPM, GS, ...) while a same-tick, uncontended GET /api/market/gex-heatmap
+// for those same tickers returned a real spot in under a second. `buildVectorUniverseRow`
+// ALWAYS returns a row object, even when `fetchGexHeatmap` fell back to spot:null after
+// blocking past its budget — so `attempted === produced` (row-count fan-out completeness) was
+// true even though a third of the rows carried no usable data, and the old 2-arg
+// `isCompleteBuild` let that "complete" build bypass the merge and replace the stored snapshot
+// outright, discarding any previous good spot with zero carry-forward protection.
+test("isCompleteBuild also requires the produced rows to carry USABLE data, not just exist", () => {
+  // Every ticker produced a row (21/21), but only 15 of them resolved a usable spot — the exact
+  // "block-cap timeout still returns A row" shape. Must NOT be treated as complete.
+  assert.equal(isCompleteBuild(21, 21, 15), false);
+  // All three bars clear: genuinely complete.
+  assert.equal(isCompleteBuild(21, 21, 21), true);
+  // Backward-compatible default: a caller that only tracks row count (doesn't pass the third
+  // arg) gets the OLD two-bar behavior unchanged.
+  assert.equal(isCompleteBuild(21, 21), true);
+});
+
 test("THE PRODUCTION INCIDENT: a 4-row build must not erase a 64-row roster", () => {
   // Measured live 2026-08-18: an incomplete fan-out persisted AMZN/FN/QQQ/SOXL over a healthy
   // 64-ticker snapshot, and it was served — ageing from 258s to 318s — for minutes.
@@ -157,6 +176,44 @@ test("merge tolerates empty, null and unusable input", () => {
   assert.deepEqual(mergeUniverseSnapshot(undefined, undefined, NOW).rows, []);
   // A row with no ticker cannot be keyed and must not blow up or produce a phantom entry.
   assert.deepEqual(mergeUniverseSnapshot(null, [{ ticker: "", asOf: NOW }], NOW).rows, []);
+});
+
+// LIVE INCIDENT (2026-09-20), the merge-layer half of the same defect: even when a null-spot
+// build IS routed through the merge (isCompleteBuild's fix above), the merge itself used to let
+// an undated fresh row (no new evidence) overwrite a previous, genuinely-dated carried row —
+// destroying the exact data the merge exists to protect, on the very cycle it should have been
+// preserved.
+test("an undated fresh row must NOT overwrite a still-good dated carried row for the same ticker", () => {
+  const previous = { updatedAt: NOW - 60_000, rows: [{ ticker: "COIN", asOf: NOW - 60_000, spot: 194.6 }] };
+  // This cycle's build re-attempted COIN, hit the block-cap fallback, and produced spot:null /
+  // asOf:null — evidence of nothing new, not evidence the old spot is wrong.
+  const merged = mergeUniverseSnapshot(previous, [{ ticker: "COIN", asOf: null, spot: null }], NOW);
+  assert.equal(merged.rows.length, 1);
+  assert.equal(
+    (merged.rows[0] as { spot: number | null }).spot,
+    194.6,
+    "the real, still-fresh spot must survive an undated re-attempt, not be nulled out"
+  );
+  // Already counted as carried by the previous-rows loop; the undated re-attempt must not
+  // double-count it as refreshed too (a ticker cannot be both, per the invariant above).
+  assert.equal(merged.carried, 1);
+  assert.equal(merged.refreshed, 0);
+});
+
+test("an undated fresh row STILL overwrites once the previously-carried row has genuinely gone stale", () => {
+  // The guard above must not become a NEW ratchet: once the carried row itself expires (dropped
+  // by the previous-rows loop), an undated fresh re-attempt behaves exactly as before — it can
+  // still start (and later expire) its own undatedSince clock, so a permanently-dead ticker still
+  // shrinks out of the universe eventually.
+  const previous = {
+    updatedAt: NOW - (UNIVERSE_ROW_MAX_AGE_MS + 1_000),
+    rows: [{ ticker: "DEAD", asOf: NOW - (UNIVERSE_ROW_MAX_AGE_MS + 1_000), spot: 1 }],
+  };
+  const merged = mergeUniverseSnapshot(previous, [{ ticker: "DEAD", asOf: null, spot: null }], NOW);
+  assert.equal(merged.rows.length, 1, "still attempted this cycle, so it re-enters as undated");
+  assert.equal((merged.rows[0] as { spot: number | null }).spot, null);
+  assert.equal(merged.expired, 1, "the stale carried row was correctly dropped first");
+  assert.equal(merged.refreshed, 1);
 });
 
 test("an empty build carries the whole stored roster forward untouched", () => {

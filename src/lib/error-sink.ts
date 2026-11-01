@@ -309,6 +309,19 @@ export async function countAuthFailures(sinceHours = 24): Promise<AuthFailureSum
   }
 }
 
+// `limit` here is whatever a caller passes through from a raw `?limit=` query param (see
+// `/api/admin/errors`). A fractional value (`limit=2.5`) is finite, so a bare
+// `Math.min(Math.max(1, limit), 500)` lets it survive untouched and reach `LIMIT $1` below as a
+// non-integer bound param — Postgres' bigint input parser rejects any decimal point
+// (`invalid input syntax for type bigint`), turning a malformed query param into an uncaught
+// 500 instead of rounding to the nearest in-range limit. `Math.trunc` (applied before the
+// non-finite fallback, so `Number.isFinite` still sees the ORIGINAL value) removes the fraction
+// before the clamp ever runs.
+export function clampErrorEventsLimit(limit: number): number {
+  const n = Number.isFinite(limit) ? Math.trunc(limit) : 100;
+  return Math.min(Math.max(1, n), 500);
+}
+
 export async function fetchRecentErrorEvents(limit = 100): Promise<ErrorEventRow[]> {
   // Lazy import keeps node-only `pg` out of this module's static (edge-traced) graph.
   const { dbConfigured, dbQuery } = await import("@/lib/db");
@@ -328,7 +341,7 @@ export async function fetchRecentErrorEvents(limit = 100): Promise<ErrorEventRow
        FROM error_events
        ORDER BY id DESC
        LIMIT $1`,
-      [Math.min(Math.max(1, limit), 500)]
+      [clampErrorEventsLimit(limit)]
     );
     return rows.map((r) => ({
       id: Number(r.id),

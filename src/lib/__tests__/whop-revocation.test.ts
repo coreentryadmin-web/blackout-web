@@ -80,12 +80,37 @@ test("Redis miss + no Postgres row is not revoked, with a negative backfill", as
   assert.equal(state.cache.get("whop:revoked:mem_3"), 0);
 });
 
-test("fresh negative cache (0) short-circuits without touching Postgres", async () => {
+test("a stale negative cache (0) still falls through to Postgres when NOT actually revoked", async () => {
   const { isMembershipRevoked } = await mod();
   resetState();
   state.cache.set("whop:revoked:mem_4", 0);
   assert.equal(await isMembershipRevoked("mem_4"), false);
-  assert.equal(state.dbCalls.length, 0);
+  // Falls through and re-verifies against Postgres rather than trusting the cached 0 blindly —
+  // mirrors isMembershipInDunningGrace's own "do not short-circuit on cached === 0" guard.
+  assert.equal(state.dbCalls.length, 1);
+});
+
+// REGRESSION (sibling-file asymmetry): whop-dunning.ts's isMembershipInDunningGrace explicitly
+// does NOT trust a cached 0, specifically because markMembershipDunningGrace's Postgres write can
+// land (and be durably true) while Redis still holds a stale negative written by an earlier,
+// concurrent miss — see that file's own test "stale Redis negative (0) still falls through to
+// Postgres when grace exists". isMembershipRevoked previously had no such guard: a concurrent
+// tier-resolution read that missed Redis and found no Postgres row YET (because the refund/
+// chargeback webhook's INSERT had not committed at the moment its SELECT ran) would cache a
+// negative — and if that negative-cache WRITE lands after markMembershipRevoked's own positive
+// write (ordinary async interleaving, no clock skew needed), it clobbers the correct "revoked=1"
+// with a wrong "revoked=0" for up to NOT_REVOKED_TTL_SEC (10 minutes), silently un-revoking a
+// refunded/disputed membership and granting premium access the webhook had just taken away.
+test("REGRESSION: a stale negative cache (0) does NOT mask a real revocation in Postgres", async () => {
+  const { isMembershipRevoked } = await mod();
+  resetState();
+  // Simulates the race: an earlier concurrent read missed Redis, found no Postgres row yet, and
+  // its negative-cache write landed (last) after markMembershipRevoked's own positive write.
+  state.cache.set("whop:revoked:mem_stale", 0);
+  state.dbRows = ["mem_stale"]; // the webhook's INSERT has since committed — this membership IS revoked
+  assert.equal(await isMembershipRevoked("mem_stale"), true);
+  // Also heals the hot cache back to the correct value for subsequent reads.
+  assert.equal(state.cache.get("whop:revoked:mem_stale"), 1);
 });
 
 test("mark: Postgres write succeeding is enough even when Redis verification fails", async () => {

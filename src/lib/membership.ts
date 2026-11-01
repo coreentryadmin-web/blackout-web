@@ -1,10 +1,11 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import type { MembershipListResponse } from "@whop/sdk/resources/memberships.js";
-import { type Tier } from "@/lib/tiers";
+import { parseTier, type Tier } from "@/lib/tiers";
 import {
   getWhopClient,
   PREMIUM_MEMBERSHIP_STATUSES,
   resolveBillingKindFromMemberships,
+  resolveTierFromMembership,
   resolveTierFromMemberships,
   type BillingKind,
 } from "@/lib/whop";
@@ -35,9 +36,146 @@ export function isAdminManagedTier(meta: Record<string, unknown> | undefined): b
  * (step 2) must re-check against Whop. Extracted to a pure predicate so the "which tiers get
  * self-healed on churn" question is unit-testable without standing up Clerk/Whop clients —
  * see the bug this fixes in the reconcile function's own comment.
+ *
+ * Normalizes through `parseTier` (not a raw literal comparison) so the legacy tier aliases
+ * "pro"/"elite" are included too — `parseTier` has always coerced those to "premium" for every
+ * OTHER consumer of `publicMetadata.tier` (tier-cache.ts's `resolveUserTier` grants real desk
+ * access off them right now), but this predicate previously compared the raw string, so a Clerk
+ * user whose metadata still carries the pre-"premium"-literal alias was invisible to this sweep —
+ * the same shape as the "community" omission fixed below, just one alias layer earlier.
  */
 export function isPaidTierForReconcileDowngradeCheck(tier: string): boolean {
-  return tier === "premium" || tier === "community";
+  const normalized = parseTier(tier);
+  return normalized === "premium" || normalized === "community";
+}
+
+/**
+ * Which `reconcileAllMemberships` summary bucket a resolved tier belongs in — pure so the
+ * three-way split is unit-testable without standing up Clerk/Whop clients, same reasoning as
+ * `isPaidTierForReconcileDowngradeCheck` above.
+ *
+ * `community` (SPX Slayer, $49/mo, added by #1159) is a real, distinct resolved tier from
+ * `syncWhopMembershipForEmail` — not a degenerate case of "not premium". A prior version of
+ * `syncOne` (this function's only caller) collapsed it to "free" via a bare
+ * `tier === "premium" ? "premium" : "free"`, so every reconciled community subscriber was
+ * silently mislabeled in the function's own return stats (and therefore in the cron's logged
+ * run + the `cron_job_runs.meta_json` row) — the member's real tier was written to Clerk
+ * correctly (that write happens inside `syncWhopMembershipForEmail` itself and is unaffected by
+ * this classification), but anyone reading the reconcile summary to answer "how many stayed
+ * premium vs actually dropped to free this run" saw every community resolution counted as a
+ * free-tier one, understating how many paid subscribers the sweep actually confirmed.
+ */
+export function reconcileStatsBucket(tier: Tier): "premium" | "community" | "free" {
+  if (tier === "premium") return "premium";
+  if (tier === "community") return "community";
+  return "free";
+}
+
+/**
+ * Pick which membership in `sorted` gets stamped as "the active one" for an email whose overall
+ * tier has ALREADY been resolved (via `resolveTierFromMemberships` over the same list). Extracted
+ * to a pure predicate — same reasoning as `isPaidTierForReconcileDowngradeCheck`/
+ * `reconcileStatsBucket` above — so this is unit-testable without standing up Clerk/Whop clients.
+ *
+ * `sortMemberships` orders purely by Whop STATUS (active > trialing > completed > past_due >
+ * canceling) and recency — it has no notion of premium vs community vs neither. So once an email
+ * holds more than one membership (a real premium subscription AND the $49 community add-on is the
+ * live case; `communityProducts.includes(productId)` in `resolveTierFromMembership` means these are
+ * never the same row), the membership that sorts FIRST is not necessarily the one that actually
+ * produced the resolved tier — e.g. a more-recently-created community row can sort ahead of an
+ * older, still-active premium row. The previous unconditional
+ * `sorted.find((m) => !revoked.has(m.id)) ?? sorted[0]` picked whichever one sorted first
+ * regardless of `tier`, so a `tier: "premium"` result could still stamp a COMMUNITY membership's
+ * id/plan as `activeMembership`.
+ *
+ * That desync isn't cosmetic: `activeMembership.plan.id` becomes `activeMembershipPlanId`, which
+ * `billing-lifecycle-email.ts` passes straight to `resolveBillingInterval()` to pick monthly-vs-
+ * annual copy for the welcome-premium transactional email — so a wrong pick can tell a real,
+ * currently-upgrading premium subscriber the wrong billing interval, sourced from a plan id that
+ * was never their premium plan. `activeMembership.id`/`activeMembership.user.id` also become the
+ * `whop_membership_id`/`whop_user_id` written to Clerk metadata and shown on the admin user
+ * dashboard (`/api/admin/users`), so a support lookup for a "premium" user could land on the
+ * community membership row instead.
+ *
+ * Fix: when the resolved tier is paid, prefer the first non-revoked membership whose OWN
+ * classification (`resolveTierFromMembership`) actually matches that tier. Falls back to the
+ * original "first non-revoked, else first overall" behavior for `tier === "free"` (nothing
+ * tier-specific to preserve) or if no membership happens to match (should not occur in practice,
+ * since `tier` was derived from this same list, but never leaves `activeMembership` undefined for
+ * a non-empty list).
+ */
+export function pickActiveMembershipForResolvedTier(
+  sorted: MembershipListResponse[],
+  revoked: ReadonlySet<string>,
+  tier: Tier,
+  dunningGraceIds?: ReadonlySet<string>
+): MembershipListResponse | undefined {
+  if (tier !== "free") {
+    const matching = sorted.find(
+      (m) =>
+        !revoked.has(m.id) &&
+        resolveTierFromMembership(m, { dunningGraceIds }) === tier
+    );
+    if (matching) return matching;
+  }
+  return sorted.find((m) => !revoked.has(m.id)) ?? sorted[0];
+}
+
+type EmailTierResolution = {
+  tier: Tier;
+  billingKind: BillingKind;
+  activeMembership?: MembershipListResponse;
+};
+
+/**
+ * Pure reducer for `syncWhopMembershipForEmail`'s per-email loop (below) — folds ONE email's
+ * `resolveMembershipTierForEmail` resolution into the running best-tier/billingKind/
+ * activeMembership state for a Clerk user who owns multiple emails. Extracted to a pure
+ * function — same reasoning as `pickActiveMembershipForResolvedTier`/
+ * `isPaidTierForReconcileDowngradeCheck` above — so this is unit-testable without standing up
+ * Clerk/Whop clients.
+ *
+ * BUG this fixes: the loop used to set `activeMembership` unconditionally from the FIRST email
+ * checked (`if (!activeMembership) activeMembership = r.activeMembership`), regardless of THAT
+ * email's own resolved tier. `pickActiveMembershipForResolvedTier`'s own free-tier branch
+ * deliberately returns an ARBITRARY non-revoked membership (`sorted[0]`) even when the email's
+ * overall tier is "free" — correct for resolving a single email ("nothing tier-specific to
+ * preserve", per that function's doc comment) — but across MULTIPLE emails for one Clerk user,
+ * it meant a free email's throwaway membership could claim the `activeMembership` slot before a
+ * LATER email's real community/premium membership was ever folded in (the later email's own
+ * `if (!activeMembership)` guard then saw it already non-null and skipped). That reintroduces,
+ * one loop level up, exactly the tier/activeMembership desync `pickActiveMembershipForResolvedTier`
+ * was written to close for a single email's own list — see that function's doc comment for the
+ * full blast radius (`whop_membership_id`/`whop_user_id` written to Clerk metadata, shown on the
+ * admin user dashboard, and `activeMembership.plan.id` feeding billing-lifecycle-email's
+ * monthly-vs-annual lookup), all of which could end up sourced from a membership that does not
+ * match the user's actual resolved tier. Reachable any time a multi-email Clerk user's FIRST
+ * checked email is free (owns only a lapsed/non-qualifying Whop row) and a LATER email is the one
+ * that actually carries their real community/premium membership.
+ *
+ * Fix: only ever adopt `activeMembership` from a resolution whose OWN tier is paid (premium wins
+ * outright and always re-adopts; the first community resolution is kept once no premium
+ * resolution has been seen) — never from a free resolution's arbitrary pick.
+ */
+export function foldEmailTierResolution(
+  state: EmailTierResolution,
+  r: EmailTierResolution
+): EmailTierResolution {
+  let billingKind = state.billingKind;
+  if (r.billingKind === "premium") billingKind = "premium";
+  else if (r.billingKind === "community" && billingKind !== "premium") billingKind = "community";
+
+  if (r.tier === "premium") {
+    return { tier: "premium", billingKind: "premium", activeMembership: r.activeMembership };
+  }
+  if (r.tier === "community") {
+    return {
+      tier: "community",
+      billingKind,
+      activeMembership: state.activeMembership ?? r.activeMembership,
+    };
+  }
+  return { tier: state.tier, billingKind, activeMembership: state.activeMembership };
 }
 
 export async function findClerkUsersByEmail(email: string) {
@@ -142,7 +280,7 @@ async function resolveMembershipTierForEmail(
   }
   const tier = resolveTierFromMemberships(sorted, revoked, dunningGrace);
   const billingKind = resolveBillingKindFromMemberships(sorted, revoked, dunningGrace);
-  const activeMembership = sorted.find((m) => !revoked.has(m.id)) ?? sorted[0];
+  const activeMembership = pickActiveMembershipForResolvedTier(sorted, revoked, tier, dunningGrace);
   return { tier, billingKind, activeMembership };
 }
 
@@ -198,27 +336,13 @@ export async function syncWhopMembershipForEmail(
       }
     }
 
-    let userTier: Tier = "free";
-    let userBillingKind: BillingKind = "free";
-    let activeMembership: MembershipListResponse | undefined;
+    let foldState: EmailTierResolution = { tier: "free", billingKind: "free" };
     for (const e of emails) {
       const r = await resolveMembershipTierForEmail(e, companyId);
-      if (!activeMembership) activeMembership = r.activeMembership;
-      if (r.billingKind === "premium") userBillingKind = "premium";
-      else if (r.billingKind === "community" && userBillingKind !== "premium") {
-        userBillingKind = "community";
-      }
-      if (r.tier === "premium") {
-        userTier = "premium";
-        userBillingKind = "premium";
-        activeMembership = r.activeMembership;
-        break;
-      }
-      if (r.tier === "community") {
-        userTier = "community";
-        if (!activeMembership) activeMembership = r.activeMembership;
-      }
+      foldState = foldEmailTierResolution(foldState, r);
+      if (foldState.tier === "premium") break;
     }
+    const { tier: userTier, billingKind: userBillingKind, activeMembership } = foldState;
 
     await updateClerkMembershipMetadata(user.id, {
       tier: userTier,
@@ -274,6 +398,7 @@ export async function reconcileAllMemberships(opts?: {
 }): Promise<{
   checked: number;
   premium: number;
+  community: number;
   free: number;
   errors: number;
   capped: boolean;
@@ -341,15 +466,18 @@ export async function reconcileAllMemberships(opts?: {
   const slice = capped ? targets.slice(0, maxEmails) : targets;
 
   let premium = 0;
+  let community = 0;
   let free = 0;
   let errors = 0;
 
-  async function syncOne(email: string): Promise<"premium" | "free" | "error"> {
+  // Three-way (not two-way) resolution — see reconcileStatsBucket's own doc comment for why
+  // `community` must not collapse into `free` here.
+  async function syncOne(email: string): Promise<"premium" | "community" | "free" | "error"> {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const { tier, updatedUserIds } = await syncWhopMembershipForEmail(email);
         for (const uid of updatedUserIds) publishTierChanged(uid);
-        return tier === "premium" ? "premium" : "free";
+        return reconcileStatsBucket(tier);
       } catch (err) {
         const status = (err as { status?: number })?.status ?? (err as { statusCode?: number })?.statusCode;
         if (status === 429 && attempt < 3) {
@@ -364,8 +492,8 @@ export async function reconcileAllMemberships(opts?: {
   }
 
   let nextIdx = 0;
-  async function worker(): Promise<Array<"premium" | "free" | "error">> {
-    const out: Array<"premium" | "free" | "error"> = [];
+  async function worker(): Promise<Array<"premium" | "community" | "free" | "error">> {
+    const out: Array<"premium" | "community" | "free" | "error"> = [];
     for (;;) {
       const i = nextIdx++;
       if (i >= slice.length) return out;
@@ -378,6 +506,7 @@ export async function reconcileAllMemberships(opts?: {
   for (const batch of batches) {
     for (const o of batch) {
       if (o === "premium") premium++;
+      else if (o === "community") community++;
       else if (o === "free") free++;
       else errors++;
     }
@@ -389,5 +518,5 @@ export async function reconcileAllMemberships(opts?: {
     );
   }
 
-  return { checked: slice.length, premium, free, errors, capped };
+  return { checked: slice.length, premium, community, free, errors, capped };
 }

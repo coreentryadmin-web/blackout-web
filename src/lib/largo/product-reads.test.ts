@@ -35,6 +35,12 @@ function fatRow(i: number) {
       exit_policy_snapshot: { policy: "trim_scale", trim_levels: [0.3, 0.6, 1.0], runner_fraction: 0.34, pad: "z".repeat(200) },
       origin_maps: { origin_direction_map: { FLOW: "long" }, origin_score_map: { FLOW: 70 } },
       regime_plane: { confidence: "high", gexQuality: "polygon_chain", vixDayOpen: 14.91 },
+      // The commit-time score (entry-context.ts's real field). Odd rows deliberately carry
+      // a LOWER commit score than their own score_max (a ratchet occurred after commit — the
+      // live finding's exact shape, 2026-10-16); even rows match their peak exactly (no
+      // ratchet). This fixture backs the committed_score tests below without disturbing the
+      // existing budget/size assertions, which never read entry_context.score.
+      score: i % 2 === 0 ? 40 + (i % 55) : 40 + (i % 55) - 7,
     },
   };
 }
@@ -70,6 +76,7 @@ mock.module("../banger/positions-db", {
 let bangerBoardForLargo: typeof import("./product-reads").bangerBoardForLargo;
 let nighthawkHorizonsForLargo: typeof import("./product-reads").nighthawkHorizonsForLargo;
 let zerodteRecordForLargo: typeof import("./product-reads").zerodteRecordForLargo;
+let leanZeroDtePlayForModel: typeof import("./product-reads").leanZeroDtePlayForModel;
 let nighthawkOutcomesForLargo: typeof import("./product-reads").nighthawkOutcomesForLargo;
 let assembleNighthawkOutcomesForModel: typeof import("./product-reads").assembleNighthawkOutcomesForModel;
 let leanNighthawkOutcomeForModel: typeof import("./product-reads").leanNighthawkOutcomeForModel;
@@ -82,6 +89,7 @@ before(async () => {
     bangerBoardForLargo,
     nighthawkHorizonsForLargo,
     zerodteRecordForLargo,
+    leanZeroDtePlayForModel,
     nighthawkOutcomesForLargo,
     assembleNighthawkOutcomesForModel,
     leanNighthawkOutcomeForModel,
@@ -249,6 +257,36 @@ describe("zerodteRecordForLargo — deliverable to the model", () => {
     for (const key of ["session_date", "ticker", "direction", "managed_outcome", "managed_pnl_pct"]) {
       assert.ok(key in first, `lean play lost a member-facing field: ${key}`);
     }
+  });
+
+  // Regression for the live 2026-10-16 finding: `score` on every play is `score_max` (the
+  // session-PEAK evidence score, which can keep rising after commit), but `entry_context` —
+  // the ONLY place the real commit-time score lived — was stripped wholesale to fit the
+  // transport budget, so Largo had no path to the real number at all. A 30-day live window
+  // showed `score` disagreeing with `entry_context.score` on 121/215 rows (56.3%). The fixture
+  // above reproduces that split: odd-indexed rows carry a genuinely lower commit score (a
+  // ratchet occurred after commit), even-indexed rows match their own peak exactly.
+  it("surfaces an honest committed_score ONLY for plays whose commit-time score differs from the peak", async () => {
+    const r = (await zerodteRecordForLargo(30)) as Record<string, unknown>;
+    const plays = r.plays as Array<Record<string, unknown>>;
+    assert.ok(plays.length > 0, "the sample must be non-empty for this to test anything");
+
+    let sawMismatchWithField = false;
+    let sawMatchWithoutField = false;
+    for (const p of plays) {
+      const score = p.score as number;
+      if ("committed_score" in p) {
+        // Presence must mean a REAL, differing commit score — never a fabricated or equal one.
+        assert.notEqual(p.committed_score, score, "committed_score must never equal score — that is not new information");
+        assert.equal(typeof p.committed_score, "number");
+        assert.equal(p.committed_score, score - 7, "must be the real commit-time score, not a derived or rounded value");
+        sawMismatchWithField = true;
+      } else {
+        sawMatchWithoutField = true;
+      }
+    }
+    assert.ok(sawMismatchWithField, "at least one sampled play should carry committed_score (odd-indexed fixture rows)");
+    assert.ok(sawMatchWithoutField, "at least one sampled play should OMIT committed_score (even-indexed fixture rows, no ratchet)");
   });
 
   it("still fits at the widest window the tool allows (days=90)", async () => {

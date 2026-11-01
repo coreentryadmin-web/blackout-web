@@ -15,6 +15,13 @@ import { checkPostGuard, isTweetContentValid } from "@/lib/x-post-guard";
 import { xMarketingPostsPaused } from "@/lib/x-marketing-env";
 import { saveQueueRow } from "@/lib/x-intel/queue-store";
 import type { XIntelQueueDraft } from "@/lib/x-intel/queue-types";
+import {
+  etDateString,
+  etTimeString,
+  cycleName,
+  attachmentImagePath,
+  noPostTypeSkipReason,
+} from "./x-intel-time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,35 +33,15 @@ function nowET(): Date {
   );
 }
 
-function etDateString(): string {
-  const et = nowET();
-  const year = et.getFullYear();
-  const month = String(et.getMonth() + 1).padStart(2, "0");
-  const day = String(et.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function etTimeString(d: Date = nowET()): string {
-  const hours = String(d.getHours()).padStart(2, "0");
-  const minutes = String(d.getMinutes()).padStart(2, "0");
-  const seconds = String(d.getSeconds()).padStart(2, "0");
-  return `${hours}:${minutes}:${seconds} ET`;
-}
-
-function cycleName(postType: PostType): string {
-  const et = nowET();
-  const hour = String(et.getHours()).padStart(2, "0");
-  return `${etDateString()}T${hour}:${postType}`;
-}
-
 async function captureAttachments(
+  et: Date,
   postType: PostType,
   data: Awaited<ReturnType<typeof fetchMarketSnapshot>>,
 ): Promise<{ url: string | null; source: string }> {
   try {
     const buf = await renderDeskCardPng(postType, data);
     return {
-      url: buf ? `/x-intel/${etDateString()}T${nowET().getHours()}/${postType}-desk.png` : null,
+      url: buf ? attachmentImagePath(et, postType) : null,
       source: "live-desk-card",
     };
   } catch {
@@ -115,9 +102,7 @@ export async function GET(req: NextRequest) {
     await logCronRun("x-intel", started, {
       ok: true,
       skipped: true,
-      reason: inWindow
-        ? "Outside 2-hour post window"
-        : `No post slot at hour ${et.getHours()}`,
+      reason: noPostTypeSkipReason(inWindow, et.getHours()),
     });
     return NextResponse.json({
       ok: true,
@@ -149,9 +134,9 @@ export async function GET(req: NextRequest) {
 
     if (!marketDataReady(postType, data)) {
       const skipped: XIntelQueueDraft = {
-        cycle_key: cycleName(postType),
-        session_date: etDateString(),
-        created_at_et: etTimeString(),
+        cycle_key: cycleName(et, postType),
+        session_date: etDateString(et),
+        created_at_et: etTimeString(et),
         status: "SKIP",
         ticker_or_market: "SPX",
         headline: "Market snapshot incomplete",
@@ -191,9 +176,9 @@ export async function GET(req: NextRequest) {
 
     if (!content || !isTweetContentValid(content)) {
       const skipped: XIntelQueueDraft = {
-        cycle_key: cycleName(postType),
-        session_date: etDateString(),
-        created_at_et: etTimeString(),
+        cycle_key: cycleName(et, postType),
+        session_date: etDateString(et),
+        created_at_et: etTimeString(et),
         status: "SKIP",
         ticker_or_market: "SPX",
         headline: "Content generation failed",
@@ -231,7 +216,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const { url: attachmentUrl } = await captureAttachments(postType, data);
+    const { url: attachmentUrl } = await captureAttachments(et, postType, data);
 
     const attachments = attachmentUrl
       ? [
@@ -242,7 +227,7 @@ export async function GET(req: NextRequest) {
             caption: `${postType} desk snapshot`,
             source_surface: "market" as const,
             source_url: "https://blackouttrades.com/terminal",
-            captured_at_et: etTimeString(),
+            captured_at_et: etTimeString(et),
             view: null,
           },
         ]
@@ -250,9 +235,9 @@ export async function GET(req: NextRequest) {
 
     const headline = content.split("\n")[0] ?? "Market update";
     const draft: XIntelQueueDraft = {
-      cycle_key: cycleName(postType),
-      session_date: etDateString(),
-      created_at_et: etTimeString(),
+      cycle_key: cycleName(et, postType),
+      session_date: etDateString(et),
+      created_at_et: etTimeString(et),
       status: "REVIEW",
       ticker_or_market: "SPX",
       headline,
@@ -311,7 +296,7 @@ export async function GET(req: NextRequest) {
       postType,
     });
     return NextResponse.json(
-      { ok: false, error: "X intel generation failed", detail: message },
+      { ok: false, error: "X intel generation failed" },
       { status: 200 },
     );
   }

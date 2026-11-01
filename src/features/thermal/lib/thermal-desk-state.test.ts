@@ -3,23 +3,17 @@ import test from "node:test";
 import {
   THERMAL_COMPARE_TICKERS,
   buildThermalUrlSearch,
-  honestLevelEmpty,
-  isThermalCompareTicker,
   isUsableGexHeatmapPayload,
   parseThermalLens,
   parseThermalTicker,
   parseThermalStrike,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
-  shouldForceBlankMatrixRefresh,
-  THERMAL_MATRIX_CORE_TICKERS,
   thermalLayerFreshness,
-  wallScopeLabel,
   keyLevelsKicker,
   keyLevelsFootnote,
   keyLevelsFootnoteCompact,
   netFlowHeaderTooltip,
-  thermalCompareStripLabel,
   thermalQuoteBadge,
   spotSourceBadge,
   shiftPanelEmptyDescription,
@@ -78,9 +72,6 @@ test("buildThermalUrlSearch writes ticker/lens/compare/compareSet and drops comp
 });
 
 test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
-  assert.equal(isThermalCompareTicker("SPY"), true);
-  assert.equal(isThermalCompareTicker("QQQ"), true);
-  assert.equal(isThermalCompareTicker("NVDA"), false);
   assert.equal(isUsableGexHeatmapPayload(null), false);
   assert.equal(isUsableGexHeatmapPayload({ available: true, strikes: [], expiries: ["2026-07-29"] }), false);
   assert.equal(
@@ -113,15 +104,6 @@ test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
     false,
     "off-hours: never force (RTH-only policy)"
   );
-});
-
-test("shouldForceBlankMatrixRefresh: sector compare never force-storms cold columns", () => {
-  assert.equal(shouldForceBlankMatrixRefresh("AMZN", { activeColumn: true }), false);
-  assert.equal(shouldForceBlankMatrixRefresh("GOOG", { activeColumn: false }), false);
-  assert.equal(shouldForceBlankMatrixRefresh("SPY", { activeColumn: false }), false);
-  assert.equal(shouldForceBlankMatrixRefresh("SPY", { activeColumn: true }), true);
-  assert.equal(shouldForceBlankMatrixRefresh("QQQ", { activeColumn: true }), true);
-  assert.deepEqual([...THERMAL_MATRIX_CORE_TICKERS], ["SPY", "SPX", "QQQ", "IWM"]);
 });
 
 test("thermalLayerFreshness: matrix live / stale / overlays off / UW off", () => {
@@ -199,13 +181,6 @@ test("the cross-check layer never shows a member our vendor's initials", () => {
     // The label alone cannot carry the explanation, so the hover copy must actually say it.
     assert.match(layer.title, /second/i);
   }
-  assert.doesNotMatch(honestLevelEmpty("cross_val").help, /\bUW\b/i);
-});
-
-test("wallScopeLabel and honest empties never invent numbers", () => {
-  assert.match(wallScopeLabel(["2026-07-28", "2026-07-29"]).short, /2 near-term/);
-  assert.equal(honestLevelEmpty("flip").value, "—");
-  assert.match(honestLevelEmpty("cross_val").help, /offline/i);
 });
 
 test("keyLevelsKicker and footnote disclose near-term scope", () => {
@@ -329,32 +304,6 @@ test("thermalQuoteBadge — never emits a bull tone or a dot for any non-live st
       }
     }
   }
-});
-
-test("thermalCompareStripLabel — does not claim a live matrix outside the cash session", () => {
-  // The strip rendered a HARDCODED "Live matrix · 5s" — unconditional, so it could never be
-  // right or wrong from data. At 20:41 ET it sat above the same settled 16:00 close the panel
-  // badge did. (Its payload type even declares `asof`; the component never read it.)
-  const closed = thermalCompareStripLabel({ marketOpen: false, pollSeconds: 5 });
-  assert.doesNotMatch(closed, /live/i);
-  assert.match(closed, /market closed/i);
-  // The CADENCE half is a real fact and must survive — the strip does poll every 5s either way.
-  assert.match(closed, /5s/);
-});
-
-test("thermalCompareStripLabel — claims live only when the cash session is open", () => {
-  assert.equal(thermalCompareStripLabel({ marketOpen: true, pollSeconds: 5 }), "Live matrix · 5s");
-});
-
-test("thermalCompareStripLabel — never claims live while the clock is unknown", () => {
-  const unknown = thermalCompareStripLabel({ marketOpen: null, pollSeconds: 5 });
-  assert.doesNotMatch(unknown, /live/i);
-});
-
-test("thermalCompareStripLabel — reports the cadence it is actually given, not a baked-in 5s", () => {
-  // The old label hardcoded "5s" beside a separately-declared interval; they could drift.
-  assert.match(thermalCompareStripLabel({ marketOpen: true, pollSeconds: 20 }), /20s/);
-  assert.match(thermalCompareStripLabel({ marketOpen: false, pollSeconds: 8 }), /8s/);
 });
 
 test("spotSourceBadge — maps provenance to member-facing labels", () => {

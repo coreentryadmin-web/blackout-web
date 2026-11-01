@@ -376,6 +376,58 @@ export function DefinedTermSetJsonLd({
 
 
 /**
+ * Dataset schema for a page whose real value is a sourced, quantified claim rather than prose —
+ * first use is the public track record on /methodology. Google indexes Dataset markup directly
+ * (Google Dataset Search) and the AI answer engines increasingly prefer citing a machine-readable
+ * `PropertyValue` over re-deriving a number from paragraph text, which matters here specifically:
+ * a graded win/loss record with no cherry-picking is the one differentiated, evidence-backed claim
+ * most finance sites in this space cannot make, so it should be the easiest thing on the page for
+ * an answer engine to quote correctly, attributed to a specific `measurementTechnique` and date.
+ *
+ * `variables` must be sourced from the SAME payload the page renders (e.g. `PublicTrackRecord`),
+ * never hand-duplicated — the same anti-drift discipline `DefinedTermSetJsonLd` documents above:
+ * a Dataset claim describing a number the page doesn't show is exactly the schema/content mismatch
+ * Google penalizes, and doubly so for a *quantitative* claim, where drift also becomes a false one.
+ */
+export function DatasetJsonLd({
+  path,
+  name,
+  description,
+  dateModified,
+  measurementTechnique,
+  variables,
+}: {
+  path: string;
+  name: string;
+  description: string;
+  dateModified: string;
+  measurementTechnique: string;
+  variables: { name: string; value: number | string; unitText?: string }[];
+}) {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "Dataset",
+        "@id": `${SITE.url}${path}#dataset`,
+        name,
+        description,
+        url: `${SITE.url}${path}`,
+        creator: { "@id": ORG_ID },
+        dateModified,
+        measurementTechnique,
+        variableMeasured: variables.map((v) => ({
+          "@type": "PropertyValue",
+          name: v.name,
+          value: v.value,
+          ...(v.unitText ? { unitText: v.unitText } : {}),
+        })),
+      }}
+    />
+  );
+}
+
+/**
  * Course schema for BlackOut Academy — the curriculum is a real, free, structured 7-chapter
  * course, and Google supports Course rich results for exactly this. It is provider-linked to the
  * Organization @id (so the course inherits the brand entity), marked free, and lists each chapter

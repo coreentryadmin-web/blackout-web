@@ -1,6 +1,7 @@
 import { formatFlowStrikeStackLine } from "@/lib/largo/flow-strike-stacks";
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { fmtPremium } from "@/lib/fmt-money";
+import { tideSplit } from "@/features/helix/lib/helix-tide-split";
 import {
   EDITION_SYNTHESIS_OVERSHOOT,
   MAX_OPTION_COST_PER_CONTRACT,
@@ -151,25 +152,46 @@ function formatLiveSpxSection(
 
 export type TideBias = "BULLISH" | "BEARISH" | "NEUTRAL";
 
+// `call_premium`/`put_premium` here are UW's SIGNED NET premiums (fetchUwMarketTide reads
+// `net_call_premium ?? call_premium` — src/lib/providers/unusual-whales.ts), not non-negative
+// gross premiums: a negative value means that side was net SOLD, and net call-selling is
+// routine (confirmed live 2026-10-21: the real market-tide row behind that day's Legacy edition
+// had call_premium = -$10.1M). The old code summed the two signed values (`total = call + put`)
+// and used `total <= 0` as its "no real premium at all" check, then derived BULLISH/BEARISH from
+// `call / total`. That conflates "nothing happened on either side" with "the two sides happened
+// to cancel in a signed sum" — a MORE one-sided bearish tape (heavier net call-selling pushing
+// `total` negative) flipped the verdict BACKWARD to NEUTRAL/"flat, no premium" purely because of
+// which side of zero the raw sum landed on, not because the market became less directional. Live
+// repro: {call_premium: -50_000_000, put_premium: 10_000_000} (same sign pattern as the real
+// 2026-10-21 case, just larger) used to read NEUTRAL despite $60M of one-sidedly bearish flow.
+//
+// Fixed with the same bullish/bearish decomposition already shipped for the identical signed-
+// premium root cause in HelixTideBar (see helix-tide-split.ts's header for the full derivation):
+// bullish = net call BUYING + net put SELLING, bearish = net call SELLING + net put BUYING — both
+// non-negative by construction, so a one-sided tape can never cancel itself back to "no signal".
+// For non-negative (gross) inputs this is byte-identical to the old `call / (call + put)` ratio
+// (bullish===call, bearish===put when both are >= 0), so no existing non-negative caller changes.
 export function tideBias(tide: Record<string, unknown> | null): TideBias {
   if (!tide) return "NEUTRAL";
   const call = Number(tide.call_premium ?? tide.total_call_premium ?? 0);
   const put = Number(tide.put_premium ?? tide.total_put_premium ?? 0);
-  const total = call + put;
-  if (total <= 0) return "NEUTRAL";
-  const callPct = (call / total) * 100;
-  return callPct > 55 ? "BULLISH" : callPct < 45 ? "BEARISH" : "NEUTRAL";
+  const { bullishPct } = tideSplit(call, put);
+  if (bullishPct == null) return "NEUTRAL"; // genuinely nothing on either side
+  return bullishPct > 55 ? "BULLISH" : bullishPct < 45 ? "BEARISH" : "NEUTRAL";
 }
 
+// No trailing period on any branch — callers own sentence-ending punctuation. buildMarketRecap's
+// `summary` template appends its own period (`${tide}. ${spx}.`); a period baked in here doubled
+// up into "Market tide unavailable.." whenever ctx.tide was null (recap_summary served that to
+// every member/Largo caller of GET /api/market/nighthawk/edition until this fix).
 function tideSummary(tide: Record<string, unknown> | null): string {
-  if (!tide) return "Market tide unavailable.";
+  if (!tide) return "Market tide unavailable";
   const call = Number(tide.call_premium ?? tide.total_call_premium ?? 0);
   const put = Number(tide.put_premium ?? tide.total_put_premium ?? 0);
-  const total = call + put;
-  if (total <= 0) return "Market tide flat / no premium.";
-  const callPct = (call / total) * 100;
+  const { bullishPct } = tideSplit(call, put);
+  if (bullishPct == null) return "Market tide flat / no premium";
   const bias = tideBias(tide);
-  return `${bias} — calls ${callPct.toFixed(0)}% (${fmtPremium(call)}) vs puts ${fmtPremium(put)}`;
+  return `${bias} — calls ${bullishPct.toFixed(0)}% (${fmtPremium(call)}) vs puts ${fmtPremium(put)}`;
 }
 
 function formatMarketBreadth(ctx: MarketWideContext): string {
@@ -222,7 +244,7 @@ function formatEtfTides(ctx: MarketWideContext): string {
   const entries = Object.entries(ctx.etf_tides);
   if (!entries.length) return "ETF tides unavailable.";
   return entries
-    .map(([sym, tide]) => (tide ? `${sym}: ${tideSummary(tide)}` : `${sym}: n/a`))
+    .map(([sym, tide]) => (tide ? `${sym}: ${tideSummary(tide)}.` : `${sym}: n/a`))
     .join("\n");
 }
 
@@ -247,6 +269,13 @@ export function buildMarketRecap(ctx: MarketWideContext): {
   sector_strength: string;
   sector_weakness: string;
   catalysts: string;
+  /** The GEX/trend composite regime's own authored strategy line (deriveComposite's `playbook`,
+   *  market-regime-detector cron, pinned onto ctx.platform_intel). Already computed and already fed
+   *  into the Claude edition prompt as advisory context (formatPlatformIntelForPrompt) so the LLM
+   *  MAY mention it — but nothing guaranteed it reached the member-facing recap deterministically.
+   *  Empty string (never null) so callers can use the same "only non-empty strings render"
+   *  convention as every other field here. */
+  desk_playbook: string;
 } {
   const sectorsWithChange = ctx.sector_performance.filter(
     (s): s is typeof s & { change_pct: number } => s.change_pct != null
@@ -309,11 +338,16 @@ export function buildMarketRecap(ctx: MarketWideContext): {
           .join("; ")
       : "";
   const mag7Line = ctx.mag7_greek_flow?.headline ?? "";
+  // Round the same way formatMacroIndicators() above already does for this identical
+  // UwMacroIndicatorSnapshot field — this line went straight through with no rounding at all and
+  // printed raw provider floats ("GDP 23850.442 · CPI 333.918") in the member/Largo-facing
+  // recap_summary. Same "round at the data layer" class of bug CLAUDE.md already documents
+  // elsewhere (`7499.360000000001`), just a second, previously-unrounded call site.
   const macroLine =
     ctx.macro_indicators.length > 0
       ? ctx.macro_indicators
           .slice(0, 2)
-          .map((m) => `${m.label} ${m.latest_value ?? "—"}`)
+          .map((m) => `${m.label} ${m.latest_value != null ? m.latest_value.toFixed(2) : "—"}`)
           .join(" · ")
       : "";
   const summary = `${tide}. ${spx}.${ctx.spx_gap ? ` ${formatSpxGapContext(ctx.spx_gap)}.` : ""}${breadthLine ? ` Breadth: ${breadthLine}.` : ""}${mag7Line ? ` ${mag7Line}.` : ""}${macroLine ? ` Macro: ${macroLine}.` : ""} Leaders: ${leaders.map((s) => `${s.name} ${s.change_pct >= 0 ? "+" : ""}${s.change_pct.toFixed(2)}%`).join(", ") || "n/a"}.${netImpact ? ` Net impact: ${netImpact}.` : ""}${predictionsLine ? ` Predictions: ${predictionsLine}.` : ""}`;
@@ -326,7 +360,20 @@ export function buildMarketRecap(ctx: MarketWideContext): {
     sector_strength: leaders.map((s) => `${s.name} ${s.change_pct.toFixed(2)}%`).join(" · ") || "n/a",
     sector_weakness: laggards.map((s) => `${s.name} ${s.change_pct.toFixed(2)}%`).join(" · ") || "n/a",
     catalysts: catalysts || "No major macro/earnings flagged.",
+    desk_playbook: ctx.platform_intel?.playbook ?? "",
   };
+}
+
+// Real UW `/api/stock/{ticker}/flow-per-expiry` rows carry `call_premium`/`put_premium`
+// (separate string fields) — there is no single `premium`/`total_premium` field on this shape
+// (live-verified 2026-09-12). The old guess always evaluated to 0, so every "Flow by expiry"
+// line in the dossier text below (fed straight into the Legacy edition's Claude prompt via
+// buildClaudePrompt) silently read "$0" for every expiry regardless of real flow.
+export function flowByExpiryPremium(row: Record<string, unknown>): number {
+  return (
+    Number(row.call_premium ?? 0) + Number(row.put_premium ?? 0) ||
+    Number(row.premium ?? row.total_premium ?? 0)
+  );
 }
 
 export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCandidate): string {
@@ -389,8 +436,7 @@ export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCa
   if (dossier.flow_by_expiry.length) {
     const expLines = dossier.flow_by_expiry.slice(0, 4).map((r) => {
       const exp = String(r.expiry ?? r.expiration ?? "").slice(0, 10);
-      const prem = Number(r.premium ?? r.total_premium ?? 0);
-      return `${exp}: ${fmtPremium(prem)}`;
+      return `${exp}: ${fmtPremium(flowByExpiryPremium(r))}`;
     });
     if (expLines.length) lines.push(`Flow by expiry: ${expLines.join(" · ")}`);
   }

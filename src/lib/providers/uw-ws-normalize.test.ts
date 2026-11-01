@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   aggregateGexStrikeExpiryToLadder,
   aggregateOptionTradesToStrikeRows,
+  normalizeDarkPoolWsPayload,
   normalizeGexStrikeExpiryWsPayload,
   normalizeLitTradesWsPayload,
   normalizeOptionTradesWsPayload,
@@ -41,6 +42,65 @@ test("normalizeLitTradesWsPayload maps lit equity prints", () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.symbol, "SPY");
   assert.equal(rows[0]?.premium, 600.12 * 500);
+});
+
+// BUG FIX (sibling-propagation): `normalizeOptionTradesWsPayload` above was fixed to stop
+// slicing `executed_at` to 19 chars (it strips a trailing "Z" and reinterprets a Z-bearing ISO
+// string as LOCAL time once re-parsed) — this sibling parses the identical `executed_at ??
+// timestamp` shape off the same UW WS transport and still had the defect. Before the fix,
+// `rows[0].executed_at` was `"2026-06-30T15:04:00"` (no "Z") and `new Date(...)` on that value
+// parsed as local time, not UTC — a different wall-clock instant on any non-UTC host.
+test("normalizeLitTradesWsPayload keeps executed_at VERBATIM — does not strip the UTC 'Z'", () => {
+  const rows = normalizeLitTradesWsPayload({
+    symbol: "SPY",
+    price: 600.12,
+    size: 500,
+    executed_at: "2026-06-30T15:04:00Z",
+  });
+  assert.equal(rows[0]?.executed_at, "2026-06-30T15:04:00Z");
+  assert.equal(Date.parse(rows[0]!.executed_at), Date.parse("2026-06-30T15:04:00Z"));
+});
+
+// Same defect, sub-second precision: slicing to 19 chars drops BOTH the fractional seconds
+// AND the trailing "Z" at once, for any timestamp UW sends with microsecond precision (the
+// real shape `flow-timestamp-epoch.test.ts` captured live for the sibling `created_at` field:
+// `"2026-08-21T20:14:37.211537Z"`).
+test("normalizeLitTradesWsPayload keeps sub-second precision and the 'Z' on a long ISO timestamp", () => {
+  const precise = "2026-08-21T20:14:37.211537Z";
+  const rows = normalizeLitTradesWsPayload({
+    symbol: "SPY",
+    price: 600.12,
+    size: 500,
+    executed_at: precise,
+  });
+  assert.equal(rows[0]?.executed_at, precise);
+});
+
+// BUG FIX (sibling-propagation gap, 3rd sibling): `normalizeOptionTradesWsPayload` and
+// `normalizeLitTradesWsPayload` above were both fixed to stop slicing `executed_at` to 19 chars
+// (it strips a trailing "Z" and reinterprets a Z-bearing ISO string as LOCAL time once
+// re-parsed) — `normalizeDarkPoolWsPayload` parses the identical `executed_at ?? date ??
+// timestamp` shape off the same UW WS transport (`off_lit_trades`, the dark-pool sibling of
+// `lit_trades`/`option_trades`) and still had the defect, unfixed by either prior PR. Before the
+// fix, a microsecond-precision UW timestamp like `"<today>T20:14:37.211537Z"` was truncated to
+// `"<today>T20:14:37"` (no "Z", no fractional seconds) — every downstream reader that re-parses
+// `DarkPoolPrint.executed_at` with `new Date()`/`Date.parse()` (uw-lit-dark-ratio.ts's
+// `latestPrintAgeMs`, discord-eod-recap.ts, helix-coord-window.ts, helix-flow-deep-link.ts) then
+// reads a different wall-clock instant on any non-UTC host, and always loses sub-second
+// precision. The test uses "today" in ET (not a fixed date) because the function's own
+// same-session-day filter (`execDate !== today`) would otherwise drop the row before the
+// truncation bug is even reached.
+test("normalizeDarkPoolWsPayload keeps executed_at VERBATIM — does not strip the UTC 'Z' or sub-second precision", () => {
+  const nowIso = new Date().toISOString(); // "<today>T20:14:37.211Z"
+  const precise = nowIso.replace(/\.\d{3}Z$/, ".211537Z"); // simulate UW's real microsecond shape
+  const rows = normalizeDarkPoolWsPayload({
+    symbol: "SPY",
+    executed_at: precise,
+    premium: 1_250_000,
+  });
+  assert.equal(rows?.prints.length, 1);
+  assert.equal(rows?.prints[0]?.executed_at, precise);
+  assert.equal(Date.parse(rows!.prints[0]!.executed_at), Date.parse(precise));
 });
 
 test("aggregateOptionTradesToStrikeRows buckets call/put premium by strike", () => {

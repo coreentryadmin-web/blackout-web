@@ -30,3 +30,38 @@ test("the two lanes use SEPARATE rate-limit state, matching every other per-lane
   assert.match(src, /const zeroSamplesLog: ZeroSamplesLogState = \{ lastLoggedAt: 0 \};/);
   assert.match(src, /const activeZeroSamplesLog: ZeroSamplesLogState = \{ lastLoggedAt: 0 \};/);
 });
+
+// Regression for the 2026-10-15 live incident (FINDINGS.md "Live ALB tail-latency incident" /
+// #4076 comments 6197984130, 6199692739): both lanes here fan out across the shared ~100-122-
+// ticker Vector universe into fetchGexHeatmap() every 5s/15s, continuously, all RTH — structurally
+// saturating the shared Polygon rate limiter and starving other desks' (0DTE/SPX/Thermal) chain
+// fetches of the same budget. The fix (polygon-rate-limiter.ts's runWithBackgroundPolygonSweep +
+// reserveForLiveTraffic) is useless unless BOTH call sites that actually trigger this churn are
+// tagged — source-scanned here (not module-imported) because this file boots real setInterval
+// timers and a live Redis leader-lock connection on import, matching this test file's own existing
+// read-the-source convention above rather than introducing a new import-time side-effect risk.
+test("the universe-lane sweep (tick()) is tagged as a background Polygon sweep", () => {
+  const idx = src.indexOf("recordSharedUniverseWallSamples({ shards })");
+  assert.ok(idx > 0, "the universe-lane call site must still exist");
+  const before = src.slice(Math.max(0, idx - 200), idx);
+  assert.match(
+    before,
+    /const result = await runWithBackgroundPolygonSweep\(\(\) =>/,
+    "recordSharedUniverseWallSamples must be invoked inside runWithBackgroundPolygonSweep, not called directly"
+  );
+});
+
+test("the active-lane sweep (activeTick()) is tagged as a background Polygon sweep", () => {
+  const idx = src.indexOf("recordActiveNonUniverseWallSamples()");
+  assert.ok(idx > 0, "the active-lane call site must still exist");
+  const before = src.slice(Math.max(0, idx - 200), idx);
+  assert.match(
+    before,
+    /const result = await runWithBackgroundPolygonSweep\(\(\) =>/,
+    "recordActiveNonUniverseWallSamples must be invoked inside runWithBackgroundPolygonSweep, not called directly"
+  );
+});
+
+test("runWithBackgroundPolygonSweep is imported from the shared Polygon rate limiter, not reimplemented locally", () => {
+  assert.match(src, /import \{ runWithBackgroundPolygonSweep \} from "@\/lib\/providers\/polygon-rate-limiter";/);
+});

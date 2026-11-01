@@ -98,3 +98,21 @@ test("betaMissing inferred from a null beta even without the explicit flag", () 
   assert.equal(r.betaWeightedDelta, null);
   assert.ok(r.missing.includes("beta"));
 });
+
+test("invalid contracts (e.g. a malformed DB row) → partial + null every scaled field, never a fabricated 0", () => {
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25): `contracts` fed `qty` for every output field but
+  // was never checked against the same NULL-HONESTY law as greeks/spot/beta — an invalid `contracts`
+  // (e.g. NaN from `Number(row.contracts)` on a bad row) silently defaulted qty to 0, and
+  // anything * 0 = 0 for every field, so this used to return `partial:false, missing:[]` with a
+  // real greek/spot/beta present but every risk field reading as a fabricated 0 — the exact failure
+  // this file's own header calls "the standing law."
+  const r = computeSwingRisk({ ...base, contracts: NaN });
+  assert.equal(r.partial, true);
+  assert.ok(r.missing.includes("contracts"));
+  assert.equal(r.greekRisk.delta, null); // NOT 0
+  assert.equal(r.greekRisk.gamma, null);
+  assert.equal(r.greekRisk.theta, null);
+  assert.equal(r.greekRisk.vega, null);
+  assert.equal(r.dollarRisk, null); // NOT 0
+  assert.equal(r.betaWeightedDelta, null); // NOT 0
+});

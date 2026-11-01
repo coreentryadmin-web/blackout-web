@@ -111,7 +111,13 @@ function fmtPrice(price: number | null | undefined): string {
 function fmtShares(n: number | null | undefined): string | null {
   if (n == null || !Number.isFinite(n) || n <= 0) return null;
   if (n >= 1_000_000) return `~${(n / 1_000_000).toFixed(1)}M shares`;
-  if (n >= 1_000) return `~${Math.round(n / 1000)}K shares`;
+  if (n >= 1_000) {
+    const k = Math.round(n / 1000);
+    // A value that rounds to 1000 of this unit belongs in the next unit up — same
+    // round-first-then-promote fix as moneyShort's own K->M unit-boundary rounding bug.
+    if (k >= 1000) return `~${(n / 1_000_000).toFixed(1)}M shares`;
+    return `~${k}K shares`;
+  }
   return `~${Math.round(n).toLocaleString("en-US")} shares`;
 }
 

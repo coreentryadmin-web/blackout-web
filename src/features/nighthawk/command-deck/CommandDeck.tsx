@@ -24,6 +24,7 @@ import type { TerminalPlay } from "./types";
 import {
   defaultZeroDteStatusFilter,
   preferredPlayId,
+  resolveFocusTickerMatch,
   type DeckSessionHeatState,
   type DeckStatusFilter,
 } from "./deck-session-ui";
@@ -223,24 +224,25 @@ export function CommandDeck({
     }
   }, [sorted, selId]);
 
-  // Cross-deck focus: a Legacy play's "moved to Swings Open" link sets focusTicker once — select
-  // that ticker's row as soon as it's present (it may take a poll cycle for the freshly-promoted
-  // name to appear in this lane's fetched data). Re-fires on every focusTicker/sorted change but
-  // is a no-op once selId already matches, so it doesn't fight the member's own subsequent clicks.
-  // This IS an explicit "go look at this play" navigation (unlike the default-selection effect
-  // above), so it opens the mobile detail view too.
+  // Cross-deck focus: a Legacy play's "moved to Swings Open" link, or a URL-seeded `?ticker=`
+  // deep link, sets focusTicker once — select that ticker's row as soon as it's present (it may
+  // take a poll cycle for a freshly-promoted name to appear in this lane's fetched data). This IS
+  // an explicit "go look at this play" navigation (unlike the default-selection effect above), so
+  // it opens the mobile detail view too — see resolveFocusTickerMatch's own comment for why that
+  // decision is tracked by the focusTicker VALUE (`handledFocusTicker`) rather than by comparing
+  // against `selId`: a coincidental match (the focus target happens to already be the board's own
+  // default selection) used to read as "already handled" and silently skip opening mobile detail.
+  const [handledFocusTicker, setHandledFocusTicker] = useState<string | null>(null);
   useEffect(() => {
-    if (!focusTicker) return;
+    const match = resolveFocusTickerMatch(plays, focusTicker, handledFocusTicker);
+    if (!match) return;
     // The status filter can hide the freshly-promoted row (e.g. filter=OPEN, name lands in WATCH)
     // — widen to ALL so a focus navigation is never silently invisible.
     setStatusFilter("ALL");
-    const match = plays.find((p) => p.ticker.toUpperCase() === focusTicker.toUpperCase());
-    if (match && selId !== match.id) {
-      setSelId(match.id);
-      setMobileDetailOpen(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusTicker, plays, selId]);
+    setSelId(match.id);
+    setMobileDetailOpen(true);
+    setHandledFocusTicker(focusTicker);
+  }, [focusTicker, plays, handledFocusTicker]);
 
   const selected = sorted.find((p) => p.id === selId) ?? null;
   const sessionClosed = String(sessionHeat ?? "").toUpperCase() === "CLOSED";
@@ -836,6 +838,31 @@ export const PlayCard = memo(function PlayCard({
               {formatReturnPct(p.trackPct)}
             </span>
             <span className="nh-deck-premlab">{primaryReturnLabel(p)}</span>
+          </>
+        ) : p.horizon === "LEGACY" && isWatchTrackStatus(p.status) && p.stockMovePct != null ? (
+          // BUG FIX (2026-11-01, 4th instance of the WATCH/SKIP-exclusion defect in this file
+          // family; same root cause as LegacyPlayDetailPanel.tsx/PlayTerminal.tsx). Legacy never
+          // populates `trackPct` (terminalPlayFromEdition, adapters.ts — unlike SWING/LEAPS's
+          // overlayHorizonWatchTrack), so the generic isWatchTrackStatus+trackPct branch above
+          // never fires for a Legacy WATCH/SKIP row; this branch used to fall straight through to
+          // the one below instead, which called `legacyPrimaryPnlPct(p)` with no status gate —
+          // rendering the underlying's hypothetical move from the published entry-band midpoint as
+          // if it were a real position's return. Reuses the exact "Since flag" framing/markup the
+          // branch above already uses for this identical concept, fed from `stockMovePct` (the
+          // field Legacy actually populates) instead of `trackPct`.
+          <>
+            <span
+              className={clsx(
+                "nh-deck-prem nh-deck-prem-lg",
+                p.stockMovePct > 0 && "nh-deck-pos",
+                p.stockMovePct < 0 && "nh-deck-neg",
+                markFlash && "neon",
+              )}
+            >
+              {p.stockMovePct > 0 ? "▲ " : ""}
+              {formatReturnPct(p.stockMovePct)}
+            </span>
+            <span className="nh-deck-premlab">Since flag</span>
           </>
         ) : p.horizon === "LEGACY" && p.stockPrice != null ? (
           <>

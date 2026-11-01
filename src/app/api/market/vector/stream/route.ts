@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { recheckSseUserEntitlement } from "@/lib/sse-stream-entitlement";
+import { runSseTickSafely } from "@/lib/sse-safe-tick";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import {
@@ -65,12 +66,16 @@ export async function GET(req: NextRequest) {
       clearInterval(heartbeatInterval);
       heartbeatInterval = null;
     }
+    // Remove abort listener to prevent accumulation (fixes memory leak from uncleaned event listeners).
+    // Each connection's listener held closures over controller and intervals; accumulated listeners
+    // kept dead connections' state alive indefinitely, causing heap growth until OOM.
+    req.signal.removeEventListener("abort", cleanup);
   };
 
   const stream = new ReadableStream({
     start(controller) {
       let lastSentFrame: string | null = null;
-      const send = async () => {
+      const sendTick = async () => {
         if (closed) return;
         if (streamUserId) {
           const verdict = await recheckSseUserEntitlement(streamUserId, "premium", "vector");
@@ -122,6 +127,7 @@ export async function GET(req: NextRequest) {
           }
         }
       };
+      const send = () => runSseTickSafely(sendTick, "vector-stream");
 
       attachVectorStreamSubscriber(ticker);
       // Dynamic universe + scanner snapshot: member opened this chart.

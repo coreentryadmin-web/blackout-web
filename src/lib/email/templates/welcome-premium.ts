@@ -33,13 +33,13 @@ export function welcomePremiumEmail(ctx: WelcomePremiumContext): {
 
   const sharedParagraphs = [
     "Thermal puts dealer gamma exposure on the screen as heat, not a guess — GEX, VEX, DEX, CHARM, mapped in real time, the exact strikes where market makers get pinned, squeezed, or forced to chase their own hedges. HELIX tracks the sweeps, the blocks, the dark-pool prints institutions leave behind — streamed live with quote age on every read.",
-    "Night Hawk runs 0DTE Command intraday — whole-market scanner, Cortex gates, graded play lifecycle — and publishes Evening Edition prep after the close. Largo AI is your live-data chat — ask it what's happening on the tape, and it answers off the same feed running the desk, not a script. Vector scans gamma and flow across the universe with ranked setups, wall integrity, and replay.",
+    "Night Hawk runs 0DTE Command intraday — whole-market scanner, Cortex gates, graded play lifecycle — and publishes Evening Edition prep after the close. Largo AI is your live-data chat — ask it what's happening on the tape, and it answers off the same feed running the desk, not a script. Vector scans gamma and flow across the universe with ranked setups, wall integrity, and replay. Meridian tracks the catalyst calendar — earnings, macro releases, OpEx, FDA decisions — with the earnings desk going deepest: estimate revisions, beat-rate history, and flow context tied to every print.",
     "Doesn't matter if you're billed monthly or annually — access is identical, full seven-product desk, no walls between you and any of it. Monthly cancels whenever, no contract. Annual locks your rate for the full year.",
   ];
 
   const annualLine =
     ctx.billingInterval === "yearly"
-      ? `<p style="margin:0 0 18px;color:${EMAIL_BRAND.body};">You're locked in at ${usd(MEMBERSHIP_PRICING.yearly)} for the full year — the 7-day guarantee's already come and gone, satisfied. Nothing left to decide. The desk's open. Go trade.</p>`
+      ? `<p style="margin:0 0 18px;color:${EMAIL_BRAND.body};">You're locked in at ${usd(MEMBERSHIP_PRICING.yearly)} for the full year — and you've got a 7-day money-back guarantee starting today if it's not the right fit. After that, the rate's locked for the full twelve months. Nothing to decide right now. The desk's open. Go trade.</p>`
       : "";
 
   const body = `
@@ -52,7 +52,7 @@ export function welcomePremiumEmail(ctx: WelcomePremiumContext): {
   `;
 
   const layout = emailLayout({
-    preheader: "Thermal, HELIX, Night Hawk, Largo AI, Vector — five more engines, live on your account, running the same feed as SPX Slayer.",
+    preheader: "Thermal, HELIX, Night Hawk, Largo AI, Vector, Meridian — six more engines, live on your account, running the same feed as SPX Slayer.",
     bodyHtml: body,
   });
   return { subject, html: layout.html, attachments: layout.attachments };

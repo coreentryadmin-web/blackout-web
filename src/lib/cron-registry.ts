@@ -112,11 +112,11 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Thermal Warm",
     kind: "http",
     path: "/api/cron/heatmap-warm",
-    schedule_label: "Every 1 min EventBridge + in-app leader ~20s (market hours) + delta SSE",
+    schedule_label: "Every 1 min EventBridge + in-app leader ~81s backup (market hours) + delta SSE",
     stale_after_min: 2,
     weekdays_only: true,
     market_hours_only: true,
-    description: "Pre-warm GEX heatmap matrix for shared sticky universe (static ∪ dynamic ≤100/14d; SPY/SPX/QQQ forced first). EventBridge 1/min floor; rth-warm-leader backs up at ~20s; Thermal clients force-refresh when asof is stale",
+    description: "Pre-warm GEX heatmap matrix for shared sticky universe (static ∪ dynamic ≤100/14d; SPY/SPX/QQQ forced first). EventBridge 1/min floor; rth-warm-leader backs up at ~81s (the job's own p90 runtime — was 20s, see rth-warm-leader-logic.ts); Thermal clients force-refresh when asof is stale",
   },
   {
     key: "platform-warm",
@@ -124,7 +124,13 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/platform-warm",
     schedule_label: "~Every 5 min (extended warm window)",
-    stale_after_min: 15,
+    // 10, not 15 — matches this cron's own OVERLAP_LOCK_TTL_SEC=600s (route.ts) and its true
+    // siblings in the same "~5min warm window" job family (desk-warm, meridian-warm, both 10).
+    // Was 15 here only; corrected 2026-10-20 (DISCOVERY-lane sweep) after finding route.ts's own
+    // comment claimed lockstep with "10" (copy-pasted from meridian-warm when #5984 added the
+    // overlap guard) while this registry entry still said 15 — a real invariant drift, same bug
+    // class as the vector-pick-sweep TTL silent-revert found the same cycle.
+    stale_after_min: 10,
     weekdays_only: true,
     market_hours_only: true,
     description:
@@ -159,12 +165,19 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Vector Bead Record",
     kind: "http",
     path: "/api/cron/vector-bead-record",
-    schedule_label: "Every 1 min backup (market hours); in-app leader at 5s",
+    // No EventBridge rule is deployed for this route (confirmed live via events.list_rules,
+    // 2026-09-01 and re-confirmed 2026-09-07 — see FINDINGS.md) despite the label this replaced
+    // implying one. The only real backup to the 5s in-app primary (vector-bead-recorder-leader.ts)
+    // is rth-warm-leader.ts's own in-process heal loop, which dispatches this route at a 10s
+    // threshold (RTH_WRITER_HEAL_AFTER_MIN["vector-bead-record"] = 10/60 in
+    // rth-warm-leader-logic.ts) — faster in practice than any EventBridge cadence, but sharing the
+    // primary's own process/Redis-leader-election failure domain rather than an independent one.
+    schedule_label: "No EventBridge rule deployed — in-app leader backup only, 10s heal threshold",
     stale_after_min: 1,
     weekdays_only: true,
     market_hours_only: true,
     description:
-      "Record wall-history bead samples every 5s for the full shared universe (~100 tickers: static ∪ dynamic), viewer-independent — primary writer is vector-bead-recorder-leader; this cron is backup + audit",
+      "Record wall-history bead samples every 5s for the full shared universe (~100 tickers: static ∪ dynamic), viewer-independent — primary writer is vector-bead-recorder-leader; this cron route exists for the in-app leader's backup dispatch + manual/admin audit, not an independent EventBridge trigger",
   },
   {
     key: "desk-warm",
@@ -202,6 +215,21 @@ export const CRON_JOBS: CronJobDefinition[] = [
       "Standalone zerodte_setup_log grading (gradeZeroDteLedger force=true) — decoupled from zerodte-warm so post-close rows grade promptly without the warm cron's 10-minute throttle",
   },
   {
+    key: "zerodte-skip-grade",
+    name: "0DTE Skip Grade",
+    kind: "http",
+    path: "/api/cron/zerodte-skip-grade",
+    schedule_label: "Once daily post-close (17:00 ET)",
+    // One fire per session day is enough — the grader itself is bounded (MAX_SKIP_GRADE_DAYS/
+    // MAX_ROWS_PER_RUN in skip-grading.ts) and idempotent (only fills NULL counterfactual_json
+    // cells), so there is no overlap risk and no value in firing more often.
+    schedule_cron_utc: "0 21 * * 1-5",
+    stale_after_min: 26 * 60,
+    weekdays_only: true,
+    description:
+      "Runs the counterfactual skip-grader (runSkipGrading) so every hard-gate rejection gets graded against real forward bars — the ONLY instrument that answers whether a gate blocked a winner. Previously only reachable via a manual admin POST that nobody was invoking, so the 2026-09-12 grading-logic fix never actually ran against the live backlog until this cron was added 2026-09-15.",
+  },
+  {
     key: "swing-discovery",
     name: "Night Hawk Swing Discovery",
     kind: "http",
@@ -225,7 +253,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     weekdays_only: true,
     market_hours_only: true,
     description:
-      "Hourly refresh of held swing positions: appends an eod/tick snapshot per position + runs management sync (capital-preservation rungs act; edge rungs evidence-only). Never opens or closes a position (PR-15 rolls).",
+      "Every 15 minutes during market hours, refreshes held swing positions: appends an eod/tick snapshot per position + runs management sync (capital-preservation rungs act; edge rungs evidence-only). Never opens or closes a position (PR-15 rolls).",
   },
   {
     key: "gex-eod-snapshot",
@@ -408,6 +436,24 @@ export const CRON_JOBS: CronJobDefinition[] = [
     produces_member_alert: true,
   },
   {
+    key: "nighthawk-backfill-repair",
+    name: "Night Hawk Backfill Repair",
+    kind: "http",
+    path: "/api/cron/nighthawk-backfill-repair",
+    schedule_label: "9:00 AM ET weekdays",
+    // 15 min BEFORE nighthawk-morning-confirm's own dual-band, same DST-coverage shape, so any
+    // repair this makes is already in the DB by the time morning-confirm reads the edition row.
+    // Added 2026-10-25 (Ask Largo standing mandate) — closes the gap PR #6637 (2026-10-24)
+    // shipped the repair CAPABILITY for but never wired an automatic caller: a BACKFILL play's
+    // contract that expired before its own edition's target trading day sat dead in the
+    // member-facing edition for a full day because nothing ever invoked the admin-only
+    // POST /api/admin/nighthawk/republish-backfill endpoint for it.
+    schedule_cron_utc: "0 13,14 * * 1-5",
+    stale_after_min: 36 * 60,
+    weekdays_only: true,
+    description: "Auto-repairs a BACKFILL play whose own contract has expired relative to the edition's target trading day, before morning-confirm and market open",
+  },
+  {
     key: "market-regime-detector",
     name: "Market Regime Detector",
     kind: "http",
@@ -472,7 +518,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     path: "/api/cron/vector-pick-sweep",
     schedule_label: "~Every 2 min (market hours)",
     schedule_cron_utc: "1-59/2 11-21 * * 1-5",
-    stale_after_min: 15,
+    stale_after_min: 25,
     weekdays_only: true,
     market_hours_only: true,
     description:

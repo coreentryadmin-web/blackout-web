@@ -19,8 +19,8 @@ function swingPlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   } as TerminalPlay;
 }
 
-test("playGradeLabel: swing rows map score to letter grade (not entry $)", () => {
-  assert.equal(playGradeLabel(swingPlay({ score: 62 })), "A");
+test("playGradeLabel: swing rows with no pinned tier show no grade (score->letter fallback removed, it was the documented-inverted mapping)", () => {
+  assert.equal(playGradeLabel(swingPlay({ score: 62 })), null);
   assert.equal(playGradeLabel(swingPlay({ score: 72, tierLabel: "B" })), "B");
 });
 

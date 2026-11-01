@@ -5,8 +5,10 @@ import {
   benzingaSurpriseToDisplayPct,
   benzingaTickerWindow,
   dedupeEarningsRowsByEvent,
+  buildEarningsWeekRows,
   buildRecentEarningsRevisions,
   computeEarningsYoY,
+  deriveMeridianEarningsErrors,
   dualBeatRateFromPrints,
   earningsWhenFromTime,
   impactFromEarningsImportance,
@@ -127,6 +129,37 @@ test("parseNextEarningsFromBenzinga picks nearest upcoming print", () => {
   assert.equal(next?.report_time, "afterhours");
   assert.equal(next?.is_confirmed, true);
 });
+
+test(
+  "parseNextEarningsFromBenzinga skips a SAME-DAY row that already reported (BMO print posted " +
+    "actual_eps this morning) and finds the real next one, instead of reporting it as upcoming",
+  () => {
+    const next = parseNextEarningsFromBenzinga(
+      "NVDA",
+      [
+        // Already reported today — Benzinga leaves `date` unchanged after the print lands.
+        bz({ ticker: "NVDA", date: "2026-08-26", time: "08:30:00", actual_eps: 1.64, date_status: "confirmed" }),
+        bz({ ticker: "NVDA", date: "2026-11-25", time: "16:20:00", date_status: "projected" }),
+      ],
+      "2026-08-26"
+    );
+    assert.equal(next?.earnings_date, "2026-11-25");
+    assert.equal(next?.is_confirmed, false);
+  }
+);
+
+test(
+  "parseNextEarningsFromBenzinga returns null, NOT the stale already-reported row, when the " +
+    "only row on file for today has already reported and the next quarter isn't calendared yet",
+  () => {
+    const next = parseNextEarningsFromBenzinga(
+      "NVDA",
+      [bz({ ticker: "NVDA", date: "2026-08-26", time: "08:30:00", actual_eps: 1.64 })],
+      "2026-08-26"
+    );
+    assert.equal(next, null);
+  }
+);
 
 test("mergeStreetEstimates prefers Benzinga then UW tail", () => {
   const merged = mergeStreetEstimates(
@@ -278,6 +311,44 @@ test("postPrintSurpriseLean scores beat and miss", () => {
   assert.equal(miss.score, -2);
 });
 
+test("buildEarningsWeekRows: is_printed is true when only actual_revenue has landed (EPS pending)", () => {
+  // Same complete-print check benzingaToCalendarRow already uses (actual_eps OR actual_revenue).
+  // A row with actual_revenue populated but actual_eps still null is a real printed report —
+  // checking actual_eps alone would misreport it as not-yet-printed, undercounting
+  // MeridianDesk's "N/M printed" headline (buildEarningsWeekAnalytics's printed_this_week).
+  const rows = buildEarningsWeekRows(
+    [
+      bz({
+        ticker: "NVDA",
+        date: "2026-08-26",
+        importance: 5,
+        actual_eps: null,
+        actual_revenue: 30_000_000_000,
+      }),
+      bz({
+        ticker: "AAPL",
+        date: "2026-08-27",
+        importance: 5,
+        actual_eps: 1.5,
+        actual_revenue: null,
+      }),
+      bz({
+        ticker: "META",
+        date: "2026-08-28",
+        importance: 5,
+        actual_eps: null,
+        actual_revenue: null,
+      }),
+    ],
+    "2026-08-25",
+    7
+  );
+  const byTicker = new Map(rows.map((r) => [r.ticker, r]));
+  assert.equal(byTicker.get("NVDA")?.is_printed, true);
+  assert.equal(byTicker.get("AAPL")?.is_printed, true);
+  assert.equal(byTicker.get("META")?.is_printed, false);
+});
+
 test("buildRecentEarningsRevisions filters by last_updated window", () => {
   const rows = buildRecentEarningsRevisions(
     [
@@ -406,4 +477,42 @@ test("benzingaTickerWindow: clamps a nonsense count instead of requesting the wo
   }
   assert.ok(benzingaTickerWindow(9999).limit <= 200, "cap must stay inside Benzinga's own ceiling");
   assert.ok(benzingaTickerWindow(9999).lookbackDays <= 24 * 95 + 60);
+});
+
+test("deriveMeridianEarningsErrors: THE REGRESSION — a guidance-only failure must not claim print history/estimates are unavailable", () => {
+  // Live-reproduced 2026-10-26, NE earnings: the UI banner ("Earnings calendar feed did not
+  // respond — estimates and print history are unavailable for this refresh") rendered while the
+  // Summary tab simultaneously showed a populated, real print-history base rate ("3/7 of this
+  // name's last prints reacted up", n=7) — the banner's own claim was false for that refresh.
+  const result = deriveMeridianEarningsErrors(null, null, "guidance fetch failed");
+  assert.equal(
+    result.calendar_error,
+    null,
+    "a guidance-only failure must not set calendar_error — the UI banner it drives specifically claims estimates/print history are unavailable, which is untrue here"
+  );
+  assert.equal(result.guidance_error, "guidance fetch failed");
+});
+
+test("deriveMeridianEarningsErrors: a real print-history failure still sets calendar_error", () => {
+  const result = deriveMeridianEarningsErrors("history fetch failed", null, null);
+  assert.equal(result.calendar_error, "history fetch failed");
+  assert.equal(result.guidance_error, null);
+});
+
+test("deriveMeridianEarningsErrors: a real calendar/estimates failure still sets calendar_error", () => {
+  const result = deriveMeridianEarningsErrors(null, "benzinga calendar fetch failed", null);
+  assert.equal(result.calendar_error, "benzinga calendar fetch failed");
+  assert.equal(result.guidance_error, null);
+});
+
+test("deriveMeridianEarningsErrors: history error takes precedence over calendar error when both fire", () => {
+  const result = deriveMeridianEarningsErrors("history failed", "calendar failed", "guidance failed");
+  assert.equal(result.calendar_error, "history failed");
+  assert.equal(result.guidance_error, "guidance failed");
+});
+
+test("deriveMeridianEarningsErrors: all clean returns both null", () => {
+  const result = deriveMeridianEarningsErrors(null, null, null);
+  assert.equal(result.calendar_error, null);
+  assert.equal(result.guidance_error, null);
 });

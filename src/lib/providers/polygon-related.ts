@@ -45,9 +45,29 @@ export type RelatedCompanies = {
 const SYMBOL_RE = /^[A-Z][A-Z.]{0,5}$/;
 
 /**
+ * Exchange-traded debt (baby bonds / senior notes) that an issuer lists under its own equity
+ * ticker root plus a single trailing letter — e.g. T-Mobile's TMUSZ/TMUSI/TMUSL — comes back from
+ * `/v1/related-companies` indistinguishable from a real peer: Polygon mislabels its `type` as "CS"
+ * (common stock) same as an equity, so a type filter can't catch it either (live-confirmed via
+ * `/v3/reference/tickers/TMUSZ` etc., 2026-11-01 Ask Largo audit — a TMUS play-brief rendered
+ * "Peers: VZ, T, TMUSZ, TMUSI, TMUSL, ANET" with no way to tell 3 of 6 names were TMUS itself).
+ * Showing an issuer's own debt as a competing company is a Largo Contract C4 (identity) violation,
+ * not merely noisy data. `self.length < 3` is excluded from this check on purpose — a short root
+ * (e.g. "T", "F", "GE") makes "root + 1 letter" collide with real, unrelated short tickers far too
+ * often to use as a signal; dotted tickers are excluded too, since those are real share classes
+ * (BRK.A/BRK.B), not self-issued debt.
+ */
+function isLikelySelfIssuedSecurity(self: string, raw: string): boolean {
+  if (self.length < 3 || raw.length !== self.length + 1) return false;
+  if (!raw.startsWith(self) || raw.includes(".")) return false;
+  return /^[A-Z]$/.test(raw.slice(self.length));
+}
+
+/**
  * Pure: normalize raw `/v1/related-companies` results into a clean peer list. Uppercases, keeps only
- * plausible symbols, drops the query ticker itself, and de-duplicates while preserving Polygon's order
- * (their ordering carries a rough relatedness ranking).
+ * plausible symbols, drops the query ticker itself (and its own self-issued debt tickers — see
+ * `isLikelySelfIssuedSecurity`), and de-duplicates while preserving Polygon's order (their ordering
+ * carries a rough relatedness ranking).
  */
 export function parseRelatedCompanies(
   ticker: string,
@@ -59,6 +79,7 @@ export function parseRelatedCompanies(
   for (const row of results ?? []) {
     const raw = typeof row?.ticker === "string" ? row.ticker.trim().toUpperCase() : "";
     if (!raw || raw === self || seen.has(raw) || !SYMBOL_RE.test(raw)) continue;
+    if (isLikelySelfIssuedSecurity(self, raw)) continue;
     seen.add(raw);
     related.push(raw);
   }

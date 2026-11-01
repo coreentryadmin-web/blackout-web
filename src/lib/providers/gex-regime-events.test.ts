@@ -44,6 +44,12 @@ mock.module("../db", {
     insertGexRegimeEvent: async (row: Record<string, unknown>) => {
       state.inserted.push(row);
     },
+    // Single-process tests here never actually contend, so a trivial always-succeeds stub
+    // (matching the real tryAdvisoryLock's own `!dbConfigured()` no-op fast path) is enough —
+    // the real interleaving/contention behavior is covered by the dedicated
+    // gex-regime-events-concurrency.test.ts sibling instead.
+    tryAdvisoryLock: async () => true,
+    releaseAdvisoryLock: async () => {},
     // Newest-first, mirroring the real ORDER BY observed_at DESC — `inserted` is
     // append-order (oldest first), so this reverses it. Ticker filtering mirrors
     // the real fetchGexRegimeEventRows' WHERE ticker = $1.

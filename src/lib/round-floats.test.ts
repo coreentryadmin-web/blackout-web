@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals } from "./round-floats";
+import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals, reconcileTrancheFractions } from "./round-floats";
 
 test("rounds spurious float noise to 2dp by default", () => {
   assert.equal(roundFloats(7499.360000000001), 7499.36);
@@ -36,6 +36,46 @@ test("supports a custom decimal-place count", () => {
   assert.equal(roundFloats(1.23456, 4), 1.2346);
 });
 
+// ── Sign-asymmetry fix (2026-10-26) ────────────────────────────────────────────────
+//
+// Plain `Math.round(v*f)/f` ties toward +Infinity (`Math.round(-13.5) === -13` vs
+// `Math.round(13.5) === 14`), which is a direction-biased asymmetry: a NEGATIVE value sitting
+// exactly on a display-precision tie rounds to a SMALLER magnitude than the IDENTICAL positive
+// value. See `fmt-money.ts`'s `fmtPct` sibling comment for the full live repro (an Exec P&L line
+// computed from entry $14.80 / bid $14.60 -> raw -1.35% rendered "-1.3%", looking less bad, while
+// the identical +1.35% magnitude rendered "+1.4%"). Fixed by rounding `Math.abs(v)` then
+// reapplying `Math.sign(v)`, so both signs tie the same direction (away from zero) instead of the
+// same direction in absolute terms (toward +Infinity).
+
+test("rounds a negative tie to the SAME magnitude as its positive mirror image, not a smaller one", () => {
+  // Each pair below is a floating-point tie VERIFIED (not assumed) to land exactly on .5 after
+  // scaling by its own dp — a value that merely LOOKS like a tie in decimal (e.g. 1.005 at 2dp)
+  // can actually sit slightly UNDER .5 in double precision (1.005 is really
+  // 1.00499999999999989341...) and would not exercise this bug at all.
+  const tiePairs: Array<[number, number]> = [
+    [1.05, 1], // -> ±1.1
+    [1.35, 1], // -> ±1.4 (the exact live Exec P&L repro magnitude)
+    [0.25, 1], // -> ±0.3 (sub-1 tie)
+    [2.5, 0], // -> ±3 (whole-number dp)
+    [12.345, 2], // -> ±12.35
+  ];
+  for (const [v, dp] of tiePairs) {
+    const pos = roundFloats(v, dp);
+    const neg = roundFloats(-v, dp);
+    assert.equal(
+      neg,
+      -pos,
+      `roundFloats(${v}, ${dp})=${pos} vs roundFloats(${-v}, ${dp})=${neg} diverged in magnitude`
+    );
+  }
+
+  // Pinned explicitly, not just via the loop above — this is the exact bug: -1.05 used to round
+  // to -1.0 (old, biased toward a smaller magnitude) instead of -1.1 (fixed, symmetric with
+  // +1.05 -> +1.1).
+  assert.equal(roundFloats(1.05, 1), 1.1);
+  assert.equal(roundFloats(-1.05, 1), -1.1);
+});
+
 test("passes through non-numeric leaves unchanged", () => {
   assert.deepEqual(roundFloats({ a: "text", b: true, c: null, d: undefined }), {
     a: "text",
@@ -43,6 +83,35 @@ test("passes through non-numeric leaves unchanged", () => {
     c: null,
     d: undefined,
   });
+});
+
+// ── Date passthrough — live-caught P1: /api/market/anomalies detectedAt -> {} ──────
+//
+// A `Date` has no own enumerable properties, so the generic object-walk branch used to
+// rebuild it via `Object.entries()` into an empty plain object. That silently destroyed
+// every `detectedAt` timestamp served by /api/market/anomalies (a raw pg `Date`, never
+// stringified before reaching roundFloats()), which in turn made `isFlowAnomalyRecent`
+// (`new Date({}).getTime()` -> NaN) always report "not recent" and made FlowAnomalyBanner
+// render nothing regardless of how fresh the real anomaly was. Confirmed live 2026-10-11.
+
+test("passes a raw Date through unchanged, instead of flattening it to {}", () => {
+  const d = new Date("2026-10-09T23:59:45.000Z");
+  const out = roundFloats({ detectedAt: d, premium: 123.456 }) as { detectedAt: Date; premium: number };
+  assert.ok(out.detectedAt instanceof Date, "detectedAt must still be a Date, not a plain object");
+  assert.equal(out.detectedAt.toISOString(), "2026-10-09T23:59:45.000Z");
+  assert.equal(out.premium, 123.46);
+  // The actual wire format the bug corrupted: JSON.stringify calls Date.prototype.toJSON().
+  assert.equal(JSON.stringify(out), '{"detectedAt":"2026-10-09T23:59:45.000Z","premium":123.46}');
+});
+
+test("walks arrays of Dates (the actual anomalies/route.ts shape) without flattening any of them", () => {
+  const rows = [
+    { id: "1", detectedAt: new Date("2026-10-09T10:00:00.000Z") },
+    { id: "2", detectedAt: new Date("2026-10-09T11:30:00.000Z") },
+  ];
+  const out = roundFloats({ anomalies: rows }) as { anomalies: { id: string; detectedAt: Date }[] };
+  assert.equal(out.anomalies[0].detectedAt.toISOString(), "2026-10-09T10:00:00.000Z");
+  assert.equal(out.anomalies[1].detectedAt.toISOString(), "2026-10-09T11:30:00.000Z");
 });
 
 // ── reconcileStrikeTotal — live-caught P0: NVDA GEX Σstrike_totals != total ────────
@@ -122,6 +191,70 @@ test("reconcileCellStrikeTotals: a strike missing from cells keeps its existing 
   };
   const fixed = reconcileCellStrikeTotals(block, ["2026-08-03"])!;
   assert.equal(fixed.strike_totals["105"], 12);
+});
+
+// ── reconcileTrancheFractions — live-caught (2026-10-25): a fully-fired WS-11 trim_scale
+// play's tranches[] fraction legs round to 0.33/0.33/0.33, summing to 0.99 instead of 1.00 ──
+
+test("reconcileTrancheFractions: reproduces the live DELL-style 3-leg bug — ⅓/⅓/⅓ rounds to 0.33/0.33/0.33 (sums to 0.99), and gets fixed to sum to exactly 1.00", () => {
+  // Same shape as plan.ts's reconstructTrimScaleExecutableFromBars output, post-roundFloats:
+  // each fraction independently rounded from 1/3 (0.3333...) to 0.33.
+  const tranches = [
+    { tranche: 1, fraction: 0.33, exit_pnl_pct: 25, exit_reason: "trim_scale_first", at_et: "10:15" },
+    { tranche: 2, fraction: 0.33, exit_pnl_pct: 50, exit_reason: "trim_scale_second", at_et: "11:00" },
+    { tranche: 3, fraction: 0.33, exit_pnl_pct: 80, exit_reason: "doubled", at_et: "14:30" },
+  ];
+  const fixed = reconcileTrancheFractions(tranches)!;
+  const sum = fixed.reduce((acc, t) => acc + t.fraction, 0);
+  // Exact float equality is safe here — 0.33+0.33+0.34 is exactly representable at 2dp.
+  assert.equal(Math.round(sum * 100) / 100, 1);
+  // Only the LAST (runner) leg absorbs the residual — the two trim legs are untouched.
+  assert.equal(fixed[0]!.fraction, 0.33);
+  assert.equal(fixed[1]!.fraction, 0.33);
+  assert.equal(fixed[2]!.fraction, 0.34);
+});
+
+test("reconcileTrancheFractions: a 2-leg split that already sums to 1.00 (0.33/0.67) is returned untouched", () => {
+  const tranches = [
+    { tranche: 1, fraction: 0.33, exit_pnl_pct: 25, exit_reason: "trim_scale_first", at_et: "10:15" },
+    { tranche: 2, fraction: 0.67, exit_pnl_pct: 60, exit_reason: "doubled", at_et: "13:00" },
+  ];
+  const fixed = reconcileTrancheFractions(tranches);
+  assert.strictEqual(fixed, tranches); // same array reference — nothing rewritten
+});
+
+test("reconcileTrancheFractions: a single-tranche array (immediate stop/time-stop, fraction=1) is returned untouched", () => {
+  const tranches = [{ tranche: 1, fraction: 1, exit_pnl_pct: -50, exit_reason: "stopped", at_et: "09:35" }];
+  const fixed = reconcileTrancheFractions(tranches);
+  assert.strictEqual(fixed, tranches);
+});
+
+test("reconcileTrancheFractions: passes through null/undefined/empty arrays unchanged", () => {
+  assert.equal(reconcileTrancheFractions(null), null);
+  assert.equal(reconcileTrancheFractions(undefined), undefined);
+  const empty: { fraction: number }[] = [];
+  assert.strictEqual(reconcileTrancheFractions(empty), empty);
+});
+
+test("reconcileTrancheFractions: a malformed (non-finite) fraction leaf is left untouched rather than guessed at", () => {
+  const tranches = [
+    { fraction: 0.33 },
+    { fraction: NaN },
+    { fraction: 0.33 },
+  ];
+  const fixed = reconcileTrancheFractions(tranches);
+  assert.strictEqual(fixed, tranches);
+});
+
+test("reconcileTrancheFractions: a 4-way even split (0.25 each) already sums to 1.00 and is left untouched", () => {
+  const tranches = [
+    { fraction: 0.25 },
+    { fraction: 0.25 },
+    { fraction: 0.25 },
+    { fraction: 0.25 },
+  ];
+  const fixed = reconcileTrancheFractions(tranches);
+  assert.strictEqual(fixed, tranches);
 });
 
 // RTH-scan regression (2026-07-13): Vector served the weekly gamma flip as 7622.381430556295. The

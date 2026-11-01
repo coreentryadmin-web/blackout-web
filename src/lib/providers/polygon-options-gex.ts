@@ -64,39 +64,6 @@ export type ChainContract = {
   underlying_asset?: { price?: number };
 };
 
-/**
- * Night's Watch chain fetch — the BATCHABLE valuation primitive. Returns a band of
- * contracts around spot for an underlying + expiry, plus the spot, so the caller can
- * match every saved strike for that (underlying, expiry) IN-MEMORY from a single call.
- *
- * This is intentionally NOT per-contract: it is wrapped by getNwChain() in
- * lib/nights-watch/chain-cache.ts with withServerCache, so 500 users holding contracts
- * on the same (underlying, expiry) collapse to ONE upstream fetch per TTL window.
- * Returns null when not configured or spot is unavailable — never fabricates.
- * (A future optimization can swap to /v3/snapshot/options/{underlying}/{contract}.)
- */
-export async function fetchNwOptionChain(
-  underlying: string,
-  expiry: string, // YYYY-MM-DD
-  bandPct = 0.35,
-  /** Held strikes for this (underlying, expiry) — expands the fetch band so deep OTM/ITM legs are in-cache for chain fallback. */
-  strikeHints: number[] = []
-): Promise<{ contracts: ChainContract[]; spot: number } | null> {
-  if (!polygonConfigured()) return null;
-  const root = underlying.toUpperCase();
-  const underlyingRoot = root === "SPX" ? "I:SPX" : root;
-
-  // Index roots (I:*) need the indices snapshot — the stocks snapshot returns no row for them
-  // (spot 0 → permanently null chain). resolveSpotSnapshot picks the right endpoint.
-  const snap = await resolveSpotSnapshot(underlyingRoot);
-  const spot = snap?.price ?? 0;
-  if (!(spot > 0)) return null; // no spot → can't center a band; report unavailable
-
-  const contracts = await fetchChainBand(underlyingRoot, spot, expiry, bandPct, strikeHints);
-  if (!contracts.length) return null;
-  return { contracts, spot };
-}
-
 type ChainResponse = {
   results?: ChainContract[];
   next_url?: string;
@@ -873,6 +840,13 @@ function yearsToExpiry(expiry: string, todayYmd: string): number {
 const FAR_DATED_MONTHS_AHEAD = 6;
 /** Hard cap on the far-dated target dates returned — bounds the extra fetch + column count. */
 const FAR_DATED_MAX_TARGETS = 8;
+/**
+ * How many contracts `buildGexHeatmapUncached`'s main accumulation loop processes between
+ * event-loop yields (see the comment at that loop). ~500 keeps the yield count for an 11K+-
+ * contract chain (SPX) in the same ballpark (~22) as the per-expiry max-pain loop's ~20-23
+ * yields, while keeping each contiguous synchronous block short.
+ */
+const ACCUMULATE_CONTRACT_YIELD_BATCH = 500;
 
 /**
  * The standard US options monthly expiration for a given (year, month0): the THIRD FRIDAY.
@@ -1066,7 +1040,7 @@ function computeGexRegime(
  * (hedging adds to / reinforces the move); NEGATIVE → dealers fade the move as IV rises.
  * Vanna matters most into OPEX and around vol spikes.
  */
-function computeVexRegime(
+export function computeVexRegime(
   strikeTotals: Record<string, number>,
   total: number
 ): { posWall: number | null; negWall: number | null; regime: VexRegime } {
@@ -1074,7 +1048,25 @@ function computeVexRegime(
   let negWall: number | null = null;
   let maxPos = 0;
   let maxNeg = 0;
-  for (const [s, v] of Object.entries(strikeTotals)) {
+  // Sort ascending by strike before the argmax/argmin scan — same fix, same reasoning, as
+  // wallsFromStrikeTotals/kingFromStrikeTotals (gex-cross-validation-core.ts) and
+  // topGexPinStrikes (strike-gex-lookup.ts): Object.entries() on a Record<string, number>
+  // enumerates integer-index-like keys ("480") in ascending numeric order per spec, but
+  // decimal keys ("480.5" — the normal case for SPX/SPY's half-dollar-wide chain) in
+  // INSERTION order instead, which depends on how the caller happened to build the object
+  // (buildGexHeatmapUncached's buildMetric inserts strikes descending;
+  // buildGexHeatmapFromUwStrikeExposures inserts in whatever order its upstream UW rows
+  // arrive — a different order for the identical strike set). So on an exact vanna tie
+  // between two strikes, the un-sorted `v > maxPos` / `v < maxNeg` strict-comparison scan
+  // resolved to whichever strike happened to be enumerated first — not a function of the
+  // actual vanna data — and this function's posWall/negWall are published directly as
+  // vex.pos_wall/vex.neg_wall (served to the UI's VEX panel and every API consumer), so a
+  // tie could flicker between two strikes across rebuilds purely from incidental key order.
+  // Sorting first makes a tie deterministically keep the LOWER strike, always.
+  const sortedEntries = Object.entries(strikeTotals).sort(
+    ([sa], [sb]) => Number(sa) - Number(sb)
+  );
+  for (const [s, v] of sortedEntries) {
     const strike = Number(s);
     if (!Number.isFinite(strike) || !Number.isFinite(v)) continue;
     if (v > maxPos) {
@@ -1788,7 +1780,53 @@ function gexHeatmapRedisTtlSec(): number {
   return Math.max(1, Math.ceil(gexHeatmapMaxStaleMs() / 1000));
 }
 
-/** Serve an expired matrix immediately and kick off a background rebuild (single-flight). */
+/**
+ * Global cap on CONCURRENT detached background rebuilds this stale-while-revalidate branch may
+ * start at once, across EVERY ticker and EVERY caller — not per-ticker (heatmapInflight already
+ * dedupes that) and not per-caller (heatmap-warm's own `runPolygonPool(8)` loop only bounds how
+ * many of its AWAITED `fetchGexHeatmap()` calls are in flight; a call that resolves via THIS
+ * branch returns almost instantly with the stale payload, freeing that pool slot immediately
+ * while the real rebuild below keeps running detached and un-pooled).
+ *
+ * ROOT CAUSE (measured live 2026-10-15): heatmap-warm's real full-sweep cadence (46-209s
+ * measured, p50=46.5s/p90=81.1s/p99=181.1s/max=209.2s — see RTH_WRITER_HEAL_AFTER_MIN's doc
+ * comment in rth-warm-leader-logic.ts) vastly exceeds this file's own 5s per-ticker TTL
+ * (gexHeatmapCacheMs) but mostly stays under the 90s max-stale ceiling (gexHeatmapMaxStaleMs) —
+ * so on nearly every single pass, most of the shared ~100-ticker universe lands in the "stale but
+ * within maxStaleMs" bucket below, and EACH ONE independently fired an uncapped, unlocked detached
+ * rebuild: no `runPolygonPool` bound and no `sharedCacheSetNx` cross-replica lock apply here — both
+ * guard only the fully-cold branch further down in `fetchGexHeatmap`, added for THAT branch by the
+ * 2026-10-08 concurrency fix (see heatmap-warm/route.ts's own "CONCURRENCY (fixed 2026-10-08)"
+ * comment), which never covered this one. A single rth-warm-leader backup dispatch of
+ * `heatmap-warm` at 11:00:23 UTC that day logged 100+ "[polygon-gex] full-chain escalation
+ * ADOPTED" lines across dozens of unrelated tickers within ~4 minutes, time-correlated with a
+ * 79.5s ALB TargetResponseTime Max / 6.43s AVERAGE spike at 11:01 UTC — the same "full-chain
+ * escalation stalls an unrelated request on the same replica" mechanism already documented for
+ * the Vector `/universe` and boot-warm paths, firing through this THIRD, previously-uncapped
+ * entry point.
+ *
+ * Capping here is safe precisely because the stale-while-revalidate contract is "never block the
+ * caller, serve what we have" either way: skipping a refresh this cycle only means the SAME
+ * (still-under-90s) stale data keeps being served a little longer — the very next caller (this
+ * cron's own next tick, at most ~60-81s away, or any other reader of the same ticker) retries once
+ * a slot frees up. `heatmapInflight.size` is already a live, accurate, process-wide count of every
+ * build currently in flight (both this branch and the cold-build branch insert into the same map),
+ * so no new tracking structure is needed — just a check before adding to it.
+ */
+function heatmapMaxConcurrentBuilds(): number {
+  const n = Number(process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS ?? 8);
+  return Number.isFinite(n) && n > 0 ? Math.max(1, Math.floor(n)) : 8;
+}
+
+/** Pure so the cap decision is unit-testable without a network or a fake clock. */
+export function shouldStartHeatmapBackgroundRebuild(
+  inflightCount: number,
+  cap: number = heatmapMaxConcurrentBuilds()
+): boolean {
+  return inflightCount < cap;
+}
+
+/** Serve an expired matrix immediately and kick off a background rebuild (single-flight, capped). */
 function tryStaleWhileRevalidateHeatmap(
   cacheKey: string,
   root: string,
@@ -1810,7 +1848,10 @@ function tryStaleWhileRevalidateHeatmap(
   }
   if (!best) return null;
 
-  if (!heatmapInflight.has(cacheKey)) {
+  if (
+    !heatmapInflight.has(cacheKey) &&
+    shouldStartHeatmapBackgroundRebuild(heatmapInflight.size)
+  ) {
     const build = buildGexHeatmapUncached(root, optionsRoot, cacheKey, now, baseTtlMs).finally(() => {
       heatmapInflight.delete(cacheKey);
     });
@@ -1819,6 +1860,8 @@ function tryStaleWhileRevalidateHeatmap(
       /* stale already returned — background refresh failure is non-fatal */
     });
   }
+  // else: at the concurrency cap — serve the stale data without refreshing this cycle; the next
+  // caller retries once a slot frees up (see heatmapMaxConcurrentBuilds's doc comment above).
 
   if (redisHit && (!mem || redisHit.at >= mem.at)) {
     setCachedHeatmap(cacheKey, redisHit);
@@ -1874,6 +1917,58 @@ async function awaitHeatmapBuildWithBlockCap(
  * isn't frozen empty for the full matrix TTL once it starts quoting again.
  */
 const EMPTY_SPOT_NEGATIVE_TTL_MS = 10_000;
+
+/**
+ * Negative-cache window for a NO-CHAIN ticker (Polygon returns 0 contracts AND the UW
+ * strike-exposure fallback also comes up empty — i.e. this root structurally has no live
+ * options market, not a transient outage). UNLIKE the no-spot negative cache above, this one is
+ * intentionally LONG: a name with no options chain right now is overwhelmingly likely to still
+ * have no options chain in 10 minutes, so there is no "recovers momentarily" case to protect —
+ * only wasted upstream calls to avoid.
+ *
+ * Root cause this fixes (2026-09-18 UW/Polygon rate-limiter queue-timeout-surge incident):
+ * without this, EVERY time the normal Redis matrix cache entry expires (`gexHeatmapRedisTtlSec()`,
+ * default 90s — fixed, NOT parameterized by the in-memory `ttlMs` this function otherwise varies),
+ * `buildGexHeatmapUncached` re-attempts the FULL Polygon chain fetch + UW strike-exposure fallback
+ * for a ticker that has already failed both on every prior attempt, forever, for as long as that
+ * ticker stays in the shared warm universe (`listSharedUniverseTickers`, up to 100 tickers,
+ * swept by `heatmap-warm` roughly every 30-45s). Confirmed live: two dead names (ACEEU, RWTN)
+ * logged "[gex-heatmap] 0 contracts ... trying UW strike-exposure fallback" on a steady ~75-90s
+ * cadence for 90+ minutes straight in CloudWatch, each cycle spending a full Polygon-chain round
+ * trip plus a UW spot-exposures/strike admission slot for a result already known to be empty —
+ * pure waste against the UW rate limiter's tight GLOBAL_MAX_RPS=2 shared ceiling. This is one
+ * measured, fixable contributor to that incident's aggregate UW/Polygon demand; it does not by
+ * itself explain the full surge (dominant volume was legitimate cross-cron SPX/mag7/equity-universe
+ * warm traffic sharing the same ceiling — a known, previously-flagged capacity question, see
+ * FINDINGS.md, not something this fix attempts to resolve).
+ */
+const NO_CHAIN_NEGATIVE_TTL_SEC = 600;
+const NO_CHAIN_CACHE_PREFIX = "gex-heatmap:no-chain";
+
+function noChainCacheKey(root: string): string {
+  return `${NO_CHAIN_CACHE_PREFIX}:${root}`;
+}
+
+/** True when `root` was confirmed chain-less (Polygon 0 contracts + UW fallback empty) within
+ *  the last `NO_CHAIN_NEGATIVE_TTL_SEC`. Fails open (false) on any Redis error — a missed
+ *  negative-cache hit just re-runs the normal, already-safe fetch path, never a correctness risk. */
+async function isKnownNoChainTicker(root: string): Promise<boolean> {
+  try {
+    const { sharedCacheGet } = await import("../shared-cache");
+    const hit = await sharedCacheGet<{ at: number }>(noChainCacheKey(root));
+    return hit != null;
+  } catch {
+    return false;
+  }
+}
+
+/** Mark `root` as confirmed chain-less for `NO_CHAIN_NEGATIVE_TTL_SEC`. Best-effort — a failed
+ *  write just means the next cycle re-probes upstream, same as before this fix existed. */
+function markNoChainTicker(root: string, now: number): void {
+  void import("../shared-cache")
+    .then(({ sharedCacheSet }) => sharedCacheSet(noChainCacheKey(root), { at: now }, NO_CHAIN_NEGATIVE_TTL_SEC))
+    .catch(() => undefined);
+}
 
 /**
  * Shortened accept-age for a SERVED heatmap entry during a preset fast move (>0.5% in-window).
@@ -2689,8 +2784,23 @@ function computeMetricShift(
   // Each side is constrained against ITS OWN spot at that moment — the current wall against
   // current.spot, the earlier wall against the baseline snapshot's own spot — not a shared spot,
   // since spot has moved between the two snapshots being diffed.
+  //
+  // BUT: `baselineSnap.spot` (GexHistorySnapshot.spot) is a REQUIRED field, always a real number,
+  // regardless of which metric this is — unlike `current.spot`, which VEX/DEX/CHARM callers never
+  // supply (see this function's own `current` param comment: "VEX/DEX/CHARM shifts have no
+  // spot-relative resistance/support concept... stay unconstrained... exactly as before"). Passing
+  // `baselineSnap.spot` unconditionally here constrained the EARLIER wall to one side of spot for
+  // EVERY metric while the CURRENT wall stayed unconstrained for VEX/DEX/CHARM (current.spot
+  // undefined) — comparing an unconstrained global-max pick (now) against a side-restricted pick
+  // (earlier) for the exact same metric, which can surface a phantom wall "migration" (or mask a
+  // real one) whenever that period's true strongest strike sat on the "wrong" side of spot at one
+  // of the two timestamps but not the other. Gate the earlier side on the SAME spot-applicability
+  // this function already uses for the current side, so VEX/DEX/CHARM stay unconstrained on BOTH
+  // sides (true "exactly as before" symmetry) while GEX keeps its full #3214 side-constraint on
+  // both sides unchanged.
+  const spotConstrained = typeof current.spot === "number";
   const curWalls = wallsOf(now, current.spot);
-  const earWalls = wallsOf(earlier, baselineSnap.spot);
+  const earWalls = wallsOf(earlier, spotConstrained ? baselineSnap.spot : undefined);
   const wall_changes = {
     call_wall: wallChange(curWalls.callWall, earWalls.callWall, now, earlier),
     put_wall: wallChange(curWalls.putWall, earWalls.putWall, now, earlier),
@@ -2760,8 +2870,12 @@ function computeGexShift(
  * VEX shift — same diff over each snapshot's `vex_strike_totals` / `vex_flip`. A snapshot is only
  * a usable baseline when it carries vex totals (legacy snapshots without them are skipped), so the
  * VEX shift stays 'collecting' until ≥2 snapshots written WITH vex totals exist. Never fabricated.
+ *
+ * Exported (same precedent as `computeGexEvents` above) so polygon-options-gex.test.ts can
+ * exercise the shared `computeMetricShift` wall-pick logic directly with ring/current fixtures,
+ * without having to drive the whole chain-building pipeline just to reach it.
  */
-function computeVexShift(
+export function computeVexShift(
   ring: GexHistorySnapshot[],
   current: { ts: number; flip: number | null; strike_totals: Record<string, number> }
 ): GexShift {
@@ -3286,6 +3400,13 @@ async function buildGexHeatmapUncached(
   now: number,
   ttlMs: number
 ): Promise<GexHeatmap | null> {
+  // Short-circuit BEFORE any upstream call for a root already confirmed chain-less (Polygon 0
+  // contracts + UW fallback also empty) within the last NO_CHAIN_NEGATIVE_TTL_SEC — see that
+  // constant's doc comment for the incident this closes. Skips the spot fetch too (not just the
+  // chain/UW fallback) since a chain-less name's matrix is all-empty regardless of spot.
+  if (await isKnownNoChainTicker(root)) {
+    return emptyHeatmap(root, { spot: 0, changePct: null, now, cacheKey, ttlMs, spotSource: undefined });
+  }
   // Resolve spot + day change% from the same root. INDEX roots (I:SPX/NDX/RUT/VIX) must use
   // the indices snapshot — the stocks snapshot returns no row for I:* and yields spot 0.
   const snap = await resolveSpotSnapshot(optionsRoot);
@@ -3340,6 +3461,11 @@ async function buildGexHeatmapUncached(
       ttlMs
     );
     if (uwMatrix) return uwMatrix;
+    // Both Polygon AND UW came up empty for this root — confirmed chain-less, not a one-off
+    // blip. Mark the negative cache so the NEXT several rebuild cycles (Redis matrix TTL,
+    // ~90s each by default) skip straight past both upstream fetches instead of re-proving the
+    // same empty result over and over. See NO_CHAIN_NEGATIVE_TTL_SEC's doc comment.
+    markNoChainTicker(root, now);
     return emptyHeatmap(root, { spot, changePct, now, cacheKey, ttlMs, spotSource });
   }
 
@@ -3474,7 +3600,36 @@ async function buildGexHeatmapUncached(
 
   // Main banded snapshot — every expiry inside the heatmap strike band (near-term dailies /
   // weeklies dominate this single paginated pass).
-  for (const c of contracts) accumulateContract(c);
+  //
+  // BATCHED event-loop yield — this loop was the one unyielded hot loop #4822/#4836 missed.
+  // `accumulateContract` runs real closed-form BS math per contract (vannaPerShare/charmPerShare —
+  // exp()/erf-approximation, not cheap arithmetic) over the FULL banded chain (SPX confirmed
+  // 11K+ contracts), and it runs FIRST, before the maxPainByExpiry/depth-block loops #4822/#4836
+  // already yield inside. Measured live 2026-10-07 (after both of those fixes had been in
+  // production for weeks): ALB `TargetResponseTime` p99/Max was STILL spiking into the 60-106s
+  // range during pre-open warm-up, timed almost exactly against `cron/meridian-warm` elapsed=
+  // 40-85s — the same magnitude the original 2026-09-11 incident measured (58-70s), i.e. the
+  // prior fix did not hold. #4822's own "RTH check" note named this exact failure mode in
+  // advance ("anything still spiking into double-digit seconds means the yield granularity
+  // needs tightening further") but the fix that landed only touched the two DOWNSTREAM loops,
+  // never this upstream one, which is the largest (every contract in the chain, not one expiry
+  // or one near-term subset at a time).
+  //
+  // Per-contract yields would be wrong here, unlike the per-expiry (~20-23 iterations) loop
+  // below: an 11K+-contract chain would mean 11K+ setImmediate hops, and macrotask scheduling
+  // overhead at that volume would itself add meaningful wall-clock. Batching every
+  // ACCUMULATE_CONTRACT_YIELD_BATCH keeps the max contiguous block small (one batch's worth of
+  // per-contract math) while keeping the yield COUNT in the same ballpark as the other loops in
+  // this function (~22 yields for an 11K-contract chain at the chosen batch size).
+  let contractsSinceYield = 0;
+  for (const c of contracts) {
+    accumulateContract(c);
+    contractsSinceYield += 1;
+    if (contractsSinceYield >= ACCUMULATE_CONTRACT_YIELD_BATCH) {
+      contractsSinceYield = 0;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
 
   // ── FAR-DATED expiries (monthly / quarterly OpEx) ─────────────────────────────
   // The near-term pass above is dominated by dailies/weeklies; the dominant dealer-gamma walls
@@ -3625,12 +3780,21 @@ async function buildGexHeatmapUncached(
   // Cost is N numbers, not an N x M OI grid: shipping raw OI cells would be far heavier and would
   // put a second, independently-derivable copy of max pain in the client, which is how two
   // surfaces start disagreeing about one product.
+  // Yielded per expiry (not batched): `computeMaxPainFromChain` is O(strikes²) and `sortedAll`
+  // spans ~20+ expiries over an 11K+-contract chain (SPX) — measured live at 40-86s wall-clock
+  // with ZERO yields anywhere in this function, blocking the shared web ECS event loop and
+  // stalling concurrent member requests on whichever task ran the warm cron (ALB p99 hit 58-70s
+  // during RTH, same root-cause shape as the vector-pick-sweep/full-state-snapshot fix). A real
+  // macrotask yield (not a microtask-only Promise.resolve()) between EVERY iteration, not just
+  // every N, keeps each contiguous block down to one expiry's own O(n) filter + O(s²) max-pain
+  // pass instead of the whole per-expiry sweep.
   const maxPainByExpiry: Record<string, number | null> = {};
   for (const e of sortedAll) {
     const forExpiry = contracts.filter(
       (c) => String(c.details?.expiration_date ?? "").slice(0, 10) === e
     );
     maxPainByExpiry[e] = forExpiry.length > 0 ? computeMaxPainFromChain(forExpiry) : null;
+    await new Promise((resolve) => setImmediate(resolve));
   }
 
   // GEX levels + regime. Gamma flip = CUMULATIVE zero-gamma boundary (SpotGamma-standard), the
@@ -3676,6 +3840,11 @@ async function buildGexHeatmapUncached(
       nearTermKeep,
       gexBuilt.total ?? totalGamma,
     );
+    // Same event-loop yield as every other buildDepthBlockForExpiries call in this function
+    // (PR #4822, 2026-09-12 completion) — this is the SAME O(depthContracts) cost as the
+    // per-expiry calls in the loop below, just for the whole nearTermKeep scope; it was the
+    // first of 3 sibling calls #4822 left un-yielded (the other 2 are below).
+    await new Promise((resolve) => setImmediate(resolve));
     const scopeBlocks: Record<string, GexDepthBlock> = {};
     for (const e of nearKeep) {
       const block = buildDepthBlockForExpiries(
@@ -3686,6 +3855,9 @@ async function buildGexHeatmapUncached(
         netGexTotalForExpiries(gexBuilt.cells, new Set([e])),
       );
       if (block) scopeBlocks[e] = block;
+      // Same event-loop yield as the max-pain loop above — each pass re-scans the full
+      // (~11K-contract) depthContracts array per near-term expiry.
+      await new Promise((resolve) => setImmediate(resolve));
     }
     const nearKey = [...nearKeep].sort().join("|");
     const nearPresetBlock = buildDepthBlockForExpiries(
@@ -3696,6 +3868,9 @@ async function buildGexHeatmapUncached(
       gexBuilt.total ?? totalGamma,
     );
     if (nearPresetBlock) scopeBlocks[nearKey] = nearPresetBlock;
+    // Same event-loop yield as every other buildDepthBlockForExpiries call in this function
+    // (PR #4822, 2026-09-12 completion) — second of the 3 sibling calls #4822 left un-yielded.
+    await new Promise((resolve) => setImmediate(resolve));
     const farOnly = expiries.filter((e) => !nearKeep.includes(e));
     if (farOnly.length > 0) {
       const farSet = new Set(farOnly);
@@ -3707,6 +3882,9 @@ async function buildGexHeatmapUncached(
         netGexTotalForExpiries(gexBuilt.cells, farSet),
       );
       if (farBlock) scopeBlocks[[...farOnly].sort().join("|")] = farBlock;
+      // Same event-loop yield as every other buildDepthBlockForExpiries call in this function
+      // (PR #4822, 2026-09-12 completion) — third/last of the 3 sibling calls #4822 left un-yielded.
+      await new Promise((resolve) => setImmediate(resolve));
     }
     if (Object.keys(scopeBlocks).length > 0) depth_by_scope = scopeBlocks;
   } catch (err) {
@@ -4546,11 +4724,19 @@ export function summarizeOiByStrike(contracts: ChainContract[], limit = 20) {
 export function computeMaxPainFromChain(contracts: ChainContract[]): number | null {
   const byStrike = summarizeOiByStrike(contracts, 500);
   if (!byStrike.length) return null;
+  // Scan in STRIKE-ascending order, not summarizeOiByStrike's own return order. That helper sorts
+  // its rows by DESCENDING total_oi for its own OI-ranked-display callers — unrelated to strike
+  // price — so scanning its output directly let an exact pain tie between two strikes resolve to
+  // whichever one happened to carry MORE total open interest, not a function of the actual
+  // max-pain data at all. Same bug class, same fix (sort ascending by strike before the strict-`<`
+  // argmin scan keeps the tie on the LOWER strike, deterministically, regardless of OI) as
+  // wallsFromStrikeTotals's documented fix in gex-cross-validation-core.ts.
+  const sortedByStrike = [...byStrike].sort((a, b) => a.strike - b.strike);
   let bestStrike: number | null = null;
   let bestPain = Infinity;
-  for (const candidate of byStrike) {
+  for (const candidate of sortedByStrike) {
     let pain = 0;
-    for (const row of byStrike) {
+    for (const row of sortedByStrike) {
       if (row.strike < candidate.strike) pain += (candidate.strike - row.strike) * row.call_oi;
       if (row.strike > candidate.strike) pain += (row.strike - candidate.strike) * row.put_oi;
     }

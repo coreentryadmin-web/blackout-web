@@ -86,6 +86,7 @@ const lastGoodStructure: {
   ema200: number | null;
   sma50: number | null;
   sma200: number | null;
+  vix: number | null;
 } = {
   hod: null,
   lod: null,
@@ -97,6 +98,7 @@ const lastGoodStructure: {
   ema200: null,
   sma50: null,
   sma200: null,
+  vix: null,
 };
 
 let lastGoodStructureSessionDate: string | null = null;
@@ -175,6 +177,7 @@ function seedStructureCacheFromBase(base: {
   ema200: number | null;
   sma50: number | null;
   sma200: number | null;
+  vix: number | null;
 }): void {
   // C7: If local structure is entirely null (worker that hasn't run a full desk build),
   // attempt to load from Redis before seeding from base. Fire-and-forget async load;
@@ -205,12 +208,52 @@ function stickyStructureLevel(
   ensureStructureCacheFresh();
   let next: number | null;
   if (key === "hod" || key === "lod") {
-    const candidates: number[] = [];
-    for (const v of [pulseVal, baseVal, lastGoodStructure[key], livePrice]) {
-      if (v != null && Number.isFinite(v) && v > 0) candidates.push(v);
+    // BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro): this used to take
+    // Math.max/Math.min across [pulseVal, baseVal, lastGoodStructure[key], livePrice]
+    // UNCONDITIONALLY, every cycle, even when pulseVal/baseVal were both genuinely fresh THIS
+    // cycle. That makes the ratchet a one-way trap: the instant ANY single cycle feeds a bad or
+    // stale candidate (a transient index-feed glitch during RTH, or — the live case — an
+    // off-hours pulse lane carrying forward a stale snapshot via `lastPulseForSignals`,
+    // spx-desk.ts, which has no session-date staleness check of its own), `lastGoodStructure[key]`
+    // latches onto it and keeps re-entering the max/min on every SUBSEQUENT cycle forever (within
+    // the session), permanently out-ranking a correct, fresh `baseVal` that disagrees with it —
+    // unlike every other key here (`pulseVal ?? baseVal ?? lastGoodStructure[key] ?? null`),
+    // where a fresh value always wins outright and the sticky cache is a pure last resort.
+    //
+    // Confirmed live 2026-11-01: `GET /api/market/nighthawk/edition`'s `market_recap.spx_desk`
+    // (built off this merge, via `getSpxDeskSummary()`) reported `hod: 7758.43` for a session
+    // whose OWN independently-fetched daily OHLC bar (`spxContext()`, format.ts, reading
+    // `ctx.spx_bars` directly — never routed through this sticky merge) and recap narrative both
+    // said the session gapped down to 7631.07 and "continued lower" to close 7580.07, with a real
+    // daily H of only 7637 — 7758.43 also exceeds the session's OWN prior-day high (pdh 7732.21),
+    // which is impossible for a session that never traded above its own open. market_label was
+    // EXTENDED (off-hours, no live spot to reconcile against: `livePrice` is undefined whenever
+    // `!rthOpen`, see `mergePulseIntoDesk`'s `liveSpot`), so the ONLY way hod could read above the
+    // real daily high is a stale/bad candidate winning the max against a correct `baseVal`.
+    //
+    // Fix: only fold `lastGoodStructure[key]` (and, implicitly, tolerate an on-the-day
+    // pulse/base disagreement) into the max/min when THIS cycle has no live spot to widen
+    // against (`livePrice == null`, i.e. off-hours/no RTH tick) AND neither `pulseVal` nor
+    // `baseVal` has a fresh real read — otherwise prefer a straight `baseVal ?? pulseVal`
+    // precedence, since `baseVal` (the full desk build) recomputes hod/lod fresh from real
+    // settled minute bars on every poll regardless of market hours, while off-hours `pulseVal`
+    // is exactly a sticky last-RTH-snapshot with no revalidation of its own. During RTH
+    // (`livePrice != null`) the existing "pulse gaps must not drop HOD/LOD" widen behavior is
+    // unchanged — this only removes the UNBOUNDED, self-perpetuating sticky carry-forward for
+    // the off-hours case where there is no live price to justify reconciling two sources at all.
+    const validLevel = (v: number | null | undefined): number | null =>
+      v != null && Number.isFinite(v) && v > 0 ? v : null;
+    if (livePrice == null) {
+      next = validLevel(baseVal) ?? validLevel(pulseVal) ?? validLevel(lastGoodStructure[key]);
+    } else {
+      const candidates: number[] = [];
+      for (const v of [pulseVal, baseVal, lastGoodStructure[key], livePrice]) {
+        const valid = validLevel(v);
+        if (valid != null) candidates.push(valid);
+      }
+      if (!candidates.length) return null;
+      next = key === "hod" ? Math.max(...candidates) : Math.min(...candidates);
     }
-    if (!candidates.length) return null;
-    next = key === "hod" ? Math.max(...candidates) : Math.min(...candidates);
   } else {
     next = pulseVal ?? baseVal ?? lastGoodStructure[key] ?? null;
   }
@@ -300,6 +343,19 @@ export function mergePulseIntoDesk(
   let hod = stickyStructureLevel("hod", pulse.hod, base.hod, liveSpot);
   ({ hod, lod } = widenSessionExtremesWithSpot(price, hod, lod, rthOpen));
   const vwap = stickyStructureLevel("vwap", pulse.vwap, base.vwap);
+  // BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday market
+  // closed): stickyStructureLevel's non-hod/lod branch resolves as `pulseVal ?? baseVal ??
+  // lastGoodStructure[key] ?? null` — so `vwap` above came from the cross-request sticky
+  // fallback, not a fresh read THIS cycle, exactly when BOTH pulse.vwap and base.vwap are
+  // null/undefined and a prior cycle already seeded the sticky cache. That is routinely true
+  // on a non-trading day (weekend/holiday), when the sticky cache keeps serving Friday's VWAP
+  // forever with nothing on the payload saying so. Confirmed live: GET /api/market/spx/play
+  // scored a "Below VWAP 7580.87 — sellers pressing" factor (-12) off this exact path while the
+  // sibling GET /api/market/spx/desk (peekSpxDesk(), no sticky merge) correctly reported
+  // vwap:null at the same instant. `vwap_stale` lets evaluateSpxPlayCore's closed-market branch
+  // disclose this the same way it already discloses stale GEX factors (discloseStaleGexFactors)
+  // instead of inventing a new mechanism.
+  const vwapStale = pulse.vwap == null && base.vwap == null && vwap != null;
   const pdh = stickyStructureLevel("pdh", pulse.pdh, base.pdh);
   const pdl = stickyStructureLevel("pdl", pulse.pdl, base.pdl);
   const ema20 = stickyStructureLevel("ema20", pulse.ema20, base.ema20);
@@ -307,17 +363,99 @@ export function mergePulseIntoDesk(
   const ema200 = stickyStructureLevel("ema200", pulse.ema200, base.ema200);
   const sma50 = stickyStructureLevel("sma50", pulse.sma50, base.sma50);
   const sma200 = stickyStructureLevel("sma200", pulse.sma200, base.sma200);
-  const vix = pulse.vix != null && pulse.vix > 0 ? pulse.vix : base.vix;
+  // pulse.vix falls back to base.vix when pulse's own vix read is unavailable (below) — vix's
+  // OWN change_pct must take the identical fallback, since pulse.vix_change_pct was computed
+  // against pulse's (now-discarded) vix, not against base.vix. Serving pulse.vix_change_pct
+  // unconditionally here let a null/stale pulse-side change% silently overwrite a perfectly
+  // good base-side one whenever `vix` itself correctly fell back to base.
+  //
+  // BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro): when BOTH pulse.vix
+  // and base.vix are unavailable this cycle — e.g. a cold ECS replica serving the
+  // deskShellFromPulse/emptyDeskPayload() fallback shell as `base` (vix seeded null there) while
+  // pulse's own vix read is also momentarily unavailable — vix served a bare `null` right next
+  // to other populated numeric fields (`available:true`, `price:7580.07`) on the SAME payload.
+  // Reproduced live: 25/30 polls in a tight burst returned `vix:null` while a poll seconds
+  // earlier (a different replica, cycling `as_of` timestamps) returned `vix:19.42`. vwap/pdh/
+  // pdl/emas/smas already had exactly this gap closed via `stickyStructureLevel`'s cross-
+  // instance Redis-backed last-known-good cache (`seedStructureCacheFromBase`/
+  // `loadStructureFromRedis`); vix never got the same treatment. Route vix through the
+  // identical mechanism as a third-tier fallback — it never fabricates a value no replica has
+  // ever actually seen (lastGoodStructure.vix starts null, same as every sibling sticky field),
+  // it only prevents a transient cold-replica/cold-pulse overlap from serving null next to an
+  // otherwise fully-populated desk.
+  const pulseVixLive = pulse.vix != null && pulse.vix > 0;
+  const baseVixLive = base.vix != null && base.vix > 0;
+  const vix = stickyStructureLevel(
+    "vix",
+    pulseVixLive ? pulse.vix : null,
+    baseVixLive ? base.vix : null
+  );
   return {
     ...base,
+    // BUG FIX (Ask Largo standing mandate, 2026-10-25): same "never reassigned, inherited from
+    // base/emptyDeskPayload forever" shape as the prior_close/gap_pct/gap_source fix and the
+    // vix_term fix below — `available` was never reassigned either, so deskShellFromPulse's
+    // fallback shell (mergePulseIntoDesk(emptyDeskPayload(...), pulse)) stayed available:false
+    // forever even when pulse carried real, live data (pulse.available is true precisely when
+    // buildSpxDeskPulse resolved a real price). computeSpxConfluence gates on `!desk.available`
+    // and nulls confluence entirely when that happens, which cascades into
+    // evaluateSpxPlayCore's closed-market branch emitting assessed:false/score:0/factors:[]/
+    // direction:null/grade:"D" even with real underlying data sitting in pulse the whole time.
+    available: pulse.available || base.available,
     price,
-    spx_change_pct: pulse.spx_change_pct,
+    // Fall back to the desk's own spx_change_pct when pulse could not anchor its own (common
+    // off-hours/pre-open, when pulse has no trusted prior-close basis) — mirrors the vix
+    // fallback immediately below rather than letting a null pulse-side value blank out a real
+    // one already sitting on base, computed from the exact same price/prior_close this merged
+    // payload reports.
+    spx_change_pct: pulse.spx_change_pct ?? base.spx_change_pct,
     vix,
-    vix_change_pct: pulse.vix_change_pct,
-    above_vwap: pulse.above_vwap,
+    // Only pulse/base carry a change% that's actually anchored to a fresh read THIS cycle —
+    // the sticky-cache tier above never computes one, so when neither pulse nor base had a
+    // live vix (the case the sticky fallback exists for), serve change_pct honestly as null
+    // rather than reusing a stale base.vix_change_pct that was itself null right alongside the
+    // null base.vix.
+    vix_change_pct: pulseVixLive
+      ? pulse.vix_change_pct
+      : baseVixLive
+        ? base.vix_change_pct
+        : null,
+    // BUG FIX (Ask Largo standing mandate, 2026-10-09): this function never assigned
+    // prior_close/gap_pct/gap_source at all — the `...base` spread above silently carried
+    // whatever `base` already had, forever, with no fallback to `pulse`'s own values the way
+    // every other derived field here already gets (spx_change_pct/vix_change_pct two lines up,
+    // pdh/pdl a few lines down). Harmless in the common path, where `base` is a REAL desk build
+    // with its own correct prior_close — but `deskShellFromPulse` (spx-desk.ts) calls this exact
+    // function as `mergePulseIntoDesk(emptyDeskPayload(...), pulse)` to build the FALLBACK merged
+    // shell (`buildBootstrapFastLane`, used whenever the real merged build is cold/slow — e.g.
+    // right after a deploy, a cache miss, or a cache stampede) — and `emptyDeskPayload` seeds
+    // prior_close/gap_pct/gap_source to `null`. With no assignment here, that `null` survived
+    // forever even though `pulse` (the ONLY data source this fallback shell has) carried the real,
+    // correct value the whole time. Live-reproduced 2026-10-09 ~09:14 UTC, mid an ECS rolling
+    // deploy (cold per-task cache): `GET /api/market/spx/merged` served
+    // `available:false, source:"none", prior_close:null, gap_pct:null, gap_source:null` while
+    // `pdh:7807.02/pdl:7763.34` (correctly pulled from pulse two lines down) and the sibling
+    // `/api/market/spx/pulse` route (prior_close:7801.77, gap_pct/gap_source populated) proved the
+    // real values were sitting right there, just never copied over. Same `?? base.X` fallback
+    // shape as `spx_change_pct` above (prefer pulse's fresher ~1s read, fall back to base's slower
+    // ~10s one when pulse itself has none) — not the heavier `stickyStructureLevel` treatment
+    // pdh/pdl/vwap/emas get, since prior_close/gap_pct/gap_source don't flicker intraday the way a
+    // live level can.
+    prior_close: pulse.prior_close ?? base.prior_close,
+    gap_pct: pulse.gap_pct ?? base.gap_pct,
+    gap_source: pulse.gap_source ?? base.gap_source,
+    // Recompute above_vwap from the price/vwap this function JUST resolved (sticky fallback
+    // already applied), instead of trusting pulse's own flag — pulse computes above_vwap
+    // against ITS OWN vwap, which is routinely null off-hours/pre-open even though the sticky
+    // `vwap` above has a real value, so pulse.above_vwap can disagree with the vwap/price this
+    // very payload reports (e.g. price genuinely above vwap, flag still reads false). Same
+    // "recompute against the merged value, don't transport a stale derived flag" fix already
+    // applied to above_gamma_flip below (ISSUE-18+20).
+    above_vwap: vwap != null ? price >= vwap : pulse.above_vwap,
     lod,
     hod,
     vwap,
+    vwap_stale: vwapStale,
     pdh,
     pdl,
     ema20,
@@ -330,7 +468,21 @@ export function mergePulseIntoDesk(
     add: pulse.add ?? base.add,
     regime: pulse.regime ?? base.regime,
     leader_stocks: pulse.leader_stocks.length ? pulse.leader_stocks : base.leader_stocks,
-    vix_term: pulse.vix_term ?? base.vix_term,
+    // BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro): the off-hours "serve today's
+    // own settled close" branch of buildSpxDeskPulse (spx-desk.ts, empty-shell spread) sets
+    // vix_term to the DEFINED placeholder {vix9d:null,vix3m:null,structure:"unknown",detail:""},
+    // never reassigning it. A bare `pulse.vix_term ?? base.vix_term` keeps that placeholder
+    // (it's a defined object, not null/undefined) and discards the real base desk's vix_term —
+    // silently dropping the scored "VIX curve" factor from GET /api/market/spx/play while the
+    // sibling GET /api/market/spx/desk (built without this merge) still showed real contango/
+    // backwardation data at the exact same instant. Same "check for real content, not just
+    // definedness" fix already applied to leader_stocks two lines below (`.length ?` instead of
+    // a bare `??`) — applied here the same way, since vix_term can likewise be a real,
+    // non-empty object with no values set.
+    vix_term:
+      pulse.vix_term && (pulse.vix_term.vix9d != null || pulse.vix_term.vix3m != null)
+        ? pulse.vix_term
+        : base.vix_term,
     data_quality: pulse.data_quality ?? base.data_quality,
     market_open: pulse.market_open ?? base.market_open,
     market_status: pulse.market_status ?? base.market_status,

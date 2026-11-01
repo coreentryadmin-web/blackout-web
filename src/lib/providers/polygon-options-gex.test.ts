@@ -9,12 +9,14 @@ import {
   __test_heatmapUnfilteredPageGuard,
   __test_heatmapBandPct as heatmapBandPct,
   computeGexEvents,
+  computeVexShift,
   computeMaxPainFromChain,
   resolveExpiryAxis,
   resolveOptionsRoot,
   resolveHeatmapStrikeBounds,
   heatmapMinHalfWidthUsd,
   computeZeroGammaFlip,
+  computeVexRegime,
   computeCharmRegime,
   heatmapHasPastExpiries,
   prunePastExpiriesFromHeatmap,
@@ -29,6 +31,7 @@ import {
   clampedCacheAgeSec,
   gexHeatmapCacheEntryStale,
   gexHeatmapCacheEntryWithinTtl,
+  shouldStartHeatmapBackgroundRebuild,
 } from "./polygon-options-gex";
 
 function contract(
@@ -186,6 +189,61 @@ test("fetchGexHeatmap caps inflight/cold builds with gexHeatmapMaxBlockMs (never
   assert.match(src, /pollPeerHeatmapCache/);
 });
 
+// REGRESSION (2026-10-15): tryStaleWhileRevalidateHeatmap's detached background rebuild had NO
+// concurrency cap at all — unlike the fully-cold branch below it in fetchGexHeatmap, which is
+// bounded by both heatmap-warm's own `runPolygonPool(8)` (shipped 2026-10-08) and a cross-replica
+// sharedCacheSetNx lock. Because heatmap-warm's real sweep cadence (46-209s measured) vastly
+// exceeds the 5s per-ticker TTL but mostly stays under the 90s max-stale ceiling, nearly every
+// ticker in a single pass lands in THIS branch, each firing an independent, uncapped detached
+// Polygon rebuild. Live-caught 2026-10-15: a single rth-warm-leader backup dispatch of
+// heatmap-warm logged 100+ "[polygon-gex] full-chain escalation ADOPTED" lines across unrelated
+// tickers within ~4 minutes, time-correlated with a 79.5s ALB TargetResponseTime Max / 6.43s
+// AVERAGE spike — the same cross-request-stall mechanism already documented for the Vector
+// `/universe` and boot-warm paths, firing through this third, previously-uncapped entry point.
+test("shouldStartHeatmapBackgroundRebuild: refuses once the global in-flight count hits the cap", () => {
+  assert.equal(shouldStartHeatmapBackgroundRebuild(0, 8), true);
+  assert.equal(shouldStartHeatmapBackgroundRebuild(7, 8), true);
+  assert.equal(
+    shouldStartHeatmapBackgroundRebuild(8, 8),
+    false,
+    "at the cap — must not start another detached rebuild on top of 8 already in flight"
+  );
+  assert.equal(shouldStartHeatmapBackgroundRebuild(50, 8), false);
+});
+
+test("shouldStartHeatmapBackgroundRebuild: default cap honors GEX_HEATMAP_MAX_CONCURRENT_BUILDS env override", () => {
+  const prev = process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS;
+  try {
+    process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS = "2";
+    assert.equal(shouldStartHeatmapBackgroundRebuild(1), true);
+    assert.equal(shouldStartHeatmapBackgroundRebuild(2), false);
+
+    delete process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS;
+    assert.equal(shouldStartHeatmapBackgroundRebuild(7), true, "default cap is 8");
+    assert.equal(shouldStartHeatmapBackgroundRebuild(8), false, "default cap is 8");
+
+    process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS = "not-a-number";
+    assert.equal(shouldStartHeatmapBackgroundRebuild(7), true, "garbage env falls back to default 8");
+  } finally {
+    if (prev === undefined) delete process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS;
+    else process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS = prev;
+  }
+});
+
+test("tryStaleWhileRevalidateHeatmap: the detached rebuild kickoff is actually gated by the cap (wiring proof)", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  // The gate must wrap the SAME kickoff the old, uncapped code used (heatmapInflight.has +
+  // starting `build`), not just exist somewhere unrelated in the file.
+  assert.match(
+    src,
+    /!heatmapInflight\.has\(cacheKey\)\s*&&\s*\n\s*shouldStartHeatmapBackgroundRebuild\(heatmapInflight\.size\)/,
+    "the background-rebuild kickoff inside tryStaleWhileRevalidateHeatmap must be gated by shouldStartHeatmapBackgroundRebuild(heatmapInflight.size)"
+  );
+});
+
 test("SPX matrix build applies UW 0DTE overlay before cache write (#2503)", () => {
   const src = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
@@ -227,6 +285,40 @@ test("gex heatmap Redis TTL covers SWR window (not 5s matrix TTL only)", () => {
   assert.match(src, /sharedCacheSet\(cacheKey, entry, gexHeatmapRedisTtlSec\(\)\)/);
   assert.match(src, /export async function readGexHeatmapSnapshot/);
   assert.match(src, /export async function readGexHeatmapCacheOnly/);
+});
+
+// 2026-09-18 UW/Polygon rate-limiter queue-timeout-surge incident: a root with 0 Polygon
+// contracts AND an empty UW strike-exposure fallback (structurally chain-less, not a blip) was
+// re-fetching BOTH upstreams on every Redis matrix TTL expiry (~90s) forever, confirmed live via
+// ACEEU/RWTN retrying every ~75-90s for 90+ minutes straight. Fix: a long negative cache that
+// short-circuits future rebuilds for a confirmed chain-less root before either upstream call.
+test("chain-less root (0 Polygon contracts + empty UW fallback) is negative-cached and short-circuits the NEXT build before any upstream call", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(
+    src,
+    /const NO_CHAIN_NEGATIVE_TTL_SEC = 600;/,
+    "expected a long (10min) negative-cache TTL for confirmed chain-less roots"
+  );
+  // The short-circuit must run BEFORE resolveSpotSnapshot — otherwise a confirmed chain-less
+  // root still pays for a wasted spot fetch on every rebuild cycle.
+  const shortCircuitIdx = src.indexOf("if (await isKnownNoChainTicker(root))");
+  const spotFetchIdx = src.indexOf("const snap = await resolveSpotSnapshot(optionsRoot);");
+  assert.ok(shortCircuitIdx > 0, "expected the no-chain short-circuit check in buildGexHeatmapUncached");
+  assert.ok(spotFetchIdx > 0, "expected the spot fetch this check must precede");
+  assert.ok(
+    shortCircuitIdx < spotFetchIdx,
+    "no-chain short-circuit must run before the spot fetch, not after — else the spot call still leaks every cycle"
+  );
+  // The negative cache must only be SET once BOTH upstreams (Polygon chain + UW fallback) have
+  // actually come up empty for this build — never marked speculatively before the UW attempt.
+  assert.match(
+    src,
+    /if \(uwMatrix\) return uwMatrix;[\s\S]{0,600}markNoChainTicker\(root, now\);/,
+    "markNoChainTicker must run only after the UW fallback also returned null"
+  );
 });
 
 // ── task #136: computeGexEvents — the pure diff durable persistence (gex-regime-
@@ -372,6 +464,39 @@ test("computeGexEvents: net GEX flipping sign produces net_gex_sign_flipped with
   assert.equal(flipped.to_value, 30_000);
 });
 
+// ── VEX/DEX/CHARM shift wall picks must stay unconstrained on BOTH sides, not just the
+// current one (PR #3214 fixed wallsOf()'s unconstrained-argmax bug for GEX by threading a real
+// spot through BOTH the current and earlier wall picks — but `baselineSnap.spot` is a required
+// field on every GexHistorySnapshot regardless of metric, so passing it unconditionally for the
+// EARLIER wall silently side-constrained VEX/DEX/CHARM's earlier pick even though their CURRENT
+// pick stayed unconstrained (current.spot is never supplied for these metrics) — comparing an
+// unconstrained global-max pick against a side-restricted one for the same metric.) ──
+test("computeVexShift: earlier wall pick stays UNCONSTRAINED (same as current), not silently side-constrained by the baseline snapshot's spot", () => {
+  // Strike 90 carries the biggest-magnitude positive vanna at BOTH timestamps, but it sits BELOW
+  // the baseline snapshot's own spot (100). VEX has no spot-relative resistance/support concept
+  // (unlike GEX), so the TRUE "pos-vanna wall" at every timestamp is the global max: strike 90.
+  const vexTotals = { "90": 900, "110": 500 };
+  const ring: GexHistorySnapshot[] = [
+    { ts: 1000, spot: 100, flip: null, strike_totals: {}, vex_strike_totals: vexTotals },
+    { ts: 2000, spot: 105, flip: null, strike_totals: {}, vex_strike_totals: vexTotals },
+  ];
+  const result = computeVexShift(ring, { ts: 2000, flip: null, strike_totals: vexTotals });
+  assert.ok(result.available, "two usable VEX snapshots exist — must not read as 'collecting'");
+  assert.equal(
+    result.wall_changes.call_wall.from,
+    90,
+    "earlier pos-vanna wall must be the real global max (90), not 110 — a spot-side-constrained " +
+      "pick that VEX never asked for and that the current-side pick (also 90, unconstrained) " +
+      "disagrees with"
+  );
+  assert.equal(result.wall_changes.call_wall.to, 90, "current pick (always unconstrained for VEX) is 90");
+  assert.equal(
+    result.wall_changes.call_wall.moved_pts,
+    0,
+    "the wall never actually moved — nothing should be reported as having migrated"
+  );
+});
+
 // ── Max pain must be scoped to ONE expiry (docs/audit/FINDINGS.md) ──────────────────
 // Max pain answers "at what settlement price does THIS expiry's holders collectively
 // lose the most" — a question tied to one settlement date. Blending OI across two
@@ -418,6 +543,40 @@ test("computeMaxPainFromChain: blending two DIFFERENT expiries' OI changes the a
 
 test("computeMaxPainFromChain: empty input returns null, never a fabricated strike", () => {
   assert.equal(computeMaxPainFromChain([]), null);
+});
+
+// ── An exact pain tie must resolve to the LOWER strike, not whichever strike happens to carry
+// more total open interest (docs/audit/findings-staging/2026-11-01-maxpain-strike-tiebreak.md).
+// `computeMaxPainFromChain` scans `summarizeOiByStrike`'s own return array — which that helper
+// sorts by DESCENDING total_oi for ITS OWN callers (an OI-ranked display list) — so on an exact
+// pain tie between two strikes, the `pain < bestPain` strict comparison keeps whichever strike
+// summarizeOiByStrike happened to place first, i.e. whichever has the LARGER total open interest.
+// That is a correlate of nothing in the actual max-pain decision. Same bug class, same fix
+// (sort ascending by strike before the scan), as wallsFromStrikeTotals's documented fix in
+// gex-cross-validation-core.ts.
+test("computeMaxPainFromChain: an exact pain tie resolves to the LOWER strike, not the higher-OI one", () => {
+  // Strike 100: 100 call OI, 0 put OI.
+  // Strike 110: 9900 call OI (irrelevant to either candidate's pain — only matters for a
+  //             candidate strike above 110, which doesn't exist here; it exists purely to make
+  //             strike 110's TOTAL open interest dwarf strike 100's) + 100 put OI.
+  //
+  // pain(100) = (110-100) * put_oi(110) = 10 * 100 = 1000
+  // pain(110) = (110-100) * call_oi(100) = 10 * 100 = 1000
+  // → an exact tie, by construction.
+  //
+  // total_oi(100) = 100; total_oi(110) = 10000 — so summarizeOiByStrike's OI-descending sort
+  // places the strike-110 row FIRST. Before the fix, that row wins the tie (iterated first);
+  // after the fix (scan sorted ascending by strike instead), strike 100 always wins the tie.
+  const contracts = [
+    contract(100, "call", 100, "2026-07-10"),
+    contract(110, "put", 100, "2026-07-10"),
+    contract(110, "call", 9900, "2026-07-10"),
+  ];
+  assert.equal(
+    computeMaxPainFromChain(contracts),
+    100,
+    "an exact pain tie must deterministically keep the lower strike, regardless of which strike carries more total OI"
+  );
 });
 
 // ── resolveOptionsRoot: `ticker` is untrusted, user-supplied input (the query param on every
@@ -482,6 +641,42 @@ test("computeZeroGammaFlip: with BOTH a neg→pos and a pos→neg crossing, pick
 
 test("computeZeroGammaFlip: fewer than 2 strikes returns null", () => {
   assert.equal(computeZeroGammaFlip({ "100": 50 }, 100), null);
+});
+
+// ── computeVexRegime: an exact vanna tie between two strikes must deterministically keep
+// the LOWER strike regardless of the caller's own key-insertion order — same fix, same
+// convention, as the already-fixed kingFromStrikeTotals/wallsFromStrikeTotals
+// (gex-cross-validation-core.ts) and topGexPinStrikes (strike-gex-lookup.ts). Decimal
+// strike keys (SPX/SPY's half-dollar chain) preserve Object.entries() INSERTION order, so
+// an unsorted argmax/argmin scan picked whichever strike the caller happened to insert
+// first — not a function of the vanna data — and posWall/negWall here are published
+// straight through as vex.pos_wall/vex.neg_wall.
+
+test("computeVexRegime: exact positive-vanna tie is deterministic regardless of object insertion order", () => {
+  // Same tied book, two real insertion orders this file's own producers actually use:
+  // buildMetric inserts strikes descending; buildGexHeatmapFromUwStrikeExposures inserts in
+  // whatever order its upstream UW rows arrive.
+  const descendingInsertion = { "110.5": 2_000_000, "105.5": -500_000, "100.5": 2_000_000 };
+  const ascendingInsertion = { "100.5": 2_000_000, "105.5": -500_000, "110.5": 2_000_000 };
+
+  const fromDescending = computeVexRegime(descendingInsertion, 1_500_000);
+  const fromAscending = computeVexRegime(ascendingInsertion, 1_500_000);
+
+  assert.equal(fromDescending.posWall, 100.5);
+  assert.equal(fromAscending.posWall, 100.5);
+  assert.equal(fromDescending.posWall, fromAscending.posWall);
+});
+
+test("computeVexRegime: exact negative-vanna tie is deterministic regardless of object insertion order", () => {
+  const descendingInsertion = { "110.5": -2_000_000, "105.5": 500_000, "100.5": -2_000_000 };
+  const ascendingInsertion = { "100.5": -2_000_000, "105.5": 500_000, "110.5": -2_000_000 };
+
+  const fromDescending = computeVexRegime(descendingInsertion, -1_500_000);
+  const fromAscending = computeVexRegime(ascendingInsertion, -1_500_000);
+
+  assert.equal(fromDescending.negWall, 100.5);
+  assert.equal(fromAscending.negWall, 100.5);
+  assert.equal(fromDescending.negWall, fromAscending.negWall);
 });
 
 // ── computeCharmRegime: the narrative direction was backwards. charm = ∂Δ/∂t, so a
@@ -990,19 +1185,33 @@ test("dividend-yield resolve normalizes percent notation and caches a genuine no
 // pinned to 0 through this path — this test locks down the fix: /v3/reference/dividends DOES cover
 // ETFs, so a null ratios read now falls through to a trailing-12mo cash sum instead of a throw.
 test("dividend-yield resolve falls back to trailing dividends when ratios has no row (ETF)", async () => {
-  ratiosStub = async () => null;
-  dividendsStub = async () => [
-    { cash_amount: 1.5, ex_dividend_date: "2026-06-18" },
-    { cash_amount: 1.5, ex_dividend_date: "2026-03-20" },
-    { cash_amount: 1.5, ex_dividend_date: "2025-12-19" },
-    { cash_amount: 1.5, ex_dividend_date: "2025-09-19" },
-    // Outside the trailing-12mo window from a 2026-08-28 "now" — must be excluded.
-    { cash_amount: 1.5, ex_dividend_date: "2025-06-20" },
-  ];
-  const spot = 600;
-  const q = await __test_resolveHeatmapDividendYieldUncached("SPY", spot);
-  // 4 of the 5 rows are within the trailing 12 months of the fixed "now" below: 4 × 1.5 / 600.
-  assert.ok(Math.abs(q - (6 / spot)) < 1e-9, `expected ~${6 / spot}, got ${q}`);
+  // BUG FIX (2026-09-19): this test's fixture dates were pinned to a comment-only "2026-08-28
+  // now" assumption, but `resolveHeatmapDividendYieldUncached` calls
+  // `trailingTwelveMonthDividendYield(dividends, spot, Date.now())` with the REAL current time —
+  // unlike its sibling test below, which already passes an explicit `nowMs`. As real time passed
+  // the 12mo window drifted, and the "2025-09-19" fixture row (deliberately placed just inside
+  // the window as of 2026-08-28) silently crossed back OUTSIDE it once today reached 2026-09-19,
+  // flipping the count from 4 qualifying rows to 3 with no code change — caught live in CI on
+  // that exact date. Freezing the clock to the date the fixture was authored for makes the
+  // assertion actually test what its own comments claim, on every future run.
+  mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-08-28T00:00:00Z") });
+  try {
+    ratiosStub = async () => null;
+    dividendsStub = async () => [
+      { cash_amount: 1.5, ex_dividend_date: "2026-06-18" },
+      { cash_amount: 1.5, ex_dividend_date: "2026-03-20" },
+      { cash_amount: 1.5, ex_dividend_date: "2025-12-19" },
+      { cash_amount: 1.5, ex_dividend_date: "2025-09-19" },
+      // Outside the trailing-12mo window from the frozen 2026-08-28 "now" — must be excluded.
+      { cash_amount: 1.5, ex_dividend_date: "2025-06-20" },
+    ];
+    const spot = 600;
+    const q = await __test_resolveHeatmapDividendYieldUncached("SPY", spot);
+    // 4 of the 5 rows are within the trailing 12 months of the frozen "now": 4 × 1.5 / 600.
+    assert.ok(Math.abs(q - (6 / spot)) < 1e-9, `expected ~${6 / spot}, got ${q}`);
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test("trailingTwelveMonthDividendYield excludes rows outside the trailing 12mo window", () => {

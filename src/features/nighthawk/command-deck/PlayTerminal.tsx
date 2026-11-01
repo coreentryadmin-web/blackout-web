@@ -8,6 +8,7 @@ import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { dispatchGotoSwing } from "@/features/nighthawk/lib/goto-swing";
 import { ZeroDteCommandPanel } from "./ZeroDteCommandPanel";
+import { SwingLargoInsightsPanel } from "./SwingLargoInsightsPanel";
 import { LegacyPlayDetailPanel } from "./LegacyPlayDetailPanel";
 import { LegacyManageGeometry } from "./legacy-play-geometry";
 import { CondorPanel, TimeStopClock } from "./play-terminal-shared";
@@ -42,9 +43,26 @@ const GLAB: Record<string, string> = {
   delta: "Δ DELTA", gamma: "Γ GAMMA", theta: "Θ THETA", vega: "V VEGA", iv: "IV",
 };
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-20): mirrors `normalizeImpliedVol`
+// (`src/lib/providers/options-snapshot.ts`) — that server-side helper exists specifically to
+// catch a real provider placeholder (some expired/edge-row option snapshots return
+// `implied_volatility` on the PERCENT scale, e.g. 20 = 2000%, instead of the normal DECIMAL
+// scale, e.g. 0.20 = 20%) but had ZERO call sites anywhere in the app, including here: this
+// greek strip formatted the raw `iv` straight through `Math.round(v * 100)`, so a placeholder
+// would have rendered as "IV 2000%" on a live position. `options-snapshot.ts` is a heavy
+// server-only module (Polygon fetch/rate-limiter chain) unsafe to import into this client
+// component, so the guard is duplicated here — same small pure rule, same threshold, no
+// import — rather than pulling server code into the client bundle. A real IV reading
+// (including a genuine near-0% one) passes through completely unchanged.
+const IV_DECIMAL_MAX = 5; // 500% — safely above any real decimal-scale option IV; see options-snapshot.ts's own constant.
+function normalizeIvForDisplay(iv: number): number {
+  if (iv <= 0) return iv;
+  return iv >= IV_DECIMAL_MAX ? iv / 100 : iv;
+}
+
 function fmtGreek(k: string, v: number | null): string {
   if (v == null) return "—";
-  if (k === "iv") return `${Math.round(v * 100)}%`;
+  if (k === "iv") return `${Math.round(normalizeIvForDisplay(v) * 100)}%`;
   if (k === "theta") return v.toFixed(2);
   return `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
 }
@@ -149,9 +167,15 @@ export function PlayTerminal({
    *  the normal "thesis" first paint. */
   initialTab?: Tab;
 }) {
-  // Tabbed horizons (Swing/Legacy/…) default to Thesis at first paint. 0DTE uses the single-panel
-  // scroll — no tab state. (Working 0DTE rows used to auto-switch to Management; that path was
-  // removed with the tab bar in #2909 — do not reintroduce auto-switch for other horizons.)
+  // DEAD-CODE CLEANUP (Ask Largo standing mandate, 2026-10-24): this comment used to say
+  // "Tabbed horizons (Swing/Legacy/…)" — stale on both counts. `commandSinglePanel` (below)
+  // already routes ZERO_DTE/SWING to ZeroDteCommandPanel, and `legacySinglePanel` unconditionally
+  // routes every LEGACY play to LegacyPlayDetailPanel — so LEAPS is the only horizon that ever
+  // reaches this tab bar / PnlPanel at all. See the LegacyPnlPanel removal below for the concrete
+  // consequence of the stale claim (an entire function that could never render, discovered while
+  // investigating what looked like a live display bug in it).
+  // (Working 0DTE rows used to auto-switch to Management; that path was removed with the tab bar
+  // in #2909 — do not reintroduce auto-switch for other horizons.)
   const [tab, setTab] = useState<Tab>(initialTab ?? "thesis");
   const [tabTouched, setTabTouched] = useState(false);
   useEffect(() => {
@@ -269,7 +293,7 @@ export function PlayTerminal({
         <span className="tk">{play.ticker} · {play.direction}</span>
         <span className="ct">{play.contract}<OccCopy occ={play.occ} /></span>
         <span className="nh-deck-cursor" aria-hidden />
-        <span className="big"><div className="nh-deck-score">{play.score}</div><div className="lab">SCORE</div></span>
+        <span className="big"><div className="nh-deck-score">{play.scoreWithheld ? "—" : play.score}</div><div className="lab">SCORE</div></span>
       </div>
 
       <HeaderBadges play={play} />
@@ -288,6 +312,14 @@ export function PlayTerminal({
               {legacyPrimaryPnlPct(play) != null ? (
                 <span className={clsx(legacyPrimaryPnlPct(play)! > 0 ? "nh-deck-pos" : legacyPrimaryPnlPct(play)! < 0 ? "nh-deck-neg" : "")}>
                   {" "}{legacyPrimaryPnlPct(play)! >= 0 ? "+" : ""}{legacyPrimaryPnlPct(play)!.toFixed(1)}% from entry
+                </span>
+              ) : (play.status === "WATCH" || play.status === "SKIP") && play.stockMovePct != null ? (
+                // BUG FIX (2026-11-01, 4th instance of the WATCH/SKIP-exclusion defect in this file
+                // family): same root cause/fix as LegacyPlayDetailPanel.tsx's verdict band — no
+                // position was ever entered, so `stockMovePct` is a hypothetical move, not P&L.
+                // Reuses the exact "Since flag" framing instead of the "from entry" text above.
+                <span className={clsx(play.stockMovePct > 0 ? "nh-deck-pos" : play.stockMovePct < 0 ? "nh-deck-neg" : "")}>
+                  {" "}{play.stockMovePct >= 0 ? "+" : ""}{play.stockMovePct.toFixed(1)}% · Since flag
                 </span>
               ) : play.stockChangePct != null ? (
                 <span className={clsx(play.stockChangePct > 0 ? "nh-deck-pos" : play.stockChangePct < 0 ? "nh-deck-neg" : "")}>
@@ -361,6 +393,19 @@ export function PlayTerminal({
         </div>
       ))}
 
+      {play.horizon === "SWING" && (
+        // Desktop already shows this in the dedicated 3-column `.nh-deck-largo` rail
+        // (CommandDeck.tsx) — that rail is CSS-hidden below the 1100px 3-column breakpoint with
+        // no fallback, so a member on a phone or narrow tablet who taps a Swing play into this
+        // mobile detail overlay never saw the Structure Ladder / Ask Largo read at all. This
+        // second mount is CSS-gated the opposite way (`.nh-deck-right-largo-mobile`, hidden above
+        // 1100px) so it fills exactly that gap without duplicating the desktop rail. Same
+        // component + same useSwingPlayBrief SWR key as the desktop copy, so mounting it here
+        // costs no extra fetch when both are visible during a resize.
+        <div className="nh-deck-right-largo-mobile">
+          <SwingLargoInsightsPanel play={play} />
+        </div>
+      )}
       {commandSinglePanel ? (
         <ZeroDteCommandPanel play={play} nowMs={nowMs} sessionClosed={sessionClosed} />
       ) : legacySinglePanel ? (
@@ -504,7 +549,11 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
           )}
         </summary>
         {play.factors.length === 0 && (
-          <div className="nh-deck-recnote">Component breakdown not served for this lane yet — score {play.score}.</div>
+          <div className="nh-deck-recnote">
+            {play.scoreWithheld
+              ? "No pillar breakdown on this row — grade is from lane score only."
+              : `Component breakdown not served for this lane yet — score ${play.score}.`}
+          </div>
         )}
         {topFactors.map((f) => (
           <div key={f.label} className={clsx("nh-deck-fac", f.points < 0 && "neg")}>
@@ -548,9 +597,9 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
             ZeroDteEntryPlan/LegacyEntryPlan (Night Hawk panel declutter, docs/audit/FINDINGS.md
             2026-08-05): those components' Contract/Current-mark/Entry-premium/Cost-per-contract
             rows all duplicated the header/hero (0DTE: `play.contract` + OccCopy'd `play.occ` ==
-            `optionsPlay`, "mark" already streams in the hero strip) or the PnL tab (Legacy:
-            `LegacyPnlPanel` already shows Contract/Entry-premium/Stock-entry in its grid) — see
-            the PR write-up for the exact duplicate mapping. R:R (both horizons), Underlying
+            `optionsPlay`, "mark" already streams in the hero strip) or the single-panel render
+            (Legacy: `LegacyPlayDetailPanel` already shows Contract/Entry-premium/Stock-entry) —
+            see the PR write-up for the exact duplicate mapping. R:R (both horizons), Underlying
             (0DTE only — Legacy's stock price already streams in the persistent header for
             non-premium rows), and Premium-cap (Legacy only) were the genuinely NEW data those
             components carried, so they move here instead of disappearing. */}
@@ -558,7 +607,12 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
           <div>
             <span className="k">Risk : Reward</span>
             <span className={clsx("v", play.rrRatio >= 2 && "nh-deck-pos", play.rrRatio < 1 && "nh-deck-neg")}>
-              {play.rrRatio.toFixed(1)}:1
+              {/* Floor to 1 decimal, same fix/rationale as ZeroDtePreEntryContext below and
+                  deterministic-edition.ts's R:R line (PR #4813) — toFixed(1) rounds e.g. 1.95 up
+                  to "2.0" while the color class still reads the raw (uncolored) rr < 2, so a
+                  member would see "2.0" printed in the neutral color instead of the green the
+                  number implies. Flooring keeps the printed number and its color consistent. */}
+              {(Math.floor(play.rrRatio * 10 + 1e-9) / 10).toFixed(1)}:1
             </span>
           </div>
         )}
@@ -808,10 +862,24 @@ function TrimScaleLadder({ play }: { play: TerminalPlay }) {
 
 function PnlPanel({ play }: { play: TerminalPlay }) {
   const markFlash = useFlash(play.mark ?? play.pnlPct ?? null);
-  if (play.horizon === "LEGACY") return <LegacyPnlPanel play={play} />;
   const premium = isZeroDtePremiumTerminal(play);
   const has = play.entry != null;
-  const live = play.pnlPct;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-24): this used to be a bare `play.pnlPct` read,
+  // even for a CLOSED play with a real recorded `exitPnlPct` that disagrees with the last live
+  // mid (e.g. a stale -50% mid vs a +42% actual exit fill) — this is the only render path this
+  // horizon (LEAPS; ZERO_DTE/SWING divert to ZeroDteCommandPanel's own closedRealizedPct-backed
+  // "Realized" stat, LEGACY never reaches PnlPanel at all — `legacySinglePanel` above routes it
+  // to LegacyPlayDetailPanel unconditionally; see that file's own already-correct
+  // legacyPrimaryPnlPct/Peak/Trough usage) ever reaches for its headline P&L number. Deliberately
+  // NOT routed through the full closedRealizedPct() (play-card-lifecycle.ts) here, unlike the
+  // sibling TradeExcursionGraphic fix (PR #6619) — that function's stopped-row fallback blends via
+  // trimScaleBlendedPnlAtStop(peak, PLAN_RULES.stop_pct), a 0DTE-specific -50% stop convention
+  // that is unconfirmed for LEAPS's own (likely much wider, multi-session) stop/exit mechanics;
+  // even SWING's own SWING_SCALE_OUT_POLICY uses a different -60% hard stop than PLAN_RULES'
+  // -50%, so reusing that constant here would risk a confidently wrong blended number rather than
+  // the honest raw one. Only the universally-safe part of the fix applies: prefer the recorded
+  // exit stamp over the live mid once the play is closed.
+  const live = play.status === "CLOSED" ? (play.exitPnlPct ?? play.pnlPct) : play.pnlPct;
   const exec = play.execPnlPct;
   return (
     <>
@@ -873,7 +941,14 @@ function ZeroDtePreEntryContext({ play }: { play: TerminalPlay }) {
         <div>
           <span className="k">Risk : Reward</span>
           <span className={clsx("v", rr >= 2 && "nh-deck-pos", rr < 1 && "nh-deck-neg")}>
-            {rr.toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
+            {/* Round DOWN to 1 decimal for display, never to-nearest: rr.toFixed(1) rounds 0.49
+                up to "0.5", printing "0.5:1 (tight)" — a member reads 0.5 against the very
+                threshold ladder the label uses (0.5 is the "acceptable" cutoff) and sees an
+                apparent contradiction. Flooring means the shown number can never read at-or-above
+                a threshold the true rr hasn't reached. Same fix as deterministic-edition.ts's
+                R:R line (PR #4813); the epsilon guards a clean multiple of 0.1 from landing on
+                the wrong side of Math.floor due to binary floating-point representation. */}
+            {(Math.floor(rr * 10 + 1e-9) / 10).toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
           </span>
         </div>
       )}
@@ -886,12 +961,12 @@ function ZeroDtePreEntryContext({ play }: { play: TerminalPlay }) {
 // panel declutter, docs/audit/FINDINGS.md 2026-08-05). Verified duplicate mapping per field:
 //  - Contract (`optionsPlay`) — for 0DTE this is LITERALLY `play.occ` (adapters.ts sets
 //    `optionsPlay: occ` verbatim), already shown via the `OccCopy` control in the hero stream
-//    strip; for Legacy it duplicated `LegacyPnlPanel`'s own "Contract" row (PnL tab, same field).
+//    strip; for Legacy it duplicated `LegacyPlayDetailPanel`'s own contract row (same field).
 //  - Current mark (0DTE) — already streams live in the hero's compact stream strip above the tabs.
-//  - Entry premium / Cost-per-contract (Legacy) — duplicated `LegacyPnlPanel`'s "Stock entry" /
-//    "Entry premium" rows (PnL tab) — same fields (`play.entry` / `play.entryCostPerContract`),
+//  - Entry premium / Cost-per-contract (Legacy) — duplicated `LegacyPlayDetailPanel`'s "Stock
+//    entry" / "Option premium" rows — same fields (`play.entry` / `play.entryCostPerContract`),
 //    just relabeled inconsistently between the two renders (worth noting: this Management copy
-//    mislabeled `play.entry` — the STOCK entry price — as "Entry premium", which the PnL tab
+//    mislabeled `play.entry` — the STOCK entry price — as "Entry premium", which the single-panel
 //    correctly reserves for `entryCostPerContract`; removing this row also removes that mislabel).
 // R:R (both horizons), Underlying (0DTE only — Legacy's stock price already streams in the
 // persistent non-premium header), and Premium-cap (Legacy only) were the genuinely NEW fields
@@ -901,61 +976,21 @@ function ZeroDtePreEntryContext({ play }: { play: TerminalPlay }) {
 
 // `LegacyManageGeometry` lives in legacy-play-geometry.tsx (shared with LegacyPlayDetailPanel).
 
-function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
-  const markFlash = useFlash(play.pnlPct ?? null);
-  const hasStock = play.stockPrice != null;
-  const chg = play.stockChangePct;
-  const pnl = play.pnlPct;
-  const spot = play.stockPrice;
-  return (
-    <>
-      <div className="nh-deck-lab">Stock position</div>
-      <div className={clsx("nh-deck-pnlbig", (pnl ?? chg ?? 0) > 0 && "nh-deck-pos", (pnl ?? chg ?? 0) < 0 && "nh-deck-neg")}>
-        {hasStock ? `$${spot!.toFixed(2)}` : "— awaiting quote"}
-      </div>
-      {pnl != null && (
-        <div className="nh-deck-execline">
-          stock P&amp;L from entry <b className={clsx(pnl < 0 && "nh-deck-neg", pnl > 0 && "nh-deck-pos")}>{pnl >= 0 ? "+" : ""}{pnl.toFixed(1)}%</b>
-        </div>
-      )}
-      {hasStock && chg != null && (
-        <div className="nh-deck-execline">
-          day change <b className={clsx(chg < 0 && "nh-deck-neg", chg > 0 && "nh-deck-pos")}>{chg >= 0 ? "+" : ""}{chg.toFixed(1)}%</b>
-        </div>
-      )}
-      <div className="nh-deck-grid" style={{ marginTop: 12 }}>
-        <div><span className="k">Stock</span><span className="v">{hasStock ? `$${spot!.toFixed(2)}` : "—"}</span></div>
-        <div><span className="k">Stock entry</span><span className="v">{play.entry != null ? `$${play.entry.toFixed(2)}` : play.entryRange ?? "—"}</span></div>
-        <div><span className="k">Entry premium</span><span className="v">{play.entryCostPerContract != null ? usd(play.entryCostPerContract) : "—"}</span></div>
-        {/* Target/Stop levels + live distance, and the STOP↔TARGET progress track below, are rendered
-            ONCE — in the Management tab's LegacyManageGeometry, which additionally draws the
-            entry-zone marker and a plain-language zone label. Repeating the bare distance grid and a
-            second (marker-less) track here was pure duplication of the same play.targetLevel /
-            play.stopLevel / play.progress values — see docs/audit/FINDINGS.md 2026-08-05. */}
-        {play.ivRank != null && (
-          <div>
-            <span className="k">IV rank</span>
-            <span className="v">{Math.round(play.ivRank)}</span>
-          </div>
-        )}
-        {play.rrRatio != null && (
-          <div>
-            <span className="k">R:R</span>
-            <span className={clsx("v", play.rrRatio >= 2 && "nh-deck-pos", play.rrRatio < 1 && "nh-deck-neg")}>
-              {play.rrRatio.toFixed(1)}:1
-            </span>
-          </div>
-        )}
-        {play.optionsPlay && <div><span className="k">Contract</span><span className="v">{play.optionsPlay}</span></div>}
-      </div>
-      {(play.peak != null || play.trough != null) && (
-        <TradeExcursionGraphic play={play} markFlash={markFlash} />
-      )}
-      <div className="nh-deck-recnote" style={{ marginTop: 16 }}>
-        {pnl != null
-          ? "Stock-level P&L from entry mid — tracks your thesis direction. Option premium P&L requires a live option quote subscription."
-          : "Awaiting live stock quote to compute P&L from entry."}
-      </div>
-    </>
-  );
-}
+// DEAD-CODE REMOVAL (Ask Largo standing mandate, 2026-10-24): `LegacyPnlPanel` used to live
+// here — a "stock position" render with its own "stock P&L from entry" line, a TradeExcursion-
+// Graphic MFE/MAE bar, and a footer note. It read raw `play.pnlPct`/`peak`/`trough` instead of
+// the legacyPrimaryPnlPct/Peak/Trough fallback helpers (use-legacy-quotes.ts nulls those three
+// fields for EVERY Legacy play by design — a real option mark isn't sourced yet for Legacy), so
+// every one of those three renders was permanently dead/wrong-looking. Investigated as a live
+// display bug before realizing it could never actually render: `PnlPanel`'s old
+// `if (play.horizon === "LEGACY") return <LegacyPnlPanel .../>` line was itself unreachable,
+// because `legacySinglePanel` (`play.horizon === "LEGACY"`, unconditional, checked earlier in
+// this file) always diverts a Legacy play to `LegacyPlayDetailPanel` before the tab bar / PnlPanel
+// branch is ever considered — confirmed via the sole call site (removed from PnlPanel above) and
+// no other reference to either symbol anywhere in the repo. `LegacyPlayDetailPanel` is the real,
+// reachable renderer for Legacy's stock-position view and already uses `legacyPrimaryPnlPct`/
+// `legacyPrimaryPeakPct`/`legacyPrimaryTroughPct` correctly (its TradeExcursionGraphic mount gate
+// checks `stockPeakPct`/`stockTroughPct` directly, which is equivalent for real Legacy data since
+// `pnlPct`/`peak`/`trough` are always null there) — so there was no live defect to fix, only a
+// dead function and a stale comment (above) asserting Legacy was still tabbed. Removed rather than
+// "fixed" so a future audit pass doesn't re-discover and re-diagnose the same unreachable code.

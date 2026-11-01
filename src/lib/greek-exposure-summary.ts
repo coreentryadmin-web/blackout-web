@@ -60,7 +60,19 @@ export function summarizeGreekExposureByExpiry(
         dte_label,
       };
     })
-    .sort((a, b) => b.gamma - a.gamma);
+    // Descending by gamma, with an ascending-expiry tie-break. `.sort` is stable, so without the
+    // second key an EXACT gamma tie between two expiries resolves to whichever one's row the
+    // upstream UW payload happened to list FIRST — an artifact of `byExpiry`'s Map insertion
+    // order (itself just the order `rows` arrived in), not a fact about which expiry actually
+    // dominates. Same argmax tie-break bug class already fixed in kingFromStrikeTotals/
+    // wallsFromStrikeTotals (gex-cross-validation-core.ts, #7191/#7193), computeGexWalls
+    // (gex-wall-levels.ts, #7207), topGexPinStrikes (strike-gex-lookup.ts, #7209) and
+    // summarizeHeatmapGammaByExpiry (meridian-gex-reads.ts, #7210) — this is a fourth, independent
+    // "pick the dominant expiry/strike bucket" implementation that never inherited any of those
+    // fixes. Picking the EARLIER (nearer) expiry on a tie matches this function's own "pin
+    // contest, nearer is more actionable" framing (the 0DTE label already treats today specially)
+    // and makes `pinned_expiry`/the headline a pure function of the gamma data again.
+    .sort((a, b) => b.gamma - a.gamma || a.expiry.localeCompare(b.expiry));
 
   const top = buckets[0]!;
   const headline =

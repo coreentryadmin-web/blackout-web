@@ -39,12 +39,6 @@ export function soundsLikeBot(body: string): boolean {
   return false;
 }
 
-function stripFooter(text: string): { body: string; footer: string | null } {
-  const idx = text.lastIndexOf("\n@");
-  if (idx === -1) return { body: text.trim(), footer: null };
-  return { body: text.slice(0, idx).trim(), footer: text.slice(idx + 1).trim() };
-}
-
 function trimBody(body: string, maxLen: number): string {
   return truncateText(body, maxLen);
 }
@@ -151,12 +145,4 @@ export async function composeHumanTweet(
 
 export function attachFooter(body: string, footer: string): string {
   return `${body}\n${footer}`;
-}
-
-export function splitContentWithFooter(full: string): {
-  body: string;
-  footerLine: string;
-} {
-  const { body, footer } = stripFooter(full);
-  return { body, footerLine: footer ?? "" };
 }

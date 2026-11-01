@@ -23,9 +23,16 @@ export async function GET() {
 
   try {
     const snapshot = await fetchGexHealthSnapshot();
-    return NextResponse.json(roundFloats(snapshot), { headers: { "Cache-Control": "no-store" } });
+    // Root cause (2026-11-01 audit): this route imported NO_STORE_HEADERS but never
+    // applied it — a bare `Cache-Control: no-store` is missing the CDN-scoped
+    // CDN-Cache-Control/Cloudflare-CDN-Cache-Control headers that are the actually
+    // load-bearing ones (see the doc comment on NO_STORE_HEADERS), so a Cloudflare
+    // cache rule with override_origin could still edge-cache this response. Same
+    // defect, same fix, as the 2026-08-01 audit's admin/spx/health and
+    // admin/analytics/x correction — this sibling route was missed at the time.
+    return NextResponse.json(roundFloats(snapshot), { headers: NO_STORE_HEADERS });
   } catch (error) {
     recordAdminRouteError("admin/gex/health", error);
-    return NextResponse.json({ error: "Failed to load GEX health snapshot" }, { status: 502 });
+    return NextResponse.json({ error: "Failed to load GEX health snapshot" }, { status: 502, headers: NO_STORE_HEADERS });
   }
 }

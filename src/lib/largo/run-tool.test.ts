@@ -326,6 +326,63 @@ describe("runLargoTool: get_nighthawk_dossier (task #129 durable scoring-history
     });
   });
 
+  test("ticker lookup: archived fallback drops the raw `flows` array and returns `scored` ahead of `dossier` (truncation fix, 2026-09-28)", async () => {
+    // Regression fixture: BB's real 2026-09-29 archived dossier carried enough historical flow
+    // alerts that the tool-result transport truncated the serialized payload before ever reaching
+    // `scored` — pruneDossier (the sibling helper) never fires here because the archived shape has
+    // no `plays` array, so it always returned this dossier completely unpruned before this fix.
+    mockStagedDossiers = [];
+    mockScoringHistory = [
+      {
+        ticker: "BB",
+        dossier: {
+          ticker: "BB",
+          sector: "services-prepackaged software",
+          tech: { trend: "mixed", summary: "mixed · gap up 0.59" },
+          flows: [{ id: 1 }, { id: 2 }, { id: 3 }],
+        },
+        scored: { ticker: "BB", score: 41, direction: "long", govPenalty: 10 },
+        staged_at: "2026-09-28T21:41:00.000Z",
+        archived_at: "2026-09-28T21:41:15.000Z",
+      },
+    ];
+
+    const result = (await runLargoTool("get_nighthawk_dossier", {
+      date: "2026-09-29",
+      ticker: "BB",
+    })) as Record<string, unknown>;
+
+    assert.equal(result.archived, true);
+    const dossierResult = result.dossier as Record<string, unknown>;
+    assert.deepEqual(Object.keys(dossierResult), ["ticker", "scored", "dossier"], "scored must serialize before dossier");
+    assert.deepEqual(dossierResult.scored, { ticker: "BB", score: 41, direction: "long", govPenalty: 10 });
+    const prunedInner = dossierResult.dossier as Record<string, unknown>;
+    assert.equal("flows" in prunedInner, false, "the raw flows array must be dropped");
+    assert.deepEqual(prunedInner.tech, { trend: "mixed", summary: "mixed · gap up 0.59" }, "everything else survives unpruned");
+    assert.equal(prunedInner.sector, "services-prepackaged software");
+  });
+
+  test("ticker lookup: archived fallback with no `flows` field is returned as-is (no fabricated key removal)", async () => {
+    mockStagedDossiers = [];
+    mockScoringHistory = [
+      {
+        ticker: "KOD",
+        dossier: { ticker: "KOD", sector: "biological products" },
+        scored: { ticker: "KOD", score: 30 },
+        staged_at: "2026-09-28T21:40:00.000Z",
+        archived_at: "2026-09-28T21:41:15.000Z",
+      },
+    ];
+
+    const result = (await runLargoTool("get_nighthawk_dossier", {
+      date: "2026-09-29",
+      ticker: "KOD",
+    })) as Record<string, unknown>;
+
+    const dossierResult = result.dossier as Record<string, unknown>;
+    assert.deepEqual(dossierResult.dossier, { ticker: "KOD", sector: "biological products" });
+  });
+
   test("ticker lookup: neither live staging nor the archive has the ticker — null dossier, archived:false", async () => {
     mockStagedDossiers = [];
     mockScoringHistory = [];

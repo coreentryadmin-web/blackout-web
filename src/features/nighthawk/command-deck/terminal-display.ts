@@ -6,7 +6,6 @@ import type { ThesisHealthPayload, ThesisPillarState } from "@/lib/zerodte/thesi
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { DeckStatus, ExitModel, Recommendation, TerminalPlay } from "./types";
 import { playQualityPct } from "./play-card-display";
-import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 import { ARCHETYPE_META, SWING_SUB_LANES, type SwingArchetype, type SwingSubLane } from "@/lib/swing/taxonomy";
 import { thesisHealthUncalibrated } from "@/lib/swing/thesis-health";
 
@@ -34,7 +33,7 @@ export type ManagementActionDisplay = {
 // check (a genuinely partial 0DTE pillar is a single-pillar `na`, not the whole-payload
 // swing-default pattern `thesisHealthUncalibrated` looks for) — scope the guard to SWING
 // so a real 0DTE score/label is never withheld by mistake.
-function healthIsCalibrated(play: TerminalPlay): boolean {
+export function healthIsCalibrated(play: TerminalPlay): boolean {
   return !(play.horizon === "SWING" && thesisHealthUncalibrated(play.thesisHealth));
 }
 
@@ -118,11 +117,13 @@ export function unifiedChecklist(play: TerminalPlay): ChecklistItem[] {
   ];
 }
 
+// SWING/LEAPS deliberately do NOT fall back to convictionFromScore(play.score) when no
+// tierLabel is pinned — see playGradeLabel's doc comment (play-card-display.ts) for the full
+// rationale: that mapping is documented as empirically inverted for the product it was
+// calibrated on, never validated for swing's own score distribution, and this lane has no
+// calibrated tier engine to fall back to yet. Grade stays honestly null rather than fabricated.
 export function convictionDisplay(play: TerminalPlay): ConvictionDisplay {
-  let grade = play.tierLabel?.trim() || null;
-  if (!grade && (play.horizon === "SWING" || play.horizon === "LEAPS") && play.score > 0) {
-    grade = convictionFromScore(Math.round(play.score));
-  }
+  const grade = play.tierLabel?.trim() || null;
   const q = playQualityPct(play);
   const score =
     q ??

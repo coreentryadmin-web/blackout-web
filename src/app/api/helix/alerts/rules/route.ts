@@ -6,6 +6,7 @@ import {
   ensureHelixAlertRulesTable,
   rowToHelixAlertRule,
   sanitizeIncomingHelixAlertRule,
+  isHelixTickerAllowed,
   type HelixAlertRuleRow,
 } from "@/features/helix/lib/helix-alert-rules-db";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -42,7 +43,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ rule: null, rules: [] }, { headers: NO_STORE_HEADERS });
   }
 
-  const ticker = normalizeTicker(req.nextUrl.searchParams.get("ticker"));
+  // Ticker is optional here (absent = "every rule on the account"), but when present it must be
+  // well-formed — same guard PUT/DELETE below apply. Mirrors the Vector sibling route's identical
+  // fix: this route's `normalizeTicker` only trimmed/uppercased with no format or length check,
+  // letting an arbitrary-length, arbitrary-character string reach `helix_alert_rules.ticker`
+  // (part of the `(user_id, ticker)` primary key) via this filter param too.
+  const rawGetTicker = req.nextUrl.searchParams.get("ticker")?.trim() ?? "";
+  if (rawGetTicker && !isHelixTickerAllowed(rawGetTicker)) {
+    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  }
+  const ticker = normalizeTicker(rawGetTicker);
 
   try {
     await ensureHelixAlertRulesTable();
@@ -90,6 +100,9 @@ export async function PUT(req: NextRequest) {
 
   const ticker = normalizeTicker(body.ticker);
   if (!ticker) return NextResponse.json({ error: "Missing ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  if (!isHelixTickerAllowed(ticker)) {
+    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  }
 
   const clean = sanitizeIncomingHelixAlertRule(ticker, body);
   if (!clean) {
@@ -131,6 +144,9 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400, headers: NO_STORE_HEADERS });
   }
   if (!ticker) return NextResponse.json({ error: "Missing ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  if (!isHelixTickerAllowed(ticker)) {
+    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  }
 
   try {
     await ensureHelixAlertRulesTable();

@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { isEtMarketHours } from "@/lib/et-market-hours";
+import { isEtCashRth } from "@/lib/et-market-hours";
 
 /** Hydration-safe RTH flag — updates every 60s after mount. */
 export function useEtMarketOpen(): boolean {
   const [open, setOpen] = useState(true);
   useEffect(() => {
-    const tick = () => setOpen(isEtMarketHours());
+    const tick = () => setOpen(isEtCashRth());
     tick();
     const id = setInterval(tick, 60_000);
     return () => clearInterval(id);

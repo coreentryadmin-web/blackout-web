@@ -7,9 +7,9 @@ import type { GexCells } from "@/features/thermal/lib/gex-heatmap/per-expiry-lev
 
 (globalThis as unknown as { React: typeof React }).React = React;
 
-function panelText(cells: GexCells | null, spot: number | null, ticker = "SPY") {
+function panelText(cells: GexCells | null, spot: number | null) {
   const html = renderToStaticMarkup(
-    React.createElement(GreeksDistributionPanel, { cells, spot, ticker })
+    React.createElement(GreeksDistributionPanel, { cells, spot })
   );
   return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }

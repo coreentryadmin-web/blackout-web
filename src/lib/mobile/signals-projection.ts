@@ -149,9 +149,9 @@ export function nighthawkToSignals(edition: NightHawkEdition): Signal[] {
  */
 const STAGE_WEIGHT: Record<SignalPhase, number> = {
   active: 0,
-  managing: 1,
-  confirming: 2,
-  detected: 3,
+  confirming: 1,
+  detected: 2,
+  managing: 3,
   closed: 4,
   invalidated: 5,
   graded: 6,

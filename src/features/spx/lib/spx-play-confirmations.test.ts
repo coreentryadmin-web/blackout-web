@@ -116,3 +116,85 @@ test("Dealer GEX (short): a resistance wall far below price does not satisfy the
   const gex = dealerGexCheck(result);
   assert.equal(gex.passed, false);
 });
+
+function internalsCheck(result: ReturnType<typeof evaluatePlayConfirmations>) {
+  const check = result.checks.find((c) => c.label === "Internals");
+  assert.ok(check, "Internals check must be present");
+  return check!;
+}
+
+test("Internals check: discloses when desk.internals_estimated.tick flags a breadth-derived proxy (same root cause as spx-signals.ts, regression 2026-11-01)", () => {
+  // Member-rendered (SpxDeskTerminal.tsx/SpxTradeAlerts.tsx read confirmations.checks[].detail
+  // directly) — this must not present a breadth-proxy TICK as a real NYSE print, same as the
+  // computeSpxConfluence TICK factor fix in spx-signals.test.ts.
+  const desk = baseDesk({ tick: 176, internals_estimated: { tick: true, trin: false, add: false } as never });
+  const result = evaluatePlayConfirmations(desk, baseConfluence(), baseTechnicals());
+  const internals = internalsCheck(result);
+  assert.match(internals.detail, /estimated, not live/);
+});
+
+test("Internals check: does NOT disclose when desk.internals_estimated.tick is absent/false (a real exchange print stays undecorated)", () => {
+  const desk = baseDesk({ tick: 176 });
+  const result = evaluatePlayConfirmations(desk, baseConfluence(), baseTechnicals());
+  const internals = internalsCheck(result);
+  assert.equal(internals.detail, "TICK +176");
+});
+
+function newsCatalystCheck(result: ReturnType<typeof evaluatePlayConfirmations>) {
+  const check = result.checks.find((c) => c.label === "News catalyst");
+  assert.ok(check, "News catalyst check must be present");
+  return check!;
+}
+
+test("News catalyst: cites the headline that actually matched BULL_NEWS, not news_headlines[0]", () => {
+  // Reproduces the live production repro (2026-10-21, GET /api/market/spx/play):
+  // news_headlines[0] is an unrelated SPXC (SPX Technologies) analyst note that matches
+  // neither BULL_NEWS nor BEAR_NEWS — it just happens to contain the literal substring
+  // "SPX". news_headlines[2] is the one that actually matched ("Soar" -> BULL_NEWS).
+  const desk = baseDesk({
+    news_headlines: [
+      { title: "Oppenheimer Maintains Outperform on SPX Technologies, Lowers Price Target to $26", published: "", tickers: ["SPXC"] },
+      { title: "Fed officials offer mixed signals on rate path", published: "", tickers: [] },
+      { title: "Airline Stocks Soar After United Airlines' Strong Guidance", published: "", tickers: ["UAL"] },
+    ] as never,
+  });
+  const result = evaluatePlayConfirmations(desk, baseConfluence({ direction: "long" }), baseTechnicals());
+  const news = newsCatalystCheck(result);
+  assert.equal(news.passed, true, "bullish news should confirm a long direction");
+  assert.ok(
+    news.detail.includes("Airline Stocks Soar"),
+    `detail should cite the actually-matched headline, got: ${news.detail}`
+  );
+  assert.ok(
+    !news.detail.includes("SPX Technologies"),
+    `detail must not cite the unrelated news_headlines[0] note, got: ${news.detail}`
+  );
+});
+
+test("News catalyst: opposing-direction detail also cites the matched (bearish) headline, not headlines[0]", () => {
+  const desk = baseDesk({
+    news_headlines: [
+      { title: "Oppenheimer Maintains Outperform on SPX Technologies, Lowers Price Target to $26", published: "", tickers: ["SPXC"] },
+      { title: "Markets plunge on hawkish Fed commentary", published: "", tickers: [] },
+    ] as never,
+  });
+  const result = evaluatePlayConfirmations(desk, baseConfluence({ direction: "long" }), baseTechnicals());
+  const news = newsCatalystCheck(result);
+  assert.equal(news.passed, false, "bearish news should not confirm a long direction");
+  assert.ok(
+    news.detail.includes("Markets plunge"),
+    `opposing detail should cite the matched bearish headline, got: ${news.detail}`
+  );
+});
+
+test("News catalyst: no matching headline reports 'none' rather than an unrelated first headline", () => {
+  const desk = baseDesk({
+    news_headlines: [
+      { title: "Oppenheimer Maintains Outperform on SPX Technologies, Lowers Price Target to $26", published: "", tickers: ["SPXC"] },
+    ] as never,
+  });
+  const result = evaluatePlayConfirmations(desk, baseConfluence({ direction: "long" }), baseTechnicals());
+  const news = newsCatalystCheck(result);
+  assert.equal(news.passed, true, "neutral news (no match) must not block either direction");
+  assert.ok(news.detail.includes("none"), `expected 'none' when nothing matched, got: ${news.detail}`);
+});

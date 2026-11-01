@@ -4,7 +4,11 @@ import type { VectorBar } from "@/features/vector/components/VectorChart";
 import type { VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import type { WallHistorySample } from "@/features/vector/lib/vector-wall-history";
 import { seedWallHistoryForDisplay, prepareRailBootstrapHistory } from "@/features/vector/lib/vector-wall-history";
-import { defaultVectorDteHorizon, VECTOR_ORACLE_TICKERS } from "@/features/vector/lib/vector-ticker";
+import {
+  defaultVectorDteHorizon,
+  normalizeVectorTicker,
+  VECTOR_ORACLE_TICKERS,
+} from "@/features/vector/lib/vector-ticker";
 import { lastSessionBars } from "@/features/vector/lib/vector-key-levels";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
@@ -114,12 +118,23 @@ export async function fetchVectorEmbedFastSeed(ticker: string): Promise<VectorEm
   const sessionYmd = barsPayload?.sessionYmd ?? todayEtYmd();
   const firstBar = lastSessionBars(bars)[0]?.time;
   const horizon = defaultVectorDteHorizon(ticker);
+  // BUG FIX (round 207 DISCOVERY sweep): every sibling `VECTOR_ORACLE_TICKERS.has(...)` call site
+  // (vector-cadence.ts, vector-snapshot.ts, vector-wall-sample.ts, vector-wall-sample-server.ts,
+  // vector-rail-bootstrap.ts) normalizes the ticker FIRST — this one compared the raw, caller-
+  // supplied `ticker` against the canonical-uppercase Set directly, so a non-canonical key that is
+  // genuinely SPX/SPY/QQQ (lowercase, or the Polygon-style "I:SPX" deep-link form `normalizeVectorTicker`
+  // exists specifically to strip) silently failed the membership check and skipped the oracle
+  // rail-bootstrap fetch — degrading the fast first-paint bead rail to empty for no real reason, on
+  // exactly the tickers this fast path exists for. Same bug shape already fixed once for
+  // `normalizeDteHorizon` (see its own doc comment: "the old exact-match check silently re-scoped
+  // ... normalize ... so no consumer can repeat it") — this call site repeated it.
+  const normalizedTicker = normalizeVectorTicker(ticker);
 
   const [wallsPayload, bootstrap] = await Promise.all([
     fetchJson<{ walls?: VectorWalls; flip?: number | null }>(
       `/api/market/vector/walls?ticker=${t}&dte=all`
     ),
-    VECTOR_ORACLE_TICKERS.has(ticker)
+    VECTOR_ORACLE_TICKERS.has(normalizedTicker)
       ? fetchJson<VectorRailBootstrapPayload>(
           `/api/market/vector/rail-bootstrap?ticker=${t}&session=${encodeURIComponent(sessionYmd)}&dte=${horizon}${
             firstBar != null ? `&firstBar=${firstBar}` : ""

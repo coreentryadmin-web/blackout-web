@@ -7,6 +7,8 @@ import { fitSpxStructureForModel } from "@/lib/largo/spx-structure-fit";
 import { loadLottoRecord } from "@/features/spx/lib/spx-lotto-store";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import { fetchPositioningSummary } from "@/features/nighthawk/lib/positioning";
+import { resolveNighthawkEdition } from "@/features/nighthawk/lib/resolve-edition";
+import { nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchPlayOutcomeStatsForWindow } from "@/features/spx/lib/spx-play-outcomes";
 // PR-N2: the one headline-scoreable predicate (methodology/pulled/unfilled quarantine)
 // shared by every surface that quotes a Night Hawk win rate.
@@ -617,7 +619,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       }
       const strike_stacks = computeFlowStrikeStacks(mergedFlow, { limit: 24 });
 
-      return {
+      // MEASURED TRUNCATED live 2026-10-17 (418ms, 33210/16000 chars survived) — see
+      // fitOptionsFlowForModel's comment (market-data-fits.ts) for the full root cause. Both
+      // flow_alerts and flow_recent are raw UW pages with no budget check of their own.
+      const { fitOptionsFlowForModel } = await import("@/lib/largo/market-data-fits");
+      return fitOptionsFlowForModel({
         ticker: sym,
         source: helix.length ? "unusual_whales + helix" : "unusual_whales",
         note: UW_EXCLUSIVE_NOTE,
@@ -629,7 +635,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         alert_premium: { calls: callPrem, puts: putPrem, net: callPrem - putPrem },
         bias: callPrem > putPrem ? "bullish" : putPrem > callPrem ? "bearish" : "neutral",
         strike_stacks,
-      };
+      });
     }
     case "get_net_prem_ticks":
       return toolNetPremTicks(ticker);
@@ -800,12 +806,21 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return toolEconomicCalendar(Number(input.days_ahead ?? 14));
     case "get_etf_flow": {
       const etf = String(input.etf ?? "QQQ").toUpperCase();
-      const [quote, inOut, tide] = await Promise.all([
+      const [quote, inOutRaw, tideRaw] = await Promise.all([
         fetchStockSnapshot(etf),
         fetchUwEtfInOutflow(etf),
         fetchUwEtfTide(etf),
       ]);
-      return { etf, quote, in_outflow: inOut, etf_tide: tide };
+      // MEASURED TRUNCATED live 2026-10-17 (224052/16000 chars) — in_outflow (~721 daily rows,
+      // years of history) and etf_tide (~390 intraday ticks) are both long UW time series with no
+      // row limit. See fitEtfSeriesForModel (market-data-fits.ts) for why the two sort in opposite
+      // directions and are each reduced to a recent window, threaded through a growing base.
+      const { fitEtfSeriesForModel } = await import("@/lib/largo/market-data-fits");
+      const base = { etf, quote };
+      const fittedInOut = fitEtfSeriesForModel(inOutRaw, base, { maxShown: 30, newestFirst: true });
+      const baseWithInOut = { ...base, in_outflow: fittedInOut };
+      const fittedTide = fitEtfSeriesForModel(tideRaw, baseWithInOut, { maxShown: 30, newestFirst: false });
+      return { ...baseWithInOut, etf_tide: fittedTide };
     }
 
     case "get_company_profile": {
@@ -863,16 +878,15 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         ]);
         const next_report = parseNextEarningsFromBenzinga(sym, calendar.rows, todayEtYmd());
         const calendar_error = (calendar as { error?: string | null }).error ?? null;
-        // MEASURED TRUNCATED live 2026-08-29 — `related` alone (up to 15 full articles, each
-        // carrying up to 2000 chars of body text) can run to ~37KB, more than double the 16k
-        // transport cap, before the structured fields below are even reached. Capped at the
-        // Largo boundary; `related.length` below still reads the FULL fetch for source
-        // detection, since fitting must never change what "no Benzinga news at all" means.
-        const { fitEarningsRelatedNewsForModel } = await import("@/lib/largo/market-data-fits");
-        const fittedRelatedNews = fitEarningsRelatedNewsForModel(related);
-        // UW serves its side of this payload as STRINGS, with moves/returns as unlabelled
-        // fractions — `reaction: "-0.0915"` is -9.15%, not -0.09%. See uw-earnings-normalize.ts.
-        return normalizeUwEarnings({
+        // MEASURED TRUNCATED live 2026-08-29 (related_news) and again live 2026-10-17 at the WHOLE
+        // envelope level (83506/16000, 90305/16000 chars) — the dominant contributors turned out to
+        // be `unusual_whales`/`estimates` below, not `related_news`. Every large field is now fit
+        // SEQUENTIALLY against a growing `base` that carries everything already decided, so the
+        // final merged envelope can never exceed budget regardless of which field turns out to be
+        // the big one this time — see market-data-fits.ts for each field's own measurement.
+        const { fitEarningsRelatedNewsForModel, fitEarningsUwHistoryForModel, fitEarningsEstimatesForModel } =
+          await import("@/lib/largo/market-data-fits");
+        const earningsBase = {
           ticker: sym,
           source: calendar.rows.length ? "benzinga_structured" : related.length ? "benzinga_news" : "unusual_whales",
           // The single most-asked fact, and the one the news channel could never answer.
@@ -882,11 +896,22 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           // Absence of a lookup is not absence of a report date — a non-null error means the
           // calendar could not be READ, not that this company has nothing scheduled.
           calendar_error: calendar_error ?? history.history_error ?? null,
-          // Renamed from `benzinga_news`: these are stories mentioning this ticker in the earnings
-          // channel, NOT its own results. The old name invited exactly the wrong reading.
-          ...fittedRelatedNews,
-          unusual_whales: uw,
-          estimates,
+        };
+        // `related.length` here (not `fittedRelatedNews.related_news.length`) still reads the FULL
+        // fetch for source detection above, since fitting must never change what "no Benzinga news
+        // at all" means.
+        // Renamed from `benzinga_news`: these are stories mentioning this ticker in the earnings
+        // channel, NOT its own results. The old name invited exactly the wrong reading.
+        const fittedRelatedNews = fitEarningsRelatedNewsForModel(related, 5, earningsBase);
+        const baseWithNews = { ...earningsBase, ...fittedRelatedNews };
+        const fittedUw = fitEarningsUwHistoryForModel(baseWithNews, uw);
+        const baseWithUw = { ...baseWithNews, ...fittedUw };
+        const fittedEstimates = fitEarningsEstimatesForModel(baseWithUw, estimates);
+        // UW serves its side of this payload as STRINGS, with moves/returns as unlabelled
+        // fractions — `reaction: "-0.0915"` is -9.15%, not -0.09%. See uw-earnings-normalize.ts.
+        return normalizeUwEarnings({
+          ...baseWithUw,
+          ...fittedEstimates,
         });
       });
     }
@@ -1127,6 +1152,22 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const { swingHorizonForLargo } = await import("@/lib/largo/product-reads");
       return swingHorizonForLargo();
     }
+    case "get_swing_play_brief": {
+      const { swingPlayBriefForLargo } = await import("@/lib/largo/swing-play-brief-read");
+      return swingPlayBriefForLargo(String(input.ticker ?? ""), {
+        positionId: input.positionId != null ? Number(input.positionId) : null,
+        status: input.status ? String(input.status) : null,
+        strike: input.strike != null ? Number(input.strike) : null,
+        right: input.right ? String(input.right) : null,
+        // Ask Largo standing mandate (2026-10-26): lets Largo itself act on the collapsed
+        // narrative's own "expand via follow-up chips or Open Largo" note — previously there was
+        // no mechanism to reach `composeSwingPlayBrief`'s existing `expandIntel` option from the
+        // tool-calling surface at all (only the Command Deck UI's `?expandIntel=1` query param
+        // could). `Boolean(...)` tolerates a string "true" the same defensive way `status`/`right`
+        // above coerce input, since tool-call JSON can arrive loosely typed.
+        expandIntel: input.expandIntel === true || input.expandIntel === "true",
+      });
+    }
     case "get_nighthawk_horizons": {
       const { nighthawkHorizonsForLargo } = await import("@/lib/largo/product-reads");
       return nighthawkHorizonsForLargo();
@@ -1165,10 +1206,22 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       );
 
     case "get_nighthawk_edition": {
-      const date = input.date ? String(input.date) : undefined;
-      const edition = date
-        ? await marketPlatform.nighthawk.getNightHawkEditionForDate(date)
-        : await marketPlatform.nighthawk.getLatestNightHawkEdition();
+      const date = input.date ? String(input.date) : null;
+      // FIXED (2026-09-18 Largo/Legacy composer audit): this used to call the bare
+      // marketPlatform "nighthawk" edition getters directly — a bare
+      // DB row through rowToNightHawkEdition with NONE of the member route's resolution ladder or
+      // read-time overlays applied. Two real consequences: (1) `pulled`/`pulled_reason` (morning-
+      // confirm INVALIDATED a play) and `tier`/`morning_checked_at` (pinned tier assignment) are
+      // read-time overlays per PlaybookPlay's own field comments — the raw row never carries them,
+      // so Largo could describe an already-pulled play as an ordinary live pick. (2) freshness/
+      // absence state (`carry_until_close`, `stale`+`served_for`, `no_plays`, `degraded`) was never
+      // computed at all on this path, so a carried-forward or stale answer read as an ordinary fresh
+      // one. `resolveNighthawkEdition` is the exact DB-only core of the route's own resolution logic
+      // (extracted to `resolve-edition.ts` so both paths share it and cannot diverge again) — same
+      // fallback ladder, same overlays, same `editionFor` default (`nextTradingDayEt(todayEt())`,
+      // matching what a member sees with no `?date=`) as `/api/market/nighthawk/edition`.
+      const editionFor = date ?? nextTradingDayEt(todayEt());
+      const edition = await resolveNighthawkEdition(editionFor, date);
       // The RAW edition puts market_recap (41KB on a live edition) ahead of plays
       // (5KB), and the answer loop tail-truncates at MAX_TOOL_RESULT_CHARS — so every
       // play was being cut off. compactNightHawkEditionForModel emits the plays first
@@ -1730,7 +1783,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const raw = omitUncalibratedSpxConfidence(
         confluence ?? { error: "No confluence available — SPX desk not live yet." }
       );
-      return fitSpxPlayForModel(raw as Record<string, unknown>).fitted;
+      const fitted = fitSpxPlayForModel(raw as Record<string, unknown>).fitted;
+      // ADDITIVE ONLY (LARGO-PRODUCT-CONTRACT.md) — every structured field above is untouched;
+      // this synthesizes them into a few connected sentences so the model isn't left to fuse
+      // action/score/bias/grade/agreeing/weighted_conflicts by hand. First step of the standing
+      // Ask Largo x Night Hawk mandate's SPX narrative gap (PR #4076 comment 5749157602).
+      const { spxConfluenceNarrative } = await import("@/lib/largo/spx-confluence-narrative");
+      const narrative = spxConfluenceNarrative(fitted as Record<string, unknown>);
+      return narrative ? { ...fitted, narrative } : fitted;
     }
     case "get_positioning": {
       const sym = uwTicker(ticker);
@@ -1753,9 +1813,13 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         limit: Number(input.limit ?? 15),
       });
     case "get_wall_dynamics": {
+      // MEASURED TRUNCATED live 2026-10-17 (391428/16000 and 792725/16000 chars) — composed.context
+      // carried the full, unfit SPX desk/intel or Vector full-state object. See
+      // wall-dynamics-fit.ts for the full root cause and fix.
       const { composeWallDynamicsRead } = await import("@/lib/bie/wall-dynamics-read");
+      const { fitWallDynamicsForModel } = await import("@/lib/largo/wall-dynamics-fit");
       const composed = await composeWallDynamicsRead(uwTicker(ticker));
-      return composed ?? { available: false, ticker: uwTicker(ticker) };
+      return composed ? fitWallDynamicsForModel(composed) : { available: false, ticker: uwTicker(ticker) };
     }
     case "get_meridian_timeline": {
       // Meridian's own loader, not the HTTP route: a tool calling its own app over HTTP would need
@@ -1795,7 +1859,8 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       }
       if (!payload) {
         // C3: absence carries a reason. "No events" and "we could not look" are different facts,
-        // and only one of them means the calendar is quiet.
+        // and only one of them means the calendar is quiet. `items` stays null (not []) so the
+        // note above isn't undercut by a countable, quiet-looking list beside it.
         return {
           available: false,
           error: "timeline_unavailable",
@@ -1803,7 +1868,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           as_of: etStamp(Date.now()) ?? new Date().toISOString(),
           as_of_session: asOfSession,
           as_of_weekday: weekdayEt(asOfSession),
-          items: [],
+          items: null,
         };
       }
 
@@ -2048,6 +2113,28 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         };
       };
 
+      // Sibling pruner for the ARCHIVED (nighthawk_scoring_history) dossier shape, found live
+      // 2026-09-28: that row's `dossier_json` is the raw, unpruned TickerDossier (tech + a per-
+      // alert `flows` array) — pruneDossier above never touches it, because its guard
+      // (`!plays || !Array.isArray(plays)`) only fires on the LIVE-STAGING position shape, and an
+      // archived scoring dossier has no `plays` field at all, so pruneDossier returns it verbatim.
+      // On a ticker with many historical flow alerts (confirmed live for BB, 2026-09-29 edition)
+      // that raw `flows` array alone pushed the serialized tool_result past
+      // MAX_TOOL_RESULT_CHARS, truncating the payload before the much smaller, higher-value
+      // `scored` object was ever reached — so Largo saw tech/flows but never scored.direction or
+      // scored.score. Two independent mitigations, since either alone leaves a gap: (1) drop the
+      // raw `flows` array (Largo already gets the same signal by working with the entry-time
+      // dossier's other pre-aggregated fields — flow_streak, oi_change, dark_pool, positioning
+      // — a raw per-alert list was never in fact needed to explain why a ticker was scored the
+      // way it was, only to reconstruct a live prompt), (2) return `scored` BEFORE `dossier` in
+      // the object literal below, since JSON key order follows insertion order — a still-too-large
+      // dossier truncates its own tail, never the compact `scored` object ahead of it.
+      const pruneArchivedDossier = (d: Record<string, unknown>): Record<string, unknown> => {
+        if (!("flows" in d)) return d;
+        const { flows, ...rest } = d;
+        return rest;
+      };
+
       let editionFor = input.date ? String(input.date) : null;
       if (!editionFor) {
         const latest = await marketPlatform.nighthawk.getLatestNightHawkEdition();
@@ -2066,7 +2153,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         const history = await fetchNighthawkScoringHistory(editionFor, tickerFilter);
         const archivedRow = history[0];
         const dossier = archivedRow
-          ? { ticker: archivedRow.ticker, dossier: pruneDossier(archivedRow.dossier), scored: archivedRow.scored }
+          ? { ticker: archivedRow.ticker, scored: archivedRow.scored, dossier: pruneArchivedDossier(archivedRow.dossier) }
           : null;
         return { edition_for: editionFor, ticker: tickerFilter, dossier, archived: Boolean(archivedRow) };
       }

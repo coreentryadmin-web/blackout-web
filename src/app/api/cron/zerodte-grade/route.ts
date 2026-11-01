@@ -42,8 +42,12 @@ export async function GET(req: NextRequest) {
   try {
     // force=true bypasses the 10-minute internal throttle so this cron always
     // grades on its own schedule, never skipped because warmZeroDteBoard ran
-    // recently.
-    const graded = await gradeZeroDteLedger(/* force */ true);
+    // recently. gradeThroughToday=true (2026-10-09 finding): this cron is scheduled
+    // ONLY for the 16:00-18:45 ET post-close band, so by the time it ever runs
+    // today's own session is genuinely finished — it must grade TODAY's rows, not
+    // just catch up on stale prior-day leftovers. See gradeZeroDteLedger's own doc
+    // comment for why this stays opt-in rather than the shared default.
+    const graded = await gradeZeroDteLedger(/* force */ true, /* gradeThroughToday */ true);
     const [shadowPriors, graduation] = await Promise.all([
       refreshShadowRailPriors().catch(() => null),
       refreshRailGraduation().catch(() => null),

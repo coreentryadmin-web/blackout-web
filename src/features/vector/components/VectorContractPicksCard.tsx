@@ -7,7 +7,7 @@ import type { VectorContractPick, VectorPickEvidenceSection } from "@/lib/api";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { partitionPickEvidence } from "@/features/vector/lib/vector-pick-evidence-rails";
 import { formatPickPremiumDriftPct, formatPickPremiumRange } from "@/features/vector/lib/vector-pick-live-status";
-import { pivotPickWaitingCopy } from "@/features/vector/lib/vector-pick-effective-bias";
+import { effectivePickBias, pivotPickWaitingCopy } from "@/features/vector/lib/vector-pick-effective-bias";
 
 type Props = {
   ticker: string;
@@ -253,7 +253,20 @@ export function VectorContractPicksCard({
         </div>
       );
     }
-    if (play && play.bias !== "neutral") {
+    // BUG FIX (round 307 DISCOVERY sweep): was `play.bias !== "neutral"` — the RAW bias, which
+    // stays "neutral" for the entire lifetime of a pivot play (vector-play-engine.ts's own
+    // comment: "pivot stays neutral in bias but still earns a PLYS rail"), including after spot
+    // has already committed past the gamma flip. Because `spot` was never read anywhere in this
+    // component despite being a documented prop ("ranks PLYS once spot commits past the flip",
+    // wired from both real call sites — VectorPageShell.tsx and VectorComparePlayStrip.tsx), a
+    // committed pivot play with zero qualifying contracts fell through to the `pivotWait` branch
+    // below and permanently showed "contract picks rank once price commits above or below the
+    // flip" even once price already had — misleading a member into thinking the setup hadn't
+    // triggered yet when it had, and no contract simply cleared the quality bar. Switching to the
+    // EFFECTIVE bias (same fix shape as #7263/contract-picks/live/route.ts) makes this branch fire
+    // once commit has actually happened, for both ordinary directional plays and committed pivots.
+    const effBias = play ? effectivePickBias(play, spot, gammaFlip) : null;
+    if (play && effBias) {
       return (
         <div className={clsx("vp-intel vector-contract-picks-card", className)}>
           <div className="vp-intel-card">
@@ -268,7 +281,7 @@ export function VectorContractPicksCard({
         </div>
       );
     }
-    const pivotWait = play ? pivotPickWaitingCopy(play, gammaFlip) : null;
+    const pivotWait = play ? pivotPickWaitingCopy(play, spot, gammaFlip) : null;
     if (play && pivotWait) {
       return (
         <div className={clsx("vp-intel vector-contract-picks-card", className)}>

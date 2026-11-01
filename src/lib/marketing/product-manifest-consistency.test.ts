@@ -25,6 +25,7 @@ const PUBLIC_SURFACES = [
   "src/lib/site.ts",
   "src/lib/upsell-features.ts",
   "src/components/landing/RedesignHome.tsx",
+  "src/components/landing/StaticMarketingNav.tsx",
   "src/components/upgrade/UpgradePageShell.tsx",
   "src/app/(marketing)/vs/others/page.tsx",
   "src/app/(marketing)/about/page.tsx",
@@ -91,6 +92,46 @@ test("Learn nav's Night Hawk descriptor is not evening-only, matching the manife
   assert.ok(nightHawkNav, "night-hawk must still be a LEARN_NAV entry");
   assert.doesNotMatch(nightHawkNav!.description, /^Evening playbook/i);
   assert.match(nightHawkNav!.description, /0DTE|intraday/i);
+});
+
+// Regression (2026-10-20, DISCOVERY-lane SEO/GEO sweep): /nighthawk shipped a third SWING tab
+// (src/features/nighthawk/command-deck/ — SwingAnalyticsPanel.tsx, SwingThesisHealthPanel.tsx,
+// etc.; the Legacy-chapter guide's own body already documents "three tabs on one route (ZERO_DTE
+// / SWING / LEGACY)" — src/lib/learn/guides/instruments/night-hawk.ts), but every summary/index
+// layer that feeds SEO + GEO surfaces (the manifest's capabilities/faqAnswer/planInclude, which
+// drive the pricing-page schema.org featureList via manifestSchemaFeatureList; LEARN_NAV's
+// description, which /llms.txt maps verbatim; the guide-seo metaTitle/metaDescription for the
+// very page whose body covers Swing) was never updated when Swing Command shipped, so every one
+// of those AI-crawler-facing surfaces described Night Hawk as a two-tab product. Fixed at all
+// three; this guards the first (the root of the other two, since llms.txt/guide-seo are
+// hand-authored copies, not derived from the manifest).
+test("Night Hawk manifest + Learn nav + guide-seo all mention Swing Command, not just 0DTE Command and Evening Edition", () => {
+  const hawk = PRODUCT_MANIFEST.hawk;
+  assert.match(hawk.positioning, /Swing Command/i, "manifest positioning omits the shipped Swing Command tab");
+  assert.match(hawk.lifecycle, /Swing Command/i, "manifest lifecycle omits the shipped Swing Command tab");
+  assert.match(hawk.faqAnswer, /Swing Command/i, "manifest faqAnswer omits the shipped Swing Command tab");
+  assert.match(hawk.planInclude, /Swing Command/i, "manifest planInclude omits the shipped Swing Command tab");
+  assert.ok(
+    hawk.capabilities.some((c) => /Swing Command/i.test(c)),
+    "manifest capabilities list is missing a Swing Command bullet"
+  );
+
+  const nightHawkNav = LEARN_NAV.find((item) => item.slug === "night-hawk");
+  assert.ok(nightHawkNav, "night-hawk must still be a LEARN_NAV entry");
+  assert.match(
+    nightHawkNav!.description,
+    /Swing Command/i,
+    "LEARN_NAV's night-hawk description (mapped verbatim into /llms.txt) omits Swing Command"
+  );
+
+  const guideSeoSrc = readFileSync(join(REPO, "src/lib/learn/guide-seo.ts"), "utf8");
+  const nightHawkEntryMatch = guideSeoSrc.match(/"night-hawk":\s*\{[\s\S]*?\n {2}\},/);
+  assert.ok(nightHawkEntryMatch, "expected to find the night-hawk entry in guide-seo.ts");
+  assert.match(
+    nightHawkEntryMatch![0],
+    /Swing Command/i,
+    "guide-seo.ts's night-hawk metaTitle/metaDescription omits Swing Command, even though the guide page's own body covers it"
+  );
 });
 
 // Regression for a P3 finding (2026-09-04): Meridian's manifest entry framed the product as
@@ -276,4 +317,24 @@ test("Pricing page SEO description derives its product count from the manifest, 
 
   const word = manifestProductCountWord();
   assert.equal(word, "seven", "sanity check: today's live count should spell out as \"seven\"");
+});
+
+// Regression (2026-10-20, DISCOVERY-lane SEO sweep): the root layout's default OG image alt
+// text said "BlackOut — 6 live engines, institutional-grade trading desk" — a hand-typed number
+// that went stale the moment the catalog grew to 7, same bug class as the Pricing-page finding
+// above. Any route that doesn't override openGraph.images (noindex/app pages, raw link shares)
+// serves this alt text, so a stale count there ships a product-count claim contradicting the
+// site's own manifest-derived copy everywhere else.
+test("root layout's default OG image alt text derives its product count from the manifest, not a hardcoded number", () => {
+  const rootLayout = readFileSync(join(REPO, "src/app/layout.tsx"), "utf8");
+  assert.match(
+    rootLayout,
+    /manifestProductCount\(\)/,
+    "root layout's OG alt text must derive its product count from the manifest, not a literal number"
+  );
+  assert.doesNotMatch(
+    rootLayout,
+    /alt:\s*["'`][^"'`]*\b\d+\b[^"'`]*live engines/i,
+    "no hardcoded stale product-count digit in the OG alt text"
+  );
 });

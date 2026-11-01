@@ -3,7 +3,6 @@ import "server-only";
 import { priorOpexDates } from "@/features/meridian/lib/meridian-timeline";
 import {
   buildMeridianOpexCrossMarket,
-  MERIDIAN_OPEX_BENCHMARKS,
   MERIDIAN_OPEX_MAG7,
   rankOpexSessionMovers,
 } from "@/lib/meridian/meridian-opex-cross-market-core";
@@ -72,6 +71,3 @@ export async function loadMeridianOpexCrossMarket(beforeYmd: string): Promise<Me
     })
   );
 }
-
-/** Benchmark tickers surfaced in the cross-market panel (for tests / docs). */
-export const meridianOpexBenchmarkTickers = MERIDIAN_OPEX_BENCHMARKS;

@@ -61,7 +61,8 @@ import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
-import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, isSwingHaltGateEnforced, isSwingRegimeGateEnforced, isSwingQuoteStaleGateEnforced, isSwingDailyBarGateEnforced, swingCortexPreflightCap } from "./v2/config";
+import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, isSwingHaltGateEnforced, isSwingRegimeGateEnforced, isSwingQuoteStaleGateEnforced, isSwingDailyBarGateEnforced, isSwingLegacyCommitBridgeEnabled, swingCortexPreflightCap } from "./v2/config";
+import { legacyCommitCandidatesFromSnapshot } from "./legacy-confirm-promote";
 import { readSwingHaltStateForTickers } from "./v2/halt-read";
 import { regimeBandFor01 } from "./v2/regime";
 export { regimeBandFor01 };
@@ -138,8 +139,11 @@ export interface SwingDiscoveryConfig {
 
 export const DEFAULT_SWING_DISCOVERY_CONFIG: SwingDiscoveryConfig = {
   flowWindowHours: 120,
-  maxStructureMovers: 40,
-  tier1Cap: 40,
+  // 2026-09-08: raised 40→60 (operator directive, whole-market volume complaint) — admits more
+  // STRUCTURE-origin (breakout) candidates into Tier-0 merge before the dynamic Tier-1 cap
+  // (swingTier1CapCeiling, v2/config.ts) applies its own breadth-scaled limit downstream.
+  maxStructureMovers: 60,
+  tier1Cap: 40, // legacy/fallback budget only — superseded by the dynamic Tier-1 cap when V2 is on
   minPersistenceSessions: MIN_PERSISTENCE_SESSIONS,
   intendedDte: 14,
   enrichConcurrency: 8,
@@ -375,6 +379,37 @@ export function stampCommitGateBlocksOnPlays(
   return plays.map((p) => {
     const blocks = gateBlockedByKey.get(swingThesisKey(p.ticker, p.direction, p.archetype ?? null));
     return blocks?.length ? { ...p, commitGateBlockedBy: blocks } : p;
+  });
+}
+
+/**
+ * Stamp the SCAN-SCOPED signal kinds G-S6 confluence actually evaluated this scan
+ * (`SwingCommitCandidate.discoveryPaths`, assembled by `discoveryPathsForConfluence` above when the
+ * commit candidates are built) onto SWING plays — alongside the existing LIFETIME-accreted
+ * `signalKinds` the serving layer already shows from the accumulation store. WHY (Ask Largo standing
+ * mandate, live SOXX repro 2026-10-25): `signalKinds` is a union across every session day a thesis
+ * has ever been observed, so a row can display enough kinds to satisfy an archetype's required
+ * confluence count while `commitGateBlockedBy` (stamped by `stampCommitGateBlocksOnPlays` just above)
+ * still carries `gate:G-S6:confluence` — because the gate reads ONLY this scan's discovery paths, not
+ * the lifetime set — with nothing in the payload explaining the contradiction. `thisScanSignalKinds`
+ * closes that gap so a reader can reconcile the two fields, mirroring the existing
+ * `last_session_signal_kinds`/`sessionSignalKinds` precedent built for the persistence check
+ * (accumulation-store.ts, fixed 2026-07-24) — same idea, applied to the gate this board's BUY/WAIT
+ * verdict actually reflects. Joined by the SAME thesis key `stampCommitGateBlocksOnPlays` uses, so the
+ * two stamps always agree on which play they describe.
+ */
+export function stampScanSignalKindsOnPlays(
+  plays: readonly HorizonPlay[],
+  candidates: readonly SwingCommitCandidate[],
+): HorizonPlay[] {
+  const kindsByKey = new Map<string, string[]>();
+  for (const c of candidates) {
+    if (!c.direction) continue;
+    kindsByKey.set(swingThesisKey(c.ticker, c.direction, c.archetype), [...(c.discoveryPaths ?? [])]);
+  }
+  return plays.map((p) => {
+    const kinds = kindsByKey.get(swingThesisKey(p.ticker, p.direction, p.archetype ?? null));
+    return kinds ? { ...p, thisScanSignalKinds: kinds } : p;
   });
 }
 
@@ -641,6 +676,30 @@ export interface SwingDiscoveryDeps {
   budget?: PortfolioBudget;
   /** The book-percent caps (defaults to DEFAULT_SWING_CAPS). */
   caps?: SwingCaps;
+  /** BUG FIX (2026-10-09, Ask Largo standing mandate — live VST repro, commitGateBlockedBy stuck on
+   *  "legacy:exempt" forever). PR #5577 built `legacyCommitCandidatesFromSnapshot`
+   *  (legacy-confirm-promote.ts) specifically to bridge a Legacy-morning-confirm-promoted play, once
+   *  it reaches the SAME `setupState==="TRIGGERED"`+`entryStatus==="AT_TRIGGER"`/`"PULLBACK_TO_ENTRY"`
+   *  bar an organic candidate needs for COMMIT_NOW, into a REAL `SwingCommitCandidate` evaluated by
+   *  the REAL G-S3/G-S4/G-S6/G-S12/G-S14 gate stack — but the function was never actually called from
+   *  this file's own commit loop below, so every Legacy-promoted play stayed permanently serve-only
+   *  exactly like before PR #5577 shipped (see `docs/audit/FINDINGS.md`'s 2026-10-01 entry, "What was
+   *  deliberately NOT shipped this PR" — this closes that named follow-up). Reproduced live: VST
+   *  (promoted 2026-10-07 via Night Hawk Legacy morning confirm) sat at live `setupState: "TRIGGERED"`,
+   *  `entryStatus: "AT_TRIGGER"` on 2026-10-09 — the exact bridge condition — while
+   *  `GET /api/market/nighthawk/horizons?view=swings` still served `commitGateBlockedBy:
+   *  ["legacy:exempt"]` for it.
+   *
+   *  Carries raw TRIPLES, not pre-built `SwingCommitCandidate`s: `legacyCommitCandidatesFromSnapshot`
+   *  wants `pathsByTicker` (the per-scan Tier-0 provenance map) so a Legacy ticker ALSO independently
+   *  screened this scan gets credit for real corroboration at G-S6 — that map only exists inside this
+   *  file's own scan execution, so the candidates are built HERE, not by the caller. The caller
+   *  (swing-discovery/route.ts, which already reads the serving snapshot) passes the triples via
+   *  `legacyPromotedTriplesFromSnapshot` (legacy-confirm-promote.ts, already used by
+   *  `carryLegacyPromotedIntoSnapshot`); absent or the `isSwingLegacyCommitBridgeEnabled()` flag off
+   *  ⇒ unchanged pre-fix behavior (every unit test / evidence-only caller, and production until the
+   *  flag is explicitly armed — see that flag's own doc comment on why it defaults OFF). */
+  legacyTriples?: ReadonlyArray<{ dossier: SwingDossier; play: HorizonPlay; watch: SwingWatchCandidate }>;
 
   nowMs: number;
   /** ET session day (YYYY-MM-DD) the scan is anchored to — the distinct-day persistence key. */
@@ -748,7 +807,14 @@ export async function runSwingDiscoveryScan(
       const hits = await deps.fetchPositioningHits();
       positioningTickers = hits.map((h) => h.ticker);
       for (const h of hits) positioningDirectionByTicker.set(h.ticker.toUpperCase(), h.direction);
-    } catch {
+    } catch (err) {
+      // Sibling parity: every other Tier-0 origin fetch (fetchPositioningTickers fallback below,
+      // CATALYST/BANGER/VECTOR) logs its throw via fetchTier0OriginTickers's own console.warn —
+      // this preferred fetchPositioningHits path previously swallowed the error silently, so a
+      // real POSITIONING origin outage (the corroborated-confluence origin, not a minor one) was
+      // invisible in CloudWatch and distinguishable from "the origin legitimately returned zero
+      // names" only by reading `recall.tier0OriginFetchErrors` off a scan result nobody was tailing.
+      console.warn("[swing-discovery] Tier-0 origin POSITIONING fetch failed:", err);
       originFetchErrors.push("POSITIONING");
     }
   } else if (engineV2 && deps.fetchPositioningTickers) {
@@ -1048,6 +1114,30 @@ export async function runSwingDiscoveryScan(
       };
     });
 
+    // Merge in Legacy-promoted candidates that have reached the bridge's own TRIGGERED/AT_TRIGGER
+    // bar (see `legacyTriples`'s doc comment on SwingDiscoveryDeps for the full story). Organic wins
+    // on a ticker|direction collision: an organic screen already found independent evidence, so the
+    // Legacy row would only ever duplicate — never override — a thesis already under evaluation.
+    if (isSwingLegacyCommitBridgeEnabled() && deps.legacyTriples?.length) {
+      // BUG FIX (2026-10-25, Ask Largo standing mandate): `haltActive`/`grouped` are already real,
+      // computed for this exact scan pass a few lines up (and already wired into every ORGANIC
+      // candidate above) — pass them through so the bridge stops fabricating `halted: false` /
+      // `dailyBarComplete: true` for every Legacy-sourced candidate regardless of the real state.
+      const legacyCandidates = legacyCommitCandidatesFromSnapshot(deps.legacyTriples, {
+        sessionDate: deps.sessionDay,
+        pathsByTicker,
+        haltActive,
+        grouped,
+      });
+      const organicKeys = new Set(commitCandidates.map((c) => `${c.ticker.toUpperCase()}|${c.direction}`));
+      for (const lc of legacyCandidates) {
+        const key = `${lc.ticker.toUpperCase()}|${lc.direction}`;
+        if (organicKeys.has(key)) continue;
+        organicKeys.add(key);
+        commitCandidates.push(lc);
+      }
+    }
+
     if (engineV2 && isSwingCortexEnforced()) {
       const cap = swingCortexPreflightCap();
       const ranked = [...commitCandidates]
@@ -1102,10 +1192,16 @@ export async function runSwingDiscoveryScan(
     commitEligibleCount = plan.commitEligibleCount;
 
     // Stamp G-S6/G-S14 blocks onto produced plays so the desk BUY/WAIT verdict matches commit reality.
+    // Stamp the scan-scoped signal kinds alongside it so a reader can see WHY (see the function's own
+    // doc comment) — the two stamps are joined by the same thesis key, so they always describe the
+    // same play.
     if (engineV2 && playSet.SWING.length > 0) {
       playSet = {
         ...playSet,
-        SWING: stampCommitGateBlocksOnPlays(playSet.SWING, plan.decisions),
+        SWING: stampScanSignalKindsOnPlays(
+          stampCommitGateBlocksOnPlays(playSet.SWING, plan.decisions),
+          commitCandidates,
+        ),
       };
     }
 

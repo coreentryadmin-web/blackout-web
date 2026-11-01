@@ -70,6 +70,23 @@ export type PlaybookPlay = {
   tier?: NighthawkTierAssignment | null;
   /** Per-play morning confirm instant from morning_verdict.checked_at (read-time overlay). */
   morning_checked_at?: string;
+  /** Calendar days to the picked contract's expiry, computed once at buildPlay() time via
+   *  calendarDteBetween(todayEtYmd(), contract.expiry). Absent (not 0) when no contract was
+   *  picked (stock-only/caveated fallback) — the analysis layer must never read a missing DTE
+   *  as same-day. Workstream C / #20's D1, 2026-09-21 — observational only, never read by any
+   *  selection/scoring/gating logic. */
+  dte?: number | null;
+  /** How this play entered the published edition (2026-09-28, min-3/target-5 backfill redesign).
+   *  "QUALIFIED" cleared the full organic merit bar (score + tier) on its own. "BACKFILL" did NOT
+   *  clear that bar but was promoted from the ranked pool — after the cross-edition sector-
+   *  concentration governor's demotion already applied (ranking uses effectiveMeritScore, never
+   *  raw score, so a governor-capped sector cannot use backfill to reappear ahead of an
+   *  uncapped one) — purely to reach the configured minimum play count, and only when it
+   *  resolved a real liquid/affordable contract and passed the geometry gate; never a
+   *  placeholder. Absent on rows written before this field existed — treat missing as
+   *  "QUALIFIED" (the only thing a play could be before backfill carried its own tag). Persisted
+   *  into the rank_final candidate snapshot so every publish is auditable after the fact. */
+  selection_tier?: "QUALIFIED" | "BACKFILL";
 };
 
 export type PlayExplainRequest = {

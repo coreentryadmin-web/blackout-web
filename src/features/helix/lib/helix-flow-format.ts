@@ -237,8 +237,23 @@ export function fmtFill(n: number | null | undefined): string {
   return n.toFixed(2);
 }
 
+/**
+ * BUG FIX (round 296): `open_interest` is the count of contracts outstanding on a strike, and
+ * `open_interest === 0` is a genuine, maximally-informative reading — "every lot on this strike is
+ * newly opened" — not a missing one. `helix-position-intent.ts`'s `positionIntent` already treats
+ * it that way: its absence check is `open_interest == null || !Number.isFinite(oi) || oi < 0`,
+ * `oi === 0` falls straight through to `{ intent: "opening", basis: "no_open_interest" }`, and that
+ * verdict drives a real "NEW" badge (`openingBadgeLabel`) with a tooltip that states the fact
+ * outright: "traded on a strike with no open interest — every lot is newly opened" — rendered in
+ * the SAME tape row (`HelixFlowTable.tsx` builds `signals` and the `oi` cell from the identical
+ * `flow` object). This formatter alone folded 0 back into `n <= 0`, so that row's OI cell rendered
+ * "—" (the no-data glyph) one cell away from a badge whose tooltip explicitly asserts OI is 0 — the
+ * same direct contradiction #7248 fixed for `fmtAskPct`/`askPctTone`, just between a cell and a
+ * badge instead of a cell's text and its own color. Guard only against values the field cannot
+ * legitimately take (negative), never against 0 itself.
+ */
 export function fmtOi(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n) || n <= 0) return "—";
+  if (n == null || !Number.isFinite(n) || n < 0) return "—";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(Math.round(n));
@@ -280,8 +295,20 @@ export function fmtOtm(pct: number | null | undefined): string {
   return `${pct.toFixed(1)}%`;
 }
 
+/**
+ * BUG FIX (round 295): `ask_pct` is a 0-100 SHARE of premium filled at or above the ask (see
+ * `MinimalFlow.ask_pct` in helix-signal-detection.ts). 0% is the genuine, maximally
+ * seller-initiated reading — not a missing one — and every other reader of this exact field
+ * (`aggressorSide`/`flowDirection` in helix-flow-aggression.ts, `executionQualityBucket` in
+ * helix-execution-quality.ts) already treats `askPct === 0` as real data ("sold"), only `null`/
+ * non-finite as absent. This formatter alone folded 0 back into `pct <= 0`, so a genuine 0% print
+ * rendered the "—" no-data glyph in the SAME tape cell whose colour (`askPctTone`, computed from
+ * the identical value one line above this one in HelixFlowTable.tsx) correctly painted it red for
+ * passive/sold flow — a colour asserting a measurement beside text asserting none. Guard only
+ * against values outside the field's documented 0-100 range (negative), never against 0 itself.
+ */
 export function fmtAskPct(pct: number | null | undefined): string {
-  if (pct == null || !Number.isFinite(pct) || pct <= 0) return "—";
+  if (pct == null || !Number.isFinite(pct) || pct < 0) return "—";
   return `${Math.round(pct)}%`;
 }
 
@@ -321,6 +348,38 @@ export function sortFlows(
         return 0;
     }
   });
+}
+
+/**
+ * The desktop tape's actual filter+sort pipeline (typed rows → type filter → sortFlows), pulled
+ * out of HelixFlowTable so the decision is testable without rendering the component.
+ *
+ * ROOT CAUSE this fixes: HelixFlowTable's own `filtered` useMemo special-cased `sortKey === "time"`
+ * to ALWAYS call `sortFlows(base, "time", "desc")`, discarding whatever `sortDir` the user had just
+ * toggled to. `sortFlows` itself has always honored "asc" correctly (see the "premium descending"
+ * test above, and `cmp(...) * mul` for every key including "time") — the bug was this call site
+ * silently throwing the direction away for exactly one column, the one it defaults to. Clicking the
+ * Time header to flip to ascending still flipped the ▲/▼ indicator (driven by `sortDir` state) but
+ * the row order never moved, because every render re-forced "desc" underneath it — the control was
+ * cosmetic. It also fed `isNew = i === 0 && sortKey === "time" && sortDir === "desc"` in the
+ * component, so toggling to "asc" silently killed the newest-print flash highlight on row 0 even
+ * though row 0 was still the newest row (since the real order never changed).
+ *
+ * Present since the initial migration (#770) — there is no earlier commit that introduced this
+ * forcing deliberately, and nothing in HelixFlowTable's extensive surrounding comments explains it.
+ */
+export function filterAndSortFlowsForTape(
+  flows: FlowAlert[],
+  typeFilter: "ALL" | "CALL" | "PUT",
+  sortKey: HelixFlowSortKey,
+  sortDir: HelixFlowSortDir
+): FlowAlert[] {
+  const typed = flows.filter((f) => {
+    const t = f.option_type?.toUpperCase();
+    return t === "CALL" || t === "PUT";
+  });
+  const base = typeFilter === "ALL" ? typed : typed.filter((f) => f.option_type?.toUpperCase() === typeFilter);
+  return sortFlows(base, sortKey, sortDir);
 }
 
 export type HelixFlowSignal = {

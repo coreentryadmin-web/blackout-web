@@ -68,21 +68,24 @@ const RTH_CUTOFF_ET_MINUTES = 15 * 60 + 30;
  *  `discovery-recall-probe.mjs` run: real qualifying pools of 100-390/day, cap stuck at 40). */
 export const BREAKOUT_MAX_CANDIDATES = 40; // dynamic-N floor — raised 6→15→25→40, now a floor not a ceiling
 
-/** Dynamic-N ceiling (2026-08-04, raised to 150 on 2026-08-24) — bounds worst-case chain-fetch
- *  growth on a huge-breadth day. See `resolveBreakoutCandidateCap` for the sizing formula and
- *  `scripts/audit/breakout-dynamic-n-ab.mjs` for the A/B evidence that justified the original 100.
- *  Raised from 100→150 because evidence shows the ceiling is hit on 10/13 sessions, and momentum-rank
- *  cohorts (41-100 vs top-40) show 44.9% WR vs 43.1% — indistinguishable, no quality loss from wider
- *  pools, only more shots at the same hit rate. Chain-fetch budget is bounded, Polygon concurrency tuned. */
-export const BREAKOUT_MAX_CANDIDATES_CEILING = 150;
+/** Dynamic-N ceiling (2026-08-04, raised to 150 on 2026-08-24, 220 on 2026-09-08). Bounds
+ *  worst-case chain-fetch growth on a huge-breadth day. See `resolveBreakoutCandidateCap` for
+ *  the sizing formula and `scripts/audit/breakout-dynamic-n-ab.mjs` for the A/B evidence that
+ *  justified the original 100. Raised 100→150→220 because evidence shows the ceiling is hit on
+ *  10/13 sessions, and momentum-rank cohorts (41-100 vs top-40) show 44.9% WR vs 43.1% —
+ *  indistinguishable, no quality loss from wider pools, only more shots at the same hit rate.
+ *  MUST stay in lockstep with breakout-cap.ts's DEFAULT_CEILING — this constant only documents
+ *  the same number for audit-trail citation; the live ceiling used by resolveBreakoutCandidateCap
+ *  is DEFAULT_CEILING in that file. Chain-fetch budget is bounded, Polygon concurrency tuned. */
+export const BREAKOUT_MAX_CANDIDATES_CEILING = 220;
 
 /** Wider $-volume pool fed into the momentum re-rank before the chain-fetch cap. Liquidity filter
  *  stays in `screenBreakoutMovers` / `screenBreakdownMovers`; quality ranking is separate. Raised
- *  100→200 (2026-08-04) alongside the dynamic-N ceiling so the upstream screen itself never
- *  truncates the qualifying pool that `resolveBreakoutCandidateCap` sizes the cap from — a screen
- *  pool smaller than the ceiling would silently cap "qualifying" at the pool size, defeating the
- *  breadth-driven formula on exactly the huge-breadth days it's meant to help. */
-export const BREAKOUT_SCREEN_POOL = 200;
+ *  100→200 (2026-08-04) →280 (2026-09-08) alongside the dynamic-N ceiling so the upstream screen
+ *  itself never truncates the qualifying pool that `resolveBreakoutCandidateCap` sizes the cap
+ *  from — a screen pool smaller than the ceiling would silently cap "qualifying" at the pool
+ *  size, defeating the breadth-driven formula on exactly the huge-breadth days it's meant to help. */
+export const BREAKOUT_SCREEN_POOL = 280;
 
 /**
  * Rank screened movers for the chain-fetch budget. Liquidity already gated the pool; this orders
@@ -229,13 +232,17 @@ export async function discoverBreakoutSetups(opts: {
   nowEtMinutes: number;
   /** Tickers to exclude (static excludes + Night Hawk-covered names), same set the flow path uses. */
   excludeTickers: Set<string>;
+  /** When set, ONLY these tickers are eligible — the 0DTE-desk-wide universe restriction
+   *  (ticker-universe.ts). null/undefined means unrestricted (whole-market), same as before this
+   *  option existed. */
+  includeTickers?: Set<string> | null;
   maxCandidates?: number;
   /** Absolute wall-clock (Unix ms) for the WS-19 freshness check. Defaults to Date.now(); injected in tests. */
   nowMs?: number;
   /** IO seam override for tests; production omits it and uses the real providers. */
   deps?: Partial<BreakoutDiscoveryDeps>;
 }): Promise<BreakoutDiscoveryOutcome> {
-  const { today, nowEtMinutes, excludeTickers } = opts;
+  const { today, nowEtMinutes, excludeTickers, includeTickers } = opts;
   let maxCandidates = opts.maxCandidates ?? BREAKOUT_MAX_CANDIDATES;
   const nowMs = opts.nowMs ?? Date.now();
   const { fetchSummary, screen, screenBreakdowns, resolveChain, buildSetup, pickContract, fetchMinuteBars } = {
@@ -318,10 +325,12 @@ export async function discoverBreakoutSetups(opts: {
   // pool sized for the (smaller) floor — that would silently cap "qualifying" at the pool size and
   // defeat the breadth-driven formula on exactly the huge-breadth days it exists for.
   const screenPool = Math.max(BREAKOUT_MAX_CANDIDATES_CEILING * 4, BREAKOUT_SCREEN_POOL);
-  const longMovers = screen(breadthResults, screenPool).filter((m) => !excludeTickers.has(m.ticker.toUpperCase()));
-  const shortMovers = screenBreakdowns(breadthResults, screenPool).filter(
-    (m) => !excludeTickers.has(m.ticker.toUpperCase())
-  );
+  const eligible = (ticker: string) => {
+    const t = ticker.toUpperCase();
+    return !excludeTickers.has(t) && (!includeTickers || includeTickers.has(t));
+  };
+  const longMovers = screen(breadthResults, screenPool).filter((m) => eligible(m.ticker));
+  const shortMovers = screenBreakdowns(breadthResults, screenPool).filter((m) => eligible(m.ticker));
 
   // Dynamic-N (2026-08-04): size the chain-fetch cap to today's qualifying breadth instead of a
   // fixed number. Tests that pass an explicit `opts.maxCandidates` keep their exact override (a

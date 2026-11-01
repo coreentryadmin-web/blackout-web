@@ -64,5 +64,5 @@ export {
 } from "./lib/vector-indicators-config";
 export { loadSessionWallHistory } from "./lib/vector-wall-persist";
 export { loadVectorSeedProps, type VectorSeedProps } from "./lib/vector-seed-props";
-export { reconstructSessionRail, reconstructSessionHeatmap } from "./lib/vector-gex-reconstruct-server";
+export { reconstructSessionRail } from "./lib/vector-gex-reconstruct-server";
 export type { GexHeatmapGrid } from "./lib/vector-gex-reconstruct";

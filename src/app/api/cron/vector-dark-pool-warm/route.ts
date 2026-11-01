@@ -5,6 +5,17 @@ import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { warmVectorDarkPool, type WarmVectorDarkPoolResult } from "@/features/vector/lib/vector-dark-pool-cache";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { runUwPool, runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
+import { halfBatchSize, selectDarkPoolWarmBatch } from "./rotation";
+import { acquireHeavyCronSlot, type HeavyCronSlot } from "@/lib/cron/heavy-cron-concurrency-guard";
+
+const ROTATION_CURSOR_KEY = "cron:vector-dark-pool-warm:cursor";
+// Persist well past the ~10min schedule so a single missed/overlapping run doesn't reset coverage.
+const ROTATION_CURSOR_TTL_SEC = 3600;
+// Self-overlap lock (see the "Overlap guard" comment on its acquisition below). Hoisted to a
+// shared constant so every release site (lost heavy-cron-slot race, and the real background-work
+// finally below) can never drift from the key used to acquire it.
+const OVERLAP_LOCK_KEY = "cron:vector-dark-pool-warm:lock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,9 +33,54 @@ export const maxDuration = 120;
  * well under the timeout instead of racing all 55 into the queue simultaneously. Each task still
  * catches its own rejection into a settled-result shape so one ticker's unexpected throw can't
  * abort the whole pool the way `Promise.all` would.
+ *
+ * ROTATION (2026-10-07). The bound above caps this cron's own CONCURRENCY, not its TOTAL per-run
+ * ticker count — and a fresh re-measurement found the full universe still fails 90%+ of tickers
+ * per run even after the shared UW rate limiter's cluster-wide ceiling was separately doubled
+ * (PR #5579, UW_GLOBAL_MAX_RPS 2->4): aggregate cluster-wide UW demand (live traffic + sibling
+ * crons) still saturates the shared admission queue, and this cron's full ~55-69-ticker ask is
+ * simply more total work than the queue's 20s wait budget can clear every run. See rotation.ts's
+ * header comment for the full measurement and why a 2-way (not larger) rotation was chosen. This
+ * halves the per-run ticker count — full universe coverage every 2 runs instead of every 1 — which
+ * halves this cron's own total admission-queue commitment without touching the shared limiter.
+ *
+ * LOCK RELEASE (found 2026-11-01, round 224). Unlike every sibling warm-cron on this exact
+ * self-overlap-lock pattern (vector-pick-sweep, vector-walls-warm, vector-full-state-snapshot —
+ * each releases its own `OVERLAP_LOCK_KEY` in a `finally` wrapping its real background work),
+ * this route only ever released `cron:vector-dark-pool-warm:lock` on the LOST-RACE early-return
+ * path (the `if (!slot)` branch above, fixed 2026-10-26) — never on the real work's success or
+ * failure path. The acquisition TTL (610s = 10min10s) is already picked to just barely outlast
+ * the ~10-minute schedule, so on every run that completes normally (typically well under 610s,
+ * per this cron's own "measured runtime can reach 220+ seconds" comment), the lock sat UNRELEASED
+ * for the rest of its 610s lifetime — still valid at the next scheduled fire (~600s later, since
+ * 610 > 600), which then read it as "Prior run still executing" and skipped even though the prior
+ * run had already finished minutes earlier. That halves this cron's EFFECTIVE cadence to ~every
+ * 20 minutes (every other scheduled fire silently skipped), which breaks the 2-way rotation's own
+ * stated assumption (rotation.ts's header: "full coverage in ~20 minutes, comfortably under the
+ * 25-minute [cache] TTL") — at the real ~40-minute effective cadence this bug produces, half the
+ * universe's dark-pool cache entries go stale (>25min) before their next warm ever runs. Releasing
+ * the lock here, in the same `finally` that already releases the cross-cron `slot`, matches the
+ * sibling files' pattern and restores the real ~10-minute cadence the rotation design relies on.
  */
-async function runVectorDarkPoolWarm(started: number): Promise<void> {
-  const tickers = vectorUniverseTickers();
+async function runVectorDarkPoolWarm(started: number, slot: HeavyCronSlot): Promise<void> {
+  try {
+    await runVectorDarkPoolWarmInner(started);
+  } finally {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    await slot.release();
+  }
+}
+
+async function runVectorDarkPoolWarmInner(started: number): Promise<void> {
+  const allTickers = vectorUniverseTickers();
+  const cursor = (await sharedCacheGet<number>(ROTATION_CURSOR_KEY).catch(() => null)) ?? 0;
+  const { batch: tickers, nextCursor } = selectDarkPoolWarmBatch(
+    allTickers,
+    cursor,
+    halfBatchSize(allTickers.length)
+  );
+  await sharedCacheSet(ROTATION_CURSOR_KEY, nextCursor, ROTATION_CURSOR_TTL_SEC).catch(() => undefined);
+
   const results = await runUwPool(
     tickers.map((t) => async (): Promise<PromiseSettledResult<WarmVectorDarkPoolResult>> => {
       try {
@@ -52,7 +108,7 @@ async function runVectorDarkPoolWarm(started: number): Promise<void> {
   const failed = fetchFailed + rejected;
 
   console.info(
-    `[cron/vector-dark-pool-warm] background done — warmed=${warmed} failed=${failed} levels=${levels} elapsed=${Date.now() - started}ms`
+    `[cron/vector-dark-pool-warm] background done — warmed=${warmed} failed=${failed} levels=${levels} batch=${tickers.length}/${allTickers.length} elapsed=${Date.now() - started}ms`
   );
 }
 
@@ -69,11 +125,44 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  // Overlap guard: measured runtime can reach 220+ seconds with UW timeouts, and the 10-minute
+  // schedule leaves 6+ minute margin. During high UW latency, prior runs can still be executing
+  // when the next scheduled run starts, risking concurrent Redis writes to dark-pool cache keys.
+  // Set NX on a lock key with 10m10s TTL to ensure only one run executes at a time.
+  const acquired = await sharedCacheSetNx(
+    OVERLAP_LOCK_KEY,
+    { startedAt: started },
+    610 // TTL = 10min + 10sec buffer for schedule variance
+  ).catch(() => true);
+
+  if (!acquired) {
+    const payload = { ok: true, skipped: true, reason: "Prior run still executing" };
+    await logCronRun("vector-dark-pool-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  // Cross-CRON concurrency cap — distinct from the self-overlap lock just above. Live CloudWatch
+  // (2026-10-13 13:35-13:56 UTC) showed this cron and 5 OTHER heavy crons in flight at once on
+  // the shared web tier, 1:1 correlated with sustained ALB tail latency — see
+  // heavy-cron-concurrency-guard.ts's header for the full evidence.
+  const slot = await acquireHeavyCronSlot("vector-dark-pool-warm", 610);
+  if (!slot) {
+    // A lost race here releases the self-overlap lock immediately so the NEXT scheduled fire (not
+    // this one) gets a clean shot — same fix already applied to vector-pick-sweep (#5975). Without
+    // this, the self-overlap lock acquired above sits for its full 610s TTL even though no work
+    // ever ran, causing the next scheduled fire (~600s later, before the lock expires) to also be
+    // skipped as "prior run still executing" when nothing was actually running.
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    const payload = { ok: true, skipped: true, reason: "heavy-cron concurrency slot unavailable (idempotent skip)" };
+    await logCronRun("vector-dark-pool-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
   // Tagged as a background sweep (runWithBackgroundUwSweep) so it always leaves at least one
   // UW concurrency slot reachable for live member traffic even while mid-run — see
   // uw-rate-limiter.ts's block comment for the measured ALB tail-latency evidence.
   const dispatchWarm = () => {
-    void runWithBackgroundUwSweep(() => runVectorDarkPoolWarm(started)).catch((error) => {
+    void runWithBackgroundUwSweep(() => runVectorDarkPoolWarm(started, slot)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/vector-dark-pool-warm] background warm REJECTED: ${detail}`);
     });

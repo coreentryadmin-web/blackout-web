@@ -56,10 +56,24 @@ const JSON_CREDENTIAL_KEYS = [
   "password",
 ];
 
+// Matches a JSON string's VALUE body up to its TRUE closing quote.
+//
+// ROOT CAUSE this guards against: the previous pattern used a bare `[^"]*` to consume the value,
+// which treats the FIRST `"` it meets as the closing delimiter — including an ESCAPED quote
+// (`\"`) that is still inside the JSON string. A credential value containing a literal `"`
+// (serialized as `\"`, e.g. a password the user chose, or any secret that happens to embed one)
+// therefore only had its PREFIX up to that `\"` redacted; everything after the escaped quote and
+// before the real closing `"` was emitted verbatim — a partial credential leak into persisted
+// telemetry, the SSE stream and the admin UI. e.g. `{"api_key":"sk-abc\"def-tail"}` redacted to
+// `{"api_key":"[REDACTED]"def-tail"}`, leaking `def-tail`. Fixed by the classic
+// "any non-quote/non-backslash char, OR a backslash followed by any char" alternation, which
+// correctly consumes the escape pair instead of treating its `"` half as the terminator.
+const JSON_STRING_VALUE_BODY = '(?:[^"\\\\]|\\\\.)*';
+
 function redactJsonCredentialFields(body: string): string {
   let out = body;
   for (const key of JSON_CREDENTIAL_KEYS) {
-    const re = new RegExp(`("${key}"\\s*:\\s*")[^"]*(")`, "gi");
+    const re = new RegExp(`("${key}"\\s*:\\s*")${JSON_STRING_VALUE_BODY}(")`, "gi");
     out = out.replace(re, "$1[REDACTED]$2");
   }
   return out;
@@ -85,11 +99,11 @@ export function sanitizeTelemetrySnippet(snippet: string | null | undefined): st
   if (!snippet) return null;
   return snippet
     .replace(
-      /("(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|passwd|client[_-]?secret|key)"\s*:\s*")[^"]*(")/gi,
+      /("(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|passwd|client[_-]?secret|key)"\s*:\s*")(?:[^"\\]|\\.)*(")/gi,
       "$1[REDACTED]$2"
     )
     .replace(
-      /('(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|passwd|client[_-]?secret|key)'\s*:\s*')[^']*(')/gi,
+      /('(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|passwd|client[_-]?secret|key)'\s*:\s*')(?:[^'\\]|\\.)*(')/gi,
       "$1[REDACTED]$2"
     )
     .replace(

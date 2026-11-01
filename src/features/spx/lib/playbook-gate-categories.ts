@@ -56,6 +56,7 @@ export function classifyGateBlock(message: string): GateBlockCategory {
       /Re-entry lock/i,
       /Session entry cap/i,
       /Session loss cap/i,
+      /session trigger cap/i,
       /^VIX /i,
       /^R:R /i,
       /stand down/i,

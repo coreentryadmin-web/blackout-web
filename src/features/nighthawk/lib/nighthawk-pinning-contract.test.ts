@@ -72,7 +72,13 @@ test("edition builder pins from the SAME in-memory build context it publishes fr
 });
 
 test("edition read path: EVERY serve branch passes through the pull overlay", () => {
-  const src = read("src/app/api/market/nighthawk/edition/route.ts");
+  // 2026-09-18: this logic moved out of the route into resolve-edition.ts (a DB-only, shared
+  // core) so Largo's `get_nighthawk_edition` tool could run the exact same resolution ladder and
+  // overlays the member route does, instead of a bare unmarked DB row — see resolve-edition.ts's
+  // own header comment for the full defect this fixed. The property this test pins — every
+  // DB-served branch gets the pull overlay, fail-soft on a read error — is unchanged; only the
+  // file it lives in moved, and the member route now imports it rather than defining it inline.
+  const src = read("src/features/nighthawk/lib/resolve-edition.ts");
   assert.match(src, /async function withPullOverlay/);
   // withEditionOverlays composes withPullOverlay + the outcome-tier overlay behind one call, so
   // the 3 DB-served branches now route through withPullOverlay via this wrapper rather than
@@ -81,7 +87,7 @@ test("edition read path: EVERY serve branch passes through the pull overlay", ()
   // overlay — is unchanged by this refactor, just reached one level deeper).
   assert.match(
     src,
-    /async function withEditionOverlays\([^)]*\)[^{]*\{\s*return withOutcomeOverlay\(await withPullOverlay\(edition\)\);/,
+    /export async function withEditionOverlays\([^)]*\)[^{]*\{\s*return withOutcomeOverlay\(await withPullOverlay\(edition\)\);/,
     "withEditionOverlays must still delegate to withPullOverlay, not bypass it"
   );
   // carry-until-close, exact-date, and latest-fallback branches all stamp the latch.
@@ -91,9 +97,33 @@ test("edition read path: EVERY serve branch passes through the pull overlay", ()
     `expected the overlay on all 3 DB-served branches (carry/exact/latest), found ${overlayCalls.length}`
   );
   // Fail-soft: an overlay read failure must degrade to serving unstamped, never a 500.
-  const helper = src.slice(src.indexOf("async function withPullOverlay"), src.indexOf("export async function GET"));
+  const helper = src.slice(src.indexOf("async function withPullOverlay"), src.indexOf("export async function withEditionOverlays"));
   assert.match(helper, /catch/);
   assert.match(helper, /return edition;/);
+
+  // The member route no longer defines this logic itself — pin that it imports the shared
+  // resolver instead of re-implementing (or silently losing) the same ladder a second time.
+  const routeSrc = read("src/app/api/market/nighthawk/edition/route.ts");
+  assert.match(routeSrc, /from "@\/features\/nighthawk\/lib\/resolve-edition"/);
+  assert.doesNotMatch(
+    routeSrc,
+    /async function withPullOverlay/,
+    "the route must not re-define the overlay logic — that would let the two copies drift apart again"
+  );
+
+  // And Largo's get_nighthawk_edition tool must go through the SAME shared resolver, not a bare
+  // DB row — this is the actual defect the refactor fixed (see run-tool.ts's own comment there).
+  const runToolSrc = read("src/lib/largo/run-tool.ts");
+  const toolCase = runToolSrc.slice(
+    runToolSrc.indexOf('case "get_nighthawk_edition"'),
+    runToolSrc.indexOf('case "get_helix_derived"')
+  );
+  assert.match(toolCase, /resolveNighthawkEdition\(/);
+  assert.doesNotMatch(
+    toolCase,
+    /marketPlatform\.nighthawk\.(getLatestNightHawkEdition|getNightHawkEditionForDate)\(/,
+    "Largo must not read a bare, unoverlaid edition row — it must share the member route's resolution ladder"
+  );
 });
 
 test("morning-confirm cron: verdicts persist durably ALONGSIDE the Redis badge (which stays)", () => {

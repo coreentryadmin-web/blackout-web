@@ -36,6 +36,31 @@ test("automerge.yml's merge step does not rely solely on GITHUB_TOKEN", () => {
   );
 });
 
+/**
+ * The identical bug, same fix, a second workflow file — found 2026-10-13 live, not by
+ * inspection: #5938 (actions/upload-artifact bump) and #5939 (9-package npm minor-and-patch
+ * group) were both auto-merged by `dependabot-auto-merge.yml`, and `GET /repos/.../actions/
+ * runs?head_sha=<merge-commit>` showed ZERO downstream workflow runs for either — no
+ * `verify` re-run, no CodeQL, no `ecr-push-production.yml` despite real `package.json`/
+ * `package-lock.json` changes matching that workflow's own path filter. The 2026-08-24 fix
+ * in `automerge.yml` (tested above) was never propagated to this sibling file, which merges
+ * every Dependabot PR (not just `claude/*`) and still used plain GITHUB_TOKEN.
+ */
+test("dependabot-auto-merge.yml's merge step does not rely solely on GITHUB_TOKEN", () => {
+  const workflow = readFileSync(join(REPO_ROOT, ".github/workflows/dependabot-auto-merge.yml"), "utf8");
+
+  const mergeStepMatch = /Enable auto-merge[\s\S]*?run:\s*\|\s*\n\s*gh pr merge/.exec(workflow);
+  assert.ok(mergeStepMatch, "expected an 'Enable auto-merge' step invoking `gh pr merge`");
+
+  const mergeStep = mergeStepMatch[0];
+  assert.match(
+    mergeStep,
+    /GH_TOKEN:\s*\$\{\{\s*secrets\.AGENT_RELEASE_TOKEN\s*\|\|\s*secrets\.GITHUB_TOKEN\s*\}\}/,
+    "the merge step must prefer a PAT (AGENT_RELEASE_TOKEN) over the default GITHUB_TOKEN, " +
+      "or every Dependabot merge silently never triggers CI/CodeQL/deploy on main"
+  );
+});
+
 test("automerge.yml does not enable auto-merge for cursor/* (HARD MERGE GATE)", () => {
   const workflow = readFileSync(join(REPO_ROOT, ".github/workflows/automerge.yml"), "utf8");
 

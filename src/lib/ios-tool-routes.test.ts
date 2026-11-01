@@ -1,15 +1,53 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   getIosHeaderMeta,
   getIosRouteKey,
   getIosToolMeta,
   getIosToolNavLabel,
   getIosToolRouteIndex,
+  isIosNativeShellPath,
   isIosNativeShellRoute,
   isIosToolRoute,
   IOS_TOOLS,
 } from "@/lib/ios-tool-routes";
+
+// `IOS_TOOL_NAV_LABELS` was the real lookup table `getIosToolNavLabel` used, back when the
+// function was `IOS_TOOL_NAV_LABELS[match]` (introduced #556). #557's "native product shell"
+// rewrite replaced that body with `getIosToolMeta(path)?.label` (richer per-tool metadata:
+// mark/accent/tagline/code) but kept re-deriving `IOS_TOOL_NAV_LABELS` from `IOS_TOOLS` anyway —
+// orphaning it with zero consumers (repo-wide grep and `git log --all -S` both confirm it's only
+// ever touched by the two commits that defined/redefined it, never referenced from a third).
+// Pin the module's export surface so an orphaned, no-longer-consumed convenience constant can't
+// silently drift back in unnoticed, the same discipline #7062/#7139 used for their own dead
+// re-derivations of already-covered data.
+describe("ios-tool-routes.ts export surface", () => {
+  it("no longer exports the orphaned IOS_TOOL_NAV_LABELS re-derivation", () => {
+    const source = readFileSync(join(__dirname, "ios-tool-routes.ts"), "utf8");
+    const exportNames = [
+      ...source.matchAll(/^export\s+(?:type\s+)?(?:async\s+)?(?:function|const)\s+([A-Za-z0-9_]+)/gm),
+    ].map((m) => m[1]);
+    assert.ok(!exportNames.includes("IOS_TOOL_NAV_LABELS"), "IOS_TOOL_NAV_LABELS should be removed");
+    assert.deepEqual(
+      exportNames.sort(),
+      [
+        "IOS_NATIVE_SHELL_PATH_PREFIXES",
+        "IOS_TOOLS",
+        "IOS_TOOL_ROUTES",
+        "getIosHeaderMeta",
+        "getIosRouteKey",
+        "getIosToolMeta",
+        "getIosToolNavLabel",
+        "getIosToolRouteIndex",
+        "isIosNativeShellPath",
+        "isIosNativeShellRoute",
+        "isIosToolRoute",
+      ].sort(),
+    );
+  });
+});
 
 describe("isIosToolRoute", () => {
   it("matches primary tool paths", () => {
@@ -51,6 +89,26 @@ describe("isIosNativeShellRoute", () => {
     assert.equal(isIosNativeShellRoute("/sign-in"), false);
     assert.equal(isIosNativeShellRoute("/pricing"), false);
   });
+
+  // isIosToolRoute (the tool half of isIosNativeShellRoute, see above) already strips a
+  // query/hash suffix via normalizeIosPath before matching — isIosNativeShellPath (the utility
+  // half: /account, /faq, /learn, /upgrade, /admin) did not, so a signed-in utility path with a
+  // query string or hash (e.g. a deep link, a redirect carrying `?from=`, or an in-page `#anchor`)
+  // fell through both the exact-match and the startsWith(`${prefix}/`) check and incorrectly
+  // read as NOT a native-shell route. Both real call sites (useIosNativeShell/IosAppChrome) feed
+  // this from Next's usePathname(), which never carries a query/hash, so this was unreachable in
+  // practice — but the function should still be correct standing alone, and the inconsistency
+  // with its sibling isIosToolRoute (which already handles this) was the bug.
+  it("strips a query string or hash before matching utility paths", () => {
+    assert.equal(isIosNativeShellPath("/account?from=upgrade"), true);
+    assert.equal(isIosNativeShellPath("/upgrade#plans"), true);
+    assert.equal(isIosNativeShellPath("/admin/health?tab=cron"), true);
+    assert.equal(isIosNativeShellRoute("/account?from=upgrade"), true);
+    assert.equal(isIosNativeShellRoute("/faq#billing"), true);
+    // Still correctly rejects a non-native-shell path carrying a query/hash.
+    assert.equal(isIosNativeShellPath("/pricing?ref=home"), false);
+    assert.equal(isIosNativeShellRoute("/sign-in?redirect=/account"), false);
+  });
 });
 
 describe("IOS_TOOLS metadata", () => {
@@ -88,6 +146,32 @@ describe("getIosRouteKey", () => {
     assert.equal(getIosRouteKey("/faq"), "faq");
     assert.equal(getIosRouteKey("/learn/spx-slayer"), "learn");
     assert.equal(getIosRouteKey("/admin/health"), "admin");
+  });
+
+  // Same bug class, same sibling file, as the isIosNativeShellPath query/hash fix above:
+  // getIosRouteKey's "/dashboard" branch requires an EXACT match or a startsWith(`${prefix}/`)
+  // match. A query string or hash on "/dashboard" itself ("/dashboard?ref=upgrade",
+  // "/dashboard#widgets") must still resolve to "dashboard".
+  it("strips a query string or hash before matching the exact-match /dashboard branch", () => {
+    assert.equal(getIosRouteKey("/dashboard?ref=upgrade"), "dashboard");
+    assert.equal(getIosRouteKey("/dashboard#widgets"), "dashboard");
+    assert.equal(getIosRouteKey("/dashboard/positions?tab=open"), "dashboard");
+  });
+
+  // BUG FIX: every other branch used to be a bare `p.startsWith(prefix)` (no `/` boundary
+  // requirement), unlike this function's own "/dashboard" branch and every sibling matcher in
+  // this file (isIosToolRoute/getIosToolRouteIndex/getIosToolMeta/isIosNativeShellPath, all of
+  // which require an exact match or a `/`-bounded prefix). Two REAL top-level routes in this app
+  // share a prefix with a tool route without a `/` boundary — src/app/nighthawk-boards-preview
+  // and src/app/vector-board-preview, both public marketing preview pages, not sub-routes of
+  // `/nighthawk` or `/vector` — so the bare startsWith misclassified them as the Night Hawk and
+  // Vector TOOL routes instead of "other". Also confirms the fix doesn't break the other
+  // direction: a real sub-route of a tool (e.g. "/nighthawk/edition") still resolves correctly.
+  it("does not misclassify a sibling route that merely shares a tool's prefix", () => {
+    assert.equal(getIosRouteKey("/nighthawk-boards-preview"), "other");
+    assert.equal(getIosRouteKey("/vector-board-preview"), "other");
+    assert.equal(getIosRouteKey("/nighthawk/edition"), "nighthawk");
+    assert.equal(getIosRouteKey("/vector?ticker=SPY"), "vector");
   });
 });
 

@@ -48,6 +48,35 @@ test("deriveGammaMagnet: unknown posture → neutral center-of-mass phrasing", (
   assert.match(m!.callout, /center of mass/);
 });
 
+// BUG FIX (2026-10-24, Ask Largo fan-out audit, live repro BMNR): buildCallout used to receive
+// Math.round(strike) (whole-dollar level) while distancePct (passed alongside it in the SAME
+// sentence) was computed from the un-rounded, cents-precision strike -- whenever the weighted
+// magnet strike wasn't already near-integer (the ordinary case), the callout's level and its own
+// quoted percent described two DIFFERENT numbers. Live repro: spot 22.41, callout read "gamma
+// pivot 31 (+36.86%)" -- (31-22.41)/22.41 = +38.33%, not +36.86%; +36.86% is the percent for the
+// REAL strike, 30.67 -- exactly what `strike`/`distancePct` on this same object already carry.
+test("deriveGammaMagnet: callout's level and percent describe the SAME number, never Math.round(strike) paired with the unrounded strike's percent (live repro BMNR, 2026-10-24)", () => {
+  const bmnrWalls: VectorWalls = {
+    callWalls: [{ strike: 30, pct: 50 }],
+    putWalls: [{ strike: 31.34, pct: 50 }],
+  };
+  const m = deriveGammaMagnet({ spot: 22.41, walls: bmnrWalls, posture: "short" });
+  assert.ok(m);
+  assert.equal(m!.strike, 30.67, "sanity: reproduces the live BMNR magnet strike exactly");
+
+  const expectedPct = ((m!.strike - 22.41) / 22.41) * 100;
+  assert.match(
+    m!.callout,
+    new RegExp(`30\\.67.*\\+${expectedPct.toFixed(2)}%`),
+    `callout must cite the same cents-precision level (30.67) its own percent was computed from — got: ${m!.callout}`
+  );
+  assert.doesNotMatch(
+    m!.callout,
+    /\b31\b/,
+    `callout must not cite a different, whole-dollar level (31) than m.strike (30.67) — got: ${m!.callout}`
+  );
+});
+
 test("deriveGammaMagnet: null on no spot / no walls / zero-weight walls — never fabricates", () => {
   assert.equal(deriveGammaMagnet({ spot: 0, walls, posture: "long" }), null);
   assert.equal(deriveGammaMagnet({ spot: 7550, walls: null }), null);

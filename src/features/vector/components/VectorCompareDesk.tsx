@@ -17,6 +17,8 @@ import {
   comparePath,
   deskPath,
   loadCompareSeedsBounded,
+  pruneStaleTickerEntries,
+  pruneStaleTickerMapEntries,
   type VectorComparePreset,
 } from "@/features/vector/lib/vector-compare";
 import type { VectorClientSeed } from "@/features/vector/lib/vector-client-seed";
@@ -111,13 +113,29 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     (ticker: string, timeline: number[]) => {
       timelinesRef.current.set(ticker, timeline);
       const active = new Set(seeds.map((s) => s.ticker));
-      for (const key of timelinesRef.current.keys()) {
-        if (!active.has(key)) timelinesRef.current.delete(key);
-      }
+      timelinesRef.current = pruneStaleTickerMapEntries(timelinesRef.current, active);
       setUnionTimeline(mergeReplayTimelines([...timelinesRef.current.values()]));
     },
     [seeds]
   );
+
+  // Proactively prune `timelinesRef` the moment a ticker leaves the compare set (removeTicker /
+  // a preset swap), mirroring the metaByTicker/playByTicker cleanup below. Without this,
+  // `handleReplayTimeline` above only pruned a departed ticker's entry as a SIDE EFFECT of some
+  // OTHER pane's NEXT bar arriving — during live RTH with other panes still ticking that
+  // self-heals within seconds, but off-hours, with replay data static, or if the removed pane was
+  // the only one still producing updates, the stale timeline could sit in `timelinesRef.current`
+  // indefinitely, inflating `unionTimeline` (and the linked-replay scrubber's range) with steps
+  // belonging to a pane that's no longer on screen. See `pruneStaleTickerMapEntries`'s own doc
+  // comment for the full account.
+  useEffect(() => {
+    const active = new Set(seeds.map((s) => s.ticker));
+    const pruned = pruneStaleTickerMapEntries(timelinesRef.current, active);
+    if (pruned !== timelinesRef.current) {
+      timelinesRef.current = pruned;
+      setUnionTimeline(mergeReplayTimelines([...pruned.values()]));
+    }
+  }, [seeds]);
 
   const linkedReplayUi = useMemo((): VectorCompareLinkedReplayProps | null => {
     if (!canLinkReplay) return null;
@@ -418,17 +436,18 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
 
   useEffect(() => {
     const active = new Set(seeds.map((s) => s.ticker));
-    setPlayByTicker((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const key of Object.keys(next)) {
-        if (!active.has(key)) {
-          delete next[key];
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
+    setPlayByTicker((prev) => pruneStaleTickerEntries(prev, active));
+  }, [seeds]);
+
+  // STALENESS (see pruneStaleTickerEntries's own doc comment): metaByTicker drives the compare
+  // summary footer's long-γ/short-γ chip, and `removeTicker`'s own explicit delete only covers
+  // removing ONE pane via its ✕ — it never ran when `applyPreset` swapped the whole seeds array at
+  // once, so a ticker that left and later came back (e.g. switching presets back and forth) could
+  // briefly render a real but outdated regime posture left over from its previous mount. Mirrors
+  // the playByTicker cleanup immediately above, which already had this.
+  useEffect(() => {
+    const active = new Set(seeds.map((s) => s.ticker));
+    setMetaByTicker((prev) => pruneStaleTickerEntries(prev, active));
   }, [seeds]);
 
   const focusedPlaySnapshot =

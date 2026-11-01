@@ -45,12 +45,36 @@ test("the overlap lock fails OPEN on a Redis error rather than wedging the cron 
 });
 
 test("the lock is released in a finally block so a thrown sweep still frees the next run", () => {
-  const finallyBlock = /\} finally \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);\s*\}/;
+  const finallyBlock =
+    /\} finally \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);\s*await slot\.release\(\);\s*\}/;
   assert.match(routeSrc, finallyBlock, "release must run on both the success and error paths");
 });
 
-test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 900s)", () => {
-  assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
+test("a cross-cron concurrency slot is acquired after the self-overlap lock and released alongside it", () => {
+  // Regression for the cross-CRON overlap the self-overlap lock above never covered — live
+  // CloudWatch (2026-10-13 13:35-13:56 UTC) showed this cron and 5 OTHER heavy crons in flight at
+  // once on the shared web tier, 1:1 correlated with sustained ALB tail latency — see
+  // heavy-cron-concurrency-guard.ts's header for the full evidence.
+  assert.match(
+    routeSrc,
+    /const slot = await acquireHeavyCronSlot\("vector-pick-sweep", OVERLAP_LOCK_TTL_SEC\);/,
+    "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL"
+  );
+  const acquireIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const slotIdx = routeSrc.indexOf("const slot = await acquireHeavyCronSlot(");
+  assert.ok(
+    acquireIdx > 0 && slotIdx > acquireIdx,
+    "the cross-cron slot must be acquired AFTER the self-overlap lock, not before or instead of it"
+  );
+  assert.match(
+    routeSrc,
+    /if \(!slot\) \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);/,
+    "a lost cross-cron race must release the self-overlap lock immediately so the NEXT fire gets a clean shot"
+  );
+});
+
+test("the lock TTL matches the cron's own stale_after_min safety net (25 min = 1500s)", () => {
+  assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 1500/);
 });
 
 // REGRESSION 2026-09-03: the original 480s TTL was shorter than real observed runtime
@@ -58,13 +82,84 @@ test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 9
 // a second sweep start while the first was still in flight — the exact overlap this guard exists
 // to prevent, confirmed by overlapping log timestamps the same window. The TTL must stay
 // comfortably above the worst measured elapsed time, not just above the schedule interval.
-test("the lock TTL has real margin above the worst measured sweep runtime (694s observed)", () => {
+//
+// REGRESSION 2026-10-12: the 900s TTL this raised it to was itself undershot — elapsed=1036542ms
+// measured on prod 14:35-14:52 UTC RTH-open, with overlapping log timestamps confirming the same
+// lock-expires-mid-sweep mechanism recurred at a new peak. Updated the worst-observed floor to
+// match so this test keeps catching the NEXT undershoot rather than quietly passing on a stale bar.
+//
+// REGRESSION 2026-10-13->10-20: #5975 silently reverted both this test and the TTL itself back to
+// the pre-2026-10-12 900s/694s values while adding the unrelated cross-cron concurrency guard,
+// re-opening the exact gap this test exists to catch (and it DID catch it structurally — the
+// reverted version of this test still passed against the reverted 900s TTL, because both moved
+// together; the regression needed cross-checking against cron-registry.ts's stale_after_min,
+// which #5975 did NOT touch, to surface). Restored to the correct 1500s/1037s values.
+test("the lock TTL has real margin above the worst measured sweep runtime (1036s observed)", () => {
   const match = routeSrc.match(/OVERLAP_LOCK_TTL_SEC = (\d+)/);
   assert.ok(match, "OVERLAP_LOCK_TTL_SEC must be a bare numeric literal for this check to hold");
   const ttlSec = Number(match[1]);
-  const worstObservedSec = 694; // ceil(693684ms)
+  const worstObservedSec = 1037; // ceil(1036542ms)
   assert.ok(
     ttlSec > worstObservedSec,
     `TTL (${ttlSec}s) must exceed the worst measured runtime (${worstObservedSec}s) or the lock expires mid-sweep`
+  );
+});
+
+// REGRESSION 2026-10-20 (DISCOVERY-lane re-verification): neither test above can catch a silent
+// revert of OVERLAP_LOCK_TTL_SEC on its own, because both assertions are internal to route.ts —
+// if the TTL constant and its own two tests all move together (as happened when #5975 reverted
+// 1500->900 while adding an unrelated feature), everything in THIS file still reports green. The
+// only place the "right" value was still recorded was cron-registry.ts's stale_after_min: 25 for
+// this cron's key, which every prior TTL-raising PR explicitly kept in lockstep with the TTL but
+// #5975 never touched. Cross-checking against that independent source of truth is what actually
+// catches this class of regression.
+test("the lock TTL stays in lockstep with this cron's own stale_after_min in cron-registry.ts", async () => {
+  const { CRON_JOBS } = await import("../../../../lib/cron-registry.ts");
+  const entry = CRON_JOBS.find((j: { key: string }) => j.key === "vector-pick-sweep");
+  assert.ok(entry, "cron-registry.ts must still carry a vector-pick-sweep entry");
+  const match = routeSrc.match(/OVERLAP_LOCK_TTL_SEC = (\d+)/);
+  assert.ok(match, "OVERLAP_LOCK_TTL_SEC must be a bare numeric literal for this check to hold");
+  const ttlMinutes = Number(match[1]) / 60;
+  assert.equal(
+    ttlMinutes,
+    (entry as { stale_after_min: number }).stale_after_min,
+    `OVERLAP_LOCK_TTL_SEC (${Number(match[1])}s = ${ttlMinutes}min) must match cron-registry.ts's ` +
+      `stale_after_min (${(entry as { stale_after_min: number }).stale_after_min}min) for this cron — ` +
+      "a mismatch means one was changed without the other, per this file's own stated lockstep intent"
+  );
+});
+
+// REGRESSION corrected 2026-10-06: the original version of this test asserted the OLD manual
+// batch-loop shape (`SWEEP_CONCURRENCY` + an explicit `setImmediate` yield between batches).
+// PR #5592 (Phase 1 UW concurrency throttling, 2026-10-05) replaced that loop with
+// `runUwPool(tasks, UW_POOL_MAX_CONCURRENCY)` — the original concern this test guards
+// (don't run every ticker's CPU-bound work back-to-back with no event-loop yield) is now
+// satisfied structurally rather than by an explicit setImmediate: `runUwPool`'s own worker loop
+// (uw-rate-limiter.ts) does `out[i] = await tasks[i]()` per ticker, and each ticker task is a real
+// network fetch (sweepVectorPickForTicker), so the event loop yields on every single ticker's
+// own I/O await — more frequently than the old every-8-tickers setImmediate, not less. Asserting
+// the literal old pattern here would force a strictly worse yield cadence back into the code
+// just to keep this test green.
+test("ticker sweep work runs through a bounded-concurrency pool, not one unbounded fan-out", () => {
+  const sweepSrc = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../../../../lib", "vector", "vector-pick-sweep.ts"),
+    "utf8"
+  );
+
+  assert.match(
+    sweepSrc,
+    /import \{ runUwPool \} from "@\/lib\/providers\/uw-rate-limiter"/,
+    "must route per-ticker sweep work through the shared bounded-concurrency UW pool"
+  );
+  assert.match(
+    sweepSrc,
+    /runUwPool\(\s*tickers\.map/,
+    "runUwPool must be called over the full ticker list, not a manual sliced batch loop"
+  );
+  const concurrencyMatch = sweepSrc.match(/UW_POOL_MAX_CONCURRENCY\s*=\s*(\d+)/);
+  assert.ok(concurrencyMatch, "concurrency must be a bare numeric literal, not unbounded");
+  assert.ok(
+    Number(concurrencyMatch[1]) < 100,
+    "concurrency must be genuinely bounded, not a number large enough to fan out every ticker at once"
   );
 });

@@ -7,7 +7,7 @@ import { publicPageMetadata } from "@/lib/page-metadata";
 
 export const metadata: Metadata = publicPageMetadata(
   "Privacy Policy — BlackOut Trades",
-  "How BlackOut Trades collects, uses, and protects your personal information, data retention practices, third-party providers, and your rights under CCPA and GDPR.",
+  "How BlackOut Trades collects, uses, and protects your personal information, data retention, third-party providers, and your rights under CCPA and GDPR.",
   "/privacy"
 );
 

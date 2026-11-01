@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import {
   EmptyDeck,
@@ -10,6 +10,9 @@ import {
 } from "@/components/admin/AdminUi";
 import { franchiseWordmark } from "@/lib/x-intel/franchises";
 import { X_INTEL_QUEUE_FIXTURES } from "@/lib/x-intel/queue-fixtures";
+import { shouldShowXIntelFixtures } from "@/lib/x-intel/queue-fixtures-gate";
+import { computeXIntelStatusCounts } from "@/lib/x-intel/queue-status-counts";
+import { runGuardedXIntelQueueLoad } from "@/components/admin/x-intel-queue-request-guard";
 import type {
   XIntelAttachment,
   XIntelMark,
@@ -65,6 +68,48 @@ function minutesBetween(aMs: number, bMs: number): string {
   const abs = Math.abs(mins);
   const unit = abs === 1 ? "minute" : "minutes";
   return mins > 0 ? `${abs} ${unit} earlier` : `${abs} ${unit} LATER`;
+}
+
+/**
+ * Which post-copy state a card should render — and deliberately NOT the same question as
+ * "is `row.post_copy` truthy".
+ *
+ * `queue-store.ts`'s `saveQueueRow()` downgrades a candidate that fails `readyBlockReason()`
+ * from READY to **REVIEW** rather than discarding it, to keep "the pipeline ran but this one
+ * needs a human" distinct from "no row at all". One of `readyBlockReason`'s own checks is
+ * "READY requires post_copy — there is nothing for a reviewer to paste", which fires exactly
+ * when `post_copy` is null/empty — so a REVIEW row with no `post_copy` yet is a real, reachable
+ * shape, not merely a SKIP row's. Gating the skip-flavored wording on `post_copy` truthiness
+ * alone (the previous code) rendered that REVIEW row as "No high-value post this hour" — a SKIP
+ * claim about a cycle that actually picked a story and is simply waiting on copy. That is the
+ * exact "absence mislabeled as a different kind of absence" this panel's other design rules
+ * (`shouldShowXIntelFixtures`, the BLIND-vs-QUIET split in `readyBlockReason`) exist to prevent.
+ *
+ * `status` is the gate, matching every other isSkip-based branch in this file — not `skip_kind`,
+ * which is documented as "Set on SKIP rows" and must never drive this by itself if it happens to
+ * survive stale on a non-SKIP row.
+ */
+export type XIntelPostCopyDisplay =
+  | { kind: "post_copy"; text: string }
+  | { kind: "skip"; label: string }
+  | { kind: "awaiting_copy" };
+
+export function xIntelPostCopyDisplay(
+  row: Pick<XIntelQueueRow, "status" | "post_copy" | "skip_kind">,
+): XIntelPostCopyDisplay {
+  if (row.status === "SKIP") {
+    const label =
+      row.skip_kind === "BLIND"
+        ? "Skipped — could not read the platform"
+        : row.skip_kind === "MARKET_CLOSED"
+          ? "Skipped — market closed"
+          : "No high-value post this hour";
+    return { kind: "skip", label };
+  }
+  if (row.post_copy && row.post_copy.trim().length > 0) {
+    return { kind: "post_copy", text: row.post_copy };
+  }
+  return { kind: "awaiting_copy" };
 }
 
 function CopyButton({ text, label }: { text: string; label: string }) {
@@ -194,6 +239,7 @@ function AttachmentCard({ a }: { a: XIntelAttachment }) {
 function PackageCard({ row }: { row: XIntelQueueRow }) {
   const isSkip = row.status === "SKIP";
   const surfaces = new Set(row.attachments.map((a) => a.source_surface));
+  const postCopyDisplay = xIntelPostCopyDisplay(row);
 
   return (
     <GlassPanel
@@ -240,27 +286,35 @@ function PackageCard({ row }: { row: XIntelQueueRow }) {
         </p>
       )}
 
-      {row.post_copy ? (
+      {postCopyDisplay.kind === "post_copy" ? (
         <div className="mt-3">
           <div className="mb-1 flex items-center justify-between">
             <span className="font-mono text-[10px] uppercase tracking-wider text-white/40">
               Post copy — paste as-is
             </span>
-            <CopyButton text={row.post_copy} label="Copy post" />
+            <CopyButton text={postCopyDisplay.text} label="Copy post" />
           </div>
           <pre className="whitespace-pre-wrap rounded border border-white/10 bg-black/30 p-3 font-mono text-[12px] leading-relaxed text-white/90">
-            {row.post_copy}
+            {postCopyDisplay.text}
           </pre>
         </div>
-      ) : (
+      ) : postCopyDisplay.kind === "skip" ? (
         // A SKIP row is a decision, not a hole. It says what it looked at and why it declined.
         <div className="mt-3 rounded border border-white/10 bg-black/30 p-3">
           <p className="font-mono text-[11px] font-bold uppercase tracking-wider text-white/70">
-            {row.skip_kind === "BLIND"
-              ? "Skipped — could not read the platform"
-              : row.skip_kind === "MARKET_CLOSED"
-                ? "Skipped — market closed"
-                : "No high-value post this hour"}
+            {postCopyDisplay.label}
+          </p>
+          <p className="mt-1 text-[11px] text-white/60">{row.reason_selected}</p>
+        </div>
+      ) : (
+        // A REVIEW (or READY-downgraded-to-REVIEW) row with no post_copy YET is not a skip: the
+        // pipeline selected a real story and is waiting on a human/the next pass to finish the
+        // copy. Rendering this with SKIP's wording would claim the cycle produced nothing, which
+        // is exactly the "absence mislabeled as a different kind of absence" this panel's other
+        // design rules exist to prevent — see xIntelPostCopyDisplay's own comment.
+        <div className="mt-3 rounded border border-white/10 bg-black/30 p-3">
+          <p className="font-mono text-[11px] font-bold uppercase tracking-wider text-white/70">
+            Awaiting post copy — not a skip
           </p>
           <p className="mt-1 text-[11px] text-white/60">{row.reason_selected}</p>
         </div>
@@ -389,16 +443,38 @@ export function AdminXIntelQueuePanel() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("ALL");
 
+  // Bumped once per load() call so a response can tell whether a newer
+  // request has superseded it before applying its data — see
+  // x-intel-queue-request-guard.ts for why this exists: switching the status
+  // filter recreates load() (it closes over `status`) and the 120s poll
+  // interval below re-fires it immediately, so an earlier filter's in-flight
+  // request can resolve AFTER a later one and overwrite the table with the
+  // wrong filter's rows.
+  const latestLoadRequestIdRef = useRef(0);
+
   const load = useCallback(async () => {
+    const requestId = ++latestLoadRequestIdRef.current;
     try {
-      const res = await fetch(`/api/admin/x-intel/queue?status=${status}&limit=50`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as { rows: XIntelQueueRow[] };
-      setRows(json.rows);
-      setError(null);
+      await runGuardedXIntelQueueLoad(
+        requestId,
+        () => latestLoadRequestIdRef.current,
+        async () => {
+          const res = await fetch(`/api/admin/x-intel/queue?status=${status}&limit=50`, {
+            cache: "no-store",
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return (await res.json()) as { rows: XIntelQueueRow[] };
+        },
+        (json) => {
+          setRows(json.rows);
+          setError(null);
+        }
+      );
     } catch (e) {
+      // Only a still-current request gets to paint an error — a superseded
+      // request's failure must not clobber a newer, still-pending one's
+      // eventual (possibly successful) result.
+      if (latestLoadRequestIdRef.current !== requestId) return;
       // Distinguish "the queue is empty" from "we could not read the queue" — collapsing the two
       // would let an outage read as a quiet market, which is the one confusion this queue exists
       // to prevent.
@@ -413,20 +489,17 @@ export function AdminXIntelQueuePanel() {
     return () => clearInterval(t);
   }, [load]);
 
-  const counts = useMemo(() => {
-    const src = rows ?? [];
-    return {
-      READY: src.filter((r) => r.status === "READY").length,
-      REVIEW: src.filter((r) => r.status === "REVIEW").length,
-      SKIP: src.filter((r) => r.status === "SKIP").length,
-    };
-  }, [rows]);
-
-  // With no rows yet the panel shows the hand-written fixtures, clearly labelled. The reviewer
-  // surface shipped before the generator, so an empty table is the expected first state — and a
-  // blank page would leave nobody able to tell a working page from a broken one.
-  const showFixtures = rows != null && rows.length === 0;
+  // With no rows yet at all (status "ALL") the panel shows the hand-written fixtures, clearly
+  // labelled. The reviewer surface shipped before the generator, so an empty table is the expected
+  // first state — and a blank page would leave nobody able to tell a working page from a broken
+  // one. A specific status filter (e.g. "SKIP") returning zero matches is a different claim — the
+  // queue has real rows, just none in this bucket this cycle — and must not show fixtures mislabeled
+  // "no queue rows yet", nor fixture rows of OTHER statuses under a filter the admin explicitly chose.
+  const showFixtures = shouldShowXIntelFixtures(status, rows);
+  const filteredEmpty = !showFixtures && status !== "ALL" && rows != null && rows.length === 0;
   const display = showFixtures ? X_INTEL_QUEUE_FIXTURES : (rows ?? []);
+
+  const counts = useMemo(() => computeXIntelStatusCounts(display), [display]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -461,6 +534,13 @@ export function AdminXIntelQueuePanel() {
           No queue rows yet — showing hand-written FIXTURES so the surface is reviewable before the
           generator exists. These are not live packages.
         </p>
+      )}
+
+      {filteredEmpty && (
+        <EmptyDeck
+          title={`No ${status} rows this cycle`}
+          hint="The queue has rows — none currently match this status filter. Not an empty queue."
+        />
       )}
 
       {!error && rows == null && <EmptyDeck title="Loading queue…" />}

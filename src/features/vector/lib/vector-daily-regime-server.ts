@@ -13,6 +13,7 @@ import "server-only";
 
 import { loadSessionWallTail } from "./vector-wall-persist";
 import { reduceSessionToDaily, coverage, type DailyRegimeRow } from "./vector-daily-regime";
+import { dailyRegimeWalkWindow } from "./vector-daily-regime-window";
 import { normalizeVectorTicker } from "./vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
@@ -73,15 +74,17 @@ export async function loadDailyRegime(
   // stop as soon as `days` sessions have actually been found, which on a normal weekday is the
   // first chunk or two. The +10 slack still exists — it just isn't paid up front every time.
   const CHUNK = 5;
-  const today = new Date();
   // Passed into every tail read so "is this session settled?" is decided once, from one clock.
-  const todayYmd = today.toISOString().slice(0, 10);
+  // MUST be the ET trading date — see vector-daily-regime-window.ts for the live bug a UTC
+  // calendar slice caused here (today's own session misclassified as "settled" during the
+  // ~19:00-23:59 ET window each evening, routing it to the lagging DB-mirror tail instead of the
+  // full live read).
+  const { todayYmd, ymds } = dailyRegimeWalkWindow(days + 10);
   const rows: DailyRegimeRow[] = [];
   for (let start = 0; start < days + 10 && rows.length < days; start += CHUNK) {
     const batch: string[] = [];
     for (let i = start; i < Math.min(start + CHUNK, days + 10); i++) {
-      const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - i));
-      batch.push(d.toISOString().slice(0, 10));
+      batch.push(ymds[i]!);
     }
     const settled = await Promise.all(
       batch.map(async (ymd) => {

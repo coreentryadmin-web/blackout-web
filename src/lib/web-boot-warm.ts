@@ -8,6 +8,7 @@ import {
 } from "@/features/spx/lib/spx-desk-loader";
 import { warmVectorStreamHub } from "@/features/vector/lib/vector-stream-hub";
 import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
+import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
 
 const BOOT_FLAG = "__blackoutWebBootWarmStarted" as const;
 
@@ -49,13 +50,44 @@ export function ensureWebBootWarm(): void {
   if (!bootWarmInflight) {
     bootWarmInflight = (async () => {
       const presets = comparePresetWarmTickers();
-      await Promise.allSettled([
+      const tasks: Promise<unknown>[] = [
         loadBootstrapBundle(),
         loadMergedSpxDesk(),
         ...presets.map((t) => seedGexHeatmapFromRedis(t)),
-        getZeroDteBoardPayload(),
         warmVectorStreamHub(VECTOR_DEFAULT_TICKER),
-      ]);
+      ];
+      // Gate the 0DTE board warm to the extended window (4am-8pm ET weekdays — the same
+      // isEtExtendedWarmHours gate every dedicated warm cron, e.g. heatmap-warm/desk-warm,
+      // already honors) rather than calling it unconditionally on every cold start.
+      //
+      // ROOT CAUSE (measured live 2026-10-08, CloudWatch Logs + ECS service events):
+      // getZeroDteBoardPayload() serves the shared Redis board snapshot when it's fresh, but
+      // 0DTE discovery crons are market-hours-only, so outside this window the snapshot is
+      // ALWAYS older than BOARD_STALE_SERVE_MAX_AGE_MS (10 min) — every call therefore fell
+      // through to runColdBoardBuild() -> buildAndPublishBoard() -> scanZeroDteBoard(), a
+      // multi-engine FLOW/BREAKOUT/PIN discovery pass that fans the shared GEX-heatmap
+      // chain fetch out across dozens of tickers, several of which escalate to a full,
+      // unfiltered chain pull (shouldEscalateToFullChain in polygon-options-gex.ts).
+      // Confirmed via CloudWatch Logs Insights: bursts of 20-100+
+      // "[polygon-gex] full-chain escalation ADOPTED" lines
+      // within 15s, repeating roughly every 15-20 minutes through the 03:30-06:30 UTC
+      // overnight window (zero RTH relevance), each burst's log stream matching an ECS task
+      // ID that `describe_services` showed being started/stopped within minutes (the ECS
+      // service was doing a near-continuous one-task-at-a-time rolling replacement that
+      // whole window, driven by a cascade of small merges each triggering its own
+      // ecr-push-production.yml deploy) — i.e. EVERY fresh web task independently paid this
+      // cost right as it was being registered as a live ALB target. Time-correlated 1:1 with
+      // the ALB TargetResponseTime Max spikes (22-55s) and single-task CPU spikes (~90%) that
+      // flagged this for investigation.
+      //
+      // Skipping it off-hours loses nothing real: the board it would have built is throwaway
+      // (0DTE is dead data outside this window — the next real market-hours request rebuilds
+      // it anyway via the same on-demand path, unaffected by this change), so the only thing
+      // this removes is a pre-warm racing to warm a board nobody was going to read.
+      if (isEtExtendedWarmHours()) {
+        tasks.push(getZeroDteBoardPayload());
+      }
+      await Promise.allSettled(tasks);
     })().catch((err) => {
       console.warn("[web-boot-warm] non-fatal:", err instanceof Error ? err.message : err);
     });

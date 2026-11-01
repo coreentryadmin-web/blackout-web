@@ -281,25 +281,6 @@ export function recordWallSample(history: WallHistorySample[], sample: WallHisto
 }
 
 /**
- * Project the history down to one side's (call or put) rank-`i` trail as plain
- * {time, strike, pct} points — a bar where that rank didn't exist (e.g. the ladder briefly
- * thinned to fewer distinct strikes) is simply omitted, not filled with a placeholder, so the
- * rendered trail has a genuine gap rather than a misleading flat/zero value.
- */
-export function trailForRank(
-  history: WallHistorySample[],
-  side: "callWalls" | "putWalls",
-  rank: number
-): Array<{ time: number; strike: number; pct: number }> {
-  const points: Array<{ time: number; strike: number; pct: number }> = [];
-  for (const sample of history) {
-    const level = sample.walls[side][rank];
-    if (level) points.push({ time: sample.time, strike: level.strike, pct: level.pct });
-  }
-  return points;
-}
-
-/**
  * Strike-keyed trails — each strike gets its own horizontal bead row (reference product style).
  * When a wall migrates from 7550 → 7575 you see two distinct horizontal trails, not a diagonal
  * scatter from rank-based projection.
@@ -860,7 +841,7 @@ export function backfillRailGaps(
  * to the client. `combined`/`mergeWallHistory` retain up to MAX_HISTORY (~one RTH session at the oracle
  * 5s cadence; see the constant) for recorder resilience across restarts/replays, but a single-session Vector page (one
  * `sessionYmd`, one visible bar range) never renders a prior session's beads — every consumer
- * (`trailsByStrike`, `trailForFlipLevel`) only ever sees `barTimes` for the CURRENT session. Prior
+ * (`trailsByStrike`, `flipForLens`) only ever sees `barTimes` for the CURRENT session. Prior
  * sessions' full 20-strike-per-side ladders were riding along in the SSR payload as pure dead
  * weight (measured: 28-50MB HTML, 10-12s to download on `/vector` and the SPX Slayer embed).
  * `firstBarTime` is the current session's first bar — `backfillRailPrefix`'s modeled prefix always
@@ -1048,20 +1029,3 @@ export function mergePreferDenserUnderlay(
   return compactHistoryToCap(merged);
 }
 
-/** Flip bead trail for the active lens (gamma flip or zero-vanna flip). */
-export function trailForFlipLevel(
-  history: WallHistorySample[],
-  lens: VectorWallLens = "gex"
-): Array<{ time: number; strike: number }> {
-  const points: Array<{ time: number; strike: number }> = [];
-  for (const sample of history) {
-    const flip = flipForLens(sample, lens);
-    if (flip != null) points.push({ time: sample.time, strike: Math.round(flip) });
-  }
-  return points;
-}
-
-/** @deprecated Use trailForFlipLevel(history, "gex") */
-export function trailForGammaFlip(history: WallHistorySample[]): Array<{ time: number; strike: number }> {
-  return trailForFlipLevel(history, "gex");
-}

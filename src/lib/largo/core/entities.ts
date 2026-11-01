@@ -37,8 +37,28 @@ export type CanonicalTicker = {
 /** Indices the platform reads through Polygon's `I:` namespace. */
 const INDEX_KEYS = new Set(["SPX", "VIX", "NDX", "RUT", "DJI", "VVIX", "SKEW"]);
 
-/** Common ETFs — kind only affects labelling, never routing, so this list being partial is safe. */
-const ETF_KEYS = new Set(["SPY", "QQQ", "IWM", "DIA", "SOXX", "XLF", "XLE", "XLK", "TLT", "GLD", "UVXY", "VXX"]);
+/**
+ * Common ETFs — kind only affects labelling, never routing, so this list being partial is safe FOR
+ * THAT USE. It stopped being safe the moment Night Hawk Swings started reading `kind` for Largo
+ * contract C4 (`ticker_class`, a cross-product identity field a member sees), because omission there
+ * reads as a wrong classification, not a harmless label. Live repro 2026-10-17: ETHA/ETHU/LABD/
+ * NAIL/SOXS/SQQQ/URA/UVIX were all real, currently-committed swing positions that fell through to
+ * "equity" — added here alongside the swing play-brief fix (play-brief.ts) that made `kind` matter.
+ *
+ * CORRECTION, same day: the first pass above checked only the small sample a live-repro cycle had
+ * happened to name, not the FULL live swing book — a fresh sweep of all 68 committed/watch rows
+ * (GET /api/market/nighthawk/horizons?view=swings) found 4 more real ETFs this set still missed
+ * (ARKG, EWY, KORU, SNDQ — each confirmed via Polygon's own `type:"ETF"` reference field, not
+ * guessed). This list is STILL finite and will drift again as Banger's whole-market scan picks up
+ * names neither pass enumerated — see the open question raised on PR #4076 about whether `kind`
+ * should instead resolve via Polygon's authoritative, self-maintaining `type` field rather than a
+ * hand-maintained set, now that a member-facing field depends on it being complete.
+ */
+const ETF_KEYS = new Set([
+  "SPY", "QQQ", "IWM", "DIA", "SOXX", "XLF", "XLE", "XLK", "TLT", "GLD", "UVXY", "VXX",
+  "ETHA", "ETHU", "LABD", "NAIL", "SOXS", "SQQQ", "URA", "UVIX",
+  "ARKG", "EWY", "KORU", "SNDQ",
+]);
 
 /**
  * Collapse any spelling of an instrument to one canonical key.
@@ -130,23 +150,6 @@ export function parseOccSymbol(input: string | null | undefined): CanonicalContr
     strike,
     raw,
   };
-}
-
-/** Build an OCC symbol. Round-trips with parseOccSymbol — asserted by test. */
-export function buildOccSymbol(o: {
-  ticker: string;
-  expiry: string;
-  right: "C" | "P";
-  strike: number;
-}): string | null {
-  const t = canonicalTicker(o.ticker);
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(o.expiry.trim());
-  if (!t || !m || !Number.isFinite(o.strike) || o.strike <= 0) return null;
-  // Round to the nearest tenth of a cent before scaling: floating-point strikes like 230.0000001
-  // would otherwise produce a symbol no provider recognises.
-  const strike = String(Math.round(o.strike * 1000)).padStart(8, "0");
-  if (strike.length > 8) return null;
-  return `${t.key}${m[1]!.slice(2)}${m[2]}${m[3]}${o.right}${strike}`;
 }
 
 /** A trading session, keyed by its ET calendar date. The join key for anything per-day. */

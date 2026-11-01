@@ -42,10 +42,14 @@ export const HALF_PX_MAX = 7.5;
  * equally bold whether that wall was heavy or thin at the time, so a row showed only THAT A WALL
  * EXISTED and never WHEN IT MATTERED — which is the whole point of drawing it as a time series.
  *
- * 0.25 leaves a faint-but-present weak bead (the rail still shows structure that is there) while
- * giving the strong end somewhere to stand out from.
+ * FLOOR RAISED 0.25 -> 0.35 (2026-09-08, member-requested legibility pass). 0.25 swung the fix
+ * above too far the other way: the weakest bead on a busy rail became hard to see at all against
+ * the dark chart background, especially on the smaller Compare-pane radius. 0.35 is the highest
+ * floor that still clears every existing differentiation invariant with margin (spread 0.63 vs
+ * the >=0.6 floor; king-mid gap 0.39 vs >=0.3; mid-weak gap 0.20 vs >=0.15) — a weak wall is still
+ * clearly dimmer than a strong one, it is just no longer barely-there.
  */
-export const FILL_ALPHA_MIN = 0.25;
+export const FILL_ALPHA_MIN = 0.35;
 export const FILL_ALPHA_MAX = 0.98;
 
 /** Render profile — Compare panes are ~¼ height; default bead sizing paints over candles. */
@@ -534,45 +538,31 @@ export function kingStrikeByTime(
 }
 
 /**
- * The strongest wall AT EACH BUCKET — the reference a bead's CONTRAST is measured against.
+ * Per-side book-peak denominators for the bead rail's size/colour channels.
  *
- * ── THE DEFECT THIS CLOSES ───────────────────────────────────────────────────────────
- * `kingStrikeByTime` above already establishes what dominated at each moment, and the rail used
- * that knowledge for ONE thing: drawing a crown. Strength itself was scaled against a SESSION-WIDE
- * maximum — the single biggest reading of the whole day — so a wall that was the second-strongest
- * thing on the board at 10:15 and noise by 14:00 rendered at nearly the same brightness in both
- * buckets. A row therefore showed THAT a wall existed and never WHEN it mattered, which is the
- * difference a member identified against the reference product.
+ * `maxPct` (the combined max across both sides) used to be the ONLY denominator fed to
+ * `targetHalfPx`/`fillAlpha` for every bead, call or put — deliberate, so a call and a put of
+ * equal book share rendered equally fat. That collapses one side's whole distribution to the
+ * size/alpha floor whenever the OTHER side's book share dominates it (member report + live SPX
+ * repro, 2026-09-10: put walls 16.3/6.3/6.2/5.7%..., call walls 0.89/0.45/0.4/0.35%... — every
+ * call bead sat far enough below the combined max that the entire call side rendered as one
+ * indistinguishable size/shade, even though its own strikes span a real ~6x range).
  *
- * ── THE TWO CHANNELS NOW SAY DIFFERENT THINGS, DELIBERATELY ──────────────────────────
- *   SIZE stays ABSOLUTE (`beadRadiusForPctShare` on the raw share): a genuinely huge wall looks
- *   huge whenever it occurred, even in a bucket where something else outranked it. That is what
- *   makes comparing two points in TIME honest.
- *
- *   CONTRAST becomes POINT-IN-TIME RELATIVE (this map): how much this wall dominated the board at
- *   that instant. That is what makes comparing two strikes at the SAME moment honest.
- *
- * Read together they carry strictly more than one channel could:
- *   fat + bright  = a huge wall that also dominated the moment
- *   fat + dim     = a huge wall that something else outranked right then
- *   thin + bright = the best of a quiet moment
- *   thin + dim    = noise
- *
- * Falls back to the frame maximum for a bucket with no entry, so a partially-covered frame dims
- * rather than throwing.
+ * `callMaxPct`/`putMaxPct` keep exactly the same "shared, not self-referential" property that
+ * made the combined denominator work in the first place (see the size-channel comment in
+ * vector-wall-rail-primitive.ts for the full A/B history) — they are just scoped to one side
+ * instead of both, so a side's own cross-strike ordering is unaffected and its own real spread
+ * gets the floor-to-ceiling range to itself instead of ceding most of it to the stronger side.
  */
-export function maxPctByTime(
-  trails: ReadonlyArray<{ points: ReadonlyArray<{ time: number; pct: number }> }>
-): Map<number, number> {
-  const out = new Map<number, number>();
-  for (const trail of trails) {
-    for (const p of trail.points) {
-      if (!Number.isFinite(p.time) || !Number.isFinite(p.pct) || p.pct <= 0) continue;
-      const cur = out.get(p.time);
-      if (cur == null || p.pct > cur) out.set(p.time, p.pct);
-    }
-  }
-  return out;
+export function sidePctMaxima(
+  callTrails: ReadonlyArray<{ points: ReadonlyArray<{ pct: number }> }>,
+  putTrails: ReadonlyArray<{ points: ReadonlyArray<{ pct: number }> }>
+): { callMaxPct: number; putMaxPct: number; maxPct: number } {
+  let callMaxPct = 0;
+  for (const t of callTrails) for (const p of t.points) if (p.pct > callMaxPct) callMaxPct = p.pct;
+  let putMaxPct = 0;
+  for (const t of putTrails) for (const p of t.points) if (p.pct > putMaxPct) putMaxPct = p.pct;
+  return { callMaxPct, putMaxPct, maxPct: Math.max(callMaxPct, putMaxPct) };
 }
 
 // ── SPACING BUDGET (2026-08-18) ───────────────────────────────────────────────────────────────

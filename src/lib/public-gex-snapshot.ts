@@ -101,12 +101,36 @@ function snapshotAgeSec(asof: string | null): number | null {
   return ageSecFromIso(asof);
 }
 
+// Aligned with the underlying matrix's own max-stale bound (GEX_HEATMAP_MAX_STALE_SEC ?? 90,
+// polygon-options-gex.ts). That layer's never-block stale-handoff (`pickStaleHeatmapForHandoff`)
+// falls back to "any cached copy" once a background rebuild has been failing — with no upper
+// bound on how old that copy is. Observed live 2026-09-11 (RTH): the SAME `calculation_id` served
+// for 4+ minutes (271s+) while this endpoint's own `degraded` flag stayed `false` the whole time —
+// only `buildSnapshotFromHeatmap`'s hardcoded `degraded: false` on any non-null heatmap, with no
+// check of how stale that heatmap turned out to be. The UI already discloses real age honestly
+// (`publicFreshnessCopy`'s "Levels computed N min ago"), but any consumer that trusts `degraded`
+// as the freshness signal instead — a programmatic API caller, an AI crawler reading the JSON
+// directly — was told the feed was fine when it had stalled well past this platform's own
+// definition of "too stale to serve as fresh."
+const STALE_DEGRADED_SEC = 90;
+
 function withAgeFields(snapshot: PublicGexSnapshot): PublicGexSnapshot {
+  const ageSec = snapshotAgeSec(snapshot.asof);
+  const staleButUndeclared =
+    snapshot.available && !snapshot.degraded && ageSec != null && ageSec > STALE_DEGRADED_SEC;
   return {
     ...snapshot,
-    snapshot_data_age_seconds: snapshotAgeSec(snapshot.asof),
+    snapshot_data_age_seconds: ageSec,
     warming_reason:
       snapshot.available || snapshot.degraded ? null : snapshot.warming_reason ?? "warming",
+    ...(staleButUndeclared
+      ? {
+          degraded: true,
+          degraded_note: `Live refresh has stalled — showing the most recent computed snapshot (${Math.round(
+            ageSec / 60
+          )}m old).`,
+        }
+      : {}),
   };
 }
 
@@ -138,6 +162,17 @@ async function loadLastGood(ticker: string): Promise<PublicGexSnapshot | null> {
 
 function degradedFromLastGood(lastGood: PublicGexSnapshot, note: string): PublicGexSnapshot {
   const session = publicSnapshotSessionFacts();
+  // A last-good snapshot can be re-served long after it was computed — this is the explicit point
+  // of the 24h LAST_GOOD_TTL_SEC cache — so it can carry a regime `read` that was gated (or left
+  // actionable) for a DIFFERENT market session than the one in effect right now. Re-run the gate
+  // against the CURRENT session rather than trusting the stored text: otherwise this function
+  // overrides `market_session` to "CLOSED"/"AFTER-HOURS" while the carried-over `read` keeps
+  // asserting a live actionable claim ("momentum / vol expansion, moves accelerate") that
+  // `applyPublicReadFreshnessGate` exists specifically to suppress outside OPEN. `applyPublicReadFreshnessGate`
+  // is idempotent/reversible, so this is safe whether or not the stored read was already gated.
+  const read = lastGood.read
+    ? applyPublicReadFreshnessGate(lastGood.read, session.market_session)
+    : "Last known dealer positioning — live feed temporarily unavailable. Levels below are from the most recent successful snapshot.";
   return withAgeFields({
     ...lastGood,
     available: true,
@@ -146,9 +181,7 @@ function degradedFromLastGood(lastGood: PublicGexSnapshot, note: string): Public
     market_session: session.market_session,
     session_date: session.session_date,
     as_of_et: session.as_of_et,
-    read:
-      lastGood.read ||
-      "Last known dealer positioning — live feed temporarily unavailable. Levels below are from the most recent successful snapshot.",
+    read,
   });
 }
 
@@ -179,14 +212,21 @@ function buildSnapshotFromHeatmap(
   heatmap: NonNullable<Awaited<ReturnType<typeof fetchGexHeatmap>>>
 ): PublicGexSnapshot {
   const session = publicSnapshotSessionFacts();
-  const constrainedCallWall =
-    heatmap.gex.call_wall != null && heatmap.gex.call_wall > heatmap.spot
-      ? heatmap.gex.call_wall
-      : null;
-  const constrainedPutWall =
-    heatmap.gex.put_wall != null && heatmap.gex.put_wall < heatmap.spot
-      ? heatmap.gex.put_wall
-      : null;
+  // NOT side-constrained (nulled when on the "wrong" side of spot) — that was tried (#2832) and
+  // is a regression against this file's own design, not a safety net. `classifyWall` /
+  // `correctPublicRead` exist SPECIFICALLY so a wrong-side wall degrades to an honest
+  // "concentration" label with the real number still shown (see their doc comments: "the NUMBER
+  // is right. Calling it 'support' is what's wrong" — measured live 2026-08-12, SPX spot 7748.5
+  // / put wall 8000). Nulling the wall here instead hides the number entirely, which is the exact
+  // failure #2128 ("honest wall labels") was written to fix, and silently makes the
+  // "concentration" branch of `classifyWall`/`correctPublicRead` unreachable for this surface —
+  // their own tests only exercise `classifyWall` in isolation, never through this builder, so
+  // nothing caught it. `heatmap.gex.call_wall`/`put_wall` are already side-constrained at the
+  // SOURCE for a freshly-computed matrix (`wallsFromStrikeTotals(strikeTotals, spot)`,
+  // polygon-options-gex.ts), so this changes nothing for the live happy path — it only stops a
+  // stale/cached or future-regressed inverted wall from being hidden instead of honestly labelled.
+  const callWall = heatmap.gex.call_wall;
+  const putWall = heatmap.gex.put_wall;
   // roundFloats: heatmap.spot/change_pct/call_wall/put_wall/flip come straight from
   // fetchGexHeatmap's own IEEE-754 money-math (spot is frequently `spy.price * 10`, see
   // polygon-options-gex.ts) with no rounding applied at the source — every OTHER consumer
@@ -207,17 +247,17 @@ function buildSnapshotFromHeatmap(
     market_session: session.market_session,
     session_date: session.session_date,
     as_of_et: session.as_of_et,
-    call_wall: constrainedCallWall,
-    put_wall: constrainedPutWall,
+    call_wall: callWall,
+    put_wall: putWall,
     flip: heatmap.gex.flip,
     posture: heatmap.gex.regime.posture,
-    call_wall_role: classifyWall("call", constrainedCallWall, heatmap.spot),
-    put_wall_role: classifyWall("put", constrainedPutWall, heatmap.spot),
+    call_wall_role: classifyWall("call", callWall, heatmap.spot),
+    put_wall_role: classifyWall("put", putWall, heatmap.spot),
     read: applyPublicReadFreshnessGate(
       correctPublicRead(sanitizePublicRead(heatmap.gex.regime.read), {
         spot: heatmap.spot,
-        call_wall: constrainedCallWall,
-        put_wall: constrainedPutWall,
+        call_wall: callWall,
+        put_wall: putWall,
       }),
       session.market_session
     ),

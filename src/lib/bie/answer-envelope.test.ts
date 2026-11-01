@@ -98,6 +98,38 @@ describe("makeEnvelope", () => {
   });
 });
 
+describe("renderEnvelopeMarkdown — renderLevels rounding (2026-10-26 Ask Largo audit)", () => {
+  test("Key levels bullet rounds a half-cent-boundary float the SAME way roundFloats does, not toLocaleString's way", () => {
+    // Live repro shape: SKHY flag-anchor level at 143.075. IEEE-754: 143.075*100 ==
+    // 14307.499999999998, so the codebase's round-first algorithm (`Math.round(n*100)/100`,
+    // shared by `roundFloats` at the API boundary and `fmtPriceLevel`) underflows to 143.07 —
+    // while `(143.075).toLocaleString("en-US",{maximumFractionDigits:2})` independently rounds to
+    // 143.08. Before the fix, `renderLevels` used the latter, so the SAME raw number disagreed
+    // with every other rendering of it (envelope.levels[].price after roundFloats, evidence_numbers
+    // via fmtPriceLevel, "Watch levels" prose via fmtPriceLevel) by a full cent in one response.
+    const env = makeEnvelope({
+      headline: "SKHY watch",
+      bias: "neutral",
+      sections: [],
+      evidence: [],
+      levels: [{ label: "flag anchor", price: 143.075 }],
+    });
+    assert.match(env.markdown, /- flag anchor: 143\.07(?!\d)/, "must match the round-first result (143.07), not toLocaleString's 143.08");
+    assert.doesNotMatch(env.markdown, /143\.08/, "must NOT render the toLocaleString-rounded value");
+  });
+
+  test("still formats an ordinary (non-boundary) level correctly", () => {
+    const env = makeEnvelope({
+      headline: "SPX",
+      bias: "neutral",
+      sections: [],
+      evidence: [],
+      levels: [{ label: "gamma flip", price: 7520.5 }],
+    });
+    assert.match(env.markdown, /- gamma flip: 7520\.50(?!\d)/);
+  });
+});
+
 describe("renderEnvelopeMarkdown", () => {
   test("renders structured section tables", () => {
     const md = renderEnvelopeMarkdown({

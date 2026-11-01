@@ -226,8 +226,9 @@ test("ratchet floor breach via the sync mark: row CLOSES at the exit mark and en
   resetState();
   lane._resetZeroDteLiveMarksForTest();
   // Peaked +30% (5.2) earlier; the snapshot now shows 3.98 (−0.5%) — at/below the
-  // breakeven floor the +25% peak armed. Pre-engine this row stayed live all the
-  // way down to the −50% stop: the exact green-turned-red class.
+  // breakeven-tier floor the +30% peak armed (now 40% of peak = +12%, was a flat 0%
+  // before the 2026-09-21 fix). Pre-engine this row stayed live all the way down to
+  // the −50% stop: the exact green-turned-red class.
   // Freeze exit_policy_at_commit to "ratchet" so this test exercises the ratchet
   // path explicitly (DEFAULT_EXIT_MODE is now trim_scale).
   state.ledgerRows = [baseRow({ peak_premium: 5.2, entry_context: { exit_policy_at_commit: "ratchet" } })];
@@ -236,14 +237,14 @@ test("ratchet floor breach via the sync mark: row CLOSES at the exit mark and en
   const rows = await syncLedgerLiveState(state.ledgerRows as never);
 
   assert.equal(rows[0]!.status, "CLOSED");
-  assert.equal(rows[0]!.last_mark, 4.0, "breakeven floor honored — exit at entry, not the gapped-through mark");
+  assert.equal(rows[0]!.last_mark, 4.48, "breakeven-tier floor honored — exit at 4.48 (12% of the +30% peak), not the gapped-through mark");
   assert.equal(state.updateCalls.length, 1);
-  assert.deepEqual(state.updateCalls[0]!.patch, { status: "CLOSED", mark: 4.0 });
+  assert.deepEqual(state.updateCalls[0]!.patch, { status: "CLOSED", mark: 4.48 });
   assert.equal(state.stampCalls.length, 1, "the counterfactual exit record must persist");
   const exit = state.stampCalls[0]!.exit as { reason: string; mark: number; pnl_pct: number; peak_pnl_pct: number };
   assert.equal(exit.reason, "ratchet_breakeven_floor");
-  assert.equal(exit.mark, 4.0);
-  assert.equal(exit.pnl_pct, 0);
+  assert.equal(exit.mark, 4.48);
+  assert.equal(exit.pnl_pct, 12);
   assert.equal(exit.peak_pnl_pct, 30);
 });
 
@@ -252,14 +253,14 @@ test("freshest mark wins: a FRESH lane mark below the floor exits even when the 
   resetState();
   lane._resetZeroDteLiveMarksForTest();
   state.ledgerRows = [baseRow({ peak_premium: 5.2, entry_context: { exit_policy_at_commit: "ratchet" } })];
-  state.snapMark = 4.5; // +12.5% — above the breakeven floor, sync alone would hold
+  state.snapMark = 4.5; // +12.5% — above the breakeven-tier floor (+12% of the +30% peak), sync alone would hold
   // Future-dated (+30s) so the real-clock freshness check can never flake (header).
   lane.putZeroDteLiveMark(laneMark(3.9, Date.now() + 30_000));
 
   const rows = await syncLedgerLiveState(state.ledgerRows as never);
 
   assert.equal(rows[0]!.status, "CLOSED");
-  assert.equal(rows[0]!.last_mark, 4.0, "floor honored even when lane mark gapped below breakeven");
+  assert.equal(rows[0]!.last_mark, 4.48, "floor (4.48, 12% of the +30% peak) honored even when lane mark gapped below breakeven");
   assert.equal((state.stampCalls[0]!.exit as { reason: string }).reason, "ratchet_breakeven_floor");
   lane._resetZeroDteLiveMarksForTest();
 });

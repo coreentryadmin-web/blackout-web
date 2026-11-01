@@ -105,6 +105,85 @@ test("buildMeridianEarningsReport: YoY growth adds yoy pillar", () => {
   assert.ok(report.signals.some((s) => s.pillar === "yoy"));
 });
 
+/* ── "target" is not a direction ──────────────────────────────────────────────────────
+ *
+ * shapeAnalyst (meridian-catalyst-enrich.ts) assigns action:"target" ONLY as a fallback — a
+ * real raise ("Firm Raises Price Target to $150") matches its "upgrade" branch and never reaches
+ * "target"; a real lower matches "downgrade" and never reaches it either. So an
+ * action:"target" row is, by construction, a headline whose direction could not be determined
+ * (e.g. "Firm Sets $100 Price Target", "Firm Maintains $100 Price Target"). Before the fix,
+ * analystLean counted it the same as an "upgrade", turning a direction-less price-target mention
+ * into a bullish signal on the Street/analyst pillar — which carries weight into the composite
+ * score driving the report's `verdict`/`confidence`.
+ */
+
+test("buildMeridianEarningsReport: a direction-less 'target' action does not count as bullish", () => {
+  const report = buildMeridianEarningsReport({
+    ...baseInput,
+    flow_bias: "neutral",
+    dark_pool_available: false,
+    gamma_regime: null,
+    thermal_available: false,
+    spot: null,
+    king_strike: null,
+    call_wall: null,
+    put_wall: null,
+    beat_rate: null,
+    earnings_yoy: null,
+    financials: null,
+    analyst_revisions: [{ title: "Firm Sets $100 Price Target", action: "target" }],
+  });
+  const analyst = report.signals.find((s) => s.pillar === "analyst");
+  assert.ok(analyst, "analyst signal must always be present");
+  assert.equal(analyst!.lean, "neutral");
+  assert.equal(analyst!.score, 0);
+});
+
+test("buildMeridianEarningsReport: multiple direction-less 'target' actions still stay neutral, not bearish-by-default", () => {
+  const report = buildMeridianEarningsReport({
+    ...baseInput,
+    flow_bias: "neutral",
+    dark_pool_available: false,
+    gamma_regime: null,
+    thermal_available: false,
+    spot: null,
+    king_strike: null,
+    call_wall: null,
+    put_wall: null,
+    beat_rate: null,
+    earnings_yoy: null,
+    financials: null,
+    analyst_revisions: [
+      { title: "Firm A Sets $100 Price Target", action: "target" },
+      { title: "Firm B Maintains $95 Price Target", action: "target" },
+    ],
+  });
+  const analyst = report.signals.find((s) => s.pillar === "analyst");
+  assert.equal(analyst!.lean, "neutral");
+  assert.equal(analyst!.score, 0);
+});
+
+test("buildMeridianEarningsReport: a real upgrade still counts as bullish (regression guard)", () => {
+  const report = buildMeridianEarningsReport({
+    ...baseInput,
+    flow_bias: "neutral",
+    dark_pool_available: false,
+    gamma_regime: null,
+    thermal_available: false,
+    spot: null,
+    king_strike: null,
+    call_wall: null,
+    put_wall: null,
+    beat_rate: null,
+    earnings_yoy: null,
+    financials: null,
+    analyst_revisions: [{ title: "Firm Raises Price Target", action: "upgrade" }],
+  });
+  const analyst = report.signals.find((s) => s.pillar === "analyst");
+  assert.equal(analyst!.lean, "bullish");
+  assert.equal(analyst!.score, 1);
+});
+
 /* ── "imminent" is a distance, not a state ───────────────────────────────────────────── */
 
 /**
@@ -183,4 +262,102 @@ test("the verdict branch is untouched — an inline print does not get re-routed
   // verdict to whatever the anticipation score said, which is the opposite of an improvement.
   const inline = reportFor({ days_until: 0, post_print: { lean: "inline", headline: "Mixed" } });
   assert.equal(inline.verdict, "neutral", "an inline print stays neutral, not scored off anticipation");
+});
+
+test("best_play is never headlined 'Wait for the print' once the print has landed", () => {
+  // Same forward-looking-claim defect `headline`/`confidence` were fixed for above, surviving in
+  // `best_play`: live repro showed a BEKE report whose headline correctly read "printed — beat;
+  // the reaction is the read now" while best_play directly beneath it still said "Wait for the
+  // print — gap risk dominates" / "Size down or skip directional bets into the release" — a
+  // direct contradiction on the same panel.
+  for (const c of PRINTED_TODAY) {
+    const r = reportFor({
+      ticker: c.ticker,
+      days_until: 0,
+      post_print: { lean: c.lean, headline: "Beat · EPS +50%" },
+    });
+    assert.doesNotMatch(
+      r.best_play.headline,
+      /wait for the print/i,
+      `${c.ticker}: the numbers are out; best_play must not tell a member to wait for them`
+    );
+    assert.doesNotMatch(r.best_play.structure, /only after guidance/i, `${c.ticker}: this phrasing presumes the print hasn't landed`);
+  }
+});
+
+test("best_play keeps the wait-for-print hint for an actually-upcoming print", () => {
+  // The guard must not swallow the case the sentence exists for.
+  const r = reportFor({ days_until: 0, post_print: null });
+  assert.match(r.best_play.headline, /Wait for the print — gap risk dominates/);
+});
+
+/* ── bearish best_play's "call wall" structure must gate on call_wall, not put_wall ───── */
+
+// Shared overrides that drive the composite verdict to "bearish" without touching call_wall/
+// put_wall themselves, mirroring the "bearish flow flips lean" fixture above.
+const BEARISH_OVERRIDES = {
+  flow_bias: "bearish",
+  dark_pool_bias: "bearish",
+  beat_rate: 0.25,
+  financials: {
+    ...baseInput.financials!,
+    revenue_yoy_pct: -5,
+    margin_trend: "contracting" as const,
+  },
+};
+
+test("bearish best_play shows the call wall it has even when put_wall is absent", () => {
+  // Root cause: the structure string displays `call_wall`, but the branch it lives behind
+  // guarded on `put_wall != null` instead — a different field of the same shape. A real
+  // call_wall with no put_wall therefore fell through to the generic fallback and a real,
+  // known level went unshown.
+  const r = reportFor({
+    ...BEARISH_OVERRIDES,
+    days_until: 5,
+    post_print: null,
+    call_wall: 520,
+    put_wall: null,
+  });
+  assert.equal(r.verdict, "bearish", "guard: fixture must actually reach the bearish branch");
+  assert.match(
+    r.best_play.structure,
+    /call wall 520/,
+    "a real call_wall must be shown even when put_wall is missing"
+  );
+});
+
+test("bearish best_play never shows a dangling 'call wall —' when call_wall is absent", () => {
+  // The inverse half of the same bug: `Number.isFinite(input.call_wall ?? 0)` coerces a null/
+  // undefined call_wall to 0 before checking finiteness, so the check was always true — it could
+  // never actually gate on call_wall being present, only on the unrelated put_wall.
+  const r = reportFor({
+    ...BEARISH_OVERRIDES,
+    days_until: 5,
+    post_print: null,
+    call_wall: null,
+    put_wall: 480,
+  });
+  assert.equal(r.verdict, "bearish", "guard: fixture must actually reach the bearish branch");
+  assert.doesNotMatch(
+    r.best_play.structure,
+    /call wall/,
+    "with no real call_wall, the structure must fall back to the generic put-side phrasing"
+  );
+});
+
+test("printed-miss best_play shows the call wall it has even when put_wall is absent", () => {
+  // Same guard, same bug, in the already-printed branch (lines above the pre-print one).
+  const r = reportFor({
+    ...BEARISH_OVERRIDES,
+    days_until: 0,
+    post_print: { lean: "miss", headline: "Miss · EPS -8%" },
+    call_wall: 520,
+    put_wall: null,
+  });
+  assert.equal(r.verdict, "bearish", "guard: fixture must actually reach the bearish branch");
+  assert.match(
+    r.best_play.structure,
+    /call wall 520/,
+    "a real call_wall must be shown even when put_wall is missing"
+  );
 });

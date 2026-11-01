@@ -192,12 +192,36 @@ export function gradeSkippedPlay(input: {
 
 // ── Data layer ───────────────────────────────────────────────────────────────────
 
-/** Bounded run window — the grader is admin-invoked and per-row does a Polygon
- *  minute-bar fetch, so the range is capped hard. */
-export const MAX_SKIP_GRADE_DAYS = 14;
+/** Bounded run window — per-row this does a Polygon minute-bar fetch (cached per
+ *  ticker/session, see below), so the range is capped hard regardless of caller.
+ *
+ *  RAISED 14→35 (2026-10-20, member audit directive: "preserve recoverable records
+ *  before they expire"). `zerodte_scan_rejections` rows are NEVER deleted — nothing
+ *  purges them — so the old 14-day ceiling did not destroy data, it just meant the
+ *  cron's own `WHERE session_date >= since` query would never look back far enough
+ *  to grade anything older, permanently, as `since` moves forward every day. Measured
+ *  live 2026-10-20: FOUR real session days 9-23 days old (2026-10-16/-15/-14/-09) each
+ *  showed 2000/2000 rows with `counterfactual: null` — not a backlog the cron was still
+ *  working through, a population it had already structurally given up on. 35 days keeps
+ *  real Polygon minute-bar coverage comfortably in range (far more history is routinely
+ *  available) while giving MAX_ROWS_PER_RUN (below) enough runway to actually clear a
+ *  real backlog across several daily runs instead of only ever seeing the newest slice. */
+export const MAX_SKIP_GRADE_DAYS = 35;
 /** Row cap per run — with the per-(ticker,session) bar cache below, distinct
- *  fetches are far fewer, but the UPDATE loop stays bounded regardless. */
-const MAX_ROWS_PER_RUN = 200;
+ *  fetches are far fewer, but the UPDATE loop stays bounded regardless.
+ *
+ *  RAISED 200→500 (2026-10-20, same directive). Measured live: a real 200-row run
+ *  (`zerodte-skip-grade` cron, 2026-10-19 17:00 ET) took 32.4s end-to-end against the
+ *  route's own 120s `maxDuration` — ~2.5x headroom. Real daily rejection volume runs
+ *  ~2,000+ distinct-state rows/day (measured same date), so the OLD 200/run cap cleared
+ *  under 10% of a single day's own volume even before touching the backlog — raising
+ *  to 500 (comfortably within the 120s budget even at a conservative linear scaling:
+ *  ~81s) lifts that to ~25%. Full backlog drainage additionally needs the CRON itself to
+ *  run more than once/day — that is an infra/EventBridge schedule change
+ *  (`railway.zerodte-skip-grade.toml`'s `cronSchedule`) outside what a code change alone
+ *  can deliver from here; flagged as a follow-up requiring AWS access this sandbox does
+ *  not have this session, not silently left unfixed. */
+const MAX_ROWS_PER_RUN = 500;
 
 function etYmd(ms: number): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(ms));
@@ -293,9 +317,30 @@ export async function runSkipGrading(opts: { days?: number; nowMs: number }): Pr
     rows = res.rows.map((r) => ({
       id: Number(r.id),
       observed_at: String(r.observed_at),
-      // session_date arrives as a Date object from pg — normalize to ET YYYY-MM-DD.
+      // BUG FIX (2026-09-12, see docs/audit/findings-staging — the "no bar data" skip-grading
+      // gap): session_date is a plain DATE column (no time-of-day, no timezone — it already IS
+      // the ET trading day, stamped that way at INSERT time by the scanner). node-postgres hands
+      // a DATE column back as a JS Date at UTC MIDNIGHT for that calendar day (db.ts's own
+      // isoDateString doc comment: "DATE has no timezone, midnight-UTC is the day"). The OLD code
+      // here ran that midnight-UTC instant through `etYmd()` — which is for converting a REAL
+      // epoch instant to its ET calendar day, not for round-tripping a DATE column — and ET being
+      // behind UTC means midnight UTC always reads as the PREVIOUS evening in America/New_York,
+      // so `etYmd()` returned the day BEFORE the actual stored session_date on every single row
+      // (e.g. DATE '2026-07-10' round-tripped to "2026-07-09" every time, deterministically, not
+      // occasionally). That wrong date then drove the underlying-bar fetch below (`barsFor`) to
+      // pull the WRONG session's minute bars, so `entryBarOf`'s `bar.t >= blockedAtMs` check never
+      // found a match (every fetched bar was ~a day earlier than the real, correctly-computed
+      // `blockedAtMs`) — this is what produced the "no underlying bar at/after the block time" /
+      // "no bar data available for the session" ungradeable reasons on effectively every row
+      // (docs/audit/0DTE-RESEARCH.md's "Gate-overlap ablation" 2026-09-10 run: all 18 gate codes,
+      // n=0 graded). The doc's own hypothesis blamed `observed_at`/`Date.parse` instead — verified
+      // and REFUTED separately (Date.prototype.toString()'s embedded GMT offset round-trips
+      // exactly through Date.parse in the SAME V8 process regardless of TZ; the real bug was this
+      // adjacent field). Fix: read the UTC Y-M-D directly via db.ts's own `isoDateString` helper
+      // (the same idiom already used for every other DATE column in this codebase), never through
+      // an ET conversion.
       session_date:
-        r.session_date instanceof Date ? etYmd(r.session_date.getTime()) : String(r.session_date).slice(0, 10),
+        r.session_date instanceof Date ? db.isoDateString(r.session_date) : String(r.session_date).slice(0, 10),
       ticker: String(r.ticker),
       gate_failed: String(r.gate_failed),
       direction: r.direction != null ? String(r.direction) : null,
@@ -398,6 +443,18 @@ export async function runSkipGrading(opts: { days?: number; nowMs: number }): Pr
   return summary;
 }
 
+// Absolute safety ceiling on fetchGradedSkips's row fetch. Raised from a flat 2000 (2026-09-17,
+// docs/audit/findings-staging/2026-09-17-zerodte-calibration-graded-skips-window-truncation.md):
+// observed live volume was already ~2000 graded+ungradeable rows inside 14 days alone, so the old
+// `Math.min(2000, ...)` silently re-clamped EVERY caller-requested limit back down to 2000 no
+// matter what was asked for — a days=14/30/60/90 calibration read all returned the IDENTICAL
+// most-recent-2000-rows slice (`ORDER BY observed_at DESC LIMIT 2000`), so any "days" wider than
+// ~14 was reading the same window it claimed to widen, never the older data it implied. Raised
+// with real headroom above that observed density so a genuine days=90 window (calibration.ts
+// scales its own request to the window — see GRADED_SKIPS_PER_DAY_BUDGET there) can actually be
+// read in full at current volume, while still bounding a pathological blowup.
+export const MAX_GRADED_SKIPS_LIMIT = 30_000;
+
 /** Read the already-graded skips for the calibration report's blocked-value lines.
  *  Fail-soft: any failure (missing column included — pre-first-run deployments)
  *  returns [], never a throw into the report builder. */
@@ -425,7 +482,7 @@ export async function fetchGradedSkips(opts: {
           AND session_date <= $2
         ORDER BY observed_at DESC
         LIMIT $3`,
-      [opts.sinceYmd, opts.throughYmd, Math.min(2000, Math.max(1, opts.limit ?? 2000))]
+      [opts.sinceYmd, opts.throughYmd, Math.min(MAX_GRADED_SKIPS_LIMIT, Math.max(1, opts.limit ?? 2000))]
     );
     return res.rows.map((r) => ({
       gate_failed: String(r.gate_failed),

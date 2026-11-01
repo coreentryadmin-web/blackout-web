@@ -16,3 +16,11 @@ test("nighthawk-edition wraps its background build in the shared background UW s
     "the cron dispatch must reserve a UW slot for live traffic, matching zerodte-warm"
   );
 });
+
+test("status note does not claim a nonexistent `npm run nighthawk:run` script", () => {
+  assert.doesNotMatch(
+    routeSrc,
+    /npm run nighthawk:run/,
+    "the build runs in-process via next/server after() on the ECS worker, not a shelled-out npm script"
+  );
+});

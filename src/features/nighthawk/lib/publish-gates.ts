@@ -21,7 +21,6 @@
 //    plays too (PASS with margins), so counterfactual grading can judge the gates later —
 //    same skip-grading philosophy as the 0DTE rejection funnel.
 
-import { MIN_PUBLISH_SCORE } from "./constants";
 import { gatePromoteMinScore, legacyMinPublishTier } from "./edition-quality";
 import { publishGateBlockedRecapReason } from "./edition-funnel";
 import type { PlaybookPlay } from "./types";
@@ -60,15 +59,40 @@ export const GATE_BAND_MAX_DISTANCE_PCT = 3.5;
  * WHY 2.0 (2026-09 calibration): measured one-session touch rate falls off a cliff above
  * 1.0× ATR (see target-reachability.ts). 3.5× allowed targets with ~0.1% touch odds —
  * the dominant debrief failure mode. 2.0× still permits catalyst expansion (~0.9% touch)
- * while blocking the catastrophic +5×–20× class. Gate-promote rescue caps even lower
- * (GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE) so thin editions cannot resurrect unreachable
- * targets.
+ * while blocking the catastrophic +5×–20× class.
  */
 export const GATE_TARGET_MAX_ATR_MULTIPLE = 2.0;
 
-/** Gate-promote rescue may not admit a play whose ONLY soft failure is a target beyond
- *  this multiple — measured touch rate is already sub-1% at 2.0×. */
-export const GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE = 2.0;
+/**
+ * Gate-promote rescue may admit a play whose ONLY soft failure is `target_unreachable`,
+ * up to this multiple — strictly above {@link GATE_TARGET_MAX_ATR_MULTIPLE}, never equal
+ * to or below it. A real `target_unreachable` block only ever exists when the play's own
+ * `targetAtrMultiple` already exceeds the primary gate (publish-gates.ts's
+ * `evaluateNighthawkPublishGates` only pushes the block when `!targetOk`, i.e.
+ * `targetAtrMultiple > GATE_TARGET_MAX_ATR_MULTIPLE`) — so a rescue cap set to the SAME
+ * value as the primary gate (as this constant briefly was, 2026-09/2026-10, after the
+ * engine-overhaul PR that introduced both together at 2.0/2.0) makes `isPromotableBlockedPlay`
+ * reject every real target_unreachable block unconditionally: `v > cap` is true for every
+ * `v` that could exist, by construction, no matter how close to the primary threshold.
+ * That silently reintroduced the exact dead-rescue-path defect this constant's own sibling
+ * comment above used to warn against ("Gate-promote rescue caps even lower... so thin
+ * editions cannot resurrect unreachable targets" — describing a cap BELOW the primary that
+ * never existed; the shipped value was equal to it instead, not lower).
+ *
+ * Live evidence this was not hypothetical (2026-10-13 edition): JBL reached rank_governor
+ * as the TOP-scored remaining candidate (score 45, rank 1 — ahead of both plays that
+ * actually published, GME at 35 and PENG at 31) but was rejected at the publish-gate stage
+ * and could never be rescued, leaving the edition at 2 organic plays against the 3-play
+ * floor (`EDITION_MIN_PUBLISH_PLAYS`) — exactly the thin-edition shape `NON_PROMOTABLE_
+ * GATE_CODES` deliberately keeps `target_unreachable` OUT of, for.
+ *
+ * 2.5× is the next point on target-reachability.ts's own measured curve above the 2.0×
+ * primary threshold: ~0.4% one-session touch rate (vs ~0.9% at 2.0×, already deemed
+ * acceptable for an unconditional publish) — low odds, but a published-with-a-caveat
+ * best-available pick, not an empty slot. Re-measure (target-reachability.ts's own header)
+ * before moving this further.
+ */
+export const GATE_PROMOTE_TARGET_MAX_ATR_MULTIPLE = 2.5;
 
 /**
  * G-N4 book-vs-tape alignment (`book_tape_conflict`) — the gate named but never built in
@@ -142,6 +166,12 @@ export type NighthawkPublishGateResult = {
 };
 
 const round4 = (n: number): number => Math.round(n * 10_000) / 10_000;
+// Display-only rounding for member-facing reason strings. The raw round4 value still
+// feeds checks[]/blocks[].value (admin calibration/debrief consumers) — only the text
+// a member reads is re-rounded, so a gate_warning never shows more precision than the
+// structured field (play.target_atr_multiple) it describes. roundFloats() can't reach
+// this: its walk() only rewrites typeof number, never a number already baked into a string.
+const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 /**
  * G-N3's expected quote basis: which ET session(s) a fresh quote could legitimately be
@@ -212,7 +242,7 @@ export function evaluateNighthawkPublishGates(opts: {
   if (!bandOk) {
     blocks.push({
       code: "band_detached",
-      reason: `entry band edge $${geo.fill_edge} sits ${bandDist}% from spot $${geo.spot} (|max| ${GATE_BAND_MAX_DISTANCE_PCT}%) — not fillable as published`,
+      reason: `entry band edge $${geo.fill_edge} sits ${round2(bandDist)}% from spot $${geo.spot} (|max| ${GATE_BAND_MAX_DISTANCE_PCT}%) — not fillable as published`,
       threshold: GATE_BAND_MAX_DISTANCE_PCT,
       value: bandDist,
     });
@@ -228,9 +258,26 @@ export function evaluateNighthawkPublishGates(opts: {
     threshold: GATE_TARGET_MAX_ATR_MULTIPLE,
   });
   if (!targetOk) {
+    // BUG FIX (2026-10-31, live repro STM/AXTI/ORCL/NU — every currently-published scale_out
+    // play): this reason string used to be unconditional, always asserting the ORIGINAL
+    // single-session stock-target grading model ("not achievable in the one-session grading
+    // horizon"). That is simply false for a scale_out ("Banger exit") play — play-outcomes.ts's
+    // resolveBangerScaleOutGrades/gradeBangerScaleOut never grades these on the published stock
+    // target touching in one session at all; it grades the OPTION's own forward bars (up to
+    // ~9 days to expiry) under a 2x-partial/trailing-runner/-60%-stop rule that doesn't reference
+    // this gate's target/ATR distance. The published card then showed this gate_warning directly
+    // contradicting the SAME play's own risk_note (bangerScaleOutNote, scale-out.ts), which
+    // correctly describes the scale-out exit. Branch the TEXT ONLY — the gate's pass/fail
+    // verdict and promotion eligibility (isPromotableBlockedPlay/NON_PROMOTABLE_GATE_CODES) are
+    // unchanged for every play, scale_out or not.
+    const targetAtrMultipleDisplay = round2(targetAtrMultiple);
+    const reason =
+      opts.play.exit_style === "scale_out"
+        ? `target $${geo.target} is ${targetAtrMultipleDisplay}× ATR14 ($${geo.atr14}) from the entry edge $${geo.fill_edge} (max ${GATE_TARGET_MAX_ATR_MULTIPLE}×) — this stock target is a reference level, not the grading basis: this is a scale-out ("Banger exit") play, graded on the option's own forward bars toward expiry (partial at 2×, trail the runner, hard stop −60%), not on the stock target touching in one session`
+        : `target $${geo.target} is ${targetAtrMultipleDisplay}× ATR14 ($${geo.atr14}) from the entry edge $${geo.fill_edge} (max ${GATE_TARGET_MAX_ATR_MULTIPLE}×) — not achievable in the one-session grading horizon`;
     blocks.push({
       code: "target_unreachable",
-      reason: `target $${geo.target} is ${targetAtrMultiple}× ATR14 ($${geo.atr14}) from the entry edge $${geo.fill_edge} (max ${GATE_TARGET_MAX_ATR_MULTIPLE}×) — not achievable in the one-session grading horizon`,
+      reason,
       threshold: GATE_TARGET_MAX_ATR_MULTIPLE,
       value: targetAtrMultiple,
     });
@@ -401,7 +448,16 @@ export function capGatePromotedConviction(play: PlaybookPlay): PlaybookPlay {
   if (!play.gate_promoted) return play;
   const conv = String(play.conviction ?? "").trim().toUpperCase();
   if (conv === "A+" || conv === "A") {
-    return { ...play, conviction: "B" };
+    // BUG FIX (Ask Largo standing mandate, 2026-10-21, live repro MSTR score 52): this only ever
+    // capped the `conviction` field. `key_signal`'s own "score N (LETTER)" trailer is built in
+    // buildDeterministicThesis (deterministic-edition.ts) from the SAME uncapped merit-tier
+    // letter, before gate_promoted is even known — so a capped A->B play kept citing its own
+    // pre-cap "(A)"/"(A+)" grade in the member-facing summary sentence, a direct, visible
+    // self-contradiction right next to the correctly-capped badge. Only the trailing grade token
+    // is rewritten (anchored at the string's end) so the rest of the sentence is untouched.
+    const key_signal =
+      typeof play.key_signal === "string" ? play.key_signal.replace(/\(A\+?\)$/, "(B)") : play.key_signal;
+    return { ...play, conviction: "B", key_signal };
   }
   return play;
 }
@@ -413,13 +469,6 @@ function promotionBadness(b: NighthawkGateBlockedPlay): number {
   const score = b.play.score ?? 0;
   return failCount * 1000 - score;
 }
-
-/**
- * Minimum score for a gate_promoted rescue. Soft geometry failures may promote, but a
- * low-score play is not "best available" — it's filler. Locked to MIN_PUBLISH_SCORE so
- * rescue cannot re-admit the diversity-hedge noise class (live AI@26 / SNDQ@20).
- */
-export const GATE_PROMOTE_MIN_SCORE = MIN_PUBLISH_SCORE;
 
 /**
  * Promote the top-scoring blocked plays into publishable plays with gate_promoted

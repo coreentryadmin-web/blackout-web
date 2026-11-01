@@ -77,6 +77,23 @@ test("parseEarningsWindows: a today-dated row is 'next' (daysUntil 0), a direct 
   assert.equal(w.lastEarnings?.surprisePct, -8);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-20): `todayYmd` used to be the raw UTC calendar
+// date of `asOfMs` (`.toISOString().slice(0,10)`), not the ET trading-day date the earnings rows'
+// own `earnings_date` strings are stamped in. Past ~20:00 ET, the UTC calendar date is already the
+// NEXT day, so a same-day (ET) earnings print misclassified as already-past instead of "today".
+// 2026-07-24T23:30:00-04:00 (11:30pm EDT) is 2026-07-25T03:30:00.000Z -- the real ET trading day is
+// still 2026-07-24, but the old UTC-slice logic would have read "2026-07-25".
+test("parseEarningsWindows: an evening-ET timestamp still resolves 'today' by the ET trading day, not the UTC calendar date", () => {
+  const eveningEtMs = Date.parse("2026-07-24T23:30:00.000-04:00");
+  const w = parseEarningsWindows([{ earnings_date: "2026-07-24" }], eveningEtMs);
+  assert.equal(
+    w.nextEarnings?.daysUntil,
+    0,
+    `a print dated today in ET must resolve daysUntil=0 even at 11:30pm ET, got: ${JSON.stringify(w)}`,
+  );
+  assert.equal(w.lastEarnings, null, "must not misclassify today's ET print as already past");
+});
+
 // ── deriveCatalystReads ────────────────────────────────────────────────────────────
 
 const NO_EARNINGS: SwingEarningsWindows = { nextEarnings: null, lastEarnings: null };

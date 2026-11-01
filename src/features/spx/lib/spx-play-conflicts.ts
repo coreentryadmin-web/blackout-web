@@ -7,13 +7,53 @@ export const BEAR_NEWS =
 export const BULL_NEWS =
   /\b(rally|surge|soar|dovish|rate cut|beat estimates|record high|stimulus|ceasefire)\b/i;
 
+// BUG FIX (2026-11-01, five-engine-largo-cycle-59 audit): BEAR_NEWS/BULL_NEWS classified a
+// headline's sentiment by testing for the literal presence of a keyword ANYWHERE in the title,
+// with no check for an adjacent negating/reversal phrase. Live repro: "S&P 500 Index Rally Hits a
+// Wall Amid AI Jitters as Key Valuation Metric Dips" matched BULL_NEWS on "Rally" and was
+// classified "bullish", even though the headline's actual content is a stalling/cautionary read —
+// "Rally Hits a Wall" is not confirming bullish evidence. REVERSAL_PHRASE + isNegatedByReversal()
+// void a keyword match when a reversal phrase immediately follows it, scoped to a short window
+// right after the match (not the whole headline) so an unrelated reversal elsewhere in a longer
+// headline can't suppress a real, unrelated signal. matchesBullNews/matchesBearNews are the single
+// shared chokepoint for this check — spx-play-confirmations.ts's own `newsSentiment()` uses the
+// same two functions rather than re-testing BEAR_NEWS/BULL_NEWS directly, so this fix covers both
+// call sites instead of just the one the live audit happened to trip over.
+const REVERSAL_PHRASE =
+  /\b(hits? a wall|stalls?|stalled|stalling|fades?|faded|fading|stumbles?|stumbled|stumbling|reverses?|reversed|reversal|loses? steam|losing steam|runs? out of steam|peters? out|petered out|cools?|cooled|cooling)\b/i;
+
+/** How far past a matched keyword to look for a reversal phrase that voids it. */
+const REVERSAL_WINDOW_CHARS = 24;
+
+/**
+ * True when `keyword` matches `title` but that specific match is immediately followed (within a
+ * short window) by a reversal phrase that negates the keyword's naive polarity.
+ */
+function isNegatedByReversal(title: string, keyword: RegExp): boolean {
+  const match = keyword.exec(title);
+  if (!match || match.index == null) return false;
+  const afterStart = match.index + match[0].length;
+  const window = title.slice(afterStart, afterStart + REVERSAL_WINDOW_CHARS);
+  return REVERSAL_PHRASE.test(window);
+}
+
+/** True when `title` carries real bullish evidence — matches BULL_NEWS and isn't reversed. */
+export function matchesBullNews(title: string): boolean {
+  return BULL_NEWS.test(title) && !isNegatedByReversal(title, BULL_NEWS);
+}
+
+/** True when `title` carries real bearish evidence — matches BEAR_NEWS and isn't reversed. */
+export function matchesBearNews(title: string): boolean {
+  return BEAR_NEWS.test(title) && !isNegatedByReversal(title, BEAR_NEWS);
+}
+
 function newsSentiment(headlines: SpxDeskPayload["news_headlines"]): "bullish" | "bearish" | "neutral" {
   let bull = 0;
   let bear = 0;
   for (const h of headlines.slice(0, 5)) {
     const t = h.title ?? "";
-    if (BEAR_NEWS.test(t)) bear += 1;
-    if (BULL_NEWS.test(t)) bull += 1;
+    if (matchesBearNews(t)) bear += 1;
+    if (matchesBullNews(t)) bull += 1;
   }
   if (bear > bull) return "bearish";
   if (bull > bear) return "bullish";
@@ -37,14 +77,42 @@ function isHardOpposingFactor(factor: SpxSignalFactor): boolean {
 }
 
 function gexOpposed(desk: SpxDeskPayload, direction: "long" | "short"): boolean {
+  // gamma_flip!=null guard (regression 2026-10-17), scoped to the regime clause ONLY: spx-desk.ts
+  // falls back to a stale sticky gamma_regime whenever the live flip resolves "unknown" (gamma_flip
+  // null), and above_gamma_flip defaults to false in that same case — so an unguarded read here
+  // would treat a leftover prior-cycle "amplification" label as a live GEX conflict with zero
+  // current evidence behind it. The real γ-regime signal factor (spx-signals.ts) already guards the
+  // identical read on `gamma_flip != null`; this mirrors that established pattern. The gex_walls
+  // proximity check below is an independent signal (derived from the strike ladder, not from
+  // gamma_flip/gamma_regime) and must keep firing regardless of flip state.
+  //
+  // BUG FIX (2026-11-01, live audit): the two direction branches below must mirror the ONLY two
+  // "γ regime" states computeSpxConfluence (spx-signals.ts) ever actually scores:
+  //   mean_revert && aboveFlip  -> +10 bullish  (genuinely opposes a SHORT)
+  //   amplification && !aboveFlip -> -10 bearish (genuinely opposes a LONG)
+  // No other combination is scored in either direction — amplification && aboveFlip (regime
+  // sticky-held at "amplification" right after an upward flip crossing, via
+  // gammaRegimeWithHysteresis's deliberate buffer, while above_gamma_flip is computed fresh from
+  // raw spot>flip every cycle) is NOT evidence of anything. Previously this function defined one
+  // shared `regimeOpposed = gamma_regime === "amplification"` and reused it for BOTH branches,
+  // only flipping the aboveFlip polarity for "short" — so the short branch read
+  // `amplification && aboveFlip` as opposition, a state computeSpxConfluence never scores either
+  // way, fabricating a +2 weighted_conflicts penalty against short setups with zero real evidence
+  // behind it. The long branch was already correct (it happened to match the real bearish
+  // condition). Each branch now checks its OWN correct regime/aboveFlip pairing instead of sharing
+  // one variable across both directions.
   if (direction === "long") {
+    const regimeOpposed =
+      desk.gamma_flip != null && desk.gamma_regime === "amplification" && !desk.above_gamma_flip;
     return (
-      (desk.gamma_regime === "amplification" && !desk.above_gamma_flip) ||
+      regimeOpposed ||
       Boolean(desk.gex_walls?.some((w) => w.kind === "resistance" && Math.abs(desk.price - w.strike) <= 12))
     );
   }
+  const regimeOpposed =
+    desk.gamma_flip != null && desk.gamma_regime === "mean_revert" && desk.above_gamma_flip;
   return (
-    (desk.gamma_regime === "amplification" && desk.above_gamma_flip) ||
+    regimeOpposed ||
     Boolean(desk.gex_walls?.some((w) => w.kind === "support" && Math.abs(desk.price - w.strike) <= 12))
   );
 }
@@ -71,8 +139,24 @@ function newsAlreadyScored(factors: SpxSignalFactor[]): boolean {
   return factors.some((f) => f.label === "News risk" || f.label.startsWith("News"));
 }
 
-function vixAlreadyScored(factors: SpxSignalFactor[]): boolean {
-  return factors.some((f) => f.label.includes("VIX") || f.label === "IV rank");
+// BUG FIX (2026-11-01, five-engine-largo-cycle-60 audit): same bug class as gexAlreadyScored
+// above (PR #7114) — this guard used to suppress the vixExtremeAgainst() +2 bonus whenever ANY
+// VIX-family factor existed in `factors`, regardless of which SIDE it agreed with. desk.vix
+// (absolute VIX level) and the "VIX curve" factor (spx-signals.ts, built from vix_term's
+// vix9d/vix3m term-structure shape) are independent metrics from independent inputs — "VIX curve"
+// can carry a POSITIVE weight (contango, agreeing with a long) at the exact same time desk.vix is
+// extreme (>28) and genuinely OPPOSES that long. Live repro: vix=30 (long opposed) + an agreeing
+// "VIX curve" contango factor (weight +4) -> the old broad guard read "a VIX-family factor
+// exists" as "the VIX-extreme conflict is already counted" and dropped a real, independent
+// conflict (weighted_conflicts 2 -> 0). Fixed the same way as gexAlreadyScored: require the
+// EXISTING factor to actually OPPOSE `direction` (factorOpposes), not merely exist.
+// "IV rank" is unaffected by this fix: spx-signals.ts only ever pushes it as an OPPOSING factor
+// (high IV rank fades a long, low IV rank squeezes a short — see the uw_iv_rank block above), so
+// "exists" and "exists and opposes" were already equivalent for it; no behavior change there.
+function vixAlreadyScored(factors: SpxSignalFactor[], direction: "long" | "short"): boolean {
+  return factors.some(
+    (f) => (f.label.includes("VIX") || f.label === "IV rank") && factorOpposes(direction, f)
+  );
 }
 
 export function computeWeightedConflicts(
@@ -99,10 +183,24 @@ export function computeWeightedConflicts(
   if (tideOpposed(desk, direction) && !factors.some((f) => f.label === "Market tide")) {
     weighted += 2;
   }
-  if (gexOpposed(desk, direction) && !factors.some((f) => f.label.includes("GEX") || f.label.includes("γ"))) {
+  // BUG FIX (2026-11-01, SPX Slayer audit): this guard used to suppress the +2 bonus whenever
+  // ANY GEX/γ-labeled factor existed in `factors`, regardless of which SIDE it agreed with.
+  // computeSpxConfluence's mutual-exclusivity fix (ISSUE-01, spx-signals.ts) scores ONLY the
+  // nearer of two in-range GEX walls when price sits between a support wall and a resistance
+  // wall both within 12pts — the farther, genuinely-opposing wall is dropped entirely and never
+  // reaches `factors`. So "GEX support" (agreeing with a long) could be the only GEX factor
+  // present while a real, nearby, unscored resistance wall (gexOpposed()'s wall-proximity check)
+  // opposed that same long — and the old broad guard read the agreeing factor's mere presence as
+  // "already counted", silently dropping the real conflict from weighted_conflicts. The guard
+  // must check whether an EXISTING factor actually OPPOSES `direction` (factorOpposes, already
+  // used by the main loop above) — not merely whether a same-family factor exists at all.
+  const gexAlreadyScored = factors.some(
+    (f) => (f.label.includes("GEX") || f.label.includes("γ")) && factorOpposes(direction, f)
+  );
+  if (gexOpposed(desk, direction) && !gexAlreadyScored) {
     weighted += 2;
   }
-  if (vixExtremeAgainst(desk, direction) && !vixAlreadyScored(factors)) {
+  if (vixExtremeAgainst(desk, direction) && !vixAlreadyScored(factors, direction)) {
     weighted += 2;
   }
 

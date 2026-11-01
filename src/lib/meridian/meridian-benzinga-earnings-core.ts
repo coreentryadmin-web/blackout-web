@@ -169,7 +169,19 @@ export function overlayTimelineExpectedMoves(
   });
 }
 
-/** Next upcoming print from Benzinga structured earnings (Meridian/Largo — no UW REST). */
+/**
+ * Next upcoming print from Benzinga structured earnings (Meridian/Largo — no UW REST).
+ *
+ * `r.date >= todayYmd` alone is not "upcoming" — Benzinga leaves a same-day row's `date`
+ * unchanged after it reports, so a BMO print that already posted `actual_eps`/`actual_revenue`
+ * THIS morning still has `date === todayYmd` and would otherwise sort to the front and be
+ * returned as the "next" earnings for the rest of the day, until the following quarter's date
+ * gets calendared. Same bug shape as `meridian-ticker-lookup-core.ts`'s
+ * `pickUpcomingEarningsRow` (#7100) — a date-only "upcoming" filter needs a companion
+ * not-yet-reported check, not just a boundary on the date itself. `actual_eps`/`actual_revenue`
+ * are the row's own "has this printed" signal (a genuine EPS of 0 parses to the number `0`, not
+ * `null`, so this isn't fooled by a real zero print).
+ */
 export function parseNextEarningsFromBenzinga(
   ticker: string,
   rows: BenzingaStructuredEarnings[],
@@ -177,7 +189,7 @@ export function parseNextEarningsFromBenzinga(
 ): NextEarnings | null {
   const sym = ticker.trim().toUpperCase();
   const upcoming = rows
-    .filter((r) => r.date >= todayYmd)
+    .filter((r) => r.date >= todayYmd && r.actual_eps == null && r.actual_revenue == null)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));
   const row = upcoming[0];
   if (!row) return null;
@@ -333,7 +345,11 @@ export function buildEarningsWeekRows(
       importance: r.importance,
       date_status: r.date_status,
       estimated_eps: r.estimated_eps,
-      is_printed: r.actual_eps != null,
+      // Same complete check `benzingaToCalendarRow` already uses: a print is "printed" once
+      // EITHER actual figure has landed, not only EPS. Benzinga reports some prints with only
+      // actual_revenue populated (EPS pending/withheld); checking `actual_eps` alone undercounts
+      // `printed_this_week` (consumed by MeridianDesk's "N/M printed" headline) on every such row.
+      is_printed: r.actual_eps != null || r.actual_revenue != null,
     }));
 }
 
@@ -525,5 +541,34 @@ export function benzingaTickerWindow(prints: number): { lookbackDays: number; li
     // the budget before any past print is reached. So the cap has to cover both ends, not just
     // the prints being asked for. +12 covers the projected tail with room.
     limit: Math.min(200, wanted + 12),
+  };
+}
+
+/**
+ * `calendar_error` (consumed by `MeridianEarningsTabs`'s banner: "Earnings calendar feed did not
+ * respond — estimates and print history are unavailable for this refresh") must mean exactly
+ * what it says: the earnings-CALENDAR read failed. `loadMeridianEarningsEnrichment` used to fold
+ * THREE independent fetches' errors into this one field — `history.history_error` (print
+ * history), `benzingaRes.error` (the calendar/estimates), and `guidanceRes.error` (corporate
+ * guidance) — so a corporate-guidance-only outage made the banner falsely claim estimates and
+ * print history were unavailable even when both were genuinely populated and rendering.
+ *
+ * Live-reproduced 2026-10-26: NE earnings showed the banner AND a populated Summary tab
+ * ("3/7 of this name's last prints reacted up", n=7) — print history was plainly present, so the
+ * banner's own claim about it was false for that refresh.
+ *
+ * Returns two SEPARATE fields: `calendar_error` narrowed to only the two fetches the banner text
+ * is actually about, and `guidance_error` carrying the guidance fetch's own failure (preserving
+ * the original absence-vs-outage distinguishability goal for guidance, just without smuggling it
+ * into a claim about unrelated data).
+ */
+export function deriveMeridianEarningsErrors(
+  historyError: string | null | undefined,
+  calendarError: string | null | undefined,
+  guidanceError: string | null | undefined
+): { calendar_error: string | null; guidance_error: string | null } {
+  return {
+    calendar_error: historyError ?? calendarError ?? null,
+    guidance_error: guidanceError ?? null,
   };
 }

@@ -83,6 +83,69 @@ export function deskPath(ticker: string): string {
   return t === "SPX" ? "/vector" : `/vector?ticker=${encodeURIComponent(t)}`;
 }
 
+/**
+ * Drop any per-ticker record (meta/regime, play-desk snapshot, …) whose ticker is no longer in
+ * the active compare set, returning the SAME object reference when nothing changed so callers can
+ * skip a redundant re-render.
+ *
+ * THE BUG THIS FIXES (member-visible, VectorCompareDesk). `metaByTicker` (regime posture + spot,
+ * shown as the long-γ/short-γ chip in the compare summary footer) was ONLY ever pruned inside
+ * `removeTicker`'s own explicit `delete`. That covers removing one pane via its own ✕ button, but
+ * not `applyPreset` swapping the whole seeds array at once (e.g. "Big Tech" → "Indices" → "Big
+ * Tech" again) — a stale posture for a ticker that left and came back could sit in state and render
+ * for however long it took the freshly-mounted pane's OWN regime fetch to overwrite it, showing a
+ * real but OUTDATED gamma posture as if it were current. `playByTicker` already had exactly this
+ * cleanup (a `useEffect` keyed on `seeds` that prunes anything not in the live ticker set) added
+ * alongside it later — `metaByTicker`, the older of the two sibling per-ticker records, never got
+ * the same treatment. This helper is shared by both so they can't drift apart again.
+ */
+export function pruneStaleTickerEntries<T>(
+  entries: Readonly<Record<string, T>>,
+  activeTickers: ReadonlySet<string>
+): Record<string, T> {
+  let changed = false;
+  const next: Record<string, T> = { ...entries };
+  for (const key of Object.keys(next)) {
+    if (!activeTickers.has(key)) {
+      delete next[key];
+      changed = true;
+    }
+  }
+  return changed ? next : (entries as Record<string, T>);
+}
+
+/**
+ * `pruneStaleTickerEntries`'s sibling for a `Map` — same same-reference-when-unchanged contract,
+ * for callers that key per-ticker state by a `Map` rather than a plain `Record` (VectorCompareDesk's
+ * `timelinesRef`, which tracks each pane's own replay timeline for the linked-replay scrubber).
+ *
+ * THE GAP THIS CLOSES (VectorCompareDesk's `timelinesRef`). `handleReplayTimeline` already pruned
+ * stale keys out of `timelinesRef.current` — but only as a side effect of the NEXT call to
+ * `handleReplayTimeline` for some OTHER ticker, which only fires again once that pane's chart
+ * receives a new bar. Removing a pane (via `removeTicker` or a preset swap) did not itself prune
+ * the ref. During live RTH with other panes still ticking, this self-healed within seconds — but
+ * off-hours, with replay data static, or if the removed pane was the only one producing updates,
+ * the stale timeline could sit in `timelinesRef.current` indefinitely, inflating `unionTimeline`
+ * (and therefore the linked-replay scrubber's range) with steps belonging to a pane that's no
+ * longer on screen. Mirrors the same fix already applied to `metaByTicker`/`playByTicker` via
+ * `pruneStaleTickerEntries` above — this lets `timelinesRef` get the identical proactive,
+ * `seeds`-keyed cleanup instead of waiting on an unrelated pane's next tick.
+ */
+export function pruneStaleTickerMapEntries<T>(
+  entries: ReadonlyMap<string, T>,
+  activeTickers: ReadonlySet<string>
+): Map<string, T> {
+  let changed = false;
+  const next = new Map(entries);
+  for (const key of next.keys()) {
+    if (!activeTickers.has(key)) {
+      next.delete(key);
+      changed = true;
+    }
+  }
+  return changed ? next : (entries as Map<string, T>);
+}
+
 /** Load compare seeds with bounded concurrency — 4× parallel burst was tripping ALB 502s. */
 export async function loadCompareSeedsBounded<T>(
   tickers: string[],

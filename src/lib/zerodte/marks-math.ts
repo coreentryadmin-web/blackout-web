@@ -284,21 +284,37 @@ export function trimScaleTranchesArmed(
  *
  * `is_peak` is returned rather than inferred by the caller so the disclosure and the number can
  * never drift apart: any surface showing the peak is obliged to show `realized_pct` too.
+ *
+ * `live_pnl_pct` is NOT the raw live poll for a closed row — zerodte-service.ts deliberately
+ * RECOMPUTES it post-`roundFloats()` from the ROUNDED, member-visible `entry_premium`/`last_mark`
+ * (`reconcileLedgerLivePnlPct`), so it stays self-consistent with the two numbers shown alongside
+ * it on the same row — a correct, intentional design for THAT field's own monitoring purpose
+ * (confirmed by a separate live trace the same day, RDDT case, RUN-LOG/journal 2026-09-10 19:07Z:
+ * a small 0.43pp gap from this exact mechanism, ruled not-a-bug for `live_pnl_pct` itself). But
+ * `closedPnlDisplay` serves a DIFFERENT purpose — "what did this position actually realize" — and
+ * rounding two already-close numbers to the same display value can zero out (or invert the sign
+ * of) a real result entirely, same rounding-boundary shape as #4737's `mark_honored` bug.
+ * `exit_pnl_pct` (when the exit engine recorded one) is computed at raw, pre-rounding precision and
+ * is the true final result — prefer it here. Measured live 2026-09-10: QQQ's board row read
+ * `live_pnl_pct: 0` (`entry_premium`/`last_mark` both rounded to `0.22`) while its own
+ * `exit_pnl_pct: -2.27` (raw exit print `0.215`) was the real result.
  */
 export function closedPnlDisplay(row: {
   status?: string | null;
   peak_pnl_pct?: number | null;
   live_pnl_pct?: number | null;
+  exit_pnl_pct?: number | null;
   trim_regime?: TrimScaleRegime | null;
 }): { pct: number | null; is_peak: boolean; tranches_armed: number; realized_pct: number | null } {
   const regime = row.trim_regime ?? "neutral";
   const armed = trimScaleTranchesArmed(row.peak_pnl_pct ?? null, regime);
   const isPeak = row.status === "CLOSED" && row.peak_pnl_pct != null && armed > 0;
+  const realized = row.exit_pnl_pct ?? row.live_pnl_pct ?? null;
   return {
-    pct: isPeak ? (row.peak_pnl_pct ?? null) : (row.live_pnl_pct ?? null),
+    pct: isPeak ? (row.peak_pnl_pct ?? null) : realized,
     is_peak: isPeak,
     tranches_armed: armed,
-    realized_pct: row.live_pnl_pct ?? null,
+    realized_pct: realized,
   };
 }
 
@@ -323,6 +339,36 @@ export function trimScaleBlendedPnlAtStop(
 /** Peak premium P/L % vs pinned entry — the excursion high-water mark for closed-card display. */
 export function peakPnlPct(entryPremium: number | null, peakPremium: number | null): number | null {
   return pinnedLivePnlPct(entryPremium, peakPremium);
+}
+
+/**
+ * A position can never realize better than its own recorded peak — a `pnl_pct` numerically
+ * ABOVE the row's own `peak_pnl_pct` (same frozen `entry_context.exit` blob) is a mathematical
+ * impossibility, not a real result (FINDINGS 2026-10-31/2026-11-01). Root cause: a pre-2026-09-04
+ * bug in exit-engine.ts's `buildExitContext` computed a non-honored exit's `pnl_pct` from a
+ * cent-ROUNDED mark while `peak_pnl_pct` was (and still is) computed from the raw, unrounded
+ * peak premium — rounding up past the row's own genuine high-water mark on a handful of cheap,
+ * sub-few-dollar 0DTE premiums (~8-9 real rows: HIMS, KORU, SPCH, RIOT, FIG, CRCL x2, AAPL, NVDA,
+ * OCUL — all dated strictly before the fix shipped). The fix (now live for every fresh exit)
+ * uses the raw mark on the non-honored path, so `pnl_pct <= peak_pnl_pct` holds by construction
+ * going forward — but those ~8-9 rows already have the impossible pair baked into their
+ * immutable `entry_context.exit` blob (first-write-wins, never rebuilt), and there is no way to
+ * recover the TRUE pre-rounding `pnl_pct` retroactively (only the already-cent-rounded mark
+ * survives). This clamps the DISPLAYED `pnl_pct` to the row's own `peak_pnl_pct` — the honest
+ * statement available is "this realized at best as well as its own recorded peak," not a
+ * specific percentage weaker than that.
+ *
+ * SHARED (2026-11-01) so every independent reader of that frozen blob clamps identically instead
+ * of drifting apart — record.ts's `officialOverridingRealExit`/`managedGradeView` (the original
+ * 2026-10-31 fix, PR #7163), `cortex-read.ts`'s `buildPinnedCortexEnvelope` ("What the exit
+ * engine did" — Ask Largo's pinned "why was this committed" tool), and
+ * `zerodte-service.ts`'s `mapLedgerRow` (the live board/BIE payload's `exit_pnl_pct` /
+ * `mfe_capture_pct`) all read the exact same `{pnl_pct, peak_pnl_pct}` pair off the same blob.
+ * Null-safe and a provable no-op whenever the invariant already holds (a null `pnl`/`peak`, or
+ * `pnl <= peak`) — so this can never move a correct number, only cap an impossible one.
+ */
+export function clampPnlToPeak(pnl: number | null, peak: number | null): number | null {
+  return pnl != null && peak != null && Number.isFinite(peak) && pnl > peak ? peak : pnl;
 }
 
 /**
@@ -510,6 +556,10 @@ export function advancePlayLatch(
     deferPlanStop?: boolean;
     targetPct?: number | null;
     stopPct?: number | null;
+    /** trim_scale's OWN first-tranche trigger (exit-sync.ts's playRailsFromRow) — see
+     *  derivePlayStatus's param of the same name. Omitted → the ratchet's +100% target
+     *  literal, byte-identical to the prior behavior. */
+    trimScaleFirstTranchePct?: number | null;
     isCondor?: boolean;
   }
 ): PlayLatch {
@@ -527,6 +577,7 @@ export function advancePlayLatch(
     deferPlanStop: opts?.deferPlanStop,
     targetPct: opts?.targetPct,
     stopPct: opts?.stopPct,
+    trimScaleFirstTranchePct: opts?.trimScaleFirstTranchePct,
     isCondor,
   });
   return { peak, trough, status: state.status };

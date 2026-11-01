@@ -31,6 +31,28 @@ export function useVectorContractPicks(
   const bias = play ? effectivePickBias(play, emit?.spot, emit?.gammaFlip) ?? play.bias : null;
   const contextKey = vectorContractPickFetchKey(emit, sessionFlows.length, excludeOccs);
 
+  // BUG FIX (round 180 audit): `emit`/`play`/`sessionFlows` get a NEW object/array identity on
+  // every render where any field changes — including fields `contextKey` deliberately leaves out
+  // (grade, entryZone, technicals, confluenceZones, darkPoolLevels, magnetStrike, regimePosture,
+  // gammaFlip; and sessionFlows is compared by `.length` only, not identity, per
+  // vectorContractPickFetchKey's own doc comment). `contextKey` exists precisely so this hook only
+  // restarts its debounce/45s-refresh timers on a semantically relevant change — the SAME pattern
+  // `useVectorActionablePicks`'s own archive-reset effect already uses (`[ticker, contextKey]`,
+  // never raw `emit`). Previously this effect's own dependency array ALSO listed the raw `emit`,
+  // `play` and `sessionFlows` on top of `contextKey`, so it tore down and rebuilt the debounce
+  // timer and the periodic interval on every one of those extra, noisier reference changes too —
+  // defeating contextKey's whole purpose. Worse: if updates arrive faster than DEBOUNCE_MS (500ms),
+  // the pending `setTimeout(load, DEBOUNCE_MS)` is cancelled and rescheduled every time before it
+  // ever fires, so the pool can go unfetched indefinitely during an active tape. Fresh emit/play/
+  // sessionFlows values still reach `load()` — via refs updated every render below — so a periodic
+  // refresh keeps using current desk context without needing the effect itself to restart.
+  const emitRef = useRef(emit);
+  emitRef.current = emit;
+  const playRef = useRef(play);
+  playRef.current = play;
+  const sessionFlowsRef = useRef(sessionFlows);
+  sessionFlowsRef.current = sessionFlows;
+
   useEffect(() => {
     if (paused) {
       setLoading(false);
@@ -45,25 +67,28 @@ export function useVectorContractPicks(
     const gen = ++genRef.current;
 
     const load = () => {
+      const emitNow = emitRef.current;
+      const playNow = playRef.current;
+      if (!emitNow || !playNow) return;
       setLoading(true);
       fetchVectorContractPicks({
         ticker,
-        play,
-        spot: emit.spot,
-        callWall: emit.callWall,
-        putWall: emit.putWall,
-        magnetStrike: emit.magnetStrike,
-        gammaFlip: emit.gammaFlip,
-        regimePosture: emit.regimePosture,
-        technicals: emit.technicals,
-        confluenceZones: emit.confluenceZones?.map((z) => ({
+        play: playNow,
+        spot: emitNow.spot,
+        callWall: emitNow.callWall,
+        putWall: emitNow.putWall,
+        magnetStrike: emitNow.magnetStrike,
+        gammaFlip: emitNow.gammaFlip,
+        regimePosture: emitNow.regimePosture,
+        technicals: emitNow.technicals,
+        confluenceZones: emitNow.confluenceZones?.map((z) => ({
           center: z.center,
           score: z.score,
           kinds: z.kinds,
         })),
-        darkPoolLevels: emit.darkPoolLevels,
+        darkPoolLevels: emitNow.darkPoolLevels,
         excludeOccs: excludeOccs.length ? [...excludeOccs] : undefined,
-        flows: sessionFlows.map((f) => ({
+        flows: sessionFlowsRef.current.map((f) => ({
           option_type: f.option_type,
           premium: f.premium,
           strike: f.strike,
@@ -92,7 +117,10 @@ export function useVectorContractPicks(
       clearTimeout(debounce);
       if (interval) clearInterval(interval);
     };
-  }, [ticker, play, bias, contextKey, liveSession, emit, sessionFlows, paused, excludeOccs, refetchToken]);
+    // emit/play/sessionFlows are read via the refs above (always current); contextKey is the
+    // deliberately-debounced trigger for restarting the timers — see the comment on emitRef above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker, bias, contextKey, liveSession, paused, excludeOccs, refetchToken]);
 
   return { picks, loading };
 }

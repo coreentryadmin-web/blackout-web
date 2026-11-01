@@ -8,6 +8,7 @@ import {
   pctAlong,
   normalizeMoveBand,
   haloFromSignals,
+  resolveSignalWeight,
   arcPath,
   beatSeries,
   beatTally,
@@ -130,6 +131,27 @@ test("haloFromSignals: negative weights are magnitudes — lean already carries 
 test("haloFromSignals: unweighted signals still occupy the ring", () => {
   const h = haloFromSignals([{ lean: "bullish" }, { lean: "bearish", weight: null }]);
   assert.equal(h!.totalWeight, 2, "dropping them would under-represent the evidence");
+});
+
+test("resolveSignalWeight: a deliberate zero stays zero, distinct from 'no weight given'", () => {
+  // The real producer: meridian-earnings-report-core.ts pushes weight:0 for informational-only
+  // pillars (news/vector/insider) on purpose, so they display without swaying the verdict.
+  assert.equal(resolveSignalWeight(0), 0);
+  // Missing/null is a genuinely different case and keeps the weight-1 fallback.
+  assert.equal(resolveSignalWeight(null), 1);
+  assert.equal(resolveSignalWeight(undefined), 1);
+  assert.equal(resolveSignalWeight(-3), 3, "still a magnitude — sign carries no meaning here");
+});
+
+test("haloFromSignals: an informational zero-weight signal must not inflate neutralWeight — RED before the fix (it read 1, not 0)", () => {
+  const h = haloFromSignals([
+    { lean: "bullish", weight: 2 },
+    // Mirrors meridian-earnings-report-core.ts's "news" pillar: always neutral, weight 0.
+    { lean: "neutral", weight: 0 },
+  ]);
+  assert.equal(h!.totalWeight, 2, "the zero-weight informational signal contributes nothing");
+  assert.equal(h!.neutralWeight, 0);
+  assert.equal(h!.dominant, "bullish");
 });
 
 test("haloFromSignals: an all-neutral book agrees on nothing (not perfectly)", () => {
@@ -368,6 +390,22 @@ test("dimensionRollup: neutral pillars add weight without direction", () => {
   const flow = d[0]!;
   assert.equal(flow.net, 1);
   assert.equal(flow.intensity, 25, "1 of 4 total weight — neutral dilutes conviction");
+});
+
+test("dimensionRollup: an informational zero-weight pillar must not dilute its dimension's intensity — RED before the fix (STRUCTURE read 67, not 100)", () => {
+  // Mirrors the real STRUCTURE dimension: thermal is always pushed at weight 2, vector is pushed
+  // at weight 0 (informational-only, always neutral) whenever Vector data is available.
+  const d = dimensionRollup([
+    { pillar: "thermal", lean: "bullish", weight: 2 },
+    { pillar: "vector", lean: "neutral", weight: 0 },
+  ]);
+  const structure = d.find((x) => x.dimension === "STRUCTURE")!;
+  assert.equal(structure.net, 2);
+  assert.equal(
+    structure.intensity,
+    100,
+    "the zero-weight informational pillar must not count toward total weight"
+  );
 });
 
 // ── ET wall clock → UTC. A hardcoded offset is wrong for half the year.

@@ -14,6 +14,30 @@
 # Prereqs (already satisfied for the cursor automerge flow): repo Settings →
 # General → "Allow auto-merge" ON, and the main ruleset requires the `verify`
 # check. The declared permissions below let GITHUB_TOKEN act on Dependabot PRs.
+#
+# ── SILENT NO-DEPLOY: GITHUB_TOKEN MERGES DON'T TRIGGER DOWNSTREAM WORKFLOWS (2026-10-13) ──
+#
+# GitHub's documented anti-recursion rule: an event created by the default GITHUB_TOKEN
+# inside a workflow run does not trigger ANY other workflow (push-triggered CI, CodeQL,
+# ecr-push-production.yml — nothing). This is the identical bug `automerge.yml` was fixed
+# for on 2026-08-24 (see that file's own header and `src/automerge-token-recursion.test.ts`)
+# — the fix was never propagated to this sibling workflow, which merges every Dependabot PR
+# (not just `claude/*`) and used plain GITHUB_TOKEN for the merge step.
+#
+# Measured live 2026-10-13: #5938 (actions/upload-artifact 4->7, github_actions ecosystem)
+# and #5939 (9-package npm minor-and-patch group, including real app dependencies like
+# @clerk/nextjs and @anthropic-ai/sdk) were both auto-merged here. `GET /repos/.../actions/
+# runs?head_sha=<merge-commit>` returned **zero** workflow runs for #5938's merge commit and
+# only one unrelated `workflow_run`-triggered entry for #5939's — no `verify` re-run, no
+# CodeQL, and critically no `ecr-push-production.yml` despite `package.json`/
+# `package-lock.json` being in that workflow's own path filter. Both commits sat on `main`,
+# fully merged and CI-green at PR time, but never deployed — silently, with no red check or
+# error anywhere to surface it.
+#
+# Fix: same as automerge.yml — use `AGENT_RELEASE_TOKEN` (a real PAT identity, so its push
+# events trigger downstream workflows normally) for the merge step, falling back to
+# GITHUB_TOKEN if the secret is unset (existing behavior, still silent on deploy in that
+# fallback case — better than erroring the whole workflow over a missing optional secret).
 
 name: Dependabot auto-merge
 
@@ -41,7 +65,9 @@ jobs:
           steps.meta.outputs.update-type == 'version-update:semver-minor' ||
           steps.meta.outputs.package-ecosystem == 'github_actions'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # AGENT_RELEASE_TOKEN so the merge event fires downstream workflows (CI/deploy) —
+          # GITHUB_TOKEN merges are invisible to push-triggered workflows, see note above.
+          GH_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           gh pr merge --auto --squash \
             "${{ github.event.pull_request.number }}" \

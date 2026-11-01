@@ -30,9 +30,6 @@ import {
   strikeTrailLifecycle,
   strikeTrailWeight,
   trailsByStrike,
-  trailForFlipLevel,
-  trailForGammaFlip,
-  trailForRank,
   trimHistoryForLiveTrails,
   trimHistoryToSession,
   LIVE_TRAIL_LOOKBACK_SEC,
@@ -80,33 +77,6 @@ test("recordWallSample: over the cap it THINS the old end — it must not amputa
   for (let i = 1; i < live.length; i++) {
     assert.equal(live[i]!.time - live[i - 1]!.time, 5, "the newest 30 min must stay at 5s");
   }
-});
-
-test("trailForRank: projects one rank's strike/pct across the history, in order", () => {
-  const history: WallHistorySample[] = [
-    { time: 100, walls: walls([6800, 6850], [6700]) },
-    { time: 160, walls: walls([6810, 6850], [6700, 6650]) },
-  ];
-  assert.deepEqual(trailForRank(history, "callWalls", 0), [
-    { time: 100, strike: 6800, pct: 10 },
-    { time: 160, strike: 6810, pct: 10 },
-  ]);
-});
-
-test("trailForRank: omits bars where that rank didn't exist, instead of inserting a placeholder", () => {
-  const history: WallHistorySample[] = [
-    { time: 100, walls: walls([6800, 6850], [6700]) }, // rank 1 exists
-    { time: 160, walls: walls([6810], [6700]) }, // rank 1 dropped out (ladder thinned)
-    { time: 220, walls: walls([6810, 6860], [6700]) }, // rank 1 reappears
-  ];
-  assert.deepEqual(trailForRank(history, "callWalls", 1), [
-    { time: 100, strike: 6850, pct: 9 },
-    { time: 220, strike: 6860, pct: 9 },
-  ]);
-});
-
-test("trailForRank: returns an empty trail for an empty history", () => {
-  assert.deepEqual(trailForRank([], "putWalls", 0), []);
 });
 
 test("seedWallHistoryForDisplay: seeds one honest dot at the last bar when history is empty", () => {
@@ -488,29 +458,6 @@ test("trailsByStrike: threads wall notional onto trail points when present on Ge
   assert.equal(trail[0]!.notional, 1.2e9);
 });
 
-test("trailForGammaFlip: horizontal bead row when flip is present", () => {
-  const history: WallHistorySample[] = [
-    { time: 100, walls: walls([6800], [6700]), gammaFlip: 6745 },
-    { time: 160, walls: walls([6810], [6700]), gammaFlip: 6750 },
-    { time: 220, walls: walls([6810], [6700]), gammaFlip: null },
-  ];
-  assert.deepEqual(trailForGammaFlip(history), [
-    { time: 100, strike: 6745 },
-    { time: 160, strike: 6750 },
-  ]);
-});
-
-test("trailForFlipLevel: vanna flip trail from vexFlip field", () => {
-  const history: WallHistorySample[] = [
-    {
-      time: 100,
-      walls: walls([6800], [6700]),
-      vexWalls: walls([6820], [6680]),
-      vexFlip: 6760,
-    },
-  ];
-  assert.deepEqual(trailForFlipLevel(history, "vex"), [{ time: 100, strike: 6760 }]);
-});
 
 test("hasVexInHistory: true when vex walls present", () => {
   assert.equal(

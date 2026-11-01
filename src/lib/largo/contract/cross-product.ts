@@ -22,7 +22,7 @@
 //    different claims. Every product that did not report appears in `missing` with its reason, so
 //    a thin consensus can never present itself as a broad one.
 
-import type { Direction, ProductId, ProductSignal } from "./product-read";
+import type { Confidence, Direction, ProductId, ProductSignal } from "./product-read";
 
 /**
  * `aligned` — every reporting product points the same way.
@@ -31,11 +31,22 @@ import type { Direction, ProductId, ProductSignal } from "./product-read";
  */
 export type ConsensusVerdict = "aligned" | "split" | "insufficient";
 
+/** One product's confidence, attributed — mirrors `Confidence` (product-read.ts) plus who reported it. */
+export type CampConfidence = Confidence & { product: ProductId };
+
 export type Camp = {
   direction: Direction;
   products: ProductId[];
   /** Pooled evidence from every product in this camp — the numbers, not the claim. */
   evidence: string[];
+  /**
+   * Confidence each product in this camp reported, ONLY from products that could calibrate one
+   * (C6: omitted, never faked — see product-read.ts). Never used to decide `verdict` or order
+   * `camps` — decision 2 above holds regardless of what is in here. This exists so the field is
+   * actually REPORTED, per this module's own decision 2 ("Confidence is REPORTED, never
+   * multiplied by") — see the fix note on `joinProductSignals` for why that was previously false.
+   */
+  confidence: CampConfidence[];
 };
 
 export type MissingProduct = {
@@ -74,6 +85,17 @@ export type ProductContribution = {
  * Pure and total: every input shape produces a well-formed read. A contribution with a null signal
  * and no reason still appears in `missing` (with an explicit placeholder) rather than vanishing —
  * a product silently dropped from the denominator is the failure this whole module guards against.
+ *
+ * FIX (found during a routine audit sweep of this exact function): this module's own header
+ * comment (decision 2, above) says "Confidence is REPORTED, never multiplied by" — but until this
+ * fix, it was never reported anywhere. `ProductSignal.confidence` (product-read.ts) was read by
+ * NOTHING in this file: not copied onto `Camp`, not surfaced on `CrossProductRead`, so a model
+ * calling `get_cross_product_read` had no way to see it and the system prompt had nothing to tell
+ * it to relay. The "never multiplied by" half of decision 2 was correctly enforced (confidence
+ * never decided `verdict`, `direction`, or camp order — it simply never existed downstream at
+ * all), but the "REPORTED" half was silently false. Fix: attribute each reporting product's
+ * `confidence` (when it supplied one) onto its `Camp` via `CampConfidence`, still never read by
+ * anything that computes `verdict`/`direction`/sort order.
  */
 export function joinProductSignals(
   ticker: string,
@@ -81,7 +103,7 @@ export function joinProductSignals(
 ): CrossProductRead {
   const reporting: ProductId[] = [];
   const missing: MissingProduct[] = [];
-  const byDirection = new Map<Direction, { products: ProductId[]; evidence: string[] }>();
+  const byDirection = new Map<Direction, { products: ProductId[]; evidence: string[]; confidence: CampConfidence[] }>();
 
   for (const c of contributions) {
     if (!c.signal) {
@@ -93,15 +115,17 @@ export function joinProductSignals(
       continue;
     }
     reporting.push(c.product);
-    const camp = byDirection.get(c.signal.direction) ?? { products: [], evidence: [] };
+    const camp = byDirection.get(c.signal.direction) ?? { products: [], evidence: [], confidence: [] };
     camp.products.push(c.product);
     // Attribute each piece of evidence so a member can tell WHICH product measured what.
     for (const e of c.signal.evidence) camp.evidence.push(`${c.product}: ${e}`);
+    // Only products that COULD calibrate one supply this (C6) — never fabricated here.
+    if (c.signal.confidence) camp.confidence.push({ product: c.product, ...c.signal.confidence });
     byDirection.set(c.signal.direction, camp);
   }
 
   const camps: Camp[] = [...byDirection.entries()]
-    .map(([direction, v]) => ({ direction, products: v.products, evidence: v.evidence }))
+    .map(([direction, v]) => ({ direction, products: v.products, evidence: v.evidence, confidence: v.confidence }))
     .sort((a, b) => b.products.length - a.products.length);
 
   if (reporting.length < 2) {

@@ -20,9 +20,11 @@ import {
   beatRateFromPrints,
   beatRateWithCohort,
   buildErPlayRead,
+  buildExpectedMoveBand,
   coerceMeridianWallLevels,
   flowWindowHours,
   resolveIntelExpectedMove,
+  resolveVectorDeskMove,
   shapeMeridianDarkPool,
 } from "@/lib/meridian/meridian-earnings-intel-core";
 import { shapeMeridianVectorDeskRead } from "@/lib/meridian/meridian-vector-for-earnings-core";
@@ -36,6 +38,7 @@ import { getSpxSlayerBadgeSnapshot } from "@/features/spx/lib/spx-slayer-badge";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { buildMeridianEarningsReport } from "@/lib/meridian/meridian-earnings-report-core";
 import type { PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
+import type { ExpectedMove } from "@/features/vector/lib/vector-expected-move";
 import type {
   MeridianEarningsEnrichment,
   MeridianEarningsIntel,
@@ -126,6 +129,9 @@ export async function loadMeridianEarningsIntel(input: {
     heatmap: rawHeatmap,
   }).catch(() => null);
 
+  // Hoisted above `scoped` below: the scoper needs it to side-constrain the walls it picks.
+  const spot = input.pack.positioning.spot ?? thermal?.spot ?? null;
+
   /**
    * Dealer structure scoped to the expiry that COVERS THE PRINT.
    *
@@ -139,6 +145,10 @@ export async function loadMeridianEarningsIntel(input: {
    * Falls back to the aggregate when the scoped column carries no data, and records WHICH it
    * used, because the two look identical on screen and only one answers "what is positioned
    * around this print".
+   *
+   * `spot` is passed so the walls it picks are side-constrained (call wall above spot, put wall
+   * below) — without it this independently reimplements `wallsFromStrikeTotals`'s pre-fix
+   * behavior (argmax/argmin anywhere in the chain), which can invert a wall relative to price.
    */
   const scoped = scopeStructureToExpiry({
     cells: rawHeatmap?.gex?.cells ?? null,
@@ -146,6 +156,7 @@ export async function loadMeridianEarningsIntel(input: {
     maxPainByExpiry: rawHeatmap?.max_pain_by_expiry ?? null,
     eventYmd: input.pack.earnings_date ?? null,
     aggregateExpiries: rawHeatmap?.near_term_expiries ?? rawHeatmap?.expiries ?? null,
+    spot,
   });
   const scopeUsable = scoped.expiryUsed != null && Object.keys(scoped.strikeTotals).length > 0;
 
@@ -196,7 +207,6 @@ export async function loadMeridianEarningsIntel(input: {
     dominant_type: s.option_type ?? null,
   }));
 
-  const spot = input.pack.positioning.spot ?? thermal?.spot ?? null;
   const gamma_regime =
     thermal?.gamma_regime_read ?? input.pack.positioning.gamma_regime ?? null;
 
@@ -263,6 +273,37 @@ export async function loadMeridianEarningsIntel(input: {
       ? Number((vectorEm.movePct * 100).toFixed(1))
       : null;
 
+  // `fetchVectorFullState`'s `expectedMove` is a SECOND, independent call to the same
+  // `getVectorExpectedMove(ticker, "weekly")` this module calls directly as `vectorEm` (see
+  // vector-full-state.ts) and carries the identical runtime `expiry` field despite the narrower
+  // `ExpectedMove` type it's declared with — needed here so the fallback below can be held to the
+  // SAME expiry-coverage bar `vectorCoversPrint` already applies to the primary read.
+  const vectorFullStateEm = (vectorFullState?.expectedMove ?? null) as
+    | (ExpectedMove & { expiry?: string })
+    | null;
+  const vectorDeskMove = resolveVectorDeskMove({
+    vectorCoversPrint,
+    primaryMovePct: vector_move_pct,
+    primaryBands:
+      vectorEm?.bands?.map((b) => ({
+        sigma: b.sigma,
+        low: Number(b.low.toFixed(2)),
+        high: Number(b.high.toFixed(2)),
+      })) ?? null,
+    fallbackMovePct:
+      vectorFullStateEm?.movePct != null && Number.isFinite(vectorFullStateEm.movePct)
+        ? Number((vectorFullStateEm.movePct * 100).toFixed(1))
+        : null,
+    fallbackBands:
+      vectorFullStateEm?.bands?.map((b) => ({
+        sigma: b.sigma,
+        low: Number(b.low.toFixed(2)),
+        high: Number(b.high.toFixed(2)),
+      })) ?? null,
+    fallbackExpiry: vectorFullStateEm?.expiry ?? null,
+    earningsDate: input.pack.earnings_date,
+  });
+
   const report = buildMeridianEarningsReport({
     ticker: sym,
     days_until: input.pack.days_until,
@@ -292,18 +333,10 @@ export async function loadMeridianEarningsIntel(input: {
   return roundFloats({
     expected_move_pct,
     expected_move_source,
-    expected_move_band:
-      expected_move_pct != null && input.pack.positioning.spot != null
-        ? {
-            spot: input.pack.positioning.spot,
-            up: Number(
-              (input.pack.positioning.spot * (1 + expected_move_pct / 100)).toFixed(2)
-            ),
-            down: Number(
-              (input.pack.positioning.spot * (1 - expected_move_pct / 100)).toFixed(2)
-            ),
-          }
-        : null,
+    // `spot` (not `input.pack.positioning.spot`) — see `buildExpectedMoveBand`'s doc comment.
+    // `spot` already falls back to Thermal's own read when the pack's GEX-positioning fetch came
+    // back empty; the band must use the SAME resolved value every other field on this card does.
+    expected_move_band: buildExpectedMoveBand({ spot, expectedMovePct: expected_move_pct }),
     financials: buildMeridianFinancialsContext(fundamentals, spot),
     flow_into_print: {
       available: top_flows.length > 0,
@@ -386,24 +419,8 @@ export async function loadMeridianEarningsIntel(input: {
       horizon: vectorFullState?.horizon ?? "weekly",
       spot: vectorFullState?.spot ?? spot,
       expiry: vectorEm?.expiry ?? null,
-      move_pct:
-        vector_move_pct ??
-        (vectorFullState?.expectedMove?.movePct != null &&
-        Number.isFinite(vectorFullState.expectedMove.movePct)
-          ? Number((vectorFullState.expectedMove.movePct * 100).toFixed(1))
-          : null),
-      bands:
-        vectorEm?.bands?.map((b) => ({
-          sigma: b.sigma,
-          low: Number(b.low.toFixed(2)),
-          high: Number(b.high.toFixed(2)),
-        })) ??
-        vectorFullState?.expectedMove?.bands?.map((b) => ({
-          sigma: b.sigma,
-          low: Number(b.low.toFixed(2)),
-          high: Number(b.high.toFixed(2)),
-        })) ??
-        null,
+      move_pct: vectorDeskMove.move_pct,
+      bands: vectorDeskMove.bands,
       regime: vectorFullState?.regime?.posture,
       gexWalls: vectorFullState?.gexWalls,
       gammaFlip: vectorFullState?.gammaFlip,

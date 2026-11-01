@@ -3,8 +3,9 @@ import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
 import { evaluateMtfHybrid, keyLevelForDirection } from "@/features/spx/lib/spx-play-mtf";
 import { playMinConfirmationsRequired, playStructureProximityPts } from "@/features/spx/lib/spx-play-config";
-// Canonical news-sentiment patterns live in spx-play-conflicts to avoid duplication.
-import { BEAR_NEWS, BULL_NEWS } from "@/features/spx/lib/spx-play-conflicts";
+// Canonical news-sentiment patterns (+ their negation-aware matchers) live in
+// spx-play-conflicts.ts to avoid duplication — see that file's BUG FIX (2026-11-01) comment.
+import { matchesBearNews, matchesBullNews } from "@/features/spx/lib/spx-play-conflicts";
 
 export type PlayConfirmationCheck = {
   label: string;
@@ -20,17 +21,36 @@ export type PlayConfirmationResult = {
   checks: PlayConfirmationCheck[];
 };
 
-function newsSentiment(headlines: SpxDeskPayload["news_headlines"]): "bullish" | "bearish" | "neutral" {
+type NewsHeadline = SpxDeskPayload["news_headlines"][number];
+
+type NewsSentimentResult = {
+  sentiment: "bullish" | "bearish" | "neutral";
+  /** The headline(s) that actually tripped BULL_NEWS/BEAR_NEWS — i.e. the real evidence
+   *  behind `sentiment`, as opposed to whatever happens to sit first in the raw feed. */
+  matched: NewsHeadline[];
+};
+
+function newsSentiment(headlines: SpxDeskPayload["news_headlines"]): NewsSentimentResult {
   let bull = 0;
   let bear = 0;
+  const bullMatches: NewsHeadline[] = [];
+  const bearMatches: NewsHeadline[] = [];
   for (const h of headlines.slice(0, 5)) {
     const t = h.title ?? "";
-    if (BEAR_NEWS.test(t)) bear += 1;
-    if (BULL_NEWS.test(t)) bull += 1;
+    if (matchesBearNews(t)) {
+      bear += 1;
+      bearMatches.push(h);
+    }
+    if (matchesBullNews(t)) {
+      bull += 1;
+      bullMatches.push(h);
+    }
   }
-  if (bear > bull) return "bearish";
-  if (bull > bear) return "bullish";
-  return "neutral";
+  if (bear > bull) return { sentiment: "bearish", matched: bearMatches };
+  if (bull > bear) return { sentiment: "bullish", matched: bullMatches };
+  // Neutral covers both "nothing matched" and a genuine bull==bear>0 tie — in the tie case
+  // cite whichever headlines actually matched (either side) rather than an unrelated one.
+  return { sentiment: "neutral", matched: [...bullMatches, ...bearMatches] };
 }
 
 function nearLevel(price: number, level: number | null, pts = playStructureProximityPts()): boolean {
@@ -256,6 +276,14 @@ export function evaluatePlayConfirmations(
   // TICK thresholds: ±400 is a meaningful signal threshold — NYSE TICK routinely
   // fluctuates ±300 on normal days, so ±800 was nearly always passing and added
   // no real filter. ±400 blocks entries when breadth is genuinely opposed.
+  //
+  // BUG FIX (2026-11-01): same root cause as spx-signals.ts's computeSpxConfluence TICK/TRIN/ADD
+  // factors (see that file's BUG FIX comment on the sibling fix) — `desk.tick` can be a
+  // breadth-derived proxy substituted for a missing real Polygon I:TICK print
+  // (`desk.internals_estimated.tick`), and this "Internals" confirmation check rendered it as
+  // "TICK +176" with no disclosure. Unlike the scored factors, this check IS member-rendered
+  // (SpxDeskTerminal.tsx/SpxTradeAlerts.tsx read `confirmations.checks[].detail` directly), so
+  // the same truth-mandate gap applies here too.
   const tickOk =
     desk.tick == null ||
     (direction === "long" ? desk.tick > -400 : desk.tick < 400);
@@ -263,20 +291,27 @@ export function evaluatePlayConfirmations(
     label: "Internals",
     required: false,
     passed: tickOk,
-    detail: desk.tick != null ? `TICK ${desk.tick > 0 ? "+" : ""}${desk.tick.toFixed(0)}` : "TICK n/a",
+    detail:
+      desk.tick != null
+        ? `TICK ${desk.tick > 0 ? "+" : ""}${desk.tick.toFixed(0)}${desk.internals_estimated?.tick ? " — estimated, not live" : ""}`
+        : "TICK n/a",
   });
 
   const news = newsSentiment(desk.news_headlines ?? []);
   const newsOk =
-    news === "neutral" ||
-    (direction === "long" && news === "bullish") ||
-    (direction === "short" && news === "bearish");
-  const topHeadline = desk.news_headlines?.[0]?.title?.slice(0, 80) ?? "none";
+    news.sentiment === "neutral" ||
+    (direction === "long" && news.sentiment === "bullish") ||
+    (direction === "short" && news.sentiment === "bearish");
+  // Cite the headline(s) that actually matched BULL_NEWS/BEAR_NEWS — NOT news_headlines[0]
+  // unconditionally. The feed is not sorted by relevance, so the first headline is frequently
+  // an unrelated single-stock note (e.g. a ticker whose name happens to contain "SPX") that
+  // played no part in the bullish/bearish verdict above it quotes as if it were the evidence.
+  const topHeadline = news.matched[0]?.title?.slice(0, 80) ?? "none";
   checks.push({
     label: "News catalyst",
     required: false,
     passed: newsOk,
-    detail: newsOk ? `News ${news} · ${topHeadline}` : `News opposes ${direction}: ${topHeadline}`,
+    detail: newsOk ? `News ${news.sentiment} · ${topHeadline}` : `News opposes ${direction}: ${topHeadline}`,
   });
 
   const price = desk.price;

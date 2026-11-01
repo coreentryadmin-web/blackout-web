@@ -255,6 +255,97 @@ export function fitGroupGreekFlowToolResultForModel(input: {
   return envelope as unknown as GroupGreekFlowToolResult;
 }
 
+// ============ get_options_flow (non-SPX, per-ticker branch) ============
+// MEASURED TRUNCATED live 2026-10-17 (CloudWatch /ecs/blackout-production, `[largo] tools:`
+// log line): `get_options_flow 418ms TRUNCATED 33210/16000` — less than half the tool's own
+// serialized answer survived the transport's raw tail-cut. Root cause is the same shape as
+// every other fix in this file: the per-ticker branch of `get_options_flow` (run-tool.ts)
+// returns TWO independently-sized raw row arrays — `flow_alerts` (up to 50 UW flow-alert rows)
+// and `flow_recent` (up to 100 recent-trade rows) — neither budget-checked, so a single
+// moderately-active ticker's raw UW pages alone exceed the 16k cap before the model ever sees
+// the aggregates (`alert_premium`, `bias`, `strike_stacks`) that are this tool's actual answer.
+// Fix follows this file's established shape: aggregates/metadata first (so a future cap hit
+// eats the row sample, never the answer), both row fields budget-fit via `fitRowsToBudget`
+// sequentially against the SAME running base object (so the combined serialized size — not
+// either array's size alone — is what gets measured against the cap), each with its own honest
+// shown/truncated/total trio. The SPX branch of this same tool (spx_sniper_desk source, a
+// separate code path in run-tool.ts) is NOT touched here — its `flow_alerts`/`unified_tape`
+// come from the live desk object and `unified_tape` is already row-capped at 20; it was not the
+// measured truncation and widening this fix to cover it on no measured evidence would repeat
+// the exact mistake fitMarketOiChangeForModel's own comment above documents (a fix sized to a
+// guess, not evidence) — tracked as a follow-up to verify separately, not fixed speculatively.
+export interface OptionsFlowFittedResult {
+  ticker: string;
+  source: string;
+  note: string;
+  window_hours: number | null;
+  helix_session_alerts: number;
+  intraday_0dte: unknown;
+  alert_premium: { calls: number; puts: number; net: number };
+  bias: string;
+  strike_stacks: unknown;
+  flow_alerts?: Record<string, unknown>[];
+  flow_alerts_shown: number;
+  flow_alerts_total: number;
+  flow_alerts_truncated: boolean;
+  flow_recent?: Record<string, unknown>[];
+  flow_recent_shown: number;
+  flow_recent_total: number;
+  flow_recent_truncated: boolean;
+}
+
+export function fitOptionsFlowForModel(
+  input: {
+    ticker: string;
+    source: string;
+    note: string;
+    window_hours: number | null;
+    helix_session_alerts: number;
+    intraday_0dte: unknown;
+    alert_premium: { calls: number; puts: number; net: number };
+    bias: string;
+    strike_stacks: unknown;
+    flow_alerts: Record<string, unknown>[];
+    flow_recent: Record<string, unknown>[];
+  },
+  maxEach = 30
+): OptionsFlowFittedResult {
+  // Aggregates + metadata FIRST — the tool's actual answer — so the row samples are what a
+  // future cap hit eats, never these fields. Measured against the budget below via the running
+  // `base` object, so `strike_stacks` (the costliest metadata field) is already accounted for
+  // before either row array gets a single entry.
+  const base: Record<string, unknown> = {
+    ticker: input.ticker,
+    source: input.source,
+    note: input.note,
+    window_hours: input.window_hours,
+    helix_session_alerts: input.helix_session_alerts,
+    intraday_0dte: input.intraday_0dte,
+    alert_premium: input.alert_premium,
+    bias: input.bias,
+    strike_stacks: input.strike_stacks,
+  };
+
+  const alertsFit = fitRowsToBudget(base, "flow_alerts", input.flow_alerts ?? [], { maxRows: maxEach });
+  // flow_recent is fit against base WITH the now-kept flow_alerts already included, so its
+  // budget check measures the true combined size rather than re-spending the same headroom
+  // flow_alerts already used.
+  const baseWithAlerts = { ...base, flow_alerts: alertsFit.kept };
+  const recentFit = fitRowsToBudget(baseWithAlerts, "flow_recent", input.flow_recent ?? [], { maxRows: maxEach });
+
+  return {
+    ...base,
+    flow_alerts: alertsFit.kept.length > 0 ? alertsFit.kept : undefined,
+    flow_alerts_shown: alertsFit.kept.length,
+    flow_alerts_total: alertsFit.total,
+    flow_alerts_truncated: alertsFit.total > alertsFit.kept.length,
+    flow_recent: recentFit.kept.length > 0 ? recentFit.kept : undefined,
+    flow_recent_shown: recentFit.kept.length,
+    flow_recent_total: recentFit.total,
+    flow_recent_truncated: recentFit.total > recentFit.kept.length,
+  } as OptionsFlowFittedResult;
+}
+
 // ============ get_earnings related_news ============
 // MEASURED TRUNCATED live 2026-08-29 (largo-truncation-probe.mjs, control PROVEN, truncation
 // point reported at `related_news`). `fetchBenzingaEarnings(sym, 15)` returns up to 15 news
@@ -282,7 +373,12 @@ export interface EarningsRelatedNewsFittedResult {
 
 export function fitEarningsRelatedNewsForModel(
   raw: Array<Record<string, unknown>>,
-  maxShown = 5
+  maxShown = 5,
+  /** Sibling fields already decided for this turn's get_earnings envelope (print_history,
+   *  next_report, …) — measured ALONGSIDE related_news so its own truncated flag is honest about
+   *  how much room was actually left, rather than measuring related_news in isolation. Defaults to
+   *  `{}` so every existing caller/test is unaffected. */
+  base: Record<string, unknown> = {}
 ): EarningsRelatedNewsFittedResult {
   const trimmed = (raw ?? []).map((a) => ({
     title: String(a.title ?? ""),
@@ -290,11 +386,114 @@ export function fitEarningsRelatedNewsForModel(
     published: String(a.published ?? ""),
     url: String(a.url ?? ""),
   }));
-  const { kept, total } = fitRowsToBudget({}, "related_news", trimmed, { maxRows: maxShown });
+  const { kept, total } = fitRowsToBudget(base, "related_news", trimmed, { maxRows: maxShown });
   return {
     related_news: kept,
     related_news_shown: kept.length,
     related_news_truncated: total > kept.length,
     related_news_max_shown: maxShown,
+  };
+}
+
+// ============ get_earnings unusual_whales (UW raw quarterly earnings history) ============
+// MEASURED live 2026-10-17 (this session's CloudWatch sweep found `get_earnings` TRUNCATED at
+// 83506/16000 and 90305/16000 chars — both the related_news fix above and the budget this file's
+// own header documents were already shipped, so neither explains an overflow of that size).
+// Root cause: `fetchUwEarnings(sym)` (unusual-whales.ts) returns EVERY quarter UW has on file with
+// no slice/limit at all — unlike every sibling UW fetcher in that file (fetchUwScreenerStocks,
+// fetchUwUnusualTrades, fetchUwOptionContractFlow all cap their own result). Measured live against
+// the real endpoint: NVDA 107 rows / ~70.6KB, AAPL ~80.9KB, TSLA ~47.5KB — several times the
+// entire 16k transport cap on this ONE field alone, merged into get_earnings's envelope completely
+// unfit (`unusual_whales: uw` in run-tool.ts). This data is also the LOWEST-value earnings source
+// per get_earnings's own precedence comment ("the structured feed is primary... the news channel
+// is not") — it exists only as a last-resort `source` label when Benzinga structured+news are both
+// empty, and print_history (Benzinga, reaction-aware, already capped to 6) already covers the
+// model's real need for historical prints. Fit it like every other list field in this module.
+export interface EarningsUwHistoryFittedResult {
+  unusual_whales: Array<Record<string, unknown>>;
+  unusual_whales_shown: number;
+  unusual_whales_truncated: boolean;
+}
+
+export function fitEarningsUwHistoryForModel(
+  base: Record<string, unknown>,
+  raw: Array<Record<string, unknown>>,
+  maxShown = 8
+): EarningsUwHistoryFittedResult {
+  const { kept, total } = fitRowsToBudget(base, "unusual_whales", raw ?? [], { maxRows: maxShown });
+  return {
+    unusual_whales: kept,
+    unusual_whales_shown: kept.length,
+    unusual_whales_truncated: total > kept.length,
+  };
+}
+
+// ============ get_earnings estimates (UW forward consensus) ============
+// MEASURED live 2026-10-17: `fetchUwEarningsEstimates(sym)` → `extractRows(data)` cannot unwrap
+// UW's `{ ticker, estimates: [...] }` response shape (the "estimates" key isn't in extractRows's
+// recognized-wrapper list), so it falls through to extractRows's single-row fallback and returns
+// the ENTIRE response as one opaque row. Measured consistently ~16KB regardless of ticker (NVDA
+// 15.96KB, AAPL 16.07KB, TSLA 16.01KB, META 16.05KB, GOOG 16.12KB) — already over this module's
+// own budget before anything else in get_earnings is counted, and merged in (`estimates`)
+// completely unfit. Since it is one indivisible row (not a flat list this module can shorten),
+// fitting it can only ever be all-or-nothing — but that is still real protection: if the fields
+// decided before it have already consumed the budget, this drops the whole thing with an honest
+// `estimates_truncated: true` instead of silently blowing the transport cap.
+export interface EarningsEstimatesFittedResult {
+  estimates: Array<Record<string, unknown>>;
+  estimates_shown: number;
+  estimates_truncated: boolean;
+}
+
+export function fitEarningsEstimatesForModel(
+  base: Record<string, unknown>,
+  raw: Array<Record<string, unknown>>
+): EarningsEstimatesFittedResult {
+  const { kept, total } = fitRowsToBudget(base, "estimates", raw ?? []);
+  return {
+    estimates: kept,
+    estimates_shown: kept.length,
+    estimates_truncated: total > kept.length,
+  };
+}
+
+// ============ get_etf_flow in_outflow / etf_tide ============
+// MEASURED TRUNCATED live 2026-10-17 (`get_etf_flow TRUNCATED 224052/16000`). Both
+// `fetchUwEtfInOutflow` and `fetchUwEtfTide` (unusual-whales.ts) pass the raw UW response straight
+// through via `uwGetSafe<unknown>` with no row limit of any kind, and `get_etf_flow` (run-tool.ts)
+// merged both in with zero fitting. Measured live against the real endpoints: `in-outflow` carries
+// ~721 DAILY rows (years of history, ~144 bytes/row, up to 225KB for IWM) and `etf-tide` carries
+// ~390 INTRADAY ticks for a single session (~150 bytes/row, 58-70KB) — a trader asking about ETF
+// flow needs a recent window of either, not the full history.
+//
+// THE TWO SERIES SORT IN OPPOSITE DIRECTIONS — verified live, not assumed: `in-outflow` is
+// newest-first (today, yesterday, ...), `etf-tide` is oldest-first (market open -> now), because
+// one is a daily history and the other is today's own intraday walk. Naively keeping "the first N"
+// of both would silently show the STALEST slice of the one series the model most wants the LATEST
+// reading from (today's tide), so this function reverses an oldest-first series before fitting —
+// "most recent" always means the same thing to the caller regardless of which way UW sorted it.
+export interface EtfSeriesFittedResult {
+  data?: Array<Record<string, unknown>>;
+  data_shown: number;
+  data_total: number;
+  data_truncated: boolean;
+}
+
+export function fitEtfSeriesForModel(
+  raw: unknown,
+  base: Record<string, unknown>,
+  { maxShown = 30, newestFirst = true }: { maxShown?: number; newestFirst?: boolean } = {}
+): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return (raw ?? {}) as Record<string, unknown>;
+  const { data, ...rest } = raw as Record<string, unknown> & { data?: unknown };
+  const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+  const ordered = newestFirst ? rows : [...rows].reverse();
+  const { kept, total } = fitRowsToBudget({ ...base, ...rest }, "data", ordered, { maxRows: maxShown });
+  return {
+    ...rest,
+    data: kept.length > 0 ? kept : undefined,
+    data_shown: kept.length,
+    data_total: total,
+    data_truncated: total > kept.length,
   };
 }

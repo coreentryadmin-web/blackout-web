@@ -42,3 +42,21 @@ test("static overlay universe stays within its cron budget", () => {
   );
   assert.equal(new Set(universe).size, universe.length, "no duplicate tickers");
 });
+
+/**
+ * `vectorWarmTickers()` was removed (zero callers repo-wide) — it was a bare passthrough to
+ * `vectorUniverseTickers()`, superseded by `listSharedUniverseTickers()` (static ∪ dynamic
+ * ≤100/14d), which is what `heatmap-warm`/`vector-walls-warm` and the Vector recorder actually
+ * call. Guard against silently reintroducing it as a dead alias again: if the warm batch ever
+ * needs the STATIC-only subset back, wire it to a real caller in the same change, don't restore
+ * an unused export.
+ */
+test("vectorWarmTickers stays removed (static-only subset has no real caller)", async () => {
+  const mod = (await import("./heatmap-allowlist.ts")) as Record<string, unknown>;
+  assert.equal(
+    mod.vectorWarmTickers,
+    undefined,
+    "vectorWarmTickers was removed as dead code — if reintroducing it, wire it to a real " +
+      "caller in the same PR rather than restoring an unused export."
+  );
+});

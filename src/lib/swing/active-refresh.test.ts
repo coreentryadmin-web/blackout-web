@@ -81,6 +81,29 @@ test("planManageSync: edge rung stays evidence-only (enforced:false)", () => {
   assert.equal(plan.snapshot.thesis_state, "WATCH");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-25): `reads = {}` (no mark, no underlyingPrice, no
+// DTE, no advisory reads — the total-outage case, e.g. a provider fetch failure this tick) makes
+// NOTHING evaluable, so manage.ts's own `evaluateSwingManagement` returns rung:"insufficient_data"
+// with reason "no usable management read — holding (null-honesty)" — manage.ts's own doc is explicit
+// that this is a HOLLOW read, not a confident HOLD. But `thesisStateOf` (manage-sync.ts) collapsed
+// BOTH "hold" (a real check that ran and found nothing) AND "insufficient_data" (no check ran at all)
+// onto the SAME "INTACT" tag. live-plays.ts's 2026-10-15 fix explicitly trusts thesis_state:"INTACT"
+// to override a cruder spot-only "break" read back to "intact" (see its own doc comment: scoped to
+// "the one state manage-sync.ts stamps specifically to mean the real structural/thesis check ran and
+// did NOT find a break") — so a stale/outage tick with ZERO evidence either way would silently mask a
+// real, live-detected structural break from the member. `insufficient_data` must NOT produce the same
+// tag as a genuine passed check.
+test("planManageSync: total data outage (insufficient_data) must NOT be tagged the same as a real passed check (INTACT)", () => {
+  const reads: ManageSyncReads = {};
+  const plan = planManageSync(positionRow(), reads, { snapshotKind: "eod" });
+  assert.equal(plan.verdict.rung, "insufficient_data");
+  assert.notEqual(
+    plan.snapshot.thesis_state,
+    "INTACT",
+    "a total data outage must never be stamped identically to a real, evaluated 'thesis intact' read",
+  );
+});
+
 test("runSwingActiveRefresh: APPEND-ONLY snapshots, live-state latched, NEVER commits/closes", async () => {
   const snapshots: SwingSnapshotInsert[] = [];
   const liveStates: Array<{ id: number; status: string }> = [];
@@ -284,6 +307,41 @@ test("planManageSync: UN-GRADUATED (advisory) TAKE_PARTIAL must NOT latch TRIM, 
   assert.equal(nextTick.verdict.enforced, true, "premium_stop is a GATING rung — always enforced");
 });
 
+// Live-found 2026-09-15 (escalated on #4076, comment 5677726561): latchSwingLiveStatus latched TRIM
+// off `verdict.enforced && (action === TAKE_PARTIAL || EXIT_RUNNER)` alone, without checking WHICH
+// rung fired. An ENFORCED edge rung unrelated to premium (e.g. regime_shift) also returns
+// TAKE_PARTIAL, so it latched TRIM exactly like a real profit_ladder partial — permanently
+// disabling the −60% premium_stop hard stop via scaledAlready even though nothing was ever sold.
+test("planManageSync: an ENFORCED non-premium edge rung (regime_shift) TAKE_PARTIAL must NOT latch TRIM, and the hard stop must stay live next tick", () => {
+  const regimeShiftPartial = planManageSync(
+    positionRow({ status: "OPEN" }),
+    { underlyingPrice: 152, dte: 21, regimeShift: true, graduatedRungs: ["regime_shift"] },
+    { snapshotKind: "eod" },
+  );
+  assert.equal(regimeShiftPartial.verdict.action, "TAKE_PARTIAL");
+  assert.equal(regimeShiftPartial.verdict.rung, "regime_shift");
+  assert.equal(regimeShiftPartial.verdict.enforced, true, "regime_shift is graduated → enforced");
+  assert.equal(
+    regimeShiftPartial.liveState.status,
+    "OPEN",
+    "an enforced but non-premium edge rung must not latch TRIM — nothing was actually scaled",
+  );
+
+  // Next tick: status is still not TRIM, so scaledAlready must derive false and a hard-stop-level
+  // mark must still STOP_OUT.
+  const nextTick = planManageSync(
+    positionRow({ status: regimeShiftPartial.liveState.status, entry_premium: 4, peak_premium: 4 }),
+    { underlyingPrice: 152, dte: 21, mark: 1.6 }, // 0.4× entry = −60%, the hard-stop trigger
+    { snapshotKind: "eod" },
+  );
+  assert.equal(
+    nextTick.verdict.action,
+    "STOP_OUT",
+    "the −60% premium_stop capital backstop must still fire — regime_shift's TRIM must not have latched",
+  );
+  assert.equal(nextTick.verdict.rung, "premium_stop");
+});
+
 test("planManageSync: thesisProgress01 + sessionsHeld can fire time_stop when stagnant", () => {
   const plan = planManageSync(
     positionRow({ status: "OPEN", entry_premium: 4, sub_lane: "STANDARD" }),
@@ -355,4 +413,82 @@ test("planManageSync: NO quote read → NO `quote` key at all (absent ≠ presen
     { snapshotKind: "eod" },
   );
   assert.equal("quote" in (plan.snapshot.event_json ?? {}), false);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-25): syncSwingManagement's roll-execution branch
+// re-arbitrates the verdict at execution time via executionVerdictForGating (Q37 — "a concurrent
+// pass or slow chain fetch can leave a ROLL plan built while the structural stop has since
+// broken"), but used to hand the roll executor `plan.snapshot` — built from the PRE-arbitration
+// verdict — unchanged. So when Q37 flips the outcome (e.g. a ROLL becomes a CLOSE), the persisted
+// append-only evidence snapshot (event_json.rung/action/reason/roll_intent, thesis_state) would
+// document the verdict the system did NOT actually act on. This fixture demonstrates the
+// divergence mechanism directly supported by ManageSyncReads.structuralStopLevel (a live-override
+// seam the type already exposes): the primary verdict's structural check uses
+// `reads.structuralStopLevel ?? row.thesis_invalidation_px` (a loose 100, here) while Q37's
+// re-check uses `row.thesis_invalidation_px` directly (a tighter 145) — so the primary verdict
+// legitimately reaches expiry_risk/ROLL while Q37 independently finds a structural break at the
+// ledger-pinned level and forces CLOSE. The persisted snapshot must document CLOSE/structural_stop
+// (what was actually acted on), never the stale expiry_risk/ROLL verdict it was first built from.
+test("runSwingActiveRefresh: a Q37 roll-execution override is reflected in the persisted snapshot, not the stale pre-arbitration verdict", async () => {
+  const row = positionRow({
+    id: 7,
+    sub_lane: "TACTICAL", // expiryRiskDte:1, migrationDte:3 — both inside this fixture's dte:1
+    thesis_invalidation_px: 145, // the ledger-pinned level Q37 checks directly
+    entry_premium: 5,
+    peak_premium: 5,
+  });
+  const reads: ManageSyncReads = {
+    underlyingPrice: 140, // holds the LIVE/loose stop (100) but breaches the ledger-pinned one (145)
+    structuralStopLevel: 100, // the live-override seam — looser than the ledger-pinned 145
+    dte: 1,
+    mark: 3, // decaying (3/5 < 1) with no thesisProgress01 → theta-outpacing-thesis → rollIntent.roll
+  };
+
+  const gradeCalls: Array<{ id: number; status: string }> = [];
+  const childInserts: unknown[] = [];
+  const snapshots: SwingSnapshotInsert[] = [];
+
+  const res = await runSwingActiveRefresh({
+    fetchOpen: async () => [row],
+    loadReads: async () => reads,
+    insertSnapshot: async (s) => {
+      snapshots.push(s);
+      return snapshots.length;
+    },
+    updateLiveState: async () => 1,
+    gradeParent: async (id, g) => {
+      gradeCalls.push({ id, status: g.status });
+    },
+    insertChild: async (pos) => {
+      childInserts.push(pos);
+      return 900;
+    },
+    buildRollPlan: async () => ({
+      parentGrade: { grade_json: { thesis: "CONFIRMED" }, grade_methodology: "swing-multitruth-v1" },
+      childSpec: {
+        commit_key: "SWING:NVDA:long:2026-08-15:roll1",
+        session_date: "2026-07-24",
+        ticker: "NVDA",
+        direction: "long",
+        sub_lane: "STANDARD",
+        contract_strike: 130,
+        contract_expiry: "2026-08-15",
+        contract_type: "call",
+        entry_premium: 4.2,
+      },
+    }),
+  });
+
+  assert.equal(res.errored, 0);
+  assert.equal(gradeCalls.length, 1);
+  assert.equal(gradeCalls[0].status, "CLOSED", "Q37 must force CLOSE (structural break at the ledger-pinned level), not ROLL");
+  assert.equal(childInserts.length, 0, "a CLOSE must never open a child leg");
+  assert.equal(snapshots.length, 1);
+  const persisted = snapshots[0];
+  assert.equal(
+    (persisted.event_json as Record<string, unknown>).rung,
+    "structural_stop",
+    "the persisted snapshot must document the verdict Q37 ACTUALLY acted on (structural_stop/CLOSE), not the stale pre-arbitration expiry_risk/ROLL verdict",
+  );
+  assert.equal(persisted.thesis_state, "BROKEN");
 });

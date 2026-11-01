@@ -455,6 +455,86 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
     assert.equal(swingActionDisplay(base({ horizon: "SWING", status: "SKIP" })), null);
   });
 
+  it("WATCH past its own entry-validity deadline → EXPIRED pill, not generic WAIT (live repro 2026-09-12: MU/AMD sat WATCH 46-49 days past a 2-5 day window with no member-facing distinction from a freshly-forming setup)", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: true,
+        }),
+      ),
+      { label: "EXPIRED", tone: "watch" },
+    );
+  });
+
+  it("WATCH not past deadline still reads as the plain WAIT pill", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: false,
+        }),
+      ),
+      { label: "WAIT", tone: "watch" },
+    );
+  });
+
+  // BUG FIX (2026-10-08, Ask Largo standing mandate, live repro NTAP 2026-10-08): setupState
+  // EXTENDED / entryStatus EXTENDED_CHASE is a DIFFERENT dead-reason than the calendar-deadline
+  // `watchEntryExpired` case above (price moved too far past the trigger to enter cleanly, not a
+  // calendar deadline) but previously fell through to the identical generic "WAIT" pill — the
+  // same member-facing ambiguity the EXPIRED fix above exists to prevent. entry-enterability.ts's
+  // `deadPlayReason` (the broader check play-brief.ts/entry-verdict.ts/serving.ts already use for
+  // this exact play) treats both as dead; this pill must distinguish them from a live WAIT.
+  it("WATCH with setupState EXTENDED → EXTENDED pill, not generic WAIT", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: false,
+          setupState: "EXTENDED",
+        }),
+      ),
+      { label: "EXTENDED", tone: "watch" },
+    );
+  });
+
+  it("WATCH with entryStatus EXTENDED_CHASE → EXTENDED pill, not generic WAIT (live repro: NTAP, entryStatus EXTENDED_CHASE, watchEntryExpired false)", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: false,
+          entryStatus: "EXTENDED_CHASE",
+        }),
+      ),
+      { label: "EXTENDED", tone: "watch" },
+    );
+  });
+
+  it("calendar-deadline EXPIRED still wins over EXTENDED when both happen to be set (EXPIRED check runs first)", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: true,
+          entryStatus: "EXTENDED_CHASE",
+        }),
+      ),
+      { label: "EXPIRED", tone: "watch" },
+    );
+  });
+
   it("live OPEN with swingEntryAction still_buy → STILL BUY pill (not HOLD)", () => {
     assert.deepEqual(
       swingActionDisplay(
@@ -487,6 +567,140 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
     );
   });
 
+  // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro CRWD #39): manage.ts's
+  // TAKE_PARTIAL/EXIT_RUNNER actions come from MULTIPLE independent rungs, but only
+  // "profit_ladder" actually fires off exitPolicy.trim_levels. catalyst_shift/regime_shift/
+  // flow_decay/rel_strength_loss/vol_collapse are evidence-only advisories unrelated to the
+  // ladder's own trigger_pct — citing it in the label falsely implies the ladder itself fired.
+  it("TRIM recommendation driven by an unrelated advisory rung (catalyst_shift) does NOT borrow the ladder's trigger_pct", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "catalyst_shift",
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM", tone: "active" },
+      "must never show a ladder trigger_pct that has nothing to do with why TRIM was recommended",
+    );
+  });
+
+  it("TRIM recommendation genuinely driven by the profit ladder still cites its trigger_pct", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "profit_ladder",
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 100%", tone: "active" },
+    );
+  });
+
+  it("TRIM recommendation with no manageReason (row has no live manage tick yet) keeps the pre-existing ladder-citing behavior", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 100%", tone: "active" },
+    );
+  });
+
+  // BUG FIX (2026-11-01, Ask Largo x Night Hawk Swings standing mandate, live repro MRNA
+  // SWING:MRNA, positionId 68, OPEN/HOLD): neither TRIM branch above ever read `manageEnforced` —
+  // manage.ts's edge rungs (profit_ladder included) stay `enforced:false` until that specific
+  // rung graduates the PR-16 calibration ladder (n>=10, delta>=15pt). Before this fix, an
+  // un-graduated TRIM rendered with the IDENTICAL `tone: "active"` and a bare "TRIM {pct}%" label
+  // as a graduated, system-acted one — and this exact label feeds `swingVerdictVerb()`
+  // (play-brief.ts), so the same un-qualified string also became the envelope headline, the
+  // Verdict section's opening line, and `thesis`. The brief's own Management-section line
+  // (play-brief.ts's managementSection, several sections lower) already discloses "Advisory
+  // only... the system itself is not acting on it" whenever `manageEnforced === false`, but a
+  // member reading only the headline/pill had no way to tell. Live repro confirmed
+  // `manageReason: "profit_ladder"`, `manageEnforced: false` — the ladder rung fired on
+  // percentage terms but hasn't graduated, so even the "genuinely ladder-driven" branch
+  // (the test above) must still disclose the advisory-only state. Only an explicit `false`
+  // downgrades (tri-state field) — `null`/`undefined` (no live manage tick, or an older
+  // snapshot shape) must keep the pre-existing "active"/un-qualified behavior, same discipline
+  // the ladderDriven check two tests up already requires for the same reason.
+  it("TRIM recommendation that hasn't graduated enforcement (manageEnforced:false) is marked advisory — never the same tone/label as a hard, acted-on trim", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "profit_ladder",
+          manageEnforced: false,
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 100% (ADV)", tone: "watch" },
+      "an un-graduated edge rung must disclose it is advisory-only, not render identically to a hard trim",
+    );
+  });
+
+  it("TRIM recommendation driven by an unrelated advisory rung (catalyst_shift) AND un-graduated also discloses advisory", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "catalyst_shift",
+          manageEnforced: false,
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM (ADV)", tone: "watch" },
+    );
+  });
+
+  it("TRIM recommendation that HAS graduated enforcement (manageEnforced:true) keeps the hard, active label unchanged", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "profit_ladder",
+          manageEnforced: true,
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 100%", tone: "active" },
+    );
+  });
+
   it("live OPEN swing uses HOLD when not enterable", () => {
     assert.deepEqual(
       swingActionDisplay(base({ horizon: "SWING", status: "OPEN", recommendation: "HOLD" })),
@@ -498,11 +712,48 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
     );
   });
 
-  it("CLOSED swing maps closedReason to TARGET/STOPPED", () => {
+  it("CLOSED swing maps closedReason to TARGET/STOPPED only when trimEnforcedBeforeClose confirms it (Ask Largo mandate, 2026-11-01, live repro PANW:67)", () => {
+    // closedReasonFromRow (closed-plays.ts) derives "target" purely from the SIGN of
+    // realized_pnl_pct — a manual close, time-stop, or thesis-break exit taken while still green
+    // lands here identically to a genuine ladder/target-rail exit. Only trimEnforcedBeforeClose
+    // (frozen at grade time) tells the two apart, so the TARGET pill must gate on it rather than
+    // on closedReason alone.
     assert.deepEqual(
-      swingActionDisplay(base({ horizon: "SWING", status: "CLOSED", closedReason: "target" })),
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "CLOSED",
+          closedReason: "target",
+          trimEnforcedBeforeClose: true,
+        }),
+      ),
       { label: "TARGET", tone: "closed" },
     );
+    // Live repro shape: closed positive (closedReason "target"), but the ladder's own +100%
+    // trigger never armed (trimEnforcedBeforeClose: false) — falls through to the honest generic
+    // CLOSED pill (playStatusDisplay) rather than claim a mechanical exit that never happened.
+    assert.equal(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "CLOSED",
+          closedReason: "target",
+          trimEnforcedBeforeClose: false,
+        }),
+      ),
+      null,
+    );
+    // Rows graded before this field existed (null/absent) must NOT be treated as confirmed either
+    // — honest absence, never fabricated confirmation.
+    assert.equal(
+      swingActionDisplay(
+        base({ horizon: "SWING", status: "CLOSED", closedReason: "target" }),
+      ),
+      null,
+    );
+    // "stopped" is untouched by this gate — out of scope for this fix (see its own hedged
+    // "Stop fired — check if..." coaching, which never asserts a mechanism, unlike "target"'s old
+    // unconditional "the ladder did its job" claim).
     assert.deepEqual(
       swingActionDisplay(base({ horizon: "SWING", status: "CLOSED", closedReason: "stopped" })),
       { label: "STOPPED", tone: "closed" },
@@ -548,5 +799,20 @@ describe("closedCapturePct — honest post-trade attribution (2026-08-29)", () =
       base({ status: "CLOSED", exitPnlPct: null, pnlPct: null, closedReason: "stopped", peak: 60 }),
     );
     assert.ok(pct != null, "expected a real number, not null, once closedRealizedPct has a stop-blend fallback");
+  });
+
+  it("a round-trip past breakeven into a realized loss → null, never a sign-flipped blowup ratio", () => {
+    // Reproduces a real production render: peak +1.4%, realized -56.2% → naive ratio math gives
+    // "captured -4014% of peak", a number with no honest reading. Mirrors the same guard already
+    // shipped in mfe-capture.ts's mfeCaptureOutcome and zerodte-service.ts's mfeCapturePct.
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: -56.2, peak: 1.4 })),
+      null,
+    );
+    // A small negative realized still nulls out even against a large peak.
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: -0.5, peak: 90 })),
+      null,
+    );
   });
 });

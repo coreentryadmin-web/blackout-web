@@ -19,7 +19,9 @@ test("buildVectorPickEvidence: includes strike, flow, positioning, technicals wh
     regimePosture: "long",
     technicals: { vwap: 576.5, emaStack: "up", rsi: 55, macd: "bull" },
     platformInputs: {
-      sessionFlows: [{ option_type: "call", premium: 2_600_000, strike: 575, expiry: "2026-08-28" }],
+      sessionFlows: [
+        { option_type: "call", premium: 2_600_000, strike: 575, expiry: "2026-08-28", ask_pct: 85 },
+      ],
       darkPoolLevels: [{ strike: 575, premium: 1_000_000, pct: 18 }],
     },
     confluenceZones: [{ center: 575, low: 574, high: 576, score: 8.5, kinds: ["call-wall", "max-pain"], levels: [] }],
@@ -77,6 +79,72 @@ test("buildVectorPickEvidence: includes Thermal GEX and catalyst sections when g
 
   const cat = sections.find((s) => s.id === "catalyst");
   assert.ok(cat?.items.some((i) => i.label === "Earnings"));
+});
+
+test("buildVectorPickEvidence: a SOLD call at the strike is bearish flow, not confirming evidence for a bought call pick", () => {
+  // ask_pct 8 => seller-initiated (ASK_SIDE_SOLD_PCT=40 floor) => a SOLD call => bearish, per
+  // flowDirection's CALL-sold->bearish rule. The pick's own side is "call" (a long/bought-call
+  // recommendation), so this print must NOT appear under "HELIX flow" as a supporting print —
+  // doing so would show bearish tape as if it confirmed a bullish pick.
+  const sections = buildVectorPickEvidence({
+    side: "call",
+    strike: 575,
+    expiry: "2026-08-28",
+    dte: 2,
+    premium: 12.5,
+    role: "primary-long",
+    targetStrike: 575,
+    spot: 576,
+    callWall: 580,
+    putWall: 570,
+    magnetStrike: 575,
+    gammaFlip: 572,
+    regimePosture: "long",
+    technicals: null,
+    platformInputs: {
+      sessionFlows: [
+        { option_type: "call", premium: 2_600_000, strike: 575, expiry: "2026-08-28", ask_pct: 8 },
+      ],
+      darkPoolLevels: null,
+    },
+    confluenceZones: null,
+    playStarred: [],
+  });
+
+  const flow = sections.find((s) => s.id === "flow");
+  assert.ok(
+    !flow?.items.some((i) => i.label === "Print at strike"),
+    "a sold (bearish) call print must not render as a confirming print-at-strike item for a bought-call pick"
+  );
+
+  // A genuinely bought call (ask_pct 85, bullish) at the same strike DOES confirm the pick and
+  // must still render — proves the fix filters by aggressor direction, not by hiding the section.
+  const confirming = buildVectorPickEvidence({
+    side: "call",
+    strike: 575,
+    expiry: "2026-08-28",
+    dte: 2,
+    premium: 12.5,
+    role: "primary-long",
+    targetStrike: 575,
+    spot: 576,
+    callWall: 580,
+    putWall: 570,
+    magnetStrike: 575,
+    gammaFlip: 572,
+    regimePosture: "long",
+    technicals: null,
+    platformInputs: {
+      sessionFlows: [
+        { option_type: "call", premium: 2_600_000, strike: 575, expiry: "2026-08-28", ask_pct: 85 },
+      ],
+      darkPoolLevels: null,
+    },
+    confluenceZones: null,
+    playStarred: [],
+  });
+  const confirmingFlow = confirming.find((s) => s.id === "flow");
+  assert.ok(confirmingFlow?.items.some((i) => i.label === "Print at strike" && i.value.includes("2.6M")));
 });
 
 test("buildVectorPickEvidence: omits gex/catalyst when not provided", () => {

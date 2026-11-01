@@ -17,9 +17,21 @@
 export async function probeGeometry(page) {
   return page
     .evaluate(() => {
+      /**
+       * Visible to a member — which means checking ANCESTORS, not just the node.
+       *
+       * `opacity` does not inherit as a computed value: a child of an `opacity: 0` parent still
+       * computes `opacity: 1` while being completely invisible, because the parent renders its whole
+       * subtree into a transparent layer. Reading only the node's own opacity therefore calls a
+       * deliberately faded-out subtree visible. `visibility` DOES inherit, but a descendant can
+       * re-assert `visibility: visible` inside a hidden parent, so it is walked for the same reason.
+       */
       const vis = (el) => {
-        const s = getComputedStyle(el);
-        return s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0";
+        for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+          const s = getComputedStyle(n);
+          if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") return false;
+        }
+        return true;
       };
 
       /**
@@ -74,7 +86,17 @@ export async function probeGeometry(page) {
           const s = getComputedStyle(p);
           if (s.overflowX !== "hidden" && s.overflowY !== "hidden") continue;
           const pr = p.getBoundingClientRect();
-          if (pr.width === 0 || pr.height === 0) continue;
+          // A ZERO-SIZE `overflow: hidden` ancestor clips its subtree to nothing. This used to
+          // `continue` past it as if it imposed no constraint, which is backwards — it is the
+          // STRONGEST constraint there is, and it inverted the verdict on the exact pattern used to
+          // collapse a nav brand: `width: 0; overflow: hidden`. The child span keeps its own
+          // unclipped rect (getBoundingClientRect always reports where content WOULD be), so it
+          // scored 1.0 "fully visible" and was reported as colliding with the ☰ button it is in
+          // fact invisible behind. Reproduced live on /heatmap at 430px 2026-09-20 — the
+          // `nav-brand-ios-compact` collapse (`.nav-brand-ios-compact { opacity:0; width:0;
+          // overflow:hidden }`) is the #2129/#2139-era fix working correctly in production; only the
+          // probe was wrong.
+          if (pr.width === 0 || pr.height === 0) return 0;
           if (s.overflowX === "hidden") { l = Math.max(l, pr.left); rt = Math.min(rt, pr.right); }
           if (s.overflowY === "hidden") { t = Math.max(t, pr.top); b = Math.min(b, pr.bottom); }
         }
@@ -173,21 +195,32 @@ export async function probeGeometry(page) {
        */
       const layer = (el) => {
         let fixed = false;
+        let sticky = false;
         let z = 0;
         let floating = false;
         let seen = false;
         for (let p = el; p && p !== document.body; p = p.parentElement) {
           const s = getComputedStyle(p);
           if (s.position === "fixed") fixed = true;
+          // `position: sticky` is the scroll-container-scoped sibling of `fixed`: a sticky
+          // `<thead>` (the GEX/VECTOR matrix rail, the depth ladder, any scrollable table) is
+          // BY CONSTRUCTION meant to paint over whatever scrolls underneath it — same reasoning
+          // as the `fixed` nav bar below, just anchored to a scrollport instead of the viewport.
+          // Reproduced live on /vector 2026-09-20: `VectorOdteMatrixRail`'s `sticky top-0 z-10`
+          // `<thead>` (opaque `bg-[#08080e]`) legitimately overlapped whichever row the mount-time
+          // `resetToSpot()` scroll landed nearest the top — a real, intended sticky-header paint,
+          // not a defect. Without this, every scrollable table with a sticky header falsely fires
+          // "header text over control" the moment a row scrolls near the top, which is every load.
+          if (s.position === "sticky") sticky = true;
           if (s.position === "static") continue;
           if (!seen) {
             const parsed = parseInt(s.zIndex, 10);
             z = Number.isFinite(parsed) ? parsed : 0;
-            floating = s.position === "absolute" || s.position === "fixed";
+            floating = s.position === "absolute" || s.position === "fixed" || s.position === "sticky";
             seen = true;
           }
         }
-        return { z, floating, fixed };
+        return { z, floating, fixed, sticky };
       };
 
       const controls = [...document.querySelectorAll("button, a, input, select, [role=button]")].filter(
@@ -223,6 +256,11 @@ export async function probeGeometry(page) {
           // one a menu item correctly painting over the chart toolbar beneath it.
           const cLayer = layer(c);
           if (tLayer.fixed !== cLayer.fixed) continue;
+          // Same rule as the FIXED test just above, one rung down the stacking hierarchy: a
+          // sticky ancestor and a non-sticky one sharing pixels is a header docking over scrolled
+          // content by design, not two peers fighting for the same space. Only a sticky-vs-sticky
+          // pair (two things BOTH pinned to the same scrollport) is a real defect candidate.
+          if (tLayer.sticky !== cLayer.sticky) continue;
           if (tLayer.floating && !cLayer.floating) continue;
           if (cLayer.floating && !tLayer.floating) continue;
           if (tLayer.floating && cLayer.floating && tLayer.z !== cLayer.z) continue;

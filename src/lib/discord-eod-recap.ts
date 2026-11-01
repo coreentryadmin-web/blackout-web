@@ -45,8 +45,44 @@ export async function claimDiscordEodRecap(
   );
 }
 
+/**
+ * UTC offset (whole hours, negative) America/New_York observes on `sessionDate` — -4 under
+ * EDT, -5 under EST. Read at noon UTC on that calendar date, safely past the 2 AM local DST
+ * transition, so the one date-dependent read never straddles the flip itself.
+ */
+function etUtcOffsetHours(sessionDate: string): number {
+  const noonUtc = new Date(`${sessionDate}T12:00:00.000Z`);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    timeZoneName: "shortOffset",
+  }).formatToParts(noonUtc);
+  const raw = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT-5";
+  const match = raw.match(/GMT([+-]\d+)/);
+  return match ? Number(match[1]) : -5;
+}
+
+/**
+ * 9:30 AM ET in UTC ms for `sessionDate` — DST-correct (was a hardcoded "T13:30:00.000Z",
+ * which is only 9:30 AM ET under EDT; under EST, 9:30 AM ET is 14:30 UTC, so the old
+ * constant read as 8:30 AM ET and let an hour of pre-market flow leak into the EOD
+ * session-recap filter as if it were regular-session activity).
+ */
 function sessionOpenMs(sessionDate: string): number {
-  return Date.parse(`${sessionDate}T13:30:00.000Z`); // 9:30 AM ET (EDT approx; filter is coarse)
+  const offsetHours = etUtcOffsetHours(sessionDate);
+  const utcHour = String(9 - offsetHours).padStart(2, "0");
+  return Date.parse(`${sessionDate}T${utcHour}:30:00.000Z`);
+}
+
+/**
+ * Hours elapsed since 9:30 AM ET on `sessionDate`, as of `now`. Exists so a caller building
+ * the EOD recap can size its own DB fetch window to cover the WHOLE session — a fixed
+ * `since_hours` sized for a 15/30-minute live digest (e.g. 6h) silently excludes the first
+ * ~35-45 minutes of the session by the time the EOD window opens at ~4:04 PM ET (6h34m-6h44m
+ * after a 9:30 open), at the SQL `WHERE` clause, before any in-process session filter ever
+ * sees those rows. Floors at 0 so a call before session open never returns negative.
+ */
+export function hoursSinceSessionOpenEt(sessionDate: string, now = new Date()): number {
+  return Math.max(0, (now.getTime() - sessionOpenMs(sessionDate)) / 3_600_000);
 }
 
 export function filterHelixSessionFlows(

@@ -280,11 +280,54 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
     if (play.swingEntryAction === "still_buy") return { label: "STILL BUY", tone: "watch" };
     if (play.swingEntryAction === "buy") return { label: "BUY", tone: "watch" };
     if (play.recommendation === "BUY") return { label: "BUY", tone: "watch" };
+    // A row past its own entry-validity deadline (entry-model.ts's ENTRY_VALIDITY_DAYS) is dead
+    // for entry purposes — distinct from a setup that simply hasn't triggered yet, which also
+    // falls through to this branch. Both previously rendered the identical generic "WAIT" pill,
+    // so a scanning member couldn't tell a live setup from one that's been stale for weeks
+    // (live repro 2026-09-12: MU/AMD sat WATCH 46-49 days past a 2-5 day window, PR #4076#issuecomment-5646063107).
+    if (play.watchEntryExpired) return { label: "EXPIRED", tone: "watch" };
+    // BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro NTAP): `watchEntryExpired` only
+    // covers the CALENDAR-deadline dead case — entry-enterability.ts's `deadPlayReason` (the
+    // broader, canonical "is this WATCH play already dead" check play-brief.ts/entry-verdict.ts/
+    // serving.ts all already use) also treats `setupState === "EXTENDED"` /
+    // `entryStatus === "EXTENDED_CHASE"` (price moved too far past the trigger to enter cleanly —
+    // a DIFFERENT dead reason than a calendar deadline) as dead. Before this fix, an
+    // extended-past-entry play fell straight through to the generic "WAIT" pill here — the exact
+    // same member-facing symptom the EXPIRED fix above was written to prevent (a scanning member
+    // can't tell a dead setup from one still freshly forming) — even though the SAME play's own
+    // Ask Largo play-brief already narrates "Setup: EXTENDED" / "Entry geometry: EXTENDED_CHASE"
+    // and a top-level "Extended past the valid entry window — do not chase" verdict line, because
+    // `watchEntrySection` (play-brief.ts) sources its "Entry stance" label from THIS function.
+    // Confirmed live 2026-10-08: NTAP (`entryStatus: "EXTENDED_CHASE"`, `watchEntryExpired: false`)
+    // read "Entry stance: WAIT" in the brief and would have shown the same generic WAIT pill on
+    // the Command Deck, indistinguishable from a perfectly live, still-forming WATCH candidate.
+    // A distinct "EXTENDED" label (not reused "EXPIRED", which specifically means the calendar
+    // deadline passed — a different failure mode) keeps the two dead-reasons distinguishable,
+    // matching the taxonomy.ts SwingSetupState/SwingEntryState vocabulary the brief already uses.
+    if (play.setupState === "EXTENDED" || play.entryStatus === "EXTENDED_CHASE") {
+      return { label: "EXTENDED", tone: "watch" };
+    }
     return { label: "WAIT", tone: "watch" };
   }
   if (play.status === "SKIP") return null;
   if (play.status === "CLOSED") {
-    if (play.closedReason === "target") return { label: "TARGET", tone: "closed" };
+    // BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro PANW:67): `closedReason==="target"`
+    // is derived purely from the SIGN of realized_pnl_pct (closedReasonFromRow, closed-plays.ts) —
+    // it has NO reference to whether the single scale-out trim rung (+100% premium gain,
+    // SWING_SCALE_OUT_POLICY) ever actually armed. A manual close, a time-stop, or a thesis-break
+    // exit taken while still green all land on "target" identically to a genuine ladder/target-rail
+    // exit. `trimEnforcedBeforeClose` is the one frozen-at-grade-time fact that actually
+    // distinguishes them (see its own doc comment, types.ts) — PANW:67 closed +10.03% off a peak of
+    // only +96.2% (never crossed the ladder's own +100% trigger) with `trimEnforcedBeforeClose:
+    // false` on the same record, yet this branch unconditionally rendered "TARGET" regardless.
+    // Only cite the mechanical label when the frozen fact confirms it; otherwise fall through to
+    // the generic CLOSED pill (`playStatusDisplay`) rather than claim a ladder exit that may never
+    // have happened — same discipline the 2026-09-18 CRWD fix already established just above for
+    // the OPEN-bucket TRIM badge (only cite the ladder trigger_pct when evidence confirms it's the
+    // actual source).
+    if (play.closedReason === "target") {
+      return play.trimEnforcedBeforeClose === true ? { label: "TARGET", tone: "closed" } : null;
+    }
     if (play.closedReason === "stopped" || play.closedReason === "stop") {
       return { label: "STOPPED", tone: "closed" };
     }
@@ -296,9 +339,47 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
     // Exit-management labels win over entryability pills (same order as zeroDteActionDisplay).
     // STILL BUY is for members still working a limit — it must not mask an active TRIM ladder.
     if (play.recommendation === "TRIM") {
-      const next = play.exitPolicy?.trim_levels?.find((t) => !t.fired);
-      if (next) return { label: `TRIM ${Math.round(next.trigger_pct)}%`, tone: "active" };
-      return { label: "TRIM", tone: "active" };
+      // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro CRWD #39): manage.ts's
+      // TAKE_PARTIAL/EXIT_RUNNER actions come from MULTIPLE independent rungs — only
+      // "profit_ladder" actually fires off exitPolicy.trim_levels; catalyst_shift/regime_shift/
+      // flow_decay/rel_strength_loss/vol_collapse are evidence-only advisories with a generic
+      // "consider trimming" reason completely unrelated to the ladder's own trigger_pct. Live:
+      // CRWD's recommendation was TRIM via catalyst_shift (advisory-only, manageEnforced:false,
+      // position genuinely unchanged), yet this label borrowed the ladder's next-unfired rung and
+      // showed "TRIM 100%" — read by a trader as "the +100% trigger just fired," when nothing had.
+      // Only cite the ladder trigger_pct when manageReason positively confirms it's the SOURCE
+      // (or is absent — most swing rows have no live manage tick yet, so absence must keep the
+      // pre-existing behavior rather than silently downgrading every untouched row's label).
+      const ladderDriven = play.manageReason == null || play.manageReason === "profit_ladder";
+      const next = ladderDriven ? play.exitPolicy?.trim_levels?.find((t) => !t.fired) : null;
+      // BUG FIX (2026-11-01, Ask Largo x Night Hawk Swings standing mandate, live repro MRNA
+      // SWING:MRNA positionId 68, OPEN/HOLD): the ladderDriven check above only decides WHICH
+      // rung's trigger_pct to cite — it has zero awareness of whether that rung is actually
+      // ENFORCED. manage.ts's edge rungs (profit_ladder included) stay `enforced:false` until
+      // that specific rung graduates the PR-16 calibration ladder (n>=10, delta>=15pt — see
+      // manage.ts's own header and calibration.ts); until it does, the ledger itself takes no
+      // action on it (manage-sync.ts's `latchSwingLiveStatus` only latches TRIM when
+      // `verdict.enforced && rung === "profit_ladder"`). This label — tone "active", identical to
+      // a hard, acted-on EXIT — feeds `swingVerdictVerb()` (play-brief.ts) verbatim, so the SAME
+      // un-qualified string also becomes the envelope headline, the Verdict section's own opening
+      // line, and `thesis`. The brief's own Management-section line (play-brief.ts's
+      // managementSection, several sections lower in the same brief) already discloses "Advisory
+      // only... the system itself is not acting on it" whenever `manageEnforced === false`, but a
+      // member reading only the headline or this Command Deck pill had no way to tell an
+      // enforced trim from an unproven one. Live repro confirmed `manageReason:"profit_ladder"`,
+      // `manageEnforced:false` — the percentage trigger fired but the rung hasn't graduated, so
+      // even the "genuinely ladder-driven" case needs this disclosure, not just the generic-reason
+      // one. `manageEnforced` is tri-state; only an explicit `false` downgrades — `null`
+      // (no live manage tick yet, or an older snapshot shape) keeps the pre-existing "active"
+      // tone/label exactly as before, same discipline the ladderDriven check above already
+      // applies to `manageReason == null` for the identical reason.
+      const advisoryOnly = play.manageEnforced === false;
+      const tone: StatusTone = advisoryOnly ? "watch" : "active";
+      if (next) {
+        const label = `TRIM ${Math.round(next.trigger_pct)}%`;
+        return { label: advisoryOnly ? `${label} (ADV)` : label, tone };
+      }
+      return { label: advisoryOnly ? "TRIM (ADV)" : "TRIM", tone };
     }
     const anyTrimFired = play.exitPolicy?.trim_levels?.some((t) => t.fired) ?? false;
     if (anyTrimFired) return { label: "RUNNER", tone: "active" };
@@ -474,6 +555,14 @@ export function closedRealizedPct(play: TerminalPlay): number | null {
  * metric — omitted (null) whenever either side is unusable, rather than showing a misleading
  * number: `peak` must be a genuine positive excursion (a trade that never went positive has no
  * "available P&L" to have captured a % of), and the realized figure must be finite.
+ *
+ * `realized` must also be non-negative. Once a trade round-trips past breakeven into a realized
+ * loss, "captured X% of peak" stops being a meaningful sentence — dividing a negative realized
+ * return by a small positive peak blows up to an arbitrarily large, sign-flipped number (e.g.
+ * peak +1.4%, realized -56.2% → "captured -4014% of peak", reproduced live on a real closed AAPL
+ * swing position). `mfe-capture.ts`'s `mfeCaptureOutcome` and `zerodte-service.ts`'s
+ * `mfeCapturePct` both already withhold (null) in exactly this case — this third, independent
+ * copy of the same math never got that guard.
  */
 export function closedCapturePct(play: TerminalPlay): number | null {
   if (play.status !== "CLOSED") return null;
@@ -481,7 +570,7 @@ export function closedCapturePct(play: TerminalPlay): number | null {
     return play.mfeCapturePct;
   }
   const realized = closedRealizedPct(play);
-  if (realized == null || !Number.isFinite(realized)) return null;
+  if (realized == null || !Number.isFinite(realized) || realized < 0) return null;
   if (play.peak == null || !Number.isFinite(play.peak) || play.peak <= 0) return null;
   const pct = (realized / play.peak) * 100;
   return Number.isFinite(pct) ? pct : null;

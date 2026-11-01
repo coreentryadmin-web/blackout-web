@@ -11,6 +11,14 @@ export const dynamic = "force-dynamic";
 //   2) the optional `web-push` package is installed.
 // Until then it returns 501 and sends nothing. No push is ever delivered without keys.
 
+// Bounded fan-out for the send loop below — mirrors `src/lib/push/send-web-push.ts`'s own fix
+// (same root cause, duplicated here since this route intentionally reimplements the send loop
+// rather than delegating to it). A broadcast (no `userId`) sends to EVERY row in
+// `push_subscriptions` with no cap; sequentially that is one round-trip per subscriber, walking
+// toward this route's own timeout as the subscriber base grows. A small worker pool gets the
+// throughput win without unboundedly fanning out concurrent outbound connections instead.
+const PUSH_SEND_CONCURRENCY = 10;
+
 function vapidConfigured(): boolean {
   return Boolean(
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() && process.env.VAPID_PRIVATE_KEY?.trim()
@@ -80,19 +88,40 @@ export async function POST(req: NextRequest) {
     ? (await dbQuery(`SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1`, [body.userId])).rows
     : (await dbQuery(`SELECT endpoint, p256dh, auth FROM push_subscriptions`)).rows;
 
+  const subs = rows as Array<{ endpoint: string; p256dh: string; auth: string }>;
+  // TS cannot carry the `if (!webpush) return ...` narrowing above into a nested closure
+  // (a function boundary resets narrowing even for a const), so rebind to a local the closure
+  // can see as non-null.
+  const push = webpush;
+  let nextIdx = 0;
+  async function worker(): Promise<{ sent: number; stale: string[] }> {
+    let workerSent = 0;
+    const workerStale: string[] = [];
+    for (;;) {
+      const i = nextIdx++;
+      if (i >= subs.length) break;
+      const r = subs[i]!;
+      try {
+        await push.sendNotification(
+          { endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } },
+          payload
+        );
+        workerSent++;
+      } catch (err: unknown) {
+        const code = (err as { statusCode?: number })?.statusCode;
+        if (code === 404 || code === 410) workerStale.push(r.endpoint); // gone — prune
+      }
+    }
+    return { sent: workerSent, stale: workerStale };
+  }
+  const results = await Promise.all(
+    Array.from({ length: Math.min(PUSH_SEND_CONCURRENCY, subs.length) }, () => worker())
+  );
   let sent = 0;
   const stale: string[] = [];
-  for (const r of rows as Array<{ endpoint: string; p256dh: string; auth: string }>) {
-    try {
-      await webpush.sendNotification(
-        { endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } },
-        payload
-      );
-      sent++;
-    } catch (err: unknown) {
-      const code = (err as { statusCode?: number })?.statusCode;
-      if (code === 404 || code === 410) stale.push(r.endpoint); // gone — prune
-    }
+  for (const r of results) {
+    sent += r.sent;
+    stale.push(...r.stale);
   }
   if (stale.length) {
     await dbQuery(`DELETE FROM push_subscriptions WHERE endpoint = ANY($1::text[])`, [stale]).catch(

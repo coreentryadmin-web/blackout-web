@@ -110,14 +110,6 @@ export function sessionCloseMs(ms: number): number {
   return etTimeOnDay(ms, 16, 0);
 }
 
-/** Is `ms` inside regular trading hours on a weekday? (Holidays are NOT modelled — see below.) */
-export function isRegularHours(ms: number): boolean {
-  const p = etParts(ms);
-  if (p.weekday === 0 || p.weekday === 6) return false;
-  const mins = p.hh * 60 + p.mm;
-  return mins >= 9 * 60 + 30 && mins < 16 * 60;
-}
-
 /**
  * Step back N trading days, skipping weekends.
  *

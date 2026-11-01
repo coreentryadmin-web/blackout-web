@@ -44,18 +44,39 @@ const CHANGE_THRESHOLD = 100; // Ignore changes < $100 notional (noise floor)
 /**
  * Helper to get GEX value for a strike across all expiries.
  * Handles both array and record-based cell formats.
+ *
+ * BUG FIX (round 202): the array-format branch used to take the CALLER's loop index
+ * (`strikeIdx`, derived from iterating `current.strikes`) and apply it directly to
+ * WHICHEVER matrix's `cells` was passed in — including `previous.gex`. That is only
+ * correct when `previous.strikes[i] === current.strikes[i]` for every `i`, which the
+ * only structural check in `calculateMatrixDelta` (`previous.strikes.length !==
+ * current.strikes.length`) never verifies. A chain whose ATM strike window shifts by
+ * one strike between cron ticks (one strike rolls off the low end, a new one appears
+ * at the high end) keeps the SAME strike COUNT while the strike at a given index
+ * changes — so `getGexRow(previous.gex, i, ...)` would silently return a DIFFERENT
+ * strike's row than the one `strike`/`strikeStr` name, comparing mismatched strikes
+ * and reporting a phantom GEX delta attributed to the wrong strike (or missing a real
+ * one). The record-format branch never had this bug — it already looks up by the
+ * actual strike VALUE (`cells[strikeStr]`), immune to index drift — so this is a
+ * drift between the two branches of one helper, not a design intent. Fixed by
+ * resolving the array-format row by SEARCHING `ownStrikes` (the strikes array that
+ * actually belongs to the `cells` being read) for `strike`, exactly mirroring what the
+ * record branch already does by key — a strike absent from `ownStrikes` now correctly
+ * returns `[]` (no data for that strike in this snapshot), the same honest-absence
+ * behavior the record branch already has, instead of silently reading an unrelated row.
  */
 function getGexRow(
   cells: number[][] | Record<string, Record<string, number>>,
-  strikeIdx: number,
-  strikeStr: string,
+  ownStrikes: number[],
+  strike: number,
   expiries: string[]
 ): number[] {
   if (Array.isArray(cells)) {
-    return cells[strikeIdx] ?? [];
+    const idx = ownStrikes.indexOf(strike);
+    return idx >= 0 ? cells[idx] ?? [] : [];
   }
   // Record format: cells[strikeStr][expiryStr]
-  const strikeRecord = cells[strikeStr];
+  const strikeRecord = cells[String(strike)];
   if (!strikeRecord) return [];
   return expiries.map((exp) => strikeRecord[exp] ?? 0);
 }
@@ -88,10 +109,9 @@ export function calculateMatrixDelta(
   // Row-by-row comparison (each row = one strike across all expiries)
   for (let i = 0; i < current.strikes.length; i++) {
     const strike = current.strikes[i];
-    const strikeStr = String(strike);
 
-    const prevRow = getGexRow(previous.gex, i, strikeStr, previous.expiries);
-    const currRow = getGexRow(current.gex, i, strikeStr, current.expiries);
+    const prevRow = getGexRow(previous.gex, previous.strikes, strike, previous.expiries);
+    const currRow = getGexRow(current.gex, current.strikes, strike, current.expiries);
 
     // Aggregate GEX across expiries to detect changes
     const prevGexSum = prevRow.reduce((a, b) => a + (b ?? 0), 0);
@@ -154,9 +174,8 @@ export function calculateMatrixDeltaFull(
       asof: current.asof,
       spot: current.spot,
       regime_text: regime,
-      updated_strikes: current.strikes.map((strike, i) => {
-        const strikeStr = String(strike);
-        const currRow = getGexRow(current.gex, i, strikeStr, current.expiries);
+      updated_strikes: current.strikes.map((strike) => {
+        const currRow = getGexRow(current.gex, current.strikes, strike, current.expiries);
         const currGexSum = currRow.reduce((a, b) => a + (b ?? 0), 0);
         return {
           strike,
@@ -171,8 +190,7 @@ export function calculateMatrixDeltaFull(
   const updated_strikes: StrikeUpdate[] = [];
   for (let i = 0; i < current.strikes.length; i++) {
     const strike = current.strikes[i];
-    const strikeStr = String(strike);
-    const currRow = getGexRow(current.gex, i, strikeStr, current.expiries);
+    const currRow = getGexRow(current.gex, current.strikes, strike, current.expiries);
     const currGexSum = currRow.reduce((a, b) => a + (b ?? 0), 0);
 
     updated_strikes.push({

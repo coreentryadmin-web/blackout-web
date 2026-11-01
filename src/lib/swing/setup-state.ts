@@ -25,7 +25,13 @@ export interface SetupStateReads {
   price: number | null;
   /** The entry trigger level (breakout / reclaim / pivot the thesis fires on). */
   triggerPx: number | null;
-  /** The structural invalidation level — thesis breaks if price closes past it (below for LONG, above SHORT). */
+  /**
+   * The structural invalidation level — thesis breaks when the LIVE (or last-known) underlying
+   * price moves past it (below for LONG, above SHORT). This is an intraday read, not a settled
+   * end-of-day close — see `deriveSetupState`'s own INVALIDATED branch below, and
+   * `swingServingReadsFromPlan`'s doc comment ("a live (or last-known) spot"), for why this can
+   * revert to FORMING within the same session if price reclaims the level before any close.
+   */
   invalidationPx: number | null;
   /** ATR(14) of the underlying — sizes the "too far past the trigger to enter" (EXTENDED) distance. */
   atr?: number | null;
@@ -41,8 +47,11 @@ const DEFAULT_EXTENDED_ATR_MULT = 1.0;
 
 /**
  * Derive the canonical setup maturity from price-vs-level reads. Precedence (most-decisive first):
- *   1. INVALIDATED — price has closed through the structural invalidation level (thesis broke). This wins
- *      over everything: a broken thesis is not "forming" or "triggered" no matter where the trigger sits.
+ *   1. INVALIDATED — the live (or last-known) underlying price is through the structural invalidation
+ *      level (thesis broke on an intraday basis — this is NOT a settled end-of-day close, so it can
+ *      genuinely revert to FORMING on a later read if price reclaims the level before the session
+ *      closes; see this function's own INVALIDATED branch). This wins over everything: a broken
+ *      thesis is not "forming" or "triggered" no matter where the trigger sits.
  *   2. FORMING — price has not yet reached the trigger in the trade direction (thesis still building).
  *   3. EXTENDED — price is past the trigger by more than `extendedAtrMult · ATR` (the move already ran; a
  *      clean entry is gone).
@@ -50,7 +59,10 @@ const DEFAULT_EXTENDED_ATR_MULT = 1.0;
  * Missing direction or missing both trigger AND invalidation ⇒ FORMING (honest "not actionable yet"), never
  * a fabricated TRIGGERED.
  */
-export function deriveSetupState(dossier: SwingDossier, reads: SetupStateReads): SwingSetupState {
+export function deriveSetupState(
+  dossier: Pick<SwingDossier, "direction">,
+  reads: SetupStateReads,
+): SwingSetupState {
   const dir = dossier.direction;
   const { price, triggerPx, invalidationPx } = reads;
   const atr = isNum(reads.atr) ? reads.atr : null;

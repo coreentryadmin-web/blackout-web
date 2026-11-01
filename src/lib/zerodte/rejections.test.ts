@@ -20,21 +20,43 @@ const state = {
   inserted: [] as Array<Record<string, unknown>>,
 };
 
+// REGRESSION (zerodte-discovery-rejection-cursor-race): simulates a real Postgres
+// session-level advisory lock — non-blocking "try" semantics, held by at most one caller at a
+// time — the same fake shape x-rate-budget-concurrency.test.ts uses for recordBudgetUse's
+// identical read-modify-write race.
+let lockHolder: symbol | null = null;
+
 function resetState() {
   state.dbConfigured = true;
   state.cursor = null;
   state.inserted = [];
+  lockHolder = null;
 }
 
 mock.module("../db", {
   namedExports: {
     dbConfigured: () => state.dbConfigured,
-    getMeta: async (key: string) => (key === "zerodte_scan_rejection_cursor" ? state.cursor : null),
+    getMeta: async (key: string) => {
+      const value = key === "zerodte_scan_rejection_cursor" ? state.cursor : null;
+      // Force a real async gap so two concurrent persistZeroDteRejections calls both read the
+      // cursor BEFORE either writes — the exact interleaving that produces a lost update when
+      // unlocked (mirrors x-rate-budget-concurrency.test.ts's identical fake).
+      await new Promise((r) => setTimeout(r, 5));
+      return value;
+    },
     setMeta: async (key: string, value: string) => {
       if (key === "zerodte_scan_rejection_cursor") state.cursor = value;
     },
     insertZeroDteScanRejection: async (row: Record<string, unknown>) => {
       state.inserted.push(row);
+    },
+    tryAdvisoryLock: async (_lockKey: string): Promise<boolean> => {
+      if (lockHolder !== null) return false;
+      lockHolder = Symbol();
+      return true;
+    },
+    releaseAdvisoryLock: async (_lockKey: string): Promise<void> => {
+      lockHolder = null;
     },
     // Newest-first, mirroring the real ORDER BY observed_at DESC — the in-memory
     // `inserted` array is append-order (oldest first), so this reverses it. Ticker
@@ -73,6 +95,7 @@ type Rejection = {
   prints: number;
   first_seen: string | null;
   last_seen: string | null;
+  blocks?: string[] | null;
 };
 
 function rejection(overrides: Partial<Rejection> = {}): Rejection {
@@ -88,6 +111,7 @@ function rejection(overrides: Partial<Rejection> = {}): Rejection {
     prints: 1,
     first_seen: "2026-07-06T14:00:00Z",
     last_seen: "2026-07-06T14:00:00Z",
+    blocks: null,
     ...overrides,
   };
 }
@@ -131,7 +155,27 @@ test("persistZeroDteRejections: first rejection for a ticker — inserts a row w
   assert.equal(row.aggression, null);
   assert.equal(row.side_dominance, null);
   assert.equal(row.otm_pct, null);
+  assert.equal(row.blocks, null);
   assert.ok(state.cursor);
+});
+
+test("persistZeroDteRejections: blocks (full gate set) changes for the same ticker/gate_failed/direction — a new row is written (not jitter)", async () => {
+  const { persistZeroDteRejections } = await mod();
+  resetState();
+
+  await persistZeroDteRejections([
+    rejection({ ticker: "AAPL", gate_failed: "min_gross", blocks: ["min_gross"] }),
+  ]);
+  const n = await persistZeroDteRejections([
+    // Same primary gate_failed/direction, but a SECOND gate now also fires underneath it —
+    // exactly the transition the ablation/marginal-value analysis needs captured, not
+    // silently suppressed because the primary code didn't change.
+    rejection({ ticker: "AAPL", gate_failed: "min_gross", blocks: ["min_gross", "min_aggr_share"] }),
+  ]);
+
+  assert.equal(n, 1, "a changed full gate set is a real state transition, not jitter");
+  assert.equal(state.inserted.length, 2);
+  assert.deepEqual(state.inserted[1].blocks, ["min_gross", "min_aggr_share"]);
 });
 
 test("persistZeroDteRejections: same ticker, same (gate_failed, direction) on the next cycle — throttled, no duplicate row even though gross_premium/aggression jitter", async () => {
@@ -272,4 +316,47 @@ test("zeroDteRejectionsForLargo: retrieves near-miss history for a queried ticke
   assert.equal(everyone.available, true);
   assert.equal(everyone.ticker, null);
   assert.equal((everyone.rejections as unknown[]).length, 2);
+});
+
+// REGRESSION (zerodte-discovery-rejection-cursor-race): in production, persistZeroDteRejections
+// is called from THREE separate unawaited (`void ... .catch(...)`) fire-and-forget sites within
+// a single warmZeroDteBoard cycle (scan.ts:1842, :2321, :2661), all racing against the SAME
+// ZERODTE_REJECTION_CURSOR_KEY blob. Before the lock fix: two concurrent calls each read the
+// SAME base cursor before either writes, mutate their own in-memory copy for a DIFFERENT ticker,
+// then both write the whole blob back — whichever setMeta resolves last silently clobbers the
+// other's addition (and any other ticker's dedup history already in the blob it read). This must
+// FAIL before the tryAdvisoryLock/releaseAdvisoryLock serialization fix (both tickers' cursor
+// entries do NOT survive) and PASS after it.
+test("persistZeroDteRejections: two concurrent calls for DIFFERENT tickers both survive in the cursor (no lost update)", async () => {
+  const { persistZeroDteRejections } = await mod();
+  resetState();
+
+  const [writtenA, writtenB] = await Promise.all([
+    persistZeroDteRejections([rejection({ ticker: "AAA", gate_failed: "min_gross" })]),
+    persistZeroDteRejections([
+      rejection({ ticker: "BBB", gate_failed: "min_dominance", threshold: 0.65, direction: "short" }),
+    ]),
+  ]);
+
+  assert.equal(writtenA, 1);
+  assert.equal(writtenB, 1);
+  assert.equal(state.inserted.length, 2, "both rows must be inserted");
+
+  // The real assertion: the CURSOR blob itself must retain both tickers' entries, not just the
+  // inserted rows — a lost update here is what causes a clobbered ticker to re-log as a "new"
+  // transition on the very next tick even though it was already logged this one.
+  const cursor = JSON.parse(state.cursor ?? "{}") as Record<string, { date: string; key: string }>;
+  assert.ok(cursor.AAA, "AAA's cursor entry must survive the race");
+  assert.ok(cursor.BBB, "BBB's cursor entry must survive the race — a lost update would drop it");
+
+  // Confirm the throttle still actually holds post-race: repeating both unchanged must write 0.
+  const [repeatA, repeatB] = await Promise.all([
+    persistZeroDteRejections([rejection({ ticker: "AAA", gate_failed: "min_gross" })]),
+    persistZeroDteRejections([
+      rejection({ ticker: "BBB", gate_failed: "min_dominance", threshold: 0.65, direction: "short" }),
+    ]),
+  ]);
+  assert.equal(repeatA, 0);
+  assert.equal(repeatB, 0);
+  assert.equal(state.inserted.length, 2, "an unchanged rejection state must not write a duplicate row");
 });

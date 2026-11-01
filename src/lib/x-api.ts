@@ -276,20 +276,6 @@ export async function postQuoteTweet(
   return json.data;
 }
 
-export async function postThread(texts: string[]): Promise<TweetResult[]> {
-  const out: TweetResult[] = [];
-  let parentId: string | undefined;
-  for (const text of texts) {
-    const tweet = parentId
-      ? await postReply(text, parentId)
-      : await postTweet(text);
-    out.push(tweet);
-    parentId = tweet.id;
-    await new Promise((r) => setTimeout(r, 1200));
-  }
-  return out;
-}
-
 // ---------------------------------------------------------------------------
 // Engagement — likes, RTs, follows
 // ---------------------------------------------------------------------------
@@ -314,21 +300,34 @@ export async function retweet(tweetId: string): Promise<XActionResult> {
   return "failed";
 }
 
+/**
+ * Classifies a non-2xx /following response body as "already following" vs a real
+ * failure. Deliberately does NOT treat a bare HTTP status (403/409) as sufficient on
+ * its own — X's follow endpoint returns 403 for several unrelated reasons (target
+ * blocked us, target account suspended, our app lacks write access at the current API
+ * access tier, the target is otherwise unfollowable) and ALL of those were previously
+ * collapsed into "already_following" just because the status code matched, which
+ * silently hid real, persistent failures from `stats.errors` in x-engage-engine.ts
+ * (see the "a 403 rendered as ... a measurement" blind-spot write-up in
+ * src/lib/x-intel/queue-types.ts for the same bug shape elsewhere in this repo).
+ * A 409 Conflict or a body that actually says "already"/"duplicate" is the only
+ * evidence that distinguishes "we already follow this account" from "this follow
+ * attempt failed for an unrelated reason" — so that's what this checks.
+ */
+export function classifyFollowError(status: number, body: string): XActionResult {
+  if (status === 409 || /already/i.test(body) || /duplicate/i.test(body)) {
+    return "already_following";
+  }
+  return "failed";
+}
+
 export async function followUser(targetUserId: string): Promise<XActionResult> {
   const url = `https://api.x.com/2/users/${X_ACCOUNT_USER_ID}/following`;
   const res = await oauthFetch("POST", url, { target_user_id: targetUserId });
   if (res.ok) return "ok";
   if (res.status === 429) return "rate_limited";
   const body = await res.text();
-  if (
-    res.status === 403 ||
-    res.status === 409 ||
-    /already/i.test(body) ||
-    /duplicate/i.test(body)
-  ) {
-    return "already_following";
-  }
-  return "failed";
+  return classifyFollowError(res.status, body);
 }
 
 export interface XUser {
@@ -609,19 +608,4 @@ export async function fetchOwnProfile(): Promise<XOwnProfile | null> {
         }
       : undefined,
   };
-}
-
-/** @mention outreach posts today (legacy counter — outreach removed from timeline). */
-export async function countOwnMentionPostsTodayEt(): Promise<number> {
-  const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 40);
-  const todayEt = new Date().toLocaleDateString("en-CA", {
-    timeZone: "America/New_York",
-  });
-  return tweets.filter((t) => {
-    if (!t.created_at || !t.text?.trim().startsWith("@")) return false;
-    const d = new Date(t.created_at).toLocaleDateString("en-CA", {
-      timeZone: "America/New_York",
-    });
-    return d === todayEt;
-  }).length;
 }

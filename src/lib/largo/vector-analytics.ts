@@ -26,6 +26,7 @@ import "server-only";
 import { roundFloats } from "@/lib/round-floats";
 import { fitVectorAnalyticsForModel } from "@/lib/largo/vector-analytics-fit";
 import { normalizeVectorTicker } from "@/features/vector/lib/vector-ticker";
+import { effectiveUniverseAsOf } from "@/features/vector/lib/vector-age-format";
 import { computeVectorBarAnalytics, opexContext } from "@/lib/largo/vector-analytics-core";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 // Type-only: erased at build time, so this does NOT pull the screener into the module graph — the
@@ -34,6 +35,34 @@ import type { VectorUniverseRow } from "@/features/vector/lib/vector-universe";
 
 /** Screener rows returned to Largo. The panel paginates; an LLM read does not need the tail. */
 const MAX_SCREENER_ROWS = 15;
+
+/**
+ * Compact a universe row for the screener/comparison payloads Largo serves. `flip_reason` is only
+ * included when `gamma_flip` is null (mirrors the canonical GEX heatmap contract and
+ * `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s "absence" point) — a resolved flip has nothing to
+ * explain, and an invented reason there would misrepresent a clean read as an edge case.
+ */
+export function compactVectorScreenerRow(r: {
+  ticker: string;
+  spot: number | null;
+  gammaFlip: number | null;
+  flipReason: string | null;
+  topCallWall: number | null;
+  topPutWall: number | null;
+  topCallPct: number | null;
+  topPutPct: number | null;
+}) {
+  return {
+    ticker: r.ticker,
+    spot: r.spot,
+    gamma_flip: r.gammaFlip,
+    flip_reason: r.gammaFlip == null ? r.flipReason : undefined,
+    top_call_wall: r.topCallWall,
+    top_put_wall: r.topPutWall,
+    top_call_pct: r.topCallPct,
+    top_put_pct: r.topPutPct,
+  };
+}
 
 export type VectorAnalyticsOptions = {
   timeframeMin?: number;
@@ -84,15 +113,6 @@ export async function vectorAnalyticsForLargo(
         import("@/features/vector/lib/vector-screener"),
         import("@/features/vector/lib/vector-ticker-comparison"),
       ]);
-      const compact = (r: { ticker: string; spot: number | null; gammaFlip: number | null; topCallWall: number | null; topPutWall: number | null; topCallPct: number | null; topPutPct: number | null }) => ({
-        ticker: r.ticker,
-        spot: r.spot,
-        gamma_flip: r.gammaFlip,
-        top_call_wall: r.topCallWall,
-        top_put_wall: r.topPutWall,
-        top_call_pct: r.topCallPct,
-        top_put_pct: r.topPutPct,
-      });
       /**
        * Serve ONE preset with the two numbers a ranked list is meaningless without: how many rows
        * the preset's filter actually matched, and how many of those could be ranked at all.
@@ -138,7 +158,7 @@ export async function vectorAnalyticsForLargo(
           /** True when the list is a top-N of a longer ranking. `returned` is then NOT a count of anything real. */
           truncated: ranked.length > served.length,
           max_rows: MAX_SCREENER_ROWS,
-          rows: served.map(compact),
+          rows: served.map(compactVectorScreenerRow),
           empty_reason: ranked.length
             ? null
             : matched.length
@@ -152,14 +172,25 @@ export async function vectorAnalyticsForLargo(
       // measured at zero" are the same number to the sorter. Test the inputs, not the metric.
       const hasWall = (r: VectorUniverseRow) => r.topCallPct != null || r.topPutPct != null;
 
+      // BUG FIX (2026-09-14): this block used to report the snapshot's own `updatedAt`, which is
+      // stamped to Date.now() on EVERY write — including a single-ticker append
+      // (ensureTickerInUniverseSnapshot, vector-universe.ts) that refreshes exactly ONE row. Any
+      // member opening any single Vector ticker anywhere bumps it, so it read "just updated"
+      // almost continuously during market hours regardless of whether the bulk of the roster
+      // actually refreshed — measured live: `updatedAt` 2.1min old while the MEDIAN row was
+      // 71.4min old across 57 tickers. Largo told members the screener was fresher than it was.
+      // `effectiveUniverseAsOf` uses the median row `asOf` instead — see its own comment for why
+      // median (resistant to both a freshly-appended outlier and a never-resolving one).
+      const screenerAsOf = effectiveUniverseAsOf(universe);
+
       screener = {
         universe_size: universe.rows.length,
-        updated_at: new Date(universe.updatedAt).toISOString(),
+        updated_at: screenerAsOf != null ? new Date(screenerAsOf).toISOString() : null,
         // The sweep's own age, in the market's clock. A scanner list is only as current as the
         // sweep behind it, and "how stale is this" is not answerable from two ISO instants a
         // reader has to subtract — see the note on `as_of` above.
-        updated_at_et: etStamp(universe.updatedAt),
-        updated_at_session_date: etSessionDate(universe.updatedAt),
+        updated_at_et: screenerAsOf != null ? etStamp(screenerAsOf) : null,
+        updated_at_session_date: screenerAsOf != null ? etSessionDate(screenerAsOf) : null,
         /** The three curated desk presets the scanner ships — each is a different question, so all
          *  three are returned rather than one default that silently answers only one of them.
          *  Each carries its OWN denominators; `universe_size` above is the sweep's size and is not

@@ -49,7 +49,8 @@ export const LEARN_NAV: LearnNavItem[] = [
     slug: "night-hawk",
     product: "nighthawk",
     label: "Night Hawk",
-    description: "Always-on 0DTE scanner during RTH, plus next-session Evening Edition prep.",
+    description:
+      "Always-on 0DTE scanner during RTH, Swing Command for multi-day positions, plus next-session Evening Edition prep.",
   },
   {
     slug: "heat-maps",

@@ -68,7 +68,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
   platform: [
     {
       q: "What exactly is BlackOut?",
-      a: `BlackOut is an institutional-grade trading intelligence platform built for options and 0DTE traders. It combines live options flow, SPX Slayer, dealer gamma positioning, dark-pool activity, Largo analysis, and Night Hawk's 0DTE Command desk into one surface — ${manifestPlatformSummary()} — what a professional desk sees, built for individual traders.`,
+      a: `BlackOut is an institutional-grade trading intelligence platform built for options and 0DTE traders. It combines live options flow, dealer gamma positioning, dark-pool activity, 0DTE Command, and graded play intelligence into one surface — ${manifestPlatformSummary()} — what a professional desk sees, built for individual traders.`,
     },
     {
       q: "Who is BlackOut built for?",
@@ -138,7 +138,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
   member: [
     {
       q: "How do I get access?",
-      a: `Create your free BlackOut account, then pick a plan: SPX Slayer ($49/mo) for SPX desk access — live regime, GEX, 0DTE graded plays — or Premium ($199/mo or $1,999/yr) to unlock the full platform with all ${manifestProductCount()} products. Same email, same login — upgrade anytime from your account.`,
+      a: `Create your free BlackOut account, then pick a plan: SPX Slayer ({{communityPrice}}) for SPX desk access — live regime, GEX, 0DTE graded plays — or Premium ({{premiumMonthly}} or {{premiumYearly}}) to unlock the full platform with all ${manifestProductCount()} products. Same email, same login — upgrade anytime from your account.`,
     },
     {
       q: "What's the difference between SPX Slayer and Premium?",

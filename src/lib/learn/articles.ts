@@ -1803,7 +1803,7 @@ Largo has access to a deep surface of live data tools. The ones you will see mos
 - **get_nighthawk_edition** — the full [Night Hawk Evening Edition](/learn/night-hawk-evening-edition-guide): all plays with rank, conviction, thesis, entry/target/stop, score, flow streak, and IV rank. Can pull a specific past date.
 - **get_zerodte_plays** — the [0DTE Command](/learn/night-hawk-0dte-command-guide) scanner board: today's committed plays with lifecycle status, fresh finds, and excluded tickers.
 
-Beyond these core tools, Largo accesses earnings, news (Benzinga channels), dark pool data, IV statistics, sector flow, market movers, economic calendar, short interest, institutional ownership, and more — over **70 tools** in total.
+Beyond these core tools, Largo accesses earnings, news (Benzinga channels), dark pool data, IV statistics, sector flow, market movers, economic calendar, short interest, institutional ownership, and more — over **130 tools** in total.
 
 ## Questions that get the best answers
 
@@ -1837,7 +1837,7 @@ For a high-level overview, see the [Largo AI guide](/learn/largo-ai). For tips o
     type: "article",
     title: "Getting Better Answers from Largo AI",
     description: "Tips for getting structured, data-grounded answers from Largo AI: effective queries, tool traces, pre-market prep, intraday reads, and post-session review.",
-    body: `Largo AI has access to over **70 live data tools** — quotes, multi-timeframe technicals, [options flow](/learn/how-to-read-options-flow), [GEX positioning](/learn/what-is-dealer-gamma-exposure), [dark pool](/learn/what-is-dark-pool-trading) prints, news channels, earnings, screeners, predictions consensus, sector flow, volatility regime, and more. The quality of the answer depends entirely on the quality of the question. Here is how to get the most out of it.
+    body: `Largo AI has access to over **130 live data tools** — quotes, multi-timeframe technicals, [options flow](/learn/how-to-read-options-flow), [GEX positioning](/learn/what-is-dealer-gamma-exposure), [dark pool](/learn/what-is-dark-pool-trading) prints, news channels, earnings, screeners, predictions consensus, sector flow, volatility regime, and more. The quality of the answer depends entirely on the quality of the question. Here is how to get the most out of it.
 
 ## Be specific, not general
 

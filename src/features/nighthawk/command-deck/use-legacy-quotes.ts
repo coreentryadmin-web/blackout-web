@@ -179,7 +179,21 @@ export function overlayLegacyQuotes(
     // morning-confirmation recommendation so the detail panel gives real-time guidance.
     let recommendation = p.recommendation;
     let recNote = p.recNote;
-    if (target != null && stop != null && p.status !== "CLOSED" && p.status !== "SKIP") {
+    // BUG FIX (2026-11-01, Night Hawk Legacy audit mandate): WATCH means no position has been
+    // entered yet -- status stays WATCH from publish (~8pm ET) until the next morning's 9:15am ET
+    // morning-confirm cron runs, and stays WATCH afterward for DEGRADED/UNVERIFIED verdicts too
+    // (terminalPlayFromEdition, adapters.ts -- only INVALIDATED/severe-pulled maps to SKIP, only
+    // CONFIRMED maps to OPEN). This exclusion list already kept CLOSED and SKIP from getting a
+    // live-position override, but WATCH was missing from it: once the underlying's STATIC
+    // published stop/target level was crossed -- easy to happen overnight or pre-confirm, well
+    // before any real entry decision -- this stamped "SELL -- Stock at stop level... cut the
+    // position to preserve capital" or "TRIM -- ... take profit or trail the stop" straight into
+    // play.recommendation/recNote, which LegacyPlayDetailPanel's verdict band renders verbatim
+    // (`<span>{play.recommendation}</span>` + the recNote line right below it) -- telling a member
+    // to exit a position that was never opened. Mirrors the status gate overlayLegacyOptionMarks.ts
+    // already enforces for pnlPct/execPnlPct on the same WATCH/SKIP states (#7105); this sibling
+    // file's recommendation/recNote override needed the identical WATCH exclusion.
+    if (target != null && stop != null && p.status !== "CLOSED" && p.status !== "SKIP" && p.status !== "WATCH") {
       const atStop = isLong ? q.price <= stop : q.price >= stop;
       const atTarget = isLong ? q.price >= target : q.price <= target;
       if (atStop) {

@@ -37,6 +37,8 @@
 
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { PLAN_RULES } from "./plan";
+import { asManagedPnlPct, readManagedExit } from "./record";
+import { categorizeExitReason } from "./exit-engine";
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import type { ZeroDteGateBlock } from "./gates";
 import { timeOfDayFactor } from "./intraday";
@@ -46,7 +48,21 @@ import { timeOfDayFactor } from "./intraday";
  *  cap of 3/6. Quality gates + session stop/loss floors are the real risk brake;
  *  every setup that clears them should be free to commit. Default 100 is effectively
  *  "no desk scarcity" for a whole-market board while still bounding runaway commits
- *  if something else fails open. Set `ZERODTE_MAX_CONCURRENT=0` for unlimited. */
+ *  if something else fails open. Set `ZERODTE_MAX_CONCURRENT=0` for unlimited.
+ *
+ *  RECONCILED 2026-09-09 (architecture review flagged 100 alongside
+ *  GOVERNOR_MAX_CORRELATED_SAME_DIR=2 as two apparently-incompatible risk postures
+ *  in one governor): they are not incompatible, they bound DIFFERENT things on
+ *  purpose. This constant deliberately does NOT bound aggregate risk — it is a
+ *  runaway-commit backstop only. Aggregate risk is bounded by
+ *  GOVERNOR_MAX_CORRELATED_SAME_DIR (concentration), GOVERNOR_MAX_PREMIUM_AT_RISK
+ *  (capital), and the gamma budget below — a book of 90 small, uncorrelated,
+ *  budget-capped plans across different tickers/directions is not "90x the risk" of
+ *  one plan once those three are enforced; it's diversification. No incident in this
+ *  codebase's history has ever tied raw plan COUNT (independent of correlation/
+ *  premium/gamma) to a loss — inventing a tight count-based cap now would re-narrow
+ *  the board through a different door than every other 2026-09 gate change, on no
+ *  more evidence than "the two numbers look different," which they're supposed to. */
 function envConcurrentCap(name: string, def: number): number {
   const raw = process.env[name]?.trim();
   if (!raw) return def;
@@ -56,10 +72,18 @@ function envConcurrentCap(name: string, def: number): number {
 }
 export const GOVERNOR_MAX_CONCURRENT_PLANS = envConcurrentCap("ZERODTE_MAX_CONCURRENT", 100);
 /** Stops in a session before the desk stands down for the day (Slayer's own
- *  loss-halt number). 7/13 took 7 stops — this caps that class of day at 3. */
-export const GOVERNOR_MAX_SESSION_STOPS = 3;
-/** Same-direction re-entry lock on a ticker after its stop (Slayer's 20m rule). */
-export const GOVERNOR_REENTRY_LOCK_MS = 20 * 60 * 1000;
+ *  loss-halt number). 7/13 took 7 stops — this caps that class of day at 3.
+ *  Raised to 4 on 2026-09-08 (operator directive, whole-market volume complaint) — no
+ *  specific incident ties 4 to a worse day than 3; the 7/13 evidence this number is
+ *  named after only tells us 7 stops is too many, not that 4 is. Left short of the
+ *  SESSION_LOSS_FLOOR_PCT territory below, which still catches rapid drain by magnitude
+ *  regardless of count. */
+export const GOVERNOR_MAX_SESSION_STOPS = 4;
+/** Same-direction re-entry lock on a ticker after its stop (Slayer's 20m rule).
+ *  Shortened to 10m on 2026-09-08 (operator directive) — same reasoning as above: no
+ *  measured evidence pins 20m specifically vs a shorter cooldown, just Slayer's own
+ *  convention carried over. */
+export const GOVERNOR_REENTRY_LOCK_MS = 10 * 60 * 1000;
 
 // ── AUDIT SEV-3 realized-loss halt thresholds ──────────────────────────────────────
 // CONSERVATIVE STARTING VALUES — to be tuned on the ledger (calibration-first). Both
@@ -88,7 +112,20 @@ export type GovernorStopEvent = {
   at_ms: number | null;
 };
 
-export type GovernorOpenPlan = { ticker: string; direction: "long" | "short" };
+export type GovernorOpenPlan = {
+  ticker: string;
+  direction: "long" | "short";
+  /** True for a committed CONDOR row. A condor's `direction` is the pin's nominal fade side —
+   *  condor.ts's own doc: "carries the pin's nominal fade side for provenance but is UNUSED by
+   *  the neutral structure's gates/grader" — never a real directional stance. Optional/undefined
+   *  is treated as false (back-compat for pre-existing literals/tests that predate this field);
+   *  every real construction site below stamps it explicitly. Used ONLY to exclude condor rows
+   *  from the DIRECTIONAL checks below (correlated-conflict, same-direction concentration) — a
+   *  condor still counts toward the plain concurrency cap (governor_max_concurrent) and every
+   *  other non-directional governor check, because it is still real open risk/bandwidth, just
+   *  not directional exposure. */
+  is_condor?: boolean;
+};
 
 export type GovernorSnapshot = {
   /** Plans currently not CLOSED (null status = just committed, presumptively live).
@@ -123,6 +160,21 @@ export const CORRELATION_GROUPS: ReadonlyArray<ReadonlySet<string>> = [
   new Set(["MSFT", "GOOGL", "META", "AMZN"]), // Mega-cap tech — correlated on macro/NQ moves
   new Set(["AAPL", "AVGO", "CRM", "ADBE"]),   // Tech/enterprise — second tech cluster
   new Set(["JPM", "GS", "MS", "BAC"]),         // Financials — rate-sensitive, move together on yields
+  // Bitcoin miners — operating economics (hash price, power cost, BTC-denominated revenue) move
+  // almost entirely on BTC spot, so these co-move far MORE tightly intraday than the sector pairs
+  // above. Added 2026-10-20 (live member book audit): the "2026-07-30 crypto cluster session"
+  // comment two blocks below has cited a crypto-cluster incident as the REASON same-direction
+  // concentration enforcement shipped at all since this file's own git history — but no crypto
+  // group was ever actually added, so the governor could never see one. Live evidence the SAME
+  // day this gap was found: RIOT and HUT both flagged long at the identical instant (14:42:09Z),
+  // BTDR five minutes later (14:47:14Z), all three open simultaneously and uncapped (none sharing
+  // a group with any other), plus MARA/CLSK long earlier the same session — a real 3-5-wide
+  // same-direction cluster the GOVERNOR_MAX_CORRELATED_SAME_DIR=2 cap exists specifically to catch
+  // and never did. Scoped to the core publicly-traded miners only (not exchanges/treasury-holding
+  // names like COIN/MSTR/SBET, which are BTC-exposed but a structurally different business and a
+  // separate, larger judgment call) — same "narrowest precedented addition" discipline as the
+  // TQQQ/SQQQ fix (FINDINGS.md) used for the broad-index group.
+  new Set(["RIOT", "MARA", "CLSK", "HUT", "BTDR", "CIFR", "WULF", "CORZ", "BITF", "IREN"]),
 ];
 
 /** WS-05 version stamp for the concentration MEASURE frozen at commit (freezeConcentration
@@ -171,9 +223,15 @@ export function correlationGroupOf(ticker: string): ReadonlySet<string> | null {
 // re-measured since enforcement began.
 
 /** Max same-direction correlated open plans before the concentration measure flags it.
- *  CONSERVATIVE starting value (calibration-first) — with the 3-concurrent cap, a cluster
- *  of 3 same-direction correlated plays is the whole book pointed one way behind one beta;
- *  flagging at 2 means "one more correlated same-direction add would be over-concentration". */
+ *  CONSERVATIVE starting value (calibration-first). NOTE (corrected 2026-09-09 — this
+ *  comment used to justify 2 by reference to "the 3-concurrent cap," a total-book size
+ *  that hasn't existed since GOVERNOR_MAX_CONCURRENT_PLANS was raised to 100 on
+ *  2026-07-29; the two constants were never actually reconciled after that change,
+ *  which is exactly why they read as contradictory): this cap is independent of total
+ *  concurrency by design — see GOVERNOR_MAX_CONCURRENT_PLANS's own doc comment. It
+ *  bounds DIRECTIONAL CONCENTRATION specifically: no matter how large the total book
+ *  is allowed to grow, no more than 2 of its plans may be the same-direction bet on
+ *  correlated index/ETF beta. That is the real risk control; total plan count is not. */
 export const GOVERNOR_MAX_CORRELATED_SAME_DIR = 2;
 
 function envFlag(name: string, defaultOn: boolean): boolean {
@@ -263,7 +321,29 @@ export function countShortGammaOpen(
   return n;
 }
 
-/** Time-of-day concurrent cap multiplier — lunch/opening chop size-down (Phase 2c). Pure. */
+/** 9:30 ET — the RTH open. Mirrors intraday.ts's own `RTH_OPEN` (not exported there; every
+ *  caller in this lane keeps its own local copy — see breakout-discovery.ts/pin-window.ts/
+ *  relative-volume.ts for the same pattern), so the factor branch below can be bounded the
+ *  same way `timeOfDayFactor`'s own label branch already is. */
+const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
+
+/** Time-of-day concurrent cap multiplier — lunch/opening chop size-down (Phase 2c). Pure.
+ *
+ *  BUG FIX (2026-11-01): the "opening chop" branch below used to read `etMinutes < 10 * 60`
+ *  with no floor at `RTH_OPEN_ET_MINUTES` — unlike `timeOfDayFactor` (intraday.ts), whose own
+ *  `label` branch for this exact window is correctly bounded `RTH_OPEN <= etMinutes < 10*60`
+ *  and returns `label: null` for anything before the open. That meant the two return values
+ *  this function hands back — `factor`/`effective_max_concurrent` vs `label` — silently
+ *  disagreed for the ENTIRE pre-market window (midnight..9:30 ET): factor fired (0.85, a real
+ *  15% cap cut) while label stayed null ("nothing to say"). `summarizeGovernorForBoard` (below)
+ *  serves both unconditionally on every board fetch, and the UI's disclosure pill
+ *  (ZeroDteBoard.tsx's `GovPill label="Window"`) is gated on `time_of_day_label` being
+ *  truthy — so a real, live cap reduction rendered with ZERO disclosure anywhere in the
+ *  payload or UI. Confirmed live 2026-11-01 ~09:14 ET: board served
+ *  `effective_max_concurrent: 85` / `time_of_day_sizing_factor: 0.85` alongside
+ *  `time_of_day_label: null`. Fix: bound the factor branch with the same `RTH_OPEN_ET_MINUTES`
+ *  floor the label already uses, so factor and label can never disagree about whether the
+ *  market has opened yet. */
 export function timeOfDaySizingFactor(etMinutes: number): {
   factor: number;
   label: string | null;
@@ -271,7 +351,7 @@ export function timeOfDaySizingFactor(etMinutes: number): {
 } {
   const tod = timeOfDayFactor(etMinutes);
   let factor = 1;
-  if (etMinutes < 10 * 60) factor = 0.85;
+  if (etMinutes >= RTH_OPEN_ET_MINUTES && etMinutes < 10 * 60) factor = 0.85;
   else if (etMinutes >= 12 * 60 + 30 && etMinutes < 13 * 60 + 30) factor = 0.75;
   const effective = Math.max(1, Math.floor(GOVERNOR_MAX_CONCURRENT_PLANS * factor));
   return { factor, label: tod.label, effective_max_concurrent: effective };
@@ -342,11 +422,14 @@ export function freezeConcentrationState(
 ): ZeroDteConcentrationState {
   const candTicker = candidate.ticker.toUpperCase();
   // Existing open book with THIS candidate excluded by ticker (a refresh of the same name isn't
-  // "another correlated exposure"). Distinct by (ticker, direction) so a ledger quirk can't inflate.
+  // "another correlated exposure") AND every CONDOR row excluded (a condor's `direction` is the
+  // pin's nominal fade side — provenance only, per condor.ts's own doc — not a real directional
+  // stance, so it must not inflate this "directional concentration" evidence any more than it
+  // should gate on it below). Distinct by (ticker, direction) so a ledger quirk can't inflate.
   const existing = Array.from(
     new Map(
       openPlans
-        .filter((p) => p.ticker.toUpperCase() !== candTicker)
+        .filter((p) => p.ticker.toUpperCase() !== candTicker && !p.is_condor)
         .map((p) => [`${p.ticker.toUpperCase()}:${p.direction}`, { ticker: p.ticker.toUpperCase(), direction: p.direction }])
     ).values()
   );
@@ -388,6 +471,12 @@ export function concentrationReasonForCandidate(
     liveExposure
       .filter(
         (p) =>
+          // A committed CONDOR's `direction` is the pin's nominal fade side, not a real
+          // directional stance (condor.ts: "UNUSED by the neutral structure's gates/grader") —
+          // excluded here so a delta-neutral SPX/NDX condor can never inflate a directional
+          // same-direction-correlated-exposure count. Defensive filter at this boundary (not
+          // just at the caller) since this function is exported and may be called directly.
+          !p.is_condor &&
           p.direction === candidate.direction &&
           p.ticker.toUpperCase() !== candidateTicker &&
           group.has(p.ticker.toUpperCase())
@@ -427,15 +516,54 @@ export type GovernorLedgerRow = Pick<
   | "entry_context"
 >;
 
-/** Did this ledger row stop out? Two independent signals, either suffices:
- *  the graded plan_outcome, or the latched trough at/below the plan's stop level
- *  (derivePlayStatus's own CLOSED/stopped condition) — so the count is right even
- *  before the lazy grader has run. A time-stop close is NOT a stop. Condors are
- *  excluded: their trough is the winning direction (falling debit-to-close) and
- *  directional stop math inverts — settlement is gradeCondorFromBars. */
-function ledgerRowStopped(r: GovernorLedgerRow): boolean {
+/** Is this ledger row a committed CONDOR? Shared structural check (matches
+ *  `zerodte-service.ts`'s own `entry_context.play_type === "CONDOR"` test, plus the looser
+ *  `condor` blob presence check some callers here already used before this was extracted) — the
+ *  one place this repo decides "is this row a delta-neutral structure" so every governor.ts
+ *  consumer (stop detection, realized P&L sign, open-plan directional exclusion) agrees. */
+function isCondorLedgerRow(r: Pick<GovernorLedgerRow, "entry_context">): boolean {
   const ec = r.entry_context as Record<string, unknown> | null;
-  if (ec?.play_type === "CONDOR" || ec?.condor) return false;
+  return ec?.play_type === "CONDOR" || Boolean(ec?.condor);
+}
+
+/** Did this ledger row stop out? AS-MANAGED FIRST (the live engine's own recorded exit reason,
+ *  entry_context.exit), then the raw mechanical plan_outcome, then the latched trough at/below
+ *  the plan's stop level (derivePlayStatus's own CLOSED/stopped condition) as a fallback for a
+ *  row neither the engine nor the lazy grader has reached yet — so the count is right even
+ *  before grading completes. A time-stop close is NOT a stop. Condors are excluded: their
+ *  trough is the winning direction (falling debit-to-close) and directional stop math inverts
+ *  — settlement is gradeCondorFromBars.
+ *
+ *  FOUND LIVE (companion to ledgerRowRealizedPnlPct's 2026-10-20 HOOD fix, deliberately left
+ *  out of scope at that time): this used to check the raw mechanical `plan_outcome` column
+ *  FIRST (`if (r.plan_outcome === "stopped") return true;`). `plan_outcome` is the naive
+ *  hold-to-stop bar-walk grade — what an UNMANAGED hold would have done — and can read
+ *  "stopped" for a row the live engine actually exited for a genuine PROFIT via ratchet/
+ *  thesis/flat before the bar walk would have later traded through the -50% stop (e.g.
+ *  exit_reason:"ratchet", exit_pnl_pct:+7.87%, even though the position's trough dipped
+ *  -8.66% off entry at some point — the mechanical column says "stopped", the as-managed
+ *  reality was a win). Checking `plan_outcome` first miscounted that win as a stop and fed it
+ *  straight into `deriveGovernorFromLedger`'s stop tally, which `evaluateZeroDteGovernor`'s G-5
+ *  hard-halt (`GOVERNOR_MAX_SESSION_STOPS`) enforces live — a winning session could trip the
+ *  halt on phantom stops.
+ *
+ *  FIX: mirrors scan.ts's own real-time determination of a real stop-out —
+ *  `state.closed_reason === "stopped" || exit?.decision.reason === "plan_stop"` — using the
+ *  ledger's persisted equivalent of each signal. `readManagedExit` reads the SAME
+ *  entry_context.exit blob the live engine stamps (exit-engine.ts buildExitContext); when a
+ *  real exit reason is present, `categorizeExitReason` (the single source of truth for the
+ *  reason→family vocabulary, also used by record.ts's as-managed P&L lane) decides: only the
+ *  "stop" category (`plan_stop`) is a real stop, so a ratchet/thesis/flat/target exit is never
+ *  one, no matter what the mechanical plan_outcome column independently says. Only when there
+ *  is NO as-managed exit at all (legacy rows, or a row the engine hasn't exited yet) does this
+ *  fall back to the original mechanical plan_outcome/trough-latch check — unchanged, so a
+ *  row with no live-managed exit is graded exactly as before. */
+function ledgerRowStopped(r: GovernorLedgerRow): boolean {
+  if (isCondorLedgerRow(r)) return false;
+  const managedExit = readManagedExit(r.entry_context);
+  if (managedExit && managedExit.reason != null) {
+    return categorizeExitReason(managedExit.reason) === "stop";
+  }
   if (r.plan_outcome === "stopped") return true;
   if (r.status !== "CLOSED") return false;
   return (
@@ -447,13 +575,23 @@ function ledgerRowStopped(r: GovernorLedgerRow): boolean {
 }
 
 /** AUDIT SEV-3: a CLOSED row's REALIZED session P&L % contribution, or null if the
- *  row isn't realized yet. Prefers the graded plan_pnl_pct (the true close P&L, which
- *  captures a losing time-stop the −50%-only hard-stop test never sees); falls back to
- *  the −50% stop level for a row whose latched trough already proves a hard stop but
- *  the lazy grader hasn't stamped plan_pnl_pct yet (mirrors ledgerRowStopped, so the
- *  halt is right BEFORE grading, same discipline the stop count already uses). */
+ *  row isn't realized yet. Prefers the AS-MANAGED outcome (record.ts's `asManagedPnlPct` —
+ *  the real engine exit stamp when one fired, else the mechanical mid grade), NEVER the raw
+ *  mechanical `plan_pnl_pct` column directly — that column is the naive bar-walk grade (what
+ *  an unmanaged hold would have done), which record.ts's own OUTCOME-GRADING-SPEC.md
+ *  deliberately never headlines for exactly this reason: it can disagree with the real outcome
+ *  in EITHER direction, not just undercount it. FOUND LIVE 2026-10-20 (HOOD): a real
+ *  ratchet-profit-floor exit at +3.35% (a genuine win) carried a mechanical plan_pnl_pct of
+ *  -50/"stopped" (a naive hold would have later traded through the stop, AFTER the real engine
+ *  had already exited) — the old code counted that win as a realized loser and dragged
+ *  session_pnl_pct down by 50 points for a trade that made money. asManagedPnlPct still falls
+ *  back to the mechanical grade when no live-managed exit exists (legacy rows, or a row with no
+ *  entry_context at all), so the THIRD CHANNEL below (for a CLOSED row the grader hasn't reached
+ *  AT ALL yet) and the stop-trough fallback are unchanged — this only replaces what counts as
+ *  "graded". */
 function ledgerRowRealizedPnlPct(r: GovernorLedgerRow): number | null {
-  if (r.plan_pnl_pct != null && Number.isFinite(r.plan_pnl_pct)) return r.plan_pnl_pct;
+  const managed = asManagedPnlPct(r);
+  if (managed != null && Number.isFinite(managed)) return managed;
   if (ledgerRowStopped(r)) return PLAN_RULES.stop_pct; // −50, proven by outcome/trough
 
   /**
@@ -484,9 +622,7 @@ function ledgerRowRealizedPnlPct(r: GovernorLedgerRow): number | null {
   if (mark == null || !Number.isFinite(mark)) return null;
   const observed = r.last_mark_at != null || mark !== entry;
   if (!observed) return null;
-  const ec = r.entry_context as Record<string, unknown> | null;
-  const isCondor = ec?.play_type === "CONDOR" || Boolean(ec?.condor);
-  if (isCondor) return ((entry - mark) / entry) * 100;
+  if (isCondorLedgerRow(r)) return ((entry - mark) / entry) * 100;
   return ((mark - entry) / entry) * 100;
 }
 
@@ -497,7 +633,13 @@ export function deriveGovernorFromLedger(rows: GovernorLedgerRow[]): GovernorSna
   let realizedLosers = 0;
   let sessionPnlPct = 0;
   for (const r of rows) {
-    if (r.status !== "CLOSED") openPlans.push({ ticker: r.ticker.toUpperCase(), direction: r.direction });
+    if (r.status !== "CLOSED") {
+      openPlans.push({
+        ticker: r.ticker.toUpperCase(),
+        direction: r.direction,
+        is_condor: isCondorLedgerRow(r),
+      });
+    }
     if (ledgerRowStopped(r)) stops.push({ ticker: r.ticker.toUpperCase(), direction: r.direction, at_ms: null });
     // AUDIT SEV-3 — realized-loss tallies, independent of the stop channel above so a
     // losing time-stop (never in `stops`) still counts toward the day-halt.
@@ -568,7 +710,19 @@ export function mergeGovernorStops(
  * (and it is what the morning-gate checklist simulates).
  */
 export function evaluateZeroDteGovernor(
-  candidate: { ticker: string; direction: "long" | "short"; entry_premium?: number | null; gamma_regime?: string | null },
+  candidate: {
+    ticker: string;
+    direction: "long" | "short";
+    entry_premium?: number | null;
+    gamma_regime?: string | null;
+    /** True when the candidate itself is a CONDOR. Its `direction` is the pin's nominal fade
+     *  side, not a real directional stance, so it must never be checked for (or itself trigger)
+     *  the DIRECTIONAL correlated-conflict / same-direction-concentration blocks below — those
+     *  two blocks are skipped entirely for a condor candidate. Every other governor check
+     *  (session halts, concurrency cap, premium/gamma budgets) still applies unchanged: a condor
+     *  is still real open risk, just not directional risk. */
+    is_condor?: boolean;
+  },
   snap: GovernorSnapshot,
   nowMs: number,
   committedThisCycle: GovernorOpenPlan[] = [],
@@ -660,10 +814,25 @@ export function evaluateZeroDteGovernor(
   // B-3 — correlated conflict: a new plan must not fight an OPEN plan on a
   // correlated instrument (7/13 ran SPY long + QQQ short at once — one guaranteed
   // loser). Direction AGREEMENT is fine; only opposition blocks.
+  //
+  // NEUTRAL-STRUCTURE FIX: both this check and the concentration check just below are
+  // DIRECTIONAL by definition — they exist to catch a real opposing or piled-up directional
+  // bet. A committed CONDOR's `direction` is only the pin's nominal fade side, stated as
+  // provenance-only by condor.ts's own doc ("UNUSED by the neutral structure's gates/grader").
+  // Before this fix, an open SPX/NDX condor (both share CORRELATION_GROUPS's broad index/ETF
+  // group with SPY/QQQ/IWM/DIA) could: (a) get counted as "opposing" a genuine directional
+  // SPY/QQQ/etc. candidate and wrongly block a real, uncorrelated trade with no actual
+  // conflicting exposure, and (b) inflate the same-direction concentration count with a
+  // structure that carries no real directional risk to concentrate. Both directions of the same
+  // root cause are closed here: existing condor rows are excluded from `directionalExposure`
+  // (so they can never falsely oppose or falsely concentrate), and a CONDOR *candidate* skips
+  // both checks entirely (it has no real directional stance to conflict or concentrate with).
+  // The plain concurrency cap above is untouched — a condor is still real open risk/bandwidth.
+  const directionalExposure = liveExposure.filter((p) => !p.is_condor);
   const candidateTicker = candidate.ticker.toUpperCase();
   const group = correlationGroupOf(candidateTicker);
-  if (group) {
-    const opposed = liveExposure.find(
+  if (group && !candidate.is_condor) {
+    const opposed = directionalExposure.find(
       (p) =>
         p.ticker.toUpperCase() !== candidateTicker &&
         group.has(p.ticker.toUpperCase()) &&
@@ -683,8 +852,8 @@ export function evaluateZeroDteGovernor(
   }
 
   const ticker = candidate.ticker.toUpperCase();
-  if (GOVERNOR_ENFORCE_CONCENTRATION) {
-    const conc = concentrationReasonForCandidate(candidate, liveExposure);
+  if (GOVERNOR_ENFORCE_CONCENTRATION && !candidate.is_condor) {
+    const conc = concentrationReasonForCandidate(candidate, directionalExposure);
     if (conc) {
       blocks.push({
         code: "governor_concentration",
@@ -704,8 +873,9 @@ export function evaluateZeroDteGovernor(
     // UNTIMED STOP — fail CLOSED (2026-08-06 audit, P2).
     //
     // WHY: `at_ms` is null for every stop the Redis lane never witnessed live.
-    // `deriveGovernorFromLedger` recognises a stop from `plan_outcome === "stopped"` OR the
-    // latched trough (`ledgerRowStopped`), while `recordGovernorStops` is only called by
+    // `deriveGovernorFromLedger` recognises a stop from the as-managed exit reason, the raw
+    // mechanical `plan_outcome === "stopped"`, or the latched trough (`ledgerRowStopped`), while
+    // `recordGovernorStops` is only called by
     // scan.ts when THIS process observes the CLOSED/stopped transition in a scan pass. A stop
     // that closed before the replica came up, was stamped later by the lazy grader, or whose
     // Redis twin was lost/evicted therefore stays timeless for the whole session

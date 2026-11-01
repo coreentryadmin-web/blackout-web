@@ -66,3 +66,40 @@ test("buildCancellationNotificationBody trims whitespace-only free text to nothi
   });
   assert.doesNotMatch(body, /—\s*"/, "whitespace-only reason should not render an empty quoted string");
 });
+
+// SECURITY regression: cancellationReason is Whop's own free-text survey field, typed by the
+// cancelling member and delivered unreviewed into the ops Discord channel. Without escaping,
+// Discord markdown control characters in that text render as live formatting in that channel.
+test("buildCancellationNotificationBody escapes Discord markdown in the free-text reason", () => {
+  const body = buildCancellationNotificationBody({
+    email: "trader@example.com",
+    whopUserId: null,
+    cancelOption: "other",
+    cancellationReason: "**fake alert** _click here_ `code` > not a quote [link](https://evil.example)",
+  });
+  // Every markdown control character in the free text must be backslash-escaped, so Discord
+  // renders it as literal text rather than formatting/a masked link.
+  assert.match(body, /\\\*\\\*fake alert\\\*\\\*/);
+  assert.match(body, /\\_click here\\_/);
+  assert.match(body, /\\`code\\`/);
+  assert.match(body, /\\>/);
+  assert.match(body, /\\\[link\\]\(https:\/\/evil\.example\)/);
+  // The raw, unescaped forms must not survive into the rendered body.
+  assert.doesNotMatch(body, /\*\*fake alert\*\*/);
+  assert.doesNotMatch(body, /\[link\]\(https:\/\/evil\.example\)/);
+});
+
+test("buildCancellationNotificationBody escapes Discord markdown in an attacker-controlled email local-part", () => {
+  const body = buildCancellationNotificationBody({
+    email: "[Verify your billing](https://evil.example/phish)@example.com",
+    whopUserId: null,
+    cancelOption: "too_expensive",
+    cancellationReason: null,
+  });
+  assert.doesNotMatch(
+    body,
+    /\[Verify your billing\]\(https:\/\/evil\.example\/phish\)@example\.com/,
+    "a masked-link-shaped email local-part must not survive unescaped"
+  );
+  assert.match(body, /\\\[Verify your billing\\\]/);
+});

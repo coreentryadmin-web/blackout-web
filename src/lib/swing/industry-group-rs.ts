@@ -26,6 +26,7 @@
 
 import type { PlayDirection } from "../horizon-fanout";
 import { relativeStrengthScore } from "../horizon-scorers";
+import { sectorFor } from "../portfolio/sector-map";
 
 /** The benchmark a name's relative strength is measured against for the SECTOR_ROTATION thesis. */
 export interface GroupBenchmark {
@@ -136,6 +137,18 @@ function sectorEtfFromSic(sic: number): { etf: string; label: string } | null {
   if (sic >= 3570 && sic <= 3579) return XLK;
   if (sic >= 3500 && sic <= 3599) return XLI;
   // Electronic & electrical equipment (semis 3674 handled by the industry tier) → Tech.
+  // EXCEPT the exact top-level catch-all code "3600" itself: Polygon's OWN sic_description for
+  // that code is "ELECTRONIC & OTHER ELECTRICAL EQUIPMENT (NO COMPUTER EQUIP)" — explicitly
+  // disclaiming the Tech label it would otherwise inherit from this range. Live-confirmed
+  // 2026-10-07: GE Aerospace (jet engines, hand-classified "Industrials" in the static sector-map)
+  // carries exactly this generic code, so the range rule mechanically mislabeled it "Technology
+  // (XLK)" in the member-facing Ask Largo play-brief — the same "mechanically-nearest-but-
+  // substantively-wrong ETF" failure the NO_SECTOR_BENCHMARK_THEMES guard above already fixed for
+  // crypto-equity names. Returning null here (not a guess) lets the correct static sector-map
+  // label win instead — same "honest absence beats a wrong mechanical match" principle this file's
+  // own header states. Scoped to the exact ambiguous "3600" code only; genuine sub-codes in this
+  // range (3661 telephone apparatus, 3674 semis, etc.) are untouched.
+  if (sic === 3600) return null;
   if (sic >= 3600 && sic <= 3699) return XLK;
   // Transportation equipment: motor vehicles (371x) → Cons.Disc; aerospace/other → Industrials.
   if (sic >= 3710 && sic <= 3716) return XLY;
@@ -175,17 +188,62 @@ function sectorEtfFromSic(sic: number): { etf: string; label: string } | null {
 }
 
 /**
+ * Themes whose real risk driver has no equity-SIC analogue a SPDR sector ETF can honestly stand in for.
+ * "crypto-equity" (`portfolio/sector-map.ts`'s `sectorFor` — the SAME hand-curated classification the
+ * allocation engine and the play-brief's own "Book context" concentration read already use for these names)
+ * is the confirmed case: bitcoin miners / crypto-treasury / exchange names routinely get bucketed by data
+ * providers under a generic finance/holding-company SIC (live-confirmed 2026-09-22: Polygon classifies HUT,
+ * Hut 8 Corp — an energy-infrastructure/bitcoin-mining company — as `sic_code 6199 "FINANCE SERVICES"`,
+ * which lands squarely in `sectorEtfFromSic`'s 6000-6499 Financials range) or under an unrelated static
+ * sector-map label (MSTR/COIN are hand-classified "Tech" in the flow-aggregation `sector-map.ts`). Either
+ * path mechanically resolved a real SECTOR_ROTATION benchmark — XLF for HUT — that the rest of the engine
+ * already knows is wrong: the SAME play-brief's "Book context" section correctly groups HUT with the other
+ * crypto-equity holdings, while "Why this setup" cited "leading Financials (XLF) by 10.7%" as the single
+ * largest score pillar. Per this file's OWN stated design ("a null is HONEST ABSENCE... far better than
+ * mislabeling it" — see header), a theme with no real sector-ETF analogue must resolve to null, not a
+ * mechanically-nearest-but-substantively-wrong ETF.
+ */
+export const NO_SECTOR_BENCHMARK_THEMES: ReadonlySet<string> = new Set(["crypto-equity"]);
+
+/**
+ * Ticker-level override for names Polygon's reference API never gives a `sic_code` at all — confirmed
+ * live 2026-11-01: TSM/ASML/ARM (Taiwan Semiconductor, ASML Holding, Arm Holdings) all come back
+ * `type: "ADRC"` with `sic_code: undefined`, while their SIC-carrying semis peers (NVDA/AMD/MU/AVGO/…,
+ * all `sic_code: "3674"`) correctly resolve to the SMH industry tier above. Without this override those
+ * three fall straight through the SIC tier to the coarse static `sectorLabel` fallback, which hand-
+ * classifies them "Tech" (`src/lib/sector-map.ts`) → XLK — live-reproduced on TSM's Ask Largo swing
+ * play-brief ("Why this setup" cited "leading Tech (XLK) by 0.6%" instead of the correct Semiconductors
+ * (SMH) benchmark its own SIC-having semis peers get). Same "mechanically-nearest-but-substantively-
+ * wrong ETF" shape this file's header already fixed for HUT/GE Aerospace, just on the OPPOSITE side of
+ * the ladder — those fixes routed a resolvable-but-wrong match to null; this one routes a genuinely
+ * unresolvable SIC to the correct INDUSTRY tier instead of the coarser SECTOR one. Deliberately as small
+ * and conservative as `INDUSTRY_ETF_BY_SIC` itself: only names independently confirmed (a) to have no
+ * Polygon SIC and (b) to already sit in `portfolio/sector-map.ts`'s hand-curated `semis` bucket alongside
+ * their SIC-3674 peers. NOT a general "no SIC → guess" rule — an unmapped ADR still falls through to the
+ * static label or honest absence, same as before.
+ */
+export const ADR_SIC_MISSING_OVERRIDE: Record<string, { etf: string; label: string }> = {
+  TSM: { etf: "SMH", label: "Semiconductors" },
+  ASML: { etf: "SMH", label: "Semiconductors" },
+  ARM: { etf: "SMH", label: "Semiconductors" },
+};
+
+/**
  * Resolve a name's SECTOR_ROTATION benchmark, finest-first: an exact-SIC INDUSTRY ETF, else a SIC-range
- * SECTOR ETF, else the static sector-map SECTOR ETF, else null (honest absence). PURE.
+ * SECTOR ETF, else a hand-curated override for names with no SIC at all, else the static sector-map
+ * SECTOR ETF, else null (honest absence). PURE.
  *
  * Guards: an ETF candidate (`tickerType === "ETF"`) gets NO benchmark — rotation is a single-name thesis, and
- * a sector ETF has no "own group" to lead. And a resolved benchmark that IS the candidate itself (e.g. the
- * candidate is XLK) is dropped — a name can't have relative strength against itself.
+ * a sector ETF has no "own group" to lead. A name in `NO_SECTOR_BENCHMARK_THEMES` gets NO benchmark either —
+ * its real risk driver has no equity-sector analogue, so any SIC/label-derived ETF would mislabel it. And a
+ * resolved benchmark that IS the candidate itself (e.g. the candidate is XLK) is dropped — a name can't have
+ * relative strength against itself.
  */
 export function resolveGroupBenchmark(q: GroupBenchmarkQuery): GroupBenchmark | null {
   const ticker = String(q.ticker ?? "").trim().toUpperCase();
   if (!ticker) return null;
   if ((q.tickerType ?? "").toUpperCase() === "ETF") return null;
+  if (NO_SECTOR_BENCHMARK_THEMES.has(sectorFor(ticker) ?? "")) return null;
 
   let benchmark: GroupBenchmark | null = null;
 
@@ -200,7 +258,14 @@ export function resolveGroupBenchmark(q: GroupBenchmarkQuery): GroupBenchmark | 
     }
   }
 
-  // Fallback to the static sector-map label (zero-IO) when the SIC didn't resolve.
+  // No SIC resolved a benchmark yet — check the hand-curated no-SIC-at-all override before falling
+  // all the way to the coarse static sector label (see ADR_SIC_MISSING_OVERRIDE's own comment).
+  if (!benchmark && !sicRaw) {
+    const override = ADR_SIC_MISSING_OVERRIDE[ticker];
+    if (override) benchmark = { etf: override.etf, label: override.label, kind: "industry" };
+  }
+
+  // Fallback to the static sector-map label (zero-IO) when nothing finer resolved.
   if (!benchmark && q.sectorLabel) {
     const etf = SECTOR_ETF_BY_LABEL[q.sectorLabel];
     if (etf) benchmark = { etf, label: q.sectorLabel, kind: "sector" };
@@ -222,6 +287,54 @@ function pctReturnOverSessions(closes: number[], n: number): number | null {
   const past = closes[closes.length - 1 - n];
   if (!(past > 0) || !Number.isFinite(last)) return null;
   return ((last - past) / past) * 100;
+}
+
+/**
+ * The RAW facts behind `industryGroupRs01`'s 0-1 score — the name's and the benchmark's own %-returns
+ * over the lookback, plus their delta. Computed and discarded by `industryGroupRs01` today (nothing
+ * downstream of the 0-1 score ever sees WHICH ETF a name benchmarks against or BY HOW MUCH it is
+ * leading/lagging) — this is the additive, thin wrapper that recovers those facts so a consumer (the
+ * swing play-brief's "Why this setup" section) can surface a concrete, checkable read instead of a bare
+ * pillar score. NOT direction-signed (unlike the 0-1 score) — `deltaPct` is the raw name-vs-group spread,
+ * so a trader reads "leading/lagging" in the same sense for a long or a short.
+ *
+ * Null (honest absence, never fabricated) when there's no benchmark or either return can't be computed —
+ * mirrors `industryGroupRs01`'s own null discipline exactly.
+ */
+export interface IndustryGroupRsFacts {
+  benchmarkEtf: string;
+  benchmarkLabel: string;
+  kind: "industry" | "sector";
+  /** The name's own %-return over the lookback. */
+  nameReturnPct: number;
+  /** The benchmark ETF's %-return over the same lookback. */
+  groupReturnPct: number;
+  /** nameReturnPct − groupReturnPct — positive ⇒ leading the group, negative ⇒ lagging it. */
+  deltaPct: number;
+}
+
+export function industryGroupRsFacts(args: {
+  benchmark: GroupBenchmark | null | undefined;
+  nameCloses: number[];
+  benchmarkCloses: number[] | null | undefined;
+  lookback?: number;
+}): IndustryGroupRsFacts | null {
+  const { benchmark, nameCloses, benchmarkCloses } = args;
+  if (!benchmark) return null;
+  const lookback = args.lookback ?? INDUSTRY_GROUP_RS_LOOKBACK;
+
+  const nameRet = pctReturnOverSessions(nameCloses, lookback);
+  const groupRet = pctReturnOverSessions(benchmarkCloses ?? [], lookback);
+  if (nameRet == null || groupRet == null) return null;
+
+  return {
+    benchmarkEtf: benchmark.etf,
+    benchmarkLabel: benchmark.label,
+    kind: benchmark.kind,
+    nameReturnPct: nameRet,
+    groupReturnPct: groupRet,
+    deltaPct: nameRet - groupRet,
+  };
 }
 
 /**

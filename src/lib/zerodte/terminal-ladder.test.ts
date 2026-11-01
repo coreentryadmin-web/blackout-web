@@ -7,11 +7,14 @@ import {
   buildTerminalExitLadder,
   executableFill,
   timeStopClock,
+  hasScaledOut,
+  runnerTrailingStopPremium,
   RTH_OPEN_ET_MINUTES,
   type TerminalPolicyInput,
 } from "./terminal-ladder.ts";
 import { PLAN_RULES } from "./plan.ts";
 import { buildResolvedExitPolicy } from "./strategy-version.ts";
+import { fmtPct } from "../fmt-money.ts";
 
 const TRIM_SCALE: TerminalPolicyInput = {
   policy: "trim_scale",
@@ -72,6 +75,26 @@ test("ladder: ratchet policy stays a single-trim policy (legacy render unchanged
   assert.equal(l.trim_levels.length, 1); // the single +100% half-trim
 });
 
+// BUG FIX (2026-10-21, Ask Largo 5-engine cycle, live repro MRNA TRIM/positionId 1958): a brief
+// rendering `stop_premium` post-scale was stating a dead trigger as live — deriveScaleOutAction/
+// computeScaleOutTriggerInfo (scale-out.ts) permanently disable the pre-scale hard stop once any
+// trim has fired. hasScaledOut/runnerTrailingStopPremium let a renderer ask whether the ladder's
+// own stop_premium is still live and, if not, what the real governing floor is now.
+test("hasScaledOut: false before any trim fires, true once one has", () => {
+  const cold = buildTerminalExitLadder(TRIM_SCALE, 2.0, 1.9);
+  assert.equal(hasScaledOut(cold), false);
+  const scaled = buildTerminalExitLadder(TRIM_SCALE, 2.0, 2.6); // first trim (+25%=2.5) fired
+  assert.equal(hasScaledOut(scaled), true);
+});
+
+test("runnerTrailingStopPremium: peakPremium × SCALE_OUT_RULES.trail_from_peak (0.5)", () => {
+  // Live MRNA repro: entry $6.49, peak +103.4% → peak premium ≈ $13.21 → real floor ≈ $6.605.
+  assert.equal(runnerTrailingStopPremium(13.21), 6.61); // round2(13.21 * 0.5)
+  assert.equal(runnerTrailingStopPremium(null), null);
+  assert.equal(runnerTrailingStopPremium(0), null);
+  assert.equal(runnerTrailingStopPremium(Number.NaN), null);
+});
+
 test("clock: minutes remaining + label + elapsed fraction to 15:50", () => {
   const stop = PLAN_RULES.time_stop_et_minutes; // 950
   const c = timeStopClock(RTH_OPEN_ET_MINUTES); // at the open
@@ -106,7 +129,11 @@ test("executable: long sells into the BID, not the mid", () => {
   const e = executableFill(2.4, 2.6, 2.0); // mid 2.5, bid 2.4
   assert.equal(e.mid, 2.5);
   assert.equal(e.fill, 2.4);
-  assert.equal(e.pnl_pct, 20); // (2.4-2.0)/2.0
+  // pnl_pct is now the RAW unrounded ratio (see the 2026-11-01 bug-fix test below) — IEEE-754
+  // division of this exact pair lands a hair off a clean 20 (19.999999999999996), which is why
+  // this asserts a tight tolerance rather than strict equality; the earlier strict `=== 20` only
+  // held because the function used to round internally.
+  assert.ok(Math.abs(e.pnl_pct! - 20) < 1e-9, `expected ~20, got ${e.pnl_pct}`); // (2.4-2.0)/2.0
 });
 
 test("executable: one-sided / no book → mid only, no fake fill", () => {
@@ -118,10 +145,55 @@ test("executable: one-sided / no book → mid only, no fake fill", () => {
   const zeroBid = executableFill(0, 0.1, 2.0);
   assert.equal(zeroBid.fill, null);
   assert.equal(zeroBid.pnl_pct, null);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro EXPE): `fill`/`pnl_pct` staying
+  // null for a confirmed zero bid is INTENTIONAL and unchanged by this fix (asserted above) — but a
+  // caller must be able to tell this case apart from "no book at all" (asserted just below), which
+  // the one-sided case above does NOT set.
+  assert.equal(zeroBid.bidConfirmedZero, true, "a real two-sided book with bid===0 is a CONFIRMED zero, not an absence");
+  assert.equal(oneSided.bidConfirmedZero, false, "no book at all must not be confused with a confirmed zero bid");
 });
 
 test("executable: crossed book is rejected (never a negative-spread fill)", () => {
   const crossed = executableFill(2.7, 2.6, 2.0); // bid > ask
   assert.equal(crossed.mid, null);
   assert.equal(crossed.fill, null);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro QXO SWING positionId 2299):
+// `pnl_pct` used to be PRE-ROUNDED to 2dp-of-percent right here
+// (Math.round(((fill-entryPremium)/entryPremium)*10000)/100) before ANY caller ever formatted it
+// for display. adapters.ts's troughDisplay/peakDisplay compute the IDENTICAL kind of ratio with a
+// SINGLE round straight to 1dp; this pre-rounded value then got a SECOND round (also to 1dp) from
+// whichever renderer displayed it (`fmtPct` in the swing/LEAPS play-brief narrative, `toFixed(1)`
+// in the Command Deck's LEAPS PnlPanel). Two successive roundings of the same fact can disagree
+// with a single rounding of it whenever the first round lands exactly on the second round's tie
+// boundary — exactly what happened for entry $0.22 / bid $0.10: the raw ratio is -54.545...%,
+// which single-rounds to -54.5% (the Trough line's own math, adapters.ts), but pre-rounding to 2dp
+// first lands on the EXACT tie -54.55, which `fmtPct`'s ties-away-from-zero algorithm then pushes
+// to -54.6% — one tenth of a point off the mathematically identical fact, rendered a few lines
+// apart in the SAME play-brief markdown (play-brief.ts's "Trough" vs "Exec P&L" lines). Fixed by
+// not pre-rounding `pnl_pct` here (Largo Product Contract C9: round exactly once, at the final
+// display boundary) — `mid`/`fill` still round to the cent (a legitimate, DIFFERENT boundary: NBBO
+// premiums are penny-quoted), but `pnl_pct` is now the raw ratio, rounded only once by whatever
+// finally renders it.
+test("executable: pnl_pct is NOT pre-rounded — a single final round now agrees with a direct single-rounded computation of the IDENTICAL ratio (live repro QXO positionId 2299: entry $0.22, bid $0.10, ask $0.20)", () => {
+  const entryPremium = 0.22;
+  const bid = 0.10;
+  const ask = 0.20;
+  const e = executableFill(bid, ask, entryPremium);
+  assert.equal(e.fill, 0.10);
+  // The raw ratio, unrounded — NOT the old pre-rounded -54.55 (which sits exactly on fmtPct's tie
+  // boundary and is what produced the live -54.6% mismatch).
+  assert.ok(
+    Math.abs(e.pnl_pct! - ((0.10 - 0.22) / 0.22) * 100) < 1e-9,
+    `expected the raw unrounded ratio, got ${e.pnl_pct}`
+  );
+  assert.notEqual(e.pnl_pct, -54.55, "must not still be pre-rounded to the exact tie value");
+  // adapters.ts's troughDisplay/peakDisplay formula: a single round straight from the raw ratio.
+  const singleRoundedDirectly = Math.round(((bid / entryPremium - 1) * 100) * 10) / 10;
+  assert.equal(singleRoundedDirectly, -54.5, "sanity: this is the live Trough line's own number");
+  // The ONE remaining round (fmtPct, at the swing play-brief's display boundary) must now land on
+  // the SAME -54.5% the Trough line renders for the identical underlying fact — this is the exact
+  // live mismatch (Trough "-54.5%" vs Exec P&L "-54.6%") the bug report reproduced.
+  assert.equal(fmtPct(e.pnl_pct), "-54.5%");
 });

@@ -85,10 +85,24 @@ const isFin = (x: number | null | undefined): x is number => x != null && Number
  */
 export function computeSwingRisk(position: SwingRiskPosition): SwingRisk {
   const mult = isFin(position.contractMultiplier) ? position.contractMultiplier : 100;
-  const qty = isFin(position.contracts) ? position.contracts : 0;
+  const missing: string[] = [];
+  // BUG FIX (Ask Largo standing mandate, 2026-10-25): `contracts` fed the scale factor for every
+  // output field (greekRisk, dollarRisk, betaWeightedDelta) but, unlike every OTHER input this
+  // function reads, an invalid/missing value here was never added to `missing` — it silently
+  // defaulted `qty` to 0, and `anything * 0 = 0` for every downstream field, so the function
+  // returned `partial:false, missing:[]` with every risk field reading as a FABRICATED 0. That is
+  // exactly the failure mode this file's own header calls "the standing law": "a missing greek,
+  // spot, or beta is NEVER read as 0 risk... a downstream budget never sums a hollow risk number
+  // into a real total" — `contracts` was the one input that law didn't actually cover. `contracts`
+  // is typed as a required `number`, so this should be unreachable from a well-formed caller, but
+  // every other field here already guards the identical "typed as required, defensively re-checked
+  // anyway" case (TS types don't survive a bad DB row round-tripped through `Number(...)`), and this
+  // was the one field that both checked AND silently swallowed the failure instead of propagating it.
+  const contractsFin = isFin(position.contracts);
+  if (!contractsFin) missing.push("contracts");
+  const qty = contractsFin ? position.contracts : 0;
   // Direction sign applies to DELTA only. SHORT = buying puts (long premium), so γ/θ/ν do NOT flip with it.
   const sign = position.direction === "LONG" ? 1 : -1;
-  const missing: string[] = [];
 
   const g = position.greeks ?? { delta: null, gamma: null, theta: null, vega: null };
   // directionSign: apply the LONG/SHORT sign (delta) or leave the greek at its natural long-option sign (γ/θ/ν).
@@ -97,6 +111,7 @@ export function computeSwingRisk(position: SwingRiskPosition): SwingRisk {
       missing.push(`greeks.${name}`);
       return null;
     }
+    if (!contractsFin) return null;
     return v * qty * mult * directionSign;
   };
 
@@ -110,7 +125,7 @@ export function computeSwingRisk(position: SwingRiskPosition): SwingRisk {
   // Dollar capital at risk — the premium notional. Magnitude (unsigned): it's capital deployed, not a P&L sign.
   let dollarRisk: number | null = null;
   if (isFin(position.premiumPerShare)) {
-    dollarRisk = Math.abs(position.premiumPerShare) * mult * qty;
+    if (contractsFin) dollarRisk = Math.abs(position.premiumPerShare) * mult * qty;
   } else {
     missing.push("premiumPerShare");
   }
@@ -122,7 +137,7 @@ export function computeSwingRisk(position: SwingRiskPosition): SwingRisk {
   if (betaMissing) missing.push("beta");
 
   let betaWeightedDelta: number | null = null;
-  if (isFin(g.delta) && isFin(spot) && !betaMissing) {
+  if (isFin(g.delta) && isFin(spot) && !betaMissing && contractsFin) {
     const dollarDelta = g.delta * qty * mult * sign * spot;
     betaWeightedDelta = dollarDelta * (position.beta as number);
   }

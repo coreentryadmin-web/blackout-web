@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { FlowAlert } from "@/lib/api";
 import {
   daysToExpiry,
+  filterAndSortFlowsForTape,
   flowSignals,
   flowTimeMs,
   fmtExpiryShort,
@@ -11,6 +12,8 @@ import {
   ruleBadge,
   executionRouteKey,
   fmtIv,
+  fmtOi,
+  fmtAskPct,
   ALERT_RULE_WORD_KEYS,
   sortFlows,
 } from "./helix-flow-format";
@@ -69,6 +72,43 @@ test("sortFlows orders premium descending", () => {
   ];
   const sorted = sortFlows(rows, "premium", "desc");
   assert.deepEqual(sorted.map((r) => r.ticker), ["B", "C", "A"]);
+});
+
+// Root cause (found live 2026-11-01): HelixFlowTable's own filter+sort pipeline special-cased
+// `sortKey === "time"` to always sort "desc", discarding the user's own `sortDir` toggle for
+// exactly that column — the one the table defaults to and the only one with a visible ▲/▼
+// direction indicator wired to real state. Clicking the Time header to flip to ascending moved
+// the arrow but never moved a row. `filterAndSortFlowsForTape` is the pipeline pulled out of the
+// component so this is provable without rendering it.
+test("filterAndSortFlowsForTape honors ascending order on the time column (regression)", () => {
+  const rows = [
+    flow({ ticker: "OLDEST", alerted_at: "2026-07-11T14:00:00.000Z" }),
+    flow({ ticker: "NEWEST", alerted_at: "2026-07-11T16:00:00.000Z" }),
+    flow({ ticker: "MIDDLE", alerted_at: "2026-07-11T15:00:00.000Z" }),
+  ];
+  const asc = filterAndSortFlowsForTape(rows, "ALL", "time", "asc");
+  assert.deepEqual(
+    asc.map((r) => r.ticker),
+    ["OLDEST", "MIDDLE", "NEWEST"],
+    "ascending time sort must put the oldest print first, not silently stay newest-first"
+  );
+
+  const desc = filterAndSortFlowsForTape(rows, "ALL", "time", "desc");
+  assert.deepEqual(desc.map((r) => r.ticker), ["NEWEST", "MIDDLE", "OLDEST"]);
+});
+
+test("filterAndSortFlowsForTape still drops untyped rows and applies the CALL/PUT filter", () => {
+  const rows = [
+    flow({ ticker: "CALLROW", option_type: "CALL", alerted_at: "2026-07-11T14:00:00.000Z" }),
+    flow({ ticker: "PUTROW", option_type: "PUT", alerted_at: "2026-07-11T15:00:00.000Z" }),
+    // @ts-expect-error — exercising a malformed/untyped row, which the live tape does carry.
+    flow({ ticker: "UNTYPED", option_type: undefined, alerted_at: "2026-07-11T16:00:00.000Z" }),
+  ];
+  const allSorted = filterAndSortFlowsForTape(rows, "ALL", "time", "desc");
+  assert.deepEqual(allSorted.map((r) => r.ticker), ["PUTROW", "CALLROW"]);
+
+  const callsOnly = filterAndSortFlowsForTape(rows, "CALL", "time", "desc");
+  assert.deepEqual(callsOnly.map((r) => r.ticker), ["CALLROW"]);
 });
 
 test("flowSignals includes whale and 0dte tags", () => {
@@ -192,6 +232,35 @@ test("fmtIv withholds rather than inventing a value it does not have", () => {
   assert.equal(fmtIv(Number.POSITIVE_INFINITY), "—");
 });
 
+/**
+ * BUG FIX (round 295): `fmtAskPct` treated a genuine 0% ask-side print as absent data, the same
+ * absence-vs-zero collapse this file's own `fmtIv`/sector-callPct/directionalPremium comments
+ * describe elsewhere in this lane. `ask_pct` is a 0-100 SHARE (helix-signal-detection.ts's
+ * `MinimalFlow.ask_pct` doc: "Ask-side share of premium (0-100)"), and 0% is the maximally
+ * seller-initiated reading, not a missing one — `aggressorSide`/`executionQualityBucket`
+ * (helix-flow-aggression.ts / helix-execution-quality.ts) both correctly read `askPct <= 40` as
+ * "sold" at `askPct === 0`, and the tape's own Ask% cell (HelixFlowTable.tsx) computes its colour
+ * from `askPctTone(flow.ask_pct)` — which uses that same correct 0-is-meaningful bucketing — right
+ * next to the text this function renders for the identical value. So a 0% print painted its cell
+ * RED (passive/sold) while the text inside that same red cell read "—", the exact "no data" glyph
+ * every other truly-absent cell on the row uses. A member cannot tell "this print was 0% at ask"
+ * from "we have no ask-side reading for this print" — they render identically apart from a colour
+ * most members have never been told to interpret as a stand-in for the number itself.
+ */
+test("fmtAskPct renders a genuine 0% print, not absence", () => {
+  assert.equal(fmtAskPct(0), "0%");
+  assert.equal(fmtAskPct(1), "1%");
+  assert.equal(fmtAskPct(40), "40%");
+  assert.equal(fmtAskPct(100), "100%");
+});
+
+test("fmtAskPct still withholds for genuinely missing/invalid data", () => {
+  assert.equal(fmtAskPct(null), "—");
+  assert.equal(fmtAskPct(undefined), "—");
+  assert.equal(fmtAskPct(Number.NaN), "—");
+  assert.equal(fmtAskPct(-5), "—"); // out of the field's documented 0-100 range — not a real share
+});
+
 test("ruleLabel still falls back to the raw rule text, unlike the panel", () => {
   // Deliberately different fallbacks: the BADGE shows what UW called the print (more informative
   // than a bucket), the PANEL buckets it. Same vocabulary, different jobs.
@@ -296,6 +365,27 @@ test("the NEW badge carries its reasoning as hover text, not a repeat of the lab
   assert.ok(badge, "badge present");
   assert.ok(badge!.title && badge!.title !== badge!.label, "title must explain, not echo the label");
   assert.ok(badge!.title!.includes("108"), "title must carry the real open interest");
+});
+
+test("fmtOi renders a genuine 0 open-interest reading, not absence", () => {
+  // open_interest === 0 is the strongest "every lot is new" reading (see helix-position-intent.ts's
+  // `positionIntent`, basis "no_open_interest") — it must render as real data, not the "—" glyph
+  // used when OI was never reported at all.
+  assert.equal(fmtOi(0), "0");
+});
+
+test("fmtOi still withholds for values the field cannot legitimately take", () => {
+  assert.equal(fmtOi(null), "—");
+  assert.equal(fmtOi(undefined), "—");
+  assert.equal(fmtOi(-1), "—");
+  assert.equal(fmtOi(Number.NaN), "—");
+  assert.equal(fmtOi(Number.POSITIVE_INFINITY), "—");
+});
+
+test("fmtOi still abbreviates large open-interest counts", () => {
+  assert.equal(fmtOi(500), "500");
+  assert.equal(fmtOi(12_345), "12.3K");
+  assert.equal(fmtOi(2_500_000), "2.5M");
 });
 
 test("no NEW badge on prints the data cannot prove — 70% of the live tape", () => {

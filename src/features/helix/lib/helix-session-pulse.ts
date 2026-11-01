@@ -78,3 +78,19 @@ export function computeHelixSessionPulse(
     topTicker,
   };
 }
+
+/**
+ * The bull/bear percentage split the "Aggression read" meta line may show. Gated on
+ * `directionRead` rather than recomputing `directionLabel`'s own "undetermined > readable" rule,
+ * so the two can never drift apart: when the read is `"undetermined"`, a precise-looking
+ * `"45% bull / 55% bear"` split would contradict the "Unreadable" label standing right next to it
+ * — either there is no readable premium at all, or more of the tape is undetermined than
+ * readable, and in both cases that minority split is not a verdict (same principle as
+ * `directionLabel`'s own doc comment).
+ */
+export function sessionPulseBullPct(pulse: HelixSessionPulse): number | null {
+  if (pulse.directionRead === "undetermined") return null;
+  const readable = pulse.bullishPremium + pulse.bearishPremium;
+  if (readable <= 0) return null;
+  return Math.round((pulse.bullishPremium / readable) * 100);
+}

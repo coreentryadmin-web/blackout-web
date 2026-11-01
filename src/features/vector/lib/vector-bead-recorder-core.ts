@@ -38,6 +38,33 @@ let narrowedTickIndex = 0;
  */
 let sharedSweepCursor = 0;
 
+/**
+ * Round-robin cursor for the ACTIVE (non-universe, viewer-driven) lane.
+ *
+ * BUG FIX (round 305 audit): this lane's `selectTickersToRecord` call used to omit `cursor`
+ * entirely, which the scheduler itself documents as "the old index-0 behaviour... for a
+ * one-shot caller [that] has no next tick to be fair across" — but this IS a repeating caller
+ * (`recordActiveNonUniverseWallSamples` runs every 15s tick from the leader, exactly like the
+ * universe lane above). `getActiveVectorTickers()` returns tickers in stable Map-insertion
+ * (first-subscribed) order, so whenever more than `vectorActiveBeadRecordConcurrency()` (8 by
+ * default) distinct off-universe tickers are being viewed at once, the lane's own ceiling binds
+ * and — with no cursor to rotate the scan — the SAME first ~8 subscribed tickers win every single
+ * tick, forever, while every ticker past that point records ZERO samples for the whole session.
+ * That is byte-for-byte the "roster 122 / limit 64 -> the tail recorded 0 samples" defect the
+ * universe lane's own `sharedSweepCursor` above was built to fix (#2320) — just left unfixed here
+ * when this second lane was added afterward. See `vector-bead-recorder-core.test.ts` for the
+ * reproduction.
+ */
+let activeLaneCursor = 0;
+
+/** Test-only reset — suites must not leak rotation/in-flight state across cases. */
+export function _resetVectorBeadRecorderStateForTest(): void {
+  recordInFlightTickers.clear();
+  sharedSweepCursor = 0;
+  activeLaneCursor = 0;
+  narrowedTickIndex = 0;
+}
+
 export { VECTOR_BEAD_RECORD_TICK_MS } from "./vector-bead-recorder-logic";
 
 export type VectorBeadRecordResult = {
@@ -254,7 +281,11 @@ export async function recordActiveNonUniverseWallSamples(opts?: {
       vectorBeadRecordInFlightMax(),
       recordInFlightTickers.size
     ),
+    // Round-robin this lane too — see activeLaneCursor's own doc comment above for the live
+    // starvation this fixes once the active-viewer set outgrows the lane's own cap.
+    cursor: activeLaneCursor,
   });
+  activeLaneCursor = decision.nextCursor;
   const startable = decision.start;
   for (const t of startable) recordInFlightTickers.add(t);
 

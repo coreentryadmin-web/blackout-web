@@ -117,6 +117,16 @@ export function parseHelixDeepLink(searchParams: URLSearchParams): HelixDeepLink
   if (alert || ticker) {
     const strikeRaw = searchParams.get("strike");
     const strike = strikeRaw != null ? Number(strikeRaw) : null;
+    // `searchParams.get(...)` returns `null` when the param is absent — and `Number(null)` is `0`,
+    // a perfectly finite number, NOT NaN. An alert_id-only link (the common case: every
+    // `buildHelixFlowDeepLink` call with an `alert_id` returns early before setting `premium` at
+    // all — see the builder above) therefore used to parse to `premium: 0` instead of "unknown".
+    // `flowMatchesDeepLink`'s premium check only skips on `target.premium == null`, so 0 is treated
+    // as a real, required premium of exactly $0 — which a genuine print's premium (always > 0) can
+    // never equal. Same null-vs-absent guard `strike` already has two lines up; `premium` was
+    // missing it.
+    const premiumRaw = searchParams.get("premium");
+    const premium = premiumRaw != null ? Number(premiumRaw) : null;
     return {
       kind: "flow",
       ticker: ticker ?? "",
@@ -125,7 +135,7 @@ export function parseHelixDeepLink(searchParams: URLSearchParams): HelixDeepLink
       expiry: searchParams.get("expiry"),
       option_type: searchParams.get("type"),
       at: searchParams.get("at"),
-      premium: Number(searchParams.get("premium")),
+      premium: premium != null && Number.isFinite(premium) ? premium : null,
     };
   }
 

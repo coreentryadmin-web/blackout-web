@@ -5,16 +5,22 @@ import {
   discoverSwingFromPersisted,
   persistSwingServingSnapshot,
   SWING_SERVING_TTL_SEC,
+  attachThesisExplanation,
+  resolveThesisHealth,
   type SwingDiscoveryLike,
 } from "./serving-lane.ts";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge.ts";
 import { SWING_SCAN_PHASES } from "./scan-cadence.ts";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier.ts";
 import type { SwingReads } from "../swing-signals.ts";
 import type { ZeroDteFlowAccumulation } from "../zerodte/flow-accumulation-context.ts";
-import type { SwingServingReads } from "./serving-ingest.ts";
+import { swingServingMetaFromDossier, type SwingServingReads } from "./serving-ingest.ts";
 import type { HorizonPlay } from "../horizon-plays.ts";
 import type { ChainContract } from "../horizon-fanout.ts";
 import { swingThesisKey, type SwingWatchCandidate } from "./accumulation-store.ts";
+import { scoreSwingPillars } from "./swing-pillars.ts";
+import { calendarDte } from "../horizon-fanout.ts";
+import { todayEt } from "@/lib/et-date";
 
 function accum(direction: "bull" | "bear", days: number): ZeroDteFlowAccumulation {
   return {
@@ -43,6 +49,13 @@ const contract: ChainContract = {
 };
 function play(over: Partial<HorizonPlay>): HorizonPlay {
   return { ticker: "AAA", direction: "LONG", horizon: "SWING", score: 80, status: "COMMIT", contract, scoreFloor: 60, reason: "r", ...over };
+}
+
+/** UTC-midnight date math, matching `calendarDte`'s own UTC-anchored diffing (horizon-fanout.ts). */
+function addDaysYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 test("no discover injected → empty structured lane (member-safe default)", async () => {
@@ -80,8 +93,11 @@ test("assembles a real sectioned lane: WATCH + RESEARCH populate; setupState sta
     ],
   });
   const readsByTicker = new Map<string, SwingServingReads>([
-    // NVDA: LONG at the trigger, inside the window + graduated → COMMIT_NOW.
-    ["NVDA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract }],
+    // NVDA: LONG at the trigger, inside the window + graduated → COMMIT_NOW. asOf pinned before the
+    // fixture contract's expiry (2026-08-07) — without it this falls back to Date.now() and, once real
+    // time passes that hardcoded expiry, the 2026-09-20 contract-expiry fix (entry-model.ts) correctly
+    // reports EXPIRED instead of AT_TRIGGER, which is the fixture going stale, not a bug in the fix.
+    ["NVDA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract, asOf: "2026-07-24T14:00:00.000Z" }],
     // WAT: LONG below the trigger → FORMING → WATCH.
     ["WAT", { setup: { price: 95, triggerPx: 100, invalidationPx: 90, atr: 3 } }],
   ]);
@@ -105,7 +121,8 @@ test("ungraduated AT_TRIGGER still reaches COMMIT_NOW — graduation is evidence
     plays: [play({ ticker: "NVDA", status: "COMMIT", bucketGraduated: false })],
   });
   const readsByTicker = new Map<string, SwingServingReads>([
-    ["NVDA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract }],
+    // asOf pinned before the fixture contract's expiry — see the comment on the identical fixture above.
+    ["NVDA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract, asOf: "2026-07-24T14:00:00.000Z" }],
   ]);
   const lane = await getSwingServingLane({ discover, readsByTicker });
   assert.equal(lane.sections.COMMIT_NOW.map((p) => p.ticker).join(","), "NVDA");
@@ -230,6 +247,8 @@ test("planLevels + spots drive setup maturity beyond RESEARCH on the serve path"
             setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 },
             entry: { price: 100.5, triggerPx: 100, atr: 3 },
             contract,
+            // asOf pinned before the fixture contract's expiry — see the comment on the first such fixture above.
+            asOf: "2026-07-24T14:00:00.000Z",
           },
         ],
       ]),
@@ -274,6 +293,57 @@ test("persist → discoverSwingFromPersisted round-trips and GATES to persistenc
   assert.ok(!rendered.includes("FRSH"), "a single-sighting name never reaches the member board (persistence gate)");
 });
 
+// ── ARCHETYPE-DRIFT FALLBACK (Ask Largo standing mandate, live repro 2026-10-09 — RCL/SNDK/XAR) ──────────
+//
+// Live-confirmed on prod: all three tickers were present in the SAME scan's `snap.watch`/
+// `snap.observed` (per `/api/admin/swing/discovery-debug`), yet absent from EVERY section of the real
+// member board (`GET /api/market/nighthawk/horizons?view=swings`, verified via its `scanAsOf` matching
+// the admin snapshot's `asOf` byte-for-byte — not a staleness artifact). Root cause: `snap.plays`
+// carries exactly ONE HorizonPlay per ticker, classified under whichever archetype THIS scan's fresh
+// read lands on, while the accumulation store tracks PARALLEL per-archetype theses for the same
+// ticker+direction — when this scan's archetype disagrees with whichever archetype actually has the
+// accumulation history, the exact thesis key (`ticker|direction|archetype`) misses both `cleared` and
+// `observedByKey`, and the play vanished from the ENTIRE board with no trace. See
+// `tickerDirectionKey`'s doc comment (accumulation-store.ts) for the fix.
+
+test("ARCHETYPE DRIFT: a persistence-cleared candidate whose fresh-scan archetype no longer matches its watch-candidate archetype still surfaces (falls back to ticker+direction)", async () => {
+  const d = buildSwingDossier(dossier("NVDA"));
+  await persistSwingServingSnapshot({
+    asOf: "2026-07-24T20:00:00.000Z",
+    sessionDay: "2026-07-24",
+    dossiers: [d],
+    // Cleared under BREAKOUT (the watch candidate's locked-at-clearing archetype) — but THIS scan's
+    // fresh classification landed on a DIFFERENT archetype, same shape as a real near-tie reclass.
+    plays: [play({ ticker: "NVDA", direction: "LONG", status: "WATCH", archetype: "SECTOR_ROTATION" })],
+    watch: [watchCand({ ticker: "NVDA", direction: "LONG", archetype: "BREAKOUT" })],
+    observed: [],
+  });
+
+  const lane = await getSwingServingLane({ discover: discoverSwingFromPersisted });
+  const rendered = Object.values(lane.sections).flat().map((p) => p.ticker);
+  assert.ok(rendered.includes("NVDA"), "the ticker must not vanish just because this scan's archetype drifted");
+  // Never mis-granted cleared/COMMIT status under the mismatched archetype — it only earns a pre-entry
+  // surfacing (RESEARCH via the router's honest-degradation default), never COMMIT_NOW.
+  assert.ok(!lane.sections.COMMIT_NOW.some((p) => p.ticker === "NVDA"));
+});
+
+test("ARCHETYPE DRIFT regression guard: a genuinely untracked single-sighting name (no watch/observed entry under ANY archetype) still never surfaces", async () => {
+  await persistSwingServingSnapshot({
+    asOf: "2026-07-24T20:00:00.000Z",
+    sessionDay: "2026-07-24",
+    dossiers: [],
+    plays: [play({ ticker: "FRSH", direction: "LONG", status: "WATCH", archetype: "BREAKOUT" })],
+    watch: [],
+    observed: [],
+  });
+  const lane = await getSwingServingLane({ discover: discoverSwingFromPersisted });
+  const rendered = Object.values(lane.sections).flat().map((p) => p.ticker);
+  assert.ok(
+    !rendered.includes("FRSH"),
+    "zero accumulation evidence under ANY archetype must still never surface — the anti-lone-print invariant",
+  );
+});
+
 test("persisted flag anchors stamp first-flag underlying — enrichPlay does not overwrite with scan spot", async () => {
   const d = buildSwingDossier(dossier("NVDA"));
   const arch = d.archetype.archetype;
@@ -295,6 +365,37 @@ test("persisted flag anchors stamp first-flag underlying — enrichPlay does not
   });
   const nvda = Object.values(lane.sections).flat().find((p) => p.ticker === "NVDA");
   assert.equal(nvda?.flagUnderlyingPx, 180, "anchor wins over live scan spot");
+});
+
+// BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA WATCH short): enrichPlay never
+// set `liveSpot`, so watchForSection's "Since flag" track-since-flag bullet (adapters.ts, gated on
+// status WATCH/SKIP + non-null liveSpot) was structurally dead for every real discovery-origin WATCH
+// candidate — the only real liveSpot writer in the whole repo is live-plays.ts's committed-ledger
+// path (status OPEN/HOLD/TRIM), which is mutually exclusive with WATCH/SKIP on status. Distinct from
+// the flagUnderlyingPx guard above: that pins the FLAG ANCHOR (never overwritten by scan spot);
+// liveSpot is the separate, CURRENT-price field "Since flag" measures movement FROM the anchor, and
+// must track the live scan spot every time.
+test("enrichPlay stamps liveSpot from the live scan read — the Since-flag track field is no longer dead for real WATCH candidates", async () => {
+  const d = buildSwingDossier(dossier("NVDA"));
+  const arch = d.archetype.archetype;
+  await persistSwingServingSnapshot({
+    asOf: "2026-07-24T20:00:00.000Z",
+    sessionDay: "2026-07-24",
+    dossiers: [d],
+    plays: [play({ ticker: "NVDA", direction: "LONG", status: "WATCH", archetype: arch })],
+    watch: [watchCand({ ticker: "NVDA", direction: "LONG", archetype: arch })],
+    flagAnchorsByThesisKey: { [swingThesisKey("NVDA", "LONG", arch)]: 180 },
+    spotsByTicker: { NVDA: 200 },
+  });
+
+  const lane = await getSwingServingLane({
+    discover: discoverSwingFromPersisted,
+    readsByTicker: new Map([
+      ["NVDA", { setup: { price: 200, triggerPx: 195, invalidationPx: 170, atr: 3 } }],
+    ]),
+  });
+  const nvda = Object.values(lane.sections).flat().find((p) => p.ticker === "NVDA");
+  assert.equal(nvda?.liveSpot, 200, "liveSpot must carry the live scan spot so trackPct/Since-flag can compute");
 });
 
 test("persisted scan with no cleared names → member-safe empty lane (empty is fine when there's no data)", async () => {
@@ -389,6 +490,60 @@ test("the live LIFECYCLE is not overwritten by the pre-entry read", async () => 
   assert.ok((lane.sections.SCALING_OUT[0].factors ?? []).length > 0);
 });
 
+// FINDINGS 2026-09-12 (live monitor sweep): before this fix, `attachThesisExplanation` overwrote a
+// committed row's `factors` with a dossier RE-RUN TODAY, even though `play.score` is the position's
+// OWN `feature_vector.evidence_score` PINNED at commit — so the two silently disagreed once today's
+// dossier read diverged from commit-day conditions (live: AAPL SECTOR_ROTATION, score 84.4 next to
+// factors summing to 75.0). `live-plays.ts` now reconstructs `factors` from that SAME pinned
+// feature_vector, and this test proves `attachThesisExplanation` PREFERS that pinned reconstruction
+// over the fresh dossier's own (different) factors/score, even when a same-ticker dossier exists and
+// disagrees — the position's own frozen record must win, not whichever was computed most recently.
+test("a COMMITTED row's OWN pinned factors win over a fresh same-day dossier's — score/factors never disagree even as the dossier drifts", async () => {
+  const d = buildSwingDossier(dossier("AAA")); // today's re-run — its OWN score/pillars, unrelated to the position's pin
+  // The live AAPL SECTOR_ROTATION read that exposed the bug: 6/7 pillars pinned, DATA_QUALITY absent.
+  // evidence_score is DERIVED (never a hand-picked literal) so the fixture is internally consistent
+  // exactly the way commit.ts guarantees a real row is (evidence_score and pil_* come from ONE call).
+  const pinnedPillars = {
+    STRUCTURE: 1,
+    REL_STRENGTH: 1,
+    REGIME: 0.665,
+    VOLATILITY: 0.598,
+    CATALYST: 0.532,
+    FLOW: 0.103,
+  };
+  const pinnedScore = scoreSwingPillars(pinnedPillars, "SECTOR_ROTATION").score;
+  const pinnedFeatureVector = {
+    evidence_score: pinnedScore,
+    archetype: "SECTOR_ROTATION",
+    pil_structure: pinnedPillars.STRUCTURE,
+    pil_rel_strength: pinnedPillars.REL_STRENGTH,
+    pil_regime: pinnedPillars.REGIME,
+    pil_volatility: pinnedPillars.VOLATILITY,
+    pil_catalyst: pinnedPillars.CATALYST,
+    pil_flow: pinnedPillars.FLOW,
+  };
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [play({ ticker: "AAA" })] }),
+    fetchOpenPositions: async () => [
+      openRow("AAA", "OPEN", { feature_vector: pinnedFeatureVector, archetype: "SECTOR_ROTATION" }),
+    ],
+    spotsByTicker: { AAA: 105 },
+  });
+  const live = lane.sections.MANAGING[0];
+  assert.ok(live, "the open position must render in MANAGING");
+  assert.equal(live.score, pinnedScore, "score is the position's own pinned evidence_score");
+  const sum = Math.round((live.factors ?? []).reduce((n, f) => n + f.points, 0) * 10) / 10;
+  assert.equal(sum, pinnedScore, "factors must sum to the position's OWN pinned score");
+  assert.notEqual(
+    sum,
+    d.score.score,
+    "sanity: the fresh dossier's own score must differ from the pinned one in this fixture, or this " +
+      "test would pass even if the bug reappeared and the pinned factors were silently replaced",
+  );
+  // regime/sectorLeadershipFacts still benefit from the live dossier read — only factors are pinned.
+  assert.ok(live.regime != null, "regime is still allowed to borrow the fresh dossier's read");
+});
+
 test("no dossier for the ticker → the row is left honest, never given an invented explanation", async () => {
   const lane = await getSwingServingLane({
     discover: async () => ({ dossiers: [], plays: [] }),
@@ -398,6 +553,261 @@ test("no dossier for the ticker → the row is left honest, never given an inven
   const live = lane.sections.MANAGING[0];
   assert.ok(live, "the position still renders");
   assert.equal((live.factors ?? []).length, 0, "no dossier means no factors — the placeholder is correct here");
+});
+
+// FINDINGS 2026-09-20 (live repro, PR #4076 comment 5751915312): `attachThesisExplanation` is called
+// TWICE on a banger-ledger position's road to a play-brief — once (correctly) never, inside
+// `getSwingServingLane` (banger rows are merged in AFTER the native-only enrichment pass, by design —
+// see `mergeBangerPositionsIntoSwingPlays` running after `livePlays.map(attachThesisExplanation)`
+// above), and once from `play-brief-resolve.ts`'s ticker-only lane fallback, which calls this on
+// WHATEVER lane row it resolved with no distinction for origin. Before this fix, that second call
+// silently overwrote `horizonPlayFromBangerPosition`'s deliberate `BANGER_LEDGER_REGIME_LABEL`
+// sentinel ("no real per-position dossier for this play") with an UNRELATED same-ticker discovery
+// dossier's regime read whenever one happened to exist in the current scan — destroying the
+// fingerprint `thesisHealthUncalibrated()` needs to correctly withhold an aggregate score, and live-
+// confirmed via the canonical board (`getSwingServingLane`, which never enriches banger rows) vs the
+// play-brief (which did): the SAME committed RIOT/MSTR/COIN/... positions showed the honest sentinel
+// on the board and a fabricated-looking "84% · Minor drift" on Ask Largo's play-brief for the same
+// position, on the same scan. A banger-ledger sentinel is never a real per-position read to begin
+// with, so it must never be overwritten by an unrelated ticker-keyed dossier.
+test("attachThesisExplanation never overwrites a banger-ledger sentinel regime, even when a same-ticker dossier exists (Largo C6)", () => {
+  const bangerPlay: HorizonPlay = {
+    ticker: "RIOT",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 65,
+    status: "COMMIT",
+    contract,
+    scoreFloor: 60,
+    reason: "Banger breakout +10% · 15C 2026-09-25",
+    archetype: "BREAKOUT",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    serving: "MANAGING",
+    signalKinds: ["BANGER"],
+    regime: BANGER_LEDGER_REGIME_LABEL,
+    factors: [{ label: "Discovery gain", points: 65 }],
+  };
+  // A REAL, unrelated dossier for the SAME ticker — exactly the shape that let RIOT/MSTR/COIN/HOOD/
+  // LRCX etc. pick up "Breakout continuation · regime 0.67" live on 2026-09-20 (their own current
+  // discovery scan, nothing to do with the already-committed banger position).
+  const d = buildSwingDossier(dossier("RIOT"));
+  const enriched = attachThesisExplanation(bangerPlay, d);
+  assert.equal(
+    enriched.regime,
+    BANGER_LEDGER_REGIME_LABEL,
+    "the banger-ledger sentinel must survive attachThesisExplanation untouched, not be replaced by an unrelated dossier's regime",
+  );
+});
+
+test("attachThesisExplanation still enriches a NATIVE (non-banger) play's regime from a same-ticker dossier — the guard is scoped to the sentinel only", () => {
+  const nativePlay: HorizonPlay = {
+    ticker: "AAA",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 65,
+    status: "COMMIT",
+    contract,
+    scoreFloor: 60,
+    reason: "r",
+    regime: null,
+  };
+  const d = buildSwingDossier(dossier("AAA"));
+  const enriched = attachThesisExplanation(nativePlay, d);
+  assert.ok(enriched.regime, "a native play with no prior regime must still get the dossier's enrichment");
+  assert.notEqual(enriched.regime, BANGER_LEDGER_REGIME_LABEL);
+});
+
+// enrichPlay (the PRE-ENTRY discovery-lane sibling of attachThesisExplanation above) used to
+// unconditionally overwrite `factors: meta.factors` from a freshly re-run dossier, even when the
+// play already carried PINNED factors consistent with its own `score` (exactly what
+// `legacy-confirm-promote.ts`'s `buildLegacySwingArtifacts` sets for Legacy-morning-confirm-
+// promoted plays: a single `[{label:"Night Hawk edition score", points: swingPlay.score}]` entry,
+// the #4843 fix). Because a Legacy-promoted play never carries `liveStatus`/`manageAction` until it
+// is actually committed to a live position, it takes THIS path (enrichPlay), not
+// attachThesisExplanation's — so #4843's fix never covered it, and the same "factors don't sum to
+// score" defect reappeared here. Live evidence 2026-09-20: LITE score 71 vs factors summing to
+// 70.1, SMCI score 91 vs 84.5 — see serving-lane.ts's enrichPlay comment for the full trace.
+test("a PRE-ENTRY play's OWN pinned factors win over a fresh same-day dossier's — score/factors never disagree even before commit", async () => {
+  const d = buildSwingDossier(dossier("AAA")); // today's re-run — its OWN score/pillars, unrelated to the play's pin
+  const pinnedScore = 71; // Legacy's own published edition conviction score
+  const pinnedPlay = play({
+    ticker: "AAA",
+    status: "COMMIT",
+    score: pinnedScore,
+    signalKinds: ["NIGHT HAWK"],
+    factors: [{ label: "Night Hawk edition score", points: pinnedScore }],
+  });
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [pinnedPlay] }),
+    readsByTicker: new Map([
+      ["AAA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract, asOf: "2026-07-24T14:00:00.000Z" }],
+    ]),
+  });
+  const row = lane.sections.COMMIT_NOW[0];
+  assert.ok(row, "the pre-entry play must render in COMMIT_NOW");
+  assert.equal(row.score, pinnedScore, "score is the play's own pinned edition score");
+  const sum = Math.round((row.factors ?? []).reduce((n, f) => n + f.points, 0) * 10) / 10;
+  assert.equal(sum, pinnedScore, "factors must sum to the play's OWN pinned score");
+  assert.notEqual(
+    sum,
+    d.score.score,
+    "sanity: the fresh dossier's own score must differ from the pinned one in this fixture, or this " +
+      "test would pass even if the bug reappeared and the pinned factors were silently replaced",
+  );
+});
+
+// FINDINGS 2026-09-20 (5th occurrence of the #4826/#4832/#4843/#4837/#5298 bug class). Both prior
+// enrichPlay/attachThesisExplanation fixes treated "factors.length > 0" as proof of a trustworthy
+// pin — they can never REPAIR an already-bad persisted value, only preserve or replace one. Live
+// evidence: LITE (score 71) and SMCI (score 91) both carried a persisted `factors` array shaped
+// exactly like a dossier's OWN 5/3-pillar breakdown (Structure/Regime/Volatility/Flow/Data quality)
+// that summed to 70.1/84.5 — NOT the play's own score, and NOT the single
+// `[{label:"Night Hawk edition score", points: score}]` entry `buildLegacySwingArtifacts` has
+// written since #4843 (2026-09-12) — despite both plays' own `firstSeenAt` (2026-09-17/18) postdating
+// that fix on both ECS services that could have built them. Whatever wrote the bad value, the guard
+// must now REPAIR it at read time rather than trust "non-empty" — and for a Legacy-exempt play the
+// repair must be the single-factor shape, never a fresh dossier decomposition (which would just
+// re-commit the identical class of mismatch with different numbers).
+test("a Legacy-exempt play whose PERSISTED factors do NOT sum to its own score gets REPAIRED, not trusted or dossier-replaced (2026-09-20, 5th occurrence)", async () => {
+  const d = buildSwingDossier(dossier("LITE")); // today's re-run — an unrelated dossier-shaped decomposition
+  const shownScore = 71; // Legacy's own published edition conviction score (what the desk shows)
+  const staleBrokenPlay = play({
+    ticker: "LITE",
+    status: "COMMIT",
+    score: shownScore,
+    signalKinds: ["NIGHT HAWK"],
+    commitGateBlockedBy: ["legacy:exempt"],
+    reason: "C 950 exp 2026-09-25 (7DTE) · Legacy morning confirm (2026-09-17)",
+    // The exact bad shape observed live: a dossier-style pillar breakdown that does NOT sum to
+    // `shownScore` — simulating whatever wrote a bad value before this read-time fix existed.
+    factors: [
+      { label: "Structure", points: 42.1 },
+      { label: "Regime", points: 10.1 },
+      { label: "Volatility", points: 8.6 },
+      { label: "Flow", points: 5.7 },
+      { label: "Data quality", points: 3.6 },
+    ],
+  });
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [staleBrokenPlay] }),
+    readsByTicker: new Map([
+      ["LITE", { setup: { price: 950.5, triggerPx: 950, invalidationPx: 900, atr: 10 }, entry: { price: 950.5, triggerPx: 950, atr: 10, entryZoneFar: 940 }, contract, asOf: "2026-07-24T14:00:00.000Z" }],
+    ]),
+  });
+  const row = lane.sections.COMMIT_NOW[0];
+  assert.ok(row, "the pre-entry play must render in COMMIT_NOW");
+  assert.equal(row.score, shownScore, "score is untouched — still the play's own pinned edition score");
+  assert.deepEqual(
+    row.factors,
+    [{ label: "Night Hawk edition score", points: shownScore }],
+    "a bad persisted breakdown on a Legacy-exempt play is REPAIRED to the single pinned factor, " +
+      "never left broken and never replaced with a fresh (also-mismatched) dossier decomposition",
+  );
+});
+
+// FINDINGS 2026-10-31 (live repro NET, RESEARCH bucket). `enrichPlay` correctly falls back to
+// `play.setupState`/`play.entryStatus` when this scan's `meta.setupState`/`meta.entryStatus` come back
+// null (reads dropped), but used to take `thesisLevel`/`thesisNote` from `meta` unconditionally — so a
+// served row could carry a real carried-forward `setupState: "TRIGGERED"` / `entryStatus: "AT_TRIGGER"`
+// alongside a contradicting `thesisLevel: "unknown"` / `thesisNote: "no setup read attached to this
+// name yet"`, because `swingServingMetaFromDossier` derives those two fields from a LOCAL, THIS-CALL-
+// ONLY setupState variable, never from the merged value `enrichPlay` produces. See `resolveThesisHealth`
+// (serving-lane.ts) for the full trace and why a blanket `meta.thesisLevel ?? play.thesisLevel` would
+// not actually fix it (`thesisLevel` is typed non-nullable).
+test("resolveThesisHealth carries thesisLevel/thesisNote forward when this scan's reads dropped but a prior setupState exists (2026-10-31, live repro NET)", () => {
+  const d = buildSwingDossier(dossier("NET"));
+  // No reads passed → swingServingMetaFromDossier's own setup-maturity branch has nothing to ground on.
+  const meta = swingServingMetaFromDossier(d);
+  assert.equal(meta.setupState, null, "sanity: this call supplied no grounded reads");
+  assert.equal(meta.thesisLevel, "unknown", "sanity: meta fell to its own reads-absent default");
+  assert.equal(meta.thesisNote, "no setup read attached to this name yet");
+
+  const priorPlay = play({
+    ticker: "NET",
+    status: "WATCH",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    thesisLevel: "intact",
+    thesisNote: null,
+  });
+  const resolved = resolveThesisHealth(meta, priorPlay);
+  assert.equal(
+    resolved.thesisLevel,
+    "intact",
+    "must carry the prior, carried-forward level — not meta's reads-absent 'unknown' default",
+  );
+  assert.equal(resolved.thesisNote, null, "no stale 'no setup read attached' note beside a live trigger");
+});
+
+test("resolveThesisHealth still renders the honest 'unknown' default when there is genuinely no prior thesis to carry forward (9-6c honesty preserved)", () => {
+  const d = buildSwingDossier(dossier("FRESH"));
+  const meta = swingServingMetaFromDossier(d); // no reads this scan, same as above
+  // A genuinely never-grounded WATCH candidate: no setupState/entryStatus/thesisLevel has ever been set.
+  const neverGroundedPlay = play({ ticker: "FRESH", status: "WATCH" });
+  const resolved = resolveThesisHealth(meta, neverGroundedPlay);
+  assert.equal(
+    resolved.thesisLevel,
+    "unknown",
+    "nothing to carry forward — the data-absent thesis must stay honestly 'unknown', never a fabricated " +
+      "'intact' (the exact 9-6c invariant this field's header documents)",
+  );
+  assert.equal(resolved.thesisNote, "no setup read attached to this name yet");
+});
+
+test("resolveThesisHealth never withholds a FRESH thesis-health read behind a stale carried-forward value", () => {
+  const d = buildSwingDossier(dossier("NET"));
+  // Reads ARE present this scan and genuinely confirm a new, non-invalidated, non-degraded state.
+  const meta = swingServingMetaFromDossier(d, {
+    setup: { price: 95, triggerPx: 100, invalidationPx: 90, atr: 3 },
+  });
+  assert.equal(meta.setupState, "FORMING");
+  assert.equal(meta.thesisLevel, "intact", "sanity: a fresh, non-degraded, non-invalidated read is 'intact'");
+  // The prior play disagrees in every field — proves the carry-forward branch is never taken when this
+  // scan's reads are genuinely present, regardless of what the prior play says.
+  const stalePlay = play({
+    ticker: "NET",
+    setupState: "INVALIDATED",
+    thesisLevel: "break",
+    thesisNote: "stale — structure invalidated last scan",
+  });
+  const resolved = resolveThesisHealth(meta, stalePlay);
+  assert.equal(resolved.thesisLevel, "intact", "fresh meta must win whenever this scan's reads are present");
+  assert.equal(resolved.thesisNote, null);
+});
+
+test("getSwingServingLane: a carried-forward setupState/entryStatus never rides beside a reads-absent thesisLevel/thesisNote (2026-10-31, live repro NET)", async () => {
+  const d = buildSwingDossier(dossier("NET"));
+  const priorPlay = play({
+    ticker: "NET",
+    status: "WATCH",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    thesisLevel: "intact",
+    thesisNote: null,
+  });
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [priorPlay] }),
+    // NET has no grounded reads this scan at all (the transient per-ticker drop the live repro found) —
+    // readsByTicker simply has no entry for it, so `reads` is undefined inside enrichPlay.
+    readsByTicker: new Map(),
+  });
+  const row = Object.values(lane.sections)
+    .flat()
+    .find((p) => p.ticker === "NET");
+  assert.ok(row, "NET must still render somewhere on the board (an honest degrade, never dropped)");
+  assert.equal(row!.setupState, "TRIGGERED", "setupState correctly carries forward from the prior play");
+  assert.equal(row!.entryStatus, "AT_TRIGGER", "entryStatus correctly carries forward from the prior play");
+  assert.equal(
+    row!.thesisLevel,
+    "intact",
+    "thesisLevel must agree with the carried-forward setupState/entryStatus, not regress to 'unknown'",
+  );
+  assert.equal(
+    row!.thesisNote,
+    null,
+    "no 'no setup read attached to this name yet' note beside a live carried-forward trigger",
+  );
 });
 
 test("getSwingServingLane stamps scanAsOf from persisted snapshot", async () => {
@@ -436,5 +846,81 @@ test("SWING_SERVING_TTL_SEC survives the ordinary Friday-close -> Monday-open ga
     SWING_SERVING_TTL_SEC > worstCaseGapSec,
     `SWING_SERVING_TTL_SEC (${SWING_SERVING_TTL_SEC}s) must exceed the Fri-close -> Mon-PRE_OPEN gap ` +
       `(${worstCaseGapSec}s / ${(worstCaseGapSec / 3600).toFixed(1)}h) or the snapshot silently expires every weekend`,
+  );
+});
+
+// BUG FIX (2026-10-31, live Saturday repro — AXTI). `legacy-confirm-promote.ts`'s
+// `refreshCarriedLegacyPlay` only recomputes a carried Legacy play's DTE when the swing-discovery
+// CRON actually runs a carry-forward — and no scan runs on a day the market is closed. Live
+// evidence: `GET /horizons?view=swings` fetched twice on a Saturday, 8 minutes apart, both showed
+// `scanSessionDay` stuck at the prior Friday; the ONE Legacy-exempt row on the board (no
+// `positionId`) served `contract.dte: 7` (calendarDte(Friday, expiry)) while every one of the other
+// 57 real DB-committed SWING rows sharing the SAME expiry correctly served `dte: 6`
+// (calendarDte(TODAY, expiry) — those go through `live-plays.ts`'s `contractFromRow`, which
+// recomputes fresh on every serve). Unlike a quote (honestly stale while the market is closed),
+// calendar DTE is a pure function of the calendar date and expiry alone, so freezing it reports an
+// actively WRONG number, not just an old one.
+test("a Legacy-exempt carried play's DTE (and the DTE token in reason) is recomputed against TODAY on every serve, not frozen at the last scan's session day", async () => {
+  const todayYmd = todayEt();
+  const expiry = addDaysYmd(todayYmd, 7);
+  const realDte = calendarDte(todayYmd, expiry);
+  // Simulate a snapshot last carried forward one real calendar day ago (e.g. Friday's scan, read
+  // back on a Saturday no scan has touched since) — one day stale, same shape as the live repro.
+  const staleDte = realDte + 1;
+
+  const d = buildSwingDossier(dossier("AXTI"));
+  const legacyExemptPlay = play({
+    ticker: "AXTI",
+    status: "COMMIT",
+    contract: { ...contract, ticker: "AXTI", expiry, dte: staleDte },
+    commitGateBlockedBy: ["legacy:exempt"],
+    reason: `C 61 exp ${expiry} (${staleDte}DTE, Δ—, OI 255) · Legacy morning confirm (2026-10-29)`,
+  });
+
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [legacyExemptPlay] }),
+  });
+  const axti = Object.values(lane.sections).flat().find((p) => p.ticker === "AXTI");
+  assert.ok(axti, "the Legacy-exempt play must still render somewhere on the board");
+  assert.equal(
+    axti!.contract.dte,
+    realDte,
+    "contract.dte must match TODAY's real calendar day, not the frozen scan-day value",
+  );
+  assert.match(
+    axti!.reason,
+    new RegExp(`\\(${realDte}DTE,`),
+    "the DTE token baked into `reason` must be corrected too, not just contract.dte",
+  );
+  assert.doesNotMatch(
+    axti!.reason,
+    new RegExp(`\\(${staleDte}DTE,`),
+    "the stale DTE token must not still be present anywhere in reason",
+  );
+});
+
+test("a NON-legacy-exempt play's DTE is left untouched by the Legacy serve-time refresh — scope stays narrow", async () => {
+  const todayYmd = todayEt();
+  const expiry = addDaysYmd(todayYmd, 7);
+  const realDte = calendarDte(todayYmd, expiry);
+  const mismatchedDte = realDte + 3; // deliberately wrong, to prove this path is never touched
+
+  const d = buildSwingDossier(dossier("BBB"));
+  const organicPlay = play({
+    ticker: "BBB",
+    status: "COMMIT",
+    contract: { ...contract, ticker: "BBB", expiry, dte: mismatchedDte },
+    reason: `C 50 exp ${expiry} (${mismatchedDte}DTE, Δ0.40) · organic discovery`,
+  });
+
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [organicPlay] }),
+  });
+  const bbb = Object.values(lane.sections).flat().find((p) => p.ticker === "BBB");
+  assert.ok(bbb, "the organic play must still render somewhere on the board");
+  assert.equal(
+    bbb!.contract.dte,
+    mismatchedDte,
+    "a non-Legacy-exempt play's contract.dte must be left exactly as the discovery scan produced it",
   );
 });

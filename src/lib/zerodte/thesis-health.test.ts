@@ -128,6 +128,46 @@ test("computeThesisHealth: VWAP cross drops health materially", () => {
   assert.ok(h!.moves.some((m) => m.includes("VWAP") || m.includes("Market")));
 });
 
+test("computeThesisHealth NEUTRAL-STRUCTURE (regression): null for a committed CONDOR, never a fabricated directional score", () => {
+  // condor.ts's own buildCondorSetup doc: a condor row's `direction` "carries the pin's nominal
+  // fade side for provenance but is UNUSED by the neutral structure's gates/grader." Before this
+  // fix, every pillar here (flow/tape/VWAP/market-align/confluence) scored that nominal side as a
+  // real directional thesis for an OPEN/HOLD/TRIM condor, fabricating a "Thesis Health" percentage
+  // for a delta-neutral, credit-sold structure that reaches the live command-deck panel and Largo.
+  const condorCtx = { ...baseCtx, play_type: "CONDOR", condor: { net_credit: 3000, max_loss: 12000 } };
+  const h = computeThesisHealth(condorCtx, { fq_score: 70 }, {
+    direction: "short",
+    setup: minimalSetup(),
+    spyBias: "down",
+    nowEtMinutes: 11 * 60 + 30,
+    computedAtEt: "11:30 ET",
+  }, { status: "OPEN" });
+  assert.equal(h, null, "a condor must never get a fabricated directional thesis-health score");
+
+  // The looser `condor` blob presence check (a row shape without an explicit play_type field)
+  // must be caught the same way — mirrors the `isCondorLedgerRow` check used elsewhere.
+  const looseCondorCtx = { ...baseCtx, condor: { net_credit: 3000 } };
+  const h2 = computeThesisHealth(looseCondorCtx, { fq_score: 70 }, {
+    direction: "short",
+    setup: minimalSetup(),
+    spyBias: "down",
+    nowEtMinutes: 11 * 60 + 30,
+    computedAtEt: "11:30 ET",
+  }, { status: "OPEN" });
+  assert.equal(h2, null);
+
+  // A REAL directional OPEN row (no play_type/condor field at all) must be unaffected — this fix
+  // must not suppress thesis health for a genuine directional play.
+  const real = computeThesisHealth(baseCtx, { fq_score: 70 }, {
+    direction: "short",
+    setup: minimalSetup(),
+    spyBias: "down",
+    nowEtMinutes: 11 * 60 + 30,
+    computedAtEt: "11:30 ET",
+  }, { status: "OPEN" });
+  assert.ok(real, "a real directional OPEN row must still get a thesis-health score");
+});
+
 test("computeThesisHealth: null for WATCH rows", () => {
   const h = computeThesisHealth(baseCtx, {}, {
     direction: "short",
@@ -196,4 +236,49 @@ test("computeThesisHealth: Tier B pillars when pinned in feature_vector", () => 
   assert.ok(rv && rv.currentScore < rv.commitScore, "rel volume fade should lower score");
   const dp = h!.pillars.find((p) => p.id === "darkpool");
   assert.ok(dp, "darkpool pillar present");
+});
+
+test("computeThesisHealth (regression): a pillar that never moved since commit reads 'intact', never a fabricated 'faded'/'lost'", () => {
+  // The cortex pillar is ALWAYS commit===current by construction (computeThesisHealth calls
+  // `cortexScore(commitCortex)` for BOTH sides off the one frozen blob — "honest static until
+  // live cortex ships"). Before this fix, pillarStatus() mixed an absolute-level check into what
+  // is supposed to be a relative "how much moved since commit" classification, so any pillar
+  // scoring below 0.75 read "faded" and could never read "lost", regardless of whether anything
+  // actually changed. A THIN_EVIDENCE cortex decision scores 0 (cortexScore) — low, but static —
+  // and must not be narrated as a live deterioration.
+  const thinEvidenceCtx = {
+    ...baseCtx,
+    cortex: {
+      abstained: false,
+      decision: "THIN_EVIDENCE",
+      score: null,
+      conviction: "C",
+      vetoes: [],
+      supports: [],
+      opposes: [],
+      absent: [],
+      narrative: [],
+      as_of: "2026-07-29T15:21:00Z",
+    },
+  };
+  const h = computeThesisHealth(thinEvidenceCtx, { fq_score: 70 }, {
+    direction: "short",
+    setup: minimalSetup(),
+    spyBias: "down",
+    nowEtMinutes: 11 * 60 + 30,
+    computedAtEt: "11:30 ET",
+  }, { status: "OPEN" });
+  assert.ok(h);
+  const cortex = h!.pillars.find((p) => p.id === "cortex");
+  assert.ok(cortex, "cortex pillar present");
+  assert.equal(cortex!.commitScore, cortex!.currentScore, "commit and current must be identical for this pillar");
+  assert.equal(
+    cortex!.status,
+    "intact",
+    `an unchanged pillar must read "intact" regardless of its absolute score, got "${cortex!.status}"`,
+  );
+  assert.ok(
+    !h!.moves.some((m) => m.startsWith("Cortex:")),
+    `an unchanged pillar must not generate a false "what moved" narrative line, got: ${JSON.stringify(h!.moves)}`,
+  );
 });

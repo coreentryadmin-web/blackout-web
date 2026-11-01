@@ -71,8 +71,17 @@ export function describeConnectError(e) {
 
 /** True when Postgres is unreachable from this host (private RDS / cloud agent sandbox). */
 export function isPrivateDbUnreachableError(message) {
-  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|self.signed|certificate/i.test(
+  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|timeout|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|self.signed|certificate|terminated unexpectedly|connection terminated/i.test(
     String(message ?? "")
+  );
+}
+
+/** Transient proxy/PgBouncer blips — safe to retry or skip audit checks when the host cannot hold a session. */
+export function isTransientAuditPgError(err) {
+  const msg = describeConnectError(err);
+  if (isPrivateDbUnreachableError(msg)) return true;
+  return /connection terminated|server login has been failing|too many clients|remaining connection slots/i.test(
+    msg
   );
 }
 

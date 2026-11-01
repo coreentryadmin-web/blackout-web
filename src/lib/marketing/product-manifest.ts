@@ -125,18 +125,19 @@ export const PRODUCT_MANIFEST: Record<MarketingModuleId, ProductManifestEntry> =
     tag: "0DTE command desk",
     audience: "Intraday traders",
     positioning:
-      "Intraday 0DTE Command scanner with graded play lifecycle and Evening Edition prep for the next session.",
+      "Intraday 0DTE Command scanner, Swing Command multi-day positions, and Evening Edition prep for the next session — one desk for the full trade horizon.",
     lifecycle:
-      "0DTE Command runs during RTH as an always-on, multi-ticker intraday scanner with Cortex gates on every commit. Evening Edition publishes post-close prep for the next session. One desk for the full session arc — not a swing-only product.",
+      "0DTE Command runs during RTH as an always-on, multi-ticker intraday scanner with Cortex gates on every commit. Swing Command tracks multi-day positions with thesis-health monitoring. Evening Edition publishes post-close prep for the next session. One desk for the full session arc — not a swing-only product.",
     capabilities: [
       "0DTE Command: whole-market intraday scanner",
+      "Swing Command: multi-day positions with thesis-health tracking",
       "Thesis health and Cortex gates on every commit",
       "Evening Edition prep for the next session",
       "Graded play log with full thesis trail",
     ],
     faqAnswer:
-      "Night Hawk is the 0DTE command desk: 0DTE Command scans the whole market intraday with Cortex thesis health on every commit, tracks graded plays through their lifecycle, and publishes Evening Edition prep after the close so you walk into the next session with structure — not a blank chart.",
-    planInclude: "Night Hawk 0DTE Command + Evening Edition",
+      "Night Hawk is the full-horizon command desk: 0DTE Command scans the whole market intraday with Cortex thesis health on every commit, Swing Command tracks multi-day positions with the same thesis-health monitoring, and Evening Edition publishes prep after the close so you walk into the next session with structure — not a blank chart.",
+    planInclude: "Night Hawk 0DTE Command + Swing Command + Evening Edition",
     learnHref: "/learn/night-hawk-0dte-command-guide",
     href: "/nighthawk",
   },

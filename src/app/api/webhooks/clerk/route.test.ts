@@ -18,12 +18,22 @@ process.env.WHOP_API_KEY = "test-whop-key";
 
 let dbQueryCalls: Array<{ text: string; values: unknown[] | undefined }> = [];
 let syncWhopCalls: string[] = [];
+let dbQueryShouldThrowOnce = false;
+
+// Each test sets its own svix-id (via setSvixId) before posting — the route now dedupes
+// on svix-id (see the idempotency describe block below), so reusing one fixed id across
+// every test would make every test after the first read as a "duplicate delivery" and
+// skip all processing.
+let currentSvixId = "msg_test_default";
+function setSvixId(id: string): void {
+  currentSvixId = id;
+}
 
 mock.module("next/headers", {
   namedExports: {
     headers: async () => ({
       get: (name: string) =>
-        ({ "svix-id": "msg_test", "svix-timestamp": "1700000000", "svix-signature": "v1,test" })[name] ?? null,
+        ({ "svix-id": currentSvixId, "svix-timestamp": "1700000000", "svix-signature": "v1,test" })[name] ?? null,
     }),
   },
 });
@@ -45,6 +55,10 @@ mock.module("../../../../lib/db", {
   namedExports: {
     dbQuery: async (text: string, values?: unknown[]) => {
       dbQueryCalls.push({ text, values });
+      if (dbQueryShouldThrowOnce) {
+        dbQueryShouldThrowOnce = false;
+        throw new Error("simulated db failure");
+      }
       return { rows: [], rowCount: 0 };
     },
     deleteUserDataForClerkId: async () => ({ users: 0, largo_sessions: 0, user_journal: 0, push_subscriptions: 0 }),
@@ -115,6 +129,7 @@ describe("POST /api/webhooks/clerk — Whop sync skips internal audit accounts",
   test("user.updated for an internal audit account does NOT call syncWhopMembershipForEmail", async () => {
     dbQueryCalls = [];
     syncWhopCalls = [];
+    setSvixId("msg_audit_update_1");
 
     const res = await postWebhook(
       clerkUserEvent("user.updated", "user_audit_1", "seo-audit-1788092138340@blackouttrades.com")
@@ -130,6 +145,7 @@ describe("POST /api/webhooks/clerk — Whop sync skips internal audit accounts",
   test("user.created for a real member email still calls syncWhopMembershipForEmail", async () => {
     dbQueryCalls = [];
     syncWhopCalls = [];
+    setSvixId("msg_real_created_1");
 
     const res = await postWebhook(
       clerkUserEvent("user.created", "user_real_1", "real-member@gmail.com")
@@ -137,5 +153,82 @@ describe("POST /api/webhooks/clerk — Whop sync skips internal audit accounts",
 
     assert.equal(res.status, 200);
     assert.deepEqual(syncWhopCalls, ["real-member@gmail.com"], "a real member's Whop membership must still sync");
+  });
+});
+
+// Regression for the duplicate-processing bug: before this fix, the route had NO
+// idempotency guard at all, so a Svix redelivery of the SAME event (same svix-id —
+// Svix's own message id, stable across retries) re-ran the full handler a second time —
+// a second Whop API sync call, a second "New member signed up" Discord ping, a second
+// GDPR-deletion pass, etc — for one real delivery. Fixed by claiming svix-id via
+// sharedCacheSetNx before processing, the same pattern webhook/whop/route.ts's
+// claimWhopEvent and webhook/resend/route.ts's claimResendEvent already use.
+describe("POST /api/webhooks/clerk — idempotency on redelivery", () => {
+  let POST: typeof import("./route").POST;
+
+  before(async () => {
+    ({ POST } = await import("./route"));
+  });
+
+  function postWebhook(payload: unknown): Promise<Response> {
+    return POST(new Request("https://blackouttrades.com/api/webhooks/clerk", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }));
+  }
+
+  test("a redelivered event (same svix-id) is NOT reprocessed (no second Whop sync call)", async () => {
+    dbQueryCalls = [];
+    syncWhopCalls = [];
+    setSvixId("svix_dup_1");
+
+    const first = await postWebhook(clerkUserEvent("user.created", "user_dup_1", "dup-member@gmail.com"));
+    assert.equal(first.status, 200);
+    assert.deepEqual(syncWhopCalls, ["dup-member@gmail.com"], "first delivery must process normally");
+    const dbCallsAfterFirst = dbQueryCalls.length;
+    assert.ok(dbCallsAfterFirst > 0, "first delivery must write to the DB");
+
+    // Svix redelivers the SAME event: same svix-id, same payload.
+    const second = await postWebhook(clerkUserEvent("user.created", "user_dup_1", "dup-member@gmail.com"));
+    assert.equal(second.status, 200, "a redelivery must still be ack'd 200 so Svix stops retrying");
+    assert.equal(syncWhopCalls.length, 1, "redelivery must NOT trigger a second Whop sync call");
+    assert.equal(dbQueryCalls.length, dbCallsAfterFirst, "redelivery must NOT issue a second DB write");
+  });
+
+  test("two different svix-ids each process independently", async () => {
+    syncWhopCalls = [];
+
+    setSvixId("svix_distinct_a");
+    const a = await postWebhook(clerkUserEvent("user.created", "user_distinct_a", "distinct-a@gmail.com"));
+    assert.equal(a.status, 200);
+
+    setSvixId("svix_distinct_b");
+    const b = await postWebhook(clerkUserEvent("user.created", "user_distinct_b", "distinct-b@gmail.com"));
+    assert.equal(b.status, 200);
+
+    assert.deepEqual(
+      syncWhopCalls,
+      ["distinct-a@gmail.com", "distinct-b@gmail.com"],
+      "two distinct deliveries must both be processed, not over-deduped"
+    );
+  });
+
+  test("a retry AFTER a failed DB write is reprocessed, not swallowed as a duplicate", async () => {
+    syncWhopCalls = [];
+    setSvixId("svix_retry_1");
+    dbQueryShouldThrowOnce = true;
+
+    const failed = await postWebhook(clerkUserEvent("user.created", "user_retry_1", "retry-member@gmail.com"));
+    assert.equal(failed.status, 500, "the first (failing) attempt must surface a 500 so Clerk/Svix retries");
+    assert.equal(syncWhopCalls.length, 0, "the failed attempt never reached the Whop sync call");
+
+    // Clerk/Svix retries the SAME event (same svix-id) after the 500 above.
+    const retried = await postWebhook(clerkUserEvent("user.created", "user_retry_1", "retry-member@gmail.com"));
+    assert.equal(retried.status, 200, "the retry must actually be reprocessed, not silently ack'd as a duplicate");
+    assert.deepEqual(
+      syncWhopCalls,
+      ["retry-member@gmail.com"],
+      "the retry must run the full handler the failed attempt never completed"
+    );
   });
 });

@@ -13,12 +13,19 @@ import type {
 } from "@/features/nighthawk/lib/types";
 import { decodeHtmlEntities } from "@/lib/largo/sanitize-feed-text";
 
-// PR-N12: professional-grade rebuild of the playbook column in the 0DTE pane's desk
-// grammar (see ZeroDteBoard.tsx): one compact edition-header strip, market context as
-// a label:value data grid (prose demoted to a collapsed disclosure), evidence-first
-// play cards, and ONE honest empty state on zero-play nights — the five repeated
-// "Hawk is circling" placeholder slots are gone; numbered cards render only for
+// PR-N12: professional-grade rebuild of the playbook column, at the time in a two-column
+// desk grammar shared with the (also now-superseded) ZeroDteBoard.tsx: one compact
+// edition-header strip, market context as a label:value data grid (prose demoted to a
+// collapsed disclosure), evidence-first play cards, and ONE honest empty state on
+// zero-play nights — the five repeated "Hawk is circling" placeholder slots are gone;
+// numbered cards render only for
 // actual plays. Every value binds to a real payload field.
+//
+// NOTE: this component (and its ZeroDteBoard.tsx sibling) is DEAD CODE as of the tab-based
+// NightHawkFeed rewrite — the live Legacy tab (view=LEGACY) renders LegacyPickLogBoard, not
+// PlaybookBoard. Left on disk/re-exported (features/nighthawk/index.ts) but unreachable from
+// any live route; left untouched here rather than deleted since that is a bigger, separate
+// cleanup with its own blast-radius review.
 
 type PlaybookBoardProps = {
   edition: NightHawkEdition | undefined;

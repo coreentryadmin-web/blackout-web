@@ -67,20 +67,30 @@ export function getUwLiveIntegrationPaths(): string[] {
   return [...ws, ...rest];
 }
 
-/** Match a documented path template against live integration paths. */
+/**
+ * Match a documented path template against live integration paths.
+ *
+ * Matches on the FULL path with every `{param}` segment normalized to a
+ * wildcard, so differently-named placeholders still line up (`{ticker}` vs
+ * `{symbol}`). This intentionally does NOT fall back to a "same prefix before
+ * the first `{`" match — that used to return true for any two paths sharing a
+ * short static root (e.g. `/api/stock/` or `/api/economy/`), which is nearly
+ * every UW REST path. One live-integrated endpoint under a root silently
+ * marked EVERY sibling endpoint under that same root as "live integrated" too,
+ * regardless of what came after the first placeholder — 40 of the 186
+ * documented UW endpoints (incl. genuinely unwired ones like
+ * `/api/stock/{ticker}/balance-sheets`, `/insider-buy-sells`, `/ownership`)
+ * false-matched this way. That defeated the whole point of the admin API
+ * Coverage panel this feeds (`admin-endpoint-registry.ts`'s `usedInCode` /
+ * `integrationCandidate`): genuinely unused documented endpoints were hidden
+ * from the "integration candidate" list instead of being surfaced.
+ */
 export function isUwPathLiveIntegrated(pathTemplate: string): boolean {
   const normalize = (p: string) =>
     p.replace(/\{[^}]+\}/g, "{*}").replace(/\/+$/, "");
   const target = normalize(pathTemplate);
   for (const live of getUwLiveIntegrationPaths()) {
-    const n = normalize(live);
-    if (n === target) return true;
-    const prefix = pathTemplate.split("{")[0];
-    const livePrefix = live.split("{")[0];
-    if (prefix && livePrefix && prefix === livePrefix) return true;
-    if (pathTemplate.startsWith("/api/socket/") && live.startsWith("/api/socket/")) {
-      if (pathTemplate === live) return true;
-    }
+    if (normalize(live) === target) return true;
   }
   return false;
 }

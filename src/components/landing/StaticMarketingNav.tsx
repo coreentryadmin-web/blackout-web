@@ -4,7 +4,9 @@ import { MarketingMobileNav, type MarketingNavLink } from "./MarketingMobileNav"
 
 // Anchors must match the real section ids in RedesignHome:
 // #protocol = "Identify. Validate. Execute." (the platform process)
-// #modules  = "Six engines. One edge." (the product carousel)
+// #modules  = "<N> products. One edge." (the product carousel) — headline is
+//             dynamic (manifestModulesHeadline(), product-manifest.ts), scaling
+//             with the live product count, not a fixed number in a literal string.
 export const MARKETING_NAV_LINKS: MarketingNavLink[] = [
   { href: "/#protocol", label: "Platform" },
   { href: "/#modules", label: "Products" },

@@ -132,6 +132,35 @@ describe("composeSpxDeskBrief", () => {
     assert.match(result.body, /HOD|PDH/);
   });
 
+  test("INTERNALS line discloses when desk.internals_estimated flags a breadth-derived TICK/TRIN proxy (same root cause as spx-signals.ts, regression 2026-11-01)", () => {
+    // This member-facing "Live Desk AI brief" (the AI-commentary surface on /api/market/spx/commentary)
+    // must not cite a breadth-derived proxy as a real NYSE print either — same truth-mandate gap as
+    // the computeSpxConfluence TICK/TRIN/ADD score factors, different render surface.
+    const desk = fakeDesk();
+    desk.tick = 176;
+    desk.trin = 0.5;
+    desk.internals_estimated = { tick: true, trin: true, add: false } as never;
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "mid-morning");
+
+    assert.match(result.body, /INTERNALS.*TICK \+176 est\..*TRIN 0\.50 est\./);
+  });
+
+  test("INTERNALS line does NOT disclose when desk.internals_estimated is absent (real exchange prints stay undecorated)", () => {
+    const desk = fakeDesk();
+    desk.tick = 176;
+    desk.trin = 0.5;
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "mid-morning");
+
+    assert.match(result.body, /INTERNALS {2}TICK \+176 · TRIN 0\.50/);
+    assert.doesNotMatch(result.body, /est\./);
+  });
+
   test("WHY and LEVELS name GEX king node — not generic pin — when gex_king is the magnet", () => {
     const desk = fakeDesk();
     desk.gex_king = 5900;
@@ -157,5 +186,27 @@ describe("composeSpxDeskBrief", () => {
 
     assert.ok(result.body.includes(SPX_DESK_MAX_PAIN_LABEL.toLowerCase()));
     assert.doesNotMatch(result.body, /toward pin \{\{/);
+  });
+
+  test("unresolved gamma flip never reads as a confident neg-gamma call", () => {
+    // `above_gamma_flip` defaults to `false` (never null) whenever `gamma_flip` itself is
+    // unknown (spx-desk.ts's several `flip != null ? spot > flip : false` sites) — before
+    // this fix, gammaTag/buildWhy/the NEXT-5M ternary all read `!above_gamma_flip` as a
+    // confirmed short-gamma regime instead of checking `gamma_flip != null` first, so a
+    // genuinely unresolved flip surfaced a false "neg-γ (trend fuel)" claim to members —
+    // exactly the plausible-wrong-number-over-honest-absence trap the Largo product
+    // contract's C3 section warns about.
+    const desk = fakeDesk();
+    desk.gamma_flip = undefined;
+    desk.gamma_regime = "unknown";
+    desk.above_gamma_flip = false; // the real server default when flip is unresolved
+
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "midday-grind");
+
+    assert.doesNotMatch(result.body, /neg-γ/);
+    assert.match(result.body, /γ regime unresolved/);
   });
 });

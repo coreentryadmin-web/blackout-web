@@ -24,7 +24,12 @@ export function effectivePickBias(
   if (play.bias !== "neutral") return play.bias;
   if (play.setup !== "pivot") return null;
   const flip = gammaFlip;
-  if (flip == null || !(spot != null && spot > 0)) return null;
+  // `flip == null` alone lets a NaN flip (NaN !== null) fall through — see this file's own
+  // `pivotPickWaitingCopy` below, which already guards `Number.isFinite(gammaFlip)` for the
+  // identical field. Without it, `Math.abs(spot - NaN) / NaN` is NaN, the commit-distance check
+  // never fires (NaN is never `<` anything), and `spot > NaN` resolves to false — fabricating a
+  // confident "short" from a genuinely unknown flip instead of returning "undetermined".
+  if (flip == null || !Number.isFinite(flip) || !(spot != null && spot > 0)) return null;
   const dist = Math.abs(spot - flip) / flip;
   if (dist < PIVOT_PICK_COMMIT_EPS) return null;
   return spot > flip ? "long" : "short";
@@ -32,9 +37,20 @@ export function effectivePickBias(
 
 export function pivotPickWaitingCopy(
   play: VectorPlay,
+  spot: number | null | undefined,
   gammaFlip: number | null | undefined
 ): string | null {
   if (play.setup !== "pivot" || play.bias !== "neutral") return null;
+  // BUG FIX (round 307 DISCOVERY sweep): this used to take only `gammaFlip`, so it could never
+  // tell "spot hasn't reached the flip yet" apart from "spot already committed past the flip but
+  // zero contracts cleared the quality bar" — a pivot play's raw `bias` stays "neutral" in BOTH
+  // cases (vector-play-engine.ts: "pivot stays neutral in bias"), so the one guard above this
+  // comment is true for the whole lifetime of a pivot play, not just the pre-commit part of it.
+  // Once `effectivePickBias` resolves a side (spot has cleared the flip by PIVOT_PICK_COMMIT_EPS),
+  // this is no longer a "waiting to commit" state — stop returning the waiting copy so the caller
+  // falls through to its real empty-state message instead of permanently telling the member
+  // "contract picks rank once price commits" after price already has.
+  if (effectivePickBias(play, spot, gammaFlip) != null) return null;
   const lvl =
     gammaFlip != null && Number.isFinite(gammaFlip)
       ? gammaFlip.toLocaleString("en-US", { maximumFractionDigits: 2 })

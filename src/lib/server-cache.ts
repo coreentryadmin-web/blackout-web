@@ -19,6 +19,38 @@ const FAILURE_THRESHOLD = 3;
  */
 const MAX_STALE_AGE_MS = 10 * 60 * 1000; // 10 minutes
 
+/**
+ * BUG (found live 2026-10-31, SPX desk `as_of` non-monotonic — a payload byte-identical to one
+ * served ~43s earlier was still being served ~10.6 minutes after its own `refreshedAt`, with
+ * `cf-cache-status: DYNAMIC`/`cache-control: no-store` ruling out edge caching): the SWR branch's
+ * "already degraded" shortcut (below, `degradedKeys.has(key)`) returned `hit.value`
+ * UNCONDITIONALLY once a key crossed FAILURE_THRESHOLD consecutive loader failures — no staleness
+ * check of ANY kind, not even the already-tightened per-key `maxStaleAgeMs` this same branch's
+ * sibling ("not yet degraded", a few lines down) already respects. A replica whose own
+ * `buildSpxDesk()` call keeps failing fast (not necessarily hanging — a broken upstream credential
+ * or network path specific to that one ECS task is enough) degrades after 3 consecutive failures
+ * and then serves that SAME frozen `hit` forever, growing arbitrarily stale, as long as the
+ * upstream keeps failing — because every subsequent request re-enters this exact branch and takes
+ * the same unconditional early return. This is the SPX desk cache key's 5th distinct
+ * staleness-ceiling bug (see `docs/audit/FINDINGS.md`'s "4th instance" write-up, which named this
+ * exact branch's "no further ceiling check" as the specific gap it deferred), but the bug is
+ * generic to `withServerCache`, not SPX-desk-specific — any `degradedKeys` key with a configured
+ * `maxStaleAgeMs` was equally exposed.
+ *
+ * Fix: once staleness ALSO clears this second, harder ceiling (a multiple of the caller's own
+ * `maxStaleAgeMs`), stop returning the frozen `hit` unconditionally and prefer `opts.fallback()`
+ * (bounded by `opts.maxBlockMs`, same race idiom used elsewhere in this file) when one is
+ * configured — e.g. `spx-desk-loader.ts`'s `deskCacheOpts.fallback` builds a desk shell from the
+ * independently-cached `pulse` lane, which is typically NOT degraded on the same replica and gives
+ * a genuinely fresher (if less complete) response instead of the same ancient snapshot. A caller
+ * with no fallback configured keeps today's exact behavior (nothing better to serve) — this only
+ * changes the outcome once BOTH a hard ceiling is crossed AND an escape hatch actually exists.
+ * 3x headroom beyond the primary ceiling preserves the branch's original intent (skip a doomed
+ * blocking refresh on the common, brief-degradation case) while still bounding the worst case to a
+ * small multiple of the caller's own freshness contract instead of unboundedly.
+ */
+const DEGRADED_HARD_STALE_MULTIPLIER = 3;
+
 const store = new Map<string, CacheEntry<unknown>>();
 const inflight = new Map<string, Promise<unknown>>();
 
@@ -99,6 +131,19 @@ type CacheOpts = {
    * pre-publish empty shells with available:false).
    */
   shouldCache?: (value: unknown) => boolean;
+  /**
+   * Override for the staleness ceiling every `return hit.value` site in this function enforces
+   * (default MAX_STALE_AGE_MS, 10 minutes). Mirrors `peekServerCache`'s own `maxStaleMs` option —
+   * originally added test-only, to exercise the ceiling with a real (tiny) elapsed time instead
+   * of a real 10-minute wait. It also has a real production use: a caller that ALSO reads this
+   * same cache key via `peekServerCache`/`peekXState`-style code with its OWN tighter freshness
+   * bound must pass the identical bound here too, or the two call sites disagree on "how old is
+   * too old" for one entry and the looser one wins on fallthrough — found live 2026-10-16
+   * (`getSpxPlayState`/`peekSpxPlayState` disagreeing on the `spx-play-read:<date>` key, 20s vs
+   * the 10-minute default, serving snapshots up to ~238s stale). When in doubt, leave this unset
+   * — the shared default is still correct for a key only one call site ever reads.
+   */
+  maxStaleAgeMs?: number;
 };
 
 /**
@@ -128,13 +173,101 @@ async function readRedisCache<T>(key: string): Promise<{ value: T; remainingTtlS
   }
 }
 
-async function writeRedisCache<T>(key: string, value: T, ttlMs: number): Promise<void> {
+/**
+ * Cross-replica generation guard key — tracks which refresh's upstream read is newest,
+ * so a slower-but-older refresh can never clobber a faster-but-newer one in Redis.
+ */
+function genKeyFor(key: string): string {
+  return `server-gen:${key}`;
+}
+
+/**
+ * Reads the generation timestamp (`server-gen:<key>`, see writeRedisCache below) stored alongside
+ * a Redis-cached value — the wall-clock time THAT value's own refresh started, i.e. the payload's
+ * real vintage. `readRedisCache`'s `remainingTtlSec` only says how much longer Redis will keep the
+ * key before expiring it; it carries no information about how old the cached VALUE already is
+ * (a key written with a long ttlMs can sit unrefreshed for most of that window while still
+ * reporting a healthy remaining TTL). `peekServerCache` uses this to apply its staleness ceiling
+ * to a Redis hit the same way it already does to a local-only hit. Same best-effort race as
+ * readRedisCache — never block a peek behind a slow ElastiCache hop; a timeout/miss/error reads as
+ * "age unknown" (null), not as "fresh" or "stale".
+ */
+async function readRedisGeneratedAt(key: string): Promise<number | null> {
+  if (!process.env.REDIS_URL?.trim()) return null;
+  try {
+    const { sharedCacheGet } = await import("./shared-cache");
+    const read = sharedCacheGet<number>(genKeyFor(key));
+    const raced = await Promise.race([
+      read,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), REDIS_READ_RACE_MS)),
+    ]);
+    return raced;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * BUG (found live 2026-10-15, SPX desk `as_of` reverting backward across consecutive polls,
+ * confirmed reproducible via the live production monitor): every withServerCache-backed key is
+ * refreshed independently by EACH ECS replica's own background refresh (`refreshCache`), and this
+ * write was previously unconditional last-writer-wins (`sharedCacheSet` is a bare `redis.set`, no
+ * ordering guard — see shared-cache.ts). A refresh that STARTS earlier (reads an older upstream
+ * snapshot) but happens to COMPLETE later than a sibling replica's refresh (e.g. a slower Polygon
+ * round trip on that replica) could clobber the sibling's already-written NEWER result — so two
+ * near-simultaneous requests, or two routes documented as sharing one cache lane
+ * (`/api/market/spx/desk` and `/api/market/spx/play`), could serve different generations of the
+ * same snapshot, with the freshness signal (`as_of`) jumping backward with no error anywhere.
+ *
+ * Fix: stamp each refresh with `generatedAt` = when ITS OWN loader call STARTED (set by the caller
+ * in `refreshCache`, below) — start time correlates with upstream data vintage; completion time is
+ * confounded by per-replica request latency, which is exactly what let the slower-but-newer-ask
+ * refresh lose the race before. Before overwriting the shared Redis copy, check the generation
+ * already stored there; skip the write if it is already at least as new as this refresh's own. The
+ * main `server:${key}` value's shape is UNCHANGED (still raw T) so this is fully compatible with
+ * replicas mid-rollout still running the old code (they simply never read/write the new
+ * `server-gen:${key}` key and keep racing unconditionally, exactly as before, until the rollout
+ * completes) — only the generation key is new. Not perfectly atomic (GET-then-SET, not a single
+ * Redis command), but narrows the clobber window from "always loses to last writer" down to the
+ * one round trip between this GET and this SET, which is the same best-effort tradeoff this module
+ * already makes elsewhere (REDIS_GET_RACE_MS) rather than adding a new Lua/EVAL capability for it.
+ */
+/** Exported for the cross-replica generation-guard regression test — not a public cache API. */
+export async function writeRedisCache<T>(key: string, value: T, ttlMs: number, generatedAt: number): Promise<void> {
   if (!process.env.REDIS_URL?.trim() || ttlMs <= 0) return;
   try {
-    const { sharedCacheSet } = await import("./shared-cache");
-    await sharedCacheSet(`server:${key}`, value, Math.max(1, Math.round(ttlMs / 1000)));
+    const { sharedCacheGet, sharedCacheSet } = await import("./shared-cache");
+    const ttlSec = Math.max(1, Math.round(ttlMs / 1000));
+    const genKey = genKeyFor(key);
+    const existingGen = await sharedCacheGet<number>(genKey);
+    if (typeof existingGen === "number" && existingGen > generatedAt) {
+      return; // a newer refresh (this or another replica) already won this key — don't regress it
+    }
+    await Promise.all([
+      sharedCacheSet(`server:${key}`, value, ttlSec),
+      sharedCacheSet(genKey, generatedAt, ttlSec),
+    ]);
   } catch {
     // ignore redis write failures
+  }
+}
+
+/**
+ * Thrown ONLY when a cold-path caller's own maxBlockMs budget (refresh + fallback + one more
+ * raced inflight check, all raced against the same cap) is fully exhausted with nothing usable
+ * to serve. Distinguishing this from a generic `Error` lets a route tell "the cache/fallback
+ * chain couldn't finish in time" apart from a genuine unexpected crash — the two are NOT the same
+ * fact (found live 2026-10-16, Ask Largo standing mandate, GET /api/market/spx/play): the catch
+ * block that only sees `instanceof Error` was presenting a cache-timing race identically to "the
+ * desk has no data," even on confirmed occasions where a parallel desk read at the same instant
+ * returned live data. A route can `instanceof ServerCacheTimeoutError`-check and choose honest
+ * language instead of asserting the underlying data source is cold when it was never actually
+ * checked.
+ */
+export class ServerCacheTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ServerCacheTimeoutError";
   }
 }
 
@@ -148,6 +281,7 @@ export async function withServerCache<T>(
   const swr = opts.staleWhileRevalidate !== false;
   const localOnly = opts.localOnly === true;
   const shouldCache = opts.shouldCache;
+  const maxStaleAgeMs = opts.maxStaleAgeMs ?? MAX_STALE_AGE_MS;
   if (ttlMs <= 0) return loader();
 
   const now = Date.now();
@@ -169,8 +303,28 @@ export async function withServerCache<T>(
     }
   }
 
-  // Fast lanes: always await a fresh build once TTL expires (no stale handoff).
-  if (hit && hit.expiresAt <= now && !swr) {
+  // Fast lanes: always await a fresh build once TTL expires (no stale handoff) — but only for a
+  // hit that is still within MAX_STALE_AGE_MS. BUG (found live 2026-10-08, /api/market/spx/play):
+  // before this ceiling existed, BOTH `return hit.value` sub-paths below served the in-memory
+  // entry completely unconditionally, however old it was — unlike the SWR branch a few lines
+  // down, which has always enforced MAX_STALE_AGE_MS via the "FIX 5a" guard. Every caller that
+  // combines `staleWhileRevalidate:false` with `staleOnInflight`/`maxBlockMs` (today just
+  // spx-service.ts's getSpxPlayState, the sole `staleWhileRevalidate:false` caller) hits this
+  // exact fast lane. When its loader (evaluateSpxPlayStateCrossReplica) routinely lost its race
+  // against its own 800ms maxBlockMs — already documented inline at that call site as "a routine
+  // outcome, not a rare one" — the background refresh scheduled here kept failing to land before
+  // the NEXT poll arrived, so this replica's in-memory `hit` just sat there, un-aged-out, served
+  // forever. Measured live: `/api/market/spx/play`'s `as_of` up to ~27 minutes stale and
+  // inconsistent across replicas (each replica frozen at whenever ITS OWN background refresh last
+  // happened to succeed), `assessed: true` and indistinguishable from a fresh read the whole time,
+  // while `/api/market/spx/desk` (same underlying desk snapshot, but a route that does not pass
+  // staleWhileRevalidate:false) stayed current throughout the identical polling window — proving
+  // the staleness was this cache path's own gap, not an upstream data problem. Falling through
+  // past the ceiling re-enters the SAME bounded cold-path logic a genuinely-cold key already uses
+  // below (the `pending`/maxBlockMs-raced rebuild, then fallback, with the ceiling re-checked
+  // before any remaining `hit`-as-last-resort step — see the matching fix at each of those sites)
+  // instead of a third, unbounded way to serve `hit.value`.
+  if (hit && hit.expiresAt <= now && !swr && now - hit.refreshedAt <= maxStaleAgeMs) {
     if (inflight.has(key)) {
       if (opts.staleOnInflight) return hit.value;
       if (opts.maxBlockMs != null && opts.fallback) return opts.fallback() as Promise<T>;
@@ -189,15 +343,83 @@ export async function withServerCache<T>(
   // FIX 5a: Enforce a maximum stale age. If the entry is older than MAX_STALE_AGE_MS
   // since its last successful refresh, do not serve it; fall through to a blocking
   // fetch so callers are never permanently stuck on stale data.
-  if (hit && hit.expiresAt <= now && !inflight.has(key)) {
+  // `&& swr` restricts this block to stale-while-revalidate callers specifically (it always
+  // implicitly was, in effect, since the fast lane above used to consume every `!swr` hit
+  // unconditionally and never fell through to here — now that the fast lane itself has a
+  // staleness ceiling, an explicit `swr` check keeps a too-stale `!swr` hit routing to the
+  // `pending`/maxBlockMs cold-path logic further down instead of this block's own unbounded
+  // `return refreshCache(...)` on the "not yet degraded" branch, which has no maxBlockMs race at
+  // all and would silently reintroduce the exact unbounded-block failure mode PR #5061/#5065
+  // fixed for every `maxBlockMs` caller).
+  if (hit && hit.expiresAt <= now && swr && !inflight.has(key)) {
     const staleAge = now - hit.refreshedAt;
-    if (staleAge > MAX_STALE_AGE_MS) {
+    if (staleAge > maxStaleAgeMs) {
       // When the upstream is already degraded (3+ consecutive failures), a blocking
       // refresh will almost certainly fail again, adding latency for no benefit.
       // Return the stale entry and kick off a non-blocking refresh attempt instead.
       if (degradedKeys.has(key) && hit) {
-        console.warn(`[server-cache] ${key}: degraded upstream, serving stale (age ${Math.round(staleAge / 1000)}s) instead of blocking refresh`);
+        const hardCeilingMs = maxStaleAgeMs * DEGRADED_HARD_STALE_MULTIPLIER;
+        if (staleAge <= hardCeilingMs) {
+          console.warn(`[server-cache] ${key}: degraded upstream, serving stale (age ${Math.round(staleAge / 1000)}s) instead of blocking refresh`);
+          refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
+          return hit.value;
+        }
+        // Past the hard ceiling (see DEGRADED_HARD_STALE_MULTIPLIER's doc comment) — this hit has
+        // now been frozen for multiple ceilings' worth of time with no sign the upstream is
+        // recovering. Keep retrying in the background, but stop handing out the same ancient
+        // snapshot unconditionally: prefer a configured fallback (bounded by maxBlockMs, same race
+        // idiom as every other fallback site in this file) when one exists, since it is typically a
+        // DIFFERENT, independently-cached code path that may not share this key's degradation.
+        console.warn(
+          `[server-cache] ${key}: degraded upstream AND past the hard ceiling (age ${Math.round(staleAge / 1000)}s, hard ceiling ${Math.round(hardCeilingMs / 1000)}s) — preferring fallback over the frozen snapshot`
+        );
         refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
+        if (opts.fallback) {
+          try {
+            const maxBlock = opts.maxBlockMs;
+            if (maxBlock != null && Number.isFinite(maxBlock) && maxBlock > 0) {
+              const racedFallback = await Promise.race([
+                opts.fallback() as Promise<T>,
+                new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+              ]);
+              if (racedFallback !== "timeout") return racedFallback;
+            } else {
+              return (await opts.fallback()) as T;
+            }
+          } catch {
+            // Fallback itself failed — fall through to the stale value below. We already have
+            // *something* to serve, which beats throwing on top of an already-degraded key.
+          }
+        }
+        // No fallback configured (or it also failed/timed out) — same last-resort behavior as
+        // before this fix: nothing better exists, so serve the stale value.
+        return hit.value;
+      }
+      // FIX (found live 2026-10-26, SPX desk loader-path stale-cache ceiling gap): this was the
+      // one remaining `return refreshCache(...)` site in this function with NO race against
+      // opts.maxBlockMs — every other maxBlockMs-configured branch (the fast lane above, the
+      // already-inflight branch, both cold-start branches) already races it, per the PR
+      // #5061/#5065/#6090 fixes documented elsewhere in this file. A caller that configures
+      // maxBlockMs (e.g. spx-desk-loader.ts's loadSpxDesk()/loadMergedSpxDesk()/
+      // loadBootstrapBundle(), all of which pass `maxBlockMs: deskBootstrapMaxBlockMs()`) expects a
+      // hard bound on how long it can be blocked; this not-yet-degraded branch silently ignored
+      // that budget once a key's stale age exceeded maxStaleAgeMs, fully awaiting the refresh
+      // regardless of how slow the upstream was. Race it the same way the branches above do:
+      // refreshCache() registers its promise in `inflight` BEFORE returning, so the loser of the
+      // race keeps running in the background and still populates the cache/Redis on success —
+      // nothing is cancelled, only the caller stops waiting on it.
+      const maxBlock = opts.maxBlockMs;
+      if (maxBlock != null && Number.isFinite(maxBlock) && maxBlock > 0) {
+        const refresh = refreshCache(key, ttlMs, loader, localOnly, shouldCache);
+        const raced = await Promise.race([
+          refresh,
+          new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+        ]);
+        if (raced !== "timeout") return raced;
+        // The refresh lost the race but is still running (registered in `inflight`) — serve the
+        // stale value instead of blocking the caller further, the same race-losing behavior every
+        // other maxBlockMs branch in this file falls back to. `hit` is guaranteed non-null here
+        // (this whole block is inside `if (hit && ...)`).
         return hit.value;
       }
       return refreshCache(key, ttlMs, loader, localOnly, shouldCache);
@@ -218,7 +440,13 @@ export async function withServerCache<T>(
   const pending = inflight.get(key) as Promise<T> | undefined;
   if (pending) {
     if (opts.staleOnInflight || (opts.maxBlockMs != null && opts.fallback)) {
-      if (hit) return hit.value;
+      // Same MAX_STALE_AGE_MS ceiling as the fast-lane fix above — this branch is reachable by
+      // ANY caller with staleOnInflight/maxBlockMs+fallback configured (not just !swr ones, e.g.
+      // spx-desk-loader.ts, nighthawk/edition/route.ts, flows-member-cache.ts, admin-health.ts),
+      // whenever a build happens to already be inflight. An ancient `hit` here is just as
+      // unbounded-stale as the fast-lane one was; treat it as unusable past the ceiling and fall
+      // through to the Redis/fallback logic below instead of serving it unconditionally.
+      if (hit && now - hit.refreshedAt <= maxStaleAgeMs) return hit.value;
       if (!localOnly) {
         const redisHit = await readRedisCache<T>(key);
         if (redisHit != null) {
@@ -231,7 +459,31 @@ export async function withServerCache<T>(
           return redisHit.value;
         }
       }
-      if (opts.fallback) return opts.fallback() as Promise<T>;
+      if (opts.fallback) {
+        // BUG (found live 2026-09-16): this branch is reached when a build for `key` is
+        // already inflight (from a concurrent caller) AND there's no hit/Redis copy to
+        // serve — a fully cold key under concurrent load, e.g. right after a deploy cycles
+        // tasks or a session-date rollover. Unlike the cold-start path below (which races
+        // its own refreshCache() against maxBlockMs), this call to opts.fallback() was
+        // awaited with NO timeout at all. When the fallback itself does real work that can
+        // block (spx-desk-loader.ts's desk fallback calls loadSpxDeskPulse(), itself a
+        // withServerCache-wrapped builder that can hit a slow upstream), a caller landing
+        // here has no bound on how long it waits — measured live: /api/market/spx/desk
+        // returned in 42.8s against a documented 3s maxBlockMs cap (deskBootstrapMaxBlockMs()),
+        // a ~14x overshoot, while ALB TargetResponseTime showed a sustained sitewide avg
+        // climb to ~11-13s for several minutes. Race it the same way the path below does,
+        // so a slow fallback can never block longer than the caller's own configured cap.
+        const maxBlock = opts.maxBlockMs;
+        if (maxBlock != null && Number.isFinite(maxBlock) && maxBlock > 0) {
+          const racedFallback = await Promise.race([
+            opts.fallback() as Promise<T>,
+            new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+          ]);
+          if (racedFallback !== "timeout") return racedFallback;
+          throw new ServerCacheTimeoutError(`[server-cache] ${key}: cold miss (inflight, fallback) exceeded maxBlockMs`);
+        }
+        return opts.fallback() as Promise<T>;
+      }
     }
     return pending;
   }
@@ -244,8 +496,31 @@ export async function withServerCache<T>(
       new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
     ]);
     if (raced !== "timeout") return raced;
-    if (opts.fallback) return opts.fallback() as Promise<T>;
-    if (hit) return hit.value;
+    if (opts.fallback) {
+      // BUG, part 2 (found live 2026-09-16, same shape as the "already inflight" branch
+      // above): this is the COLD-START path — no build was already inflight, so `refresh`
+      // itself just raced against maxBlockMs and lost. Falling through to opts.fallback()
+      // here was ALSO awaited with no timeout, so a slow fallback (spx-desk-loader.ts's
+      // deskCacheOpts.fallback calls loadSpxDeskPulse(), itself a withServerCache-wrapped
+      // builder that can hit a slow Polygon fetch) could still block the caller far past
+      // maxBlockMs even after the fix above landed — confirmed live post-deploy: PR #5061
+      // shipped the "already inflight" fix, but /api/market/spx/desk still measured a 42.2s
+      // response afterward, because on a genuinely cold key (the far more common case — no
+      // concurrent request racing the same build) execution lands HERE, not in the inflight
+      // branch. Race it the same way.
+      const racedFallback = await Promise.race([
+        opts.fallback() as Promise<T>,
+        new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+      ]);
+      if (racedFallback !== "timeout") return racedFallback;
+      // Fallback also blew the cap — fall through to stale/background-refresh below rather
+      // than waiting on it further.
+    }
+    // Same MAX_STALE_AGE_MS ceiling as the two sites above — this is the cold-start mirror of the
+    // "already inflight" fix just above (reachable by any maxBlockMs caller once both the fresh
+    // build and the fallback have blown the cap), and had the identical unbounded `if (hit) return
+    // hit.value` gap.
+    if (hit && now - hit.refreshedAt <= maxStaleAgeMs) return hit.value;
     // Never await the slow cold build after the cap — keep refreshing in background.
     refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
     const pending = inflight.get(key) as Promise<T> | undefined;
@@ -256,7 +531,7 @@ export async function withServerCache<T>(
       ]);
       if (racedPending !== "timeout") return racedPending;
     }
-    throw new Error(`[server-cache] ${key}: cold miss exceeded maxBlockMs`);
+    throw new ServerCacheTimeoutError(`[server-cache] ${key}: cold miss exceeded maxBlockMs`);
   }
 
   return refreshCache(key, ttlMs, loader, localOnly, shouldCache);
@@ -293,21 +568,76 @@ export async function serverCache<T>(
   return withServerCache(key, ttlMs, fn);
 }
 
-/** Read a cached value without invoking the loader (in-memory + Redis, capped read). */
-export async function peekServerCache<T>(key: string): Promise<T | null> {
+/**
+ * Read a cached value without invoking the loader (in-memory + Redis, capped read).
+ *
+ * BUG (found 2026-09-11, live on `/api/market/spx/play`): unlike `withServerCache`, this had NO
+ * staleness ceiling on the final fallback (`if (hit) return hit.value;`). Every "instant read, fire
+ * a background refresh" route (spx/play via `peekSpxPlayState`, nighthawk/edition, spx-desk-loader,
+ * flows-member-cache, flow-brief) calls this FIRST and returns whatever it gets immediately, with no
+ * freshness check of its own — the staleness bound was assumed to live here.
+ *
+ * `store` is a per-PROCESS in-memory Map (one per ECS replica), and `writeRedisCache` sets the Redis
+ * copy's TTL to the SAME short `ttlMs` as the in-memory entry (5s for spx-play-read) — so once ~5s
+ * pass with no fresh write anywhere, the Redis backstop expires too. A replica that only occasionally
+ * serves traffic then has nothing to refresh its own local entry, and this function's old fallback
+ * happily returned that entry's `.value` no matter how old — measured live: `as_of` timestamps 20+
+ * minutes stale, and three consecutive polls from the SAME client landing on different replicas
+ * returned three DIFFERENT scores (24, 10, then a correctly-fresh 0), because each replica's local
+ * cache lagged independently with no shared floor.
+ *
+ * Fix: apply the identical `MAX_STALE_AGE_MS` ceiling `withServerCache` already enforces (see the
+ * "FIX 5a" comment above) to the LOCAL-fallback path here too — measured from the entry's own
+ * `refreshedAt`, not `expiresAt` (an entry can be long past its TTL while still well under the
+ * staleness ceiling; those two are deliberately different budgets). Once a locally-cached entry is
+ * older than the ceiling AND Redis has nothing newer, this now returns `null` instead of the stale
+ * value, so every caller's existing "peek → null → do a real blocking compute" fallback path (already
+ * the design in every route listed above) kicks in rather than silently handing out ancient data.
+ * `maxStaleMs` is overridable (default `MAX_STALE_AGE_MS`) purely so a regression test can exercise
+ * the ceiling without a real 10-minute wait; no caller currently overrides it.
+ */
+export async function peekServerCache<T>(key: string, opts?: { maxStaleMs?: number }): Promise<T | null> {
+  const maxStaleMs = opts?.maxStaleMs ?? MAX_STALE_AGE_MS;
   const now = Date.now();
   const hit = store.get(key) as CacheEntry<T> | undefined;
   if (hit && hit.expiresAt > now) return hit.value;
   const redisHit = await readRedisCache<T>(key);
   if (redisHit != null) {
-    setStoreEntry(key, {
-      value: redisHit.value,
-      expiresAt: now + redisHit.remainingTtlSec * 1000,
-      refreshedAt: now,
-    });
-    return redisHit.value;
+    // BUG (found live 2026-10-31, SPX desk/play `as_of` non-monotonic, up to ~13.5 minutes
+    // backward across consecutive polls a few seconds apart): this branch used to return
+    // `redisHit.value` UNCONDITIONALLY — no staleness check at all — and then re-stamp the
+    // LOCAL cache's `refreshedAt` to `now`, regardless of how old the Redis-cached PAYLOAD
+    // actually was. `redisHit.remainingTtlSec` only reflects Redis's own expiry countdown for
+    // the key; it says nothing about when the value was actually produced (a key written with
+    // a long ttlMs can sit unrefreshed for most of that window while `TTL` still reports a
+    // healthy remaining time). So a replica that happened to read an old-but-not-yet-expired
+    // Redis copy would then treat it as freshly-verified for its own subsequent maxStaleMs
+    // window on top — exactly the asymmetry the local-only fallback two lines below this one
+    // was already guarding against (via `refreshedAt`), just never applied here.
+    //
+    // Fix: check the SAME ceiling against the payload's own vintage, read from the generation
+    // timestamp `writeRedisCache` stores alongside the value (`server-gen:<key>` /
+    // `readRedisGeneratedAt`, this file). When that metadata is present and the value is older
+    // than `maxStaleMs`, treat it as a miss (fall through to the local-hit/null paths below)
+    // instead of caching and serving it. When the metadata is absent (e.g. a replica mid-rollout
+    // still running pre-generation-guard code, or Redis timed out on this specific read), age is
+    // unknown — fall back to the pre-fix behavior (trust it) rather than rejecting a value we
+    // have no actual evidence is stale.
+    const generatedAt = await readRedisGeneratedAt(key);
+    const redisValueIsStale = generatedAt != null && now - generatedAt > maxStaleMs;
+    if (!redisValueIsStale) {
+      setStoreEntry(key, {
+        value: redisHit.value,
+        expiresAt: now + redisHit.remainingTtlSec * 1000,
+        // Stamp the entry's real vintage when known, instead of always `now` — otherwise this
+        // replica's OWN later peeks of this now-local copy would restart the maxStaleMs clock
+        // from the moment it was copied rather than from when it was actually produced.
+        refreshedAt: generatedAt ?? now,
+      });
+      return redisHit.value;
+    }
   }
-  if (hit) return hit.value;
+  if (hit && now - hit.refreshedAt <= maxStaleMs) return hit.value;
   return null;
 }
 
@@ -346,13 +676,16 @@ async function refreshCache<T>(
   const existing = inflight.get(key) as Promise<T> | undefined;
   if (existing) return existing;
 
+  // Stamped before the loader runs — see writeRedisCache's own comment for why generation
+  // ordering must be keyed off when the upstream read STARTED, not when it completed.
+  const startedAt = Date.now();
   const promise = loader()
     .then((value) => {
       const refreshedAt = Date.now();
       if (!shouldCache || shouldCache(value)) {
         setStoreEntry(key, { value, expiresAt: refreshedAt + ttlMs, refreshedAt });
         // localOnly keys never propagate to Redis (replica-local, ephemeral, high-cardinality).
-        if (!localOnly) void writeRedisCache(key, value, ttlMs);
+        if (!localOnly) void writeRedisCache(key, value, ttlMs, startedAt);
       }
       // FIX 5b: Successful refresh — reset failure tracking for this key.
       failureCount.delete(key);

@@ -75,6 +75,41 @@ test("flowMatchesDeepLink matches on alert_id", () => {
   );
 });
 
+test("parseHelixDeepLink leaves premium unset — not $0 — when the URL carries no premium param", () => {
+  // An alert_id-only link (the common case: buildHelixFlowDeepLink returns early once alert_id is
+  // set, before ever setting a premium param) must parse to an UNKNOWN premium, not a real $0 one.
+  const target = parseHelixDeepLink(new URLSearchParams("alert=uw:99&ticker=NVDA"));
+  assert.equal(target?.kind, "flow");
+  if (target?.kind === "flow") assert.equal(target.premium, null);
+});
+
+test("flowMatchesDeepLink falls back to alert_id+ticker when the matched row has no alert_id", () => {
+  // The exact scenario flowMatchesDeepLink's own comment names: "REST rows may omit alert_id —
+  // fall through to contract match below." An alert_id-only link carries no strike/expiry/at/
+  // premium, so none of those should be able to veto a match once ticker agrees — before the fix,
+  // Number(searchParams.get("premium")) parsed the ABSENT param as a real premium of $0, and a
+  // genuine print's premium (always > 0) could never equal that, so this always returned false.
+  const target = parseHelixDeepLink(new URLSearchParams("alert=uw:99&ticker=NVDA"));
+  assert.equal(
+    flowMatchesDeepLink(
+      {
+        ticker: "NVDA",
+        premium: 1_000_000,
+        option_type: "CALL",
+        expiry: "2026-08-21",
+        strike: 140,
+        direction: "bullish",
+        score: 5,
+        route: "whale",
+        alerted_at: "2026-08-04T15:00:00.000Z",
+        // no alert_id — this is the REST-row case the fallback path exists for.
+      },
+      target!
+    ),
+    true
+  );
+});
+
 test("darkpoolMatchesDeepLink matches ticker time premium", () => {
   const target = parseHelixDeepLink(
     new URLSearchParams("ticker=NVDA&darkpool=1&at=2026-08-04T14:18:11&premium=6000000")

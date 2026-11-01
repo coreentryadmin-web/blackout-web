@@ -19,7 +19,10 @@ export async function GET(req: NextRequest) {
   if (!q || q.length > 32 || !/^[A-Za-z0-9.\-& ]+$/.test(q)) {
     return NextResponse.json({ error: "invalid q param" }, { status: 400 });
   }
-  const limit = Math.min(Number(req.nextUrl.searchParams.get("limit") ?? 10), 20);
+  // `?? 10` only guards an absent param — a non-numeric one (e.g. `limit=foo`) still produces
+  // `Number("foo")` = NaN, which survives `??` (NaN is neither null nor undefined) and silently
+  // zeroes out every downstream `.slice(0, limit)` call. `|| 10` catches it (NaN is falsy).
+  const limit = Math.min(Number(req.nextUrl.searchParams.get("limit") ?? 10) || 10, 20);
   const results = await serverCache(
     `search:${q.toLowerCase()}:${limit}`,
     TTL.TICKER_SEARCH,

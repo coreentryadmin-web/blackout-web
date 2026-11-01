@@ -3,7 +3,8 @@
 Per-provider inventory of what we USE, what's available-but-UNUSED-and-valuable, and the open
 opportunity/reliability gaps. Maintained by the `api-integration-audit` job (daily). Drive gaps → 0.
 
-**Last full pass:** 2026-06-26 (7-agent doc-grounded deep pass). Open flagged tasks: see TaskList #1–#9.
+**Last full pass:** 2026-06-26 (7-agent doc-grounded deep pass). Open flagged tasks: see TaskList #2–#9
+(originally #1–#9; #1 — Clerk `user.*` webhook — closed, see scoreboard below).
 
 Legend: ✅ used/correct · 🟡 unused-but-valuable · 🔴 suboptimal/reliability gap · 🛡️ verified-strength.
 
@@ -125,14 +126,15 @@ an `ANTHROPIC_MODEL` override to an Opus/Fable model no longer 400s every call. 
 **✅ USED:** `clerkMiddleware` with explicit protected-route allow-list (all `/api/*` self-authorize),
 `ClerkProvider dynamic` + Frontend-API preconnect, server `auth()`/`clerkClient()`, `requireTier`/
 `requireTierApi` shared resolver that **fails closed** on a Clerk outage (never over-grants). 🛡️ No
-`NEXT_PUBLIC` secret leakage (verified clean).
+`NEXT_PUBLIC` secret leakage (verified clean). `user.created`/`user.updated`/`user.deleted` **webhook**
+(`src/app/api/webhooks/clerk/route.ts`) → admin-users store sync + Whop membership sync on create/update,
+`deleteUserDataForClerkId` GDPR cleanup on delete, fail-closed (500-on-error so Clerk retries) — closed
+since #815 (2026-07-19); no longer the open gap this doc previously flagged.
 
-**🟡 UNUSED-valuable:** `user.created/updated/deleted` **webhook** → store sync (**→ Task #1**, top
-finding — still missing); session-token custom claims to carry `tier` (drop the per-request `getUser()`
+**🟡 UNUSED-valuable:** session-token custom claims to carry `tier` (drop the per-request `getUser()`
 that the tier-cache exists to mitigate); Clerk Organizations / `auth().has({role})` for admin gating.
 
-**🔴 GAPS:** no `user.deleted` cleanup → orphaned per-user Redis/PG keys leak forever + GDPR gap (**→
-Task #1**); admin gating still does an uncached per-request `getUser()`.
+**🔴 GAPS:** admin gating still does an uncached per-request `getUser()`.
 
 ---
 
@@ -192,7 +194,6 @@ insurance, no-op on single-node Railway Redis). `49cb17d`.
 ## Open-gap scoreboard (drive → 0)
 | # | Provider | Gap | Sev | Status |
 |---|---|---|---|---|
-| 1 | Clerk | Missing user.* webhook + orphan cleanup | P1 | flagged |
 | 2 | Whop | Revocation denylist not durable (revenue leak) | P1 | flagged |
 | 3 | Whop | No webhook idempotency/replay dedup | P1 | flagged |
 | 4 | Anthropic | Largo tool filtering kills prompt cache | P1 | flagged |
@@ -205,3 +206,7 @@ insurance, no-op on single-node Railway Redis). `49cb17d`.
 **Closed this pass (→ main `49cb17d`):** PG statement/query timeout · Redis reconnectOnError · polygon
 fetchIndexRsi null-safe · Massive OPTIONS_WS_MAX_CONNS default 1 · Anthropic temperature guard · Whop
 cancel-toggle handling + company_id assertion.
+
+**Closed since this pass (found stale 2026-10-20, DISCOVERY-lane sweep):** Clerk `user.*` webhook +
+`user.deleted` GDPR cleanup (**was Task #1** above) — shipped in #815 (2026-07-19), three weeks after
+this doc's last full pass; this doc simply never caught up to it until now.

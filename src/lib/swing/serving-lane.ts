@@ -18,8 +18,9 @@
 import type { SwingDossier } from "./dossier";
 import type { HorizonPlay } from "../horizon-plays";
 import type { SwingWatchCandidate } from "./accumulation-store";
-import { swingThesisKey, persistenceGapReason } from "./accumulation-store";
+import { swingThesisKey, tickerDirectionKey, persistenceGapReason } from "./accumulation-store";
 import { sharedCacheGet, sharedCacheSet } from "../shared-cache";
+import { LEGACY_COMMIT_GATE_EXEMPT } from "./entry-gate-constants";
 import {
   assembleSwingServingLane,
   emptySwingServingLane,
@@ -28,13 +29,16 @@ import {
 import {
   buildSwingReadsByTicker,
   swingServingMetaFromDossier,
+  type SwingServingMeta,
   type SwingServingReads,
 } from "./serving-ingest";
 import type { ChainContract } from "../horizon-fanout";
+import { calendarDte } from "../horizon-fanout";
+import { todayEt } from "@/lib/et-date";
 import { livePlaysFromOpenPositions } from "./live-plays";
 import type { SwingPositionRow } from "../db";
 import type { BangerPositionRow } from "../banger/positions-db";
-import { mergeBangerPositionsIntoSwingPlays } from "./banger-lane-merge";
+import { mergeBangerPositionsIntoSwingPlays, BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 import { enrichSwingPlaysWithVectorLeaders, type VectorLeaderHint } from "./vector-lane-enrich";
 
 /** Add pre-entry banger WATCH rows when the ticker is not already live capital. */
@@ -92,31 +96,222 @@ export function dossiersByTicker(dossiers: SwingDossier[]): Map<string, SwingDos
 }
 
 /**
+ * Does a `factors` array actually explain the score it's shown beside? `contributionsToFactors`'s own
+ * doc comment (swing-pillars.ts) states the invariant: points sum to the score they were computed FROM —
+ * EXACTLY, not approximately: `scoreSwingPillars` rounds each contribution to 1dp and then sums those
+ * already-rounded values for both the dossier's own `score` AND for `contributionsToFactors`'s output, so
+ * a genuinely-paired (score, factors) pair from the SAME scoring run has zero drift, not rounding noise.
+ * The tolerance here is floating-point safety only (JSON round-trip, `roundFloats` at the response edge)
+ * — a real mismatch from pairing two different runs' numbers (the #4826/#4832/#4843/#4837/#5298 bug
+ * class) is a real, non-tiny gap: 0.9pt on LITE, 6.5pt on SMCI, both live 2026-09-20.
+ */
+function factorsSumToScore(factors: HorizonPlay["factors"], score: number, tolerance = 0.15): boolean {
+  if (!Array.isArray(factors) || factors.length === 0 || !Number.isFinite(score)) return false;
+  const sum = factors.reduce((n, f) => n + (Number.isFinite(f.points) ? f.points : 0), 0);
+  return Math.abs(sum - score) <= tolerance;
+}
+
+/** True for a Legacy-morning-confirm-promoted play (`legacy-confirm-promote.ts`'s own marker on every
+ *  row it builds) — checked via the shared gate-block constant rather than importing
+ *  `legacy-confirm-promote.ts` directly, which imports THIS module (persist/read snapshot) and would
+ *  create a cycle. */
+function isLegacyExemptPlay(play: HorizonPlay): boolean {
+  return Array.isArray(play.commitGateBlockedBy) && play.commitGateBlockedBy.includes(LEGACY_COMMIT_GATE_EXEMPT);
+}
+
+/**
+ * Recompute a Legacy-carried play's calendar DTE (and the DTE token baked into `reason`) against
+ * TODAY's real ET calendar day — not whatever day the persisted snapshot happens to be stamped with.
+ *
+ * BUG FIX (2026-10-31, live Saturday repro — AXTI). `legacy-confirm-promote.ts`'s
+ * `refreshCarriedLegacyPlay` already recomputes a carried play's DTE on every carry-forward, but it
+ * ONLY runs inside `carryLegacyPromotedIntoSnapshot`, which the swing-discovery CRON calls — and no
+ * scan runs on a day the market is closed. So a Legacy-exempt play's persisted `contract.dte`
+ * freezes at whatever the LAST scan's own `sessionDay` computed, and stays wrong for every serve
+ * after that until the next scan happens to run. Live evidence: `GET /horizons?view=swings` fetched
+ * twice on a Saturday (2026-10-31) 8 minutes apart both showed `scanSessionDay: "2026-10-30"`
+ * (Friday — no scan had run since), and the one Legacy-exempt row on the board (AXTI, no
+ * `positionId`) served `contract.dte: 7` / `reason` text `"...7DTE..."` — calendarDte(Friday,
+ * 2026-11-06) — while every one of the other 57 SWING rows (real DB-committed positions, whose
+ * `dte` is recomputed fresh on every serve by `live-plays.ts`'s `contractFromRow`) shared the SAME
+ * 2026-11-06 expiry and correctly served `dte: 6` — calendarDte(TODAY, 2026-11-06).
+ *
+ * Unlike a quote (genuinely unchanged while the market is closed, so serving Friday's mark on
+ * Saturday is honest), calendar DTE is a pure function of the calendar date and the expiry alone —
+ * freezing it does not merely go stale, it reports an actively WRONG number once a real calendar
+ * day has passed. This mirrors `live-plays.ts`'s own fresh-every-serve `calendarDte(etYmd(), ...)`
+ * for the one path that doesn't go through that function (a Legacy-exempt candidate has no DB
+ * position row yet — `commitGateBlockedBy: ["legacy:exempt"]` is exactly "not committed").
+ *
+ * Deliberately narrow in scope: only `contract.dte` and the DTE token in `reason` move here.
+ * mid/bid/ask/delta/gamma/theta/vega/iv are untouched — they are already nulled by
+ * `refreshCarriedLegacyPlay`'s own staleDte branch (2026-10-20/2026-10-26 fixes) the last time a
+ * scan actually carried this play forward, and this function has no fresh quote to refresh them
+ * WITH. Recomputing DTE needs no provider read, so — unlike the quote fields — it can safely run on
+ * every single serve, scan or no scan.
+ *
+ * Lives here (not in `legacy-confirm-promote.ts`, where `refreshCarriedLegacyPlay` itself lives)
+ * for the same reason `isLegacyExemptPlay` above does: `legacy-confirm-promote.ts` imports THIS
+ * module (persist/read snapshot), so this module cannot import back from it without a cycle.
+ */
+function refreshLegacyExemptDteForServe(play: HorizonPlay, todayYmd: string): HorizonPlay {
+  if (!isLegacyExemptPlay(play) || !play.contract?.expiry) return play;
+  const dte = calendarDte(todayYmd, play.contract.expiry);
+  if (!Number.isFinite(dte) || dte === play.contract.dte) return play;
+  return {
+    ...play,
+    contract: { ...play.contract, dte },
+    reason: play.reason ? play.reason.replace(/\b\d+DTE\b/g, `${dte}DTE`) : play.reason,
+  };
+}
+
+/** The one honest breakdown for a Legacy-promoted play: a single factor equal to its own shown score
+ *  (never a dossier's independently-computed pillar decomposition — see `legacy-confirm-promote.ts`'s
+ *  own `buildLegacySwingArtifacts` comment on why pairing those is the #4843 bug). */
+function legacyPinnedFactors(score: number): HorizonPlay["factors"] {
+  return [{ label: "Night Hawk edition score", points: score }];
+}
+
+/**
+ * Resolve which `factors` a play should actually show: its own PERSISTED array when — and only when —
+ * that array genuinely sums to the score shown beside it; otherwise a REPAIR, not a blind pass-through.
+ *
+ * SELF-HEALING (FINDINGS 2026-09-20, 5th occurrence of the #4826/#4832/#4843/#4837/#5298 bug class).
+ * #5298 fixed `enrichPlay` to PREFER a pinned `play.factors` over a fresh dossier re-score — but its
+ * guard only checked NON-EMPTINESS (`factors.length > 0`), never that the pinned array actually sums to
+ * the score it rides beside. That is silently unsafe: it can only ever make a genuinely-pinned array
+ * survive, and can never repair one that was already wrong for ANY reason (a transient write-time race,
+ * a since-fixed bug in an earlier build of the writer, a hand-edited snapshot, a future regression in
+ * this exact spot) — it just enshrines whatever is in Redis as "trust it forever." Live evidence
+ * (2026-09-20): LITE (score 71, persisted factors summing to 70.1 across 5 dossier-shaped pillar rows —
+ * Structure/Regime/Volatility/Flow/Data quality) and SMCI (score 91 vs 84.5, 3 rows) are BOTH
+ * Legacy-morning-confirm-promoted (`commitGateBlockedBy: ["legacy:exempt"]`, `reason` carries "Legacy
+ * morning confirm"), yet carry the exact OLD pre-#4843 dossier-breakdown shape `buildLegacySwingArtifacts`
+ * has not written since 2026-09-12 (verified against ECS task-definition history for BOTH
+ * `blackout-production-web` and `blackout-production-market-worker`: the #4843 fix was live on both
+ * services well before LITE/SMCI's own promotion timestamps, 2026-09-17/18 — so this is not a simple
+ * "the fix hadn't deployed yet" gap, whatever the precise write-time cause was). The persisted swing
+ * serving snapshot itself was stale ~40h at the time this was found (`scanAsOf` stuck at
+ * 2026-09-18T20:37Z) — `carryLegacyPromotedIntoSnapshot`'s day-to-day carry-forward only ever refreshes
+ * a Legacy row's CONTRACT (staleness/expiry), never re-validates `factors`, so once bad, a persisted
+ * value rides untouched for as long as the thesis stays open. Whatever the original write-time cause,
+ * NOTHING before this fix ever re-checked it — so the durable fix is making the READ side self-healing:
+ * verify the invariant every time, and for a Legacy-exempt play specifically, REPAIR with the same
+ * single-factor shape `buildLegacySwingArtifacts` is supposed to write (never fall back to a fresh
+ * dossier decomposition, which would just re-commit the identical mismatch with different numbers).
+ */
+function resolvedFactorsFor(play: HorizonPlay, fallback: HorizonPlay["factors"]): HorizonPlay["factors"] {
+  if (factorsSumToScore(play.factors, play.score)) return play.factors;
+  if (isLegacyExemptPlay(play)) return legacyPinnedFactors(play.score);
+  return fallback;
+}
+
+/**
+ * Resolve the thesis-health fields (`thesisLevel`/`thesisNote`) a play should SHOW, carrying them
+ * forward from `play` instead of trusting `meta`'s fresh read in exactly one case.
+ *
+ * THE BUG THIS CLOSES (FINDINGS 2026-10-31, live repro NET, RESEARCH bucket). `enrichPlay` correctly
+ * falls back to `play.setupState`/`play.entryStatus` when `meta.setupState`/`meta.entryStatus` come
+ * back null (`meta.setupState ?? play.setupState`, a few lines below this function's call site) — but
+ * it used to take `thesisLevel`/`thesisNote` from `meta` UNCONDITIONALLY, with no equivalent fallback.
+ * `swingServingMetaFromDossier` (serving-ingest.ts) derives `thesisLevel`/`thesisNote` from a LOCAL
+ * `setupState` variable that is purely THIS CALL's reads-derived value (`reads?.setup ? deriveSetupState(...)
+ * : null` — null whenever `reads?.setup` is absent, which is EXACTLY when `meta.setupState` itself is
+ * null, since `deriveSetupState` never returns null on its own) — a completely different value from the
+ * MERGED `setupState`/`entryStatus` `enrichPlay` produces one level up. So the moment this call's reads
+ * drop (a transient per-ticker fetch miss, not a universal outage) while a prior `play.setupState` is
+ * being correctly carried forward, the row simultaneously asserts a real carried-forward `setupState:
+ * "TRIGGERED"`/`entryStatus: "AT_TRIGGER"` AND `thesisLevel: "unknown"` / `thesisNote: "no setup read
+ * attached to this name yet"` — directly contradicting itself in the same object. Live-confirmed on NET
+ * (2026-10-31): exactly that pairing, in the same served row, while 11 sibling RESEARCH-bucket plays in
+ * the same response (reads present) had the fields agree.
+ *
+ * WHY NOT A BLANKET `meta.thesisLevel ?? play.thesisLevel`. `SwingServingMeta.thesisLevel` is typed
+ * NON-NULLABLE (`SwingThesisLevel` — always "break"/"warn"/"intact"/"unknown", never null/undefined),
+ * so that `??` would never actually fall back — `meta.thesisLevel` is always a truthy string. It would
+ * compile and read like a fix without changing behavior. The real fix has to detect the SPECIFIC case
+ * that produces the contradiction and carry forward only then.
+ *
+ * THE DETECTION SIGNAL: `meta.setupState == null` (the raw, pre-`??` value, available here before
+ * `enrichPlay` applies its own fallback) is precisely "no grounded setup read was supplied THIS call" —
+ * never anything else, since `deriveSetupState` is total over a supplied `reads.setup`. Combined with
+ * `meta.thesisLevel === "unknown"` (meta itself fell to its own reads-absent default, rather than an
+ * INDEPENDENTLY-true "break"/"warn" the dossier's own data quality established without needing reads —
+ * see `swingServingMetaFromDossier`'s INVALIDATED/degraded branches, which this must NOT override) and a
+ * genuine prior `play.thesisLevel` to carry (never invent one when there is nothing to carry forward —
+ * see the "genuinely no setup read ever attached" case this must still render "unknown" honestly).
+ */
+export function resolveThesisHealth(
+  meta: SwingServingMeta,
+  play: HorizonPlay,
+): { thesisLevel: SwingServingMeta["thesisLevel"]; thesisNote: SwingServingMeta["thesisNote"] } {
+  const readsDroppedThisScan = meta.setupState == null && play.setupState != null;
+  const metaFellToReadsAbsentDefault = meta.thesisLevel === "unknown";
+  if (readsDroppedThisScan && metaFellToReadsAbsentDefault && play.thesisLevel != null) {
+    return { thesisLevel: play.thesisLevel, thesisNote: play.thesisNote ?? null };
+  }
+  return { thesisLevel: meta.thesisLevel, thesisNote: meta.thesisNote };
+}
+
+/**
  * Stamp a produced play with the OBSERVABLE swing state its dossier + grounded reads imply, so the serving
  * router (buildSwingSections) can place it in the right section. Only the observable fields the router keys
  * on (setupState / entryStatus) and the calibration-partition labels (archetype / subLane) are set — the
  * factors/regime/thesis reads ride the meta the command-deck adapter consumes, not the pure play.
+ *
+ * PINNED FACTORS: preferred over a fresh dossier re-score, per `resolvedFactorsFor`'s header above
+ * (the #4826/#4832/#4843/#4837/#5298/2026-09-20 bug-class history and the self-healing fix live there —
+ * this function's own contribution to that history was #5298, 2026-09-19: it used to unconditionally
+ * overwrite `factors: meta.factors`, which was the ONLY call site `attachThesisExplanation` (below) had
+ * NOT been mirrored to, since Legacy-promoted PRE-ENTRY plays never carry `liveStatus`/`manageAction`
+ * and so never take that other function's path). Organic (non-Legacy) discovery plays never set
+ * `play.factors` at all (`horizon-plays.ts`'s `factors` field is optional/undefined until this function
+ * fills it), so `resolvedFactorsFor` falls through to `meta.factors` for them exactly as before.
+ *
+ * THESIS-HEALTH CARRY-FORWARD: `thesisLevel`/`thesisNote` go through `resolveThesisHealth` (see its own
+ * header above) rather than taking `meta`'s values unconditionally — the merged `setupState`/
+ * `entryStatus` fallback a few lines below and the thesis-health fallback inside `resolveThesisHealth`
+ * must agree on the same carried-forward reality, or the row contradicts itself.
  */
 function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?: SwingServingReads): HorizonPlay {
-  if (!dossier) return play; // no thesis found for this ticker → leave it as-is (routes to RESEARCH honestly)
+  // Applied before the dossier early-return below: a Legacy-exempt play's DTE must be correct on
+  // every serve regardless of whether a thesis dossier survived the carry-forward (see the
+  // function's own header for why this can't wait for a fresh scan).
+  const dteFixed = refreshLegacyExemptDteForServe(play, todayEt());
+  if (!dossier) return dteFixed; // no thesis found for this ticker → leave it as-is (routes to RESEARCH honestly)
   const meta = swingServingMetaFromDossier(dossier, reads);
+  const thesisHealth = resolveThesisHealth(meta, play);
   // WATCH track anchor: pinned first-flag price only — never the live scan spot (reads.setup.price).
   const flagPx =
     play.flagUnderlyingPx ??
     dossier.plan?.entryUnderlyingPx ??
     null;
   return {
-    ...play,
+    ...dteFixed,
     setupState: meta.setupState ?? play.setupState,
     entryStatus: meta.entryStatus ?? play.entryStatus,
     archetype: meta.archetype ?? play.archetype,
     subLane: meta.subLane ?? play.subLane,
-    factors: meta.factors,
+    // Self-healing (see `resolvedFactorsFor`'s own header) — a non-empty array is no longer trusted on
+    // sight; it must actually sum to the score it rides beside, or it gets repaired.
+    factors: resolvedFactorsFor(play, meta.factors),
     regime: meta.regime,
-    thesisLevel: meta.thesisLevel,
-    thesisNote: meta.thesisNote,
+    thesisLevel: thesisHealth.thesisLevel,
+    thesisNote: thesisHealth.thesisNote,
+    sectorLeadershipFacts: meta.sectorLeadershipFacts,
     flagUnderlyingPx:
       typeof flagPx === "number" && Number.isFinite(flagPx) && flagPx > 0 ? flagPx : play.flagUnderlyingPx,
+    entryTriggerUnderlyingPx: meta.entryTriggerUnderlyingPx ?? play.entryTriggerUnderlyingPx ?? null,
+    // BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA WATCH short): the only real
+    // `liveSpot` writer anywhere in the repo was live-plays.ts's committed-ledger path (status
+    // OPEN/HOLD/TRIM) — mutually exclusive with WATCH/SKIP on status — so adapters.ts's "Since flag"
+    // track field (gated on WATCH/SKIP + non-null liveSpot) was structurally dead for every real
+    // pre-entry candidate. Unlike flagUnderlyingPx above (the pinned ANCHOR, deliberately never
+    // overwritten by a fresh scan spot — see the comment on `flagPx`), liveSpot is the separate,
+    // CURRENT-price field "Since flag" measures movement FROM that anchor, and must track the live
+    // scan read every time. reads.setup.price is exactly that live-or-last-known spot
+    // (swingServingReadsFromPlan, serving-ingest.ts).
+    liveSpot: reads?.setup?.price ?? play.liveSpot ?? null,
   };
 }
 
@@ -142,22 +337,87 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
  * from ongoing management, and a pre-entry read would overwrite a real "thesis broken" with a stale
  * "intact".
  *
- * FAIL-CLOSED: no dossier for the ticker (the name is no longer in today's discovery) leaves the row
- * untouched and the honest placeholder stands — a committed play never gets an invented explanation.
+ * FACTORS NO LONGER BORROWED FROM A FRESH DOSSIER (FINDINGS 2026-09-12). `play.score` on a live row is
+ * `row.feature_vector.evidence_score` — PINNED at commit (commit.ts: "so trajectory studies can echo
+ * pillars/score on every later snapshot"). This function used to overwrite `factors` with `meta.factors`
+ * from a dossier RE-RUN TODAY, whose pillar reads (rel-strength/regime/structure) legitimately drift
+ * from commit day — so the two numbers silently diverged the longer a position aged (live: AAPL
+ * position 37 SECTOR_ROTATION showed "score 84.4" beside factors summing to 75.0, a 9.4pt/11%
+ * unexplained gap; same failure mode as #4826's Banger/Vector-bump fixes, a third distinct occurrence).
+ * `live-plays.ts`'s `livePlayFromSwingPosition` now reconstructs `play.factors` from that SAME pinned
+ * feature_vector (`pinnedFactorsFromFeatureVector`), so it sums to `play.score` by construction. This
+ * function therefore PREFERS the play's own (pinned) factors and borrows the dossier's fresh ones only
+ * as a fallback for rows committed before the feature vector carried pillar detail (no `pil_*`/archetype
+ * pinned) — those still get SOME explanation rather than none, same as before this fix, just no longer
+ * at the cost of a mismatched score once a pinned one exists.
+ *
+ * FAIL-CLOSED: no dossier for the ticker (the name is no longer in today's discovery) AND no pinned
+ * factors on the row leaves it untouched and the honest placeholder stands — a committed play never
+ * gets an invented explanation.
+ *
+ * SELF-HEALING (FINDINGS 2026-09-20, same fix as `enrichPlay`/`resolvedFactorsFor` above): "pinned" here
+ * used to mean only "non-empty" — never verified the array actually summed to the row's own score, so a
+ * bad persisted value (from any cause) would ride forever once written. Now checked the same way, with
+ * the same Legacy-exempt repair path for defense in depth even though a real live/committed Legacy row
+ * is rare (Legacy promotions are serve-only, `bucketGraduated:false`).
  */
 export function attachThesisExplanation(
   play: HorizonPlay,
   dossier: SwingDossier | undefined,
   reads?: SwingServingReads,
 ): HorizonPlay {
-  if (!dossier) return play;
+  const factorsValid = factorsSumToScore(play.factors, play.score);
+  const legacyExempt = !factorsValid && isLegacyExemptPlay(play);
+  if (!dossier) return legacyExempt ? { ...play, factors: legacyPinnedFactors(play.score) } : play;
   const meta = swingServingMetaFromDossier(dossier, reads);
   const hasFactors = Array.isArray(meta.factors) && meta.factors.length > 0;
-  if (!hasFactors && meta.regime == null) return play;
+  // BUG FIXED 2026-09-20 (live repro: PR #4076 comment 5751915312 — 18-19 of a 36-position
+  // Banger-promoted swing batch rendered a byte-identical fabricated "84% · Minor drift" Thesis
+  // Health score, reopening the identical 2026-09-15 C6 violation). ROOT CAUSE: this function is
+  // called TWICE on a banger-ledger play's road to a play-brief — once (correctly) never, inside
+  // getSwingServingLane, since banger rows are merged in AFTER the native-only
+  // livePlaysFromOpenPositions().map(attachThesisExplanation) pass — and once (the bug) from
+  // play-brief-resolve.ts's ticker-only lane fallback, which calls this on WHATEVER lane row it
+  // resolved, banger-origin or native, with no distinction. `horizonPlayFromBangerPosition`
+  // deliberately stamps `regime: BANGER_LEDGER_REGIME_LABEL` as an honest "no real per-position
+  // dossier exists for this play" sentinel that `thesisHealthUncalibrated()` matches on EXACTLY to
+  // withhold the aggregate score. The unconditional `regime: meta.regime ?? play.regime` below used
+  // to happily overwrite that sentinel with an UNRELATED same-ticker discovery dossier's fresh
+  // regime read whenever one happened to exist in the CURRENT scan (true for liquid, actively
+  // rescanned names like RIOT/MSTR/COIN; false for illiquid ones like BKKT/GEMI — exactly the split
+  // observed live) — destroying the fingerprint the omission gate relies on, so the position then
+  // computed a full aggregate score from the REMAINING hardcoded ledger constants (setupState
+  // TRIGGERED, entryStatus AT_TRIGGER, signalKinds=[BANGER], same dte/subLane for every position in
+  // one batch commit), which is why every affected row in the batch converged on the SAME 84%.
+  // FIX: a banger-ledger sentinel regime is never a real per-position read to begin with, so it must
+  // never be overwritten by an unrelated ticker-keyed dossier — the dossier's own regime read
+  // belongs to whatever thesis the discovery engine is CURRENTLY scoring for that ticker, not to
+  // this already-committed banger position, which has no live dossier of its own by construction.
+  const freshRegime = play.regime === BANGER_LEDGER_REGIME_LABEL ? null : meta.regime;
+  if (factorsValid) {
+    // Score-consistent factors already reconstructed from the row's own frozen feature_vector — only
+    // regime/sectorLeadershipFacts (not score-summing fields) still benefit from the live dossier read.
+    if (freshRegime == null && meta.sectorLeadershipFacts == null) return play;
+    return {
+      ...play,
+      regime: freshRegime ?? play.regime,
+      sectorLeadershipFacts: meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts,
+    };
+  }
+  if (legacyExempt) {
+    return {
+      ...play,
+      factors: legacyPinnedFactors(play.score),
+      regime: freshRegime ?? play.regime,
+      sectorLeadershipFacts: meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts,
+    };
+  }
+  if (!hasFactors && freshRegime == null && meta.sectorLeadershipFacts == null) return play;
   return {
     ...play,
     factors: hasFactors ? meta.factors : play.factors,
-    regime: meta.regime ?? play.regime,
+    regime: freshRegime ?? play.regime,
+    sectorLeadershipFacts: meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts,
   };
 }
 
@@ -353,6 +613,22 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
   const observedByKey = new Map(
     (snap.observed ?? []).map((c) => [swingThesisKey(c.ticker, c.direction, c.archetype), c]),
   );
+  // ARCHETYPE-DRIFT FALLBACK (Ask Largo standing mandate, live repro 2026-10-09 — RCL/SNDK/XAR: all
+  // three were live in `snap.watch`/`snap.observed`, from this SAME scan's own snapshot, yet absent
+  // from every section of the served board). `snap.plays` carries exactly one HorizonPlay per ticker,
+  // classified under whichever archetype THIS scan's fresh read lands on — but the accumulation store
+  // tracks parallel per-archetype theses for the same ticker+direction (a real, disclosed behavior:
+  // the play-brief narrative's own "near-tie at entry... priority order broke the tie"). When this
+  // scan's archetype disagrees with whichever archetype actually has the accumulation history,
+  // `playThesisKey(p)` misses BOTH `cleared` and `observedByKey` even though the ticker+direction is
+  // actively tracked, and the play silently vanished from the entire board. This set is ticker+
+  // direction only (see `tickerDirectionKey`'s own doc comment) and is used ONLY to decide whether to
+  // surface the play at all — never to grant it `cleared` status under the mismatched archetype, so a
+  // genuinely untracked single-sighting name (no entry in either list, under ANY archetype) still
+  // never surfaces, preserving the anti-lone-print invariant (accumulation-store.ts's own header).
+  const trackedTickerDirections = new Set(
+    [...(snap.watch ?? []), ...(snap.observed ?? [])].map((c) => tickerDirectionKey(c.ticker, c.direction)),
+  );
   const playThesisKey = (p: HorizonPlay): string => {
     const arch =
       p.archetype ??
@@ -374,7 +650,12 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
   const observedPlays = (snap.plays ?? [])
     .filter((p) => {
       const key = playThesisKey(p);
-      return observedByKey.has(key) && !cleared.has(key);
+      if (cleared.has(key)) return false;
+      if (observedByKey.has(key)) return true;
+      // Exact thesis key missed both lists — fall back to ticker+direction so an actively-tracked
+      // name (archetype drifted this scan) still surfaces instead of vanishing outright. `obs` stays
+      // undefined below for this path, which the existing optional-chained fields already handle.
+      return trackedTickerDirections.has(tickerDirectionKey(p.ticker, p.direction));
     })
     .map((p) => {
       const key = playThesisKey(p);

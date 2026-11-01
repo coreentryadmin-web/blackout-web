@@ -1,4 +1,4 @@
-import { getMeta, setMeta } from "@/lib/db";
+import { getMeta, setMeta, tryAdvisoryLock, releaseAdvisoryLock } from "@/lib/db";
 import { xGrowthIntensive } from "@/lib/x-marketing-env";
 
 /** Conservative caps — stay under pay-per-use spend + 429 thresholds. */
@@ -195,10 +195,58 @@ export async function resolveRunBudget(opts: {
   return { allowed: true, likes, follows, replies, retweets };
 }
 
+// Lock key for the read-modify-write below. One global key (not per-day) is deliberate: the
+// day rolls over mid-lock-window otherwise would need its own coordination, and contention is
+// already rare (actions are jittered 2-4.5s apart per caller — see engagementJitterMs).
+const BUDGET_WRITE_LOCK = "x-marketing-budget-write";
+const BUDGET_LOCK_MAX_ATTEMPTS = 30;
+const BUDGET_LOCK_RETRY_MS = 60;
+
+/**
+ * Increment one of today's X-action counters.
+ *
+ * MUST be atomic across processes: x-growth and x-engage are SEPARATE cron routes
+ * (x-growth-engine.ts's runGrowthSweep is a thin wrapper around runEngagementSweep — the
+ * SAME function x-engage's route calls directly) that can run concurrently, and
+ * x-autopost/x-mention-replies also call this against the same per-day row. Before this fix,
+ * `loadDayBudget()` (read) then `saveDayBudget()` (write) were two separate, unlocked
+ * Postgres round-trips: if two processes interleave — both read the same base value, both
+ * add their own increment, both write — the SECOND write clobbers the first and one whole
+ * action's usage is silently lost (a classic read-modify-write race, "lost update"). That
+ * defeats the entire point of X_DAILY_CAPS ("stay under pay-per-use spend + 429 thresholds")
+ * — the real X API calls still happened, only the recorded count undercounts them, so
+ * `resolveRunBudget`/`remainingDaily` keep believing there is headroom that is already spent.
+ * Serialize the critical section with the same `tryAdvisoryLock`/`releaseAdvisoryLock`
+ * primitive other crons in this repo use for whole-run dedup (flow-ingest.ts,
+ * welcome-sequence/route.ts, membership-reconcile/route.ts) — here scoped to just the
+ * load+mutate+save, with a short bounded retry (tryAdvisoryLock is non-blocking "try", not a
+ * queue) since the holder releases within one Postgres round-trip.
+ */
 export async function recordBudgetUse(
   action: XBudgetAction,
   count = 1,
 ): Promise<void> {
+  for (let attempt = 0; attempt < BUDGET_LOCK_MAX_ATTEMPTS; attempt += 1) {
+    const acquired = await tryAdvisoryLock(BUDGET_WRITE_LOCK);
+    if (!acquired) {
+      await new Promise((r) => setTimeout(r, BUDGET_LOCK_RETRY_MS));
+      continue;
+    }
+    try {
+      const b = await loadDayBudget();
+      b[action] += count;
+      await saveDayBudget(b);
+    } finally {
+      await releaseAdvisoryLock(BUDGET_WRITE_LOCK);
+    }
+    return;
+  }
+  // Could not get the lock after bounded retries (e.g. a stuck holder) — fall back to the old
+  // unlocked behavior rather than silently dropping this increment forever. Worse than the
+  // locked path, but no worse than before this fix, and logged so it's visible if it ever fires.
+  console.warn(
+    `[x-rate-budget] could not acquire ${BUDGET_WRITE_LOCK} after ${BUDGET_LOCK_MAX_ATTEMPTS} attempts — recording ${action} unlocked`,
+  );
   const b = await loadDayBudget();
   b[action] += count;
   await saveDayBudget(b);

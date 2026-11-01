@@ -368,8 +368,13 @@ export type MeridianEarningsEnrichment = {
   } | null;
   print_history: MeridianEarningsPrint[];
   print_history_summary: string | null;
-  /** Non-null when the earnings-calendar fetch failed — empty panels must say WHY. */
+  /** Non-null when the earnings-calendar/print-history fetch failed — empty panels must say WHY.
+   *  Deliberately does NOT cover a corporate-guidance-only failure; see `guidance_error`. */
   calendar_error?: string | null;
+  /** Non-null when the corporate-guidance fetch itself failed — distinguishes "guidance outage"
+   *  from "this company filed no guidance" (`guidance_on_file: false`) without claiming the
+   *  earnings calendar, estimates, or print history (covered by `calendar_error`) are affected. */
+  guidance_error?: string | null;
   beat_rates: {
     eps_beat_rate: number | null;
     revenue_beat_rate: number | null;
@@ -892,6 +897,14 @@ export type MeridianTimelinePayload = {
   estimate_revision_timeline: MeridianEstimateRevisionEntry[];
   after_hours_movers: MeridianAfterHoursMover[];
   earnings_calendar_entitled: boolean;
+  /**
+   * True when the market-wide Benzinga earnings-window fetch hit its own pagination safety cap
+   * with more pages still remaining upstream — `items`'s earnings rows are a PREFIX of the real
+   * window, not the whole thing. A ticker absent from `items` while this is true cannot be read
+   * as "no catalyst for this ticker," only as "not found in what this read actually fetched."
+   * See `loadBenzingaEarningsBundle`'s `window_truncated` (meridian-benzinga-earnings.ts).
+   */
+  earnings_window_truncated?: boolean;
   /** Prints hidden because the name has no listed options. */
   non_optionable_hidden?: number;
   /** How far the options-implied move got — requested / attempted / skipped / resolved, and a

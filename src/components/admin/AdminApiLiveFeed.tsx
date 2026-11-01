@@ -12,7 +12,7 @@ import type { ApiCallEvent } from "@/lib/api-telemetry-types";
 import { incidentDedupeKey, isFeedableIncident } from "@/lib/api-telemetry-types";
 import { timeAgoFromIso } from "@/components/admin/admin-time-ago";
 
-type FeedGroup = {
+export type FeedGroup = {
   key: string;
   event: ApiCallEvent;
   count: number;
@@ -72,33 +72,55 @@ function severityClass(event: ApiCallEvent): string {
 
 
 
-function pushGrouped(prev: FeedGroup[], event: ApiCallEvent): FeedGroup[] {
+/**
+ * Folds `event` into `prev`, bumping the matching group's count and moving it to the front.
+ *
+ * WHY the representative is chosen by `seq_id`, not just "whichever `event` was passed in":
+ * `groupErrors` folds a whole BATCH of events (the server's `recent_errors`/`recent_events`
+ * snapshot, always NEWEST-FIRST — `events.unshift(event)` in api-telemetry.ts) through this
+ * function via `Array.reduce`, which visits index 0 (newest) FIRST and the oldest element LAST.
+ * For a repeated incident key, that means the OLDEST occurrence in the batch is always the last
+ * one folded in — and a naive "last write wins" merge would make the group's displayed `event`
+ * (its error text, severity, attempt/max_attempts, and the `at` timestamp `timeAgoFromIso` reads
+ * for "time ago") the OLDEST one, understating how recently the incident last fired and
+ * potentially showing stale error detail next to a correct-looking bumped-to-front position.
+ * Comparing `seq_id` (a strictly increasing per-event counter, immune to batch order) keeps the
+ * NEWER of the two events as the representative regardless of which order `pushGrouped` is
+ * called in — correct both for this batch-fold path and for the live single-event SSE push path
+ * (`es.onmessage`'s `data.type === "event"` handler below), where the incoming event is always
+ * the newest and this comparison is a no-op.
+ */
+export function pushGrouped(prev: FeedGroup[], event: ApiCallEvent): FeedGroup[] {
 
   const key = incidentDedupeKey(event);
 
   const idx = prev.findIndex((g) => g.key === key);
 
+  if (idx === -1) {
+
+    return [{ key, event, count: 1 }, ...prev].slice(0, 40);
+
+  }
+
+  const existing = prev[idx];
+
+  const representative = event.seq_id >= existing.event.seq_id ? event : existing.event;
+
+  const merged = { key, event: representative, count: existing.count + 1 };
+
   if (idx === 0) {
 
-    return [{ key, event, count: prev[0].count + 1 }, ...prev.slice(1)];
+    return [merged, ...prev.slice(1)];
 
   }
 
-  if (idx > 0) {
-
-    const merged = { key, event, count: prev[idx].count + 1 };
-
-    return [merged, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, 40);
-
-  }
-
-  return [{ key, event, count: 1 }, ...prev].slice(0, 40);
+  return [merged, ...prev.slice(0, idx), ...prev.slice(idx + 1)].slice(0, 40);
 
 }
 
 
 
-function groupErrors(events: ApiCallEvent[]): FeedGroup[] {
+export function groupErrors(events: ApiCallEvent[]): FeedGroup[] {
 
   return events.reduce<FeedGroup[]>((acc, event) => pushGrouped(acc, event), []);
 

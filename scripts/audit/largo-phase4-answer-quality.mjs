@@ -156,15 +156,21 @@ async function askLargo(session, question, base) {
 async function main() {
   let session;
   let userId;
+  let cleanupFn = null;
 
   try {
     log("Starting Largo Phase 4.1 answer quality validation...");
     log(`Base URL: ${BASE}`);
 
     // Mint temp session
-    const { cookie, user_id } = await mintClerkPremiumSession();
-    session = { cookie };
-    userId = user_id;
+    const minted = await mintClerkPremiumSession({ appUrl: BASE });
+    if (!minted || minted.skip) {
+      console.error(`SKIP — could not mint a Clerk session: ${minted?.reason ?? "unknown"}`);
+      process.exit(2);
+    }
+    session = { cookie: minted.cookieHeader };
+    userId = minted.userId;
+    cleanupFn = minted.cleanup;
 
     log(`Authenticated as temp user ${userId}`);
 
@@ -268,9 +274,9 @@ async function main() {
 
     process.exit(results.summary.pass_phase4 ? 0 : 1);
   } finally {
-    if (userId) {
+    if (cleanupFn) {
       log(`Cleanup: deleting temp user ${userId}`);
-      // Cleanup via Clerk API
+      await cleanupFn().catch(() => {});
     }
   }
 }

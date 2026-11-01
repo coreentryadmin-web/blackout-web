@@ -108,6 +108,108 @@ test("scope: a strike present on other expiries but absent on this one is exclud
   assert.equal(s.putWall, null, "no negative gamma on the event expiry means no put wall");
 });
 
+/*
+ * ── Spot-side constraint ───────────────────────────────────────────────────────────
+ *
+ * Same defect class already fixed live on `wallsFromStrikeTotals`
+ * (gex-cross-validation-core.ts, 2026-08-20): picking the argmax-positive / argmin-negative
+ * strike ANYWHERE in the chain, with no side-of-spot constraint, can hand back a "call wall"
+ * (resistance) below price or a "put wall" (support) above it — inverted, the only way a
+ * member actually reads them. This scoper independently reimplements the same wall
+ * selection and never inherited the fix.
+ */
+
+const invertingCells = {
+  // Below spot (100) but the single LARGEST positive gamma in the whole chain — must not
+  // win the call wall once a spot-side constraint applies.
+  "90": { "2026-08-21": -2_000_000 },
+  "95": { "2026-08-21": 9_000_000 },
+  // Above spot — the legitimate call wall once strikes below spot are excluded.
+  "105": { "2026-08-21": 3_000_000 },
+  // Above spot but the single LARGEST negative gamma in the whole chain — must not win the
+  // put wall once a spot-side constraint applies.
+  "110": { "2026-08-21": -8_000_000 },
+};
+const invertingExpiries = ["2026-08-21"];
+
+test("scope: with NO spot supplied, preserves the historical unconstrained pick (no behavior change for existing callers)", () => {
+  const s = scopeStructureToExpiry({ cells: invertingCells, expiries: invertingExpiries, eventYmd: "2026-08-18" });
+  assert.equal(s.callWall, 95);
+  assert.equal(s.putWall, 110);
+});
+
+test("scope: with spot supplied, call wall must sit ABOVE spot and put wall BELOW it — not just argmax/argmin anywhere", () => {
+  const s = scopeStructureToExpiry({
+    cells: invertingCells,
+    expiries: invertingExpiries,
+    eventYmd: "2026-08-18",
+    spot: 100,
+  });
+  assert.equal(s.callWall, 105, "95 has bigger gamma but sits BELOW spot — not resistance");
+  assert.equal(s.putWall, 90, "110 has bigger |gamma| but sits ABOVE spot — not support");
+});
+
+test("scope: with spot supplied, no fallback to the wrong side — null beats an inverted level", () => {
+  // Every positive-gamma strike sits below spot: there is no call wall candidate above spot.
+  const allBelowSpot = { "90": { "2026-08-21": 5_000_000 }, "95": { "2026-08-21": -1_000_000 } };
+  const s = scopeStructureToExpiry({
+    cells: allBelowSpot,
+    expiries: invertingExpiries,
+    eventYmd: "2026-08-18",
+    spot: 100,
+  });
+  assert.equal(s.callWall, null, "no strike above spot carries positive gamma — null, not an inverted guess");
+  assert.equal(s.putWall, 95);
+});
+
+/*
+ * ── Exact-tie determinism ─────────────────────────────────────────────────────────
+ *
+ * Same defect class, same fix, as `kingFromStrikeTotals` (gex-cross-validation-core.ts):
+ * `scopeStructureToExpiry` ran its call/put-wall argmax/argmin scan straight over
+ * `Object.entries(input.cells)` with no preceding sort. Integer-like strike keys ("90")
+ * always enumerate ascending per the JS spec regardless of insertion order, but DECIMAL
+ * strike keys ("92.5" — the normal case for a 0.5-wide chain) enumerate in INSERTION
+ * order instead. Two payloads describing the exact same book, differing only in which
+ * strike's column was inserted into `cells` first, could therefore report a DIFFERENT
+ * call/put wall for an exact-tie book purely from incidental key order.
+ */
+
+test("scope: exact-tie call wall is deterministic regardless of cells key insertion order (decimal strikes)", () => {
+  const tieExpiries = ["2026-08-21"];
+  // Two decimal strikes tie EXACTLY on positive gamma — same book, built in two different
+  // key insertion orders (a real provider payload can't guarantee which strike's column
+  // lands in `cells` first).
+  const ascendingInsertion = {
+    "92.5": { "2026-08-21": 5_000_000 },
+    "97.5": { "2026-08-21": 5_000_000 },
+  };
+  const descendingInsertion = {
+    "97.5": { "2026-08-21": 5_000_000 },
+    "92.5": { "2026-08-21": 5_000_000 },
+  };
+  const a = scopeStructureToExpiry({ cells: ascendingInsertion, expiries: tieExpiries, eventYmd: "2026-08-18" });
+  const b = scopeStructureToExpiry({ cells: descendingInsertion, expiries: tieExpiries, eventYmd: "2026-08-18" });
+  assert.equal(a.callWall, 92.5, "an exact tie must deterministically keep the LOWER strike");
+  assert.equal(b.callWall, 92.5, "same book, different key insertion order — must agree with `a`, not flip to 97.5");
+});
+
+test("scope: exact-tie put wall is deterministic regardless of cells key insertion order (decimal strikes)", () => {
+  const tieExpiries = ["2026-08-21"];
+  const ascendingInsertion = {
+    "92.5": { "2026-08-21": -5_000_000 },
+    "97.5": { "2026-08-21": -5_000_000 },
+  };
+  const descendingInsertion = {
+    "97.5": { "2026-08-21": -5_000_000 },
+    "92.5": { "2026-08-21": -5_000_000 },
+  };
+  const a = scopeStructureToExpiry({ cells: ascendingInsertion, expiries: tieExpiries, eventYmd: "2026-08-18" });
+  const b = scopeStructureToExpiry({ cells: descendingInsertion, expiries: tieExpiries, eventYmd: "2026-08-18" });
+  assert.equal(a.putWall, 92.5, "an exact tie must deterministically keep the LOWER strike");
+  assert.equal(b.putWall, 92.5, "same book, different key insertion order — must agree with `a`, not flip to 97.5");
+});
+
 test("describeEventExpiry: says whether the chain settles on the print or after it", () => {
   const same = scopeStructureToExpiry({ cells, expiries: ["2026-08-18"], eventYmd: "2026-08-18" });
   assert.match(describeEventExpiry(same)!, /day of the print/);

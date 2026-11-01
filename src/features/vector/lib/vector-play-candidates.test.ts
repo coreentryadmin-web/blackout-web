@@ -90,6 +90,68 @@ test("range bias: spot near call wall ranks put fade before call dip", () => {
   }
 });
 
+test("range bias: magnet-mean candidate bets on price moving TOWARD the mean, not away from it", () => {
+  // Mean (magnet) sits ABOVE spot: the reversion thesis is that price RISES to reach it, which
+  // is a bullish/call idea — not a bearish/put one.
+  const spot = 500;
+  const putWall = 480;
+  const callWall = 520;
+  const magnetStrike = 501;
+  const expiry = ymdPlus(7);
+  const chain: EditionChainData = {
+    spot,
+    rows: [
+      row(480, { expiry, callAsk: 22, callBid: 21, putAsk: 2, putBid: 1.8 }),
+      row(520, { expiry, putAsk: 22, putBid: 21, callAsk: 2, callBid: 1.8 }),
+      row(501, { expiry, callAsk: 5, callBid: 4.8, putAsk: 5, putBid: 4.8 }),
+    ],
+  };
+  const ctx: VectorPlayPickContext = {
+    play: basePlay("range", 75),
+    spot,
+    putWall,
+    callWall,
+    magnetStrike,
+    platformInputs: null,
+  };
+  const picks = rankVectorPlayCandidates(ctx, chain);
+  const magnetPick = picks.find((p) => p.role === "magnet-mean");
+  assert.ok(magnetPick, "magnet-mean candidate should surface");
+  assert.equal(
+    magnetPick!.side,
+    "call",
+    "mean above spot means price must RISE to revert — a call idea, not a put"
+  );
+
+  // Mirror: mean BELOW spot — price must FALL to revert, a bearish/put idea.
+  const spot2 = 500;
+  const magnetStrike2 = 499;
+  const chain2: EditionChainData = {
+    spot: spot2,
+    rows: [
+      row(480, { expiry, callAsk: 22, callBid: 21, putAsk: 2, putBid: 1.8 }),
+      row(520, { expiry, putAsk: 22, putBid: 21, callAsk: 2, callBid: 1.8 }),
+      row(499, { expiry, callAsk: 5, callBid: 4.8, putAsk: 5, putBid: 4.8 }),
+    ],
+  };
+  const ctx2: VectorPlayPickContext = {
+    play: basePlay("range", 75),
+    spot: spot2,
+    putWall,
+    callWall,
+    magnetStrike: magnetStrike2,
+    platformInputs: null,
+  };
+  const picks2 = rankVectorPlayCandidates(ctx2, chain2);
+  const magnetPick2 = picks2.find((p) => p.role === "magnet-mean");
+  assert.ok(magnetPick2, "magnet-mean candidate should surface");
+  assert.equal(
+    magnetPick2!.side,
+    "put",
+    "mean below spot means price must FALL to revert — a put idea, not a call"
+  );
+});
+
 test("every pick exposes play.conviction as confidence — no per-pick invented score", () => {
   const chain: EditionChainData = {
     spot: 102,

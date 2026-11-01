@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   resolveGroupBenchmark,
   industryGroupRs01,
+  industryGroupRsFacts,
   INDUSTRY_ETF_BY_SIC,
   SECTOR_ETF_BY_LABEL,
+  ADR_SIC_MISSING_OVERRIDE,
 } from "./industry-group-rs.ts";
 
 // pctReturnOverSessions (internal) reads only closes[0] and closes[len-1] for a length-(n+1) array, so a
@@ -37,6 +39,32 @@ test("resolveGroupBenchmark: SIC range → the right SECTOR ETF when no tight in
   assert.equal(resolveGroupBenchmark({ ticker: "AAPL", sicCode: "3571" })?.kind, "sector");
 });
 
+// FINDINGS (Ask Largo standing mandate deep-dive, 2026-10-07, live repro): GE Aerospace's real
+// Polygon sic_code is the exact top-level catch-all "3600" — Polygon's OWN sic_description for
+// that exact code is "ELECTRONIC & OTHER ELECTRICAL EQUIPMENT (NO COMPUTER EQUIP)", explicitly
+// disclaiming the Tech label — yet the 3600-3699 range rule (added for genuine electronics/
+// communications-equipment sub-codes like 3661/3674) swallowed the generic 3600 code too and
+// resolved it to XLK/Technology. GE is hand-classified "Industrials" in the static sector-map
+// (sector-map.ts) specifically because it's correct, but that correct tier-3 fallback was never
+// reached because the coarser tier-2 SIC-range rule claimed a match first. Live effect: the
+// member-facing Ask Largo swing play-brief's "Why this setup" section narrated GE Aerospace (a
+// jet-engine manufacturer) as "Industry read: lagging Technology (XLK) by 7.1%..." — the exact
+// "mechanically-nearest-but-substantively-wrong ETF" failure mode this file's own header already
+// names and the NO_SECTOR_BENCHMARK_THEMES guard already fixed for crypto-equity names (HUT/MSTR).
+test("resolveGroupBenchmark: the generic SIC '3600' catch-all code is not auto-classified Tech — it falls through to the static sector-map label", () => {
+  // GE Aerospace: live Polygon sic_code is the exact string "3600" (confirmed live 2026-10-07).
+  // Static sector-map correctly says "Industrials" — that must win, not a mechanical XLK guess.
+  assert.deepEqual(
+    resolveGroupBenchmark({ ticker: "GE", sicCode: "3600", sectorLabel: "Industrials" }),
+    { etf: "XLI", label: "Industrials", kind: "sector" },
+  );
+  // No static label either → honest null, never a guessed Tech benchmark for the ambiguous code.
+  assert.equal(resolveGroupBenchmark({ ticker: "WXYZ", sicCode: "3600" }), null);
+  // A genuine, more specific sub-code in the same range is UNCHANGED — this fix is scoped to the
+  // exact ambiguous top-level "3600" code, not the whole 3600-3699 band.
+  assert.equal(resolveGroupBenchmark({ ticker: "T", sicCode: "3661" })?.etf, "XLK");
+});
+
 test("resolveGroupBenchmark: no SIC → static sector-map label fallback (zero-IO)", () => {
   // XOM has no SIC in Polygon (confirmed live) → resolve from its sector-map label.
   assert.deepEqual(resolveGroupBenchmark({ ticker: "XOM", sectorLabel: "Energy" }), { etf: "XLE", label: "Energy", kind: "sector" });
@@ -59,6 +87,35 @@ test("resolveGroupBenchmark: 'Indices'/'Other' labels never resolve (no rotation
   assert.equal(SECTOR_ETF_BY_LABEL["Indices"], undefined);
   assert.equal(SECTOR_ETF_BY_LABEL["Other"], undefined);
   assert.equal(resolveGroupBenchmark({ ticker: "SPY", sectorLabel: "Indices" }), null);
+});
+
+test("resolveGroupBenchmark: a known crypto-equity name gets NO benchmark, never a mechanical Financials mislabel", () => {
+  // Live-confirmed 2026-09-22: Polygon classifies HUT (Hut 8 Corp, a bitcoin-mining/digital-infrastructure
+  // company) under sic_code 6199 "FINANCE SERVICES" — a real provider classification that lands squarely in
+  // sectorEtfFromSic's 6000-6499 "Finance" range and mechanically resolves to XLF/Financials. That is a
+  // genuine SIC-provider quirk (crypto miners routinely get bucketed under a finance-services SIC because
+  // they don't fit a traditional mining code), not evidence HUT is a Financials-sector-rotation name — the
+  // rest of the engine (portfolio.ts concentration risk, the play-brief's own "Book context" section) already
+  // treats HUT as "crypto-equity" via `sectorFor`. Before the fix this returned `{etf:"XLF",...}`; per this
+  // file's own null-over-mislabel design (see header), a name whose REAL theme has no equity-sector analogue
+  // must get NO benchmark rather than a mismatched one.
+  assert.equal(resolveGroupBenchmark({ ticker: "HUT", sicCode: "6199", sicDescription: "FINANCE SERVICES" }), null);
+  // Same guard applies regardless of which tier would otherwise have fired — a crypto-equity name with no SIC
+  // at all must not fall through to a sector-map label mislabel either (MSTR/COIN are hand-classified "Tech" in
+  // the flow-aggregation sector-map.ts, which would otherwise resolve XLK — still wrong for the same reason).
+  assert.equal(resolveGroupBenchmark({ ticker: "MSTR", sectorLabel: "Tech" }), null);
+  assert.equal(resolveGroupBenchmark({ ticker: "COIN", sectorLabel: "Tech" }), null);
+  // A non-crypto name with the SAME SIC code is unaffected — the guard is ticker-scoped, not SIC-scoped.
+  assert.equal(resolveGroupBenchmark({ ticker: "JPM", sicCode: "6021" })?.etf, "KBE");
+});
+
+test("resolveGroupBenchmark: ASST (Strive, bitcoin-treasury) gets NO benchmark — same mislabel shape as HUT", () => {
+  // Live-found 2026-10-07 (Ask Largo standing mandate): ASST was live on the Swing WATCH lane and, before
+  // being added to sector-map.ts's crypto-equity list, was unmapped by `sectorFor` — so this guard never
+  // fired and ASST fell straight into the SIC-range Financials fallback, exactly like HUT before it was
+  // added. Live play-brief cited "leading Financials (XLF) by 2.8%" for a bitcoin-treasury company.
+  assert.equal(resolveGroupBenchmark({ ticker: "ASST", sicCode: "6199", sicDescription: "FINANCE SERVICES" }), null);
+  assert.equal(resolveGroupBenchmark({ ticker: "ASST", sectorLabel: "Tech" }), null);
 });
 
 test("industryGroupRs01: name OUTperforming its group scores > 0; UNDERperforming clamps to 0", () => {
@@ -86,8 +143,89 @@ test("industryGroupRs01: honest null on no direction / no benchmark / thin histo
   assert.equal(industryGroupRs01({ nameCloses: up, benchmarkCloses: [100, 101, 102], direction: "LONG" }), null);
 });
 
+test("industryGroupRsFacts: recovers the raw benchmark/return facts industryGroupRs01 throws away", () => {
+  const nameUp5 = mk(100, 105); // +5% over 10 sessions
+  const groupUp2 = mk(100, 102); // +2%
+  const benchmark = { etf: "SMH", label: "Semiconductors", kind: "industry" as const };
+  const facts = industryGroupRsFacts({ benchmark, nameCloses: nameUp5, benchmarkCloses: groupUp2 });
+  assert.deepEqual(facts, {
+    benchmarkEtf: "SMH",
+    benchmarkLabel: "Semiconductors",
+    kind: "industry",
+    nameReturnPct: 5,
+    groupReturnPct: 2,
+    deltaPct: 3,
+  });
+});
+
+test("industryGroupRsFacts: negative delta reads LAGGING (not direction-signed like the 0-1 score)", () => {
+  const nameDown = mk(100, 98); // -2%
+  const groupUp = mk(100, 102); // +2%
+  const benchmark = { etf: "XLK", label: "Technology", kind: "sector" as const };
+  const facts = industryGroupRsFacts({ benchmark, nameCloses: nameDown, benchmarkCloses: groupUp });
+  assert.equal(facts?.deltaPct, -4);
+});
+
+test("industryGroupRsFacts: honest null on no benchmark / thin history — mirrors industryGroupRs01", () => {
+  const up = mk(100, 105);
+  assert.equal(industryGroupRsFacts({ benchmark: null, nameCloses: up, benchmarkCloses: mk(100, 102) }), null);
+  assert.equal(
+    industryGroupRsFacts({
+      benchmark: { etf: "SMH", label: "Semiconductors", kind: "industry" },
+      nameCloses: up,
+      benchmarkCloses: null,
+    }),
+    null,
+  );
+  assert.equal(
+    industryGroupRsFacts({
+      benchmark: { etf: "SMH", label: "Semiconductors", kind: "industry" },
+      nameCloses: up,
+      benchmarkCloses: [100, 101, 102], // too few for a 10-session return
+    }),
+    null,
+  );
+});
+
+// FINDINGS (Ask Largo standing mandate deep-dive, 2026-11-01, live repro): TSM (Taiwan Semiconductor)
+// comes back from Polygon's reference API as `type: "ADRC"` with NO `sic_code` at all (live-confirmed,
+// same for ASML/ARM) — unlike its SIC-3674 semis peers (NVDA/AMD/MU/AVGO/…), which correctly resolve to
+// the SMH industry tier. Before this fix, a missing SIC fell straight through to the coarse static
+// sector-map label — TSM is hand-classified "Tech" in the flow-aggregation sector-map.ts — landing on
+// XLK. Live effect: the member-facing Ask Largo swing play-brief's "Why this setup" section narrated
+// TSM (the canonical semiconductor ADR) as "Industry read: leading Tech (XLK) by 0.6%..." instead of
+// the Semiconductors (SMH) benchmark its own SIC-having semis peers get — the exact "mechanically-
+// nearest-but-substantively-wrong ETF" shape this file's header already fixed for HUT/GE Aerospace,
+// just approached from the opposite direction (routing TO the correct tight tier, not blocking a wrong
+// loose one).
+test("resolveGroupBenchmark: a known no-SIC ADR (TSM/ASML/ARM) resolves to its real industry ETF, not the coarse static sector label", () => {
+  // No sicCode at all (Polygon never classifies these) AND a sectorLabel that WOULD mislabel them —
+  // the override must win over the static "Tech" fallback.
+  assert.deepEqual(resolveGroupBenchmark({ ticker: "TSM", sectorLabel: "Tech" }), { etf: "SMH", label: "Semiconductors", kind: "industry" });
+  assert.deepEqual(resolveGroupBenchmark({ ticker: "ASML", sectorLabel: "Tech" }), { etf: "SMH", label: "Semiconductors", kind: "industry" });
+  assert.deepEqual(resolveGroupBenchmark({ ticker: "ARM", sectorLabel: "Tech" }), { etf: "SMH", label: "Semiconductors", kind: "industry" });
+  // Still correct with no sectorLabel supplied at all.
+  assert.deepEqual(resolveGroupBenchmark({ ticker: "TSM" }), { etf: "SMH", label: "Semiconductors", kind: "industry" });
+  // An ETF candidate is still excluded even if its ticker happens to collide with the override map.
+  assert.equal(resolveGroupBenchmark({ ticker: "TSM", tickerType: "ETF" }), null);
+  // A ticker with a REAL SIC code is unaffected by the override even if (hypothetically) present in it —
+  // the SIC tier is still checked first.
+  assert.equal(resolveGroupBenchmark({ ticker: "NVDA", sicCode: "3674" })?.etf, "SMH");
+  // An unrelated no-SIC ticker is NOT swept into this override — it still falls through normally.
+  assert.deepEqual(resolveGroupBenchmark({ ticker: "XOM", sectorLabel: "Energy" }), { etf: "XLE", label: "Energy", kind: "sector" });
+});
+
 test("map integrity: every INDUSTRY_ETF_BY_SIC key is a 3–4 digit SIC; sector labels are the 11 SPDRs", () => {
   for (const sic of Object.keys(INDUSTRY_ETF_BY_SIC)) assert.match(sic, /^\d{3,4}$/);
   assert.equal(Object.keys(SECTOR_ETF_BY_LABEL).length, 11);
   for (const etf of Object.values(SECTOR_ETF_BY_LABEL)) assert.match(etf, /^XL[A-Z]{1,2}$/);
+});
+
+test("map integrity: every ADR_SIC_MISSING_OVERRIDE entry targets a real liquid industry ETF, never itself", () => {
+  const industryEtfs = new Set(Object.values(INDUSTRY_ETF_BY_SIC).map((v) => v.etf));
+  for (const [ticker, { etf }] of Object.entries(ADR_SIC_MISSING_OVERRIDE)) {
+    assert.match(ticker, /^[A-Z]{1,6}$/);
+    assert.ok(industryEtfs.has(etf), `${ticker} → ${etf} must be one of the already-established industry ETFs`);
+    assert.notEqual(ticker, etf);
+  }
 });

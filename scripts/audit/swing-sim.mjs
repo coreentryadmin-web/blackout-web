@@ -9,8 +9,8 @@
  * see the five truths on live names and cut them by archetype + sub-lane — the evidence the graduation
  * ladder will later consume. It sizes NOTHING; it only measures.
  *
- * The financial truth flows through `gradeBangerScaleOut` (via `gradeSwingScaleOut`) — the ONE
- * production scale-out grader — so research and the live ledger can never drift, and a truncated
+ * The financial truth flows through `gradeBangerScaleOut`, called directly inside `gradeSwingPosition` —
+ * the ONE production scale-out grader — so research and the live ledger can never drift, and a truncated
  * forward series is reported `ungradeable`, never imputed to a fabricated multiple (survivorship guard).
  *
  * MODES

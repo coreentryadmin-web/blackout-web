@@ -151,6 +151,41 @@ test("resolveThermalDiscordMode keeps pulse when walls quiet", () => {
   assert.equal(resolveThermalDiscordMode(columns, prev, pulseTime), "pulse");
 });
 
+// BUG FIX (2026-11-01): a wall going from a real strike to null (vanished) — or from null to
+// a real strike (newly appeared) — is a real structural change the pulse->full upgrade exists
+// to catch. Before the fix, `wallStrikeMoved`'s `prev == null || next == null => false` guard
+// silently treated either side being null as "not moved", so these ticks never upgraded.
+test("thermalWallsShifted detects a call wall VANISHING (real strike -> null)", () => {
+  const columns: ThermalCardColumn[] = [
+    { ticker: "SPY", heatmap: stubHeatmap({ gex: { ...stubHeatmap().gex, call_wall: null } }) },
+  ];
+  const prev = { SPY: { call_wall: 775, put_wall: 735 } };
+  assert.equal(thermalWallsShifted(columns, prev), true);
+});
+
+test("thermalWallsShifted detects a put wall APPEARING (null -> real strike)", () => {
+  const columns: ThermalCardColumn[] = [{ ticker: "SPY", heatmap: stubHeatmap() }];
+  const prev = { SPY: { call_wall: 775, put_wall: null } };
+  assert.equal(thermalWallsShifted(columns, prev), true);
+});
+
+test("thermalWallsShifted stays quiet when a wall is absent on both ticks (null -> null)", () => {
+  const columns: ThermalCardColumn[] = [
+    { ticker: "SPY", heatmap: stubHeatmap({ gex: { ...stubHeatmap().gex, call_wall: null } }) },
+  ];
+  const prev = { SPY: { call_wall: null, put_wall: 735 } };
+  assert.equal(thermalWallsShifted(columns, prev), false);
+});
+
+test("resolveThermalDiscordMode upgrades pulse when a wall vanishes between ticks", () => {
+  const columns: ThermalCardColumn[] = [
+    { ticker: "SPY", heatmap: stubHeatmap({ gex: { ...stubHeatmap().gex, call_wall: null } }) },
+  ];
+  const prev = { SPY: { call_wall: 775, put_wall: 735 } };
+  const pulseTime = new Date("2026-08-04T14:15:00.000Z"); // 10:15 ET
+  assert.equal(resolveThermalDiscordMode(columns, prev, pulseTime), "full");
+});
+
 test("etMinuteSlot reads America/New_York minute", () => {
   assert.equal(etMinuteSlot(new Date("2026-08-04T14:15:00.000Z")), 15);
 });

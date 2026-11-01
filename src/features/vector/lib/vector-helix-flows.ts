@@ -52,15 +52,11 @@ export type VectorHelixTypeFilter = "ALL" | "CALL" | "PUT";
 
 export type VectorHelixFlowFilters = {
   typeFilter: VectorHelixTypeFilter;
-  whalesOnly: boolean;
-  dteOnly: boolean;
   minPremium: number;
 };
 
 export const VECTOR_HELIX_DEFAULT_FILTERS: VectorHelixFlowFilters = {
   typeFilter: "ALL",
-  whalesOnly: false,
-  dteOnly: false,
   minPremium: VECTOR_HELIX_MIN_PREMIUM,
 };
 
@@ -71,12 +67,7 @@ function sideAndFlagsFilter(
   return flows.filter((f) => {
     const side = f.option_type?.toUpperCase();
     if (side !== "CALL" && side !== "PUT") return false;
-    if (filters.whalesOnly && f.premium < VECTOR_HELIX_WHALE_PREMIUM) return false;
     if (filters.typeFilter !== "ALL" && side !== filters.typeFilter) return false;
-    if (filters.dteOnly) {
-      const dte = f.dte ?? daysToExpiry(f.expiry);
-      if (dte !== 0) return false;
-    }
     return true;
   });
 }
@@ -155,17 +146,6 @@ export function compareLiveHelixByPremium(a: FlowAlert, b: FlowAlert): number {
   return flowAlertedMs(b) - flowAlertedMs(a);
 }
 
-/** Live Helix tape — ranked by premium (largest session print stays #1 all day). */
-export function prepareVectorLiveHelixTape(
-  flows: readonly FlowAlert[],
-  filters: VectorHelixFlowFilters,
-  cap = VECTOR_LIVE_HELIX_TAPE_CAP
-): FlowAlert[] {
-  return filterVectorHelixFlows(flows, filters)
-    .sort(compareLiveHelixByPremium)
-    .slice(0, cap);
-}
-
 export type VectorLiveHelixLayout = {
   recent: FlowAlert[];
   ranked: FlowAlert[];
@@ -212,20 +192,6 @@ export function pickVectorLiveHelixLayout(
     .slice(0, rankedCap);
 
   return { recent, ranked };
-}
-
-/** Subtitle for the Live Helix header. */
-export function vectorLiveHelixSubtitle(
-  layout: Pick<VectorLiveHelixLayout, "recent" | "ranked">,
-  liveSession: boolean
-): string {
-  const count = layout.recent.length + layout.ranked.length;
-  if (!liveSession) return "Session closed · full history on Helix desk";
-  if (count === 0) return "Recent + ranked by premium · today's session";
-  const parts: string[] = [];
-  if (layout.recent.length > 0) parts.push("Recent");
-  parts.push(`ranked by premium · ${count} print${count === 1 ? "" : "s"} today`);
-  return parts.join(" · ");
 }
 
 /**

@@ -74,3 +74,27 @@ test("last-resort pulse fallback carries prior_close so consumers never invert c
     /lastPulseForSignals\.prior_close \?\? null/
   );
 });
+
+// BUG FIX (live repro 2026-10-26, Ask Largo/5-engine standing mandate — SPX Slayer /desk check):
+// buildSpxDeskPulseMinimal's live-price branch hardcoded `market_status: "open"` as a bare
+// literal, independent of the `rthOpenNow` boolean it assigns to `market_open` two lines above.
+// Confirmed live against GET /api/market/spx/desk at 2026-10-26T09:09:19Z (~5:09 AM ET, well
+// before the 9:30 AM cash open): the bootstrap-shell fallback (deskShellFromPulse ->
+// mergePulseIntoDesk, which carries `pulse.market_status` straight through unchanged) served
+// `"market_open": false, "market_status": "open"` in the SAME payload — a direct, visible
+// self-contradiction, also surfaced verbatim on the admin SPX dashboard's
+// `desk.market: { open, status }` fields (admin-spx-dashboard.ts's buildDeskIntel). Every OTHER
+// market_status fallback in this file (the "closed"-market builders a few hundred lines up, and
+// the two RTH/premarket ternaries in buildSpxDesk/deskShellFromPulse) keeps market_status
+// consistent with market_open/rthOpen when the live provider is unavailable — this was the one
+// outlier that didn't.
+test("cold-replica pulse minimal fallback's market_status agrees with market_open — never a bare 'open' literal", () => {
+  const minimalStart = src.indexOf("export async function buildSpxDeskPulseMinimal");
+  assert.ok(minimalStart > 0, "buildSpxDeskPulseMinimal exists");
+  const minimalEnd = src.indexOf("\n}", src.indexOf("roundPulseNumerics(raced)", minimalStart));
+  const body = src.slice(minimalStart, minimalEnd);
+  // The live-price return block must derive market_status from rthOpenNow, not hardcode "open".
+  assert.match(body, /market_open: rthOpenNow,/);
+  assert.match(body, /market_status: rthOpenNow \? "open" : "closed",/);
+  assert.doesNotMatch(body, /market_status: "open",/);
+});

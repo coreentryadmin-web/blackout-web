@@ -38,6 +38,7 @@ mock.module("./spx-play-config", {
     playGexStaleMaxSec: () => 90,
     playMinAgreeingFactors: () => 3,
     playMinGradeRank: () => 2,
+    playMinGradeLabel: () => "B",
     playMinRiskReward: () => 2,
     playOnlyFullEntry: () => false,
     playOpeningRangeMinutes: () => 20,

@@ -41,6 +41,7 @@ import {
   buildHelixEodRecapEmbed,
   claimDiscordEodRecap,
   currentSessionDateEt,
+  hoursSinceSessionOpenEt,
   isDiscordEodRecapWindow,
 } from "@/lib/discord-eod-recap";
 import { deliverHelixBurstItems } from "@/lib/helix-discord-notify";
@@ -127,8 +128,17 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   const allowDup = req.nextUrl.searchParams.get("allow_dup") === "1";
   const bypassDedup = force && allowDup;
+  const now = new Date();
 
-  if (!force && rthOnly() && !isEtCashRth()) {
+  // `now` must exist before this gate (and the gate must carve out the EOD-recap window) so a
+  // tick landing at ~4:04-4:14 PM ET — already outside cash RTH — isn't skipped before the EOD
+  // recap section below ever runs. Without `&& !isDiscordEodRecapWindow(now)`, every tick in that
+  // window hit "Outside cash RTH" under the default HELIX_DISCORD_DIGEST_RTH_ONLY=unset(true)
+  // config, so `isDiscordEodRecapWindow`/`buildHelixEodRecapEmbed` were dead code in production
+  // despite being fully built, tested, and wired below — the HELIX EOD recap could never fire.
+  // Same root cause as the sibling darkpool-discord route; mirrors the carve-out thermal-discord's
+  // route already has (`!isRth && !eodDue`).
+  if (!force && rthOnly() && !isEtCashRth(now) && !isDiscordEodRecapWindow(now)) {
     const payload = {
       ok: true,
       skipped: true,
@@ -138,7 +148,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const now = new Date();
   const minute = Number(
     new Intl.DateTimeFormat("en-US", {
       timeZone: "America/New_York",
@@ -298,7 +307,24 @@ export async function GET(req: NextRequest) {
       const sessionDate = currentSessionDateEt(now);
       const eodClaimed = await claimDiscordEodRecap("helix", sessionDate, bypassDedup);
       if (eodClaimed) {
-        const sessionFlows = inputs.filter((f) => passesHelixDiscordFilters(f, now));
+        // `inputs` above was fetched with `since_hours: 6`, sized for the 15/30-min live
+        // digest windows — by the time this EOD window opens (~4:04-4:14 PM ET, 6h34m-6h44m
+        // after a 9:30 AM open), that 6h lookback silently excludes the first ~35-45 minutes
+        // of the session's flow at the DB WHERE clause, before filterHelixSessionFlows (inside
+        // buildHelixEodRecapEmbed) ever sees those rows — same bug shape the dark-pool cron's
+        // EOD branch already avoids by doing its own dedicated full-session fetch instead of
+        // reusing the live-scan window. Fetch a session-wide window just for the recap.
+        const sessionSinceHours = Math.ceil(hoursSinceSessionOpenEt(sessionDate, now)) + 1;
+        const sessionRows = await fetchRecentFlows({
+          limit: 400,
+          min_premium: HELIX_DISCORD_MIN_PREMIUM,
+          max_dte: HELIX_DISCORD_MAX_DTE,
+          since_hours: sessionSinceHours,
+          order: "recent",
+        });
+        const sessionFlows = sessionRows
+          .map(toInput)
+          .filter((f) => passesHelixDiscordFilters(f, now));
         const eodEmbed = buildHelixEodRecapEmbed({
           flows: sessionFlows,
           sessionDate,

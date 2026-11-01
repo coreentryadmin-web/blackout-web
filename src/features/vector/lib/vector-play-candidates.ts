@@ -346,7 +346,20 @@ function specsForContext(ctx: VectorPlayPickContext): CandidateSpec[] {
     if (meanRef.price != null && spot > 0) {
       const dist = Math.abs(meanRef.price - spot) / spot;
       if (dist <= 0.025) {
-        const dir = meanRef.price <= spot ? "long" : "short";
+        // BUG FIX (round-309 audit): a "magnet-mean" candidate is the reversion-to-fair-value
+        // thesis — spot is close to the magnet/max-pain mean, and the bet is that price moves
+        // TOWARD that mean. If the mean sits ABOVE spot, price has to RISE to reach it (bullish,
+        // buy calls); if the mean sits BELOW spot, price has to FALL (bearish, buy puts). The
+        // comparison here was inverted (`meanRef.price <= spot ? "long" : "short"`), which
+        // recommended a CALL when the mean was below spot (reversion is a FALL — a short/put
+        // thesis) and a PUT when the mean was above spot (reversion is a RISE — a long/call
+        // thesis) — i.e. exactly the trade this role's own evidence string
+        // ("Strike at range mean-revert anchor") argues against. Unlike `fade-dip`/`fade-rip`
+        // above, whose direction/target pairing encodes a *standing bounce order at a rail*
+        // (support below spot always bounces up = long; resistance above spot always bounces
+        // down = short) and is independent of spot's position, `magnet-mean` is explicitly
+        // conditioned on sign(mean − spot), so it can only be read as mean reversion.
+        const dir = meanRef.price >= spot ? "long" : "short";
         specs.push({
           direction: dir,
           targetStrike: meanRef.price,

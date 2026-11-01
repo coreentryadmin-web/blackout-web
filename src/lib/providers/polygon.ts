@@ -2,11 +2,12 @@ import { polygonTrackedFetch } from "./polygon-rate-limiter";
 import { computeVixTermStructure, type VixTermSnapshot } from "@/lib/vix-term-utils";
 export { computeVixTermStructure, type VixTermSnapshot } from "@/lib/vix-term-utils";
 import { polygonConfigured } from "./config";
-import { sessionStatsFromMinuteBars, todayEtYmd, priorEtYmd } from "./spx-session";
+import { todayEtYmd, priorEtYmd } from "./spx-session";
 import { smaFromCloses, emaFromCloses } from "./ma-math";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { logToken } from "@/lib/log-token";
 import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
+import { isEtCashRth } from "@/lib/et-market-hours";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
@@ -25,13 +26,18 @@ export function polygonRestApiKey(): string {
 // on an open circuit (preserving the old throw-immediately gate) and notes 429/OK against
 // the one shared breaker, so behavior here is unchanged: throws on circuit-open, throws on
 // 429, returns json on ok.
-async function polygonGet<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+async function polygonGet<T>(
+  path: string,
+  params: Record<string, string> = {},
+  signal?: AbortSignal
+): Promise<T> {
   if (!polygonConfigured()) throw new Error("POLYGON_API_KEY not set");
 
   const qs = new URLSearchParams({ ...params, apiKey: KEY });
   const res = await polygonTrackedFetch(path, `${BASE}${path}?${qs}`, {
     headers: { Accept: "application/json" },
     cache: "no-store",
+    signal,
   });
 
   if (res.status === 429) throw new Error(`Polygon ${path} → 429 (rate limited)`);
@@ -81,10 +87,44 @@ type SnapshotTicker = {
   lastTrade?: { p?: number };
 };
 
-/** Session change % from a batch snapshot row — null when the provider omits change and we
- *  cannot derive it from day close vs prior close (never fabricate flat 0%). */
-export function snapshotChangePctFromRow(row: SnapshotTicker | undefined): number | null {
+/**
+ * Session change % from a batch snapshot row — null when the provider omits change and we
+ * cannot derive it from day close vs prior close (never fabricate flat 0%).
+ *
+ * `cashSessionOpen` defaults to `true` (preserving the standard "vs prior close" reading for
+ * every existing caller that doesn't pass it) and should be `false` whenever the caller knows
+ * cash RTH is closed. When closed, Polygon's own `todaysChangePerc` (and the `prevDay.c` derive
+ * below) measure the LATEST print — which can be a real after-hours/overnight trade once the
+ * regular session has closed — against `prevDay.c`, i.e. the close from ONE SESSION BEFORE the
+ * one that just ended. That reads as a stale, wrong-magnitude move: live 2026-09-11, QQQ's
+ * after-hours print of $706.90 was reported as "-1.31%" (706.90 vs $716.31, Sept-9's close)
+ * when the actual, meaningful move since the real close ($708.69, Sept-10's close, confirmed
+ * against `/v2/aggs/ticker/QQQ/prev`) was only -0.25%. `day.c` freezes at the regular session's
+ * official close and does NOT keep tracking after-hours prints (confirmed live: `lastTrade.p`
+ * moved to 706.8992 while `day.c` stayed at 708.69), so once the session is closed it is the
+ * correct, current anchor — not `prevDay.c`, which only becomes current again once the NEXT
+ * session opens and the provider rolls the day/prevDay buckets forward.
+ *
+ * Mirror-image of the index bug `src/features/spx/lib/spx-change-anchor.ts` fixes: there,
+ * `previous_close` rolls FORWARD too EARLY and reads a false 0%; here, `day.c` rolls forward too
+ * LATE relative to a live after-hours print, and reads a stale, larger move than actually
+ * happened since the close.
+ */
+export function snapshotChangePctFromRow(
+  row: SnapshotTicker | undefined,
+  cashSessionOpen: boolean = true,
+): number | null {
   if (!row) return null;
+  if (!cashSessionOpen) {
+    const dayClose = row.day?.c;
+    const lastPrice = row.lastTrade?.p ?? dayClose;
+    if (
+      typeof lastPrice === "number" && Number.isFinite(lastPrice) && lastPrice > 0 &&
+      typeof dayClose === "number" && Number.isFinite(dayClose) && dayClose > 0
+    ) {
+      return Number((((lastPrice - dayClose) / dayClose) * 100).toFixed(2));
+    }
+  }
   if (row.todaysChangePerc != null && Number.isFinite(row.todaysChangePerc)) {
     return Number(row.todaysChangePerc.toFixed(2));
   }
@@ -128,7 +168,7 @@ function _rowToSnapshot(sym: string, row: SnapshotTicker): StockQuoteSnapshot | 
     ticker: sym,
     price,
     prev_close: prevClose,
-    change_pct: snapshotChangePctFromRow(row),
+    change_pct: snapshotChangePctFromRow(row, isEtCashRth()),
     // Gap #14 (truth): when the day aggregate is absent (pre-open / closed / untraded) we have
     // no real HOD/LOD/VWAP — return null instead of dressing the spot price up as an extreme.
     day_high: day.h != null ? Number(day.h) : null,
@@ -189,20 +229,17 @@ async function fetchStockSnapshotPerformance(
   );
 
   const byTicker = new Map((data.tickers ?? []).map((t) => [t.ticker, t]));
+  const cashSessionOpen = isEtCashRth();
 
   return symbols.map((symbol) => {
     const snap = byTicker.get(symbol.ticker);
     return {
       name: symbol.name,
       ticker: symbol.ticker,
-      change_pct: snapshotChangePctFromRow(snap),
+      change_pct: snapshotChangePctFromRow(snap, cashSessionOpen),
       volume: snap?.day?.v,
     };
   });
-}
-
-export function fetchLeaderStockSnapshots() {
-  return fetchStockSnapshotPerformance(LEADER_STOCKS);
 }
 
 /** Mega-cap leaders + sector ETFs — used for breadth / TICK proxy. */
@@ -310,7 +347,12 @@ export function computeMarketBreadthFromSummary(
 
     byVolume.push({
       ticker,
-      volume: v,
+      // Polygon's grouped-daily `v` occasionally carries a floating-point fractional
+      // remainder (e.g. 678896466.29) despite representing a whole share count — round
+      // at the data layer per repo policy (same class of bug as the unrounded-price
+      // fields this file already guards against) rather than serving a fractional share
+      // count to members/Largo.
+      volume: Math.round(v),
       change_pct: Number((((c - ref) / ref) * 100).toFixed(2)),
     });
   }
@@ -344,9 +386,10 @@ export async function fetchMarketMovers(limit = 20) {
     ),
   ]);
 
+  const cashSessionOpen = isEtCashRth();
   const mapMover = (t: SnapshotTicker) => ({
     ticker: String(t.ticker ?? "").replace("X:", ""),
-    change_pct: snapshotChangePctFromRow(t),
+    change_pct: snapshotChangePctFromRow(t, cashSessionOpen),
     price: t.day?.c ?? t.prevDay?.c ?? 0,
     volume: t.day?.v,
   });
@@ -540,6 +583,19 @@ export type BenzingaPartnerFetchResult<T> = {
   error: string | null;
   /** Relative or absolute next page URL when the upstream API paginates. */
   nextUrl?: string | null;
+  /**
+   * True ONLY when a paginated fetch stopped because it hit its own safety page cap while the
+   * upstream still had more pages (`next_url` was non-empty) — never set on a single-page fetch,
+   * which has no concept of "more pages" to miss. BUG FIX (2026-11-01, Ask Largo standing mandate,
+   * live repro QXO): `fetchBenzingaStructuredEarnings`'s pagination loop already detected this
+   * exact condition (`pagesFollowed >= MAX_EXTRA_PAGES && nextPath`) but only `console.warn`ed it —
+   * a signal that exists but is discarded is no better than one that was never computed, because
+   * every caller still sees a plain `rows: []`/`rows: [...]` indistinguishable from a complete
+   * fetch. `rows.length < true total` is the exact "no data" vs "no signal" distinction the Largo
+   * product contract's C3 (absence) point exists to prevent — see
+   * `meridianCatalystSection` (play-brief-intel.ts) for the consumer this reaches.
+   */
+  truncated?: boolean;
 };
 
 function shapeBenzingaStructuredEarnings(row: Record<string, unknown>): BenzingaStructuredEarnings | null {
@@ -676,11 +732,26 @@ export async function fetchBenzingaStructuredEarnings(opts: {
   );
   if (!opts.paginate || !first.entitled || first.error) return first;
 
-  // Follow up to two next_url pages for busy earnings weeks.
+  // BUG FIX (2026-10-18, Ask Largo standing mandate, live repro RBLX/SOFI): this followed a
+  // HARDCODED "up to two more pages" regardless of how dense the requested date window actually
+  // is — the same "fixed cap on a date-sorted fetch silently drops the far end" shape this file's
+  // own `barLimitForWindow` precedent already fixed once for Polygon aggregate bars. Measured live
+  // 2026-10-18 via a direct market-wide timeline fetch: a single real week's earnings density
+  // (days 2-6 of a 21-day Meridian window) alone produced ~269 rows at limit=120/page — already
+  // enough to exhaust the old 3-page (360-row) total budget before the fetch (sorted date.asc)
+  // ever reached day 10+, silently truncating real, already-known, near-term earnings prints for
+  // live committed Swing positions (RBLX 2026-10-29, SOFI 2026-10-27) out of the market-wide
+  // window `loadBenzingaEarningsBundle` feeds Meridian's timeline / Largo's get_meridian_timeline
+  // tool / Swing's "Meridian catalysts" section — all three read this same truncated `window_rows`.
+  // Widened to a generous, still-bounded cap (not unbounded — a malformed/adversarial next_url
+  // chain must not hang a request forever) sized off the real measured peak density (99 items on
+  // the single densest day observed) rather than a guessed round number.
+  const MAX_EXTRA_PAGES = 20;
   let rows = [...first.rows];
   let nextPath = first.nextUrl ?? "";
+  let pagesFollowed = 0;
 
-  for (let page = 0; page < 2 && nextPath; page += 1) {
+  for (; pagesFollowed < MAX_EXTRA_PAGES && nextPath; pagesFollowed += 1) {
     try {
       const url = new URL(nextPath, BASE);
       const pageParams = Object.fromEntries(url.searchParams.entries());
@@ -698,15 +769,27 @@ export async function fetchBenzingaStructuredEarnings(opts: {
     }
   }
 
-  return { ...first, rows, nextUrl: null };
-}
+  // No silent caps: if the safety cap itself was the reason pagination stopped (there was still
+  // a next_url when the loop ended), the result can still be truncated — log so this is
+  // discoverable instead of silently read as "the calendar is quiet."
+  //
+  // BUG FIX (2026-11-01, Ask Largo standing mandate, live repro QXO): this condition was already
+  // computed correctly but only reached a `console.warn` — no caller could ever see it, so a
+  // truncated fetch and a complete one returned the identical shape. A prior fix (2026-10-18,
+  // RBLX/SOFI) raised MAX_EXTRA_PAGES from 2 to 20 to buy headroom, but a static cap on a
+  // date-sorted market-wide fetch only ever buys time until the next denser week — confirmed live
+  // 2026-11-01: a single reporting day (2026-11-13) alone spans 3 pages (~120+ rows), pushing
+  // QXO's own earnings row to page 23, past this 21-page (1 initial + 20 extra) ceiling. Raising
+  // the cap again would repeat the same mistake; propagating the signal this loop already computes
+  // is the actual fix — see `truncated` on `BenzingaPartnerFetchResult` above.
+  const truncated = pagesFollowed >= MAX_EXTRA_PAGES && !!nextPath;
+  if (truncated) {
+    console.warn(
+      `[benzinga] /benzinga/v1/earnings window fetch hit the ${MAX_EXTRA_PAGES}-page safety cap with more pages remaining — result may still be truncated (dateGte=${opts.dateGte ?? "?"}, dateLte=${opts.dateLte ?? "?"})`
+    );
+  }
 
-/** Legacy helper — rows only (empty when blocked). */
-export async function fetchBenzingaStructuredEarningsRows(
-  opts: Parameters<typeof fetchBenzingaStructuredEarnings>[0]
-): Promise<BenzingaStructuredEarnings[]> {
-  const res = await fetchBenzingaStructuredEarnings(opts);
-  return res.rows;
+  return { ...first, rows, nextUrl: null, truncated };
 }
 
 /** Corporate guidance — separate Benzinga SKU; fails closed to [] when not entitled. */
@@ -1154,12 +1237,13 @@ export async function fetchTickerRsi(symbol: string, window = 14, timespan: "day
   });
 }
 
-export async function fetchShortInterest(ticker: string) {
+export async function fetchShortInterest(ticker: string, signal?: AbortSignal) {
   const sym = ticker.toUpperCase();
   try {
     const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
       "/stocks/v1/short-interest",
-      { ticker: sym, limit: "1", sort: "settlement_date.desc" }
+      { ticker: sym, limit: "1", sort: "settlement_date.desc" },
+      signal
     );
     const row = data.results?.[0];
     if (!row) return null;
@@ -1686,23 +1770,6 @@ export async function fetchIndexSma(
   if (v != null) return v;
   // Fallback: derive from bars when the endpoint blips.
   return smaFromCloses(await indexClosesAsc(sym, window, timespan), window);
-}
-
-/** Polygon has no `/v1/indicators/vwap` for indices — derive from RTH minute aggregates. */
-export function computeIndexVwapFromBars(
-  bars: Array<{ t?: number; o: number; h: number; l: number; c: number; v?: number }>
-): number | null {
-  return sessionStatsFromMinuteBars(bars).vwap;
-}
-
-export async function fetchIndexVwap(symbol: string, timespan: "minute" | "day" = "minute") {
-  const sym = symbol.toUpperCase();
-  const today = todayEtYmd();
-  const bars =
-    timespan === "day"
-      ? await fetchIndexDailyBars(sym, today, today).catch(() => [])
-      : await fetchIndexMinuteBars(sym, today, today).catch(() => []);
-  return computeIndexVwapFromBars(bars);
 }
 
 export async function fetchIndexRsi(

@@ -23,6 +23,15 @@ export type HelixTapeContextSummary = {
   chainOi: number | null;
   topScore: number | null;
   topScoreTier: string | null;
+  /** Put/Call premium RATIO — putPremium / callPremium, `null` when there is no call premium to
+   *  divide by. Matches the ONE PCR convention every other reader of this field in the codebase
+   *  uses (`unusual-whales.ts`'s dark-pool `pcr`, `spx-desk-brief.ts`, `MeridianEarningsIntelPanel`'s
+   *  `P/C`) — a ratio around 1.0 (e.g. 0.65, 1.20), not a percentage. This header previously
+   *  computed `putPremium / (callPremium + putPremium)` instead — that is PUT PREMIUM'S SHARE OF
+   *  TOTAL premium (bounded 0-100%, reads as 50% on a perfectly even split), a different quantity
+   *  rendered under the same "PCR" label the rest of the product uses for the true ratio. See the
+   *  REGRESSION test for the live disagreement this produced. */
+  pcr: number | null;
 };
 
 export function summarizeHelixTapeContext(
@@ -45,8 +54,15 @@ export function summarizeHelixTapeContext(
 
   for (const a of scoped) {
     const prem = a.premium ?? 0;
-    if (a.option_type?.toUpperCase() === "PUT") putPremium += prem;
-    else callPremium += prem;
+    const optType = a.option_type?.toUpperCase();
+    // gap-#6 (same discipline as FlowFeed.tsx/NetPremiumLeaderboard.tsx): `option_type` is a bare
+    // `string` on FlowAlert, not a "CALL" | "PUT" union, so an UNKNOWN/typeless/malformed print is
+    // a real possibility, not a theoretical one. The previous `else callPremium += prem` treated
+    // every non-PUT value — including '', null-ish, and any garbage string — as a CALL, which
+    // fabricates call premium out of prints this header could not classify at all and silently
+    // inflates the Call/Put premium readout and the PCR this header renders for the ticker.
+    if (optType === "CALL") callPremium += prem;
+    else if (optType === "PUT") putPremium += prem;
     if (a.dte === 0) dte0Count += 1;
     if (a.open_interest != null && a.open_interest > 0) {
       chainOi += a.open_interest;
@@ -72,6 +88,9 @@ export function summarizeHelixTapeContext(
     chainOi: oiSamples > 0 ? chainOi : null,
     topScore: topScore > 0 ? topScore : null,
     topScoreTier: topCtx ? helixScoreTierLabel(topCtx.tier) : null,
+    // Same formula + rounding as unusual-whales.ts's dark-pool `pcr` (callPrem > 0 ? putPrem /
+    // callPrem : null, rounded to 2dp) — one shared definition of what "PCR" means on this page.
+    pcr: callPremium > 0 ? Math.round((putPremium / callPremium) * 100) / 100 : null,
   };
 }
 
@@ -91,11 +110,6 @@ export function HelixContextHeader({
   );
 
   if (!summary) return null;
-
-  const pcr =
-    summary.callPremium + summary.putPremium > 0
-      ? summary.putPremium / (summary.callPremium + summary.putPremium)
-      : null;
 
   const topTone =
     summary.topScoreTier === "Rare"
@@ -140,7 +154,7 @@ export function HelixContextHeader({
       )}
       <span className="font-mono text-[10px] text-cyan-400 tabular-nums">
         C {fmtPremium(summary.callPremium)} · P {fmtPremium(summary.putPremium)}
-        {pcr != null ? ` · PCR ${(pcr * 100).toFixed(0)}%` : ""}
+        {summary.pcr != null ? ` · PCR ${summary.pcr.toFixed(2)}` : ""}
       </span>
       {summary.topScore != null && summary.topScoreTier && (
         <span

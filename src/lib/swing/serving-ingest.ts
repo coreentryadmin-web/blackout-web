@@ -17,6 +17,7 @@
 // PURE & deterministic — reads are injected; the clock is never touched here.
 
 import type { SwingDossier } from "./dossier";
+import type { IndustryGroupRsFacts } from "./industry-group-rs";
 import type {
   SwingArchetype,
   SwingEntryState,
@@ -28,25 +29,14 @@ import type { SwingThesisLevel } from "./serving";
 import { deriveSetupState, type SetupStateReads } from "./setup-state";
 import { deriveEntryPlan, type EntryReads } from "./entry-model";
 import type { ChainContract } from "../horizon-fanout";
-import type { SwingPillar } from "./swing-archetype";
+import { contributionsToFactors, type SwingScoreFactor } from "./swing-pillars";
 
 /** A signed, point-weighted factor — structurally the command-deck's DeckFactor, kept lib-local so this
- *  pure module never imports the features layer (the adapter reads this shape via HorizonDeckSource). */
-export interface SwingServingFactor {
-  label: string;
-  points: number;
-}
-
-/** Human labels for the 7 pillars — the factor rows the desk renders (biggest lever first). */
-const PILLAR_LABELS: Record<SwingPillar, string> = {
-  STRUCTURE: "Structure",
-  REL_STRENGTH: "Rel. strength",
-  FLOW: "Flow",
-  VOLATILITY: "Volatility",
-  CATALYST: "Catalyst",
-  REGIME: "Regime",
-  DATA_QUALITY: "Data quality",
-};
+ *  pure module never imports the features layer (the adapter reads this shape via HorizonDeckSource).
+ *  Alias of `SwingScoreFactor` (swing-pillars.ts) — SHARED with `live-plays.ts`'s pinned-factor
+ *  reconstruction so a live and a pre-entry factor row are structurally the same thing, not two
+ *  independently-typed lookalikes. */
+export type SwingServingFactor = SwingScoreFactor;
 
 /** The per-ticker serving meta a swing row carries — the real reads behind the desk's thesis panel. */
 export interface SwingServingMeta {
@@ -73,6 +63,14 @@ export interface SwingServingMeta {
   calibratedProbability: number | null;
   /** LITERAL null in PR-12: no graded EV surface until the ladder graduates the bucket. */
   expectedValue: number | null;
+  /** The raw industry-group RS facts (benchmark ETF/label, name/group %-returns, delta) behind the
+   *  SECTOR_ROTATION archetype signal — echoed straight off the dossier. Null when the dossier's own
+   *  read is null (no benchmark resolved / not enough history). */
+  sectorLeadershipFacts: IndustryGroupRsFacts | null;
+  /** The live entry-trigger level (same `triggerPx` deriveSetupState/deriveEntryPlan branch on) —
+   *  distinct from the dossier's PINNED flag-anchor price, see horizon-plays.ts's field doc. Null
+   *  when no grounded setup read was supplied (the row degrades to RESEARCH honestly either way). */
+  entryTriggerUnderlyingPx: number | null;
 }
 
 /** Grounded reads that let the meta place a name on the maturity/entry line. All optional — absent ⇒ the
@@ -84,8 +82,6 @@ export interface SwingServingReads {
   contract?: ChainContract;
   asOf?: string | number | Date;
 }
-
-const round1 = (n: number): number => Math.round(n * 10) / 10;
 
 /**
  * Build the deck-ready thesis-break object from the meta — the exact `{ level, note? }` shape the
@@ -183,19 +179,18 @@ export function swingServingMetaFromDossier(
       : null;
 
   // ── factors: the dossier's real, present-pillar contributions, biggest lever first ──
-  const factors: SwingServingFactor[] = dossier.score.contributions
-    .filter((c) => c.present && c.points > 0)
-    .map((c) => ({ label: PILLAR_LABELS[c.pillar], points: round1(c.points) }))
-    .sort((a, b) => b.points - a.points);
+  const factors: SwingServingFactor[] = contributionsToFactors(dossier.score.contributions);
 
-  // ── regime: archetype label blended with the normalized regime pillar read (null when neither exists) ──
+  // ── regime: archetype label blended with the normalized regime pillar read. Without an archetype
+  // label, the bare pillar score has no honest trader-facing meaning on its own (it's a 0-1 fit
+  // number, already shown labeled under "Score pillars"), so it must NOT be surfaced alone — that
+  // shipped "Discovery read: regime 0.33" (a raw fallback string with no context) into a real
+  // member's live WATCH-bucket play brief (BE, 2026-09-13; play-brief-intel.ts's `whyThisSetupSection`
+  // pushes this field verbatim). Mirrors the honest-omission (null, never a synthesized value) fix
+  // already applied on 2026-09-07 to this field's committed-row twin in live-plays.ts. ──
   const regime01 = dossier.pillarSignals.REGIME;
   const regimePart = regime01 != null && Number.isFinite(regime01) ? `regime ${regime01.toFixed(2)}` : null;
-  const regime = archetypeLabel
-    ? regimePart
-      ? `${archetypeLabel} · ${regimePart}`
-      : archetypeLabel
-    : regimePart;
+  const regime = archetypeLabel ? (regimePart ? `${archetypeLabel} · ${regimePart}` : archetypeLabel) : null;
 
   // ── thesis level: broken > thin (degraded) > intact > unknown. A data-absent thesis is UNKNOWN, never
   //    a fabricated "intact" (9-6c honesty) — the desk shows amber "unknown", not a false green. ──
@@ -226,9 +221,11 @@ export function swingServingMetaFromDossier(
     regime,
     thesisLevel,
     thesisNote,
+    sectorLeadershipFacts: dossier.sectorLeadershipFacts ?? null,
     // Calibration-first: nothing has graduated a calibrated bucket in the swing lane, so these stay null
     // (the desk renders "—"). PR-16 lights them up once an archetype×sub-lane bucket clears the ladder.
     calibratedProbability: null,
     expectedValue: null,
+    entryTriggerUnderlyingPx: reads?.setup?.triggerPx ?? reads?.entry?.triggerPx ?? null,
   };
 }

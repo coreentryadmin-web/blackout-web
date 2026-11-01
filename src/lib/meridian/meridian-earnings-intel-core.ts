@@ -5,6 +5,7 @@ import type {
 } from "@/features/meridian/lib/meridian-types";
 import type { DarkPoolSnapshot } from "@/lib/providers/unusual-whales";
 import { num } from "@/lib/meridian/meridian-viz-core";
+import { expiryCoversPrint } from "@/lib/meridian/meridian-em-scope";
 
 function fmtPremShort(n: number): string {
   if (!Number.isFinite(n)) return "—";
@@ -387,4 +388,77 @@ export function resolveIntelExpectedMove(input: {
         ? "calendar"
         : null;
   return { expected_move_pct, expected_move_source };
+}
+
+/**
+ * Expected-move price band (spot ± expected_move_pct) for the earnings panel.
+ *
+ * `spot` MUST be the already-resolved value the rest of the earnings card uses —
+ * `pack.positioning.spot ?? thermal?.spot ?? null` in `loadMeridianEarningsIntel` — not the raw
+ * `pack.positioning.spot` alone. Every sibling field on this exact payload (the GEX walls,
+ * `play_read`, `report`, the Vector desk shaping) already falls back to Thermal's own spot read
+ * when the pack's GEX-positioning fetch (`getGexPositioning`) comes back empty, because that is a
+ * SEPARATE upstream call from the one Thermal uses (`gexHeatmapForLargo` / `fetchGexHeatmap`) and
+ * either can fail independently. The band was the one field still built straight off
+ * `input.pack.positioning.spot` with no fallback, so a GEX-positioning outage next to a healthy
+ * Thermal fetch silently dropped `expected_move_band` — and the price range on
+ * `MeridianEarningsIntelPanel`/`MeridianEarningsReportPanel`/`MeridianEarningsSummaryPanel`/
+ * `MeridianEarningsPositioningPanel` with it — even though a usable spot existed on the same
+ * response.
+ */
+export function buildExpectedMoveBand(input: {
+  spot: number | null;
+  expectedMovePct: number | null;
+}): { spot: number; up: number; down: number } | null {
+  if (input.expectedMovePct == null || !Number.isFinite(input.expectedMovePct)) return null;
+  if (input.spot == null || !Number.isFinite(input.spot)) return null;
+  return {
+    spot: input.spot,
+    up: Number((input.spot * (1 + input.expectedMovePct / 100)).toFixed(2)),
+    down: Number((input.spot * (1 - input.expectedMovePct / 100)).toFixed(2)),
+  };
+}
+
+/** One sigma band of an expected-move cone, shaped for `MeridianEarningsVectorRead["bands"]`. */
+export type MeridianEarningsVectorMoveBand = { sigma: number; low: number; high: number };
+
+/**
+ * Final `vector.move_pct` / `vector.bands` for the earnings panel — the LAST stop before
+ * `shapeMeridianVectorDeskRead`, and a stop the `expiryCoversPrint` rule (meridian-em-scope.ts)
+ * must reach too, not just the headline `expected_move_pct` that `resolveIntelExpectedMove`
+ * above already guards.
+ *
+ * Two gaps, same root cause, found auditing this file against meridian-em-scope.ts's own header
+ * (the live PDD/XPEV/SMTC incident, 2026-08-21 — a dead weekly front expiry still returns a
+ * movePct/bands pair, just one ~90x too small, scoped to a series that already expired):
+ *
+ * 1. `vector_move_pct` (the headline number `loadMeridianEarningsIntel` computes) IS gated by
+ *    `vectorCoversPrint`, but the sibling `bands` field was wired straight off `vectorEm?.bands`
+ *    with NO gate at all — so a non-covering quote correctly blanked `move_pct` while still
+ *    rendering ITS OWN stale cone in `bands`, a half-suppressed, self-contradicting payload.
+ * 2. The `fetchVectorFullState` fallback (an INDEPENDENT fetch of the identical
+ *    `getVectorExpectedMove(ticker, "weekly")` call — see vector-full-state.ts) backstops BOTH
+ *    `move_pct` and `bands` with no gate whatsoever. It carries the exact same expiry risk as the
+ *    primary read; running it through a different wrapper function doesn't change that.
+ *
+ * `fallbackExpiry` must be the FALLBACK'S OWN expiry (not `vectorEm`'s) — `fetchVectorFullState`
+ * issues its own independent call and can resolve a different front expiry at a different
+ * instant than the direct `getVectorExpectedMove` read this module also holds.
+ */
+export function resolveVectorDeskMove(input: {
+  vectorCoversPrint: boolean;
+  primaryMovePct: number | null;
+  primaryBands: MeridianEarningsVectorMoveBand[] | null;
+  fallbackMovePct: number | null;
+  fallbackBands: MeridianEarningsVectorMoveBand[] | null;
+  fallbackExpiry: unknown;
+  earningsDate: unknown;
+}): { move_pct: number | null; bands: MeridianEarningsVectorMoveBand[] | null } {
+  if (input.vectorCoversPrint) {
+    return { move_pct: input.primaryMovePct, bands: input.primaryBands };
+  }
+  if (expiryCoversPrint(input.fallbackExpiry, input.earningsDate)) {
+    return { move_pct: input.fallbackMovePct, bands: input.fallbackBands };
+  }
+  return { move_pct: null, bands: null };
 }

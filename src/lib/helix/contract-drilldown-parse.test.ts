@@ -51,3 +51,26 @@ test("parseContractMeta reads OI from first fill", () => {
   assert.equal(meta.open_interest, 23510);
   assert.equal(meta.day_volume, 1337);
 });
+
+test("parseContractMeta preserves a genuine zero open_interest/day_volume instead of nulling it", () => {
+  // A brand-new, never-yet-traded contract (or one with zero volume so far this session) carries
+  // a real `0` from UW, not a missing field. `0` must survive as `0`, not collapse to `null` —
+  // the drawer treats `null` as "unknown" (hides the stat chip) and `0` as "nobody has traded this
+  // yet" (shows "0"), and those are different, both meaningful, facts.
+  const meta = parseContractMeta([
+    { open_interest: 0, volume: 0, underlying_price: 142.5, implied_volatility: 0.31, delta: -0.12 },
+  ]);
+  assert.equal(meta.open_interest, 0);
+  assert.equal(meta.day_volume, 0);
+});
+
+test("parseContractMeta reports null (not a fabricated 0) when there is no flow data at all", () => {
+  // No rows means we never observed open_interest/day_volume/delta for this contract — that is
+  // genuinely unknown, not "0". A fix for the genuine-zero bug above must not overcorrect into
+  // treating "missing" the same as "zero" the other way.
+  const meta = parseContractMeta([]);
+  assert.equal(meta.open_interest, null);
+  assert.equal(meta.day_volume, null);
+  assert.equal(meta.underlying_price, null);
+  assert.equal(meta.delta, null);
+});

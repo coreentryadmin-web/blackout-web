@@ -96,9 +96,12 @@ account limited.
 
 Three specific prohibitions, because the surrounding code makes each of them one small mistake away:
 
-1. **Do not call `postTweet`, `postThread`, `tweetWithImage`, `postReply` or `postQuoteTweet`**
+1. **Do not call `postTweet`, `tweetWithImage`, `postReply` or `postQuoteTweet`**
    from anything you build. Import `uploadMedia` if and only if you need it for a *dry-run* media
-   check, and say so in the PR.
+   check, and say so in the PR. (`postThread` — a thread-posting wrapper — was removed from
+   `x-api.ts` 2026-10-31 as dead code; it had zero callers anywhere in the repo since it was
+   added. If thread-posting is ever wanted again, it is a one-line `postTweet`/`postReply` loop
+   to rebuild, not a capability to route around via this list.)
 2. **Do not wire your new cron into `x-autopost`,** and do not extend `x-autopost` to consume your
    queue. Ship a separate `x-intel` cron whose only side effect is writing a queue row.
 3. **Do not change the state of the existing autopost pipeline** — do not pause it, do not unpause

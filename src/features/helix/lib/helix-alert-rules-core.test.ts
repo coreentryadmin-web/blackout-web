@@ -3,9 +3,33 @@ import assert from "node:assert/strict";
 import {
   rowToHelixAlertRule,
   sanitizeIncomingHelixAlertRule,
+  isHelixTickerAllowed,
   matchesHelixAlertRule,
   type HelixAlertRule,
 } from "./helix-alert-rules-core";
+
+test("isHelixTickerAllowed: accepts well-formed symbols (plain, dotted, index-dashed)", () => {
+  assert.equal(isHelixTickerAllowed("TSLA"), true);
+  assert.equal(isHelixTickerAllowed("spy"), true); // case-insensitive — caller lowercase is fine
+  assert.equal(isHelixTickerAllowed("BRK.B"), true);
+});
+
+test("isHelixTickerAllowed: rejects an over-length string rather than truncating or storing it", () => {
+  // Regression for the gap this guard closes: route.ts's old normalizeTicker only
+  // trimmed/uppercased with no format or length check, so an arbitrary-length payload reached
+  // the `(user_id, ticker)` primary key untouched.
+  assert.equal(isHelixTickerAllowed("A".repeat(9)), false);
+  assert.equal(isHelixTickerAllowed("A".repeat(10000)), false);
+});
+
+test("isHelixTickerAllowed: rejects empty, whitespace-only, and non-symbol characters", () => {
+  assert.equal(isHelixTickerAllowed(""), false);
+  assert.equal(isHelixTickerAllowed("   "), false);
+  assert.equal(isHelixTickerAllowed(null), false);
+  assert.equal(isHelixTickerAllowed(undefined), false);
+  assert.equal(isHelixTickerAllowed("TSLA; DROP TABLE"), false);
+  assert.equal(isHelixTickerAllowed("<script>"), false);
+});
 
 test("rowToHelixAlertRule: numeric min_premium, valid side, enabled coerced", () => {
   const rule = rowToHelixAlertRule({ ticker: "TSLA", min_premium: 500000, side: "CALL", enabled: true });

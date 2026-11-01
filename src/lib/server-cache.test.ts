@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { serverCache, isDegraded } from "./server-cache";
+import { serverCache, isDegraded, withServerCache, peekServerCache, ServerCacheTimeoutError } from "./server-cache";
 
 // Covers the load-bearing guarantee behind null-commentary-cache: when the loader
 // THROWS, serverCache stores nothing and clears the in-flight entry, so the next
@@ -54,6 +54,70 @@ test("repeated throws mark the key degraded after the failure threshold", async 
     await assert.rejects(serverCache(key, TTL, thrower));
   }
   assert.equal(isDegraded(key), true);
+});
+
+// BUG (found live 2026-10-31, SPX desk `as_of` non-monotonic — a payload byte-identical to one
+// served ~43s earlier was still being served ~10.6 minutes after its own refresh, well past the
+// desk cache's own ~40s maxStaleAgeMs ceiling): once a key crosses FAILURE_THRESHOLD consecutive
+// loader failures, the SWR branch's "already degraded" shortcut returned the frozen `hit.value`
+// UNCONDITIONALLY, forever, with no staleness check of any kind — unlike every sibling branch in
+// this file, which all enforce `maxStaleAgeMs` one way or another. This test drives a key into
+// that degraded state (3 consecutive failures, loser of every maxBlockMs race so no rejection ever
+// reaches the caller), then proves a 4th call — once staleness ALSO clears the new hard ceiling
+// (DEGRADED_HARD_STALE_MULTIPLIER × maxStaleAgeMs) — prefers a configured `fallback` over the same
+// ancient hit, instead of serving it forever. Timings are real (not fake-clock) but small, mirroring
+// the file's other maxStaleAgeMs regression tests above.
+test("degraded key does not serve the same frozen stale value forever — falls back once past the hard staleness ceiling", async () => {
+  const key = `test:degraded-hard-ceiling:${Math.random()}`;
+  const ttl = 5;
+  const maxStaleAgeMs = 10;
+  const maxBlockMs = 5;
+  const loaderDelayMs = 30; // > maxBlockMs: every refresh attempt below loses its race
+
+  // Seed a real, successful hit.
+  const seeded = await withServerCache(key, ttl, async () => ({ n: 1 }), {
+    staleWhileRevalidate: true,
+    maxStaleAgeMs,
+  });
+  assert.deepEqual(seeded, { n: 1 });
+  await new Promise((r) => setTimeout(r, 15)); // past maxStaleAgeMs, not yet degraded
+
+  const failingLoader = async () => {
+    await new Promise((r) => setTimeout(r, loaderDelayMs));
+    throw new Error("spx-desk: upstream broken on this replica");
+  };
+
+  // Drive the key to "degraded" via 3 consecutive failed background refreshes. Each call below
+  // races the refresh against maxBlockMs and loses (the loader is slower), so it returns the
+  // stale { n: 1 } hit without ever rejecting to the caller — but the background refresh keeps
+  // running and eventually rejects, incrementing the failure counter.
+  for (let i = 0; i < 3; i += 1) {
+    const value = await withServerCache(key, ttl, failingLoader, {
+      staleWhileRevalidate: true,
+      maxBlockMs,
+      maxStaleAgeMs,
+    });
+    assert.deepEqual(value, { n: 1 });
+    // Let the slower background refresh actually finish rejecting before the next call, so
+    // `inflight` is clear and the next call re-enters this same SWR branch.
+    await new Promise((r) => setTimeout(r, loaderDelayMs + 20));
+  }
+  assert.equal(isDegraded(key), true, "key must be degraded after 3 consecutive failures");
+
+  // The key is now degraded AND staleAge is already well past both maxStaleAgeMs (10ms) and the
+  // new hard ceiling (3x = 30ms). Before the fix, this call returned the SAME { n: 1 } hit
+  // unconditionally — it would keep doing so forever as long as the upstream kept failing.
+  const degradedValue = await withServerCache(key, ttl, failingLoader, {
+    staleWhileRevalidate: true,
+    maxBlockMs,
+    maxStaleAgeMs,
+    fallback: async () => ({ n: 99 }),
+  });
+  assert.deepEqual(
+    degradedValue,
+    { n: 99 },
+    "a degraded key past its hard staleness ceiling must prefer the configured fallback over the same frozen snapshot served forever"
+  );
 });
 
 // Regression guard for the ticker-news 60ms bug: `serverCache(key, 60, …)` read as
@@ -188,6 +252,127 @@ test("maxBlockMs on expired fast lane serves stale instead of blocking refresh",
   assert.ok(invoked <= 1, `expected at most one background refresh, got ${invoked}`);
 });
 
+// Regression for the live 2026-10-08 /api/market/spx/play staleness bug: EVERY `return hit.value`
+// site reachable from a `staleWhileRevalidate:false` + `staleOnInflight`/`maxBlockMs` caller (the
+// exact shape of spx-service.ts's getSpxPlayState) served the in-memory hit completely
+// unconditionally, however old it was — unlike the SWR branch's own long-standing MAX_STALE_AGE_MS
+// guard a few lines below it in the same file. Measured live: `/api/market/spx/play`'s `as_of` up
+// to ~27 minutes stale and inconsistent across replicas (each replica frozen at whenever its own
+// last-successful background refresh happened to land), `assessed: true` the whole time — while
+// `/api/market/spx/desk` (same underlying desk snapshot, a route that does not pass
+// staleWhileRevalidate:false) stayed current throughout the identical polling window. These two
+// tests use the new test-only `maxStaleAgeMs` override (mirrors `peekServerCache`'s own
+// `maxStaleMs`) to exercise the real ceiling with milliseconds of real wait instead of a real
+// 10-minute one.
+test("fast lane (no inflight) does not serve a hit past maxStaleAgeMs — falls back instead", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:fast-lane-ancient:${Math.random()}`;
+  const ttl = 5;
+
+  await withServerCache(key, ttl, async () => ({ n: 1 }), { staleWhileRevalidate: false });
+  // Let the hit age well past a tiny 10ms test ceiling (simulating the live bug's "replica whose
+  // background refresh kept losing the race" scenario without a real 10-minute wait).
+  await new Promise((r) => setTimeout(r, 40));
+
+  const value = await withServerCache(
+    key,
+    ttl,
+    async () => {
+      // Deliberately slower than maxBlockMs — the loader must lose this race every time, so the
+      // only way to avoid serving the ancient hit is to fall through to the fallback.
+      await new Promise((r) => setTimeout(r, 500));
+      return { n: 2 };
+    },
+    {
+      staleWhileRevalidate: false,
+      maxBlockMs: 20,
+      maxStaleAgeMs: 10,
+      fallback: async () => ({ n: 99 }),
+    }
+  );
+
+  // Before the fix: this returned the ~40ms-old { n: 1 } hit — unconditionally, however stale.
+  assert.deepEqual(value, { n: 99 }, "an ancient fast-lane hit must not be served past maxStaleAgeMs");
+});
+
+test("staleOnInflight does not serve a hit past maxStaleAgeMs while a rebuild is in flight — falls back instead", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:stale-on-inflight-ancient:${Math.random()}`;
+  const ttl = 5;
+
+  await withServerCache(key, ttl, async () => ({ n: 1 }), { staleWhileRevalidate: false });
+  await new Promise((r) => setTimeout(r, 40));
+
+  let releaseSlow!: () => void;
+  const slowGate = new Promise<void>((resolve) => {
+    releaseSlow = resolve;
+  });
+
+  // Kick off a slow rebuild (becomes the module's `inflight` entry for this key) without
+  // awaiting it yet — same pattern as the "staleOnInflight returns stale..." test above.
+  const slowRefresh = withServerCache(
+    key,
+    ttl,
+    async () => {
+      await slowGate;
+      return { n: 2 };
+    },
+    { staleWhileRevalidate: false, maxStaleAgeMs: 10 }
+  );
+
+  const concurrent = await Promise.race([
+    withServerCache(key, ttl, async () => ({ n: 3 }), {
+      staleOnInflight: true,
+      staleWhileRevalidate: false,
+      maxBlockMs: 20,
+      maxStaleAgeMs: 10,
+      fallback: async () => ({ n: 99 }),
+    }),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 200)),
+  ]);
+
+  // Before the fix: `staleOnInflight` returned the ~40ms-old { n: 1 } hit unconditionally.
+  assert.deepEqual(
+    concurrent,
+    { n: 99 },
+    "an ancient hit must not be served via staleOnInflight past maxStaleAgeMs"
+  );
+  releaseSlow();
+  await slowRefresh;
+});
+
+// Regression for the live 2026-09-11 spx/play staleness bug: peekServerCache's final fallback
+// (`if (hit) return hit.value`) had NO staleness ceiling, unlike withServerCache's own
+// MAX_STALE_AGE_MS guard — so a replica that stopped refreshing served an arbitrarily old cached
+// entry forever via the "instant read" path every peek-first route (spx/play, nighthawk/edition,
+// spx-desk-loader, flows-member-cache, flow-brief) relies on. `maxStaleMs` is test-only surface
+// area so this doesn't need a real 10-minute wait to exercise the real MAX_STALE_AGE_MS ceiling.
+test("peekServerCache refuses to serve a locally-cached entry past its staleness ceiling", async () => {
+  const key = `test:peek-stale-ceiling:${Math.random()}`;
+  const ttl = 5;
+
+  // Populate the local store (short TTL, so it's already logically "expired" almost immediately).
+  await withServerCache(key, ttl, async () => ({ n: 1 }));
+  await new Promise((r) => setTimeout(r, ttl + 5));
+
+  // Redis is a no-op in this test env (REDIS_URL unset), so the entry now lives ONLY in the local
+  // store, past its TTL. Before the fix: peekServerCache still returned { n: 1 } here regardless of
+  // age. After the fix: a tiny maxStaleMs (well under the real age of this entry) makes it refuse.
+  const stale = await peekServerCache(key, { maxStaleMs: 1 });
+  assert.equal(stale, null, "an entry older than the staleness ceiling must not be served via peek");
+
+  // Sanity: the SAME entry, read with a generous ceiling, still comes back — this proves the miss
+  // above is the new ceiling doing its job, not some unrelated store/key bug.
+  const withinCeiling = await peekServerCache(key, { maxStaleMs: 60_000 });
+  assert.deepEqual(withinCeiling, { n: 1 });
+
+  // Default (no opts) uses the real MAX_STALE_AGE_MS (10 minutes) — this entry is only
+  // milliseconds old, so the default path must still serve it (no behavior change for the
+  // overwhelming majority of real callers, which never approach that ceiling).
+  const defaultPeek = await peekServerCache(key);
+  assert.deepEqual(defaultPeek, { n: 1 });
+});
+
 test("maxBlockMs serves fallback instead of blocking on a slow cold loader", async () => {
   const { withServerCache } = await import("./server-cache");
   const key = `test:max-block:${Math.random()}`;
@@ -205,4 +390,175 @@ test("maxBlockMs serves fallback instead of blocking on a slow cold loader", asy
   );
 
   assert.deepEqual(value, { ok: false });
+});
+
+test("maxBlockMs bounds a slow fallback when a build is already inflight (live 2026-09-16: /api/market/spx/desk 42.8s vs a 3s cap)", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:max-block-inflight-fallback:${Math.random()}`;
+  const ttl = 60_000;
+
+  // First caller: no maxBlockMs/fallback of its own, so it takes the plain cold-start path
+  // (`refreshCache`) and registers the key as inflight for the duration of its slow loader.
+  // Never awaited directly — its only job is to occupy `inflight.get(key)` for caller two.
+  const firstCallerLoader = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: true }), 2_000));
+  const firstCaller = withServerCache(key, ttl, firstCallerLoader, {});
+  firstCaller.catch(() => {}); // swallow unhandled-rejection noise if the test exits first
+
+  // Give the first caller's refreshCache a tick to register the inflight promise.
+  await new Promise((r) => setTimeout(r, 5));
+
+  // Second caller lands in the "pending" branch (server-cache.ts ~line 218): no hit, no Redis
+  // copy, a build already inflight, and its own maxBlockMs+fallback configured — exactly the
+  // shape spx-desk-loader.ts's deskCacheOpts uses. Before the fix, opts.fallback() here was
+  // awaited with no timeout at all; a slow fallback (here: 500ms) blocked the caller for its
+  // full duration regardless of the 30ms cap. After the fix, it must be bounded near maxBlockMs.
+  const slowFallback = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: false }), 500));
+
+  const start = Date.now();
+  await assert.rejects(
+    withServerCache(key, ttl, firstCallerLoader, {
+      staleOnInflight: true,
+      maxBlockMs: 30,
+      fallback: slowFallback,
+    }),
+    /exceeded maxBlockMs/
+  );
+  const elapsed = Date.now() - start;
+  assert.ok(
+    elapsed < 200,
+    `second caller must be bounded near maxBlockMs (30ms), not the fallback's own 500ms duration — took ${elapsed}ms`
+  );
+});
+
+test("maxBlockMs bounds a slow fallback on the COLD-START path too, when the primary refresh itself times out (found live post-deploy: PR #5061's inflight-branch fix alone did NOT stop the 42s /api/market/spx/desk block)", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:max-block-cold-start-fallback:${Math.random()}`;
+  const ttl = 60_000;
+
+  // No prior caller, no hit, no Redis, nothing inflight — a genuinely cold key. This lands in
+  // the "no pending" branch (server-cache.ts ~line 263), which correctly races its own
+  // `refreshCache()` against maxBlockMs. Before this fix, once THAT race timed out, falling
+  // through to `opts.fallback()` was awaited with no timeout of its own — the exact same
+  // unguarded shape as the "already inflight" branch fixed by PR #5061, just one branch over.
+  // This is the branch a genuinely cold key actually takes in production (no concurrent
+  // request racing the same build), which is why the live bug survived that first fix.
+  const slowLoader = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: true }), 2_000));
+  const slowFallback = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: false }), 500));
+
+  const start = Date.now();
+  await assert.rejects(
+    withServerCache(key, ttl, slowLoader, {
+      staleWhileRevalidate: true,
+      maxBlockMs: 30,
+      fallback: slowFallback,
+    }),
+    /exceeded maxBlockMs/
+  );
+  const elapsed = Date.now() - start;
+  assert.ok(
+    elapsed < 300,
+    `cold-start caller must be bounded near a small multiple of maxBlockMs (30ms), not the fallback's own 500ms duration — took ${elapsed}ms`
+  );
+});
+
+// Regression guard (found live 2026-10-16, Ask Largo standing mandate, GET /api/market/spx/play):
+// a route's catch block could only see `instanceof Error`, so a cache/fallback-timeout race here
+// was indistinguishable from a genuine unexpected crash — and GET /api/market/spx/play's own catch
+// block presented both identically as "Desk warming — play state unavailable" even on confirmed
+// occasions where the underlying data source had live data at the exact same instant. Both throw
+// sites below (the "already inflight" cold path and the cold-start path) must reject with
+// ServerCacheTimeoutError specifically, not a bare Error, so a caller can tell the two apart.
+// Regression for the SPX desk loader-path stale-cache ceiling gap (found live 2026-10-26, Ask
+// Largo/5-engine standing mandate): the SWR branch (`hit && hit.expiresAt <= now && swr &&
+// !inflight.has(key)`, `staleAge > maxStaleAgeMs`, NOT-yet-degraded) was the one remaining
+// `return refreshCache(...)` site in this file with NO race against `opts.maxBlockMs` — every
+// other maxBlockMs-configured branch (fast lane, already-inflight, cold-start) already races it,
+// per the PR #5061/#5065/#6090 fixes documented elsewhere in this file. A caller that configures
+// maxBlockMs (e.g. spx-desk-loader.ts's three loader call sites, all of which already pass
+// `maxBlockMs: deskBootstrapMaxBlockMs()`) expects a hard bound on how long a cold/slow refresh can
+// block it; this branch silently ignored that budget. This matters NOW specifically because
+// tightening `maxStaleAgeMs` for those callers (the companion fix in spx-desk-loader.ts) makes this
+// exact branch fire far more often — without this race guard landing FIRST, that tightening alone
+// would reintroduce the unbounded-block regression PR #5061/#5065 already had to fix once.
+test("SWR branch (stale past maxStaleAgeMs, not yet degraded) honors maxBlockMs — bounded, serves the stale value instead of blocking unboundedly on a slow refresh", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:swr-ceiling-maxblock:${Math.random()}`;
+  const ttl = 5;
+
+  await withServerCache(key, ttl, async () => ({ n: 1 }));
+  // Age the hit well past a tiny maxStaleAgeMs test ceiling (simulating the real ~40s desk ceiling
+  // without a real 40s wait).
+  await new Promise((r) => setTimeout(r, 40));
+
+  let invoked = 0;
+  const start = Date.now();
+  const value = await Promise.race([
+    withServerCache(
+      key,
+      ttl,
+      async () => {
+        invoked += 1;
+        // Deliberately much slower than maxBlockMs — before the fix, this branch awaited the
+        // refresh fully regardless of maxBlockMs, so the caller would block for the full 500ms.
+        await new Promise((r) => setTimeout(r, 500));
+        return { n: 2 };
+      },
+      { maxBlockMs: 20, maxStaleAgeMs: 10 }
+    ),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("harness-timeout: SWR branch blocked past its own maxBlockMs budget")), 150)
+    ),
+  ]);
+  const elapsed = Date.now() - start;
+
+  assert.deepEqual(value, { n: 1 }, "must serve the stale value once the raced refresh exceeds maxBlockMs, not hang on it");
+  assert.ok(elapsed < 150, `must be bounded near maxBlockMs (20ms), took ${elapsed}ms`);
+  assert.equal(invoked, 1, "the raced refresh must still have started exactly once (it keeps running in the background, just not awaited by the caller)");
+});
+
+test("both maxBlockMs-exhausted throw sites reject with ServerCacheTimeoutError, not a bare Error", async () => {
+  const { withServerCache } = await import("./server-cache");
+
+  // Cold-start path (server-cache.ts's final `throw` after refresh + fallback + one more
+  // raced inflight check all exhaust maxBlockMs).
+  const coldStartKey = `test:timeout-error-cold-start:${Math.random()}`;
+  const slowLoader = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: true }), 500));
+  const slowFallback = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: false }), 500));
+  await assert.rejects(
+    withServerCache(coldStartKey, 60_000, slowLoader, {
+      staleWhileRevalidate: true,
+      maxBlockMs: 20,
+      fallback: slowFallback,
+    }),
+    (err: unknown) => {
+      assert.ok(err instanceof ServerCacheTimeoutError, `expected ServerCacheTimeoutError, got ${err}`);
+      return true;
+    }
+  );
+
+  // "Already inflight" path (a build for the key is already running when a second caller with
+  // its own maxBlockMs+fallback arrives, and both the fallback and the re-raced pending build
+  // exhaust the cap).
+  const inflightKey = `test:timeout-error-inflight:${Math.random()}`;
+  const firstCallerLoader = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: true }), 2_000));
+  withServerCache(inflightKey, 60_000, firstCallerLoader, {}).catch(() => {});
+  await new Promise((r) => setTimeout(r, 5));
+  await assert.rejects(
+    withServerCache(inflightKey, 60_000, firstCallerLoader, {
+      staleOnInflight: true,
+      maxBlockMs: 20,
+      fallback: slowFallback,
+    }),
+    (err: unknown) => {
+      assert.ok(err instanceof ServerCacheTimeoutError, `expected ServerCacheTimeoutError, got ${err}`);
+      return true;
+    }
+  );
 });

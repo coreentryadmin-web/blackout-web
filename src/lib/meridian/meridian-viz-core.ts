@@ -152,17 +152,44 @@ export type HaloRead = {
 };
 
 /**
+ * Resolve a signal's weight to a usable MAGNITUDE — distinguishing "no weight was given" from
+ * "the weight is deliberately zero".
+ *
+ * `Math.abs(num(w) ?? 1) || 1` collapsed both cases to 1, which is the inverse of the
+ * `Number(null) === 0` trap this file's own header warns about: there, a MISSING value coerces
+ * to a false zero; here, the trailing `|| 1` coerced a genuine, intentional ZERO into a false
+ * one. Both are real inputs this pipeline produces. `meridian-earnings-report-core.ts` pushes
+ * `weight: 0, score: 0` on purpose for informational-only pillars (news/vector/insider —
+ * "N recent headlines", a chain-IV read, an insider-filing count) specifically so they display
+ * without swaying the verdict: "present but inert" is a distinct, intentional state from "the
+ * field was never set" (which DOES deserve the weight-1 fallback below, so an unweighted signal
+ * still occupies the ring).
+ *
+ * Collapsing both to 1 let every always-neutral, zero-weight pillar quietly inflate
+ * `neutralWeight`/`totalWeight` (haloFromSignals), dilute `intensity` (dimensionRollup), and
+ * compete on equal footing for orbit radius (orbitalLayout) with real evidence. Measured: the
+ * STRUCTURE dimension's only two pillars are `thermal` (weight 2, always pushed) and `vector`
+ * (weight 0, pushed whenever Vector data is available) — the bug read their combined weight as
+ * 3 instead of 2, understating STRUCTURE's intensity by a third any time Vector data loaded.
+ */
+export function resolveSignalWeight(weight: number | null | undefined): number {
+  const w = num(weight);
+  return w === null ? 1 : Math.abs(w);
+}
+
+/**
  * Reduce weighted signals to halo geometry + an agreement measure.
  *
  * Weights are treated as MAGNITUDES: a signal's `lean` carries its direction, so a negative
  * weight would double-count the sign and shrink the ring. Signals with no usable weight fall
  * back to 1 so a present-but-unweighted signal still occupies the ring — dropping it would
- * quietly under-represent the evidence the verdict was actually built from.
+ * quietly under-represent the evidence the verdict was actually built from. A signal weighted
+ * exactly 0 is a different, equally real case — see `resolveSignalWeight`.
  */
 export function haloFromSignals(signals: readonly SignalLike[] | null | undefined): HaloRead | null {
   const rows = (signals ?? []).map((s) => ({
     lean: s.lean,
-    weight: Math.abs(num(s.weight) ?? 1) || 1,
+    weight: resolveSignalWeight(s.weight),
   }));
   if (rows.length === 0) return null;
 
@@ -594,17 +621,6 @@ export const LIVE_SIGNAL_GLYPH: Record<LiveSignal, string> = {
   rank_falling: "↘",
 };
 
-export const LIVE_SIGNAL_LABEL: Record<LiveSignal, string> = {
-  accelerating: "accelerating",
-  deteriorating: "deteriorating",
-  anomaly: "anomaly",
-  top_performer: "top performer",
-  newly_changed: "newly changed",
-  approaching_threshold: "approaching threshold",
-  rank_improving: "rank improving",
-  rank_falling: "rank falling",
-};
-
 /**
  * Derive a momentum signal from a current value and its prior.
  *
@@ -698,7 +714,7 @@ export function dimensionRollup(
   for (const s of signals ?? []) {
     const dim = PILLAR_DIMENSION[String(s.pillar ?? "")];
     if (!dim) continue;
-    const weight = Math.abs(num(s.weight) ?? 1) || 1;
+    const weight = resolveSignalWeight(s.weight);
     const dir = s.lean === "bullish" ? 1 : s.lean === "bearish" ? -1 : 0;
     const b = buckets.get(dim) ?? { net: 0, total: 0, pillars: [] };
     b.net += dir * weight;

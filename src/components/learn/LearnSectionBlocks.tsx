@@ -229,8 +229,14 @@ export function LearnSectionBlock({ section }: { section: LearnSection }) {
                     <div className="learn-tool-map-card">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <Link href={learnHref(slug)} className="learn-tool-map-title group">
-                          {item.product !== "docs" && (
-                            <ProductMark product={item.product} size={32} animated={false} />
+                          {item.slug === "meridian" ? (
+                            <span aria-hidden className="meridian-mark text-[1.5rem]">
+                              ✦
+                            </span>
+                          ) : (
+                            item.product !== "docs" && (
+                              <ProductMark product={item.product} size={32} animated={false} />
+                            )
                           )}
                           <span>{item.label}</span>
                         </Link>
@@ -292,8 +298,14 @@ export function LearnSectionBlock({ section }: { section: LearnSection }) {
                 return (
                   <Link key={link.slug} href={learnHref(link.slug)} className="learn-cross-link-card group">
                     <div className="flex items-center gap-3">
-                      {item.product !== "docs" && (
-                        <ProductMark product={item.product} size={28} animated={false} />
+                      {item.slug === "meridian" ? (
+                        <span aria-hidden className="meridian-mark text-[1.3rem]">
+                          ✦
+                        </span>
+                      ) : (
+                        item.product !== "docs" && (
+                          <ProductMark product={item.product} size={28} animated={false} />
+                        )
                       )}
                       <span className="font-semibold text-white group-hover:text-cyan-200">{item.label}</span>
                     </div>

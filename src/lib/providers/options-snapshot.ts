@@ -201,7 +201,7 @@ export function normalizeImpliedVol(iv: number | null | undefined): number | nul
  * (ask < bid) — a stale/glitched print must not synthesize a fabricated mid (found 2026-08-26
  * alongside the identical gap in the two sibling copies above).
  */
-function midOf(bid: number | null, ask: number | null): number | null {
+export function midOf(bid: number | null, ask: number | null): number | null {
   if (bid != null && ask != null && ask > 0 && bid >= 0 && ask >= bid) {
     return Number(((bid + ask) / 2).toFixed(4));
   }
@@ -292,6 +292,154 @@ export function mapUnifiedSnapshotResult(r: UnifiedSnapshotResult): OptionSnapsh
     // predicate stays dormant for this contract (absence is never treated as stale).
     quoteUpdatedMs: nsToEpochMs(r.last_quote?.last_updated),
   };
+}
+
+/**
+ * Backstop-quote divergence threshold for `reliableMarkFromSnapshot`: how many multiples of
+ * `last`/`dayClose` a bid=0 mid is allowed to exceed before it is treated as an unfillable
+ * placeholder rather than a real valuation. 10x is well above normal bid/ask noise (even a wide
+ * illiquid spread is rarely >2-3x the last print) and well below what a genuine intraday move
+ * would produce on the SAME contract between the last trade and now.
+ */
+export const ZERO_BID_MID_DIVERGENCE_MULTIPLE = 10;
+
+/**
+ * Tighter divergence bar for the THINNEST possible backstop shape — bid=0 AND an ask of size
+ * `<= THIN_ASK_SIZE_MAX`. A one-lot ask alongside a dead bid is categorically less trustworthy
+ * than a bid=0 quote with real size behind it: nobody could transact meaningful size at that
+ * price even if it were genuine, which is a size-based signal independent of (and stronger than)
+ * the price-divergence signal `ZERO_BID_MID_DIVERGENCE_MULTIPLE` alone relies on.
+ *
+ * Live incident 2026-10-08 (CRI 261016C00035000, caught live by the Ask Largo standing mandate):
+ * `bid:0 (size 0), ask:5.60 (size 1)` -> mid $2.80, while the contract's own LAST TRADE (2 days
+ * earlier, the most recent real transaction) was $0.55 — a 5.09x divergence, comfortably UNDER
+ * the general 10x bar, so the existing guard passed it through as "reliable." It was not: an
+ * independent Black-Scholes check using the SAME snapshot's own strike/DTE/IV/underlying-price
+ * priced the contract at ~$0.21 (consistent with the $0.55 last trade, nowhere near $2.80), and
+ * the contract's own delta (0.166) is far too low for a genuine $2.80 price at this spot/strike.
+ * The live consequence was not cosmetic: `banger-live-sync`'s scale-out logic ratcheted
+ * `peak_premium` up to this fabricated $2.80 (a one-way ratchet that can never self-correct) and
+ * flipped the position from HOLD to TAKE_PARTIAL/SCALING_OUT — a real, Discord-notified trade-
+ * management action triggered by a price nobody could have transacted at. 10x stays the bar for
+ * any quote with real size (`askSize > THIN_ASK_SIZE_MAX` or absent/unknown) — unchanged, and
+ * still backed by the CRSR precedent below — only a wafer-thin one-lot stub gets the tighter 3x
+ * bar the file's own original comment already named as the realistic ceiling for honest illiquid
+ * noise ("even a wide illiquid spread is rarely >2-3x the last print").
+ */
+export const THIN_ASK_SIZE_MAX = 1;
+export const THIN_ASK_DIVERGENCE_MULTIPLE = 3;
+
+/**
+ * `snap.mark`'s own doc-priority ladder (mid → last → dayClose) is correct AS A VALUATION
+ * heuristic, but `midOf`'s `bid>=0` guard is deliberately permissive (a genuinely worthless
+ * deep-OTM contract legitimately has bid=0 — see `midOf`'s own comment) and carries no check on
+ * whether the ASK side is a real, fillable quote. A market maker's "backstop" ask on a contract
+ * nobody is bidding on can sit at an order of magnitude above the last real trade, and averaging
+ * a dead bid against that stale ask produces a mid nothing close to the contract's actual value —
+ * confirmed live 2026-09-14: CRSR 260918C00015000 showed `bid:0, ask:15` → mid $7.50, while
+ * `last_trade.price` (and `session.close`) were BOTH $0.07 (a 107x divergence) — same contract's
+ * entry premium was also $0.07, i.e. flat, not the +10614% the naive mid implied. Multiple other
+ * concurrently-committed BANGER positions (EBS/CPRI/BW/PAGS/BAND/ACVA) showed the identical
+ * shape same session. `midOf` itself is left untouched (shared with `zeroDteMidOf` in
+ * zerodte/marks-math.ts by deliberate cross-engine parity — see midOf's own comment); this is a
+ * SEPARATE, additive helper for consumers that want a divergence-sanity-checked mark instead of
+ * the raw doc-priority one. Only engages when bid is EXACTLY 0 (the shape backstop quotes take) —
+ * a real two-sided market (bid>0) is never second-guessed here.
+ *
+ * The actual bid/mark/reference comparison lives in `reliableMarkFromQuote` below — extracted
+ * 2026-09-15 so the identical guard can also protect the WS mark stream (`legacy-option-mark-row.ts`),
+ * which carries the same backstop-quote exposure via its own `midOf(bp, ap)` computation
+ * (`handleQuote`, `options-socket.ts`) but had no divergence check at all until then.
+ */
+export function reliableMarkFromSnapshot(snap: OptionSnapshot): number | null {
+  return reliableMarkFromQuote(snap.mark, snap.bid, snap.last ?? snap.dayClose, snap.askSize);
+}
+
+/**
+ * Generic form of the bid=0 backstop-quote divergence guard: given a doc-priority mark, its bid,
+ * and a reference price (last trade, day close, or whatever the caller's best honest anchor is),
+ * return the mark unless it looks like an unfillable backstop quote — in which case fall through
+ * to the reference instead. See `reliableMarkFromSnapshot`'s own doc comment for the live
+ * incident this guards against; kept separate from that function (rather than only exported
+ * as a method on `OptionSnapshot`) so a caller with a different quote shape — the WS mark
+ * stream's `{mark, bid, last}`, which has no `dayClose` — can apply the identical rule without
+ * needing to construct a fake `OptionSnapshot`.
+ *
+ * `askSize` is OPTIONAL — a caller with no size info (e.g. the WS mark stream, which carries no
+ * quote size at all) gets exactly the prior, unchanged 10x behavior. Only when a real, thin size
+ * is known (`<= THIN_ASK_SIZE_MAX`) does the tighter `THIN_ASK_DIVERGENCE_MULTIPLE` bar apply —
+ * see `THIN_ASK_SIZE_MAX`'s own doc comment for the live incident this additionally guards.
+ */
+export function reliableMarkFromQuote(
+  mark: number | null,
+  bid: number | null,
+  reference: number | null,
+  askSize?: number | null
+): number | null {
+  if (mark == null) return null;
+  if (bid !== 0) return mark;
+  if (reference == null || reference <= 0) return mark;
+  const multiple =
+    askSize != null && Number.isFinite(askSize) && askSize <= THIN_ASK_SIZE_MAX
+      ? THIN_ASK_DIVERGENCE_MULTIPLE
+      : ZERO_BID_MID_DIVERGENCE_MULTIPLE;
+  if (mark <= reference * multiple) return mark;
+  // The bid/ask mid is a suspected backstop-quote artifact — fall through to the more honest
+  // reference price instead of a mid nobody could actually transact at.
+  return reference;
+}
+
+/**
+ * The ASK sibling of `reliableMarkFromSnapshot`/`reliableMarkFromQuote` — same bid=0 backstop-quote
+ * divergence guard, applied to the raw ask that produced the (possibly corrected) mark, instead of
+ * to the mark itself.
+ *
+ * `reliableMarkFromSnapshot` only ever corrects the resolved MARK: when it falls through to the
+ * reference price, `snap.ask` itself is left completely untouched, because that function has no
+ * reason to return it. A caller that carries the raw ask ALONGSIDE the now-guarded mark (e.g. a
+ * live quote object built for a spread / execution-quality display) ends up mixing a sanitized mid
+ * with an unsanitized ask on the same object — and `(ask - bid) / mid` with a guarded (tiny) mid and
+ * an unguarded (backstop) ask produces a nonsensical spread. Confirmed live 2026-10-24: Night Hawk
+ * Swings CAG (positionId 2082) — `bid:0, ask:3.90`, mark correctly guarded down to the real last
+ * trade (`mid:0.03`), yet the horizons/play-brief Spread line read bid/ask straight off the
+ * ORIGINAL unfiltered quote and rendered "Spread: 13000.0% ($0.00/$3.90)" — the exact "dead bid +
+ * backstop ask" artifact `reliableMarkFromSnapshot` was built to catch (CRSR 2026-09-14, CRI
+ * 2026-10-08), just never extended past the mark field.
+ *
+ * Reuses `reliableMarkFromSnapshot` verbatim rather than reimplementing the divergence math, so the
+ * two guards cannot drift apart: the ask is "reliable" exactly when the mark guard did NOT
+ * substitute the reference for the naive doc-priority mark (the identical bid===0 + magnitude check,
+ * including the thin-one-lot 3x bar). Returns `snap.ask` unchanged whenever `snap.bid !== 0` (a real
+ * two-sided market is never second-guessed, matching `reliableMarkFromQuote`'s own scope) or when
+ * there was no mark to compare against in the first place.
+ */
+export function reliableAskFromSnapshot(snap: OptionSnapshot): number | null {
+  return reliableAskFromQuote(snap.ask, snap.bid, snap.mark, snap.last ?? snap.dayClose, snap.askSize);
+}
+
+/**
+ * Generic form of `reliableAskFromSnapshot`, extracted (2026-11-01) the same way
+ * `reliableMarkFromSnapshot` delegates to `reliableMarkFromQuote` below it — so a caller with a
+ * different quote shape than `OptionSnapshot` (e.g. the Legacy WS mark stream's `{mark, bid, ask,
+ * last}`, which has no `dayClose`/`askSize`) can apply the identical ask-side guard without
+ * constructing a fake `OptionSnapshot`.
+ *
+ * The ask is "reliable" exactly when `reliableMarkFromQuote` did NOT substitute `reference` for
+ * the naive doc-priority `mark` (the identical bid===0 + magnitude check, including the thin-
+ * one-lot 3x bar when a real `askSize` is known) — reusing that comparison rather than
+ * reimplementing the divergence math, so the mark guard and the ask guard cannot drift apart.
+ * Returns `ask` unchanged whenever `bid !== 0` (a real two-sided market is never second-guessed)
+ * or when there is no `mark` to compare against in the first place.
+ */
+export function reliableAskFromQuote(
+  ask: number | null,
+  bid: number | null,
+  mark: number | null,
+  reference: number | null,
+  askSize?: number | null
+): number | null {
+  if (bid !== 0 || mark == null) return ask;
+  return reliableMarkFromQuote(mark, bid, reference, askSize) === mark ? ask : null;
 }
 
 /** Split an array into chunks of at most `size`. Exported for chunking tests. */

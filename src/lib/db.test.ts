@@ -4,7 +4,13 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { EventEmitter } from "node:events";
 import type { PoolClient } from "pg";
-import { mapAlertAuditTrailRow, computeSafePgPoolMaxDefault, guardCheckedOutClient } from "./db";
+import {
+  mapAlertAuditTrailRow,
+  computeSafePgPoolMaxDefault,
+  guardCheckedOutClient,
+  parseZeroDteRejectionCounterfactual,
+  deleteFromOptionalTable,
+} from "./db";
 
 test("mapAlertAuditTrailRow: converts NUMERIC confidence_score (a string from node-pg) to a real number", () => {
   const row = mapAlertAuditTrailRow({
@@ -141,6 +147,65 @@ test("upsertZeroDteSetupLog: direction/top_strike/expiry are pinned (COALESCE-gu
   assert.match(upsertBody, /entry_premium\s*=\s*COALESCE\(zerodte_setup_log\.entry_premium,\s*EXCLUDED\.entry_premium\)/);
   assert.match(upsertBody, /flow_avg_fill\s*=\s*COALESCE\(zerodte_setup_log\.flow_avg_fill,\s*EXCLUDED\.flow_avg_fill\)/);
   assert.match(upsertBody, /plan_json\s*=\s*COALESCE\(zerodte_setup_log\.plan_json,\s*EXCLUDED\.plan_json\)/);
+});
+
+// ─── SEV-2 (FINDINGS 2026-10-15, Ask Largo/Night Hawk standing mandate): zerodte_setup_log's
+// premium watermarks must be BRACKETED BY ENTRY — the EXACT SAME shape FINDINGS 2026-08-06 already
+// fixed on swing_positions, never ported to this table (a THIRD table found with this bug the same
+// session as the banger_positions companion fix). Live proof 2026-10-15 (GET
+// /api/market/zerodte/board, 30-row ledger): CRWV (trough 1.80 > entry 1.77), FLEX (peak 2.38 <
+// entry 2.40), APLD (peak 0.56 < entry 0.59) — arithmetically impossible, since the entry fill
+// itself IS an observed mark of the contract. ──────────────────────────────────────────────────
+
+test("ZERODTE_SETUP_LOG_UPSERT_SQL: SEEDS peak_premium/trough_premium from entry_premium ($13) at insert, and does NOT pin them on the ON CONFLICT re-touch", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("const ZERODTE_SETUP_LOG_UPSERT_SQL");
+  const stmt = src.slice(start, src.indexOf("RETURNING (xmax = 0) AS inserted", start));
+  assert.match(
+    stmt,
+    /entry_context, feature_vector, peak_premium, trough_premium,\s*\n\s*first_flagged_at, last_seen_at/
+  );
+  // Both seeded from $13 — the entry_premium placeholder — not a fresh param or a literal.
+  assert.match(stmt, /VALUES \(\$1,\$2,\$3,\$4,\$5,\$6,\$6,\$7,\$8,\$9,\$10,\$11,\$11,\$12,\$13,\$14,\$15,\$16,\$17,\$18,\$13,\$13,NOW\(\),NOW\(\)\)/);
+  // peak_premium/trough_premium must NOT appear in the ON CONFLICT DO UPDATE SET clause — a
+  // re-running scan must never rewind an already-ratcheted extreme (the live ratchet owns these
+  // after insert, same discipline as swing_positions/banger_positions).
+  const updateSet = stmt.slice(stmt.indexOf("DO UPDATE SET"));
+  assert.ok(!/\bpeak_premium\s*=/.test(updateSet), "peak_premium must not be written in the ON CONFLICT UPDATE");
+  assert.ok(!/\btrough_premium\s*=/.test(updateSet), "trough_premium must not be written in the ON CONFLICT UPDATE");
+});
+
+test("upsertZeroDteSetupLog's batched multi-row INSERT carries the SAME peak/trough seed as the shared single-row SQL", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function upsertZeroDteSetupLog");
+  const fn = src.slice(start, src.indexOf("\nexport ", start + 1));
+  assert.match(
+    fn,
+    /entry_context, feature_vector, peak_premium, trough_premium,\s*\n\s*first_flagged_at, last_seen_at/
+  );
+  // The tuple template reuses the entry_premium offset ($\{b+13\}) twice more, same convention as
+  // the existing $\{b+6\}/$\{b+11\} reuses for score_max/underlying_latest.
+  assert.match(
+    fn,
+    /\$\$\{b \+ 17\},\$\$\{b \+ 18\},\$\$\{b \+ 13\},\$\$\{b \+ 13\},NOW\(\),NOW\(\)\)/
+  );
+});
+
+test("ensureSchema: the zerodte_setup_log watermark backfill only ever WIDENS the bracket, and converges to a no-op", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("UPDATE zerodte_setup_log\n       SET peak_premium");
+  const stmt = src.slice(start, src.indexOf("Context-at-entry (decision doc C-2)", start));
+  assert.ok(stmt.length > 0, "the converge backfill must exist in ensureSchema");
+  // GREATEST on the peak / LEAST on the trough: a genuinely-ratcheted extreme can never be narrowed.
+  assert.match(stmt, /peak_premium = GREATEST\(COALESCE\(peak_premium, entry_premium\), entry_premium\)/);
+  assert.match(stmt, /trough_premium = LEAST\(COALESCE\(trough_premium, entry_premium\), entry_premium\)/);
+  // Guarded so a converged table matches zero rows — safe to re-run on every boot.
+  assert.match(stmt, /WHERE entry_premium IS NOT NULL/);
+  assert.match(stmt, /peak_premium < entry_premium/);
+  assert.match(stmt, /trough_premium > entry_premium/);
+  // NEVER fabricates: a row with no entry premium (e.g. an iron condor) has no observed mark to
+  // bracket around, so it is left entirely alone rather than seeded from a mark it never traded at.
+  assert.doesNotMatch(stmt, /entry_premium IS NULL/);
 });
 
 // P0 one-way commit door (fix/zerodte-status-latch): status transitions in
@@ -566,6 +631,26 @@ test("getMeta/setMeta: both route the no-transaction common case through dbQuery
   assert.match(setBody, /await db\.query\(/, "setMeta's db-supplied path must stay on that exact client");
 });
 
+// Regression for the 2026-10-17 audit finding: gradeSwingPosition freezes realized_pnl_pct/peak/
+// trough from a fresh mark at grade time but previously never touched last_mark — the field
+// closed-plays.ts serves as a closed position's contract.mid — so a closed row's displayed mid
+// could disagree with its own realized exit (observed live: >2x on a real closed INTC position).
+test("gradeSwingPosition: latches the fresh grading mark onto last_mark/last_mark_at (exit_mark param)", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function gradeSwingPosition");
+  assert.ok(start > 0, "gradeSwingPosition exists");
+  const end = src.indexOf("\nexport async function", start + 1);
+  const body = src.slice(start, end > 0 ? end : undefined);
+  assert.match(body, /exit_mark\?:\s*number\s*\|\s*null/, "gradeSwingPosition's g param must accept exit_mark");
+  assert.match(body, /last_mark\s*=\s*COALESCE\(\$7,\s*last_mark\)/, "must latch exit_mark onto last_mark in the same UPDATE");
+  assert.match(
+    body,
+    /last_mark_at\s*=\s*CASE WHEN \$7 IS NOT NULL THEN NOW\(\) ELSE last_mark_at END/,
+    "must stamp last_mark_at only when a fresh mark was actually supplied"
+  );
+  assert.match(body, /g\.exit_mark\s*\?\?\s*null/, "must pass g.exit_mark through to the query params");
+});
+
 test("db-optional swing/SPX writers: transaction client path preserved, no-db path uses dbQuery", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
   for (const fn of [
@@ -625,6 +710,67 @@ test("guardCheckedOutClient: swallows a checked-out client's own 'error' event i
   );
 });
 
+// BUG FIX (2026-09-20, live CloudWatch: `MaxListenersExceededWarning: Possible EventEmitter
+// memory leak detected. 11 error listeners added to [Client]`). pg-pool recycles idle Client
+// OBJECTS across checkouts, so the SAME physical client can be the one `pool.connect()` hands
+// back many times over the life of the process. guardCheckedOutClient used to add a fresh
+// 'error' listener on every call with no de-dupe, so each recheckout of that same client left
+// another permanent listener behind — unbounded growth, not a one-time cost.
+test("guardCheckedOutClient: guarding the SAME physical client object twice adds only ONE 'error' listener", () => {
+  const client = new EventEmitter() as unknown as PoolClient;
+  guardCheckedOutClient(client);
+  const afterFirst = (client as unknown as EventEmitter).listenerCount("error");
+  assert.equal(afterFirst, 1, "first checkout installs exactly one guard listener");
+
+  // Simulate the client being released back to the pool and checked out again later —
+  // guardCheckedOutClient is called again at the new pool.connect() call site.
+  guardCheckedOutClient(client);
+  guardCheckedOutClient(client);
+  const afterRepeat = (client as unknown as EventEmitter).listenerCount("error");
+  assert.equal(
+    afterRepeat,
+    1,
+    "re-guarding the same recycled client must be a no-op, not stack another listener — " +
+      "this is exactly the accumulation that produced the live MaxListenersExceededWarning"
+  );
+});
+
+// BUG FIX (2026-09-08, live evidence: `GET /api/admin/cron-health` served `desk-warm`'s
+// `runs_24h: {ok:0,failed:0,skipped:2}` for a job firing every ~5 min all morning — misread at
+// first glance as "barely ran today"). `admin-cron-health.ts`'s `buildCronHealthSnapshot` built its
+// `runs_24h` aggregate from `fetchCronJobRecentRuns(48)` — `ORDER BY started_at DESC LIMIT 48`
+// with NO per-job or time filter at the query level. With ~48 registered crons, several on 1-5 min
+// schedules, those 48 rows fleet-wide are consumed by whichever jobs fired most recently — a
+// moderately-frequent job can be starved down to 1-2 rows, nowhere near a real 24h picture, even
+// though the caller's own `since24h` variable and the field's own name promise one. Fixed by
+// replacing it with `fetchCronJobRunsLast24h()`, bounded by `WHERE started_at > NOW() - INTERVAL
+// '24 hours'` instead of a row count — every job gets its own real 24h window regardless of how
+// often its neighbors fire. The old row-capped function had exactly one caller and is deleted
+// entirely rather than left as dead code.
+test("fetchCronJobRunsLast24h bounds by TIME, not by a row count that starves low-frequency jobs", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function fetchCronJobRunsLast24h");
+  assert.ok(start > 0, "fetchCronJobRunsLast24h exists");
+  const nextExport = src.indexOf("\nexport async function", start + 1);
+  const body = src.slice(start, nextExport > 0 ? nextExport : undefined);
+  assert.match(
+    body,
+    /WHERE started_at > NOW\(\) - INTERVAL '24 hours'/,
+    "must bound by a real 24h time window"
+  );
+  assert.doesNotMatch(body, /LIMIT \$?\d/, "must not also cap by an arbitrary row count");
+});
+
+test("the old row-capped fetchCronJobRecentRuns is gone, not left as dead code beside its replacement", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  assert.doesNotMatch(
+    src,
+    /export async function fetchCronJobRecentRuns/,
+    "fetchCronJobRecentRuns had exactly one caller (admin-cron-health.ts), now migrated to " +
+      "fetchCronJobRunsLast24h — the row-capped version must not remain unused"
+  );
+});
+
 test("every raw pool.connect() checked-out client in db.ts is wrapped in guardCheckedOutClient", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
   const uncoveredConnects: string[] = [];
@@ -642,5 +788,263 @@ test("every raw pool.connect() checked-out client in db.ts is wrapped in guardCh
     `every pool.connect() call site in db.ts must be wrapped in guardCheckedOutClient(...) so its ` +
       `checked-out client can't emit an unguarded 'error' event — found unwrapped: ` +
       JSON.stringify(uncoveredConnects)
+  );
+});
+
+// BUG FIX (2026-09-12): fetchNighthawkOutcomeAnalytics and fetchNighthawkFunnelStats window their
+// `edition_for` cutoff off bare Postgres `CURRENT_DATE`, which resolves in the DB SESSION's
+// timezone (UTC on this stack — no `SET TIME ZONE` anywhere in db.ts), while `edition_for` is an
+// ET trading-day date. The rest of this file already knows raw CURRENT_DATE is wrong for ET-day
+// math — see the flow-alerts DTE query a few thousand lines up ("DTE against the ET calendar date
+// (not UTC CURRENT_DATE) ... don't go off-by-one/negative in the 8pm-midnight ET window"), fixed
+// there with `(NOW() AT TIME ZONE 'America/New_York')::date`. These two Night Hawk functions never
+// got the same fix. Live-observed 2026-09-12 00:07 UTC (~8pm ET, squarely in that stated window):
+// GET /api/market/nighthawk/record?days=14 resolved count dropped 30->26 within the same ~15-minute
+// audit cycle, at the exact moment UTC crossed midnight — CURRENT_DATE ticked to the next UTC
+// calendar day while it was still the prior ET trading day, prematurely rolling the oldest day out
+// of the window. This corrupts the member-visible win_rate_pct/resolved/segments on `/record` and
+// the admin funnel dashboard (`fetchNighthawkFunnelStats`, windowed "the same way" per its own doc
+// comment) for several hours every single evening — not a rare edge case.
+test("fetchNighthawkOutcomeAnalytics windows edition_for against the ET calendar date, not raw UTC CURRENT_DATE", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const fnStart = src.indexOf("export async function fetchNighthawkOutcomeAnalytics");
+  assert.ok(fnStart >= 0, "fetchNighthawkOutcomeAnalytics must exist in db.ts");
+  const fnEnd = src.indexOf("\nexport async function", fnStart + 1);
+  const body = src.slice(fnStart, fnEnd > 0 ? fnEnd : undefined);
+  assert.doesNotMatch(
+    body,
+    /\bCURRENT_DATE\b/,
+    "fetchNighthawkOutcomeAnalytics must not window edition_for off bare CURRENT_DATE (UTC-anchored) " +
+      "-- use (NOW() AT TIME ZONE 'America/New_York')::date, matching the rest of db.ts's ET-day math"
+  );
+  assert.match(
+    body,
+    /\(NOW\(\) AT TIME ZONE 'America\/New_York'\)::date/,
+    "fetchNighthawkOutcomeAnalytics must anchor its edition_for window to the ET calendar date"
+  );
+});
+
+test("fetchNighthawkFunnelStats windows edition_for against the ET calendar date, not raw UTC CURRENT_DATE", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const fnStart = src.indexOf("export async function fetchNighthawkFunnelStats");
+  assert.ok(fnStart >= 0, "fetchNighthawkFunnelStats must exist in db.ts");
+  const fnEnd = src.indexOf("\nexport async function", fnStart + 1);
+  const body = src.slice(fnStart, fnEnd > 0 ? fnEnd : undefined);
+  assert.doesNotMatch(
+    body,
+    /\bCURRENT_DATE\b/,
+    "fetchNighthawkFunnelStats must not window edition_for off bare CURRENT_DATE (UTC-anchored) -- " +
+      "its own doc comment says it windows 'the same way' fetchNighthawkOutcomeAnalytics does, so " +
+      "both sides of the funnel must share the same ET-anchored cutoff"
+  );
+  const matches = body.match(/\(NOW\(\) AT TIME ZONE 'America\/New_York'\)::date/g) ?? [];
+  assert.equal(
+    matches.length,
+    2,
+    "fetchNighthawkFunnelStats has TWO edition_for window clauses (published-side and rejected-side) " +
+      "-- both must anchor to the ET calendar date so the funnel's two sides stay comparable"
+  );
+});
+
+test("parseZeroDteRejectionCounterfactual: null/non-object/malformed input returns null, never fabricates a verdict", () => {
+  assert.equal(parseZeroDteRejectionCounterfactual(null), null);
+  assert.equal(parseZeroDteRejectionCounterfactual(undefined), null);
+  assert.equal(parseZeroDteRejectionCounterfactual("not an object"), null);
+  assert.equal(parseZeroDteRejectionCounterfactual({}), null);
+  assert.equal(parseZeroDteRejectionCounterfactual({ verdict: "not_a_real_verdict" }), null);
+});
+
+test("parseZeroDteRejectionCounterfactual: a real premium-basis SkipCounterfactual round-trips cleanly", () => {
+  const parsed = parseZeroDteRejectionCounterfactual({
+    version: 1,
+    basis: "premium",
+    verdict: "would_have_won",
+    outcome: "doubled",
+    pnl_pct: 87.5,
+    entry: 2.4,
+    exit: 4.5,
+    move_pct: null,
+    reason: null,
+    graded_at: "2026-09-16T15:00:00.000Z",
+  });
+  assert.deepEqual(parsed, { verdict: "would_have_won", outcome: "doubled", pnl_pct: 87.5, basis: "premium" });
+});
+
+test("parseZeroDteRejectionCounterfactual: an ungradeable row keeps outcome/pnl_pct/basis null rather than guessing", () => {
+  const parsed = parseZeroDteRejectionCounterfactual({
+    version: 1,
+    basis: null,
+    verdict: "ungradeable",
+    outcome: null,
+    pnl_pct: null,
+    entry: null,
+    exit: null,
+    move_pct: null,
+    reason: "no long/short direction on the rejection row",
+    graded_at: "2026-09-16T15:00:00.000Z",
+  });
+  assert.deepEqual(parsed, { verdict: "ungradeable", outcome: null, pnl_pct: null, basis: null });
+});
+
+test("parseZeroDteRejectionCounterfactual: an invalid pnl_pct (NaN/non-number) is dropped, not passed through", () => {
+  const parsed = parseZeroDteRejectionCounterfactual({
+    verdict: "would_have_lost",
+    outcome: "stopped",
+    pnl_pct: "not-a-number",
+    basis: "premium",
+  });
+  assert.deepEqual(parsed, { verdict: "would_have_lost", outcome: "stopped", pnl_pct: null, basis: "premium" });
+});
+
+// ─── SEV-2 (FINDINGS 2026-10-15, Ask Largo/Night Hawk Swings standing mandate): banger_positions'
+// premium watermarks must be BRACKETED BY ENTRY — the EXACT SAME shape FINDINGS 2026-08-06 already
+// fixed on swing_positions (src/lib/db-swing-ledger.test.ts's own "watermark backfill" test below
+// is the direct template for this one), never ported to this sibling table until now. Live proof
+// 2026-10-15 (GET /api/market/nighthawk/horizons?view=swings): 7 real committed rows
+// (SLS/METU/SNXX/MUU/ALAB/CBRS/WDC) showed peak_premium < entry_premium and 2 (ORKA/SOXS) showed
+// trough_premium > entry_premium — arithmetically impossible, since the entry fill itself IS an
+// observed mark of the contract. insertBangerPosition now seeds both from entry_premium at commit
+// (positions-db.test.ts covers that half); this backfill repairs rows written before that fix. ───
+
+test("ensureSchema: the banger_positions watermark backfill only ever WIDENS the bracket, and converges to a no-op", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const stmt = src.slice(
+    src.indexOf("UPDATE banger_positions\n       SET peak_premium"),
+    src.indexOf("Prospective NBBO quote-tick log"),
+  );
+  assert.ok(stmt.length > 0, "the converge backfill must exist in ensureSchema");
+  // GREATEST on the peak / LEAST on the trough: a genuinely-ratcheted extreme can never be narrowed.
+  assert.match(stmt, /peak_premium = GREATEST\(COALESCE\(peak_premium, entry_premium\), entry_premium\)/);
+  assert.match(stmt, /trough_premium = LEAST\(COALESCE\(trough_premium, entry_premium\), entry_premium\)/);
+  // Guarded so a converged table matches zero rows — safe to re-run on every boot.
+  assert.match(stmt, /WHERE entry_premium IS NOT NULL/);
+  assert.match(stmt, /peak_premium < entry_premium/);
+  assert.match(stmt, /trough_premium > entry_premium/);
+  // NEVER fabricates: a row with no entry premium has no observed mark to bracket around, so it is
+  // left entirely alone rather than seeded from a mark it never traded at.
+  assert.doesNotMatch(stmt, /entry_premium IS NULL/);
+});
+
+// ─── 2026-10-26 (DISCOVERY-lane audit): deleteUserDataForClerkId (Clerk `user.deleted` GDPR
+// cleanup) was missing several tables that store real per-user content keyed by clerk_user_id —
+// bie_interactions (Largo chat question text), welcome_sequence_state (email/first_name),
+// helix_alert_rules and vector_alert_rules (per-ticker alert configs) — plus the PRE-EXISTING
+// push_subscriptions delete used a bare try/catch that cannot actually contain a missing-table
+// error inside a Postgres transaction (see deleteFromOptionalTable's own doc comment). Minimal
+// fake PoolClient below enforces the REAL Postgres invariant this bug depends on: once any
+// statement in a transaction errors, every later statement on that client — except ROLLBACK or
+// ROLLBACK TO SAVEPOINT — throws "current transaction is aborted" regardless of whether the
+// JS-level error was caught. ───
+
+/** A fake PoolClient enforcing the one Postgres invariant this bug/fix depends on. */
+function makeAbortAwarePgClient(opts: { missingTables: Set<string> }) {
+  let aborted = false;
+  const calls: string[] = [];
+  const client: Pick<PoolClient, "query"> = {
+    async query(text: unknown, values?: unknown[]) {
+      const sql = String(text).trim();
+      calls.push(sql);
+      if (/^BEGIN\b/i.test(sql)) {
+        aborted = false;
+        return { rowCount: 0, rows: [] } as never;
+      }
+      if (/^ROLLBACK TO SAVEPOINT\b/i.test(sql)) {
+        aborted = false;
+        return { rowCount: 0, rows: [] } as never;
+      }
+      if (/^ROLLBACK\b/i.test(sql)) {
+        aborted = false;
+        return { rowCount: 0, rows: [] } as never;
+      }
+      // Any OTHER statement — including SAVEPOINT/RELEASE SAVEPOINT/COMMIT — fails outright
+      // while the transaction is aborted. This is the exact real-world behavior: Postgres
+      // rejects every statement but ROLLBACK (to a savepoint or the whole transaction).
+      if (aborted) {
+        throw new Error("current transaction is aborted, commands ignored until end of transaction block");
+      }
+      const tableMatch = /DELETE FROM (\w+)/i.exec(sql);
+      const table = tableMatch?.[1];
+      if (table && opts.missingTables.has(table)) {
+        aborted = true;
+        throw new Error(`relation "${table}" does not exist`);
+      }
+      return { rowCount: 1, rows: [] } as never;
+    },
+  };
+  return { client: client as PoolClient, calls: () => calls.slice() };
+}
+
+test("RED (pre-fix pattern): a bare try/catch around a missing optional table does NOT contain the failure — the transaction stays aborted and every later statement throws", async () => {
+  const { client } = makeAbortAwarePgClient({ missingTables: new Set(["push_subscriptions"]) });
+  await client.query("BEGIN");
+  await client.query(`DELETE FROM largo_sessions WHERE user_id = $1`, ["u1"]);
+  // The OLD code's shape: catch the error and keep going on the same client.
+  try {
+    await client.query(`DELETE FROM push_subscriptions WHERE user_id = $1`, ["u1"]);
+  } catch {
+    // swallowed, exactly like the old code — but this does NOT un-abort the transaction.
+  }
+  // Proves the bug: the next statement on the SAME client throws even though its own table
+  // (`users`) exists and its own JS-level try/catch around push_subscriptions "succeeded".
+  await assert.rejects(
+    () => client.query(`DELETE FROM users WHERE clerk_user_id = $1`, ["u1"]),
+    /current transaction is aborted/
+  );
+});
+
+test("deleteFromOptionalTable: a missing table is contained via SAVEPOINT — the surrounding transaction stays usable and later statements succeed", async () => {
+  const { client, calls } = makeAbortAwarePgClient({ missingTables: new Set(["push_subscriptions"]) });
+  await client.query("BEGIN");
+  await client.query(`DELETE FROM largo_sessions WHERE user_id = $1`, ["u1"]);
+  const deleted = await deleteFromOptionalTable(client, "push_subscriptions", "user_id", "u1");
+  assert.equal(deleted, 0, "missing table reports 0 rows deleted, never throws");
+  // The statement that was aborted-and-doomed in the RED test above now succeeds.
+  const users = await client.query(`DELETE FROM users WHERE clerk_user_id = $1`, ["u1"]);
+  assert.equal((users as { rowCount: number }).rowCount, 1);
+  await client.query("COMMIT");
+  assert.ok(calls().includes("SAVEPOINT optional_table_delete"));
+  assert.ok(calls().includes("ROLLBACK TO SAVEPOINT optional_table_delete"));
+});
+
+test("deleteFromOptionalTable: an EXISTING table's rows are deleted and the savepoint is released (no rollback)", async () => {
+  const { client, calls } = makeAbortAwarePgClient({ missingTables: new Set() });
+  await client.query("BEGIN");
+  const deleted = await deleteFromOptionalTable(client, "push_subscriptions", "user_id", "u1");
+  assert.equal(deleted, 1);
+  assert.ok(calls().includes("RELEASE SAVEPOINT optional_table_delete"));
+  assert.ok(!calls().includes("ROLLBACK TO SAVEPOINT optional_table_delete"));
+});
+
+// Regression for the 2026-10-26 audit finding: deleteUserDataForClerkId must actually delete
+// every table that stores real per-user content keyed by the Clerk user id, not just the four it
+// originally shipped with — and the lazily-created ones must go through deleteFromOptionalTable
+// (SAVEPOINT-safe), never a bare try/catch, so adding a new optional table here can't silently
+// re-introduce the abandoned-transaction bug proven above.
+test("deleteUserDataForClerkId: deletes every table keyed by clerk_user_id, and routes lazily-created tables through deleteFromOptionalTable", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function deleteUserDataForClerkId");
+  const end = src.indexOf("\nexport async function", start + 1);
+  assert.ok(start > 0 && end > start, "deleteUserDataForClerkId must exist");
+  const body = src.slice(start, end);
+
+  // Unconditionally-migrated tables (always exist) — plain DELETE is safe.
+  assert.match(body, /DELETE FROM largo_sessions WHERE user_id = \$1/);
+  assert.match(body, /DELETE FROM user_journal WHERE user_id = \$1/);
+  assert.match(body, /DELETE FROM welcome_sequence_state WHERE user_id = \$1/);
+  assert.match(body, /DELETE FROM bie_interactions WHERE user_id = \$1/);
+  assert.match(body, /DELETE FROM users WHERE clerk_user_id = \$1/);
+
+  // Lazily-created tables must go through the SAVEPOINT-safe helper, not a bare try/catch.
+  for (const table of ["push_subscriptions", "helix_alert_rules", "vector_alert_rules"]) {
+    assert.match(
+      body,
+      new RegExp(`deleteFromOptionalTable\\(\\s*client,\\s*"${table}"`),
+      `${table} must be deleted via deleteFromOptionalTable`
+    );
+  }
+  assert.doesNotMatch(
+    body,
+    /catch\s*\{\s*\/\/ push_subscriptions/,
+    "must not regress to the old bare try/catch pattern that cannot contain an aborted transaction"
   );
 });

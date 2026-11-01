@@ -124,6 +124,18 @@ export function classifyWall(
  * because "resistance 7800, concentration 8000" would read as a level too — the tile carries the
  * honest wording, and the prose simply stops asserting what it cannot support.
  *
+ * THE CLAUSE IS NOT ALWAYS BOTH HALVES. The producer (`gex-cross-validation-core.ts`'s regime
+ * builder) only emits "Resistance X" when `callWall != null` and only emits "support Y" when
+ * `putWall != null` — either can independently be missing (e.g. a one-sided book with no put
+ * strikes in range), in which case the tail is a SINGLE-wall clause: "Resistance X." or
+ * "support Y." alone, with no comma and no sibling word. The original regex only matched the
+ * two-wall "Resistance X, support Y." form, so a wrong-side wall asserted ALONE (the exact defect
+ * this function exists to prevent) passed straight through untouched — confirmed live: spot
+ * 7748.5 / call_wall 7490 / put_wall null classifies the call wall as "concentration" (it sits
+ * BELOW spot, so it cannot be resistance) yet `correctPublicRead` left "Resistance 7,490." in
+ * place verbatim, because `clause.test()` never matched a bare one-wall tail. Both halves are now
+ * optional in the pattern, matched independently.
+ *
  * If the producer's wording changes and the clause no longer matches, the read passes through
  * untouched: this can only ever remove a false claim, never invent one.
  */
@@ -131,22 +143,35 @@ export function correctPublicRead(
   read: string,
   levels: { spot: number | null; call_wall: number | null; put_wall: number | null }
 ): string {
-  const clause = /\s*Resistance\s+[\d,.]+\s*,\s*support\s+[\d,.]+\s*\./i;
+  // Each half is independently optional, matching the producer's own independent `callWall`/
+  // `putWall` null checks — not just the case where both are present together.
+  const clause =
+    /\s*(?:Resistance\s+[\d,.]+\s*(?:,\s*support\s+[\d,.]+\s*)?|support\s+[\d,.]+\s*)\./i;
   if (!clause.test(read)) return read;
 
   const callRole = classifyWall("call", levels.call_wall, levels.spot);
   const putRole = classifyWall("put", levels.put_wall, levels.spot);
   const fmt = (n: number) => n.toLocaleString("en-US");
+  const hadCall = levels.call_wall != null;
+  const hadPut = levels.put_wall != null;
 
   const parts: string[] = [];
-  if (callRole === "resistance" && levels.call_wall != null) parts.push(`Resistance ${fmt(levels.call_wall)}`);
-  if (putRole === "support" && levels.put_wall != null) parts.push(`support ${fmt(levels.put_wall)}`);
+  if (callRole === "resistance" && hadCall) parts.push(`Resistance ${fmt(levels.call_wall as number)}`);
+  if (putRole === "support" && hadPut) parts.push(`support ${fmt(levels.put_wall as number)}`);
 
-  const replacement = parts.length
-    ? ` ${parts.join(", ")}.`
-    : // Both walls sit on the wrong side: say so plainly rather than leaving a bare sentence, so the
-      // absence reads as a deliberate statement about the book and not as missing data.
-      " Both gamma walls currently sit on the far side of spot, so neither is acting as a level.";
+  let replacement: string;
+  if (parts.length) {
+    replacement = ` ${parts.join(", ")}.`;
+  } else if (hadCall && hadPut) {
+    // Both walls were asserted and both sit on the wrong side: say so plainly rather than leaving
+    // a bare sentence, so the absence reads as a deliberate statement about the book and not as
+    // missing data.
+    replacement = " Both gamma walls currently sit on the far side of spot, so neither is acting as a level.";
+  } else {
+    // Only one wall was ever asserted (the other was null) and it sits on the wrong side — the
+    // "Both ..." wording above would claim a second wall that was never in the clause at all.
+    replacement = " This gamma wall currently sits on the far side of spot, so it isn't acting as a level.";
+  }
 
   return read.replace(clause, replacement).replace(/\s{2,}/g, " ").trim();
 }
@@ -172,18 +197,34 @@ export function correctPublicRead(
  * accelerate" beside a spot explicitly marked stale by `priceNote` — a fresh RECOMPUTE timestamp
  * making a stale INPUT look actionable.
  */
+const GATE_PREFIX = "Prior-session structural reference — ";
+const SHORT_LIVE = "→ short gamma: momentum / vol expansion, moves accelerate";
+const SHORT_GATED = "→ short gamma structurally (not a live actionable read)";
+const LONG_LIVE = "→ long gamma: range-bound, fade extremes";
+const LONG_GATED = "→ long gamma structurally (not a live actionable read)";
+
+/**
+ * Undo a PRIOR application of the gate, so re-gating a read that was already gated (or was never
+ * gated) is always safe. Needed because a last-good snapshot's `read` can be re-served across a
+ * session boundary it was never computed for — see `degradedFromLastGood` in public-gex-snapshot.ts
+ * — and gating it again without first reversing a stale gate would either leave the wrong
+ * (session-mismatched) wording in place or double up the "Prior-session structural reference —"
+ * prefix.
+ */
+function ungatePublicRead(read: string): string {
+  const base = read.startsWith(GATE_PREFIX) ? read.slice(GATE_PREFIX.length) : read;
+  return base
+    .replace(new RegExp(SHORT_GATED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), SHORT_LIVE)
+    .replace(new RegExp(LONG_GATED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), LONG_LIVE);
+}
+
 export function applyPublicReadFreshnessGate(read: string, marketSession: MarketPhase | null): string {
-  if (marketSession === "OPEN") return read;
-  const structural = read
-    .replace(
-      /→\s*short gamma:\s*momentum \/ vol expansion, moves accelerate/i,
-      "→ short gamma structurally (not a live actionable read)"
-    )
-    .replace(
-      /→\s*long gamma:\s*range-bound, fade extremes/i,
-      "→ long gamma structurally (not a live actionable read)"
-    );
-  return `Prior-session structural reference — ${structural}`;
+  const base = ungatePublicRead(read);
+  if (marketSession === "OPEN") return base;
+  const structural = base
+    .replace(/→\s*short gamma:\s*momentum \/ vol expansion, moves accelerate/i, SHORT_GATED)
+    .replace(/→\s*long gamma:\s*range-bound, fade extremes/i, LONG_GATED);
+  return `${GATE_PREFIX}${structural}`;
 }
 
 

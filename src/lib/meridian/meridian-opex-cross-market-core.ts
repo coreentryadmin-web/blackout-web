@@ -21,8 +21,6 @@ export const MERIDIAN_OPEX_MAG7 = [
   "TSLA",
 ] as const;
 
-export const MERIDIAN_OPEX_BENCHMARKS = ["SPY", "QQQ", "IWM"] as const;
-
 const MOVER_PRICE_MIN = 5;
 const MOVER_PRICE_MAX = 400;
 const MOVER_MIN_VOL = 1_000_000;
@@ -68,7 +66,13 @@ export function rankOpexSessionMovers(
   }
 
   if (!candidates.length) return { top_gainer: null, top_loser: null };
-  const sorted = [...candidates].sort((a, b) => b.session_pct - a.session_pct);
+  // Secondary tie-break by ticker (ascending) — `pctChange` rounds to 2 decimals, so across a
+  // whole-market scan it's common for two tickers to land on the exact same session_pct. Without
+  // this, Array#sort's stability means the "top gainer"/"top loser" on a tie silently depends on
+  // which row Polygon's grouped-daily happened to list first that day, not on anything real.
+  const sorted = [...candidates].sort(
+    (a, b) => b.session_pct - a.session_pct || a.ticker.localeCompare(b.ticker)
+  );
   return { top_gainer: sorted[0] ?? null, top_loser: sorted[sorted.length - 1] ?? null };
 }
 

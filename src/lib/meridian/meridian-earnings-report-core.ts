@@ -53,7 +53,19 @@ function analystLean(revisions: AnalystRow[]): { lean: MeridianEarningsReportSig
   let down = 0;
   for (const r of revisions) {
     const a = (r.action ?? "").toLowerCase();
-    if (a === "upgrade" || a === "target") up += 1;
+    // `"target"` is NOT a direction — see shapeAnalyst (meridian-catalyst-enrich.ts): it is the
+    // FALLBACK classification for a headline that mentions "price target"/"pt " but matched none
+    // of the raise/lower/upgrade/downgrade keywords checked first. A real price-target RAISE
+    // ("Firm Raises Price Target to $150") already matches the upgrade branch there and never
+    // reaches "target"; a real LOWER matches downgrade and never reaches it either. So every row
+    // that actually arrives here as `action === "target"` is, by construction, a headline whose
+    // direction this classifier could not determine — e.g. "Firm Sets $100 Price Target" or
+    // "Firm Maintains $100 Price Target" (which also matches "maintain" one branch later, but the
+    // "price target" check runs first). Counting it toward `up` treated "a price target was
+    // mentioned" as equivalent to "the price target was RAISED" (bullish), inflating the
+    // Street/analyst pillar's score on every earnings report with an ambiguous target headline —
+    // this pillar carries weight 1 into the composite `score` that drives `verdict`/`confidence`.
+    if (a === "upgrade") up += 1;
     else if (a === "downgrade") down += 1;
   }
   if (up > down && up > 0) {
@@ -144,10 +156,45 @@ function thermalLean(input: ReportInput): { lean: MeridianEarningsReportSignal["
 
 function bestPlayHint(
   verdict: MeridianEarningsReport["verdict"],
+  printed: boolean,
   input: ReportInput
 ): MeridianEarningsReport["best_play"] {
   const em = input.expected_move_pct;
   const emLabel = em != null ? `~${em}% implied band` : "options-implied band";
+  // The print has already landed — "wait for it" is the same forward-looking claim `headline`
+  // and `confidence` were fixed not to make (see the `printed` comment above). Mirrors their
+  // post-print framing (beat/miss/mixed) instead of falling into the pre-print branches below,
+  // which would otherwise say "...into earnings" about a day that already happened.
+  if (printed) {
+    if (verdict === "bullish") {
+      return {
+        headline: "Beat — the reaction is the read now",
+        structure:
+          input.king_strike != null && Number.isFinite(input.king_strike)
+            ? `Reaction trade above king ${input.king_strike.toLocaleString()} — keep risk inside ${emLabel}`
+            : `Reaction-trade call-side structures inside ${emLabel}`,
+        risk: "Gaps can exceed implied move — this is context, not a ticket",
+      };
+    }
+    if (verdict === "bearish") {
+      return {
+        headline: "Miss — the reaction is the read now",
+        structure:
+          input.call_wall != null && Number.isFinite(input.call_wall)
+            ? `Reaction-trade put-side or fade setups below call wall ${input.call_wall.toLocaleString()} · ${emLabel}`
+            : `Reaction-trade put-side structures inside ${emLabel}`,
+        risk: "Short squeezes on beats are common — respect the band",
+      };
+    }
+    return {
+      headline: "Mixed print — no clean directional edge",
+      structure:
+        em != null
+          ? `Vol structures inside ${emLabel} if playing the reaction`
+          : "Stand aside or play vol only with defined risk",
+      risk: "Mixed pillars — avoid forcing a directional read",
+    };
+  }
   if (input.days_until != null && input.days_until <= 1) {
     return {
       headline: "Wait for the print — gap risk dominates",
@@ -169,8 +216,8 @@ function bestPlayHint(
     return {
       headline: "Bearish lean into earnings",
       structure:
-        input.put_wall != null && Number.isFinite(input.call_wall ?? 0)
-          ? `Put-side or fade setups below call wall ${input.call_wall?.toLocaleString() ?? "—"} · ${emLabel}`
+        input.call_wall != null && Number.isFinite(input.call_wall)
+          ? `Put-side or fade setups below call wall ${input.call_wall.toLocaleString()} · ${emLabel}`
           : `Put-side structures inside ${emLabel}`,
       risk: "Short squeezes on beats are common — respect the band",
     };
@@ -456,7 +503,7 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
     headline,
     summary,
     signals,
-    best_play: bestPlayHint(verdict, input),
+    best_play: bestPlayHint(verdict, printed, input),
     risk_note:
       "BlackOut earnings report synthesizes live flow, structure, and fundamentals. Not financial advice.",
   };

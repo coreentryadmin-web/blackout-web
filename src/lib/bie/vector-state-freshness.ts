@@ -10,13 +10,19 @@
 // real and it is not small:
 //
 //  - the cron is RTH-gated (`2-59/5 11-21 * * 1-5`), so OFF-HOURS nothing refreshes the cache at
-//    all and an entry simply ages until the 15-minute TTL drops it;
-//  - it warms only the ~55 allowlist names, while Vector deliberately serves ANY optionable
-//    symbol — an off-allowlist ticker is only ever warmed by a reader's own self-warm;
-//  - its serial critical path is 76 computes against a 50s time budget, so every
-//    `computeVectorFullState` must finish inside ~658ms for the sweep to cover the universe.
-//    It is written to truncate rather than overrun ("partial completion is fine — the snapshots
-//    carry `asOf`"), and the tickers it does not reach keep their older entry.
+//    all and an entry simply ages until the TTL drops it (`vector-full-state-cache.ts`);
+//  - it warms only the merged static+dynamic+open-position universe, while Vector deliberately
+//    serves ANY optionable symbol — an off-universe ticker is only ever warmed by a reader's own
+//    self-warm;
+//  - its real per-batch cost is NOT the ~658ms this comment used to assume. MEASURED LIVE
+//    2026-10-08: a single `TICKER_CONCURRENCY=2 x 4 horizons` batch now routinely costs
+//    51-118 SECONDS (the chain fetch's real cost under current shared-rate-limiter contention),
+//    not milliseconds — so the sweep completes only ONE batch per 5-min run before its own 50s
+//    `TIME_BUDGET_MS` is blown, and `rotateTickersForWarmPass` (vector-full-state-warm-universe.ts)
+//    exists specifically so that the ticker(s) NOT reached this run get their turn on a LATER run
+//    rather than never. At 2 tickers/run against a 64-ticker universe, one full rotation lap is
+//    ~160 minutes — see `vector-full-state-cache.ts`'s TTL comment for why the TTL was raised to
+//    comfortably outlive that, rather than the old 15-min assumption this paragraph used to cite.
 //
 // So the design already DEPENDS on `asOf` to disclose staleness. That disclosure never actually
 // reached the reader: `get_vector_full_state` returns the raw state whose only time field is a
@@ -29,10 +35,34 @@
 // present, its MEANING is not, and the consumer guesses. The fix is to ship the meaning alongside
 // the timestamp — an explicit age, an explicit "now", and a named verdict — rather than to ship a
 // timestamp and hope the arithmetic happens.
+//
+// A SECOND, NARROWER GAP (found 2026-09-20, raised repeatedly on #4076 as a cross-desk question
+// before being scoped here): `freshness` above is a COMPUTE-recency verdict — "how long ago was
+// this number calculated" — and says nothing about MARKET-SESSION recency — "does that calculation
+// still describe a session the tape has moved in since". A weekend/holiday self-warm (any reader
+// that misses the Redis cache re-runs `computeVectorFullState` on demand — see the module doc
+// above) genuinely COMPUTES a fresh number *from* Friday's closing tape, so `describeVectorFreshness`
+// correctly reports `freshness: "live"`, age ~0s — while the underlying market data is 40+ hours
+// stale. Both readings are individually correct; a trader reading only `freshness: "live"` is
+// misled into thinking a live tick backs the number.
+//
+// The fix is ADDITIVE, per the Largo product contract's own rule (`docs/audit/LARGO-PRODUCT-
+// CONTRACT.md`: wrap, never flatten) — `market_session`/`market_session_note` sit ALONGSIDE
+// `freshness`, they do not replace or reinterpret it. `freshness` still answers "how old is this
+// compute"; the new fields answer the orthogonal question "is the market whose tape this compute
+// describes currently open". A consumer that wants "can I trust this as the current tape" needs
+// BOTH: `freshness !== "stale"` AND `market_session !== "CLOSED"`.
+//
+// Reuses `etSessionFacts` (`src/lib/et-session-facts.ts`) rather than inventing a fourth market-
+// phase derivation — that module's own header explains why a fourth copy is exactly how two
+// surfaces start disagreeing about the same minute; `market_session` here is a plain delegation to
+// its holiday-aware `isTradingDayEt` composition, not a new implementation.
 
 import { freshnessFromAgeMs, type BieFreshness } from "@/lib/bie/answer-envelope";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
+import { etSessionFacts, type MarketPhase } from "@/lib/et-session-facts";
+import { formatFreshnessAge, marketSessionDisclosure } from "@/lib/bie/market-session-disclosure";
 
 /**
  * How fresh a served Vector snapshot is. This is `BieFreshness` — the taxonomy that already
@@ -45,10 +75,6 @@ import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
  * a third scale would have been the defect.
  */
 export type VectorFreshness = BieFreshness;
-
-/** Boundaries are `freshnessFromAgeMs`'s: live < 60s, recent < 10min, stale beyond. */
-export const VECTOR_FRESHNESS_LIVE_SEC = 60;
-export const VECTOR_FRESHNESS_RECENT_SEC = 10 * 60;
 
 export type VectorFreshnessBlock = {
   /**
@@ -81,6 +107,23 @@ export type VectorFreshnessBlock = {
   freshness: VectorFreshness;
   /** Plain-language disclosure to carry into an answer when the state is not live. */
   note: string | null;
+  /**
+   * MARKET-SESSION recency, orthogonal to `freshness` (see the module doc above). OPEN |
+   * PRE-MARKET | AFTER-HOURS | CLOSED, evaluated at the READ instant (`nowMs`) — CLOSED on
+   * weekends and market holidays, not just overnight. A compute can read `freshness: "live"`
+   * (calculated moments ago) while `market_session` reads `CLOSED` (from a weekend/holiday
+   * self-warm off Friday's tape); consumers that need "does this reflect a live tick" must check
+   * both, never `freshness` alone.
+   */
+  market_session: MarketPhase;
+  /**
+   * Disclosure for exactly the misleading combination: compute is fresh (`freshness` is "live" or
+   * "recent") but the market itself is shut, so the freshness verdict alone would overstate how
+   * current the underlying tape is. Null whenever that combination does not apply — including when
+   * `freshness` is already "stale"/"unknown" (that verdict's own note already covers it) or when
+   * the market is genuinely open.
+   */
+  market_session_note: string | null;
 };
 
 /**
@@ -97,6 +140,9 @@ export function describeVectorFreshness(
   // date a live SPX figure to the next session and fabricate a close for the current one.
   const asOfEt = etStamp(nowMs);
   const sessionDate = etSessionDate(nowMs);
+  // Evaluated at the READ instant, same reasoning as `asOfEt`/`sessionDate` above: this is "is the
+  // MARKET open right now", not a property of the snapshot being described.
+  const marketSession = etSessionFacts(new Date(nowMs)).market_session;
   const observedMs = observedAtIso ? Date.parse(observedAtIso) : NaN;
 
   if (!Number.isFinite(observedMs)) {
@@ -112,6 +158,10 @@ export function describeVectorFreshness(
       // "We cannot tell how old this is" is a different answer from "it is fresh", and must never
       // be allowed to read as the latter.
       note: "This Vector state carries no readable measurement time, so its age is unknown — do not present it as live.",
+      market_session: marketSession,
+      // "unknown" already carries the strongest possible disclosure; a second note here would just
+      // be noise on top of it.
+      market_session_note: null,
     };
   }
 
@@ -128,12 +178,22 @@ export function describeVectorFreshness(
       freshness: "unknown",
       note:
         "This Vector state's measurement time is ahead of the reader clock (clock skew) — do not present it as live.",
+      market_session: marketSession,
+      market_session_note: null,
     };
   }
 
   const ageSec = Math.max(0, Math.round(rawAgeMs / 1000));
   // ONE classifier for the whole product — see the VectorFreshness doc above.
   const freshness: VectorFreshness = freshnessFromAgeMs(ageSec * 1000);
+
+  // The gap this block exists to close: a compute that is genuinely fresh (calculated moments ago,
+  // possibly by a weekend/holiday self-warm) can still describe a market that has not ticked since
+  // its last close. `freshness` alone cannot say so — it only ever saw the compute clock. Delegates
+  // to the shared `marketSessionDisclosure` (which already only fires for "live"/"recent" against a
+  // CLOSED market) so GEX's own equivalent disclosure (`play-brief-absence.ts`'s
+  // `gexMarketSessionNote`) can never independently drift from this one — see that module's header.
+  const marketSessionNote = marketSessionDisclosure(freshness, ageSec, marketSession);
 
   return {
     observed_at: new Date(observedMs).toISOString(),
@@ -147,15 +207,11 @@ export function describeVectorFreshness(
     freshness,
     note:
       freshness === "stale"
-        ? `This Vector state was measured ${formatAge(ageSec)} ago and has not refreshed since — say so rather than presenting it as the current tape.`
+        ? `This Vector state was measured ${formatFreshnessAge(ageSec)} ago and has not refreshed since — say so rather than presenting it as the current tape.`
         : freshness === "recent"
-          ? `This Vector state was measured ${formatAge(ageSec)} ago (within one refresh cycle).`
+          ? `This Vector state was measured ${formatFreshnessAge(ageSec)} ago (within one refresh cycle).`
           : null,
+    market_session: marketSession,
+    market_session_note: marketSessionNote,
   };
-}
-
-function formatAge(sec: number): string {
-  if (sec < 90) return `${sec}s`;
-  const min = Math.round(sec / 60);
-  return min < 60 ? `${min}m` : `${Math.round(min / 6) / 10}h`;
 }

@@ -8,10 +8,16 @@ import assert from "node:assert/strict";
 
 import {
   buildContractPlan,
+  envOverridePct,
   evaluateQuoteValidity,
+  evaluateContractLiquidity,
+  evaluateContractGreeksQuality,
   gradePlanExecutableFromBars,
   gradePlanFromBars,
+  CONTRACT_LIQUIDITY,
   DIRECTIONAL_LATE_CUTOFF_ET_MINUTES,
+  GREEKS_LOW_DELTA_FLOOR,
+  GREEKS_HIGH_THETA_DECAY_PCT,
   NEW_PLAY_CUTOFF_ET_MINUTES,
   PLAN_ILLIQUID_SPREAD_PCT,
   PLAN_RULES,
@@ -203,6 +209,58 @@ test("reconstructTrimScale: no post-flag bars → ungradeable (never a fabricate
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════
+// envOverridePct — the configurable-stops/scaling helper (2026-10-20 audit directive).
+// PLAN_RULES.stop_pct/target_pct are resolved from this ONCE at module load, so these tests
+// exercise the pure helper directly rather than PLAN_RULES itself (which would need a fresh
+// module import per env value to observe — the standard way to test a module-load-time
+// env-resolved constant without relying on import-order timing).
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("envOverridePct: absent env var falls back to the default", () => {
+  delete process.env.ZERODTE_TEST_PCT_UNSET;
+  assert.equal(envOverridePct("ZERODTE_TEST_PCT_UNSET", -50, true), -50);
+});
+
+test("envOverridePct: a valid negative override is honored for a stop (mustBeNegative=true)", () => {
+  process.env.ZERODTE_TEST_STOP = "-35";
+  assert.equal(envOverridePct("ZERODTE_TEST_STOP", -50, true), -35);
+  delete process.env.ZERODTE_TEST_STOP;
+});
+
+test("envOverridePct: a POSITIVE value for a stop is rejected (wrong sign never silently flips intent)", () => {
+  process.env.ZERODTE_TEST_STOP = "35";
+  assert.equal(envOverridePct("ZERODTE_TEST_STOP", -50, true), -50);
+  delete process.env.ZERODTE_TEST_STOP;
+});
+
+test("envOverridePct: a valid positive override is honored for a target (mustBeNegative=false)", () => {
+  process.env.ZERODTE_TEST_TARGET = "150";
+  assert.equal(envOverridePct("ZERODTE_TEST_TARGET", 100, false), 150);
+  delete process.env.ZERODTE_TEST_TARGET;
+});
+
+test("envOverridePct: a NEGATIVE value for a target is rejected", () => {
+  process.env.ZERODTE_TEST_TARGET = "-10";
+  assert.equal(envOverridePct("ZERODTE_TEST_TARGET", 100, false), 100);
+  delete process.env.ZERODTE_TEST_TARGET;
+});
+
+test("envOverridePct: zero, non-finite, and malformed values all fall back to the default", () => {
+  for (const bad of ["0", "abc", "NaN", "Infinity", ""]) {
+    process.env.ZERODTE_TEST_BAD = bad;
+    assert.equal(envOverridePct("ZERODTE_TEST_BAD", -50, true), -50, `"${bad}" must fall back`);
+  }
+  delete process.env.ZERODTE_TEST_BAD;
+});
+
+test("PLAN_RULES: the default (no env override present this run) matches the documented -50/+100 member-facing rule", () => {
+  // Guards "keep existing hard stops and member-facing behavior unchanged" — these two numbers
+  // must never silently drift just because configurability was added.
+  assert.equal(PLAN_RULES.stop_pct, -50);
+  assert.equal(PLAN_RULES.target_pct, 100);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
 // buildContractPlan — illiquid spread cap override (amplify relief).
 // ════════════════════════════════════════════════════════════════════════════════════
 
@@ -241,9 +299,159 @@ test("buildContractPlan: illiquidSpreadPct override widens G-9 cap", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════
+// evaluateContractGreeksQuality + buildContractPlan's greeks/greeks_quality threading —
+// SHADOW-ONLY diagnostic (2026-10-20, contract-selection-using-Greeks audit directive).
+// Never gates — these tests assert the DIAGNOSTIC verdict only, never that a plan is blocked.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("evaluateContractGreeksQuality: a healthy directional contract (real delta, modest theta) flags neither concern", () => {
+  const r = evaluateContractGreeksQuality({ delta: 0.42, theta: -0.05, mark: 2.0 });
+  assert.equal(r.low_delta, false);
+  assert.equal(r.high_theta_decay, false);
+  assert.equal(r.theta_decay_pct, 2.5);
+  assert.equal(r.note, null);
+});
+
+test("evaluateContractGreeksQuality: |delta| below the floor flags low_delta (deep OTM, weak directional exposure)", () => {
+  const r = evaluateContractGreeksQuality({ delta: 0.08, theta: -0.01, mark: 2.0 });
+  assert.equal(r.low_delta, true);
+  assert.ok(r.note?.includes("delta"));
+});
+
+test("evaluateContractGreeksQuality: a short-put negative delta is judged on its ABSOLUTE value, not raw sign", () => {
+  const strongShort = evaluateContractGreeksQuality({ delta: -0.5, theta: -0.05, mark: 2.0 });
+  assert.equal(strongShort.low_delta, false);
+  const weakShort = evaluateContractGreeksQuality({ delta: -0.1, theta: -0.05, mark: 2.0 });
+  assert.equal(weakShort.low_delta, true);
+});
+
+test("evaluateContractGreeksQuality: theta decay exceeding the ceiling (% of mark/day) flags high_theta_decay", () => {
+  // theta -0.40 on a mark of 2.0 => 20%/day, above the 15% ceiling.
+  const r = evaluateContractGreeksQuality({ delta: 0.5, theta: -0.4, mark: 2.0 });
+  assert.equal(r.high_theta_decay, true);
+  assert.equal(r.theta_decay_pct, 20);
+  assert.ok(r.note?.includes("theta"));
+});
+
+test("evaluateContractGreeksQuality: exactly at GREEKS_LOW_DELTA_FLOOR does not flag (strict <, not <=)", () => {
+  const r = evaluateContractGreeksQuality({ delta: GREEKS_LOW_DELTA_FLOOR, theta: null, mark: 2.0 });
+  assert.equal(r.low_delta, false);
+});
+
+test("evaluateContractGreeksQuality: exactly at GREEKS_HIGH_THETA_DECAY_PCT does not flag (strict >, not >=)", () => {
+  const theta = -(2.0 * GREEKS_HIGH_THETA_DECAY_PCT) / 100;
+  const r = evaluateContractGreeksQuality({ delta: 0.5, theta, mark: 2.0 });
+  assert.equal(r.high_theta_decay, false);
+  assert.equal(r.theta_decay_pct, GREEKS_HIGH_THETA_DECAY_PCT);
+});
+
+test("evaluateContractGreeksQuality: missing/non-finite/non-positive inputs degrade to unmeasured, never fabricated", () => {
+  for (const bad of [null, NaN, Infinity]) {
+    const r = evaluateContractGreeksQuality({ delta: bad, theta: -0.1, mark: 2.0 });
+    assert.equal(r.low_delta, false, `delta=${bad} must not fabricate low_delta`);
+  }
+  for (const bad of [null, NaN, Infinity]) {
+    const r = evaluateContractGreeksQuality({ delta: 0.5, theta: -0.1, mark: bad });
+    assert.equal(r.theta_decay_pct, null, `mark=${bad} must not fabricate a decay pct`);
+    assert.equal(r.high_theta_decay, false);
+  }
+  const bothUnmeasured = evaluateContractGreeksQuality({ delta: null, theta: null, mark: null });
+  assert.deepEqual(bothUnmeasured, { low_delta: false, high_theta_decay: false, theta_decay_pct: null, note: null });
+});
+
+test("buildContractPlan: threads greeks through and computes greeks_quality when supplied", () => {
+  const withGreeks = buildContractPlan({
+    occ: "O:TEST",
+    direction: "long",
+    price: 100,
+    flowAvgFill: 2,
+    bid: 1.95,
+    ask: 2.05,
+    mark: 2,
+    keySupports: [],
+    keyResistances: [],
+    vwap: null,
+    greeks: { delta: 0.08, gamma: 0.02, theta: -0.1, vega: 0.01 },
+  });
+  assert.deepEqual(withGreeks.greeks, { delta: 0.08, gamma: 0.02, theta: -0.1, vega: 0.01 });
+  assert.equal(withGreeks.greeks_quality?.low_delta, true);
+});
+
+test("buildContractPlan: omitting greeks leaves greeks/greeks_quality undefined/null — never fabricated", () => {
+  const noGreeks = buildContractPlan({
+    occ: "O:TEST",
+    direction: "long",
+    price: 100,
+    flowAvgFill: 2,
+    bid: 1.95,
+    ask: 2.05,
+    mark: 2,
+    keySupports: [],
+    keyResistances: [],
+    vwap: null,
+  });
+  assert.equal(noGreeks.greeks, undefined);
+  assert.equal(noGreeks.greeks_quality, null);
+});
+
+test("buildContractPlan: threads tickerClass/dayVolume/openInterest into liquidity_invalid_reason (G-21)", () => {
+  const commonInput = {
+    occ: "O:TEST",
+    direction: "long" as const,
+    price: 100,
+    flowAvgFill: 2,
+    bid: 1.9,
+    ask: 2.1,
+    mark: 2,
+    bidSize: 2,
+    askSize: 2,
+    keySupports: [],
+    keyResistances: [],
+    vwap: null,
+  };
+
+  // A size-2 book with no tickerClass passed (legacy floor 1) is fine. quote_invalid_reason
+  // (G-9, integrity-only since the 2026-09-09 split) never carries thin_size/no_volume_or_oi.
+  assert.equal(buildContractPlan(commonInput).quote_invalid_reason, null);
+  assert.equal(buildContractPlan(commonInput).liquidity_invalid_reason, null);
+
+  // The SAME size-2 book fails closed for an index/ETF ticker (floor 3) but passes for a
+  // single name (floor 2) — the whole point of the recalibration. Surfaces on
+  // liquidity_invalid_reason (G-21), not quote_invalid_reason (G-9).
+  assert.equal(
+    buildContractPlan({ ...commonInput, tickerClass: "index_etf" }).liquidity_invalid_reason,
+    "thin_size"
+  );
+  assert.equal(
+    buildContractPlan({ ...commonInput, tickerClass: "index_etf" }).quote_invalid_reason,
+    null
+  );
+  assert.equal(
+    buildContractPlan({ ...commonInput, tickerClass: "single" }).liquidity_invalid_reason,
+    null
+  );
+
+  // dayVolume/openInterest both zero → no_volume_or_oi, threaded through onto
+  // liquidity_invalid_reason.
+  assert.equal(
+    buildContractPlan({ ...commonInput, dayVolume: 0, openInterest: 0 }).liquidity_invalid_reason,
+    "no_volume_or_oi"
+  );
+  assert.equal(
+    buildContractPlan({ ...commonInput, dayVolume: 0, openInterest: 0 }).quote_invalid_reason,
+    null
+  );
+  assert.equal(
+    buildContractPlan({ ...commonInput, dayVolume: 0, openInterest: 50 }).liquidity_invalid_reason,
+    null
+  );
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
 // evaluateQuoteValidity — every fail-closed QuoteInvalidReason + the valid pass.
 // Checked most-degenerate-first: zero_bid → crossed → locked → mark_out_of_band →
-// wide_dollars → thin_size → stale.
+// wide_dollars → stale. (thin_size moved to evaluateContractLiquidity/G-21 — see its
+// own test block below, part of the 2026-09-09 G-9/G-21 split.)
 // ════════════════════════════════════════════════════════════════════════════════════
 
 test("evaluateQuoteValidity: a clean two-sided book returns null (valid → committable)", () => {
@@ -282,14 +490,99 @@ test("evaluateQuoteValidity: wide_dollars — an absolutely-huge spread the % ch
   assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 6.0, mark: 3.0 }), null);
 });
 
-test("evaluateQuoteValidity: thin_size — enforced ONLY when the provider reports both sizes", () => {
-  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 0, askSize: 5 }), "thin_size");
-  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 5, askSize: 0 }), "thin_size");
-  // Absent size is NOT proof of illiquidity → not enforced.
-  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: null, askSize: 5 }), null);
+test("evaluateQuoteValidity: no longer accepts/enforces size — that moved to evaluateContractLiquidity (G-21)", () => {
+  // A well-formed quote passes G-9 regardless of size — size is exclusively G-21's concern now.
   assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1 }), null);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// evaluateContractLiquidity (G-21, 2026-09-09 split) — thin_size + no_volume_or_oi, both
+// conditional-on-availability (absence of a field is never treated as proof of illiquidity).
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("evaluateContractLiquidity: thin_size — enforced ONLY when the provider reports BOTH sizes", () => {
+  assert.equal(evaluateContractLiquidity({ bidSize: 0, askSize: 5 }), "thin_size");
+  assert.equal(evaluateContractLiquidity({ bidSize: 5, askSize: 0 }), "thin_size");
+  // Absent size is NOT proof of illiquidity → not enforced.
+  assert.equal(evaluateContractLiquidity({ bidSize: null, askSize: 5 }), null);
+  assert.equal(evaluateContractLiquidity({}), null);
   // At the floor is fine.
-  assert.equal(evaluateQuoteValidity({ bid: 1.0, ask: 1.2, mark: 1.1, bidSize: 1, askSize: 1 }), null);
+  assert.equal(evaluateContractLiquidity({ bidSize: 1, askSize: 1 }), null);
+});
+
+test("evaluateContractLiquidity: no_volume_or_oi — enforced ONLY when BOTH volume and OI are reported, and BOTH are below the floor", () => {
+  assert.equal(evaluateContractLiquidity({ openInterest: 0, dayVolume: 0 }), "no_volume_or_oi");
+  // Either one alone clearing the floor is enough real activity.
+  assert.equal(evaluateContractLiquidity({ openInterest: 5, dayVolume: 0 }), null);
+  assert.equal(evaluateContractLiquidity({ openInterest: 0, dayVolume: 5 }), null);
+  // Absent field(s) are NOT proof of illiquidity → not enforced.
+  assert.equal(evaluateContractLiquidity({ openInterest: 0, dayVolume: null }), null);
+  assert.equal(evaluateContractLiquidity({}), null);
+});
+
+test("evaluateContractLiquidity: a clean, well-sized, active contract returns null", () => {
+  assert.equal(
+    evaluateContractLiquidity({ bidSize: 10, askSize: 10, openInterest: 500, dayVolume: 200 }),
+    null
+  );
+});
+
+// G-21 (2026-09-09): per-class min-quote-size floor, recalibrated from real measured
+// distributions (scripts/audit/zerodte-contract-liquidity-measure.mjs, 2026-09-09) —
+// see CONTRACT_LIQUIDITY.min_quote_size_by_class's comment for the evidence. Lives on
+// evaluateContractLiquidity (G-21, depth/liquidity), not evaluateQuoteValidity (G-9,
+// integrity-only) — see the 2026-09-09 G-9/G-21 split.
+test("evaluateContractLiquidity: thin_size — index_etf floor is 3, single is 2, legacy (omitted) is 1", () => {
+  assert.equal(CONTRACT_LIQUIDITY.min_quote_size_by_class.index_etf, 3);
+  assert.equal(CONTRACT_LIQUIDITY.min_quote_size_by_class.single, 2);
+  assert.equal(CONTRACT_LIQUIDITY.min_quote_size, 1);
+
+  // Legacy behavior unchanged when tickerClass is omitted — a size-1 book still passes.
+  assert.equal(evaluateContractLiquidity({ bidSize: 1, askSize: 1 }), null);
+
+  // index_etf: size 1 and 2 now fail (below the floor of 3); size 3 passes.
+  assert.equal(
+    evaluateContractLiquidity({ bidSize: 1, askSize: 5, tickerClass: "index_etf" }),
+    "thin_size"
+  );
+  assert.equal(
+    evaluateContractLiquidity({ bidSize: 2, askSize: 5, tickerClass: "index_etf" }),
+    "thin_size"
+  );
+  assert.equal(
+    evaluateContractLiquidity({ bidSize: 3, askSize: 5, tickerClass: "index_etf" }),
+    null
+  );
+
+  // single: size 1 fails (below the floor of 2); size 2 passes.
+  assert.equal(
+    evaluateContractLiquidity({ bidSize: 1, askSize: 5, tickerClass: "single" }),
+    "thin_size"
+  );
+  assert.equal(
+    evaluateContractLiquidity({ bidSize: 2, askSize: 5, tickerClass: "single" }),
+    null
+  );
+
+  // Absent size is still not proof of illiquidity, per-class or otherwise.
+  assert.equal(
+    evaluateContractLiquidity({ bidSize: null, askSize: 5, tickerClass: "index_etf" }),
+    null
+  );
+});
+
+test("evaluateContractLiquidity: no_volume_or_oi — a genuinely dead contract (zero volume AND zero OI) fails closed", () => {
+  assert.equal(
+    evaluateContractLiquidity({ dayVolume: 0, openInterest: 0 }),
+    "no_volume_or_oi"
+  );
+  // Either one alone (real signal, just thin) does NOT fail — this is a narrow "both zero"
+  // dead-contract backstop, not a tuned percentile floor (see the code comment for why).
+  assert.equal(evaluateContractLiquidity({ dayVolume: 0, openInterest: 5 }), null);
+  assert.equal(evaluateContractLiquidity({ dayVolume: 5, openInterest: 0 }), null);
+  // Conditional-on-availability — a missing field is not proof of a dead contract.
+  assert.equal(evaluateContractLiquidity({ dayVolume: null, openInterest: 0 }), null);
+  assert.equal(evaluateContractLiquidity({}), null);
 });
 
 test("evaluateQuoteValidity: stale — enforced ONLY when a quote age is supplied, boundary at the cap is fresh", () => {

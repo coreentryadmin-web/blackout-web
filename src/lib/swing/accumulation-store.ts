@@ -79,6 +79,17 @@ export function classifiedArchetypeOf(archetype: string | null | undefined): Swi
   return n === SWING_ACCUM_UNCLASSIFIED ? null : (n as SwingArchetype);
 }
 
+/** Normalize a direction value (PlayDirection or the store's lowercase form) to the canonical
+ *  "LONG"/"SHORT" used by both {@link swingThesisKey} and {@link tickerDirectionKey} — factored out
+ *  so the two keys can never drift apart on how they read the same direction value. */
+function normalizeSwingDirection(direction: PlayDirection | "long" | "short" | string): "LONG" | "SHORT" | string {
+  return direction === "long" || direction === "LONG"
+    ? "LONG"
+    : direction === "short" || direction === "SHORT"
+      ? "SHORT"
+      : String(direction).toUpperCase();
+}
+
 /**
  * Canonical thesis identity string: `TICKER|LONG|BREAKOUT`. Material change to any component is a NEW
  * thesis (fresh persistence). Direction accepts PlayDirection or store lowercase.
@@ -88,13 +99,33 @@ export function swingThesisKey(
   direction: PlayDirection | "long" | "short",
   archetype: SwingArchetype | string | null | undefined,
 ): string {
-  const dir =
-    direction === "long" || direction === "LONG"
-      ? "LONG"
-      : direction === "short" || direction === "SHORT"
-        ? "SHORT"
-        : String(direction).toUpperCase();
-  return `${ticker.toUpperCase()}|${dir}|${normalizeSwingAccumArchetype(archetype)}`;
+  return `${ticker.toUpperCase()}|${normalizeSwingDirection(direction)}|${normalizeSwingAccumArchetype(archetype)}`;
+}
+
+/**
+ * Looser identity string: `TICKER|LONG` — the SAME ticker+direction as {@link swingThesisKey} but
+ * WITHOUT the archetype component, i.e. every archetype bucket the accumulation store might be
+ * tracking in parallel for this ticker+direction collapses onto one key.
+ *
+ * WHY THIS EXISTS (Ask Largo standing mandate, live repro 2026-10-09 — RCL/SNDK/XAR): `snap.plays`
+ * carries exactly ONE `HorizonPlay` per ticker per scan, classified under whichever archetype THIS
+ * scan's fresh read lands on — but the accumulation store tracks MULTIPLE PARALLEL per-archetype
+ * theses for the same ticker+direction (confirmed live: a single ticker can carry 3+ simultaneous
+ * accumulation rows, one per archetype). When today's single play's archetype disagrees with
+ * whichever archetype actually cleared persistence (or is still building it) — a real, disclosed
+ * behavior, not a glitch: the play-brief narrative itself says "near-tie at entry... priority order
+ * broke the tie" — `swingThesisKey(p)` no longer matches ANY entry in `snap.watch`/`snap.observed`,
+ * and the ticker silently vanishes from the ENTIRE member board (not just WATCH — every section),
+ * even though the accumulation store has real, multi-session evidence for this exact ticker+direction
+ * under a DIFFERENT archetype bucket. `discoverSwingFromPersisted` uses this looser key as a fallback
+ * — ONLY to decide whether to surface the play at all when the exact thesis key misses, never to
+ * grant it `cleared`/WATCH status under the mismatched archetype — so a genuinely untracked
+ * single-sighting name (zero accumulation evidence under ANY archetype) still never surfaces, per the
+ * anti-lone-print invariant above, while a name the store IS actively tracking never goes invisible
+ * purely because this scan's archetype classification drifted.
+ */
+export function tickerDirectionKey(ticker: string, direction: PlayDirection | "long" | "short"): string {
+  return `${ticker.toUpperCase()}|${normalizeSwingDirection(direction)}`;
 }
 
 /** The PR-10 db.ts accessor surface this store drives. Injected so persistence policy is testable without a

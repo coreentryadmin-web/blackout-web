@@ -3,11 +3,8 @@ import "server-only";
 import { cache } from "react";
 import { auth } from "@/lib/auth-server";
 import { isAdminUser, resolveAdminApi } from "@/lib/admin-access";
-import { getClerkUserCached } from "@/lib/clerk-user-cache";
-import {
-  sessionClaimsHaveAuthFields,
-  toolAccessModeFromSessionClaims,
-} from "@/lib/clerk-session-claims";
+import { getClerkUserCached, invalidateClerkUserCache } from "@/lib/clerk-user-cache";
+import { toolAccessModeFromSessionClaims } from "@/lib/clerk-session-claims";
 import { isToolLaunched, type ToolKey } from "@/lib/tool-access";
 import {
   parseToolAccessMap,
@@ -38,12 +35,20 @@ export async function userCanAccessTool(
     return resolveToolAccessForUser(key, global, { [key]: jwtMode });
   }
 
-  // JWT tier/role configured but no tool_access claim → inherit (no per-user overrides in token).
-  // Per-user block/grant overrides require tool_access in the session JWT or fall through to getUser.
-  if (global && sessionClaimsHaveAuthFields(sessionClaims)) {
-    return true;
-  }
-
+  // No `tool_access` claim in the JWT does NOT mean no per-user override exists — it only
+  // means this session token wasn't minted with one. docs/clerk/SESSION-TOKEN-CLAIMS.md's
+  // Dashboard setup configures `tier`/`role` custom claims only; `tool_access` is never added
+  // to the token in the documented/actual production config. A prior version of this fast
+  // path treated "claim absent" as "no override, inherit" and returned `true` outright
+  // whenever the tool was globally launched AND the JWT carried tier/role — i.e. for every
+  // ordinary signed-in request against spx/flows/heatmap/nighthawk/vector/meridian (every
+  // tool except Largo, the only one with `defaultLaunched: false`). That silently ignored a
+  // real, admin-set `block` override on an already-launched tool (`POST
+  // /api/admin/users/tools/bulk` and the single-user PATCH route both allow blocking any of
+  // the 7 tool keys, not just Largo) — a banned/blocked user kept full access as long as
+  // their session JWT carried tier/role, which is the normal, documented state for every
+  // signed-in member. Must fall through to the cached getUser read below, which actually
+  // reads the stored `tool_access` override instead of assuming it is empty.
   const overrides = await loadUserToolAccess(userId);
   return resolveToolAccessForUser(key, global, overrides);
 }
@@ -123,27 +128,50 @@ export async function getToolAccessForUserId(userId: string): Promise<ToolAccess
   return loadUserToolAccess(userId);
 }
 
-/** Persist overrides to Clerk publicMetadata.tool_access (compact — no inherit keys). */
+/**
+ * Persist overrides to Clerk publicMetadata.tool_access (compact — no inherit keys).
+ *
+ * PARTIAL-MERGE PAYLOAD ONLY — do NOT read the user's full publicMetadata first and resend it.
+ * This used to call `client.users.getUser(userId)`, spread the ENTIRE returned publicMetadata
+ * into a local copy, set/delete `tool_access` on that copy, then write the WHOLE copy back via
+ * `updateUserMetadata`. Clerk's `updateUserMetadata` performs a server-side top-level MERGE of
+ * whatever keys are present in the payload (a key present overwrites, `null` removes it, every
+ * other key is left untouched) — `updateClerkMembershipMetadata` (membership.ts) and
+ * `setPersonalWebhook` (personal-alert-store.ts) both rely on exactly this and both say so in
+ * their own comments, specifically to AVOID a read-modify-write race. Resending the full
+ * snapshot here defeated that: any OTHER top-level field (tier, role, whop_user_id,
+ * whop_membership_id, membership_kind, tier_managed_by) that changed concurrently between this
+ * function's `getUser` read and its `updateUserMetadata` write got silently reverted to the
+ * stale value this function re-sent, because that stale value was explicitly present in the
+ * merge payload.
+ *
+ * Concretely reachable in production: `POST /api/admin/users/tools/bulk` calls this once per
+ * matching user across up to 500 users (a multi-round-trip operation that can run for a while),
+ * while a Whop webhook (membership.activated/deactivated) can concurrently flip that SAME user's
+ * `tier` via `updateClerkMembershipMetadata`'s own partial-merge write. Whichever write landed
+ * first got silently undone the moment this function's write landed after it — a lost update on
+ * a security/billing-relevant field, not just on `tool_access`. See
+ * `tool-access-server-metadata-race.test.ts` for a reproduction.
+ *
+ * The fix is to stop doing a read-modify-write at all: compute the intended `tool_access` value
+ * and send ONLY that key, relying on Clerk's own merge semantics — the same pattern already
+ * established by the two sibling functions named above. No `getUser` call is needed any more.
+ */
 export async function setToolAccessForUserId(
   userId: string,
   map: ToolAccessMap
 ): Promise<void> {
   const { clerkClient } = await import("@clerk/nextjs/server");
   const client = await clerkClient();
-  // Write path: always fresh (admin mutation) — do not use the request read cache.
-  const user = await client.users.getUser(userId);
-  const meta = { ...(user.publicMetadata as Record<string, unknown>) };
   const compact = Object.fromEntries(
     Object.entries(map).filter(([, v]) => v === "grant" || v === "block")
   );
-  if (Object.keys(compact).length === 0) {
-    delete meta.tool_access;
-  } else {
-    meta.tool_access = compact;
-  }
-  await client.users.updateUserMetadata(userId, { publicMetadata: meta });
+  await client.users.updateUserMetadata(userId, {
+    // `null` removes the key server-side (Clerk merge semantics) instead of leaving a stale
+    // `{}` behind — matches `setPersonalWebhook`'s null-clears convention.
+    publicMetadata: { tool_access: Object.keys(compact).length === 0 ? null : compact },
+  });
   // Drop the short-TTL getUser cache so the next gate sees the new tool_access map.
-  const { invalidateClerkUserCache } = await import("@/lib/clerk-user-cache");
   invalidateClerkUserCache(userId);
 }
 

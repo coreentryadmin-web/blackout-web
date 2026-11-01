@@ -18,16 +18,21 @@
 // the in-process ET gate (so the cron can fire on a wide UTC band and the route decides) and logs
 // every run via logCronRun, so the cron-staleness-watchdog catches a silent never-fired warmer.
 
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
 import { refreshZeroDteBoardSnapshot } from "@/lib/platform/zerodte-service";
 import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
-import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
+import { isEtCashRth, isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { loadZeroDteScanHeartbeat } from "@/lib/play-engine-heartbeat";
+import {
+  acquireHeavyCronSlot,
+  heavyCronReservedSlotRedisKey,
+} from "@/lib/cron/heavy-cron-concurrency-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,6 +75,37 @@ const RERUN_COOLDOWN_SEC = 60;
 /** Wider floor for repeated `?force=1` calls outside the extended warm window — same gap #4558 fixed on desk-warm. */
 const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
 
+/**
+ * WEDGED-LOCK BREAKER (2026-09-18, issue #5213 P0).
+ *
+ * The cooldown + overlap lock above stop legitimate overlapping runs, but neither has any
+ * judgment about whether the background work they protect ever actually FINISHES. If
+ * `dispatchWarm()`'s background chain dies mid-flight — its own comment above documents the
+ * exact live mechanism: the chain takes ~4-5 minutes, and this ECS task can be recycled for a
+ * deploy well inside that window — `OVERLAP_LOCK_KEY`'s `.finally()` release never runs, and the
+ * cooldown/lock pair then silently blocks every subsequent attempt for up to
+ * `OVERLAP_LOCK_TTL_SEC` (900s), regardless of how stale the scan heartbeat gets. Measured live:
+ * `zerodte_scan_heartbeat` stuck 50+ minutes while `cron_job_runs` kept logging "ok"/"skipped"
+ * every cycle — the synchronous handshake has zero visibility into whether the one thing this
+ * cron exists to do (`recordZeroDteScanTick`) is actually advancing.
+ *
+ * Gated to cash RTH only — off-hours staleness is expected and harmless (`market_hours_stale`
+ * itself is already suppressed off-window in `admin-cron-health.ts`), so there is nothing to
+ * break there. `STEAL_ATTEMPT_KEY` is its own short-TTL NX claim so exactly one concurrent
+ * invocation performs the clear even if many replicas observe `critical_stale` at once — it
+ * never changes the cooldown/overlap claim logic itself, only pre-empties a wedge that would
+ * otherwise persist for the rest of the lock's TTL.
+ */
+const STEAL_ATTEMPT_KEY = "zerodte-warm:steal-attempt";
+const STEAL_ATTEMPT_TTL_SEC = 30;
+
+/** Cash-RTH recovery when the scan heartbeat is past the 5m stale band (or 10m critical). */
+function scanHeartbeatNeedsWedgedRecovery(
+  hb: Awaited<ReturnType<typeof loadZeroDteScanHeartbeat>> | null
+): boolean {
+  return Boolean(hb?.stale || hb?.critical_stale);
+}
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -88,6 +124,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  let scanHeartbeat: Awaited<ReturnType<typeof loadZeroDteScanHeartbeat>> | null = null;
+  if (isEtCashRth()) {
+    scanHeartbeat = await loadZeroDteScanHeartbeat().catch(() => null);
+    if (scanHeartbeatNeedsWedgedRecovery(scanHeartbeat)) {
+      const wonSteal = await sharedCacheSetNx(
+        STEAL_ATTEMPT_KEY,
+        { startedAt: started },
+        STEAL_ATTEMPT_TTL_SEC
+      ).catch(() => false);
+      if (wonSteal) {
+        await Promise.all([
+          sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined),
+          sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined),
+          sharedCacheDel(heavyCronReservedSlotRedisKey("zerodte-warm")).catch(() => undefined),
+        ]);
+      }
+    }
+  }
+
   const effectiveCooldownSec = isEtExtendedWarmHours()
     ? RERUN_COOLDOWN_SEC
     : OFF_WINDOW_FORCE_COOLDOWN_SEC;
@@ -97,21 +152,49 @@ export async function GET(req: NextRequest) {
     effectiveCooldownSec
   ).catch(() => true));
   if (withinCooldown) {
-    const payload = {
-      ok: true,
-      skipped: true,
-      reason: `rate-limited — zerodte-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
-    };
-    await logCronRun("zerodte-warm", started, payload);
-    return NextResponse.json(payload);
+    // Steal clears cooldown only for the NX winner; other replicas (or a handshake that re-set
+    // cooldown every 60s without scanZeroDteBoard finishing) must still recover during
+    // critical_stale — measured 2026-10-22: cron-audit query RED while scan heartbeat >10m stale.
+    if (scanHeartbeat?.critical_stale) {
+      console.warn(
+        "[cron/zerodte-warm] cooldown active but scan heartbeat critical_stale — bypassing rerun floor"
+      );
+      await sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined);
+    } else {
+      const payload = {
+        ok: true,
+        skipped: true,
+        reason: `rate-limited — zerodte-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
+      };
+      await logCronRun("zerodte-warm", started, payload);
+      return NextResponse.json(payload);
+    }
   }
 
-  const acquired = await sharedCacheSetNx(
+  let overlapAcquired = await sharedCacheSetNx(
     OVERLAP_LOCK_KEY,
     { startedAt: started },
     OVERLAP_LOCK_TTL_SEC
   ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
-  if (!acquired) {
+  if (!overlapAcquired && scanHeartbeat?.critical_stale) {
+    console.warn(
+      "[cron/zerodte-warm] overlap lock held but scan heartbeat critical_stale — clearing wedged overlap lock"
+    );
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    overlapAcquired = await sharedCacheSetNx(
+      OVERLAP_LOCK_KEY,
+      { startedAt: started },
+      OVERLAP_LOCK_TTL_SEC
+    ).catch(() => true);
+  }
+  let forceDispatchWithoutOverlap = false;
+  if (!overlapAcquired && scanHeartbeat?.critical_stale) {
+    console.warn(
+      "[cron/zerodte-warm] overlap lock busy but scan heartbeat critical_stale — forcing dispatch without overlap claim"
+    );
+    forceDispatchWithoutOverlap = true;
+  }
+  if (!overlapAcquired && !forceDispatchWithoutOverlap) {
     const payload = {
       ok: true,
       skipped: true,
@@ -119,6 +202,37 @@ export async function GET(req: NextRequest) {
     };
     await logCronRun("zerodte-warm", started, payload);
     return NextResponse.json(payload);
+  }
+
+  // Cross-CRON concurrency cap — distinct from OVERLAP_LOCK_KEY above, which only stops THIS
+  // cron from overlapping with itself. Live CloudWatch (2026-10-13 13:35-13:56 UTC) showed this
+  // cron and 5 OTHER heavy crons in flight at once on the shared web tier, 1:1 correlated with
+  // sustained ALB tail latency — see heavy-cron-concurrency-guard.ts's header for the evidence.
+  let slot = await acquireHeavyCronSlot("zerodte-warm", OVERLAP_LOCK_TTL_SEC);
+  if (!slot) {
+    // Measured live 2026-10-21: wedged-lock steal (#5213) cleared cooldown/overlap, but the
+    // shared 2-slot heavy-cron pool stayed occupied by multi-minute Vector crons — every
+    // zerodte-warm fire logged this skip while zerodte_scan_heartbeat stayed critical_stale for
+    // 30+ minutes and Cron audit query failed on main. Escalate only when the scanner heartbeat
+    // is already in the watchdog's critical band; routine contention still idempotent-skips.
+    if (scanHeartbeatNeedsWedgedRecovery(scanHeartbeat)) {
+      console.warn(
+        "[cron/zerodte-warm] heavy-cron pool full but scan heartbeat stale/critical — escalating past shared slot cap"
+      );
+      slot = {
+        cronName: "zerodte-warm",
+        release: async () => undefined,
+      };
+    } else {
+      await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+      const payload = {
+        ok: true,
+        skipped: true,
+        reason: "heavy-cron concurrency slot unavailable (idempotent skip)",
+      };
+      await logCronRun("zerodte-warm", started, payload);
+      return NextResponse.json(payload);
+    }
   }
 
   // Earnings cache is fast — keep it in the handshake so the cron log proves the tick fired.
@@ -165,15 +279,29 @@ export async function GET(req: NextRequest) {
         console.error("[cron/zerodte-warm] background warm REJECTED:", err);
       })
       .finally(() => {
-        void sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+        if (overlapAcquired) {
+          void sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+        }
+        void slot.release();
       });
   };
 
-  try {
-    after(dispatchWarm);
-  } catch {
-    dispatchWarm();
-  }
+  // `after()` was the original mechanism here (see the block comment above) but is NOT trusted
+  // as the sole dispatch path any more. Live-observed 2026-09-08: `zerodte_scan_rejections` (the
+  // persisted output of exactly this background work) took its LAST write at 14:23:33 UTC and
+  // never wrote again for 3+ hours, spanning a full production redeploy at 16:26 UTC — ruling out
+  // "one unlucky replica recycled mid-task" (a fresh deploy gives brand-new replicas ~80 minutes
+  // and dozens of cooldown-gated chances to succeed once). CloudWatch showed only 2 real
+  // `[cron/zerodte-warm] background done` completions in an 8-hour window against ~36 route
+  // "ok" responses recorded by cron-health — i.e. the FAST synchronous handshake kept succeeding
+  // while the DEFERRED work silently, repeatedly failed to run to completion. This ECS Fargate
+  // deployment is a long-lived standalone Next.js server, not an ephemeral serverless function —
+  // `after()`'s entire reason to exist (keep a request's execution context alive past the
+  // response on a platform that would otherwise tear it down) does not apply here; the process
+  // itself stays up regardless. A bare fire-and-forget call needs nothing from `after()` to keep
+  // running on this architecture, so it is now the PRIMARY path (this is the exact fallback the
+  // code already trusted when `after()` threw synchronously — now unconditional, not catch-only).
+  void dispatchWarm();
 
   const accepted = {
     ok: true,

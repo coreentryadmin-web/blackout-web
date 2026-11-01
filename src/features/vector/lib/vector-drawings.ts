@@ -264,11 +264,23 @@ export function hitTestDrawing(
       case "text":
         score = ((t - d.t) / tolTimeSec) ** 2 + ((p - d.price) / tolPrice) ** 2;
         break;
-      case "fib":
+      case "fib": {
+        // vector-drawings-primitive.ts draws each fib level as a horizontal segment bounded to
+        // [tLo, tHi] (the drawing's own anchor times), not full-chart-width like an hline — so
+        // the hit test must respect that same bound. Before this fix the score ignored `t`
+        // entirely and matched purely on price, meaning a click anywhere along the fib's price
+        // level — even thousands of seconds outside the drawn segment, on an empty part of the
+        // chart — still registered as a hit on the fib (regression test:
+        // "fib hit test is bounded by the drawn [t1,t2] range, not infinite"). Inside the range
+        // the time penalty is 0, so in-range sensitivity is unchanged from before.
+        const tLo = Math.min(d.t1, d.t2);
+        const tHi = Math.max(d.t1, d.t2);
+        const tOut = t < tLo ? tLo - t : t > tHi ? t - tHi : 0;
         for (const { price } of fibPrices(d.p1, d.p2)) {
-          score = Math.min(score, ((p - price) / tolPrice) ** 2);
+          score = Math.min(score, (tOut / tolTimeSec) ** 2 + ((p - price) / tolPrice) ** 2);
         }
         break;
+      }
       case "vline":
         score = ((t - d.t) / tolTimeSec) ** 2;
         break;

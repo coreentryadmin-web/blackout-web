@@ -58,10 +58,125 @@ test("the overlap lock fails OPEN on a Redis error rather than wedging the cron 
 });
 
 test("the lock is released in a finally block so a thrown sweep still frees the next run", () => {
-  const finallyBlock = /\} finally \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);\s*\}/;
+  const finallyBlock =
+    /\} finally \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);\s*await slot\.release\(\);\s*\}/;
   assert.match(routeSrc, finallyBlock, "release must run on both the success and error paths");
+});
+
+test("the cross-cron concurrency slot is acquired after the self-overlap lock and released in the same finally", () => {
+  // Regression for the cross-CRON overlap the self-overlap lock above never covered — see
+  // heavy-cron-concurrency-guard.ts's header for the live CloudWatch evidence (2026-10-13 RTH
+  // window, six different heavy crons in flight at once, 1:1 correlated with the standing ALB
+  // tail-latency P1).
+  assert.match(
+    routeSrc,
+    /const slot = await acquireHeavyCronSlot\("vector-full-state-snapshot", OVERLAP_LOCK_TTL_SEC\);/,
+    "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL"
+  );
+  const acquireIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const slotIdx = routeSrc.indexOf("const slot = await acquireHeavyCronSlot(");
+  assert.ok(
+    acquireIdx > 0 && slotIdx > acquireIdx,
+    "the cross-cron slot must be acquired AFTER the self-overlap lock, not before or instead of it"
+  );
+  assert.match(
+    routeSrc,
+    /if \(!slot\) \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);/,
+    "a lost cross-cron race must release the self-overlap lock immediately so the NEXT fire gets a clean shot"
+  );
 });
 
 test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 900s)", () => {
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
+});
+
+test("the background sweep warms the shared-universe ∪ open-swing-position ticker set, not the static allowlist alone", () => {
+  // Regression for the gap vector-dynamic-universe.ts's own header names: Night Hawk's
+  // discovery-driven tickers (e.g. a real committed swing position outside the static
+  // allowlist) were never proactively warmed, so their full-state cache entry only existed on
+  // a member/Largo cold read — see vector-full-state-warm-universe.ts for the live repro.
+  assert.match(
+    routeSrc,
+    /import \{[\s\S]{0,80}activeVectorFullStateTickers[\s\S]{0,80}\} from "@\/features\/vector\/lib\/vector-full-state-warm-universe"/,
+    "must import the shared-universe ∪ open-swing-position ticker helper"
+  );
+  const sweepIdx = routeSrc.indexOf("async function runVectorFullStateSnapshot");
+  const sweepTickersIdx = routeSrc.indexOf("const rawTickers = await activeVectorFullStateTickers();");
+  assert.ok(
+    sweepIdx > 0 && sweepTickersIdx > sweepIdx,
+    "the background sweep must source its ticker set from activeVectorFullStateTickers(), not the static allowlist alone"
+  );
+});
+
+test("the sweep rotates its ticker order from a persisted cursor instead of a fixed index-0 restart", () => {
+  // Regression for the permanent-starvation bug: measured live 2026-10-08, 13/13 consecutive
+  // runs logged written=8 (exactly one TICKER_CONCURRENCY batch) against a 59-62-ticker universe
+  // and budgetHit=true every time — because the loop always restarted at index 0 on the SAME
+  // fixed-order list, it died on the same first ~2 static tickers every run, forever, and never
+  // reached anything after them (including a real open swing position — see
+  // vector-full-state-warm-universe.ts's rotateTickersForWarmPass header for the full trace).
+  assert.match(
+    routeSrc,
+    /import \{\s*activeVectorFullStateTickers,\s*resolveWarmCursorIndex,\s*rotateTickersForWarmPass,?\s*\} from "@\/features\/vector\/lib\/vector-full-state-warm-universe"/,
+    "must import the rotation + cursor-resolution helpers alongside the ticker-set helper"
+  );
+  assert.match(
+    routeSrc,
+    /const cursorTicker = \(await sharedCacheGet<unknown>\(WARM_CURSOR_KEY\)\.catch\(\(\) => null\)\) \?\? null;/,
+    "must read the persisted cursor as unknown (a deploy-transition leftover number must not be trusted as a string) and fail-open to null"
+  );
+  assert.match(
+    routeSrc,
+    /const cursor = resolveWarmCursorIndex\(rawTickers, cursorTicker\);/,
+    "must resolve the remembered ticker to TODAY's list content-addressed, never trust a raw offset across a reorder"
+  );
+  assert.match(
+    routeSrc,
+    /const tickers = rotateTickersForWarmPass\(rawTickers, cursor\);/,
+    "the sweep must iterate the ROTATED order, not the raw fixed order"
+  );
+  assert.match(
+    routeSrc,
+    /const lastAttemptedTicker = attempted > 0 \? tickers\[attempted - 1\] : null;/,
+    "must derive the last ticker NAME actually attempted this run, not a raw count"
+  );
+  assert.match(
+    routeSrc,
+    /await sharedCacheSet\(WARM_CURSOR_KEY, lastAttemptedTicker, WARM_CURSOR_TTL_SEC\)\.catch\(\(\) => undefined\);/,
+    "must persist the ticker NAME so the NEXT run resumes right after it regardless of any reorder"
+  );
+});
+
+test("a reordered ticker universe does not desync the persisted cursor (regression, 2026-10-08)", () => {
+  // BUG FOUND same day as the ordering fix: a raw numeric cursor persisted across runs is only
+  // safe while activeVectorFullStateTickers()'s order is STABLE. The position-first reorder
+  // above changes that order on every deploy that adds/removes/reshuffles open positions — a
+  // bare index silently keeps meaning "skip N array slots," not "resume after ticker X," and
+  // points the rotation start somewhere else entirely the moment the list moves under it.
+  // Content-addressing via resolveWarmCursorIndex is the fix; this proves the route wires it in
+  // (not a bare number) by checking the three call-sites can't have regressed back to the old
+  // number-cursor shape.
+  assert.doesNotMatch(
+    routeSrc,
+    /sharedCacheGet<number>\(WARM_CURSOR_KEY\)/,
+    "the persisted cursor must be a ticker NAME (string), never a raw numeric index again"
+  );
+  assert.doesNotMatch(
+    routeSrc,
+    /\(cursor \+ attempted\) % rawTickers\.length/,
+    "must not reintroduce raw-index cursor arithmetic"
+  );
+});
+
+test("event loop yields are added between ticker batches to prevent blocking incoming requests", () => {
+  assert.match(
+    routeSrc,
+    /await new Promise\(\(resolve\) => setImmediate\(resolve\)\)/,
+    "must yield the event loop between batches using setImmediate to prevent blocking"
+  );
+  assert.match(
+    routeSrc,
+    /if \(i \+ TICKER_CONCURRENCY < tickers\.length\)/,
+    "yields must only occur between batches, not after the final batch"
+  );
 });

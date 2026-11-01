@@ -137,7 +137,7 @@ import { extendedHoursShadeBands } from "@/features/vector/lib/vector-session-ho
 import { computeVolumeProfile, sessionRthVolumeProfileBars } from "@/features/vector/lib/vector-volume-profile";
 import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
 import { vectorChartTimeScaleGutter } from "@/features/vector/lib/vector-volume-profile-layout";
-import type { WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
+import { sidePctMaxima, type WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
 import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
@@ -207,6 +207,7 @@ import {
   VECTOR_COMPARE_FOUR_UP_OVERLAY_REFRESH_MS,
   VECTOR_WALL_TRAIL_SEC,
   vectorComparePerfPollMs,
+  liveTickDisplayRecomputeDue,
 } from "@/features/vector/lib/vector-cadence";
 import { vectorWallTrailSecClient } from "@/features/vector/lib/vector-wall-sample";
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
@@ -1266,9 +1267,31 @@ function applyWallBeadMarkers(
   return { strikes: active, rendered };
 }
 
-/** Feed the WallRailPrimitive the composed call+put trails. maxPct is taken across BOTH sides so the
- *  king wall (whichever side) is the single frame reference every band scales against — a call and a
- *  put of equal share render equally fat. A null primitive or empty trails draws nothing. */
+/**
+ * Feed the WallRailPrimitive the composed call+put trails.
+ *
+ * `maxPct` (combined) still gates overall rail visibility. SIZE/COLOUR now scale each side
+ * against its OWN side's peak (`callMaxPct`/`putMaxPct`), not the combined one.
+ *
+ * WHY THIS CHANGED (2026-09-10, live member report — screenshot showed every call-side bead at
+ * one indistinguishable size/shade): the combined-book denominator was deliberate ("a call and a
+ * put of equal share render equally fat" — see the prior version of this comment) and correct on
+ * a balanced day. But on a day where one side's book share dominates the other (measured live,
+ * SPX 0DTE: put walls 16.3%/6.3%/6.2%/5.7%..., call walls 0.89%/0.45%/0.4%/0.35%... — an 18x gap
+ * between the two sides' own kings), EVERY bead on the weaker side sits so far below the
+ * combined-book denominator that both `beadRadiusForPctShare`'s fixed floor and `fillAlpha`'s
+ * floor clamp the entire side to one size/shade — the real ~6x spread within that side (0.14% to
+ * 0.89%) never gets a chance to show. A member reads that as "the beads all look the same",
+ * because on that side they genuinely do.
+ *
+ * Per-SIDE (not per-ROW/per-strike) is the right granularity: the prior A/B history in
+ * vector-wall-rail-primitive.ts rejected a per-ROW peak denominator (self-fulfilling — a
+ * gradually-building wall is always near its own running max) and a per-ROW SESSION peak (measured
+ * to INVERT cross-row ordering). Neither objection applies here: like the combined-book
+ * denominator this replaces, a per-side max is SHARED across every strike on that side, so
+ * cross-strike ordering within a side is preserved exactly as it was — the only change is which
+ * strikes share the denominator (one side's strikes, not both sides' combined).
+ */
 function feedWallRail(
   rail: WallRailPrimitive | null,
   callRendered: StrikeTrail[],
@@ -1289,15 +1312,15 @@ function feedWallRail(
   intervalSec = 0
 ): void {
   if (!rail) return;
-  let maxPct = 0;
-  for (const t of callRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
-  for (const t of putRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
+  const { callMaxPct, putMaxPct, maxPct } = sidePctMaxima(callRendered, putRendered);
   const tierMaps = showIntegrityRings ? beadIntegrityTierMaps(history, activeLens) : null;
   rail.setData(
     {
       callTrails: callRendered,
       putTrails: putRendered,
       maxPct,
+      callMaxPct,
+      putMaxPct,
       callColor,
       putColor,
       profile,
@@ -1601,6 +1624,8 @@ export function VectorChart({
   /** Canonical 1m session bars — SSE live ticks and Polygon seed write here only. */
   const minuteBarsRef = useRef<VectorBar[]>(initialBars);
   const displayBarTimeRef = useRef<number>(0);
+  /** Throttle gate for the live-tick display-bar/volume recompute — see vector-cadence.ts. */
+  const lastDisplayRecomputeAtRef = useRef<number>(0);
   const timeframeRef = useRef<VectorTimeframeMinutes>(initialTimeframe);
   // Tracks the timeframe the time scale was last fitContent()'d to, so the timeframe effect can
   // tell a GENUINE timeframe switch (refit expected) from a re-run triggered by a dependency's
@@ -4370,11 +4395,25 @@ export function VectorChart({
         ) {
           const move = Math.abs(curSpot - gexHeatmapSpotAtFetchRef.current) / gexHeatmapSpotAtFetchRef.current;
           if (move >= VECTOR_GEX_HEATMAP_FAST_MOVE_PCT) {
-            void fetch(`/api/market/vector/gex-heatmap?ticker=${encodeURIComponent(ticker)}&dte=${dteHorizonRef.current}` +
+            // STALE-HORIZON GUARD: mirrors fetchGexHeatmap's own
+            // `dteHorizonRef.current !== dteHorizon` check above (it bails both right after the
+            // fetch resolves AND again after the json body is parsed). This duplicate fetch — the
+            // same /api/market/vector/gex-heatmap call, fired on-demand from the live SSE tick
+            // instead of the poll interval — used to have NO such check: if the member switched the
+            // DTE horizon selector while this in-flight request was still resolving, the OLD
+            // horizon's grid landed AFTER the switch and silently overwrote the already-correct
+            // grid the horizon-change effect had just fetched, repainting the surface with the
+            // wrong horizon's walls. Unlike a ticker switch (safe today only because every render
+            // site remounts VectorChart via key={activeTicker}), a DTE-horizon switch does NOT
+            // remount — same component instance, same shared gexHeatmapGridRef — so this call site
+            // needed its own staleness check rather than inheriting one for free.
+            const horizonAtFetch = dteHorizonRef.current;
+            void fetch(`/api/market/vector/gex-heatmap?ticker=${encodeURIComponent(ticker)}&dte=${horizonAtFetch}` +
               `&session=${encodeURIComponent(sessionYmd)}&bucketSec=${heatmapBucketSecForChartTimeframe(timeframeRef.current)}&force=1`)
               .then(async (res) => {
-                if (!res.ok) return;
+                if (!res.ok || dteHorizonRef.current !== horizonAtFetch) return;
                 const grid = ((await res.json()) as { grid?: GexHeatmapGrid | null }).grid ?? null;
+                if (dteHorizonRef.current !== horizonAtFetch) return;
                 gexHeatmapGridRef.current = grid;
                 gexHeatmapSpotAtFetchRef.current = curSpot;
                 gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
@@ -4385,7 +4424,16 @@ export function VectorChart({
         }
         minuteBarsRef.current = upsertBar(minuteBarsRef.current, snap.candle as VectorBar);
         setSessionBars(minuteBarsRef.current);
-        if (!inReplay) {
+        // THROTTLED (2026-10-14): displayBarsFromMinute + the volume rebuild below are O(n) full
+        // rebuilds of the whole bar history, not incremental — see vector-cadence.ts's own comment
+        // on VECTOR_LIVE_TICK_DISPLAY_RECOMPUTE_THROTTLE_MS for the measured production impact of
+        // running this ungated on every SSE tick (main thread pinned near 100%, which starves
+        // Next.js's low-priority nav transition and makes clicking away from a long-open SPX
+        // Slayer tab silently do nothing). Gating to 5Hz keeps the chart visually live while
+        // bounding the rebuild's cost regardless of tick frequency.
+        const nowTick = Date.now();
+        if (!inReplay && liveTickDisplayRecomputeDue(lastDisplayRecomputeAtRef.current, nowTick)) {
+          lastDisplayRecomputeAtRef.current = nowTick;
           const displayBars = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
           const lastDisplay = displayBars[displayBars.length - 1];
           if (lastDisplay) {

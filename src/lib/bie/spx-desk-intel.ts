@@ -204,9 +204,19 @@ export function wallsBriefLine(
   }
   if (p.flip != null) {
     parts.push(`γflip ${n(p.flip, 0)}`);
-  }
-  if (p.distance_to_flip_pct != null) {
-    parts.push(`{{${p.distance_to_flip_pct >= 0 ? "+" : ""}${p.distance_to_flip_pct.toFixed(1)}}}% from γflip`);
+    // BUG FIX (2026-10-17, Ask Largo standing mandate, live repros AAPL/META/AMZN/MSFT): this used
+    // to render the raw `p.distance_to_flip_pct` field, which gex-positioning.ts computes as
+    // (spot - flip) / spot -- positive when the flip is BELOW spot. Every sibling clause in this
+    // same WALLS line (call wall, put wall, a few lines above) is phrased via `signedPts(level -
+    // spot)` -- the opposite convention, positive when the level is ABOVE spot -- so this clause's
+    // sign read backwards relative to its own neighbors in the identical string. Live repro: AAPL
+    // spot 342.62, flip 348.59 (flip is +5.97, i.e. ABOVE spot) rendered "-1.7% from γflip"; AMZN
+    // spot 248.98, flip 273.66 (+24.68 ABOVE) rendered "-9.9%". Recomputing locally via the same
+    // (flip - spot) / spot formula signedPts already uses above keeps this clause on the one sign
+    // convention the rest of the line uses, instead of trusting the raw provider field's opposite
+    // one. Same defect class, different file, as the swing play-brief fix in PR #6147.
+    const flipDistPct = ((p.flip - spot) / spot) * 100;
+    parts.push(`{{${flipDistPct >= 0 ? "+" : ""}${flipDistPct.toFixed(1)}}}% from γflip`);
   }
 
   if (!parts.length) return null;

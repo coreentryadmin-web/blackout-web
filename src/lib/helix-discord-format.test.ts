@@ -8,6 +8,7 @@ import {
   contractStackHitsFromFlows,
   formatHelixStackHitTimeline,
   helixDiscordWriteup,
+  moneyShort,
   passesHelixDiscordFilters,
   selectHelixDiscordDigest,
   selectHelixDiscordStacks,
@@ -302,4 +303,13 @@ test("writeup includes gex_context_line when supplied", () => {
     gex_context_line: "Structure: strike 735 is 1.2% below call wall (742)",
   });
   assert.match(text, /Structure: strike 735/);
+});
+
+test("moneyShort promotes a value that rounds to 1000 of a unit into the next unit, never an overflowed label", () => {
+  assert.equal(moneyShort(999_600), "$1.00M");
+  assert.equal(moneyShort(999_999), "$1.00M");
+  assert.equal(moneyShort(-999_600), "$-1.00M");
+  assert.equal(moneyShort(999_400), "$999K");
+  assert.equal(moneyShort(500_000), "$500K");
+  assert.equal(moneyShort(1_000_000), "$1.00M");
 });

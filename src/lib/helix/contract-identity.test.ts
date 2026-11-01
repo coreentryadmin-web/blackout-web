@@ -5,7 +5,6 @@ import {
   contractSide,
   flowContractKey,
   flowContractKeyOrUnknown,
-  sameFlowContract,
   strikeMills,
 } from "./contract-identity";
 
@@ -15,7 +14,6 @@ test("the defect this file exists for: a half-dollar strike is NOT the strike ab
   // Measured live 2026-08-23: INTC 92.5P and INTC 93P both printed on the same expiry, and the old
   // Math.round(strike) key merged them.
   assert.notEqual(flowContractKey({ ...base, strike: 92.5 }), flowContractKey({ ...base, strike: 93 }));
-  assert.equal(sameFlowContract({ ...base, strike: 92.5 }, { ...base, strike: 93 }), false);
   // ...and the other measured pairs.
   assert.notEqual(flowContractKey({ ...base, strike: 91.5 }), flowContractKey({ ...base, strike: 92 }));
   assert.notEqual(
@@ -70,7 +68,6 @@ test("side collapses anything call-ish to C and everything else to P", () => {
 test("an unusable strike returns null so a caller cannot group unrelated rows under NaN", () => {
   assert.equal(flowContractKey({ ...base, strike: null }), null);
   assert.equal(flowContractKey({ ...base, strike: "n/a" }), null);
-  assert.equal(sameFlowContract({ ...base, strike: null }, { ...base, strike: null }), false);
 });
 
 test("the never-null variant still separates by ticker/expiry/side", () => {

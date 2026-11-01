@@ -283,6 +283,34 @@ describe("fetch: assembler (injected deps)", () => {
     assert.deepEqual(input.errors, {});
   });
 
+  // BUG FOUND (Ask Largo standing mandate, 2026-10-08): `darkPool.asOf` must track the dark-pool
+  // cache's OWN (looser) fetchedAt (`vector.darkPoolAsOf`), not the whole Vector state's
+  // compute-recency (`vector.asOf`) — compose.ts's real exponential half-life decay keys off this
+  // exact field for the `darkpool-confluence` Cortex source (shared by 0DTE + swing commit gates).
+  // Live repro shape: a Vector state recomputed seconds ago (fresh `asOf`) can still carry
+  // dark-pool levels fetched up to ~24 minutes earlier (that cache's own looser TTL/cadence) —
+  // see `vector-full-state.ts`'s `darkPoolAsOf` field doc and MARKET-OPEN-VALIDATION.md #357 for
+  // the sibling narrative-layer fix this mirrors for the scoring layer.
+  test("darkPool.asOf anchors to vector.darkPoolAsOf (the cache's own fetchedAt), not vector.asOf", async () => {
+    const staleDarkPoolAt = new Date(NOW.getTime() - 20 * 60 * 1000); // 20min before the fresh Vector read
+    const input = await fetchCortexInputs("nvda", "long", {
+      now: NOW,
+      deps: deps({
+        fetchVectorFullState: async () =>
+          ({ ...vectorState(), darkPoolAsOf: staleDarkPoolAt.getTime() }) as unknown as VectorFullState,
+      }),
+    });
+    assert.equal(input.darkPool?.asOf, staleDarkPoolAt.toISOString());
+    assert.notEqual(input.darkPool?.asOf, NOW.toISOString(), "must not silently read as fresh as vector.asOf");
+  });
+
+  test("darkPool.asOf falls back to vector.asOf when darkPoolAsOf is unset (legacy/unknown cache entry)", async () => {
+    // The shared `vectorState()` fixture never sets `darkPoolAsOf` — same "unknown never reads as
+    // stale" discipline `vector-absent-sections.ts`'s `reportVectorAbsences` already applies.
+    const input = await fetchCortexInputs("nvda", "long", { now: NOW, deps: deps() });
+    assert.equal(input.darkPool?.asOf, NOW.toISOString());
+  });
+
   test("index ticker routes: market catalysts + breadth, no earnings/sector calls", async () => {
     let earningsCalls = 0;
     let sectorCalls = 0;

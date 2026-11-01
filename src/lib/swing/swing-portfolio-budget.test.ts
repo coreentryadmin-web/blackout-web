@@ -5,6 +5,9 @@ import {
   evaluateSwingCommitBudget,
   resolveProductionPortfolioBudget,
   budgetRiskUsd,
+  budgetVerdictStamp,
+  parseBudgetVerdictStamp,
+  bookRiskLine,
   DEFAULT_PORTFOLIO_BUDGET,
   PRODUCTION_PORTFOLIO_BUDGET,
   type PortfolioBudget,
@@ -198,8 +201,84 @@ test("commit budget: unknown/zero risk contributes 0 and is never blocked (don't
   assert.equal(budgetRiskUsd(pos("X", { riskUsd: -5 })), 0, "negative risk clamps to 0");
 });
 
+test("commit budget: a small candidate is NOT blocked by an EXISTING over-cap position sharing its OWN ticker (different archetype/direction can coexist on one ticker)", () => {
+  // Per-position cap $2k. An existing NVDA position (e.g. a different archetype) is already over it at $3k —
+  // that is that position's own breach, pinned at ITS commit time. A brand-new, properly-sized $500 NVDA
+  // candidate (a different thesis: distinct archetype/direction, allowed to coexist per swingThesisKey) must
+  // clear on its own merits, not inherit a sibling same-ticker position's breach merely because the ticker
+  // string matches — the gate's own docstring states this exact invariant ("an EXISTING position's
+  // per-position breach must not block a fresh small one").
+  const book = [pos("NVDA", { riskUsd: 3000, isOvernight: true })];
+  const v = evaluateSwingCommitBudget(book, pos("NVDA", { riskUsd: 500, isOvernight: true }), PRODUCTION_PORTFOLIO_BUDGET);
+  assert.equal(v.blocked, false, "the candidate's own risk ($500) is well under the $2k cap");
+  assert.deepEqual(v.blockedDimensions, []);
+});
+
 test("commit budget: disarmed budget NEVER blocks (advisory only)", () => {
   const v = evaluateSwingCommitBudget([], pos("NVDA", { riskUsd: 999_999, isOvernight: true }), DEFAULT_PORTFOLIO_BUDGET);
   assert.equal(v.blocked, false);
   assert.equal(v.enforce, false);
+});
+
+// ─── budgetVerdictStamp / parseBudgetVerdictStamp / bookRiskLine (Ask Largo 2026-10-26) ────────
+
+test("budgetVerdictStamp: pulls candidateRiskUsd (the position's OWN risk) and the per-position LIMIT, never the dimension's cross-book observedUsd max", () => {
+  // Book already holds a bigger NVDA position ($1800) than the $500 candidate under test — the
+  // per_position_loss dimension's own observedUsd will be the book's $1800 max, which must NEVER
+  // leak into the stamp as if it were this candidate's own contribution.
+  const book = [pos("NVDA", { riskUsd: 1800, isOvernight: true })];
+  const v = evaluateSwingCommitBudget(book, pos("AMD", { riskUsd: 500, isOvernight: true }), PRODUCTION_PORTFOLIO_BUDGET);
+  const stamp = budgetVerdictStamp(v);
+  assert.equal(stamp.candidateRiskUsd, 500);
+  assert.equal(stamp.perPositionConstrained, true);
+  assert.equal(stamp.perPositionLimitUsd, 2000); // 2% of $100k
+  assert.equal(stamp.portfolioConstrained, true);
+  assert.equal(stamp.portfolioLimitUsd, 6000); // 6% of $100k
+  assert.equal(stamp.portfolioObservedUsd, 2300); // whole-book total (1800 + 500) — this IS the right number
+});
+
+test("budgetVerdictStamp: disarmed budget stamps enforce:false and candidateRiskUsd still carries through", () => {
+  const v = evaluateSwingCommitBudget([], pos("NVDA", { riskUsd: 1000, isOvernight: true }), DEFAULT_PORTFOLIO_BUDGET);
+  const stamp = budgetVerdictStamp(v);
+  assert.equal(stamp.enforce, false);
+  assert.equal(stamp.candidateRiskUsd, 1000);
+  assert.equal(stamp.perPositionConstrained, false);
+  assert.equal(stamp.portfolioConstrained, false);
+});
+
+test("parseBudgetVerdictStamp: round-trips a real stamp exactly", () => {
+  const v = evaluateSwingCommitBudget([], pos("NVDA", { riskUsd: 500, isOvernight: true }), PRODUCTION_PORTFOLIO_BUDGET);
+  const stamp = budgetVerdictStamp(v);
+  const roundTripped = parseBudgetVerdictStamp(JSON.parse(JSON.stringify(stamp)));
+  assert.deepEqual(roundTripped, stamp);
+});
+
+test("parseBudgetVerdictStamp: null/non-object/missing-candidateRiskUsd all honestly return null, never a fabricated stamp", () => {
+  assert.equal(parseBudgetVerdictStamp(null), null);
+  assert.equal(parseBudgetVerdictStamp(undefined), null);
+  assert.equal(parseBudgetVerdictStamp("not an object"), null);
+  assert.equal(parseBudgetVerdictStamp({ blocked: true }), null); // no candidateRiskUsd
+});
+
+test("bookRiskLine: null stamp or advisory-only (enforce:false) ⇒ no fabricated line", () => {
+  assert.equal(bookRiskLine(null), null);
+  const v = evaluateSwingCommitBudget([], pos("NVDA", { riskUsd: 500, isOvernight: true }), DEFAULT_PORTFOLIO_BUDGET);
+  assert.equal(bookRiskLine(budgetVerdictStamp(v)), null);
+});
+
+test("bookRiskLine: a real armed stamp cites BOTH per-position and portfolio percentages, correctly scoped to the reference book (never 'your own account')", () => {
+  const book = [pos("TSLA", { riskUsd: 1000, isOvernight: true })];
+  const v = evaluateSwingCommitBudget(book, pos("NVDA", { riskUsd: 500, isOvernight: true }), PRODUCTION_PORTFOLIO_BUDGET);
+  const line = bookRiskLine(budgetVerdictStamp(v));
+  assert.ok(line, "expected a real line for an armed, constrained budget");
+  assert.match(line!, /25% of the per-position reference cap/); // 500 / 2000
+  assert.match(line!, /25% of the total-book reference cap/); // (1000+500) / 6000
+  assert.doesNotMatch(line!, /your session risk budget/i);
+  assert.match(line!, /not your own account size/);
+});
+
+test("bookRiskLine: unconstrained dimensions (no capital set) ⇒ null, not a line with no numbers", () => {
+  const budget: PortfolioBudget = { ...DEFAULT_PORTFOLIO_BUDGET, enforce: true };
+  const v = evaluateSwingCommitBudget([], pos("NVDA", { riskUsd: 500, isOvernight: true }), budget);
+  assert.equal(bookRiskLine(budgetVerdictStamp(v)), null);
 });

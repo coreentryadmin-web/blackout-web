@@ -51,17 +51,66 @@ import { pinnedLivePnlPct } from "./marks-math";
 /** v1 exit constants (B-8: "thresholds are v1 constants; the counterfactual exit
  *  grader measures scratched-winner cost vs saved-losses and tunes them with data"). */
 export const EXIT_RULES = {
-  /** Peak P&L % that ARMS the first early floor (+5%). Captures modest winners that
-   *  never reach the breakeven tier (FINDINGS 2026-08-04: GOOGL +22%, RDDT +12%). */
-  ratchet_early_arm_pnl_pct: 15,
-  ratchet_early_arm_floor_pct: 5,
-  /** Peak P&L % that ARMS breakeven — a trade that reached +20% may never finish red. */
+  /** Peak P&L % that ARMS the first early floor. Captures modest winners that never
+   *  reach the breakeven tier (FINDINGS 2026-08-04: GOOGL +22%, RDDT +12%). Floor
+   *  SCALES with the peak (same `ratchet_lock_floor_fraction` the lock tier already
+   *  uses) instead of staying flat — see that constant's own comment for why a flat
+   *  floor giving back a fixed-fraction-of-peak's worth of a real run is the same bug
+   *  shape one tier down. Measured 2026-09-21 (90-day window, then-flat +5% tier,
+   *  peaks 15.3%-19.6%): scaling at 40% of peak won on EVERY case (26/26). LOWERED
+   *  2026-09-23 from 15% to 5%: before this fix, ANY peak below 15% got zero floor
+   *  protection at all — measured 90-day population with peak in [3%,15%) (n=83):
+   *  actual mean close -9.92%. Counterfactual at threshold=5%/fraction=0.4 (same
+   *  fraction already shipped at every other tier, extended one tier further down
+   *  rather than tuning a fourth separate constant): n=67, 46/67 win, counterfactual
+   *  mean +4.56% (delta +15.85pp) — the largest-sample, most consistent result of any
+   *  arm-tier measurement in this file's history (held across thresh=3/5/8% x
+   *  frac=0.3/0.4/0.5, every combination net-positive). Because `peak_pnl_pct` is BY
+   *  CONSTRUCTION a trade's all-time maximum, this population definitionally never
+   *  exceeded 15% at any point in its real life — a lower floor could never have
+   *  capped a bigger win that already happened. Checked against `flat_theta_bleed`
+   *  (evaluateExitState step 4, only reached if the floor/stop check in step 1 does
+   *  NOT fire): the two conditions are structurally disjoint — floor-breach only
+   *  fires after a real favorable move (peak >= arm) then a pullback, while
+   *  flat_theta_bleed only fires when peak never left the ±10% band at all — so a
+   *  lower arm tier preempts the timeout exactly when it should, never fights it.
+   *  `ratchet_early_arm_floor_pct` is kept only as the value the fraction produces AT
+   *  this tier's own arm threshold — see `ratchet_lock_floor_pct`'s comment for the
+   *  identical reasoning at the lock tier. */
+  ratchet_early_arm_pnl_pct: 5,
+  ratchet_early_arm_floor_pct: 2,
+  /** Peak P&L % that ARMS breakeven — a trade that reached +20% may never finish red.
+   *  Floor SCALES with the peak (same fraction) rather than staying flat at 0% — same
+   *  2026-09-21 measurement, 40 `ratchet_breakeven_floor` exits, peaks 20.4%-48.6%,
+   *  current flat 0% floor giving back essentially the entire run (mean close -0.47%,
+   *  i.e. slightly negative — a handful of real cases closed BELOW breakeven entirely,
+   *  e.g. OKLO peak +26.4% -> -12%, SNDK peak +26.1% -> -4.16%, the exact "green trade
+   *  finishing red" this floor exists to prevent). 40% of peak wins on EVERY one of the
+   *  40 cases (mean +12.07pp) — the same fraction that won cleanly on both this tier
+   *  AND the early-arm tier above, so one constant now covers the whole curve from
+   *  the lower-arm threshold up through the lock tier, continuous at every boundary
+   *  (0.4*5=2, the 2026-09-23 lower-arm floor; 0.4*20=8 > the old flat 0; 0.4*50=20,
+   *  unchanged at the lock threshold — see `ratchet_lock_floor_fraction`'s own
+   *  comment for that boundary). */
   ratchet_arm_pnl_pct: 20,
-  /** The breakeven-armed floor (0%). */
   ratchet_arm_floor_pct: 0,
-  /** Peak P&L % that LOCKS profit: floor rises from breakeven to +20%. */
+  /** Peak P&L % that LOCKS profit: floor SCALES with the peak instead of staying flat.
+   *  Was a flat 20% regardless of how large the peak got — measured 2026-09-14 (90-day
+   *  window, 9/9 `ratchet_profit_floor` exits): every single one closed inside
+   *  [18.9%, 21.1%] despite peaks ranging 51.0%-89.3%, a ~44pp average giveback per
+   *  occurrence (LUNR alone: +89.3% peak -> +20.5% close). Counterfactual backtest on
+   *  those same 9 real cases: 30% of peak is net WORSE than the old flat floor
+   *  (undercuts smaller peaks the flat 20 already protected, mean -0.6pp); 40% beats
+   *  the flat floor on every one of the 9 cases (mean +5.9pp, range +0.3pp..+16.7pp);
+   *  50% does better still (+12.3pp mean) but was judged too aggressive to ship without
+   *  a live re-measurement. `ratchet_lock_floor_fraction` below is the shipped rule;
+   *  `ratchet_lock_floor_pct` is kept only as the exact value the fraction produces AT
+   *  the +50% threshold (0.4 * 50 = 20) so existing comparisons/tests that classify a
+   *  floor as "locked" via `floor >= ratchet_lock_floor_pct` stay correct — every locked
+   *  floor is now >= 20, never a flat 20. */
   ratchet_lock_pnl_pct: 50,
   ratchet_lock_floor_pct: 20,
+  ratchet_lock_floor_fraction: 0.4,
   /** Post-TRIM runner floor: half is banked at target; the rest never gives back
    *  more than down to +50% of the remaining position's basis. */
   runner_floor_pct: 50,
@@ -153,14 +202,24 @@ export type ExitEngineInput = {
   planTarget: number | null;
   /** Current lifecycle status (derivePlayStatus). CLOSED rows are never re-decided. */
   status: string | null;
-  /** True once the play has trimmed (status TRIM is sticky via the peak latch). */
+  /** RATCHET MODE ONLY: true once the play has trimmed (status TRIM is sticky via the
+   *  peak latch — the ratchet's own single trim event, `peak >= target`). Ignored in
+   *  trim_scale mode: decideTrimScale re-derives the equivalent "peak cleared the
+   *  target" fact directly from `planTarget`/peak (ratchetTargetReached below), never
+   *  from this field or from `status`. This split matters because the (badge) `status`
+   *  field now flips to TRIM at trim_scale's OWN, much lower, first-tranche threshold
+   *  (plan.ts's derivePlayStatus, `trimScaleFirstTranchePct`) — before this split
+   *  existed, wiring `status === "TRIM"` straight into this field would have forced the
+   *  +50% runner floor the instant ONE of trim_scale's TWO tranches banked, which the
+   *  2026-09-09 finding traced through to a same-tick EXIT of the whole remaining
+   *  position on a mild pullback, well before the schedule's actual second tranche. */
   trimmed: boolean;
   /** The entry's committed Cortex score (entry_context.cortex.score) — the cushion
    *  the thesis was bought with; opposing weight must exceed it to break the thesis.
    *  Null/absent → the thesis_min_oppose_weight noise floor is the margin. */
   entryCortexScore?: number | null;
-  /** Profit-management family (A/B). Omitted → DEFAULT_EXIT_MODE ("ratchet", the
-   *  shipped floor-exit). "trim_scale" selects the E5 ⅓@+25% / ⅓@+50% / run scale-out. */
+  /** Profit-management family (A/B). Omitted → DEFAULT_EXIT_MODE ("trim_scale", the
+   *  E5 ⅓@+25% / ⅓@+50% / run scale-out). "ratchet" selects the shipped floor-exit. */
   exitMode?: ZeroDteExitMode;
   /** Day regime that conditions the trim-scale tranche thresholds (trim_scale only;
    *  ignored in ratchet mode). Omitted → "neutral" (the E5-measured base schedule). */
@@ -169,26 +228,142 @@ export type ExitEngineInput = {
    *  the two-stage scale-out needs, same pattern as `trimmed` for the ratchet runner.
    *  trim_scale only; omitted → 0. Ignored in ratchet mode. */
   trimsTaken?: number;
+  /** Whether `trimsTaken` reflects a REAL persisted bank rather than a cosmetic
+   *  stand-in. Omitted → true (every existing caller/test that sets `trimsTaken`
+   *  directly means it genuinely). exit-sync.ts sets this to `false` while
+   *  ZERODTE_TRIM_BANK_LIVE is off: `trimsTaken` is recomputed there as
+   *  trimTranchesArmed(peak, regime) ONLY so the dead-zone guard below still behaves —
+   *  it is never a real bank. Controls narrative ONLY ("already banked" / "thirds
+   *  banked" text) — never the ladder math (armed/taken/dead-zone), which must stay
+   *  byte-identical regardless, so a cosmetic `taken` can still suppress the floor's
+   *  breakeven dump exactly as designed, while the member-facing sentence stops
+   *  claiming a bank that never happened (live 2026-10-20, SLS: a thesis-break exit
+   *  read "2/2 tranches already banked" while the row's own timeline_tranches was
+   *  null — the whole position was a single sale). trim_scale only. */
+  trimsTakenIsGenuine?: boolean;
   /** When GEX is on UW fallback (not Polygon chain), skip gex-walls thesis-break exits. */
   gexQualityDegraded?: boolean;
+  /** True when this play's entry was committed by RELIEVING its only veto (a `gex-walls`
+   *  wall fact) rather than the wall being genuinely clear — same live-thesis grace period
+   *  as `gexQualityDegraded` above, so the exit check doesn't immediately re-veto on the
+   *  exact fact relief overrode (entry_context.cortex.gex_walls_veto_relieved,
+   *  cortex-vector-relief.ts's `gexWallsVetoWasRelieved`; live-monitor finding 2026-09-09,
+   *  SHOP/MSTR both closed within 1 second of entry on this exact veto). */
+  entryGexWallsVetoRelieved?: boolean;
+  /** Latched trough premium since flag (DB GREATEST/LEAST-latched watermark, same
+   *  source `closedStopReason`/governor already trust for stop determination —
+   *  db.ts ZeroDteSetupLogRow.trough_premium). Used ONLY to correct the
+   *  flat_theta_bleed narrative below: without it, that exit's "never left the
+   *  ±band" claim is measured off peak (upside) and the CURRENT mark (downside)
+   *  alone, so a play that dipped BELOW the band and recovered before the 25-min
+   *  clock fired gets a false "never left the band" sentence. Never changes WHEN
+   *  the exit fires (same age/peak/current-pnl condition) — narrative only. */
+  troughPremium?: number | null;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const fmtPct = (n: number | null) => (n == null ? "?" : `${n > 0 ? "+" : ""}${round2(n)}%`);
+// The live option mark legitimately lands on a half-cent (mid=(bid+ask)/2, see
+// live-marks.ts) or carries more float noise than that — `pnlPct`/`fmtPct` above are
+// computed from the RAW mark on purpose (rounding the mark before dividing can erase
+// real P&L on a low-priced 0DTE premium, see the `buildExitContext` cent-rounding test
+// in exit-engine.test.ts). But every OTHER dollar premium this product shows a member —
+// entry_premium, last_mark, peak_premium, trough_premium, plan stop/target — is 2dp,
+// both at the data layer and in the UI (ZeroDteBoard.tsx's own `.toFixed(2)`). This
+// narrative `detail` string is the one place `currentMark` was interpolated RAW with no
+// formatting at all, so a half-cent/float mark (e.g. 1.355) rendered as a 3+-decimal
+// figure beside an already-2dp plan stop/target in the very same sentence. `fmtMark`
+// rounds ONLY the displayed text — it never touches `pnlPct`'s own computation.
+const fmtMark = (n: number) => n.toFixed(2);
+
+/**
+ * Re-interpolate a floor/stop-HONORED exit's leading "Mark X (+Y%)" clause with the
+ * HONORED mark/pnl — the exact values `buildExitContext` persists as `mark`/`pnl_pct` —
+ * instead of leaving the RAW pre-honoring numbers `evaluateExitState`/`decideTrimScale`
+ * baked into `decision.detail` at decision time, before `resolveExitMark` (which runs
+ * AFTERWARD, inside `buildExitContext`) has decided whether the floor/stop mark wins.
+ *
+ * FINDING (2026-10-26, live SPXW/SPY/TSLA): on every `mark_honored:true` exit, the
+ * persisted `pnl_pct` prices off the HONORED mark (better — honoring, by construction,
+ * can only improve on the raw print: `resolveExitMark`'s `Math.max(observedMark,
+ * floorMark)`) while `exit_detail` — the SAME string `ZeroDteBoard.tsx` renders as the
+ * member-facing tooltip and Largo quotes verbatim — kept the RAW, worse percentage
+ * forever, because `detail: decision.detail` was passed through unchanged. A member
+ * could read "Mark 14.1 (+17.5%) is at/below the +18.33% floor" right beside a +18.33%
+ * credited P&L chip for the SAME exit — and 17.5 < 18.33 make the sentence read as
+ * self-contradictory ("at/below" a floor the quoted number is actually below the floor
+ * it's being compared to only because the quoted number itself is stale).
+ *
+ * SCOPE: only the exits `resolveExitMark` can ever honor — `action === "EXIT"` with a
+ * reason starting with "ratchet"/"runner_floor", or exactly "trim_scale_dead_zone_floor"
+ * — share this exact leading "Mark <fmtMark> (<fmtPct>)" template at their one call site
+ * each (the floor-breach branches in `evaluateExitState` and `decideTrimScale`). No other
+ * decision shape (thesis break, plan_stop, plan_target, flat_theta_bleed, HOLD/RAISE_FLOOR)
+ * is ever `honored`, so gating on the caller's own `honored` flag — already computed from
+ * the same reason allowlist — is sufficient; no separate reason check is needed here.
+ * A detail that doesn't start with the expected clause (should never happen given the
+ * scope above) is returned unchanged rather than mangled.
+ */
+function regenerateExitDetailForHonoredMark(
+  detail: string,
+  honored: boolean,
+  honoredMark: number,
+  honoredPnlPct: number | null
+): string {
+  if (!honored) return detail;
+  return detail.replace(
+    /^Mark [\d.]+ \([+-]?[\d.]+%\)/,
+    `Mark ${fmtMark(honoredMark)} (${fmtPct(honoredPnlPct)})`
+  );
+}
+
+/**
+ * The flat_theta_bleed exit detail — shared by both exit modes (2026-09-17 fix). The
+ * exit condition only checks peak (upside) and the CURRENT mark (downside), so a play
+ * that dipped below -flat_band_pct and recovered before the timeout fired used to get
+ * the blanket "never left the ±band" sentence regardless — false whenever a real trough
+ * breach happened. Live-evidence trough_premium (already DB-latched for stop
+ * determination elsewhere) tells the true story: say so when it disagrees with the
+ * "never left" claim, otherwise keep the original sentence unchanged.
+ */
+function flatTimeoutDetail(
+  ageMinutes: number,
+  peakPnlPct: number | null,
+  pnlPct: number,
+  troughPnlPct: number | null
+): string {
+  const breachedBand = troughPnlPct != null && troughPnlPct <= -EXIT_RULES.flat_band_pct;
+  const bandClaim = breachedBand
+    ? `dipped to ${fmtPct(troughPnlPct)} intraday but recovered back inside the ±${EXIT_RULES.flat_band_pct}% band`
+    : `never left the ±${EXIT_RULES.flat_band_pct}% band`;
+  return (
+    `${Math.floor(ageMinutes)}min in and the play ${bandClaim} ` +
+    `(peak ${fmtPct(peakPnlPct)}, now ${fmtPct(pnlPct)}) — on 0DTE flat is losing; a small scratch beats theta decay.`
+  );
+}
 
 /**
  * The monotonic protective floor (P&L %) for a given PEAK P&L. Pure function of the
  * latched peak (which only ever grows) + the trim latch, so the floor can never
  * lower — the "monotonic ratchet" property is structural, not remembered state.
+ *
+ * Every armed tier (early-arm/arm/lock) now floors at the SAME fraction of peak
+ * (`ratchet_lock_floor_fraction`, 0.4) rather than three independently-flat constants
+ * — see `ratchet_early_arm_floor_pct`/`ratchet_arm_floor_pct`/`ratchet_lock_floor_pct`'s
+ * own comments for the three separate measurements (2026-09-21 for the first two,
+ * 2026-09-14 for the lock tier) that each independently found the identical fraction
+ * winning cleanly on their own real population. The curve is continuous at every
+ * boundary by construction (0.4 * threshold, evaluated on both sides, always agrees),
+ * so this reads as one rule, not three coincidentally-aligned ones.
  */
 export function ratchetFloorPct(peakPnlPct: number | null, trimmed: boolean): number | null {
   // Post-trim runner: +50% floor dominates every ratchet tier (20 < 50), so the
   // trim latch alone decides — a trimmed play's floor is never below +50%.
   if (trimmed) return EXIT_RULES.runner_floor_pct;
   if (peakPnlPct == null) return null;
-  if (peakPnlPct >= EXIT_RULES.ratchet_lock_pnl_pct) return EXIT_RULES.ratchet_lock_floor_pct;
-  if (peakPnlPct >= EXIT_RULES.ratchet_arm_pnl_pct) return EXIT_RULES.ratchet_arm_floor_pct;
-  if (peakPnlPct >= EXIT_RULES.ratchet_early_arm_pnl_pct) return EXIT_RULES.ratchet_early_arm_floor_pct;
+  if (peakPnlPct >= EXIT_RULES.ratchet_early_arm_pnl_pct) {
+    return round2(peakPnlPct * EXIT_RULES.ratchet_lock_floor_fraction);
+  }
   return null;
 }
 
@@ -201,29 +376,91 @@ export function protectiveFloorMark(entryPremium: number, floorPnlPct: number): 
  * The mark to persist on an engine EXIT. Ratchet/runner floor exits honor the floor
  * (a gap-through between poll ticks cannot finish red when breakeven was armed).
  * Thesis/plan/flat exits use the observed mark.
+ *
+ * `honored` reflects whether the FLOOR MECHANISM actually determined the outcome —
+ * i.e. whether the floor (computed from the RAW `observedMark`, before any
+ * cent-rounding) was strictly better than the raw print — not whether the final
+ * ROUNDED `mark` happens to differ from the rounded `observedMark`. Those two
+ * questions usually agree, but diverge at a rounding boundary: when the raw
+ * observed mark is just below the floor by less than half a cent, both round to
+ * the SAME cent value, so a post-rounding comparison reads "not honored" even
+ * though the floor is what determined `mark`. (Found live 2026-09-10, QQQ:
+ * observed 3.995 vs a 4.00 breakeven floor on ENTRY 4.0 — the floor correctly won
+ * via `Math.max`, but the old `mark !== markObserved` check saw two rounded 4.00s
+ * and called it "not honored", which routed `pnl_pct` in `buildExitContext` down
+ * the RAW-observed-mark branch and persisted a red exit for a trade the engine's
+ * own `exit_detail` said "cannot finish red".)
+ *
+ * `"trim_scale_dead_zone_floor"` (trimScaleFloorPct's trend dead-zone tier, added
+ * 2026-09-12) is ALSO a protective floor exit — same "cannot finish red" promise in
+ * its own `exit_detail` text — but its reason string starts with neither "ratchet"
+ * nor "runner_floor", so it fell through to the unhonored branch below undetected:
+ * `categorizeExitReason` (a few dozen lines down) was correctly special-cased to
+ * file this reason under the "ratchet" family, but this sibling function — the one
+ * that actually computes the PERSISTED fill price/P&L — was not. Found live
+ * 2026-09-21 (TSLA): floor armed at +12.31% off a +24.62% peak, but the exit
+ * persisted at the raw, unhonored +9.33% observed mark, ~3pp worse than the floor
+ * its own exit_detail promised. Listed as an explicit exact-match alongside the
+ * prefix checks (rather than folded into a broadened prefix) because it is the one
+ * other named reason, not a family of them the way "ratchet_*" is.
  */
 export function resolveExitMark(
   decision: ExitDecision,
   entryPremium: number,
   observedMark: number
-): number {
+): { mark: number; honored: boolean } {
   const floor = decision.floorPnlPct;
   if (
     decision.action === "EXIT" &&
     floor != null &&
-    (decision.reason.startsWith("ratchet") || decision.reason.startsWith("runner_floor"))
+    (decision.reason.startsWith("ratchet") ||
+      decision.reason.startsWith("runner_floor") ||
+      decision.reason === "trim_scale_dead_zone_floor")
   ) {
-    return round2(Math.max(observedMark, protectiveFloorMark(entryPremium, floor)));
+    const floorMark = protectiveFloorMark(entryPremium, floor);
+    // Raw, unrounded comparison — the same values Math.max below actually compares —
+    // so `honored` can never disagree with which value determined the fill.
+    const honored = floorMark > observedMark;
+    return { mark: round2(Math.max(observedMark, floorMark)), honored };
   }
-  return round2(observedMark);
+  return { mark: round2(observedMark), honored: false };
 }
 
-/** The snake_case reason for a floor breach/arm at this floor level. */
-function floorReason(floor: number, trimmed: boolean): string {
+/**
+ * The snake_case reason for a floor breach/arm, classified by which PEAK band armed
+ * it — not by the computed floor value. Before the 2026-09-21 fix (all three tiers now
+ * scale at the same fraction of peak) the floor's VALUE alone told the tiers apart
+ * (flat 0/5/>=20); now every tier's floor is `peak * 0.4`, so a peak-band check is the
+ * only way to keep the three reason tokens (and their distinct member-facing exit
+ * narratives) apart. The tokens themselves (`ratchet_breakeven_floor` etc.) are kept
+ * unchanged for backward compatibility with existing ledger rows/dashboards that key
+ * off them, even though "breakeven" no longer describes the floor's literal value.
+ */
+function floorReason(peakPnlPct: number, trimmed: boolean): string {
   if (trimmed) return "runner_floor";
-  if (floor >= EXIT_RULES.ratchet_lock_floor_pct) return "ratchet_profit_floor";
-  if (floor > EXIT_RULES.ratchet_arm_floor_pct) return "ratchet_early_profit_floor";
+  if (peakPnlPct >= EXIT_RULES.ratchet_lock_pnl_pct) return "ratchet_profit_floor";
+  if (peakPnlPct < EXIT_RULES.ratchet_arm_pnl_pct) return "ratchet_early_profit_floor";
   return "ratchet_breakeven_floor";
+}
+
+/** A thesis_break's raw P&L alone can't tell a trader whether the play reversed from
+ *  a real move or never worked at all — unlike the floor-exit detail above (which
+ *  already states its arming peak), the thesis_break sentence omitted peak context
+ *  entirely even though `peakPnlPct` was already in scope at both call sites. Reuses
+ *  the ratchet's own arm threshold as the "real move" bar so the distinction matches
+ *  the mechanics a trader already sees elsewhere in the narrative. */
+function thesisBreakPeakClause(peakPnlPct: number | null): string {
+  if (peakPnlPct == null) return "";
+  if (peakPnlPct >= EXIT_RULES.ratchet_arm_pnl_pct) {
+    return ` (had reached a ${fmtPct(peakPnlPct)} peak before the thesis broke)`;
+  }
+  if (peakPnlPct > 0) {
+    return (
+      ` (peaked at only ${fmtPct(peakPnlPct)}, never cleared the ratchet's own ` +
+      `${fmtPct(EXIT_RULES.ratchet_arm_pnl_pct)} arm threshold)`
+    );
+  }
+  return " (never moved favorably before the thesis broke)";
 }
 
 /**
@@ -238,6 +475,112 @@ export function trimTranchesArmed(peakPnlPct: number | null, regime: ZeroDteRegi
   let n = 0;
   for (const t of thresholds) if (peakPnlPct >= t) n += 1;
   return n;
+}
+
+/**
+ * True once a row's LATCHED PEAK has cleared its OWN frozen profit target — the fact
+ * that forces the shared ratchet-style runner floor (ratchetFloorPct's `trimmed` arg,
+ * +50% regardless of peak), derived DIRECTLY from peak/target rather than from the
+ * (badge) `status` field or a caller-supplied `trimmed` boolean.
+ *
+ * WHY THIS EXISTS (2026-09-09 finding): `peak >= target` IS what `status === "TRIM"`
+ * has always meant for a RATCHET row (plan.ts's derivePlayStatus) — the badge and this
+ * floor-forcing fact were the same thing by construction. For a TRIM_SCALE row the two
+ * used to coincide too, but only by ACCIDENT: before this fix, `status` only ever
+ * reached "TRIM" at the ratchet's +100% target literal (derivePlayStatus had no
+ * trim_scale-specific threshold), and every regime's two real tranches always finish
+ * arming well below that (thresholds top out at 40/50/80) — so "badge says TRIM" and
+ * "peak cleared the +100% target" happened to be the same tick. Fixing the BADGE lag
+ * (flipping a trim_scale row's status at its OWN, much lower, first-tranche threshold
+ * instead) breaks that accidental equivalence: `status === "TRIM"` now fires after
+ * banking just ONE of two tranches, far below the target. Wiring that straight into
+ * this floor's `trimmed` arg would force +50% at that point and, per the trace behind
+ * this fix, EXIT the whole remaining position on the very next mild pullback — well
+ * before the schedule's real second tranche. Recomputing the ORIGINAL "peak >= target"
+ * fact directly — independent of whatever the (now decoupled) badge says — is the
+ * "equivalent correct condition": every existing row's floor behavior stays
+ * BYTE-IDENTICAL (ratchet rows: unchanged; trim_scale rows: unchanged for every peak
+ * that never reached the ratchet's own target, which is the entire population this bug
+ * report is about), and a trim_scale runner that ALSO clears that same target still
+ * gets the same +50% "don't give it all back" protection it always has.
+ */
+export function ratchetTargetReached(peakPnlPct: number | null, targetPct: number): boolean {
+  return peakPnlPct != null && peakPnlPct >= targetPct;
+}
+
+/**
+ * True when `peakPnlPct` sits in this regime's OWN genuine dead zone: high enough to
+ * have armed the shared ratchet breakeven floor (`EXIT_RULES.ratchet_arm_pnl_pct`,
+ * fixed at +20% for every regime) but NOT yet high enough to have armed this regime's
+ * own first trim tranche. Only non-empty for a regime whose first tranche trigger
+ * sits ABOVE the shared arm point — today that is `trend` alone (+40 vs the shared
+ * +20): `neutral`'s first tranche (+20) equals the arm point and `range`'s (+15) sits
+ * BELOW it, so for both, `peakPnlPct >= armAt` already implies a tranche is armed
+ * (`trimTranchesArmed` >= 1), making the two conditions below mutually exclusive by
+ * construction — this returns false for every neutral/range peak, never just
+ * "usually false".
+ */
+function inTrimScaleDeadZone(peakPnlPct: number | null, regime: ZeroDteRegime): boolean {
+  if (peakPnlPct == null) return false;
+  const firstTranche = TRIM_SCALE_RULES.tranches_by_regime[regime][0];
+  return peakPnlPct >= EXIT_RULES.ratchet_arm_pnl_pct && peakPnlPct < firstTranche;
+}
+
+/**
+ * trim_scale's own protective floor (P&L %) — `ratchetFloorPct` plus ONE additional
+ * tier that closes the TREND-REGIME DEAD ZONE (docs/audit/0DTE-RESEARCH.md, "the
+ * regime-conditioned trend dead-zone", measured 2026-09-04: a same-session sweep of
+ * 90 days of graded 0DTE plays found 37/372 (9.9%) exited via `ratchet_breakeven_floor`
+ * after a median +26.67% peak, up to +48.56% — e.g. BULL +20.45%→0%, CLS +31.18%→0%,
+ * still open as of the 2026-08-27 dead-zone fix below).
+ *
+ * `ratchetFloorPct`'s breakeven arm is a FIXED peak +20% regardless of regime, while
+ * `trim_scale`'s own first tranche trigger is regime-conditioned (neutral +20, range
+ * +15, trend +40). For neutral/range the two tables coincide or cross AT OR BEFORE
+ * +20%, so a peak high enough to arm the shared floor has also armed (or is about to
+ * arm) a tranche — the 2026-08-27 `trimAvailable` guard in `decideTrimScale` covers
+ * that case by banking the tranche instead of letting the floor dump the position.
+ * `trend` cannot benefit from that guard: its first tranche is +40%, so for any peak
+ * in `inTrimScaleDeadZone`'s window [20%, 40%) NO tranche is armed yet, the guard
+ * never engages, and the OLD behavior (plain `ratchetFloorPct`) floored at flat
+ * breakeven (0%) — dumping the WHOLE position and giving back 100% of a real
+ * double-digit peak instead of banking any of it, precisely because `trend`'s
+ * "let it run" schedule hadn't reached its first trim yet.
+ *
+ * THE FIX (this function): inside a regime's genuine dead zone, floor at HALF the
+ * peak instead of flat 0% — the same "floor rises with the peak instead of staying
+ * flat" principle `EXIT_RULES.ratchet_lock_pnl_pct`/`ratchet_lock_floor_pct` already
+ * uses at higher peaks (floor rises from breakeven to +20% once peak ≥ +50%), applied
+ * one tier earlier for exactly the regime/peak-range combination where no tranche can
+ * yet protect the position. This deliberately does NOT touch
+ * `TRIM_SCALE_RULES.tranches_by_regime.trend` — its own +40/+80 schedule and "let a
+ * trend day run" design intent are unchanged; a real trim still only ever banks at
+ * +40%/+80%, exactly as before. Outside the dead zone (any regime once its own first
+ * tranche is armed, or trend before its shared early-arm/lock tiers) this is
+ * byte-identical to `ratchetFloorPct` — verified by delegating to it directly for
+ * every tier except the one new dead-zone branch.
+ *
+ * Scoped to `decideTrimScale` only (its one call site) — `ratchetFloorPct` itself is
+ * untouched and remains exactly what ratchet-mode rows and the board's display floor
+ * (`zerodte-service.ts`) read, so this fix cannot change ratchet-mode behavior.
+ */
+export function trimScaleFloorPct(
+  peakPnlPct: number | null,
+  trimmed: boolean,
+  regime: ZeroDteRegime
+): number | null {
+  if (trimmed) return EXIT_RULES.runner_floor_pct;
+  if (peakPnlPct == null) return null;
+  // Locked tier: same peak-scaled floor as ratchetFloorPct (see its comment) rather
+  // than a re-derived flat value that could silently drift from it.
+  if (peakPnlPct >= EXIT_RULES.ratchet_lock_pnl_pct) {
+    return round2(peakPnlPct * EXIT_RULES.ratchet_lock_floor_fraction);
+  }
+  if (inTrimScaleDeadZone(peakPnlPct, regime)) return round2(peakPnlPct * 0.5);
+  // Every remaining tier (early-arm +5%, breakeven arm 0%, or unarmed null) is
+  // identical to the shared ratchet floor — delegate rather than re-derive so the two
+  // can never silently drift apart outside the one new branch above.
+  return ratchetFloorPct(peakPnlPct, false);
 }
 
 export type ThesisBreak = {
@@ -255,6 +598,33 @@ export type ThesisBreak = {
  * a thesis — same veto asymmetry as entry), and "opposes" items are the soft
  * contrary readings that must CLUSTER (≥2) past the entry's committed score margin
  * before they outweigh the cushion the play was entered with.
+ *
+ * RELIEF GRACE, OPPOSE-CLUSTER ARM (live-monitor finding, 2026-10-08, WOLF/SPY). A
+ * row can only reach this function with a NEGATIVE `entryCortexScore` if
+ * `applyCortexCommitRelief` (cortex-vector-relief.ts) forced the commit through —
+ * cortex-gate.ts's `assessCortexVerdict` always returns NET_NEGATIVE (blocked) for a
+ * genuinely negative score otherwise. The 2026-09-09 SHOP/MSTR fix gave the VETO arm
+ * above a grace period (`skipGexWallsVeto`) so the exit check doesn't immediately
+ * re-veto on the exact wall fact relief overrode — but it left this OPPOSE_CLUSTER
+ * arm untouched. For a relief commit, `Math.max(entryCortexScore, floor)` collapses
+ * to the bare `thesis_min_oppose_weight` noise floor (the WEAKEST possible margin,
+ * identical to "entry score unknown"), and the very next exit-sync tick recomposes
+ * nearly-identical fresh evidence (seconds later, negligible decay) — so the SAME
+ * opposing items that made the entry negative in the first place almost always
+ * clear that floor again immediately. Measured live 2026-10-08: WOLF
+ * (score -0.76, gex-walls veto relieved) closed in 0.509s on a gex-walls+vex-charm
+ * oppose cluster; SPY (score -0.31, also relieved) closed in 2.775s on a completely
+ * DIFFERENT pair (sector-heat + opening-harvest, no gex-walls involved at all) —
+ * proving this isn't fixable by special-casing the gex-walls source the way the
+ * veto arm was. Both netted ~0%, the exact "relief grants entry, the next tick
+ * immediately reverses it" failure the 2026-09-09 fix meant to close, just via the
+ * arm it didn't cover. A relief commit's own entry decision already knew this
+ * evidence was net-negative and chose to override it on other grounds (regime/
+ * vector tape alignment) — re-testing the SAME Cortex evidence moments later via a
+ * different rule contradicts that choice rather than adding new information. The
+ * play keeps every OTHER protection (plan stop, ratchet/trim floors, flat timeout);
+ * only this one check — which structurally cannot distinguish "new information"
+ * from "the same reason relief already overrode" — is skipped for these rows.
  */
 export function detectThesisBreak(
   evidence: EvidenceItem[] | null,
@@ -270,12 +640,19 @@ export function detectThesisBreak(
       return { source: veto.source, kind: "veto", detail: `[${veto.source}] ${veto.detail}` };
     }
   }
+  // A negative entry score is proof-by-construction of a relief commit (see the
+  // module doc above) — the oppose_cluster check below cannot tell "new opposing
+  // evidence" from "the same evidence relief already priced in", so it does not run
+  // for these rows. Checked AFTER the veto branch so a genuinely NEW veto from a
+  // different source (not gex-walls) still exits immediately, unaffected.
+  if (entryCortexScore != null && entryCortexScore < 0) return null;
   const opposes = evidence.filter((e) => e.stance === "opposes" && e.weight > 0);
   if (opposes.length < EXIT_RULES.thesis_min_opposes) return null;
   const combined = round2(opposes.reduce((acc, o) => acc + o.weight, 0));
   // The margin is the cushion the entry was committed with (its net Cortex score);
   // when that is unknown or ~0, the noise floor keeps two microscopic decayed
-  // opposes from scratching a healthy play.
+  // opposes from scratching a healthy play. (entryCortexScore is non-negative here —
+  // the relief case above already returned.)
   const margin = Math.max(entryCortexScore ?? 0, EXIT_RULES.thesis_min_oppose_weight);
   if (combined <= margin) return null;
   const top = [...opposes].sort((a, b) => b.weight - a.weight)[0]!;
@@ -305,9 +682,15 @@ export function detectThesisBreak(
  */
 function decideTrimScale(
   input: ExitEngineInput,
-  ctx: { entryPremium: number; currentMark: number; pnlPct: number; peakPnlPct: number | null }
+  ctx: {
+    entryPremium: number;
+    currentMark: number;
+    pnlPct: number;
+    peakPnlPct: number | null;
+    troughPnlPct: number | null;
+  }
 ): ExitDecision {
-  const { currentMark, pnlPct, peakPnlPct } = ctx;
+  const { currentMark, pnlPct, peakPnlPct, troughPnlPct } = ctx;
   const regime: ZeroDteRegime = input.regime ?? "neutral";
   const thresholds = TRIM_SCALE_RULES.tranches_by_regime[regime];
   // How many thirds the caller has already banked (clamped/floored — the latch is 0/1/2).
@@ -316,6 +699,24 @@ function decideTrimScale(
   // How many thirds the LATCHED PEAK has armed under this regime's schedule (computed
   // up front — see the dead-zone note just below, which needs it before the floor check).
   const armed = trimTranchesArmed(peakPnlPct, regime);
+
+  // `taken` tranches were already banked at their own trigger price on the way up, before
+  // EITHER of the two exit paths below (floor breach, thesis break) closes what's left.
+  // Both of those close only the REMAINING position, so a member reading only that exit's
+  // detail sentence has no way to know 2/3 of the trade may have already banked profit
+  // elsewhere. Say so once here, shared by both branches. Found live 2026-09-15 (SPXW):
+  // exit_policy.trim_levels showed both tranches fired, but the floor-exit sentence — the
+  // only narrative a member sees for that exit — never mentioned them.
+  // A bare clause (no leading space, no trailing punctuation) so each call site below
+  // can splice it into its own sentence naturally.
+  // Only claim a bank in the narrative when the caller says `taken` is real (see the
+  // field's own doc) — a cosmetic stand-in must never read as a trade that happened.
+  const genuinelyBanked = input.trimsTakenIsGenuine !== false;
+  const bankedTranchesClause =
+    genuinelyBanked && taken > 0
+      ? `${taken}/${thresholds.length} tranche${taken === 1 ? "" : "s"} ` +
+        `(${Math.round(TRIM_SCALE_RULES.tranche_fraction * 100)}% each) already banked on the way up`
+      : null;
 
   // 1. Protective: plan stop OR the shared early/breakeven ratchet floor (trim_scale
   //    has no whole-position dump at breakeven, but a +15%/+20% peak still arms a
@@ -333,15 +734,27 @@ function decideTrimScale(
   //    the first third the peak had already earned. That defeats trim_scale's whole
   //    purpose (E5: "don't scratch a momentum runner at breakeven") for exactly the
   //    peak range where it matters. The floor itself is NOT wrong — a peak that has
-  //    NOT armed a tranche yet still needs the breakeven/early-arm safety net, so it
-  //    is left fully intact for that case (unarmed dead-zone, e.g. trend @ +20-39%,
-  //    where the trim schedule deliberately runs later and the floor is the only
-  //    protection — see the PR write-up for why that residual gap is not a bug).
+  //    NOT armed a tranche yet still needs the breakeven/early-arm safety net.
   //    The fix: once a tranche is armed but not yet taken, bank it INSTEAD of letting
-  //    the coarse floor dump everything — banking also flips `input.trimmed` for the
-  //    next tick, which raises the shared floor to the +50% runner floor for the
-  //    remainder (strictly better protection than riding the breakeven floor to the
-  //    finish). Only suppresses the floor EXIT action below.
+  //    the coarse floor dump everything — banking raises `taken` for the next tick, so
+  //    `trimAvailable` (below) is only ever true for the ONE tick a NEW tranche is
+  //    pending, never forever. Only suppresses the floor EXIT action below.
+  //
+  //    TREND DEAD-ZONE FIX (2026-09-12, docs/audit/0DTE-RESEARCH.md "the
+  //    regime-conditioned trend dead-zone", measured 2026-09-04): the guard above
+  //    cannot engage for a regime whose first tranche trigger sits ABOVE the shared
+  //    +20% arm point — only `trend` (+40) today, since neutral (+20) and range (+15)
+  //    both cross AT OR BEFORE the arm point. For a `trend` peak in [20%, 40%) NO
+  //    tranche is armed yet (`trimAvailable` stays false, correctly — there is
+  //    genuinely nothing to bank there), so the OLD `sharedFloor` (plain
+  //    `ratchetFloorPct`, flat 0% once armed) dumped the WHOLE position to breakeven —
+  //    live evidence: 37/372 graded plays (9.9%) exited via `ratchet_breakeven_floor`
+  //    after a median +26.67% peak, up to +48.56%. `trimScaleFloorPct` (this function's
+  //    own floor, replacing `ratchetFloorPct` below) floors at HALF the peak inside
+  //    that dead zone instead of flat 0% — the position still can't finish red, but a
+  //    real double-digit peak no longer evaporates entirely while `trend`'s own
+  //    schedule (unchanged: still +40/+80) waits for its first real tranche. See
+  //    `trimScaleFloorPct`'s own doc for the full before/after.
   //
   //    STOP-BREACH CARVE-OUT (2026-09-04, live-again per resolveTrimBankLive defaulting
   //    ON 2026-09-03 — see docs/audit/findings-staging/2026-09-04-trim-scale-stop-fallthrough.md):
@@ -358,7 +771,18 @@ function decideTrimScale(
   //    strictly worse than the pre-2026-08-27 dump-to-floor behavior it replaced.
   const stopAlreadyBreached = input.planStop != null && currentMark <= input.planStop;
   const trimAvailable = armed > taken && !stopAlreadyBreached;
-  const sharedFloor = ratchetFloorPct(peakPnlPct, input.trimmed);
+  // "Trimmed" for the shared floor's purposes means "peak cleared the ratchet's own
+  // +100%-target literal" — derived HERE directly from peak/planTarget, NOT from
+  // `input.trimmed`/the caller's `status`. See ratchetTargetReached's own doc for why:
+  // the (badge) status field now flips to TRIM at trim_scale's OWN, much lower,
+  // first-tranche threshold, so trusting `input.trimmed` here would force this +50%
+  // floor after banking only ONE of two tranches — exactly the 2026-09-09 finding this
+  // decouples, while leaving every row whose peak genuinely clears the target (ratchet
+  // or trim_scale alike) with the SAME protection it always had.
+  const targetPnlPct =
+    input.planTarget != null ? ((input.planTarget - ctx.entryPremium) / ctx.entryPremium) * 100 : null;
+  const peakClearedTarget = targetPnlPct != null && ratchetTargetReached(peakPnlPct, targetPnlPct);
+  const sharedFloor = trimScaleFloorPct(peakPnlPct, peakClearedTarget, regime);
   const floorBreached = sharedFloor != null && pnlPct <= sharedFloor && !trimAvailable;
   if (input.planStop != null && currentMark <= input.planStop) {
     const floorMark = sharedFloor != null ? protectiveFloorMark(ctx.entryPremium, sharedFloor) : null;
@@ -369,33 +793,43 @@ function decideTrimScale(
         action: "EXIT",
         floorPnlPct: null,
         reason: "plan_stop",
-        detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — the printed stop is authoritative.`,
+        detail: `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — the printed stop is authoritative.`,
       };
     }
   }
   if (floorBreached && sharedFloor != null) {
-    const reason = floorReason(sharedFloor, input.trimmed);
+    // A distinct, machine-readable reason for the new dead-zone tier — never folded
+    // into `floorReason`'s existing buckets — so this mechanism is greppable/
+    // auditable on its own in the ledger, separate from an ordinary early/breakeven/
+    // lock floor exit.
+    const reason = inTrimScaleDeadZone(peakPnlPct, regime)
+      ? "trim_scale_dead_zone_floor"
+      : floorReason(peakPnlPct!, peakClearedTarget);
     return {
       action: "EXIT",
       floorPnlPct: sharedFloor,
       reason,
       detail:
-        `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(sharedFloor)} floor armed by a ` +
-        `${fmtPct(peakPnlPct)} peak — the protective floor exits so the green trade cannot finish red.`,
+        `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(sharedFloor)} floor armed by a ` +
+        `${fmtPct(peakPnlPct)} peak — the protective floor exits so the green trade cannot finish red.` +
+        (bankedTranchesClause ? ` This is the runner only — ${bankedTranchesClause}.` : ""),
     };
   }
 
   // 2. Thesis break: the play is WRONG → dump the WHOLE remaining position at any P&L
   //    (outranks banking another third — same veto asymmetry as the ratchet path).
   const broken = detectThesisBreak(input.cortexEvidence, input.entryCortexScore, {
-    skipGexWallsVeto: input.gexQualityDegraded === true,
+    skipGexWallsVeto: input.gexQualityDegraded === true || input.entryGexWallsVetoRelieved === true,
   });
   if (broken) {
     return {
       action: "EXIT",
       floorPnlPct: null,
       reason: `thesis_break:${broken.source}`,
-      detail: `Thesis broken (${broken.kind}) at ${fmtPct(pnlPct)} — exiting the remaining position at market, not hoping: ${broken.detail}`,
+      detail:
+        `Thesis broken (${broken.kind}) at ${fmtPct(pnlPct)} — exiting the remaining position at market, not hoping: ${broken.detail}` +
+        thesisBreakPeakClause(peakPnlPct) +
+        (bankedTranchesClause ? ` (${bankedTranchesClause}.)` : ""),
     };
   }
 
@@ -423,7 +857,9 @@ function decideTrimScale(
       action: "EXIT",
       floorPnlPct: null,
       reason: "trim_scale_runner_target",
-      detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} after both trims — the last third is banked in full.`,
+      detail: genuinelyBanked
+        ? `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} after both trims — the last third is banked in full.`
+        : `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} — exiting the full position at target.`,
     };
   }
 
@@ -440,9 +876,7 @@ function decideTrimScale(
       action: "EXIT",
       floorPnlPct: null,
       reason: "flat_theta_bleed",
-      detail:
-        `${Math.floor(input.ageMinutes)}min in and the play never left the ±${EXIT_RULES.flat_band_pct}% band ` +
-        `(peak ${fmtPct(peakPnlPct)}, now ${fmtPct(pnlPct)}) — on 0DTE flat is losing; a small scratch beats theta decay.`,
+      detail: flatTimeoutDetail(input.ageMinutes, peakPnlPct, pnlPct, troughPnlPct),
     };
   }
 
@@ -452,9 +886,11 @@ function decideTrimScale(
       action: "RAISE_FLOOR",
       floorPnlPct: null,
       reason: "trim_scale_running",
-      detail:
-        `${taken}/2 thirds banked (regime ${regime}); running the last third at ${fmtPct(pnlPct)} ` +
-        `(peak ${fmtPct(peakPnlPct)}) to the plan target/stop.`,
+      detail: genuinelyBanked
+        ? `${taken}/2 thirds banked (regime ${regime}); running the last third at ${fmtPct(pnlPct)} ` +
+          `(peak ${fmtPct(peakPnlPct)}) to the plan target/stop.`
+        : `Profit floor armed by a ${fmtPct(peakPnlPct)} peak (regime ${regime}); running the full position ` +
+          `at ${fmtPct(pnlPct)} toward the plan target/stop (no tranche banked).`,
     };
   }
   return {
@@ -495,6 +931,14 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       : (input.peakPremium ?? currentMark);
   const pnlPct = pinnedLivePnlPct(entryPremium, currentMark);
   const peakPnlPct = pinnedLivePnlPct(entryPremium, peakPremium);
+  // Trough widened with the current mark the same way peak is (Math.min, mirroring
+  // the DB's own LEAST-latch) — flat_theta_bleed's narrative-correctness check below
+  // needs the true low-water mark, not one that ignores this tick's dip.
+  const troughPremium =
+    input.troughPremium != null && currentMark != null
+      ? Math.min(input.troughPremium, currentMark)
+      : (input.troughPremium ?? currentMark);
+  const troughPnlPct = pinnedLivePnlPct(entryPremium, troughPremium);
   // The ratchet floor only exists in ratchet mode; trim_scale banks profit in tranches
   // and rides the plan stop, so it has no ratchet floor to report (null).
   const floor = mode === "ratchet" ? ratchetFloorPct(peakPnlPct, input.trimmed) : null;
@@ -512,7 +956,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
   // ratchet's floor-exit. Shared guards + no-mark guard above still apply; only the
   // profit-taking family differs. mark/entry/pnl are all non-null past this point.
   if (mode === "trim_scale") {
-    return decideTrimScale(input, { entryPremium, currentMark, pnlPct, peakPnlPct });
+    return decideTrimScale(input, { entryPremium, currentMark, pnlPct, peakPnlPct, troughPnlPct });
   }
 
   // ── 1. Protective exits: plan stop vs ratchet floor — the HIGHER mark wins. ────
@@ -526,13 +970,13 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
     const useFloor =
       floorBreached && (!stopBreached || (floorMark != null && floorMark >= (input.planStop as number)));
     if (useFloor) {
-      const reason = floorReason(floor!, input.trimmed);
+      const reason = floorReason(peakPnlPct!, input.trimmed);
       return {
         action: "EXIT",
         floorPnlPct: floor,
         reason,
         detail:
-          `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(floor)} floor armed by a ` +
+          `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) is at/below the ${fmtPct(floor)} floor armed by a ` +
           `${fmtPct(peakPnlPct)} peak — the ratchet exits so the green trade cannot finish red.`,
       };
     }
@@ -540,13 +984,13 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       action: "EXIT",
       floorPnlPct: floor,
       reason: "plan_stop",
-      detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — the printed stop is authoritative.`,
+      detail: `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) is at/below the plan stop ${input.planStop} — the printed stop is authoritative.`,
     };
   }
 
   // ── 2. Thesis break: unconditional, fires at ANY P&L (including a loss). ───────
   const broken = detectThesisBreak(input.cortexEvidence, input.entryCortexScore, {
-    skipGexWallsVeto: input.gexQualityDegraded === true,
+    skipGexWallsVeto: input.gexQualityDegraded === true || input.entryGexWallsVetoRelieved === true,
   });
   if (broken) {
     return {
@@ -554,7 +998,8 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       floorPnlPct: floor,
       reason: `thesis_break:${broken.source}`,
       detail:
-        `Thesis broken (${broken.kind}) at ${fmtPct(pnlPct)} — exiting at market, not hoping: ${broken.detail}`,
+        `Thesis broken (${broken.kind}) at ${fmtPct(pnlPct)} — exiting at market, not hoping: ${broken.detail}` +
+        thesisBreakPeakClause(peakPnlPct),
     };
   }
 
@@ -565,7 +1010,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
         action: "EXIT",
         floorPnlPct: floor,
         reason: "plan_target_final",
-        detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} again after the trim — runner banked in full.`,
+        detail: `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} again after the trim — runner banked in full.`,
       };
     }
     return {
@@ -573,7 +1018,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       floorPnlPct: EXIT_RULES.runner_floor_pct,
       reason: "plan_target_trim",
       detail:
-        `Mark ${currentMark} (${fmtPct(pnlPct)}) is at/above the target ${input.planTarget} — bank half; ` +
+        `Mark ${fmtMark(currentMark)} (${fmtPct(pnlPct)}) is at/above the target ${input.planTarget} — bank half; ` +
         `the runner's floor is now ${fmtPct(EXIT_RULES.runner_floor_pct)}.`,
     };
   }
@@ -592,9 +1037,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       action: "EXIT",
       floorPnlPct: floor,
       reason: "flat_theta_bleed",
-      detail:
-        `${Math.floor(input.ageMinutes)}min in and the play never left the ±${EXIT_RULES.flat_band_pct}% band ` +
-        `(peak ${fmtPct(peakPnlPct)}, now ${fmtPct(pnlPct)}) — on 0DTE flat is losing; a small scratch beats theta decay.`,
+      detail: flatTimeoutDetail(input.ageMinutes, peakPnlPct, pnlPct, troughPnlPct),
     };
   }
 
@@ -603,7 +1046,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
     return {
       action: "RAISE_FLOOR",
       floorPnlPct: floor,
-      reason: input.trimmed ? "runner_floor_set" : `${floorReason(floor, false)}_set`,
+      reason: input.trimmed ? "runner_floor_set" : `${floorReason(peakPnlPct!, false)}_set`,
       detail: `Floor ${fmtPct(floor)} armed by a ${fmtPct(peakPnlPct)} peak — holding above it (${fmtPct(pnlPct)}).`,
     };
   }
@@ -634,6 +1077,11 @@ export function categorizeExitReason(
   if (reason.startsWith("thesis_break")) return "thesis";
   if (reason === "plan_stop") return "stop";
   if (reason === "flat_theta_bleed") return "flat";
+  // Checked BEFORE the general `trim_scale` prefix below: this is `trimScaleFloorPct`'s
+  // dead-zone tier — a PROTECTIVE floor giving back half a peak, not a target trim/
+  // runner-target hit — so it belongs in the "ratchet" (floor) family, same as an
+  // ordinary breakeven/early/lock floor exit, never "target" (profit-taking).
+  if (reason === "trim_scale_dead_zone_floor") return "ratchet";
   // Profit-taking, either mode: the ratchet's plan-target trim/final, and the trim_scale
   // tranche + runner-target exits are all "we banked profit at/toward the target".
   if (reason.startsWith("plan_target") || reason.startsWith("trim_scale")) return "target";
@@ -676,37 +1124,42 @@ export function buildExitContext(
   nowMs: number
 ): ZeroDteExitContext {
   const markObserved = round2(observedMark);
-  const mark =
+  // Provenance: `honored` comes straight from resolveExitMark's own raw-value comparison — the
+  // single source of truth for whether the floor mechanism determined the fill — rather than
+  // being re-derived here by comparing the two ROUNDED values, which can disagree with it at a
+  // rounding boundary (see resolveExitMark's doc comment / the QQQ finding it fixes).
+  const { mark, honored: markHonored } =
     entryPremium != null && entryPremium > 0
       ? resolveExitMark(decision, entryPremium, observedMark)
-      : markObserved;
-  // Provenance: `mark` differs from the observed print ONLY when resolveExitMark honored a
-  // protective floor/stop. Compare the two resolved values directly rather than re-deriving the
-  // floor condition, so this flag cannot drift from what resolveExitMark actually did.
-  const markHonored = mark !== markObserved;
+      : { mark: markObserved, honored: false };
+  // BUG FIX (2026-09-04): pnl_pct must NOT be computed from the cent-rounded `mark` on a
+  // non-honored (thesis/plan_stop/flat) exit. `observedMark` is a raw mid ((bid+ask)/2 kept
+  // to 4dp by zeroDteMidOf) and routinely lands on a half-cent (e.g. bid 2.26/ask 2.27 → mid
+  // 2.265) — legitimate live-quote precision, the exact input `evaluateExitState` used a few
+  // lines up to compute the `pnlPct` baked verbatim into `decision.detail`. Rounding that mid
+  // to the nearest cent BEFORE the percentage division (what `mark` does here for the
+  // non-honored branch, via resolveExitMark's `round2(observedMark)`) can erase up to
+  // `0.5¢ / entryPremium` of real P&L — on a $2.27 0DTE premium that's up to ±0.22 points, and
+  // on a sub-$1 lotto premium it can be several points. Measured live 2026-09-04: a CRCL
+  // thesis-break stamped `exit_detail: "Thesis broken (veto) at -0.22%"` (the honest,
+  // full-precision figure) right beside `exit_pnl_pct: 0` (recomputed from the rounded mark,
+  // which happened to round back up to the pinned entry premium) — two numbers for the same
+  // exit event disagreeing inside the same payload. A floor/stop-HONORED exit is unaffected
+  // and keeps using `mark` (the constructed floor/stop price IS the assumed fill, so its
+  // percentage is supposed to reflect that synthetic price, not the raw print it improved on
+  // — see the floor-breach test above, which relies on exactly that behavior).
+  const pnlPct = pinnedLivePnlPct(entryPremium, markHonored ? mark : observedMark);
   return {
     reason: decision.reason,
-    detail: decision.detail,
+    // FIX (2026-10-26): on a mark_honored exit, re-interpolate the leading "Mark X (+Y%)"
+    // clause with the SAME honored mark/pnlPct persisted below — see
+    // regenerateExitDetailForHonoredMark's own doc for the full finding. `decision.detail`
+    // is otherwise passed through verbatim (non-honored exits are untouched).
+    detail: regenerateExitDetailForHonoredMark(decision.detail, markHonored, mark, pnlPct),
     mark,
     mark_observed: markObserved,
     mark_honored: markHonored,
-    // BUG FIX (2026-09-04): pnl_pct must NOT be computed from the cent-rounded `mark` on a
-    // non-honored (thesis/plan_stop/flat) exit. `observedMark` is a raw mid ((bid+ask)/2 kept
-    // to 4dp by zeroDteMidOf) and routinely lands on a half-cent (e.g. bid 2.26/ask 2.27 → mid
-    // 2.265) — legitimate live-quote precision, the exact input `evaluateExitState` used a few
-    // lines up to compute the `pnlPct` baked verbatim into `decision.detail`. Rounding that mid
-    // to the nearest cent BEFORE the percentage division (what `mark` does here for the
-    // non-honored branch, via resolveExitMark's `round2(observedMark)`) can erase up to
-    // `0.5¢ / entryPremium` of real P&L — on a $2.27 0DTE premium that's up to ±0.22 points, and
-    // on a sub-$1 lotto premium it can be several points. Measured live 2026-09-04: a CRCL
-    // thesis-break stamped `exit_detail: "Thesis broken (veto) at -0.22%"` (the honest,
-    // full-precision figure) right beside `exit_pnl_pct: 0` (recomputed from the rounded mark,
-    // which happened to round back up to the pinned entry premium) — two numbers for the same
-    // exit event disagreeing inside the same payload. A floor/stop-HONORED exit is unaffected
-    // and keeps using `mark` (the constructed floor/stop price IS the assumed fill, so its
-    // percentage is supposed to reflect that synthetic price, not the raw print it improved on
-    // — see the floor-breach test above, which relies on exactly that behavior).
-    pnl_pct: pinnedLivePnlPct(entryPremium, markHonored ? mark : observedMark),
+    pnl_pct: pnlPct,
     peak_pnl_pct: pinnedLivePnlPct(entryPremium, peakPremium),
     at: new Date(nowMs).toISOString(),
   };

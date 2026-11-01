@@ -22,6 +22,7 @@ import {
 } from "./terminal-display";
 import { playContractHeadline } from "./play-card-lifecycle";
 import {
+  closedRealizedPct,
   playFreshnessDisplay,
   playLifecycleTimestamps,
   playPrimaryEvent,
@@ -279,9 +280,15 @@ export function TradeExcursionGraphic({
   markFlash?: boolean;
 }) {
   const closed = play.status === "CLOSED";
-  const currentPct = closed
-    ? (play.exitPnlPct ?? play.pnlPct)
-    : legacyPrimaryPnlPct(play);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-24): this used to be a standalone
+  // `play.exitPnlPct ?? play.pnlPct` ternary — a simpler reimplementation of "realized P&L on a
+  // closed position" that skipped the as-managed trim-scale blend `closedRealizedPct`
+  // (play-card-lifecycle.ts) already applies for a `closedReason === "stopped"` row with armed
+  // trim tranches and no recorded `exitPnlPct`. Both render in the SAME panel for the SAME play
+  // (ZeroDteCommandPanel.tsx's "Trade outcome" section computes `closedRealizedPct(play)` a few
+  // lines above where this component renders) — the two could disagree on a closed position's
+  // headline P&L number. Routing through the one canonical function keeps them in sync.
+  const currentPct = closed ? closedRealizedPct(play) : legacyPrimaryPnlPct(play);
   const worst = legacyPrimaryTroughPct(play);
   const best = legacyPrimaryPeakPct(play);
   const layout = entryCenteredExcursionLayout(worst, best, currentPct, { closed });

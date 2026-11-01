@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import {
   effectiveStaleMinutes,
@@ -210,4 +212,70 @@ test("NYSE holiday silence on gated warmers does not false-flag market_hours_sta
     LABOR_DAY_MIDDAY
   );
   assert.equal(health.market_hours_stale, false);
+});
+
+// BUG FIX (2026-09-08) — companion to the db.ts fix. buildCronHealthSnapshot's `runs_24h` aggregate
+// used to be built from `fetchCronJobRecentRuns(48)` (the last 48 cron_job_runs rows GLOBALLY, no
+// per-job or time bound), which starves any moderately-frequent job's 24h count once its faster
+// neighbors fill the 48-row window — `desk-warm` (a ~5min-schedule cron) read
+// `runs_24h: {ok:0,failed:0,skipped:2}` live in production despite running normally all morning.
+// Fixed by switching to `fetchCronJobRunsLast24h()`, which bounds by `WHERE started_at > NOW() -
+// INTERVAL '24 hours'` per job instead of by an arbitrary row count fleet-wide.
+test("buildCronHealthSnapshot sources its runs_24h aggregate from the time-bounded fetch, not the old row-capped one", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(
+    src,
+    /fetchCronJobRunsLast24h\(\)/,
+    "buildCronHealthSnapshot must call the time-bounded fetch for its 24h aggregate"
+  );
+  assert.doesNotMatch(
+    src,
+    /fetchCronJobRecentRuns/,
+    "must not still reference the deleted row-capped fetch (starves low-frequency jobs' 24h counts)"
+  );
+});
+
+// BUG FIX (2026-09-16) — zerodte-warm's cron_job_runs handshake (logCronRun) fires on the
+// route's fast synchronous path (auth + cooldown/lock gate + the cheap earnings-cache warm)
+// before the heavy background chain (warmZeroDteBoard -> scanZeroDteBoard ->
+// persistZeroDteScan -> discovery-events) is dispatched, so the handshake reads "on schedule"
+// even when that background chain silently stalls for tens of minutes. Measured live
+// 2026-09-16: a real ~35min gap in zerodte_discovery_events writes produced zero cron_job_runs
+// staleness. recordZeroDteScanTick("cron") (scan.ts) ticks only after scanZeroDteBoard()
+// actually returns inside warmZeroDteBoard -- the one signal that would have caught this -- but
+// nothing read it until this fix. Unlike spx-evaluate's heartbeat cross-check (which only
+// escalates when the cron_job_runs handshake ALSO looks stale), zerodte-warm's must not gate on
+// that handshake first, since that signal is the known-unreliable one here.
+test("buildCronHealthSnapshot can override swing-discovery failed handshakes when serving snapshot probe is fresh", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(src, /"swing-discovery"/);
+  assert.match(
+    src,
+    /health\.key === "swing-discovery" && health\.status === "failed"/,
+    "failed swing-discovery handshakes must be eligible for writer-target override"
+  );
+  assert.match(src, /isSwingDiscoveryScanInFlight/);
+});
+
+test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan heartbeat, not just cron_job_runs", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(
+    src,
+    /loadZeroDteScanHeartbeat/,
+    "must read the zerodte scan heartbeat (play-engine-heartbeat.ts)"
+  );
+  const blockStart = src.indexOf('job.key === "zerodte-warm"');
+  assert.notEqual(blockStart, -1, "zerodte-warm heartbeat cross-check block must exist");
+  const blockEnd = src.indexOf('job.key === "spx-evaluate"', blockStart);
+  assert.notEqual(blockEnd, -1);
+  const block = src.slice(blockStart, blockEnd);
+  // Must key off the heartbeat's OWN staleness, not a `cronStale` gate derived from
+  // cron_job_runs age (that would never fire for this specific blind spot).
+  assert.match(block, /zeroDteScanHb\.stale \|\| zeroDteScanHb\.critical_stale/);
+  assert.doesNotMatch(block, /cronStale/);
+  assert.match(
+    block,
+    /zerodteWarmInFlight/,
+    "long in-flight scans must not trip market_hours_stale before the overlap lock TTL"
+  );
 });

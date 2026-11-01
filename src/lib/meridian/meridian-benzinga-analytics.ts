@@ -127,10 +127,37 @@ export async function diffEstimateRevisionTimeline(
       const revenue_delta_pct = Number(
         (((row.estimated_revenue - prev.estimated_revenue) / Math.abs(prev.estimated_revenue)) * 100).toFixed(1)
       );
+      // A real (nonzero) raw change can still round to "0.0%" at the 1-decimal display
+      // precision this timeline shows — e.g. a few thousand dollars nudged on a
+      // near-billion-dollar revenue base. Surfacing that as a timeline entry reads as
+      // "Rev est revised +0%", which looks like real news while telling the member nothing
+      // actually moved. Skip emitting a visible entry for a change that displays as zero;
+      // the snapshot below still updates so the next diff compares against the latest value
+      // instead of accumulating unreported drift.
+      if (revenue_delta_pct !== 0) {
+        out.push(
+          revisionEntry(row, "revenue", {
+            revenue_delta_pct,
+            headline: `${row.ticker} Rev est revised ${revenue_delta_pct >= 0 ? "+" : ""}${revenue_delta_pct}%`,
+          })
+        );
+      }
+      changed = true;
+    } else if (
+      row.estimated_revenue != null &&
+      prev.estimated_revenue == null &&
+      row.actual_revenue == null
+    ) {
+      // Mirrors the EPS "estimate set" branch above (first time a street revenue estimate
+      // appears for this print, before any actual has landed). Without this branch a revenue
+      // estimate arriving for the first time is silently absorbed into the snapshot update below
+      // with no timeline entry ever emitted for it, while the identical EPS case already gets one
+      // — an estimate-set event for EPS is member-visible news ("NVDA EPS est set · 1.2") and the
+      // same event for revenue was invisible, even though both legs of a print's consensus are
+      // equally newsworthy the first time Benzinga publishes them.
       out.push(
         revisionEntry(row, "revenue", {
-          revenue_delta_pct,
-          headline: `${row.ticker} Rev est revised ${revenue_delta_pct >= 0 ? "+" : ""}${revenue_delta_pct}%`,
+          headline: `${row.ticker} Rev est set · ${row.estimated_revenue}`,
         })
       );
       changed = true;

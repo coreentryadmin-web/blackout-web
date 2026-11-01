@@ -8,6 +8,9 @@
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
+/** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
+const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
+
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET ?? "";
@@ -26,16 +29,48 @@ function ok(section, id, detail = "") {
 
 const H = CRON ? { Authorization: `Bearer ${CRON}` } : {};
 
-async function getJson(path, opts = {}) {
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers: { ...H, ...(opts.headers ?? {}) } });
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { _raw: text.slice(0, 200), _status: res.status };
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** GHA → prod often sees brief TLS/ALB ECONNRESET; retry before failing the whole audit run. */
+function isRetryableFetchError(err) {
+  if (!err) return false;
+  const code = err?.cause?.code ?? err?.code;
+  if (code && ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND"].includes(code)) {
+    return true;
   }
-  return { status: res.status, json };
+  const msg = String(err?.message ?? err?.cause?.message ?? err);
+  return /fetch failed|socket hang up|network/i.test(msg);
+}
+
+const GET_JSON_MAX_ATTEMPTS = Math.max(1, Number(process.env.AUDIT_FETCH_ATTEMPTS ?? 4) || 4);
+
+async function getJson(path, opts = {}) {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= GET_JSON_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${BASE}${path}`, { ...opts, headers: { ...H, ...(opts.headers ?? {}) } });
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { _raw: text.slice(0, 200), _status: res.status };
+      }
+      return { status: res.status, json };
+    } catch (e) {
+      lastErr = e;
+      if (attempt < GET_JSON_MAX_ATTEMPTS && isRetryableFetchError(e)) {
+        await sleep(750 * attempt);
+        continue;
+      }
+      break;
+    }
+  }
+  const detail = lastErr?.cause?.message ?? lastErr?.message ?? String(lastErr);
+  fail("network", path, `fetch failed after ${GET_JSON_MAX_ATTEMPTS} attempt(s): ${detail}`, "P2");
+  return { status: 0, json: { _fetchError: detail } };
 }
 
 function finite(n) {
@@ -345,7 +380,14 @@ async function auditNightHawk() {
   for (const p of plays) {
     if (p.rank != null) ranks.add(p.rank);
     const ep = Number(String(p.entry_premium ?? p.entry ?? "").replace(/[^0-9.]/g, ""));
-    if (finite(ep) && ep > 20) fail("nighthawk", "PREMIUM-CAP", `${p.ticker} entry $${ep} > $20 cap`, "P1");
+    if (finite(ep) && ep > NIGHTHAWK_PREMIUM_CAP_PER_SHARE) {
+      fail(
+        "nighthawk",
+        "PREMIUM-CAP",
+        `${p.ticker} entry $${ep} > $${NIGHTHAWK_PREMIUM_CAP_PER_SHARE}/share cap`,
+        "P1"
+      );
+    }
     if (p.score != null && !finite(Number(p.score))) fail("nighthawk", "SCORE", `${p.ticker} bad score`, "P1");
   }
   if (ranks.size !== plays.length) fail("nighthawk", "RANKS", "duplicate or missing ranks", "P1");

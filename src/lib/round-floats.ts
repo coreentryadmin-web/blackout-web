@@ -54,9 +54,36 @@ export function roundFloats<T>(value: T, dp = 2, keyDp?: RoundFloatsKeyDp): T {
       if (!Number.isFinite(v) || Number.isInteger(v)) return v;
       const override = overrides && key != null ? overrides.get(key) : undefined;
       const f = override === undefined ? factor : 10 ** override;
-      return Math.round(v * f) / f;
+      // Round by MAGNITUDE, then reapply sign (fixed 2026-10-26) — plain `Math.round(v*f)/f` ties
+      // toward +Infinity (`Math.round(-13.5) === -13` vs `Math.round(13.5) === 14`), so a negative
+      // value sitting exactly on a display-precision tie rounds to a SMALLER magnitude than the
+      // identical positive value — the same sign-biased asymmetry `fmt-money.ts`'s `fmtPct` carried
+      // (its header has the full live repro). `Number.isInteger(v)` above already short-circuited
+      // v===0, so only a genuine fraction reaches here. At a REAL tie the magnitude rounds UP (away
+      // from zero, never to exactly 0 — Math.round(0.5) is 1, not 0), so this can never newly
+      // produce a `-0` this function didn't already produce before the fix: a negative fraction
+      // whose magnitude is simply < 0.5 at this precision (e.g. -0.003 at dp=2, not a tie at all)
+      // rounded to `-0` under the OLD `Math.round(v*f)/f` too (JS: `Math.round` of any value in
+      // (-0.5, 0) returns `-0`), and still does here (`Math.sign(v) * Math.round(small) === -1 * 0
+      // === -0`, IEEE-754 sign-of-product) — unchanged, pre-existing behavior, harmless on the wire
+      // (`JSON.stringify(-0) === "0"`) and intentionally left as-is rather than papered over, so
+      // this fix touches ONLY the tie-breaking direction, nothing else about near-zero rounding.
+      return (Math.sign(v) * Math.round(Math.abs(v) * f)) / f;
     }
     if (Array.isArray(v)) return v.map((el) => walk(el, key));
+    // A `Date` has no own enumerable properties (its value lives in an internal slot, read
+    // only via methods) — `Object.entries(date)` below returns `[]`, so the generic-object
+    // branch would silently rebuild it as `{}`, destroying the timestamp. Pass it through
+    // unchanged; `JSON.stringify` (NextResponse.json) calls `Date.prototype.toJSON()` and
+    // serializes it as the correct ISO string, same as returning any other non-object leaf.
+    // Live-caught 2026-10-11: `/api/market/anomalies` passes a raw pg `Date` (`detected_at`)
+    // straight into `roundFloats`, so every anomaly's `detectedAt` field served to the client
+    // was `{}` — which made `new Date({}).getTime()` NaN in `isFlowAnomalyRecent`, which made
+    // every anomaly read as "not recent", which made `FlowAnomalyBanner` always render nothing
+    // (`anomalies.length === 0` after the recency filter), regardless of how real or fresh the
+    // underlying anomaly was. Any other call site passing a raw Date through this shared helper
+    // (160 call sites repo-wide) had the identical latent defect.
+    if (v instanceof Date) return v;
     if (v !== null && typeof v === "object") {
       const out: Record<string, unknown> = {};
       for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = walk(val, k);
@@ -131,4 +158,49 @@ export function reconcileCellStrikeTotals<
     strikeTotals.set(strike, Math.round(sum * factor) / factor);
   }
   return { ...block, strike_totals: Object.fromEntries(strikeTotals) } as B;
+}
+
+/**
+ * Reconcile a WS-11 TRIM-SCALE `tranches[]` audit trail AFTER roundFloats: same rounding-
+ * composition bug as reconcileStrikeTotal/reconcileCellStrikeTotals above, one level deeper —
+ * here the drift is between SIBLING array leaves (each `fraction`), not between a leaf and a
+ * separately-rounded total. `reconstructTrimScaleExecutableFromBars` (plan.ts) tracks a
+ * `remaining` balance down to exactly 0 across tranches, so the UNROUNDED fractions always sum
+ * to 1 (within float epsilon) regardless of how many legs fired. But roundFloats() rounds each
+ * tranche's `fraction` leaf INDEPENDENTLY, and a fully-fired ⅓/⅓/⅓ trim_scale play (two trims +
+ * runner, TRIM_SCALE_RULES.tranche_fraction = 1/3) rounds to 0.33/0.33/0.33 — summing to 0.99,
+ * not 1.00. Not a wrong number at the SOURCE (plan.ts's `managed_pnl_pct` blends the exact,
+ * unrounded fractions BEFORE this rounding pass ever touches them, so the official headline P&L
+ * is unaffected) — but `tranches[]` is documented (plan.ts) as "the audit trail behind the one
+ * blended official number", and a member who recomputes the blend from these DISPLAYED fractions
+ * gets a result ~0.5pp below the real one. Live-caught 2026-10-25 (DELL 2026-10-14 and 11 other
+ * production rows over a 90-day window): recompute-from-served-fractions gave 52.53% vs the
+ * served managed_pnl_pct of 53.06%.
+ *
+ * Fix mirrors reconcileStrikeTotal's approach: adjust ONE value to absorb the rounding residual
+ * so the displayed array is self-consistent. The LAST tranche (the runner leg — "whatever is
+ * left over" by construction, per plan.ts's own comments) is the natural absorber. A split that
+ * already sums to 1.00 post-rounding (e.g. the 2-leg 0.33/0.67 case) is returned UNTOUCHED — this
+ * only adjusts an array whose rounded sum has actually drifted. A malformed leaf (non-finite
+ * `fraction`) also returns the array untouched rather than guessing. Call this AFTER roundFloats()
+ * on the SAME tranches array it rounded.
+ */
+export function reconcileTrancheFractions<T extends { fraction: number }>(
+  tranches: T[] | null | undefined,
+  dp = 2
+): T[] | null | undefined {
+  if (!Array.isArray(tranches) || tranches.length < 2) return tranches;
+  const factor = 10 ** dp;
+  let sumUnits = 0;
+  for (const t of tranches) {
+    if (!Number.isFinite(t.fraction)) return tranches;
+    sumUnits += Math.round(t.fraction * factor);
+  }
+  if (sumUnits === factor) return tranches; // already self-consistent — nothing to absorb
+  const residualUnits = factor - sumUnits;
+  const lastIdx = tranches.length - 1;
+  const last = tranches[lastIdx]!;
+  const out = tranches.slice();
+  out[lastIdx] = { ...last, fraction: (Math.round(last.fraction * factor) + residualUnits) / factor };
+  return out;
 }

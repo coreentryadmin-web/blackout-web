@@ -45,12 +45,6 @@ export const VECTOR_OVERLAYS: readonly VectorOverlayDef[] = [
   { id: "sma200", label: "SMA 200", kind: "sma", family: "sma", period: 200, color: "#f87171" },
 ] as const;
 
-const OVERLAY_IDS = new Set<string>(VECTOR_OVERLAYS.map((o) => o.id));
-
-export function isVectorOverlayId(v: unknown): v is VectorOverlayId {
-  return typeof v === "string" && OVERLAY_IDS.has(v);
-}
-
 export type VectorOverlayFamilyDef = {
   id: VectorOverlayFamilyId;
   /** Menu label — includes the member periods so the member knows what "EMA" expands to. */
@@ -144,10 +138,6 @@ export type VectorOpeningRangeMinutes = (typeof VECTOR_OPENING_RANGE_PRESETS)[nu
 
 export const DEFAULT_OPENING_RANGE_MINUTES: VectorOpeningRangeMinutes = 15;
 
-export function isVectorOpeningRangeMinutes(v: unknown): v is VectorOpeningRangeMinutes {
-  return typeof v === "number" && (VECTOR_OPENING_RANGE_PRESETS as readonly number[]).includes(v);
-}
-
 /** The "Opening range" menu label with the ACTUAL selected window baked in (e.g. "(30m)"), so the
  *  toggle menu never shows a stale "15m" once the member has picked a different preset. */
 export function openingRangeLabel(minutes: VectorOpeningRangeMinutes): string {
@@ -181,12 +171,6 @@ export const VECTOR_LEVELS: readonly VectorLevelDef[] = [
   // a member with both toggles on couldn't tell the two dots apart in the toggle menu.
   { id: "pivots", label: "Floor pivots (P/R/S)", color: "#a3e635", group: "Key levels", needsPriorDay: true },
 ] as const;
-
-const LEVEL_IDS = new Set<string>(VECTOR_LEVELS.map((l) => l.id));
-
-export function isVectorLevelId(v: unknown): v is VectorLevelId {
-  return typeof v === "string" && LEVEL_IDS.has(v);
-}
 
 /**
  * "Structure" indicators — chart MARKERS (pivot labels + BOS/CHOCH flags), not lines or series.
@@ -242,10 +226,6 @@ export type VectorExpectedMoveId = "expected-move";
  */
 export type VectorExpectedMoveConeId = "expected-move-cone";
 
-export function isVectorExpectedMoveConeId(v: unknown): v is VectorExpectedMoveConeId {
-  return v === "expected-move-cone";
-}
-
 /**
  * "Positioning" — the strike×time dealer-gamma (GEX) surface drawn as a background HEATMAP BEHIND
  * the candles (task #14). x = time, y = strike (price axis), cell colour = signed net GEX intensity
@@ -257,10 +237,6 @@ export function isVectorExpectedMoveConeId(v: unknown): v is VectorExpectedMoveC
  * page): this is a horizon-scoped strike×TIME grid fed by the same reconstruction the walls use.
  */
 export type VectorGexHeatmapId = "gex-heatmap";
-
-export function isVectorGexHeatmapId(v: unknown): v is VectorGexHeatmapId {
-  return v === "gex-heatmap";
-}
 
 /**
  * "Positioning" — the dealer-gamma REGIME as a boundary GLOW hugging the gamma-flip line, rather
@@ -274,10 +250,6 @@ export function isVectorGexHeatmapId(v: unknown): v is VectorGexHeatmapId {
  * `VECTOR_DEFAULT_ENABLED_INDICATORS`) — a new visual members opt into.
  */
 export type VectorGammaRegimeId = "gamma-regime";
-
-export function isVectorGammaRegimeId(v: unknown): v is VectorGammaRegimeId {
-  return v === "gamma-regime";
-}
 
 /**
  * "Volume profile" — the session's volume bucketed by PRICE (not time), drawn as horizontal bars
@@ -294,10 +266,6 @@ export type VectorVolumeProfileId = "volume-profile";
 export type VectorBeadDisplayId =
   | "bead-integrity-rings"
   | "bead-event-glyphs";
-
-export function isVectorBeadDisplayId(v: unknown): v is VectorBeadDisplayId {
-  return v === "bead-integrity-rings" || v === "bead-event-glyphs";
-}
 
 export const VECTOR_BEAD_DISPLAY: ReadonlyArray<{
   id: VectorBeadDisplayId;

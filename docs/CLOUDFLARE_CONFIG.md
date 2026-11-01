@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | blackouttrades.com | CNAME | `blackout-production-alb-*.elb.amazonaws.com` | ✅ YES | Main app → **AWS ALB** (prod ECS) |
 | www.blackouttrades.com | CNAME | same ALB (or apex redirect via CF rule) | ✅ YES | www → apex via redirect rule |
-| staging.blackouttrades.com | CNAME | `blackout-staging-alb-*.elb.amazonaws.com` | ✅ YES | Staging ECS (if enabled) |
+| staging.blackouttrades.com | CNAME | `blackout-staging-alb-*.elb.amazonaws.com` | ✅ YES | **DANGLING as of 2026-09-16** — the entire staging stack (ECS, ALB, RDS, VPC) was decommissioned 2026-07-25 (see repo `CLAUDE.md`'s Vector-validation note); this ALB no longer exists, so the CNAME resolves to nothing and the hostname serves Cloudflare error 530 (origin DNS error) to any request. Not deleted here — DNS record deletion is outside this doc-fix's scope; flagging for whoever next touches Cloudflare DNS to remove it or confirm it should stay for a planned staging revival. |
 | clk._domainkey | CNAME | dkim1.tzneys6rxyan.clerk.services | ❌ NO | Clerk DKIM — must stay DNS-only |
 | clk2._domainkey | CNAME | dkim2.tzneys6rxyan.clerk.services | ❌ NO | Clerk DKIM — must stay DNS-only |
 | mail (Clerk) | CNAME | mail.tzneys6rxyan.clerk.services | ❌ NO | Clerk mail — must stay DNS-only |

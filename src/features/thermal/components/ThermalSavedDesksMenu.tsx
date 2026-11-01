@@ -90,6 +90,7 @@ export function ThermalSavedDesksMenu({
           <div className="mb-2 flex gap-1.5">
             <input
               type="text"
+              aria-label="Saved desk name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={defaultSavedDeskName(snapshot.ticker, snapshot.lens)}

@@ -1,0 +1,654 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
+import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import type { SwingPlayBriefContext } from "./play-brief-types";
+import type { SwingArchetypeTrackRecordSnapshot, SwingTrackRecordEntry } from "./calibration-cache";
+import { buildStructureLadder } from "./play-brief-ladder";
+
+function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
+  return {
+    id: "SWING:NVDA",
+    ticker: "NVDA",
+    direction: "LONG",
+    contract: "140C · 20DTE",
+    score: 75,
+    status: "OPEN",
+    horizon: "SWING",
+    exitModel: "SCALE_OUT",
+    recommendation: "HOLD",
+    factors: [],
+    gates: [],
+    ...overrides,
+  };
+}
+
+function fixtureCtx(overrides: Partial<SwingPlayBriefContext> = {}): SwingPlayBriefContext {
+  return {
+    play: fixturePlay(),
+    asOf: "2026-09-12 10:00 ET",
+    sessionDate: "2026-09-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    ...overrides,
+  };
+}
+
+/** A fresh (non-stale) Vector snapshot — `dataAgeMs` well under the 120s staleness bound. */
+function fixtureVec(overrides: Partial<VectorFullState> & Record<string, unknown> = {}): VectorFullState {
+  return {
+    spot: 100,
+    dataAgeMs: 1_000,
+    darkPoolLevels: [],
+    ...overrides,
+  } as unknown as VectorFullState;
+}
+
+function trackRecordEntry(over: Partial<SwingTrackRecordEntry> = {}): SwingTrackRecordEntry {
+  return {
+    tier: "LIMITED",
+    graduated: true,
+    wilsonLbPct: 62.5,
+    pointDeltaPts: 22.4,
+    n: 60,
+    wins: 45,
+    losses: 15,
+    winRatePct: 75,
+    ...over,
+  };
+}
+function trackRecordSnapshot(
+  archetypes: SwingArchetypeTrackRecordSnapshot["archetypes"] = {},
+): SwingArchetypeTrackRecordSnapshot {
+  return { asOf: "2026-09-10T15:00:00.000Z", gradedPlays: 70, archetypes, subLanes: {} };
+}
+
+// ── Bucket gate ─────────────────────────────────────────────────────────────
+
+test("buildStructureLadder: null on CLOSED bucket regardless of otherwise-complete inputs", () => {
+  const play = fixturePlay({ status: "CLOSED", direction: "LONG" });
+  const ctx = fixtureCtx({
+    play,
+    vector: fixtureVec({ spot: 100, gammaFlip: 110, regime: { posture: "long" } }),
+  });
+  assert.equal(buildStructureLadder(ctx, play, "closed"), null);
+});
+
+test("buildStructureLadder: null when there is no live spot to build from", () => {
+  const play = fixturePlay();
+  const ctx = fixtureCtx({ play, vector: null, ecosystem: null });
+  assert.equal(buildStructureLadder(ctx, play, "open"), null);
+  assert.equal(buildStructureLadder(ctx, play, "watch"), null);
+});
+
+// ── Rung sorting / labeling / role ──────────────────────────────────────────
+
+test("buildStructureLadder: rungs sort high price -> low price and carry the right kind/label/role", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    gammaFlip: 101,
+    gexWalls: { callWalls: [{ strike: 110 }], putWalls: [{ strike: 95 }] },
+    ladder: { rows: [{ strike: 108, isKing: true }] },
+    maxPain: 99,
+    magnet: { strike: 103, distancePct: 3, pull: "up" },
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.equal(ladder!.spot, 100);
+
+  const prices = ladder!.rungs.map((r) => r.price);
+  assert.deepEqual(prices, [...prices].sort((a, b) => b - a), "rungs must sort high price -> low price");
+
+  const byKind = Object.fromEntries(ladder!.rungs.map((r) => [r.kind, r]));
+  assert.equal(byKind.call_wall.label, "call wall");
+  assert.equal(byKind.call_wall.role, "resistance", "call wall above spot is a resistance node");
+  assert.equal(byKind.put_wall.label, "put wall");
+  assert.equal(byKind.put_wall.role, "support", "put wall below spot is a support node");
+  assert.equal(byKind.gamma_flip.role, "neutral", "gamma flip is a regime pivot, not a hard wall");
+  assert.equal(byKind.max_pain.role, "neutral", "max pain is a pin statistic, not a hard wall");
+  assert.equal(byKind.magnet.role, "neutral", "gamma magnet is a pull node, not a hard wall");
+  assert.equal(byKind.king.label, "GEX king");
+
+  // Signed % distance from spot, matching collectFocalLevels' own convention.
+  assert.ok(Math.abs(byKind.call_wall.distancePct - 10) < 1e-9);
+  assert.ok(Math.abs(byKind.put_wall.distancePct - -5) < 1e-9);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-31, live repro META/CC/TSM): collectFocalLevels
+// (play-brief-narrative.ts) used to push the GEX king as an independent entry even when it resolved
+// to the SAME price as a call/put wall already pushed — buildStructureLadder maps the focal array
+// 1:1 into rungs with no price-based merge, so a wall/king collision produced two byte-identical
+// `{price, target.rewardRisk}` rungs differing only in kind/label, and extractEvidence
+// (play-brief-adapter.ts) then walked both into two identical "R:R to <label> ($<price>): <N>R"
+// evidence strings for the one real number. Fixed at the shared `collectFocalLevels`/
+// `pushFocalLevel` layer (play-brief-narrative.ts) this function already reuses, so the merge
+// happens once, upstream of every reader.
+test("buildStructureLadder: a GEX king coinciding with a wall produces ONE rung, not two (2026-10-31, live repro META/CC/TSM)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 600,
+    gexWalls: { callWalls: [{ strike: 700 }], putWalls: [] },
+    ladder: { rows: [{ strike: 700, isKing: true }] },
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+
+  const rungsAt700 = ladder!.rungs.filter((r) => Math.abs(r.price - 700) < 0.01);
+  assert.equal(rungsAt700.length, 1, `expected exactly one rung at 700, got: ${JSON.stringify(rungsAt700)}`);
+  assert.equal(rungsAt700[0]!.kind, "call_wall");
+});
+
+// ── Real per-level R:R (point 2) ────────────────────────────────────────────
+
+test("buildStructureLadder: R:R is the REAL deriveSwingPlanLevels ratio, not a fixed multiple", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  // spot=100 -> atr proxy falls back to price*0.015=1.5 (deriveSwingPlanLevels's own documented
+  // fallback, structure-levels.ts) -> stopDist=1.5*atr=2.25, stop=97.75.
+  const vec = fixtureVec({ spot: 100, gammaFlip: 110 });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(Math.abs(ladder!.atr - 1.5) < 1e-9);
+  assert.ok(Math.abs(ladder!.stop - 97.75) < 1e-9);
+
+  const flipRung = ladder!.rungs.find((r) => r.kind === "gamma_flip");
+  assert.ok(flipRung?.target, "a favorable-side rung must carry a target");
+  // |110-100| / |100-97.75| = 10 / 2.25
+  assert.ok(Math.abs(flipRung!.target!.rewardRisk - 10 / 2.25) < 1e-9);
+  assert.equal(flipRung!.target!.horizon, "swing", "10pts is beyond 2x the 1.5 ATR proxy (3pts)");
+});
+
+test("buildStructureLadder: an OPEN position with real committed entry/stop uses THOSE, not the live ATR recompute (2026-10-20 fix)", () => {
+  // Real position: committed LONG at underlying 220, real structural stop 205 (6.8% below entry).
+  // Spot has since risen to 240 — before the fix, `stop` would be a fresh ATR recompute off 240
+  // (234.60), disagreeing with the narrative's "Structural stop (committed): 205.00" line in the
+  // SAME envelope.
+  const play = fixturePlay({
+    direction: "LONG",
+    entryTriggerUnderlyingPx: 220,
+    invalidationUnderlyingPx: 205,
+  });
+  const vec = fixtureVec({ spot: 240, gammaFlip: 260 });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.equal(ladder!.stop, 205, "stop must be the REAL committed invalidation, not a live recompute");
+
+  const flipRung = ladder!.rungs.find((r) => r.kind === "gamma_flip");
+  assert.ok(flipRung?.target);
+  // |260-220| / |220-205| = 40/15, using the REAL entry/stop pair, not live spot/ATR-recompute.
+  assert.ok(Math.abs(flipRung!.target!.rewardRisk - 40 / 15) < 1e-9);
+});
+
+test("buildStructureLadder: a WATCH candidate ALWAYS uses the live recompute, even if the play somehow carries real committed fields", () => {
+  const play = fixturePlay({
+    direction: "LONG",
+    entryTriggerUnderlyingPx: 220,
+    invalidationUnderlyingPx: 205,
+  });
+  const vec = fixtureVec({ spot: 240, gammaFlip: 260 });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "watch");
+  assert.ok(ladder);
+  // atr proxy = 240*0.015=3.6, stopDist=1.5*3.6=5.4, stop=240-5.4=234.6 — the live recompute, not 205.
+  assert.ok(Math.abs(ladder!.stop - 234.6) < 1e-9, "a WATCH candidate has no real position to disagree with");
+});
+
+test("buildStructureLadder: an OPEN position with only ONE real field present falls back fully to the live recompute (no mixed real/live frame)", () => {
+  const playStopOnly = fixturePlay({ direction: "LONG", invalidationUnderlyingPx: 205 });
+  const vec = fixtureVec({ spot: 240, gammaFlip: 260 });
+  const ctxStopOnly = fixtureCtx({ play: playStopOnly, vector: vec, ecosystem: null });
+  const ladderStopOnly = buildStructureLadder(ctxStopOnly, playStopOnly, "open");
+  assert.ok(ladderStopOnly);
+  assert.ok(Math.abs(ladderStopOnly!.stop - 234.6) < 1e-9, "missing real entry must not mix with the real stop alone");
+
+  const playEntryOnly = fixturePlay({ direction: "LONG", entryTriggerUnderlyingPx: 220 });
+  const ctxEntryOnly = fixtureCtx({ play: playEntryOnly, vector: vec, ecosystem: null });
+  const ladderEntryOnly = buildStructureLadder(ctxEntryOnly, playEntryOnly, "open");
+  assert.ok(ladderEntryOnly);
+  assert.ok(Math.abs(ladderEntryOnly!.stop - 234.6) < 1e-9, "missing real stop must not mix with the real entry alone");
+});
+
+test("buildStructureLadder: horizon classifies short_term within ~2x ATR, swing beyond it", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  // Two favorable-side rungs straddling the 2xATR=3pt boundary at spot=100, atr=1.5.
+  const vec = fixtureVec({
+    spot: 100,
+    gammaFlip: 103, // exactly 2x ATR -> short_term (<=)
+    ladder: { rows: [{ strike: 106, isKing: true }] }, // beyond 2x ATR -> swing
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  const flip = ladder!.rungs.find((r) => r.kind === "gamma_flip");
+  const king = ladder!.rungs.find((r) => r.kind === "king");
+  assert.equal(flip!.target!.horizon, "short_term");
+  assert.equal(king!.target!.horizon, "swing");
+});
+
+test("buildStructureLadder: target is present ONLY on the favorable side of spot (LONG: above; SHORT: below)", () => {
+  const longPlay = fixturePlay({ direction: "LONG" });
+  const longCtx = fixtureCtx({
+    play: longPlay,
+    vector: fixtureVec({
+      spot: 100,
+      gexWalls: { callWalls: [{ strike: 110 }], putWalls: [{ strike: 90 }] },
+    }),
+    ecosystem: null,
+  });
+  const longLadder = buildStructureLadder(longCtx, longPlay, "open")!;
+  assert.ok(longLadder.rungs.find((r) => r.kind === "call_wall")?.target, "above spot is favorable for LONG");
+  assert.equal(longLadder.rungs.find((r) => r.kind === "put_wall")?.target, undefined, "below spot is unfavorable for LONG");
+
+  const shortPlay = fixturePlay({ direction: "SHORT" });
+  const shortCtx = fixtureCtx({
+    play: shortPlay,
+    vector: fixtureVec({
+      spot: 100,
+      gexWalls: { callWalls: [{ strike: 110 }], putWalls: [{ strike: 90 }] },
+    }),
+    ecosystem: null,
+  });
+  const shortLadder = buildStructureLadder(shortCtx, shortPlay, "open")!;
+  assert.ok(shortLadder.rungs.find((r) => r.kind === "put_wall")?.target, "below spot is favorable for SHORT");
+  assert.equal(shortLadder.rungs.find((r) => r.kind === "call_wall")?.target, undefined, "above spot is unfavorable for SHORT");
+});
+
+// ── Cross-desk agreement tri-state (point 3) ────────────────────────────────
+
+function gexEco(over: Record<string, unknown> = {}): EcosystemContext {
+  return {
+    gex_positioning: { spot: 100, flip: 95, matrix_age_sec: 10, freshness: "live", ...over },
+  } as unknown as EcosystemContext;
+}
+
+test("buildStructureLadder: crossDeskAgreement is ALIGNED when Vector's own posture matches the matrix-implied one", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  // spot(100) > gex.flip(95) -> matrix implies "long"; Vector's own regime read also says "long".
+  const ctx = fixtureCtx({
+    play,
+    vector: fixtureVec({ spot: 100, regime: { posture: "long" } }),
+    ecosystem: gexEco(),
+  });
+  const ladder = buildStructureLadder(ctx, play, "open")!;
+  assert.deepEqual(ladder.crossDeskAgreement, { status: "aligned" });
+});
+
+test("buildStructureLadder: crossDeskAgreement is DISAGREEMENT when Vector's own posture contradicts the matrix-implied one", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  // spot(100) > gex.flip(95) -> matrix implies "long"; Vector's own read says "short" — a genuine
+  // disagreement between two independently-computed flip estimates, exactly what a single-source
+  // competitor panel could never surface.
+  const ctx = fixtureCtx({
+    play,
+    vector: fixtureVec({ spot: 100, regime: { posture: "short" } }),
+    ecosystem: gexEco(),
+  });
+  const ladder = buildStructureLadder(ctx, play, "open")!;
+  assert.equal(ladder.crossDeskAgreement?.status, "disagreement");
+  assert.match(ladder.crossDeskAgreement!.note ?? "", /short gamma/);
+  assert.match(ladder.crossDeskAgreement!.note ?? "", /long gamma/);
+});
+
+test("buildStructureLadder: crossDeskAgreement.note rounds the flip/spot at an IEEE-754 half-cent boundary the SAME way the route's roundFloats does (toFixed-vs-roundFloats mismatch, Ask Largo 2026-09-21)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  // 95.175 is stored as ...74999... in IEEE-754, so raw `.toFixed(2)` prints "95.17" while
+  // `Math.round(n*100)/100` (what `roundFloats` uses to round the SAME raw float for the numeric
+  // `ladder.spot`/rung `price` fields elsewhere in this same response) prints "95.18" — a real,
+  // live, byte-provable disagreement between this narrated string and the numeric fields it sits
+  // beside, the same bug class already fixed twice in play-brief-narrative*.ts (#5380, #5383).
+  const ctx = fixtureCtx({
+    play,
+    vector: fixtureVec({ spot: 100.005, regime: { posture: "short" } }),
+    ecosystem: gexEco({ flip: 95.175 }),
+  });
+  const ladder = buildStructureLadder(ctx, play, "open")!;
+  const note = ladder.crossDeskAgreement!.note ?? "";
+  assert.match(note, /95\.18/);
+  assert.doesNotMatch(note, /95\.17\b/);
+  assert.match(note, /100\.01/);
+  assert.doesNotMatch(note, /100\.00\b/);
+});
+
+test("buildStructureLadder: crossDeskAgreement is OMITTED (never forced) when Vector's own read is unknown/absent", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const unknownCtx = fixtureCtx({
+    play,
+    vector: fixtureVec({ spot: 100, regime: { posture: "unknown" } }),
+    ecosystem: gexEco(),
+  });
+  const absentCtx = fixtureCtx({
+    play,
+    vector: fixtureVec({ spot: 100, regime: null }),
+    ecosystem: gexEco(),
+  });
+  assert.equal(buildStructureLadder(unknownCtx, play, "open")!.crossDeskAgreement, undefined);
+  assert.equal(buildStructureLadder(absentCtx, play, "open")!.crossDeskAgreement, undefined);
+});
+
+test("buildStructureLadder: crossDeskAgreement is OMITTED when there is no independent GEX-matrix flip to compare against", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const ctx = fixtureCtx({
+    play,
+    // gammaFlip present so the ladder has a rung to build from; no ecosystem/GEX matrix at all —
+    // there is nothing independent of Vector to compare its posture read against.
+    vector: fixtureVec({ spot: 100, gammaFlip: 110, regime: { posture: "long" } }),
+    ecosystem: null,
+  });
+  const ladder = buildStructureLadder(ctx, play, "open")!;
+  assert.ok(ladder);
+  assert.equal(ladder.crossDeskAgreement, undefined);
+});
+
+// ── Archetype track-record citation (point 4, Largo C6 omission discipline) ─
+
+test("buildStructureLadder: cites the archetype track record ONLY when the bucket has graduated", () => {
+  const play = fixturePlay({ direction: "LONG", archetype: "BREAKOUT" });
+  const vec = fixtureVec({ spot: 100, gammaFlip: 110 });
+
+  const graduatedCtx = fixtureCtx({
+    play,
+    vector: vec,
+    archetypeTrackRecord: trackRecordSnapshot({
+      BREAKOUT: trackRecordEntry({ graduated: true, winRatePct: 68, wilsonLbPct: 55, n: 40 }),
+    }),
+  });
+  const graduatedLadder = buildStructureLadder(graduatedCtx, play, "open")!;
+  assert.deepEqual(graduatedLadder.archetypeTrackRecord, {
+    archetypeLabel: "Breakout continuation",
+    winRatePct: 68,
+    wilsonLbPct: 55,
+    n: 40,
+  });
+
+  const ungraduatedCtx = fixtureCtx({
+    play,
+    vector: vec,
+    archetypeTrackRecord: trackRecordSnapshot({
+      BREAKOUT: trackRecordEntry({ graduated: false }),
+    }),
+  });
+  assert.equal(
+    buildStructureLadder(ungraduatedCtx, play, "open")!.archetypeTrackRecord,
+    undefined,
+    "never cite an ungraduated bucket — Largo C6 omission, not a discounted number",
+  );
+
+  const coldCacheCtx = fixtureCtx({ play, vector: vec, archetypeTrackRecord: null });
+  assert.equal(buildStructureLadder(coldCacheCtx, play, "open")!.archetypeTrackRecord, undefined);
+
+  const noArchetypeCtx = fixtureCtx({
+    play: fixturePlay({ direction: "LONG", archetype: null }),
+    vector: vec,
+    archetypeTrackRecord: trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ graduated: true }) }),
+  });
+  assert.equal(
+    buildStructureLadder(noArchetypeCtx, noArchetypeCtx.play, "open")!.archetypeTrackRecord,
+    undefined,
+  );
+});
+
+// BUG FIX (2026-10-21, Ask Largo standing mandate, live repro SEDG): archetypeTrackRecord above
+// only ever covered the ARCHETYPE dimension — but archetypeTrackRecordSection (play-brief-intel.ts)
+// independently gates and renders the SUB-LANE dimension too, and a ticker whose sub-lane bucket
+// graduated while its archetype bucket didn't is a real, supported state (that section's own tests
+// prove it). The Structure Ladder had no field at all for that case.
+test("buildStructureLadder: cites the sub-lane track record ONLY when that bucket has graduated — independent of the archetype dimension", () => {
+  const play = fixturePlay({ direction: "LONG", archetype: "BREAKOUT", subLane: "TACTICAL" });
+  const vec = fixtureVec({ spot: 100, gammaFlip: 110 });
+
+  const subLaneGraduatedCtx = fixtureCtx({
+    play,
+    vector: vec,
+    archetypeTrackRecord: {
+      asOf: "2026-09-10T15:00:00.000Z",
+      gradedPlays: 40,
+      archetypes: {},
+      subLanes: { TACTICAL: trackRecordEntry({ graduated: true, winRatePct: 62.9, wilsonLbPct: 58.1, n: 35 }) },
+    },
+  });
+  const ladder = buildStructureLadder(subLaneGraduatedCtx, play, "open")!;
+  assert.equal(ladder.archetypeTrackRecord, undefined, "archetype bucket ungraduated here — must not fabricate");
+  assert.deepEqual(ladder.subLaneTrackRecord, {
+    subLaneLabel: "Tactical (5–7d)",
+    winRatePct: 62.9,
+    wilsonLbPct: 58.1,
+    n: 35,
+  });
+
+  const ungraduatedCtx = fixtureCtx({
+    play,
+    vector: vec,
+    archetypeTrackRecord: {
+      asOf: "2026-09-10T15:00:00.000Z",
+      gradedPlays: 40,
+      archetypes: {},
+      subLanes: { TACTICAL: trackRecordEntry({ graduated: false }) },
+    },
+  });
+  assert.equal(
+    buildStructureLadder(ungraduatedCtx, play, "open")!.subLaneTrackRecord,
+    undefined,
+    "never cite an ungraduated sub-lane bucket — Largo C6 omission, not a discounted number",
+  );
+
+  const coldCacheCtx = fixtureCtx({ play, vector: vec, archetypeTrackRecord: null });
+  assert.equal(buildStructureLadder(coldCacheCtx, play, "open")!.subLaneTrackRecord, undefined);
+});
+
+// ── WATCH bucket (still builds — the ladder is useful pre-entry too) ────────
+
+test("buildStructureLadder: builds for a WATCH candidate too (forward risk/reward is exactly the pre-entry question)", () => {
+  const play = fixturePlay({ status: "WATCH", direction: "LONG" });
+  const ctx = fixtureCtx({ play, vector: fixtureVec({ spot: 100, gammaFlip: 110 }) });
+  const ladder = buildStructureLadder(ctx, play, "watch");
+  assert.ok(ladder);
+  assert.ok(ladder!.rungs.length > 0);
+  assert.equal(ladder!.positionState, "watch");
+});
+
+// ── positionState — the OPEN-position "stop is a live estimate, not the real committed one" ─────
+// caveat this field exists to drive (see StructureLadder.positionState's own header). `stop` is
+// ALWAYS a fresh recompute from today's spot, never `TerminalPlay`'s real per-position value (not
+// threaded onto the type today) — positionState just tells the UI which case it's in so an
+// OPEN/HOLD/TRIM read can say so, instead of presenting a recompute as the position's real,
+// frozen risk level.
+
+test("buildStructureLadder: positionState is \"open\" for an already-committed OPEN position", () => {
+  const play = fixturePlay({ status: "OPEN", direction: "LONG" });
+  const ctx = fixtureCtx({ play, vector: fixtureVec({ spot: 100, gammaFlip: 110 }) });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.equal(ladder!.positionState, "open");
+});
+
+// ── Gatekeeper (competitor-panel parity, 2026-09-13) ─────────────────────────
+// Every favorable-side rung except the single farthest one is a "gatekeeper": clearing it is
+// what exposes the next rung out. The farthest favorable rung is never a gatekeeper.
+
+test("buildStructureLadder: nearer favorable rungs are gatekeepers, the farthest one is not", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    gammaFlip: 105, // favorable, nearer (+5)
+    gexWalls: { callWalls: [{ strike: 112 }], putWalls: [{ strike: 95 }] }, // call wall favorable, farther (+12)
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+
+  const byKind = Object.fromEntries(ladder!.rungs.map((r) => [r.kind, r]));
+  assert.equal(byKind.gamma_flip.target?.gatekeeper, true, "nearer favorable rung IS a gatekeeper");
+  assert.equal(byKind.call_wall.target?.gatekeeper, false, "farthest favorable rung is NOT a gatekeeper");
+  // The unfavorable-side put wall never carries a target at all, so gatekeeper is moot for it.
+  assert.equal(byKind.put_wall.target, undefined);
+});
+
+test("buildStructureLadder: a single favorable rung is never a gatekeeper (nothing further out to open)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({ spot: 100, gammaFlip: 110 });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  const flip = ladder!.rungs.find((r) => r.kind === "gamma_flip");
+  assert.equal(flip?.target?.gatekeeper, false);
+});
+
+// ── Risk — the other side ────────────────────────────────────────────────────
+// The nearest real rung WITHOUT a target (i.e. on the unfavorable side) — always a reference into
+// the same rungs array, never a second independently-derived level.
+
+test("buildStructureLadder: riskTheOtherSide names the nearest unfavorable-side rung", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    gammaFlip: 110,
+    gexWalls: { callWalls: [{ strike: 115 }], putWalls: [{ strike: 97 }] }, // put wall unfavorable, nearest
+    maxPain: 90, // also unfavorable (neutral role) but farther than the put wall
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide, "an unfavorable-side rung exists and must be named");
+  assert.equal(ladder!.riskTheOtherSide!.kind, "put_wall", "nearest unfavorable rung, not just any of them");
+  assert.equal(ladder!.riskTheOtherSide!.price, 97);
+  assert.equal(ladder!.riskTheOtherSide!.role, "support");
+});
+
+test("buildStructureLadder: riskTheOtherSide is OMITTED when every rung sits on the favorable side", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  // Only favorable-side (above spot) structure — nothing on the wrong side to name.
+  const vec = fixtureVec({ spot: 100, gammaFlip: 105, gexWalls: { callWalls: [{ strike: 112 }] } });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.equal(ladder!.riskTheOtherSide, undefined);
+});
+
+test("buildStructureLadder: riskTheOtherSide flips sides correctly for a SHORT thesis", () => {
+  const play = fixturePlay({ direction: "SHORT" });
+  const vec = fixtureVec({
+    spot: 100,
+    gammaFlip: 90, // favorable for SHORT (below spot)
+    gexWalls: { callWalls: [{ strike: 103 }], putWalls: [{ strike: 80 }] }, // call wall above spot = unfavorable for SHORT
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide);
+  assert.equal(ladder!.riskTheOtherSide!.kind, "call_wall");
+  assert.equal(ladder!.riskTheOtherSide!.price, 103);
+});
+
+// BUG FIX (2026-09-15, Ask Largo standing mandate, live repro AAPL/CG/ENPH/PEGA): a nearer neutral
+// pivot (gamma_flip/max_pain/magnet) used to win over a farther but genuine support/resistance wall
+// on the unfavorable side, directly contradicting roleForKind's own documented stance that these
+// pivots are "NOT hard support/resistance... never as a wall a price bounces off." Live PEGA repro
+// shape: a gamma-magnet pivot sat much nearer than the real put wall, and the old code named the
+// pivot "the nearest real structure" while hiding a put wall 13 points farther out.
+test("buildStructureLadder: riskTheOtherSide prefers a farther REAL wall over a nearer NEUTRAL pivot (live PEGA repro)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    magnet: { strike: 95 }, // neutral, NEARER (5% away)
+    gexWalls: { putWalls: [{ strike: 80 }] }, // support, FARTHER (20% away) but a real wall
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide);
+  assert.equal(
+    ladder!.riskTheOtherSide!.kind,
+    "put_wall",
+    "must prefer the farther real wall over the nearer neutral pivot",
+  );
+  assert.equal(ladder!.riskTheOtherSide!.price, 80);
+  assert.equal(ladder!.riskTheOtherSide!.role, "support");
+});
+
+test("buildStructureLadder: riskTheOtherSide falls back to a neutral pivot when NO real wall exists unfavorably (unchanged GLXY-shape case)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    magnet: { strike: 95 }, // neutral, the ONLY unfavorable-side rung — no real wall to prefer
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide, "must still fall back to the neutral pivot when nothing else exists");
+  assert.equal(ladder!.riskTheOtherSide!.kind, "magnet");
+  assert.equal(ladder!.riskTheOtherSide!.role, "neutral");
+});
+
+// BUG FIX (2026-10-20, Ask Largo standing mandate, adversarially verified): a call wall CAN sit
+// below spot (price already ran through it) and used to win riskTheOtherSide's "nearest unfavorable
+// rung" reduce for a LONG thesis purely on distance, with no check that call_wall is even an
+// eligible kind for a LONG's "wrong side". `resolveInvalidationFocalLevel` (play-brief-narrative.ts)
+// — the sibling this widget's own header claims it can never disagree with — never treats call_wall
+// as a candidate invalidation level for a LONG (only put_wall/dark_pool/king), so the two could name
+// different "the level that matters on the downside" prices for the identical position.
+test("buildStructureLadder: riskTheOtherSide never names a call wall as the unfavorable side for a LONG, even when it is nearer than an eligible wall (live kind-mismatch repro)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    gexWalls: {
+      callWalls: [{ strike: 98 }], // below spot (ran through it), NEARER — ineligible for a LONG's wrong side
+      putWalls: [{ strike: 80 }], // below spot, farther, but the only kind-eligible real wall
+    },
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide);
+  assert.equal(
+    ladder!.riskTheOtherSide!.kind,
+    "put_wall",
+    "a call wall is never eligible as a LONG's unfavorable-side level, regardless of distance",
+  );
+  assert.equal(ladder!.riskTheOtherSide!.price, 80);
+});
+
+test("buildStructureLadder: riskTheOtherSide never names a put wall as the unfavorable side for a SHORT, even when it is nearer than an eligible wall (symmetric kind-mismatch repro)", () => {
+  const play = fixturePlay({ direction: "SHORT" });
+  const vec = fixtureVec({
+    spot: 100,
+    gexWalls: {
+      putWalls: [{ strike: 102 }], // above spot (ran through it), NEARER — ineligible for a SHORT's wrong side
+      callWalls: [{ strike: 120 }], // above spot, farther, but the only kind-eligible real wall
+    },
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide);
+  assert.equal(
+    ladder!.riskTheOtherSide!.kind,
+    "call_wall",
+    "a put wall is never eligible as a SHORT's unfavorable-side level, regardless of distance",
+  );
+  assert.equal(ladder!.riskTheOtherSide!.price, 120);
+});
+
+// Fallback tier must ALSO exclude the cross-direction wall kind — otherwise it would resurface the
+// same bug whenever no kind-eligible real wall exists at all (the call wall must be treated as if
+// it weren't there, falling through to a neutral pivot, never as a last-resort "real wall").
+test("buildStructureLadder: riskTheOtherSide falls through an ineligible-kind wall to a neutral pivot, never to the ineligible wall itself", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const vec = fixtureVec({
+    spot: 100,
+    gexWalls: { callWalls: [{ strike: 98 }] }, // the ONLY unfavorable-side rung, but ineligible for LONG
+    magnet: { strike: 90 }, // neutral, farther, but the only eligible fallback
+  });
+  const ctx = fixtureCtx({ play, vector: vec, ecosystem: null });
+  const ladder = buildStructureLadder(ctx, play, "open");
+  assert.ok(ladder);
+  assert.ok(ladder!.riskTheOtherSide, "must fall through to the neutral pivot, never omit entirely");
+  assert.equal(ladder!.riskTheOtherSide!.kind, "magnet");
+  assert.equal(ladder!.riskTheOtherSide!.role, "neutral");
+});

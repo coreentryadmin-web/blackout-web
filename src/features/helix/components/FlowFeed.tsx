@@ -232,6 +232,31 @@ export function compareFlowAlertsByTimeAsc(a: FlowAlert, b: FlowAlert): number {
   return am - bm;
 }
 
+/**
+ * Runs `fetchFn`, applying its result via `apply` only if `getGeneration()` reads the SAME
+ * value once the fetch resolves as it did right before the fetch started — i.e. nothing bumped
+ * the counter while the request was in flight.
+ *
+ * WHY: `loadOlderFlows` pages in an OLDER slice of the tape and appends it to whatever `alerts`
+ * currently holds. It has no way to tell, once its response lands, whether the filter changed
+ * (and `loadFlows` already reset `alerts`/pagination to the NEW filter's results) while it was
+ * waiting on the network — ordinary async code has no such guard for free. Without this check,
+ * a slow older-page fetch started under filter A could resolve AFTER filter B's reload and
+ * silently splice filter A's rows into filter B's tape, plus overwrite `hasMorePages`/
+ * `nextBefore` with filter A's pagination cursor — breaking "load more" for the filter actually
+ * on screen. Pure + exported, same shape as `AdminApiEventDetail.tsx`'s
+ * `loadEventDetailIfCurrent`, so the race itself is unit-testable without rendering FlowFeed.
+ */
+export async function applyIfGenerationUnchanged<T>(
+  fetchFn: () => Promise<T>,
+  getGeneration: () => number,
+  apply: (data: T) => void
+): Promise<void> {
+  const generationAtStart = getGeneration();
+  const data = await fetchFn();
+  if (getGeneration() === generationAtStart) apply(data);
+}
+
 // Bug 14: synthetic beep for whale prints (>$1M) using Web Audio API
 function playWhaleBeep() {
   if (typeof AudioContext === "undefined") return;
@@ -343,6 +368,14 @@ export function FlowFeed() {
   const seenRef         = useRef(new Set<string>());
   const hasOlderPagesRef = useRef(false);
   const loadGenerationRef = useRef(0);
+  // Bumped exactly once per FILTER change (inside loadFlows, which only ever runs when
+  // `flowFetchParams` — and therefore the filter — changes identity; see the effect at the
+  // `loadFlows` call site). Deliberately separate from `loadGenerationRef`: that counter is
+  // ALSO bumped by `refreshHead`'s routine 30s poll with no filter change at all, so reusing it
+  // here would discard a perfectly valid in-flight older-page fetch any time a poll tick landed
+  // mid-fetch — a false positive on the common case. This ref exists so `loadOlderFlows` can
+  // detect the one case that actually matters: the filter changed underneath it.
+  const filterGenerationRef = useRef(0);
   const filterBackfillPagesRef = useRef(0);
   const filterBackfillInFlightRef = useRef(false);
   const replaySourceRef = useRef<FlowAlert[]>([]);
@@ -663,6 +696,10 @@ export function FlowFeed() {
   // ── Data loading ──────────────────────────────────────────────────────────
   const loadFlows = useCallback(async () => {
     const generation = ++loadGenerationRef.current;
+    // loadFlows only ever runs when `flowFetchParams` (the filter) changed identity — see the
+    // `[loadFlows]` effect below — so this is the one place a genuine filter change can be
+    // observed, distinct from refreshHead's routine polling which never fires this function.
+    ++filterGenerationRef.current;
     try {
       const d = await fetchFlows(flowFetchParams());
       if (generation !== loadGenerationRef.current) return;
@@ -689,16 +726,25 @@ export function FlowFeed() {
     if (!nextBefore || loadingOlder) return;
     setLoadingOlder(true);
     try {
-      const d = await fetchFlows({ ...flowFetchParams(), before: nextBefore });
-      for (const a of d.flows as Array<FlowAlert & { alert_id?: string }>) {
-        const id = flowAlertId(a);
-        if (id) seenRef.current.add(id);
-        seenRef.current.add(flowCompositeKey(a));
-      }
-      setAlerts((prev) => appendFlowTapePage(prev, d.flows));
-      setHasMorePages(Boolean(d.has_more));
-      setNextBefore(d.next_before ?? null);
-      hasOlderPagesRef.current = true;
+      // Guarded against `filterGenerationRef` (not `loadGenerationRef`, which `refreshHead`'s
+      // routine 30s poll also bumps with no filter change at all — reusing it here would
+      // discard a perfectly valid older-page fetch any time a poll tick landed mid-fetch, a
+      // false positive on the common case). See `applyIfGenerationUnchanged` above.
+      await applyIfGenerationUnchanged(
+        () => fetchFlows({ ...flowFetchParams(), before: nextBefore }),
+        () => filterGenerationRef.current,
+        (d) => {
+          for (const a of d.flows as Array<FlowAlert & { alert_id?: string }>) {
+            const id = flowAlertId(a);
+            if (id) seenRef.current.add(id);
+            seenRef.current.add(flowCompositeKey(a));
+          }
+          setAlerts((prev) => appendFlowTapePage(prev, d.flows));
+          setHasMorePages(Boolean(d.has_more));
+          setNextBefore(d.next_before ?? null);
+          hasOlderPagesRef.current = true;
+        }
+      );
     } catch (e) {
       console.warn("[FlowFeed] load older:", e);
     } finally {
