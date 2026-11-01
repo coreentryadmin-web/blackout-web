@@ -6,7 +6,7 @@
 // so the bug was branch-specific, not a universal template issue.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildMarketRecap, flowByExpiryPremium } from "./format";
+import { buildMarketRecap, flowByExpiryPremium, tideBias } from "./format";
 import type { MarketWideContext } from "./market-wide";
 
 function baseCtx(overrides: Partial<MarketWideContext> = {}): MarketWideContext {
@@ -65,6 +65,45 @@ test("recap summary still reads correctly for a real computed tide", () => {
   assert.equal(tide, "BULLISH — calls 60% ($6.0M) vs puts $4.0M");
   assert.ok(!summary.includes(".."), `expected no double period, got: ${summary}`);
   assert.ok(summary.startsWith("BULLISH — calls 60% ($6.0M) vs puts $4.0M. SPX"));
+});
+
+// Regression (correctness audit, 2026-11-01): tideBias()/tideSummary() treat `call_premium`/
+// `put_premium` as if they were non-negative gross premiums, computing `total = call + put` and
+// reading `total <= 0` as "no real premium at all". The real field (fetchUwMarketTide, src/lib/
+// providers/unusual-whales.ts) is UW's SIGNED NET premium — net call-SELLING is routine and
+// genuinely negative. Live-verified 2026-10-21: the real market-tide row behind that day's Legacy
+// edition had call_premium = -$10.1M / put_premium = $32.0M and correctly read BEARISH (its signed
+// sum, $21.9M, stayed positive). A MORE one-sided version of that exact same bearish pattern —
+// heavier net call-selling that pushes the signed sum through zero — used to flip the verdict
+// backward to NEUTRAL/"flat, no premium" purely because of which side of zero the raw sum landed
+// on, not because the market became less directional.
+test("tideBias: a more one-sided bearish tide (net call-selling heavier than net put-buying) stays BEARISH, not NEUTRAL", () => {
+  // Same sign pattern as the real live 2026-10-21 tide (net call-selling + net put-buying), just
+  // large enough in magnitude that call_premium + put_premium crosses through zero.
+  assert.equal(tideBias({ call_premium: -50_000_000, put_premium: 10_000_000 }), "BEARISH");
+  // The real live 2026-10-21 case itself must keep reading BEARISH (it already did pre-fix,
+  // because its signed sum happened to stay positive — this guards against a regression that
+  // flips this known-good case while fixing the one above).
+  assert.equal(tideBias({ call_premium: -10_100_000, put_premium: 32_000_000 }), "BEARISH");
+});
+
+test("tideBias: the mirror-image bullish case (net call-buying + net put-selling summing negative) stays BULLISH, not NEUTRAL", () => {
+  // call bought (+110M bullish) and put sold (-120M, also bullish) sum to a NEGATIVE total
+  // (-10M) under the old call+put math, which used to read NEUTRAL despite both signals
+  // pointing bullish.
+  assert.equal(tideBias({ call_premium: 110_000_000, put_premium: -120_000_000 }), "BULLISH");
+});
+
+test("tideSummary (via buildMarketRecap): the one-sided bearish net-call-selling tide renders BEARISH text, not 'flat / no premium'", () => {
+  const { tide } = buildMarketRecap(
+    baseCtx({ tide: { call_premium: -50_000_000, put_premium: 10_000_000 } })
+  );
+  assert.ok(tide.startsWith("BEARISH"), `expected a BEARISH verdict, got: ${tide}`);
+  assert.notEqual(tide, "Market tide flat / no premium");
+});
+
+test("tideBias: a genuinely flat tide (both sides zero) is still NEUTRAL", () => {
+  assert.equal(tideBias({ call_premium: 0, put_premium: 0 }), "NEUTRAL");
 });
 
 // Task #31 (Ask Largo x Night Hawk Legacy standing mandate, 2026-09-18): platform_intel.playbook
