@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-31T22:58:19.113Z",
+  "updated_at": "2026-11-01T00:29:37.254Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,49 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "bf47fa0128dfa01166e7ac2966c8f768b5105ad6",
+    "last_main_sha": "42dbe9e04c68bb7c2070a861509ae3547428ff07",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-24T11:37:50.290Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 13
-    },
-    {
-      "at": "2026-10-24T11:37:59.001Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 13
-    },
-    {
-      "at": "2026-10-24T12:07:49.530Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T12:07:53.096Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T12:07:56.510Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-24T12:56:40.382Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
     {
       "at": "2026-10-24T12:56:48.179Z",
       "type": "context_sync",
@@ -1271,18 +1235,74 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T00:23:17.620Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-01T00:23:24.088Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-01T00:23:29.785Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-01T00:29:27.238Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-01T00:29:32.415Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-01T00:29:37.254Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 7093,
-      "title": "fix(admin-api-dashboard): /{proxy} catch-all row stole another endpoint's telemetry",
-      "branch": "fix/admin-dashboard-proxy-telemetry-match",
+      "number": 7109,
+      "title": "fix(helix): parseContractMeta preserves genuine zero open_interest/day_volume",
+      "branch": "fix/helix-contract-meta-genuine-zero",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T00:27:02Z"
+    },
+    {
+      "number": 7108,
+      "title": "fix(vector): normalize ticker before oracle-rail check in fetchVectorEmbedFastSeed",
+      "branch": "fix/vector-embed-fast-seed-oracle-ticker-case",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-10-31T22:44:02Z"
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T00:22:52Z"
+    },
+    {
+      "number": 7107,
+      "title": "fix(0dte): thesis-health pillarStatus no longer mislabels an unchanged pillar as faded/lost",
+      "branch": "fix/zerodte-thesis-pillarstatus-unchanged",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T00:16:53Z"
     },
     {
       "number": 5547,
