@@ -738,4 +738,91 @@ describe("closedDeckSourcesFromChains", () => {
     const out = closedDeckSourcesFromChains([[row({ id: 21, roll_seq: 0, realized_pnl_pct: -0.01 })]]);
     assert.equal(out[0]!.closedReason, "stopped");
   });
+
+  // BUG FIX (Ask Largo standing mandate, 2026-11-01, 6th site of the same bug class as the five
+  // fixes above — caught by audit before a live wrong-boolean repro): `trimEnforcedBeforeClose` was
+  // the one remaining field still surviving unconditionally from the `...src` spread
+  // (`closedDeckSourceFromRow(terminal)`'s own `scale_out_grade.trim_enforced_before_close`) instead
+  // of being re-pointed at the worst leg's own row — the same pattern already applied to positionId /
+  // entryPremium|peakPremium|troughPremium / contract|occ|mid|delta /
+  // entryTriggerUnderlyingPx|invalidationUnderlyingPx / exitAt|committedAt|firstSeenAt. This feeds
+  // adapters.ts's exit-ladder "fired" gate (`status === "TRIM" || src.trimEnforcedBeforeClose ===
+  // true`) and play-card-lifecycle.ts's CLOSED-bucket "TARGET" badge, both of which must describe the
+  // worst leg, not a different, better-performing terminal leg.
+  it("borrows the WORST leg's own trimEnforcedBeforeClose, not the terminal leg's — mismatched-leg trim history", () => {
+    const parent = row({
+      id: 44,
+      roll_seq: 0,
+      realized_pnl_pct: -27.67,
+      scale_out_grade: { trim_enforced_before_close: true }, // leg 44 (worst leg) really did trim before rolling away
+      graded_at: "2026-09-30T13:31:19.000Z",
+      closed_at: "2026-09-30T13:31:19.000Z",
+    });
+    const terminal = row({
+      id: 48,
+      roll_seq: 1,
+      parent_position_id: 44,
+      root_position_id: 44,
+      realized_pnl_pct: 72.41,
+      scale_out_grade: { trim_enforced_before_close: false }, // terminal leg never trimmed
+      closed_at: "2026-10-07T13:30:39.000Z",
+      graded_at: "2026-10-07T13:30:39.000Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, terminal]]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.exitPnlPct, -27.67, "sanity: still the worst-leg composite P&L");
+    assert.equal(
+      out[0]!.trimEnforcedBeforeClose,
+      true,
+      "must be leg 44's (worst leg's) own trim history (true), not leg 48's (terminal leg's) own false — the exit-ladder 'fired' gate and CLOSED-bucket TARGET badge must describe the leg this card's P&L/reason actually belong to",
+    );
+  });
+
+  it("falls back to the terminal leg's own trimEnforcedBeforeClose when the worst leg IS the terminal leg (no mismatch to fix)", () => {
+    const parent = row({
+      id: 60,
+      roll_seq: 0,
+      realized_pnl_pct: -5,
+      graded_at: "2026-08-05T12:00:00Z",
+    });
+    const child = row({
+      id: 61,
+      roll_seq: 1,
+      parent_position_id: 60,
+      root_position_id: 60,
+      realized_pnl_pct: -40.83,
+      scale_out_grade: { trim_enforced_before_close: true },
+      closed_at: "2026-08-12T12:00:00Z",
+      graded_at: "2026-08-12T12:05:00Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, child]]);
+    assert.equal(out[0]!.exitPnlPct, -40.83, "terminal leg is also the worst leg here");
+    assert.equal(out[0]!.trimEnforcedBeforeClose, true, "terminal leg's own value IS the worst leg's value -- keep it");
+  });
+
+  it("is honestly null when the worst leg's own scale_out_grade predates this field, never a fabricated false borrowed from the terminal leg", () => {
+    const parent = row({
+      id: 70,
+      roll_seq: 0,
+      realized_pnl_pct: -30,
+      scale_out_grade: null, // worst leg predates the field -- honest absence
+      graded_at: "2026-08-05T12:00:00Z",
+    });
+    const child = row({
+      id: 71,
+      roll_seq: 1,
+      parent_position_id: 70,
+      root_position_id: 70,
+      realized_pnl_pct: 10,
+      scale_out_grade: { trim_enforced_before_close: true }, // terminal leg's own true must NOT leak onto the worst leg's card
+      closed_at: "2026-08-12T12:00:00Z",
+      graded_at: "2026-08-12T12:05:00Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, child]]);
+    assert.equal(
+      out[0]!.trimEnforcedBeforeClose,
+      null,
+      "a real absence on the worst leg's own row must stay null, never borrowed as true from the terminal leg",
+    );
+  });
 });
