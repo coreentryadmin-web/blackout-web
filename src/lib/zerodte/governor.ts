@@ -321,7 +321,29 @@ export function countShortGammaOpen(
   return n;
 }
 
-/** Time-of-day concurrent cap multiplier — lunch/opening chop size-down (Phase 2c). Pure. */
+/** 9:30 ET — the RTH open. Mirrors intraday.ts's own `RTH_OPEN` (not exported there; every
+ *  caller in this lane keeps its own local copy — see breakout-discovery.ts/pin-window.ts/
+ *  relative-volume.ts for the same pattern), so the factor branch below can be bounded the
+ *  same way `timeOfDayFactor`'s own label branch already is. */
+const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
+
+/** Time-of-day concurrent cap multiplier — lunch/opening chop size-down (Phase 2c). Pure.
+ *
+ *  BUG FIX (2026-11-01): the "opening chop" branch below used to read `etMinutes < 10 * 60`
+ *  with no floor at `RTH_OPEN_ET_MINUTES` — unlike `timeOfDayFactor` (intraday.ts), whose own
+ *  `label` branch for this exact window is correctly bounded `RTH_OPEN <= etMinutes < 10*60`
+ *  and returns `label: null` for anything before the open. That meant the two return values
+ *  this function hands back — `factor`/`effective_max_concurrent` vs `label` — silently
+ *  disagreed for the ENTIRE pre-market window (midnight..9:30 ET): factor fired (0.85, a real
+ *  15% cap cut) while label stayed null ("nothing to say"). `summarizeGovernorForBoard` (below)
+ *  serves both unconditionally on every board fetch, and the UI's disclosure pill
+ *  (ZeroDteBoard.tsx's `GovPill label="Window"`) is gated on `time_of_day_label` being
+ *  truthy — so a real, live cap reduction rendered with ZERO disclosure anywhere in the
+ *  payload or UI. Confirmed live 2026-11-01 ~09:14 ET: board served
+ *  `effective_max_concurrent: 85` / `time_of_day_sizing_factor: 0.85` alongside
+ *  `time_of_day_label: null`. Fix: bound the factor branch with the same `RTH_OPEN_ET_MINUTES`
+ *  floor the label already uses, so factor and label can never disagree about whether the
+ *  market has opened yet. */
 export function timeOfDaySizingFactor(etMinutes: number): {
   factor: number;
   label: string | null;
@@ -329,7 +351,7 @@ export function timeOfDaySizingFactor(etMinutes: number): {
 } {
   const tod = timeOfDayFactor(etMinutes);
   let factor = 1;
-  if (etMinutes < 10 * 60) factor = 0.85;
+  if (etMinutes >= RTH_OPEN_ET_MINUTES && etMinutes < 10 * 60) factor = 0.85;
   else if (etMinutes >= 12 * 60 + 30 && etMinutes < 13 * 60 + 30) factor = 0.75;
   const effective = Math.max(1, Math.floor(GOVERNOR_MAX_CONCURRENT_PLANS * factor));
   return { factor, label: tod.label, effective_max_concurrent: effective };
