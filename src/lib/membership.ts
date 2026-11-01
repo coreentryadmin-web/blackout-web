@@ -121,6 +121,63 @@ export function pickActiveMembershipForResolvedTier(
   return sorted.find((m) => !revoked.has(m.id)) ?? sorted[0];
 }
 
+type EmailTierResolution = {
+  tier: Tier;
+  billingKind: BillingKind;
+  activeMembership?: MembershipListResponse;
+};
+
+/**
+ * Pure reducer for `syncWhopMembershipForEmail`'s per-email loop (below) — folds ONE email's
+ * `resolveMembershipTierForEmail` resolution into the running best-tier/billingKind/
+ * activeMembership state for a Clerk user who owns multiple emails. Extracted to a pure
+ * function — same reasoning as `pickActiveMembershipForResolvedTier`/
+ * `isPaidTierForReconcileDowngradeCheck` above — so this is unit-testable without standing up
+ * Clerk/Whop clients.
+ *
+ * BUG this fixes: the loop used to set `activeMembership` unconditionally from the FIRST email
+ * checked (`if (!activeMembership) activeMembership = r.activeMembership`), regardless of THAT
+ * email's own resolved tier. `pickActiveMembershipForResolvedTier`'s own free-tier branch
+ * deliberately returns an ARBITRARY non-revoked membership (`sorted[0]`) even when the email's
+ * overall tier is "free" — correct for resolving a single email ("nothing tier-specific to
+ * preserve", per that function's doc comment) — but across MULTIPLE emails for one Clerk user,
+ * it meant a free email's throwaway membership could claim the `activeMembership` slot before a
+ * LATER email's real community/premium membership was ever folded in (the later email's own
+ * `if (!activeMembership)` guard then saw it already non-null and skipped). That reintroduces,
+ * one loop level up, exactly the tier/activeMembership desync `pickActiveMembershipForResolvedTier`
+ * was written to close for a single email's own list — see that function's doc comment for the
+ * full blast radius (`whop_membership_id`/`whop_user_id` written to Clerk metadata, shown on the
+ * admin user dashboard, and `activeMembership.plan.id` feeding billing-lifecycle-email's
+ * monthly-vs-annual lookup), all of which could end up sourced from a membership that does not
+ * match the user's actual resolved tier. Reachable any time a multi-email Clerk user's FIRST
+ * checked email is free (owns only a lapsed/non-qualifying Whop row) and a LATER email is the one
+ * that actually carries their real community/premium membership.
+ *
+ * Fix: only ever adopt `activeMembership` from a resolution whose OWN tier is paid (premium wins
+ * outright and always re-adopts; the first community resolution is kept once no premium
+ * resolution has been seen) — never from a free resolution's arbitrary pick.
+ */
+export function foldEmailTierResolution(
+  state: EmailTierResolution,
+  r: EmailTierResolution
+): EmailTierResolution {
+  let billingKind = state.billingKind;
+  if (r.billingKind === "premium") billingKind = "premium";
+  else if (r.billingKind === "community" && billingKind !== "premium") billingKind = "community";
+
+  if (r.tier === "premium") {
+    return { tier: "premium", billingKind: "premium", activeMembership: r.activeMembership };
+  }
+  if (r.tier === "community") {
+    return {
+      tier: "community",
+      billingKind,
+      activeMembership: state.activeMembership ?? r.activeMembership,
+    };
+  }
+  return { tier: state.tier, billingKind, activeMembership: state.activeMembership };
+}
+
 export async function findClerkUsersByEmail(email: string) {
   const normalized = email.trim().toLowerCase();
   if (!normalized) return [];
@@ -279,27 +336,13 @@ export async function syncWhopMembershipForEmail(
       }
     }
 
-    let userTier: Tier = "free";
-    let userBillingKind: BillingKind = "free";
-    let activeMembership: MembershipListResponse | undefined;
+    let foldState: EmailTierResolution = { tier: "free", billingKind: "free" };
     for (const e of emails) {
       const r = await resolveMembershipTierForEmail(e, companyId);
-      if (!activeMembership) activeMembership = r.activeMembership;
-      if (r.billingKind === "premium") userBillingKind = "premium";
-      else if (r.billingKind === "community" && userBillingKind !== "premium") {
-        userBillingKind = "community";
-      }
-      if (r.tier === "premium") {
-        userTier = "premium";
-        userBillingKind = "premium";
-        activeMembership = r.activeMembership;
-        break;
-      }
-      if (r.tier === "community") {
-        userTier = "community";
-        if (!activeMembership) activeMembership = r.activeMembership;
-      }
+      foldState = foldEmailTierResolution(foldState, r);
+      if (foldState.tier === "premium") break;
     }
+    const { tier: userTier, billingKind: userBillingKind, activeMembership } = foldState;
 
     await updateClerkMembershipMetadata(user.id, {
       tier: userTier,

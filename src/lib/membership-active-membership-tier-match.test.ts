@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 process.env.WHOP_PRO_PRODUCT_IDS = "prod_DVboHRgi2jgYP";
 process.env.WHOP_PRO_PLAN_IDS = "plan_prNHPwrOyFlm2";
 
-import { pickActiveMembershipForResolvedTier } from "./membership";
+import { pickActiveMembershipForResolvedTier, foldEmailTierResolution } from "./membership";
 import type { MembershipListResponse } from "@whop/sdk/resources/memberships.js";
 
 // Real community product id (default from whop.ts's getCommunityProductIds()).
@@ -116,4 +116,137 @@ test("skips a revoked membership even if it matches the resolved tier", () => {
   );
 
   assert.equal(picked?.id, "m_premium_live");
+});
+
+// foldEmailTierResolution — the per-email reducer `syncWhopMembershipForEmail` (membership.ts)
+// uses to combine resolutions across a Clerk user's multiple emails. These are the cross-email
+// sibling of the tests above: those prove pickActiveMembershipForResolvedTier picks the right
+// membership WITHIN one email's own list; these prove the outer fold doesn't let an earlier
+// email's irrelevant pick block a later email's real one.
+
+test("foldEmailTierResolution: a free email's arbitrary pick does not block a later community email's real membership", () => {
+  // This is the exact pre-fix failure shape: the first email checked is free but still carries
+  // some unrelated, non-qualifying Whop row (pickActiveMembershipForResolvedTier's free-tier
+  // branch returns it anyway — correct for THAT email in isolation), and a later email is the
+  // one that actually holds the user's real community membership.
+  const freeArbitraryMembership = membership({
+    id: "m_unrelated_free",
+    status: "canceling",
+    productId: "prod_unrelated",
+  });
+  const communityMembership = membership({
+    id: "m_community_real",
+    status: "active",
+    productId: COMMUNITY_PRODUCT_ID,
+  });
+
+  let state = { tier: "free" as const, billingKind: "free" as const };
+  state = foldEmailTierResolution(state, {
+    tier: "free",
+    billingKind: "free",
+    activeMembership: freeArbitraryMembership,
+  });
+  state = foldEmailTierResolution(state, {
+    tier: "community",
+    billingKind: "community",
+    activeMembership: communityMembership,
+  });
+
+  assert.equal(state.tier, "community");
+  assert.equal(
+    state.activeMembership?.id,
+    "m_community_real",
+    "activeMembership must be the membership that actually earned the resolved tier, not a " +
+      "free email's unrelated throwaway pick that happened to be checked first"
+  );
+});
+
+test("foldEmailTierResolution: premium always wins and re-adopts its own membership, even after an earlier community fold", () => {
+  const communityMembership = membership({
+    id: "m_community",
+    status: "active",
+    productId: COMMUNITY_PRODUCT_ID,
+  });
+  const premiumMembership = membership({
+    id: "m_premium",
+    status: "active",
+    productId: PREMIUM_PRODUCT_ID,
+  });
+
+  let state = { tier: "free" as const, billingKind: "free" as const };
+  state = foldEmailTierResolution(state, {
+    tier: "community",
+    billingKind: "community",
+    activeMembership: communityMembership,
+  });
+  state = foldEmailTierResolution(state, {
+    tier: "premium",
+    billingKind: "premium",
+    activeMembership: premiumMembership,
+  });
+
+  assert.equal(state.tier, "premium");
+  assert.equal(state.billingKind, "premium");
+  assert.equal(state.activeMembership?.id, "m_premium");
+});
+
+test("foldEmailTierResolution: all-free emails never adopt an activeMembership", () => {
+  const freeArbitraryMembership1 = membership({
+    id: "m_free_1",
+    status: "canceling",
+    productId: "prod_unrelated",
+  });
+  const freeArbitraryMembership2 = membership({
+    id: "m_free_2",
+    status: "canceling",
+    productId: "prod_unrelated_2",
+  });
+
+  let state = { tier: "free" as const, billingKind: "free" as const };
+  state = foldEmailTierResolution(state, {
+    tier: "free",
+    billingKind: "free",
+    activeMembership: freeArbitraryMembership1,
+  });
+  state = foldEmailTierResolution(state, {
+    tier: "free",
+    billingKind: "free",
+    activeMembership: freeArbitraryMembership2,
+  });
+
+  assert.equal(state.tier, "free");
+  assert.equal(
+    state.activeMembership,
+    undefined,
+    "a free resolution's membership pick must never be adopted — it is arbitrary by design " +
+      "(pickActiveMembershipForResolvedTier's own 'nothing tier-specific to preserve' case)"
+  );
+});
+
+test("foldEmailTierResolution: first community email's real membership is kept once a later email is also free", () => {
+  const communityMembership = membership({
+    id: "m_community_first",
+    status: "active",
+    productId: COMMUNITY_PRODUCT_ID,
+  });
+  const freeArbitraryMembership = membership({
+    id: "m_free_later",
+    status: "canceling",
+    productId: "prod_unrelated",
+  });
+
+  let state = { tier: "free" as const, billingKind: "free" as const };
+  state = foldEmailTierResolution(state, {
+    tier: "community",
+    billingKind: "community",
+    activeMembership: communityMembership,
+  });
+  state = foldEmailTierResolution(state, {
+    tier: "free",
+    billingKind: "free",
+    activeMembership: freeArbitraryMembership,
+  });
+
+  assert.equal(state.tier, "community");
+  assert.equal(state.activeMembership?.id, "m_community_first");
 });
