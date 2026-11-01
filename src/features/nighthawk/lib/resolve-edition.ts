@@ -184,7 +184,23 @@ export async function resolveNighthawkEdition(
     return await withEditionOverlays(markNoPlays(rowToNightHawkEdition(exact)));
   }
 
-  const latest = await fetchLatestNighthawkEdition();
+  // BUG FIX (Ask Largo standing mandate, live-audit cycle-58, 2026-11-01): this "latest edition"
+  // fallback exists for the DEFAULT ("what's live right now") path — if tonight's own edition
+  // isn't published yet, serve the most recent one, stamped `stale`+`served_for` so the member
+  // knows it isn't tonight's. For an EXPLICIT `?date=` lookup (a member clicking a specific day on
+  // the Legacy calendar strip), that substitution is never correct: "latest" can land on either
+  // side of the requested date (newer OR older) and, either way, `edition.edition_for` is never
+  // reset to the originally-requested `editionFor` — so a request for 2026-10-31 could silently
+  // come back carrying 2026-11-02's content with NO field anywhere disclosing that the requested
+  // date was never found. Live-reproduced 4/4: `?date=2026-10-31` (a real trading day with no
+  // stored row) returned the *next* published edition's (2026-11-02, itself recap-only) exact
+  // content, labeled `stale: true, served_for: "2026-11-02"` — a "prior edition" banner pointing at
+  // a date in the future relative to the one actually requested. Skipping this fallback (and the
+  // legacy-engine fallback below, which only ever answers for `nextTradingDayEt(todayEt())` — never
+  // the requested historical date either) for any explicit lookup that missed the exact-match path
+  // above means a date with no stored edition now honestly reports `emptyEdition(editionFor)`
+  // instead of a mislabeled, unrelated day's content.
+  const latest = explicitDate ? null : await fetchLatestNighthawkEdition();
   if (latest) {
     const edition = markNoPlays(rowToNightHawkEdition(latest));
 
@@ -227,8 +243,10 @@ export async function resolveNighthawkEdition(
     return await withEditionOverlays(edition);
   }
 
-  const legacy = await fetchLegacyPlays();
-  if (legacy) return legacy;
+  if (!explicitDate) {
+    const legacy = await fetchLegacyPlays();
+    if (legacy) return legacy;
+  }
 
   return emptyEdition(editionFor);
 }

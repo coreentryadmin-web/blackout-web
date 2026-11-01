@@ -191,3 +191,41 @@ test("resolveNighthawkEdition: an explicit ?date= lookup is untouched by this fi
   assert.equal(edition.edition_for, "2026-10-16");
   assert.notEqual(edition.stale, true, "an exact-date match is never stamped stale");
 });
+
+// BUG: live repro 2026-11-01 (five-engine-largo-cycle-58) — an explicit `?date=` lookup for a day
+// with no stored edition fell through to the generic "latest" fallback (built for the DEFAULT
+// "what's live right now" path) and silently served an unrelated edition's content — in the live
+// case, a LATER date (2026-11-02) for a request of an EARLIER date (2026-10-31) — stamped
+// `stale: true` with `edition_for` never corrected back to what was actually requested. No field
+// in the response disclosed that 2026-10-31 itself was never found.
+test("resolveNighthawkEdition: an explicit ?date= lookup with no stored row does NOT substitute an unrelated 'latest' edition", async () => {
+  const { resolveNighthawkEdition } = await mod();
+
+  // `latest` is a LATER edition than the one explicitly requested — exactly the live repro shape
+  // (requested 2026-10-31, latest published row was 2026-11-02).
+  state.latest = row({ edition_for: "2026-11-02", recap_headline: "Quiet night", plays: [] });
+  state.playable = null;
+  state.byDate = null; // no stored row for the requested date
+  state.beforeClose = true;
+
+  const edition = await resolveNighthawkEdition("2026-10-31", "2026-10-31");
+
+  assert.equal(edition.available, false, "no stored edition for an explicit historical date must be honest absence, not a substituted one");
+  assert.equal(edition.edition_for, "2026-10-31", "the response must reflect the date actually requested, never a substituted one");
+  assert.notEqual(edition.stale, true, "an honest empty edition is not the same as a stale substitution");
+});
+
+test("resolveNighthawkEdition: an explicit ?date= lookup with no stored row and no later 'latest' edition still returns honest absence (no regression)", async () => {
+  const { resolveNighthawkEdition } = await mod();
+
+  // `latest` is an OLDER edition than requested — also must not be substituted for an explicit lookup.
+  state.latest = row({ edition_for: "2026-10-16" });
+  state.playable = null;
+  state.byDate = null;
+  state.beforeClose = true;
+
+  const edition = await resolveNighthawkEdition("2026-10-31", "2026-10-31");
+
+  assert.equal(edition.available, false);
+  assert.equal(edition.edition_for, "2026-10-31");
+});
