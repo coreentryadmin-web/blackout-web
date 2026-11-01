@@ -5,6 +5,7 @@ import type {
 } from "@/features/meridian/lib/meridian-types";
 import type { DarkPoolSnapshot } from "@/lib/providers/unusual-whales";
 import { num } from "@/lib/meridian/meridian-viz-core";
+import { expiryCoversPrint } from "@/lib/meridian/meridian-em-scope";
 
 function fmtPremShort(n: number): string {
   if (!Number.isFinite(n)) return "—";
@@ -387,4 +388,48 @@ export function resolveIntelExpectedMove(input: {
         ? "calendar"
         : null;
   return { expected_move_pct, expected_move_source };
+}
+
+/** One sigma band of an expected-move cone, shaped for `MeridianEarningsVectorRead["bands"]`. */
+export type MeridianEarningsVectorMoveBand = { sigma: number; low: number; high: number };
+
+/**
+ * Final `vector.move_pct` / `vector.bands` for the earnings panel — the LAST stop before
+ * `shapeMeridianVectorDeskRead`, and a stop the `expiryCoversPrint` rule (meridian-em-scope.ts)
+ * must reach too, not just the headline `expected_move_pct` that `resolveIntelExpectedMove`
+ * above already guards.
+ *
+ * Two gaps, same root cause, found auditing this file against meridian-em-scope.ts's own header
+ * (the live PDD/XPEV/SMTC incident, 2026-08-21 — a dead weekly front expiry still returns a
+ * movePct/bands pair, just one ~90x too small, scoped to a series that already expired):
+ *
+ * 1. `vector_move_pct` (the headline number `loadMeridianEarningsIntel` computes) IS gated by
+ *    `vectorCoversPrint`, but the sibling `bands` field was wired straight off `vectorEm?.bands`
+ *    with NO gate at all — so a non-covering quote correctly blanked `move_pct` while still
+ *    rendering ITS OWN stale cone in `bands`, a half-suppressed, self-contradicting payload.
+ * 2. The `fetchVectorFullState` fallback (an INDEPENDENT fetch of the identical
+ *    `getVectorExpectedMove(ticker, "weekly")` call — see vector-full-state.ts) backstops BOTH
+ *    `move_pct` and `bands` with no gate whatsoever. It carries the exact same expiry risk as the
+ *    primary read; running it through a different wrapper function doesn't change that.
+ *
+ * `fallbackExpiry` must be the FALLBACK'S OWN expiry (not `vectorEm`'s) — `fetchVectorFullState`
+ * issues its own independent call and can resolve a different front expiry at a different
+ * instant than the direct `getVectorExpectedMove` read this module also holds.
+ */
+export function resolveVectorDeskMove(input: {
+  vectorCoversPrint: boolean;
+  primaryMovePct: number | null;
+  primaryBands: MeridianEarningsVectorMoveBand[] | null;
+  fallbackMovePct: number | null;
+  fallbackBands: MeridianEarningsVectorMoveBand[] | null;
+  fallbackExpiry: unknown;
+  earningsDate: unknown;
+}): { move_pct: number | null; bands: MeridianEarningsVectorMoveBand[] | null } {
+  if (input.vectorCoversPrint) {
+    return { move_pct: input.primaryMovePct, bands: input.primaryBands };
+  }
+  if (expiryCoversPrint(input.fallbackExpiry, input.earningsDate)) {
+    return { move_pct: input.fallbackMovePct, bands: input.fallbackBands };
+  }
+  return { move_pct: null, bands: null };
 }
