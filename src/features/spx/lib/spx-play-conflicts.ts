@@ -7,13 +7,53 @@ export const BEAR_NEWS =
 export const BULL_NEWS =
   /\b(rally|surge|soar|dovish|rate cut|beat estimates|record high|stimulus|ceasefire)\b/i;
 
+// BUG FIX (2026-11-01, five-engine-largo-cycle-59 audit): BEAR_NEWS/BULL_NEWS classified a
+// headline's sentiment by testing for the literal presence of a keyword ANYWHERE in the title,
+// with no check for an adjacent negating/reversal phrase. Live repro: "S&P 500 Index Rally Hits a
+// Wall Amid AI Jitters as Key Valuation Metric Dips" matched BULL_NEWS on "Rally" and was
+// classified "bullish", even though the headline's actual content is a stalling/cautionary read —
+// "Rally Hits a Wall" is not confirming bullish evidence. REVERSAL_PHRASE + isNegatedByReversal()
+// void a keyword match when a reversal phrase immediately follows it, scoped to a short window
+// right after the match (not the whole headline) so an unrelated reversal elsewhere in a longer
+// headline can't suppress a real, unrelated signal. matchesBullNews/matchesBearNews are the single
+// shared chokepoint for this check — spx-play-confirmations.ts's own `newsSentiment()` uses the
+// same two functions rather than re-testing BEAR_NEWS/BULL_NEWS directly, so this fix covers both
+// call sites instead of just the one the live audit happened to trip over.
+const REVERSAL_PHRASE =
+  /\b(hits? a wall|stalls?|stalled|stalling|fades?|faded|fading|stumbles?|stumbled|stumbling|reverses?|reversed|reversal|loses? steam|losing steam|runs? out of steam|peters? out|petered out|cools?|cooled|cooling)\b/i;
+
+/** How far past a matched keyword to look for a reversal phrase that voids it. */
+const REVERSAL_WINDOW_CHARS = 24;
+
+/**
+ * True when `keyword` matches `title` but that specific match is immediately followed (within a
+ * short window) by a reversal phrase that negates the keyword's naive polarity.
+ */
+function isNegatedByReversal(title: string, keyword: RegExp): boolean {
+  const match = keyword.exec(title);
+  if (!match || match.index == null) return false;
+  const afterStart = match.index + match[0].length;
+  const window = title.slice(afterStart, afterStart + REVERSAL_WINDOW_CHARS);
+  return REVERSAL_PHRASE.test(window);
+}
+
+/** True when `title` carries real bullish evidence — matches BULL_NEWS and isn't reversed. */
+export function matchesBullNews(title: string): boolean {
+  return BULL_NEWS.test(title) && !isNegatedByReversal(title, BULL_NEWS);
+}
+
+/** True when `title` carries real bearish evidence — matches BEAR_NEWS and isn't reversed. */
+export function matchesBearNews(title: string): boolean {
+  return BEAR_NEWS.test(title) && !isNegatedByReversal(title, BEAR_NEWS);
+}
+
 function newsSentiment(headlines: SpxDeskPayload["news_headlines"]): "bullish" | "bearish" | "neutral" {
   let bull = 0;
   let bear = 0;
   for (const h of headlines.slice(0, 5)) {
     const t = h.title ?? "";
-    if (BEAR_NEWS.test(t)) bear += 1;
-    if (BULL_NEWS.test(t)) bull += 1;
+    if (matchesBearNews(t)) bear += 1;
+    if (matchesBullNews(t)) bull += 1;
   }
   if (bear > bull) return "bearish";
   if (bull > bear) return "bullish";

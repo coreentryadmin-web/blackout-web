@@ -94,4 +94,45 @@ describe("computeWeightedConflicts", () => {
     const { weighted_conflicts } = computeWeightedConflicts(desk, 50, factors);
     assert.equal(weighted_conflicts, 0);
   });
+
+  it("does not count a bull keyword immediately reversed by a stall/fade phrase as opposing news (live headline, 2026-11-01 audit)", () => {
+    // Live repro: BEAR_NEWS/BULL_NEWS classified sentiment by testing for the literal presence
+    // of a keyword ANYWHERE in the title, with no check for an adjacent negating/reversal
+    // phrase. "S&P 500 Index Rally Hits a Wall Amid AI Jitters as Key Valuation Metric Dips"
+    // matched BULL_NEWS on "Rally" and read "bullish" even though the headline's actual content
+    // ("Rally Hits a Wall... Jitters... Dips") is a stalling/cautionary read, not a confirming
+    // rally. Pre-fix: newsSentiment() misread this as bullish news opposing the short below,
+    // adding a false +2 "opposing bullish news" bonus to weighted_conflicts. Post-fix: the "Hits
+    // a Wall" reversal phrase immediately after "Rally" voids that match -> neutral -> no bonus.
+    const desk: SpxDeskPayload = {
+      ...baseDesk(),
+      tide_bias: "neutral",
+      gex_walls: [],
+      news_headlines: [
+        { title: "S&P 500 Index Rally Hits a Wall Amid AI Jitters as Key Valuation Metric Dips" },
+      ],
+      vix: 20,
+    } as SpxDeskPayload;
+    // weight<0 does not oppose a short direction (factorOpposes requires weight>0 for short),
+    // so this factor contributes nothing — isolating the news-sentiment behavior under test.
+    const factors: SpxSignalFactor[] = [{ label: "Live tape", weight: -12, detail: "puts" }];
+    const { weighted_conflicts } = computeWeightedConflicts(desk, -40, factors);
+    assert.equal(weighted_conflicts, 0);
+  });
+
+  it("still counts a genuine, non-reversed bullish headline as opposing news for a short (no regression)", () => {
+    // Same setup as above, but the headline ("Market rally continues on dovish Fed tone") carries
+    // no reversal phrase after its BULL_NEWS match — this must still trip the +2 opposing-news
+    // bonus exactly as before the fix.
+    const desk: SpxDeskPayload = {
+      ...baseDesk(),
+      tide_bias: "neutral",
+      gex_walls: [],
+      news_headlines: [{ title: "Market rally continues on dovish Fed tone" }],
+      vix: 20,
+    } as SpxDeskPayload;
+    const factors: SpxSignalFactor[] = [{ label: "Live tape", weight: -12, detail: "puts" }];
+    const { weighted_conflicts } = computeWeightedConflicts(desk, -40, factors);
+    assert.equal(weighted_conflicts, 2);
+  });
 });
