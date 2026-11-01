@@ -1,8 +1,9 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { XIntelQueueRow } from "@/lib/x-intel/queue-types";
+import { loadXIntelRowIfCurrent } from "./x-intel-row-race-guard";
 
 export default function XIntelDetailPage({
   params,
@@ -15,30 +16,41 @@ export default function XIntelDetailPage({
   const [error, setError] = useState<string | null>(null);
   const [tweetId, setTweetId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // The App Router does not remount this page when navigating between two detail routes
+  // (/admin/x-intel/123 -> /admin/x-intel/456) — it re-runs this effect instead. Tracks the
+  // MOST RECENTLY requested id so an earlier, slower fetch that resolves after a newer one
+  // can tell it is stale and skip applying its (wrong) row — see x-intel-row-race-guard.ts.
+  const latestIdRef = useRef(id);
 
   useEffect(() => {
-    fetchRow();
+    latestIdRef.current = id;
+    void fetchRow(id);
   }, [id]);
 
-  async function fetchRow() {
+  async function fetchRow(requestedId: string) {
     setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/x-intel/queue?limit=1`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await loadXIntelRowIfCurrent<XIntelQueueRow>(
+      requestedId,
+      async () => {
+        const res = await fetch(`/api/admin/x-intel/queue?limit=1`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const data = await res.json();
-      const found = data.rows?.find((r: XIntelQueueRow) => String(r.id) === id);
-      if (!found) throw new Error("Row not found");
-
-      setRow(found);
-      if (found.posted_tweet_id) {
-        setTweetId(found.posted_tweet_id);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load row");
-    } finally {
-      setLoading(false);
-    }
+        const data = await res.json();
+        const found = data.rows?.find((r: XIntelQueueRow) => String(r.id) === requestedId);
+        if (!found) throw new Error("Row not found");
+        return found as XIntelQueueRow;
+      },
+      () => latestIdRef.current,
+      (found) => {
+        setRow(found);
+        setError(null);
+        if (found.posted_tweet_id) {
+          setTweetId(found.posted_tweet_id);
+        }
+      },
+      (message) => setError(message),
+      () => setLoading(false)
+    );
   }
 
   async function recordTweetId(e: React.FormEvent) {
@@ -62,7 +74,7 @@ export default function XIntelDetailPage({
       }
 
       // Refetch to get the updated row
-      await fetchRow();
+      await fetchRow(id);
       alert("Tweet ID recorded successfully!");
     } catch (err) {
       alert(
