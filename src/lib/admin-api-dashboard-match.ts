@@ -10,6 +10,41 @@ export function normalizeEndpointKey(endpoint: string): string {
   return endpoint.replace(/\{[^}]+\}/g, "{*}").replace(/\/\d+/g, "/{*}");
 }
 
+/**
+ * True when `candidateEndpoint` could be a real recorded instance of `catalogEndpoint`'s
+ * template: split both on "/" and require every segment to agree EXCEPT at a position where
+ * the catalog has a "{placeholder}" (which matches any real segment there, whatever
+ * api-telemetry.ts's endpointTemplate() collapsed it to — a literal ticker, a ":sym"/":date"
+ * token, or a raw digit sequence; this function does not need to know which).
+ *
+ * Root cause this replaces: the previous check compared `normalizeEndpointKey()` output with
+ * `.replace("{*}", "")` (String#replace with no "g" flag — ONE occurrence only) and an
+ * unanchored `.startsWith`/`.includes`. That silently fails for any catalog endpoint whose
+ * placeholder is NOT the final segment, because every literal segment AFTER the placeholder
+ * (e.g. "range/1/minute" vs "range/1/day", or "max-pain" vs "nope") never gets compared at
+ * all — both branches only ever test the text up to (or around) the first "{*}". With no
+ * stat ever passing this broken "fuzzy" test, every such row silently fell through to the
+ * final bare-prefix fallback below, which cannot discriminate between sibling catalog rows
+ * that share the same literal text before their FIRST placeholder — confirmed live-shape:
+ * "/api/stock/{ticker}/nope" and "/api/stock/{ticker}/max-pain" (and ~9 other UW per-ticker
+ * rows) all share the "/api/stock/" prefix, so the "nope" dashboard row silently displayed
+ * whichever per-ticker UW stat the ring buffer happened to list first — e.g. a stale
+ * "max-pain" failure rendering as a "nope" outage, or a healthy "max-pain" call masking a
+ * genuinely failing "nope" endpoint. Same shape for Polygon's "minute" vs "day" aggs-bars
+ * rows, which also share one literal prefix before their first "{symbol}" placeholder.
+ */
+function endpointSegmentsMatch(catalogEndpoint: string, candidateEndpoint: string): boolean {
+  const catalogParts = catalogEndpoint.split("/");
+  const candidateParts = candidateEndpoint.split("/");
+  if (catalogParts.length !== candidateParts.length) return false;
+  for (let i = 0; i < catalogParts.length; i++) {
+    const seg = catalogParts[i];
+    if (seg.startsWith("{") && seg.endsWith("}")) continue; // wildcard position
+    if (seg !== candidateParts[i]) return false;
+  }
+  return true;
+}
+
 export function matchTelemetry(
   catalogEp: CatalogEndpoint,
   _provider: ApiProviderId,
@@ -40,9 +75,7 @@ export function matchTelemetry(
     const exact = s.endpoint === catalogEp.endpoint;
     const fuzzy =
       normStat === normCatalog ||
-      (hasAnchor &&
-        (normStat.startsWith(normCatalog.replace("{*}", "")) ||
-          normCatalog.includes(normStat.replace("{*}", ""))));
+      (hasAnchor && endpointSegmentsMatch(catalogEp.endpoint, s.endpoint));
 
     if (exact || fuzzy) {
       if (!best || (s.last_at && (!best.last_at || s.last_at > best.last_at))) {
