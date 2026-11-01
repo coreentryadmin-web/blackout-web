@@ -2398,6 +2398,51 @@ export function composeSwingPlayBrief(
   // text rather than fabricate a new one, except here the honest move is omission, not reframing,
   // since there is no real per-ticker fact to reframe.
   const sourceFetchFailed = ctx.ecosystemFetchFailed === true || ctx.vectorFetchFailed === true;
+  // BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-11-01, live repro GDDY/TDOC/
+  // VFC/FTAI/TXRH/ACN/PPG): this last fallback cited `play.exitPolicy.stop_premium` raw, with no
+  // `hasScaledOut` guard — the exact check FOUR sibling call sites in this same file family
+  // already apply before rendering the same field (`managementSection`'s "Rails: ..." line and
+  // the `evidence_numbers` fact builder, both in this file; `watchForSection`'s "Premium stop
+  // rail" bullet, play-brief-intel.ts; and the "Break watch — stop already breached" bullet,
+  // play-brief-narrative.ts, fixed by #6924). Once a trim tranche has fired,
+  // `deriveScaleOutAction`/`computeScaleOutTriggerInfo` (scale-out.ts) PERMANENTLY disable the
+  // pre-scale hard stop — it is gated `if (!scaledAlready)` and post-scale literally returns
+  // `hard_stop_price: null` ("the hard stop no longer applies") — so citing `stop_premium` here
+  // for an already-scaled position is not a stale number, it is a structurally dead one.
+  //
+  // Live repro: GDDY positionId 2293 — `envelope.invalidation` read "Premium stop at $1.48" while
+  // the SAME response's Management section read "Rails: stop $1.48 (no longer applies — already
+  // scaled; runner trail now $4.18) · target $7.40 ✓ (reached)" — the brief contradicting its own
+  // Management section about whether $1.48 is live. Identical pairing confirmed for TDOC/VFC/
+  // FTAI/TXRH/ACN/PPG.
+  //
+  // Fix: mirror the #6924 "Break watch" bullet's own substitution exactly — once scaled out, the
+  // real governing floor is the runner's trailing stop off its peak (`runnerTrailingStopPremium`),
+  // never the dead pre-scale stop. If the trail itself can't be priced for lack of a usable peak,
+  // this correctly falls through to `null` (omission, not a fabricated or confirmed-dead number)
+  // rather than silently reverting to `stop_premium`.
+  //
+  // `trim_levels` is checked with `Array.isArray` (not just `play.exitPolicy != null`) before
+  // calling `hasScaledOut` — unlike the four sibling call sites above, this computation sits
+  // directly in `composeSwingPlayBrief`'s top-level body, outside any `safeCompose` try/catch, so
+  // an exception here would 503 the ENTIRE brief rather than just omitting one section. Caught by
+  // this file's own pre-existing error-boundary regression test, which feeds a realistic
+  // malformed-upstream-row shape (`trim_levels: undefined` cast through `as unknown as
+  // TerminalPlay["exitPolicy"]`) and asserts `composeSwingPlayBrief` must not throw — `hasScaledOut`
+  // calls `.some()` on `trim_levels` unconditionally, so the unguarded form crashed on exactly that
+  // fixture. Treating a malformed `trim_levels` as "cannot determine, assume not yet scaled" falls
+  // back to the pre-fix behavior for that one degraded case, which is honest (no real scale-state
+  // fact is available) and matches how every other field in this fallback chain already degrades.
+  const scaledAlready =
+    play.exitPolicy != null && Array.isArray(play.exitPolicy.trim_levels) && hasScaledOut(play.exitPolicy);
+  const peakPremiumDollarForInvalidation =
+    play.entry != null && play.entry > 0 && play.peak != null && Number.isFinite(play.peak)
+      ? play.entry * (1 + play.peak / 100)
+      : null;
+  const invalidationStopPremium = scaledAlready
+    ? runnerTrailingStopPremium(peakPremiumDollarForInvalidation)
+    : play.exitPolicy?.stop_premium ?? null;
+  const invalidationStopLabel = scaledAlready ? "Runner trailing stop" : "Premium stop";
   const invalidation =
     bucket === "closed"
       ? null
@@ -2407,8 +2452,8 @@ export function composeSwingPlayBrief(
           ? `${dead.charAt(0).toUpperCase()}${dead.slice(1)} — this setup is no longer live.`
           : resolveBreakInvalidation(ctx) ??
             (sourceFetchFailed || gateFramingMoot ? null : play.gateBlocks?.[0]?.reason) ??
-            (bucket === "open" && play.exitPolicy?.stop_premium != null
-              ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
+            (bucket === "open" && invalidationStopPremium != null
+              ? `${invalidationStopLabel} at ${fmtUsd(invalidationStopPremium)}`
               : null);
 
   // BUG FIX continued (Ask Largo standing mandate, 2026-10-07): evidence/levels are now composed

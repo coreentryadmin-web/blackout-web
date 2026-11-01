@@ -1517,6 +1517,69 @@ test("composeSwingPlayBrief: top-level Invalidation line still falls through to 
   );
 });
 
+// BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-11-01, live repros GDDY
+// positionId 2293 / TDOC positionId 2270 / VFC positionId 2257 / FTAI positionId 2254 / TXRH
+// positionId 2252 / ACN positionId 2242 / PPG positionId 2194): the premium-stop fallback test
+// immediately above proves the fallback fires correctly for a position that has NOT scaled out
+// yet. This is its sibling for the position that HAS: once a trim tranche has fired,
+// `deriveScaleOutAction`/`computeScaleOutTriggerInfo` (scale-out.ts) permanently disable the
+// pre-scale hard stop, and the real governing floor becomes the runner's trailing stop off its
+// peak (`runnerTrailingStopPremium`, terminal-ladder.ts) -- the exact substitution
+// `managementSection`'s "Rails: ..." line (play-brief.ts), the `evidence_numbers` fact builder
+// (play-brief.ts), `watchForSection`'s "Premium stop rail" bullet (play-brief-intel.ts), and the
+// "Break watch -- stop already breached" bullet (play-brief-narrative.ts, #6924) already apply.
+// Before this fix, this top-level `envelope.invalidation` fallback was the one remaining call
+// site still citing the raw, dead `stop_premium` -- live repro GDDY positionId 2293:
+// `envelope.invalidation` read "Premium stop at $1.48" while the SAME response's Management
+// section read "Rails: stop $1.48 (no longer applies -- already scaled; runner trail now
+// $4.18) ...", the brief flatly contradicting its own Management section about whether $1.48 is
+// live.
+test("composeSwingPlayBrief: top-level Invalidation line cites the live runner trailing stop, not the dead pre-scale premium stop, once a trim tranche has fired", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      entry: 0.15,
+      peak: 150,
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 0.3, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: 0.06,
+        target_premium: 0.3,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    ecosystemFetchFailed: true,
+    vectorFetchFailed: true,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    "Runner trailing stop at $0.19",
+    "once a trim has fired, the dead pre-scale stop must not be cited as the live invalidation level -- the real governing floor is the runner trail",
+  );
+  // The Management section's own "Rails: ..." line (the sibling call site #6924/2026-10-21 fixed)
+  // must agree with the top-level field about the SAME fact -- this is the exact contradiction
+  // the live GDDY/TDOC/... repros caught.
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.match(
+    management!.body,
+    /runner trail now \$0\.19/,
+    `Management section must cite the same runner-trail figure the top-level invalidation line now uses, got: ${management!.body}`,
+  );
+});
+
 // FIXTURE FIX (Ask Largo standing mandate, 2026-10-18): this test's own title says "when the play
 // is genuinely still enterable", but its fixture used the base `fixturePlay()` defaults
 // (setupState FORMING / entryStatus PRE_TRIGGER) — NOT genuinely still enterable at all;
