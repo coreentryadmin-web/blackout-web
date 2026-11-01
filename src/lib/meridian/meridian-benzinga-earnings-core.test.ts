@@ -5,6 +5,7 @@ import {
   benzingaSurpriseToDisplayPct,
   benzingaTickerWindow,
   dedupeEarningsRowsByEvent,
+  buildEarningsWeekRows,
   buildRecentEarningsRevisions,
   computeEarningsYoY,
   deriveMeridianEarningsErrors,
@@ -308,6 +309,44 @@ test("postPrintSurpriseLean scores beat and miss", () => {
   } as never);
   assert.equal(miss.lean, "miss");
   assert.equal(miss.score, -2);
+});
+
+test("buildEarningsWeekRows: is_printed is true when only actual_revenue has landed (EPS pending)", () => {
+  // Same complete-print check benzingaToCalendarRow already uses (actual_eps OR actual_revenue).
+  // A row with actual_revenue populated but actual_eps still null is a real printed report —
+  // checking actual_eps alone would misreport it as not-yet-printed, undercounting
+  // MeridianDesk's "N/M printed" headline (buildEarningsWeekAnalytics's printed_this_week).
+  const rows = buildEarningsWeekRows(
+    [
+      bz({
+        ticker: "NVDA",
+        date: "2026-08-26",
+        importance: 5,
+        actual_eps: null,
+        actual_revenue: 30_000_000_000,
+      }),
+      bz({
+        ticker: "AAPL",
+        date: "2026-08-27",
+        importance: 5,
+        actual_eps: 1.5,
+        actual_revenue: null,
+      }),
+      bz({
+        ticker: "META",
+        date: "2026-08-28",
+        importance: 5,
+        actual_eps: null,
+        actual_revenue: null,
+      }),
+    ],
+    "2026-08-25",
+    7
+  );
+  const byTicker = new Map(rows.map((r) => [r.ticker, r]));
+  assert.equal(byTicker.get("NVDA")?.is_printed, true);
+  assert.equal(byTicker.get("AAPL")?.is_printed, true);
+  assert.equal(byTicker.get("META")?.is_printed, false);
 });
 
 test("buildRecentEarningsRevisions filters by last_updated window", () => {

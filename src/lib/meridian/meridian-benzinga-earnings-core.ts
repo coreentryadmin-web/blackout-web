@@ -345,7 +345,11 @@ export function buildEarningsWeekRows(
       importance: r.importance,
       date_status: r.date_status,
       estimated_eps: r.estimated_eps,
-      is_printed: r.actual_eps != null,
+      // Same complete check `benzingaToCalendarRow` already uses: a print is "printed" once
+      // EITHER actual figure has landed, not only EPS. Benzinga reports some prints with only
+      // actual_revenue populated (EPS pending/withheld); checking `actual_eps` alone undercounts
+      // `printed_this_week` (consumed by MeridianDesk's "N/M printed" headline) on every such row.
+      is_printed: r.actual_eps != null || r.actual_revenue != null,
     }));
 }
 
