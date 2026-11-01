@@ -33,15 +33,24 @@ server.on("connection", (sock) => {
   sockets.push(sock);
 });
 
+/** Full verify runs ~18k tests; acquirePolygonSlot can queue + defer TCP accept for seconds. */
+const CONNECT_WAIT_MS = process.env.CI || process.env.GITHUB_ACTIONS ? 20_000 : 5_000;
+
 function waitForNextConnection(sinceCount: number, timeoutMs: number): Promise<Socket | null> {
+  if (sockets.length > sinceCount) {
+    return Promise.resolve(sockets[sinceCount]!);
+  }
   return new Promise((resolve) => {
-    const deadline = Date.now() + timeoutMs;
-    const tick = () => {
-      if (sockets.length > sinceCount) return resolve(sockets[sinceCount]!);
-      if (Date.now() >= deadline) return resolve(null);
-      setTimeout(tick, 2);
+    const finish = (socket: Socket | null) => {
+      clearTimeout(timer);
+      server.off("connection", onConnection);
+      resolve(socket);
     };
-    tick();
+    const onConnection = () => {
+      if (sockets.length > sinceCount) finish(sockets[sinceCount]!);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    server.on("connection", onConnection);
   });
 }
 
@@ -63,9 +72,6 @@ const basePromise = listen(server).then((base) => {
 
 const polygonLargoPromise = basePromise.then(() => import("./polygon-largo"));
 
-/** Under full-suite CI, acquirePolygonSlot can queue behind other files' Polygon traffic. */
-const CONNECTION_WAIT_MS = process.env.CI ? 20_000 : 5_000;
-
 async function ensurePolygonTestCircuitClosed() {
   const { resetPolygonCircuitForTest } = await import("./polygon-rate-limiter");
   resetPolygonCircuitForTest();
@@ -81,10 +87,11 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const sinceCount = sockets.length;
 
   const controller = new AbortController();
+  const connected = waitForNextConnection(sinceCount, CONNECT_WAIT_MS);
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, CONNECTION_WAIT_MS);
+  const socket = await connected;
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -116,10 +123,11 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const sinceCount = sockets.length;
 
   const controller = new AbortController();
+  const connected = waitForNextConnection(sinceCount, CONNECT_WAIT_MS);
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, CONNECTION_WAIT_MS);
+  const socket = await connected;
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
