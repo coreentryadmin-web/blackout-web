@@ -34,14 +34,22 @@ server.on("connection", (sock) => {
 });
 
 function waitForNextConnection(sinceCount: number, timeoutMs: number): Promise<Socket | null> {
+  if (sockets.length > sinceCount) {
+    return Promise.resolve(sockets[sinceCount]!);
+  }
   return new Promise((resolve) => {
-    const deadline = Date.now() + timeoutMs;
-    const tick = () => {
-      if (sockets.length > sinceCount) return resolve(sockets[sinceCount]!);
-      if (Date.now() >= deadline) return resolve(null);
-      setTimeout(tick, 2);
+    const onConn = () => {
+      if (sockets.length > sinceCount) {
+        server.off("connection", onConn);
+        clearTimeout(timer);
+        resolve(sockets[sinceCount]!);
+      }
     };
-    tick();
+    server.on("connection", onConn);
+    const timer = setTimeout(() => {
+      server.off("connection", onConn);
+      resolve(sockets.length > sinceCount ? sockets[sinceCount]! : null);
+    }, timeoutMs);
   });
 }
 
@@ -75,7 +83,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, 8000);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -109,7 +117,7 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, 8000);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
