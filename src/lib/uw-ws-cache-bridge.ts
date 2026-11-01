@@ -107,11 +107,38 @@ export async function readUwDarkPoolFromRedis(ticker = "SPX"): Promise<DarkPoolS
   return readUwDeskLaneFromRedis<DarkPoolSnapshot>(UW_KEYS.darkPoolRecent());
 }
 
+/** Freshness for `dark_pool_recent` — gated on `darkPoolRecentRing`, the exact store
+ * `seedUwCacheFromWsStores` reads to write `UW_KEYS.darkPoolRecent()`. */
 function darkPoolWsFresh(): boolean {
   return (
     isUwChannelFresh("off_lit_trades", 120_000) &&
     darkPoolRecentRing.rows.length > 0 &&
     darkPoolRecentRing.updatedAt > 0
+  );
+}
+
+/**
+ * Freshness for the SPX ticker-level dark-pool snapshot specifically — gated on
+ * `darkPoolStore`, the exact store `seedUwCacheFromWsStores` reads to write
+ * `UW_KEYS.darkPoolTicker("SPX")`, NOT the market-wide `darkPoolRecentRing`.
+ *
+ * The two stores are independent parses of the SAME `off_lit_trades` WS payload —
+ * `extractDarkPoolRawRows` (feeds the ring, no premium/date filter — any object
+ * passes) vs `normalizeDarkPoolWsPayload` (feeds `darkPoolStore`, drops rows with
+ * premium<=0 or whose `executed_at` isn't today's ET session and returns null when
+ * nothing survives). A payload that keeps the ring "fresh" can leave `darkPoolStore`
+ * stale — e.g. every row in a frame has premium<=0, or carries a prior-session
+ * timestamp. Before this fix, `shouldSkipUwCacheRefreshTask("dark_pool_ticker","SPX")`
+ * reused `darkPoolWsFresh()` (the ring check) for that decision, so the cron would
+ * skip the REST refresh for `dark_pool_ticker:SPX` on the strength of a signal that
+ * does not describe what that cache key actually holds — leaving it silently stale
+ * with neither WS nor REST ever refreshing it.
+ */
+function darkPoolTickerWsFresh(): boolean {
+  return (
+    isUwChannelFresh("off_lit_trades", 120_000) &&
+    darkPoolStore.updatedAt > 0 &&
+    darkPoolStore.data != null
   );
 }
 
@@ -134,9 +161,9 @@ export function shouldSkipUwCacheRefreshTask(
   if (task === "dark_pool_recent") {
     return darkPoolWsFresh();
   }
-  // WS off_lit_trades seeds SPX from the market-wide store; skip per-ticker REST for SPX only.
+  // WS off_lit_trades seeds SPX from the ticker-level store; skip per-ticker REST for SPX only.
   if (task === "dark_pool_ticker" && ticker === "SPX") {
-    return darkPoolWsFresh();
+    return darkPoolTickerWsFresh();
   }
   return false;
 }

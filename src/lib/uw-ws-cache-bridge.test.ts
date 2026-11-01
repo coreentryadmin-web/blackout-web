@@ -58,3 +58,45 @@ test("seedUwCacheFromWsStores reports nothing seeded when off_lit_trades is stal
   assert.equal(result.seeded, 0);
   assert.deepEqual(result.skipped_ws, []);
 });
+
+// BUG FIX: shouldSkipUwCacheRefreshTask("dark_pool_ticker","SPX") used to reuse the ring-based
+// darkPoolWsFresh() check (same one "dark_pool_recent" uses) — but the actual Redis key it
+// gates, UW_KEYS.darkPoolTicker("SPX"), is written from `darkPoolStore`, a DIFFERENT store fed
+// by a DIFFERENT parse of the same off_lit_trades payload (`normalizeDarkPoolWsPayload`, which
+// drops premium<=0 / stale-date rows that `extractDarkPoolRawRows` happily lets into the ring).
+// So a payload that keeps the ring "fresh" while leaving `darkPoolStore` stale used to make the
+// cron SKIP the REST refresh for dark_pool_ticker:SPX on a signal that says nothing about the
+// data that key actually holds — silently freezing it with neither WS nor REST ever refreshing
+// it. This test pins the ring-fresh/store-stale divergence directly.
+test("shouldSkipUwCacheRefreshTask('dark_pool_ticker','SPX') does not skip REST when the ring is fresh but the ticker-level store is stale", async () => {
+  const { shouldSkipUwCacheRefreshTask } = await mod();
+  const { darkPoolRecentRing, darkPoolStore } = await import("./ws/uw-socket");
+  fresh.offLit = true;
+
+  // The market-wide ring IS fresh (e.g. other tickers kept trading off-lit)...
+  (darkPoolRecentRing as { rows: unknown[]; updatedAt: number }).rows = [{ ticker: "AAPL", premium: 10 }];
+  (darkPoolRecentRing as { rows: unknown[]; updatedAt: number }).updatedAt = Date.now();
+
+  // ...but the SPX ticker-level store (what darkPoolTicker("SPX") is actually built from) has
+  // gone stale — e.g. every off_lit_trades row since has had premium<=0 or a prior-session date,
+  // so normalizeDarkPoolWsPayload kept returning null and darkPoolStore was never updated again.
+  (darkPoolStore as { data: unknown; updatedAt: number }).data = null;
+  (darkPoolStore as { data: unknown; updatedAt: number }).updatedAt = 0;
+
+  assert.equal(
+    shouldSkipUwCacheRefreshTask("dark_pool_ticker", "SPX"),
+    false,
+    "the ring being fresh must not excuse skipping REST for a ticker-level key the ring never feeds"
+  );
+});
+
+test("shouldSkipUwCacheRefreshTask('dark_pool_ticker','SPX') does skip REST once the ticker-level store itself is fresh", async () => {
+  const { shouldSkipUwCacheRefreshTask } = await mod();
+  const { darkPoolStore } = await import("./ws/uw-socket");
+  fresh.offLit = true;
+
+  (darkPoolStore as { data: unknown; updatedAt: number }).data = { prints: [{ ticker: "SPX", premium: 500_000 }] };
+  (darkPoolStore as { data: unknown; updatedAt: number }).updatedAt = Date.now();
+
+  assert.equal(shouldSkipUwCacheRefreshTask("dark_pool_ticker", "SPX"), true);
+});
