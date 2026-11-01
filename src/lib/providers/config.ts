@@ -296,7 +296,12 @@ export function gexHeatmapEnrichmentMaxMs(): number {
 export function deskPulseStructureCacheTtlMs(): number {
   const raw = process.env.SPX_PULSE_STRUCTURE_SEC?.trim();
   const sec = raw ? Number(raw) : 2;
-  if (!Number.isFinite(sec) || sec < 0) return 10_000;
+  // Invalid-override fallback must match the function's OWN default (2s), not a stale value left
+  // over from this default's history (10s -> 5s -> 2s, see git log). Before this fix it returned
+  // 10_000 here — 5x the intended 2s ceiling and exactly the staleness the 5s->2s change (FINDING
+  // 2026-08-24, lod/hod lag) was fixing — so a malformed/negative SPX_PULSE_STRUCTURE_SEC silently
+  // reverted the desk to worse staleness than this function ever otherwise allows.
+  if (!Number.isFinite(sec) || sec < 0) return 2_000;
   return Math.round(sec * 1000);
 }
 
