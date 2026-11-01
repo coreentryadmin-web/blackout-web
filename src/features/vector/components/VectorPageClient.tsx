@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VectorPageShell } from "@/features/vector/components/VectorPageShell";
 import {
   fetchVectorClientSeed,
@@ -23,6 +23,7 @@ import {
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { PhosphorBoot } from "@/components/ui/loading/PhosphorBoot";
+import { runTickerSelectGuardedLoad } from "@/features/vector/lib/vector-ticker-select-guard";
 
 const VectorCompareDesk = dynamic(
   () =>
@@ -90,6 +91,9 @@ export function VectorPageClient({
   const [seed, setSeed] = useState<VectorClientSeed | null>(null);
   const [navBusy, setNavBusy] = useState(false);
   const [compareSeeds, setCompareSeeds] = useState<VectorClientSeed[] | null>(null);
+  // Bumped on every onTickerSelect call — see runTickerSelectGuardedLoad above for the race this
+  // closes (a stale, slower ticker-select fetch overwriting a newer one's already-applied seed).
+  const tickerSelectGenRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,16 +173,20 @@ export function VectorPageClient({
   const onTickerSelect = useCallback(
     async (next: string) => {
       if (!seed || next === seed.ticker) return;
+      const gen = ++tickerSelectGenRef.current;
       setNavBusy(true);
       const path =
         next === VECTOR_DEFAULT_TICKER ? "/vector" : `/vector?ticker=${encodeURIComponent(next)}`;
       router.replace(path, { scroll: false });
-      try {
-        const clientSeed = await fetchVectorClientSeed(next);
-        setSeed(clientSeed);
-      } finally {
-        setNavBusy(false);
-      }
+      await runTickerSelectGuardedLoad(
+        gen,
+        () => tickerSelectGenRef.current,
+        () => fetchVectorClientSeed(next),
+        {
+          onSuccess: (clientSeed) => setSeed(clientSeed),
+          onSettle: () => setNavBusy(false),
+        }
+      );
     },
     [router, seed]
   );
