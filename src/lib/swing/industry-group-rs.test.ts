@@ -6,6 +6,7 @@ import {
   industryGroupRsFacts,
   INDUSTRY_ETF_BY_SIC,
   SECTOR_ETF_BY_LABEL,
+  ADR_SIC_MISSING_OVERRIDE,
 } from "./industry-group-rs.ts";
 
 // pctReturnOverSessions (internal) reads only closes[0] and closes[len-1] for a length-(n+1) array, so a
@@ -186,8 +187,45 @@ test("industryGroupRsFacts: honest null on no benchmark / thin history — mirro
   );
 });
 
+// FINDINGS (Ask Largo standing mandate deep-dive, 2026-11-01, live repro): TSM (Taiwan Semiconductor)
+// comes back from Polygon's reference API as `type: "ADRC"` with NO `sic_code` at all (live-confirmed,
+// same for ASML/ARM) — unlike its SIC-3674 semis peers (NVDA/AMD/MU/AVGO/…), which correctly resolve to
+// the SMH industry tier. Before this fix, a missing SIC fell straight through to the coarse static
+// sector-map label — TSM is hand-classified "Tech" in the flow-aggregation sector-map.ts — landing on
+// XLK. Live effect: the member-facing Ask Largo swing play-brief's "Why this setup" section narrated
+// TSM (the canonical semiconductor ADR) as "Industry read: leading Tech (XLK) by 0.6%..." instead of
+// the Semiconductors (SMH) benchmark its own SIC-having semis peers get — the exact "mechanically-
+// nearest-but-substantively-wrong ETF" shape this file's header already fixed for HUT/GE Aerospace,
+// just approached from the opposite direction (routing TO the correct tight tier, not blocking a wrong
+// loose one).
+test("resolveGroupBenchmark: a known no-SIC ADR (TSM/ASML/ARM) resolves to its real industry ETF, not the coarse static sector label", () => {
+  // No sicCode at all (Polygon never classifies these) AND a sectorLabel that WOULD mislabel them —
+  // the override must win over the static "Tech" fallback.
+  assert.deepEqual(resolveGroupBenchmark({ ticker: "TSM", sectorLabel: "Tech" }), { etf: "SMH", label: "Semiconductors", kind: "industry" });
+  assert.deepEqual(resolveGroupBenchmark({ ticker: "ASML", sectorLabel: "Tech" }), { etf: "SMH", label: "Semiconductors", kind: "industry" });
+  assert.deepEqual(resolveGroupBenchmark({ ticker: "ARM", sectorLabel: "Tech" }), { etf: "SMH", label: "Semiconductors", kind: "industry" });
+  // Still correct with no sectorLabel supplied at all.
+  assert.deepEqual(resolveGroupBenchmark({ ticker: "TSM" }), { etf: "SMH", label: "Semiconductors", kind: "industry" });
+  // An ETF candidate is still excluded even if its ticker happens to collide with the override map.
+  assert.equal(resolveGroupBenchmark({ ticker: "TSM", tickerType: "ETF" }), null);
+  // A ticker with a REAL SIC code is unaffected by the override even if (hypothetically) present in it —
+  // the SIC tier is still checked first.
+  assert.equal(resolveGroupBenchmark({ ticker: "NVDA", sicCode: "3674" })?.etf, "SMH");
+  // An unrelated no-SIC ticker is NOT swept into this override — it still falls through normally.
+  assert.deepEqual(resolveGroupBenchmark({ ticker: "XOM", sectorLabel: "Energy" }), { etf: "XLE", label: "Energy", kind: "sector" });
+});
+
 test("map integrity: every INDUSTRY_ETF_BY_SIC key is a 3–4 digit SIC; sector labels are the 11 SPDRs", () => {
   for (const sic of Object.keys(INDUSTRY_ETF_BY_SIC)) assert.match(sic, /^\d{3,4}$/);
   assert.equal(Object.keys(SECTOR_ETF_BY_LABEL).length, 11);
   for (const etf of Object.values(SECTOR_ETF_BY_LABEL)) assert.match(etf, /^XL[A-Z]{1,2}$/);
+});
+
+test("map integrity: every ADR_SIC_MISSING_OVERRIDE entry targets a real liquid industry ETF, never itself", () => {
+  const industryEtfs = new Set(Object.values(INDUSTRY_ETF_BY_SIC).map((v) => v.etf));
+  for (const [ticker, { etf }] of Object.entries(ADR_SIC_MISSING_OVERRIDE)) {
+    assert.match(ticker, /^[A-Z]{1,6}$/);
+    assert.ok(industryEtfs.has(etf), `${ticker} → ${etf} must be one of the already-established industry ETFs`);
+    assert.notEqual(ticker, etf);
+  }
 });

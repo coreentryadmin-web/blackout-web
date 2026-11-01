@@ -206,8 +206,32 @@ function sectorEtfFromSic(sic: number): { etf: string; label: string } | null {
 export const NO_SECTOR_BENCHMARK_THEMES: ReadonlySet<string> = new Set(["crypto-equity"]);
 
 /**
+ * Ticker-level override for names Polygon's reference API never gives a `sic_code` at all — confirmed
+ * live 2026-11-01: TSM/ASML/ARM (Taiwan Semiconductor, ASML Holding, Arm Holdings) all come back
+ * `type: "ADRC"` with `sic_code: undefined`, while their SIC-carrying semis peers (NVDA/AMD/MU/AVGO/…,
+ * all `sic_code: "3674"`) correctly resolve to the SMH industry tier above. Without this override those
+ * three fall straight through the SIC tier to the coarse static `sectorLabel` fallback, which hand-
+ * classifies them "Tech" (`src/lib/sector-map.ts`) → XLK — live-reproduced on TSM's Ask Largo swing
+ * play-brief ("Why this setup" cited "leading Tech (XLK) by 0.6%" instead of the correct Semiconductors
+ * (SMH) benchmark its own SIC-having semis peers get). Same "mechanically-nearest-but-substantively-
+ * wrong ETF" shape this file's header already fixed for HUT/GE Aerospace, just on the OPPOSITE side of
+ * the ladder — those fixes routed a resolvable-but-wrong match to null; this one routes a genuinely
+ * unresolvable SIC to the correct INDUSTRY tier instead of the coarser SECTOR one. Deliberately as small
+ * and conservative as `INDUSTRY_ETF_BY_SIC` itself: only names independently confirmed (a) to have no
+ * Polygon SIC and (b) to already sit in `portfolio/sector-map.ts`'s hand-curated `semis` bucket alongside
+ * their SIC-3674 peers. NOT a general "no SIC → guess" rule — an unmapped ADR still falls through to the
+ * static label or honest absence, same as before.
+ */
+export const ADR_SIC_MISSING_OVERRIDE: Record<string, { etf: string; label: string }> = {
+  TSM: { etf: "SMH", label: "Semiconductors" },
+  ASML: { etf: "SMH", label: "Semiconductors" },
+  ARM: { etf: "SMH", label: "Semiconductors" },
+};
+
+/**
  * Resolve a name's SECTOR_ROTATION benchmark, finest-first: an exact-SIC INDUSTRY ETF, else a SIC-range
- * SECTOR ETF, else the static sector-map SECTOR ETF, else null (honest absence). PURE.
+ * SECTOR ETF, else a hand-curated override for names with no SIC at all, else the static sector-map
+ * SECTOR ETF, else null (honest absence). PURE.
  *
  * Guards: an ETF candidate (`tickerType === "ETF"`) gets NO benchmark — rotation is a single-name thesis, and
  * a sector ETF has no "own group" to lead. A name in `NO_SECTOR_BENCHMARK_THEMES` gets NO benchmark either —
@@ -234,7 +258,14 @@ export function resolveGroupBenchmark(q: GroupBenchmarkQuery): GroupBenchmark | 
     }
   }
 
-  // Fallback to the static sector-map label (zero-IO) when the SIC didn't resolve.
+  // No SIC resolved a benchmark yet — check the hand-curated no-SIC-at-all override before falling
+  // all the way to the coarse static sector label (see ADR_SIC_MISSING_OVERRIDE's own comment).
+  if (!benchmark && !sicRaw) {
+    const override = ADR_SIC_MISSING_OVERRIDE[ticker];
+    if (override) benchmark = { etf: override.etf, label: override.label, kind: "industry" };
+  }
+
+  // Fallback to the static sector-map label (zero-IO) when nothing finer resolved.
   if (!benchmark && q.sectorLabel) {
     const etf = SECTOR_ETF_BY_LABEL[q.sectorLabel];
     if (etf) benchmark = { etf, label: q.sectorLabel, kind: "sector" };
