@@ -205,7 +205,18 @@ function officialOverridingRealExit(
   if (!reco || !reconstructionShowsGenuinePartialBank(entryContext)) return null;
   const exit = readManagedExit(entryContext);
   if (!exit || exit.pnl_pct == null || realExitIsBarWalkReproducible(exit.reason)) return null;
-  return { plan_outcome: managedOutcomeLabel(exit.reason, exit.pnl_pct), plan_pnl_pct: round2(exit.pnl_pct) };
+  // FINDINGS 2026-11-01: this lane reads the SAME frozen entry_context.exit blob
+  // managedGradeView() does, for the exact same real-exit-outranks-reconstruction rows — but
+  // until this fix it served exit.pnl_pct RAW while managedGradeView() (line ~572) clamps it to
+  // the row's own peak_pnl_pct via clampManagedPnlToPeak (added 2026-10-31 for the identical
+  // "a position can never realize better than its own recorded peak" reason documented on that
+  // function above). Without the same clamp here, the two "official" numbers for one position
+  // could disagree, and plan_pnl_pct — the number calibration/feature-store/Largo's
+  // get_zerodte_record read, per the module comment above — could exceed max_favorable_pct,
+  // which is mathematically impossible. Reusing clampManagedPnlToPeak (not reimplementing it)
+  // keeps both lanes mechanically unable to drift apart again.
+  const pnl = round2(clampManagedPnlToPeak(exit.pnl_pct, exit.peak_pnl_pct));
+  return { plan_outcome: managedOutcomeLabel(exit.reason, pnl), plan_pnl_pct: pnl };
 }
 
 /** The OFFICIAL per-row plan P&L: the executable lane when the row carries it, else the mid
