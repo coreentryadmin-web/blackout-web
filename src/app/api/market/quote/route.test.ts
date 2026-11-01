@@ -117,4 +117,43 @@ describe("/api/market/quote negative-result caching", () => {
     assert.equal(body.price, 7499.36);
     assert.equal(body.change_pct, 0.12);
   });
+
+  // Regression: quoteFailureWarned (the de-duped-warning Set) had NO size bound, unlike its
+  // sibling quoteFailureMem (cleared at size>200 — see recordQuoteFailure). Entries are only
+  // removed on a per-ticker SUCCESS, so a ticker that never recovers — or a sustained spread of
+  // distinct failing tickers (bot/probing traffic hitting many invalid-but-allowlisted symbols)
+  // — grew the Set for the life of the process with no eviction. Proven here by the only
+  // observable symptom: a long-suppressed ticker's warning re-arms once the Set clears, instead
+  // of staying suppressed forever.
+  test("quoteFailureWarned is bounded — a long spread of distinct failing tickers eventually re-arms a long-suppressed ticker's warning", async () => {
+    mockStockSnapshot = null;
+    warnCalls = [];
+    originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnCalls.push(String(args[0])); };
+    try {
+      await GET(new NextRequest("http://localhost/api/market/quote?ticker=SENT1"));
+      assert.equal(warnCalls.length, 1, "first failure for the sentinel ticker warns once");
+
+      await GET(new NextRequest("http://localhost/api/market/quote?ticker=SENT1"));
+      assert.equal(warnCalls.length, 1, "immediate repeat failure stays suppressed (negative cache)");
+
+      // Flood with 201 distinct NEW failing tickers so the Set crosses the 200-entry bound at
+      // least once. Without a bound, this just grows quoteFailureWarned forever and SENT1 stays
+      // suppressed indefinitely regardless of how many other tickers fail.
+      for (let i = 0; i < 201; i++) {
+        const ticker = `Q${String(i).padStart(6, "0")}`; // 7 chars — matches the ^[A-Z0-9.-]{1,8}$ allowlist
+        await GET(new NextRequest(`http://localhost/api/market/quote?ticker=${ticker}`));
+      }
+
+      const warnCountBeforeRecheck = warnCalls.length;
+      await GET(new NextRequest("http://localhost/api/market/quote?ticker=SENT1"));
+      assert.equal(
+        warnCalls.length,
+        warnCountBeforeRecheck + 1,
+        "quoteFailureWarned must be bounded: once it clears, SENT1 can warn again instead of being suppressed forever by an ever-growing Set"
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
 });

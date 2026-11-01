@@ -98,6 +98,12 @@ function recordQuoteFailure(ticker: string, detail: string): void {
     quoteFailureWarned.add(ticker);
     console.warn(`[market/quote] REST quote failing for ${ticker} (further repeats suppressed until it recovers): ${detail}`);
   }
+  // Bound this Set the same way quoteFailureMem is bounded above. Unlike that Map, entries
+  // here are removed ONLY on a per-ticker success (see quoteFailureWarned.delete below) — a
+  // ticker that never recovers (or a sustained spread of distinct failing tickers, e.g.
+  // probing/bot traffic hitting many invalid-but-allowlisted symbols) has no other exit path,
+  // so without this clear the Set grows for the life of the process.
+  if (quoteFailureWarned.size > 200) quoteFailureWarned.clear();
 }
 
 /**
