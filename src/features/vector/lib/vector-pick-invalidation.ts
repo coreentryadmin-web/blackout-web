@@ -20,10 +20,17 @@ export function parseInvalidationTimeframeMinutes(invalidation: string | null | 
     const n = Number(m[1]);
     return Number.isFinite(n) && n > 0 ? n : null;
   }
-  const h = invalidation.match(/(\d+)\s*h\b/i);
+  // The hour label can be fractional — `tfLabel` in vector-play-engine.ts prints e.g. "1.5H" for a
+  // 90-minute custom chart interval (any whole-minute custom interval up to 240 is selectable, see
+  // vector-bar-timeframes.ts; it steps up to "2.5H"/"3.3H" etc. for 150/200-minute intervals). The
+  // decimal group must be captured explicitly: `\d+` cannot span the ".", so without
+  // `(?:\.\d+)?` the match restarts AFTER the decimal point and "1.5H" is parsed as "5H" (300
+  // minutes) instead of the real 90 — silently handing the wrong bar-aggregation window to
+  // `lastClosedTimeframeBarClose` below, which can misjudge a live pick's setup_invalidated state.
+  const h = invalidation.match(/(\d+(?:\.\d+)?)\s*h\b/i);
   if (h) {
     const n = Number(h[1]);
-    return Number.isFinite(n) && n > 0 ? n * 60 : null;
+    return Number.isFinite(n) && n > 0 ? Math.round(n * 60) : null;
   }
   return null;
 }
