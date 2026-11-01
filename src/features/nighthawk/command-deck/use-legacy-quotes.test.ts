@@ -168,6 +168,31 @@ test("overlayLegacyQuotes: a SKIPped play never gets its recommendation overridd
   assert.equal(r[0].recommendation, "HOLD");
 });
 
+// BUG FIX (2026-11-01): a WATCH play has not been entered yet -- status stays WATCH from publish
+// (~8pm ET) until the next morning's 9:15am ET morning-confirm cron runs, and stays WATCH all day
+// on a DEGRADED/UNVERIFIED verdict too (terminalPlayFromEdition, adapters.ts -- only INVALIDATED/
+// severe-pulled maps to SKIP, only CONFIRMED maps to OPEN). The stop/target crossing check above
+// excluded CLOSED and SKIP but not WATCH, so once the underlying's STATIC published stop/target
+// level was crossed -- which can easily happen overnight or pre-confirm, well before any real
+// entry -- it stamped "SELL -- ... cut the position to preserve capital" or "TRIM -- ... take
+// profit" straight into LegacyPlayDetailPanel's verdict band (play.recommendation/recNote),
+// telling a member to exit a position that was never opened. Mirrors the sibling fix already
+// shipped for overlayLegacyOptionMarks's pnlPct/execPnlPct (#7105) -- WATCH needed the same gate
+// here for recommendation/recNote.
+test("overlayLegacyQuotes: a WATCH (not-yet-entered) play never gets its recommendation overridden to SELL at the stop", () => {
+  const plays = [basePlay({ direction: "LONG", status: "WATCH", recommendation: "HOLD" })];
+  const r = overlayLegacyQuotes(plays, new Map([["TEST", quote(6.0)]]), [LONG_ORIG]); // below stop (6.64)
+  assert.equal(r[0].recommendation, "HOLD");
+  assert.equal(r[0].recNote, undefined);
+});
+
+test("overlayLegacyQuotes: a WATCH (not-yet-entered) play never gets its recommendation overridden to TRIM at the target", () => {
+  const plays = [basePlay({ direction: "LONG", status: "WATCH", recommendation: "HOLD" })];
+  const r = overlayLegacyQuotes(plays, new Map([["TEST", quote(20)]]), [LONG_ORIG]); // above target (8.41)
+  assert.equal(r[0].recommendation, "HOLD");
+  assert.equal(r[0].recNote, undefined);
+});
+
 test("overlayLegacyQuotes LONG: stockPeakPct/stockTroughPct derive from session high/low on the entry-mid basis", () => {
   const plays = [basePlay({ direction: "LONG" })];
   const entryMid = (7.46 + 7.84) / 2;
