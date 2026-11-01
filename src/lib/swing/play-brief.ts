@@ -1151,6 +1151,20 @@ function confluenceZoneLabel(
  * order already puts call wall/put wall/gamma flip before GEX king, and confluence zones before
  * max pain, matching the "wall wins over king" / "confluence wins over max pain" display
  * convention the two prior fixes already established.
+ *
+ * SCOPE, tightened same-day after the first cut of this fix hung/regressed the test suite: this
+ * must be called ONLY for the structural GEX/dealer-positioning levels (call wall, put wall,
+ * gamma flip, confluence zone, dark pool, gamma magnet, GEX king, max pain) — the actual
+ * "independently-resolved kinds restating the identical strike" class the bug report is about.
+ * "spot" (the live underlying price, not a dealer-positioning strike) and the WATCH-bucket
+ * "flag anchor"/"entry trigger" trade-plan levels are a different category entirely and must
+ * stay on the plain, unconditional `levels.push(...)` below them in this file — a first cut
+ * routed ALL eleven call sites through this merge check, which silently dropped "entry trigger"
+ * whenever it legitimately equals "flag anchor" (the exact case
+ * `entryTriggerStillPinnedToFlag` exists to handle — both must render, with different
+ * provenance) and dropped a real confluence-zone level whenever its rounded center happened to
+ * fall within a coincidental one cent of the unrelated live "spot" price (live repro: spot
+ * 7499.40 vs a confluence center that rounds to 7499.39 — two unrelated facts, not a duplicate).
  */
 function pushLevel(levels: BieLevel[], level: BieLevel): void {
   if (levels.some((l) => Math.abs(l.price - level.price) < 0.01)) return;
@@ -1163,6 +1177,12 @@ function levelsFromContext(
   bucket: "watch" | "open" | "closed",
 ): BieLevel[] {
   const levels: BieLevel[] = [];
+  // Tracked separately from `levels` so pushLevel()'s collision-merge check (see its own doc
+  // comment) only ever compares structural GEX-derived levels against EACH OTHER — never against
+  // "flag anchor"/"entry trigger"/"spot", which are pushed straight onto `levels` below and must
+  // never be merged away by (or absorb) a same-priced structural level. Concatenated onto
+  // `levels` just before the final slice.
+  const structuralLevels: BieLevel[] = [];
   // BUG FIX (Ask Largo standing mandate, 2026-10-07): "Watch levels" (watchForSection,
   // play-brief-intel.ts) narrates `play.flagUnderlyingPx`/`play.entryTriggerUnderlyingPx` in prose
   // ("Flag anchor: 411.79 — track move from here", "Entry trigger: 411.04 — ... this is what
@@ -1205,7 +1225,10 @@ function levelsFromContext(
       freshness: Number.isFinite(pinnedMs) ? freshnessFromObservedMs(pinnedMs, readMs) : ("unknown" as const),
     };
     if (play.flagUnderlyingPx != null && Number.isFinite(play.flagUnderlyingPx)) {
-      pushLevel(levels, {
+      // Not routed through pushLevel()'s structural-level merge — see that function's own doc
+      // comment ("SCOPE" paragraph). A WATCH-bucket trade-plan level, not a dealer-positioning
+      // strike; must always render on its own.
+      levels.push({
         label: "flag anchor",
         price: play.flagUnderlyingPx,
         note: "pinned when first flagged — track move from here",
@@ -1242,7 +1265,11 @@ function levelsFromContext(
       const entryTriggerProvenance = entryTriggerStillPinnedToFlag
         ? pinnedProvenance
         : { source: "Swing lane", asOf: null, freshness: "unknown" as const };
-      pushLevel(levels, {
+      // Not routed through pushLevel()'s structural-level merge — same reason as the flag
+      // anchor above. Must render independently even when its price exactly equals the flag
+      // anchor's (that equality is `entryTriggerStillPinnedToFlag`'s own expected, tested case —
+      // both levels render, with provenance disambiguating them).
+      levels.push({
         label: "entry trigger",
         price: play.entryTriggerUnderlyingPx,
         note: deadReason ?? verb,
@@ -1295,7 +1322,7 @@ function levelsFromContext(
   // mislabeling a live number as merely "recent". Fixed to test the same vec-side variable that
   // drives `price`'s own precedence, mirroring the `spot` entry below (`vecSpot != null ? ...`).
   if (callWall != null && !callWallFromStaleGex) {
-    pushLevel(levels, {
+    pushLevel(structuralLevels, {
       label: "call wall",
       price: callWall,
       provenance: {
@@ -1307,7 +1334,7 @@ function levelsFromContext(
     });
   }
   if (putWall != null && !putWallFromStaleGex) {
-    pushLevel(levels, {
+    pushLevel(structuralLevels, {
       label: "put wall",
       price: putWall,
       provenance: {
@@ -1319,7 +1346,7 @@ function levelsFromContext(
     });
   }
   if (flip != null && !flipFromStaleGex) {
-    pushLevel(levels, {
+    pushLevel(structuralLevels, {
       label: "gamma flip",
       price: flip,
       provenance: {
@@ -1333,7 +1360,12 @@ function levelsFromContext(
   const vecSpot = vectorStale ? undefined : vec?.spot;
   const spot = vecSpot ?? (gexStale ? undefined : gex?.spot);
   if (spot != null) {
-    pushLevel(levels, {
+    // Not routed through pushLevel()'s structural-level merge — the live underlying price is
+    // never "the same level" as a dealer-positioning strike it happens to land within a cent
+    // of (live repro: spot 7499.40 vs a confluence zone center that rounds to 7499.39 — two
+    // unrelated facts; dropping "spot" here would also silently discard the confluence level
+    // on any later pushLevel() call, since the collision check runs against this entire array).
+    levels.push({
       label: "spot",
       price: spot,
       provenance: {
@@ -1354,7 +1386,7 @@ function levelsFromContext(
       // play-brief-narrative-coaching.ts's `fmtPriceLevel(top.center)`) — this was the one
       // omission. Rounding here, at the source, means this level is correct on its own rather
       // than depending on route.ts's external roundFloats() wrapper two layers away.
-      pushLevel(levels, {
+      pushLevel(structuralLevels, {
         label: confluenceZoneLabel(z, { callWall, putWall }),
         price: Math.round(z.center * 100) / 100,
         provenance: {
@@ -1373,7 +1405,7 @@ function levelsFromContext(
     // than fabricate freshness — same discipline collectFocalLevels/catalystsSection now apply.
     if (!darkPoolStale(vec)) {
       for (const dp of vec?.darkPoolLevels ?? []) {
-        pushLevel(levels, {
+        pushLevel(structuralLevels, {
           label: "dark pool",
           price: dp.strike,
           provenance: {
@@ -1390,7 +1422,7 @@ function levelsFromContext(
     // toward this node"), but was never added to the structured envelope.levels array — anything
     // consuming levels (a "show on chart" follow-up, another Largo surface) had no way to see it.
     if (vec?.magnet?.strike != null) {
-      pushLevel(levels, {
+      pushLevel(structuralLevels, {
         label: "gamma magnet",
         price: vec.magnet.strike,
         provenance: {
@@ -1406,7 +1438,7 @@ function levelsFromContext(
   const king = vecKing ?? gex?.gex_king_strike;
   const kingFromStaleGex = vecKing == null && gex?.gex_king_strike != null && gexStale;
   if (king != null && !kingFromStaleGex) {
-    pushLevel(levels, {
+    pushLevel(structuralLevels, {
       label: "GEX king",
       price: king,
       provenance: {
@@ -1419,7 +1451,7 @@ function levelsFromContext(
     });
   }
   if (vec?.maxPain != null && !vectorStale) {
-    pushLevel(levels, {
+    pushLevel(structuralLevels, {
       label: "max pain",
       price: vec.maxPain,
       provenance: {
@@ -1430,6 +1462,7 @@ function levelsFromContext(
       },
     });
   }
+  levels.push(...structuralLevels);
   return levels.slice(0, 10);
 }
 
