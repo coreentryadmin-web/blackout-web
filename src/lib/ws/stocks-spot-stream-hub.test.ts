@@ -10,7 +10,12 @@ import {
   _resetSpotStreamHubForTest,
   MAX_TICKERS_PER_STREAM,
 } from "./stocks-spot-stream-hub";
-import { recordStockTick, _resetStockCandleStoreForTest, _setSnapshotFetcherForTest } from "./stock-candle-store";
+import {
+  recordStockTick,
+  _resetStockCandleStoreForTest,
+  _setSnapshotFetcherForTest,
+  _skewLocalUpdatedAtForTest,
+} from "./stock-candle-store";
 
 // Network-free, same reasoning as stock-candle-store.test.ts.
 _setSnapshotFetcherForTest(async () => null);
@@ -65,6 +70,31 @@ test("buildSpotFrame: omits changePct until REST anchor is authoritative", () =>
   const frame = buildSpotFrame(["NVDA"]);
   assert.equal(frame.quotes.NVDA.price, 147);
   assert.equal(frame.quotes.NVDA.changePct, null);
+});
+
+// Regression: /api/market/quote (route.ts) requires a WS tick to be <10s old before
+// trusting it as "live" (falls back to REST otherwise, via its own WS_STALE_MS gate) —
+// but this hub's buildSpotFrame had NO such ceiling, only the much looser 60s
+// MAX_CANDLE_AGE_MS enforced deep inside getStockLiveCandle(). For a lightly-traded
+// ticker whose WS ticks are naturally sparse, a tick 10-60s old would be pushed over
+// SSE as "live" with no REST fallback at all, and the client (useLiveQuoteStream,
+// GexHeatmap.tsx's stockPushLive) unconditionally prioritizes it over the fresher REST
+// quote with no staleness check of its own — so a stale price could override a correct
+// one and display as live for up to a minute. This also contradicts buildSpotFrame's own
+// doc comment ("a ticker with no live candle yet ... is simply omitted"): the omission
+// was supposed to cover "stale", not just "literally absent".
+test("buildSpotFrame: omits a ticker whose WS tick is stale beyond the quote route's own freshness bar", () => {
+  _resetStockCandleStoreForTest();
+  recordStockTick("ILLQ", 42, undefined, Date.now());
+  assert.ok(buildSpotFrame(["ILLQ"]).quotes.ILLQ, "sanity: present while genuinely fresh");
+
+  // 15s stale — past the quote route's 10s WS staleness bar, but still well inside the
+  // candle store's own looser 60s MAX_CANDLE_AGE_MS, so getStockLiveCandle() alone would
+  // still happily return a non-null `current` for it.
+  _skewLocalUpdatedAtForTest("ILLQ", -15_000);
+
+  const frame = buildSpotFrame(["ILLQ"]);
+  assert.equal(frame.quotes.ILLQ, undefined, "a >10s-stale WS tick must not be pushed as live");
 });
 
 test("encodeSpotFrame: produces a well-formed SSE data line", () => {

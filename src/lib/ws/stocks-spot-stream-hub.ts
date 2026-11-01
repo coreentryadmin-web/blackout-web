@@ -12,8 +12,26 @@
  */
 import { roundFloats } from "@/lib/round-floats";
 import { getStockLiveCandle } from "./stock-candle-store";
+import { isWsUpdatedAtFresh } from "./timestamp-freshness";
 
 const TICKER_RE = /^[A-Z0-9.\-]{1,8}$/;
+
+/**
+ * Mirrors `/api/market/quote`'s own `WS_STALE_MS` (quote/route.ts) — that route treats a WS
+ * tick this old as "cold" and falls back to a fresh REST snapshot rather than serving it as
+ * live. This hub had no equivalent ceiling: `getStockLiveCandle()` only enforces its own much
+ * looser internal `MAX_CANDLE_AGE_MS` (60s), so a tick 10-60s old (routine for a lightly-traded
+ * ticker with sparse prints) was pushed over SSE labelled "live" with no REST fallback at all —
+ * and the client (useLiveQuoteStream → GexHeatmap.tsx's stockPushLive) unconditionally
+ * prioritizes whatever this stream sends over the REST quote SWR, with no staleness check of
+ * its own. Net effect: a stale push could silently override a correct, fresher REST price for
+ * up to a minute. Keeping this value in lockstep with the quote route's by duplicating the
+ * constant (not importing it — that route doesn't export it, and importing a route module into
+ * this shared hub would be the wrong direction) is the same documented tradeoff this file's
+ * sibling constants already make (see GEX_INDEX_WS_STALE_MS's own "mirrors spx-desk's ... intent"
+ * comment in polygon-options-gex.ts).
+ */
+const SPOT_STREAM_WS_STALE_MS = 10_000;
 
 /** Max distinct tickers one SSE connection may subscribe to at once. */
 export const MAX_TICKERS_PER_STREAM = 60;
@@ -49,16 +67,21 @@ export type SpotFrame = { type: "quotes"; quotes: Record<string, SpotQuote>; ts:
  * Build one frame's worth of quote data for the given tickers, reading
  * straight from stock-candle-store (which is already the site's single
  * source of truth for WS-fed spot prices — see quote/route.ts). A ticker
- * with no live candle yet (freshly demanded, REST seed still in flight, or
- * genuinely untraded) is simply omitted from `quotes` for this frame; the
- * client keeps its last-known value until the ticker appears. changePct is
- * null until the store's openSource is "rest" (prior-close anchor landed).
+ * with no live candle yet (freshly demanded, REST seed still in flight,
+ * genuinely untraded, OR whose last tick is stale beyond
+ * SPOT_STREAM_WS_STALE_MS) is simply omitted from `quotes` for this frame;
+ * the client keeps its last-known value until the ticker appears. changePct
+ * is null until the store's openSource is "rest" (prior-close anchor landed).
  */
 export function buildSpotFrame(tickers: string[], now: number = Date.now()): SpotFrame {
   const quotes: Record<string, SpotQuote> = {};
   for (const ticker of tickers) {
     const candle = getStockLiveCandle(ticker);
-    if (candle.current && candle.current.close > 0) {
+    if (
+      candle.current &&
+      candle.current.close > 0 &&
+      isWsUpdatedAtFresh(candle.updatedAt, SPOT_STREAM_WS_STALE_MS)
+    ) {
       quotes[ticker] = {
         price: candle.current.close,
         changePct: candle.changePct,
