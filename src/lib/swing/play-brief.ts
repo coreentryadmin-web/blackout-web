@@ -1122,6 +1122,41 @@ function confluenceZoneLabel(
   return `confluence (${confluenceZoneKindsLabel(z, primary)})`;
 }
 
+/**
+ * Push a level, merging into whatever is ALREADY in `levels` at the same price (within a cent —
+ * same price-identity tolerance `pushFocalLevel`/`confluenceZoneKindsLabel` already use elsewhere
+ * in this product) instead of letting two independently-resolved level kinds restate the
+ * identical real price under two labels. A GEX king strike is definitionally wherever gamma
+ * concentration peaks, so it commonly coincides with a wall; a confluence zone commonly
+ * coincides with max pain (one of its own named inputs).
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro CC/KTOS/VKTX): this is the THIRD
+ * sibling of the exact collision class `pushFocalLevel` (play-brief-narrative.ts, PR #7000,
+ * 2026-10-31) and `extractEvidence`'s dedup loop (play-brief-adapter.ts, same date) already
+ * fixed — both of those write-ups explicitly scoped their dedup to their OWN call site and named
+ * THIS function's output array (`envelope.levels`) as "a separate, independently-computed list
+ * ... out of scope here, unaffected either way." That deferred gap is exactly what reaches
+ * `renderLevels()` (answer-envelope.ts)'s "**Key levels:**" markdown footer and the raw
+ * `envelope.levels[]` JSON field verbatim — neither the narration-side nor the evidence-side
+ * dedup touches this array. Live repro, production, 2026-11-01: CC/KTOS both carried
+ * {label:"call wall", price:X} AND {label:"GEX king", price:X} at the same strike; VKTX carried
+ * that same collision AND a second one ({label:"confluence (call-wall@27.5+max-pain)",
+ * price:27.5} alongside a separate {label:"max pain", price:27.5}). Fixed at the actual source
+ * (this function) rather than deferred a third time, so every reader of `envelope.levels` — the
+ * generic shared renderer, any other direct API consumer, and any future call site here —
+ * benefits, not just the two call sites that already had their own patch.
+ *
+ * Keeping the FIRST-pushed entry on a collision needs no hard/soft kind precedence here (unlike
+ * `pushFocalLevel`'s neutral-pivot-vs-structural-wall tiering) — this function's own fixed push
+ * order already puts call wall/put wall/gamma flip before GEX king, and confluence zones before
+ * max pain, matching the "wall wins over king" / "confluence wins over max pain" display
+ * convention the two prior fixes already established.
+ */
+function pushLevel(levels: BieLevel[], level: BieLevel): void {
+  if (levels.some((l) => Math.abs(l.price - level.price) < 0.01)) return;
+  levels.push(level);
+}
+
 function levelsFromContext(
   ctx: SwingPlayBriefContext,
   readMs: number,
@@ -1170,7 +1205,7 @@ function levelsFromContext(
       freshness: Number.isFinite(pinnedMs) ? freshnessFromObservedMs(pinnedMs, readMs) : ("unknown" as const),
     };
     if (play.flagUnderlyingPx != null && Number.isFinite(play.flagUnderlyingPx)) {
-      levels.push({
+      pushLevel(levels, {
         label: "flag anchor",
         price: play.flagUnderlyingPx,
         note: "pinned when first flagged — track move from here",
@@ -1207,7 +1242,7 @@ function levelsFromContext(
       const entryTriggerProvenance = entryTriggerStillPinnedToFlag
         ? pinnedProvenance
         : { source: "Swing lane", asOf: null, freshness: "unknown" as const };
-      levels.push({
+      pushLevel(levels, {
         label: "entry trigger",
         price: play.entryTriggerUnderlyingPx,
         note: deadReason ?? verb,
@@ -1260,7 +1295,7 @@ function levelsFromContext(
   // mislabeling a live number as merely "recent". Fixed to test the same vec-side variable that
   // drives `price`'s own precedence, mirroring the `spot` entry below (`vecSpot != null ? ...`).
   if (callWall != null && !callWallFromStaleGex) {
-    levels.push({
+    pushLevel(levels, {
       label: "call wall",
       price: callWall,
       provenance: {
@@ -1272,7 +1307,7 @@ function levelsFromContext(
     });
   }
   if (putWall != null && !putWallFromStaleGex) {
-    levels.push({
+    pushLevel(levels, {
       label: "put wall",
       price: putWall,
       provenance: {
@@ -1284,7 +1319,7 @@ function levelsFromContext(
     });
   }
   if (flip != null && !flipFromStaleGex) {
-    levels.push({
+    pushLevel(levels, {
       label: "gamma flip",
       price: flip,
       provenance: {
@@ -1298,7 +1333,7 @@ function levelsFromContext(
   const vecSpot = vectorStale ? undefined : vec?.spot;
   const spot = vecSpot ?? (gexStale ? undefined : gex?.spot);
   if (spot != null) {
-    levels.push({
+    pushLevel(levels, {
       label: "spot",
       price: spot,
       provenance: {
@@ -1319,7 +1354,7 @@ function levelsFromContext(
       // play-brief-narrative-coaching.ts's `fmtPriceLevel(top.center)`) — this was the one
       // omission. Rounding here, at the source, means this level is correct on its own rather
       // than depending on route.ts's external roundFloats() wrapper two layers away.
-      levels.push({
+      pushLevel(levels, {
         label: confluenceZoneLabel(z, { callWall, putWall }),
         price: Math.round(z.center * 100) / 100,
         provenance: {
@@ -1338,7 +1373,7 @@ function levelsFromContext(
     // than fabricate freshness — same discipline collectFocalLevels/catalystsSection now apply.
     if (!darkPoolStale(vec)) {
       for (const dp of vec?.darkPoolLevels ?? []) {
-        levels.push({
+        pushLevel(levels, {
           label: "dark pool",
           price: dp.strike,
           provenance: {
@@ -1355,7 +1390,7 @@ function levelsFromContext(
     // toward this node"), but was never added to the structured envelope.levels array — anything
     // consuming levels (a "show on chart" follow-up, another Largo surface) had no way to see it.
     if (vec?.magnet?.strike != null) {
-      levels.push({
+      pushLevel(levels, {
         label: "gamma magnet",
         price: vec.magnet.strike,
         provenance: {
@@ -1371,7 +1406,7 @@ function levelsFromContext(
   const king = vecKing ?? gex?.gex_king_strike;
   const kingFromStaleGex = vecKing == null && gex?.gex_king_strike != null && gexStale;
   if (king != null && !kingFromStaleGex) {
-    levels.push({
+    pushLevel(levels, {
       label: "GEX king",
       price: king,
       provenance: {
@@ -1384,7 +1419,7 @@ function levelsFromContext(
     });
   }
   if (vec?.maxPain != null && !vectorStale) {
-    levels.push({
+    pushLevel(levels, {
       label: "max pain",
       price: vec.maxPain,
       provenance: {
