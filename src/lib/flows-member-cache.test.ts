@@ -65,9 +65,10 @@ mock.module("./server-cache", {
 });
 
 let readFlowsMemberCached: typeof import("./flows-member-cache").readFlowsMemberCached;
+let MAX_LAST_GOOD_FLOWS_KEYS: typeof import("./flows-member-cache").MAX_LAST_GOOD_FLOWS_KEYS;
 
 before(async () => {
-  ({ readFlowsMemberCached } = await import("./flows-member-cache"));
+  ({ readFlowsMemberCached, MAX_LAST_GOOD_FLOWS_KEYS } = await import("./flows-member-cache"));
 });
 
 describe("readFlowsMemberCached: per-query fallback scoping", () => {
@@ -108,5 +109,46 @@ describe("readFlowsMemberCached: per-query fallback scoping", () => {
     const second = await readFlowsMemberCached({ pageLimit: 10, ticker: "META" });
     assert.equal(second.count, 1, "this query's own last-good rows should still be servable");
     assert.equal((second.flows[0] as unknown as FlowRow).ticker, "META");
+  });
+});
+
+describe("lastGoodFlowsPayloadByKey: bounded growth", () => {
+  it("does not retain every distinct min_premium query forever — old entries get evicted", async () => {
+    // `min_premium` is a caller-supplied float (the HELIX tape's filter, straight off the
+    // `/api/market/flows?min_premium=` query param) and folds directly into the cache key
+    // (flows-member-cache-key.ts). A member sweeping that filter (or simply many members using
+    // different thresholds over a long-running process) can generate unbounded distinct keys.
+    // Build this query's own "last good" entry once, cheaply, by going through the real loader.
+    withServerCacheImpl = (_key, _ttl, loader) => loader();
+
+    const firstPremium = 1;
+    fetchRecentFlowsImpl = async () => [
+      { alerted_at: "2026-01-01T00:00:00Z", ticker: "SPY", strike: 1 },
+    ];
+    const warmed = await readFlowsMemberCached({ pageLimit: 10, min_premium: firstPremium });
+    assert.equal(warmed.count, 1, "sanity: the first distinct min_premium query built real rows");
+
+    // Drive the map past its cap with MANY other distinct min_premium values — the exact shape of
+    // unbounded growth this regression guards against.
+    for (let i = 2; i <= MAX_LAST_GOOD_FLOWS_KEYS + 5; i++) {
+      fetchRecentFlowsImpl = async () => [
+        { alerted_at: "2026-01-01T00:00:00Z", ticker: "SPY", strike: i },
+      ];
+      // eslint-disable-next-line no-await-in-loop
+      await readFlowsMemberCached({ pageLimit: 10, min_premium: i });
+    }
+
+    // Now replay the FIRST query's own cache key cold (fallback branch) — before the fix this
+    // always came back with its own prior-good rows (count: 1) because nothing ever evicted it;
+    // after the fix, once the map has been bounded, an old entry must eventually be reclaimed
+    // rather than the map growing by one permanent entry per distinct filter value forever.
+    withServerCacheImpl = (_key, _ttl, _loader, opts) => opts.fallback();
+    const replay = await readFlowsMemberCached({ pageLimit: 10, min_premium: firstPremium });
+    assert.equal(
+      replay.count,
+      0,
+      "an old distinct-filter entry must eventually be evicted, not retained forever unbounded"
+    );
+    assert.equal(replay.degraded, true);
   });
 });
