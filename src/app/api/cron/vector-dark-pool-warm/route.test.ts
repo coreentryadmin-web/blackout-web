@@ -124,7 +124,7 @@ test("a lost cross-cron concurrency race skips the run instead of dispatching a 
 test("the heavy-cron slot is released alongside the background warm, in the inner function's finally block", () => {
   assert.match(
     routeSrc,
-    /async function runVectorDarkPoolWarm\(started: number, slot: HeavyCronSlot\): Promise<void> \{\s*try \{\s*await runVectorDarkPoolWarmInner\(started\);\s*\} finally \{\s*await slot\.release\(\);\s*\}\s*\}/,
+    /async function runVectorDarkPoolWarm\(started: number, slot: HeavyCronSlot\): Promise<void> \{\s*try \{\s*await runVectorDarkPoolWarmInner\(started\);\s*\} finally \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);\s*await slot\.release\(\);\s*\}\s*\}/,
     "release must run on both the success and error paths, wrapping the real work rather than inlined into it"
   );
 });
@@ -145,8 +145,13 @@ test("a lost cross-cron concurrency race releases the self-overlap lock before s
   );
   const slotCheckIdx = routeSrc.indexOf("if (!slot) {");
   const dispatchDefIdx = routeSrc.indexOf("const dispatchWarm = () => {");
+  // Search FROM slotCheckIdx, not from the start of the file — the finally-block release inside
+  // runVectorDarkPoolWarm (added for the round-224 fix below) now also matches this literal and
+  // is defined earlier in the file, so a bare indexOf() would find THAT one instead of the
+  // lost-race branch's own release and pass even if the lost-race release were ever removed.
   const releaseInLostRaceIdx = routeSrc.indexOf(
-    'await sharedCacheDel("cron:vector-dark-pool-warm:lock").catch(() => undefined);'
+    "await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);",
+    slotCheckIdx
   );
   assert.ok(
     slotCheckIdx > 0 &&
@@ -154,5 +159,65 @@ test("a lost cross-cron concurrency race releases the self-overlap lock before s
       releaseInLostRaceIdx < dispatchDefIdx,
     "a lost heavy-cron-slot race must release the self-overlap lock inside the `if (!slot)` branch, " +
       "before the lock's 610s TTL would otherwise block the next scheduled fire too"
+  );
+});
+
+// Regression (2026-11-01, round 224). Unlike this exact pattern's sibling warm-crons
+// (vector-pick-sweep, vector-walls-warm, vector-full-state-snapshot — each releases its overlap
+// lock in a `finally` around the real background work), this route only ever released the lock on
+// the lost-race early return above, never on the real work's success/failure path. Because the
+// lock's TTL (610s) is picked to just barely outlast the ~10-minute (600s) schedule, a normal run
+// that completes in well under 610s left the lock standing until it merely expired — still valid
+// at the NEXT scheduled fire, which read "Prior run still executing" and skipped even though the
+// prior run had long since finished. That silently halved this cron's effective cadence (~every
+// 20 minutes instead of ~every 10), undermining the 2-way rotation's own 25-minute-cache-TTL
+// coverage assumption (rotation.ts header). Fixed by releasing OVERLAP_LOCK_KEY in the same
+// `finally` that already releases the cross-cron `slot`.
+test("the self-overlap lock is defined as a shared constant used by every acquire/release site", () => {
+  assert.match(
+    routeSrc,
+    /const OVERLAP_LOCK_KEY = "cron:vector-dark-pool-warm:lock";/,
+    "the lock key must be a single shared constant, not re-typed as a literal at each call site"
+  );
+  const constDefIdx = routeSrc.indexOf('const OVERLAP_LOCK_KEY = "cron:vector-dark-pool-warm:lock";');
+  const acquireIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(\n    OVERLAP_LOCK_KEY,");
+  const lostRaceReleaseIdx = routeSrc.indexOf(
+    "await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);"
+  );
+  const finallyReleaseIdx = routeSrc.lastIndexOf(
+    "await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);"
+  );
+  assert.ok(
+    constDefIdx > 0 && acquireIdx > constDefIdx && lostRaceReleaseIdx > constDefIdx,
+    "the constant must be defined once and reused by the acquire call and the lost-race release"
+  );
+  assert.notEqual(
+    lostRaceReleaseIdx,
+    finallyReleaseIdx,
+    "there must be TWO distinct sharedCacheDel(OVERLAP_LOCK_KEY) release sites — the lost-race " +
+      "early return AND the real background work's finally — not just one"
+  );
+});
+
+test("the real background work releases the self-overlap lock on BOTH its success and failure path, not only on a lost cross-cron race", () => {
+  const innerFnIdx = routeSrc.indexOf(
+    "async function runVectorDarkPoolWarm(started: number, slot: HeavyCronSlot): Promise<void> {"
+  );
+  const innerFnEndIdx = routeSrc.indexOf(
+    "async function runVectorDarkPoolWarmInner(started: number): Promise<void> {"
+  );
+  const releaseInFinallyIdx = routeSrc.indexOf(
+    "await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);",
+    innerFnIdx
+  );
+  assert.ok(
+    innerFnIdx > 0 &&
+      innerFnEndIdx > innerFnIdx &&
+      releaseInFinallyIdx > innerFnIdx &&
+      releaseInFinallyIdx < innerFnEndIdx,
+    "runVectorDarkPoolWarm (the function that wraps the REAL background work, not just the lost-race " +
+      "early return) must itself release OVERLAP_LOCK_KEY — on a RED run of this test (pre-fix source), " +
+      "the only release site is the lost-race branch, which sits entirely BEFORE runVectorDarkPoolWarm " +
+      "is even defined, so releaseInFinallyIdx would be -1 (not found after innerFnIdx)"
   );
 });
