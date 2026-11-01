@@ -38,6 +38,12 @@ function getPolygonBase(): string {
   return _usingFallback ? POLYGON_FALLBACK : POLYGON_PRIMARY;
 }
 
+/** Test-only: clear sticky failover latch so harness traffic stays on POLYGON_API_BASE. */
+export function resetPolygonLargoRoutingForTest(): void {
+  _usingFallback = false;
+  _lastBreakerCheck = false;
+}
+
 const KEY = process.env.POLYGON_API_KEY ?? "";
 
 /** Optional Next/fetch cache override for call sites that must not force dynamic rendering (e.g. marketing ISR).

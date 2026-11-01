@@ -15,6 +15,16 @@ import { __allowFetchHostForTest } from "../api-tracked-fetch";
 process.env.POLYGON_API_KEY = "test-polygon-key";
 __allowFetchHostForTest("127.0.0.1");
 
+/** Under full-suite CI the Polygon admission queue can defer the TCP connect briefly. */
+const CONNECTION_PROOF_WAIT_MS = process.env.CI ? 12_000 : 4_000;
+
+async function resetPolygonCancellationHarness() {
+  const { resetPolygonCircuitForTest } = await import("./polygon-rate-limiter");
+  resetPolygonCircuitForTest();
+  const { resetPolygonLargoRoutingForTest } = await polygonLargoPromise;
+  resetPolygonLargoRoutingForTest();
+}
+
 function listen(server: Server): Promise<string> {
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
@@ -61,13 +71,20 @@ const basePromise = listen(server).then((base) => {
   return base;
 });
 
-const polygonLargoPromise = basePromise.then(() => import("./polygon-largo"));
+const polygonLargoPromise = basePromise.then(async () => {
+  const { resetPolygonCircuitForTest } = await import("./polygon-rate-limiter");
+  resetPolygonCircuitForTest();
+  const mod = await import("./polygon-largo");
+  mod.resetPolygonLargoRoutingForTest();
+  return mod;
+});
 
 after(() => {
   server.close();
 });
 
 test("fetchPolygonNews: aborting the caller's signal terminates the real underlying connection", async () => {
+  await resetPolygonCancellationHarness();
   const { fetchPolygonNews } = await polygonLargoPromise;
   const sinceCount = sockets.length;
 
@@ -75,7 +92,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECTION_PROOF_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -102,6 +119,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
 });
 
 test("fetchPolygonTickerDetails: aborting the caller's signal terminates the real underlying connection", async () => {
+  await resetPolygonCancellationHarness();
   const { fetchPolygonTickerDetails } = await polygonLargoPromise;
   const sinceCount = sockets.length;
 
@@ -109,7 +127,7 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECTION_PROOF_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
