@@ -66,6 +66,18 @@ export function summarizeHeatmapGammaByExpiry(
   const total = Array.from(byExpiry.values()).reduce((s, v) => s + v, 0);
   if (total <= 0) return null;
 
+  // Tie-break ties on `expiry` ASCENDING (not insertion order) — same fix, same reasoning, as
+  // `kingFromStrikeTotals`/`wallsFromStrikeTotals` (gex-cross-validation-core.ts). Without a
+  // secondary key, a STABLE sort on `gamma` alone resolves an exact tie to whichever expiry the
+  // Map happened to insert first, and that insertion order comes from iterating `cells`' STRIKE
+  // keys — which, for a non-integer strike axis (e.g. SPX's "7700.5"), JS preserves in whatever
+  // order the caller built the object, not numeric order. Two callers describing the IDENTICAL
+  // near-spot gamma split across expiries, differing only in which strike happened to be inserted
+  // first, could then report a DIFFERENT `pinned_expiry`/headline for the same data — confirmed:
+  // `cellsA = {"100.5":{"2026-01-01":50},"200.5":{"2026-01-02":50}}` vs the same two rows with
+  // strike insertion order swapped produced `pinned_expiry` "2026-01-01" vs "2026-01-02" for an
+  // identical 50/50 split. Sorting by expiry ascending on a tie makes the pick a pure function of
+  // the data again, regardless of how the caller's `cells` object was constructed.
   const buckets = Array.from(byExpiry.entries())
     .map(([expiry, gamma]) => {
       const pct = (gamma / total) * 100;
@@ -76,7 +88,7 @@ export function summarizeHeatmapGammaByExpiry(
         dte_label: expiry === todayYmd ? "0DTE" : expiry,
       };
     })
-    .sort((a, b) => b.gamma - a.gamma);
+    .sort((a, b) => b.gamma - a.gamma || a.expiry.localeCompare(b.expiry));
 
   const top = buckets[0]!;
   const headline =
