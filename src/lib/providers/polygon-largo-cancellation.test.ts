@@ -61,13 +61,26 @@ const basePromise = listen(server).then((base) => {
   return base;
 });
 
-const polygonLargoPromise = basePromise.then(() => import("./polygon-largo"));
+const polygonLargoPromise = basePromise.then(async () => {
+  const { resetPolygonCircuitForTest } = await import("./polygon-rate-limiter");
+  resetPolygonCircuitForTest();
+  return import("./polygon-largo");
+});
+
+async function resetPolygonLimiterForCancellationTest() {
+  const { resetPolygonCircuitForTest } = await import("./polygon-rate-limiter");
+  resetPolygonCircuitForTest();
+}
+
+/** Admission can sit behind the shared limiter for up to POLYGON_QUEUE_MAX_WAIT_MS (~20s) in full `npm test`. */
+const CONNECT_WAIT_MS = 25_000;
 
 after(() => {
   server.close();
 });
 
 test("fetchPolygonNews: aborting the caller's signal terminates the real underlying connection", async () => {
+  await resetPolygonLimiterForCancellationTest();
   const { fetchPolygonNews } = await polygonLargoPromise;
   const sinceCount = sockets.length;
 
@@ -75,7 +88,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECT_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -102,6 +115,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
 });
 
 test("fetchPolygonTickerDetails: aborting the caller's signal terminates the real underlying connection", async () => {
+  await resetPolygonLimiterForCancellationTest();
   const { fetchPolygonTickerDetails } = await polygonLargoPromise;
   const sinceCount = sockets.length;
 
@@ -109,7 +123,7 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECT_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
