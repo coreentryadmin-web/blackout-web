@@ -16,6 +16,7 @@ import {
   playFullMinScore,
   playGexStaleMaxSec,
   playMinAgreeingFactors,
+  playMinGradeLabel,
   playMinGradeRank,
   playMinRiskReward,
   playOnlyFullEntry,
@@ -382,7 +383,16 @@ export function evaluatePlayGates(
   }
 
   if (gradeRank(confluence.grade) < playMinGradeRank()) {
-    const gradeMsg = `Grade ${confluence.grade} below minimum (need B or better)`;
+    // BUG FIX (2026-10-31): this used to hardcode "need B or better" regardless of the actual
+    // configured floor. playMinGradeRank() reads SPX_PLAY_MIN_GRADE and defaults to B, so the
+    // message happened to be correct as long as that env var stayed unset — but the gate
+    // condition above always used the REAL configured rank, so an operator override (e.g.
+    // SPX_PLAY_MIN_GRADE=A) would fire this block correctly while the displayed reason kept
+    // claiming the floor was still B. Same bug class as the cold-BUY grade block below (fixed
+    // 2026-10-21 for "B setups" -> confluence.grade) — this earlier, more general block still
+    // hardcoded the floor's NAME. playMinGradeLabel() derives the label from the same rank the
+    // gate condition itself used, so the two can never disagree.
+    const gradeMsg = `Grade ${confluence.grade} below minimum (need ${playMinGradeLabel()} or better)`;
     if (buyIntent) {
       blocks.push(gradeMsg);
     } else {
