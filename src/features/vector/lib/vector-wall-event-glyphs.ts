@@ -139,7 +139,21 @@ export function wallEventToGlyph(ev: VectorWallEvent): WallEventGlyph | null {
   };
 }
 
-/** Birth/death + king handover glyphs derived from the trails actually on screen. */
+/**
+ * Birth/death + king handover glyphs derived from the trails actually on screen.
+ *
+ * MODELED (reconstructed) points are excluded from birth/death detection — mirrors the
+ * `!modeled` guards in `buildWallBeadMarkers` (VectorChart.tsx), which explicitly skips the
+ * birth/death BOOST for a modeled point ("they fill the whole session and have no meaningful
+ * single birth" / "no real death"). Before this fix, `trailDerivedGlyphs` ran the identical
+ * birth/death test with no such guard, so a trail backfilled by `mergeModeledUnderlay` /
+ * `backfillRailPrefix` (every session-load gap before the recorder actually observed a sample,
+ * see vector-wall-history.ts) could fabricate a "wall forming at X" or "wall dissolved at X"
+ * glyph anchored to a RECONSTRUCTED point nobody ever observed — exactly the honesty violation
+ * `WallHistorySample.modeled`'s own doc comment calls out ("modeled ≠ observed must be visible").
+ * The bead layer already drew this distinction (dim ghost beads); the glyph layer silently did
+ * not, so a reconstructed prefix could read as a real structural event on the Events overlay.
+ */
 export function trailDerivedGlyphs(
   trails: StrikeTrail[],
   side: "call" | "put",
@@ -150,7 +164,7 @@ export function trailDerivedGlyphs(
     const pts = trail.points;
     if (pts.length === 0) continue;
     const first = pts[0]!;
-    if (first.time > earliestBucket) {
+    if (first.time > earliestBucket && !first.modeled) {
       glyphs.push({
         time: first.time,
         strike: trail.strike,
@@ -160,16 +174,18 @@ export function trailDerivedGlyphs(
         label: trailGlyphLabel("birth_tick", side, trail.strike),
       });
     }
-    if (!trail.active && pts.length > 0) {
+    if (!trail.active) {
       const last = pts[pts.length - 1]!;
-      glyphs.push({
-        time: last.time,
-        strike: trail.strike,
-        shape: "death_x",
-        side,
-        severity: "info",
-        label: trailGlyphLabel("death_x", side, trail.strike),
-      });
+      if (!last.modeled) {
+        glyphs.push({
+          time: last.time,
+          strike: trail.strike,
+          shape: "death_x",
+          side,
+          severity: "info",
+          label: trailGlyphLabel("death_x", side, trail.strike),
+        });
+      }
     }
   }
 
