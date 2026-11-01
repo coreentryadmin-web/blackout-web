@@ -86,7 +86,9 @@ export function normalizeShortInterest(
 ): ShortInterestSlice | null {
   if (!si) return null;
   const date = si.settlement_date || null;
-  const finiteOrNull = (n: number) => (Number.isFinite(n) && n !== 0 ? n : null);
+  // Accepts number | null: fetchShortInterest's numeric fields are now null (not a coerced 0)
+  // when Polygon omits them — Number.isFinite(null) is false, so the behavior here is unchanged.
+  const finiteOrNull = (n: number | null) => (n != null && Number.isFinite(n) && n !== 0 ? n : null);
   const slice: ShortInterestSlice = {
     settlement_date: date,
     short_interest: finiteOrNull(si.short_interest),

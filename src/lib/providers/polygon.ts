@@ -1237,7 +1237,50 @@ export async function fetchTickerRsi(symbol: string, window = 14, timespan: "day
   });
 }
 
-export async function fetchShortInterest(ticker: string, signal?: AbortSignal) {
+export type ShortInterestRow = {
+  ticker: string;
+  settlement_date: string;
+  short_interest: number | null;
+  avg_daily_volume: number | null;
+  days_to_cover: number | null;
+  source: "massive_stocks_v1";
+};
+
+/**
+ * Coerce an unknown short-interest numeric field to a number, or `null` when absent/invalid.
+ *
+ * BUG THIS FIXES (found live, round 320 discovery audit): the three numeric fields below were
+ * built with `Number(row.<field> ?? 0)`. `?? 0` turns a genuinely MISSING field (Polygon omits
+ * `days_to_cover` whenever `avg_daily_volume` is 0/unreported, since the ratio is undefined — and
+ * can omit any of the three for a thinly-reported or newly-settled ticker) into the NUMBER ZERO,
+ * indistinguishable from a real "0 shares short" / "0 days to cover" reading. Those two states
+ * mean opposite things to a reader: a real 0 days-to-cover says "no squeeze risk, fully liquid";
+ * an absent reading says "we don't know." The pre-existing bug this same file's `ratioNum` already
+ * documents for the financial-ratios endpoint (an explicit `null` silently becoming `0`) applies
+ * identically here — Polygon's short-interest rows carry the same "omit the field when not
+ * computable" convention, verified against Polygon's own OpenAPI short-interest schema,
+ * which marks `short_interest`, `avg_daily_volume` and `days_to_cover` as `nullable: true`.
+ */
+export function shortInterestNum(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Pure: shape one raw `/stocks/v1/short-interest` result row. Split out so the absence-vs-zero
+ *  coercion is unit-testable without a network call. */
+export function shapeShortInterestRow(row: Record<string, unknown>, sym: string): ShortInterestRow {
+  return {
+    ticker: sym,
+    settlement_date: String(row.settlement_date ?? ""),
+    short_interest: shortInterestNum(row.short_interest),
+    avg_daily_volume: shortInterestNum(row.avg_daily_volume),
+    days_to_cover: shortInterestNum(row.days_to_cover),
+    source: "massive_stocks_v1",
+  };
+}
+
+export async function fetchShortInterest(ticker: string, signal?: AbortSignal): Promise<ShortInterestRow | null> {
   const sym = ticker.toUpperCase();
   try {
     const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
@@ -1247,14 +1290,7 @@ export async function fetchShortInterest(ticker: string, signal?: AbortSignal) {
     );
     const row = data.results?.[0];
     if (!row) return null;
-    return {
-      ticker: sym,
-      settlement_date: String(row.settlement_date ?? ""),
-      short_interest: Number(row.short_interest ?? 0),
-      avg_daily_volume: Number(row.avg_daily_volume ?? 0),
-      days_to_cover: Number(row.days_to_cover ?? 0),
-      source: "massive_stocks_v1",
-    };
+    return shapeShortInterestRow(row, sym);
   } catch {
     return null;
   }
