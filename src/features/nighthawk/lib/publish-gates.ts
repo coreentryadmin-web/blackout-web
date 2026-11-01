@@ -166,6 +166,12 @@ export type NighthawkPublishGateResult = {
 };
 
 const round4 = (n: number): number => Math.round(n * 10_000) / 10_000;
+// Display-only rounding for member-facing reason strings. The raw round4 value still
+// feeds checks[]/blocks[].value (admin calibration/debrief consumers) — only the text
+// a member reads is re-rounded, so a gate_warning never shows more precision than the
+// structured field (play.target_atr_multiple) it describes. roundFloats() can't reach
+// this: its walk() only rewrites typeof number, never a number already baked into a string.
+const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 /**
  * G-N3's expected quote basis: which ET session(s) a fresh quote could legitimately be
@@ -236,7 +242,7 @@ export function evaluateNighthawkPublishGates(opts: {
   if (!bandOk) {
     blocks.push({
       code: "band_detached",
-      reason: `entry band edge $${geo.fill_edge} sits ${bandDist}% from spot $${geo.spot} (|max| ${GATE_BAND_MAX_DISTANCE_PCT}%) — not fillable as published`,
+      reason: `entry band edge $${geo.fill_edge} sits ${round2(bandDist)}% from spot $${geo.spot} (|max| ${GATE_BAND_MAX_DISTANCE_PCT}%) — not fillable as published`,
       threshold: GATE_BAND_MAX_DISTANCE_PCT,
       value: bandDist,
     });
@@ -264,10 +270,11 @@ export function evaluateNighthawkPublishGates(opts: {
     // correctly describes the scale-out exit. Branch the TEXT ONLY — the gate's pass/fail
     // verdict and promotion eligibility (isPromotableBlockedPlay/NON_PROMOTABLE_GATE_CODES) are
     // unchanged for every play, scale_out or not.
+    const targetAtrMultipleDisplay = round2(targetAtrMultiple);
     const reason =
       opts.play.exit_style === "scale_out"
-        ? `target $${geo.target} is ${targetAtrMultiple}× ATR14 ($${geo.atr14}) from the entry edge $${geo.fill_edge} (max ${GATE_TARGET_MAX_ATR_MULTIPLE}×) — this stock target is a reference level, not the grading basis: this is a scale-out ("Banger exit") play, graded on the option's own forward bars toward expiry (partial at 2×, trail the runner, hard stop −60%), not on the stock target touching in one session`
-        : `target $${geo.target} is ${targetAtrMultiple}× ATR14 ($${geo.atr14}) from the entry edge $${geo.fill_edge} (max ${GATE_TARGET_MAX_ATR_MULTIPLE}×) — not achievable in the one-session grading horizon`;
+        ? `target $${geo.target} is ${targetAtrMultipleDisplay}× ATR14 ($${geo.atr14}) from the entry edge $${geo.fill_edge} (max ${GATE_TARGET_MAX_ATR_MULTIPLE}×) — this stock target is a reference level, not the grading basis: this is a scale-out ("Banger exit") play, graded on the option's own forward bars toward expiry (partial at 2×, trail the runner, hard stop −60%), not on the stock target touching in one session`
+        : `target $${geo.target} is ${targetAtrMultipleDisplay}× ATR14 ($${geo.atr14}) from the entry edge $${geo.fill_edge} (max ${GATE_TARGET_MAX_ATR_MULTIPLE}×) — not achievable in the one-session grading horizon`;
     blocks.push({
       code: "target_unreachable",
       reason,
