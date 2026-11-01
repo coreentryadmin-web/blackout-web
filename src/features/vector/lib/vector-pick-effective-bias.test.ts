@@ -51,6 +51,21 @@ test("effectivePickBias: non-finite flip is undetermined, never fabricated", () 
 });
 
 test("pivotPickWaitingCopy: explains why PLYS is empty at the flip", () => {
-  const msg = pivotPickWaitingCopy(pivotPlay(), 352.56);
+  // spot === gammaFlip → dist 0, below PIVOT_PICK_COMMIT_EPS, genuinely not yet committed.
+  const msg = pivotPickWaitingCopy(pivotPlay(), 352.56, 352.56);
   assert.match(msg ?? "", /commits above or below/i);
+});
+
+// BUG FIX (round 307 DISCOVERY sweep): pivotPickWaitingCopy used to take only `gammaFlip`, so it
+// had no way to know spot had already committed past the flip — a pivot play's raw `bias` stays
+// "neutral" for its whole life (vector-play-engine.ts), so the old signature returned the
+// "waiting to commit" copy forever, even once price had clearly crossed. Confirms RED→GREEN:
+// before this fix, spot=353 vs flip=352.56 (clearly committed long, dist well past
+// PIVOT_PICK_COMMIT_EPS) still produced the waiting message; after it, it returns null.
+test("pivotPickWaitingCopy: returns null once spot has already committed past the flip", () => {
+  const play = pivotPlay();
+  assert.equal(pivotPickWaitingCopy(play, 353, 352.56), null, "committed long — no longer waiting");
+  assert.equal(pivotPickWaitingCopy(play, 352, 352.56), null, "committed short — no longer waiting");
+  // Still genuinely undetermined (no finite flip) → still waiting.
+  assert.match(pivotPickWaitingCopy(play, 353, NaN) ?? "", /commits above or below/i);
 });

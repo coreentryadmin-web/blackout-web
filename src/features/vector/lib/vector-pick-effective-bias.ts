@@ -37,9 +37,20 @@ export function effectivePickBias(
 
 export function pivotPickWaitingCopy(
   play: VectorPlay,
+  spot: number | null | undefined,
   gammaFlip: number | null | undefined
 ): string | null {
   if (play.setup !== "pivot" || play.bias !== "neutral") return null;
+  // BUG FIX (round 307 DISCOVERY sweep): this used to take only `gammaFlip`, so it could never
+  // tell "spot hasn't reached the flip yet" apart from "spot already committed past the flip but
+  // zero contracts cleared the quality bar" — a pivot play's raw `bias` stays "neutral" in BOTH
+  // cases (vector-play-engine.ts: "pivot stays neutral in bias"), so the one guard above this
+  // comment is true for the whole lifetime of a pivot play, not just the pre-commit part of it.
+  // Once `effectivePickBias` resolves a side (spot has cleared the flip by PIVOT_PICK_COMMIT_EPS),
+  // this is no longer a "waiting to commit" state — stop returning the waiting copy so the caller
+  // falls through to its real empty-state message instead of permanently telling the member
+  // "contract picks rank once price commits" after price already has.
+  if (effectivePickBias(play, spot, gammaFlip) != null) return null;
   const lvl =
     gammaFlip != null && Number.isFinite(gammaFlip)
       ? gammaFlip.toLocaleString("en-US", { maximumFractionDigits: 2 })
