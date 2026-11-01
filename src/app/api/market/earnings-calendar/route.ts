@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { serverCache } from "@/lib/server-cache";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { parseEarningsCalendarCsvLine } from "./csv-parse";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,9 @@ async function loadEarningsCalendar(apiKey: string): Promise<Record<string, stri
 
   const out: Record<string, string> = {};
   for (let i = 1; i < lines.length; i++) {
-    const cols   = lines[i].split(",");
+    // RFC 4180 quoted-field parse — see csv-parse.ts's header for why a plain
+    // `split(",")` silently drops any row whose `name` column contains a comma.
+    const cols   = parseEarningsCalendarCsvLine(lines[i]);
     const symbol = cols[0]?.trim().toUpperCase();
     const date   = cols[2]?.trim();
     if (symbol && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
