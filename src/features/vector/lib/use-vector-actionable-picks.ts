@@ -12,6 +12,7 @@ import {
 import { useVectorContractPicks } from "./use-vector-contract-picks";
 import { useVectorPickLiveMonitor } from "./use-vector-pick-live-monitor";
 import { vectorPickArchiveResetKey } from "./vector-pick-context-key";
+import { effectivePickBias } from "./vector-pick-effective-bias";
 
 export type VectorActionablePicks = {
   active: VectorContractPick[];
@@ -40,7 +41,23 @@ export function useVectorActionablePicks(
   const poolExhaustionSigRef = useRef<string>("");
 
   const play = emit?.play ?? null;
-  const bias = play?.bias ?? null;
+  // BUG FIX (round 306 audit): a committed `pivot` play's raw `play.bias` stays "neutral" by
+  // design even after spot clears the gamma flip and commits to a real direction (see
+  // effectivePickBias's own header, and the near-identical bugs already fixed in
+  // contract-picks/live/route.ts and vector-pick-sweep.ts for the exact same raw-vs-effective
+  // confusion). `useVectorContractPicks` already re-derives the EFFECTIVE bias to decide what to
+  // fetch (`effectivePickBias(play, emit?.spot, emit?.gammaFlip) ?? play.bias`) — but this sibling
+  // hook's own archive-reset key kept using the raw field, so when a pivot play's committed
+  // direction flips (long -> short or back), `contextKey` can stay byte-identical (callWall/
+  // putWall/conviction/headline do not change on a flip — the headline text is the static
+  // "pivot at the N gamma flip — long above / short below", not direction-specific) and the
+  // archive-reset effect below never fires. `excludeOccs`/`archivedClosed` then carry stale
+  // state from the OPPOSITE direction's contracts forward: `mergeArchivedClosedPicks` merges
+  // those stale "dont_buy" entries into the CURRENT `closed` list indefinitely, so a member sees
+  // leftover call picks archived under a newly-short setup (or vice versa) until some unrelated
+  // field happens to change the key. Mirroring the already-correct sibling computation here
+  // closes the gap at its source rather than leaving it to coincidence.
+  const bias = play ? effectivePickBias(play, emit?.spot, emit?.gammaFlip) ?? play.bias : null;
   const contextKey = vectorPickArchiveResetKey(emit, sessionFlows.length, bias);
 
   useEffect(() => {
