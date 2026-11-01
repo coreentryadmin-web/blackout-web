@@ -30,6 +30,32 @@ describe("pickGexShiftLeaders", () => {
     assert.equal(leaders.find((l) => l.strike === 95)?.side, "put");
   });
 
+  it("ranks an exact |delta| tie between non-integer-index strikes deterministically regardless of source-object key insertion order", () => {
+    // 100.5 and 105.5 are NOT integer-index keys, so (per the JS spec) Object.keys() enumerates
+    // them in INSERTION order, not ascending numeric order — unlike whole-dollar strikes such as
+    // "100"/"105", which always enumerate ascending regardless of how the object was built. Two
+    // delta_by_strike objects describing the identical book, tied at the same |delta| on
+    // 100.5/105.5, built with the two keys inserted in opposite order:
+    const totals = { "100.5": 1_000_000, "105.5": 1_000_000, "95": -900_000 };
+    const deltaLowFirst = { "100.5": 500_000, "105.5": 500_000, "95": -400_000 };
+    const deltaHighFirst = { "105.5": 500_000, "100.5": 500_000, "95": -400_000 };
+
+    const callsLowFirst = pickGexShiftLeaders(totals, {
+      available: true,
+      delta_by_strike: deltaLowFirst,
+    }).filter((l) => l.side === "call");
+    const callsHighFirst = pickGexShiftLeaders(totals, {
+      available: true,
+      delta_by_strike: deltaHighFirst,
+    }).filter((l) => l.side === "call");
+
+    // Same book, same tie — the rank order must not depend on which key happened to be inserted
+    // first. The established convention (computeGexWalls, topGexPinStrikes, computeMaxPainFromChain,
+    // computeVexRegime, deriveWalls) is that an exact tie resolves to the LOWER strike first.
+    assert.deepEqual(callsLowFirst.map((l) => l.strike), [100.5, 105.5]);
+    assert.deepEqual(callsHighFirst.map((l) => l.strike), [100.5, 105.5]);
+  });
+
   it("returns empty when shift has no delta map", () => {
     assert.deepEqual(pickGexShiftLeaders({}, { available: false }), []);
     assert.deepEqual(pickGexShiftLeaders({}, { available: true }), []);
