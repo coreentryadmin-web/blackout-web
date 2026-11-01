@@ -23,6 +23,7 @@ import {
 } from "@/features/meridian/lib/meridian-desk-prefs";
 import {
   filterMeridianTimelineItems,
+  findEarningsTimelineItemId,
   isTickerLikeQuery,
   normalizeMeridianSearchQuery,
 } from "@/features/meridian/lib/meridian-search-core";
@@ -202,11 +203,9 @@ export function MeridianDesk() {
    * as a broken button.
    */
   const selectEarningsTicker = (ticker: string) => {
-    const match = allItems.find(
-      (it) => it.kind === "earnings" && (it.ticker ?? "").toUpperCase() === ticker.toUpperCase()
-    );
-    if (!match) return;
-    setSelectedId(match.id);
+    const id = findEarningsTimelineItemId(allItems, ticker);
+    if (!id) return;
+    setSelectedId(id);
     setView("timeline");
   };
 
@@ -550,7 +549,15 @@ export function MeridianDesk() {
                     className={`meridian-analytics-card meridian-theme-earnings${row.is_printed ? " is-printed" : ""}`}
                     style={{ animationDelay: `${i * 50}ms` }}
                     onClick={() => {
-                      setSelectedId(`earnings:${row.ticker}:${row.date}`);
+                      // `earnings_week` is built from the RAW Benzinga window (no options-chain
+                      // filter) while the timeline rows this id must resolve against ARE
+                      // optionable-filtered — so a mega-cap row can legally name a ticker the
+                      // timeline dropped. Look the real row id up rather than hand-building
+                      // `earnings:${ticker}:${date}` and navigating to a row that doesn't exist
+                      // (see `findEarningsTimelineItemId`'s own comment).
+                      const id = findEarningsTimelineItemId(allItems, row.ticker);
+                      if (!id) return;
+                      setSelectedId(id);
                       setView("timeline");
                       setFilter("earnings");
                     }}
@@ -580,7 +587,12 @@ export function MeridianDesk() {
                       type="button"
                       className="meridian-revision-link"
                       onClick={() => {
-                        setSelectedId(`earnings:${r.ticker}:${r.date}`);
+                        // Same optionable-filter mismatch as the mega-cap grid above: this row
+                        // comes from the unfiltered revision feed, so look up the real timeline
+                        // id instead of constructing one that may not exist.
+                        const id = findEarningsTimelineItemId(allItems, r.ticker);
+                        if (!id) return;
+                        setSelectedId(id);
                         setView("timeline");
                         setFilter("earnings");
                       }}
@@ -606,7 +618,11 @@ export function MeridianDesk() {
                       type="button"
                       className="meridian-revision-link"
                       onClick={() => {
-                        setSelectedId(`earnings:${r.ticker}:${r.date}`);
+                        // Same optionable-filter mismatch as above: the calendar-update feed is
+                        // also unfiltered, so resolve the real id rather than guessing one.
+                        const id = findEarningsTimelineItemId(allItems, r.ticker);
+                        if (!id) return;
+                        setSelectedId(id);
                         setView("timeline");
                         setFilter("earnings");
                       }}
