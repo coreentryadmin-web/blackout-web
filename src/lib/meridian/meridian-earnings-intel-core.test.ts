@@ -4,6 +4,7 @@ import {
   beatArrow,
   beatRateFromPrints,
   buildErPlayRead,
+  buildExpectedMoveBand,
   beatRateWithCohort,
   coerceMeridianWallLevels,
   flowWindowHours,
@@ -477,4 +478,30 @@ test("resolveVectorDeskMove withholds when the fallback has no expiry to check a
   });
   assert.equal(result.move_pct, null);
   assert.equal(result.bands, null);
+});
+
+// buildExpectedMoveBand — regression for the call site that built the band straight off
+// `pack.positioning.spot` with no fallback, so a GEX-positioning outage next to a healthy
+// Thermal fetch silently dropped the band even though a usable spot existed on the same payload.
+test("buildExpectedMoveBand uses a Thermal-fallback spot, not just the pack's own GEX-positioning spot", () => {
+  // This is the exact shape of the bug: `pack.positioning.spot` is null (GEX-positioning fetch
+  // came back empty) but Thermal's independent fetch resolved a real spot — the caller's resolved
+  // `spot` variable (`pack.positioning.spot ?? thermal?.spot ?? null`) is what must reach here.
+  const result = buildExpectedMoveBand({ spot: 185.5, expectedMovePct: 6.2 });
+  assert.notEqual(result, null);
+  assert.equal(result!.spot, 185.5);
+  assert.equal(result!.up, Number((185.5 * 1.062).toFixed(2)));
+  assert.equal(result!.down, Number((185.5 * 0.938).toFixed(2)));
+});
+
+test("buildExpectedMoveBand withholds when no spot resolved at all (both pack and Thermal empty)", () => {
+  assert.equal(buildExpectedMoveBand({ spot: null, expectedMovePct: 6.2 }), null);
+});
+
+test("buildExpectedMoveBand withholds when there is no expected move to band, even with a spot", () => {
+  assert.equal(buildExpectedMoveBand({ spot: 185.5, expectedMovePct: null }), null);
+});
+
+test("buildExpectedMoveBand rejects a non-finite spot (defensive — must never divide/propagate NaN)", () => {
+  assert.equal(buildExpectedMoveBand({ spot: Number.NaN, expectedMovePct: 6.2 }), null);
 });

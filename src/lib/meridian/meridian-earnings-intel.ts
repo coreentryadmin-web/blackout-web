@@ -20,6 +20,7 @@ import {
   beatRateFromPrints,
   beatRateWithCohort,
   buildErPlayRead,
+  buildExpectedMoveBand,
   coerceMeridianWallLevels,
   flowWindowHours,
   resolveIntelExpectedMove,
@@ -332,18 +333,10 @@ export async function loadMeridianEarningsIntel(input: {
   return roundFloats({
     expected_move_pct,
     expected_move_source,
-    expected_move_band:
-      expected_move_pct != null && input.pack.positioning.spot != null
-        ? {
-            spot: input.pack.positioning.spot,
-            up: Number(
-              (input.pack.positioning.spot * (1 + expected_move_pct / 100)).toFixed(2)
-            ),
-            down: Number(
-              (input.pack.positioning.spot * (1 - expected_move_pct / 100)).toFixed(2)
-            ),
-          }
-        : null,
+    // `spot` (not `input.pack.positioning.spot`) — see `buildExpectedMoveBand`'s doc comment.
+    // `spot` already falls back to Thermal's own read when the pack's GEX-positioning fetch came
+    // back empty; the band must use the SAME resolved value every other field on this card does.
+    expected_move_band: buildExpectedMoveBand({ spot, expectedMovePct: expected_move_pct }),
     financials: buildMeridianFinancialsContext(fundamentals, spot),
     flow_into_print: {
       available: top_flows.length > 0,
