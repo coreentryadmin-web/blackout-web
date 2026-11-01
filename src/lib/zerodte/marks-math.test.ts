@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 
 import {
   advancePlayLatch,
+  clampPnlToPeak,
   closedPnlDisplay,
   closedStopReason,
   condorSellerPnlPct,
@@ -741,4 +742,28 @@ test("older payloads without exit_pnl_pct are unaffected — falls back to live_
   const v = closedPnlDisplay({ status: "CLOSED", peak_pnl_pct: null, live_pnl_pct: -50 });
   assert.equal(v.pct, -50);
   assert.equal(v.realized_pct, -50);
+});
+
+// ── clampPnlToPeak — shared across record.ts / cortex-read.ts / zerodte-service.ts ─────
+//
+// FINDINGS 2026-11-01: a position can never realize better than its own recorded peak — a
+// pre-2026-09-04 rounding bug in exit-engine.ts's buildExitContext left ~8-9 real historical
+// rows with a frozen entry_context.exit.{pnl_pct,peak_pnl_pct} pair where pnl_pct sits
+// numerically ABOVE peak_pnl_pct (e.g. FIG 2026-08-10). record.ts's clampManagedPnlToPeak
+// (PR #7163) was the first fix; moved here so cortex-read.ts and zerodte-service.ts — the two
+// other independent readers of that same frozen blob — can share the identical clamp.
+test("clampPnlToPeak: caps an impossible pnl_pct > peak_pnl_pct to the peak (FIG-shape repro)", () => {
+  assert.equal(clampPnlToPeak(18.3, 17.5), 17.5);
+});
+
+test("clampPnlToPeak: a no-op when pnl_pct already sits at or below its own peak", () => {
+  assert.equal(clampPnlToPeak(-12.3, 8.1), -12.3, "a real loss under a real peak is untouched");
+  assert.equal(clampPnlToPeak(17.5, 17.5), 17.5, "equal values are a no-op (boundary)");
+  assert.equal(clampPnlToPeak(25, 50), 25, "a genuine partial capture is untouched");
+});
+
+test("clampPnlToPeak: null-safe — a missing pnl or peak is returned/passed through, never fabricated", () => {
+  assert.equal(clampPnlToPeak(null, 17.5), null, "a null pnl stays null");
+  assert.equal(clampPnlToPeak(18.3, null), 18.3, "no peak to clamp against — pnl passes through unchanged");
+  assert.equal(clampPnlToPeak(null, null), null);
 });

@@ -32,6 +32,7 @@
 
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import type { CortexDirection, CortexVerdict } from "@/lib/nighthawk/cortex/types";
+import { clampPnlToPeak } from "@/lib/zerodte/marks-math";
 import {
   isCortexBlockCode,
   readCortexView,
@@ -293,11 +294,19 @@ export function buildPinnedCortexEnvelope(row: CortexPinnedRowLike): BieAnswerEn
   }
 
   if (exit) {
+    // FINDINGS 2026-11-01: a position can never realize better than its own recorded peak —
+    // record.ts's clampManagedPnlToPeak (PR #7163) already clamps this SAME frozen
+    // entry_context.exit.{pnl_pct,peak_pnl_pct} pair for the member-facing record route, but
+    // this reader (Ask Largo's pinned "why was this committed" tool) read it raw and rendered
+    // both numbers side by side in one sentence — the exact self-contradictory "P&L +18.3%,
+    // peak +17.5%" shape the clamp exists to prevent, just unpatched here. Shared
+    // clampPnlToPeak (marks-math.ts) keeps every independent reader of this blob in lockstep.
+    const exitPnlPct = clampPnlToPeak(exit.pnl_pct, exit.peak_pnl_pct);
     sections.push({
       title: "What the exit engine did",
       body:
         `Exited: ${exitReasonLabel(exit.reason)}. ${exit.detail}` +
-        ` (mark ${fmtNum(exit.mark)}${exit.pnl_pct != null ? `, P&L ${exit.pnl_pct > 0 ? "+" : ""}${fmtNum(exit.pnl_pct, 1)}%` : ""}${exit.peak_pnl_pct != null ? `, peak ${exit.peak_pnl_pct > 0 ? "+" : ""}${fmtNum(exit.peak_pnl_pct, 1)}%` : ""}${exit.at ? `, at ${exit.at}` : ""}.)`,
+        ` (mark ${fmtNum(exit.mark)}${exitPnlPct != null ? `, P&L ${exitPnlPct > 0 ? "+" : ""}${fmtNum(exitPnlPct, 1)}%` : ""}${exit.peak_pnl_pct != null ? `, peak ${exit.peak_pnl_pct > 0 ? "+" : ""}${fmtNum(exit.peak_pnl_pct, 1)}%` : ""}${exit.at ? `, at ${exit.at}` : ""}.)`,
       provenance: { source: "0DTE exit engine (entry_context.exit)", asOf: exit.at || null },
     });
   }

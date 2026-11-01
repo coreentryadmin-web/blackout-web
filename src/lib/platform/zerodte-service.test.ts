@@ -492,6 +492,40 @@ test("mfe capture: a genuine gain-on-gain exit still computes a real capture rat
   assert.equal(board.ledger[0]!.mfe_capture_pct, 50, "unchanged behavior for a real capture: 25/50 * 100");
 });
 
+// FINDINGS 2026-11-01: record.ts's clampManagedPnlToPeak (PR #7163, 2026-10-31/11-01) already
+// clamps a frozen exit.pnl_pct that exceeds its own exit.peak_pnl_pct (pre-2026-09-04 cent-
+// rounding bug — ~8-9 real rows: HIMS/KORU/SPCH/RIOT/FIG/CRCL x2/AAPL/NVDA/OCUL) for the
+// member-facing record route, but this reader (the live board/BIE payload mapLedgerRow feeds)
+// served the SAME frozen pair raw: a position can never realize better than its own recorded
+// peak, so exit_pnl_pct > peak_pnl_pct is a mathematical impossibility, and dividing it through
+// mfeCapturePct produced a nonsensical ">100% of peak captured" figure too. Mirrors the real
+// FIG 2026-08-10 shape named in record.ts's own fix.
+test("exit visibility: a frozen exit.pnl_pct > exit.peak_pnl_pct (pre-2026-09-04 rounding bug) is clamped to the peak on exit_pnl_pct AND mfe_capture_pct", async () => {
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        entry_premium: 4.0,
+        last_mark: 4.73,
+        peak_premium: 4.7,
+        trough_premium: 4.0,
+        status: "CLOSED",
+        entry_context: { exit: { pnl_pct: 18.3, peak_pnl_pct: 17.5, reason: "plan_stop", at: "2026-07-07T15:00:00.000Z" } },
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.peak_pnl_pct, 17.5, "the frozen peak itself is reported unchanged");
+  assert.equal(board.ledger[0]!.exit_pnl_pct, 17.5, "exit_pnl_pct must be clamped to its own peak, never the raw impossible 18.3");
+  assert.equal(
+    board.ledger[0]!.mfe_capture_pct,
+    100,
+    "mfe_capture_pct must never exceed 100% once the clamp holds pnl_pct <= peak_pnl_pct (17.5/17.5*100)",
+  );
+});
+
 // BUG FIX (2026-10-20, Ask Largo/5-engine standing mandate, live repro BMNR): mapLedgerRow computes
 // peak_pnl_pct/mfe_capture_pct/floor_pnl_pct from the RAW pre-roundFloats entry_premium/peak_premium,
 // but the outer roundFloats() call rounds entry_premium/peak_premium INDEPENDENTLY of each other — so
