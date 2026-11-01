@@ -210,6 +210,34 @@ test("G-N2 boundary: target exactly K×ATR14 from the fill edge passes; beyond b
   assert.equal(beyond.blocks[0]!.threshold, GATE_TARGET_MAX_ATR_MULTIPLE);
 });
 
+// REGRESSION (2026-11-01, cycle-67 live audit, confirmed on four published scale_out plays:
+// STM/AXTI/ORCL 2026-10-30 edition, NU 2026-10-27 edition): the gate_warning reason string
+// embedded the raw round4 (4-decimal) targetAtrMultiple, while the sibling structured field
+// play.target_atr_multiple is rounded to 2dp by roundFloats() before serialization —
+// roundFloats()'s walk() only rewrites typeof number, never a number already baked into a
+// string, so the two member-facing surfaces showed different precision for the identical
+// quantity (e.g. "target_atr_multiple": 2.4 next to "...is 2.4019× ATR14..."). The gate's
+// pass/fail verdict and the calibration-facing checks[]/blocks[].value must stay full-precision
+// (round4) — only the member-facing reason TEXT is re-rounded to 2dp to match.
+test("G-N2 gate_warning text shows the SAME precision as the sibling target_atr_multiple field (2dp), not the raw round4 value", () => {
+  // Same 2.025× fixture as the boundary test above — chosen because round4→round2 actually
+  // changes the printed digits here (2.025 rounds to 2.03, not 2.02 or 2.03 by truncation),
+  // so a regression that reverts to the raw value is caught by string content, not just by
+  // the structured `value` field (which is deliberately unchanged, see below).
+  const result = evaluate(
+    play({ entry_range: "$99.50-$100.00", target: "$108.10", stop: "$97.00" }),
+    dossier({ price: 100, atr14: 4 })
+  );
+  const block = result.blocks.find((b) => b.code === "target_unreachable");
+  assert.ok(block);
+  // The reason string shows the 2dp-rounded value...
+  assert.match(block!.reason, /is 2\.03× ATR14/);
+  // ...and never the raw 4-decimal value that used to leak into member-facing copy.
+  assert.doesNotMatch(block!.reason, /2\.025×/);
+  // The structured, calibration-facing value is untouched — still full round4 precision.
+  assert.equal(block!.value, 2.025);
+});
+
 test("G-N2 SHORT mirror: distance is absolute, so a downside target measures the same", () => {
   // fill edge 100.00, ATR14 4 → allowance 2.0 × 4 = 8.00. Target 92.00 → exactly 2.0×.
   const at = evaluate(

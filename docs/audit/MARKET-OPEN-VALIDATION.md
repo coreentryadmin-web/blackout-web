@@ -9362,3 +9362,23 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   most reproducible live. Separately confirm no regression: `vix` should still reflect a genuinely
   fresh pulse/base read whenever one exists this cycle, not a stale sticky value masking a real
   live change.
+
+## WATCH LIST — 2026-11-01 (Night Hawk Legacy G-N1/G-N2 gate_warning precision leak, PR TBD)
+
+- **Night Hawk Legacy — a gate-promoted play's `gate_warnings` text could show more decimal
+  precision than the sibling structured field describing the same number** (`target_atr_multiple`,
+  2dp via `roundFloats()`) because the G-N2 reason string interpolated the gate's own raw 4-decimal
+  `targetAtrMultiple` verbatim — `roundFloats()`'s number-walk can't reach a number already baked
+  into a string. Live-reproduced on four currently-published gate-promoted `scale_out` plays
+  (STM/AXTI/ORCL/NU, 2026-10-27 through 10-30 editions): each showed `target_atr_multiple: 2.4`
+  (or 2.24/2.1/2.1) next to a `gate_warnings` entry reading "...is 2.4019× ATR14..." (or
+  2.242/2.0988/2.1039) for the identical quantity. G-N1's `band_detached` reason carried the same
+  pattern (no currently-published 2dp sibling to visibly contradict, but same root cause). Fixed:
+  both reason strings now interpolate a display-only 2dp rounding; `checks[]`/`blocks[].value` (the
+  calibration/promotion-eligibility consumers) stay full-precision, untouched. **Re-check once the
+  market opens:** fetch `GET /api/market/nighthawk/edition` for any newly-published gate-promoted
+  play and confirm its `gate_warnings` text's embedded ATR-multiple (and, if a `band_detached`
+  warning ever fires live, its embedded band-distance%) matches the sibling structured field's
+  precision — 2dp in both places, not 4dp in the warning only. Separately confirm no regression:
+  the gate's pass/fail verdict and promotion-eligibility behavior for a `target_unreachable`/
+  `band_detached` block should be byte-identical to before this fix — only the warning TEXT changed.
