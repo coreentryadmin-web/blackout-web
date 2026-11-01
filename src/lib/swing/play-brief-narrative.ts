@@ -1747,8 +1747,27 @@ export function tradeManagerNarrativeSection(
 
   const bullets: string[] = [];
   const seen = new Set<string>();
-  // Break watch + counter-thesis bypass MAX_BULLETS — safety-critical coaching must not
-  // starve when collectCoachingBullets + focal levels fill the cap (CTO audit #14).
+  // Break watch + counter-thesis + dealer-posture bypass MAX_BULLETS — safety-critical coaching
+  // must not starve when collectCoachingBullets + focal levels fill the cap (CTO audit #14).
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro TPR, five-engine-largo-cycle-60):
+  // dealerPostureLine's own `add(posture)` call below was never marked `{ reserved: true }`, so a
+  // ticker whose non-reserved bullet sequence (action + collectCoachingBullets' ~13 coaching
+  // bullets) happened to fill MAX_BULLETS before this call ran silently lost the dealer-posture
+  // bullet entirely — the single most disclosure-critical line this function can render when
+  // `resolveGammaPosture` comes back null (Largo C3: absence must be disclosed, never silent).
+  // TPR's real bullet sequence that day (action/Manage plan/Earnings-in-4d/Cross-desk-friction/
+  // Executable-P&L/Short-interest/VEX-lens/Gamma-magnet/Confluence/Expected-move/put-wall-firm/
+  // Chart-read/Vector-desk-starred-level/Data-caveat) landed on EXACTLY 14 non-reserved bullets
+  // before this call, so "dealer gamma posture not resolved" became candidate #15 and was dropped
+  // — while `envelope.unavailableSources` correctly listed "GEX gamma flip" as unresolved in the
+  // SAME response, a cross-section contradiction the contract exists to prevent. Three siblings of
+  // this exact MAX_BULLETS-starvation class were already fixed for OTHER bullets (Break watch,
+  // Counter-thesis — both reserved below; meridianPeerEarningsCoaching's peer-earnings bullet,
+  // moved into its own uncapped meridianPeerSection in play-brief-intel.ts) — this call site was
+  // never covered by any of those three fixes. Reserved here, matching the Break-watch/
+  // Counter-thesis precedent directly above/below: it is the same shape of short, single-bullet,
+  // always-shown disclosure, not a multi-bullet list that would meaningfully inflate the section.
   const add = (line: string, opts?: { reserved?: boolean }) => {
     const key = line.slice(0, 48);
     if (seen.has(key)) return;
@@ -1775,7 +1794,8 @@ export function tradeManagerNarrativeSection(
 
   if (spot != null) {
     const posture = dealerPostureLine(ctx, spot, bucket);
-    if (posture) add(posture);
+    // reserved: true — see this function's own doc comment on `add` above (2026-11-01 fix).
+    if (posture) add(posture, { reserved: true });
   } else {
     const degraded = degradedReadLine(play, bucket, readMs);
     if (degraded) add(degraded);

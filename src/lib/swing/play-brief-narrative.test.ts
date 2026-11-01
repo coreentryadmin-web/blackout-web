@@ -4774,3 +4774,213 @@ test("tradeManagerNarrativeSection: a genuine OPEN/HOLD position's 'Live read' l
     `expected the Live read bullet to still say HOLD for a real open position, got: ${section!.body}`,
   );
 });
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro TPR, five-engine-largo-cycle-60):
+// `dealerPostureLine`'s own `add(posture)` call was never marked `{ reserved: true }`, unlike the
+// "Break watch" and "Counter-thesis" bullets a few lines below it in the same function — so a
+// ticker whose non-reserved bullet sequence (action + collectCoachingBullets' coaching bullets)
+// already reached MAX_BULLETS (=14) by the time this call ran silently lost the "dealer gamma
+// posture not resolved" disclosure entirely, even though it is exactly the kind of absence Largo
+// contract point C3 requires to be disclosed, never silent. Live TPR repro: 14 non-reserved
+// bullets (action/Manage plan/Earnings-in-4d/Cross-desk-friction/Executable-P&L/Short-interest/
+// VEX-lens/Gamma-magnet/Confluence/Expected-move/put-wall-firm/Chart-read/Vector-desk-starred-
+// level/Data-caveat) fired before dealerPostureLine ran, so its bullet became candidate #15 and
+// was dropped — while the SAME response's `unavailableSources` correctly listed "GEX gamma flip"
+// as unresolved, a cross-section contradiction. This fixture reproduces that exact shape: 17
+// bullets fire from `collectCoachingBullets` + the leading action bullet alone (verified >= 14
+// non-reserved bullets queue up before the dealer-posture call is ever reached), with gamma
+// posture genuinely unresolved (no Vector regime, `gex_positioning.gamma_posture: null`).
+test("tradeManagerNarrativeSection: unresolved dealer-posture disclosure survives MAX_BULLETS when 14+ other coaching bullets already fired (2026-11-01, live TPR shape)", () => {
+  const richVectorUnresolvedPosture = {
+    spot: 100,
+    gammaFlip: 98.5,
+    maxPain: 99,
+    vexFlip: 99.2,
+    vexWalls: { callWalls: [{ strike: 104, gex: 1 }], putWalls: [{ strike: 96, gex: 1 }] },
+    darkPoolLevels: [{ strike: 99.5, premium: 12_000_000, pct: 42 }],
+    // Posture genuinely UNRESOLVED: no `regime` at all, and `gex_positioning.gamma_posture` is
+    // also null below — resolveGammaPosture() falls through both branches and returns null.
+    gexWalls: { callWalls: [{ strike: 105, gex: 1 }], putWalls: [{ strike: 97, gex: 1 }] },
+    proximity: { strike: 105, side: "call", callout: "within 2% of call wall" },
+    wallEvents: [{ kind: "call_wall_shift", message: "call wall lifted to 105" }],
+    magnet: { strike: 100, distancePct: 0.3, pull: "at" },
+    confluenceZones: [{ center: 101, score: 8, kinds: ["gex", "dark_pool"] }],
+    expectedMove: { bands: [{ sigma: 1, low: 95.8, high: 104.2, movePts: 4.2 }] },
+    technicals: { emaStack: "up", macd: "bull", vwapSide: "above", structure: "BOS up" },
+    wallIntegrity: { call: { tier: "normal" }, put: { tier: "firm" } },
+    play: {
+      headline: "POSITION · momentum long on continuation → target magnet 103",
+      bias: "long",
+      invalidation: "5m close < 98.50",
+      thesis: "trend continuation",
+      starred: ["POSITION · momentum long on continuation → target magnet 103", "VEX flip 99.20"],
+    },
+  } as SwingPlayBriefContext["vector"];
+
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        score: 52,
+        pnlPct: 18,
+        execPnlPct: 7,
+        peak: 32,
+        trough: -10,
+        ivRank: 75,
+        manageAction: "HOLD",
+        thesisHealth: {
+          health: 48,
+          rungLabel: "Degraded",
+          advisory: "Tighten risk",
+          pillars: [
+            {
+              id: "market",
+              label: "Regime fit",
+              status: "faded",
+              commitLabel: "aligned",
+              currentLabel: "neutral",
+              deltaPts: -12,
+            },
+          ],
+          moves: ["flow cooled vs open"],
+        },
+        exitPolicy: {
+          trim_levels: [
+            { trigger_pct: 25, fired: true },
+            { trigger_pct: 50, fired: false },
+          ],
+          stop_premium: 1.85,
+          target_premium: 4.2,
+          time_stop_et: "15:45",
+          runner_fraction: 0.25,
+        },
+      }),
+      vector: richVectorUnresolvedPosture,
+      tickerTrackRecord: {
+        ticker: "NRG",
+        priorClosedTrades: 2,
+        wins: 0,
+        losses: 2,
+        directions: ["long", "long"],
+      } as SwingPlayBriefContext["tickerTrackRecord"],
+      laneRows: [
+        { ticker: "NRG", direction: "LONG", horizon: "SWING", score: 52, status: "COMMIT", contract: {} as never, scoreFloor: 40, reason: "momentum" },
+        { ticker: "INTC", direction: "LONG", horizon: "SWING", score: 61, status: "COMMIT", contract: {} as never, scoreFloor: 40, reason: "flow" },
+        { ticker: "MU", direction: "LONG", horizon: "SWING", score: 44, status: "COMMIT", contract: {} as never, scoreFloor: 40, reason: "breakout" },
+      ],
+      meridian: {
+        items: [
+          {
+            title: "Q3 earnings",
+            kind: "earnings",
+            impact: "high",
+            days_until: 4,
+            expected_move_pct: 5.2,
+            ticker: "NRG",
+            importance: 4,
+          },
+        ],
+      } as SwingPlayBriefContext["meridian"],
+      ecosystem: {
+        ticker: "NRG",
+        recent_flow: {
+          window_hours: 24,
+          print_count: 22,
+          call_premium: 350_000,
+          put_premium: 1_100_000,
+          unknown_premium: 0,
+        },
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "bearish",
+          score: null,
+        },
+        zerodte_today: { direction: "long", conviction: "medium" },
+        gex_positioning: {
+          spot: 100,
+          flip: 98.5,
+          gamma_posture: null,
+          gex_king_strike: 100,
+        },
+        arsenal: {
+          fundamentals: { days_to_cover: 12.3, as_of: "2026-09-05T00:00:00.000Z" },
+          macro: { yield_10_year: 4.5, curve_10y_1y_spread: 0.3 },
+          breadth: { tone: "neutral" },
+        },
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  // Sanity-check the fixture actually stresses the cap the way the live TPR repro did — otherwise
+  // this test would pass for the wrong reason (the bullet simply never got starved).
+  const nonReservedBulletsBeforePosture = section!.body
+    .split("\n")
+    .filter((l) => l.startsWith("• "))
+    .findIndex((l) => /not resolved on this read/.test(l));
+  assert.ok(
+    nonReservedBulletsBeforePosture >= 14,
+    `expected the dealer-posture bullet to land at position >=14 (cap already full), got index ${nonReservedBulletsBeforePosture} in: ${section!.body}`,
+  );
+  assert.match(
+    section!.body,
+    /dealer gamma posture not resolved on this read/,
+    "the unresolved-posture disclosure bullet must survive MAX_BULLETS just like Break watch/Counter-thesis — Largo C3 requires absence to be disclosed, never silently dropped",
+  );
+});
+
+// No-regression companion: the VFC/F/TXRH shape from the same live cycle — fewer non-reserved
+// bullets fire (room under the cap), so the dealer-posture bullet rendered correctly even before
+// this fix. Confirms the `{ reserved: true }` change doesn't alter behavior for the common case.
+test("tradeManagerNarrativeSection: unresolved dealer-posture disclosure still renders normally when well under MAX_BULLETS (no regression)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "HOLD", recommendation: "HOLD" }),
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        maxPain: 99,
+        darkPoolLevels: [{ strike: 99.5, premium: 12_000_000, pct: 42 }],
+        // Posture unresolved here too — no regime, and gex_positioning.gamma_posture null below.
+        gexWalls: {
+          callWalls: [{ strike: 105, gex: 1 }],
+          putWalls: [{ strike: 97, gex: 1 }],
+        },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "VFC",
+        recent_flow: {
+          window_hours: 24,
+          print_count: 15,
+          call_premium: 2_100_000,
+          put_premium: 800_000,
+          unknown_premium: 0,
+        },
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: null,
+          gex_king_strike: 100,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  const bullets = section!.body.split("\n").filter((l) => l.startsWith("• "));
+  assert.ok(
+    bullets.length < 14,
+    `expected this fixture to stay well under MAX_BULLETS (no starvation risk), got ${bullets.length} bullets: ${section!.body}`,
+  );
+  assert.match(
+    section!.body,
+    /dealer gamma posture not resolved on this read/,
+    "the unresolved-posture disclosure bullet must render when there's plenty of room under the cap",
+  );
+});
