@@ -174,6 +174,24 @@ test("evidenceLean: an empty book leans nowhere", () => {
   assert.equal(e.contested, false);
 });
 
+test("evidenceLean: an EXPLICIT weight of 0 stays inert — it must not collapse to the 'no weight given' default of 1", () => {
+  // Same trap already found and fixed once in this file family: meridian-viz-core.ts's
+  // `resolveSignalWeight` exists specifically because `Math.abs(num(w) ?? 1) || 1` cannot tell
+  // "no weight was given" (should default to 1) from "deliberately weighted zero" (should stay
+  // 0, so an informational-only pillar can carry a lean without swaying anything) — and that
+  // exact collapse understated the STRUCTURE halo dimension's weight by a third in production
+  // before the fix landed there (see that function's own comment). `evidenceLean` independently
+  // reimplements the same weight-resolution fallback and never inherited the fix.
+  const zeroWeighted = evidenceLean([{ label: "News", lean: "bullish", weight: 0 }]);
+  assert.equal(zeroWeighted.bullWeight, 0, "an explicitly zero-weighted signal must not sway the tally");
+  assert.equal(zeroWeighted.net, 0, "zero total weight means no lean, not a fabricated full-strength bullish one");
+
+  // A genuinely MISSING weight (the field was never set at all) must still default to 1 — only
+  // an explicit 0 is special-cased, same distinction `resolveSignalWeight` draws.
+  const unweighted = evidenceLean([{ label: "Flow", lean: "bullish" }]);
+  assert.equal(unweighted.bullWeight, 1, "a signal with no weight field at all still occupies the tally");
+});
+
 /* ── buildMeridianSummary ─────────────────────────────────────────────────────────── */
 
 const base = {
