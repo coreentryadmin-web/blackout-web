@@ -3722,6 +3722,102 @@ test("composeSwingPlayBrief: a confluence zone whose call wall MATCHES the prima
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro CC/KTOS/VKTX): `levelsFromContext`
+// resolves call wall / put wall / gamma flip / spot / confluence zones / dark pool / gamma magnet /
+// GEX king / max pain independently of one another with no price-collision check across the whole
+// array, so a GEX king strike coinciding with a wall (king is, definitionally, wherever gamma
+// concentration peaks — often the same strike dealers already wall at) restated the identical real
+// price under TWO labels in `envelope.levels` — reaching both the raw JSON array and the generic
+// `renderLevels()` "**Key levels:**" markdown footer verbatim. This is the THIRD sibling of the
+// exact collision class `collectFocalLevels` (play-brief-narrative.ts, PR #7000) and
+// `extractEvidence` (play-brief-adapter.ts) already fixed at THEIR own call sites — both of those
+// fixes explicitly deferred `envelope.levels` itself as "out of scope" — so this is the first fix
+// at the actual source. Live repro: CC/KTOS both carried {label:"call wall", price:X} AND
+// {label:"GEX king", price:X} at the same strike.
+test("composeSwingPlayBrief: a GEX king coinciding with a call wall merges into ONE envelope level, not two (2026-11-01, live repro CC/KTOS)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-11-01 10:00 ET",
+    sessionDate: "2026-11-01",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: new Date().toISOString(),
+      asOfEt: "2026-11-01 10:00 ET",
+      spot: 10,
+      dataAgeMs: 5_000,
+      freshness: "live",
+      gexWalls: { callWalls: [{ strike: 15, pct: 1 }], putWalls: [] },
+      ladder: { rows: [{ strike: 15, isKing: true }] },
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const levels = brief.envelope.levels ?? [];
+  const at15 = levels.filter((l) => Math.abs(l.price - 15) < 0.01);
+  assert.equal(at15.length, 1, `expected exactly one envelope level at 15, got: ${JSON.stringify(at15)}`);
+  assert.equal(at15[0]?.label, "call wall", "the wall label must win the merge, matching the sibling fixes' convention");
+  assert.equal(
+    levels.some((l) => l.label === "GEX king"),
+    false,
+    "no separate GEX king entry must remain once merged into the wall",
+  );
+});
+
+// Sibling collision shape, same live audit: a confluence zone commonly names max pain as one of
+// its own co-located inputs (`kinds` can include "max-pain"), and VKTX showed BOTH collisions in
+// one response — {label:"confluence (call-wall@27.5+max-pain)", price:27.5} alongside a SEPARATE
+// {label:"max pain", price:27.5}. Confluence is pushed before max pain in `levelsFromContext`'s own
+// fixed order, so the confluence entry (which already names max pain in its own label) must win.
+test("composeSwingPlayBrief: a confluence zone coinciding with max pain merges into ONE envelope level, not two (2026-11-01, live repro VKTX)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-11-01 10:00 ET",
+    sessionDate: "2026-11-01",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: new Date().toISOString(),
+      asOfEt: "2026-11-01 10:00 ET",
+      spot: 20,
+      dataAgeMs: 5_000,
+      freshness: "live",
+      gexWalls: { callWalls: [{ strike: 30, pct: 1 }], putWalls: [] },
+      maxPain: 27.5,
+      confluenceZones: [
+        {
+          center: 27.5,
+          kinds: ["call-wall", "max-pain"],
+          score: 5,
+          levels: [
+            { price: 27.5, kind: "call-wall" },
+            { price: 27.5, kind: "max-pain" },
+          ],
+        },
+      ],
+      darkPoolLevels: [],
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const levels = brief.envelope.levels ?? [];
+  const at27_5 = levels.filter((l) => Math.abs(l.price - 27.5) < 0.01);
+  assert.equal(at27_5.length, 1, `expected exactly one envelope level at 27.5, got: ${JSON.stringify(at27_5)}`);
+  assert.ok(
+    at27_5[0]?.label.startsWith("confluence"),
+    `the confluence label must win the merge (already names max pain), got: ${at27_5[0]?.label}`,
+  );
+  assert.equal(
+    levels.some((l) => l.label === "max pain"),
+    false,
+    "no separate max pain entry must remain once merged into the confluence zone",
+  );
+});
+
 test("composeSwingPlayBrief: stale Vector wall must fall through to a LIVE GEX wall, not drop the level entirely (Largo C2)", () => {
   // Both sources exist for the same level, only Vector has gone stale — the live GEX-sourced
   // wall must still render. Suppressing the whole entry because Vector happened to be
