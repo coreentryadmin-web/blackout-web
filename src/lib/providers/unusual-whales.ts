@@ -1173,7 +1173,12 @@ export async function fetchUwDarkPool(
         strike,
         premium,
         side,
-        executed_at: execAt.slice(0, 19),
+        // VERBATIM — no `.slice(0, 19)`. See the sibling-propagation note on
+        // `normalizeDarkPoolWsPayload` below: slicing strips a trailing "Z" (and any
+        // sub-second precision) off a UW ISO timestamp, which `new Date()`/`Date.parse()`
+        // then reinterpret as LOCAL time — the exact defect already fixed on
+        // `normalizeOptionTradesWsPayload`/`normalizeLitTradesWsPayload`, never propagated here.
+        executed_at: execAt,
       });
       total += premium;
       if (optType.includes("call")) callPrem += premium;
@@ -1224,7 +1229,8 @@ export async function fetchUwDarkPoolMarketWide(
     const side = String(row.side ?? row.direction ?? "unknown").toLowerCase();
     const optType = String(row.type ?? row.option_type ?? "").toLowerCase();
     const ticker = row.ticker ? String(row.ticker) : undefined;
-    prints.push({ strike, premium, side, executed_at: execAt.slice(0, 19), ticker });
+    // VERBATIM — no `.slice(0, 19)`; same sibling-propagation fix as `fetchUwDarkPool` above.
+    prints.push({ strike, premium, side, executed_at: execAt, ticker });
     total += premium;
     if (optType.includes("call")) callPrem += premium;
     else if (optType.includes("put")) putPrem += premium;
@@ -1311,7 +1317,22 @@ export function normalizeDarkPoolWsPayload(raw: unknown): DarkPoolSnapshot | nul
     const side = String(r.side ?? r.direction ?? "unknown").toLowerCase();
     const optType = String(r.type ?? r.option_type ?? "").toLowerCase();
     const ticker = String(r.ticker ?? r.symbol ?? r.underlying ?? "").toUpperCase() || undefined;
-    prints.push({ strike, premium, side, executed_at: execAt.slice(0, 19), ticker });
+    // VERBATIM — no `.slice(0, 19)`.
+    //
+    // The slice was there to trim sub-second precision, but on a UW ISO timestamp it strips the
+    // trailing "Z": `"2026-06-30T15:04:00Z"` becomes `"2026-06-30T15:04:00"`, which
+    // `new Date()`/`Date.parse()` read as LOCAL time, not UTC — silently correct only because
+    // production runs UTC, and silently wrong the moment it does not. On UW's real
+    // microsecond-precision shape (`"2026-08-21T20:14:37.211537Z"`, captured live on the sibling
+    // `created_at` field) it drops the fractional seconds AND the "Z" at once. Every downstream
+    // reader that re-parses `DarkPoolPrint.executed_at` — `uw-lit-dark-ratio.ts`'s
+    // `latestPrintAgeMs`, `discord-eod-recap.ts`, `helix-coord-window.ts` — inherited the
+    // truncated value. This is the SAME defect already fixed on
+    // `normalizeOptionTradesWsPayload`/`normalizeLitTradesWsPayload` above (and on
+    // `fetchUwDarkPool`/`fetchUwDarkPoolMarketWide`, this function's own REST-path siblings) —
+    // never propagated to this `off_lit_trades` WS normalizer, which parses the identical
+    // `executed_at ?? date ?? timestamp` shape off the same UW WS transport.
+    prints.push({ strike, premium, side, executed_at: execAt, ticker });
     total += premium;
     if (optType.includes("call")) callPrem += premium;
     else if (optType.includes("put")) putPrem += premium;

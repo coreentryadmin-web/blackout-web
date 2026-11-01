@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   aggregateGexStrikeExpiryToLadder,
   aggregateOptionTradesToStrikeRows,
+  normalizeDarkPoolWsPayload,
   normalizeGexStrikeExpiryWsPayload,
   normalizeLitTradesWsPayload,
   normalizeOptionTradesWsPayload,
@@ -73,6 +74,33 @@ test("normalizeLitTradesWsPayload keeps sub-second precision and the 'Z' on a lo
     executed_at: precise,
   });
   assert.equal(rows[0]?.executed_at, precise);
+});
+
+// BUG FIX (sibling-propagation gap, 3rd sibling): `normalizeOptionTradesWsPayload` and
+// `normalizeLitTradesWsPayload` above were both fixed to stop slicing `executed_at` to 19 chars
+// (it strips a trailing "Z" and reinterprets a Z-bearing ISO string as LOCAL time once
+// re-parsed) — `normalizeDarkPoolWsPayload` parses the identical `executed_at ?? date ??
+// timestamp` shape off the same UW WS transport (`off_lit_trades`, the dark-pool sibling of
+// `lit_trades`/`option_trades`) and still had the defect, unfixed by either prior PR. Before the
+// fix, a microsecond-precision UW timestamp like `"<today>T20:14:37.211537Z"` was truncated to
+// `"<today>T20:14:37"` (no "Z", no fractional seconds) — every downstream reader that re-parses
+// `DarkPoolPrint.executed_at` with `new Date()`/`Date.parse()` (uw-lit-dark-ratio.ts's
+// `latestPrintAgeMs`, discord-eod-recap.ts, helix-coord-window.ts, helix-flow-deep-link.ts) then
+// reads a different wall-clock instant on any non-UTC host, and always loses sub-second
+// precision. The test uses "today" in ET (not a fixed date) because the function's own
+// same-session-day filter (`execDate !== today`) would otherwise drop the row before the
+// truncation bug is even reached.
+test("normalizeDarkPoolWsPayload keeps executed_at VERBATIM — does not strip the UTC 'Z' or sub-second precision", () => {
+  const nowIso = new Date().toISOString(); // "<today>T20:14:37.211Z"
+  const precise = nowIso.replace(/\.\d{3}Z$/, ".211537Z"); // simulate UW's real microsecond shape
+  const rows = normalizeDarkPoolWsPayload({
+    symbol: "SPY",
+    executed_at: precise,
+    premium: 1_250_000,
+  });
+  assert.equal(rows?.prints.length, 1);
+  assert.equal(rows?.prints[0]?.executed_at, precise);
+  assert.equal(Date.parse(rows!.prints[0]!.executed_at), Date.parse(precise));
 });
 
 test("aggregateOptionTradesToStrikeRows buckets call/put premium by strike", () => {
