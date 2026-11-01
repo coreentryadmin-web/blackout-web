@@ -63,11 +63,20 @@ const basePromise = listen(server).then((base) => {
 
 const polygonLargoPromise = basePromise.then(() => import("./polygon-largo"));
 
+async function resetPolygonLimiterStateForTest() {
+  const { resetPolygonCircuitForTest } = await import("./polygon-rate-limiter");
+  resetPolygonCircuitForTest();
+}
+
+/** CI verify runs ~15k tests on a loaded runner; admission can lag before TCP connects. */
+const CONNECT_WAIT_MS = 8_000;
+
 after(() => {
   server.close();
 });
 
 test("fetchPolygonNews: aborting the caller's signal terminates the real underlying connection", async () => {
+  await resetPolygonLimiterStateForTest();
   const { fetchPolygonNews } = await polygonLargoPromise;
   const sinceCount = sockets.length;
 
@@ -75,7 +84,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECT_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -102,6 +111,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
 });
 
 test("fetchPolygonTickerDetails: aborting the caller's signal terminates the real underlying connection", async () => {
+  await resetPolygonLimiterStateForTest();
   const { fetchPolygonTickerDetails } = await polygonLargoPromise;
   const sinceCount = sockets.length;
 
@@ -109,7 +119,7 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECT_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
