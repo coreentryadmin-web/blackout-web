@@ -6,6 +6,7 @@ import {
   markStreamKind,
   preferredPlayId,
   resolveFocusTickerMatch,
+  withRecapOnlyReason,
 } from "./deck-session-ui.ts";
 
 test("isZeroDteSessionActive: RTH heat states are active; CLOSED/PRE_MARKET are not", () => {
@@ -86,4 +87,22 @@ test("resolveFocusTickerMatch: does not re-fire for a focusTicker value already 
   assert.equal(resolveFocusTickerMatch(plays, "AAPL", "AAPL"), null);
   // A DIFFERENT focus request (e.g. a fresh Legacy hand-off) still fires.
   assert.deepEqual(resolveFocusTickerMatch(plays, "TSLA", "AAPL"), { id: "t" });
+});
+
+test("withRecapOnlyReason: appends the edition's real funnel-stage reason when present", () => {
+  assert.equal(
+    withRecapOnlyReason(
+      "Recap published — no plays cleared the funnel tonight.",
+      "No scored dossiers after 2 dossier-fetch attempt(s) (20 candidate(s)).",
+    ),
+    "Recap published — no plays cleared the funnel tonight. No scored dossiers after 2 dossier-fetch attempt(s) (20 candidate(s)).",
+  );
+});
+
+test("withRecapOnlyReason: leaves the base text unchanged when the reason is absent/blank (never fabricates one)", () => {
+  const base = "No plays cleared the scoring funnel tonight — market recap is above.";
+  assert.equal(withRecapOnlyReason(base, null), base);
+  assert.equal(withRecapOnlyReason(base, undefined), base);
+  assert.equal(withRecapOnlyReason(base, ""), base);
+  assert.equal(withRecapOnlyReason(base, "   "), base);
 });

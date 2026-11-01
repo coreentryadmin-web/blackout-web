@@ -128,3 +128,14 @@ export function preferredPlayId<T extends { id: string; status: string }>(plays:
   }
   return best.id;
 }
+
+/**
+ * Appends the edition's own funnel-stage reason (`meta.recap_only_reason`) to a recap-only
+ * banner/description string, when present, instead of showing a generic "no plays" message
+ * for every recap-only night regardless of why. Keeps the base text unmodified when the reason
+ * is absent/blank — never fabricates a reason.
+ */
+export function withRecapOnlyReason(baseText: string, reason: string | null | undefined): string {
+  const trimmed = reason?.trim();
+  return trimmed ? `${baseText} ${trimmed}` : baseText;
+}
