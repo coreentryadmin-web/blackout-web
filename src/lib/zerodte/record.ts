@@ -13,6 +13,7 @@
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import { buildCondorRecord, isCondorRow, type CondorRecord } from "./condor-record";
 import { categorizeExitReason } from "./exit-engine";
+import { clampPnlToPeak } from "./marks-math";
 import { etMinutesOf, PLAN_RULES, PLAN_RULES_TIME_STOP_ET_LABEL } from "./plan";
 import { roundTrailingRuleDisplay } from "./strategy-version";
 import { tierFromEntryContext, type ZeroDteTier } from "./tiers";
@@ -522,9 +523,18 @@ function realExitIsBarWalkReproducible(reason: string | null): boolean {
  * already holds — which post-fix rows and every pre-fix HONORED floor/stop exit (never
  * affected; same exit-sync.ts guarantee) already do — so this can never move a correct
  * number, only cap an impossible one.
+ *
+ * MOVED TO marks-math.ts AS `clampPnlToPeak` (FINDINGS 2026-11-01): cortex-read.ts's
+ * `buildPinnedCortexEnvelope` and zerodte-service.ts's `mapLedgerRow` independently read
+ * the exact same frozen `entry_context.exit.{pnl_pct,peak_pnl_pct}` pair this module reads,
+ * and neither had this clamp — so Ask Largo's pinned "why was this committed" tool and the
+ * live board payload could both still render the impossible number this function exists to
+ * suppress. This thin wrapper is kept so every existing call site/comment in this module
+ * keeps working unchanged; the one real implementation now lives in the dependency-free
+ * marks-math.ts leaf so all three readers share it and can never drift apart again.
  */
 function clampManagedPnlToPeak(pnl: number, peak: number | null): number {
-  return peak != null && Number.isFinite(peak) && pnl > peak ? peak : pnl;
+  return clampPnlToPeak(pnl, peak) as number;
 }
 
 function reconstructedGradeView(reco: { plan_outcome: string | null; plan_pnl_pct: number }): GradeView {

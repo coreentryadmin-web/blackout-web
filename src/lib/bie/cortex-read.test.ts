@@ -234,6 +234,31 @@ test("buildPinnedCortexEnvelope: exit context renders the thesis-break story wit
   assert.match(exitSection!.body, /Supporting wall dissolved/);
 });
 
+// FINDINGS 2026-11-01: record.ts's clampManagedPnlToPeak (PR #7163, 2026-10-31/11-01) already
+// clamps a frozen pnl_pct that exceeds its own peak_pnl_pct (pre-2026-09-04 rounding bug, ~8-9
+// real rows: HIMS/KORU/SPCH/RIOT/FIG/CRCL x2/AAPL/NVDA/OCUL) for the member-facing record route —
+// but this reader (Ask Largo's pinned "why was this committed" tool) read the SAME frozen
+// entry_context.exit.{pnl_pct,peak_pnl_pct} pair raw, rendering the self-contradictory "P&L
+// +18.3%, peak +17.5%" shape (a position cannot close higher than its own recorded peak) that the
+// clamp exists to prevent. Mirrors the real FIG 2026-08-10 shape named in record.ts's own fix.
+test("buildPinnedCortexEnvelope: an impossible frozen pnl_pct > peak_pnl_pct (pre-2026-09-04 rounding bug) is clamped to the peak, never rendered raw", () => {
+  const impossibleExit = { ...EXIT_BLOB, reason: "plan_stop", pnl_pct: 18.3, peak_pnl_pct: 17.5 };
+  const r = row({
+    status: "CLOSED",
+    plan_outcome: "stopped",
+    plan_pnl_pct: 17.5,
+    entry_context: { ...row().entry_context, exit: impossibleExit },
+  });
+  const env = mod.buildPinnedCortexEnvelope(r);
+  const exitSection = env.sections.find((s) => s.title === "What the exit engine did");
+  assert.ok(exitSection, "exit section present");
+  // The rendered P&L must never exceed the row's own peak — clamped to +17.5%, not the raw +18.3%.
+  assert.match(exitSection!.body, /P&L \+17\.5%/);
+  assert.doesNotMatch(exitSection!.body, /\+18\.3%/);
+  // The peak itself is reported unchanged — only the impossible pnl_pct is capped.
+  assert.match(exitSection!.body, /peak \+17\.5%/);
+});
+
 test("buildPinnedCortexEnvelope: gate_calibration_json scalars render when present", () => {
   const env = mod.buildPinnedCortexEnvelope(row({ gate_calibration_json: { verdict: "CONFIRM", tier: "15-17", win_rate_pct: 69 } }));
   const s = env.sections.find((x) => x.title === "Gate calibration at commit");

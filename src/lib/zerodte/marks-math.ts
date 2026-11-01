@@ -342,6 +342,36 @@ export function peakPnlPct(entryPremium: number | null, peakPremium: number | nu
 }
 
 /**
+ * A position can never realize better than its own recorded peak — a `pnl_pct` numerically
+ * ABOVE the row's own `peak_pnl_pct` (same frozen `entry_context.exit` blob) is a mathematical
+ * impossibility, not a real result (FINDINGS 2026-10-31/2026-11-01). Root cause: a pre-2026-09-04
+ * bug in exit-engine.ts's `buildExitContext` computed a non-honored exit's `pnl_pct` from a
+ * cent-ROUNDED mark while `peak_pnl_pct` was (and still is) computed from the raw, unrounded
+ * peak premium — rounding up past the row's own genuine high-water mark on a handful of cheap,
+ * sub-few-dollar 0DTE premiums (~8-9 real rows: HIMS, KORU, SPCH, RIOT, FIG, CRCL x2, AAPL, NVDA,
+ * OCUL — all dated strictly before the fix shipped). The fix (now live for every fresh exit)
+ * uses the raw mark on the non-honored path, so `pnl_pct <= peak_pnl_pct` holds by construction
+ * going forward — but those ~8-9 rows already have the impossible pair baked into their
+ * immutable `entry_context.exit` blob (first-write-wins, never rebuilt), and there is no way to
+ * recover the TRUE pre-rounding `pnl_pct` retroactively (only the already-cent-rounded mark
+ * survives). This clamps the DISPLAYED `pnl_pct` to the row's own `peak_pnl_pct` — the honest
+ * statement available is "this realized at best as well as its own recorded peak," not a
+ * specific percentage weaker than that.
+ *
+ * SHARED (2026-11-01) so every independent reader of that frozen blob clamps identically instead
+ * of drifting apart — record.ts's `officialOverridingRealExit`/`managedGradeView` (the original
+ * 2026-10-31 fix, PR #7163), `cortex-read.ts`'s `buildPinnedCortexEnvelope` ("What the exit
+ * engine did" — Ask Largo's pinned "why was this committed" tool), and
+ * `zerodte-service.ts`'s `mapLedgerRow` (the live board/BIE payload's `exit_pnl_pct` /
+ * `mfe_capture_pct`) all read the exact same `{pnl_pct, peak_pnl_pct}` pair off the same blob.
+ * Null-safe and a provable no-op whenever the invariant already holds (a null `pnl`/`peak`, or
+ * `pnl <= peak`) — so this can never move a correct number, only cap an impossible one.
+ */
+export function clampPnlToPeak(pnl: number | null, peak: number | null): number | null {
+  return pnl != null && peak != null && Number.isFinite(peak) && pnl > peak ? peak : pnl;
+}
+
+/**
  * Directional closed-row P&L: the trim-scale AS-MANAGED blend ONLY when the row was actually
  * MANAGED under trim_scale; otherwise the mechanical stop pin.
  *

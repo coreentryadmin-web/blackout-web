@@ -33,6 +33,7 @@ import type { AllocationDecision } from "@/lib/portfolio/allocation";
 import { cortexSummaryFor } from "@/lib/zerodte/cortex-gate";
 import { tierForSkip } from "@/lib/zerodte/tiers";
 import {
+  clampPnlToPeak,
   closedStopReason,
   isZeroDteMarkStale,
   peakPnlPct,
@@ -488,6 +489,16 @@ function mapLedgerRow(
   // EXIT) + the latched peak (for the live ratchet floor). All pure — no new IO.
   const pinnedExit = readPinnedExit(r.entry_context);
   const exitStamp = readExitStampFromEntryContext(r.entry_context);
+  // FINDINGS 2026-11-01: a position can never realize better than its own recorded peak —
+  // record.ts's clampManagedPnlToPeak (PR #7163) already clamps this SAME frozen
+  // entry_context.exit.{pnl_pct,peak_pnl_pct} pair for the member-facing record route, but
+  // this reader (the live board/BIE payload) served exitStamp.pnl_pct raw: a handful of
+  // historical rows (pre-2026-09-04, see that fix's doc) carry a frozen pnl_pct numerically
+  // ABOVE their own peak_pnl_pct, which both renders an impossible exit_pnl_pct AND, via
+  // mfeCapturePct below, a nonsensical ">100% of peak captured" figure. Shared clampPnlToPeak
+  // (marks-math.ts) keeps every independent reader of this blob in lockstep; a no-op on every
+  // healthy row (post-fix, or pnl_pct already <= peak_pnl_pct).
+  const exitPnlPct = clampPnlToPeak(exitStamp.pnl_pct, exitStamp.peak_pnl_pct);
   const engineExitCategory = categorizeExitReason(pinnedExit.reason);
   // Live ratchet floor (the shipped default mode): "your stop is now at breakeven/+20/
   // +50". Derived purely from the latched peak vs the pinned entry; TRIM status is the
@@ -573,7 +584,7 @@ function mapLedgerRow(
     peak_premium: r.peak_premium,
     trough_premium: r.trough_premium,
     peak_pnl_pct: peakPnlPct(r.entry_premium, r.peak_premium),
-    mfe_capture_pct: mfeCapturePct(exitStamp.pnl_pct, peakPnlPct(r.entry_premium, r.peak_premium)),
+    mfe_capture_pct: mfeCapturePct(exitPnlPct, peakPnlPct(r.entry_premium, r.peak_premium)),
     // Structure-aware: seller-framed for a credit condor; directional stopped closes use
     // trim-scale AS-MANAGED when peak armed tranches — the ONE derivation both build sites share.
     // The row's FROZEN exit policy, carried on the payload so the post-roundFloats re-price below
@@ -607,7 +618,7 @@ function mapLedgerRow(
     exit_reason: engineExitCategory,
     exit_detail: pinnedExit.detail,
     exit_at: exitStamp.at,
-    exit_pnl_pct: exitStamp.pnl_pct,
+    exit_pnl_pct: exitPnlPct,
     exit_mark_honored: exitStamp.mark_honored,
     exit_mark_observed: exitStamp.mark_observed,
     timeline_tranches: readTimelineTranchesFromEntryContext(r.entry_context),
