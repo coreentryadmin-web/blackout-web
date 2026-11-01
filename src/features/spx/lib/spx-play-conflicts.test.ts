@@ -187,6 +187,76 @@ describe("computeWeightedConflicts", () => {
     assert.equal(weighted_conflicts, 1);
   });
 
+  it("does not treat amplification regime + above-flip as GEX opposition for a SHORT (live audit, 2026-11-01)", () => {
+    // Root cause: computeSpxConfluence (spx-signals.ts) only ever scores a "γ regime" factor for
+    // mean_revert&&aboveFlip (+10, bullish, opposes a short) or amplification&&!aboveFlip (-10,
+    // bearish, opposes a long) — amplification&&aboveFlip is never scored in either direction.
+    // gexOpposed's short branch used to reuse the SAME `regimeOpposed` variable as the long branch
+    // (gamma_regime==='amplification') and only flip the aboveFlip polarity, misreading
+    // amplification&&aboveFlip as opposition. This state is live-reachable: gammaRegimeWithHysteresis
+    // (gamma-desk.ts) deliberately holds gamma_regime sticky at "amplification" for a buffer right
+    // after an upward flip crossing, while above_gamma_flip is computed fresh from raw spot>flip —
+    // so right after spot crosses up through the flip, gamma_regime still reads "amplification"
+    // while above_gamma_flip is already true.
+    const desk: SpxDeskPayload = {
+      ...baseDesk(),
+      price: 101,
+      gamma_flip: 100,
+      gamma_regime: "amplification",
+      above_gamma_flip: true,
+      gex_walls: [],
+      tide_bias: "neutral",
+      news_headlines: [],
+      vix: 20,
+    } as SpxDeskPayload;
+    // Exactly what computeSpxConfluence would produce for this desk: no "γ regime" factor at all,
+    // since neither scored combination (mean_revert&&aboveFlip / amplification&&!aboveFlip)
+    // matches amplification&&aboveFlip.
+    const factors: SpxSignalFactor[] = [{ label: "Live tape", weight: -12, detail: "puts" }];
+    const { conflicts, weighted_conflicts } = computeWeightedConflicts(desk, -40, factors);
+    assert.equal(conflicts, 0);
+    assert.equal(weighted_conflicts, 0);
+  });
+
+  it("still treats mean_revert regime + above-flip as GEX opposition for a SHORT (no regression)", () => {
+    // The real bullish condition (+10, mean_revert&&aboveFlip) genuinely opposes a short and must
+    // still fire the +2 bonus after the fix.
+    const desk: SpxDeskPayload = {
+      ...baseDesk(),
+      price: 101,
+      gamma_flip: 100,
+      gamma_regime: "mean_revert",
+      above_gamma_flip: true,
+      gex_walls: [],
+      tide_bias: "neutral",
+      news_headlines: [],
+      vix: 20,
+    } as SpxDeskPayload;
+    const factors: SpxSignalFactor[] = [{ label: "Live tape", weight: -12, detail: "puts" }];
+    const { weighted_conflicts } = computeWeightedConflicts(desk, -40, factors);
+    assert.equal(weighted_conflicts, 2);
+  });
+
+  it("still treats amplification regime + below-flip as GEX opposition for a LONG (no regression, mirror case)", () => {
+    // The mirror stale state on the long side (amplification&&!aboveFlip, the real bearish
+    // condition, genuinely opposes a long) must keep firing — confirming the fix is scoped to the
+    // short branch's own regime check and doesn't disturb the already-correct long branch.
+    const desk: SpxDeskPayload = {
+      ...baseDesk(),
+      price: 99,
+      gamma_flip: 100,
+      gamma_regime: "amplification",
+      above_gamma_flip: false,
+      gex_walls: [],
+      tide_bias: "neutral",
+      news_headlines: [],
+      vix: 20,
+    } as SpxDeskPayload;
+    const factors: SpxSignalFactor[] = [{ label: "Live tape", weight: 12, detail: "calls" }];
+    const { weighted_conflicts } = computeWeightedConflicts(desk, 40, factors);
+    assert.equal(weighted_conflicts, 2);
+  });
+
   it("IV rank presence is unaffected by the fix — still suppresses the VIX-extreme bonus (no regression)", () => {
     // "IV rank" is only ever pushed as an OPPOSING factor by spx-signals.ts (high IV rank fades
     // a long, low IV rank squeezes a short), so "exists" and "exists and opposes" are equivalent

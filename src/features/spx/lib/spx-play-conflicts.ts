@@ -85,15 +85,34 @@ function gexOpposed(desk: SpxDeskPayload, direction: "long" | "short"): boolean 
   // identical read on `gamma_flip != null`; this mirrors that established pattern. The gex_walls
   // proximity check below is an independent signal (derived from the strike ladder, not from
   // gamma_flip/gamma_regime) and must keep firing regardless of flip state.
-  const regimeOpposed = desk.gamma_flip != null && desk.gamma_regime === "amplification";
+  //
+  // BUG FIX (2026-11-01, live audit): the two direction branches below must mirror the ONLY two
+  // "γ regime" states computeSpxConfluence (spx-signals.ts) ever actually scores:
+  //   mean_revert && aboveFlip  -> +10 bullish  (genuinely opposes a SHORT)
+  //   amplification && !aboveFlip -> -10 bearish (genuinely opposes a LONG)
+  // No other combination is scored in either direction — amplification && aboveFlip (regime
+  // sticky-held at "amplification" right after an upward flip crossing, via
+  // gammaRegimeWithHysteresis's deliberate buffer, while above_gamma_flip is computed fresh from
+  // raw spot>flip every cycle) is NOT evidence of anything. Previously this function defined one
+  // shared `regimeOpposed = gamma_regime === "amplification"` and reused it for BOTH branches,
+  // only flipping the aboveFlip polarity for "short" — so the short branch read
+  // `amplification && aboveFlip` as opposition, a state computeSpxConfluence never scores either
+  // way, fabricating a +2 weighted_conflicts penalty against short setups with zero real evidence
+  // behind it. The long branch was already correct (it happened to match the real bearish
+  // condition). Each branch now checks its OWN correct regime/aboveFlip pairing instead of sharing
+  // one variable across both directions.
   if (direction === "long") {
+    const regimeOpposed =
+      desk.gamma_flip != null && desk.gamma_regime === "amplification" && !desk.above_gamma_flip;
     return (
-      (regimeOpposed && !desk.above_gamma_flip) ||
+      regimeOpposed ||
       Boolean(desk.gex_walls?.some((w) => w.kind === "resistance" && Math.abs(desk.price - w.strike) <= 12))
     );
   }
+  const regimeOpposed =
+    desk.gamma_flip != null && desk.gamma_regime === "mean_revert" && desk.above_gamma_flip;
   return (
-    (regimeOpposed && desk.above_gamma_flip) ||
+    regimeOpposed ||
     Boolean(desk.gex_walls?.some((w) => w.kind === "support" && Math.abs(desk.price - w.strike) <= 12))
   );
 }
