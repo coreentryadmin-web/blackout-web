@@ -56,6 +56,21 @@ function waitForSocketClose(socket: Socket, timeoutMs: number): Promise<boolean>
   });
 }
 
+/** After an aborted fetch, undici may still open a replacement keep-alive socket (see
+ *  api-tracked-fetch.test.ts). That stray connection races the next test's waitForNextConnection
+ *  and can make the following fetch fail with "fetch failed" without a fresh TCP accept. */
+async function settleServerAfterAbortTest() {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    for (const s of sockets) {
+      if (!s.destroyed) s.destroy();
+    }
+    if (sockets.every((s) => s.destroyed)) break;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  await new Promise((r) => setTimeout(r, 100));
+}
+
 const basePromise = listen(server).then((base) => {
   process.env.POLYGON_API_BASE = base; // read once, at the top of the module evaluation below
   return base;
@@ -99,9 +114,11 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
     "aborting fetchPolygonNews's own signal must terminate the REAL connection through " +
       "polygonGet -> polygonTrackedFetch -> the actual fetch() call"
   );
+  await settleServerAfterAbortTest();
 });
 
 test("fetchPolygonTickerDetails: aborting the caller's signal terminates the real underlying connection", async () => {
+  await settleServerAfterAbortTest();
   const { fetchPolygonTickerDetails } = await polygonLargoPromise;
   const sinceCount = sockets.length;
 
