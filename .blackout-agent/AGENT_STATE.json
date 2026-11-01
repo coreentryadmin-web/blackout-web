@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T04:37:52.181Z",
+  "updated_at": "2026-11-01T05:37:33.690Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "60ca3acbff4a54e0c8a89449d901699acfe48831",
+    "last_main_sha": "9f4a1ca6ef49e66ca147bf27e24070ea0900b59c",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T02:37:12.052Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T02:37:15.180Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T05:55:43.182Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-25T05:55:46.748Z",
       "type": "context_sync",
@@ -1271,28 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T05:37:25.133Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T05:37:29.455Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T05:37:33.690Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 7146,
-      "title": "fix(market): earnings-calendar CSV parse drops rows with a comma in company name",
-      "branch": "fix/earnings-calendar-csv-quoted-fields",
+      "number": 7157,
+      "title": "docs(swing-journal): log weekend sync + parallel-lane swing fixes verified",
+      "branch": "docs/swing-journal-weekend-sync-2026-11-01",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T05:34:31Z"
+    },
+    {
+      "number": 7156,
+      "title": "fix: guard Vector GEX heatmap live-tick force-refetch against DTE-horizon race",
+      "branch": "fix/vector-gex-heatmap-live-tick-horizon-race",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T04:35:39Z"
-    },
-    {
-      "number": 7145,
-      "title": "fix(helix): ContractDrilldownDrawer stale-fetch race could show one contract's data under another's header",
-      "branch": "fix/round231-sweep",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-11-01T04:26:40Z"
+      "updated_at": "2026-11-01T05:30:12Z"
     },
     {
       "number": 5547,
