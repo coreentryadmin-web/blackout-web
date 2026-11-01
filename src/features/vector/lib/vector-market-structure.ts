@@ -61,7 +61,19 @@ export function labelPivots(bars: readonly StructureBar[], k: number): LabeledPi
       if (prevHigh != null) p.label = p.price > prevHigh ? "HH" : "LH";
       prevHigh = p.price;
     } else {
-      if (prevLow != null) p.label = p.price > prevLow ? "HL" : "LL";
+      // Mirror of the high branch above: equal counts as HL (no LOWER low was made), not LL.
+      // The high branch already gets this right (`price > prevHigh ? "HH" : "LH"` — an equal
+      // high falls into the ELSE and is labelled LH, "no higher high was made", per this file's
+      // own header comment: "equal counts as LH ... Pivot LOWS mirror: HL / LL"). The low branch
+      // used to test the WRONG direction (`price > prevLow ? "HL" : "LL"`), so an equal low fell
+      // into the ELSE and was labelled LL — asserting a lower low was made when the pivot only
+      // matched the prior one exactly (e.g. a double bottom at the same support level). That
+      // inverts the structural read (LL is the bearish-continuation label) and flows straight
+      // into vector-structure-markers.ts, which colors HL/HH green (UP_COLOR) and LH/LL red
+      // (DOWN_COLOR) — a flat double-bottom pivot painted as a fresh lower low instead of intact
+      // support. Testing the LOWER-is-worse direction directly (`price < prevLow ? "LL" : "HL"`)
+      // puts the equal case on the HL side, matching the mirror the header already documents.
+      if (prevLow != null) p.label = p.price < prevLow ? "LL" : "HL";
       prevLow = p.price;
     }
   }
