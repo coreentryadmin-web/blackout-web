@@ -2686,9 +2686,30 @@ export function lessonsSection(
       // this was the one branch with zero gating at all. A mechanically-correct exit (the ladder
       // fired at its programmed level) is not the same claim as "this was a good outcome" — only
       // say so when the capture was NOT already flagged as weak.
+      //
+      // BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro PANW:67): both phrasings below
+      // STILL unconditionally asserted a mechanical ladder/target-rail exit actually fired, for
+      // every "target"/"ratchet" close regardless of capture quality — but `closedReason==="target"`
+      // (closedReasonFromRow, closed-plays.ts) is derived purely from the SIGN of realized_pnl_pct,
+      // with NO reference to whether the single scale-out trim rung (+100% premium gain,
+      // SWING_SCALE_OUT_POLICY) ever actually armed. A manual close, a time-stop, or a thesis-break
+      // exit taken while still green all land on "target" identically to a genuine ladder exit.
+      // `trimEnforcedBeforeClose` is the one frozen-at-grade-time fact that distinguishes them (see
+      // its own doc comment, TerminalPlay/types.ts). Live repro: PANW:67 closed +10.03% off a peak
+      // of only +96.2% — the premium never crossed the ladder's own +100% trigger, so the single
+      // trim rung could never have armed — with `trimEnforcedBeforeClose: false` on the SAME
+      // record, yet this section still said "the ladder did its job" (weakCapture path: "Exit
+      // mechanism fired correctly"). Same discipline as the capture-based gating just above — only
+      // assert the mechanical claim when the frozen fact actually confirms it; otherwise degrade to
+      // an honest, non-mechanistic phrasing that still reports the real outcome.
+      const mechanismConfirmed = play.trimEnforcedBeforeClose === true;
       const weakCapture =
         outcome?.kind === "round_trip" || (outcome?.kind === "capture" && outcome.capturePct < 35);
-      if (weakCapture) {
+      if (!mechanismConfirmed) {
+        lines.push(
+          "Closed positive, but the scale-out ladder's own +100% trigger is not confirmed to have fired — review how this actually exited (manual close, time-stop, or thesis-break) before crediting the mechanism.",
+        );
+      } else if (weakCapture) {
         lines.push(
           "Exit mechanism fired correctly, but the ladder banked little of the peak — see MFE capture above; review trim timing, not the mechanism.",
         );

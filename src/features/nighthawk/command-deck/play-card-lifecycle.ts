@@ -311,7 +311,23 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
   }
   if (play.status === "SKIP") return null;
   if (play.status === "CLOSED") {
-    if (play.closedReason === "target") return { label: "TARGET", tone: "closed" };
+    // BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro PANW:67): `closedReason==="target"`
+    // is derived purely from the SIGN of realized_pnl_pct (closedReasonFromRow, closed-plays.ts) —
+    // it has NO reference to whether the single scale-out trim rung (+100% premium gain,
+    // SWING_SCALE_OUT_POLICY) ever actually armed. A manual close, a time-stop, or a thesis-break
+    // exit taken while still green all land on "target" identically to a genuine ladder/target-rail
+    // exit. `trimEnforcedBeforeClose` is the one frozen-at-grade-time fact that actually
+    // distinguishes them (see its own doc comment, types.ts) — PANW:67 closed +10.03% off a peak of
+    // only +96.2% (never crossed the ladder's own +100% trigger) with `trimEnforcedBeforeClose:
+    // false` on the same record, yet this branch unconditionally rendered "TARGET" regardless.
+    // Only cite the mechanical label when the frozen fact confirms it; otherwise fall through to
+    // the generic CLOSED pill (`playStatusDisplay`) rather than claim a ladder exit that may never
+    // have happened — same discipline the 2026-09-18 CRWD fix already established just above for
+    // the OPEN-bucket TRIM badge (only cite the ladder trigger_pct when evidence confirms it's the
+    // actual source).
+    if (play.closedReason === "target") {
+      return play.trimEnforcedBeforeClose === true ? { label: "TARGET", tone: "closed" } : null;
+    }
     if (play.closedReason === "stopped" || play.closedReason === "stop") {
       return { label: "STOPPED", tone: "closed" };
     }

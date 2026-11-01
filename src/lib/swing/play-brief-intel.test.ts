@@ -2101,6 +2101,9 @@ test("lessonsSection: omits the 'Strong exit discipline' capture verdict when Tr
     mfeCapturePct: 85.7,
     closedReason: "target",
     archetype: "SECTOR_ROTATION",
+    // Confirmed ladder exit — isolates this test's dedup assertion from the separate
+    // mechanism-confirmed gate added 2026-11-01 (its own test above).
+    trimEnforcedBeforeClose: true,
   });
 
   const withoutSuppression = lessonsSection(play, false, false, false, false);
@@ -2132,6 +2135,9 @@ test("lessonsSection: omits the bare 'Exit: **{reason}**' restatement when Trade
     exitPnlPct: 36,
     mfeCapturePct: 90,
     closedReason: "target",
+    // Confirmed ladder exit — isolates this test's dedup assertion from the separate
+    // mechanism-confirmed gate added 2026-11-01 (its own test above).
+    trimEnforcedBeforeClose: true,
   });
   const withoutSuppression = lessonsSection(targetPlay, false, false, false, false, false);
   assert.ok(withoutSuppression);
@@ -2331,6 +2337,9 @@ test("lessonsSection: Archetype tag uses the canonical humanized label, not the 
 // right next to it). A mechanically-correct exit is not the same claim as "this was a good
 // outcome"; the line must not praise a giveback.
 test("lessonsSection: does not claim 'did its job' for a target/ratchet exit that gave back most of its peak", () => {
+  // Both fixtures below set trimEnforcedBeforeClose: true — a genuinely confirmed ladder exit —
+  // so this test isolates the pre-existing capture-based gating (weak vs strong MFE capture) from
+  // the separate mechanism-confirmed gate added 2026-11-01 (its own test below).
   const weakCapturePlay = fixturePlay({
     status: "CLOSED",
     peak: 203.8,
@@ -2338,6 +2347,7 @@ test("lessonsSection: does not claim 'did its job' for a target/ratchet exit tha
     mfeCapturePct: 24.8,
     closedReason: "target",
     archetype: "SECTOR_ROTATION",
+    trimEnforcedBeforeClose: true,
   });
   const section = lessonsSection(weakCapturePlay, false, false, false, false);
   assert.ok(section);
@@ -2353,10 +2363,46 @@ test("lessonsSection: does not claim 'did its job' for a target/ratchet exit tha
     mfeCapturePct: 91.7,
     closedReason: "target",
     archetype: "SECTOR_ROTATION",
+    trimEnforcedBeforeClose: true,
   });
   const strongSection = lessonsSection(strongCapturePlay, false, false, false, false);
   assert.ok(strongSection);
   assert.match(strongSection!.body, /did its job/i);
+});
+
+test("lessonsSection: a 'target' close with trimEnforcedBeforeClose false/null never claims the ladder/mechanism fired (Ask Largo mandate, 2026-11-01, live repro PANW:67)", () => {
+  // Live repro shape: peak +96.2% never crossed the ladder's own +100% trigger, so the single
+  // trim rung could never have armed — exactly what trimEnforcedBeforeClose:false records.
+  // closedReasonFromRow still labels this "target" purely off the positive P&L sign.
+  const unconfirmedFalse = fixturePlay({
+    status: "CLOSED",
+    peak: 96.2,
+    exitPnlPct: 10.03,
+    closedReason: "target",
+    archetype: "SECTOR_ROTATION",
+    trimEnforcedBeforeClose: false,
+  });
+  const falseSection = lessonsSection(unconfirmedFalse, false, false, false, false);
+  assert.ok(falseSection);
+  assert.doesNotMatch(falseSection!.body, /did its job/i);
+  assert.doesNotMatch(falseSection!.body, /exit mechanism fired correctly/i);
+  assert.match(falseSection!.body, /not confirmed to have fired/i);
+
+  // Rows graded before this field existed (null/absent) must NOT be treated as confirmed either —
+  // honest absence, never fabricated confirmation.
+  const unconfirmedNull = fixturePlay({
+    status: "CLOSED",
+    peak: 96.2,
+    exitPnlPct: 10.03,
+    closedReason: "target",
+    archetype: "SECTOR_ROTATION",
+    trimEnforcedBeforeClose: null,
+  });
+  const nullSection = lessonsSection(unconfirmedNull, false, false, false, false);
+  assert.ok(nullSection);
+  assert.doesNotMatch(nullSection!.body, /did its job/i);
+  assert.doesNotMatch(nullSection!.body, /exit mechanism fired correctly/i);
+  assert.match(nullSection!.body, /not confirmed to have fired/i);
 });
 
 function fixtureVec(overrides: Partial<VectorFullState> = {}): VectorFullState {

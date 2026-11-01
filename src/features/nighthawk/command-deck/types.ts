@@ -171,6 +171,24 @@ export interface TerminalPlay {
    *  invalidation" closed-play coaching (play-brief-narrative-coaching.ts's `closedCoaching`)
    *  needs to actually answer that question instead of just prompting it. */
   invalidationUnderlyingPx?: number | null;
+  /** CLOSED SWING only: whether a real scale-out trim was ENFORCED on this leg at any point before
+   *  it closed (closed-plays.ts's `trimEnforcedBeforeCloseFromScaleOutGrade`, frozen at grade time
+   *  into `scale_out_grade`). `HorizonDeckSource` has carried this since 2026-10-07 (it already
+   *  gates `exitPolicy.trim_levels[].fired` above, adapters.ts's `terminalPlayFromHorizon`), but
+   *  the raw boolean itself was never copied onto the TerminalPlay this field lives on — so every
+   *  consumer that needs the FACT, not just its one `exitPolicy` side-effect, read `undefined`
+   *  forever. That silently broke the one thing this field exists to prevent:
+   *  `closedReasonFromRow` (closed-plays.ts) derives `closedReason==="target"` purely from the
+   *  SIGN of `realized_pnl_pct` — a manual close, time-stop, or thesis-break exit while still green
+   *  lands on "target" identically to a real ladder exit — and `swingActionDisplay`'s TARGET pill
+   *  plus `lessonsSection`'s "Mechanical exit fired as designed" narrative (play-brief-intel.ts)
+   *  both asserted the mechanical claim unconditionally for every "target" close, with no way to
+   *  check it even existed to gate on. Live repro (PANW:67, 2026-11-01): peak +96.2% never crossed
+   *  the ladder's own +100% trigger, `trimEnforcedBeforeClose:false` on the SAME record, exit
+   *  +10.03% — yet the brief's headline/pill/Lessons section all read "TARGET" / "the ladder did
+   *  its job". Null/absent = not recorded (rows graded before this field existed), never treated
+   *  as "no trim happened" — same honest-absence rule `SwingClosedDeckSource`'s own field states. */
+  trimEnforcedBeforeClose?: boolean | null;
   peak?: number | null;
   trough?: number | null;
   /** Closed: % of peak MFE captured at exit. */

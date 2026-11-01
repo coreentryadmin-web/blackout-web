@@ -2379,6 +2379,16 @@ test("horizon adapter: CLOSED swing row's trim ladder honors trimEnforcedBeforeC
     trimEnforcedBeforeClose: true,
   });
   assert.equal(closedActuallyTrimmed.exitPolicy!.trim_levels[0]!.fired, true);
+
+  // BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro PANW:67): the raw fact itself was
+  // read above (to compute exitPolicy) but never forwarded onto the returned TerminalPlay, so
+  // every downstream consumer that needs the FACT — not just this one exitPolicy side-effect —
+  // read `undefined` regardless of what was actually recorded (swingActionDisplay's CLOSED/target
+  // pill and lessonsSection's "Mechanical exit fired as designed" narrative both silently could
+  // never gate on it). Assert the field itself round-trips honestly in all three states.
+  assert.equal(closedNeverTrimmed.trimEnforcedBeforeClose, false);
+  assert.equal(closedPredatesField.trimEnforcedBeforeClose, null);
+  assert.equal(closedActuallyTrimmed.trimEnforcedBeforeClose, true);
 });
 
 test("0DTE adapter: closed row surfaces mfeCapturePct and frozen runner profile", () => {
