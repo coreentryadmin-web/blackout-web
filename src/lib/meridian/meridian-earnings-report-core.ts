@@ -53,7 +53,19 @@ function analystLean(revisions: AnalystRow[]): { lean: MeridianEarningsReportSig
   let down = 0;
   for (const r of revisions) {
     const a = (r.action ?? "").toLowerCase();
-    if (a === "upgrade" || a === "target") up += 1;
+    // `"target"` is NOT a direction — see shapeAnalyst (meridian-catalyst-enrich.ts): it is the
+    // FALLBACK classification for a headline that mentions "price target"/"pt " but matched none
+    // of the raise/lower/upgrade/downgrade keywords checked first. A real price-target RAISE
+    // ("Firm Raises Price Target to $150") already matches the upgrade branch there and never
+    // reaches "target"; a real LOWER matches downgrade and never reaches it either. So every row
+    // that actually arrives here as `action === "target"` is, by construction, a headline whose
+    // direction this classifier could not determine — e.g. "Firm Sets $100 Price Target" or
+    // "Firm Maintains $100 Price Target" (which also matches "maintain" one branch later, but the
+    // "price target" check runs first). Counting it toward `up` treated "a price target was
+    // mentioned" as equivalent to "the price target was RAISED" (bullish), inflating the
+    // Street/analyst pillar's score on every earnings report with an ambiguous target headline —
+    // this pillar carries weight 1 into the composite `score` that drives `verdict`/`confidence`.
+    if (a === "upgrade") up += 1;
     else if (a === "downgrade") down += 1;
   }
   if (up > down && up > 0) {
