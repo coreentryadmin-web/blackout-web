@@ -23,10 +23,10 @@ import {
 } from "@/features/meridian/lib/meridian-desk-prefs";
 import {
   filterMeridianTimelineItems,
+  findEarningsTimelineItemId,
   isTickerLikeQuery,
   normalizeMeridianSearchQuery,
 } from "@/features/meridian/lib/meridian-search-core";
-import { findEarningsTimelineItemId } from "@/features/meridian/lib/meridian-timeline";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { MeridianEventDetailPanel } from "./MeridianEventDetailPanel";
 import { MeridianHero } from "./MeridianHero";
