@@ -12,6 +12,7 @@ import {
   ruleBadge,
   executionRouteKey,
   fmtIv,
+  fmtAskPct,
   ALERT_RULE_WORD_KEYS,
   sortFlows,
 } from "./helix-flow-format";
@@ -228,6 +229,35 @@ test("fmtIv withholds rather than inventing a value it does not have", () => {
   assert.equal(fmtIv(-1), "—");
   assert.equal(fmtIv(Number.NaN), "—");
   assert.equal(fmtIv(Number.POSITIVE_INFINITY), "—");
+});
+
+/**
+ * BUG FIX (round 295): `fmtAskPct` treated a genuine 0% ask-side print as absent data, the same
+ * absence-vs-zero collapse this file's own `fmtIv`/sector-callPct/directionalPremium comments
+ * describe elsewhere in this lane. `ask_pct` is a 0-100 SHARE (helix-signal-detection.ts's
+ * `MinimalFlow.ask_pct` doc: "Ask-side share of premium (0-100)"), and 0% is the maximally
+ * seller-initiated reading, not a missing one — `aggressorSide`/`executionQualityBucket`
+ * (helix-flow-aggression.ts / helix-execution-quality.ts) both correctly read `askPct <= 40` as
+ * "sold" at `askPct === 0`, and the tape's own Ask% cell (HelixFlowTable.tsx) computes its colour
+ * from `askPctTone(flow.ask_pct)` — which uses that same correct 0-is-meaningful bucketing — right
+ * next to the text this function renders for the identical value. So a 0% print painted its cell
+ * RED (passive/sold) while the text inside that same red cell read "—", the exact "no data" glyph
+ * every other truly-absent cell on the row uses. A member cannot tell "this print was 0% at ask"
+ * from "we have no ask-side reading for this print" — they render identically apart from a colour
+ * most members have never been told to interpret as a stand-in for the number itself.
+ */
+test("fmtAskPct renders a genuine 0% print, not absence", () => {
+  assert.equal(fmtAskPct(0), "0%");
+  assert.equal(fmtAskPct(1), "1%");
+  assert.equal(fmtAskPct(40), "40%");
+  assert.equal(fmtAskPct(100), "100%");
+});
+
+test("fmtAskPct still withholds for genuinely missing/invalid data", () => {
+  assert.equal(fmtAskPct(null), "—");
+  assert.equal(fmtAskPct(undefined), "—");
+  assert.equal(fmtAskPct(Number.NaN), "—");
+  assert.equal(fmtAskPct(-5), "—"); // out of the field's documented 0-100 range — not a real share
 });
 
 test("ruleLabel still falls back to the raw rule text, unlike the panel", () => {
