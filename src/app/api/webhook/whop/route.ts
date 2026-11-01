@@ -34,6 +34,7 @@ import {
   buildCancellationNotificationBody,
   shouldNotifyCancellation,
 } from "@/lib/whop-cancellation-notify";
+import { extractMembershipAndEmail } from "@/lib/whop-webhook-identity";
 
 /**
  * Idempotency CLAIM: atomically mark a Whop event as "being processed" (Redis SET NX,
@@ -96,27 +97,6 @@ function getWhopWebhookClient() {
     apiKey: process.env.WHOP_API_KEY,
     webhookKey: process.env.WHOP_WEBHOOK_SECRET ?? null,
   });
-}
-
-function extractMembershipAndEmail(data: unknown): {
-  membershipId: string | null;
-  email: string | null;
-} {
-  const d = data as {
-    membership?: { id?: string } | string;
-    payment?: { membership?: { id?: string } | string; member?: { email?: string | null } };
-    user?: { email?: string | null };
-    member?: { email?: string | null };
-    // `Shared.Invoice` payloads (invoice.past_due, invoice.marked_uncollectible,
-    // invoice.voided, invoice.paid) carry the recipient at top-level `email_address`
-    // and have no `membership`/`user`/`member` field at all — every other branch
-    // above falls through to null on an invoice event without this.
-    email_address?: string | null;
-  };
-  const mRaw = d?.membership ?? d?.payment?.membership;
-  const membershipId = typeof mRaw === "string" ? mRaw : (mRaw?.id ?? null);
-  const email = d?.user?.email ?? d?.member?.email ?? d?.payment?.member?.email ?? d?.email_address ?? null;
-  return { membershipId, email };
 }
 
 async function syncEmailTier(email: string | null): Promise<void> {
@@ -376,15 +356,15 @@ export async function POST(req: NextRequest) {
       // premium even if Whop leaves a one-time ("completed") purchase in 'completed'. The reconcile cron
       // re-resolves the owner within the hour (now excluding the revoked id) → downgrade; we also attempt
       // an immediate re-sync if the owner's email is reachable in the payload.
-      const data = event.data as unknown as {
-        membership?: { id?: string } | string;
-        payment?: { membership?: { id?: string } | string; member?: { email?: string | null } };
-        user?: { email?: string | null };
-        member?: { email?: string | null };
-      };
-      const mRaw = data?.membership ?? data?.payment?.membership;
-      const membershipId = typeof mRaw === "string" ? mRaw : mRaw?.id;
-      const email = data?.user?.email ?? data?.member?.email ?? data?.payment?.member?.email ?? null;
+      //
+      // Uses the SHARED extractMembershipAndEmail helper (not a local re-implementation) because
+      // refund/dispute payloads nest the paying user's email one level deeper than the other event
+      // shapes this route handles (`payment.user.email`, not `user.email`/`member.email`/
+      // `payment.member.email` — Whop's own `.d.ts` shows `payment.member` on these two event types
+      // carries only `{id, phone}`, no email) — a prior hand-rolled copy here missed that path and
+      // `email` always came out null for every refund/dispute, silently skipping the immediate
+      // re-sync below (see whop-webhook-identity.ts header for the full trace).
+      const { membershipId, email } = extractMembershipAndEmail(event.data);
       if (membershipId) await markMembershipRevoked(membershipId);
       if (email) {
         const { updatedUserIds } = await syncWhopMembershipForEmail(email);
