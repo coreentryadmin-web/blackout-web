@@ -14,6 +14,7 @@ import {
 } from "./terminal-ladder.ts";
 import { PLAN_RULES } from "./plan.ts";
 import { buildResolvedExitPolicy } from "./strategy-version.ts";
+import { fmtPct } from "../fmt-money.ts";
 
 const TRIM_SCALE: TerminalPolicyInput = {
   policy: "trim_scale",
@@ -128,7 +129,11 @@ test("executable: long sells into the BID, not the mid", () => {
   const e = executableFill(2.4, 2.6, 2.0); // mid 2.5, bid 2.4
   assert.equal(e.mid, 2.5);
   assert.equal(e.fill, 2.4);
-  assert.equal(e.pnl_pct, 20); // (2.4-2.0)/2.0
+  // pnl_pct is now the RAW unrounded ratio (see the 2026-11-01 bug-fix test below) — IEEE-754
+  // division of this exact pair lands a hair off a clean 20 (19.999999999999996), which is why
+  // this asserts a tight tolerance rather than strict equality; the earlier strict `=== 20` only
+  // held because the function used to round internally.
+  assert.ok(Math.abs(e.pnl_pct! - 20) < 1e-9, `expected ~20, got ${e.pnl_pct}`); // (2.4-2.0)/2.0
 });
 
 test("executable: one-sided / no book → mid only, no fake fill", () => {
@@ -152,4 +157,43 @@ test("executable: crossed book is rejected (never a negative-spread fill)", () =
   const crossed = executableFill(2.7, 2.6, 2.0); // bid > ask
   assert.equal(crossed.mid, null);
   assert.equal(crossed.fill, null);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro QXO SWING positionId 2299):
+// `pnl_pct` used to be PRE-ROUNDED to 2dp-of-percent right here
+// (Math.round(((fill-entryPremium)/entryPremium)*10000)/100) before ANY caller ever formatted it
+// for display. adapters.ts's troughDisplay/peakDisplay compute the IDENTICAL kind of ratio with a
+// SINGLE round straight to 1dp; this pre-rounded value then got a SECOND round (also to 1dp) from
+// whichever renderer displayed it (`fmtPct` in the swing/LEAPS play-brief narrative, `toFixed(1)`
+// in the Command Deck's LEAPS PnlPanel). Two successive roundings of the same fact can disagree
+// with a single rounding of it whenever the first round lands exactly on the second round's tie
+// boundary — exactly what happened for entry $0.22 / bid $0.10: the raw ratio is -54.545...%,
+// which single-rounds to -54.5% (the Trough line's own math, adapters.ts), but pre-rounding to 2dp
+// first lands on the EXACT tie -54.55, which `fmtPct`'s ties-away-from-zero algorithm then pushes
+// to -54.6% — one tenth of a point off the mathematically identical fact, rendered a few lines
+// apart in the SAME play-brief markdown (play-brief.ts's "Trough" vs "Exec P&L" lines). Fixed by
+// not pre-rounding `pnl_pct` here (Largo Product Contract C9: round exactly once, at the final
+// display boundary) — `mid`/`fill` still round to the cent (a legitimate, DIFFERENT boundary: NBBO
+// premiums are penny-quoted), but `pnl_pct` is now the raw ratio, rounded only once by whatever
+// finally renders it.
+test("executable: pnl_pct is NOT pre-rounded — a single final round now agrees with a direct single-rounded computation of the IDENTICAL ratio (live repro QXO positionId 2299: entry $0.22, bid $0.10, ask $0.20)", () => {
+  const entryPremium = 0.22;
+  const bid = 0.10;
+  const ask = 0.20;
+  const e = executableFill(bid, ask, entryPremium);
+  assert.equal(e.fill, 0.10);
+  // The raw ratio, unrounded — NOT the old pre-rounded -54.55 (which sits exactly on fmtPct's tie
+  // boundary and is what produced the live -54.6% mismatch).
+  assert.ok(
+    Math.abs(e.pnl_pct! - ((0.10 - 0.22) / 0.22) * 100) < 1e-9,
+    `expected the raw unrounded ratio, got ${e.pnl_pct}`
+  );
+  assert.notEqual(e.pnl_pct, -54.55, "must not still be pre-rounded to the exact tie value");
+  // adapters.ts's troughDisplay/peakDisplay formula: a single round straight from the raw ratio.
+  const singleRoundedDirectly = Math.round(((bid / entryPremium - 1) * 100) * 10) / 10;
+  assert.equal(singleRoundedDirectly, -54.5, "sanity: this is the live Trough line's own number");
+  // The ONE remaining round (fmtPct, at the swing play-brief's display boundary) must now land on
+  // the SAME -54.5% the Trough line renders for the identical underlying fact — this is the exact
+  // live mismatch (Trough "-54.5%" vs Exec P&L "-54.6%") the bug report reproduced.
+  assert.equal(fmtPct(e.pnl_pct), "-54.5%");
 });
