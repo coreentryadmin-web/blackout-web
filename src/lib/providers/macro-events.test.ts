@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseUwEconomicCalendar } from "./macro-events";
+import { parseUwEconomicCalendar, etYmdPlusDays } from "./macro-events";
 
 test("parseUwEconomicCalendar labels FOMC minutes separately from decisions", () => {
   const events = parseUwEconomicCalendar([
@@ -44,4 +44,22 @@ test("parseUwEconomicCalendar keeps two DIFFERENT events on the same date — no
     { type: "economic", event: "NFIB Index of Small Business Optimism", time: "2026-10-13T06:00:00Z" },
   ]);
   assert.equal(events.length, 2);
+});
+
+// BUG FOUND 2026-11-01: `fetchUpcomingMacroEvents`/`fetchUpcomingMacroEventsLive` used to build a
+// UTC-MIDNIGHT `Date` for `today + daysAhead` and then re-format it through the ET-zone `Intl`
+// formatter. A UTC-midnight instant is always 19:00/20:00 the PREVIOUS day in America/New_York
+// (ET trails UTC year-round), so the re-formatted "end" of the window silently landed one
+// calendar day short — `fetchUpcomingMacroEvents(7)` resolved its window to `[today, today+6]`,
+// not `[today, today+7]`, dropping any event dated exactly `daysAhead` days out.
+test("etYmdPlusDays adds calendar days without rolling back a day through the ET timezone (regression)", () => {
+  // The exact failure reproduced from the OLD code: for ET "today" 2026-06-15 + 7 days, the old
+  // `Date.UTC(...)` → `todayEtYmd(...)` pair returned "2026-06-21" instead of "2026-06-22".
+  assert.equal(etYmdPlusDays("2026-06-15", 7), "2026-06-22");
+  // DST-boundary case: America/New_York springs forward 2026-03-08 (a 23-hour day) — the old
+  // "avoid DST errors" comment claimed to handle exactly this, but the bug fired regardless of
+  // DST (pure UTC-offset direction, not an offset-change artifact).
+  assert.equal(etYmdPlusDays("2026-03-07", 1), "2026-03-08");
+  // Month and year rollover.
+  assert.equal(etYmdPlusDays("2026-12-30", 3), "2027-01-02");
 });
