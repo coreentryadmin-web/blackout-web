@@ -94,4 +94,33 @@ describe("2-hour post cadence", () => {
     assert.equal(isPostWindow(saturday), true);
     assert.equal(selectPostType(saturday), "weekend_desk");
   });
+
+  it("DST: weekend post window shifts with EST the same way weekdays do", () => {
+    // The EventBridge cron fires the SAME fixed UTC times on weekends as on weekdays (see the
+    // NOTE at the top of x-content-schedule.ts). Under EDT those UTC fires land on ET 10/14 —
+    // the intended weekend post slots. Under EST (winter), the SAME UTC fires land ONE HOUR
+    // EARLIER in ET, at 9/13 — exactly mirroring the weekday EDT->EST shift this file already
+    // handles via isDST(). Before this fix, WEEKEND_POST_HOURS was a single fixed [10, 14], so
+    // every real winter-weekend cron firing (ET 9/13) missed it and isPostWindow() returned
+    // false at every one of them — weekend_desk posts silently stopped firing from the November
+    // DST changeover through the March one, resuming on their own once DST started again.
+    const mkET = (hour: number, minute = 0) => {
+      // January 10, 2026 is a Saturday. During EST: UTC hour = ET hour + 5.
+      const utcHour = hour + 5;
+      const utcDate = new Date(Date.UTC(2026, 0, 10, utcHour, minute, 0));
+      const etString = utcDate.toLocaleString("en-US", { timeZone: "America/New_York" });
+      return new Date(etString);
+    };
+
+    // The real EST-shifted weekend post hours (ET 9 and 13, mirroring EDT's 10/14).
+    assert.equal(isPostWindow(mkET(9)), true);
+    assert.equal(selectPostType(mkET(9)), "weekend_desk");
+    assert.equal(isPostWindow(mkET(13)), true);
+    assert.equal(selectPostType(mkET(13)), "weekend_desk");
+
+    // The EDT-only hours (10, 14) must NOT fire a weekend post once it's actually EST — those
+    // are not real cron-firing times in winter, and matching them would double the cadence.
+    assert.equal(isPostWindow(mkET(10)), false);
+    assert.equal(isPostWindow(mkET(14)), false);
+  });
 });
