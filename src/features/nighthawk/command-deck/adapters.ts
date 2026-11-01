@@ -1192,6 +1192,13 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     flagUnderlyingPx: flagPx,
     entryTriggerUnderlyingPx: fin(src.entryTriggerUnderlyingPx),
     invalidationUnderlyingPx: fin(src.invalidationUnderlyingPx),
+    // BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro PANW:67): this was read above
+    // (`src.trimEnforcedBeforeClose === true`, the `exitPolicy` computation a few lines up) but
+    // never actually forwarded onto the returned TerminalPlay — so every downstream consumer that
+    // needs the raw fact itself (not just its one `exitPolicy.trim_levels[].fired` side-effect)
+    // read `undefined` regardless of what the DB actually recorded. See TerminalPlay's own field
+    // doc comment (types.ts) for the full live repro this silently broke.
+    trimEnforcedBeforeClose: src.trimEnforcedBeforeClose ?? null,
     peak: peakDisplay,
     trough: troughDisplay,
     // FINDINGS 2026-08-06 (SEV-3, greeks never reached the desk): this was a hardcoded `null`, so the

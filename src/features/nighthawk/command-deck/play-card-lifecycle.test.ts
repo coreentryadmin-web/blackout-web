@@ -637,11 +637,48 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
     );
   });
 
-  it("CLOSED swing maps closedReason to TARGET/STOPPED", () => {
+  it("CLOSED swing maps closedReason to TARGET/STOPPED only when trimEnforcedBeforeClose confirms it (Ask Largo mandate, 2026-11-01, live repro PANW:67)", () => {
+    // closedReasonFromRow (closed-plays.ts) derives "target" purely from the SIGN of
+    // realized_pnl_pct — a manual close, time-stop, or thesis-break exit taken while still green
+    // lands here identically to a genuine ladder/target-rail exit. Only trimEnforcedBeforeClose
+    // (frozen at grade time) tells the two apart, so the TARGET pill must gate on it rather than
+    // on closedReason alone.
     assert.deepEqual(
-      swingActionDisplay(base({ horizon: "SWING", status: "CLOSED", closedReason: "target" })),
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "CLOSED",
+          closedReason: "target",
+          trimEnforcedBeforeClose: true,
+        }),
+      ),
       { label: "TARGET", tone: "closed" },
     );
+    // Live repro shape: closed positive (closedReason "target"), but the ladder's own +100%
+    // trigger never armed (trimEnforcedBeforeClose: false) — falls through to the honest generic
+    // CLOSED pill (playStatusDisplay) rather than claim a mechanical exit that never happened.
+    assert.equal(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "CLOSED",
+          closedReason: "target",
+          trimEnforcedBeforeClose: false,
+        }),
+      ),
+      null,
+    );
+    // Rows graded before this field existed (null/absent) must NOT be treated as confirmed either
+    // — honest absence, never fabricated confirmation.
+    assert.equal(
+      swingActionDisplay(
+        base({ horizon: "SWING", status: "CLOSED", closedReason: "target" }),
+      ),
+      null,
+    );
+    // "stopped" is untouched by this gate — out of scope for this fix (see its own hedged
+    // "Stop fired — check if..." coaching, which never asserts a mechanism, unlike "target"'s old
+    // unconditional "the ladder did its job" claim).
     assert.deepEqual(
       swingActionDisplay(base({ horizon: "SWING", status: "CLOSED", closedReason: "stopped" })),
       { label: "STOPPED", tone: "closed" },
