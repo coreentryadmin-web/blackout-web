@@ -17,6 +17,7 @@ import {
   comparePath,
   deskPath,
   loadCompareSeedsBounded,
+  pruneStaleTickerEntries,
   type VectorComparePreset,
 } from "@/features/vector/lib/vector-compare";
 import type { VectorClientSeed } from "@/features/vector/lib/vector-client-seed";
@@ -418,17 +419,18 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
 
   useEffect(() => {
     const active = new Set(seeds.map((s) => s.ticker));
-    setPlayByTicker((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const key of Object.keys(next)) {
-        if (!active.has(key)) {
-          delete next[key];
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
+    setPlayByTicker((prev) => pruneStaleTickerEntries(prev, active));
+  }, [seeds]);
+
+  // STALENESS (see pruneStaleTickerEntries's own doc comment): metaByTicker drives the compare
+  // summary footer's long-γ/short-γ chip, and `removeTicker`'s own explicit delete only covers
+  // removing ONE pane via its ✕ — it never ran when `applyPreset` swapped the whole seeds array at
+  // once, so a ticker that left and later came back (e.g. switching presets back and forth) could
+  // briefly render a real but outdated regime posture left over from its previous mount. Mirrors
+  // the playByTicker cleanup immediately above, which already had this.
+  useEffect(() => {
+    const active = new Set(seeds.map((s) => s.ticker));
+    setMetaByTicker((prev) => pruneStaleTickerEntries(prev, active));
   }, [seeds]);
 
   const focusedPlaySnapshot =
