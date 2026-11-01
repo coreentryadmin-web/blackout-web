@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T15:18:10.008Z",
+  "updated_at": "2026-11-01T15:37:29.783Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "dea6c2f010ed7bf2e5278eb5db522aec6dca6db6",
+    "last_main_sha": "2ed75cec4f9bd10dbb6971162f58a57f6fcef47d",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T10:07:37.834Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T10:07:41.168Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-25T10:37:33.827Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-25T10:37:39.745Z",
       "type": "context_sync",
@@ -1271,18 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T15:37:20.827Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T15:37:25.539Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T15:37:29.783Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 7243,
-      "title": "fix(helix): context header PCR was put-share-of-total, not put/call ratio",
-      "branch": "fix/helix-context-header-pcr-formula",
+      "number": 7245,
+      "title": "fix(meridian): earnings table sort toggle moved ungraded prints to the top, not the bottom",
+      "branch": "fix/meridian-audit-round293",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T15:17:39Z"
+      "updated_at": "2026-11-01T15:27:38Z"
     },
     {
       "number": 5547,
