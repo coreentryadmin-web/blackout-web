@@ -11,7 +11,18 @@ export type LitDarkRatio = {
 
 const LIT_DARK_MAX_AGE_MS = 120_000;
 
-/** Age (ms) of the freshest print in a dark-pool snapshot, or null if there is none to date. */
+/**
+ * Age (ms) of the freshest print in a dark-pool snapshot, or null if there is none to date.
+ *
+ * Clamped at zero: a print's `executed_at` is UW-side-stamped and read against this process's own
+ * clock, so ordinary clock skew (NTP jitter, a container clock that hasn't fully converged -- the
+ * exact failure mode `coaching-alert-age.ts`'s module doc documents for this same codebase) can
+ * make `now - latest` negative. Un-clamped, that negative age flows straight into
+ * `computeLitDarkRatio`'s `updated_at` (via `now - resolvedAgeMs`), producing a FUTURE timestamp --
+ * the same bug shape already fixed in `FlowFeed.tsx`, `GexHeatmap.tsx`, `meridian-viz.tsx`, and in
+ * this file's own 2026-09-05 fix for the raw WS-store freshness checks. Treat a future-dated print
+ * as "as fresh as possible" (age 0), never negative.
+ */
 function latestPrintAgeMs(darkPool: DarkPoolSnapshot | null | undefined, now: number): number | null {
   if (!darkPool?.prints?.length) return null;
   let latest = 0;
@@ -19,7 +30,7 @@ function latestPrintAgeMs(darkPool: DarkPoolSnapshot | null | undefined, now: nu
     const t = Date.parse(p.executed_at);
     if (Number.isFinite(t) && t > latest) latest = t;
   }
-  return latest > 0 ? now - latest : null;
+  return latest > 0 ? Math.max(0, now - latest) : null;
 }
 
 /**

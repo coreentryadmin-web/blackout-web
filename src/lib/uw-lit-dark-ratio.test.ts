@@ -130,3 +130,52 @@ test("computeLitDarkRatio: updated_at reflects the resolved snapshot's own age, 
     Object.assign(litTradesStore, savedLit);
   }
 });
+
+test("computeLitDarkRatio: a future-dated print (clock skew) must not push updated_at into the future", () => {
+  // Root cause: latestPrintAgeMs() computed `now - latest` with no floor, so a print whose
+  // executed_at is ahead of this process's clock (UW-side clock skew, or a container clock that
+  // hasn't fully converged -- the exact failure mode coaching-alert-age.ts's module doc documents
+  // for this same codebase) produces a NEGATIVE resolvedAgeMs. computeLitDarkRatio then derives
+  // `updated_at` as `now - resolvedAgeMs`, which for a negative resolvedAgeMs lands AFTER `now` --
+  // a future timestamp leaking into a field every downstream "time ago" renderer assumes is <= now
+  // (same bug shape already fixed in FlowFeed.tsx, GexHeatmap.tsx, meridian-viz.tsx, and in this
+  // exact file's own 2026-09-05 future-timestamp fix for the raw WS stores -- this is the same gap
+  // reopened for the later caller-resolved-snapshot path).
+  const savedDark = { ...darkPoolStore };
+  const savedLit = { ...litTradesStore };
+  try {
+    darkPoolStore.data = null;
+    darkPoolStore.updatedAt = 0;
+    litTradesStore.rows = [];
+    litTradesStore.updatedAt = 0;
+
+    const now = Date.now();
+    const futureSkewMs = 30_000; // print stamped 30s ahead of this process's clock
+    const resolved: DarkPoolSnapshot = {
+      prints: [
+        {
+          strike: 255,
+          premium: 1_000_000,
+          side: "unknown",
+          executed_at: new Date(now + futureSkewMs).toISOString(),
+        },
+      ],
+      total_premium: 1_000_000,
+      call_premium: 0,
+      put_premium: 0,
+      bias: "neutral",
+      pcr: null,
+      detail: "1 print(s) | $1.00M",
+    };
+
+    const ratio = computeLitDarkRatio(resolved);
+    assert.notEqual(ratio, null, "a future-dated-but-recent print must still read as fresh, not unavailable");
+    assert.ok(
+      (ratio?.updated_at ?? 0) <= Date.now(),
+      `updated_at (${ratio?.updated_at}) must never be in the future (now=${Date.now()})`
+    );
+  } finally {
+    Object.assign(darkPoolStore, savedDark);
+    Object.assign(litTradesStore, savedLit);
+  }
+});
