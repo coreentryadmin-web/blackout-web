@@ -225,20 +225,7 @@ export type UwEndpointSection = {
   endpoints: UwEndpoint[];
 };
 
-export const UW_DOCS_BASE = "https://api.unusualwhales.com";
-export const UW_DOCS_URL = "https://api.unusualwhales.com/docs";
-export const UW_OPENAPI_URL = "https://api.unusualwhales.com/api/openapi";
-
 export const UW_REST_SECTIONS: UwEndpointSection[] = ${JSON.stringify(sections, null, 2)};
-
-export const UW_REST_TOC = UW_REST_SECTIONS.map((s) => ({
-  id: s.id,
-  title: s.title,
-  count: s.endpoints.length,
-}));
-
-export const UW_ENDPOINT_TOTAL = ${total};
-export const UW_BLACKOUT_ENDPOINT_COUNT = ${blackoutCount};
 `;
 
 const target = join(__dirname, "..", "src", "lib", "uw-docs-catalog.ts");
