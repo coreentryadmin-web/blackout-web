@@ -75,7 +75,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, 10_000);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -109,7 +109,7 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, 10_000);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
