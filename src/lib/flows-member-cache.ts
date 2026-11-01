@@ -72,7 +72,26 @@ export async function buildFlowsMemberPayload(q: FlowsMemberQueryWithCursor): Pr
 // (polygon-options-gex.ts's `lastGoodHeatmapLocal`, unusual-whales.ts's
 // `lastGoodFlow0dteByTicker`, public-gex-snapshot.ts's `lastGoodKey(ticker)`), none of which
 // collapse distinct queries onto one slot.
+//
+// UNLIKE those two cited siblings, this key is NOT bounded by a fixed ticker universe —
+// `flowsMemberCacheKey` folds in caller-supplied `min_premium` (an arbitrary float from the
+// `/api/market/flows?min_premium=` query param) and a free-text `ticker` (any string a member
+// types into the HELIX tape filter, not clamped to the known universe), alongside `since_hours`/
+// `max_dte`/`pageLimit`. Every distinct combination a member has ever queried gets its own
+// permanent entry here with no TTL and no cap — the exact "unbounded module-level cache without
+// eviction" shape already fixed at every OTHER *Cache/lastGood* Map in this codebase (e.g.
+// polygon-options-gex.ts's `positioningCache`/`ivTermCache`/`realizedVolCache`, this file's own
+// sibling `gex-heatmap` route maps), all of which cap via `if (map.size > 200) map.clear()`. This
+// one was missed when the round-190 fix moved it from one shared slot to a per-key map — fixing
+// the cross-query bleed introduced an unbounded-growth leak in its place. Apply the same
+// established cap here.
+export const MAX_LAST_GOOD_FLOWS_KEYS = 200;
 const lastGoodFlowsPayloadByKey = new Map<string, FlowsMemberPayload>();
+
+function setLastGoodFlowsPayload(cacheKey: string, payload: FlowsMemberPayload): void {
+  if (lastGoodFlowsPayloadByKey.size >= MAX_LAST_GOOD_FLOWS_KEYS) lastGoodFlowsPayloadByKey.clear();
+  lastGoodFlowsPayloadByKey.set(cacheKey, payload);
+}
 
 export function emptyFlowsMemberPayload(): FlowsMemberPayload {
   return {
@@ -117,7 +136,7 @@ export async function readFlowsMemberCached(q: FlowsMemberQueryWithCursor): Prom
   }
 
   const payload = await withServerCache(cacheKey, ttlMs, () => buildFlowsMemberPayload(q), opts);
-  if (payload.count > 0) lastGoodFlowsPayloadByKey.set(cacheKey, payload);
+  if (payload.count > 0) setLastGoodFlowsPayload(cacheKey, payload);
   return payload;
 }
 
