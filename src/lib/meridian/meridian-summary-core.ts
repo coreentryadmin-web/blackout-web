@@ -29,7 +29,7 @@
  * desk knows; showing the split is the finding.
  */
 
-import { clamp, num, round } from "./meridian-viz-core";
+import { clamp, num, resolveSignalWeight, round } from "./meridian-viz-core";
 import { daysBetweenYmd } from "./meridian-event-expiry-core";
 
 /* ── probability primitives ───────────────────────────────────────────────────────── */
@@ -159,7 +159,15 @@ export function evidenceLean(
   const bullNames: Array<{ n: string; w: number }> = [];
   const bearNames: Array<{ n: string; w: number }> = [];
   for (const s of signals ?? []) {
-    const w = Math.abs(num(s?.weight) ?? 1) || 1;
+    // `resolveSignalWeight` (meridian-viz-core.ts), not a second inline reimplementation of the
+    // same fallback — see that function's own comment for the live regression this exact
+    // collapse-to-1 pattern already produced once (`haloFromSignals`/`dimensionRollup` understated
+    // the STRUCTURE dimension's weight by a third). `Math.abs(num(s?.weight) ?? 1) || 1` cannot
+    // tell "no weight given" (should default to 1) from "deliberately weighted zero" (should stay
+    // 0, so an informational-only pillar can carry a lean without swaying the tally) — both are
+    // real inputs `meridian-earnings-report-core.ts` produces (`weight: 2`/`1` for every scored
+    // pillar, `weight: 0` for the news/vector/insider informational pillars).
+    const w = resolveSignalWeight(s?.weight);
     const name = String(s?.label ?? s?.pillar ?? "").trim();
     if (s?.lean === "bullish") {
       bull += w;

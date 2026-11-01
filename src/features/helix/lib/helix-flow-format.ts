@@ -295,8 +295,20 @@ export function fmtOtm(pct: number | null | undefined): string {
   return `${pct.toFixed(1)}%`;
 }
 
+/**
+ * BUG FIX (round 295): `ask_pct` is a 0-100 SHARE of premium filled at or above the ask (see
+ * `MinimalFlow.ask_pct` in helix-signal-detection.ts). 0% is the genuine, maximally
+ * seller-initiated reading — not a missing one — and every other reader of this exact field
+ * (`aggressorSide`/`flowDirection` in helix-flow-aggression.ts, `executionQualityBucket` in
+ * helix-execution-quality.ts) already treats `askPct === 0` as real data ("sold"), only `null`/
+ * non-finite as absent. This formatter alone folded 0 back into `pct <= 0`, so a genuine 0% print
+ * rendered the "—" no-data glyph in the SAME tape cell whose colour (`askPctTone`, computed from
+ * the identical value one line above this one in HelixFlowTable.tsx) correctly painted it red for
+ * passive/sold flow — a colour asserting a measurement beside text asserting none. Guard only
+ * against values outside the field's documented 0-100 range (negative), never against 0 itself.
+ */
 export function fmtAskPct(pct: number | null | undefined): string {
-  if (pct == null || !Number.isFinite(pct) || pct <= 0) return "—";
+  if (pct == null || !Number.isFinite(pct) || pct < 0) return "—";
   return `${Math.round(pct)}%`;
 }
 
