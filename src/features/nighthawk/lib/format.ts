@@ -1,6 +1,7 @@
 import { formatFlowStrikeStackLine } from "@/lib/largo/flow-strike-stacks";
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { fmtPremium } from "@/lib/fmt-money";
+import { tideSplit } from "@/features/helix/lib/helix-tide-split";
 import {
   EDITION_SYNTHESIS_OVERSHOOT,
   MAX_OPTION_COST_PER_CONTRACT,
@@ -151,14 +152,32 @@ function formatLiveSpxSection(
 
 export type TideBias = "BULLISH" | "BEARISH" | "NEUTRAL";
 
+// `call_premium`/`put_premium` here are UW's SIGNED NET premiums (fetchUwMarketTide reads
+// `net_call_premium ?? call_premium` — src/lib/providers/unusual-whales.ts), not non-negative
+// gross premiums: a negative value means that side was net SOLD, and net call-selling is
+// routine (confirmed live 2026-10-21: the real market-tide row behind that day's Legacy edition
+// had call_premium = -$10.1M). The old code summed the two signed values (`total = call + put`)
+// and used `total <= 0` as its "no real premium at all" check, then derived BULLISH/BEARISH from
+// `call / total`. That conflates "nothing happened on either side" with "the two sides happened
+// to cancel in a signed sum" — a MORE one-sided bearish tape (heavier net call-selling pushing
+// `total` negative) flipped the verdict BACKWARD to NEUTRAL/"flat, no premium" purely because of
+// which side of zero the raw sum landed on, not because the market became less directional. Live
+// repro: {call_premium: -50_000_000, put_premium: 10_000_000} (same sign pattern as the real
+// 2026-10-21 case, just larger) used to read NEUTRAL despite $60M of one-sidedly bearish flow.
+//
+// Fixed with the same bullish/bearish decomposition already shipped for the identical signed-
+// premium root cause in HelixTideBar (see helix-tide-split.ts's header for the full derivation):
+// bullish = net call BUYING + net put SELLING, bearish = net call SELLING + net put BUYING — both
+// non-negative by construction, so a one-sided tape can never cancel itself back to "no signal".
+// For non-negative (gross) inputs this is byte-identical to the old `call / (call + put)` ratio
+// (bullish===call, bearish===put when both are >= 0), so no existing non-negative caller changes.
 export function tideBias(tide: Record<string, unknown> | null): TideBias {
   if (!tide) return "NEUTRAL";
   const call = Number(tide.call_premium ?? tide.total_call_premium ?? 0);
   const put = Number(tide.put_premium ?? tide.total_put_premium ?? 0);
-  const total = call + put;
-  if (total <= 0) return "NEUTRAL";
-  const callPct = (call / total) * 100;
-  return callPct > 55 ? "BULLISH" : callPct < 45 ? "BEARISH" : "NEUTRAL";
+  const { bullishPct } = tideSplit(call, put);
+  if (bullishPct == null) return "NEUTRAL"; // genuinely nothing on either side
+  return bullishPct > 55 ? "BULLISH" : bullishPct < 45 ? "BEARISH" : "NEUTRAL";
 }
 
 // No trailing period on any branch — callers own sentence-ending punctuation. buildMarketRecap's
@@ -169,11 +188,10 @@ function tideSummary(tide: Record<string, unknown> | null): string {
   if (!tide) return "Market tide unavailable";
   const call = Number(tide.call_premium ?? tide.total_call_premium ?? 0);
   const put = Number(tide.put_premium ?? tide.total_put_premium ?? 0);
-  const total = call + put;
-  if (total <= 0) return "Market tide flat / no premium";
-  const callPct = (call / total) * 100;
+  const { bullishPct } = tideSplit(call, put);
+  if (bullishPct == null) return "Market tide flat / no premium";
   const bias = tideBias(tide);
-  return `${bias} — calls ${callPct.toFixed(0)}% (${fmtPremium(call)}) vs puts ${fmtPremium(put)}`;
+  return `${bias} — calls ${bullishPct.toFixed(0)}% (${fmtPremium(call)}) vs puts ${fmtPremium(put)}`;
 }
 
 function formatMarketBreadth(ctx: MarketWideContext): string {
