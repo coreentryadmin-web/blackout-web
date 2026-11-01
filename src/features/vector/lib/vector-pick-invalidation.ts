@@ -15,7 +15,12 @@ export type InvalidationBar = {
 /** Parse the bar timeframe from an invalidation string, e.g. "5m close > 325" → 5. */
 export function parseInvalidationTimeframeMinutes(invalidation: string | null | undefined): number | null {
   if (!invalidation) return null;
-  const m = invalidation.match(/(\d+)\s*m\b/i);
+  // Real invalidation strings are short, fixed-shape labels (e.g. "5m close > 325",
+  // "1.5H close < 363.47") — bounding the length before the regex runs caps the engine's
+  // worst-case work regardless of input size, closing the CodeQL polynomial-regex alert without
+  // changing behavior for any legitimate input.
+  const bounded = invalidation.length > 64 ? invalidation.slice(0, 64) : invalidation;
+  const m = bounded.match(/(\d+)\s*m\b/i);
   if (m) {
     const n = Number(m[1]);
     return Number.isFinite(n) && n > 0 ? n : null;
@@ -27,7 +32,7 @@ export function parseInvalidationTimeframeMinutes(invalidation: string | null | 
   // `(?:\.\d+)?` the match restarts AFTER the decimal point and "1.5H" is parsed as "5H" (300
   // minutes) instead of the real 90 — silently handing the wrong bar-aggregation window to
   // `lastClosedTimeframeBarClose` below, which can misjudge a live pick's setup_invalidated state.
-  const h = invalidation.match(/(\d+(?:\.\d+)?)\s*h\b/i);
+  const h = bounded.match(/(\d+(?:\.\d+)?)\s*h\b/i);
   if (h) {
     const n = Number(h[1]);
     return Number.isFinite(n) && n > 0 ? Math.round(n * 60) : null;
