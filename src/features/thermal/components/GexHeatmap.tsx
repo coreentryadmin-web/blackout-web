@@ -2524,6 +2524,11 @@ export function GexHeatmap({
   // picker shows the real date and its real DTE instead. `expiryScope` is resolved against the live
   // axis in an effect below, since `expiries` is not known at mount.
   const [expiryScope, setExpiryScope] = useState<string>("all");
+  // Guards the ONE-TIME "all" -> nearest-expiry default resolution below (Rank 5's own effect
+  // re-arms it per ticker — see the reset effect further down). Declared here, not beside its
+  // resolution effect, so the ticker-switch reset effect (which runs earlier in render order)
+  // can clear it without a forward reference.
+  const scopeResolvedRef = useRef(false);
   const [highlightStrike, setHighlightStrike] = useState<number | null>(() => urlBoot.strike);
   const pendingStrikeScrollRef = useRef<number | null>(urlBoot.strike);
   const matrixPollMs = usePollIntervalMs(2_000, 5_000);
@@ -2745,11 +2750,21 @@ export function GexHeatmap({
   // Reset throttle + force state when the ticker changes so a switch starts clean.
   // Also reset the expiry scope back to "All" — the expiry axis differs per chain, so a
   // per-expiry chip from the previous ticker would be stale against the new one (Rank 5).
+  //
+  // BUG FIX (2026-11-01): `scopeResolvedRef` previously was NEVER reset here, so the "all" ->
+  // nearest-expiry default resolution below (#2103, "Default scope is the NEAREST expiry, not
+  // 'all'") only ever fired for the FIRST ticker the component mounted with. Every ticker
+  // switch reset `expiryScope` to "all" via this effect, but with `scopeResolvedRef.current`
+  // stuck `true` from the first resolution, the resolution effect's one-time guard
+  // (`!scopeResolvedRef.current && expiryScope === "all"`) never re-armed — so Key Levels/
+  // profile/curve silently stayed on the unscoped near-term aggregate for every ticker after
+  // the first, instead of resolving to that ticker's own nearest expiry like the first one did.
   useEffect(() => {
     lastForceAtRef.current = 0;
     setForceNonce(0);
     setFastFlash(false);
     setExpiryScope("all");
+    scopeResolvedRef.current = false;
   }, [ticker]);
 
   // Clear any pending timers on unmount.
@@ -2920,8 +2935,8 @@ export function GexHeatmap({
 
   // Resolve the default to the real nearest expiry once the axis is known, and re-resolve whenever
   // the current pick falls off it — the ET rollover prunes settled expiries, and a scope pointing at
-  // a settled date would render every tile as a dash with no explanation.
-  const scopeResolvedRef = useRef(false);
+  // a settled date would render every tile as a dash with no explanation. `scopeResolvedRef` itself
+  // is declared earlier (beside `expiryScope`) so the ticker-switch reset effect above can clear it.
   useEffect(() => {
     if (expiries.length === 0) return;
     const isPreset = expiryScope === "near" || expiryScope === "monthly" || expiryScope === "0dte";
