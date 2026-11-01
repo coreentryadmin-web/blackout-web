@@ -1520,6 +1520,30 @@ function levelsFromContext(
   return levels.slice(0, 10);
 }
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro CC positionId 2320): the "Entry: $X."
+// and "Exit-policy rails: stop $X · target $Y." evidence[] facts below hardcoded
+// `asOf: ctx.asOf, freshness: "recent"` — today's brief-read time — even though `play.entry` and
+// `play.exitPolicy.stop_premium`/`target_premium` are frozen at commit (`entryPremium: row.
+// entry_premium`, banger-lane-merge.ts; the exit rails are a pure function of that same frozen
+// entry) and never recomputed on a later read. The sibling "Setup score" fact immediately above
+// was fixed for this exact defect on 2026-10-25 (anchored to `committedAt` instead of `ctx.asOf`),
+// but that fix was never extended to these two facts, added in the same file on the same date for
+// the identical reason. A position committed two sessions ago showed "Setup score" correctly
+// stamped `freshness: "stale"` sitting right next to "Entry"/"Exit-policy rails" both stamped
+// `freshness: "recent"` for the SAME commit event. Factored into a shared helper so all three
+// facts derive from one `committedAt`-anchored rule rather than drifting independently again.
+function commitTimeProvenance(
+  committedAt: string | null | undefined,
+  ctxAsOf: string,
+  readMs: number,
+): { asOf: string; freshness: BieFreshness } {
+  const committedMs = committedAt ? Date.parse(committedAt) : NaN;
+  return {
+    asOf: (committedAt ? etStampFromIso(committedAt) : null) ?? ctxAsOf,
+    freshness: Number.isFinite(committedMs) ? freshnessFromObservedMs(committedMs, readMs) : "unknown",
+  };
+}
+
 function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvidence[] {
   const out: BieEvidence[] = [];
   // CLOSED play: `ctx.scanAsOf` is TODAY's live discovery-scan timestamp (the serving lane is
@@ -1968,15 +1992,10 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     // above (2026-10-07) already corrected for `detectedAt`; same fix, anchored to `committedAt`.
     // Falls back to `ctx.asOf`/"unknown" only when `committedAt` itself is absent, never silently
     // reusing the wrong-but-present value.
-    const committedMs = ctx.play.committedAt ? Date.parse(ctx.play.committedAt) : NaN;
     out.push({
       kind: "fact",
       text: `Setup score: ${Math.round(ctx.play.score)}${factorStr}.`,
-      provenance: {
-        source: "Swing ledger",
-        asOf: (ctx.play.committedAt ? etStampFromIso(ctx.play.committedAt) : null) ?? ctx.asOf,
-        freshness: Number.isFinite(committedMs) ? freshnessFromObservedMs(committedMs, readMs) : ("unknown" as const),
-      },
+      provenance: { source: "Swing ledger", ...commitTimeProvenance(ctx.play.committedAt, ctx.asOf, readMs) },
     });
   }
   const swingArchetype = (SWING_ARCHETYPES as readonly string[]).includes(ctx.play.archetype ?? "")
@@ -2077,7 +2096,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       out.push({
         kind: "fact",
         text: `Entry: ${fmtUsd(ctx.play.entry)}.`,
-        provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
+        provenance: { source: "Swing ledger", ...commitTimeProvenance(ctx.play.committedAt, ctx.asOf, readMs) },
       });
     }
     const ep = ctx.play.exitPolicy;
@@ -2127,7 +2146,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       out.push({
         kind: "fact",
         text: `Exit-policy rails: ${railParts.join(" · ")}.`,
-        provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
+        provenance: { source: "Swing ledger", ...commitTimeProvenance(ctx.play.committedAt, ctx.asOf, readMs) },
       });
     }
   }
