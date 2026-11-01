@@ -895,6 +895,41 @@ function recordNetFlowForTicker(
   }
 }
 
+/**
+ * Pure parser for one `net_flow` WS row. Returns `null` when the row's own ticker cannot be
+ * determined — NEVER defaults an unresolvable row to "SPX".
+ *
+ * `net_flow` is joined per-ticker (`net_flow:SPX`, `net_flow:SPY`, `net_flow:QQQ`,
+ * `net_flow:IWM` — see `joinWiresForChannel`), but `handleMessage` strips the wire's own
+ * `:TICKER` suffix before dispatch and routes every one of those four subscriptions into
+ * this SAME base-channel handler (`channelFromWireName`). So if a frame ever omits BOTH
+ * `ticker` and `symbol` — relying on the now-discarded wire suffix to convey which of the
+ * four subscribed tickers it is for — this handler has no way to tell SPX from SPY/QQQ/IWM.
+ * The old code defaulted that ambiguous case to `"SPX"`, which would silently overwrite the
+ * shared `netFlowStore` snapshot (the ONLY source `spx-desk.ts`'s net-flow panel and
+ * `uw-ws-cache-bridge.ts`'s `uw_cache:net_prem_ticks:SPX` seed read for "SPX net premium")
+ * with another ticker's call/put premium. This is the exact same architecture gap already
+ * fixed for `off_lit_trades` (#7307) and `interval_flow` (#7308) on this same multiplexed
+ * socket — dropping an unresolvable row here matches the fail-closed discipline every
+ * sibling WS normalizer in `unusual-whales.ts` already uses (`normalizeLitTradesWsPayload`/
+ * `normalizePriceWsPayload`/`normalizeOptionTradesWsPayload` all require a real ticker field
+ * and drop the row otherwise, never guessing one).
+ */
+export function parseNetFlowWsRow(
+  raw: unknown
+): { ticker: string; call: number; put: number; net: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const tickerRaw = r.ticker ?? r.symbol;
+  if (tickerRaw == null) return null;
+  const ticker = String(tickerRaw).toUpperCase();
+  if (!ticker || !NET_FLOW_TICKERS.has(ticker)) return null;
+  const call = Number(r.call_premium ?? r.calls ?? r.net_call_premium ?? 0);
+  const put = Number(r.put_premium ?? r.puts ?? r.net_put_premium ?? 0);
+  const net = Number(r.net ?? call - put);
+  return { ticker, call, put, net };
+}
+
 /** Net-premium tick history derived from the UW `net_flow` WS channel. */
 export function getNetPremTicksForTicker(ticker: string): NetPremTick[] {
   const snap = netFlowByTicker.get(ticker.toUpperCase());
@@ -1529,15 +1564,10 @@ export function initUwSocket() {
     }
     const rows = Array.isArray(payload) ? payload : [payload];
     for (const raw of rows) {
-      if (!raw || typeof raw !== "object") continue;
-      const r = raw as Record<string, unknown>;
-      const ticker = String(r.ticker ?? r.symbol ?? "SPX").toUpperCase();
-      if (!NET_FLOW_TICKERS.has(ticker)) continue;
+      const parsed = parseNetFlowWsRow(raw);
+      if (!parsed) continue;
       recordUwDelivery("net_flow");
-      const call = Number(r.call_premium ?? r.calls ?? r.net_call_premium ?? 0);
-      const put = Number(r.put_premium ?? r.puts ?? r.net_put_premium ?? 0);
-      const net = Number(r.net ?? call - put);
-      recordNetFlowForTicker(ticker, call, put, net);
+      recordNetFlowForTicker(parsed.ticker, parsed.call, parsed.put, parsed.net);
     }
   });
 
