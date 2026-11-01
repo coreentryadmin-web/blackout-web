@@ -44,6 +44,38 @@ test("rows carrying no level at all are dropped, not emitted as gaps", () => {
   assert.equal(reduceSessionToDaily("2026-08-07", [{ time: NaN } as WallHistorySample]), null);
 });
 
+test("a NON-FINITE wall strike (NaN, not absent) is dropped exactly like a missing one", () => {
+  // Regression for round-254 bug: `flip` was guarded with Number.isFinite before the "drop an
+  // empty row" check, but callWall/putWall were only coerced with `?? null` at that point — a NaN
+  // strike (truthy, != null) slipped past the drop check and the function returned a row with
+  // every field nulled out instead of returning null, violating this file's own "a row with no
+  // level at all carries no information — drop it" contract (the test right above this one).
+  const row = reduceSessionToDaily("2026-08-07", [
+    {
+      time: 1,
+      walls: {
+        callWalls: [{ strike: NaN, pct: 1 }],
+        putWalls: [{ strike: NaN, pct: 1 }],
+      },
+      gammaFlip: NaN,
+    } as unknown as WallHistorySample,
+  ]);
+  assert.equal(row, null);
+
+  // A genuinely finite wall strike alongside a NaN flip still reports the real wall — only the
+  // non-finite fields are dropped, not the whole row.
+  const partial = reduceSessionToDaily("2026-08-07", [
+    {
+      time: 1,
+      walls: { callWalls: [{ strike: 7800, pct: 1 }], putWalls: [{ strike: NaN, pct: 1 }] },
+      gammaFlip: NaN,
+    } as unknown as WallHistorySample,
+  ]);
+  assert.equal(partial?.callWall, 7800);
+  assert.equal(partial?.putWall, null);
+  assert.equal(partial?.gammaFlip, null);
+});
+
 test("regime is only asserted when both inputs exist", () => {
   assert.equal(regimeAt(7760, 7750), "positive", "above the flip — dealers dampen");
   assert.equal(regimeAt(7740, 7750), "negative", "below the flip — dealers amplify");
