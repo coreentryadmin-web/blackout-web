@@ -16,6 +16,7 @@ import {
   resolveHeatmapStrikeBounds,
   heatmapMinHalfWidthUsd,
   computeZeroGammaFlip,
+  computeVexRegime,
   computeCharmRegime,
   heatmapHasPastExpiries,
   prunePastExpiriesFromHeatmap,
@@ -640,6 +641,42 @@ test("computeZeroGammaFlip: with BOTH a neg→pos and a pos→neg crossing, pick
 
 test("computeZeroGammaFlip: fewer than 2 strikes returns null", () => {
   assert.equal(computeZeroGammaFlip({ "100": 50 }, 100), null);
+});
+
+// ── computeVexRegime: an exact vanna tie between two strikes must deterministically keep
+// the LOWER strike regardless of the caller's own key-insertion order — same fix, same
+// convention, as the already-fixed kingFromStrikeTotals/wallsFromStrikeTotals
+// (gex-cross-validation-core.ts) and topGexPinStrikes (strike-gex-lookup.ts). Decimal
+// strike keys (SPX/SPY's half-dollar chain) preserve Object.entries() INSERTION order, so
+// an unsorted argmax/argmin scan picked whichever strike the caller happened to insert
+// first — not a function of the vanna data — and posWall/negWall here are published
+// straight through as vex.pos_wall/vex.neg_wall.
+
+test("computeVexRegime: exact positive-vanna tie is deterministic regardless of object insertion order", () => {
+  // Same tied book, two real insertion orders this file's own producers actually use:
+  // buildMetric inserts strikes descending; buildGexHeatmapFromUwStrikeExposures inserts in
+  // whatever order its upstream UW rows arrive.
+  const descendingInsertion = { "110.5": 2_000_000, "105.5": -500_000, "100.5": 2_000_000 };
+  const ascendingInsertion = { "100.5": 2_000_000, "105.5": -500_000, "110.5": 2_000_000 };
+
+  const fromDescending = computeVexRegime(descendingInsertion, 1_500_000);
+  const fromAscending = computeVexRegime(ascendingInsertion, 1_500_000);
+
+  assert.equal(fromDescending.posWall, 100.5);
+  assert.equal(fromAscending.posWall, 100.5);
+  assert.equal(fromDescending.posWall, fromAscending.posWall);
+});
+
+test("computeVexRegime: exact negative-vanna tie is deterministic regardless of object insertion order", () => {
+  const descendingInsertion = { "110.5": -2_000_000, "105.5": 500_000, "100.5": -2_000_000 };
+  const ascendingInsertion = { "100.5": -2_000_000, "105.5": 500_000, "110.5": -2_000_000 };
+
+  const fromDescending = computeVexRegime(descendingInsertion, -1_500_000);
+  const fromAscending = computeVexRegime(ascendingInsertion, -1_500_000);
+
+  assert.equal(fromDescending.negWall, 100.5);
+  assert.equal(fromAscending.negWall, 100.5);
+  assert.equal(fromDescending.negWall, fromAscending.negWall);
 });
 
 // ── computeCharmRegime: the narrative direction was backwards. charm = ∂Δ/∂t, so a
