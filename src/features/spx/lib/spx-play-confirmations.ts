@@ -3,8 +3,9 @@ import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
 import { evaluateMtfHybrid, keyLevelForDirection } from "@/features/spx/lib/spx-play-mtf";
 import { playMinConfirmationsRequired, playStructureProximityPts } from "@/features/spx/lib/spx-play-config";
-// Canonical news-sentiment patterns live in spx-play-conflicts to avoid duplication.
-import { BEAR_NEWS, BULL_NEWS } from "@/features/spx/lib/spx-play-conflicts";
+// Canonical news-sentiment patterns (+ their negation-aware matchers) live in
+// spx-play-conflicts.ts to avoid duplication — see that file's BUG FIX (2026-11-01) comment.
+import { matchesBearNews, matchesBullNews } from "@/features/spx/lib/spx-play-conflicts";
 
 export type PlayConfirmationCheck = {
   label: string;
@@ -36,11 +37,11 @@ function newsSentiment(headlines: SpxDeskPayload["news_headlines"]): NewsSentime
   const bearMatches: NewsHeadline[] = [];
   for (const h of headlines.slice(0, 5)) {
     const t = h.title ?? "";
-    if (BEAR_NEWS.test(t)) {
+    if (matchesBearNews(t)) {
       bear += 1;
       bearMatches.push(h);
     }
-    if (BULL_NEWS.test(t)) {
+    if (matchesBullNews(t)) {
       bull += 1;
       bullMatches.push(h);
     }
