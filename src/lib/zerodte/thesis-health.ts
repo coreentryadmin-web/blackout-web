@@ -470,11 +470,20 @@ function normalizeWeights(raw: Record<ThesisPillarId, number | null>): Map<Thesi
 }
 
 function pillarStatus(commit: number, current: number): ThesisPillarStatus {
-  if (current >= commit - 0.05 && current >= 0.75) return current > commit + 0.05 ? "strengthened" : "intact";
-  if (current >= commit - 0.2 && current >= 0.45) return "faded";
-  if (current < 0.35 && commit >= 0.65) return "lost";
-  if (current < commit - 0.25) return "lost";
-  return "faded";
+  // RELATIVE first, same discipline as the swing sibling (src/lib/swing/thesis-health.ts's own
+  // pillarStatus): classify how far CURRENT has moved from COMMIT, not current's bare absolute
+  // level. Before this fix, a pillar's own absolute score (current >= 0.75 / >= 0.45) gated
+  // "intact" vs "faded" even when commit === current — so a pillar that never moved (the cortex
+  // pillar is ALWAYS commit===current by construction; any pillar falls back to its commit value
+  // whenever `setup` is absent this cycle) was mislabeled "faded" for every score below 0.75 and
+  // could never read "lost" no matter how low, misreporting static commit data as a live
+  // deterioration. Compare in centi-points to avoid float-precision chatter at the boundaries
+  // (the same precaution the swing version documents).
+  const c = Math.round(commit * 100);
+  const cur = Math.round(current * 100);
+  if (cur >= c - 5) return cur > c + 5 ? "strengthened" : "intact";
+  if (cur >= c - 20) return "faded";
+  return "lost";
 }
 
 function healthRung(health: number): { rung: ThesisHealthRung; label: string } {

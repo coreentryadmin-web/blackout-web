@@ -237,3 +237,48 @@ test("computeThesisHealth: Tier B pillars when pinned in feature_vector", () => 
   const dp = h!.pillars.find((p) => p.id === "darkpool");
   assert.ok(dp, "darkpool pillar present");
 });
+
+test("computeThesisHealth (regression): a pillar that never moved since commit reads 'intact', never a fabricated 'faded'/'lost'", () => {
+  // The cortex pillar is ALWAYS commit===current by construction (computeThesisHealth calls
+  // `cortexScore(commitCortex)` for BOTH sides off the one frozen blob — "honest static until
+  // live cortex ships"). Before this fix, pillarStatus() mixed an absolute-level check into what
+  // is supposed to be a relative "how much moved since commit" classification, so any pillar
+  // scoring below 0.75 read "faded" and could never read "lost", regardless of whether anything
+  // actually changed. A THIN_EVIDENCE cortex decision scores 0 (cortexScore) — low, but static —
+  // and must not be narrated as a live deterioration.
+  const thinEvidenceCtx = {
+    ...baseCtx,
+    cortex: {
+      abstained: false,
+      decision: "THIN_EVIDENCE",
+      score: null,
+      conviction: "C",
+      vetoes: [],
+      supports: [],
+      opposes: [],
+      absent: [],
+      narrative: [],
+      as_of: "2026-07-29T15:21:00Z",
+    },
+  };
+  const h = computeThesisHealth(thinEvidenceCtx, { fq_score: 70 }, {
+    direction: "short",
+    setup: minimalSetup(),
+    spyBias: "down",
+    nowEtMinutes: 11 * 60 + 30,
+    computedAtEt: "11:30 ET",
+  }, { status: "OPEN" });
+  assert.ok(h);
+  const cortex = h!.pillars.find((p) => p.id === "cortex");
+  assert.ok(cortex, "cortex pillar present");
+  assert.equal(cortex!.commitScore, cortex!.currentScore, "commit and current must be identical for this pillar");
+  assert.equal(
+    cortex!.status,
+    "intact",
+    `an unchanged pillar must read "intact" regardless of its absolute score, got "${cortex!.status}"`,
+  );
+  assert.ok(
+    !h!.moves.some((m) => m.startsWith("Cortex:")),
+    `an unchanged pillar must not generate a false "what moved" narrative line, got: ${JSON.stringify(h!.moves)}`,
+  );
+});
