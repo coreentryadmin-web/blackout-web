@@ -205,12 +205,52 @@ function stickyStructureLevel(
   ensureStructureCacheFresh();
   let next: number | null;
   if (key === "hod" || key === "lod") {
-    const candidates: number[] = [];
-    for (const v of [pulseVal, baseVal, lastGoodStructure[key], livePrice]) {
-      if (v != null && Number.isFinite(v) && v > 0) candidates.push(v);
+    // BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro): this used to take
+    // Math.max/Math.min across [pulseVal, baseVal, lastGoodStructure[key], livePrice]
+    // UNCONDITIONALLY, every cycle, even when pulseVal/baseVal were both genuinely fresh THIS
+    // cycle. That makes the ratchet a one-way trap: the instant ANY single cycle feeds a bad or
+    // stale candidate (a transient index-feed glitch during RTH, or — the live case — an
+    // off-hours pulse lane carrying forward a stale snapshot via `lastPulseForSignals`,
+    // spx-desk.ts, which has no session-date staleness check of its own), `lastGoodStructure[key]`
+    // latches onto it and keeps re-entering the max/min on every SUBSEQUENT cycle forever (within
+    // the session), permanently out-ranking a correct, fresh `baseVal` that disagrees with it —
+    // unlike every other key here (`pulseVal ?? baseVal ?? lastGoodStructure[key] ?? null`),
+    // where a fresh value always wins outright and the sticky cache is a pure last resort.
+    //
+    // Confirmed live 2026-11-01: `GET /api/market/nighthawk/edition`'s `market_recap.spx_desk`
+    // (built off this merge, via `getSpxDeskSummary()`) reported `hod: 7758.43` for a session
+    // whose OWN independently-fetched daily OHLC bar (`spxContext()`, format.ts, reading
+    // `ctx.spx_bars` directly — never routed through this sticky merge) and recap narrative both
+    // said the session gapped down to 7631.07 and "continued lower" to close 7580.07, with a real
+    // daily H of only 7637 — 7758.43 also exceeds the session's OWN prior-day high (pdh 7732.21),
+    // which is impossible for a session that never traded above its own open. market_label was
+    // EXTENDED (off-hours, no live spot to reconcile against: `livePrice` is undefined whenever
+    // `!rthOpen`, see `mergePulseIntoDesk`'s `liveSpot`), so the ONLY way hod could read above the
+    // real daily high is a stale/bad candidate winning the max against a correct `baseVal`.
+    //
+    // Fix: only fold `lastGoodStructure[key]` (and, implicitly, tolerate an on-the-day
+    // pulse/base disagreement) into the max/min when THIS cycle has no live spot to widen
+    // against (`livePrice == null`, i.e. off-hours/no RTH tick) AND neither `pulseVal` nor
+    // `baseVal` has a fresh real read — otherwise prefer a straight `baseVal ?? pulseVal`
+    // precedence, since `baseVal` (the full desk build) recomputes hod/lod fresh from real
+    // settled minute bars on every poll regardless of market hours, while off-hours `pulseVal`
+    // is exactly a sticky last-RTH-snapshot with no revalidation of its own. During RTH
+    // (`livePrice != null`) the existing "pulse gaps must not drop HOD/LOD" widen behavior is
+    // unchanged — this only removes the UNBOUNDED, self-perpetuating sticky carry-forward for
+    // the off-hours case where there is no live price to justify reconciling two sources at all.
+    const validLevel = (v: number | null | undefined): number | null =>
+      v != null && Number.isFinite(v) && v > 0 ? v : null;
+    if (livePrice == null) {
+      next = validLevel(baseVal) ?? validLevel(pulseVal) ?? validLevel(lastGoodStructure[key]);
+    } else {
+      const candidates: number[] = [];
+      for (const v of [pulseVal, baseVal, lastGoodStructure[key], livePrice]) {
+        const valid = validLevel(v);
+        if (valid != null) candidates.push(valid);
+      }
+      if (!candidates.length) return null;
+      next = key === "hod" ? Math.max(...candidates) : Math.min(...candidates);
     }
-    if (!candidates.length) return null;
-    next = key === "hod" ? Math.max(...candidates) : Math.min(...candidates);
   } else {
     next = pulseVal ?? baseVal ?? lastGoodStructure[key] ?? null;
   }
