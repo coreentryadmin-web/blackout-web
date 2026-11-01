@@ -496,6 +496,60 @@ export function buildWeekPulse(rows: readonly EarningsAnalyticsRow[]): WeekPulse
   };
 }
 
+export type EarningsTableSortKey = "date" | "importance" | "eps_surprise" | "rev_surprise" | "ticker";
+
+/**
+ * Sort rows for the dense print ledger table (`MeridianEarningsTable`).
+ *
+ * BUG FIX (round 293): the component used to build one `cmp(a, b)` per column and negate the
+ * WHOLE comparator when `desc` was true — `list.sort((a, b) => (desc ? -cmp(a, b) : cmp(a, b)))`.
+ * For `eps_surprise`/`rev_surprise`, `cmp` special-cased a `null` surprise to always sort after a
+ * real value (`if (av == null) return 1`) so an ungraded print would sit at the bottom of the
+ * list — exactly what the removed code's own comment promised ("Nulls always sort LAST regardless
+ * of direction"). But negating the ENTIRE comparator for `desc=true` negated that null placement
+ * too: `-cmp(a, b)` turned "a (null) sorts after b" into "a (null) sorts before b", so toggling
+ * the column's sort direction moved every ungraded print from the bottom of the ledger to the TOP.
+ * Concretely, sorting rows with eps_surprise_pct = [5%, null, -3%] by "eps_surprise" ascending
+ * (desc=false, the state right after a first click) correctly lands [5%, -3%, null]; clicking the
+ * same header again (desc=true, the very next click) landed [null, -3%, 5%] — the null jumped to
+ * first, not last, and the column's aria-sort/caret state said "descending" throughout while
+ * silently lying about where the unknowns went. Fixed by making the null branches themselves
+ * depend on `desc`, so they cancel out the caller's negation and a null always lands last no
+ * matter which way the column is sorted — matching the comment that was never actually enforced.
+ */
+export function sortEarningsAnalyticsRows<T extends EarningsAnalyticsRow>(
+  rows: readonly T[],
+  sort: EarningsTableSortKey,
+  desc: boolean
+): T[] {
+  const num = (x: number | null | undefined): number | null =>
+    x != null && Number.isFinite(x) ? x : null;
+  const cmp = (a: T, b: T): number => {
+    switch (sort) {
+      case "ticker":
+        return a.ticker.localeCompare(b.ticker);
+      case "importance":
+        return (b.importance ?? 0) - (a.importance ?? 0);
+      case "eps_surprise":
+      case "rev_surprise": {
+        const av = num(sort === "eps_surprise" ? a.eps_surprise_pct : a.revenue_surprise_pct);
+        const bv = num(sort === "eps_surprise" ? b.eps_surprise_pct : b.revenue_surprise_pct);
+        if (av == null && bv == null) return 0;
+        // Written to hold true AFTER the caller's `desc ? -cmp(...) : cmp(...)` negation below,
+        // not just before it — this is what keeps "null always last" true in both directions.
+        if (av == null) return desc ? -1 : 1;
+        if (bv == null) return desc ? 1 : -1;
+        return bv - av;
+      }
+      default:
+        return a.date.localeCompare(b.date) || a.ticker.localeCompare(b.ticker);
+    }
+  };
+  const list = [...rows];
+  list.sort((a, b) => (desc ? -cmp(a, b) : cmp(a, b)));
+  return list;
+}
+
 /** Format a fractional surprise (0.0447) as a signed percent string. Null → em-dash, never "0%". */
 export function fmtSurprisePct(v: number | null | undefined, digits = 1): string {
   if (v == null || !Number.isFinite(v)) return "—";

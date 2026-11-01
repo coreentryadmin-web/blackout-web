@@ -13,6 +13,7 @@ import {
   fmtCompactMoney,
   fmtCountdown,
   printHistoryToAnalyticsRows,
+  sortEarningsAnalyticsRows,
   type EarningsAnalyticsRow,
 } from "./meridian-earnings-analytics-core";
 
@@ -303,4 +304,71 @@ test("formatters: null renders as an em-dash, never as a fabricated zero", () =>
   assert.equal(fmtCountdown(60), "in 1h 0m");
   assert.equal(fmtCountdown(-30), "30m ago");
   assert.equal(fmtCountdown(14), "in 14m");
+});
+
+test("sortEarningsAnalyticsRows: a null eps/revenue surprise sorts LAST in BOTH directions", () => {
+  const A = row({ ticker: "A", eps_surprise_pct: 0.05 });
+  const B = row({ ticker: "B", eps_surprise_pct: null }); // ungraded print
+  const C = row({ ticker: "C", eps_surprise_pct: -0.03 });
+
+  // desc=false (the state right after the FIRST click on the "EPS surp" header): highest real
+  // surprise first, ungraded print still last.
+  const ascFirstClick = sortEarningsAnalyticsRows([A, B, C], "eps_surprise", false);
+  assert.deepEqual(
+    ascFirstClick.map((r) => r.ticker),
+    ["A", "C", "B"],
+    "known values ordered high-to-low; the null-surprise print stays last"
+  );
+
+  // desc=true (toggling the SAME header a second time): known values reverse order, but the
+  // ungraded print must STILL be last — this is the exact case that regressed. Negating the
+  // whole comparator (including the null branches) used to carry the null row to the FRONT of
+  // the list instead.
+  const descSecondClick = sortEarningsAnalyticsRows([A, B, C], "eps_surprise", true);
+  assert.deepEqual(
+    descSecondClick.map((r) => r.ticker),
+    ["C", "A", "B"],
+    "toggling direction reverses the KNOWN values only — the null-surprise print never moves off the bottom"
+  );
+});
+
+test("sortEarningsAnalyticsRows: same null-last guarantee holds for revenue surprise", () => {
+  const A = row({ ticker: "A", revenue_surprise_pct: 0.02 });
+  const B = row({ ticker: "B", revenue_surprise_pct: null });
+  const C = row({ ticker: "C", revenue_surprise_pct: -0.08 });
+
+  const asc = sortEarningsAnalyticsRows([A, B, C], "rev_surprise", false);
+  assert.deepEqual(asc.map((r) => r.ticker), ["A", "C", "B"]);
+
+  const desc = sortEarningsAnalyticsRows([A, B, C], "rev_surprise", true);
+  assert.deepEqual(
+    desc.map((r) => r.ticker),
+    ["C", "A", "B"],
+    "the null revenue-surprise row must not jump to the top when the column is re-toggled"
+  );
+});
+
+test("sortEarningsAnalyticsRows: date/ticker/importance sort unaffected (no nulls to misplace)", () => {
+  const A = row({ ticker: "B", date: "2026-08-21", importance: 3 });
+  const B = row({ ticker: "A", date: "2026-08-20", importance: 5 });
+
+  assert.deepEqual(
+    sortEarningsAnalyticsRows([A, B], "date", false).map((r) => r.ticker),
+    ["A", "B"],
+    "ascending by date"
+  );
+  assert.deepEqual(
+    sortEarningsAnalyticsRows([A, B], "date", true).map((r) => r.ticker),
+    ["B", "A"],
+    "descending by date"
+  );
+  assert.deepEqual(
+    sortEarningsAnalyticsRows([A, B], "ticker", false).map((r) => r.ticker),
+    ["A", "B"]
+  );
+  assert.deepEqual(
+    sortEarningsAnalyticsRows([A, B], "importance", false).map((r) => r.ticker),
+    ["A", "B"],
+    "highest importance first by default"
+  );
 });
