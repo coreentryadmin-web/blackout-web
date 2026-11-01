@@ -17,10 +17,6 @@ export type UwEndpointSection = {
   endpoints: UwEndpoint[];
 };
 
-export const UW_DOCS_BASE = "https://api.unusualwhales.com";
-export const UW_DOCS_URL = "https://api.unusualwhales.com/docs";
-export const UW_OPENAPI_URL = "https://api.unusualwhales.com/api/openapi";
-
 export const UW_REST_SECTIONS: UwEndpointSection[] = [
   {
     "id": "gex-greeks",
@@ -1921,12 +1917,3 @@ export const UW_REST_SECTIONS: UwEndpointSection[] = [
     ]
   }
 ];
-
-export const UW_REST_TOC = UW_REST_SECTIONS.map((s) => ({
-  id: s.id,
-  title: s.title,
-  count: s.endpoints.length,
-}));
-
-export const UW_ENDPOINT_TOTAL = 186;
-export const UW_BLACKOUT_ENDPOINT_COUNT = 103;
