@@ -90,7 +90,17 @@ export function computeGexWalls(
   const constrained = typeof spot === "number" && Number.isFinite(spot) && spot > 0;
   const callWalls: GexWallLevel[] = [];
   const putWalls: GexWallLevel[] = [];
-  for (const [strikeStr, g] of Object.entries(strikeTotals)) {
+  // Sort ascending by strike before scanning — same reason as wallsFromStrikeTotals/
+  // kingFromStrikeTotals (gex-cross-validation-core.ts) and scopeStructureToExpiry
+  // (meridian-event-expiry-core.ts): Object.entries() enumerates non-integer-index string keys
+  // (SPX half-strikes like "7700.5") in INSERTION order, not numeric order, while integer-like
+  // keys ("7700") are always ascending regardless of insertion. The `.sort(pct desc)` below is
+  // stable, so on an exact |gamma| tie it keeps whichever candidate was PUSHED first — which,
+  // without this pre-sort, is a function of the live WS ladder's insertion/trade-arrival order,
+  // not of the gamma data. Pre-sorting by strike makes a tie deterministically keep the LOWER
+  // strike first on every call, regardless of how the caller's Map/object was built.
+  const sortedEntries = Object.entries(strikeTotals).sort(([sa], [sb]) => Number(sa) - Number(sb));
+  for (const [strikeStr, g] of sortedEntries) {
     const strike = Number(strikeStr);
     if (!Number.isFinite(strike) || !Number.isFinite(g) || g === 0) continue;
     const pct = (Math.abs(g) / totalAbsGamma) * 100;

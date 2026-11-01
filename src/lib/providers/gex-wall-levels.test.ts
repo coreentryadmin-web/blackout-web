@@ -204,6 +204,34 @@ test("computeGexWalls: pct stays a share of TOTAL |gamma| across the ladder, not
   assert.ok(Math.abs(callWalls[0]!.pct - (2e8 / totalAbsGamma) * 100) < 1e-9);
 });
 
+// Regression for a live-reproducible non-determinism: computeGexWalls pushed wall candidates
+// in Object.entries(strikeTotals) order, then did a (stable) Array.prototype.sort by pct
+// descending. For non-integer-index strike keys (SPX/half-strike names like "100.5"),
+// Object.entries() enumerates in INSERTION order, not numeric order — unlike integer-like keys
+// ("100"), which the JS spec always enumerates ascending regardless of insertion. So on an exact
+// |gamma| tie between two half-strikes, the stable sort preserves whichever push happened first,
+// which is a function of the live WS ladder's trade-arrival order, not the gamma data — the
+// SAME bug class already fixed for the sibling functions wallsFromStrikeTotals/
+// kingFromStrikeTotals (gex-cross-validation-core.ts) and scopeStructureToExpiry
+// (meridian-event-expiry-core.ts), just never propagated to this multi-node ranker.
+test("computeGexWalls: an exact |gamma| tie between two half-strikes resolves deterministically regardless of Map insertion order", () => {
+  const ascending = new Map<number, number>([
+    [100.5, 5e8],
+    [105.5, 5e8],
+  ]);
+  const descending = new Map<number, number>([
+    [105.5, 5e8],
+    [100.5, 5e8],
+  ]);
+  const a = computeGexWalls(ascending);
+  const b = computeGexWalls(descending);
+  assert.deepEqual(
+    a.callWalls.map((w) => w.strike),
+    b.callWalls.map((w) => w.strike),
+    "the ranked order of a tied wall pair must not depend on which strike the caller inserted first"
+  );
+});
+
 test("wallsHaveNodes distinguishes a cold/empty ladder from real walls", () => {
   // The Vector DTE "all" horizon read relies on this to detect a cold-task synchronous
   // miss (empty walls but the flip still fetched) and fall back to the heatmap. A plain
