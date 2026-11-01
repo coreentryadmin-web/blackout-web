@@ -35,6 +35,21 @@ test("effectivePickBias: non-pivot neutral returns null", () => {
   assert.equal(effectivePickBias(play, 360, 352), null);
 });
 
+// BUG FIX (round 253 DISCOVERY sweep): `effectivePickBias` only checked `flip == null` before
+// dividing by it, while its sibling in this SAME file (`pivotPickWaitingCopy`, two lines down)
+// already guards `gammaFlip != null && Number.isFinite(gammaFlip)` for the identical field. A
+// non-finite flip (NaN survives `== null`, since NaN !== null) fell through the guard, produced
+// `Math.abs(spot - NaN) / NaN === NaN`, failed the `dist < PIVOT_PICK_COMMIT_EPS` check (NaN is
+// never `<` anything), and then `spot > NaN` evaluated false — so the function fabricated a
+// confident "short" ranking bias from a genuinely unknown flip instead of returning null
+// ("undetermined"), the same absence-as-measurement failure this lane has fixed repeatedly
+// elsewhere (flow-gex-proximity.ts, helix-darkpool-bias.ts, etc).
+test("effectivePickBias: non-finite flip is undetermined, never fabricated", () => {
+  const play = pivotPlay();
+  assert.equal(effectivePickBias(play, 353, NaN), null);
+  assert.equal(effectivePickBias(play, 353, Infinity), null);
+});
+
 test("pivotPickWaitingCopy: explains why PLYS is empty at the flip", () => {
   const msg = pivotPickWaitingCopy(pivotPlay(), 352.56);
   assert.match(msg ?? "", /commits above or below/i);
