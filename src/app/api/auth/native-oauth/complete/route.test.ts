@@ -1,6 +1,7 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
+import { splitCookieHeader } from "./cookie-split";
 
 // Regression: POST /api/auth/native-oauth/complete was the one public, mutating
 // route in this codebase with NEITHER a per-IP rate limit NOR a body/field-size
@@ -16,6 +17,7 @@ let rateLimitShouldBlock = false;
 let verifyGoogleCalls = 0;
 let verifyAppleCalls = 0;
 let mintCalls: Array<Record<string, unknown>> = [];
+let mockCookieHeader = "__session=jwt; __client_uat=1";
 
 mock.module("../../../../../lib/ip-rate-limit.ts", {
   namedExports: {
@@ -50,7 +52,7 @@ mock.module("../../../../../lib/native-oauth/clerk-bridge.ts", {
   namedExports: {
     mintClerkSessionFromNativeOAuth: async (ident: Record<string, unknown>) => {
       mintCalls.push(ident);
-      return { cookieHeader: "__session=jwt; __client_uat=1", userId: "user_1", wasNewUser: false };
+      return { cookieHeader: mockCookieHeader, userId: "user_1", wasNewUser: false };
     },
   },
 });
@@ -70,6 +72,7 @@ function resetMocks() {
   verifyGoogleCalls = 0;
   verifyAppleCalls = 0;
   mintCalls = [];
+  mockCookieHeader = "__session=jwt; __client_uat=1";
 }
 
 test("enforces a per-IP rate limit before doing any verification work", async () => {
@@ -135,4 +138,48 @@ test("a normal, small Google sign-in still succeeds", async () => {
   assert.equal(mintCalls.length, 1);
   const body = (await res.json()) as { ok: boolean };
   assert.equal(body.ok, true);
+});
+
+// Regression (2026-11-01, DISCOVERY-lane audit): `splitCookieHeader` built each Set-Cookie
+// header with `const [name, value] = kv.split("=")`. `split("=")` on a pair whose VALUE itself
+// contains "=" produces MORE than two elements, and destructuring only the first two silently
+// drops everything from the second "=" onward:
+//
+//   "session=abc.def=ghi".split("=") === ["session", "abc.def", "ghi"]
+//   const [name, value] = [...]   -->  name="session", value="abc.def"   ("=ghi" vanishes)
+//
+// Not reachable TODAY with a real Clerk `__session` JWT (JWS base64url omits "=" padding per
+// RFC 7515) or `__client_uat` (a bare epoch integer) — the two cookies `cookieHeader` currently
+// ever carries — but this is a general-purpose cookie-header splitter, and the same silent-
+// truncation shape this repo already fixed once in `clerk-client-cookie.ts`'s client-side
+// cookie reader, which deliberately uses `indexOf("=")` + `slice` for exactly this reason. Fixed
+// by switching `splitCookieHeader` to the same `indexOf`-based split.
+test("splitCookieHeader preserves a cookie value that itself contains '='", async () => {
+  const [session, uat] = splitCookieHeader("session=abc.def=ghi; __client_uat=123");
+  assert.equal(
+    session,
+    "session=abc.def=ghi; Path=/; Secure; HttpOnly; SameSite=Lax",
+    "a second '=' inside the cookie VALUE must survive, not truncate the value at the first one"
+  );
+  assert.equal(uat, "__client_uat=123; Path=/; Secure; HttpOnly; SameSite=Lax");
+});
+
+test("splitCookieHeader is unaffected on ordinary '='-free values", async () => {
+  const [session] = splitCookieHeader("__session=header.payload.signature; __client_uat=1700000000");
+  assert.equal(session, "__session=header.payload.signature; Path=/; Secure; HttpOnly; SameSite=Lax");
+});
+
+test("the route sets the Set-Cookie header verbatim even when the bridge returns a value containing '='", async () => {
+  resetMocks();
+  mockCookieHeader = "__session=header.pay=load.sig; __client_uat=1";
+  const { POST } = await import("./route");
+  const res = await POST(req({ provider: "google", idToken: "x" }));
+
+  assert.equal(res.status, 200);
+  const setCookie = res.headers.get("set-cookie") ?? "";
+  assert.match(
+    setCookie,
+    /__session=header\.pay=load\.sig;/,
+    `Set-Cookie must carry the full session value, got: ${setCookie}`
+  );
 });

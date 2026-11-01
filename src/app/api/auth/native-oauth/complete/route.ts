@@ -32,6 +32,7 @@ import { verifyGoogleIdToken, verifyAppleIdToken } from "@/lib/native-oauth/veri
 import { mintClerkSessionFromNativeOAuth } from "@/lib/native-oauth/clerk-bridge";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { checkIpRateLimit, getClientIp, rateLimitHeaders } from "@/lib/ip-rate-limit";
+import { splitCookieHeader } from "./cookie-split";
 
 export const runtime = "nodejs";
 // Bridge writes cookies + hits Clerk Backend — never cache.
@@ -78,22 +79,6 @@ function bad(status: number, code: string, message: string, extraHeaders?: Heade
 
 function appUrl(): string {
   return process.env.NEXT_PUBLIC_SITE_URL || "https://blackouttrades.com";
-}
-
-/** Split a "cookie1=..; cookie2=.." string into a Set-Cookie header array. */
-function splitCookieHeader(joined: string): string[] {
-  return joined
-    .split(";")
-    .map((c) => c.trim())
-    .filter(Boolean)
-    .map((kv) => {
-      const [name, value] = kv.split("=");
-      // Match Clerk's own cookie attributes: domain-wide (works across the
-      // WebView + web), HttpOnly (Clerk sets __session HttpOnly too),
-      // Secure, SameSite=Lax so it survives the redirect chain.
-      // Path=/ so every route including SSE endpoints sees it.
-      return `${name}=${value}; Path=/; Secure; HttpOnly; SameSite=Lax`;
-    });
 }
 
 export async function POST(req: NextRequest) {
