@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T10:08:52.773Z",
+  "updated_at": "2026-11-01T10:19:19.969Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -72,24 +72,6 @@
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T08:49:14.955Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-25T08:49:18.916Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-25T09:06:45.828Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-25T09:06:50.217Z",
       "type": "context_sync",
@@ -1271,18 +1253,56 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T10:19:09.283Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T10:19:14.746Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-01T10:19:19.969Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 7198,
-      "title": "fix(vector): don't glyph-label modeled/reconstructed wall birth-death as observed",
-      "branch": "fix/vector-wall-event-glyphs-modeled-points",
+      "number": 7201,
+      "title": "fix(whop): escape Discord markdown in cancellation-reason ops alert",
+      "branch": "fix/whop-cancellation-discord-markdown-escape",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T09:58:39Z"
+      "updated_at": "2026-11-01T10:19:09Z"
+    },
+    {
+      "number": 7200,
+      "title": "fix(thermal): VEX/DEX/CHARM shift wall picks compared unconstrained vs spot-constrained sides",
+      "branch": "fix/vex-shift-wall-spot-asymmetry",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T10:12:08Z"
+    },
+    {
+      "number": 7199,
+      "title": "chore(agent-state): sync heartbeat/rotation state",
+      "branch": "chore/agent-state-heartbeat-sync-2026-11-01-1008z",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-01T10:09:56Z"
     },
     {
       "number": 5547,
