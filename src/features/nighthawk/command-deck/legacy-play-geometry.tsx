@@ -1,7 +1,35 @@
 "use client";
 
 import { clsx } from "clsx";
-import type { TerminalPlay } from "./types";
+import type { DeckStatus, TerminalPlay } from "./types";
+
+/**
+ * Pure zone-label logic for the progress gauge, extracted so the WATCH/SKIP framing can be unit
+ * tested without rendering the component (see legacy-play-geometry.test.ts).
+ *
+ * `progress` is computed unconditionally by `overlayLegacyQuotes` for every status — WATCH/SKIP
+ * included — because the stock-vs-[stop,target] gauge is legitimately useful context even before
+ * a position exists. But the two EXTREME-zone labels ("cut the position" / "take profit") are
+ * live-position command language: they instruct closing or trimming a trade. That instruction is
+ * only correct once a position actually exists to act on (OPEN/HOLD/TRIM/CLOSED). For a WATCH or
+ * SKIP play there is no open position — the stock merely sits beyond where a hypothetical entry's
+ * stop/target band would put it — so those two branches are reworded to describe the setup's own
+ * standing instead of issuing a trade instruction. The three middle-zone labels describe the gauge
+ * itself, not an action, so they apply unchanged regardless of status.
+ */
+export function legacyZoneLabel(progress: number | null | undefined, status: DeckStatus): string | null {
+  if (progress == null) return null;
+  const hasLivePosition = status !== "WATCH" && status !== "SKIP";
+  if (progress <= 0) {
+    return hasLivePosition ? "below stop — cut the position" : "already below stop — would be invalidated";
+  }
+  if (progress >= 1) {
+    return hasLivePosition ? "at/above target — take profit" : "already at/above target before entry";
+  }
+  if (progress < 0.3) return "near stop — elevated risk";
+  if (progress > 0.7) return "nearing target — watch for exit";
+  return "mid-range — hold per plan";
+}
 
 /** Legacy entry geometry — structured levels + live stock-price progress track. */
 export function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
@@ -33,18 +61,7 @@ export function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
         : Math.max(0, Math.min(1, (stop - entryMid) / (stop - target)))
       : null;
 
-  const zoneLabel =
-    play.progress != null && spot != null
-      ? play.progress <= 0
-        ? "below stop — cut the position"
-        : play.progress >= 1
-          ? "at/above target — take profit"
-          : play.progress < 0.3
-            ? "near stop — elevated risk"
-            : play.progress > 0.7
-              ? "nearing target — watch for exit"
-              : "mid-range — hold per plan"
-      : null;
+  const zoneLabel = spot != null ? legacyZoneLabel(play.progress, play.status) : null;
 
   return (
     <>
