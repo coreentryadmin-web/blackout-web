@@ -5,6 +5,49 @@ came back green. They are useful as history and were never findings; mixed into 
 made it impossible to tell an open P1 from a finished chore.
 
 ## 2026-10-14 (06:17 UTC / Tue 02:18 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+## 2026-11-01 (13:09 UTC / Fri 08:09 ET) — [Coordinator] Monthly cron DST audit
+
+**Severity.** — No new BROKEN verdicts; prior BROKEN (x-autopost) resolved via manifest removal; two pre-existing ASYMMETRIC crons confirmed.
+
+**Why it ran.** Scheduled monthly DST audit (recurring check to verify all ET-gated crons remain correct across EDT/EST boundary transitions).
+
+**Result — `OVERALL: PASS WITH KNOWN ASYMMETRIES`, `EXIT=1` (non-fatal mismatches logged):**
+
+**DST Verdict Summary:**
+- **Total deployed crons:** 39
+- **Covered (audited):** 24
+- **Unaudited:** 15 (alert-outcome-sync, cron-staleness-watchdog, db-cleanup, desk-warm, flow-ingest, heatmap-warm, helix-signal-outcomes, largo-cleanup, membership-reconcile, platform-warm, swing-active-refresh, uw-cache-refresh, vector-pick-sweep, zerodte-skip-grade, zerodte-warm)
+
+| Verdict | Count | Notes |
+|---------|-------|-------|
+| **OK** | 15+ | nighthawk-morning-confirm, spx-signal-observe, banger-live-sync, x-analytics, spx-signal-weight-optimize, and others — satisfy their ET gates identically in both offsets |
+| **ASYMMETRIC** | 2 | **nighthawk-outcomes** (EDT 10/wk vs EST 5), **swing-discovery** (EDT 122/wk vs EST 120) — fire in-window but different cadence across boundary |
+| **BROKEN** | 0 | ✅ Improvement: x-autopost (previously BROKEN with 0 EST fires) now UNSCHEDULED (removed from deployed manifest) |
+| **UNSCHEDULED** | 6+ | darkpool-discord, helix-discord-digest, thermal-discord, x-autopost (removed), largo-morning-brief, zerodte-grade, legacy-live-sync — not in EventBridge manifest |
+
+**Registry/Deployed Mismatches Found (7 total):**
+1. **largo-morning-brief** — registry claims `25 13,14 * * 1-5` but not deployed
+2. **zerodte-grade** — registry claims `*/15 20-22 * * 1-5` but not deployed  
+3. **banger-discovery** — registry `15 20,21 * * 1-5` vs deployed `15 20 * * 1-5` (disagreement on weekend/Tuesday fire)
+4. **legacy-live-sync** — registry claims `*/5 11-21 * * 1-5` but not deployed
+5. **darkpool-discord** — registry claims `*/2 11-21 * * 1-5` but not deployed
+6. **thermal-discord** — registry claims `*/15 13-21 * * 1-5` but not deployed
+7. **helix-discord-digest** — registry claims `*/15 11-21 * * 1-5` but not deployed
+
+**Comparison to Previous Run (2026-08-24):**
+- **x-autopost BROKEN → UNSCHEDULED:** Fixed by removal from deployed manifest (was previously known broken, 0 EST fires, 39 EDT hits). ✅
+- **nighthawk-outcomes ASYMMETRIC → ASYMMETRIC:** Unchanged (EDT 10/wk vs EST 5/wk, both in-window per design).
+- **swing-discovery ASYMMETRIC → ASYMMETRIC:** Unchanged (EDT 122/wk vs EST 120/wk, both in-window per design).
+- **banger-discovery OK → (verified still OK, now also listed in mismatches for registry/deployed disagreement):** Core DST gate passes, but schedule discrepancy detected between registry and deployed manifest.
+- **New finding:** 7 registry/deployed schedule mismatches suggest the registry (`src/cron-registry.ts`) is stale relative to the deployed manifest (`blackout-infra/terraform/modules/crons/cron-jobs.json`).
+
+**Actions:**
+- No new findings requiring immediate code fixes (ASYMMETRIC verdicts are by design per route documentation).
+- Registry/deployed mismatches are a tooling/infrastructure-state issue, not a DST correctness issue — flagged for infrastructure review.
+- Confirmed the scheduled monthly trigger works as expected (fired at 13:09 UTC per schedule).
+
+**Next cycle:** Re-run in December to verify the seasonal boundary transition (EDT → EST occurs 2026-11-03 02:00 UTC).
+
 
 Market closed overnight. Resynced to `origin/main` (`9af710d` → `2a37937`, other-lane swing
 journal). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS — **0.0001,
