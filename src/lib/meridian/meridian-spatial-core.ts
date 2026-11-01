@@ -26,7 +26,15 @@
  * Each of those needs a data change first, not a rendering change.
  */
 
-import { clamp, num, round, type MeridianDimension, DIMENSION_ORDER, PILLAR_DIMENSION } from "./meridian-viz-core";
+import {
+  clamp,
+  num,
+  resolveSignalWeight,
+  round,
+  type MeridianDimension,
+  DIMENSION_ORDER,
+  PILLAR_DIMENSION,
+} from "./meridian-viz-core";
 
 // ── Perspective projection ───────────────────────────────────────────────────────────
 
@@ -110,7 +118,7 @@ export function orbitalLayout(
   const rows = (signals ?? []).filter((s) => s.pillar && PILLAR_DIMENSION[String(s.pillar)]);
   if (rows.length === 0) return [];
 
-  const weights = rows.map((s) => Math.abs(num(s.weight) ?? 1) || 1);
+  const weights = rows.map((s) => resolveSignalWeight(s.weight));
   const maxWeight = Math.max(...weights);
   const minWeight = Math.min(...weights);
   // Normalize across the OBSERVED spread, not 0..max: otherwise a book whose lightest pillar
@@ -135,7 +143,7 @@ export function orbitalLayout(
     const members = byDim.get(dim)!;
     const sectorDeg = (members.length / total) * 360;
     members.forEach((s, i) => {
-      const w = Math.abs(num(s.weight) ?? 1) || 1;
+      const w = resolveSignalWeight(s.weight);
       const sc = Math.abs(num(s.score) ?? 0);
       // Spread members evenly INSIDE their sector, centred — so a lone pillar sits at the
       // sector's midpoint rather than on its boundary where it would read as belonging to
