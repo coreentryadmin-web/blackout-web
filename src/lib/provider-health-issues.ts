@@ -26,6 +26,9 @@ export const DEFAULT_PROVIDER_HEALTH_THRESHOLDS: ProviderHealthThresholds = {
   rateLimitWarn: 3,
 };
 
+/** Fallback window when the caller-supplied value is unusable (see the NaN guard below). */
+export const DEFAULT_PROVIDER_HEALTH_WINDOW_MINUTES = 10;
+
 /**
  * The rollup query (`fetchProviderTelemetryRollups` in provider-health-reconcile.ts)
  * clamps its caller-supplied window to [1, 60] minutes before building the SQL
@@ -34,8 +37,29 @@ export const DEFAULT_PROVIDER_HEALTH_THRESHOLDS: ProviderHealthThresholds = {
  * the rows it's given unless a caller tells it the SAME clamped number — exported so
  * provider-health-reconcile.ts can apply it once and reuse the identical value for
  * both the query and the issue text, instead of two independent clamps drifting.
+ *
+ * NON-FINITE GUARD (bug found during the standing audit sweep). The route's only real caller
+ * builds its argument via `Number(process.env.PROVIDER_HEALTH_WINDOW_MIN ?? "10")` — the exact
+ * "non-numeric env override" shape this codebase already guards explicitly in
+ * alert-outcome-sync/nighthawk-outcomes/largo-cleanup (`Number("abc")` is `NaN`, which silently
+ * defeats a clamp that assumes a real number). This clamp did NOT have that guard:
+ * `Math.round(NaN)` is `NaN`, and `Math.max`/`Math.min` propagate a `NaN` operand rather than
+ * ignoring it, so `clampProviderHealthWindowMinutes(NaN)` returned `NaN`, not a value in [1, 60].
+ * Two observable consequences of a misconfigured `PROVIDER_HEALTH_WINDOW_MIN`:
+ *  1. `fetchProviderTelemetryRollups` builds `($1 || ' minutes')::interval` with `$1 = "NaN"` —
+ *     not a valid Postgres interval literal, so the query throws, is caught, and the cron
+ *     silently returns zero rollups/issues every run — the provider-health monitor goes dark
+ *     with no error surfaced anywhere.
+ *  2. Even where a raw `NaN` window label flows through unclamped (e.g. a future caller that
+ *     skips the query path), `buildProviderHealthIssues`' `windowLabel` interpolates it directly
+ *     into admin-facing issue text ("the last NaNm window"), the same "member/admin sees a raw
+ *     NaN" defect class already fixed elsewhere in this codebase (fmt-money.ts's NaN guards).
+ * Falling back to the same 10-minute default every other caller already uses when the argument
+ * is omitted keeps this one function the single source of truth for both the query window and
+ * the issue text, exactly as its own header above already requires.
  */
 export function clampProviderHealthWindowMinutes(minutes: number): number {
+  if (!Number.isFinite(minutes)) return DEFAULT_PROVIDER_HEALTH_WINDOW_MINUTES;
   return Math.min(Math.max(1, Math.round(minutes)), 60);
 }
 
