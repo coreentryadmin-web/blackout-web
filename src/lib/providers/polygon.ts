@@ -1293,7 +1293,22 @@ export type PolygonFinancialRatios = {
   as_of: string | null;
 };
 
-function ratioNum(v: unknown): number | null {
+/**
+ * Coerce an unknown Polygon ratios-snapshot field to a number, or `null` when absent/invalid.
+ *
+ * BUG THIS FIXES: `Number(null) === 0` and `Number(undefined) === NaN` — only the `undefined`
+ * case was ever caught by the old `Number.isFinite(n)` check below, so an explicit JSON `null`
+ * (Polygon's documented convention for "not computable for this ticker" — a loss-making
+ * company's P/E, a non-dividend-payer's yield, a debt-free company's debt/equity) silently
+ * became the NUMBER ZERO instead of staying absent. Every sibling "parse an unknown field to
+ * number-or-null" helper in this file already guards this exact case
+ * (`shapeBenzingaStructuredEarnings`/`shapeBenzingaCorporateGuidance`'s shared `num()` closure:
+ * `v != null && Number.isFinite(Number(v)) ? Number(v) : null`; `latestIndicator`:
+ * `v != null ? Number(v) : null`) — this was the one holdout missing the `v != null` guard
+ * before coercing. See polygon-ratio-num-null.test.ts.
+ */
+export function ratioNum(v: unknown): number | null {
+  if (v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
