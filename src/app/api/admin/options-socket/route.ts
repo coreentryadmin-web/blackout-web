@@ -19,7 +19,14 @@ export async function GET() {
   // is itself a reliable way to bring the engine up + report its live state.
   ensureDataSockets();
 
+  // Root cause (2026-11-01 audit): this route imported NO_STORE_HEADERS but never
+  // applied it — a bare `Cache-Control: no-store` is missing the CDN-scoped
+  // CDN-Cache-Control/Cloudflare-CDN-Cache-Control headers that are the actually
+  // load-bearing ones (see the doc comment on NO_STORE_HEADERS), so a Cloudflare
+  // cache rule with override_origin could still edge-cache this response. Same
+  // defect, same fix, as the 2026-08-01 audit's admin/spx/health and
+  // admin/analytics/x correction — this sibling route was missed at the time.
   return NextResponse.json(getOptionsSocketStatus(), {
-    headers: { "Cache-Control": "no-store" },
+    headers: NO_STORE_HEADERS,
   });
 }
