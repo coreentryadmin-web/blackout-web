@@ -36,7 +36,7 @@ import {
 } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
-import { laneRankSection } from "./play-brief-lane-rank";
+import { laneRankSection, closedLaneRankSection } from "./play-brief-lane-rank";
 import {
   tradeManagerNarrativeSection,
   collectFocalLevels,
@@ -3737,6 +3737,9 @@ export function buildIntelSections(
     onFailure,
   );
   if (rank) out.push(rank);
+
+  const closedRank = safeSection("Lane rank at commit", () => closedLaneRankSection(play), onFailure);
+  if (closedRank) out.push(closedRank);
 
   const technicals = safeSection(
     "Chart technicals",

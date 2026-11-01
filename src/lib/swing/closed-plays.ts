@@ -88,6 +88,11 @@ export type SwingClosedDeckSource = {
    *  structurally by the adapter (`parseBudgetVerdictStamp`/`bookRiskLine`), never trusted here.
    *  Ask Largo standing mandate, 2026-10-26, #4076 comment 6410025245. */
   budgetVerdict?: unknown;
+  /** Raw entry_context.lane_rank_at_commit JSONB (swing commit.ts's `LaneRankAtCommit`) — parsed
+   *  structurally by the adapter, never trusted here. Present only on a row committed after this
+   *  field shipped; absent/null on any older row (honest absence, never backfilled/fabricated —
+   *  there is no way to reconstruct a commit-time batch snapshot after the fact). */
+  laneRankAtCommit: unknown;
   /** Whether a real scale-out trim was ENFORCED on this leg at any point before it closed —
    *  persisted into `scale_out_grade` at grade time (db.ts's `gradeSwingPosition`) from the row's
    *  own pre-update `status`, since a closed row's `status` is always CLOSED/ROLLED and can never
@@ -261,6 +266,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     closedReason: closedReasonFromRow(row),
     cortex: row.entry_context?.cortex ?? null,
     budgetVerdict: row.entry_context?.budget_verdict ?? null,
+    laneRankAtCommit: row.entry_context?.lane_rank_at_commit ?? null,
     entryTriggerUnderlyingPx: fin(row.entry_underlying_px),
     invalidationUnderlyingPx: fin(row.thesis_invalidation_px),
     trimEnforcedBeforeClose: trimEnforcedBeforeCloseFromScaleOutGrade(row.scale_out_grade),

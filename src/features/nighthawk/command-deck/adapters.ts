@@ -44,6 +44,7 @@ import type {
 } from "./types";
 import { readCortexView } from "@/lib/zerodte/pane";
 import { parseBudgetVerdictStamp } from "@/lib/swing/swing-portfolio-budget";
+import { parseLaneRankAtCommit } from "@/lib/swing/commit";
 import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
 import type { ThesisPipelineResult } from "@/lib/zerodte/thesis/types";
@@ -818,6 +819,13 @@ export interface HorizonDeckSource {
    *  pre-wire-in row, or a non-SWING caller — honest absence, never fabricated (Ask Largo standing
    *  mandate, 2026-10-26, #4076 comment 6410025245). */
   budgetVerdict?: unknown;
+  /** CLOSED SWING only: raw entry_context.lane_rank_at_commit JSONB (swing commit.ts's
+   *  `LaneRankAtCommit`) — parsed structurally via `parseLaneRankAtCommit` below, never trusted
+   *  raw. Present only on a CLOSED row committed after this field shipped; absent/null on any
+   *  older row, a shadow position, or a pre-commit WATCH/lane candidate (this field is stamped
+   *  ONLY at commit) — honest absence, never backfilled/fabricated (Ask Largo standing mandate,
+   *  Largo product-contract C10 — historical context). */
+  laneRankAtCommit?: unknown;
   /** CLOSED SWING only: whether a real scale-out trim was ENFORCED on this leg at any point before
    *  it closed — see `SwingClosedDeckSource`'s own field (closed-plays.ts) for the full history of
    *  why `status`/`liveStatus` alone can never answer this for a closed row. Null/absent = not
@@ -1276,6 +1284,10 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     // honestly null when absent (pre-commit candidate, pre-this-fix historical row, or a
     // malformed/foreign blob). Ask Largo standing mandate, 2026-10-26, #4076 comment 6410025245.
     budgetVerdict: parseBudgetVerdictStamp(src.budgetVerdict ?? null),
+    // Pinned commit-batch lane rank from entry_context.lane_rank_at_commit — parsed structurally,
+    // honestly null when absent (pre-commit candidate, pre-this-fix historical row, a shadow
+    // position, or a malformed/foreign blob). Largo product-contract C10 — historical context.
+    laneRankAtCommit: parseLaneRankAtCommit(src.laneRankAtCommit ?? null),
   };
 }
 
@@ -1566,6 +1578,7 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     closedReason: src.closedReason ?? null,
     cortex: src.cortex ?? null,
     budgetVerdict: src.budgetVerdict ?? null,
+    laneRankAtCommit: src.laneRankAtCommit ?? null,
     entryTriggerUnderlyingPx: src.entryTriggerUnderlyingPx ?? null,
     invalidationUnderlyingPx: src.invalidationUnderlyingPx ?? null,
     trimEnforcedBeforeClose: src.trimEnforcedBeforeClose ?? null,

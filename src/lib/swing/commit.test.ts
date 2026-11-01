@@ -17,6 +17,7 @@ import {
   isEventArchetype,
   swingCommitKey,
   swingRollCommitKey,
+  parseLaneRankAtCommit,
   type SwingCommitCandidate,
   type CommitBookPosition,
   type SwingCommitDeps,
@@ -617,6 +618,57 @@ test("computeSwingCommitPlan: entry_context.signal_kinds is null when no discove
   });
   const ctx = plan.decisions[0]!.insert?.entry_context as Record<string, unknown>;
   assert.equal(ctx?.signal_kinds, null);
+});
+
+// ─── lane rank at commit (Largo C10 — historical context) ─────────────────────
+
+test("computeSwingCommitPlan: pins lane_rank_at_commit with hand-computed rank/median/delta for a 3-candidate batch", () => {
+  const candidates = [
+    candidate({ ticker: "NVDA", score: 85 }),
+    candidate({ ticker: "AAPL", score: 60 }),
+    candidate({ ticker: "TSLA", score: 40 }),
+  ];
+  const plan = computeSwingCommitPlan({ candidates, report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const byTicker = Object.fromEntries(plan.decisions.map((d) => [d.ticker, d]));
+  for (const d of plan.decisions) assert.equal(d.committable, true, `${d.ticker} expected to commit: ${d.blockedBy.join(",")}`);
+
+  // Best-first order is NVDA(85) > AAPL(60) > TSLA(40); odd n=3 median = the middle score (60).
+  assert.deepEqual((byTicker.NVDA!.insert!.entry_context as Record<string, unknown>).lane_rank_at_commit, {
+    rank: 1, total: 3, score: 85, medianScore: 60, deltaFromMedian: 25,
+  });
+  assert.deepEqual((byTicker.AAPL!.insert!.entry_context as Record<string, unknown>).lane_rank_at_commit, {
+    rank: 2, total: 3, score: 60, medianScore: 60, deltaFromMedian: 0,
+  });
+  assert.deepEqual((byTicker.TSLA!.insert!.entry_context as Record<string, unknown>).lane_rank_at_commit, {
+    rank: 3, total: 3, score: 40, medianScore: 60, deltaFromMedian: -20,
+  });
+});
+
+test("computeSwingCommitPlan: lane_rank_at_commit is null (never a fabricated '#1 of 1') for a single-candidate batch", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ ticker: "NVDA", score: 85 })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  assert.equal(plan.decisions[0]!.committable, true);
+  const ctx = plan.decisions[0]!.insert!.entry_context as Record<string, unknown>;
+  assert.equal(ctx.lane_rank_at_commit, null);
+});
+
+test("parseLaneRankAtCommit: round-trips a real stamped value", () => {
+  const stamped = { rank: 2, total: 5, score: 61.5, medianScore: 58.0, deltaFromMedian: 3.5 };
+  assert.deepEqual(parseLaneRankAtCommit(stamped), stamped);
+});
+
+test("parseLaneRankAtCommit: null on garbage input (wrong types, missing fields, non-object)", () => {
+  assert.equal(parseLaneRankAtCommit(null), null);
+  assert.equal(parseLaneRankAtCommit(undefined), null);
+  assert.equal(parseLaneRankAtCommit("not an object"), null);
+  assert.equal(parseLaneRankAtCommit(42), null);
+  assert.equal(parseLaneRankAtCommit({ rank: "1", total: 3, score: 85, medianScore: 60, deltaFromMedian: 25 }), null, "wrong type (string rank)");
+  assert.equal(parseLaneRankAtCommit({ rank: 1, total: 3, score: 85, medianScore: 60 }), null, "missing deltaFromMedian");
+  assert.equal(parseLaneRankAtCommit({}), null);
 });
 
 // ─── small helpers ────────────────────────────────────────────────────────────

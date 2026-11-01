@@ -207,6 +207,44 @@ export interface CommitBookPosition {
   weightPct?: number | null;
 }
 
+/** Frozen snapshot of this candidate's standing among the SAME-SCAN WATCH-candidate batch at the
+ *  exact moment it committed — `ordered` (score-desc, ticker tie-break) is the same list
+ *  computeSwingCommitPlan already builds to decide commit order, reused here rather than
+ *  re-fetched, so this costs nothing new and can never disagree with what actually happened at
+ *  commit. Distinct from (and much narrower than) play-brief-lane-rank.ts's `LaneRankSnapshot`,
+ *  which ranks a LIVE OPEN/WATCH board position-by-position at BRIEF-READ time and explicitly
+ *  returns null for CLOSED plays (bucketFor === "closed") — there is no live board to rank a
+ *  closed position against after the fact, and the two numbers answer different questions ("where
+ *  does this currently-open/pending idea rank on today's board" vs "was this a top idea when it
+ *  got promoted"). Pinned into entry_context.lane_rank_at_commit so a CLOSED brief can answer the
+ *  second question even though the first is gone forever. Omitted entirely (not a fabricated
+ *  "#1 of 1") whenever the batch had fewer than 2 candidates — same floor as computeLaneRank's own
+ *  `peers.length < 2` null-return. */
+export interface LaneRankAtCommit {
+  rank: number;
+  total: number;
+  score: number;
+  medianScore: number;
+  deltaFromMedian: number;
+}
+
+/** Parse a `LaneRankAtCommit` back out of the raw JSONB `entry_context.lane_rank_at_commit` —
+ *  never trusts the blob structurally. Null on anything not shaped exactly like what this module
+ *  itself stamps. */
+export function parseLaneRankAtCommit(raw: unknown): LaneRankAtCommit | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const nums = [r.rank, r.total, r.score, r.medianScore, r.deltaFromMedian];
+  if (!nums.every((v) => typeof v === "number" && Number.isFinite(v))) return null;
+  return {
+    rank: r.rank as number,
+    total: r.total as number,
+    score: r.score as number,
+    medianScore: r.medianScore as number,
+    deltaFromMedian: r.deltaFromMedian as number,
+  };
+}
+
 export interface SwingCommitDecision {
   ticker: string;
   direction: PlayDirection | null;
@@ -298,6 +336,29 @@ export function swingRollCommitKey(
   return `${swingCommitKey(sessionDate, ticker, subLane, dir, archetype)}:r${Math.max(1, Math.floor(rollSeq))}`;
 }
 
+/** Pure: rank/median stats for `cand` within `ordered` (the SAME score-desc, ticker-tie-break list
+ *  computeSwingCommitPlan already built). Null when the batch has fewer than 2 candidates — ranking
+ *  a lone candidate against itself would be a fabricated "#1 of 1", not a real comparison. */
+function laneRankAtCommitFor(cand: SwingCommitCandidate, ordered: SwingCommitCandidate[]): LaneRankAtCommit | null {
+  if (ordered.length < 2) return null;
+  const idx = ordered.findIndex((c) => c === cand);
+  if (idx < 0) return null; // should not happen — cand is always drawn from ordered
+  const scores = ordered.map((c) => c.score);
+  const n = scores.length;
+  const rawMedian =
+    n % 2 === 1
+      ? (scores[Math.floor(n / 2)] ?? cand.score)
+      : ((scores[n / 2 - 1] ?? cand.score) + (scores[n / 2] ?? cand.score)) / 2;
+  const medianScore = Math.round(rawMedian * 10) / 10;
+  return {
+    rank: idx + 1,
+    total: n,
+    score: cand.score,
+    medianScore,
+    deltaFromMedian: Math.round((cand.score - medianScore) * 10) / 10,
+  };
+}
+
 /**
  * PURE: decide which WATCH candidates commit. Walks candidates best-first (score desc, ticker tie-break),
  * carrying a RUNNING book that grows with each approval so the armed budget and the book-percent caps
@@ -359,6 +420,9 @@ export function computeSwingCommitPlan(args: {
     const grad = isCommitGraduated(report, cand.archetype, gradeSubLane);
     const blockedBy: string[] = [];
     const riskUsd = modelRiskUsd(cand.contract?.mid ?? null);
+    // Observability-only (Largo C10) — this candidate's standing among the SAME-SCAN WATCH batch,
+    // frozen at the exact moment of this decision. Computed from `ordered`, never gates anything.
+    const laneRankAtCommit = laneRankAtCommitFor(cand, ordered);
 
     // GRADUATION is evidence-only (see the file header) — pinned for observability, never gates the open.
     // commitEligibleCount keeps its original meaning (the count that has cleared the calibration ladder) as
@@ -489,7 +553,7 @@ export function computeSwingCommitPlan(args: {
     const committable = blockedBy.length === 0 && cand.contract != null && dirLc != null && subLane != null && isFin(riskUsd);
     let insert: SwingPositionInsert | undefined;
     if (committable && cand.contract && dirLc && subLane) {
-      insert = buildCommitInsert(cand, subLane, dirLc, commitKey, riskUsd as number, grad, budget, budgetVerdict);
+      insert = buildCommitInsert(cand, subLane, dirLc, commitKey, riskUsd as number, grad, budget, budgetVerdict, laneRankAtCommit);
       committableCount += 1;
       openThesis.add(thesisKey);
       runningBook.push({
@@ -536,6 +600,7 @@ function buildCommitInsert(
   grad: { graduated: boolean; reason: string },
   budget: PortfolioBudget,
   budgetVerdict: SwingCommitBudgetVerdict | undefined,
+  laneRankAtCommit: LaneRankAtCommit | null,
 ): SwingPositionInsert {
   const c = cand.contract!;
   return {
@@ -595,6 +660,11 @@ function buildCommitInsert(
       // this pillar. Reusing the gate's own already-graduated value rather than recomputing keeps
       // this consistent with what actually cleared G-S6, not a fresh re-derivation.
       signal_kinds: cand.discoveryPaths ?? null,
+      // Largo C10 (Ask Largo standing mandate) — this candidate's rank among the SAME-SCAN
+      // WATCH-candidate batch, frozen at the exact moment of commit (see `LaneRankAtCommit`'s own
+      // doc comment for why this is distinct from the live, OPEN/WATCH-only lane rank). Null when
+      // the batch had fewer than 2 candidates — never a fabricated "#1 of 1".
+      lane_rank_at_commit: laneRankAtCommit,
     },
     gate_calibration_json: {
       methodology: "swing.commit.graduation.v1",
