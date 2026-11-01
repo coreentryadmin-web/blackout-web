@@ -99,7 +99,7 @@ function runTickerSwitchSimulation(tickers: { ticker: string; expiries: string[]
      ${extractScopeResolutionBody()}`
   );
 
-  for (const { ticker, expiries } of tickers) {
+  for (const { expiries } of tickers) {
     // (1) ticker changed -> the Rank-5 reset effect fires.
     tickerResetFn(state, setExpiryScope);
     // (2) fresh data for the new ticker lands -> the resolution effect fires against it.
