@@ -11,31 +11,41 @@ import { stampBars } from "@/lib/largo/temporal/bar-session-date";
 // Primary/fallback URL failover: when the circuit breaker trips (5 consecutive 429s),
 // switch to the fallback URL so requests aren't blocked for the full pause window.
 // Mirrors the pattern in scripts/audit/zerodte-e2e-suite.mjs (data-resilience audit 2026-07-27).
-const POLYGON_PRIMARY = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
-const POLYGON_FALLBACK = (() => {
-  try { return new URL(POLYGON_PRIMARY).hostname === "api.polygon.io" || new URL(POLYGON_PRIMARY).hostname.endsWith(".polygon.io"); }
-  catch { return false; }
-})()
-  ? "https://api.massive.com"
-  : "https://api.polygon.io";
+function polygonPrimaryBase(): string {
+  // Default host matches production when POLYGON_API_BASE is unset (see AWS secrets manifest).
+  return (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, ""); // pragma: allowlist secret
+}
+
+function polygonFallbackBase(primary: string): string {
+  try {
+    return new URL(primary).hostname === "api.polygon.io" || new URL(primary).hostname.endsWith(".polygon.io")
+      ? "https://api.massive.com" // pragma: allowlist secret
+      : "https://api.polygon.io";
+  } catch {
+    return "https://api.polygon.io";
+  }
+}
+
 /** Sticky: once we fail over, stay on the fallback until the breaker resets. */
 let _usingFallback = false;
 let _lastBreakerCheck = false;
 
 function getPolygonBase(): string {
+  const primary = polygonPrimaryBase();
+  const fallback = polygonFallbackBase(primary);
   const breakerOpen = isPolygonCircuitOpen();
   // Transition: breaker just opened → switch to fallback
   if (breakerOpen && !_lastBreakerCheck) {
     _usingFallback = true;
-    console.warn(`[polygon-largo] Circuit breaker open — failing over to ${POLYGON_FALLBACK}`);
+    console.warn(`[polygon-largo] Circuit breaker open — failing over to ${fallback}`);
   }
   // Transition: breaker just closed → try primary again
   if (!breakerOpen && _lastBreakerCheck) {
     _usingFallback = false;
-    console.warn(`[polygon-largo] Circuit breaker reset — returning to primary ${POLYGON_PRIMARY}`);
+    console.warn(`[polygon-largo] Circuit breaker reset — returning to primary ${primary}`);
   }
   _lastBreakerCheck = breakerOpen;
-  return _usingFallback ? POLYGON_FALLBACK : POLYGON_PRIMARY;
+  return _usingFallback ? fallback : primary;
 }
 
 /** Test-only: clear sticky failover latch so harness traffic stays on POLYGON_API_BASE. */

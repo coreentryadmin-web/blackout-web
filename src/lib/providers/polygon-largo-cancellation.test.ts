@@ -7,11 +7,9 @@ import { __allowFetchHostForTest } from "../api-tracked-fetch";
 // Proves fetchPolygonNews/fetchPolygonTickerDetails actually terminate the real underlying
 // connection when their caller aborts — through polygonGet -> buildPolygonLargoFetchInit ->
 // polygonTrackedFetch -> the real fetch(). One shared server + one shared import for the
-// whole file, deliberately: POLYGON_API_BASE is read once at polygon-largo.ts's module
-// evaluation (`getPolygonBase()`'s closure), so a per-test cache-busted re-import doesn't
-// give an isolated server the way it looks like it should — this loader resolves a
-// query-string variant of the same specifier back to the SAME cached module instance
-// (verified against the identical trap in unusual-whales-abort-wiring.test.ts).
+// whole file: polygon-largo's module instance is cached across the full test run (tsx
+// ignores query-string cache busts — see unusual-whales-abort-wiring.test.ts), so
+// getPolygonBase() must read POLYGON_API_BASE at call time, not at module evaluation.
 //
 // Waits on inbound HTTP *requests*, not raw TCP `connection` events: undici keep-alive reuses
 // one socket across sequential calls to the same mock origin, so a second subtest's fetch can
@@ -99,7 +97,11 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   pending.catch(() => {});
 
   const socket = await waitForNextInboundRequest(sinceCount, CONNECTION_PROOF_WAIT_MS);
-  assert.ok(socket, "the request must actually reach the server for this test to prove anything");
+  assert.ok(
+    socket,
+    "the request must actually reach the server for this test to prove anything " +
+      "(stale POLYGON_API_BASE from an early import or failover/breaker drift sends traffic elsewhere)"
+  );
   const abortedAt = Date.now();
   controller.abort();
 
@@ -134,7 +136,11 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   pending.catch(() => {});
 
   const socket = await waitForNextInboundRequest(sinceCount, CONNECTION_PROOF_WAIT_MS);
-  assert.ok(socket, "the request must actually reach the server for this test to prove anything");
+  assert.ok(
+    socket,
+    "the request must actually reach the server for this test to prove anything " +
+      "(stale POLYGON_API_BASE from an early import or failover/breaker drift sends traffic elsewhere)"
+  );
   const abortedAt = Date.now();
   controller.abort();
 
