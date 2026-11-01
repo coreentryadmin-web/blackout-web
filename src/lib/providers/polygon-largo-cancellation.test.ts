@@ -63,11 +63,20 @@ const basePromise = listen(server).then((base) => {
 
 const polygonLargoPromise = basePromise.then(() => import("./polygon-largo"));
 
+/** Under full-suite CI, acquirePolygonSlot can queue behind other files' Polygon traffic. */
+const CONNECTION_WAIT_MS = process.env.CI ? 20_000 : 5_000;
+
+async function ensurePolygonTestCircuitClosed() {
+  const { resetPolygonCircuitForTest } = await import("./polygon-rate-limiter");
+  resetPolygonCircuitForTest();
+}
+
 after(() => {
   server.close();
 });
 
 test("fetchPolygonNews: aborting the caller's signal terminates the real underlying connection", async () => {
+  await ensurePolygonTestCircuitClosed();
   const { fetchPolygonNews } = await polygonLargoPromise;
   const sinceCount = sockets.length;
 
@@ -75,7 +84,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECTION_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -102,6 +111,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
 });
 
 test("fetchPolygonTickerDetails: aborting the caller's signal terminates the real underlying connection", async () => {
+  await ensurePolygonTestCircuitClosed();
   const { fetchPolygonTickerDetails } = await polygonLargoPromise;
   const sinceCount = sockets.length;
 
@@ -109,7 +119,7 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECTION_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
