@@ -606,6 +606,12 @@ function joinOverlapNames(names: readonly string[]): string {
  * between distinct tickers. Pure reordering -- `dupTickers`/`crossEngineDupTickers` are computed
  * by the caller over the ORIGINAL (unclustered) list beforehand and are unaffected by this.
  */
+/** "twice" for 2 total instances of the identical name+direction, "N times" for 3 or more — see
+ * the call site in `bookContextSection` for why this needed to stop being a bare literal. */
+function timesWord(total: number): string {
+  return total === 2 ? "twice" : `${total} times`;
+}
+
 function clusterByTicker(positions: readonly PortfolioPosition[]): PortfolioPosition[] {
   const groups = new Map<string, PortfolioPosition[]>();
   const order: string[] = [];
@@ -698,9 +704,17 @@ export function bookContextSection(
       // Same pending-entry-vs-already-committed tense distinction the generic branch below
       // (and siblingPositionsNote) already carry — a WATCH candidate hasn't entered yet ("Adding"),
       // an already-open/HOLD/TRIM position already has (no "Adding").
+      // BUG FIX (2026-11-01, Ask Largo standing mandate, live repro MRNA positionId 2240): this
+      // closer was a bare literal "twice" regardless of how many same-ticker/same-direction rows
+      // actually overlapped. It read correctly for exactly one pre-existing position (2 total,
+      // the only shape the existing test fixture covered), but MRNA's real book already held TWO
+      // separate prior MRNA LONG positions (#68, #2167) before this third — stacking the identical
+      // wager a third time, not a second — and the text kept saying "twice" regardless. Scale the
+      // word to the real total (this row + every other same-ticker/same-direction row) instead.
+      const totalSameTickerSameDir = sameTickerSameDir.length + 1;
       const closer = isPendingEntryDecision
-        ? `Adding ${play.ticker} stacks the identical wager twice, not diversifying across names.`
-        : `${play.ticker} stacks the identical wager twice, not diversifying across names.`;
+        ? `Adding ${play.ticker} stacks the identical wager ${timesWord(totalSameTickerSameDir)}, not diversifying across names.`
+        : `${play.ticker} stacks the identical wager ${timesWord(totalSameTickerSameDir)}, not diversifying across names.`;
       lines.push(
         `**Concentration — same underlying** — already holding ${sameTickerNames} on ${play.ticker} itself, ` +
           `the same side as this ${play.direction} candidate. This is the identical name, not just the same ` +
