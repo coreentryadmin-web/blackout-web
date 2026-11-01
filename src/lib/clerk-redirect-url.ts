@@ -82,7 +82,22 @@ export function clerkStagingReturnPath(raw: string | undefined | null): string {
   if (isSafeAppRelativePath(trimmed)) {
     try {
       const u = new URL(trimmed, STAGING_ORIGIN);
+      // Strip the SAME two params clerkSanitizeStagingReturnUrl's absolute-URL branch
+      // strips below — see that function's param list. Before this fix, only
+      // __clerk_synced was deleted here, so a relative redirect_url carrying
+      // __clerk_db_jwt (Clerk's cross-domain session-sync token — real production
+      // mechanism for the primary/satellite handoff, not dev-only despite the cookie
+      // policy page's description) passed straight through unstripped, while the
+      // identical absolute-URL input (https://staging.../path?__clerk_db_jwt=...) had
+      // it removed. middleware-clerk.ts's clerk-sync-failure recovery path
+      // (clerkIsClerkSyncFailed branch) hits exactly this: it only deletes
+      // __clerk_synced from the CURRENT url before re-deriving a relative returnPath
+      // and handing it to clerkSatelliteAuthRedirect -> clerkStagingReturnPath, so a
+      // failed-sync request whose URL still carries a stale/invalid __clerk_db_jwt had
+      // that token faithfully re-embedded in the new redirect_url sent to the PRIMARY
+      // sign-in page's query string.
       u.searchParams.delete("__clerk_synced");
+      u.searchParams.delete("__clerk_db_jwt");
       return `${u.pathname}${u.search}`;
     } catch {
       return trimmed;

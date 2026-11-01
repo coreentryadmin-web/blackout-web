@@ -41,6 +41,29 @@ test("clerkStagingReturnPath: normalizes full staging URL to path", () => {
   );
 });
 
+test("clerkStagingReturnPath: strips __clerk_db_jwt from a RELATIVE path, same as it already does for an absolute staging URL", () => {
+  // BUG (fixed): clerkSanitizeStagingReturnUrl's absolute-URL branch has always deleted both
+  // __clerk_synced and __clerk_db_jwt before returning. clerkStagingReturnPath's own
+  // relative-path branch only deleted __clerk_synced, so the exact same query string reached a
+  // different result depending solely on whether it arrived as a bare path or a full URL — a
+  // relative redirect_url carrying __clerk_db_jwt (Clerk's real primary<->satellite session-sync
+  // token) passed straight through un-stripped. middleware-clerk.ts's clerkIsClerkSyncFailed
+  // recovery path feeds exactly this shape into clerkSatelliteAuthRedirect ->
+  // clerkStagingReturnPath after deleting only __clerk_synced from the request URL itself.
+  assert.equal(
+    clerkStagingReturnPath("/sign-in?__clerk_db_jwt=deadbeef&__clerk_synced=false"),
+    "/sign-in"
+  );
+  // Same input, as a full staging URL, already stripped both params before this fix — the two
+  // call shapes must agree.
+  assert.equal(
+    clerkSanitizeStagingReturnUrl(
+      "https://staging.blackouttrades.com/sign-in?__clerk_db_jwt=deadbeef&__clerk_synced=false"
+    ),
+    "https://staging.blackouttrades.com/sign-in"
+  );
+});
+
 test("clerkPostAuthReturnPath: empty → marketing home", () => {
   assert.equal(clerkPostAuthReturnPath(undefined), CLERK_DEFAULT_POST_AUTH_PATH);
   assert.equal(clerkPostAuthReturnPath(""), CLERK_DEFAULT_POST_AUTH_PATH);
