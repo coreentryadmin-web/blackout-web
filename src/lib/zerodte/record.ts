@@ -232,10 +232,23 @@ export function officialPlanPnlPct(row: OfficialGradableRow): number | null {
 
 /** The OFFICIAL per-row plan outcome label — the executable lane's outcome when present, else
  *  the mid column. Kept in lockstep with officialPlanPnlPct so the label and the pnl agree
- *  (including the 2026-08-27 real-exit override above). */
+ *  (including the 2026-08-27 real-exit override above).
+ *
+ *  FINDINGS 2026-11-01: for a genuine WS-11 trim-scale reconstruction, the raw
+ *  `entry_context.executable.plan_outcome` is `reconstructTrimScaleExecutableFromBars`'s
+ *  (plan.ts) RUNNER-leg label (the final tranche's own reason), not a function of the
+ *  reconstruction's own fraction-weighted BLENDED `plan_pnl_pct` — so a "stopped" row can carry
+ *  a genuinely positive blended pnl whenever earlier trims banked more than the final leg gave
+ *  back (and symmetrically for "doubled"). Routed through the same sign-guard
+ *  `reconstructedGradeView` applies to the as-managed headline (see
+ *  reconstructedOutcomeLabel below) so this OFFICIAL lane — read by calibration,
+ *  feature-store, and Largo's get_zerodte_record, per this module's header comment — can
+ *  never disagree with it, and never renders a win under a loss-implying label or vice versa. */
 export function officialPlanOutcome(row: OfficialGradableRow): string | null {
   const override = officialOverridingRealExit(row.entry_context);
   if (override) return override.plan_outcome;
+  const reco = readReconstructedTrimScale(row.entry_context);
+  if (reco) return reconstructedOutcomeLabel(reco.plan_outcome, reco.plan_pnl_pct);
   return readExecutableGrade(row.entry_context)?.plan_outcome ?? row.plan_outcome ?? null;
 }
 
@@ -271,6 +284,38 @@ export function readReconstructedTrimScale(
   if (pnl == null) return null;
   const outcome = typeof e.plan_outcome === "string" ? e.plan_outcome : null;
   return { plan_outcome: outcome, plan_pnl_pct: pnl };
+}
+
+/** FINDINGS 2026-11-01 — sign-guard for a WS-11 reconstruction's own outcome label.
+ *
+ *  `reconstructTrimScaleExecutableFromBars` (plan.ts) labels its `outcome` by how the RUNNER
+ *  (the final, largest-consequence leg) closed — "doubled"/"stopped"/"time_stop" — but the
+ *  ONE OFFICIAL number (`plan_pnl_pct`, that same function's own doc comment) is the
+ *  FRACTION-WEIGHTED BLEND across every tranche, not just the runner's. Two profitable early
+ *  trims can outweigh a losing final leg (or the reverse), so the runner-reason label and the
+ *  blended sign can genuinely disagree — the exact contradiction `managedOutcomeLabel`'s own
+ *  "stop"/"target" sign guard (PR #7133) already prevents for the live ENGINE exit, but that
+ *  fix never touched this reconstruction path (a DIFFERENT function, read only when
+ *  `managed_source`/calibration is "reconstructed", not "engine").
+ *
+ *  Live evidence (GET /api/market/zerodte/record?days=90, 2026-11-01): META, session
+ *  2026-08-03 — tranches [+19.32% trim_scale_first, +43.18% trim_scale_second, -52.27%
+ *  stopped] blend to +3.41%, but the runner's own reason ("stopped") rendered that real win
+ *  under the "stopped" (loss) family — entry_context carries NO top-level `exit` key for this
+ *  row, confirming it is driven entirely by this reconstruction path, not managedOutcomeLabel.
+ *  The live `by_outcome.stopped` bucket (n=58, wins=1, losses=57) carried exactly this one
+ *  anomalous win.
+ *
+ *  Same discipline as managedOutcomeLabel: fall back to a bare win/loss/breakeven label when
+ *  the runner-reason label's implied sign disagrees with the real blended pnl; "time_stop" (no
+ *  implied sign) and "ungradeable" pass through unchanged. Read-time reconciliation only —
+ *  never mutates the frozen entry_context.executable blob, only the label a future read
+ *  renders. */
+function reconstructedOutcomeLabel(outcome: string | null, pnl: number): string {
+  const bySign = pnl > 0 ? "win" : pnl < 0 ? "loss" : "breakeven";
+  if (outcome === "stopped") return pnl > 0 ? bySign : "stopped";
+  if (outcome === "doubled") return pnl > 0 ? "doubled" : bySign;
+  return outcome ?? bySign;
 }
 
 /** Same graded-row predicate the calibration harness uses (bie/calibration.ts):
@@ -541,9 +586,12 @@ function reconstructedGradeView(reco: { plan_outcome: string | null; plan_pnl_pc
   const pnl = round2(reco.plan_pnl_pct);
   return {
     graded: true,
-    // The reconstruction's own runner outcome (doubled/stopped/time_stop) is the honest
-    // as-managed label; the tranches carry the partial-banking detail behind the blend.
-    outcome: reco.plan_outcome,
+    // The reconstruction's own runner outcome (doubled/stopped/time_stop) is usually the
+    // honest as-managed label, with the tranches carrying the partial-banking detail behind
+    // the blend — EXCEPT when the runner's reason implies a sign the real BLENDED pnl
+    // contradicts (FINDINGS 2026-11-01: see reconstructedOutcomeLabel above), which the
+    // win/breakeven flags below already correctly key off pnl, not this label.
+    outcome: reconstructedOutcomeLabel(reco.plan_outcome, pnl),
     pnl_pct: pnl,
     win: pnl > 0,
     breakeven: pnl === 0,
