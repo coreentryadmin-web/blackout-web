@@ -5,6 +5,19 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Like `num()`, but distinguishes "field absent/unparseable" (null — genuinely unknown) from
+ * "field present and a real 0" (0 — e.g. a never-traded contract's open interest, or a day's
+ * volume before anything has printed). `num()` itself collapses both cases to `0`, which is the
+ * right default for a SUM (missing contributes nothing) but wrong for a single reported STAT,
+ * where `0` and "we don't have this value" are different, both meaningful, facts.
+ */
+function numOrNull(v: unknown): number | null {
+  if (v === undefined || v === null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export type HelixContractFill = {
   time: string;
   premium: number;
@@ -79,11 +92,18 @@ export function parseContractMeta(rows: unknown[]): HelixContractMeta {
   const r = (rows[0] ?? {}) as Record<string, unknown>;
   const iv = num(r.implied_volatility);
   return {
-    open_interest: num(r.open_interest) || null,
-    day_volume: num(r.volume) || null,
-    underlying_price: num(r.underlying_price) || null,
+    // `numOrNull`, not `num() || null`: a brand-new/zero-so-far contract genuinely has
+    // open_interest/day_volume === 0, and `|| null` previously coerced that real 0 into the same
+    // "unknown" null the UI uses to hide the stat chip entirely (see
+    // ContractDrilldownDrawer.tsx's `meta?.open_interest != null` gate). `numOrNull` lets a real
+    // 0 pass through while still reporting null when the row (or the field on it) is genuinely
+    // absent — rows.length === 0 (no flow data at all) still yields r = {}, so every field here
+    // still correctly resolves to null, not a fabricated 0.
+    open_interest: numOrNull(r.open_interest),
+    day_volume: numOrNull(r.volume),
+    underlying_price: numOrNull(r.underlying_price),
     iv: iv > 0 ? (iv < 3 ? iv * 100 : iv) : null,
-    delta: num(r.delta) || null,
+    delta: numOrNull(r.delta),
   };
 }
 
