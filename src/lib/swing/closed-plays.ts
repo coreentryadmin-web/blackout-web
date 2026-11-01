@@ -435,6 +435,27 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
     const worstLegExitAt = worstLegRow ? worstLegRow.closed_at ?? worstLegRow.graded_at : null;
     const worstLegCommittedAt = worstLegRow ? worstLegRow.committed_at : null;
     const worstLegFirstSeenAt = worstLegRow ? worstLegRow.first_seen_at : null;
+    // BUG FIX (Ask Largo standing mandate, 2026-11-01, 6th site of the same bug class as the five
+    // fixes above — caught by audit before a live wrong-boolean repro, unlike those five's live
+    // reproductions): `trimEnforcedBeforeClose` was the one remaining field still surviving
+    // unconditionally from the `...src` spread below (`closedDeckSourceFromRow(terminal)`'s own
+    // `scale_out_grade.trim_enforced_before_close`), never re-pointed at `worstLegRow` the way
+    // positionId / entryPremium|peakPremium|troughPremium / contract|occ|mid|delta /
+    // entryTriggerUnderlyingPx|invalidationUnderlyingPx / exitAt|committedAt|firstSeenAt all already
+    // are. `trim_enforced_before_close` is a real per-row fact persisted onto `scale_out_grade` at
+    // grade time (db.ts's `gradeSwingPosition`, from that row's OWN pre-update status) — the same
+    // per-leg class as every sibling field above, so there is no "no per-leg equivalent" exception
+    // here either. Consequence: for a worst-leg != terminal-leg chain, this field would describe the
+    // TERMINAL leg's own trim history while `closedReason`/`exitPnlPct` on the exact same served card
+    // already correctly describe the WORST leg — `adapters.ts`'s exit-ladder "fired" gate
+    // (`status === "TRIM" || src.trimEnforcedBeforeClose === true`) and the CLOSED-bucket "TARGET"
+    // badge (`play-card-lifecycle.ts`) would both be gated on the wrong leg's own trim history. Fix:
+    // borrow it from `worstLegRow` via the same `trimEnforcedBeforeCloseFromScaleOutGrade` parser
+    // used for the single-leg path, falling back to `src`'s own (terminal) value only when the worst
+    // leg IS the terminal leg — the identical `worstLegIsTerminal` gate every sibling field uses.
+    const worstLegTrimEnforcedBeforeClose = worstLegRow
+      ? trimEnforcedBeforeCloseFromScaleOutGrade(worstLegRow.scale_out_grade)
+      : null;
     out.push({
       ...src,
       // BUG FIX (Ask Largo standing mandate, 2026-10-22, live repro AMZN positionId 48 (root 44) +
@@ -462,6 +483,7 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
       exitAt: worstLegIsTerminal ? src.exitAt : worstLegExitAt,
       committedAt: worstLegIsTerminal ? src.committedAt : worstLegCommittedAt,
       firstSeenAt: worstLegIsTerminal ? src.firstSeenAt : worstLegFirstSeenAt,
+      trimEnforcedBeforeClose: worstLegIsTerminal ? src.trimEnforcedBeforeClose : worstLegTrimEnforcedBeforeClose,
       closedReason: compositeReason,
       reason: `${src.reason} · chain composite (${record.composite.gradedLegs} leg${record.composite.gradedLegs === 1 ? "" : "s"})`,
       ...(worstLegBundle
