@@ -49,6 +49,17 @@ export type BenzingaEarningsBundle = {
   window_rows: BenzingaStructuredEarnings[];
   entitled: boolean;
   error: string | null;
+  /**
+   * True when the market-wide window fetch (`fetchBenzingaStructuredEarnings({..., paginate:
+   * true})` above) hit its own pagination safety cap with more pages still remaining upstream —
+   * i.e. `window_rows` is a PREFIX of the real window, not the whole thing. BUG FIX (2026-11-01,
+   * Ask Largo standing mandate, live repro QXO): forwarded from `fetchBenzingaStructuredEarnings`'s
+   * own `truncated` flag so every consumer of this bundle (`loadMeridianEarningsTimeline`'s
+   * `rows`, and ultimately Largo's `meridianCatalystSection`/`meridianPeerSection`) can tell a
+   * genuinely quiet calendar apart from one this fetch simply never reached. See that flag's own
+   * doc comment (polygon.ts) for the full root-cause trace.
+   */
+  window_truncated: boolean;
   earnings_week: ReturnType<typeof buildEarningsWeekRows>;
   earnings_analytics_rows: ReturnType<typeof buildEarningsAnalyticsRows>;
   earnings_week_analytics: MeridianEarningsWeekAnalytics | null;
@@ -138,6 +149,7 @@ export async function loadBenzingaEarningsBundle(
       earnings_analytics_rows,
       entitled: windowRes.entitled,
       error: windowRes.error,
+      window_truncated: windowRes.truncated === true,
       earnings_week,
       earnings_week_analytics: buildEarningsWeekAnalytics(earnings_week, historicalRows),
       earnings_week_analytics_error,
@@ -153,6 +165,12 @@ export async function loadBenzingaEarningsBundle(
     window_rows: [],
     entitled: true,
     error: "cache_error",
+    // Conservative default, matching `entitled: true` just above in this same fallback: this
+    // path means the WHOLE bundle build threw (e.g. the revision/historical-print leg of the
+    // Promise.all), not specifically that the window fetch hit its page cap, so there is no
+    // truncation signal to forward. The pre-existing `error: "cache_error"` already carries the
+    // "something failed" fact for this path; this flag covers only the narrower pagination case.
+    window_truncated: false,
     earnings_week: [],
     earnings_analytics_rows: [],
     earnings_week_analytics: null,

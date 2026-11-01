@@ -88,6 +88,11 @@ export async function loadMeridianTimelineResponse(
     estimate_revision_timeline: earningsBundle.estimate_revision_timeline,
     after_hours_movers: earningsBundle.after_hours_movers,
     earnings_calendar_entitled: earningsBundle.calendar_entitled,
+    // BUG FIX (2026-11-01, Ask Largo standing mandate, live repro QXO): forwarded from
+    // `loadMeridianEarningsTimeline`'s `window_truncated` so a consumer (Largo's
+    // `meridianCatalystSection`) can distinguish a genuinely empty catalyst window from one this
+    // fetch's own pagination cap never fully reached — see that field's own doc comment.
+    earnings_window_truncated: earningsBundle.window_truncated,
     // Surfaced so the lane can SAY it filtered. A quietly shorter list is indistinguishable
     // from a quietly broken feed, and the two need different reactions from the reader.
     non_optionable_hidden: earningsBundle.non_optionable_hidden,
