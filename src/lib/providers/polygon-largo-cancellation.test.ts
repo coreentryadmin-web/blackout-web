@@ -33,15 +33,27 @@ server.on("connection", (sock) => {
   sockets.push(sock);
 });
 
+/** CI runs this file late in a ~5min suite; the event loop can starve 2ms polling. */
+const CONNECTION_WAIT_MS = 10_000;
+
 function waitForNextConnection(sinceCount: number, timeoutMs: number): Promise<Socket | null> {
+  if (sockets.length > sinceCount) {
+    return Promise.resolve(sockets[sinceCount]!);
+  }
   return new Promise((resolve) => {
-    const deadline = Date.now() + timeoutMs;
-    const tick = () => {
-      if (sockets.length > sinceCount) return resolve(sockets[sinceCount]!);
-      if (Date.now() >= deadline) return resolve(null);
-      setTimeout(tick, 2);
+    let settled = false;
+    const finish = (sock: Socket | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      server.off("connection", onConnect);
+      resolve(sock);
     };
-    tick();
+    const onConnect = () => {
+      if (sockets.length > sinceCount) finish(sockets[sinceCount]!);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    server.on("connection", onConnect);
   });
 }
 
@@ -75,7 +87,7 @@ test("fetchPolygonNews: aborting the caller's signal terminates the real underly
   const pending = fetchPolygonNews("AAPL", 15, controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECTION_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
@@ -109,7 +121,7 @@ test("fetchPolygonTickerDetails: aborting the caller's signal terminates the rea
   const pending = fetchPolygonTickerDetails("AAPL", controller.signal);
   pending.catch(() => {});
 
-  const socket = await waitForNextConnection(sinceCount, 2000);
+  const socket = await waitForNextConnection(sinceCount, CONNECTION_WAIT_MS);
   assert.ok(socket, "the request must actually reach the server for this test to prove anything");
   const abortedAt = Date.now();
   controller.abort();
