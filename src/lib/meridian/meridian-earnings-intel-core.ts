@@ -390,6 +390,35 @@ export function resolveIntelExpectedMove(input: {
   return { expected_move_pct, expected_move_source };
 }
 
+/**
+ * Expected-move price band (spot ± expected_move_pct) for the earnings panel.
+ *
+ * `spot` MUST be the already-resolved value the rest of the earnings card uses —
+ * `pack.positioning.spot ?? thermal?.spot ?? null` in `loadMeridianEarningsIntel` — not the raw
+ * `pack.positioning.spot` alone. Every sibling field on this exact payload (the GEX walls,
+ * `play_read`, `report`, the Vector desk shaping) already falls back to Thermal's own spot read
+ * when the pack's GEX-positioning fetch (`getGexPositioning`) comes back empty, because that is a
+ * SEPARATE upstream call from the one Thermal uses (`gexHeatmapForLargo` / `fetchGexHeatmap`) and
+ * either can fail independently. The band was the one field still built straight off
+ * `input.pack.positioning.spot` with no fallback, so a GEX-positioning outage next to a healthy
+ * Thermal fetch silently dropped `expected_move_band` — and the price range on
+ * `MeridianEarningsIntelPanel`/`MeridianEarningsReportPanel`/`MeridianEarningsSummaryPanel`/
+ * `MeridianEarningsPositioningPanel` with it — even though a usable spot existed on the same
+ * response.
+ */
+export function buildExpectedMoveBand(input: {
+  spot: number | null;
+  expectedMovePct: number | null;
+}): { spot: number; up: number; down: number } | null {
+  if (input.expectedMovePct == null || !Number.isFinite(input.expectedMovePct)) return null;
+  if (input.spot == null || !Number.isFinite(input.spot)) return null;
+  return {
+    spot: input.spot,
+    up: Number((input.spot * (1 + input.expectedMovePct / 100)).toFixed(2)),
+    down: Number((input.spot * (1 - input.expectedMovePct / 100)).toFixed(2)),
+  };
+}
+
 /** One sigma band of an expected-move cone, shaped for `MeridianEarningsVectorRead["bands"]`. */
 export type MeridianEarningsVectorMoveBand = { sigma: number; low: number; high: number };
 
