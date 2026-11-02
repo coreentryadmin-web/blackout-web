@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
@@ -424,7 +424,9 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX — percent tolerance matches data-validator.mjs (not a fixed 5pt band:
+  // off-hours the desk can legitimately sit ~0.1–0.2% above Polygon's last index print while
+  // still grounded; 11pt on ~7550 is ~0.15% and must not fail RTH deep audit).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
@@ -432,11 +434,14 @@ async function auditPublicMarket() {
     if (polyRes.ok && deskSpx > 0) {
       const poly = await polyRes.json();
       const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
+      const rth = inRthOpenWindow();
       const oracle = row?.value ?? row?.session?.close;
       if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+        const pct = (Math.abs(oracle - deskSpx) / oracle) * 100;
+        const tolPct = rth ? 0.3 : 1.5;
+        const detail = `desk ${deskSpx} vs Polygon ${oracle} (Δ ${Math.abs(oracle - deskSpx).toFixed(2)}, ${pct.toFixed(3)}%)`;
+        if (pct > tolPct) fail("oracle", "SPX", `${detail} > ${tolPct}%`, "P0");
+        else ok("oracle", "SPX", detail);
       }
     }
   }

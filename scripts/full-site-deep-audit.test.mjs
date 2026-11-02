@@ -29,3 +29,9 @@ test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a 
   // Guards against reintroducing a second, hardcoded cap literal in the PREMIUM-CAP check itself.
   assert.equal(/ep > 20\)/.test(src), false);
 });
+
+test("full-site-deep-audit SPX oracle uses percent tolerance aligned with data-validator, not fixed 5pt", () => {
+  assert.match(src, /tolPct = rth \? 0\.3 : 1\.5/);
+  assert.match(src, /inRthOpenWindow/);
+  assert.equal(/d > 5\)/.test(src), false, "fixed 5pt oracle band caused off-hours false P0s");
+});
