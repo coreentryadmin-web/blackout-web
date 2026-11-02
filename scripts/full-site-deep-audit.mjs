@@ -424,19 +424,29 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX — RTH only. Off-hours the platform snapshot can still carry a
+  // last-session spot while Polygon's index snapshot field mix (value vs session.close) is not
+  // the same ground truth data-validator uses (prev close) — comparing them false-fails healthy
+  // desks (measured 2026-11-02 ~17:30 ET: Δ 11.34 with market closed).
   if (POLY_KEY && CRON) {
-    const snap = await getJson("/api/market/platform/snapshot");
-    const deskSpx = snap.json?.spx?.price;
-    const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
-    if (polyRes.ok && deskSpx > 0) {
-      const poly = await polyRes.json();
-      const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-      const oracle = row?.value ?? row?.session?.close;
-      if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+    const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
+    const pStatus = statusRes.ok ? await statusRes.json().catch(() => null) : null;
+    const rth = pStatus?.market === "open";
+    if (!rth) {
+      ok("oracle", "SPX", "skipped — market closed (spot oracle is RTH-only, same as data-validator)");
+    } else {
+      const snap = await getJson("/api/market/platform/snapshot");
+      const deskSpx = snap.json?.spx?.price;
+      const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
+      if (polyRes.ok && deskSpx > 0) {
+        const poly = await polyRes.json();
+        const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
+        const oracle = row?.value ?? row?.session?.close;
+        if (oracle > 0) {
+          const d = Math.abs(oracle - deskSpx);
+          if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
+          else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+        }
       }
     }
   }

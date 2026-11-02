@@ -13,6 +13,12 @@ test("full-site-deep-audit uses side-constrained wallsFromStrikeTotals, not unco
   assert.equal(src.includes("function deriveWalls"), false);
 });
 
+test("full-site-deep-audit SPX Polygon oracle is gated on Polygon market open (no off-hours false P0)", () => {
+  assert.match(src, /marketstatus\/now/);
+  assert.match(src, /pStatus\?\.market === "open"/);
+  assert.match(src, /skipped — market closed/);
+});
+
 test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a stale $20", () => {
   const constantsSrc = readFileSync(
     join(here, "..", "src", "features", "nighthawk", "lib", "constants.ts"),
