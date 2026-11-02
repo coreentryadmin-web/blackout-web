@@ -12,3 +12,8 @@ test("full-site-deep-audit uses side-constrained wallsFromStrikeTotals, not unco
   assert.match(src, /gex-wall-invariants\.mjs/);
   assert.equal(src.includes("function deriveWalls"), false);
 });
+
+test("full-site-deep-audit skips SPX Polygon oracle when market is closed", () => {
+  assert.match(src, /market_open === true/);
+  assert.match(src, /market closed — oracle skipped \(by design\)/);
+});
