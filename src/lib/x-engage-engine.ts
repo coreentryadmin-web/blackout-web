@@ -361,20 +361,39 @@ export async function runEngagementSweep(opts: {
           (rotation + q) % DISCOVERY_SEARCH_QUERIES.length
         ]!;
       const hits = await searchRecentTweets(query, cronMode ? 15 : 25);
+      // `seenAuthors.has()` used to be checked INSIDE this same `.filter()` while
+      // `seenAuthors.add()` only happened later, in the processing loop below — so for a
+      // single `hits` response (one X search call), every hit is filtered against a
+      // `seenAuthors` set that is still empty for THIS batch (it only ever reflected authors
+      // added by a PRIOR `q` iteration). A search response commonly carries more than one
+      // tweet from the same prolific/new author for a generic market query, and both tweets
+      // would pass the filter unchanged, then both get processed by the loop — liking two of
+      // that author's tweets and, worse, retweeting the SAME new author twice onto
+      // @BlackOutTrade's own public timeline in one discovery pass, each consuming its own
+      // like/retweet budget unit that the `seenAuthors` set exists specifically to prevent
+      // being spent on one author instead of spread across distinct new voices.
+      // Fix: filter for validity first, rank by score, THEN dedupe-by-author as a second pass
+      // that checks AND populates `seenAuthors` together — so a repeat author within the same
+      // batch is dropped (keeping only their highest-scoring tweet) and the loop below's own
+      // `seenAuthors.add()` (kept for cross-query dedupe across `q` iterations) never re-adds
+      // but never needs to carry the dedupe burden alone either.
       const candidates = hits
         .filter((h) => {
           if (!isNewDiscoveryAuthor(h)) return false;
-          if (seenAuthors.has(h.author_id!)) return false;
           if (tweetAgeHours(h.created_at) > MAX_TWEET_AGE_HOURS) return false;
           return isReplyableTweet(h.text);
         })
-        .sort((a, b) => scoreSearchHit(b) - scoreSearchHit(a));
+        .sort((a, b) => scoreSearchHit(b) - scoreSearchHit(a))
+        .filter((h) => {
+          if (seenAuthors.has(h.author_id!)) return false;
+          seenAuthors.add(h.author_id!);
+          return true;
+        });
 
       for (const t of candidates) {
         if (stats.rateLimited) break;
         if (followCap <= 0 && likeCap <= 0 && rtCap <= 0) break;
         const authorId = t.author_id!;
-        seenAuthors.add(authorId);
         stats.scanned.push(`discover:@${t.author_username}`);
 
         if (likeCap > 0) await tryLike(t.id);
