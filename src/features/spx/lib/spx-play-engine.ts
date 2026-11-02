@@ -49,7 +49,6 @@ import {
   playDynamicTrailWindowPts,
   playDynamicTrimMfePts,
   playFullMinScore,
-  playIdealTargetPts,
   playOptionChainRequired,
   playGexStaleMaxSec,
   playThesisBreakDropPts,
@@ -1749,12 +1748,6 @@ async function evaluateSpxPlayCore(
     const mixedTapeMsg = closedConfluence != null ? mixedTapeGateMessage(closedConfluence) : null;
     const dir = closedConfluence?.direction;
     const entry = desk.price > 0 ? desk.price : null;
-    const idealTarget =
-      entry != null && dir != null
-        ? dir === "long"
-          ? entry + playIdealTargetPts()
-          : entry - playIdealTargetPts()
-        : null;
 
     // See discloseStaleGexFactors()'s own doc comment above for the full bug account. Short
     // version: `closedConfluence` above was built off `desk.gex_walls`, which on THIS path can
@@ -1823,10 +1816,24 @@ async function evaluateSpxPlayCore(
       thesis: closedThesis,
       idle_message: null,
       factors: closedFactors,
+      // BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro): `stop` and
+      // `invalidation` above are both sourced from `closedConfluence.levels` (computeSpxConfluence
+      // -> buildLevels, spx-signals.ts), which derives its target from the VIX-indexed
+      // `playDynamicTargetPts(desk.vix)` (12/14/18 pts for VIX <16 / 16-22 / >22 — see that
+      // function's own comment). `target` alone was computed separately via the older, non-VIX-
+      // indexed `playIdealTargetPts()` (fixed default 10pts regardless of VIX), silently discarding
+      // `closedConfluence.levels.target`. Live repro: desk.vix=19.42 (the 16-22 "normal market"
+      // tier -> 14pts) served GET /api/market/spx/play with levels.target = entry + 10.00, not the
+      // VIX-aware entry + 14.00 that closedConfluence.levels.target already carried. Fix: source
+      // `target` from `closedConfluence.levels.target` directly, the same way `stop`/`invalidation`
+      // already are — removes the need for `playIdealTargetPts()` on this path entirely (that
+      // helper predates the 2026-06-21 VIX-indexing work and has no other call site inside this
+      // file; it is still read by admin-spx-config-snapshot.ts's config-value display, so it is
+      // left in place in spx-play-config.ts, just no longer called from here).
       levels: {
         entry,
         stop: closedConfluence?.levels.stop ?? null,
-        target: idealTarget,
+        target: closedConfluence?.levels.target ?? null,
         invalidation: closedConfluence?.levels.invalidation ?? "",
       },
       gates: {
