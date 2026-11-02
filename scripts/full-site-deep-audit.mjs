@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
@@ -424,8 +424,10 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
-  if (POLY_KEY && CRON) {
+  // Polygon oracle for SPX — RTH only. After the cash close the desk can still show the last
+  // live index mark while Polygon's snapshot carries the official session close; comparing them
+  // post-close produced false P0s (Δ ~11pt on 2026-11-02 off-hours) with no member-facing bug.
+  if (POLY_KEY && CRON && inRthOpenWindow()) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
@@ -439,6 +441,8 @@ async function auditPublicMarket() {
         else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
       }
     }
+  } else if (POLY_KEY && CRON) {
+    ok("oracle", "SPX", "skipped — market closed (desk vs Polygon close diverge post-close by design)");
   }
 }
 
