@@ -29,3 +29,9 @@ test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a 
   // Guards against reintroducing a second, hardcoded cap literal in the PREMIUM-CAP check itself.
   assert.equal(/ep > 20\)/.test(src), false);
 });
+
+test("full-site SPX oracle uses RTH/off-hours percent tolerance (data-validator parity), not flat 5pt", () => {
+  assert.match(src, /inRthOpenWindow/);
+  assert.match(src, /priceTolPct = inRthOpenWindow\(\) \? 0\.3 : 1\.5/);
+  assert.equal(/d > 5\)/.test(src), false);
+});
