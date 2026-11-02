@@ -9,6 +9,7 @@ import {
   deskPulseMaxBlockMs,
 } from "@/lib/providers/config";
 import { askPctFromRaw } from "@/lib/flow-raw-fields";
+import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { pulseChangePctFromPriorClose } from "./spx-change-anchor";
 import { rebaseChangePct } from "@/lib/providers/change-pct";
 import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
@@ -975,6 +976,21 @@ export type DeskNewsHeadline = {
   tickers: string[];
 };
 
+/** Sanitizes raw Benzinga article titles (HTML entities, injection-hardening) before they ever
+ * reach `news_headlines` — see `sanitizeFeedText`'s own doc comment for why. Pure/testable in
+ * isolation from the rest of `buildSpxDesk`'s provider-fetch pipeline. */
+export function sanitizedNewsHeadlineBase(
+  articles: Array<{ title: string; published: string; tickers?: string[] }> | undefined,
+): DeskNewsHeadline[] {
+  return (articles ?? [])
+    .map((a) => ({
+      title: sanitizeFeedText(a.title),
+      published: a.published,
+      tickers: a.tickers ?? [],
+    }))
+    .filter((n) => n.title);
+}
+
 export type SpxDeskPayload = {
   available: boolean;
   as_of: string;
@@ -1601,13 +1617,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
       : null;
   const prior = priorFromBars;
   const priorVix = priorFromBarsVix;
-  const newsHeadlines: DeskNewsHeadline[] = (newsRaw ?? [])
-    .map((a) => ({
-      title: a.title,
-      published: a.published,
-      tickers: a.tickers ?? [],
-    }))
-    .filter((n) => n.title)
+  const newsHeadlines: DeskNewsHeadline[] = sanitizedNewsHeadlineBase(newsRaw)
     .sort((a, b) => {
       const relevant = (tickers: string[]) =>
         tickers.some((t) => /SPX|SPY|VIX|QQQ|\bES\b/i.test(t)) ? 1 : 0;
