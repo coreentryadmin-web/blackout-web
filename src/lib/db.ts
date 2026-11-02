@@ -7722,7 +7722,11 @@ const SWING_STATUS_RANK: Record<string, number> = {
   CLOSED: 3,
   ROLLED: 3,
 };
-const SWING_TERMINAL_STATUSES = new Set(["CLOSED", "ROLLED"]);
+// Exported (2026-11-01, Ask Largo standing mandate) so closed-plays.ts's `closedDeckSourceFromRow`
+// can gate on the SAME terminal-status definition this module already treats as authoritative,
+// instead of redefining (and silently drifting from) its own narrower "CLOSED"-only check — see
+// that call site's own comment for the live bug this fixes.
+export const SWING_TERMINAL_STATUSES = new Set(["CLOSED", "ROLLED"]);
 
 /**
  * Pure guard mirroring the SQL CASE in updateSwingLiveState: is `to` a legal forward (or

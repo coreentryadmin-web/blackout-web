@@ -3,7 +3,7 @@
 // The horizons lane serves pre-entry + live open book; this mapper covers the third bucket members
 // expect from 0DTE parity: finished swing positions with realized P&L. PURE — callers supply DB rows.
 
-import type { SwingPositionRow } from "../db";
+import { SWING_TERMINAL_STATUSES, type SwingPositionRow } from "../db";
 import { calendarDte } from "../horizon-fanout";
 import { HORIZONS } from "../horizons";
 import { buildSwingRecord } from "./record";
@@ -191,9 +191,44 @@ function contractBundleFromRow(
   return { strike, right, expiry, dte, occ: row.contract_occ, mid: row.last_mark, delta: row.contract_delta };
 }
 
-/** Map one graded CLOSED ledger row to a deck source. Null when not reconstructible. */
+/**
+ * Map one graded terminal (CLOSED or ROLLED) ledger row to a deck source. Null when not
+ * reconstructible.
+ *
+ * BUG FIX (2026-11-01, Ask Largo standing mandate, follow-on gap from #7316's leg-identity fix,
+ * caught by audit before it could manifest live — deploy hadn't caught up to #7316 yet).
+ * This gate used to be a literal `row.status !== "CLOSED"`, which refused to build a card for a
+ * ROLLED row at all — returning `null` instead. That was invisible before #7316 because the OLD,
+ * buggy `loadClosedPlay` id-matching (`graded.find((r) => r.id === positionId || r.root_position_id
+ * === positionId)`, no precedence between the two disjuncts) usually surfaced a DIFFERENT, later
+ * leg's row for a ROOT/intermediate leg's own id — so this gate's `null` on the ROLLED row itself
+ * was rarely the thing callers actually observed. #7316 fixed that id-matching to check the EXACT
+ * id match first, which means a caller asking for a rolled chain's ROOT/intermediate leg BY ITS OWN
+ * id now correctly reaches ITS OWN row here — a row whose real DB `status` is `"ROLLED"`, never
+ * `"CLOSED"` (confirmed live, AMZN leg id 44: `status: "ROLLED"`). This gate then refused it,
+ * flipping the user-visible symptom from "serves the wrong leg's data" to a flat 404 "play not
+ * found" for every such request, for a leg that is fully graded (`graded_at` set, `realized_pnl_pct`
+ * frozen — see `gradeSwingPosition`, db.ts) and whose own outcome is exactly as disclosable as a
+ * CLOSED row's.
+ *
+ * `SWING_TERMINAL_STATUSES` (db.ts) already treats CLOSED and ROLLED as the two equally-terminal/
+ * gradeable statuses everywhere else in the ledger (the monotonic status-transition guard, every
+ * `fetchSwingPositionsRange`-style "closed or rolled" query) — this is the one remaining place that
+ * had its own narrower, CLOSED-only notion of "terminal". Importing the shared constant instead of
+ * redefining it means this call site can never drift from that definition again.
+ *
+ * `status: "CLOSED"` below stays a HARDCODED literal — never `row.status` — for both CLOSED and
+ * ROLLED rows: `TerminalPlay.status` is `DeckStatus` (command-deck/types.ts), which has no `ROLLED`
+ * member, and the adapter's own `asStatus()` (adapters.ts) silently coerces any string outside its
+ * six-member whitelist to `"WATCH"` — so threading a literal `"ROLLED"` through would have swapped
+ * a correctness bug for a worse one (a settled, graded position rendering as a live WATCH
+ * candidate). `"CLOSED"` here means "this leg is a settled, terminal, non-live card", which is
+ * equally true of a CLOSED and a ROLLED leg; the leg's own P&L/contract/dates (not its UI bucket)
+ * are what tell the real CLOSED-vs-ROLLED story, and `closedReasonFromRow` below already derives
+ * those honestly from this row's own data (sign of `realized_pnl_pct`), unaffected by this gate.
+ */
 export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckSource | null {
-  if (row.status !== "CLOSED" || !row.graded_at) return null;
+  if (!SWING_TERMINAL_STATUSES.has(row.status) || !row.graded_at) return null;
   const bundle = contractBundleFromRow(row);
   if (!bundle) return null;
   const { strike, right, expiry, dte, mid, delta } = bundle;

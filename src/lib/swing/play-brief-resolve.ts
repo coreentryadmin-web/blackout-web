@@ -200,6 +200,15 @@ function rowContractMatches(row: SwingPositionRow, strike: number | null, right:
  * and retry both the open and closed lookups against that root — additively, ONLY when the direct
  * matches already in `resolveSwingPlayForBrief` come back empty, so a single-roll-or-fewer chain
  * (the overwhelming common case) pays zero extra cost and behaves byte-identically to before.
+ *
+ * CORRECTED 2026-11-02 (Ask Largo standing mandate): the claim above that `closedDeckSourceFromRow`
+ * "correctly refuses" a ROLLED row was itself wrong — that gate was the confirmed bug this file's
+ * `resolveSwingPlayForBrief` now works around explicitly (see the LIVE-CHAIN-CONTINUATION CHECK
+ * comment there). `closedDeckSourceFromRow` now resolves a ROLLED row's own data same as CLOSED;
+ * this chain-root lookup is still needed, but its job changed from "the ONLY way row 2 ever
+ * resolves to anything" to "make sure a LIVE continuation (row 3) wins over row 2's own now-
+ * resolvable, but superseded, snapshot" — reached unconditionally now, not only on a double-empty
+ * direct match (see that call site).
  */
 async function resolveChainRootId(ticker: string, positionId: number): Promise<number> {
   const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -469,6 +478,38 @@ export async function resolveSwingPlayForBrief(
     }),
   ]);
 
+  // LIVE-CHAIN-CONTINUATION CHECK (2026-11-02, Ask Largo standing mandate — necessary companion to
+  // the `closedDeckSourceFromRow` fix below this same mandate shipped the same day). That fix made
+  // `loadClosedPlay` correctly resolve a ROLLED row's OWN data (closed-plays.ts's gate used to
+  // refuse it outright) — the right call for the common case this file's #7316 fix exists for (a
+  // root/intermediate leg whose chain has FINISHED: its terminal leg is itself CLOSED, nothing live
+  // remains). But it reopens exactly the failure the MULTI-ROLL CHAIN FALLBACK below was built for
+  // on 2026-09-11: a chain rolled a SECOND time, where the caller names an intermediate leg's own
+  // id (e.g. a client that cached it while that leg was still OPEN) and the chain's REAL current
+  // state is a DIFFERENT, still-live leg further down the same chain. Once the ROLLED gate accepted
+  // that intermediate leg's own row, the direct `loadClosedPlay` check a few lines below would
+  // short-circuit on that leg's stale snapshot before the multi-roll fallback ever got a chance to
+  // walk forward to the live leg — silently serving a finished, superseded leg's numbers for a
+  // request whose real intent (per that 2026-09-11 fix's own test) is "where does this chain stand
+  // now". Resolving the chain's root ONCE here and checking for a currently-live (OPEN/HOLD/TRIM)
+  // leg BEFORE trusting any closed/rolled match preserves both intents correctly: a chain with NO
+  // live leg left (every real repro this task fixes — AMZN/AAPL/INTC, all single-roll, terminal leg
+  // CLOSED) finds nothing here (`chainRootId === positionId` when the requested id IS the chain
+  // root, or the chain-root open lookup comes back empty) and falls straight through, unaffected,
+  // to the direct closed check below; a chain that HAS since rolled further prefers that live leg,
+  // exactly as before. `chainRootId` is computed once and reused by the CLOSED half of the
+  // multi-roll fallback further down, rather than re-fetching the same 90-day range twice.
+  let chainRootId: number | null = null;
+  if (positionId != null) {
+    chainRootId = await resolveChainRootId(ticker, positionId);
+    if (chainRootId !== positionId) {
+      const chainOpenPlay = await loadOpenTerminalPlay(ticker, { positionId: chainRootId, strike, right, status });
+      if (chainOpenPlay && (!status || WORKING.has(status.toUpperCase()))) {
+        return { play: chainOpenPlay, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
+      }
+    }
+  }
+
   // NOTE: this checks `positionId` (the fully-resolved caller ID — a `?positionId=` query
   // param OR the playId-embedded one), never `parsed.positionId` alone. A caller supplying
   // positionId as a separate param (the route's own documented shape: `?playId=SWING:NRG&
@@ -485,19 +526,13 @@ export async function resolveSwingPlayForBrief(
     return { play: openPlay, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
   }
 
-  // MULTI-ROLL CHAIN FALLBACK (see resolveChainRootId's doc comment) — only reached when the direct
-  // id matches above (open ledger + closed-by-id) both came back empty, so this never runs for a
-  // chain rolled once or not at all; it only pays its extra lookup for the genuinely rare deeper case.
-  if (positionId != null) {
-    const chainRootId = await resolveChainRootId(ticker, positionId);
-    if (chainRootId !== positionId) {
-      const chainOpenPlay = await loadOpenTerminalPlay(ticker, { positionId: chainRootId, strike, right, status });
-      if (chainOpenPlay && (!status || WORKING.has(status.toUpperCase()))) {
-        return { play: chainOpenPlay, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
-      }
-      const chainClosed = await loadClosedPlay(ticker, chainRootId);
-      if (chainClosed) return { play: chainClosed, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
-    }
+  // MULTI-ROLL CHAIN FALLBACK, CLOSED half (see resolveChainRootId's doc comment) — the OPEN half
+  // now runs earlier above (so a live continuation wins before a closed/rolled match can
+  // short-circuit); this half is only reached when direct open/closed AND the live-continuation
+  // check above all came back empty, so it never runs for a chain rolled once or not at all.
+  if (positionId != null && chainRootId != null && chainRootId !== positionId) {
+    const chainClosed = await loadClosedPlay(ticker, chainRootId);
+    if (chainClosed) return { play: chainClosed, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
   }
 
   // Lane rows (`rows`, from `loadLaneRows`) are WATCH/COMMIT/live-candidate reads — the serving

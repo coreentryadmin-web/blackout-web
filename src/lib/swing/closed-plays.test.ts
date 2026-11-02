@@ -82,6 +82,41 @@ describe("closedDeckSourceFromRow", () => {
     assert.equal(src?.scoreWithheld, false, "a genuinely-scored row must not be flagged withheld");
   });
 
+  // BUG FIX (2026-11-02, Ask Largo standing mandate, follow-on gap from #7316's leg-identity fix —
+  // caught by audit before it could manifest live, since deploy hadn't caught up to #7316 yet).
+  // The gate here used to be a literal `row.status !== "CLOSED"`, which refused to build a card for
+  // a ROLLED row at all. A chain's ROOT/intermediate leg (one that later rolled forward into a new
+  // leg) has a real DB status of `"ROLLED"`, never `"CLOSED"` — confirmed live, AMZN leg id 44,
+  // `status: "ROLLED"` — and `SWING_TERMINAL_STATUSES` (db.ts) already treats CLOSED and ROLLED as
+  // equally terminal/gradeable everywhere else in the ledger. Once #7316's own fix made
+  // `play-brief-resolve.ts`'s `loadClosedPlay` correctly find the EXACT id match first (rather than
+  // a later rolled-forward child leg's row) for a request naming a ROOT/intermediate leg's own
+  // positionId, that exact match landed on a row whose status is ROLLED — and this gate refused it,
+  // flipping the user-visible symptom from "serves the wrong leg's data" (the bug #7316 fixed) to a
+  // flat 404 "play not found" for every such request, rather than the leg's own disclosed outcome
+  // (e.g. "-27.7% / rolled") that #7316's fix implies it now delivers. A ROLLED row is fully graded
+  // (`graded_at` set, `realized_pnl_pct` frozen — `gradeSwingPosition`, db.ts) and its own outcome is
+  // exactly as disclosable as a CLOSED row's.
+  it("maps a graded ROLLED row (a chain's root/intermediate leg) to a deck source, not null — the leg's own outcome, not an absence", () => {
+    const rolledRoot = row({
+      status: "ROLLED",
+      realized_pnl_pct: -27.7,
+      root_position_id: null,
+      roll_seq: 0,
+    });
+    const src = closedDeckSourceFromRow(rolledRoot);
+    assert.notEqual(src, null, "a ROLLED row must resolve to its own data, not refuse with null");
+    assert.equal(src?.exitPnlPct, -27.7, "must carry this leg's own realized P&L");
+    assert.equal(src?.closedReason, "stopped", "a negative P&L leg reads 'stopped' same as the CLOSED path");
+    assert.equal(
+      src?.status,
+      "CLOSED",
+      "TerminalPlay.status (DeckStatus) has no ROLLED member and asStatus() silently coerces an " +
+        "unknown value to WATCH — this field intentionally stays the 'settled, terminal, non-live " +
+        "card' bucket regardless of CLOSED vs ROLLED, never a literal echo of row.status",
+    );
+  });
+
   // BUG FIX (Ask Largo standing mandate, live repro 2026-10-16): a ROLLED chain's terminal leg
   // never has its own `feature_vector` (roll-plan.ts's `buildRollPlan` never sets it on the child
   // row's insert spec), so `evidence_score` was unconditionally defaulted to the literal `0` with
