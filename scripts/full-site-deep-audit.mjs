@@ -46,6 +46,19 @@ function isRetryableFetchError(err) {
 
 const GET_JSON_MAX_ATTEMPTS = Math.max(1, Number(process.env.AUDIT_FETCH_ATTEMPTS ?? 4) || 4);
 
+/** Polygon REST helper — mirrors `data-validator.mjs` ground-truth fetches. */
+async function polyGet(pathAndQuery) {
+  if (!POLY_KEY) return null;
+  const sep = pathAndQuery.includes("?") ? "&" : "?";
+  try {
+    const res = await fetch(`${POLY_BASE}${pathAndQuery}${sep}apiKey=${POLY_KEY}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 async function getJson(path, opts = {}) {
   let lastErr = null;
   for (let attempt = 1; attempt <= GET_JSON_MAX_ATTEMPTS; attempt++) {
@@ -424,19 +437,38 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX — same RTH/off-hours ground truth + % tolerance as
+  // `scripts/audit/data-validator.mjs` (live index snapshot during RTH, prev daily
+  // close off-hours). The old fixed 5-pt check false-failed after the close when the
+  // desk still carried the last session spot but Polygon's index snapshot `value` lagged.
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
-    const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
-    if (polyRes.ok && deskSpx > 0) {
-      const poly = await polyRes.json();
-      const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-      const oracle = row?.value ?? row?.session?.close;
+    if (deskSpx > 0) {
+      const pStatus = await polyGet("/v1/marketstatus/now");
+      const rth = pStatus?.market === "open";
+      let oracle = 0;
+      let gtLabel = rth ? "live" : "prev-close";
+      if (rth) {
+        const poly = await polyGet("/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX");
+        const row = (poly?.results ?? []).find((r) => r.ticker === "I:SPX");
+        oracle = Number(row?.value ?? row?.session?.close ?? 0);
+      } else {
+        oracle = Number((await polyGet("/v2/aggs/ticker/I:SPX/prev"))?.results?.[0]?.c ?? 0);
+      }
       if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+        const pct = (Math.abs(oracle - deskSpx) / oracle) * 100;
+        const tol = rth ? 0.3 : 1.5;
+        if (pct > tol) {
+          fail(
+            "oracle",
+            "SPX",
+            `desk ${deskSpx} vs Polygon ${oracle} (${gtLabel}, Δ ${pct.toFixed(3)}%)`,
+            "P0"
+          );
+        } else {
+          ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (${gtLabel}, Δ ${pct.toFixed(3)}%)`);
+        }
       }
     }
   }

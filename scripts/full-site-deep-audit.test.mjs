@@ -29,3 +29,11 @@ test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a 
   // Guards against reintroducing a second, hardcoded cap literal in the PREMIUM-CAP check itself.
   assert.equal(/ep > 20\)/.test(src), false);
 });
+
+test("full-site-deep-audit SPX oracle matches data-validator RTH vs prev-close ground truth", () => {
+  assert.match(src, /marketstatus\/now/);
+  assert.match(src, /\/v2\/aggs\/ticker\/I:SPX\/prev/);
+  assert.match(src, /prev-close/);
+  assert.match(src, /const tol = rth \? 0\.3 : 1\.5/);
+  assert.equal(/d > 5\)/.test(src), false, "stale fixed 5-pt SPX oracle threshold must not return");
+});
