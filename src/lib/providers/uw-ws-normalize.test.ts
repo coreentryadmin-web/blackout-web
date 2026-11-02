@@ -8,6 +8,7 @@ import {
   normalizeLitTradesWsPayload,
   normalizeOptionTradesWsPayload,
 } from "./unusual-whales";
+import { todayEt } from "../et-date";
 
 test("normalizeOptionTradesWsPayload maps UW option_trades rows", () => {
   const rows = normalizeOptionTradesWsPayload({
@@ -115,7 +116,7 @@ test("normalizeDarkPoolWsPayload keeps executed_at VERBATIM — does not strip t
 // ticker, while staying unfiltered (default) for every other caller — incl. the precision test
 // above, which deliberately uses a non-SPX `symbol`.
 test("normalizeDarkPoolWsPayload scopes to onlyTicker — a market-wide WS frame does not blend another ticker's prints into the SPX snapshot", () => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayEt();
   const mixed = [
     { ticker: "AAPL", executed_at: `${today}T15:04:00Z`, premium: 5_000_000, type: "call" },
     { ticker: "SPX", executed_at: `${today}T15:05:00Z`, premium: 1_000_000, type: "put" },
