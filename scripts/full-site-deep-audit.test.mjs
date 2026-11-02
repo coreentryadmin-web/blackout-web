@@ -13,6 +13,13 @@ test("full-site-deep-audit uses side-constrained wallsFromStrikeTotals, not unco
   assert.equal(src.includes("function deriveWalls"), false);
 });
 
+test("full-site-deep-audit SPX oracle uses RTH live indices vs off-hours prev close (data-validator parity)", () => {
+  assert.match(src, /polygonSpxOracleGroundTruth/);
+  assert.match(src, /\/v1\/marketstatus\/now/);
+  assert.match(src, /\/v2\/aggs\/ticker\/I:SPX\/prev/);
+  assert.equal(/desk \$\{deskSpx\} vs Polygon \$\{oracle\} \(Δ \$\{d\.toFixed\(2\)\}\)/.test(src), false);
+});
+
 test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a stale $20", () => {
   const constantsSrc = readFileSync(
     join(here, "..", "src", "features", "nighthawk", "lib", "constants.ts"),

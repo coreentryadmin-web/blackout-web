@@ -96,6 +96,38 @@ function scanFinite(obj, path = "", out = []) {
   return out;
 }
 
+/** Polygon REST with shared base + key (same convention as data-validator.mjs). */
+async function polygonJson(pathWithQuery) {
+  if (!POLY_KEY) return null;
+  const sep = pathWithQuery.includes("?") ? "&" : "?";
+  const res = await fetch(`${POLY_BASE}${pathWithQuery}${sep}apiKey=${POLY_KEY}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/**
+ * SPX ground truth for desk cross-check — live indices snapshot during RTH, prior daily close
+ * off-hours (data-validator.mjs). Comparing live desk to indices `value` after the close false-
+ * fails when the snapshot lags the desk's last session print.
+ */
+async function polygonSpxOracleGroundTruth() {
+  const status = await polygonJson("/v1/marketstatus/now");
+  const rth = status?.market === "open";
+  if (rth) {
+    const poly = await polygonJson("/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX");
+    const row = (poly?.results ?? []).find((r) => r.ticker === "I:SPX");
+    const oracle = Number(row?.value);
+    return { oracle: Number.isFinite(oracle) && oracle > 0 ? oracle : null, label: "live", rth: true };
+  }
+  const prev = await polygonJson("/v2/aggs/ticker/I:SPX/prev");
+  const oracle = Number(prev?.results?.[0]?.c);
+  return {
+    oracle: Number.isFinite(oracle) && oracle > 0 ? oracle : null,
+    label: "prev-close",
+    rth: false,
+  };
+}
+
 // ── 1. Cron plane + automated validators ─────────────────────────────────────
 async function auditCrons() {
   if (!CRON) {
@@ -424,19 +456,23 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX (RTH: live indices; off-hours: prev close — same as data-validator.mjs)
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
-    const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
-    if (polyRes.ok && deskSpx > 0) {
-      const poly = await polyRes.json();
-      const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-      const oracle = row?.value ?? row?.session?.close;
-      if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+    const { oracle, label, rth } = await polygonSpxOracleGroundTruth();
+    if (oracle != null && deskSpx > 0) {
+      const pct = (Math.abs(deskSpx - oracle) / oracle) * 100;
+      const tolPct = rth ? 0.3 : 1.5;
+      if (pct > tolPct) {
+        fail(
+          "oracle",
+          "SPX",
+          `desk ${deskSpx} vs Polygon ${label} ${oracle} (Δ ${pct.toFixed(3)}%, tol ${tolPct}%)`,
+          "P0"
+        );
+      } else {
+        ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${label} ${oracle} (Δ ${pct.toFixed(3)}%)`);
       }
     }
   }
