@@ -899,28 +899,51 @@ test("a Legacy-exempt carried play's DTE (and the DTE token in reason) is recomp
   );
 });
 
-test("a NON-legacy-exempt play's DTE is left untouched by the Legacy serve-time refresh — scope stays narrow", async () => {
+// BUG FIX (2026-11-02, live repro TSM, Ask Largo 5-engine cycle-72). The serve-time DTE refresh
+// above used to be gated to Legacy-exempt plays ONLY (`isLegacyExemptPlay`) — this test originally
+// asserted that narrower scope ("a non-Legacy-exempt play's DTE is left untouched... scope stays
+// narrow"). That was itself the bug: an ordinary organic (FLOW/STRUCTURE/CATALYST/POSITIONING/
+// VECTOR-origin) WATCH/RESEARCH candidate has the IDENTICAL staleness shape as a Legacy-exempt one
+// — no DB position row, no live `contractFromRow` recompute, no per-scan carry-forward between
+// scans — so it needs the SAME fresh-every-serve treatment. Live repro: TSM (an ordinary SHORT
+// WATCH candidate, real gate-block codes, no `legacy:exempt` marker) served `contract.dte: 14`
+// against a Friday `scanSessionDay` when the correct TODAY-relative value was 12. This test is
+// flipped to assert the corrected behavior — proven RED (failed) against the pre-fix code, GREEN
+// against the fix, via `git stash`/`git stash pop` in this session.
+test("a NON-legacy-exempt pre-entry WATCH play's DTE is ALSO recomputed against TODAY on every serve — not just Legacy-exempt plays", async () => {
   const todayYmd = todayEt();
   const expiry = addDaysYmd(todayYmd, 7);
   const realDte = calendarDte(todayYmd, expiry);
-  const mismatchedDte = realDte + 3; // deliberately wrong, to prove this path is never touched
+  const staleDte = realDte + 2; // same shape as the live TSM repro: frozen to a stale scan day
 
-  const d = buildSwingDossier(dossier("BBB"));
-  const organicPlay = play({
-    ticker: "BBB",
-    status: "COMMIT",
-    contract: { ...contract, ticker: "BBB", expiry, dte: mismatchedDte },
-    reason: `C 50 exp ${expiry} (${mismatchedDte}DTE, Δ0.40) · organic discovery`,
+  const d = buildSwingDossier(dossier("TSM"));
+  const organicWatchPlay = play({
+    ticker: "TSM",
+    direction: "SHORT",
+    status: "WATCH",
+    contract: { ...contract, ticker: "TSM", expiry, dte: staleDte },
+    commitGateBlockedBy: ["gate:G-S4:regime_degraded", "gate:G-S6:confluence"],
+    reason: `P 415 exp ${expiry} (${staleDte}DTE, Δ0.58, OI 410)`,
   });
 
   const lane = await getSwingServingLane({
-    discover: async () => ({ dossiers: [d], plays: [organicPlay] }),
+    discover: async () => ({ dossiers: [d], plays: [organicWatchPlay] }),
   });
-  const bbb = Object.values(lane.sections).flat().find((p) => p.ticker === "BBB");
-  assert.ok(bbb, "the organic play must still render somewhere on the board");
+  const tsm = Object.values(lane.sections).flat().find((p) => p.ticker === "TSM");
+  assert.ok(tsm, "the organic WATCH play must still render somewhere on the board");
   assert.equal(
-    bbb!.contract.dte,
-    mismatchedDte,
-    "a non-Legacy-exempt play's contract.dte must be left exactly as the discovery scan produced it",
+    tsm!.contract.dte,
+    realDte,
+    "an organic (non-Legacy-exempt) play's contract.dte must match TODAY's real calendar day, not the frozen scan-day value",
+  );
+  assert.match(
+    tsm!.reason,
+    new RegExp(`\\(${realDte}DTE,`),
+    "the DTE token baked into `reason` must be corrected too, not just contract.dte",
+  );
+  assert.doesNotMatch(
+    tsm!.reason,
+    new RegExp(`\\(${staleDte}DTE,`),
+    "the stale DTE token must not still be present anywhere in reason",
   );
 });
