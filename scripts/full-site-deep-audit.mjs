@@ -20,6 +20,9 @@ const POLY_BASE = (process.env.POLYGON_API_BASE ?? "https://api.polygon.io").rep
 const issues = [];
 const passes = [];
 
+/** From data-integrity cron (`market_open`) — oracle desk vs Polygon is RTH-only. */
+let integrityMarketOpen = null;
+
 function fail(section, id, detail, severity = "P1") {
   issues.push({ section, id, detail, severity });
 }
@@ -121,6 +124,7 @@ async function auditCrons() {
   }
 
   if (di.status === 200) {
+    integrityMarketOpen = di.json.market_open === true;
     const n = di.json.discrepancies ?? di.json.issues?.length ?? 0;
     if (n > 0) for (const i of (di.json.issues ?? []).slice(0, 10)) fail("integrity", "cross-tool", i.detail ?? i.title, "P0");
     else ok("integrity", "cross-tool", di.json.market_open ? `${di.json.checked ?? 0} checks, 0 discrepancies` : "market closed — checks skipped (by design)");
@@ -425,10 +429,11 @@ async function auditPublicMarket() {
   }
 
   // Polygon oracle for SPX — meaningful only during RTH when desk spot and the index snapshot
-  // track the same live session. After hours they routinely diverge (cached desk vs Polygon
-  // index fields) without a member-visible defect — do not fail the nightly audit on that.
+  // track the same live session. After hours they routinely diverge without a member-visible defect.
   if (POLY_KEY && CRON) {
-    if (!inRthOpenWindow()) {
+    const marketOpen =
+      integrityMarketOpen === true || (integrityMarketOpen == null && inRthOpenWindow());
+    if (!marketOpen) {
       ok("oracle", "SPX", "off-hours — oracle skipped (by design)");
     } else {
       const snap = await getJson("/api/market/platform/snapshot");
