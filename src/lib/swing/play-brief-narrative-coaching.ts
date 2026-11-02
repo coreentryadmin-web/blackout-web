@@ -51,7 +51,22 @@ function vectorOf(ctx: SwingPlayBriefContext): (VectorFullState & Partial<Vector
     | null;
 }
 
-/** Urgent thesis invalidation — leads narrative when fired. */
+/**
+ * Urgent thesis invalidation — leads narrative when fired.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-11-02, live-check of #7380): the "warn" branch below
+ * named "your next trim rail" unconditionally, independent of `play.status` — the exact bug class
+ * #7380 fixed in this file's sibling `crossDeskResolution`/`crossDeskCoaching` (SWING_SCALE_OUT_POLICY,
+ * exit-policy.ts, has exactly ONE trim rung, so once `status === "TRIM"` that rung has already
+ * fired and only the trailing runner stop on the remaining `runner_fraction` is left — there is no
+ * "next" rail to point to). Reproduced with a calibrated (non-uncalibrated-sentinel) `thesisHealth`
+ * landing in the 45-69 "warn" band on a TRIM-status play — `thesisHealthUncalibrated()` above
+ * correctly lets a calibrated row through, so it does not guard this; #7380's fix to the sibling
+ * function never touched this one, so the contradiction remained reachable here. No live TRIM
+ * position carried a calibrated `thesisHealth` at the moment this was found (today's TRIM rows are
+ * all Banger-origin, where thesisHealth is withheld entirely), but any native swing position whose
+ * trim fires while its thesis is independently fading reaches this exact branch.
+ */
 export function thesisBreakCoaching(play: TerminalPlay): string | null {
   if (thesisHealthUncalibrated(play.thesisHealth)) return null;
   const level = play.thesisBreak?.level ?? play.thesisHealth?.thesisBreakLevel;
@@ -61,7 +76,9 @@ export function thesisBreakCoaching(play: TerminalPlay): string | null {
   if (level === "break") {
     return `**Thesis BREAK** — ${note ?? "structural invalidation fired"}. Exit or cut to runner only; don't add size.`;
   }
-  return `**Thesis WARN** — ${note ?? "pillars fading"}. Tighten stops; next trim rail is your friend.`;
+  return play.status === "TRIM"
+    ? `**Thesis WARN** — ${note ?? "pillars fading"}. Tighten stops; the trailing stop is your friend.`
+    : `**Thesis WARN** — ${note ?? "pillars fading"}. Tighten stops; next trim rail is your friend.`;
 }
 
 /** Weakest / fading pillar — explains the health % number. */
