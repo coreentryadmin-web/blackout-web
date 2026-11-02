@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
@@ -424,8 +424,13 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
-  if (POLY_KEY && CRON) {
+  // Polygon oracle for SPX — only during RTH. After the close, platform/snapshot can carry a
+  // fresher desk read while Polygon's index snapshot settles on session fields; the absolute
+  // 5pt gate then false-P0s (observed RTH deep audit @ 17:30 ET: Δ 11.34 with desk 7552 vs Poly 7541).
+  const oracleWindowOpen = inRthOpenWindow() && isTradingDayEt(todayEtYmd());
+  if (!oracleWindowOpen) {
+    ok("oracle", "SPX", "skipped — outside RTH (desk vs Polygon snapshot not comparable off-hours)");
+  } else if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
