@@ -491,6 +491,26 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
     const worstLegTrimEnforcedBeforeClose = worstLegRow
       ? trimEnforcedBeforeCloseFromScaleOutGrade(worstLegRow.scale_out_grade)
       : null;
+    // BUG FIX (Ask Largo standing mandate, 2026-11-02, 7th site of the same bug class as the six
+    // fixes above): `cortex`/`budgetVerdict`/`laneRankAtCommit` are set once in
+    // `closedDeckSourceFromRow` (above) from `row.entry_context.cortex`/`.budget_verdict`/
+    // `.lane_rank_at_commit` — real per-row JSONB columns on `swing_positions`, the same class as
+    // `entry_premium`/`contract_delta`/`entry_underlying_px` already re-pointed above. They were
+    // never added to the re-pointing list and survive unconditionally via the `...src` spread
+    // below (`src` is always `closedDeckSourceFromRow(terminal)`), so a worst-leg != terminal-leg
+    // chain pairs the worst leg's own P&L/contract/exit identity (already correctly re-pointed by
+    // the six fixes above) with the TERMINAL leg's own Cortex veto/decision snapshot, budget
+    // verdict, and lane rank at commit — the same cross-leg mismatch, one field further. Reachable:
+    // `terminalPlayFromClosedSwing` (adapters.ts) carries `src.cortex`/`src.budgetVerdict`/
+    // `src.laneRankAtCommit` straight into every served `TerminalPlay` for CLOSED swing cards. Fix:
+    // borrow all three from `worstLegRow.entry_context` the same way every sibling field above
+    // already does, falling back to `src`'s own (terminal) value only when the worst leg IS the
+    // terminal leg — the identical `worstLegIsTerminal` gate every sibling field uses.
+    const worstLegCortex = worstLegRow ? worstLegRow.entry_context?.cortex ?? null : null;
+    const worstLegBudgetVerdict = worstLegRow ? worstLegRow.entry_context?.budget_verdict ?? null : null;
+    const worstLegLaneRankAtCommit = worstLegRow
+      ? worstLegRow.entry_context?.lane_rank_at_commit ?? null
+      : null;
     out.push({
       ...src,
       // BUG FIX (Ask Largo standing mandate, 2026-10-22, live repro AMZN positionId 48 (root 44) +
@@ -519,6 +539,9 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
       committedAt: worstLegIsTerminal ? src.committedAt : worstLegCommittedAt,
       firstSeenAt: worstLegIsTerminal ? src.firstSeenAt : worstLegFirstSeenAt,
       trimEnforcedBeforeClose: worstLegIsTerminal ? src.trimEnforcedBeforeClose : worstLegTrimEnforcedBeforeClose,
+      cortex: worstLegIsTerminal ? src.cortex : worstLegCortex,
+      budgetVerdict: worstLegIsTerminal ? src.budgetVerdict : worstLegBudgetVerdict,
+      laneRankAtCommit: worstLegIsTerminal ? src.laneRankAtCommit : worstLegLaneRankAtCommit,
       closedReason: compositeReason,
       reason: `${src.reason} · chain composite (${record.composite.gradedLegs} leg${record.composite.gradedLegs === 1 ? "" : "s"})`,
       ...(worstLegBundle
