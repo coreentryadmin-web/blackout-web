@@ -1,5 +1,6 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
+import { todayEt } from "@/lib/et-date";
 
 // Relative specifiers (not the "@/..." alias) when mocking — tsx's alias rewrite only applies
 // to statically-parsed top-level `import ... from` statements, not to mock.module()'s own
@@ -202,7 +203,7 @@ test("readUwDarkPoolFromRedis falls back to a reshaped market-wide snapshot when
   // Ticker-specific key absent/empty (e.g. SPX has no equity dark-pool prints of its own).
   fakeCache.delete("dark_pool:SPX");
   // dark_pool_recent holds exactly what it always holds in production: a raw array of UW rows.
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayEt();
   fakeCache.set("dark_pool_recent", [
     { ticker: "AAPL", premium: 750_000, strike: 231, type: "call", executed_at: `${today}T14:31:00.000Z` },
   ]);
