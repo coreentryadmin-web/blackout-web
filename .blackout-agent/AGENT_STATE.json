@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-02T00:30:26.684Z",
+  "updated_at": "2026-11-02T00:37:01.991Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1c760ad54612963f6a3b23dd992dd02ba3903068",
+    "last_main_sha": "ad1f2b2fd8b2f629789f5b927f54bb1d8952036b",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
@@ -1255,25 +1255,225 @@
       "open_pr_count": 6
     },
     {
-      "at": "2026-11-02T00:30:12.668Z",
+      "at": "2026-11-02T00:36:26.911Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 10
+      "open_pr_count": 28
     },
     {
-      "at": "2026-11-02T00:30:19.867Z",
+      "at": "2026-11-02T00:36:44.441Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 10
+      "open_pr_count": 28
     },
     {
-      "at": "2026-11-02T00:30:26.684Z",
+      "at": "2026-11-02T00:37:01.991Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 10
+      "open_pr_count": 29
     }
   ],
   "open_prs": [
+    {
+      "number": 7349,
+      "title": "fix(autopilot): formatVerifyStatus case mismatch hides REST-sourced PRs from review queue",
+      "branch": "fix/verify-status-case-mismatch",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "queued/pending",
+      "updated_at": "2026-11-02T00:36:32Z"
+    },
+    {
+      "number": 7348,
+      "title": "test(uw-ws): align dark pool scoping test with todayEt session filter",
+      "branch": "cursor/autopilot-work-loop-b7bf",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-11-02T00:35:44Z"
+    },
+    {
+      "number": 7347,
+      "title": "fix(test): dark-pool WS tests use ET session date (verify flake)",
+      "branch": "fix/darkpool-ws-test-et-session-date",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-11-02T00:35:26Z"
+    },
+    {
+      "number": 7346,
+      "title": "fix(test): dark pool WS tests align fixture dates with todayEt()",
+      "branch": "cursor/autopilot-state-recovery-loop-125e",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-11-02T00:35:20Z"
+    },
+    {
+      "number": 7345,
+      "title": "fix(test): dark-pool WS tests use todayEt() not UTC calendar date",
+      "branch": "cursor/blackout-cursor-work-loop-fb4c",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-11-02T00:34:58Z"
+    },
+    {
+      "number": 7344,
+      "title": "fix(test): dark pool WS tests use todayEt() session date",
+      "branch": "cursor/blackout-worker-resumption-7815",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "queued/pending",
+      "updated_at": "2026-11-02T00:33:28Z"
+    },
+    {
+      "number": 7343,
+      "title": "fix(test): dark-pool CI flakes — use todayEt() for session timestamps",
+      "branch": "cursor/bc-568bdc7f-a57f-443a-933a-97775077a3ea-66f6",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "completed/failure",
+      "updated_at": "2026-11-02T00:33:03Z"
+    },
+    {
+      "number": 7342,
+      "title": "fix(test): align dark pool fixture dates with ET session calendar",
+      "branch": "cursor/bc-200a9b63-5185-4916-bd36-6f4def2b45b9-dd80",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-11-02T00:32:59Z"
+    },
+    {
+      "number": 7341,
+      "title": "fix(test): use todayEt in dark-pool WS/cache tests",
+      "branch": "fix/uw-darkpool-ws-tests",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "queued/pending",
+      "updated_at": "2026-11-02T00:32:47Z"
+    },
+    {
+      "number": 7340,
+      "title": "chore: sync ambient agent-state/heartbeat files",
+      "branch": "chore/agent-state-heartbeat-sync-1793579532",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-02T00:32:33Z"
+    },
+    {
+      "number": 7339,
+      "title": "fix(test): align dark-pool fixtures with todayEt session date",
+      "branch": "cursor/autopilot-work-loop-4e86",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-11-02T00:32:15Z"
+    },
+    {
+      "number": 7338,
+      "title": "fix(test): dark-pool WS tests use todayEt() not UTC YMD",
+      "branch": "fix/darkpool-ws-test-today-et",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-02T00:32:10Z"
+    },
+    {
+      "number": 7337,
+      "title": "test(uw): use todayEt in dark-pool WS cache tests",
+      "branch": "fix/dark-pool-test-et-date",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "queued/pending",
+      "updated_at": "2026-11-02T00:32:08Z"
+    },
+    {
+      "number": 7336,
+      "title": "fix(test): dark-pool WS tests use ET session date, not UTC slice",
+      "branch": "fix/darkpool-test-et-session-date",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-02T00:32:12Z"
+    },
+    {
+      "number": 7335,
+      "title": "fix(test): dark pool WS tests use ET session date for fixtures",
+      "branch": "cursor/autopilot-state-recovery-loop-b3b3",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-11-02T00:32:07Z"
+    },
+    {
+      "number": 7334,
+      "title": "test(darkpool): use todayEt() in WS/cache tests — not UTC date slice",
+      "branch": "cursor/autopilot-work-loop-1d1f",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "queued/pending",
+      "updated_at": "2026-11-02T00:32:05Z"
+    },
+    {
+      "number": 7333,
+      "title": "fix(test): dark pool regression tests use ET session date in fixtures",
+      "branch": "cursor/autopilot-work-loop-7903",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-02T00:32:03Z"
+    },
+    {
+      "number": 7332,
+      "title": "fix(test): dark pool WS tests align fixture dates with todayEt()",
+      "branch": "cursor/autopilot-work-loop-d607",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-02T00:32:04Z"
+    },
+    {
+      "number": 7331,
+      "title": "fix(test): dark-pool tests use todayEt() to match session filter",
+      "branch": "cursor/autopilot-work-loop-68c8",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-11-02T00:32:01Z"
+    },
+    {
+      "number": 7329,
+      "title": "fix(test): use todayEt() in dark pool WS/cache fixtures",
+      "branch": "fix/darkpool-test-et-today",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-02T00:31:56Z"
+    },
     {
       "number": 7328,
       "title": "fix(autopilot): expireStaleLocksSync deletes a task lock regardless of owner heartbeat",
@@ -1281,7 +1481,7 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "in_progress/pending",
+      "verify": "completed/failure",
       "updated_at": "2026-11-02T00:25:21Z"
     },
     {
@@ -1291,8 +1491,8 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "completed/failure",
-      "updated_at": "2026-11-02T00:19:27Z"
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-02T00:31:26Z"
     },
     {
       "number": 7326,
@@ -1305,23 +1505,13 @@
       "updated_at": "2026-11-02T00:27:16Z"
     },
     {
-      "number": 7325,
-      "title": "fix(lib): UW dark-pool test fixtures compute today via UTC, not ET",
-      "branch": "fix/uw-dark-pool-test-utc-et-boundary",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "completed/success",
-      "updated_at": "2026-11-02T00:15:19Z"
-    },
-    {
       "number": 7324,
       "title": "fix(push): close backslash bypass of sw.js notificationclick same-origin guard",
       "branch": "fix/sw-notification-click-backslash-open-redirect",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "in_progress/pending",
+      "verify": "completed/success",
       "updated_at": "2026-11-02T00:20:50Z"
     },
     {
@@ -1331,8 +1521,8 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "completed/failure",
-      "updated_at": "2026-11-02T00:15:46Z"
+      "verify": "queued/pending",
+      "updated_at": "2026-11-02T00:34:58Z"
     },
     {
       "number": 5547,

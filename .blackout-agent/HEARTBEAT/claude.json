@@ -1,5 +1,6 @@
 {
   "agent": "claude",
-  "last_seen": "2026-11-02T00:30:04.874Z",
-  "healthy": true
+  "last_seen": "2020-01-01T00:00:00.000Z",
+  "healthy": false,
+  "stale_since": "2026-11-02T00:37:02.136Z"
 }
