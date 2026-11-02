@@ -142,20 +142,38 @@ export function upcomingOpexDates(startYmd: string, daysAhead: number): string[]
   return [...new Set(out)].sort();
 }
 
-/** Prior monthly OpEx dates strictly before `beforeYmd` — holiday-rolled, see monthlyExpiryYmd. */
+/**
+ * Prior monthly OpEx dates strictly before `beforeYmd` — holiday-rolled, see monthlyExpiryYmd.
+ *
+ * BUG (fixed): the walk-back used to decrement the month BEFORE ever checking
+ * `beforeYmd`'s own month, so it unconditionally skipped the current month's OpEx — even
+ * when that OpEx had already happened and genuinely qualifies as "strictly before
+ * `beforeYmd`". Concrete failure: `priorOpexDates("2026-08-25", 6)` (any date after August's
+ * 3rd-Friday OpEx on 2026-08-21, i.e. most days in the back half of nearly every month) came
+ * back `[2026-07-17, 2026-06-18, ...]` — 2026-08-21 was simply absent, so the "prior OpEx"
+ * panel (`loadMeridianOpexHistory`, `loadMeridianOpexCrossMarket`) was always missing the
+ * single most-recent OpEx and silently one month stale for roughly half of every month. The
+ * only reason the existing test (`beforeYmd` set to the exact OpEx date itself) never caught
+ * it is that `opex < beforeYmd` is already false when they're equal, so that one case happened
+ * to look the same whether the current month was checked or skipped.
+ *
+ * Fix: check the current month FIRST (still correctly excluded by `opex < beforeYmd` when it
+ * is `beforeYmd`'s own OpEx date or later in the future), then walk backward. Same 36-month
+ * bound, shifted by one so total coverage (current + 35 prior months) is unchanged.
+ */
 export function priorOpexDates(beforeYmd: string, limit = 6): string[] {
   const parts = beforeYmd.split("-").map(Number) as [number, number, number];
   let y = parts[0];
   let m = parts[1];
   const out: string[] = [];
   for (let i = 0; i < 36 && out.length < limit; i++) {
+    const opex = monthlyExpiryYmd(y, m);
+    if (opex && opex < beforeYmd) out.push(opex);
     m -= 1;
     if (m < 1) {
       m = 12;
       y -= 1;
     }
-    const opex = monthlyExpiryYmd(y, m);
-    if (opex && opex < beforeYmd) out.push(opex);
   }
   return out.sort((a, b) => b.localeCompare(a)).slice(0, limit);
 }
