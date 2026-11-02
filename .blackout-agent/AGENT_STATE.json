@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-02T00:56:20.126Z",
+  "updated_at": "2026-11-02T01:40:10.643Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "139ec3943a1ba2c811dc60629e1e1fe8f4eb7431",
+    "last_main_sha": "c76486f5071a3f10cd3ec2752d836c9891665fba",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-26T04:05:18.573Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-26T04:05:22.004Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-26T04:41:07.058Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-26T04:41:12.024Z",
       "type": "context_sync",
@@ -1271,18 +1253,46 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 14
+    },
+    {
+      "at": "2026-11-02T01:39:47.798Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 15
+    },
+    {
+      "at": "2026-11-02T01:39:59.353Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 15
+    },
+    {
+      "at": "2026-11-02T01:40:10.643Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 15
     }
   ],
   "open_prs": [
     {
-      "number": 7349,
-      "title": "fix(autopilot): formatVerifyStatus case mismatch hides REST-sourced PRs from review queue",
-      "branch": "fix/verify-status-case-mismatch",
+      "number": 7364,
+      "title": "chore: sync ambient agent-state/heartbeat files",
+      "branch": "chore/agent-state-heartbeat-sync-1793583274",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "IN_PROGRESS/pending",
+      "updated_at": "2026-11-02T01:34:57Z"
+    },
+    {
+      "number": 7363,
+      "title": "fix(ops): findings-merge-core.mjs silently drops a one-sided edit to an existing FINDINGS.md entry",
+      "branch": "fix/findings-merge-fastforward-edit-lost",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-11-02T00:36:32Z"
+      "verify": "IN_PROGRESS/pending",
+      "updated_at": "2026-11-02T01:30:37Z"
     },
     {
       "number": 7348,
@@ -1291,7 +1301,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "completed/success",
+      "verify": "COMPLETED/SUCCESS",
       "updated_at": "2026-11-02T00:35:44Z"
     },
     {
@@ -1301,7 +1311,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "completed/success",
+      "verify": "COMPLETED/SUCCESS",
       "updated_at": "2026-11-02T00:35:20Z"
     },
     {
@@ -1311,7 +1321,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "in_progress/pending",
+      "verify": "COMPLETED/FAILURE",
       "updated_at": "2026-11-02T00:33:28Z"
     },
     {
@@ -1321,7 +1331,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "completed/failure",
+      "verify": "COMPLETED/FAILURE",
       "updated_at": "2026-11-02T00:33:03Z"
     },
     {
@@ -1331,7 +1341,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "completed/success",
+      "verify": "COMPLETED/SUCCESS",
       "updated_at": "2026-11-02T00:32:59Z"
     },
     {
@@ -1341,7 +1351,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "completed/success",
+      "verify": "COMPLETED/SUCCESS",
       "updated_at": "2026-11-02T00:32:15Z"
     },
     {
@@ -1351,7 +1361,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "completed/success",
+      "verify": "COMPLETED/SUCCESS",
       "updated_at": "2026-11-02T00:32:07Z"
     },
     {
@@ -1361,7 +1371,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "completed/failure",
+      "verify": "COMPLETED/FAILURE",
       "updated_at": "2026-11-02T00:32:03Z"
     },
     {
@@ -1381,7 +1391,7 @@
       "author": "dependabot[bot]",
       "agent": "human",
       "draft": false,
-      "verify": "completed/failure",
+      "verify": "COMPLETED/FAILURE",
       "updated_at": "2026-10-05T10:12:35Z"
     },
     {
@@ -1391,7 +1401,7 @@
       "author": "dependabot[bot]",
       "agent": "human",
       "draft": false,
-      "verify": "completed/failure",
+      "verify": "COMPLETED/FAILURE",
       "updated_at": "2026-10-13T05:27:52Z"
     },
     {
@@ -1401,7 +1411,7 @@
       "author": "dependabot[bot]",
       "agent": "human",
       "draft": false,
-      "verify": "completed/failure",
+      "verify": "COMPLETED/FAILURE",
       "updated_at": "2026-10-05T10:11:50Z"
     },
     {
@@ -1411,7 +1421,7 @@
       "author": "dependabot[bot]",
       "agent": "human",
       "draft": false,
-      "verify": "completed/failure",
+      "verify": "COMPLETED/FAILURE",
       "updated_at": "2026-10-13T05:41:41Z"
     }
   ],
