@@ -31,6 +31,7 @@ import { fetchAllDossiers, resetEditionCongressCache, type TickerDossier } from 
 import { generateEditionPlays } from "./claude-edition";
 import { fetchPlayOutcomeStats } from "@/features/spx/lib/spx-play-outcomes";
 import { buildMarketRecap, formatTickerDossierText } from "./format";
+import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { fetchIndexDossiers } from "./index-dossier";
 import { fetchMarketWideContext, type MarketWideContext } from "./market-wide";
 import { critiquePlays } from "./play-critic";
@@ -83,6 +84,21 @@ import { nextTradingDayEt, todayEt } from "./session";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import type { NightHawkEdition, PlaybookPlay } from "./types";
 import { recapOnlyReasonFromMeta, funnelFromMetaForEdition } from "./edition-meta";
+import type { BenzingaCatalyst } from "@/lib/providers/polygon";
+
+/**
+ * Decode/strip HTML entities from each catalyst's `title` before it reaches the published
+ * edition's `market_recap.after_hours_catalysts` — the raw Benzinga title (e.g. "Friday&#39;s")
+ * otherwise ships unsanitized to both the JSON API response and, via
+ * `compactNightHawkEditionForModel`/`get_nighthawk_edition`, the Ask Largo model's tool_result.
+ * `format.ts`'s `buildMarketRecap` already does this for the rendered `catalysts`/`recap_summary`
+ * strings (via the same `sanitizeFeedText`) — this mirrors that for the structured array.
+ */
+export function sanitizedAfterHoursCatalysts(
+  catalysts: BenzingaCatalyst[] | undefined,
+): BenzingaCatalyst[] {
+  return (catalysts ?? []).slice(0, 10).map((c) => ({ ...c, title: sanitizeFeedText(c.title) }));
+}
 
 /**
  * Consolidated funnel counts for ONE edition build (#77 deliverable (a)). Every stage of the
@@ -539,7 +555,7 @@ async function publishRecapOnlyEdition(params: {
       index_dossiers: indexDossiers,
       spx_desk: spxDesk,
       flow_tape: flowTape,
-      after_hours_catalysts: ctx.after_hours_catalysts?.slice(0, 10) ?? [],
+      after_hours_catalysts: sanitizedAfterHoursCatalysts(ctx.after_hours_catalysts),
     },
     plays: [] as PlaybookPlay[],
     meta: {
@@ -1686,7 +1702,7 @@ export async function buildEveningEdition(opts?: {
         index_dossiers: indexDossiers,
         spx_desk: spxDesk,
         flow_tape: flowTape,
-        after_hours_catalysts: ctx.after_hours_catalysts?.slice(0, 10) ?? [],
+        after_hours_catalysts: sanitizedAfterHoursCatalysts(ctx.after_hours_catalysts),
       },
       plays: finalPlays,
       meta: {
