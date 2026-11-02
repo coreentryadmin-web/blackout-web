@@ -358,6 +358,14 @@ export interface XTweet {
     reply_count?: number;
     retweet_count?: number;
   };
+  /**
+   * Present when this tweet references another one. "quoted" is the one `exclude=retweets,replies`
+   * (fetchUserTweets below) does NOT filter out — a quote-tweet is its own standalone tweet to the
+   * X API, not a reply, so it still comes back from `/users/{id}/tweets` even with that exclude
+   * param. x-post-guard.ts uses this to tell a growth-engagement quote-tweet apart from a real desk
+   * product post (see its own doc comment for the bug this closes).
+   */
+  referenced_tweets?: Array<{ type: "retweeted" | "quoted" | "replied_to"; id: string }>;
 }
 
 export interface XTweetSearchHit extends XTweet {
@@ -371,7 +379,10 @@ export async function fetchUserTweets(
   const params = new URLSearchParams({
     max_results: String(Math.min(Math.max(maxResults, 5), 100)),
     exclude: "retweets,replies",
-    "tweet.fields": "author_id,created_at,public_metrics",
+    // referenced_tweets: exclude=retweets,replies above does not filter out quote-tweets (a
+    // quote is its own standalone tweet to the API, not a reply), so callers that need to tell
+    // a quote-tweet apart from an original post (x-post-guard.ts) need this field.
+    "tweet.fields": "author_id,created_at,public_metrics,referenced_tweets",
   });
   const url = `https://api.x.com/2/users/${userId}/tweets?${params}`;
   const res = await oauthFetch("GET", url);
