@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-02T04:07:58.210Z",
+  "updated_at": "2026-11-02T05:07:34.921Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -25,6 +25,24 @@
       "reviewer": null,
       "run_id": null,
       "title": null
+    },
+    "BO-TEST-0007": {
+      "task_id": "BO-TEST-0007",
+      "owner": "claude",
+      "phase": "RELEASED",
+      "released_at": "2026-11-02T05:07:21.531Z"
+    },
+    "BO-TEST-0009": {
+      "task_id": "BO-TEST-0009",
+      "owner": "claude",
+      "phase": "RELEASED",
+      "claimed_at": "2026-11-02T05:07:24.802Z",
+      "lease_until": "2026-11-02T05:08:24.802Z",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "released_at": "2026-11-02T05:07:24.806Z"
     }
   },
   "reviews": {
@@ -65,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "350eb859a15f823b3a4fadab65a367b90629ae04",
+    "last_main_sha": "33450b52575aec89c1967a1218f876bc0d2c93a1",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-26T05:23:51.102Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T05:23:56.810Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T05:32:35.683Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-26T05:32:40.581Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-26T05:32:45.807Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-26T06:12:24.219Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-26T06:12:28.051Z",
       "type": "context_sync",
@@ -1268,6 +1250,42 @@
     },
     {
       "at": "2026-11-02T04:07:58.210Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-02T05:07:21.531Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-02T05:07:24.804Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-02T05:07:24.806Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-02T05:07:28.271Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-02T05:07:31.758Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-02T05:07:34.921Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
