@@ -83,6 +83,18 @@ export function clampPriceRangeSpan(
     max = mustInclude.maxValue;
     min = max - maxSpan;
   }
+  // BUG FIX (round 350): the two fixups above assume mustInclude's OWN span fits inside maxSpan.
+  // When it does not — a session volatile enough that its real candle high-low range already
+  // exceeds the frame's cap — they cascade: fixing the low edge first, then the high-edge fixup
+  // re-derives `min` from the NEW `max`, silently pushing the window past the edge the first step
+  // had just covered (e.g. spot=100, maxSpan=10, mustInclude=[90,108]: step one sets
+  // min=90/max=100; step two then overrides to max=108/min=98, losing mustInclude.minValue=90 off
+  // the left edge of a window whose whole contract is to keep it visible). Union with mustInclude
+  // as a floor/ceiling so the real data range is NEVER clipped — a no-op in the ordinary case
+  // (mustInclude already fits inside [min, max] by construction there), and the honest fallback
+  // (a window wider than maxSpan) only when the data itself cannot fit the cap.
+  min = Math.min(min, mustInclude.minValue);
+  max = Math.max(max, mustInclude.maxValue);
   return { minValue: min, maxValue: max };
 }
 
