@@ -13,11 +13,6 @@ test("full-site-deep-audit uses side-constrained wallsFromStrikeTotals, not unco
   assert.equal(src.includes("function deriveWalls"), false);
 });
 
-test("full-site-deep-audit skips SPX Polygon oracle outside RTH open window", () => {
-  assert.match(src, /inRthOpenWindow\(\)/);
-  assert.match(src, /oracle.*off-hours — oracle skipped \(by design\)/s);
-});
-
 test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a stale $20", () => {
   const constantsSrc = readFileSync(
     join(here, "..", "src", "features", "nighthawk", "lib", "constants.ts"),
@@ -35,8 +30,9 @@ test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a 
   assert.equal(/ep > 20\)/.test(src), false);
 });
 
-test("full-site-deep-audit skips Polygon SPX oracle when market is closed", () => {
-  assert.match(src, /integrityMarketOpen/);
-  assert.match(src, /off-hours — oracle skipped \(by design\)/);
-  assert.match(src, /inRthOpenWindow/);
+test("full-site-deep-audit SPX oracle follows data-validator RTH/off-hours ground truth", () => {
+  assert.match(src, /spxOracleVerdict/);
+  assert.match(src, /marketstatus\/now/);
+  assert.match(src, /I:SPX\/prev/);
+  assert.doesNotMatch(src, /if \(d > 5\) fail\("oracle", "SPX"/);
 });
