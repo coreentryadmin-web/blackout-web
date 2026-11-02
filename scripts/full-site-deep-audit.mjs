@@ -7,6 +7,7 @@
  */
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
+import { evaluateSpxOracleAgreement } from "./audit/lib/spx-oracle-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -424,8 +425,11 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX — percent tolerance matches data-validator.mjs (fixed 5pt was a false
+  // P0 off-hours when desk spot and Polygon snapshot value diverge on stale fields).
   if (POLY_KEY && CRON) {
+    const di = await getJson("/api/cron/data-integrity?force=1");
+    const marketOpen = di.status === 200 && di.json?.market_open === true;
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
@@ -433,10 +437,22 @@ async function auditPublicMarket() {
       const poly = await polyRes.json();
       const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
       const oracle = row?.value ?? row?.session?.close;
-      if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+      const verdict = evaluateSpxOracleAgreement(Number(deskSpx), Number(oracle), marketOpen);
+      if (verdict.reason === "missing_values") {
+        /* skip — no comparable oracle row */
+      } else if (!verdict.ok) {
+        fail(
+          "oracle",
+          "SPX",
+          `desk ${deskSpx} vs Polygon ${oracle} (Δ ${verdict.delta.toFixed(2)}, ${verdict.pct.toFixed(3)}% > ${verdict.tolPct}% tol${marketOpen ? "" : " off-hours"})`,
+          "P0"
+        );
+      } else {
+        ok(
+          "oracle",
+          "SPX",
+          `desk ${deskSpx} vs Polygon ${oracle} (Δ ${verdict.delta.toFixed(2)}, ${verdict.pct.toFixed(3)}%)`
+        );
       }
     }
   }
