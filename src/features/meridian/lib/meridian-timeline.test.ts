@@ -86,6 +86,16 @@ test("priorOpexDates: walks back monthly third Fridays", () => {
   assert.equal(dates[0], thirdFridayYmd(2026, 7));
 });
 
+test("priorOpexDates: INCLUDES the current month's own OpEx once it has already passed (BUG — used to unconditionally skip the current month)", () => {
+  // August 2026's OpEx is 2026-08-21 (thirdFridayYmd(2026, 8)). Any date after that, still in
+  // August, must see 2026-08-21 as the MOST RECENT prior OpEx — it genuinely is strictly before
+  // beforeYmd. The old implementation decremented the month before ever checking beforeYmd's own
+  // month, so it jumped straight to July and 2026-08-21 never appeared at all.
+  const dates = priorOpexDates("2026-08-25", 6);
+  assert.equal(dates[0], "2026-08-21", "most recent prior OpEx must be this month's own OpEx, not last month's");
+  assert.ok(dates.every((d) => d < "2026-08-25"));
+});
+
 test("parseMeridianEventId REJECTS an id whose date is not a date", () => {
   // The exact shape that produced a HTTP 200 with a half-populated brief on production
   // (2026-08-18): trailing garbage on the date. `pack.history` survived because the pack path
