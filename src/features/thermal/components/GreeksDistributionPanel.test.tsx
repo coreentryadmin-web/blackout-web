@@ -2,14 +2,18 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GreeksDistributionPanel } from "./GreeksDistributionPanel";
+import { GreeksDistributionPanel, type GreeksDistributionLens } from "./GreeksDistributionPanel";
 import type { GexCells } from "@/features/thermal/lib/gex-heatmap/per-expiry-levels";
 
 (globalThis as unknown as { React: typeof React }).React = React;
 
-function panelText(cells: GexCells | null, spot: number | null) {
+function panelText(
+  cells: GexCells | null,
+  spot: number | null,
+  lens?: GreeksDistributionLens
+) {
   const html = renderToStaticMarkup(
-    React.createElement(GreeksDistributionPanel, { cells, spot })
+    React.createElement(GreeksDistributionPanel, { cells, spot, lens })
   );
   return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -128,6 +132,42 @@ describe("GreeksDistributionPanel", () => {
     };
     const text = panelText(cells, 5550);
     assert.ok(text.includes("Greeks Distribution"));
+  });
+
+  it("labels the cluster insight by GREEK, not hardcoded gamma (ROOT CAUSE: GexHeatmap.tsx " +
+    "renders this panel for GEX/VEX/DEX alike, but the copy used to say 'gamma clusters' " +
+    "even when the cells passed in were vanna or delta)", () => {
+    // Alternating high/low strikes so 3 separate >5%-share runs form (clusterCount > 2),
+    // which is the branch that renders the "Multiple distinct <noun> clusters detected" line.
+    const cells: GexCells = {
+      "5540": { "2026-09-19": 2000 },
+      "5541": { "2026-09-19": 100 },
+      "5542": { "2026-09-19": 2000 },
+      "5543": { "2026-09-19": 100 },
+      "5544": { "2026-09-19": 2000 },
+    };
+    const gexText = panelText(cells, 5542, "gex");
+    assert.ok(gexText.includes("gamma clusters"), "gex lens should say gamma clusters");
+
+    const vexText = panelText(cells, 5542, "vex");
+    assert.ok(
+      vexText.includes("vanna clusters"),
+      `vex lens should say vanna clusters, got: ${vexText}`
+    );
+    assert.ok(
+      !vexText.includes("gamma clusters"),
+      `vex lens must not mislabel vanna data as gamma clusters, got: ${vexText}`
+    );
+
+    const dexText = panelText(cells, 5542, "dex");
+    assert.ok(
+      dexText.includes("delta clusters"),
+      `dex lens should say delta clusters, got: ${dexText}`
+    );
+    assert.ok(
+      !dexText.includes("gamma clusters"),
+      `dex lens must not mislabel delta data as gamma clusters, got: ${dexText}`
+    );
   });
 
   it("handles multiple expirations per strike", () => {
