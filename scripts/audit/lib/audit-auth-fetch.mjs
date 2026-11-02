@@ -51,17 +51,31 @@ async function fetchAuditJsonOnce(base, path) {
     const r = await fetch(url, {
       headers: { Authorization: `Bearer ${cron}`, Accept: "application/json" },
     });
-    if (r.ok) return { ok: true, status: r.status, json: await r.json(), via: "cron" };
-    // Stale cloud-agent CRON_SECRET is common — fall through to Clerk on auth failure.
-    // Also fall through on edge/origin 502/504/524 — cron bearer may be wrong OR the route
-    // timed out on a blocking cold build; Clerk member-path is the authoritative probe.
-    const fallThrough =
-      r.status === 401 ||
-      r.status === 403 ||
-      isTransientOriginError(r.status);
-    if (!fallThrough) {
-      const json = await r.json().catch(() => ({}));
-      return { ok: false, status: r.status, json, via: "cron" };
+    if (r.ok) {
+      // BUG (unguarded `await r.json()`): a 200 whose body is not valid JSON — an HTML error
+      // page from a mismatched route, an empty 204-shaped body, a Cloudflare interstitial —
+      // throws a SyntaxError here that nothing up the call chain catches. `fetchAuditJson`'s
+      // retry loop has no try/catch around `fetchAuditJsonOnce()`, so the exception propagates
+      // all the way out of the exported `fetchAuditJson` and kills the whole audit script
+      // instead of falling through to the Clerk member-path — the entire reason this dual-auth
+      // module exists. The sibling non-ok branch two lines below already guards the identical
+      // `r.json()` call with `.catch(() => ({}))`; this branch was missing the same guard.
+      const json = await r.json().catch(() => undefined);
+      if (json !== undefined) return { ok: true, status: r.status, json, via: "cron" };
+      // Un-parseable 200 is as untrustworthy as a 401/403 — treat it the same way (fall
+      // through to the authoritative Clerk member-path) rather than report a false "ok".
+    } else {
+      // Stale cloud-agent CRON_SECRET is common — fall through to Clerk on auth failure.
+      // Also fall through on edge/origin 502/504/524 — cron bearer may be wrong OR the route
+      // timed out on a blocking cold build; Clerk member-path is the authoritative probe.
+      const fallThrough =
+        r.status === 401 ||
+        r.status === 403 ||
+        isTransientOriginError(r.status);
+      if (!fallThrough) {
+        const json = await r.json().catch(() => ({}));
+        return { ok: false, status: r.status, json, via: "cron" };
+      }
     }
   }
   if (process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
