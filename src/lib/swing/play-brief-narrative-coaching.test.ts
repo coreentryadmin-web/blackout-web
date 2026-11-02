@@ -990,6 +990,37 @@ test("crossDeskCoaching: OPEN-bucket structure conflict still reads size down / 
   assert.match(line!, /size down/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-02, five-engine-largo-cycle-73, live repro
+// SWING:TXRH positionId 2252): the OPEN-bucket "your next trim rail" text above was still wrong
+// for status==="TRIM" — SWING_SCALE_OUT_POLICY (exit-policy.ts) has exactly ONE trim rung, so once
+// a position reaches TRIM that rung has already fired and there is no "next" one, only the
+// trailing runner stop. The live brief's Management section said "all trims banked — runner
+// only" while this Cross-desk friction section told the member to wait for "your next trim rail"
+// — a direct contradiction inside one document. TRIM must get its own runner-appropriate wording.
+test("crossDeskCoaching: TRIM-bucket (runner phase) structure conflict names the trailing stop, not a nonexistent 'next trim rail'", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      vector: {
+        play: {
+          bias: "short",
+          headline: "Fade the rip",
+          grade: "B",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", status: "TRIM" }),
+  );
+  assert.match(line!, /Cross-desk friction/i);
+  assert.match(line!, /Vector bearish/i);
+  assert.doesNotMatch(
+    line!,
+    /next trim rail/i,
+    "a TRIM-status position's one trim rung has already fired — there is no next trim rail",
+  );
+  assert.match(line!, /trailing stop/i);
+  assert.match(line!, /sizing down/i);
+});
+
 test("crossDeskCoaching: stale Vector play.bias must not invent cross-desk friction", () => {
   const line = crossDeskCoaching(
     ctx({
