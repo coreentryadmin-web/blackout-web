@@ -90,6 +90,22 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
     cta: "Open Night Hawk",
   },
   {
+    id: "vector",
+    kicker: "Universe radar",
+    title: "Vector",
+    body: "Cross-ticker gamma and flow universe screener — ranked setups across the whole market, not just one ticker: nearest-flip, most-pinned, and most-explosive presets, GEX ladders, and wall-integrity scoring.",
+    href: "/vector",
+    cta: "Open Vector",
+  },
+  {
+    id: "meridian",
+    kicker: "Catalyst desk",
+    title: "Meridian",
+    body: "A catalyst timeline — earnings, macro releases, OpEx, and FDA decisions — each with its own filter. Earnings get the deepest workflow: estimate revisions, reaction history, and positioning context per print.",
+    href: "/meridian",
+    cta: "Open Meridian",
+  },
+  {
     id: "finish",
     kicker: "You're set",
     title: "Trade with structure",
