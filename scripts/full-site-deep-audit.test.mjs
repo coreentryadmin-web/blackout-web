@@ -13,6 +13,16 @@ test("full-site-deep-audit uses side-constrained wallsFromStrikeTotals, not unco
   assert.equal(src.includes("function deriveWalls"), false);
 });
 
+test("full-site-deep-audit SPX oracle uses marketstatus + today daily close off-hours (not snapshot value only)", () => {
+  assert.match(src, /marketstatus\/now/);
+  assert.match(src, /range\/1\/day\/\$\{ymd\}\/\$\{ymd\}/);
+  assert.doesNotMatch(
+    src,
+    /if \(d > 5\) fail\("oracle", "SPX"/,
+    "must not use a fixed 5pt threshold against snapshot value off-hours"
+  );
+});
+
 test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a stale $20", () => {
   const constantsSrc = readFileSync(
     join(here, "..", "src", "features", "nighthawk", "lib", "constants.ts"),

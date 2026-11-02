@@ -424,19 +424,59 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX — same ground-truth convention as scripts/audit/data-validator.mjs:
+  // live snapshot value during RTH; after the session closes the desk serves today's own settled
+  // close (see spx-desk.ts fetchTodaysOwnCloseIfSessionComplete), not yesterday's /prev bar and
+  // not the index snapshot's `value` (which can lag or disagree for hours off-hours).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
-    const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
-    if (polyRes.ok && deskSpx > 0) {
-      const poly = await polyRes.json();
-      const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-      const oracle = row?.value ?? row?.session?.close;
+    const polyFetch = async (path) => {
+      const res = await fetch(`${POLY_BASE}${path}${path.includes("?") ? "&" : "?"}apiKey=${POLY_KEY}`);
+      if (!res.ok) return null;
+      try {
+        return await res.json();
+      } catch {
+        return null;
+      }
+    };
+    if (deskSpx > 0) {
+      const pStatus = await polyFetch("/v1/marketstatus/now");
+      const rth = pStatus?.market === "open";
+      let oracle = null;
+      let gtLabel = "skip";
+      if (rth) {
+        const poly = await polyFetch("/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX");
+        const row = (poly?.results ?? []).find((r) => r.ticker === "I:SPX");
+        oracle = row?.value ?? row?.session?.close;
+        gtLabel = "live";
+      } else {
+        const ymd = todayEtYmd();
+        const dayBar = await polyFetch(`/v2/aggs/ticker/I:SPX/range/1/day/${ymd}/${ymd}`);
+        oracle = dayBar?.results?.[0]?.c;
+        gtLabel = "today-close";
+        if (!(oracle > 0)) {
+          const prev = await polyFetch("/v2/aggs/ticker/I:SPX/prev");
+          oracle = prev?.results?.[0]?.c;
+          gtLabel = "prev-close";
+        }
+      }
       if (oracle > 0) {
+        const priceTolPct = rth ? 0.3 : 1.5;
+        const pct = (Math.abs(oracle - deskSpx) / oracle) * 100;
         const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+        if (pct > priceTolPct) {
+          fail(
+            "oracle",
+            "SPX",
+            `desk ${deskSpx} vs Polygon ${oracle} (${gtLabel}, Δ ${d.toFixed(2)}, ${pct.toFixed(3)}%)`,
+            "P0"
+          );
+        } else {
+          ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (${gtLabel}, Δ ${d.toFixed(2)})`);
+        }
+      } else {
+        ok("oracle", "SPX", "skipped — no Polygon ground truth off-hours");
       }
     }
   }
