@@ -7,21 +7,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CRON_SERVICE_NAMES } from "./railway-cron-services.mjs";
+import { utcBandToEt } from "./railway-cron-schedule-audit-lib.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-
-/** Approximate UTC hour range → ET (dual-offset note). */
-function utcBandToEt(cron) {
-  const m = cron.match(/(\d{1,2}(?:,\d{1,2})*|\*|\*\/\d+|\d+\/\d+)\s+(\d{1,2})-(\d{1,2})/);
-  if (!m) return null;
-  const start = Number(m[2]);
-  const end = Number(m[3]);
-  return {
-    utc: `${start}:00–${end}:59 UTC`,
-    edt: `${start - 4}:00–${end - 4}:59 ET (EDT, Mar–Nov)`,
-    est: `${start - 5}:00–${end - 5}:59 ET (EST, Nov–Mar)`,
-  };
-}
 
 const rows = [];
 for (const f of readdirSync(ROOT).filter((x) => x.startsWith("railway.") && x.endsWith(".toml") && x !== "railway.toml")) {
@@ -49,5 +37,3 @@ for (const r of rows.sort((a, b) => a.svc.localeCompare(b.svc))) {
   }
   console.log("");
 }
-
-PY
