@@ -424,19 +424,27 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX — live cross-check only while RTH is open. After the cash close,
+  // platform snapshot `price` can reflect extended/last prints while Polygon's index snapshot
+  // `value`/`session.close` stays on the regular-session settle (RTH deep audit run 41537722853:
+  // Δ11.34 at 17:30 ET — false P0, not a production desk bug).
   if (POLY_KEY && CRON) {
-    const snap = await getJson("/api/market/platform/snapshot");
-    const deskSpx = snap.json?.spx?.price;
-    const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
-    if (polyRes.ok && deskSpx > 0) {
-      const poly = await polyRes.json();
-      const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-      const oracle = row?.value ?? row?.session?.close;
-      if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+    const deskRes = await getJson("/api/market/spx/desk");
+    if (deskRes.status === 200 && deskRes.json?.market_open !== true) {
+      ok("oracle", "SPX", "skipped — session not open (Polygon oracle is RTH-only)");
+    } else {
+      const snap = await getJson("/api/market/platform/snapshot");
+      const deskSpx = snap.json?.spx?.price;
+      const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
+      if (polyRes.ok && deskSpx > 0) {
+        const poly = await polyRes.json();
+        const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
+        const oracle = row?.value ?? row?.session?.close;
+        if (oracle > 0) {
+          const d = Math.abs(oracle - deskSpx);
+          if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
+          else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+        }
       }
     }
   }
