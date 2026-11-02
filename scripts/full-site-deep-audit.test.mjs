@@ -29,3 +29,11 @@ test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a 
   // Guards against reintroducing a second, hardcoded cap literal in the PREMIUM-CAP check itself.
   assert.equal(/ep > 20\)/.test(src), false);
 });
+
+test("full-site-deep-audit skips Polygon SPX oracle when market is closed", () => {
+  assert.match(src, /inRthOpenWindow\(\)/);
+  assert.match(
+    src,
+    /skipped — market closed \(Polygon snapshot vs desk spot not comparable off-hours\)/
+  );
+});

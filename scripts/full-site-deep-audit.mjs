@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
@@ -424,19 +424,26 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX — RTH only. Off-hours the desk carries the last live index tick while
+  // Polygon's snapshot value/close can lag on a different clock (data-validator skips the same class
+  // of hod/lod comparisons when the session aggregate is empty).
   if (POLY_KEY && CRON) {
-    const snap = await getJson("/api/market/platform/snapshot");
-    const deskSpx = snap.json?.spx?.price;
-    const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
-    if (polyRes.ok && deskSpx > 0) {
-      const poly = await polyRes.json();
-      const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-      const oracle = row?.value ?? row?.session?.close;
-      if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+    const ymd = todayEtYmd();
+    if (!isTradingDayEt(ymd) || !inRthOpenWindow()) {
+      ok("oracle", "SPX", "skipped — market closed (Polygon snapshot vs desk spot not comparable off-hours)");
+    } else {
+      const snap = await getJson("/api/market/platform/snapshot");
+      const deskSpx = snap.json?.spx?.price;
+      const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
+      if (polyRes.ok && deskSpx > 0) {
+        const poly = await polyRes.json();
+        const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
+        const oracle = row?.value ?? row?.session?.close;
+        if (oracle > 0) {
+          const d = Math.abs(oracle - deskSpx);
+          if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
+          else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+        }
       }
     }
   }
