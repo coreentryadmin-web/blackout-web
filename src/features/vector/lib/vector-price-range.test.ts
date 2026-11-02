@@ -102,6 +102,33 @@ test("clampPriceRangeSpan: squashed SPX session overview reframes around spot", 
   assert.ok(out.maxValue >= candles.maxValue);
 });
 
+// BUG (found round 350): when the real candle range (`mustInclude`) is itself WIDER than the
+// capped window, the two sequential min/max fixups cascade and the second one overrides the
+// first, silently dropping the edge the first one just fixed into view. Concretely, with
+// spot=100 and a 10-pt cap: mustInclude=[90,108] (span 18 > cap 10) first sets min=90/max=100
+// to cover the low edge, then the max-fixup (108 > 100) resets max=108/min=98 — losing the
+// low-edge coverage the first step had just established. The real-world trigger is a session
+// volatile enough that its candle high-low range (the `res.priceRange` passed as `mustInclude`
+// from VectorChart.tsx) exceeds `frameSpanPct * spot` — `frameSpanPct` is derived from
+// `rowAwareSpanPct`/strike spacing, NOT from the candle range, so it can legitimately be smaller
+// than the session's real span on a big-move day. The result: part of the real candle wicks
+// render clipped off-axis even though this function's own contract is "while keeping the candle
+// range visible."
+test("clampPriceRangeSpan: an over-wide mustInclude range must stay FULLY visible, not just its near edge", () => {
+  const spot = 100;
+  const wide = { minValue: 50, maxValue: 150 }; // triggers the clamp (span 100 >> 10pt cap)
+  const mustInclude = { minValue: 90, maxValue: 108 }; // span 18, itself > the 10pt cap
+  const out = clampPriceRangeSpan(wide, spot, 0.1, mustInclude);
+  assert.ok(
+    out.minValue <= mustInclude.minValue,
+    `low edge of the real candle range (${mustInclude.minValue}) must stay in view — got minValue ${out.minValue}`
+  );
+  assert.ok(
+    out.maxValue >= mustInclude.maxValue,
+    `high edge of the real candle range (${mustInclude.maxValue}) must stay in view — got maxValue ${out.maxValue}`
+  );
+});
+
 // ── PRICE-AXIS WIDENING vs THE TIME-AXIS PRESETS (2026-08-19) ────────────────────────────────
 // The autoscale provider used to skip its wall/bead widening on `memberViewportLocked`, which reads
 // `chartUserPanned` — a flag the intraday zoom presets set PROGRAMMATICALLY and nothing clears until
