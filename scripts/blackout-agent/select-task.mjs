@@ -65,11 +65,25 @@ export function discoverStandingWork(agent, state) {
 
   const mainSha = state.deploy?.last_main_sha;
   const deploySha = state.deploy?.last_deploy_sha;
-  if (mainSha && deploySha && mainSha !== deploySha) {
+  // `last_deploy_sha` (sync-context.mjs) is the headSha the MOST RECENT ecr-push-production.yml
+  // run on main ATTEMPTED to deploy — not the sha it successfully shipped. A run's headSha always
+  // equals the commit it was triggered for, so a FAILED/CANCELLED/TIMED-OUT deploy of the current
+  // main commit leaves `deploySha === mainSha`, reading as "no drift" under a SHA-only comparison
+  // even though production never actually received that commit. Only an in-flight run (status
+  // "in_progress"/"queued"/"completed" with no failing conclusion) is NOT a failure.
+  const deployStatus = String(state.deploy?.last_deploy_status ?? "").toLowerCase();
+  const deployAttemptFailed = ["failure", "cancelled", "timed_out", "action_required", "stale"].includes(
+    deployStatus
+  );
+  if (mainSha && deploySha && (mainSha !== deploySha || deployAttemptFailed)) {
+    const title =
+      mainSha !== deploySha
+        ? `Deploy verification — main ${mainSha.slice(0, 8)} ahead of deploy ${deploySha.slice(0, 8)}`
+        : `Deploy verification — last deploy of ${mainSha.slice(0, 8)} ended in "${deployStatus}" — production may not be running this commit`;
     discovered.push({
       id: "BO-P1-0101",
       priority: "P1",
-      title: `Deploy verification — main ${mainSha.slice(0, 8)} ahead of deploy ${deploySha.slice(0, 8)}`,
+      title,
       owner: "unassigned",
       status: "QUEUED (standing)",
       source: "discover",

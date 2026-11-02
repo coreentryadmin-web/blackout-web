@@ -131,6 +131,38 @@ test("discoverStandingWork flags deploy drift", async () => {
   assert.equal(found[0].id, "BO-P1-0101");
 });
 
+test("discoverStandingWork flags a FAILED deploy even when the deploy SHA matches main", async () => {
+  // Regression: sync-context.mjs records `last_deploy_status` from the most recent
+  // ecr-push-production.yml run on main (conclusion ?? status), but discoverStandingWork
+  // only ever compared last_main_sha to last_deploy_sha. The most recent deploy ATTEMPT's
+  // headSha always equals the SHA it was attempting to deploy, so a FAILED deploy of the
+  // current main commit leaves last_deploy_sha === last_main_sha — "no drift" by the old
+  // SHA-only check, even though production never actually received that commit.
+  const { discoverStandingWork } = await import("./select-task.mjs");
+  const state = {
+    open_prs: [],
+    reviews: {},
+    deploy: { last_main_sha: "abc123", last_deploy_sha: "abc123", last_deploy_status: "failure" },
+  };
+  const found = discoverStandingWork("cursor", state);
+  assert.equal(found.length, 1, "a failed deploy of the current main SHA must still be surfaced as standing work");
+  assert.equal(found[0].id, "BO-P1-0101");
+  assert.match(found[0].title, /failure/i);
+});
+
+test("discoverStandingWork does NOT flag an in-progress deploy of the current SHA as failed", async () => {
+  // An in-progress/queued run has conclusion=null, so last_deploy_status becomes its
+  // `status` field (e.g. "in_progress") — that must not be misread as a failure.
+  const { discoverStandingWork } = await import("./select-task.mjs");
+  const state = {
+    open_prs: [],
+    reviews: {},
+    deploy: { last_main_sha: "abc123", last_deploy_sha: "abc123", last_deploy_status: "in_progress" },
+  };
+  const found = discoverStandingWork("cursor", state);
+  assert.equal(found.length, 0);
+});
+
 test("select-task returns highest-priority P1 task for cursor", async () => {
   // select-task.mjs reads WORK_QUEUE.md from a hardcoded absolute path (lib/paths.mjs), not from
   // cwd or an env override — so this test previously ran against whatever the LIVE queue happened
