@@ -270,6 +270,64 @@ test("formatVerifyStatus normalizes GraphQL and REST check shapes", async () => 
   assert.equal(formatVerifyStatus({ status: "COMPLETED", conclusion: "SUCCESS" }), "COMPLETED/SUCCESS");
   assert.equal(formatVerifyStatus({ status: "IN_PROGRESS", conclusion: null }), "IN_PROGRESS/pending");
   assert.equal(formatVerifyStatus(null), "unknown");
+
+  // Regression (round 336): GraphQL's statusCheckRollup uses UPPERCASE enum values
+  // ("COMPLETED"/"SUCCESS"), but the REST /check-runs fallback (used when GraphQL's
+  // shared budget is exhausted -- see fetchOpenPrs's own comment on why the fallback
+  // exists) returns LOWERCASE values ("completed"/"success") per GitHub's REST API.
+  // Every consumer of the resulting `pr.verify` string (select-task.mjs's
+  // discoverStandingWork, bootstrap.mjs's review_queue) matches it with a
+  // case-sensitive `.includes("SUCCESS")` / `.includes("FAILURE")` check, so a
+  // REST-sourced PR must normalize to the same uppercase shape or it is silently
+  // misclassified as neither green nor failing -- exactly when the GraphQL fallback
+  // fires, i.e. when the fleet is busiest and peer-review visibility matters most.
+  assert.equal(formatVerifyStatus({ status: "completed", conclusion: "success" }), "COMPLETED/SUCCESS");
+  assert.equal(formatVerifyStatus({ status: "completed", conclusion: "failure" }), "COMPLETED/FAILURE");
+  assert.ok(
+    formatVerifyStatus({ status: "completed", conclusion: "success" }).includes("SUCCESS"),
+    "REST-sourced success must still satisfy the same .includes(\"SUCCESS\") checks as GraphQL-sourced success"
+  );
+  assert.ok(
+    formatVerifyStatus({ status: "completed", conclusion: "failure" }).includes("FAILURE"),
+    "REST-sourced failure must still satisfy the same .includes(\"FAILURE\") checks as GraphQL-sourced failure"
+  );
+});
+
+test("discoverStandingWork: REST-sourced (lowercase) verify status is classified the same as GraphQL's uppercase shape", async () => {
+  // End-to-end proof of the same bug via the real consumer. Without normalizing case
+  // in formatVerifyStatus, a REST-fallback-sourced green, peer-approved PR is never
+  // recognized as safe (verifyGreen stays false) and is wrongly re-queued for review
+  // forever, while a REST-fallback-sourced FAILING PR is never skipped by the
+  // `includes("FAILURE")` guard either, since neither substring matches lowercase text.
+  const { discoverStandingWork } = await import("./select-task.mjs");
+  const { formatVerifyStatus } = await import("./sync-context.mjs");
+
+  const restSuccessVerify = formatVerifyStatus({ status: "completed", conclusion: "success" });
+  const stateApproved = {
+    open_prs: [
+      { number: 201, title: "cursor feature", branch: "cursor/foo", agent: "cursor", draft: false, verify: restSuccessVerify },
+    ],
+    reviews: {
+      "pr-201": { head_sha: "abc", safe_to_merge: true, reviewer: "claude" },
+    },
+    deploy: { last_main_sha: "abc", last_deploy_sha: "abc" },
+  };
+  // Already green + already peer-approved at current HEAD -- must NOT be re-queued.
+  // (cursor built #201, so claude is the one checking for standing review work.)
+  const foundApproved = discoverStandingWork("claude", stateApproved);
+  assert.equal(foundApproved.length, 0, "a REST-sourced green + approved PR must not stay stuck in the review queue");
+
+  const restFailureVerify = formatVerifyStatus({ status: "completed", conclusion: "failure" });
+  const stateFailing = {
+    open_prs: [
+      { number: 202, title: "claude feature", branch: "claude/foo", agent: "claude", draft: false, verify: restFailureVerify },
+    ],
+    reviews: {},
+    deploy: { last_main_sha: "abc", last_deploy_sha: "abc" },
+  };
+  // CI is red -- must be skipped, never queued as reviewable standing work.
+  const foundFailing = discoverStandingWork("cursor", stateFailing);
+  assert.equal(foundFailing.length, 0, "a REST-sourced failing PR must be skipped, not queued for peer review");
 });
 
 test("fetchOpenPrs: empty GraphQL success short-circuits without REST fallback", () => {
