@@ -75,8 +75,12 @@ export async function GET(req: NextRequest) {
       grade = confluence.grade;
       action = confluence.action;
 
-      const direction: "long" | "short" | null =
-        score > 0 ? "long" : score < 0 ? "short" : null;
+      // Use the engine's own direction (null in the WAIT/neutral zone, |score| < 10) rather than
+      // re-deriving from the raw sign of score — the raw sign has no neutral zone at all, so a
+      // genuinely no-edge WAIT tick (e.g. score=-9) was persisted with a fabricated "short" call,
+      // and direction_correct (spx-signal-db.ts) grades that fabricated call right/wrong as if the
+      // engine had actually taken a position, corrupting every downstream accuracy metric.
+      const direction: "long" | "short" | null = confluence.direction;
 
       const vwap = merged.vwap ?? null;
       const price = merged.price;
