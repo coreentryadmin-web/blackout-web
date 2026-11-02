@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { Skeleton } from "@/components/ui";
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { shouldRefreshOnRthTransition } from "@/features/helix/lib/helix-flow-brief-refresh";
 
 // One shared brief per 15-min window — generated server-side for all users
 const REFRESH_MS = 15 * 60 * 1000;
@@ -78,6 +79,10 @@ export function FlowBrief() {
   // SSR and first-paint markup match exactly; the real read lands one tick later.
   const [mounted, setMounted] = useState(false);
   const [marketOpen, setMarketOpen] = useState(true);
+  // Tracks RTH state ACROSS 60s poll ticks (see the effect below) so that poller can tell "still
+  // open"/"still closed" apart from a genuine closed->open TRANSITION — a plain ref rather than
+  // state because it must not itself trigger a render; `marketOpen` state already does that.
+  const wasOpenRef = useRef(true);
 
   const refresh = useCallback(async () => {
     if (!isEtCashRth()) {
@@ -97,7 +102,9 @@ export function FlowBrief() {
   // Resolve the real RTH state once on the client, after hydration — keeps SSR/first-paint stable.
   useEffect(() => {
     setMounted(true);
-    setMarketOpen(isEtCashRth());
+    const open = isEtCashRth();
+    setMarketOpen(open);
+    wasOpenRef.current = open;
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -107,11 +114,23 @@ export function FlowBrief() {
     return () => clearInterval(id);
   }, [refresh]);
 
-  // Re-check RTH every minute so the banner flips at open/close automatically
+  // Re-check RTH every minute so the banner flips at open/close automatically. On a genuine
+  // CLOSED -> OPEN transition this also forces an immediate `refresh()` (fetch) rather than only
+  // flipping the flag — without it, a tab left open across the 9:30 ET bell either shows nothing
+  // (no brief was ever fetched while closed) or yesterday's stale brief under a "· Live" label,
+  // for up to the full 15-minute `refresh()` cadence. See helix-flow-brief-refresh.ts.
   useEffect(() => {
-    const id = setInterval(() => setMarketOpen(isEtCashRth()), 60_000);
+    const id = setInterval(() => {
+      const isOpenNow = isEtCashRth();
+      if (shouldRefreshOnRthTransition(wasOpenRef.current, isOpenNow)) {
+        refresh();
+      } else {
+        setMarketOpen(isOpenNow);
+      }
+      wasOpenRef.current = isOpenNow;
+    }, 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [refresh]);
 
   // Only ever show the after-hours (time-derived) branch AFTER mount — never during SSR/first paint,
   // so the server and first client render produce identical markup (no #418).
