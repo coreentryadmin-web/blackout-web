@@ -218,6 +218,47 @@ test("diffBriefSnapshots: cross-field synthesis — P&L building + desk upgrade 
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-02, cycle-70 live audit): managementFor()'s CLOSED
+// branch deterministically stamps recommendation:"HOLD" on every closed position (a moot
+// sentinel, not a live decision), and HOLD outranks SELL/TRIM in RECOMMENDATION_RANK, so the
+// rank comparator used to read every OPEN->CLOSED transition as an "upgrade" -- live-confirmed:
+// a stop-out (SELL) closing with a small pre-close P&L uptick narrated as "...and the desk
+// upgraded -- SELL -> HOLD -- tracking together". Fixed via nextIsGenuinelyClosed (an "Outcome"
+// section marks a real close) gating recommendationShiftKind.
+test("diffBriefSnapshots: a SELL/TRIM->CLOSED transition is never narrated as a desk 'upgrade' to HOLD", () => {
+  const prevSell = snapshotFromBrief(env(), play({ recommendation: "SELL", pnlPct: -60 }));
+  const nextClosedFromSell = snapshotFromBrief(
+    envWithSections(["Outcome"]),
+    play({ recommendation: "HOLD", pnlPct: -58 }),
+  );
+  const sellLines = diffBriefSnapshots(prevSell, nextClosedFromSell);
+  assert.ok(
+    !sellLines.some((l) => l.includes("desk upgraded")),
+    `a stop-out closing must never be narrated as an upgrade, got: ${JSON.stringify(sellLines)}`,
+  );
+
+  const prevTrim = snapshotFromBrief(env(), play({ recommendation: "TRIM", pnlPct: 99.2 }));
+  const nextClosedFromTrim = snapshotFromBrief(
+    envWithSections(["Outcome"]),
+    play({ recommendation: "HOLD", pnlPct: 120 }),
+  );
+  const trimLines = diffBriefSnapshots(prevTrim, nextClosedFromTrim);
+  assert.ok(
+    !trimLines.some((l) => l.includes("desk upgraded")),
+    `a TRIM closing higher must never be narrated as an upgrade, got: ${JSON.stringify(trimLines)}`,
+  );
+});
+
+test("diffBriefSnapshots: a genuine OPEN HOLD->BUY upgrade is still narrated normally (closed-gate doesn't over-suppress)", () => {
+  const prev = snapshotFromBrief(env(), play({ recommendation: "HOLD", pnlPct: 8 }));
+  const next = snapshotFromBrief(env(), play({ recommendation: "BUY", pnlPct: 14 }));
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(
+    lines.some((l) => l.includes("desk upgraded") && l.includes("**HOLD** → **BUY**")),
+    `expected the real upgrade to still be narrated, got: ${JSON.stringify(lines)}`,
+  );
+});
+
 test("envelopeWithDiffSection: prepends change section", () => {
   const out = envelopeWithDiffSection(env(), ["Spot moved"]);
   assert.equal(out.sections[0]?.title, "What changed");
