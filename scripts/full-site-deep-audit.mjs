@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
@@ -435,8 +435,12 @@ async function auditPublicMarket() {
       const oracle = row?.value ?? row?.session?.close;
       if (oracle > 0) {
         const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+        const pct = (d / oracle) * 100;
+        // Align with scripts/audit/data-validator.mjs priceTol (not a fixed $5 — post-close index value vs desk drifts).
+        const priceTolPct = inRthOpenWindow() ? 0.3 : 1.5;
+        const detail = `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)}, ${pct.toFixed(3)}%)`;
+        if (pct > priceTolPct) fail("oracle", "SPX", detail, "P0");
+        else ok("oracle", "SPX", detail);
       }
     }
   }

@@ -29,3 +29,10 @@ test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a 
   // Guards against reintroducing a second, hardcoded cap literal in the PREMIUM-CAP check itself.
   assert.equal(/ep > 20\)/.test(src), false);
 });
+
+test("full-site-deep-audit SPX oracle uses data-validator priceTol %, not fixed $5", () => {
+  assert.match(src, /inRthOpenWindow/);
+  assert.match(src, /priceTolPct/);
+  assert.equal(/\bd > 5\b/.test(src), false);
+  assert.match(src, /pct > priceTolPct/);
+});
