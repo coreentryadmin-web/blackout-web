@@ -27,11 +27,25 @@ export function agentFromBranch(headRefName) {
   return "human";
 }
 
-/** Normalize verify check status from GraphQL rollup or REST check-runs. */
+/**
+ * Normalize verify check status from GraphQL rollup or REST check-runs.
+ *
+ * GraphQL's `statusCheckRollup` enums are UPPERCASE ("COMPLETED"/"SUCCESS"); GitHub's
+ * REST `/check-runs` endpoint returns the SAME information lowercase
+ * ("completed"/"success") -- the two data sources this function is explicitly
+ * documented to accept disagree on case. Every downstream consumer of the resulting
+ * string (select-task.mjs's `discoverStandingWork`, bootstrap.mjs's `review_queue`)
+ * matches it with a case-sensitive `.includes("SUCCESS")` / `.includes("FAILURE")`
+ * check, so a REST-sourced value must be uppercased here or it silently satisfies
+ * neither check -- a green PR never reads as safe to merge, and a failing PR is never
+ * skipped. This matters most exactly when the REST fallback is used: when GraphQL's
+ * shared rate-limit budget is exhausted because the fleet is busy (see fetchOpenPrs's
+ * own comment), which is precisely when peer-review visibility matters most.
+ */
 export function formatVerifyStatus(check) {
   if (!check) return "unknown";
-  const status = check.status ?? "unknown";
-  const conclusion = check.conclusion ?? "pending";
+  const status = String(check.status ?? "unknown").toUpperCase();
+  const conclusion = check.conclusion != null ? String(check.conclusion).toUpperCase() : "pending";
   return `${status}/${conclusion}`;
 }
 
