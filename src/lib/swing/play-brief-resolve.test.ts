@@ -409,6 +409,12 @@ mock.module("../db", {
     fetchLatestSwingSnapshotEvents: async () => new Map(),
     fetchSwingPositionsRange: async () => mockClosedRows,
     fetchSwingPositionChain: async () => [],
+    // closed-plays.ts's `closedDeckSourceFromRow` imports this real constant (2026-11-02, Ask
+    // Largo standing mandate) instead of redefining its own CLOSED-only notion of "terminal" —
+    // without it here, this mock's `../db` module has no `SWING_TERMINAL_STATUSES` at all, and
+    // `.has()` on `undefined` throws. Mirrors db.ts's own real value exactly (CLOSED and ROLLED
+    // are the two terminal statuses) rather than a test-local stand-in.
+    SWING_TERMINAL_STATUSES: new Set(["CLOSED", "ROLLED"]),
   },
 });
 
@@ -1129,5 +1135,92 @@ describe("resolveSwingPlayForBrief: an exact positionId match must win over a la
 
     assert.ok(resolved, "must resolve to something");
     assert.equal(resolved!.play.exitPnlPct, 47.4, "requesting leg 40 directly must still resolve leg 40's own outcome");
+  });
+});
+
+// BUG FIX (2026-11-02, Ask Largo standing mandate, follow-on gap from #7316's leg-identity fix —
+// caught by audit before it could manifest live). The describe block above (#7316's own tests)
+// used `status: "CLOSED"` for BOTH the root leg and the rolled-forward child leg — a fixture that
+// never actually exercised the real shape a root/intermediate leg carries in production: its own
+// DB `status` is `"ROLLED"`, never `"CLOSED"` (confirmed live, AMZN leg id 44, `status: "ROLLED"`).
+// `closedDeckSourceFromRow` (closed-plays.ts) used to gate on the literal string `"CLOSED"`, so
+// once #7316 made `loadClosedPlay` find this exact row first (instead of a later child's), that
+// gate refused it — RED proof: reverting closed-plays.ts's gate back to `row.status !== "CLOSED"`
+// makes `resolveSwingPlayForBrief` return `null` for this exact request, the regression this test
+// guards against.
+describe("resolveSwingPlayForBrief: requesting a ROLLED (not CLOSED) root leg's own id resolves that leg's own outcome, not null/404", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("a single-roll chain's ROOT leg, real status ROLLED, terminal leg CLOSED (no live continuation) — resolves the root's own data", async () => {
+    mockOpenRows = []; // the chain is fully terminal — nothing live remains anywhere
+    const rootLeg = {
+      ...openRow("AMZN", 44),
+      status: "ROLLED", // the REAL status a rolled-away root/intermediate leg carries in prod
+      graded_at: "2026-10-16T20:00:00.000Z",
+      closed_at: "2026-10-16T20:00:00.000Z",
+      realized_pnl_pct: -27.7,
+      root_position_id: null, // 44 IS the chain root
+      roll_seq: 0,
+    };
+    const terminalLeg = {
+      ...openRow("AMZN", 48),
+      status: "CLOSED", // the chain's real final state — genuinely terminal, nothing live follows
+      graded_at: "2026-10-20T20:00:00.000Z",
+      closed_at: "2026-10-20T20:00:00.000Z",
+      realized_pnl_pct: 72.41,
+      root_position_id: 44,
+      roll_seq: 1,
+    };
+    mockClosedRows = [terminalLeg, rootLeg];
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:AMZN:44",
+      ticker: "AMZN",
+      positionId: 44,
+    });
+
+    assert.ok(
+      resolved,
+      "a ROLLED root leg's own positionId must resolve to that leg's own outcome, never null/404",
+    );
+    assert.equal(
+      resolved!.play.exitPnlPct,
+      -27.7,
+      `must carry leg 44's own outcome (-27.7%), not leg 48's (+72.41%) or an absence — got ${resolved!.play.exitPnlPct}`,
+    );
+    assert.equal(resolved!.play.closedReason, "stopped");
+  });
+
+  test("a chain rolled a SECOND time — requesting the ROLLED intermediate leg's id still prefers the currently-live grandchild over that leg's own now-resolvable snapshot", async () => {
+    // Same chain shape as the 2026-09-11 multi-roll-fallback test above, but this one specifically
+    // proves the LIVE-CHAIN-CONTINUATION check (play-brief-resolve.ts) still wins now that the
+    // intermediate leg's own ROLLED row is no longer refused outright — without that check, this
+    // request would short-circuit on leg 2's own stale -10% snapshot instead of the live leg 3.
+    const root = { ...openRow("NRG", 1), status: "ROLLED", graded_at: "2026-09-05T20:00:00.000Z", root_position_id: null, roll_seq: 0, realized_pnl_pct: -5 };
+    const child = { ...openRow("NRG", 2), status: "ROLLED", graded_at: "2026-09-08T20:00:00.000Z", root_position_id: 1, roll_seq: 1, realized_pnl_pct: -10, contract_strike: 115 };
+    const grandchild = { ...openRow("NRG", 3), status: "OPEN", graded_at: null, root_position_id: 1, roll_seq: 2, contract_strike: 120 };
+    mockOpenRows = [grandchild];
+    mockClosedRows = [root, child, grandchild];
+    mockLaneRows = [];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:NRG",
+      ticker: "NRG",
+      positionId: 2,
+    });
+
+    assert.ok(resolved, "must resolve to something");
+    assert.equal(resolved!.play.status, "OPEN", "the live grandchild must still win over leg 2's own now-resolvable ROLLED snapshot");
+    assert.ok(
+      resolved!.play.contract.includes("120"),
+      `must resolve the live grandchild leg (strike 120), not leg 2's own data — got "${resolved!.play.contract}"`,
+    );
   });
 });

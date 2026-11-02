@@ -29,6 +29,12 @@ mock.module("../../../../../lib/db", {
     fetchOpenSwingPositions: async () => openSwingPositionsRows,
     fetchRecentlyClosedSwingPositions: async () => recentlyClosedSwingPositionsRows,
     fetchSwingPositionChain: async (id: number) => swingPositionChainById[id] ?? [],
+    // closed-plays.ts's `closedDeckSourceFromRow` imports this real constant (2026-11-02, Ask
+    // Largo standing mandate) instead of redefining its own CLOSED-only notion of "terminal" —
+    // this route's `closedDeckSourcesFromChains` call (deliberately REAL, per the comment above)
+    // reaches it, so this mock's `../lib/db` module needs it too, or `.has()` on `undefined`
+    // throws. Mirrors db.ts's own real value exactly.
+    SWING_TERMINAL_STATUSES: new Set(["CLOSED", "ROLLED"]),
   },
 });
 mock.module("../../../../../lib/market-api-auth", {
