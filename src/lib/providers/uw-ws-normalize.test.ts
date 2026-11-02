@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { todayEt } from "../et-date";
 import {
   aggregateGexStrikeExpiryToLadder,
   aggregateOptionTradesToStrikeRows,
@@ -115,9 +116,12 @@ test("normalizeDarkPoolWsPayload keeps executed_at VERBATIM — does not strip t
 // ticker, while staying unfiltered (default) for every other caller — incl. the precision test
 // above, which deliberately uses a non-SPX `symbol`.
 test("normalizeDarkPoolWsPayload scopes to onlyTicker — a market-wide WS frame does not blend another ticker's prints into the SPX snapshot", () => {
-  const today = new Date().toISOString().slice(0, 10);
+  // Must match normalizeDarkPoolWsPayload's own todayEt() session filter — UTC `.slice(0,10)` crosses
+  // midnight before ET and drops every row as "wrong date" (CI flake around 00:00–04:59 UTC).
+  const today = todayEt();
+  const sessionAt = `${today}T15:04:00Z`;
   const mixed = [
-    { ticker: "AAPL", executed_at: `${today}T15:04:00Z`, premium: 5_000_000, type: "call" },
+    { ticker: "AAPL", executed_at: sessionAt, premium: 5_000_000, type: "call" },
     { ticker: "SPX", executed_at: `${today}T15:05:00Z`, premium: 1_000_000, type: "put" },
   ];
 
