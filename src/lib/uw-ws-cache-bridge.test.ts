@@ -157,7 +157,7 @@ test("shouldSkipUwCacheRefreshTask('dark_pool_ticker','SPX') does skip REST once
 // pinned directly since it is new, pure, and the entire fix.
 test("darkPoolSnapshotFromRecentRows reshapes raw UW rows into a real DarkPoolSnapshot", async () => {
   const { darkPoolSnapshotFromRecentRows } = await mod();
-  const today = "2026-11-01";
+  const today = todayEt();
 
   const snap = darkPoolSnapshotFromRecentRows(
     [
@@ -187,7 +187,7 @@ test("darkPoolSnapshotFromRecentRows returns null when nothing survives the toda
   const { darkPoolSnapshotFromRecentRows } = await mod();
   const snap = darkPoolSnapshotFromRecentRows(
     [{ ticker: "SPY", premium: 100, strike: 500, executed_at: "2020-01-01T14:00:00.000Z" }],
-    "2026-11-01"
+    todayEt()
   );
   assert.equal(snap, null);
 });
