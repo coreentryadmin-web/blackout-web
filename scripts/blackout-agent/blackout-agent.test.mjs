@@ -70,6 +70,40 @@ test("claimLock: expired lease NOT reclaimed when owner heartbeat is fresh", asy
   releaseLock("BO-TEST-0004", "claude");
 });
 
+test("expireStaleLocksSync: does NOT delete an expired lease whose owner heartbeat is fresh", async () => {
+  const { claimLock, readLock, releaseLock, expireStaleLocksSync } = await import("./lib/locks.mjs");
+  const { writeJsonAtomic } = await import("./lib/state.mjs");
+  const { heartbeatPath } = await import("./lib/paths.mjs");
+  // Owner is slow but alive (fresh heartbeat) — its task just runs longer than the lease.
+  writeJsonAtomic(heartbeatPath("claude"), {
+    agent: "claude",
+    last_seen: new Date().toISOString(),
+    healthy: true,
+  });
+  claimLock("BO-TEST-0005", "claude", { leaseMs: 1 });
+  await new Promise((r) => setTimeout(r, 5));
+  const expired = expireStaleLocksSync();
+  assert.ok(!expired.includes("BO-TEST-0005"), "must not sweep a lock whose owner heartbeat is fresh");
+  assert.ok(readLock("BO-TEST-0005"), "lock file must still exist on disk");
+  releaseLock("BO-TEST-0005", "claude");
+});
+
+test("expireStaleLocksSync: DOES delete an expired lease whose owner heartbeat is stale", async () => {
+  const { claimLock, readLock, expireStaleLocksSync } = await import("./lib/locks.mjs");
+  const { writeJsonAtomic } = await import("./lib/state.mjs");
+  const { heartbeatPath } = await import("./lib/paths.mjs");
+  writeJsonAtomic(heartbeatPath("claude"), {
+    agent: "claude",
+    last_seen: "2020-01-01T00:00:00.000Z",
+    healthy: false,
+  });
+  claimLock("BO-TEST-0006", "claude", { leaseMs: 1 });
+  await new Promise((r) => setTimeout(r, 5));
+  const expired = expireStaleLocksSync();
+  assert.ok(expired.includes("BO-TEST-0006"), "must sweep a lock whose owner heartbeat is stale");
+  assert.equal(readLock("BO-TEST-0006"), null, "lock file must be removed");
+});
+
 test("dispatch-prompt includes coordination rules", () => {
   const r = spawnSync("node", ["scripts/blackout-agent/dispatch-prompt.mjs", "--agent=cursor"], { encoding: "utf8", cwd: repoRoot });
   assert.equal(r.status, 0);
