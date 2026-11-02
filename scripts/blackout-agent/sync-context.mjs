@@ -2,6 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { appendEvent, readAgentState, writeAgentState } from "./lib/state.mjs";
 import { expireStaleLocksSync, readLock } from "./lib/locks.mjs";
+import { withStateLock } from "./lib/state-lock.mjs";
 import { LOCKS_DIR } from "./lib/paths.mjs";
 import { ghJson } from "./lib/gh.mjs";
 import { existsSync, readdirSync } from "node:fs";
@@ -157,20 +158,16 @@ export async function fetchOpenPrsAsync() {
 
 export async function syncContext() {
   const expired = expireStaleLocksSync();
-  const state = readAgentState();
 
+  // Everything above/below this comment is read-only gathering — `gh`/network calls that can
+  // easily run several seconds (the REST fallback in `fetchOpenPrsAsync` issues one extra
+  // `check-runs` call PER open PR). None of it touches shared state yet.
   const shaR = spawnSync("git", ["rev-parse", "origin/main"], { encoding: "utf8" });
-  if (shaR.status === 0) state.deploy.last_main_sha = shaR.stdout.trim();
+  const mainSha = shaR.status === 0 ? shaR.stdout.trim() : null;
 
   const deployRuns = ghJson(["run", "list", "--branch", "main", "--workflow", "ecr-push-production.yml", "--limit", "1", "--json", "status,conclusion,headSha,updatedAt,url"]);
-  if (deployRuns?.[0]) {
-    state.deploy.last_deploy_status = deployRuns[0].conclusion ?? deployRuns[0].status;
-    state.deploy.last_deploy_at = deployRuns[0].updatedAt;
-    state.deploy.last_deploy_url = deployRuns[0].url;
-    state.deploy.last_deploy_sha = deployRuns[0].headSha;
-  }
 
-  state.open_prs = await fetchOpenPrsAsync();
+  const openPrs = await fetchOpenPrsAsync();
 
   const activeLocks = {};
   if (existsSync(LOCKS_DIR)) {
@@ -180,13 +177,42 @@ export async function syncContext() {
       const lock = readLock(taskId);
       if (lock && Date.parse(lock.lease_until) > Date.now()) {
         activeLocks[taskId] = lock;
-        state.tasks[taskId] = { ...(state.tasks[taskId] ?? {}), ...lock };
       }
     }
   }
 
-  appendEvent(state, { type: "context_sync", expired_locks: expired, open_pr_count: state.open_prs.length });
-  writeAgentState(state);
+  // BUG FIX (round 354): the merge-and-write used to run against a `state` object read at the
+  // TOP of this function, before the several-second `gh`/network round trip above — then written
+  // back unconditionally with no lock at all. `claim-task.mjs`/`record-review.mjs` already
+  // wrap their shared-state writes in `withStateLock`, but a lock only protects writers that
+  // participate in it: this function's unlocked, stale-snapshot write could (and in this
+  // sandbox's own live `.blackout-agent/AGENT_STATE.json`, did — see this fix's companion
+  // `release-task.mjs`/`handoff.mjs` changes) silently erase a `claimLock`/`releaseLock` that
+  // landed on disk during the gap. Reading state FRESH inside a short, lock-protected critical
+  // section — after all the slow I/O is already done — closes that window without holding the
+  // lock for the whole multi-second fetch.
+  const locked = withStateLock(() => {
+    const state = readAgentState();
+    if (mainSha) state.deploy.last_main_sha = mainSha;
+    if (deployRuns?.[0]) {
+      state.deploy.last_deploy_status = deployRuns[0].conclusion ?? deployRuns[0].status;
+      state.deploy.last_deploy_at = deployRuns[0].updatedAt;
+      state.deploy.last_deploy_url = deployRuns[0].url;
+      state.deploy.last_deploy_sha = deployRuns[0].headSha;
+    }
+    state.open_prs = openPrs;
+    for (const [taskId, lock] of Object.entries(activeLocks)) {
+      state.tasks[taskId] = { ...(state.tasks[taskId] ?? {}), ...lock };
+    }
+    appendEvent(state, { type: "context_sync", expired_locks: expired, open_pr_count: openPrs.length });
+    writeAgentState(state);
+    return state;
+  }, { owner: "sync-context" });
+
+  // Lock contention here means another writer is mid-update right now — best-effort: skip this
+  // cycle's write rather than block or race it; the caller still gets a current (if momentarily
+  // unmerged-with-this-sync) read, and the next sync/claim/release retries normally.
+  const state = locked.ok ? locked.result : readAgentState();
   return { state, expired, activeLocks };
 }
 

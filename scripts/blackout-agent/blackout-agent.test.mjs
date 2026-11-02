@@ -104,6 +104,96 @@ test("expireStaleLocksSync: DOES delete an expired lease whose owner heartbeat i
   assert.equal(readLock("BO-TEST-0006"), null, "lock file must be removed");
 });
 
+test("releaseTaskInState: respects the shared state-write lock instead of writing unlocked (regression)", async () => {
+  // Root cause: release-task.mjs used to call `readAgentState()` -> mutate -> `writeAgentState()`
+  // directly, with zero participation in `withStateLock` -- the exact same protocol
+  // claim-task.mjs/record-review.mjs already use for this identical AGENT_STATE.json
+  // read-modify-write. An unlocked writer can always "succeed" even while another writer
+  // (sync-context.mjs/handoff.mjs, which previously had the same bug) is mid-update, silently
+  // clobbering whatever that locked writer is about to commit. Proof: while the shared state
+  // lock is already held by a DIFFERENT owner, the fixed `releaseTaskInState` must be refused
+  // (ok:false) rather than writing anyway -- before the fix, `releaseTaskInState` didn't exist
+  // at all (release-task.mjs had no exported, lock-aware function to call here).
+  const { claimLock, releaseLock } = await import("./lib/locks.mjs");
+  const { readAgentState, writeAgentState } = await import("./lib/state.mjs");
+  const { withStateLock } = await import("./lib/state-lock.mjs");
+  const { releaseTaskInState } = await import("./release-task.mjs");
+
+  claimLock("BO-TEST-0007", "claude", { leaseMs: 60_000 });
+  // Seed the state-side task record the same lock-respecting way claim-task.mjs does, so the
+  // retry assertion below can check the release actually mutated it.
+  withStateLock(() => {
+    const state = readAgentState();
+    state.tasks["BO-TEST-0007"] = { task_id: "BO-TEST-0007", owner: "claude", phase: "CLAIMED" };
+    writeAgentState(state);
+    return state;
+  }, { owner: "claim-BO-TEST-0007" });
+  try {
+    let inner = null;
+    const outer = withStateLock(() => {
+      // Simulate a concurrent writer (sync-context.mjs/handoff.mjs) holding the shared state
+      // lock while it does its own unrelated, slower update.
+      inner = releaseTaskInState("BO-TEST-0007", "claude");
+      return "outer-done";
+    }, { owner: "concurrent-other-writer" });
+
+    assert.equal(outer.ok, true, "the outer (first) lock holder must proceed normally");
+    assert.ok(inner, "releaseTaskInState must return a result even when blocked");
+    assert.equal(inner.ok, false, "release must be refused while another writer holds the state lock, not write unprotected");
+    assert.equal(inner.reason, "state_lock_held");
+
+    // Once the lock is free, the release proceeds and actually lands.
+    const retry = releaseTaskInState("BO-TEST-0007", "claude");
+    assert.equal(retry.ok, true);
+    assert.equal(retry.result.tasks["BO-TEST-0007"]?.phase, "RELEASED");
+  } finally {
+    releaseLock("BO-TEST-0007", "claude");
+  }
+});
+
+test("syncContext: a task claimed while this call's own fetch is in flight survives its final write (regression, real interleaving)", async () => {
+  // Root cause: syncContext() used to call `readAgentState()` at the very TOP of the function,
+  // then do several seconds of `gh`/network I/O (this test's own real trigger: the REST/public
+  // fallback path fetchOpenPrsAsync exercises), then write that SAME now-stale object back with
+  // no lock at all -- silently erasing any claim/release a concurrently-running LOCKED writer
+  // (claim-task.mjs/release-task.mjs) committed during that gap.
+  //
+  // This exercises the real race, not a simulation of it: syncContext() is an async function, so
+  // calling it runs synchronously up to its first `await` (inside fetchOpenPrsAsync) and then
+  // yields control back here *before* resolving -- exactly the window the bug lived in. Claiming
+  // a task via the same lock-respecting path claim-task.mjs uses, in that window, must still be
+  // visible after `syncPromise` resolves.
+  const { claimLock, releaseLock } = await import("./lib/locks.mjs");
+  const { readAgentState, writeAgentState } = await import("./lib/state.mjs");
+  const { withStateLock } = await import("./lib/state-lock.mjs");
+  const { releaseTaskInState } = await import("./release-task.mjs");
+  const { syncContext } = await import("./sync-context.mjs");
+
+  const syncPromise = syncContext();
+
+  claimLock("BO-TEST-0009", "claude", { leaseMs: 60_000 });
+  const claimed = withStateLock(() => {
+    const state = readAgentState();
+    state.tasks["BO-TEST-0009"] = { task_id: "BO-TEST-0009", owner: "claude", phase: "CLAIMED" };
+    writeAgentState(state);
+    return state;
+  }, { owner: "claim-BO-TEST-0009" });
+  assert.equal(claimed.ok, true, "the in-flight claim itself must land (sanity check on the harness, not the fix)");
+
+  try {
+    await syncPromise;
+    const after = readAgentState();
+    assert.equal(
+      after.tasks["BO-TEST-0009"]?.phase,
+      "CLAIMED",
+      "a task claimed while syncContext()'s own gh/network fetch was in flight must survive its final write"
+    );
+  } finally {
+    releaseTaskInState("BO-TEST-0009", "claude");
+    releaseLock("BO-TEST-0009", "claude");
+  }
+});
+
 test("dispatch-prompt includes coordination rules", () => {
   const r = spawnSync("node", ["scripts/blackout-agent/dispatch-prompt.mjs", "--agent=cursor"], { encoding: "utf8", cwd: repoRoot });
   assert.equal(r.status, 0);
