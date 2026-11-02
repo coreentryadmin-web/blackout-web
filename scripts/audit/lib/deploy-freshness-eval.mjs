@@ -63,6 +63,26 @@ export function commitTriggersDeploy(files) {
   return Array.isArray(files) && files.some(isDeployPath);
 }
 
+/**
+ * GitHub Actions `conclusion` values that mean a deploy attempt did NOT ship the code it was
+ * triggered for. Mirrors the allow-list `discoverStandingWork` uses for the same distinction
+ * (`scripts/blackout-agent/select-task.mjs`) — keep in sync with it.
+ */
+const FAILED_DEPLOY_CONCLUSIONS = new Set(["failure", "cancelled", "timed_out", "action_required", "stale"]);
+
+/**
+ * True when a deploy run can be relied on to have reached (or still be on track to reach)
+ * production — i.e. it is NOT a run that is already known to have failed.
+ *
+ * `conclusion` is `null`/absent while a run is queued or in progress — that is deliberately
+ * treated as "counts for now", matching the existing "created, not completed" comment below: a
+ * push being seen is the thing being checked, and an in-flight run may still succeed. Only a
+ * run that has ALREADY reached a failure-shaped conclusion is excluded.
+ */
+function isUsableDeployRun(run) {
+  return run?.conclusion == null || !FAILED_DEPLOY_CONCLUSIONS.has(run.conclusion);
+}
+
 /** True when a commit can change what members are served (deploy-path AND not test-only). */
 export function commitIsMemberFacing(files) {
   return Array.isArray(files) && files.some(isMemberFacing);
@@ -87,7 +107,13 @@ export function evaluateDeployFreshness({ commits, deployRuns, nowIso } = {}) {
     return { verdict: "unknown", undeployed: [], newestDeployAt: null, reason: "no deploy-run list supplied" };
   }
 
-  const times = deployRuns.map((r) => Date.parse(r.createdAt)).filter((t) => Number.isFinite(t));
+  // Only a run that is not ALREADY a known failure can cover a commit — a run whose conclusion is
+  // `failure`/`cancelled`/`timed_out`/etc. was created for the commit (its headSha) but never
+  // actually shipped it, so it must not be read the same as a successful (or still-pending) one.
+  const times = deployRuns
+    .filter(isUsableDeployRun)
+    .map((r) => Date.parse(r.createdAt))
+    .filter((t) => Number.isFinite(t));
   const newestDeploy = times.length ? Math.max(...times) : null;
 
   // A commit is covered when a deploy run was CREATED at or after it. Created, not completed:

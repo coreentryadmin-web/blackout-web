@@ -11,7 +11,12 @@ import {
 } from "../scripts/audit/lib/deploy-freshness-eval.mjs";
 
 const C = (sha: string, isoDate: string, files: string[]) => ({ sha, isoDate, files });
-const R = (createdAt: string, headSha = "deadbee") => ({ createdAt, headSha });
+const R = (createdAt: string, headSha = "deadbee", status = "completed", conclusion: string | null = "success") => ({
+  createdAt,
+  headSha,
+  status,
+  conclusion,
+});
 
 test("deploy paths match the workflow filter, prefixes and exact files alike", () => {
   assert.equal(isDeployPath("src/lib/largo/run-tool.ts"), true);
@@ -75,6 +80,48 @@ test("missing input is UNKNOWN, never ok — absence is not health", () => {
     evaluateDeployFreshness({ commits: [C("a", "2026-08-22T01:00:00Z", ["src/x.ts"])] }).verdict,
     "unknown",
   );
+});
+
+test("a deploy run created after a commit but that FAILED does not count as coverage", () => {
+  // Root cause: a run's headSha/createdAt are set the instant the workflow is TRIGGERED and never
+  // change on failure — so a run that was created for this commit and then failed looks, by
+  // createdAt alone, identical to one that succeeded. The commit must still be reported as
+  // undeployed: the attempt never actually shipped it.
+  const r = evaluateDeployFreshness({
+    commits: [C("a", "2026-08-22T01:00:00Z", ["src/x.ts"])],
+    deployRuns: [R("2026-08-22T01:00:30Z", "a", "completed", "failure")],
+  });
+  assert.equal(r.verdict, "behind");
+  assert.equal(r.undeployed.length, 1);
+  assert.equal(r.newestDeployAt, null, "the failed run must not be counted as the newest usable deploy");
+});
+
+test("a deploy run created after a commit but CANCELLED/TIMED_OUT also does not count as coverage", () => {
+  for (const conclusion of ["cancelled", "timed_out", "action_required", "stale"]) {
+    const r = evaluateDeployFreshness({
+      commits: [C("a", "2026-08-22T01:00:00Z", ["src/x.ts"])],
+      deployRuns: [R("2026-08-22T01:00:30Z", "a", "completed", conclusion)],
+    });
+    assert.equal(r.verdict, "behind", `conclusion=${conclusion} should still be reported as behind`);
+  }
+});
+
+test("a SUCCESSFUL deploy run still clears a commit — the fix does not over-fire", () => {
+  const r = evaluateDeployFreshness({
+    commits: [C("a", "2026-08-22T01:00:00Z", ["src/x.ts"])],
+    deployRuns: [R("2026-08-22T01:00:30Z", "a", "completed", "success")],
+  });
+  assert.equal(r.verdict, "ok");
+});
+
+test("an in-progress run (no conclusion yet) still counts as covering — not a failure", () => {
+  // Matches the existing "created, not completed" design: a queued/in-progress run proves the
+  // push was seen and may still succeed, so it must not be treated the same as a known failure.
+  const r = evaluateDeployFreshness({
+    commits: [C("a", "2026-08-22T01:00:00Z", ["src/x.ts"])],
+    deployRuns: [R("2026-08-22T01:00:30Z", "a", "in_progress", null)],
+  });
+  assert.equal(r.verdict, "ok");
 });
 
 test("no deploy runs at all with a deploy-worthy commit is behind, not unknown", () => {
