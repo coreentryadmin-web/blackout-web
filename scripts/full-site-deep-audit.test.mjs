@@ -29,3 +29,10 @@ test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a 
   // Guards against reintroducing a second, hardcoded cap literal in the PREMIUM-CAP check itself.
   assert.equal(/ep > 20\)/.test(src), false);
 });
+
+test("full-site-deep-audit SPX oracle uses RTH live snapshot and off-hours daily close ground truth", () => {
+  assert.match(src, /resolvePolygonSpxOracleGroundTruth/);
+  assert.match(src, /inRthOpenWindow/);
+  assert.match(src, /range\/1\/day\/\$\{today\}\/\$\{today\}/);
+  assert.match(src, /label: "today-close"/);
+});

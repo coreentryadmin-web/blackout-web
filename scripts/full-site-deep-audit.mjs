@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
@@ -79,6 +79,40 @@ function finite(n) {
 function fracDiff(a, b) {
   const mid = (Math.abs(a) + Math.abs(b)) / 2;
   return mid > 0 ? Math.abs(a - b) / mid : 0;
+}
+
+/** Ground truth for SPX oracle — mirrors data-validator.mjs (live snapshot in RTH; settled daily close off-hours). */
+async function resolvePolygonSpxOracleGroundTruth() {
+  const rth = inRthOpenWindow();
+  try {
+    if (rth) {
+      const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
+      if (!polyRes.ok) return null;
+      const poly = await polyRes.json();
+      const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
+      const oracle = row?.value ?? row?.session?.close;
+      if (!(oracle > 0)) return null;
+      return { oracle, label: "live", rth: true };
+    }
+    const today = todayEtYmd();
+    const dayRes = await fetch(
+      `${POLY_BASE}/v2/aggs/ticker/I:SPX/range/1/day/${today}/${today}?apiKey=${POLY_KEY}`
+    );
+    if (dayRes.ok) {
+      const day = await dayRes.json();
+      const close = day.results?.[0]?.c;
+      if (close > 0) return { oracle: close, label: "today-close", rth: false };
+    }
+    const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
+    if (prevRes.ok) {
+      const prev = await prevRes.json();
+      const c = prev.results?.[0]?.c;
+      if (c > 0) return { oracle: c, label: "prev-close", rth: false };
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 function scanFinite(obj, path = "", out = []) {
   if (obj == null) return out;
@@ -424,19 +458,31 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX — live index snapshot in RTH; today's settled daily close off-hours.
+  // Using the index snapshot `value` after the close false-fails when the desk correctly serves
+  // today's own close (fetchTodaysOwnCloseIfSessionComplete) while snapshot still reads ~prev.
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
-    const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
-    if (polyRes.ok && deskSpx > 0) {
-      const poly = await polyRes.json();
-      const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-      const oracle = row?.value ?? row?.session?.close;
-      if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+    if (deskSpx > 0) {
+      const ground = await resolvePolygonSpxOracleGroundTruth();
+      if (ground && ground.oracle > 0) {
+        const d = Math.abs(ground.oracle - deskSpx);
+        const tolPts = ground.rth ? 5 : 8;
+        if (d > tolPts) {
+          fail(
+            "oracle",
+            "SPX",
+            `desk ${deskSpx} vs Polygon ${ground.oracle} (${ground.label}, Δ ${d.toFixed(2)})`,
+            "P0"
+          );
+        } else {
+          ok(
+            "oracle",
+            "SPX",
+            `desk ${deskSpx} vs Polygon ${ground.oracle} (${ground.label}, Δ ${d.toFixed(2)})`
+          );
+        }
       }
     }
   }
