@@ -120,6 +120,44 @@ test("trailDerivedGlyphs: death still fires when only an earlier point (not the 
   assert.equal(glyphs.some((g) => g.shape === "death_x" && g.strike === 6900), true);
 });
 
+// RED before the fix: trailDerivedGlyphs only ever examined pts[0] for a birth, so a wall that
+// dropped out of the dominant set (a real gap much larger than the trail's own cadence) and later
+// re-entered emitted NO glyph at all for the rebirth — even though buildWallBeadMarkers (the
+// marker renderer) and, since #7376, the canvas bead-rail primitive both flash a birth-equivalent
+// cue for exactly this case. Points at [100, 115, 130] then a real gap to 400 (cadence ~15s, gap
+// 270s >> 15*2.5) before resuming at [400, 415]: the resumption at 400 must get its own birth_tick,
+// distinct from the trail's true birth at 100.
+test("trailDerivedGlyphs: rebirth after a real gap gets its own birth glyph", () => {
+  const glyphs = trailDerivedGlyphs([trail(6800, [100, 115, 130, 400, 415])], "call", 90);
+  const births = glyphs.filter((g) => g.shape === "birth_tick" && g.strike === 6800);
+  assert.equal(births.length, 2);
+  assert.ok(births.some((g) => g.time === 100));
+  assert.ok(births.some((g) => g.time === 400));
+});
+
+// A short, honest cadence blip (one bucket a bit wider than usual, still well under the
+// gap-split threshold) must NOT be mistaken for a rebirth — only a jump that clears
+// REBIRTH_GAP_SPLIT_FACTOR x the trail's own median step counts as a real gap.
+test("trailDerivedGlyphs: ordinary cadence jitter does not fabricate a rebirth glyph", () => {
+  const glyphs = trailDerivedGlyphs([trail(6800, [100, 115, 132, 145])], "call", 90);
+  const births = glyphs.filter((g) => g.shape === "birth_tick" && g.strike === 6800);
+  assert.equal(births.length, 1);
+  assert.equal(births[0]!.time, 100);
+});
+
+// A rebirth point that is itself MODELED (reconstructed, not observed) must not fabricate a
+// "wall forming" glyph — same honesty guard as the true-birth and death cases above.
+test("trailDerivedGlyphs: no rebirth glyph when the resuming point is modeled", () => {
+  const glyphs = trailDerivedGlyphs(
+    [trailWithModeledPoint(6800, [100, 115, 400, 415], 2)],
+    "call",
+    90
+  );
+  const births = glyphs.filter((g) => g.shape === "birth_tick" && g.strike === 6800);
+  assert.equal(births.length, 1);
+  assert.equal(births[0]!.time, 100);
+});
+
 test("composeWallEventGlyphs: filters by lens and cursor time", () => {
   const events: VectorWallEvent[] = [
     {
