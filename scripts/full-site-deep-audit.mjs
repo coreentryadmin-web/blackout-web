@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
@@ -424,19 +424,25 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX — only during RTH. After close the desk carries the last
+  // session snapshot while Polygon's index snapshot can reflect a different field
+  // (session close vs last value), producing large false P0s on the 4:30 PM ET cron.
   if (POLY_KEY && CRON) {
-    const snap = await getJson("/api/market/platform/snapshot");
-    const deskSpx = snap.json?.spx?.price;
-    const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
-    if (polyRes.ok && deskSpx > 0) {
-      const poly = await polyRes.json();
-      const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-      const oracle = row?.value ?? row?.session?.close;
-      if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+    if (!inRthOpenWindow()) {
+      ok("oracle", "SPX", "skipped — market closed (spot oracle only meaningful during RTH)");
+    } else {
+      const snap = await getJson("/api/market/platform/snapshot");
+      const deskSpx = snap.json?.spx?.price;
+      const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
+      if (polyRes.ok && deskSpx > 0) {
+        const poly = await polyRes.json();
+        const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
+        const oracle = row?.value ?? row?.session?.close;
+        if (oracle > 0) {
+          const d = Math.abs(oracle - deskSpx);
+          if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
+          else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+        }
       }
     }
   }
