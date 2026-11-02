@@ -32,6 +32,35 @@ describe("computeHelixSessionPulse", () => {
     assert.equal(pulse.topTicker?.ticker, "SPX");
   });
 
+  test("topTicker on an exact premium tie is deterministic regardless of input order", () => {
+    // Two tickers accumulate the EXACT same summed premium (realistic: whale prints routinely
+    // land on round numbers like $500,000, so two different names each clearing one such print
+    // collide on an identical total). computeHelixSessionPulse walks a Map in insertion order —
+    // the order tickers FIRST appeared in the flows array, which depends only on which print the
+    // upstream UW feed happened to deliver first, not on anything that distinguishes the two
+    // tickers. Without a tie-break, the reported "top ticker" silently flips between ZEBRA and
+    // ALPHA purely because of print-arrival order, for byte-identical underlying premium.
+    const now = Date.parse("2026-09-01T15:00:00.000Z");
+    const flowsZebraFirst: FlowAlert[] = [
+      flow({ ticker: "ZEBRA", premium: 500_000 }),
+      flow({ ticker: "ALPHA", premium: 500_000 }),
+    ];
+    const flowsAlphaFirst: FlowAlert[] = [
+      flow({ ticker: "ALPHA", premium: 500_000 }),
+      flow({ ticker: "ZEBRA", premium: 500_000 }),
+    ];
+
+    const pulseA = computeHelixSessionPulse(flowsZebraFirst, now);
+    const pulseB = computeHelixSessionPulse(flowsAlphaFirst, now);
+
+    // Same tied data, only input order differs — the reported topTicker must not flip.
+    assert.equal(pulseA.topTicker?.ticker, pulseB.topTicker?.ticker);
+    // Pin the deterministic tie-break explicitly: alphabetically-first ticker wins the tie,
+    // matching the established convention for this exact bug shape elsewhere in the repo
+    // (e.g. rankOpexSessionMovers's `a.ticker.localeCompare(b.ticker)` secondary key).
+    assert.equal(pulseA.topTicker?.ticker, "ALPHA");
+  });
+
   test("counts prints in the last 15 minutes only", () => {
     const now = Date.parse("2026-09-01T15:00:00.000Z");
     const pulse = computeHelixSessionPulse(
