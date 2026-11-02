@@ -13,6 +13,13 @@ test("full-site-deep-audit uses side-constrained wallsFromStrikeTotals, not unco
   assert.equal(src.includes("function deriveWalls"), false);
 });
 
+test("full-site-deep-audit skips Polygon SPX oracle off-hours and uses desk-aligned fractional tolerance in RTH", () => {
+  assert.match(src, /inRthOpenWindow\(\)/);
+  assert.match(src, /off-hours — Polygon spot oracle skipped/);
+  assert.match(src, /fracDiff\(oracle, deskSpx\)/);
+  assert.match(src, /fd > 0\.005/);
+});
+
 test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a stale $20", () => {
   const constantsSrc = readFileSync(
     join(here, "..", "src", "features", "nighthawk", "lib", "constants.ts"),

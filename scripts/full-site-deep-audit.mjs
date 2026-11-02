@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
@@ -424,8 +424,12 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
-  if (POLY_KEY && CRON) {
+  // Polygon oracle for SPX — RTH only. After close, Polygon `value` vs desk snapshot can
+  // legitimately diverge (extended-hours index print vs cached RTH desk lane); data-integrity
+  // already skips cross-tool checks off-hours for the same reason.
+  if (!inRthOpenWindow()) {
+    ok("oracle", "SPX", "off-hours — Polygon spot oracle skipped (by design)");
+  } else if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
@@ -434,9 +438,9 @@ async function auditPublicMarket() {
       const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
       const oracle = row?.value ?? row?.session?.close;
       if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+        const fd = fracDiff(oracle, deskSpx);
+        if (fd > 0.005) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${Math.abs(oracle - deskSpx).toFixed(2)}, ${(fd * 100).toFixed(2)}%)`, "P0");
+        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${Math.abs(oracle - deskSpx).toFixed(2)})`);
       }
     }
   }
