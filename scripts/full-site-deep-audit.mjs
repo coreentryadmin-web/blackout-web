@@ -7,6 +7,7 @@
  */
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
+import { polygonMarketOpen, spxOracleVerdict } from "./audit/lib/spx-oracle-audit.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -424,21 +425,33 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX — live index value during RTH, prior close off-hours (matches data-validator).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
-    const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
-    if (polyRes.ok && deskSpx > 0) {
-      const poly = await polyRes.json();
-      const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-      const oracle = row?.value ?? row?.session?.close;
-      if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+    const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
+    const statusJson = statusRes.ok ? await statusRes.json().catch(() => ({})) : {};
+    const rth = polygonMarketOpen(statusJson);
+
+    let oracle = null;
+    if (rth) {
+      const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
+      if (polyRes.ok && deskSpx > 0) {
+        const poly = await polyRes.json();
+        const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
+        oracle = row?.value ?? row?.session?.close ?? null;
+      }
+    } else {
+      const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
+      if (prevRes.ok) {
+        const prev = await prevRes.json();
+        oracle = prev?.results?.[0]?.c ?? null;
       }
     }
+
+    const verdict = spxOracleVerdict(deskSpx, oracle, rth);
+    if (verdict.ok) ok("oracle", "SPX", verdict.detail);
+    else fail("oracle", "SPX", verdict.detail, verdict.severity ?? "P0");
   }
 }
 
