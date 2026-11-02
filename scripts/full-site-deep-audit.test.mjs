@@ -13,6 +13,11 @@ test("full-site-deep-audit uses side-constrained wallsFromStrikeTotals, not unco
   assert.equal(src.includes("function deriveWalls"), false);
 });
 
+test("full-site-deep-audit skips SPX Polygon oracle outside RTH open window", () => {
+  assert.match(src, /inRthOpenWindow\(\)/);
+  assert.match(src, /oracle.*off-hours — oracle skipped \(by design\)/s);
+});
+
 test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a stale $20", () => {
   const constantsSrc = readFileSync(
     join(here, "..", "src", "features", "nighthawk", "lib", "constants.ts"),
