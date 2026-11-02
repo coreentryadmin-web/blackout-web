@@ -141,7 +141,27 @@ export function resolveStages({ base, ours, theirs }) {
 
   if (contested.length > 0) return { ok: false, contested, added: [], text: null, repaired };
 
-  const merged = [...added, ...o.entries];
+  // FAST-FORWARD EDITS, not collisions: THEIRS changed an existing entry (e.g. flipping a
+  // `Status` cell OPEN -> FIXED after a finding was verified) while OURS left that same entry
+  // byte-identical to base. The contested filter above correctly does NOT flag this case as a
+  // collision -- there is nothing to choose between two sides, because only one side changed --
+  // but without this step the loop below still only ever emits `o.entries` (plus brand-new
+  // `added` entries), so theirs' edit to an EXISTING entry was silently discarded and the file
+  // reverted to the stale pre-edit text while reporting `ok: true` and `added: []`, i.e. success
+  // with no sign anything was dropped. Mirrors ordinary git merge semantics: unchanged-on-one-side
+  // takes the other side's change.
+  const updated = new Map();
+  for (const e of t.entries) {
+    if (!baseKeys.has(e.key) || !ourKeys.has(e.key)) continue;
+    const ourEntry = o.entries.find((x) => x.key === e.key);
+    const theirLines = e.lines.join("\n");
+    const ourLines = ourEntry ? ourEntry.lines.join("\n") : null;
+    if (ourLines === theirLines) continue; // already identical, nothing to take
+    const baseLines = baseText.get(e.key);
+    if (ourLines === baseLines && theirLines !== baseLines) updated.set(e.key, e);
+  }
+
+  const merged = [...added, ...o.entries.map((e) => updated.get(e.key) ?? e)];
   const body = merged.map((e) => e.lines.join("\n").replace(/\s+$/, "")).join("\n\n");
   const preamble = o.preamble.replace(/\s*$/, "");
   const text = `${preamble}\n\n${body}\n`;
