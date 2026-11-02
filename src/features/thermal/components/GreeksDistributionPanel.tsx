@@ -10,15 +10,35 @@ import {
 import type { GexCells } from "@/features/thermal/lib/gex-heatmap/per-expiry-levels";
 import { clsx } from "clsx";
 
+/**
+ * Which Greek this panel is actually summarizing — it is reused as-is for GEX, VEX and DEX
+ * (`GexHeatmap.tsx` renders it for every lens except CHARM, which gets the dedicated
+ * `ThetaDistributionPanel`). The analysis itself is lens-agnostic (it just sums |value| per
+ * strike), but the copy below used to hardcode "gamma" regardless of which lens's cells were
+ * actually passed in — so switching to the Vanna (VEX) or Delta (DEX) tab and opening this panel
+ * read "Multiple distinct gamma clusters detected" while displaying vanna/delta data. Defaults to
+ * "gex" (unused callers, including the existing test suite, keep the pre-fix "gamma" wording).
+ */
+export type GreeksDistributionLens = "gex" | "vex" | "dex";
+
+const GREEK_NOUN: Record<GreeksDistributionLens, string> = {
+  gex: "gamma",
+  vex: "vanna",
+  dex: "delta",
+};
+
 interface GreeksDistributionPanelProps {
   cells: GexCells | null;
   spot: number | null;
+  lens?: GreeksDistributionLens;
 }
 
 export function GreeksDistributionPanel({
   cells,
   spot,
+  lens = "gex",
 }: GreeksDistributionPanelProps) {
+  const greekNoun = GREEK_NOUN[lens] ?? "gamma";
   const analysis = useMemo(() => {
     if (!cells || !spot) return null;
     return analyzeGreeksDistribution(cells, spot, 0.03);
@@ -137,7 +157,7 @@ export function GreeksDistributionPanel({
           {analysis.clusterCount > 2 && (
             <li className="flex items-start gap-2">
               <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-sky-400" />
-              <span>Multiple distinct gamma clusters detected</span>
+              <span>Multiple distinct {greekNoun} clusters detected</span>
             </li>
           )}
           {analysis.exposureSpread > 80 && (

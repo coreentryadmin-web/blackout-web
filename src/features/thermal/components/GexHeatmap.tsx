@@ -4626,6 +4626,7 @@ export function GexHeatmap({
                   <GreeksDistributionPanel
                     cells={cells}
                     spot={data?.spot ?? null}
+                    lens={lens}
                   />
                 )}
               </TabPanel>
