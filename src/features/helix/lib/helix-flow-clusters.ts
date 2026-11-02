@@ -58,7 +58,15 @@ export function clusterFlowPrints(
   const minSize = opts?.minSize ?? HELIX_FLOW_CLUSTER_MIN_SIZE;
   const limit = opts?.limit ?? 12;
 
-  type Mutable = HelixFlowCluster & { _lastMs: number; _askSum: number; _askN: number };
+  // `_anchorStrike` is the FIRST strike that founded the cluster, fixed for the cluster's whole
+  // life. See the merge-candidate check below for why this is a separate field from `strike`
+  // (the premium-weighted display value, which is deliberately allowed to drift).
+  type Mutable = HelixFlowCluster & {
+    _lastMs: number;
+    _askSum: number;
+    _askN: number;
+    _anchorStrike: number;
+  };
   const clusters: Mutable[] = [];
 
   const sorted = [...alerts].sort((a, b) => {
@@ -78,7 +86,19 @@ export function clusterFlowPrints(
     for (const c of clusters) {
       if (c.ticker !== ticker || c.side !== side) continue;
       if (c.expiry !== a.expiry) continue;
-      if (!strikesNear(c.strike, a.strike, spot)) continue;
+      // BUG FIXED: this used to test the new print against `c.strike` — the premium-weighted
+      // RUNNING AVERAGE, which moves every time a print merges in. That let a long sequence of
+      // individually-"near" prints chain the cluster arbitrarily far from where it started: each
+      // new print only has to be within tolerance of the AVERAGE SO FAR, not of the strike that
+      // actually founded the cluster. Reproduced: 12 prints stepping ~19 points apart (spot
+      // 1000, so HELIX_FLOW_CLUSTER_STRIKE_TOL_PCT=2% is only a ~20-point band) with
+      // front-loaded premium weighting (each print's premium ~1000x the cluster's cumulative
+      // total so far, pulling the running average onto the latest strike) all merged into ONE
+      // reported "campaign" spanning strike 1000 to strike 1209 — a 209-point, ~21% spread
+      // reported as a single same-strike repeated-fill story. Comparing against the fixed
+      // ANCHOR (the first strike that founded the cluster) instead bounds every member within
+      // tolerance of that anchor, which is what "nearby strikes" actually means.
+      if (!strikesNear(c._anchorStrike, a.strike, spot)) continue;
       if (ms - c._lastMs > windowMs) continue;
       merged = c;
       break;
@@ -101,6 +121,7 @@ export function clusterFlowPrints(
         _lastMs: ms,
         _askSum: a.ask_pct ?? 0,
         _askN: a.ask_pct != null ? 1 : 0,
+        _anchorStrike: a.strike,
       });
       continue;
     }
@@ -124,7 +145,7 @@ export function clusterFlowPrints(
 
   return clusters
     .filter((c) => c.printCount >= minSize)
-    .map(({ _lastMs, _askSum, _askN, ...rest }) => rest)
+    .map(({ _lastMs, _askSum, _askN, _anchorStrike, ...rest }) => rest)
     .sort((a, b) => b.totalPremium - a.totalPremium)
     .slice(0, limit);
 }
