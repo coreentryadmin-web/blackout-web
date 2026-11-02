@@ -508,6 +508,33 @@ test("evaluateOpenPlay closed-market SCANNING, BOTH desk.gex_stale and desk.vwap
   assert.match(bothStalePayload.gates.play_idea!, /VWAP stale, not live/);
 });
 
+// BUG FIX (2026-11-01, Ask Largo/5-engine standing mandate, live repro): the closed-market
+// branch sourced `levels.target` from the OLDER, non-VIX-indexed `playIdealTargetPts()` (a fixed
+// 10pt default) instead of `closedConfluence.levels.target` — the value `computeSpxConfluence()`
+// (via `buildLevels` -> `playDynamicTargetPts(desk.vix)`) already computed correctly, and the
+// exact value `stop`/`invalidation` on this same payload are already sourced from. Live repro:
+// desk.vix=19.42 (the 16-22 "normal market" VIX band -> 14pts via playDynamicTargetPts) served
+// GET /api/market/spx/play with entry=7580.07, target=7590.07 — exactly entry+10.00, the stale
+// non-VIX-indexed fallback, not the VIX-aware entry+14.00 closedConfluence.levels.target already
+// carried. This test pins a VIX value in that same 16-22 band and asserts the closed-market
+// target is VIX-indexed (entry + 14), not the old fixed default (entry + 10).
+test("evaluateOpenPlay closed-market SCANNING, VIX 16-22 band, long setup: levels.target is VIX-indexed (entry+14), not the stale fixed entry+10 default", async () => {
+  const payload = await evaluateSpxPlay(
+    closedDeskWithGexSupport({ vix: 18 }),
+    EMPTY_TECHNICALS,
+    { mutate: false }
+  );
+
+  assert.equal(payload.phase, "SCANNING");
+  assert.equal(payload.direction, "long", "fixture's GEX support wall must produce a bullish/long read");
+  assert.equal(payload.levels.entry, 7680);
+  assert.equal(
+    payload.levels.target,
+    7694,
+    "VIX 18 (16-22 band) must target entry+14 via playDynamicTargetPts, not the stale non-VIX-indexed entry+10 default"
+  );
+});
+
 // BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
 // closed): same bug class as the GEX/VWAP staleness disclosure above, for flow/tape-derived
 // factors instead. The closed-market branch's "0DTE flow" factor is built straight off

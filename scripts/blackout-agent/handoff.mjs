@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { writeFileSync, mkdirSync } from "node:fs";
 import { appendEvent, readAgentState, writeAgentState } from "./lib/state.mjs";
+import { withStateLock } from "./lib/state-lock.mjs";
 import { MARKDOWN_FILES, runHistoryDir } from "./lib/paths.mjs";
 import { randomUUID } from "node:crypto";
 import { syncContext } from "./sync-context.mjs";
@@ -27,6 +28,26 @@ writeFileSync(MARKDOWN_FILES.lastHandoff, handoff, "utf8");
 const histDir = runHistoryDir(args.agent);
 mkdirSync(histDir, { recursive: true });
 writeFileSync(`${histDir}/${new Date().toISOString().replace(/[:.]/g, "-")}.md`, handoff, "utf8");
-appendEvent(state, { type: "handoff", agent: args.agent, run_id: runId, summary });
-writeAgentState(state);
+
+// BUG FIX (round 354): this used to call `appendEvent(state, ...)` + `writeAgentState(state)`
+// directly on the `state` object `syncContext()` returned above — a plain, unlocked
+// read(-earlier)-then-write with no participation in the shared `withStateLock` protocol at
+// all. Any locked writer (`claim-task.mjs`/`release-task.mjs`/`record-review.mjs`) that commits
+// a change in the window between `syncContext()` returning and this write would have that
+// change silently erased the instant this stale snapshot was written back on top of it. Re-read
+// fresh, inside the lock, right before appending the handoff event and writing — same fix as
+// this PR's `sync-context.mjs`/`release-task.mjs` companions, same root cause.
+const locked = withStateLock(() => {
+  const fresh = readAgentState();
+  appendEvent(fresh, { type: "handoff", agent: args.agent, run_id: runId, summary });
+  writeAgentState(fresh);
+  return fresh;
+}, { owner: `handoff-${args.agent}` });
+
+if (!locked.ok) {
+  // The handoff markdown files above are already written — the only thing that didn't land is
+  // this run's "handoff" event in AGENT_STATE.json. Surface it rather than hiding it, but don't
+  // fail the whole handoff over a transient lock contention (the next sync/handoff recovers).
+  console.error(JSON.stringify({ ok: false, warning: "handoff event not recorded", ...locked }, null, 2));
+}
 console.log(`[blackout-agent] handoff → ${MARKDOWN_FILES.lastHandoff}`);

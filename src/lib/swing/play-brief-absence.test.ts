@@ -152,6 +152,47 @@ test("collectBriefUnavailableSources: CLOSED play does not flag a stale Meridian
   }
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro TSM/PANW, Largo C3 absence
+// violation): `window_truncated` is set when the market-wide Benzinga earnings-window fetch hit
+// its own pagination cap (PR #7154) — `meridianCatalystSection`/`meridianPeerSection` already
+// render an honest "cannot confirm — truncated" narrative caveat for this shape, but this
+// function (the sole feeder of `envelope.unavailableSources`, the UI's `UnavailableChip`) never
+// checked the field at all, so the structured absence surface silently disagreed with the
+// brief's own prose two sections away.
+test("collectBriefUnavailableSources: truncated Meridian earnings-window fetch with no confirmed items for this ticker surfaces in unavailableSources (Largo C3)", () => {
+  const ctx = {
+    sessionDate: "2026-09-15",
+    meridian: { as_of: new Date().toISOString(), items: [], total_matched: 0, window_truncated: true },
+  } as unknown as SwingPlayBriefContext;
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("calendar fetch truncated")),
+    "a truncated calendar fetch with zero confirmed items for this ticker must surface as a structured absence, matching the narrative's own caveat",
+  );
+});
+
+// A ticker whose row WAS found before the fetch hit its cap has a genuinely confirmed read —
+// truncation elsewhere in the (market-wide) window is irrelevant to this ticker's own, already-
+// known items. Must not fire a false absence chip for a ticker the narrative itself renders
+// confidently (no truncation caveat in meridianCatalystSection, since `!slice?.items.length` is
+// false for this ticker).
+test("collectBriefUnavailableSources: truncated Meridian fetch does NOT surface when this ticker's own items were already confirmed", () => {
+  const ctx = {
+    sessionDate: "2026-09-15",
+    meridian: {
+      as_of: new Date().toISOString(),
+      items: [{ ticker: "AAPL", kind: "earnings", date: "2026-09-20" }],
+      total_matched: 1,
+      window_truncated: true,
+    },
+  } as unknown as SwingPlayBriefContext;
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    !sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("calendar fetch truncated")),
+    "a ticker with confirmed items must not be flagged absent just because the market-wide fetch was truncated elsewhere",
+  );
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-09-19): a WATCH play whose entry is already dead
 // (deadPlayReason — invalidated / entry-deadline expired / contract expired / extended-chase) is
 // functionally identical to CLOSED for this file's own "today's live desk state doesn't matter"

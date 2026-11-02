@@ -27,6 +27,7 @@ import {
   INTERNAL_CRON_BASE,
   PRODUCTION_ENV,
 } from "./railway-cron-services.mjs";
+import { computeCronVarSyncPlan } from "./lib/railway-cron-var-sync.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -265,22 +266,14 @@ if (!cronSecret) {
   process.exit(1);
 }
 
-let syncedCount = 0;
-for (const key of ALL_CRON_KEYS) {
+const syncEntries = ALL_CRON_KEYS.map((key) => {
   const serviceName = CRON_SERVICE_NAMES[key];
-  if (!names[serviceName]) continue;
-  const vars = getVars(serviceName);
-  let synced = true;
-  if (vars.CRON_SECRET !== cronSecret) {
-    setVar(serviceName, "CRON_SECRET", cronSecret);
-    synced = false;
-  }
-  if (vars.CRON_TARGET_BASE_URL !== INTERNAL_CRON_BASE) {
-    setVar(serviceName, "CRON_TARGET_BASE_URL", INTERNAL_CRON_BASE);
-    synced = false;
-  }
-  if (synced) syncedCount += 1;
-}
+  const serviceExists = Boolean(names[serviceName]);
+  const vars = serviceExists ? getVars(serviceName) : {};
+  return { key, serviceName, serviceExists, vars };
+});
+const { syncedCount, updates } = computeCronVarSyncPlan(syncEntries, cronSecret, INTERNAL_CRON_BASE);
+for (const u of updates) setVar(u.serviceName, u.variable, u.value);
 console.log(`  ✓ ${syncedCount}/${ALL_CRON_KEYS.length} cron triggers in sync`);
 
 // ── 5. PITR bucket posture ──

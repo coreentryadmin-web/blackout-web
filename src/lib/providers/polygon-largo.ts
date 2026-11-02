@@ -749,3 +749,9 @@ export async function fetchPolygonIpoCalendar(fromDate: string, toDate: string):
     share_price_high: r.share_price_high != null ? Number(r.share_price_high) : null,
   }));
 }
+
+/** Test-only: sticky `_usingFallback` survives `resetPolygonCircuitForTest` across the full suite. */
+export function resetPolygonLargoFailoverForTest(): void {
+  _usingFallback = false;
+  _lastBreakerCheck = isPolygonCircuitOpen();
+}

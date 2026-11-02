@@ -327,3 +327,36 @@ test("buildSpxDesk: off-hours prior_close must not collapse onto today's own clo
     "the gate must not be re-narrowed back to the EXTENDED label only — that is the exact bug this test guards against"
   );
 });
+
+// BUG FIX (2026-11-01, live repro, Sunday market closed): `vix_change_pct` was transported
+// straight from Polygon's raw snapshot `change_pct` with no validation — Polygon serves a
+// FABRICATED 0 for `change_percent` whenever `session.previous_close === session.close` (every
+// night after close, every weekend, every holiday), a stale-anchor artifact, not a real flat day.
+// `spx_change_pct` two lines above already escapes this via `priorFromBars`/
+// `pulseChangePctFromPriorClose` (the `latestSessionAndItsOwnPrior`/`priorDayFromDailyBars` test
+// just above this one) — VIX had no equivalent. Confirmed live: GET /api/market/spx/desk returned
+// {"vix": 19.42, "vix_change_pct": 0, "spx_change_pct": -1.82} while real Polygon daily bars for
+// I:VIX showed a true day-over-day change of ~+12.9%, not 0. See spx-change-anchor.test.ts for the
+// arithmetic proof and fetchVixPriorDayCached's own header (spx-desk.ts) for the full repro.
+test("buildSpxDesk: vix_change_pct is DERIVED from priorVix.pdc (its own daily-bars-derived prior close), not transported from vixSnap.change_pct", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  const buildIdx = src.indexOf("export async function buildSpxDesk(");
+  const nextFnIdx = src.indexOf("\nexport async function buildSpxDeskPulse(");
+  assert.ok(buildIdx >= 0 && nextFnIdx > buildIdx, "could not locate buildSpxDesk's own body");
+  const body = src.slice(buildIdx, nextFnIdx);
+  assert.match(
+    body,
+    /const priorFromBarsVix =\s*\n\s*label !== "RTH OPEN"\s*\n\s*\? latestSessionAndItsOwnPrior\(dailyBarsVix, today\)\.prior\s*\n\s*: priorDayFromDailyBars\(dailyBarsVix, today\);/,
+    "buildSpxDesk must derive a VIX-specific prior close from its own daily bars, the same RTH-aware way SPX's priorFromBars already does"
+  );
+  assert.match(
+    body,
+    /vix_change_pct:\s*\n\s*pulseChangePctFromPriorClose\(vixSnap\?\.price \?\? null, priorVix\.pdc, vixSnap\?\.change_pct\) \?\?\s*\n\s*intel\?\.vix_change_pct \?\?\s*\n\s*null,/,
+    "vix_change_pct must be derived from priorVix.pdc the same way spx_change_pct is derived from prior.pdc"
+  );
+  assert.doesNotMatch(
+    body,
+    /vix_change_pct: vixSnap\?\.change_pct \?\? intel\?\.vix_change_pct \?\? null,/,
+    "must not regress back to transporting Polygon's raw (possibly fabricated-0) change_pct verbatim"
+  );
+});

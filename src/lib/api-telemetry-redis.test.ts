@@ -1,10 +1,42 @@
-import { test } from "node:test";
+import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as apiTelemetryRedisModule from "./api-telemetry-redis";
 import { flushTelemetryToRedis, readCrossInstanceTelemetry } from "./api-telemetry-redis";
+
+// A minimal ioredis stand-in exercising only the methods this module calls, same shape as
+// shared-cache.test.ts's own fake. `smembers` reports stale instance ids whose own data keys
+// have already expired (mget -> null for each), reproducing the real Redis TTL gap: the
+// instance SET lives 2x longer than each instance's own data key (see TELEMETRY_TTL_SEC /
+// INSTANCE_SET_KEY expiry in api-telemetry-redis.ts), so there is a real window where
+// smembers() still returns ids while every one of their data keys has already expired.
+function makeStaleIdsFakeRedis() {
+  return {
+    async smembers(): Promise<string[]> {
+      return ["dead-replica-1", "dead-replica-2"];
+    },
+    async mget(..._keys: string[]): Promise<(string | null)[]> {
+      return [null, null];
+    },
+    async set(): Promise<unknown> {
+      return "OK";
+    },
+    async sadd(): Promise<unknown> {
+      return 1;
+    },
+    async expire(): Promise<unknown> {
+      return 1;
+    },
+  };
+}
+
+mock.module("./make-redis", {
+  namedExports: {
+    makeRedis: async () => makeStaleIdsFakeRedis(),
+  },
+});
 
 // `scheduleTelemetryRedisFlush()` (the only thing that ever called `setInterval` and
 // populated the module-level `flushTimer`) was removed as verified dead code in commit
@@ -73,4 +105,33 @@ test("api-telemetry-redis.ts no longer imports or calls the unused getApiTelemet
       "from getProviderHealthSummary() — re-add only if buildInstancePayload() actually reads " +
       "the snapshot's fields (e.g. recent_events/recent_errors/active_retries) into the payload"
   );
+});
+
+// BUG: readCrossInstanceTelemetry() only returned null when ids.length === 0 (nobody ever
+// registered in the instance SET) or when the whole call threw. It did NOT return null when
+// ids existed but every one of their data keys had already expired (mget returns null for all
+// of them) -- that path fell through to returning { instances_reporting: 0, rate_limits: {},
+// providers: {} }, a non-null object. Every caller (deriveClusterCallsByProvider1m in
+// api-rate-quotas.ts, and the `crossTelemetry ? {...} : null` checks in admin-api-dashboard.ts
+// and market-health.ts) treats "non-null" as "real cluster data is available," so this
+// silently replaced genuine local telemetry with all-zero cluster numbers -- exactly the
+// scenario the module's own fallback-to-local design exists to avoid, and it happens precisely
+// when Redis has been unstable (the condition that produces stale, expired-but-still-set
+// instance ids in the first place).
+test("readCrossInstanceTelemetry returns null (not a hollow object) when every registered instance id's data key has expired", async () => {
+  const prevRedisUrl = process.env.REDIS_URL;
+  process.env.REDIS_URL = "redis://fake-stale-ids:6379";
+  try {
+    const cross = await readCrossInstanceTelemetry();
+    assert.equal(
+      cross,
+      null,
+      "ids present in the instance SET but all expired data keys must read as 'no cluster " +
+        "data' (null), not a non-null object with empty providers/rate_limits -- a caller's " +
+        "`clusterData ? realData : fallback` check cannot tell the two apart"
+    );
+  } finally {
+    if (prevRedisUrl === undefined) delete process.env.REDIS_URL;
+    else process.env.REDIS_URL = prevRedisUrl;
+  }
 });

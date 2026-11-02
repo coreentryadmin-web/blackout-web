@@ -20,6 +20,10 @@ import {
   worstStatus,
 } from "@/lib/correctness/types";
 import { odteGexScopeFromHeatmap, grossAbsFromStrikeTotals, grossAbsFromUwGexRows, isHairlineNetGammaSign, isNearGammaFlip, recomputeScopedGexLevels, resolveZeroDteExpiry } from "@/lib/correctness/gex-odte-scope";
+// Pure constant only (zerodte/marks-math.ts has zero imports of its own — a dependency-free
+// leaf) — reused here for the IDENTICAL future-clock-skew guard data-integrity-verifier.ts's own
+// ageMin() already applies; see freshnessCheck() below for why this verifier needs the same fix.
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 
 // ---------------------------------------------------------------------------
 // HEAT MAPS data-correctness verifier — the first (primary) target of the auditor.
@@ -944,7 +948,25 @@ export function dexCharmSanityChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
 // ---------------------------------------------------------------------------
 // LAYER 6 — FRESHNESS (served asof within TTL during RTH)
 // ---------------------------------------------------------------------------
-function freshnessCheck(ctx: Ctx, hm: GexHeatmap, marketOpen: boolean): CheckResult {
+/**
+ * Exported for direct unit testing (see heatmap-verifier.test.ts) — the whole point of this
+ * check is to catch a stale/corrupted matrix served as live, so its own future-clock-skew guard
+ * needs to be independently provable, not just exercised incidentally through verifyHeatmapTicker.
+ *
+ * BUG FIX: an `asof` more than ZERODTE_MARK_FUTURE_TOLERANCE_MS ahead of `ctx.now` — clock skew
+ * between the ECS replica that wrote the matrix and the replica running this verifier, or a
+ * genuinely corrupted/miswritten timestamp — used to produce a NEGATIVE `ageMin`
+ * ((ctx.now - asofMs) / 60000, no floor), which trivially passed the `ageMin <= TOL.freshnessMin`
+ * comparison below (any negative number is <= 15). This layer's entire job is to catch a stale/
+ * corrupted matrix served as live, so a future-dated `asof` silently reading as "fresh" was a
+ * false PASS on exactly the failure shape it exists to catch — the identical root cause already
+ * fixed for data-integrity-verifier.ts's own `ageMin()` helper (2026-09-04, see that file's doc
+ * comment for the full history), which this verifier's separate, inline age computation never
+ * inherited. `Infinity` is the same fail-closed sentinel data-integrity-verifier.ts's `ageMin()`
+ * already uses for a too-far-future timestamp (and the one this function already used for the
+ * pre-existing NaN/unparseable-`asof` case above it).
+ */
+export function freshnessCheck(ctx: Ctx, hm: GexHeatmap, marketOpen: boolean): CheckResult {
   const asofMs = new Date(hm.asof).getTime();
   if (!Number.isFinite(asofMs)) {
     return mk(ctx, "freshness", "freshness", "flag", `Served asof is unparseable: "${hm.asof}".`, {
@@ -952,18 +974,20 @@ function freshnessCheck(ctx: Ctx, hm: GexHeatmap, marketOpen: boolean): CheckRes
       actual: hm.asof,
     });
   }
-  const ageMin = (ctx.now - asofMs) / 60000;
+  const diffMs = ctx.now - asofMs;
+  const ageMin = diffMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS ? Infinity : diffMs / 60000;
+  const ageLabel = Number.isFinite(ageMin) ? `${ageMin.toFixed(0)}m` : "in the future (clock-skew/corrupted asof)";
   if (!marketOpen) {
     return mk(
       ctx,
       "freshness",
       "freshness",
       "skipped",
-      `Market closed — matrix asof ${hm.asof} (${ageMin.toFixed(0)}m) is legitimately stale; freshness not asserted.`,
-      { id: "asof-fresh", actual: ageMin }
+      `Market closed — matrix asof ${hm.asof} (${ageLabel}) is legitimately stale; freshness not asserted.`,
+      { id: "asof-fresh", actual: Number.isFinite(ageMin) ? ageMin : null }
     );
   }
-  const fresh = ageMin <= TOL.freshnessMin;
+  const fresh = Number.isFinite(ageMin) && ageMin <= TOL.freshnessMin;
   return mk(
     ctx,
     "freshness",
@@ -971,8 +995,8 @@ function freshnessCheck(ctx: Ctx, hm: GexHeatmap, marketOpen: boolean): CheckRes
     fresh ? "consistency-only" : "flag",
     fresh
       ? `Matrix asof ${hm.asof} is ${ageMin.toFixed(1)}m old (≤ ${TOL.freshnessMin}m TTL during RTH).`
-      : `Matrix is ${ageMin.toFixed(0)}m stale during RTH (asof ${hm.asof}) — stale-shown-as-live.`,
-    { id: "asof-fresh", actual: Number(ageMin.toFixed(1)), tolerance: TOL.freshnessMin }
+      : `Matrix is ${ageLabel} stale during RTH (asof ${hm.asof}) — stale-shown-as-live.`,
+    { id: "asof-fresh", actual: Number.isFinite(ageMin) ? Number(ageMin.toFixed(1)) : null, tolerance: TOL.freshnessMin }
   );
 }
 

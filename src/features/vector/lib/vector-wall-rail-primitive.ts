@@ -27,6 +27,7 @@ import {
   beadRenderTuning,
   clampTuningToSpacing,
   closestRowGapPx,
+  wallBeadRunIsBirth,
   type WallBeadRenderProfile,
   type BeadRenderTuning,
 } from "./vector-wall-rail-core";
@@ -684,7 +685,13 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       let runStartIdx = 0;
       const flush = (endIdx: number) => {
         if (run.length === 0) return;
-        const startsInWindow = pts[runStartIdx]!.time > earliest && runStartIdx === 0;
+        // REBIRTH, not just a window-edge birth: any run after the first was preceded by a real
+        // gap (that is why it is its own run — see GAP_SPLIT_FACTOR above), so the wall genuinely
+        // left the dominant set and came back. Only the trail's FIRST run needs the window-edge
+        // guard, because only it could be an artifact of the drawn window's start rather than a
+        // real formation — see wallBeadRunIsBirth's doc comment (mirrors buildWallBeadMarkers'
+        // `trueBirth`/`reborn` split in VectorChart.tsx, which this canvas path had drifted from).
+        const startsInWindow = wallBeadRunIsBirth(runStartIdx, pts[runStartIdx]!.time, earliest);
         const first = run[0]!;
         const last = run[run.length - 1]!;
         const isDeath = !trail.active && endIdx === pts.length - 1;

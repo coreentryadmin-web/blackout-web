@@ -81,6 +81,26 @@ export function runtimeImports(source) {
   const bare = /import\s+["']([^"']+)["']/g;
   while ((m = bare.exec(src))) out.push(m[1]);
 
+  // Re-exports (`export { X } from "..."`, `export * from "..."`, `export * as X from "..."`)
+  // create the SAME runtime dependency edge as `import ... from "..."` — the module is evaluated
+  // and its binding re-exported — but were not scanned at all before this fix. A client entry
+  // file that re-exports from a module reaching `server-only` (the repo's own
+  // `src/app/error.tsx`: `export { default } from "@/components/route-error-boundary"` is exactly
+  // this shape) produced ZERO edges, so the BFS below never even visited that module and the
+  // checker reported a clean graph on a tree whose `next build` would actually fail.
+  const reexport = /export\s+(type\s+)?(\*(?:\s+as\s+[\w$]+)?|\{[\s\S]*?\})\s*from\s*["']([^"']+)["']/g;
+  while ((m = reexport.exec(src))) {
+    if (m[1]) continue; // `export type ... from` — erased, same as `import type`
+    const clause = m[2].trim();
+    // `export { type A, type B } from` is also fully erased; a MIXED clause (`type A, B`) still
+    // carries a real runtime edge via `B`, same rule as the named-import case above.
+    if (clause.startsWith("{")) {
+      const parts = clause.replace(/[{}]/g, "").split(",").filter((p) => p.trim());
+      if (parts.length && parts.every((p) => p.trim().startsWith("type "))) continue;
+    }
+    out.push(m[3]);
+  }
+
   // Dynamic imports — but ONLY the runtime ones. TypeScript also spells a TYPE reference as
   // `import("@/x").SomeType` (and `typeof import("@/x")`), which is erased exactly like
   // `import type`. src/lib/api.ts uses that form deliberately, with a comment saying so:

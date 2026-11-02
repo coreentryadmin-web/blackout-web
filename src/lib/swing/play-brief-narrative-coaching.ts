@@ -51,7 +51,22 @@ function vectorOf(ctx: SwingPlayBriefContext): (VectorFullState & Partial<Vector
     | null;
 }
 
-/** Urgent thesis invalidation — leads narrative when fired. */
+/**
+ * Urgent thesis invalidation — leads narrative when fired.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-11-02, live-check of #7380): the "warn" branch below
+ * named "your next trim rail" unconditionally, independent of `play.status` — the exact bug class
+ * #7380 fixed in this file's sibling `crossDeskResolution`/`crossDeskCoaching` (SWING_SCALE_OUT_POLICY,
+ * exit-policy.ts, has exactly ONE trim rung, so once `status === "TRIM"` that rung has already
+ * fired and only the trailing runner stop on the remaining `runner_fraction` is left — there is no
+ * "next" rail to point to). Reproduced with a calibrated (non-uncalibrated-sentinel) `thesisHealth`
+ * landing in the 45-69 "warn" band on a TRIM-status play — `thesisHealthUncalibrated()` above
+ * correctly lets a calibrated row through, so it does not guard this; #7380's fix to the sibling
+ * function never touched this one, so the contradiction remained reachable here. No live TRIM
+ * position carried a calibrated `thesisHealth` at the moment this was found (today's TRIM rows are
+ * all Banger-origin, where thesisHealth is withheld entirely), but any native swing position whose
+ * trim fires while its thesis is independently fading reaches this exact branch.
+ */
 export function thesisBreakCoaching(play: TerminalPlay): string | null {
   if (thesisHealthUncalibrated(play.thesisHealth)) return null;
   const level = play.thesisBreak?.level ?? play.thesisHealth?.thesisBreakLevel;
@@ -61,7 +76,9 @@ export function thesisBreakCoaching(play: TerminalPlay): string | null {
   if (level === "break") {
     return `**Thesis BREAK** — ${note ?? "structural invalidation fired"}. Exit or cut to runner only; don't add size.`;
   }
-  return `**Thesis WARN** — ${note ?? "pillars fading"}. Tighten stops; next trim rail is your friend.`;
+  return play.status === "TRIM"
+    ? `**Thesis WARN** — ${note ?? "pillars fading"}. Tighten stops; the trailing stop is your friend.`
+    : `**Thesis WARN** — ${note ?? "pillars fading"}. Tighten stops; next trim rail is your friend.`;
 }
 
 /** Weakest / fading pillar — explains the health % number. */
@@ -776,12 +793,29 @@ function crossDeskBasis(kind: CrossDeskEvidenceKind): string {
  * exists — just never audited for THIS line specifically. `bucket` is threaded in from
  * `crossDeskCoaching` (never "closed" — that bucket short-circuits before reaching here) so the
  * WATCH case gets its own, entry-appropriate framing instead of borrowing open-position vocabulary.
+ *
+ * BUG FOUND (Ask Largo standing mandate, 2026-11-02, five-engine-largo-cycle-73): the "open"
+ * branch above still unconditionally named "your next trim rail" even for a position whose
+ * `status === "TRIM"` — SWING_SCALE_OUT_POLICY (exit-policy.ts) has exactly ONE trim rung
+ * (`trim_levels` is a 1-element array), so once that rung has fired there IS no next trim rail,
+ * only the trailing runner stop on the remaining `runner_fraction`. Live repro: TXRH
+ * (SWING:TXRH, positionId 2252, liveStatus "TRIM", trim already banked at +100%) rendered "watch
+ * for it to flip back before your next trim rail — until then, size down" in this section while
+ * the SAME brief's Management section says "Trim ladder: +100% ✓" and "all trims banked — runner
+ * only" — a direct self-contradiction inside one document, the exact bug class the 2026-10-08
+ * fix above addressed for WATCH, just one bucket short of covering OPEN/HOLD/TRIM fully. `bucket`
+ * now distinguishes "open" (OPEN/HOLD — still has a trim rail ahead) from "runner" (TRIM — the
+ * ladder's one rung has already fired) so the runner-phase case gets its own wording naming the
+ * trailing stop instead of a trim rail that no longer exists.
  */
-function crossDeskResolution(kind: CrossDeskEvidenceKind, bucket: "watch" | "open"): string {
+function crossDeskResolution(kind: CrossDeskEvidenceKind, bucket: "watch" | "open" | "runner"): string {
   switch (kind) {
     case "structure":
-      return bucket === "watch"
-        ? "watch for it to flip back before treating this as confirmation — until then, this isn't a green light to enter"
+      if (bucket === "watch") {
+        return "watch for it to flip back before treating this as confirmation — until then, this isn't a green light to enter";
+      }
+      return bucket === "runner"
+        ? "watch for it to flip back before it threatens the trailing stop — until then, consider sizing down"
         : "watch for it to flip back before your next trim rail — until then, size down";
     case "flow":
       return "one session's premium tilt isn't a structural change yet — give it another session before treating this as thesis-invalidating";
@@ -800,7 +834,7 @@ function crossDeskResolution(kind: CrossDeskEvidenceKind, bucket: "watch" | "ope
 function renderCrossDeskConflict(
   conflicts: CrossDeskConflict[],
   archetype: SwingArchetype | null,
-  bucket: "watch" | "open",
+  bucket: "watch" | "open" | "runner",
 ): string {
   const ranked = [...conflicts].sort((a, b) => b.weight - a.weight);
   const lead = ranked[0]!;
@@ -900,13 +934,16 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
   if (play.direction === "SHORT" && callHeavy) conflict("HELIX", "call-led", "flow");
 
   if (conflicts.length) {
-    // `crossDeskCoaching` is called for both the "watch" and "open" buckets (collectCoachingBullets
-    // short-circuits only on "closed") — mirror statusBucket's own OPEN/HOLD/TRIM/CLOSED->open,
-    // everything else->watch split (play-brief.ts/play-brief-intel.ts) so the resolution text below
-    // never assumes a position exists on a WATCH candidate. Never "closed" here: a closed play never
-    // reaches this function.
-    const bucket: "watch" | "open" =
-      play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM" ? "open" : "watch";
+    // `crossDeskCoaching` is called for the "watch", "open" and "runner" buckets
+    // (collectCoachingBullets short-circuits only on "closed") so the resolution text below never
+    // assumes a position exists on a WATCH candidate, and never names a "next trim rail" for a
+    // position whose one-and-only trim rung (SWING_SCALE_OUT_POLICY, exit-policy.ts) has already
+    // fired. "runner" is split out from "open" here (2026-11-02, five-engine-largo-cycle-73 fix)
+    // because status==="TRIM" means exactly that: the trim is done, only the trailing runner stop
+    // remains — OPEN/HOLD still have that trim rail ahead of them, so they keep the "open" wording.
+    // Never "closed" here: a closed play never reaches this function.
+    const bucket: "watch" | "open" | "runner" =
+      play.status === "TRIM" ? "runner" : play.status === "OPEN" || play.status === "HOLD" ? "open" : "watch";
     return renderCrossDeskConflict(conflicts, archetype, bucket);
   }
 

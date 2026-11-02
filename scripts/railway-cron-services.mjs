@@ -50,6 +50,25 @@ export const CRON_SERVICE_NAMES = {
   "swing-discovery": "Swing-Discovery",
   "swing-active-refresh": "Swing-Active-Refresh",
   "legacy-live-sync": "Legacy-Live-Sync",
+  // These 8 keys are registered in src/lib/cron-registry.ts, have live routes that call
+  // logCronRun() with this exact job_key, and (x-analytics aside) a railway.<key>.toml — but
+  // were never added here. Found 2026-11-02: ops-collect-action-items.mjs's "cron never fired"
+  // detector (postgresItems()'s zeroRuns check) builds its Postgres query's job list ENTIRELY
+  // from ALL_CRON_KEYS (= Object.keys(CRON_SERVICE_NAMES)), so any of these 8 crons silently
+  // losing its EventBridge schedule (zero rows ever written to cron_job_runs) would never raise
+  // the P0 "cron:<key>:never-fired" alert that catches that exact failure for every other cron —
+  // a monitoring blind spot, not a false alarm. Confirmed via
+  // `node scripts/validate-railway-cron-manifest.mjs` (a separate, already-existing checker for
+  // this same registry<->service-map alignment) reporting all 8 as
+  // "missing from CRON_SERVICE_NAMES" against current cron-registry.ts.
+  "banger-discovery": "Banger-Discovery",
+  "banger-live-sync": "Banger-Live-Sync",
+  "darkpool-discord": "Darkpool-Discord",
+  "helix-discord-digest": "Helix-Discord-Digest",
+  "nighthawk-backfill-repair": "NightHawk-Backfill-Repair",
+  "thermal-discord": "Thermal-Discord",
+  "x-analytics": "X-Analytics",
+  "zerodte-skip-grade": "ZeroDTE-Skip-Grade",
 };
 
 /** All cron job keys that have a cron config railway.<key>.toml in the repo. */

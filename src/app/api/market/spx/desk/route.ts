@@ -16,7 +16,12 @@ export async function GET(req: NextRequest) {
     const instant = await peekSpxDesk();
     // Bootstrap fast-lane / pulse-minimal shells cache price:0 — serving them on peek would
     // flash SPX 0 on cold cache while gex-heatmap already has a live spot (platform-integrity FAIL).
-    if (instant && instant.price > 0) {
+    // BUG FIX (SPX Slayer live audit, 2026-11-01): price > 0 alone is not proof of a real desk
+    // build — deskShellFromPulse() merges a real nonzero price/availability from the pulse lane
+    // into the emptyDeskPayload() degraded shell while leaving `source: "none"`, so a cold-cache
+    // peek could serve a GEX/flow-less shell as if it were fully live. Mirrors the same guard
+    // already used at spx-play-engine.ts (`desk.price > 0 && desk.source !== "none"`).
+    if (instant && instant.price > 0 && instant.source !== "none") {
       return NextResponse.json(
         roundFloats({ ...instant, polled_at: instant.polled_at ?? instant.as_of }),
         { headers: NO_STORE_HEADERS }

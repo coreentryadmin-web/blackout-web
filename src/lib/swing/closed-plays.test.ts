@@ -82,6 +82,41 @@ describe("closedDeckSourceFromRow", () => {
     assert.equal(src?.scoreWithheld, false, "a genuinely-scored row must not be flagged withheld");
   });
 
+  // BUG FIX (2026-11-02, Ask Largo standing mandate, follow-on gap from #7316's leg-identity fix —
+  // caught by audit before it could manifest live, since deploy hadn't caught up to #7316 yet).
+  // The gate here used to be a literal `row.status !== "CLOSED"`, which refused to build a card for
+  // a ROLLED row at all. A chain's ROOT/intermediate leg (one that later rolled forward into a new
+  // leg) has a real DB status of `"ROLLED"`, never `"CLOSED"` — confirmed live, AMZN leg id 44,
+  // `status: "ROLLED"` — and `SWING_TERMINAL_STATUSES` (db.ts) already treats CLOSED and ROLLED as
+  // equally terminal/gradeable everywhere else in the ledger. Once #7316's own fix made
+  // `play-brief-resolve.ts`'s `loadClosedPlay` correctly find the EXACT id match first (rather than
+  // a later rolled-forward child leg's row) for a request naming a ROOT/intermediate leg's own
+  // positionId, that exact match landed on a row whose status is ROLLED — and this gate refused it,
+  // flipping the user-visible symptom from "serves the wrong leg's data" (the bug #7316 fixed) to a
+  // flat 404 "play not found" for every such request, rather than the leg's own disclosed outcome
+  // (e.g. "-27.7% / rolled") that #7316's fix implies it now delivers. A ROLLED row is fully graded
+  // (`graded_at` set, `realized_pnl_pct` frozen — `gradeSwingPosition`, db.ts) and its own outcome is
+  // exactly as disclosable as a CLOSED row's.
+  it("maps a graded ROLLED row (a chain's root/intermediate leg) to a deck source, not null — the leg's own outcome, not an absence", () => {
+    const rolledRoot = row({
+      status: "ROLLED",
+      realized_pnl_pct: -27.7,
+      root_position_id: null,
+      roll_seq: 0,
+    });
+    const src = closedDeckSourceFromRow(rolledRoot);
+    assert.notEqual(src, null, "a ROLLED row must resolve to its own data, not refuse with null");
+    assert.equal(src?.exitPnlPct, -27.7, "must carry this leg's own realized P&L");
+    assert.equal(src?.closedReason, "stopped", "a negative P&L leg reads 'stopped' same as the CLOSED path");
+    assert.equal(
+      src?.status,
+      "CLOSED",
+      "TerminalPlay.status (DeckStatus) has no ROLLED member and asStatus() silently coerces an " +
+        "unknown value to WATCH — this field intentionally stays the 'settled, terminal, non-live " +
+        "card' bucket regardless of CLOSED vs ROLLED, never a literal echo of row.status",
+    );
+  });
+
   // BUG FIX (Ask Largo standing mandate, live repro 2026-10-16): a ROLLED chain's terminal leg
   // never has its own `feature_vector` (roll-plan.ts's `buildRollPlan` never sets it on the child
   // row's insert spec), so `evidence_score` was unconditionally defaulted to the literal `0` with
@@ -737,5 +772,177 @@ describe("closedDeckSourcesFromChains", () => {
   it("still labels a real, non-zero loss 'stopped' — the flat fix does not weaken the loss label", () => {
     const out = closedDeckSourcesFromChains([[row({ id: 21, roll_seq: 0, realized_pnl_pct: -0.01 })]]);
     assert.equal(out[0]!.closedReason, "stopped");
+  });
+
+  // BUG FIX (Ask Largo standing mandate, 2026-11-01, 6th site of the same bug class as the five
+  // fixes above — caught by audit before a live wrong-boolean repro): `trimEnforcedBeforeClose` was
+  // the one remaining field still surviving unconditionally from the `...src` spread
+  // (`closedDeckSourceFromRow(terminal)`'s own `scale_out_grade.trim_enforced_before_close`) instead
+  // of being re-pointed at the worst leg's own row — the same pattern already applied to positionId /
+  // entryPremium|peakPremium|troughPremium / contract|occ|mid|delta /
+  // entryTriggerUnderlyingPx|invalidationUnderlyingPx / exitAt|committedAt|firstSeenAt. This feeds
+  // adapters.ts's exit-ladder "fired" gate (`status === "TRIM" || src.trimEnforcedBeforeClose ===
+  // true`) and play-card-lifecycle.ts's CLOSED-bucket "TARGET" badge, both of which must describe the
+  // worst leg, not a different, better-performing terminal leg.
+  it("borrows the WORST leg's own trimEnforcedBeforeClose, not the terminal leg's — mismatched-leg trim history", () => {
+    const parent = row({
+      id: 44,
+      roll_seq: 0,
+      realized_pnl_pct: -27.67,
+      scale_out_grade: { trim_enforced_before_close: true }, // leg 44 (worst leg) really did trim before rolling away
+      graded_at: "2026-09-30T13:31:19.000Z",
+      closed_at: "2026-09-30T13:31:19.000Z",
+    });
+    const terminal = row({
+      id: 48,
+      roll_seq: 1,
+      parent_position_id: 44,
+      root_position_id: 44,
+      realized_pnl_pct: 72.41,
+      scale_out_grade: { trim_enforced_before_close: false }, // terminal leg never trimmed
+      closed_at: "2026-10-07T13:30:39.000Z",
+      graded_at: "2026-10-07T13:30:39.000Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, terminal]]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.exitPnlPct, -27.67, "sanity: still the worst-leg composite P&L");
+    assert.equal(
+      out[0]!.trimEnforcedBeforeClose,
+      true,
+      "must be leg 44's (worst leg's) own trim history (true), not leg 48's (terminal leg's) own false — the exit-ladder 'fired' gate and CLOSED-bucket TARGET badge must describe the leg this card's P&L/reason actually belong to",
+    );
+  });
+
+  it("falls back to the terminal leg's own trimEnforcedBeforeClose when the worst leg IS the terminal leg (no mismatch to fix)", () => {
+    const parent = row({
+      id: 60,
+      roll_seq: 0,
+      realized_pnl_pct: -5,
+      graded_at: "2026-08-05T12:00:00Z",
+    });
+    const child = row({
+      id: 61,
+      roll_seq: 1,
+      parent_position_id: 60,
+      root_position_id: 60,
+      realized_pnl_pct: -40.83,
+      scale_out_grade: { trim_enforced_before_close: true },
+      closed_at: "2026-08-12T12:00:00Z",
+      graded_at: "2026-08-12T12:05:00Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, child]]);
+    assert.equal(out[0]!.exitPnlPct, -40.83, "terminal leg is also the worst leg here");
+    assert.equal(out[0]!.trimEnforcedBeforeClose, true, "terminal leg's own value IS the worst leg's value -- keep it");
+  });
+
+  it("is honestly null when the worst leg's own scale_out_grade predates this field, never a fabricated false borrowed from the terminal leg", () => {
+    const parent = row({
+      id: 70,
+      roll_seq: 0,
+      realized_pnl_pct: -30,
+      scale_out_grade: null, // worst leg predates the field -- honest absence
+      graded_at: "2026-08-05T12:00:00Z",
+    });
+    const child = row({
+      id: 71,
+      roll_seq: 1,
+      parent_position_id: 70,
+      root_position_id: 70,
+      realized_pnl_pct: 10,
+      scale_out_grade: { trim_enforced_before_close: true }, // terminal leg's own true must NOT leak onto the worst leg's card
+      closed_at: "2026-08-12T12:00:00Z",
+      graded_at: "2026-08-12T12:05:00Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, child]]);
+    assert.equal(
+      out[0]!.trimEnforcedBeforeClose,
+      null,
+      "a real absence on the worst leg's own row must stay null, never borrowed as true from the terminal leg",
+    );
+  });
+
+  // BUG FIX (Ask Largo standing mandate, 2026-11-02, 7th site of the same bug class as the six
+  // fixes above): cortex/budgetVerdict/laneRankAtCommit survived unconditionally from the `...src`
+  // spread (closedDeckSourceFromRow(terminal)'s own entry_context fields) instead of being
+  // re-pointed at the worst leg's own row — the same pattern already applied to every other field
+  // above. This feeds adapters.ts's terminalPlayFromClosedSwing, which carries these three straight
+  // into every served CLOSED swing card.
+  it("borrows the WORST leg's own cortex/budgetVerdict/laneRankAtCommit, not the terminal leg's", () => {
+    const parent = row({
+      id: 44,
+      roll_seq: 0,
+      realized_pnl_pct: -27.67,
+      entry_context: {
+        cortex: { verdict: "net_negative", source: "parent" },
+        budget_verdict: { allowed: false, source: "parent" },
+        lane_rank_at_commit: { rank: 3, source: "parent" },
+      },
+      graded_at: "2026-09-30T13:31:19.000Z",
+      closed_at: "2026-09-30T13:31:19.000Z",
+    });
+    const terminal = row({
+      id: 48,
+      roll_seq: 1,
+      parent_position_id: 44,
+      root_position_id: 44,
+      realized_pnl_pct: 72.41,
+      entry_context: {
+        cortex: { verdict: "net_positive", source: "terminal" },
+        budget_verdict: { allowed: true, source: "terminal" },
+        lane_rank_at_commit: { rank: 1, source: "terminal" },
+      },
+      closed_at: "2026-10-07T13:30:39.000Z",
+      graded_at: "2026-10-07T13:30:39.000Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, terminal]]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.exitPnlPct, -27.67, "sanity: still the worst-leg composite P&L");
+    assert.deepEqual(
+      out[0]!.cortex,
+      { verdict: "net_negative", source: "parent" },
+      "must be leg 44's (worst leg's) own cortex snapshot, not leg 48's (terminal leg's)",
+    );
+    assert.deepEqual(
+      out[0]!.budgetVerdict,
+      { allowed: false, source: "parent" },
+      "must be leg 44's (worst leg's) own budget verdict, not leg 48's (terminal leg's)",
+    );
+    assert.deepEqual(
+      out[0]!.laneRankAtCommit,
+      { rank: 3, source: "parent" },
+      "must be leg 44's (worst leg's) own lane rank at commit, not leg 48's (terminal leg's)",
+    );
+  });
+
+  it("falls back to the terminal leg's own cortex/budgetVerdict/laneRankAtCommit when the worst leg IS the terminal leg (no mismatch to fix)", () => {
+    const parent = row({
+      id: 60,
+      roll_seq: 0,
+      realized_pnl_pct: -5,
+      graded_at: "2026-08-05T12:00:00Z",
+    });
+    const child = row({
+      id: 61,
+      roll_seq: 1,
+      parent_position_id: 60,
+      root_position_id: 60,
+      realized_pnl_pct: -40.83,
+      entry_context: {
+        cortex: { verdict: "thin_evidence", source: "child" },
+        budget_verdict: { allowed: true, source: "child" },
+        lane_rank_at_commit: { rank: 2, source: "child" },
+      },
+      closed_at: "2026-08-12T12:00:00Z",
+      graded_at: "2026-08-12T12:05:00Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, child]]);
+    assert.equal(out[0]!.exitPnlPct, -40.83, "terminal leg is also the worst leg here");
+    assert.deepEqual(
+      out[0]!.cortex,
+      { verdict: "thin_evidence", source: "child" },
+      "terminal leg's own value IS the worst leg's value -- keep it",
+    );
+    assert.deepEqual(out[0]!.budgetVerdict, { allowed: true, source: "child" });
+    assert.deepEqual(out[0]!.laneRankAtCommit, { rank: 2, source: "child" });
   });
 });

@@ -133,6 +133,15 @@ export function expireStaleLocksSync() {
     const lock = readLock(taskId);
     if (!lock) continue;
     if (Date.parse(lock.lease_until) <= Date.now()) {
+      // Mirror claimLock's own reclaim rule: an expired lease only gets swept
+      // away when the recorded owner's heartbeat is ALSO stale. Without this
+      // check, a slow-but-alive agent whose task simply runs longer than the
+      // lease (e.g. a >90min lease window) gets its lock deleted out from
+      // under it by the next watchdog/syncContext pass, letting a second
+      // agent claim the same task while the first is still actively working
+      // it — the exact double-claim this lease/heartbeat system exists to
+      // prevent (see claimLock's "lease_expired_owner_alive" branch).
+      if (!isOwnerHeartbeatStale(lock.owner)) continue;
       unlinkSync(lockPath(taskId));
       expired.push(taskId);
     }

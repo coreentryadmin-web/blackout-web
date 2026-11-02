@@ -70,6 +70,130 @@ test("claimLock: expired lease NOT reclaimed when owner heartbeat is fresh", asy
   releaseLock("BO-TEST-0004", "claude");
 });
 
+test("expireStaleLocksSync: does NOT delete an expired lease whose owner heartbeat is fresh", async () => {
+  const { claimLock, readLock, releaseLock, expireStaleLocksSync } = await import("./lib/locks.mjs");
+  const { writeJsonAtomic } = await import("./lib/state.mjs");
+  const { heartbeatPath } = await import("./lib/paths.mjs");
+  // Owner is slow but alive (fresh heartbeat) — its task just runs longer than the lease.
+  writeJsonAtomic(heartbeatPath("claude"), {
+    agent: "claude",
+    last_seen: new Date().toISOString(),
+    healthy: true,
+  });
+  claimLock("BO-TEST-0005", "claude", { leaseMs: 1 });
+  await new Promise((r) => setTimeout(r, 5));
+  const expired = expireStaleLocksSync();
+  assert.ok(!expired.includes("BO-TEST-0005"), "must not sweep a lock whose owner heartbeat is fresh");
+  assert.ok(readLock("BO-TEST-0005"), "lock file must still exist on disk");
+  releaseLock("BO-TEST-0005", "claude");
+});
+
+test("expireStaleLocksSync: DOES delete an expired lease whose owner heartbeat is stale", async () => {
+  const { claimLock, readLock, expireStaleLocksSync } = await import("./lib/locks.mjs");
+  const { writeJsonAtomic } = await import("./lib/state.mjs");
+  const { heartbeatPath } = await import("./lib/paths.mjs");
+  writeJsonAtomic(heartbeatPath("claude"), {
+    agent: "claude",
+    last_seen: "2020-01-01T00:00:00.000Z",
+    healthy: false,
+  });
+  claimLock("BO-TEST-0006", "claude", { leaseMs: 1 });
+  await new Promise((r) => setTimeout(r, 5));
+  const expired = expireStaleLocksSync();
+  assert.ok(expired.includes("BO-TEST-0006"), "must sweep a lock whose owner heartbeat is stale");
+  assert.equal(readLock("BO-TEST-0006"), null, "lock file must be removed");
+});
+
+test("releaseTaskInState: respects the shared state-write lock instead of writing unlocked (regression)", async () => {
+  // Root cause: release-task.mjs used to call `readAgentState()` -> mutate -> `writeAgentState()`
+  // directly, with zero participation in `withStateLock` -- the exact same protocol
+  // claim-task.mjs/record-review.mjs already use for this identical AGENT_STATE.json
+  // read-modify-write. An unlocked writer can always "succeed" even while another writer
+  // (sync-context.mjs/handoff.mjs, which previously had the same bug) is mid-update, silently
+  // clobbering whatever that locked writer is about to commit. Proof: while the shared state
+  // lock is already held by a DIFFERENT owner, the fixed `releaseTaskInState` must be refused
+  // (ok:false) rather than writing anyway -- before the fix, `releaseTaskInState` didn't exist
+  // at all (release-task.mjs had no exported, lock-aware function to call here).
+  const { claimLock, releaseLock } = await import("./lib/locks.mjs");
+  const { readAgentState, writeAgentState } = await import("./lib/state.mjs");
+  const { withStateLock } = await import("./lib/state-lock.mjs");
+  const { releaseTaskInState } = await import("./release-task.mjs");
+
+  claimLock("BO-TEST-0007", "claude", { leaseMs: 60_000 });
+  // Seed the state-side task record the same lock-respecting way claim-task.mjs does, so the
+  // retry assertion below can check the release actually mutated it.
+  withStateLock(() => {
+    const state = readAgentState();
+    state.tasks["BO-TEST-0007"] = { task_id: "BO-TEST-0007", owner: "claude", phase: "CLAIMED" };
+    writeAgentState(state);
+    return state;
+  }, { owner: "claim-BO-TEST-0007" });
+  try {
+    let inner = null;
+    const outer = withStateLock(() => {
+      // Simulate a concurrent writer (sync-context.mjs/handoff.mjs) holding the shared state
+      // lock while it does its own unrelated, slower update.
+      inner = releaseTaskInState("BO-TEST-0007", "claude");
+      return "outer-done";
+    }, { owner: "concurrent-other-writer" });
+
+    assert.equal(outer.ok, true, "the outer (first) lock holder must proceed normally");
+    assert.ok(inner, "releaseTaskInState must return a result even when blocked");
+    assert.equal(inner.ok, false, "release must be refused while another writer holds the state lock, not write unprotected");
+    assert.equal(inner.reason, "state_lock_held");
+
+    // Once the lock is free, the release proceeds and actually lands.
+    const retry = releaseTaskInState("BO-TEST-0007", "claude");
+    assert.equal(retry.ok, true);
+    assert.equal(retry.result.tasks["BO-TEST-0007"]?.phase, "RELEASED");
+  } finally {
+    releaseLock("BO-TEST-0007", "claude");
+  }
+});
+
+test("syncContext: a task claimed while this call's own fetch is in flight survives its final write (regression, real interleaving)", async () => {
+  // Root cause: syncContext() used to call `readAgentState()` at the very TOP of the function,
+  // then do several seconds of `gh`/network I/O (this test's own real trigger: the REST/public
+  // fallback path fetchOpenPrsAsync exercises), then write that SAME now-stale object back with
+  // no lock at all -- silently erasing any claim/release a concurrently-running LOCKED writer
+  // (claim-task.mjs/release-task.mjs) committed during that gap.
+  //
+  // This exercises the real race, not a simulation of it: syncContext() is an async function, so
+  // calling it runs synchronously up to its first `await` (inside fetchOpenPrsAsync) and then
+  // yields control back here *before* resolving -- exactly the window the bug lived in. Claiming
+  // a task via the same lock-respecting path claim-task.mjs uses, in that window, must still be
+  // visible after `syncPromise` resolves.
+  const { claimLock, releaseLock } = await import("./lib/locks.mjs");
+  const { readAgentState, writeAgentState } = await import("./lib/state.mjs");
+  const { withStateLock } = await import("./lib/state-lock.mjs");
+  const { releaseTaskInState } = await import("./release-task.mjs");
+  const { syncContext } = await import("./sync-context.mjs");
+
+  const syncPromise = syncContext();
+
+  claimLock("BO-TEST-0009", "claude", { leaseMs: 60_000 });
+  const claimed = withStateLock(() => {
+    const state = readAgentState();
+    state.tasks["BO-TEST-0009"] = { task_id: "BO-TEST-0009", owner: "claude", phase: "CLAIMED" };
+    writeAgentState(state);
+    return state;
+  }, { owner: "claim-BO-TEST-0009" });
+  assert.equal(claimed.ok, true, "the in-flight claim itself must land (sanity check on the harness, not the fix)");
+
+  try {
+    await syncPromise;
+    const after = readAgentState();
+    assert.equal(
+      after.tasks["BO-TEST-0009"]?.phase,
+      "CLAIMED",
+      "a task claimed while syncContext()'s own gh/network fetch was in flight must survive its final write"
+    );
+  } finally {
+    releaseTaskInState("BO-TEST-0009", "claude");
+    releaseLock("BO-TEST-0009", "claude");
+  }
+});
+
 test("dispatch-prompt includes coordination rules", () => {
   const r = spawnSync("node", ["scripts/blackout-agent/dispatch-prompt.mjs", "--agent=cursor"], { encoding: "utf8", cwd: repoRoot });
   assert.equal(r.status, 0);
@@ -129,6 +253,38 @@ test("discoverStandingWork flags deploy drift", async () => {
   const found = discoverStandingWork("cursor", state);
   assert.equal(found.length, 1);
   assert.equal(found[0].id, "BO-P1-0101");
+});
+
+test("discoverStandingWork flags a FAILED deploy even when the deploy SHA matches main", async () => {
+  // Regression: sync-context.mjs records `last_deploy_status` from the most recent
+  // ecr-push-production.yml run on main (conclusion ?? status), but discoverStandingWork
+  // only ever compared last_main_sha to last_deploy_sha. The most recent deploy ATTEMPT's
+  // headSha always equals the SHA it was attempting to deploy, so a FAILED deploy of the
+  // current main commit leaves last_deploy_sha === last_main_sha — "no drift" by the old
+  // SHA-only check, even though production never actually received that commit.
+  const { discoverStandingWork } = await import("./select-task.mjs");
+  const state = {
+    open_prs: [],
+    reviews: {},
+    deploy: { last_main_sha: "abc123", last_deploy_sha: "abc123", last_deploy_status: "failure" },
+  };
+  const found = discoverStandingWork("cursor", state);
+  assert.equal(found.length, 1, "a failed deploy of the current main SHA must still be surfaced as standing work");
+  assert.equal(found[0].id, "BO-P1-0101");
+  assert.match(found[0].title, /failure/i);
+});
+
+test("discoverStandingWork does NOT flag an in-progress deploy of the current SHA as failed", async () => {
+  // An in-progress/queued run has conclusion=null, so last_deploy_status becomes its
+  // `status` field (e.g. "in_progress") — that must not be misread as a failure.
+  const { discoverStandingWork } = await import("./select-task.mjs");
+  const state = {
+    open_prs: [],
+    reviews: {},
+    deploy: { last_main_sha: "abc123", last_deploy_sha: "abc123", last_deploy_status: "in_progress" },
+  };
+  const found = discoverStandingWork("cursor", state);
+  assert.equal(found.length, 0);
 });
 
 test("select-task returns highest-priority P1 task for cursor", async () => {
@@ -204,6 +360,64 @@ test("formatVerifyStatus normalizes GraphQL and REST check shapes", async () => 
   assert.equal(formatVerifyStatus({ status: "COMPLETED", conclusion: "SUCCESS" }), "COMPLETED/SUCCESS");
   assert.equal(formatVerifyStatus({ status: "IN_PROGRESS", conclusion: null }), "IN_PROGRESS/pending");
   assert.equal(formatVerifyStatus(null), "unknown");
+
+  // Regression (round 336): GraphQL's statusCheckRollup uses UPPERCASE enum values
+  // ("COMPLETED"/"SUCCESS"), but the REST /check-runs fallback (used when GraphQL's
+  // shared budget is exhausted -- see fetchOpenPrs's own comment on why the fallback
+  // exists) returns LOWERCASE values ("completed"/"success") per GitHub's REST API.
+  // Every consumer of the resulting `pr.verify` string (select-task.mjs's
+  // discoverStandingWork, bootstrap.mjs's review_queue) matches it with a
+  // case-sensitive `.includes("SUCCESS")` / `.includes("FAILURE")` check, so a
+  // REST-sourced PR must normalize to the same uppercase shape or it is silently
+  // misclassified as neither green nor failing -- exactly when the GraphQL fallback
+  // fires, i.e. when the fleet is busiest and peer-review visibility matters most.
+  assert.equal(formatVerifyStatus({ status: "completed", conclusion: "success" }), "COMPLETED/SUCCESS");
+  assert.equal(formatVerifyStatus({ status: "completed", conclusion: "failure" }), "COMPLETED/FAILURE");
+  assert.ok(
+    formatVerifyStatus({ status: "completed", conclusion: "success" }).includes("SUCCESS"),
+    "REST-sourced success must still satisfy the same .includes(\"SUCCESS\") checks as GraphQL-sourced success"
+  );
+  assert.ok(
+    formatVerifyStatus({ status: "completed", conclusion: "failure" }).includes("FAILURE"),
+    "REST-sourced failure must still satisfy the same .includes(\"FAILURE\") checks as GraphQL-sourced failure"
+  );
+});
+
+test("discoverStandingWork: REST-sourced (lowercase) verify status is classified the same as GraphQL's uppercase shape", async () => {
+  // End-to-end proof of the same bug via the real consumer. Without normalizing case
+  // in formatVerifyStatus, a REST-fallback-sourced green, peer-approved PR is never
+  // recognized as safe (verifyGreen stays false) and is wrongly re-queued for review
+  // forever, while a REST-fallback-sourced FAILING PR is never skipped by the
+  // `includes("FAILURE")` guard either, since neither substring matches lowercase text.
+  const { discoverStandingWork } = await import("./select-task.mjs");
+  const { formatVerifyStatus } = await import("./sync-context.mjs");
+
+  const restSuccessVerify = formatVerifyStatus({ status: "completed", conclusion: "success" });
+  const stateApproved = {
+    open_prs: [
+      { number: 201, title: "cursor feature", branch: "cursor/foo", agent: "cursor", draft: false, verify: restSuccessVerify },
+    ],
+    reviews: {
+      "pr-201": { head_sha: "abc", safe_to_merge: true, reviewer: "claude" },
+    },
+    deploy: { last_main_sha: "abc", last_deploy_sha: "abc" },
+  };
+  // Already green + already peer-approved at current HEAD -- must NOT be re-queued.
+  // (cursor built #201, so claude is the one checking for standing review work.)
+  const foundApproved = discoverStandingWork("claude", stateApproved);
+  assert.equal(foundApproved.length, 0, "a REST-sourced green + approved PR must not stay stuck in the review queue");
+
+  const restFailureVerify = formatVerifyStatus({ status: "completed", conclusion: "failure" });
+  const stateFailing = {
+    open_prs: [
+      { number: 202, title: "claude feature", branch: "claude/foo", agent: "claude", draft: false, verify: restFailureVerify },
+    ],
+    reviews: {},
+    deploy: { last_main_sha: "abc", last_deploy_sha: "abc" },
+  };
+  // CI is red -- must be skipped, never queued as reviewable standing work.
+  const foundFailing = discoverStandingWork("cursor", stateFailing);
+  assert.equal(foundFailing.length, 0, "a REST-sourced failing PR must be skipped, not queued for peer review");
 });
 
 test("fetchOpenPrs: empty GraphQL success short-circuits without REST fallback", () => {

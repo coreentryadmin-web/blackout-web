@@ -28,6 +28,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { selectEarliestBombCandidates } from "./date-bomb-select.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PRELOAD = join(HERE, "lib", "faketime-preload.mjs");
@@ -118,14 +119,10 @@ for (const days of OFFSET_DAYS) {
 
 // A bomb = fails at some offset, passes at baseline. Report the EARLIEST offset that trips it, so
 // the report says how long there is before it fires rather than only that it eventually does.
-const candidates = new Map(); // name -> { days, file }
-for (const r of runs) {
-  if (r.offsetDays === 0 || !r.ran) continue;
-  for (const [name, file] of r.failures) {
-    if (baseline.failures.has(name)) continue; // already broken today — not this scan's finding
-    if (!candidates.has(name)) candidates.set(name, { days: r.offsetDays, file });
-  }
-}
+// selectEarliestBombCandidates (date-bomb-select.mjs) tracks the true MINIMUM offsetDays per test
+// name, independent of the order `runs` happens to be in — see that file's header for why an
+// inline "first one wins" loop here used to silently assume `--offsets` is passed pre-sorted.
+const candidates = selectEarliestBombCandidates(baseline.failures, runs);
 
 /**
  * FLAKE-VS-BOMB CONFIRMATION.

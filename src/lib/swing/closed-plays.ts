@@ -3,7 +3,7 @@
 // The horizons lane serves pre-entry + live open book; this mapper covers the third bucket members
 // expect from 0DTE parity: finished swing positions with realized P&L. PURE — callers supply DB rows.
 
-import type { SwingPositionRow } from "../db";
+import { SWING_TERMINAL_STATUSES, type SwingPositionRow } from "../db";
 import { calendarDte } from "../horizon-fanout";
 import { HORIZONS } from "../horizons";
 import { buildSwingRecord } from "./record";
@@ -191,9 +191,44 @@ function contractBundleFromRow(
   return { strike, right, expiry, dte, occ: row.contract_occ, mid: row.last_mark, delta: row.contract_delta };
 }
 
-/** Map one graded CLOSED ledger row to a deck source. Null when not reconstructible. */
+/**
+ * Map one graded terminal (CLOSED or ROLLED) ledger row to a deck source. Null when not
+ * reconstructible.
+ *
+ * BUG FIX (2026-11-01, Ask Largo standing mandate, follow-on gap from #7316's leg-identity fix,
+ * caught by audit before it could manifest live — deploy hadn't caught up to #7316 yet).
+ * This gate used to be a literal `row.status !== "CLOSED"`, which refused to build a card for a
+ * ROLLED row at all — returning `null` instead. That was invisible before #7316 because the OLD,
+ * buggy `loadClosedPlay` id-matching (`graded.find((r) => r.id === positionId || r.root_position_id
+ * === positionId)`, no precedence between the two disjuncts) usually surfaced a DIFFERENT, later
+ * leg's row for a ROOT/intermediate leg's own id — so this gate's `null` on the ROLLED row itself
+ * was rarely the thing callers actually observed. #7316 fixed that id-matching to check the EXACT
+ * id match first, which means a caller asking for a rolled chain's ROOT/intermediate leg BY ITS OWN
+ * id now correctly reaches ITS OWN row here — a row whose real DB `status` is `"ROLLED"`, never
+ * `"CLOSED"` (confirmed live, AMZN leg id 44: `status: "ROLLED"`). This gate then refused it,
+ * flipping the user-visible symptom from "serves the wrong leg's data" to a flat 404 "play not
+ * found" for every such request, for a leg that is fully graded (`graded_at` set, `realized_pnl_pct`
+ * frozen — see `gradeSwingPosition`, db.ts) and whose own outcome is exactly as disclosable as a
+ * CLOSED row's.
+ *
+ * `SWING_TERMINAL_STATUSES` (db.ts) already treats CLOSED and ROLLED as the two equally-terminal/
+ * gradeable statuses everywhere else in the ledger (the monotonic status-transition guard, every
+ * `fetchSwingPositionsRange`-style "closed or rolled" query) — this is the one remaining place that
+ * had its own narrower, CLOSED-only notion of "terminal". Importing the shared constant instead of
+ * redefining it means this call site can never drift from that definition again.
+ *
+ * `status: "CLOSED"` below stays a HARDCODED literal — never `row.status` — for both CLOSED and
+ * ROLLED rows: `TerminalPlay.status` is `DeckStatus` (command-deck/types.ts), which has no `ROLLED`
+ * member, and the adapter's own `asStatus()` (adapters.ts) silently coerces any string outside its
+ * six-member whitelist to `"WATCH"` — so threading a literal `"ROLLED"` through would have swapped
+ * a correctness bug for a worse one (a settled, graded position rendering as a live WATCH
+ * candidate). `"CLOSED"` here means "this leg is a settled, terminal, non-live card", which is
+ * equally true of a CLOSED and a ROLLED leg; the leg's own P&L/contract/dates (not its UI bucket)
+ * are what tell the real CLOSED-vs-ROLLED story, and `closedReasonFromRow` below already derives
+ * those honestly from this row's own data (sign of `realized_pnl_pct`), unaffected by this gate.
+ */
 export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckSource | null {
-  if (row.status !== "CLOSED" || !row.graded_at) return null;
+  if (!SWING_TERMINAL_STATUSES.has(row.status) || !row.graded_at) return null;
   const bundle = contractBundleFromRow(row);
   if (!bundle) return null;
   const { strike, right, expiry, dte, mid, delta } = bundle;
@@ -435,6 +470,47 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
     const worstLegExitAt = worstLegRow ? worstLegRow.closed_at ?? worstLegRow.graded_at : null;
     const worstLegCommittedAt = worstLegRow ? worstLegRow.committed_at : null;
     const worstLegFirstSeenAt = worstLegRow ? worstLegRow.first_seen_at : null;
+    // BUG FIX (Ask Largo standing mandate, 2026-11-01, 6th site of the same bug class as the five
+    // fixes above — caught by audit before a live wrong-boolean repro, unlike those five's live
+    // reproductions): `trimEnforcedBeforeClose` was the one remaining field still surviving
+    // unconditionally from the `...src` spread below (`closedDeckSourceFromRow(terminal)`'s own
+    // `scale_out_grade.trim_enforced_before_close`), never re-pointed at `worstLegRow` the way
+    // positionId / entryPremium|peakPremium|troughPremium / contract|occ|mid|delta /
+    // entryTriggerUnderlyingPx|invalidationUnderlyingPx / exitAt|committedAt|firstSeenAt all already
+    // are. `trim_enforced_before_close` is a real per-row fact persisted onto `scale_out_grade` at
+    // grade time (db.ts's `gradeSwingPosition`, from that row's OWN pre-update status) — the same
+    // per-leg class as every sibling field above, so there is no "no per-leg equivalent" exception
+    // here either. Consequence: for a worst-leg != terminal-leg chain, this field would describe the
+    // TERMINAL leg's own trim history while `closedReason`/`exitPnlPct` on the exact same served card
+    // already correctly describe the WORST leg — `adapters.ts`'s exit-ladder "fired" gate
+    // (`status === "TRIM" || src.trimEnforcedBeforeClose === true`) and the CLOSED-bucket "TARGET"
+    // badge (`play-card-lifecycle.ts`) would both be gated on the wrong leg's own trim history. Fix:
+    // borrow it from `worstLegRow` via the same `trimEnforcedBeforeCloseFromScaleOutGrade` parser
+    // used for the single-leg path, falling back to `src`'s own (terminal) value only when the worst
+    // leg IS the terminal leg — the identical `worstLegIsTerminal` gate every sibling field uses.
+    const worstLegTrimEnforcedBeforeClose = worstLegRow
+      ? trimEnforcedBeforeCloseFromScaleOutGrade(worstLegRow.scale_out_grade)
+      : null;
+    // BUG FIX (Ask Largo standing mandate, 2026-11-02, 7th site of the same bug class as the six
+    // fixes above): `cortex`/`budgetVerdict`/`laneRankAtCommit` are set once in
+    // `closedDeckSourceFromRow` (above) from `row.entry_context.cortex`/`.budget_verdict`/
+    // `.lane_rank_at_commit` — real per-row JSONB columns on `swing_positions`, the same class as
+    // `entry_premium`/`contract_delta`/`entry_underlying_px` already re-pointed above. They were
+    // never added to the re-pointing list and survive unconditionally via the `...src` spread
+    // below (`src` is always `closedDeckSourceFromRow(terminal)`), so a worst-leg != terminal-leg
+    // chain pairs the worst leg's own P&L/contract/exit identity (already correctly re-pointed by
+    // the six fixes above) with the TERMINAL leg's own Cortex veto/decision snapshot, budget
+    // verdict, and lane rank at commit — the same cross-leg mismatch, one field further. Reachable:
+    // `terminalPlayFromClosedSwing` (adapters.ts) carries `src.cortex`/`src.budgetVerdict`/
+    // `src.laneRankAtCommit` straight into every served `TerminalPlay` for CLOSED swing cards. Fix:
+    // borrow all three from `worstLegRow.entry_context` the same way every sibling field above
+    // already does, falling back to `src`'s own (terminal) value only when the worst leg IS the
+    // terminal leg — the identical `worstLegIsTerminal` gate every sibling field uses.
+    const worstLegCortex = worstLegRow ? worstLegRow.entry_context?.cortex ?? null : null;
+    const worstLegBudgetVerdict = worstLegRow ? worstLegRow.entry_context?.budget_verdict ?? null : null;
+    const worstLegLaneRankAtCommit = worstLegRow
+      ? worstLegRow.entry_context?.lane_rank_at_commit ?? null
+      : null;
     out.push({
       ...src,
       // BUG FIX (Ask Largo standing mandate, 2026-10-22, live repro AMZN positionId 48 (root 44) +
@@ -462,6 +538,10 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
       exitAt: worstLegIsTerminal ? src.exitAt : worstLegExitAt,
       committedAt: worstLegIsTerminal ? src.committedAt : worstLegCommittedAt,
       firstSeenAt: worstLegIsTerminal ? src.firstSeenAt : worstLegFirstSeenAt,
+      trimEnforcedBeforeClose: worstLegIsTerminal ? src.trimEnforcedBeforeClose : worstLegTrimEnforcedBeforeClose,
+      cortex: worstLegIsTerminal ? src.cortex : worstLegCortex,
+      budgetVerdict: worstLegIsTerminal ? src.budgetVerdict : worstLegBudgetVerdict,
+      laneRankAtCommit: worstLegIsTerminal ? src.laneRankAtCommit : worstLegLaneRankAtCommit,
       closedReason: compositeReason,
       reason: `${src.reason} · chain composite (${record.composite.gradedLegs} leg${record.composite.gradedLegs === 1 ? "" : "s"})`,
       ...(worstLegBundle

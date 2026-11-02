@@ -1,3 +1,28 @@
+## WATCH LIST — 2026-11-02 Swing `thesisBreakCoaching` no longer names a nonexistent "next trim rail" on a TRIM-status position (PR #7388)
+
+**What was shipped:** Found during a live-check of #7380 itself (`GET /api/market/nighthawk/
+horizons?view=swings` + `GET /api/market/swing/record` against production). `thesisBreakCoaching()`
+(`src/lib/swing/play-brief-narrative-coaching.ts`) had the same defect #7380 fixed in the sibling
+`crossDeskResolution()`: its "warn" branch named "your next trim rail" unconditionally, with no
+reference to `play.status`. `SWING_SCALE_OUT_POLICY` has exactly one trim rung, so once
+`status === "TRIM"` that rung has already fired and only the trailing runner stop remains. Fixed
+the same way #7380 did: the "warn" branch now checks `play.status === "TRIM"` and names the
+trailing stop instead; `OPEN`/`HOLD` keep the original "next trim rail" wording (a rail genuinely
+is still ahead for those). No live TRIM position carried a calibrated `thesisHealth` at audit time
+(today's 11 TRIM rows are all Banger-origin, thesisHealth withheld) — reproduced instead with a
+direct repro against the live, unmodified source. Regression test RED→GREEN (203/203),
+`tsc --noEmit` clean, `play-brief.test.ts`/`play-brief-intel.test.ts`/`thesis-health.test.ts`
+582/582.
+
+**Specific thing to check next cycle:** once a NATIVE (non-Banger) swing position reaches
+`status: TRIM` (check `GET /api/market/nighthawk/horizons?view=swings`'s SWING lane for a
+`liveStatus: "TRIM"` row whose `signalKinds` is NOT `["BANGER"]`), fetch its play-brief
+(`GET /api/market/swing/play-brief?playId=SWING:<T>&...`) and, if its "Trade manager read" section
+ever renders a "Thesis WARN"/"Thesis BREAK" bullet, confirm it says "the trailing stop is your
+friend" rather than "next trim rail" — this specific text was never observed wrong live (no
+qualifying position existed yet), so this is the first live chance to confirm the fix actually
+fires in production, not just in the unit repro.
+
 ## WATCH LIST — 2026-10-26 SPX Slayer discloses `oi_changes`/`iv_term_structure` as permanently missing (PR pending at time of writing — see commit for the merged SHA)
 
 **What was shipped:** `buildDeskDataQuality()` (`spx-desk.ts`) now names `oi_changes` and

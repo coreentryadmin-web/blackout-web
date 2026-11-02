@@ -747,3 +747,34 @@ export function closestRowGapPx(ys: readonly number[]): number {
   }
   return gap;
 }
+
+/**
+ * Should THIS run of a bead trail flash a "birth" marker?
+ *
+ * A trail is split into separate runs (bands) wherever a time gap exceeds the dominant-set
+ * threshold (`GAP_SPLIT_FACTOR` in vector-wall-rail-primitive.ts) — i.e. the wall genuinely left
+ * the dominant set and later came back. The OLD marker-based renderer (`buildWallBeadMarkers` in
+ * VectorChart.tsx) explicitly flashes a birth boost for BOTH cases: `trueBirth` (the trail's very
+ * first point, when it is strictly after the drawn window's earliest bucket — a window-edge start
+ * is unknowable, not a real formation) AND `reborn` (any later point preceded by a real gap,
+ * unconditionally — the trail already proved there was data before it, so a gap there is a
+ * genuine re-formation, not a window-trim artifact).
+ *
+ * The canvas bead-rail primitive's `flush()` only ever checked the FIRST case
+ * (`runStartIdx === 0`), so every run after the first — i.e. every REBIRTH — silently never
+ * flashed, even though the band-splitting logic exists specifically to detect exactly that event
+ * ("a real dead stretch... breaks the band honestly"). This is the shared predicate both the
+ * first-run window-edge check and every later run's unconditional rebirth need, so the two paths
+ * (and the pure/render boundary) cannot drift apart again.
+ */
+export function wallBeadRunIsBirth(
+  runStartIdx: number,
+  runStartTime: number,
+  earliest: number
+): boolean {
+  // Any run after the first already proved the trail had earlier data (the preceding run), so a
+  // gap here is unconditionally a real re-formation — never suppressed by the window-edge guard,
+  // which only makes sense for a trail's very FIRST observed point.
+  if (runStartIdx !== 0) return true;
+  return runStartTime > earliest;
+}

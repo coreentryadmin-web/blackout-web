@@ -2382,6 +2382,58 @@ test("composeSwingPlayBrief: entry price and exit-policy stop/target rails surfa
   assert.equal(railsEvidence!.provenance?.source, "Swing ledger");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-01, live repro CC positionId 2320): the Entry and
+// Exit-policy rails facts above hardcoded `asOf: ctx.asOf, freshness: "recent"` — today's
+// brief-read time — even though `play.entry`/`play.exitPolicy.stop_premium`/`target_premium` are
+// frozen at commit and never recomputed on a later read. The sibling "Setup score" fact (test
+// above, 2026-10-25) was anchored to `committedAt` for the identical reason; this proves the same
+// fix now applies here too, so a position held across session days doesn't show "Setup score"
+// correctly stale while "Entry"/"Exit-policy rails" for the SAME commit event read freshly recent.
+test("composeSwingPlayBrief: Entry and Exit-policy rails evidence are anchored to the play's own committedAt, not the brief's read time", () => {
+  const committedAt = "2026-09-08T14:00:00.000Z"; // 2 days before asOf below
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      committedAt,
+      entry: 0.55,
+      mark: 0.6,
+      pnlPct: 9.1,
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 1.1, fired: false }],
+        runner_fraction: 0.5,
+        stop_premium: 0.22,
+        target_premium: 1.1,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-09-10 16:00 ET",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+
+  const entryEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Entry:"));
+  assert.ok(entryEvidence, "expected a citable entry-price evidence entry");
+  assert.equal(entryEvidence!.provenance?.asOf, etStampFromIso(committedAt), "must cite when the position was actually committed, not when the brief was read");
+  assert.notEqual(entryEvidence!.provenance?.asOf, ctx.asOf, "must not reuse the read-time timestamp for a commit-pinned fact");
+  assert.equal(entryEvidence!.provenance?.freshness, "stale", "an entry committed 2 real days ago must never read as freshly 'recent'");
+
+  const railsEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Exit-policy rails:"));
+  assert.ok(railsEvidence, "expected a citable exit-policy rails evidence entry");
+  assert.equal(railsEvidence!.provenance?.asOf, etStampFromIso(committedAt), "must cite when the exit-policy rails were actually committed, not when the brief was read");
+  assert.equal(railsEvidence!.provenance?.freshness, "stale", "exit-policy rails committed 2 real days ago must never read as freshly 'recent'");
+});
+
 // BUG FIX (2026-10-26, Ask Largo standing mandate, live-production audit): the test above only
 // ever fixtured a NOT-yet-fired trim rung (`fired: false`), so it could never catch the evidence[]
 // feeder citing a dead rail as live. Once a trim has fired (the position has scaled out), the

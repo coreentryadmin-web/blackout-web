@@ -31,6 +31,7 @@ import {
   ROW_HALO_BAR_SPACING_FILL,
   ROW_SWELL_FLOOR,
   sidePctMaxima,
+  wallBeadRunIsBirth,
 } from "./vector-wall-rail-core";
 
 // ── withA ────────────────────────────────────────────────────────────────────
@@ -893,4 +894,31 @@ test("wallBeadColorShade: malformed input passes through rather than painting Na
 test("Sep-3 reference render constants stay pinned", () => {
   assert.equal(BEAD_ROW_FILL_FOR_TEST, 0.34, "core bead fill matches Sep-3 reference");
   assert.equal(ROW_HALO_ROW_GAP_FILL, 0.45, "combined halo budget matches Sep-3 reference");
+});
+
+// ── wallBeadRunIsBirth (REBIRTH regression) ────────────────────────────────────────────────────
+// The canvas bead-rail primitive's flush() used to gate its birth flash on `runStartIdx === 0`
+// ALONE — so a wall that genuinely left the dominant set and came back later (its own run, split
+// by GAP_SPLIT_FACTOR) never flashed birth at all, even though that is exactly the "rebirth" event
+// the OLDER marker-based renderer (buildWallBeadMarkers in VectorChart.tsx) explicitly boosts.
+
+test("wallBeadRunIsBirth: first run flashes only when it starts strictly after the window edge", () => {
+  // The trail's very first observed point sits AT the drawn window's earliest bucket — this could
+  // be a live-window trim artifact (the wall may have existed before the window), not a real
+  // formation, so it must NOT flash.
+  assert.equal(wallBeadRunIsBirth(0, 1000, 1000), false);
+  // Strictly after the window edge — a genuine first-sight formation.
+  assert.equal(wallBeadRunIsBirth(0, 1005, 1000), true);
+});
+
+test("wallBeadRunIsBirth: every run AFTER the first is an unconditional rebirth", () => {
+  // runStartIdx !== 0 means this run was preceded by a real gap-split (the wall had earlier data,
+  // then a dead stretch, then came back) — it is a genuine reformation regardless of where its
+  // start time sits relative to the window edge, because the trail already proved there was data
+  // before it. The old `runStartIdx === 0` gate silently dropped this case entirely.
+  assert.equal(wallBeadRunIsBirth(3, 2000, 1000), true);
+  // Even when the later run's start time is NOT strictly after `earliest` in some degenerate
+  // ordering, a non-first run is still a real rebirth — the window-edge guard only ever applies
+  // to the trail's first point.
+  assert.equal(wallBeadRunIsBirth(1, 500, 1000), true);
 });

@@ -161,6 +161,20 @@ export async function readCrossInstanceTelemetry(): Promise<{
       }
     }
 
+    // The instance SET has a longer TTL (2x) than each instance's own data key, specifically
+    // so a brief flush gap doesn't drop an instance from the roster mid-expiry. But that means
+    // there is a real window where every id in the set still resolves (smembers succeeds) while
+    // every one of their data keys has already expired (e.g. a Redis blip longer than one data
+    // key's TTL but shorter than the set's) — every `raw` above is null, nothing ever runs the
+    // `reporting += 1` line, and this would otherwise return a NON-null object with empty
+    // `providers`/`rate_limits` maps. Callers (deriveClusterCallsByProvider1m,
+    // admin-api-dashboard.ts, market-health.ts) all treat `null` as "no cluster data, fall back
+    // to local" but treat a present-but-empty object as real cluster data showing zero usage —
+    // the exact opposite of what's true here, and it silently zeroes out genuine local telemetry
+    // (e.g. real-time rate-quota headroom) right when Redis itself is unstable. Report the same
+    // "no data" signal (null) as the zero-ids case just above, instead of a hollow success.
+    if (reporting === 0) return null;
+
     return { instances_reporting: reporting, rate_limits, providers };
   } catch {
     return null;

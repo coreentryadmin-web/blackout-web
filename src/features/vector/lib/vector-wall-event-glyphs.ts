@@ -140,6 +140,27 @@ export function wallEventToGlyph(ev: VectorWallEvent): WallEventGlyph | null {
 }
 
 /**
+ * Factor applied to a trail's own median bucket step to decide what counts as a REAL gap (the
+ * wall genuinely left the dominant set) vs ordinary recorder cadence jitter.
+ *
+ * Mirrors `GAP_SPLIT_FACTOR` in vector-wall-rail-primitive.ts exactly (same value, same median-
+ * of-steps formula below) so this independent Events-toggle overlay agrees with the default bead
+ * render on what a "rebirth" is. Duplicated rather than imported: that module pulls in
+ * lightweight-charts' primitive types and is not meant to be imported by a pure/testable sibling.
+ * Keep the two constants in sync if either changes.
+ */
+const REBIRTH_GAP_SPLIT_FACTOR = 2.5;
+
+/** Median of consecutive-point time deltas — 0 when there are fewer than two points. */
+function medianBucketStep(times: readonly number[]): number {
+  if (times.length < 2) return 0;
+  const steps: number[] = [];
+  for (let i = 1; i < times.length; i++) steps.push(times[i]! - times[i - 1]!);
+  steps.sort((a, b) => a - b);
+  return steps[Math.floor(steps.length / 2)]!;
+}
+
+/**
  * Birth/death + king handover glyphs derived from the trails actually on screen.
  *
  * MODELED (reconstructed) points are excluded from birth/death detection — mirrors the
@@ -153,6 +174,14 @@ export function wallEventToGlyph(ev: VectorWallEvent): WallEventGlyph | null {
  * `WallHistorySample.modeled`'s own doc comment calls out ("modeled ≠ observed must be visible").
  * The bead layer already drew this distinction (dim ghost beads); the glyph layer silently did
  * not, so a reconstructed prefix could read as a real structural event on the Events overlay.
+ *
+ * REBIRTH (added after #7376): `buildWallBeadMarkers` (VectorChart.tsx) and the canvas bead-rail
+ * primitive (post-#7376's `wallBeadRunIsBirth`) both flash a birth-equivalent cue not only at a
+ * trail's first point but at ANY later point preceded by a real gap — a wall that dropped out of
+ * the dominant set and later re-entered is a genuine re-formation, not a continuation. This loop
+ * used to check ONLY `pts[0]`, so the Events overlay never emitted a "wall forming" glyph for a
+ * rebirth at all, even though the bead render right underneath it (once #7376 landed) does flash
+ * one — the opt-in label layer silently fell out of sync with the layer it exists to annotate.
  */
 export function trailDerivedGlyphs(
   trails: StrikeTrail[],
@@ -173,6 +202,22 @@ export function trailDerivedGlyphs(
         severity: "info",
         label: trailGlyphLabel("birth_tick", side, trail.strike),
       });
+    }
+    const medStep = medianBucketStep(pts.map((p) => p.time));
+    const gapLimit = medStep > 0 ? medStep * REBIRTH_GAP_SPLIT_FACTOR : Infinity;
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i]!;
+      if (p.modeled) continue;
+      if (p.time - pts[i - 1]!.time > gapLimit) {
+        glyphs.push({
+          time: p.time,
+          strike: trail.strike,
+          shape: "birth_tick",
+          side,
+          severity: "info",
+          label: trailGlyphLabel("birth_tick", side, trail.strike),
+        });
+      }
     }
     if (!trail.active) {
       const last = pts[pts.length - 1]!;

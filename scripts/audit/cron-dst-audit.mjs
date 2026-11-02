@@ -25,6 +25,7 @@
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
+import { buildCoverageReport } from "./lib/cron-dst-coverage-report.mjs";
 
 const args = process.argv.slice(2);
 const JSON_OUT = args.includes("--json");
@@ -561,24 +562,12 @@ if (JSON_OUT) {
     console.log(`    why it matters: ${r.why}`);
   }
 
-  if (mismatches.length) {
-    console.log(
-    `\nCOVERAGE — ${manifest.size - unaudited.length} of ${manifest.size} deployed jobs are in GATES or INTENTS`
-  );
-  if (unaudited.length) {
-    console.log(
-      `  ${unaudited.length} deployed job(s) are in NEITHER table. They are UNAUDITED, not OK — this ` +
-        `run says nothing about them:`
-    );
-    for (const k of unaudited) console.log(`    ${k}`);
-    console.log(
-      "  Add each to GATES (it applies an ET gate) or INTENTS (it has an ET-relative intent, or is " +
-        "UTC-labelled and should say so), after reading its route. Absence from both tables is a gap " +
-        "in this audit, never a verdict about the job."
-    );
-  }
-  console.log("\nREGISTRY `schedule_cron_utc` vs DEPLOYED MANIFEST");
-    for (const m of mismatches) console.log(`  ${pad(m.key, 27)} registry=${pad(m.registry, 26)} deployed=${pad(m.deployed, 26)} — ${m.kind}`);
+  // Each sub-section gates on its OWN condition (not on the other's) — see
+  // scripts/audit/lib/cron-dst-coverage-report.mjs for why this used to be a single
+  // `if (mismatches.length)` guard around both, which silently hid the COVERAGE section
+  // (unaudited deployed jobs) whenever the registry happened to agree with the manifest.
+  for (const line of buildCoverageReport({ manifestSize: manifest.size, unaudited, mismatches })) {
+    console.log(line);
   }
 }
 

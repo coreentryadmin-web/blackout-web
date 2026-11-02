@@ -73,6 +73,61 @@ test("thesisBreakCoaching: break level is urgent", () => {
   assert.match(line!, /persistence lost/i);
 });
 
+// A calibrated thesisHealth landing in the "warn" band (45-69), same shape as the live-check
+// repro below -- real pillar labels, none matching the uncalibrated-sentinel list, so
+// thesisHealthUncalibrated() correctly lets this row through.
+function calibratedWarnThesisHealth() {
+  return {
+    health: 55,
+    entryIndex: 80,
+    currentIndex: 55,
+    delta: -25,
+    rung: "WEAKENING",
+    rungLabel: "Weakening",
+    advisory: "Thesis fading — tighten risk or trim into strength.",
+    moves: ["Persistence drifted triggered -> scale-out"],
+    committedAtEt: "2026-10-29T13:00:00Z",
+    computedAtEt: "2026-11-02T20:00:00Z",
+    thesisBreakLevel: "warn" as const,
+    thesisBreakNote: "pillars fading",
+    pillars: [
+      {
+        id: "structure" as const,
+        label: "Persistence",
+        weight: 0.3,
+        commitScore: 0.9,
+        currentScore: 0.5,
+        commitLabel: "triggered",
+        currentLabel: "scale-out",
+        status: "faded" as const,
+        contributionPts: 15,
+        deltaPts: -12,
+      },
+    ],
+  };
+}
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-02, live-check of #7380): SWING_SCALE_OUT_POLICY
+// (exit-policy.ts) has exactly ONE trim rung, so once `status === "TRIM"` that rung has already
+// fired and only the trailing runner stop remains -- the same fact #7380 established for the
+// sibling `crossDeskResolution`. This function's "warn" branch named "your next trim rail"
+// unconditionally, so a TRIM-status play with a calibrated, warn-band thesisHealth would render
+// the identical contradiction #7380 fixed elsewhere, just from a different call site.
+test("thesisBreakCoaching: TRIM status names the trailing stop, not a nonexistent next trim rail (sibling of #7380)", () => {
+  const line = thesisBreakCoaching(play({ status: "TRIM", thesisHealth: calibratedWarnThesisHealth() }));
+  assert.match(line!, /Thesis WARN/i);
+  assert.doesNotMatch(line!, /next trim rail/i, "status TRIM has no next trim rail left — only the trailing stop");
+  assert.match(line!, /trailing stop/i);
+});
+
+test("thesisBreakCoaching: OPEN/HOLD status keeps the forward-looking 'next trim rail' wording (rail is still ahead)", () => {
+  const openLine = thesisBreakCoaching(play({ status: "OPEN", thesisHealth: calibratedWarnThesisHealth() }));
+  assert.match(openLine!, /next trim rail/i);
+
+  const holdLine = thesisBreakCoaching(play({ status: "HOLD", thesisHealth: calibratedWarnThesisHealth() }));
+  assert.match(holdLine!, /next trim rail/i);
+});
+
 test("thesisPillarCoaching: names fading pillar", () => {
   const line = thesisPillarCoaching(
     play({
@@ -988,6 +1043,37 @@ test("crossDeskCoaching: OPEN-bucket structure conflict still reads size down / 
   );
   assert.match(line!, /trim rail/i);
   assert.match(line!, /size down/i);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-02, five-engine-largo-cycle-73, live repro
+// SWING:TXRH positionId 2252): the OPEN-bucket "your next trim rail" text above was still wrong
+// for status==="TRIM" — SWING_SCALE_OUT_POLICY (exit-policy.ts) has exactly ONE trim rung, so once
+// a position reaches TRIM that rung has already fired and there is no "next" one, only the
+// trailing runner stop. The live brief's Management section said "all trims banked — runner
+// only" while this Cross-desk friction section told the member to wait for "your next trim rail"
+// — a direct contradiction inside one document. TRIM must get its own runner-appropriate wording.
+test("crossDeskCoaching: TRIM-bucket (runner phase) structure conflict names the trailing stop, not a nonexistent 'next trim rail'", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      vector: {
+        play: {
+          bias: "short",
+          headline: "Fade the rip",
+          grade: "B",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", status: "TRIM" }),
+  );
+  assert.match(line!, /Cross-desk friction/i);
+  assert.match(line!, /Vector bearish/i);
+  assert.doesNotMatch(
+    line!,
+    /next trim rail/i,
+    "a TRIM-status position's one trim rung has already fired — there is no next trim rail",
+  );
+  assert.match(line!, /trailing stop/i);
+  assert.match(line!, /sizing down/i);
 });
 
 test("crossDeskCoaching: stale Vector play.bias must not invent cross-desk friction", () => {

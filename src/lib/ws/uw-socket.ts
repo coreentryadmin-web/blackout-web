@@ -818,6 +818,29 @@ export function getIntervalFlowForTicker(ticker = "SPX"): { rows: Record<string,
   return intervalFlowByTicker.get(sym) ?? (sym === "SPX" ? intervalFlowStore : { rows: [], updatedAt: 0 });
 }
 
+/**
+ * Pure reducer for the `interval_flow` WS handler (channel is joined UNSCOPED — see
+ * `joinWiresForChannel`'s default-case fallthrough — the same market-wide-feed shape
+ * already fixed for `off_lit_trades` in #7307, not a per-ticker join like `net_flow`/
+ * `lit_trades`/`price`). Buckets normalized rows by ticker, and separately reports the
+ * SPX-only subset so a frame containing ONLY other tickers' rows (e.g. a pure AAPL
+ * interval-flow push) never gets stored under the SPX-labeled snapshot — `spxRows` is
+ * `null`, not "every row in the frame", when no row's ticker is actually SPX.
+ */
+export function bucketIntervalFlowRows(rows: Record<string, unknown>[]): {
+  byTicker: Map<string, Record<string, unknown>[]>;
+  spxRows: Record<string, unknown>[] | null;
+} {
+  const byTicker = new Map<string, Record<string, unknown>[]>();
+  for (const row of rows) {
+    const sym = String(row.ticker ?? "SPX").toUpperCase();
+    const bucket = byTicker.get(sym) ?? [];
+    bucket.push(row);
+    byTicker.set(sym, bucket);
+  }
+  return { byTicker, spxRows: byTicker.get("SPX") ?? null };
+}
+
 export const tradingHaltsStore: {
   halts: Map<string, StoredTradingHalt>;
   updatedAt: number;
@@ -870,6 +893,41 @@ function recordNetFlowForTicker(
   if (sym === "SPX") {
     Object.assign(netFlowStore, { call_premium: call, put_premium: put, net, updatedAt: at });
   }
+}
+
+/**
+ * Pure parser for one `net_flow` WS row. Returns `null` when the row's own ticker cannot be
+ * determined — NEVER defaults an unresolvable row to "SPX".
+ *
+ * `net_flow` is joined per-ticker (`net_flow:SPX`, `net_flow:SPY`, `net_flow:QQQ`,
+ * `net_flow:IWM` — see `joinWiresForChannel`), but `handleMessage` strips the wire's own
+ * `:TICKER` suffix before dispatch and routes every one of those four subscriptions into
+ * this SAME base-channel handler (`channelFromWireName`). So if a frame ever omits BOTH
+ * `ticker` and `symbol` — relying on the now-discarded wire suffix to convey which of the
+ * four subscribed tickers it is for — this handler has no way to tell SPX from SPY/QQQ/IWM.
+ * The old code defaulted that ambiguous case to `"SPX"`, which would silently overwrite the
+ * shared `netFlowStore` snapshot (the ONLY source `spx-desk.ts`'s net-flow panel and
+ * `uw-ws-cache-bridge.ts`'s `uw_cache:net_prem_ticks:SPX` seed read for "SPX net premium")
+ * with another ticker's call/put premium. This is the exact same architecture gap already
+ * fixed for `off_lit_trades` (#7307) and `interval_flow` (#7308) on this same multiplexed
+ * socket — dropping an unresolvable row here matches the fail-closed discipline every
+ * sibling WS normalizer in `unusual-whales.ts` already uses (`normalizeLitTradesWsPayload`/
+ * `normalizePriceWsPayload`/`normalizeOptionTradesWsPayload` all require a real ticker field
+ * and drop the row otherwise, never guessing one).
+ */
+export function parseNetFlowWsRow(
+  raw: unknown
+): { ticker: string; call: number; put: number; net: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const tickerRaw = r.ticker ?? r.symbol;
+  if (tickerRaw == null) return null;
+  const ticker = String(tickerRaw).toUpperCase();
+  if (!ticker || !NET_FLOW_TICKERS.has(ticker)) return null;
+  const call = Number(r.call_premium ?? r.calls ?? r.net_call_premium ?? 0);
+  const put = Number(r.put_premium ?? r.puts ?? r.net_put_premium ?? 0);
+  const net = Number(r.net ?? call - put);
+  return { ticker, call, put, net };
 }
 
 /** Net-premium tick history derived from the UW `net_flow` WS channel. */
@@ -1438,7 +1496,10 @@ export function initUwSocket() {
       return;
     }
     pushDarkPoolRawRows(extractDarkPoolRawRows(payload));
-    const normalized = normalizeDarkPoolWsPayload(payload);
+    // off_lit_trades is a MARKET-WIDE channel (no `:TICKER` join suffix, see
+    // joinWiresForChannel) — scope the snapshot stamped onto the "SPX" cache key to actual
+    // SPX prints, else another ticker's frame silently overwrites SPX's own dark-pool read.
+    const normalized = normalizeDarkPoolWsPayload(payload, "SPX");
     if (normalized) {
       recordUwDelivery("off_lit_trades");
       darkPoolStore.data = normalized;
@@ -1465,19 +1526,16 @@ export function initUwSocket() {
     if (rows.length) {
       recordUwDelivery("interval_flow");
       const now = Date.now();
-      const byTicker = new Map<string, Record<string, unknown>[]>();
-      for (const row of rows) {
-        const sym = String(row.ticker ?? "SPX").toUpperCase();
-        const bucket = byTicker.get(sym) ?? [];
-        bucket.push(row);
-        byTicker.set(sym, bucket);
-      }
+      const { byTicker, spxRows } = bucketIntervalFlowRows(rows);
       for (const [sym, tickerRows] of byTicker) {
         intervalFlowByTicker.set(sym, { rows: tickerRows, updatedAt: now });
       }
-      const spx = byTicker.get("SPX");
-      intervalFlowStore.rows = spx ?? rows;
-      intervalFlowStore.updatedAt = now;
+      // Only overwrite the legacy SPX-labeled snapshot when this frame actually carried
+      // an SPX-ticker row — never with another ticker's rows (see bucketIntervalFlowRows).
+      if (spxRows) {
+        intervalFlowStore.rows = spxRows;
+        intervalFlowStore.updatedAt = now;
+      }
     }
   });
 
@@ -1506,15 +1564,10 @@ export function initUwSocket() {
     }
     const rows = Array.isArray(payload) ? payload : [payload];
     for (const raw of rows) {
-      if (!raw || typeof raw !== "object") continue;
-      const r = raw as Record<string, unknown>;
-      const ticker = String(r.ticker ?? r.symbol ?? "SPX").toUpperCase();
-      if (!NET_FLOW_TICKERS.has(ticker)) continue;
+      const parsed = parseNetFlowWsRow(raw);
+      if (!parsed) continue;
       recordUwDelivery("net_flow");
-      const call = Number(r.call_premium ?? r.calls ?? r.net_call_premium ?? 0);
-      const put = Number(r.put_premium ?? r.puts ?? r.net_put_premium ?? 0);
-      const net = Number(r.net ?? call - put);
-      recordNetFlowForTicker(ticker, call, put, net);
+      recordNetFlowForTicker(parsed.ticker, parsed.call, parsed.put, parsed.net);
     }
   });
 

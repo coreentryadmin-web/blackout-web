@@ -168,11 +168,28 @@ function narrateStructuralLevelShift(
  *  never for anything that reaches the UI as a raw number. */
 const RECOMMENDATION_RANK: Record<string, number> = { BUY: 3, HOLD: 2, TRIM: 1, SELL: 0 };
 
+/** A genuinely CLOSED play carries an "Outcome" section (play-brief.ts's `safeCompose("Outcome",
+ *  ...)`, CLOSED-only). BUG FIX (Ask Largo standing mandate, 2026-11-02, cycle-70 live audit):
+ *  `managementFor()`'s already-fixed CLOSED branch (adapters.ts, `2026-11-01-managementfor-
+ *  closed-no-op.md`) deterministically stamps `recommendation: "HOLD"` on every closed position
+ *  regardless of how it closed — a moot sentinel (`recNote` for it: "Position closed — nothing
+ *  left to manage."), not a live decision. HOLD outranks both TRIM and SELL in
+ *  RECOMMENDATION_RANK, so `recommendationShiftKind` below read every OPEN→CLOSED transition as
+ *  an "upgrade" — live-confirmed via the real `diffBriefSnapshots`: a SELL (stopped out) closing
+ *  with a small pre-close P&L tick narrated as "...and the desk upgraded — SELL → HOLD —
+ *  tracking together", and a TRIM closing higher narrated the same way. Both are the opposite of
+ *  informative: there is no live HOLD decision happening, the position simply closed. */
+function nextIsGenuinelyClosed(next: BriefSnapshot): boolean {
+  return next.sectionTitles.includes("Outcome");
+}
+
 function recommendationShiftKind(
   prev: string | null,
   next: string | null,
+  nextClosed = false,
 ): "upgrade" | "downgrade" | null {
   if (!prev || !next) return null;
+  if (nextClosed) return null;
   const p = RECOMMENDATION_RANK[prev];
   const n = RECOMMENDATION_RANK[next];
   if (p == null || n == null || p === n) return null;
@@ -348,7 +365,9 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
   if (thesisFading && spotMoved) {
     const adverse = adverseSpotDrift(prev, next);
     if (adverse) {
-      const shift = recommendationChanged ? recommendationShiftKind(prev.recommendation, next.recommendation) : null;
+      const shift = recommendationChanged
+        ? recommendationShiftKind(prev.recommendation, next.recommendation, nextIsGenuinelyClosed(next))
+        : null;
       const downgradeTo = shift === "downgrade" ? next.recommendation : null;
       lines.push(synthesizeThesisAndPrice(prev, next, adverse, downgradeTo));
       thesisConsumed = true;
@@ -358,7 +377,10 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
   }
 
   if (!recommendationConsumed && pnlBuilding && recommendationChanged) {
-    if (recommendationShiftKind(prev.recommendation, next.recommendation) === "upgrade") {
+    if (
+      recommendationShiftKind(prev.recommendation, next.recommendation, nextIsGenuinelyClosed(next)) ===
+      "upgrade"
+    ) {
       lines.push(synthesizePnlAndUpgrade(prev, next));
       pnlConsumed = true;
       recommendationConsumed = true;
