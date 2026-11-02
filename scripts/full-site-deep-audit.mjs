@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
@@ -435,8 +435,20 @@ async function auditPublicMarket() {
       const oracle = row?.value ?? row?.session?.close;
       if (oracle > 0) {
         const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+        // Match scripts/audit/data-validator.mjs priceTol (0.3% RTH, 1.5% off-hours) — a flat $5
+        // cap false-fails post-close when desk vs Polygon snapshot sources diverge slightly (~0.15%).
+        const tolPct = inRthOpenWindow() ? 0.3 : 1.5;
+        const pct = (d / oracle) * 100;
+        if (pct > tolPct) {
+          fail(
+            "oracle",
+            "SPX",
+            `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)}, ${pct.toFixed(3)}% > ${tolPct}%)`,
+            "P0"
+          );
+        } else {
+          ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)}, ${pct.toFixed(3)}%)`);
+        }
       }
     }
   }

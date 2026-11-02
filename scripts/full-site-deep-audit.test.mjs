@@ -29,3 +29,8 @@ test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a 
   // Guards against reintroducing a second, hardcoded cap literal in the PREMIUM-CAP check itself.
   assert.equal(/ep > 20\)/.test(src), false);
 });
+
+test("full-site-deep-audit SPX oracle uses data-validator priceTol percentages, not a flat $5", () => {
+  assert.match(src, /tolPct = inRthOpenWindow\(\) \? 0\.3 : 1\.5/);
+  assert.equal(/d > 5\)/.test(src), false, "flat $5 oracle gate causes post-close false P0s");
+});
