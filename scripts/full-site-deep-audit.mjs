@@ -5,8 +5,12 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
+import {
+  pickSpxOracleFromPolygon,
+  spxOracleWithinTolerance,
+} from "./audit/lib/full-site-spx-oracle.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -424,20 +428,56 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX
+  // Polygon oracle for SPX — same ground-truth convention as data-validator / spx-desk:
+  // live snapshot during RTH; after the session the desk quotes today's own settled close,
+  // not the index snapshot's session.close (which can still reflect the prior session).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
-    const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
-    if (polyRes.ok && deskSpx > 0) {
-      const poly = await polyRes.json();
+    const isRth = inRthOpenWindow();
+    const polySnapRes = await fetch(
+      `${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`
+    );
+    let snapshotValue;
+    let snapshotSessionClose;
+    if (polySnapRes.ok) {
+      const poly = await polySnapRes.json();
       const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-      const oracle = row?.value ?? row?.session?.close;
-      if (oracle > 0) {
-        const d = Math.abs(oracle - deskSpx);
-        if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-        else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+      snapshotValue = row?.value;
+      snapshotSessionClose = row?.session?.close;
+    }
+
+    let todayDayClose;
+    let prevDayClose;
+    if (!isRth) {
+      const today = todayEtYmd();
+      const dayRes = await fetch(
+        `${POLY_BASE}/v2/aggs/ticker/I:SPX/range/1/day/${today}/${today}?adjusted=true&apiKey=${POLY_KEY}`
+      );
+      if (dayRes.ok) {
+        const dayJson = await dayRes.json();
+        todayDayClose = dayJson?.results?.[0]?.c;
       }
+      const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?adjusted=true&apiKey=${POLY_KEY}`);
+      if (prevRes.ok) {
+        const prevJson = await prevRes.json();
+        prevDayClose = prevJson?.results?.[0]?.c;
+      }
+    }
+
+    const picked = pickSpxOracleFromPolygon({
+      isRth,
+      snapshotValue,
+      snapshotSessionClose,
+      todayDayClose,
+      prevDayClose,
+    });
+
+    if (picked && deskSpx > 0) {
+      const { ok, delta, pct, tol } = spxOracleWithinTolerance(deskSpx, picked.oracle, isRth);
+      const detail = `desk ${deskSpx} vs Polygon ${picked.oracle} (${picked.label}, Δ ${delta?.toFixed(2) ?? "?"}, ${pct?.toFixed(3) ?? "?"}% tol ${tol}%)`;
+      if (ok) ok("oracle", "SPX", detail);
+      else fail("oracle", "SPX", detail, "P0");
     }
   }
 }
