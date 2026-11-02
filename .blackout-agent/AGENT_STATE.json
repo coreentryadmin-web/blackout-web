@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-01T23:08:05.199Z",
+  "updated_at": "2026-11-02T00:30:26.684Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "e43998a90ed8e82d8c19eb45bfadf15012977977",
+    "last_main_sha": "1c760ad54612963f6a3b23dd992dd02ba3903068",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-25T22:52:04.141Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-25T22:52:08.711Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-26T02:41:37.383Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-26T02:41:41.479Z",
       "type": "context_sync",
@@ -1271,28 +1253,86 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-02T00:30:12.668Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-11-02T00:30:19.867Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-11-02T00:30:26.684Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
     }
   ],
   "open_prs": [
     {
-      "number": 7318,
-      "title": "Fix SPX vix_change_pct transporting Polygon's fabricated-0 artifact",
-      "branch": "fix/spx-vix-change-pct-fabricated-zero",
+      "number": 7328,
+      "title": "fix(autopilot): expireStaleLocksSync deletes a task lock regardless of owner heartbeat",
+      "branch": "fix/expire-stale-locks-heartbeat",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T23:04:18Z"
+      "updated_at": "2026-11-02T00:25:21Z"
     },
     {
-      "number": 7317,
-      "title": "fix(lib): readCrossInstanceTelemetry returns null, not a hollow object, when every registered instance id's data key has expired",
-      "branch": "fix/telemetry-redis-stale-instance-ids",
+      "number": 7327,
+      "title": "fix(autopilot): discoverStandingWork misses a FAILED deploy of the current main SHA",
+      "branch": "fix/standing-work-deploy-failure-drift",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "completed/failure",
+      "updated_at": "2026-11-02T00:19:27Z"
+    },
+    {
+      "number": 7326,
+      "title": "fix(swing): closedDeckSourceFromRow refuses ROLLED legs, flipping #7316's fix into a 404",
+      "branch": "fix/swing-rolled-status-gate-gap",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-11-02T00:27:16Z"
+    },
+    {
+      "number": 7325,
+      "title": "fix(lib): UW dark-pool test fixtures compute today via UTC, not ET",
+      "branch": "fix/uw-dark-pool-test-utc-et-boundary",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "completed/success",
+      "updated_at": "2026-11-02T00:15:19Z"
+    },
+    {
+      "number": 7324,
+      "title": "fix(push): close backslash bypass of sw.js notificationclick same-origin guard",
+      "branch": "fix/sw-notification-click-backslash-open-redirect",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-11-01T22:56:33Z"
+      "updated_at": "2026-11-02T00:20:50Z"
+    },
+    {
+      "number": 7323,
+      "title": "fix(spx): closed-market /play target was VIX-blind, unlike stop/invalidation",
+      "branch": "fix/spx-closed-target-vix-blind",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "completed/failure",
+      "updated_at": "2026-11-02T00:15:46Z"
     },
     {
       "number": 5547,
