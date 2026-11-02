@@ -60,7 +60,19 @@ export function computeHelixSessionPulse(
   const dir = directionalPremium(flows);
   let topTicker: { ticker: string; premium: number } | null = null;
   for (const [ticker, premium] of byTicker) {
-    if (!topTicker || premium > topTicker.premium) topTicker = { ticker, premium };
+    // Tie-break by ticker (ascending) on an exact premium tie. Without this, `byTicker` is
+    // walked in Map insertion order — the order tickers FIRST appeared in `flows` — so on a
+    // tie (routine: whale prints cluster on round premium figures) the reported "top ticker"
+    // silently depends on upstream print-arrival order rather than on anything real. Same
+    // convention as rankOpexSessionMovers's `a.ticker.localeCompare(b.ticker)` secondary key
+    // for this exact bug shape.
+    if (
+      !topTicker ||
+      premium > topTicker.premium ||
+      (premium === topTicker.premium && ticker.localeCompare(topTicker.ticker) < 0)
+    ) {
+      topTicker = { ticker, premium };
+    }
   }
 
   return {
