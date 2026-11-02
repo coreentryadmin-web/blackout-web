@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-02T00:37:01.991Z",
+  "updated_at": "2026-11-02T00:56:20.126Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "ad1f2b2fd8b2f629789f5b927f54bb1d8952036b",
+    "last_main_sha": "139ec3943a1ba2c811dc60629e1e1fe8f4eb7431",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-26T02:41:41.479Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-26T02:41:44.975Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-26T04:05:14.094Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-26T04:05:18.573Z",
       "type": "context_sync",
@@ -1271,6 +1253,24 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 29
+    },
+    {
+      "at": "2026-11-02T00:55:59.307Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 14
+    },
+    {
+      "at": "2026-11-02T00:56:09.855Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 14
+    },
+    {
+      "at": "2026-11-02T00:56:20.126Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 14
     }
   ],
   "open_prs": [
@@ -1281,7 +1281,7 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "queued/pending",
+      "verify": "completed/success",
       "updated_at": "2026-11-02T00:36:32Z"
     },
     {
@@ -1295,16 +1295,6 @@
       "updated_at": "2026-11-02T00:35:44Z"
     },
     {
-      "number": 7347,
-      "title": "fix(test): dark-pool WS tests use ET session date (verify flake)",
-      "branch": "fix/darkpool-ws-test-et-session-date",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-11-02T00:35:26Z"
-    },
-    {
       "number": 7346,
       "title": "fix(test): dark pool WS tests align fixture dates with todayEt()",
       "branch": "cursor/autopilot-state-recovery-loop-125e",
@@ -1315,23 +1305,13 @@
       "updated_at": "2026-11-02T00:35:20Z"
     },
     {
-      "number": 7345,
-      "title": "fix(test): dark-pool WS tests use todayEt() not UTC calendar date",
-      "branch": "cursor/blackout-cursor-work-loop-fb4c",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-11-02T00:34:58Z"
-    },
-    {
       "number": 7344,
       "title": "fix(test): dark pool WS tests use todayEt() session date",
       "branch": "cursor/blackout-worker-resumption-7815",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "queued/pending",
+      "verify": "in_progress/pending",
       "updated_at": "2026-11-02T00:33:28Z"
     },
     {
@@ -1355,26 +1335,6 @@
       "updated_at": "2026-11-02T00:32:59Z"
     },
     {
-      "number": 7341,
-      "title": "fix(test): use todayEt in dark-pool WS/cache tests",
-      "branch": "fix/uw-darkpool-ws-tests",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "queued/pending",
-      "updated_at": "2026-11-02T00:32:47Z"
-    },
-    {
-      "number": 7340,
-      "title": "chore: sync ambient agent-state/heartbeat files",
-      "branch": "chore/agent-state-heartbeat-sync-1793579532",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-02T00:32:33Z"
-    },
-    {
       "number": 7339,
       "title": "fix(test): align dark-pool fixtures with todayEt session date",
       "branch": "cursor/autopilot-work-loop-4e86",
@@ -1383,36 +1343,6 @@
       "draft": false,
       "verify": "completed/success",
       "updated_at": "2026-11-02T00:32:15Z"
-    },
-    {
-      "number": 7338,
-      "title": "fix(test): dark-pool WS tests use todayEt() not UTC YMD",
-      "branch": "fix/darkpool-ws-test-today-et",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-02T00:32:10Z"
-    },
-    {
-      "number": 7337,
-      "title": "test(uw): use todayEt in dark-pool WS cache tests",
-      "branch": "fix/dark-pool-test-et-date",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "queued/pending",
-      "updated_at": "2026-11-02T00:32:08Z"
-    },
-    {
-      "number": 7336,
-      "title": "fix(test): dark-pool WS tests use ET session date, not UTC slice",
-      "branch": "fix/darkpool-test-et-session-date",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-02T00:32:12Z"
     },
     {
       "number": 7335,
@@ -1425,34 +1355,14 @@
       "updated_at": "2026-11-02T00:32:07Z"
     },
     {
-      "number": 7334,
-      "title": "test(darkpool): use todayEt() in WS/cache tests — not UTC date slice",
-      "branch": "cursor/autopilot-work-loop-1d1f",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "queued/pending",
-      "updated_at": "2026-11-02T00:32:05Z"
-    },
-    {
       "number": 7333,
       "title": "fix(test): dark pool regression tests use ET session date in fixtures",
       "branch": "cursor/autopilot-work-loop-7903",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "in_progress/pending",
+      "verify": "completed/failure",
       "updated_at": "2026-11-02T00:32:03Z"
-    },
-    {
-      "number": 7332,
-      "title": "fix(test): dark pool WS tests align fixture dates with todayEt()",
-      "branch": "cursor/autopilot-work-loop-d607",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-02T00:32:04Z"
     },
     {
       "number": 7331,
@@ -1463,66 +1373,6 @@
       "draft": false,
       "verify": "unknown",
       "updated_at": "2026-11-02T00:32:01Z"
-    },
-    {
-      "number": 7329,
-      "title": "fix(test): use todayEt() in dark pool WS/cache fixtures",
-      "branch": "fix/darkpool-test-et-today",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-02T00:31:56Z"
-    },
-    {
-      "number": 7328,
-      "title": "fix(autopilot): expireStaleLocksSync deletes a task lock regardless of owner heartbeat",
-      "branch": "fix/expire-stale-locks-heartbeat",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "completed/failure",
-      "updated_at": "2026-11-02T00:25:21Z"
-    },
-    {
-      "number": 7327,
-      "title": "fix(autopilot): discoverStandingWork misses a FAILED deploy of the current main SHA",
-      "branch": "fix/standing-work-deploy-failure-drift",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-02T00:31:26Z"
-    },
-    {
-      "number": 7326,
-      "title": "fix(swing): closedDeckSourceFromRow refuses ROLLED legs, flipping #7316's fix into a 404",
-      "branch": "fix/swing-rolled-status-gate-gap",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-11-02T00:27:16Z"
-    },
-    {
-      "number": 7324,
-      "title": "fix(push): close backslash bypass of sw.js notificationclick same-origin guard",
-      "branch": "fix/sw-notification-click-backslash-open-redirect",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-11-02T00:20:50Z"
-    },
-    {
-      "number": 7323,
-      "title": "fix(spx): closed-market /play target was VIX-blind, unlike stop/invalidation",
-      "branch": "fix/spx-closed-target-vix-blind",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "queued/pending",
-      "updated_at": "2026-11-02T00:34:58Z"
     },
     {
       "number": 5547,
