@@ -7,10 +7,12 @@ import {
   effectiveStaleMinutes,
   evaluateJob,
   expectedNighthawkEdition,
+  isBeforeNighthawkBackfillRepairWindow,
+  isInsideNighthawkBackfillRepairCatchup,
   nighthawkEditionCoversExpected,
   nighthawkJobAgeMin,
 } from "./admin-cron-health";
-import type { CronJobDefinition } from "./cron-registry";
+import { CRON_JOBS, type CronJobDefinition } from "./cron-registry";
 
 function withDefaultNighthawkWindow(fn: () => void) {
   const prevHour = process.env.NIGHTHAWK_EDITION_HOUR_ET;
@@ -278,4 +280,46 @@ test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan hea
     /zerodteWarmInFlight/,
     "long in-flight scans must not trip market_hours_stale before the overlap lock TTL"
   );
+});
+
+/** 2026-11-03 13:59Z = 8:59 AM ET (EST) — Cron audit query failed P0 on never-run / pre-window. */
+const PRE_REPAIR_WINDOW_TUE = new Date("2026-11-03T13:59:00.000Z");
+const IN_REPAIR_CATCHUP_TUE = new Date("2026-11-03T14:30:00.000Z");
+
+function backfillRepairJob(): CronJobDefinition {
+  const job = CRON_JOBS.find((j) => j.key === "nighthawk-backfill-repair");
+  assert.ok(job, "fixture job must exist in cron registry");
+  return job!;
+}
+
+test("nighthawk-backfill-repair: before 9:00 AM ET never-run is not due (unknown, not stale)", () => {
+  assert.equal(isBeforeNighthawkBackfillRepairWindow(PRE_REPAIR_WINDOW_TUE), true);
+  const health = evaluateJob(backfillRepairJob(), undefined, [], PRE_REPAIR_WINDOW_TUE);
+  assert.equal(health.status, "unknown");
+  assert.match(health.status_label, /before 9:00 AM ET repair window/i);
+});
+
+test("nighthawk-backfill-repair: inside catchup with no rows is warning, not watchdog stale", () => {
+  assert.equal(isInsideNighthawkBackfillRepairCatchup(IN_REPAIR_CATCHUP_TUE), true);
+  const health = evaluateJob(backfillRepairJob(), undefined, [], IN_REPAIR_CATCHUP_TUE);
+  assert.equal(health.status, "warning");
+  assert.match(health.status_label, /inside 9:00 AM ET repair window/i);
+});
+
+test("nighthawk-backfill-repair: legacy outside-window failed row is benign", () => {
+  const health = evaluateJob(
+    backfillRepairJob(),
+    {
+      id: 1,
+      job_key: "nighthawk-backfill-repair",
+      status: "failed",
+      started_at: "2026-11-03T13:00:05.000Z",
+      duration_ms: 10,
+      message: "Outside repair window (9:00 AM ET) — use ?force=1 to override",
+      meta_json: null,
+    },
+    [],
+    IN_REPAIR_CATCHUP_TUE
+  );
+  assert.equal(health.status, "healthy");
 });

@@ -88,6 +88,37 @@ function etMinuteOfDay(now = new Date()): number {
   return hour * 60 + minute;
 }
 
+/** Same env knobs as `nighthawk-backfill-repair/route.ts` — health must match the route gate. */
+export function nighthawkBackfillRepairWindowBounds(now = new Date()) {
+  const targetHour = positiveEnvInt("NIGHTHAWK_BACKFILL_REPAIR_HOUR_ET", 9);
+  const targetMinute = positiveEnvInt("NIGHTHAWK_BACKFILL_REPAIR_MINUTE_ET", 0);
+  const catchupMin = positiveEnvInt("NIGHTHAWK_BACKFILL_REPAIR_CATCHUP_MIN", 90);
+  const startMin = targetHour * 60 + targetMinute;
+  return { startMin, endMin: startMin + catchupMin };
+}
+
+/** Before the once-daily 9:00 AM ET repair window — hourly CI must not page early. */
+export function isBeforeNighthawkBackfillRepairWindow(now = new Date()): boolean {
+  const etDate = formatEtDate(now);
+  if (!isTradingDayEt(etDate)) return false;
+  const { startMin } = nighthawkBackfillRepairWindowBounds(now);
+  return etMinuteOfDay(now) < startMin;
+}
+
+/** Inside the route catchup window on a trading day (awaiting today's logged run). */
+export function isInsideNighthawkBackfillRepairCatchup(now = new Date()): boolean {
+  const etDate = formatEtDate(now);
+  if (!isTradingDayEt(etDate)) return false;
+  const nowMin = etMinuteOfDay(now);
+  const { startMin, endMin } = nighthawkBackfillRepairWindowBounds(now);
+  return nowMin >= startMin && nowMin <= endMin;
+}
+
+function isBenignNighthawkBackfillRepairFailureMessage(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return message.includes("Outside repair window");
+}
+
 export type NighthawkEditionExpectation = {
   et_date: string;
   expected_edition_for: string;
@@ -229,6 +260,29 @@ export function evaluateJob(
   if (!last) {
     const { effective: effMin, multiplier: effMult } = effectiveStaleMinutes(job, now);
 
+    if (job.key === "nighthawk-backfill-repair" && isInsideNighthawkBackfillRepairCatchup(now)) {
+      return {
+        key: job.key,
+        name: job.name,
+        kind: job.kind,
+        path: job.path ?? null,
+        schedule_label: job.schedule_label,
+        description: job.description,
+        status: "warning",
+        status_label: "No run logged yet this session (inside 9:00 AM ET repair window)",
+        market_hours_stale: false,
+        last_run_at: null,
+        last_status: null,
+        last_duration_ms: null,
+        last_message: null,
+        age_min: null,
+        stale_after_min: job.stale_after_min,
+        effective_stale_min: Math.round(effMin),
+        stale_multiplier: effMult,
+        runs_24h: counts,
+      };
+    }
+
     // A JOB THAT HAS NEVER RUN IS THE DEADEST A JOB CAN BE — IT MUST NOT REPORT AS "unknown".
     //
     // This branch used to return `status: "unknown"` unconditionally and skip the staleness
@@ -251,7 +305,9 @@ export function evaluateJob(
     const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-    const notDueYet = offWindowNoRun || offScheduleNoRun;
+    const nhRepairPreWindow =
+      job.key === "nighthawk-backfill-repair" && isBeforeNighthawkBackfillRepairWindow(now);
+    const notDueYet = offWindowNoRun || offScheduleNoRun || nhRepairPreWindow;
 
     return {
       key: job.key,
@@ -262,7 +318,9 @@ export function evaluateJob(
       description: job.description,
       status: notDueYet ? "unknown" : "stale",
       status_label: notDueYet
-        ? "No runs logged (not due — outside its window)"
+        ? nhRepairPreWindow
+          ? "Not due yet (before 9:00 AM ET repair window)"
+          : "No runs logged (not due — outside its window)"
         : "NEVER logged a run — job may not be scheduled at all",
       market_hours_stale: Boolean(job.market_hours_only) && !offWindowNoRun,
       last_run_at: null,
@@ -300,8 +358,19 @@ export function evaluateJob(
   let statusLabel = "OK";
 
   if (last.status === "failed") {
-    status = "failed";
-    statusLabel = "Last run failed";
+    if (
+      job.key === "nighthawk-backfill-repair" &&
+      (isBeforeNighthawkBackfillRepairWindow(now) ||
+        isBenignNighthawkBackfillRepairFailureMessage(last.message))
+    ) {
+      status = isBeforeNighthawkBackfillRepairWindow(now) ? "unknown" : "healthy";
+      statusLabel = isBeforeNighthawkBackfillRepairWindow(now)
+        ? "Not due yet (before 9:00 AM ET repair window)"
+        : "Early UTC band outside repair window (legacy failed row) — benign";
+    } else {
+      status = "failed";
+      statusLabel = "Last run failed";
+    }
   } else if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
