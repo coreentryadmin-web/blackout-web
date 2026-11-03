@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   isInOffScheduleIdleGap,
+  isDualBandDailyCatchupPending,
   lastExpectedCronFireUtc,
   nextExpectedCronFireUtc,
 } from "./cron-schedule-window";
@@ -125,6 +126,19 @@ describe("cron-schedule-window", () => {
     const next = nextExpectedCronFireUtc(cron, now);
     assert.equal(last?.toISOString(), "2026-08-07T21:30:00.000Z");
     assert.equal(next?.toISOString(), "2026-08-10T20:30:00.000Z");
+  });
+
+  it("nighthawk-backfill-repair: between dual UTC bands pending second tick — not stale yet (2026-11-03 cron-audit)", () => {
+    const cron = "0 13,14 * * 1-5";
+    const now = new Date("2026-11-03T13:58:00.000Z");
+    assert.equal(isDualBandDailyCatchupPending(cron, now), true);
+    assert.equal(isInOffScheduleIdleGap(cron, now), false);
+  });
+
+  it("x-autopost: short gap between 12:00 and 14:00 is not dual-band-daily catchup pending", () => {
+    const cron = "0 12,14,16,18,20,22,0 * * *";
+    const now = new Date("2026-07-30T13:00:00.000Z");
+    assert.equal(isDualBandDailyCatchupPending(cron, now), false);
   });
 
   // BUG: a bare "N/M" minute/hour field (no leading range or "*") is valid cron/Quartz step

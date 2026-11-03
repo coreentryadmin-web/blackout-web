@@ -117,6 +117,28 @@ function dailyFireBounds(cronExpr: string, now: Date): { first: Date; last: Date
 }
 
 /**
+ * DST dual-band crons (exactly two UTC fires/day, e.g. `0 13,14 * * 1-5`) intentionally fire
+ * twice so ONE lands at the target ET wall time in both offsets. Between the first and second
+ * tick the job may legitimately still show Friday's last run — not stale until the second band
+ * passes (2026-11-03 cron-audit false positive on `nighthawk-backfill-repair`).
+ */
+export function isDualBandDailyCatchupPending(cronExpr: string, now = new Date()): boolean {
+  const [minuteField, hourField, , , dowField] = cronExpr.trim().split(/\s+/);
+  if (!minuteField || !hourField || !dowField) return false;
+  const fires = enumerateFiresOnUtcDay(
+    minuteField,
+    hourField,
+    dowField,
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate()
+  );
+  if (fires.length !== 2) return false;
+  const t = now.getTime();
+  return t > fires[0]!.getTime() && t < fires[1]!.getTime();
+}
+
+/**
  * True when `now` sits in a long idle gap where no EventBridge tick is scheduled.
  * Short intra-band gaps (hourly :20, every 30m) still page on a missed fire.
  */

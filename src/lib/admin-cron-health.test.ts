@@ -128,6 +128,32 @@ test("a never-run market-hours job stays quiet overnight — it is not due yet",
   assert.equal(health.market_hours_stale, false);
 });
 
+test("nighthawk-backfill-repair: between dual UTC bands, prior-day last run is not stale yet", () => {
+  const monBetweenBands = new Date("2026-11-03T13:58:00.000Z");
+  const friLastRun = new Date("2026-10-31T14:05:00.000Z").toISOString();
+  const health = evaluateJob(
+    jobDef({
+      key: "nighthawk-backfill-repair",
+      schedule_cron_utc: "0 13,14 * * 1-5",
+      stale_after_min: 36 * 60,
+      weekdays_only: true,
+    }),
+    {
+      id: 1,
+      job_key: "nighthawk-backfill-repair",
+      status: "ok",
+      started_at: friLastRun,
+      duration_ms: 500,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    monBetweenBands
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /outside cron schedule window|Idle/i);
+});
+
 test("nighthawkJobAgeMin: future updated_at exceeds stuck threshold (clock skew)", () => {
   const now = Date.parse("2026-09-04T12:00:00Z");
   const future = new Date(now + 60_000).toISOString();
