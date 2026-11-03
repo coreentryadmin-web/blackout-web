@@ -71,3 +71,10 @@ test("a repair failure is isolated — the route's own try/catch returns ok:fals
   assert.ok(tryAt >= 0 && catchAt >= 0 && catchAt > tryAt);
   assert.match(routeSrc.slice(catchAt), /ok:\s*false,\s*error:/);
 });
+
+test("off-window skip is ok:true so cron-health never treats a benign dual-band no-op as failed", () => {
+  assert.match(
+    routeSrc,
+    /Outside repair window[\s\S]*?ok:\s*true,\s*skipped:\s*true/
+  );
+});

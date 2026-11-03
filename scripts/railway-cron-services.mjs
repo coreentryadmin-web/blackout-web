@@ -23,6 +23,10 @@ export const CRON_SERVICE_NAMES = {
   "membership-reconcile": "Membership-Reconcile",
   "welcome-sequence": "Welcome-Sequence",
   "nighthawk-morning-confirm": "NightHawk-Morning-Confirm",
+  // Self-heals stale BACKFILL contracts before morning-confirm (railway.nighthawk-backfill-repair.toml).
+  // Was registry-only — missing here meant blackout-infra never provisioned EventBridge, so prod
+  // logged zero runs and cron-staleness-watchdog flagged stale every RTH hour (query CI, 2026-11-03).
+  "nighthawk-backfill-repair": "NightHawk-Backfill-Repair",
   "nighthawk-outcomes": "NightHawk-Outcomes-Cron",
   "nighthawk-playbook": "NightHawk-Playbook",
   "provider-health-reconcile": "provider-health-reconcile",

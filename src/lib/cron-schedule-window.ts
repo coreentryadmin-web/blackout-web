@@ -116,6 +116,23 @@ function dailyFireBounds(cronExpr: string, now: Date): { first: Date; last: Date
  * True when `now` sits in a long idle gap where no EventBridge tick is scheduled.
  * Short intra-band gaps (hourly :20, every 30m) still page on a missed fire.
  */
+const SHORT_DUAL_BAND_MAX_MS = 2 * 60 * 60_000;
+
+/**
+ * True while `now` sits between two same-day scheduled fires whose gap is ≤2h (dual-band DST
+ * crons like `0 13,14 * * 1-5`). The first band often logs a benign window skip; health should
+ * wait for the in-window band before calling the job stale.
+ */
+export function isInDualBandInterFireGap(cronExpr: string, now = new Date()): boolean {
+  const last = lastExpectedCronFireUtc(cronExpr, now);
+  const next = nextExpectedCronFireUtc(cronExpr, now);
+  if (!last || !next) return false;
+  const gapMs = next.getTime() - last.getTime();
+  if (gapMs <= 0 || gapMs > SHORT_DUAL_BAND_MAX_MS) return false;
+  const t = now.getTime();
+  return t > last.getTime() && t < next.getTime();
+}
+
 export function isInOffScheduleIdleGap(cronExpr: string, now = new Date()): boolean {
   const last = lastExpectedCronFireUtc(cronExpr, now);
   const next = nextExpectedCronFireUtc(cronExpr, now);

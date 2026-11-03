@@ -18,7 +18,11 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
-import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
+import {
+  isInDualBandInterFireGap,
+  isInOffScheduleIdleGap,
+  lastExpectedCronFireUtc,
+} from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -251,7 +255,12 @@ export function evaluateJob(
     const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-    const notDueYet = offWindowNoRun || offScheduleNoRun;
+    const dualBandInterFire =
+      Boolean(job.schedule_cron_utc) &&
+      Boolean(job.weekdays_only) &&
+      isTradingDayEt(formatEtDate(now)) &&
+      isInDualBandInterFireGap(job.schedule_cron_utc!, now);
+    const notDueYet = offWindowNoRun || offScheduleNoRun || dualBandInterFire;
 
     return {
       key: job.key,
@@ -262,7 +271,9 @@ export function evaluateJob(
       description: job.description,
       status: notDueYet ? "unknown" : "stale",
       status_label: notDueYet
-        ? "No runs logged (not due — outside its window)"
+        ? dualBandInterFire
+          ? "No runs logged (awaiting in-window dual-band fire)"
+          : "No runs logged (not due — outside its window)"
         : "NEVER logged a run — job may not be scheduled at all",
       market_hours_stale: Boolean(job.market_hours_only) && !offWindowNoRun,
       last_run_at: null,
@@ -295,6 +306,19 @@ export function evaluateJob(
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
   const suppressStaleOffSchedule =
     offScheduleGap && (last.status === "skipped" || last.status === "ok");
+  const dualBandInterFire =
+    Boolean(job.schedule_cron_utc) &&
+    Boolean(job.weekdays_only) &&
+    isTradingDayEt(formatEtDate(now)) &&
+    isInDualBandInterFireGap(job.schedule_cron_utc!, now);
+  const lastExpectedToday = job.schedule_cron_utc
+    ? lastExpectedCronFireUtc(job.schedule_cron_utc, now)
+    : null;
+  const suppressStaleDualBandAwaitingInWindow =
+    dualBandInterFire &&
+    (last.status === "skipped" || last.status === "ok") &&
+    lastExpectedToday != null &&
+    Date.parse(last.started_at) >= lastExpectedToday.getTime();
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
@@ -308,6 +332,9 @@ export function evaluateJob(
   } else if (suppressStaleOffSchedule) {
     status = "healthy";
     statusLabel = "Idle (outside cron schedule window)";
+  } else if (suppressStaleDualBandAwaitingInWindow) {
+    status = "healthy";
+    statusLabel = "Awaiting in-window dual-band fire (early band skipped)";
   } else if (
     job.key === "flow-ingest" &&
     last.status === "skipped" &&

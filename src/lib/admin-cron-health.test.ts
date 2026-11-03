@@ -279,3 +279,40 @@ test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan hea
     "long in-flight scans must not trip market_hours_stale before the overlap lock TTL"
   );
 });
+
+test("nighthawk-backfill-repair: never-run during dual-band inter-fire gap is unknown, not stale", () => {
+  const job = jobDef({
+    key: "nighthawk-backfill-repair",
+    schedule_cron_utc: "0 13,14 * * 1-5",
+    stale_after_min: 36 * 60,
+    weekdays_only: true,
+  });
+  const now = new Date("2026-11-03T13:59:00.000Z");
+  const health = evaluateJob(job, undefined, [], now);
+  assert.equal(health.status, "unknown");
+  assert.match(health.status_label, /in-window dual-band/i);
+});
+
+test("nighthawk-backfill-repair: stale last run stays stale during inter-fire gap (not a false suppress)", () => {
+  const job = jobDef({
+    key: "nighthawk-backfill-repair",
+    schedule_cron_utc: "0 13,14 * * 1-5",
+    stale_after_min: 36 * 60,
+    weekdays_only: true,
+  });
+  const now = new Date("2026-11-03T13:59:00.000Z");
+  const health = evaluateJob(
+    job,
+    {
+      id: 1,
+      job_key: "nighthawk-backfill-repair",
+      started_at: "2026-10-30T14:00:05.000Z",
+      status: "ok",
+      duration_ms: 50,
+      message: "ok",
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "stale");
+});
