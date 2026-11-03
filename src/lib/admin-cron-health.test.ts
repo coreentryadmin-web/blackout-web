@@ -140,6 +140,31 @@ test("nighthawkJobAgeMin: past updated_at returns clamped minutes", () => {
   assert.equal(nighthawkJobAgeMin(past, 60, now), 2);
 });
 
+test("dual-band morning cron: stale age is suppressed between first and second UTC band", () => {
+  const now = new Date("2026-11-03T13:58:00.000Z"); // Mon EST — in-window fire at 14:00 UTC
+  const health = evaluateJob(
+    jobDef({
+      key: "nighthawk-backfill-repair",
+      schedule_cron_utc: "0 13,14 * * 1-5",
+      stale_after_min: 36 * 60,
+      weekdays_only: true,
+    }),
+    {
+      id: 1,
+      job_key: "nighthawk-backfill-repair",
+      status: "ok",
+      started_at: "2026-10-31T14:00:00.000Z",
+      duration_ms: 120,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /dual-band/i);
+});
+
 test("REGRESSION: a job WITH a fresh run is untouched by the never-run branch", () => {
   const health = evaluateJob(
     jobDef(),

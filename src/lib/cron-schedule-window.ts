@@ -136,6 +136,37 @@ export function isInOffScheduleIdleGap(cronExpr: string, now = new Date()): bool
   return t > last.getTime() && t < next.getTime();
 }
 
+/**
+ * True between two same-day UTC fires when the gap is short (dual-band DST schedules like
+ * `0 13,14 * * 1-5`). Only ONE band lands in the route's ET window in each offset; the other
+ * intentionally no-ops. While `now` sits after the first band but before the second, the
+ * meaningful in-window run has not been due yet — do not page stale on age from a prior session.
+ */
+export function isInDualBandSameDayGrace(cronExpr: string, now = new Date()): boolean {
+  const last = lastExpectedCronFireUtc(cronExpr, now);
+  const next = nextExpectedCronFireUtc(cronExpr, now);
+  if (!last || !next) return false;
+  if (
+    last.getUTCFullYear() !== now.getUTCFullYear() ||
+    last.getUTCMonth() !== now.getUTCMonth() ||
+    last.getUTCDate() !== now.getUTCDate()
+  ) {
+    return false;
+  }
+  if (
+    next.getUTCFullYear() !== now.getUTCFullYear() ||
+    next.getUTCMonth() !== now.getUTCMonth() ||
+    next.getUTCDate() !== now.getUTCDate()
+  ) {
+    return false;
+  }
+  const gapMs = next.getTime() - last.getTime();
+  const dualBandMaxGapMs = 2 * 60 * 60_000;
+  if (gapMs <= 0 || gapMs > dualBandMaxGapMs) return false;
+  const t = now.getTime();
+  return t >= last.getTime() && t < next.getTime();
+}
+
 /** Last scheduled fire at or before `now` within the lookback window. */
 export function lastExpectedCronFireUtc(cronExpr: string, now = new Date()): Date | null {
   const [minuteField, hourField, , , dowField] = cronExpr.trim().split(/\s+/);

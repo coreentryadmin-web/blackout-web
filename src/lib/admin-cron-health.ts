@@ -18,7 +18,7 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
-import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
+import { isInDualBandSameDayGrace, isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -251,7 +251,9 @@ export function evaluateJob(
     const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-    const notDueYet = offWindowNoRun || offScheduleNoRun;
+    const dualBandGraceNoRun =
+      Boolean(job.schedule_cron_utc) && isInDualBandSameDayGrace(job.schedule_cron_utc!, now);
+    const notDueYet = offWindowNoRun || offScheduleNoRun || dualBandGraceNoRun;
 
     return {
       key: job.key,
@@ -293,8 +295,12 @@ export function evaluateJob(
     offWindow && (last.status === "skipped" || last.status === "ok");
   const offScheduleGap = Boolean(job.schedule_cron_utc) &&
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
+  const dualBandGrace = Boolean(job.schedule_cron_utc) &&
+    isInDualBandSameDayGrace(job.schedule_cron_utc!, now);
   const suppressStaleOffSchedule =
     offScheduleGap && (last.status === "skipped" || last.status === "ok");
+  const suppressStaleDualBandGrace =
+    dualBandGrace && (last.status === "skipped" || last.status === "ok" || last.status === "failed");
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
@@ -308,6 +314,9 @@ export function evaluateJob(
   } else if (suppressStaleOffSchedule) {
     status = "healthy";
     statusLabel = "Idle (outside cron schedule window)";
+  } else if (suppressStaleDualBandGrace) {
+    status = "healthy";
+    statusLabel = "Idle (awaiting dual-band in-window fire)";
   } else if (
     job.key === "flow-ingest" &&
     last.status === "skipped" &&
