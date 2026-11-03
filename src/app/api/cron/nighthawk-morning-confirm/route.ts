@@ -52,6 +52,7 @@ import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { parsePlayLevels, entryHalfWidth } from "@/features/nighthawk/lib/play-levels";
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 import { promoteLegacyConfirmedToSwing } from "@/lib/swing/legacy-confirm-promote";
+import { dispatchCronWarm } from "@/lib/cron-dispatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -245,6 +246,21 @@ export async function GET(req: NextRequest) {
   const editionDateParam = req.nextUrl.searchParams.get("date") ?? today;
 
   try {
+    // Piggyback the backfill-repair cron before we read the edition row. The dedicated
+    // EventBridge rule for nighthawk-backfill-repair is often missing from the deployed manifest
+    // even though railway.nighthawk-backfill-repair.toml exists — measured live: last_run_at=null
+    // for weeks while this route fires every session. republishBackfilledEdition is idempotent;
+    // running it here (15 min after the ideal 9:00 ET slot) still beats a dead BACKFILL contract
+    // at open. Logs under nighthawk-backfill-repair via that route's own logCronRun.
+    const repairDispatch = await dispatchCronWarm("nighthawk-backfill-repair");
+    if (!repairDispatch.ok) {
+      console.warn(
+        "[nighthawk/morning-confirm] backfill-repair piggyback failed",
+        repairDispatch.status,
+        repairDispatch.detail ?? repairDispatch.error ?? repairDispatch.result
+      );
+    }
+
     // ── Phase 1: fetch the edition ──────────────────────────────────────────
     let editionRow = await fetchNighthawkEditionByDate(editionDateParam);
     if (!editionRow) {
