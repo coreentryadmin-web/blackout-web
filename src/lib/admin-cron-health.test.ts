@@ -7,9 +7,11 @@ import {
   effectiveStaleMinutes,
   evaluateJob,
   expectedNighthawkEdition,
+  isBeforeEtDueWindow,
   nighthawkEditionCoversExpected,
   nighthawkJobAgeMin,
 } from "./admin-cron-health";
+import { CRON_JOBS } from "./cron-registry";
 import type { CronJobDefinition } from "./cron-registry";
 
 function withDefaultNighthawkWindow(fn: () => void) {
@@ -113,6 +115,26 @@ test("a never-run MARKET-HOURS job trips market_hours_stale during RTH", () => {
   );
   assert.equal(health.status, "stale");
   assert.equal(health.market_hours_stale, true, "a dead market-hours job during RTH must trip the #90 flag");
+});
+
+test("nighthawk-backfill-repair: before 9:00 AM ET is not due (Cron audit query false positive)", () => {
+  const job = CRON_JOBS.find((j) => j.key === "nighthawk-backfill-repair");
+  assert.ok(job?.et_due_window);
+  // Tue 2026-11-03 13:59 UTC = 8:59 AM ET (EST after Nov 1 DST end) — measured Cron audit query fail.
+  const preWindow = new Date("2026-11-03T13:59:00.000Z");
+  assert.equal(isBeforeEtDueWindow(job!, preWindow), true);
+  const health = evaluateJob(job!, undefined, [], preWindow);
+  assert.equal(health.status, "unknown");
+  assert.match(health.status_label, /before ET run window/i);
+});
+
+test("nighthawk-backfill-repair: after catchup with no run still pages stale", () => {
+  const job = CRON_JOBS.find((j) => j.key === "nighthawk-backfill-repair");
+  assert.ok(job);
+  const afterCatchup = new Date("2026-11-03T16:00:00.000Z"); // 11:00 AM ET
+  assert.equal(isBeforeEtDueWindow(job!, afterCatchup), false);
+  const health = evaluateJob(job!, undefined, [], afterCatchup);
+  assert.equal(health.status, "stale");
 });
 
 test("a never-run market-hours job stays quiet overnight — it is not due yet", () => {

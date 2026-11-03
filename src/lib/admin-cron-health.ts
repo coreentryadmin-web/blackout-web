@@ -19,6 +19,7 @@ import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
+import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -86,6 +87,39 @@ function etMinuteOfDay(now = new Date()): number {
   const hour = Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
   const minute = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
   return hour * 60 + minute;
+}
+
+/** Before the route's ET run window — dual-band UTC ticks must not page early (ops cron-audit). */
+export function isBeforeEtDueWindow(job: CronJobDefinition, now = new Date()): boolean {
+  const w = job.et_due_window;
+  if (!w) return false;
+  const etDate = formatEtDate(now);
+  if (job.weekdays_only && !isTradingDayEt(etDate)) return false;
+  if (job.weekdays_only ?? true) {
+    const weekday = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      weekday: "short",
+    }).format(now);
+    if (weekday === "Sat" || weekday === "Sun") return false;
+  }
+  return etMinuteOfDay(now) < w.targetHour * 60 + w.targetMinute;
+}
+
+/** After catchup closes with no logged run today — still due (not an off-hours idle gap). */
+function isPastEtDueCatchup(job: CronJobDefinition, now = new Date()): boolean {
+  const w = job.et_due_window;
+  if (!w) return false;
+  const etDate = formatEtDate(now);
+  if (job.weekdays_only && !isTradingDayEt(etDate)) return false;
+  return !inEtWindow(
+    {
+      targetHour: w.targetHour,
+      targetMinute: w.targetMinute,
+      catchupMin: w.catchupMin,
+      weekdaysOnly: job.weekdays_only ?? true,
+    },
+    now
+  );
 }
 
 export type NighthawkEditionExpectation = {
@@ -250,8 +284,11 @@ export function evaluateJob(
     // which is the reason the off-window suppression exists at all.
     const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
     const offScheduleNoRun =
-      Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-    const notDueYet = offWindowNoRun || offScheduleNoRun;
+      Boolean(job.schedule_cron_utc) &&
+      isInOffScheduleIdleGap(job.schedule_cron_utc!, now) &&
+      !isPastEtDueCatchup(job, now);
+    const beforeEtDue = isBeforeEtDueWindow(job, now);
+    const notDueYet = offWindowNoRun || offScheduleNoRun || beforeEtDue;
 
     return {
       key: job.key,
@@ -262,7 +299,9 @@ export function evaluateJob(
       description: job.description,
       status: notDueYet ? "unknown" : "stale",
       status_label: notDueYet
-        ? "No runs logged (not due — outside its window)"
+        ? beforeEtDue
+          ? "No runs logged (not due — before ET run window)"
+          : "No runs logged (not due — outside its window)"
         : "NEVER logged a run — job may not be scheduled at all",
       market_hours_stale: Boolean(job.market_hours_only) && !offWindowNoRun,
       last_run_at: null,

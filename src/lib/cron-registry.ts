@@ -14,6 +14,11 @@ export type CronJobDefinition = {
   stale_after_min: number;
   /** Railway/EventBridge UTC cron — enables off-window stale suppression. */
   schedule_cron_utc?: string;
+  /**
+   * Route-side ET gate (inEtWindow) — health board treats the job as not due until this wall-clock
+   * on trading days, so dual-band UTC schedules do not page before the real ET run window opens.
+   */
+  et_due_window?: { targetHour: number; targetMinute: number; catchupMin: number };
   weekdays_only?: boolean;
   market_hours_only?: boolean;
   description: string;
@@ -430,6 +435,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     schedule_label: "9:15 AM ET weekdays",
     // Mirrors railway.nighthawk-morning-confirm.toml — off-window stale suppression (ops #1983).
     schedule_cron_utc: "15 13,14 * * 1-5",
+    et_due_window: { targetHour: 9, targetMinute: 10, catchupMin: 35 },
     stale_after_min: 36 * 60,
     weekdays_only: true,
     description: "Validates overnight Night Hawk plays vs pre-market SPX; writes CONFIRMED/DEGRADED/INVALIDATED status to Redis for UI badges",
@@ -449,6 +455,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     // member-facing edition for a full day because nothing ever invoked the admin-only
     // POST /api/admin/nighthawk/republish-backfill endpoint for it.
     schedule_cron_utc: "0 13,14 * * 1-5",
+    et_due_window: { targetHour: 9, targetMinute: 0, catchupMin: 90 },
     stale_after_min: 36 * 60,
     weekdays_only: true,
     description: "Auto-repairs a BACKFILL play whose own contract has expired relative to the edition's target trading day, before morning-confirm and market open",
