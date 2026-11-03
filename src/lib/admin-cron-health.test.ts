@@ -9,6 +9,7 @@ import {
   expectedNighthawkEdition,
   nighthawkEditionCoversExpected,
   nighthawkJobAgeMin,
+  nighthawkBackfillRepairPreWindow,
 } from "./admin-cron-health";
 import type { CronJobDefinition } from "./cron-registry";
 
@@ -333,5 +334,20 @@ test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan hea
     block,
     /zerodteWarmInFlight/,
     "long in-flight scans must not trip market_hours_stale before the overlap lock TTL"
+  );
+});
+
+test("nighthawkBackfillRepairPreWindow is true before 9:00 AM ET on a trading day (EST)", () => {
+  // Tue 2026-11-03 13:59 UTC = 8:59 AM ET after DST ends — matches scheduled query CI timing.
+  assert.equal(nighthawkBackfillRepairPreWindow(new Date("2026-11-03T13:59:00Z")), true);
+  assert.equal(nighthawkBackfillRepairPreWindow(new Date("2026-11-03T14:30:00Z")), false);
+});
+
+test("buildCronHealthSnapshot suppresses nighthawk-backfill-repair stale/failed before the ET window", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(src, /nighthawkBackfillRepairPreWindow/);
+  assert.match(
+    src,
+    /job\.key === "nighthawk-backfill-repair"[\s\S]*nighthawkBackfillRepairPreWindow\(\)[\s\S]*Awaiting 9:00 AM ET repair window/
   );
 });
