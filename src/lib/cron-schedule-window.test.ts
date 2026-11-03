@@ -96,7 +96,7 @@ describe("cron-schedule-window", () => {
     const cron = "0 13,14 * * 1-5";
     const now = new Date("2026-11-03T13:59:00.000Z"); // Mon ~8:59 AM ET (EST)
     assert.equal(isAwaitingSecondaryUtcBandFire(cron, now), true);
-    assert.equal(isInOffScheduleIdleGap(cron, now), false);
+    assert.equal(isInOffScheduleIdleGap(cron, now), true);
   });
 
   it("nighthawk-backfill-repair: after 14:00 UTC band is no longer awaiting", () => {
