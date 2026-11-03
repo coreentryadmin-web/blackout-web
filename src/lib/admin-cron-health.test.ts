@@ -7,6 +7,7 @@ import {
   effectiveStaleMinutes,
   evaluateJob,
   expectedNighthawkEdition,
+  isBeforeMorningBandDueEt,
   nighthawkEditionCoversExpected,
   nighthawkJobAgeMin,
 } from "./admin-cron-health";
@@ -278,4 +279,34 @@ test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan hea
     /zerodteWarmInFlight/,
     "long in-flight scans must not trip market_hours_stale before the overlap lock TTL"
   );
+});
+
+// Cron audit query failed 2026-11-03 ~8:58 AM ET: nighthawk-backfill-repair flagged stale
+// between UTC dual-band fires while the dedicated EventBridge rule is still missing — weekend
+// age + short intra-day gap, before the 9:10 ET morning window.
+const MON_EST_PREOPEN = new Date("2026-11-03T13:58:00.000Z");
+
+test("nighthawk-backfill-repair is not stale before 9:10 ET on a trading day", () => {
+  assert.equal(isBeforeMorningBandDueEt(MON_EST_PREOPEN), true);
+  const health = evaluateJob(
+    jobDef({
+      key: "nighthawk-backfill-repair",
+      weekdays_only: true,
+      schedule_cron_utc: "0 13,14 * * 1-5",
+      stale_after_min: 36 * 60,
+    }),
+    {
+      id: 1,
+      job_key: "nighthawk-backfill-repair",
+      status: "ok",
+      started_at: "2026-10-31T14:00:00.000Z",
+      duration_ms: 100,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    MON_EST_PREOPEN
+  );
+  assert.equal(health.status, "unknown");
+  assert.match(health.status_label, /before morning ET window/i);
 });

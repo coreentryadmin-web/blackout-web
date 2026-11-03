@@ -23,6 +23,32 @@ import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
 import { sharedCacheGet, sharedCacheGetWithTtl } from "@/lib/shared-cache";
+
+/** Dual-band morning crons (9:00–9:45 ET) — not due for staleness before the first in-window fire. */
+const MORNING_BAND_CRON_KEYS = new Set([
+  "nighthawk-backfill-repair",
+  "nighthawk-morning-confirm",
+  "largo-morning-brief",
+]);
+
+/** True before 9:10 ET on a trading day (first morning-confirm band). */
+export function isBeforeMorningBandDueEt(now: Date = new Date()): boolean {
+  const etDate = formatEtDate(now);
+  if (!isTradingDayEt(etDate)) return false;
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(now).map((p) => [p.type, p.value]));
+  const mins = Number(parts.hour) * 60 + Number(parts.minute);
+  return mins < 9 * 60 + 10;
+}
+
+function suppressMorningBandPreDueStale(job: CronJobDefinition, now: Date): boolean {
+  return job.weekdays_only === true && MORNING_BAND_CRON_KEYS.has(job.key) && isBeforeMorningBandDueEt(now);
+}
 import {
   SWING_DISCOVERY_SCAN_MAX_MS,
   SWING_FORCE_CLEAR_RUNNING_BUFFER_MS,
@@ -251,7 +277,7 @@ export function evaluateJob(
     const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-    const notDueYet = offWindowNoRun || offScheduleNoRun;
+    const notDueYet = offWindowNoRun || offScheduleNoRun || suppressMorningBandPreDueStale(job, now);
 
     return {
       key: job.key,
@@ -262,7 +288,9 @@ export function evaluateJob(
       description: job.description,
       status: notDueYet ? "unknown" : "stale",
       status_label: notDueYet
-        ? "No runs logged (not due — outside its window)"
+        ? suppressMorningBandPreDueStale(job, now)
+          ? "No runs logged (not due — before morning ET window)"
+          : "No runs logged (not due — outside its window)"
         : "NEVER logged a run — job may not be scheduled at all",
       market_hours_stale: Boolean(job.market_hours_only) && !offWindowNoRun,
       last_run_at: null,
@@ -317,8 +345,13 @@ export function evaluateJob(
     status = "healthy";
     statusLabel = `REST skipped (${last.message}) — alternate writer path active`;
   } else if (ageMin > staleThreshold) {
-    status = "stale";
-    statusLabel = `No run in ${Math.round(ageMin)}m (limit ${Math.round(staleThreshold)}m${staleMultiplier > 1 ? ` · ${staleMultiplier}× weekend` : ""})`;
+    if (suppressMorningBandPreDueStale(job, now)) {
+      status = "unknown";
+      statusLabel = "Not due — before morning ET window";
+    } else {
+      status = "stale";
+      statusLabel = `No run in ${Math.round(ageMin)}m (limit ${Math.round(staleThreshold)}m${staleMultiplier > 1 ? ` · ${staleMultiplier}× weekend` : ""})`;
+    }
   } else if (last.status === "skipped") {
     status = "warning";
     statusLabel = "Last run skipped";

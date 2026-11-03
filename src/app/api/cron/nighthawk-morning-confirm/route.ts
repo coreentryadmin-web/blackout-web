@@ -89,6 +89,23 @@ function inMorningWindow(force: boolean): boolean {
   return inEtWindow({ targetHour: 9, targetMinute: 10, catchupMin: 35 });
 }
 
+/** Invoke backfill-repair on the same app (logs under nighthawk-backfill-repair). Best-effort. */
+async function delegateBackfillRepair(baseUrl: string, editionFor: string, force: boolean): Promise<void> {
+  const cron = process.env.CRON_SECRET;
+  if (!cron) return;
+  const qs = new URLSearchParams({ date: editionFor });
+  if (force) qs.set("force", "1");
+  try {
+    await fetch(`${baseUrl}/api/cron/nighthawk-backfill-repair?${qs}`, {
+      headers: { Authorization: `Bearer ${cron}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(55_000),
+    });
+  } catch (err) {
+    console.warn("[nighthawk/morning-confirm] delegated backfill-repair failed", err);
+  }
+}
+
 // Fetch pre-market SPX — WS-first, then REST snapshot.
 async function fetchSpxPremarket(): Promise<number | null> {
   try {
@@ -279,6 +296,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(payload);
     }
 
+    const host = req.headers.get("host") ?? "localhost:3000";
+    const proto = host.startsWith("localhost") ? "http" : "https";
+    const baseUrl = `${proto}://${host}`;
+    // Self-heal path when the dedicated EventBridge rule is missing: morning-confirm always
+    // runs in-window and delegates to the backfill-repair route so cron_job_runs gets a row.
+    await delegateBackfillRepair(baseUrl, editionFor, force);
+
     if (!plays.length) {
       // Write an honest empty blob so the member-facing play-status route can say
       // "this session's edition published no plays" instead of the misleading
@@ -315,10 +339,7 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Phase 2: fetch context in parallel ──────────────────────────────────
-    // Determine the base URL for internal API calls (self-calls).
-    const host = req.headers.get("host") ?? "localhost:3000";
-    const proto = host.startsWith("localhost") ? "http" : "https";
-    const baseUrl = `${proto}://${host}`;
+    // baseUrl/host/proto computed above for delegated backfill-repair.
 
     const [intel, spxPremarket, priorClose, stockSnaps] = await Promise.all([
       fetchPlatformIntel(baseUrl),
