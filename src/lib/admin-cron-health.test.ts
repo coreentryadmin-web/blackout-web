@@ -115,6 +115,44 @@ test("a never-run MARKET-HOURS job trips market_hours_stale during RTH", () => {
   assert.equal(health.market_hours_stale, true, "a dead market-hours job during RTH must trip the #90 flag");
 });
 
+test("nighthawk-backfill-repair: never-run stays unknown between dual-band ticks (query CI false positive)", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "nighthawk-backfill-repair",
+      schedule_cron_utc: "0 13,14 * * 1-5",
+      stale_after_min: 36 * 60,
+    }),
+    undefined,
+    [],
+    new Date("2026-11-03T13:59:00.000Z")
+  );
+  assert.equal(health.status, "unknown");
+  assert.equal(health.market_hours_stale, false);
+});
+
+test("nighthawk-backfill-repair: overdue age suppressed between dual-band ticks before 9am ET run", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "nighthawk-backfill-repair",
+      schedule_cron_utc: "0 13,14 * * 1-5",
+      stale_after_min: 36 * 60,
+    }),
+    {
+      id: 1,
+      job_key: "nighthawk-backfill-repair",
+      status: "ok",
+      started_at: "2026-10-31T14:00:05.000Z",
+      duration_ms: 120,
+      message: "ok",
+      meta_json: null,
+    },
+    [],
+    new Date("2026-11-03T13:59:00.000Z")
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /dual-band retry/i);
+});
+
 test("a never-run market-hours job stays quiet overnight — it is not due yet", () => {
   // The off-window suppression exists so the board does not cry wolf at 3am; a job that has never
   // run gets the same benefit of the doubt a stale-but-present one does, and no more.

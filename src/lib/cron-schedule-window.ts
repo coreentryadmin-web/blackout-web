@@ -136,6 +136,33 @@ export function isInOffScheduleIdleGap(cronExpr: string, now = new Date()): bool
   return t > last.getTime() && t < next.getTime();
 }
 
+/**
+ * True while `now` sits between two EventBridge ticks on the SAME UTC calendar day whose gap is
+ * ≤2h — the fixed-UTC dual-band shape used for 9:00 AM ET jobs (`0 13,14`, `15 13,14`, …).
+ *
+ * The first band often logs only an ET-window skip (8:00 AM ET under EST); the real run lands on
+ * the second band (9:00 AM ET). `isInOffScheduleIdleGap` deliberately treats this 1h gap as
+ * in-schedule (so hourly crons still page on a missed :20), which falsely marks these jobs stale
+ * in CI/query between ~13:01–13:59 UTC — measured 2026-11-03 on `nighthawk-backfill-repair`.
+ */
+export function isInSameDayDualBandRetryWindow(cronExpr: string, now = new Date()): boolean {
+  const last = lastExpectedCronFireUtc(cronExpr, now);
+  const next = nextExpectedCronFireUtc(cronExpr, now);
+  if (!last || !next) return false;
+  if (
+    last.getUTCFullYear() !== next.getUTCFullYear() ||
+    last.getUTCMonth() !== next.getUTCMonth() ||
+    last.getUTCDate() !== next.getUTCDate()
+  ) {
+    return false;
+  }
+  const gapMs = next.getTime() - last.getTime();
+  const dualBandMaxGapMs = 2 * 60 * 60_000;
+  if (gapMs <= 0 || gapMs > dualBandMaxGapMs) return false;
+  const t = now.getTime();
+  return t > last.getTime() && t < next.getTime();
+}
+
 /** Last scheduled fire at or before `now` within the lookback window. */
 export function lastExpectedCronFireUtc(cronExpr: string, now = new Date()): Date | null {
   const [minuteField, hourField, , , dowField] = cronExpr.trim().split(/\s+/);
