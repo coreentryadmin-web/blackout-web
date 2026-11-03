@@ -183,3 +183,32 @@ export function nextExpectedCronFireUtc(cronExpr: string, now = new Date()): Dat
   const eligible = fires.filter((f) => f.getTime() > now.getTime());
   return eligible.length ? eligible[0]! : null;
 }
+
+/**
+ * Dual-band UTC schedules (e.g. `0 13,14 * * 1-5` for Night Hawk morning crons) fire once
+ * before and once after the US DST flip so exactly one tick lands in the 9:00–9:10 ET window.
+ * The earlier tick is expected to no-op (outside the route's inEtWindow guard). Between those
+ * two same-day fires, staleness must stay suppressed — otherwise the watchdog false-alarms every
+ * weekday morning (measured: cron-audit-query RED at 13:59 UTC while waiting for the 14:00 UTC
+ * in-window band).
+ */
+export function isAwaitingSecondaryUtcBandFire(cronExpr: string, now = new Date()): boolean {
+  const [minuteField, hourField, , , dowField] = cronExpr.trim().split(/\s+/);
+  if (!minuteField || !hourField || !dowField) return false;
+  const hours = parseIntList(hourField, 0, 23);
+  if (hours.length !== 2 || hours[1]! - hours[0]! !== 1) return false;
+
+  const fires = enumerateFiresOnUtcDay(
+    minuteField,
+    hourField,
+    dowField,
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate()
+  );
+  if (fires.length < 2) return false;
+  const t = now.getTime();
+  const first = fires[0]!.getTime();
+  const second = fires[1]!.getTime();
+  return t >= first && t < second;
+}

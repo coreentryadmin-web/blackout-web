@@ -18,7 +18,7 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
-import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
+import { isInOffScheduleIdleGap, isAwaitingSecondaryUtcBandFire } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -251,7 +251,9 @@ export function evaluateJob(
     const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-    const notDueYet = offWindowNoRun || offScheduleNoRun;
+    const awaitingDualBand =
+      Boolean(job.schedule_cron_utc) && isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now);
+    const notDueYet = offWindowNoRun || offScheduleNoRun || awaitingDualBand;
 
     return {
       key: job.key,
@@ -293,8 +295,10 @@ export function evaluateJob(
     offWindow && (last.status === "skipped" || last.status === "ok");
   const offScheduleGap = Boolean(job.schedule_cron_utc) &&
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
+  const awaitingDualBand =
+    Boolean(job.schedule_cron_utc) && isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now);
   const suppressStaleOffSchedule =
-    offScheduleGap && (last.status === "skipped" || last.status === "ok");
+    (offScheduleGap || awaitingDualBand) && (last.status === "skipped" || last.status === "ok");
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
@@ -307,7 +311,9 @@ export function evaluateJob(
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
   } else if (suppressStaleOffSchedule) {
     status = "healthy";
-    statusLabel = "Idle (outside cron schedule window)";
+    statusLabel = awaitingDualBand
+      ? "Idle (awaiting in-window UTC band)"
+      : "Idle (outside cron schedule window)";
   } else if (
     job.key === "flow-ingest" &&
     last.status === "skipped" &&
