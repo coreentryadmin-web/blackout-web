@@ -191,6 +191,58 @@ test("effectiveStaleMinutes: NYSE holiday uses relaxed multiplier for market_hou
   assert.equal(effective, 90);
 });
 
+test("nighthawk-backfill-repair: pre-9 AM ET on a trading day is not stale (Cron audit query false positive)", () => {
+  const job = jobDef({
+    key: "nighthawk-backfill-repair",
+    stale_after_min: 36 * 60,
+    weekdays_only: true,
+    schedule_cron_utc: "0 13,14 * * 1-5",
+  });
+  // Tue 2026-11-03 13:59 UTC = 8:59 AM ET (EST) — Cron audit query failed here on main.
+  const beforeWindow = new Date("2026-11-03T13:59:00.000Z");
+  const health = evaluateJob(
+    job,
+    {
+      id: 1,
+      job_key: "nighthawk-backfill-repair",
+      status: "skipped",
+      started_at: "2026-10-31T14:00:00.000Z",
+      duration_ms: 5,
+      message: "Outside repair window",
+      meta_json: null,
+    },
+    [],
+    beforeWindow
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /Before 9 AM ET repair window/i);
+});
+
+test("nighthawk-backfill-repair: inside repair window with no fresh ok run stays stale", () => {
+  const job = jobDef({
+    key: "nighthawk-backfill-repair",
+    stale_after_min: 36 * 60,
+    weekdays_only: true,
+    schedule_cron_utc: "0 13,14 * * 1-5",
+  });
+  const inWindow = new Date("2026-11-03T15:30:00.000Z"); // 10:30 AM ET
+  const health = evaluateJob(
+    job,
+    {
+      id: 1,
+      job_key: "nighthawk-backfill-repair",
+      status: "skipped",
+      started_at: "2026-10-31T14:00:00.000Z",
+      duration_ms: 5,
+      message: "Outside repair window",
+      meta_json: null,
+    },
+    [],
+    inWindow
+  );
+  assert.equal(health.status, "stale");
+});
+
 test("NYSE holiday silence on gated warmers does not false-flag market_hours_stale", () => {
   const health = evaluateJob(
     jobDef({

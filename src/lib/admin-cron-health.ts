@@ -14,6 +14,7 @@ import {
   nextTradingDayEt,
 } from "@/features/nighthawk/lib/session";
 import { isInEditionWindow } from "@/features/nighthawk/lib/edition-stale";
+import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
@@ -192,6 +193,24 @@ export type CronHealthPayload = {
 /** Stale ceiling multiplier when a job is off its schedule window.
  * Uses isTradingDayEt (not isWeekdayEt) so NYSE holidays get the same relaxed
  * thresholds as weekends — weekday-only crons gate/skipped on holidays (#4520). */
+/** Same ET window as GET /api/cron/nighthawk-backfill-repair (dual UTC band lands here in EST). */
+export function nighthawkBackfillRepairDue(now: Date = new Date()): boolean {
+  return inEtWindow(
+    {
+      targetHour: Number(process.env.NIGHTHAWK_BACKFILL_REPAIR_HOUR_ET ?? "9"),
+      targetMinute: Number(process.env.NIGHTHAWK_BACKFILL_REPAIR_MINUTE_ET ?? "0"),
+      catchupMin: Number(process.env.NIGHTHAWK_BACKFILL_REPAIR_CATCHUP_MIN ?? "90"),
+    },
+    now
+  );
+}
+
+function suppressNighthawkBackfillRepairPreWindow(job: CronJobDefinition, now: Date): boolean {
+  if (job.key !== "nighthawk-backfill-repair") return false;
+  if (!isTradingDayEt(formatEtDate(now))) return false;
+  return !nighthawkBackfillRepairDue(now);
+}
+
 export function effectiveStaleMinutes(
   job: CronJobDefinition,
   now: Date = new Date()
@@ -251,7 +270,8 @@ export function evaluateJob(
     const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-    const notDueYet = offWindowNoRun || offScheduleNoRun;
+    const nhBackfillPreWindow = suppressNighthawkBackfillRepairPreWindow(job, now);
+    const notDueYet = offWindowNoRun || offScheduleNoRun || nhBackfillPreWindow;
 
     return {
       key: job.key,
@@ -294,7 +314,9 @@ export function evaluateJob(
   const offScheduleGap = Boolean(job.schedule_cron_utc) &&
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
   const suppressStaleOffSchedule =
-    offScheduleGap && (last.status === "skipped" || last.status === "ok");
+    offScheduleGap &&
+    (last.status === "skipped" || last.status === "ok") &&
+    !(job.key === "nighthawk-backfill-repair" && nighthawkBackfillRepairDue(now));
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
@@ -330,6 +352,15 @@ export function evaluateJob(
   // Flag a market-hours warmer that is stale WHILE the market is open — the #90 silent-death case.
   // `offWindow` is false here means we're in RTH, so a "stale" status is a genuine live-data outage.
   const marketHoursStale = Boolean(job.market_hours_only) && !offWindow && status === "stale";
+
+  if (
+    suppressNighthawkBackfillRepairPreWindow(job, now) &&
+    last.status !== "failed" &&
+    (status === "stale" || status === "warning" || status === "unknown")
+  ) {
+    status = "healthy";
+    statusLabel = "Before 9 AM ET repair window (dual-band cron not due yet)";
+  }
 
   return {
     key: job.key,
