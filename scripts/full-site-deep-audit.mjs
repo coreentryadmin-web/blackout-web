@@ -7,6 +7,7 @@
  */
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
+import { spxOracleVerdict } from "./audit/lib/spx-oracle-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -424,27 +425,49 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX — live cross-check only while RTH is open. After the cash close,
-  // platform snapshot `price` can reflect extended/last prints while Polygon's index snapshot
-  // `value`/`session.close` stays on the regular-session settle (RTH deep audit run 41537722853:
-  // Δ11.34 at 17:30 ET — false P0, not a production desk bug).
+  // Polygon oracle for SPX — live-vs-live during RTH, prior-close off-hours (data-validator convention).
   if (POLY_KEY && CRON) {
-    const deskRes = await getJson("/api/market/spx/desk");
-    if (deskRes.status === 200 && deskRes.json?.market_open !== true) {
-      ok("oracle", "SPX", "skipped — session not open (Polygon oracle is RTH-only)");
-    } else {
-      const snap = await getJson("/api/market/platform/snapshot");
-      const deskSpx = snap.json?.spx?.price;
-      const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX&apiKey=${POLY_KEY}`);
-      if (polyRes.ok && deskSpx > 0) {
-        const poly = await polyRes.json();
-        const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-        const oracle = row?.value ?? row?.session?.close;
-        if (oracle > 0) {
-          const d = Math.abs(oracle - deskSpx);
-          if (d > 5) fail("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`, "P0");
-          else ok("oracle", "SPX", `desk ${deskSpx} vs Polygon ${oracle} (Δ ${d.toFixed(2)})`);
+    const snap = await getJson("/api/market/platform/snapshot");
+    const deskSpx = snap.json?.spx?.price;
+    if (deskSpx > 0) {
+      let rth = false;
+      let oracle = null;
+      let gtLabel = "";
+      const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
+      if (statusRes.ok) {
+        const status = await statusRes.json();
+        rth = status?.market === "open";
+      }
+      if (rth) {
+        const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
+        if (polyRes.ok) {
+          const poly = await polyRes.json();
+          const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
+          oracle = row?.value ?? row?.session?.close;
+          gtLabel = "live";
         }
+      } else {
+        const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
+        if (prevRes.ok) {
+          const prev = await prevRes.json();
+          oracle = prev?.results?.[0]?.c;
+          gtLabel = "prev-close";
+        }
+      }
+      const verdict = spxOracleVerdict(deskSpx, oracle, rth);
+      if (verdict.verdict === "fail") {
+        fail(
+          "oracle",
+          "SPX",
+          `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}% > ${verdict.tolPct}% tol)`,
+          "P0"
+        );
+      } else if (verdict.verdict === "pass") {
+        ok(
+          "oracle",
+          "SPX",
+          `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}%)`
+        );
       }
     }
   }

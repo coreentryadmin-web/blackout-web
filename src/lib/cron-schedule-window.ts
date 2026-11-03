@@ -136,6 +136,34 @@ export function isInOffScheduleIdleGap(cronExpr: string, now = new Date()): bool
   return t > last.getTime() && t < next.getTime();
 }
 
+/**
+ * True in the short gap between two same-day UTC fires (≤2h apart) — the dual-band DST
+ * pattern (`0 13,14 * * 1-5`, `15 13,14 * * 1-5`, …). The first band often no-ops
+ * outside the route's ET window; the in-window run is the second band. Between them,
+ * a job with no logged run must not read as stale (cron audit 41649123458 @ 13:59 UTC
+ * flagged nighthawk-backfill-repair before the 14:00 UTC in-window fire).
+ */
+export function isInSameDayDualBandGap(cronExpr: string, now = new Date()): boolean {
+  const [minuteField, hourField, , , dowField] = cronExpr.trim().split(/\s+/);
+  if (!minuteField || !hourField || !dowField) return false;
+  const fires = enumerateFiresOnUtcDay(
+    minuteField,
+    hourField,
+    dowField,
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate()
+  );
+  if (fires.length < 2) return false;
+  const t = now.getTime();
+  for (let i = 0; i < fires.length - 1; i++) {
+    const gapMs = fires[i + 1]!.getTime() - fires[i]!.getTime();
+    if (gapMs > 2 * 60 * 60_000) continue;
+    if (t > fires[i]!.getTime() && t < fires[i + 1]!.getTime()) return true;
+  }
+  return false;
+}
+
 /** Last scheduled fire at or before `now` within the lookback window. */
 export function lastExpectedCronFireUtc(cronExpr: string, now = new Date()): Date | null {
   const [minuteField, hourField, , , dowField] = cronExpr.trim().split(/\s+/);

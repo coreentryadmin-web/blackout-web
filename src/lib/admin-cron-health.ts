@@ -18,7 +18,7 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
-import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
+import { isInOffScheduleIdleGap, isInSameDayDualBandGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -251,7 +251,9 @@ export function evaluateJob(
     const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-    const notDueYet = offWindowNoRun || offScheduleNoRun;
+    const dualBandGapNoRun =
+      Boolean(job.schedule_cron_utc) && isInSameDayDualBandGap(job.schedule_cron_utc!, now);
+    const notDueYet = offWindowNoRun || offScheduleNoRun || dualBandGapNoRun;
 
     return {
       key: job.key,
