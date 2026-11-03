@@ -9407,3 +9407,13 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   precision — 2dp in both places, not 4dp in the warning only. Separately confirm no regression:
   the gate's pass/fail verdict and promotion-eligibility behavior for a `target_unreachable`/
   `band_detached` block should be byte-identical to before this fix — only the warning TEXT changed.
+
+## WATCH LIST — 2026-11-03 (dual-band cron stale suppression, fix/nighthawk-backfill-repair-dual-band-stale)
+- **What was broken:** CI `query` / cron watchdog flagged `nighthawk-backfill-repair` stale between
+  13:01–13:59 UTC on weekdays (first dual-band tick at 13:00 UTC is an ET-window skip under EST;
+  real run is 14:00 UTC).
+- **What the fix changed:** `isInSameDayDualBandRetryWindow()` + `evaluateJob` suppression so
+  health stays `unknown`/healthy until the second same-day UTC band passes.
+- **What to re-check at next 9:00 AM ET open:** confirm `npm run validate:cron` GREEN when run
+  ~13:30–13:55 UTC, and that after 14:05 UTC a genuinely dead cron (no `cron_job_runs` rows) still
+  surfaces stale once both bands have passed (manual spot-check via admin cron health if needed).
