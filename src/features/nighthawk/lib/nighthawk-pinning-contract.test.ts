@@ -136,6 +136,12 @@ test("morning-confirm cron: verdicts persist durably ALONGSIDE the Redis badge (
   assert.match(src, /plays_pulled: verdictPersist\.pulled/);
 });
 
+test("morning-confirm cron: belts nighthawk-backfill-repair before reading the edition row", () => {
+  const src = read("src/app/api/cron/nighthawk-morning-confirm/route.ts");
+  assert.match(src, /dispatchCronWarm\("nighthawk-backfill-repair"\)/);
+  assert.match(src, /backfill_repair_belt:/);
+});
+
 test("headline-record exclusion stays in lockstep across both scoreable filters", () => {
   const analytics = read("src/features/nighthawk/lib/analytics.ts");
   assert.match(analytics, /r\.pulled !== true/);

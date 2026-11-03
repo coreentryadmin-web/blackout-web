@@ -52,6 +52,7 @@ import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { parsePlayLevels, entryHalfWidth } from "@/features/nighthawk/lib/play-levels";
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 import { promoteLegacyConfirmedToSwing } from "@/lib/swing/legacy-confirm-promote";
+import { dispatchCronWarm } from "@/lib/cron-dispatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -245,6 +246,10 @@ export async function GET(req: NextRequest) {
   const editionDateParam = req.nextUrl.searchParams.get("date") ?? today;
 
   try {
+    // Belt: EventBridge may never have provisioned nighthawk-backfill-repair (infra sync gap).
+    // Run the repair handler before we read the edition row so morning-confirm sees healed plays.
+    const backfillBelt = await dispatchCronWarm("nighthawk-backfill-repair");
+
     // ── Phase 1: fetch the edition ──────────────────────────────────────────
     let editionRow = await fetchNighthawkEditionByDate(editionDateParam);
     if (!editionRow) {
@@ -654,6 +659,11 @@ export async function GET(req: NextRequest) {
       ok: true,
       edition_for: editionFor,
       ...summary,
+      backfill_repair_belt: {
+        ok: backfillBelt.ok,
+        status: backfillBelt.status,
+        result: backfillBelt.result ?? backfillBelt.error ?? backfillBelt.detail,
+      },
       // PR-N4: the durable-verdict ledger for this run — cron-health meta shows whether
       // verdicts actually persisted (and whether any play had no outcome row to pin to).
       verdicts_persisted: verdictPersist.persisted,

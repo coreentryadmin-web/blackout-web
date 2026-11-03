@@ -83,16 +83,31 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(result);
     }
 
+    // Synchronous belt for nighthawk-backfill-repair: EventBridge may never have been synced from
+    // railway.nighthawk-backfill-repair.toml, so this job can stay "NEVER logged" forever and
+    // fail the cron-audit query CI gate. dispatchCronWarm is idempotent; refresh the snapshot
+    // after a successful belt so this same watchdog response reflects the new cron_job_runs row.
+    let jobsSnapshot = snapshot;
+    let backfillWatchdogBelt: Awaited<ReturnType<typeof dispatchCronWarm>> | null = null;
+    const backfillNeedsBelt = snapshot.jobs.some(
+      (j) =>
+        j.key === "nighthawk-backfill-repair" && (j.status === "stale" || j.status === "failed")
+    );
+    if (backfillNeedsBelt && isDispatchableCron("nighthawk-backfill-repair")) {
+      backfillWatchdogBelt = await dispatchCronWarm("nighthawk-backfill-repair");
+      jobsSnapshot = await buildCronHealthSnapshot();
+    }
+
     // Alert on jobs that were expected to run but are overdue (stale) or errored (failed).
     // "unknown" (never logged) is excluded — it's the normal state for window-guarded jobs
     // before their first run of the day and would create off-hours noise.
-    const problems = snapshot.jobs.filter(
+    const problems = jobsSnapshot.jobs.filter(
       (j) => j.status === "stale" || j.status === "failed"
     );
 
     // The #90 blind spot: market-hours warmers that are stale RIGHT NOW during RTH. These break
     // live data and are the highest-priority signal — escalate them above generic staleness.
-    const rthStale = snapshot.jobs.filter((j) => j.market_hours_stale);
+    const rthStale = jobsSnapshot.jobs.filter((j) => j.market_hours_stale);
 
     // SELF-HEAL (opt-in): when CRON_WATCHDOG_SELF_HEAL=1, auto re-warm stale crons that are SAFE
     // + IDEMPOTENT (only those in the cron-dispatch table). We target the in-RTH market-hours
@@ -100,13 +115,21 @@ export async function GET(req: NextRequest) {
     const selfHealEnabled = process.env.CRON_WATCHDOG_SELF_HEAL?.trim() === "1";
     const nhEveningStale =
       isInEditionWindow() ?
-        snapshot.jobs.filter((j) => j.key === "nighthawk-playbook" && j.status === "stale")
+        jobsSnapshot.jobs.filter((j) => j.key === "nighthawk-playbook" && j.status === "stale")
       : [];
-    const swingDiscoveryStale = snapshot.jobs.filter(
+    const swingDiscoveryStale = jobsSnapshot.jobs.filter(
       (j) => j.key === "swing-discovery" && j.status === "stale"
     );
+    const nhBackfillRepairStale = jobsSnapshot.jobs.filter(
+      (j) => j.key === "nighthawk-backfill-repair" && j.status === "stale"
+    );
     const healTargetKeys = new Set<string>();
-    const healTargets = [...rthStale, ...nhEveningStale, ...swingDiscoveryStale].filter((j) => {
+    const healTargets = [
+      ...rthStale,
+      ...nhEveningStale,
+      ...swingDiscoveryStale,
+      ...nhBackfillRepairStale,
+    ].filter((j) => {
       if (!isDispatchableCron(j.key)) return false;
       if (healTargetKeys.has(j.key)) return false;
       healTargetKeys.add(j.key);
@@ -268,11 +291,21 @@ export async function GET(req: NextRequest) {
 
     const result = {
       ok: true,
-      checked: snapshot.jobs.length,
+      checked: jobsSnapshot.jobs.length,
       problems: problems.length,
       problem_keys: problems.map((j) => j.key),
       rth_stale: rthStale.length,
       rth_stale_keys: rthStale.map((j) => j.key),
+      backfill_watchdog_belt: backfillWatchdogBelt
+        ? {
+            ok: backfillWatchdogBelt.ok,
+            status: backfillWatchdogBelt.status,
+            result:
+              backfillWatchdogBelt.result ??
+              backfillWatchdogBelt.error ??
+              backfillWatchdogBelt.detail,
+          }
+        : null,
       error_window_min: errWindowMin,
       error_count: recentErrors.total,
       error_spike: errorSpike,

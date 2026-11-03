@@ -1,3 +1,14 @@
+## WATCH LIST — 2026-11-03 nighthawk-backfill-repair belt when EventBridge never provisioned the job
+
+- **What was broken:** `nighthawk-backfill-repair` had zero `cron_job_runs` rows in production while
+  `nighthawk-morning-confirm` ran daily — Cron audit query (`validate:cron`) failed with
+  `problem_keys: nighthawk-backfill-repair`.
+- **What the fix changed:** Added dispatch + synchronous watchdog belt + morning-confirm belt so the
+  idempotent `republishBackfilledEdition` path runs even without a dedicated EventBridge schedule.
+- **What to check at next open:** Admin → cron health shows a fresh `nighthawk-backfill-repair` run
+  on each weekday before/at morning-confirm; if a BACKFILL play carries an expired OCC, confirm the
+  edition row is repaired before badges render (legacy-marks resolve for that ticker).
+
 ## WATCH LIST — 2026-11-02 Swing `thesisBreakCoaching` no longer names a nonexistent "next trim rail" on a TRIM-status position (PR #7388)
 
 **What was shipped:** Found during a live-check of #7380 itself (`GET /api/market/nighthawk/
