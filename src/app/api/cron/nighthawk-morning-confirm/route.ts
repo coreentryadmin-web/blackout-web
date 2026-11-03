@@ -52,6 +52,7 @@ import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { parsePlayLevels, entryHalfWidth } from "@/features/nighthawk/lib/play-levels";
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 import { promoteLegacyConfirmedToSwing } from "@/lib/swing/legacy-confirm-promote";
+import { runNighthawkBackfillRepairJob } from "@/features/nighthawk/lib/nighthawk-backfill-repair-job";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -245,6 +246,16 @@ export async function GET(req: NextRequest) {
   const editionDateParam = req.nextUrl.searchParams.get("date") ?? today;
 
   try {
+    // Dedicated EventBridge rule may be absent until infra sync — morning-confirm's schedule
+    // is live, so run the repair pass here first (logs under nighthawk-backfill-repair).
+    await runNighthawkBackfillRepairJob({
+      started,
+      editionDateParam,
+      force,
+      skipWindowGate: true,
+      delegatedFrom: CRON_KEY,
+    });
+
     // ── Phase 1: fetch the edition ──────────────────────────────────────────
     let editionRow = await fetchNighthawkEditionByDate(editionDateParam);
     if (!editionRow) {
