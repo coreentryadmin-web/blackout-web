@@ -52,6 +52,7 @@ import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { parsePlayLevels, entryHalfWidth } from "@/features/nighthawk/lib/play-levels";
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 import { promoteLegacyConfirmedToSwing } from "@/lib/swing/legacy-confirm-promote";
+import { runNighthawkBackfillRepairPass } from "@/features/nighthawk/lib/backfill-repair-pass";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -245,6 +246,19 @@ export async function GET(req: NextRequest) {
   const editionDateParam = req.nextUrl.searchParams.get("date") ?? today;
 
   try {
+    // Backfill repair mutates the edition row (republishBackfilledEdition) — intentionally NOT
+    // inlined into this route's own logic; it runs as the shared pass the dedicated cron route
+    // uses. Production EventBridge still omits the standalone backfill-repair rule, so this
+    // piggyback on the deployed morning-confirm schedule is what logs cron_job_runs rows and
+    // self-heals stale BACKFILL contracts before we read plays below.
+    await runNighthawkBackfillRepairPass({
+      force,
+      editionDateParam,
+      callerVerifiedWindow: true,
+    }).catch((err) => {
+      console.error("[nighthawk/morning-confirm] backfill repair pass failed (non-fatal)", err);
+    });
+
     // ── Phase 1: fetch the edition ──────────────────────────────────────────
     let editionRow = await fetchNighthawkEditionByDate(editionDateParam);
     if (!editionRow) {

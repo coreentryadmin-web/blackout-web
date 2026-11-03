@@ -105,8 +105,16 @@ export async function GET(req: NextRequest) {
     const swingDiscoveryStale = snapshot.jobs.filter(
       (j) => j.key === "swing-discovery" && j.status === "stale"
     );
+    const nhBackfillRepairStale = snapshot.jobs.filter(
+      (j) => j.key === "nighthawk-backfill-repair" && j.status === "stale"
+    );
     const healTargetKeys = new Set<string>();
-    const healTargets = [...rthStale, ...nhEveningStale, ...swingDiscoveryStale].filter((j) => {
+    const healTargets = [
+      ...rthStale,
+      ...nhEveningStale,
+      ...swingDiscoveryStale,
+      ...nhBackfillRepairStale,
+    ].filter((j) => {
       if (!isDispatchableCron(j.key)) return false;
       if (healTargetKeys.has(j.key)) return false;
       healTargetKeys.add(j.key);

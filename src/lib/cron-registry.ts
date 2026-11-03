@@ -441,13 +441,9 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/nighthawk-backfill-repair",
     schedule_label: "9:00 AM ET weekdays",
-    // 15 min BEFORE nighthawk-morning-confirm's own dual-band, same DST-coverage shape, so any
-    // repair this makes is already in the DB by the time morning-confirm reads the edition row.
-    // Added 2026-10-25 (Ask Largo standing mandate) — closes the gap PR #6637 (2026-10-24)
-    // shipped the repair CAPABILITY for but never wired an automatic caller: a BACKFILL play's
-    // contract that expired before its own edition's target trading day sat dead in the
-    // member-facing edition for a full day because nothing ever invoked the admin-only
-    // POST /api/admin/nighthawk/republish-backfill endpoint for it.
+    // Ideal standalone EventBridge band is 0 13,14 (9:00 ET, 15 min before morning-confirm).
+    // Mirrors railway.nighthawk-backfill-repair.toml. Production also runs this pass from
+    // nighthawk-morning-confirm until blackout-infra provisions the standalone rule.
     schedule_cron_utc: "0 13,14 * * 1-5",
     stale_after_min: 36 * 60,
     weekdays_only: true,
