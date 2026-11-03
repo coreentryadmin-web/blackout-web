@@ -7,6 +7,7 @@ import {
   effectiveStaleMinutes,
   evaluateJob,
   expectedNighthawkEdition,
+  isBeforeNighthawkBackfillRepairWindow,
   nighthawkEditionCoversExpected,
   nighthawkJobAgeMin,
 } from "./admin-cron-health";
@@ -126,6 +127,39 @@ test("a never-run market-hours job stays quiet overnight — it is not due yet",
   );
   assert.equal(health.status, "unknown");
   assert.equal(health.market_hours_stale, false);
+});
+
+test("nighthawk-backfill-repair: before 9:00 AM ET on a trading day is not due (cron audit false P0)", () => {
+  const now = new Date("2026-11-03T13:59:00.000Z"); // Tue 8:59 AM ET (EST)
+  assert.equal(isBeforeNighthawkBackfillRepairWindow(now), true);
+
+  const job = jobDef({
+    key: "nighthawk-backfill-repair",
+    schedule_cron_utc: "0 13,14 * * 1-5",
+    stale_after_min: 36 * 60,
+    weekdays_only: true,
+  });
+
+  const neverRun = evaluateJob(job, undefined, [], now);
+  assert.equal(neverRun.status, "unknown");
+  assert.match(neverRun.status_label, /not due/i);
+
+  const fridayOk = evaluateJob(
+    job,
+    {
+      id: 1,
+      job_key: "nighthawk-backfill-repair",
+      status: "ok",
+      started_at: "2026-10-31T14:00:00.000Z",
+      duration_ms: 900,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(fridayOk.status, "healthy");
+  assert.match(fridayOk.status_label, /before 9:00 AM ET repair window/i);
 });
 
 test("nighthawkJobAgeMin: future updated_at exceeds stuck threshold (clock skew)", () => {

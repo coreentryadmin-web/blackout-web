@@ -130,6 +130,21 @@ export function nighthawkEditionCoversExpected(
   return editionFor >= expectation.expected_edition_for;
 }
 
+/**
+ * `nighthawk-backfill-repair` only executes inside a 9:00 AM ET catch-up window, but EventBridge
+ * also fires at the earlier UTC dual-band tick (8:00 AM ET in EST) which always logs a skip. The
+ * cron audit runs ~hourly; without this guard a healthy Friday ok-run reads stale all Monday
+ * morning until 9:00 ET because age exceeds 36h while the job is genuinely not due yet.
+ */
+export function isBeforeNighthawkBackfillRepairWindow(now: Date = new Date()): boolean {
+  const etDate = formatEtDate(now);
+  if (!isTradingDayEt(etDate)) return false;
+  const targetMin =
+    positiveEnvInt("NIGHTHAWK_BACKFILL_REPAIR_HOUR_ET", 9) * 60 +
+    positiveEnvInt("NIGHTHAWK_BACKFILL_REPAIR_MINUTE_ET", 0);
+  return etMinuteOfDay(now) < targetMin;
+}
+
 export type CronJobHealthStatus = "healthy" | "warning" | "stale" | "failed" | "unknown";
 
 export type CronJobHealth = {
@@ -251,7 +266,9 @@ export function evaluateJob(
     const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-    const notDueYet = offWindowNoRun || offScheduleNoRun;
+    const backfillPreWindow =
+      job.key === "nighthawk-backfill-repair" && isBeforeNighthawkBackfillRepairWindow(now);
+    const notDueYet = offWindowNoRun || offScheduleNoRun || backfillPreWindow;
 
     return {
       key: job.key,
@@ -295,6 +312,10 @@ export function evaluateJob(
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
   const suppressStaleOffSchedule =
     offScheduleGap && (last.status === "skipped" || last.status === "ok");
+  const backfillPreWindow =
+    job.key === "nighthawk-backfill-repair" && isBeforeNighthawkBackfillRepairWindow(now);
+  const suppressStaleBackfillPreWindow =
+    backfillPreWindow && (last.status === "skipped" || last.status === "ok");
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
@@ -308,6 +329,9 @@ export function evaluateJob(
   } else if (suppressStaleOffSchedule) {
     status = "healthy";
     statusLabel = "Idle (outside cron schedule window)";
+  } else if (suppressStaleBackfillPreWindow) {
+    status = "healthy";
+    statusLabel = "Idle (before 9:00 AM ET repair window)";
   } else if (
     job.key === "flow-ingest" &&
     last.status === "skipped" &&
