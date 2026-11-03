@@ -52,6 +52,7 @@ import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { parsePlayLevels, entryHalfWidth } from "@/features/nighthawk/lib/play-levels";
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 import { promoteLegacyConfirmedToSwing } from "@/lib/swing/legacy-confirm-promote";
+import { dispatchCronWarm } from "@/lib/cron-dispatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -239,6 +240,12 @@ export async function GET(req: NextRequest) {
     await logCronRun(CRON_KEY, started, payload);
     return NextResponse.json(payload);
   }
+
+  // Repair stale BACKFILL contracts before morning-confirm reads the edition row. The dedicated
+  // 9:00 AM ET cron may not have an EventBridge rule yet; this path is idempotent and logs under
+  // `nighthawk-backfill-repair` via the shared route handler.
+  await dispatchCronWarm("nighthawk-backfill-repair");
+
   // Night Hawk edition_for is typically the NEXT trading day from yesterday's run, but
   // for morning confirm we want the edition that covers today's plays.
   // Attempt: fetch exact edition for today, fallback to latest.

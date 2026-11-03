@@ -18,7 +18,11 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
-import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
+import {
+  isInOffScheduleIdleGap,
+  lastExpectedCronFireUtc,
+  nextExpectedCronFireUtc,
+} from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -251,7 +255,32 @@ export function evaluateJob(
     const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-    const notDueYet = offWindowNoRun || offScheduleNoRun;
+    // Dual-band morning crons (e.g. nighthawk-backfill-repair `0 13,14 * * 1-5`): the first UTC
+    // band is 8:00 AM ET in EST (route skips — outside the 9:00 AM repair window) while the
+    // actionable band is the second. `isInOffScheduleIdleGap` treats the 1h inter-band gap as
+    // in-window (gap < 2h), so a never-logged job reads STALE at ~8:59 ET — red CI on `query`
+    // (measured 2026-11-03 run 41649123458). Until the next band + grace passes, treat as not due.
+    const schedule = job.schedule_cron_utc;
+    const SCHEDULED_FIRE_GRACE_MS = 15 * 60_000;
+    const lastFire = schedule ? lastExpectedCronFireUtc(schedule, now) : null;
+    const nextFire = schedule ? nextExpectedCronFireUtc(schedule, now) : null;
+    const shortInterBandAwaiting =
+      Boolean(schedule && lastFire && nextFire) &&
+      nextFire!.getTime() - lastFire!.getTime() <= 2 * 60 * 60_000 &&
+      now.getTime() > lastFire!.getTime() &&
+      now.getTime() < nextFire!.getTime() + SCHEDULED_FIRE_GRACE_MS;
+    const lastFireIsToday =
+      Boolean(lastFire) &&
+      lastFire!.getUTCFullYear() === now.getUTCFullYear() &&
+      lastFire!.getUTCMonth() === now.getUTCMonth() &&
+      lastFire!.getUTCDate() === now.getUTCDate();
+    const missedTodayAfterFinalBand =
+      Boolean(schedule && lastFire && nextFire && lastFireIsToday) &&
+      now.getTime() > lastFire!.getTime() + SCHEDULED_FIRE_GRACE_MS &&
+      nextFire!.getTime() - lastFire!.getTime() > 2 * 60 * 60_000;
+    const notDueYet =
+      !missedTodayAfterFinalBand &&
+      (offWindowNoRun || shortInterBandAwaiting || offScheduleNoRun);
 
     return {
       key: job.key,

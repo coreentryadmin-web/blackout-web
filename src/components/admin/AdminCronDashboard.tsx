@@ -53,6 +53,7 @@ const RUNNABLE_CRONS = new Set([
   "swing-active-refresh",
   "swing-discovery",
   "nighthawk-playbook",
+  "nighthawk-backfill-repair",
 ]);
 
 function fmtTime(iso: string | null): string {
