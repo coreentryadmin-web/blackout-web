@@ -103,6 +103,46 @@ test("a job that has NEVER logged a run reports stale, not unknown", () => {
   assert.equal(health.last_run_at, null);
 });
 
+test("nighthawk-backfill-repair: never-run stays unknown between dual UTC bands before in-window tick", () => {
+  const now = new Date("2026-11-03T13:59:00.000Z");
+  const health = evaluateJob(
+    jobDef({
+      key: "nighthawk-backfill-repair",
+      schedule_cron_utc: "0 13,14 * * 1-5",
+      stale_after_min: 36 * 60,
+      weekdays_only: true,
+    }),
+    undefined,
+    [],
+    now
+  );
+  assert.equal(health.status, "unknown");
+  assert.match(health.status_label, /not due/i);
+});
+
+test("nighthawk-backfill-repair: skipped first band stays healthy before second band fires", () => {
+  const now = new Date("2026-11-03T13:59:00.000Z");
+  const health = evaluateJob(
+    jobDef({
+      key: "nighthawk-backfill-repair",
+      schedule_cron_utc: "0 13,14 * * 1-5",
+      stale_after_min: 36 * 60,
+      weekdays_only: true,
+    }),
+    {
+      job_key: "nighthawk-backfill-repair",
+      status: "skipped",
+      started_at: "2026-11-03T13:00:05.000Z",
+      message: "Outside repair window",
+      duration_ms: 10,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /awaiting in-window UTC band/i);
+});
+
 test("a never-run MARKET-HOURS job trips market_hours_stale during RTH", () => {
   // This is the exact shape of the live outage: a market-hours job with no schedule at all.
   const health = evaluateJob(
