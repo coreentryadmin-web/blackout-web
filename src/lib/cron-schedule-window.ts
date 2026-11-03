@@ -4,6 +4,8 @@
  * market_hours_only off-window suppression in admin-cron-health.ts.
  */
 
+import { inEtWindow } from "@/features/nighthawk/lib/et-window";
+
 const DOW_NAMES: Record<string, number> = {
   SUN: 0,
   MON: 1,
@@ -120,6 +122,42 @@ function dailyFireBounds(cronExpr: string, now: Date): { first: Date; last: Date
  * True when `now` sits in a long idle gap where no EventBridge tick is scheduled.
  * Short intra-band gaps (hourly :20, every 30m) still page on a missed fire.
  */
+/**
+ * Dual-band morning crons (`0 H1,H2 * * 1-5`): after the early UTC band fires outside the
+ * route's ET window (EST half of the year), suppress staleness until the late band opens the
+ * window — measured 2026-11-03 query CI: `nighthawk-backfill-repair` flagged stale at 13:58 UTC
+ * (8:58 AM ET) while the meaningful 9:00 AM ET fire is still the 14:00 UTC tick.
+ */
+export function isInDualBandPreEtWindowIdleGap(
+  cronExpr: string,
+  etWindow: { targetHour: number; targetMinute: number },
+  now = new Date()
+): boolean {
+  const last = lastExpectedCronFireUtc(cronExpr, now);
+  const next = nextExpectedCronFireUtc(cronExpr, now);
+  if (!last || !next) return false;
+  const gapMs = next.getTime() - last.getTime();
+  if (gapMs <= 0 || gapMs > 2 * 60 * 60_000) return false;
+  if (
+    last.getUTCFullYear() !== next.getUTCFullYear() ||
+    last.getUTCMonth() !== next.getUTCMonth() ||
+    last.getUTCDate() !== next.getUTCDate()
+  ) {
+    return false;
+  }
+  const t = now.getTime();
+  if (t <= last.getTime() || t >= next.getTime()) return false;
+  if (
+    inEtWindow(
+      { targetHour: etWindow.targetHour, targetMinute: etWindow.targetMinute, catchupMin: 0 },
+      now
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function isInOffScheduleIdleGap(cronExpr: string, now = new Date()): boolean {
   const last = lastExpectedCronFireUtc(cronExpr, now);
   const next = nextExpectedCronFireUtc(cronExpr, now);

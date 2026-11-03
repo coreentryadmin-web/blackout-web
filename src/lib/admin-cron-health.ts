@@ -18,7 +18,11 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
-import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
+import {
+  isInDualBandPreEtWindowIdleGap,
+  isInOffScheduleIdleGap,
+  lastExpectedCronFireUtc,
+} from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -296,6 +300,28 @@ export function evaluateJob(
   const suppressStaleOffSchedule =
     offScheduleGap && (last.status === "skipped" || last.status === "ok");
 
+  const backfillRepairEtHour = Number(process.env.NIGHTHAWK_BACKFILL_REPAIR_HOUR_ET ?? "9");
+  const backfillRepairEtMinute = Number(process.env.NIGHTHAWK_BACKFILL_REPAIR_MINUTE_ET ?? "0");
+  const dualBandPreEtGap =
+    job.key === "nighthawk-backfill-repair" &&
+    Boolean(job.schedule_cron_utc) &&
+    isInDualBandPreEtWindowIdleGap(
+      job.schedule_cron_utc!,
+      { targetHour: backfillRepairEtHour, targetMinute: backfillRepairEtMinute },
+      now
+    );
+  const earlyBandLoggedToday =
+    dualBandPreEtGap &&
+    job.schedule_cron_utc &&
+    (() => {
+      const earlyFire = lastExpectedCronFireUtc(job.schedule_cron_utc!, now);
+      if (!earlyFire) return false;
+      const startedMs = Date.parse(last.started_at);
+      return Number.isFinite(startedMs) && startedMs >= earlyFire.getTime();
+    })();
+  const suppressStaleDualBandPreEt =
+    earlyBandLoggedToday && (last.status === "skipped" || last.status === "ok");
+
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
 
@@ -305,6 +331,9 @@ export function evaluateJob(
   } else if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
+  } else if (suppressStaleDualBandPreEt) {
+    status = "healthy";
+    statusLabel = "Idle (awaiting in-window dual-band fire)";
   } else if (suppressStaleOffSchedule) {
     status = "healthy";
     statusLabel = "Idle (outside cron schedule window)";

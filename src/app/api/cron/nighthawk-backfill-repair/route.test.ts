@@ -9,6 +9,13 @@ const routeSrc = readFileSync(
   "utf8"
 );
 
+test("outside repair window skip is ok:true so schedule-mismatch ticks are not failures", () => {
+  assert.match(
+    routeSrc,
+    /Outside repair window \(9:00 AM ET\)[\s\S]*?ok:\s*true,\s*\n\s*skipped:\s*true/
+  );
+});
+
 test("nighthawk-backfill-repair gates auth -> trading-day -> window -> session-match before calling the repair", () => {
   const authAt = routeSrc.indexOf("isCronAuthorized(req)");
   const tradingDayAt = routeSrc.indexOf("isTradingDayEt(today)");

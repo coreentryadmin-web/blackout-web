@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  isInDualBandPreEtWindowIdleGap,
   isInOffScheduleIdleGap,
   lastExpectedCronFireUtc,
   nextExpectedCronFireUtc,
@@ -115,6 +116,25 @@ describe("cron-schedule-window", () => {
     const cron = "25 13,14 * * 1-5";
     const now = new Date("2026-08-21T13:25:00.000Z");
     assert.equal(isInOffScheduleIdleGap(cron, now), false);
+  });
+
+  it("nighthawk-backfill-repair: dual-band pre-ET idle between 13:00 and 14:00 UTC in EST — ops query 2026-11-03", () => {
+    const cron = "0 13,14 * * 1-5";
+    const now = new Date("2026-11-03T13:58:00.000Z"); // Tue 8:58 AM ET (post-DST)
+    assert.equal(
+      isInDualBandPreEtWindowIdleGap(cron, { targetHour: 9, targetMinute: 0 }, now),
+      true
+    );
+    assert.equal(isInOffScheduleIdleGap(cron, now), false);
+  });
+
+  it("nighthawk-backfill-repair: not pre-ET idle once the 9:00 AM ET window is open", () => {
+    const cron = "0 13,14 * * 1-5";
+    const now = new Date("2026-11-03T14:05:00.000Z"); // 9:05 AM ET
+    assert.equal(
+      isInDualBandPreEtWindowIdleGap(cron, { targetHour: 9, targetMinute: 0 }, now),
+      false
+    );
   });
 
   it("nighthawk-outcomes: off-window gap Mon before 20:30 UTC after Fri run — ops #1983", () => {

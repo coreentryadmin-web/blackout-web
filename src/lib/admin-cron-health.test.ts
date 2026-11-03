@@ -140,6 +140,57 @@ test("nighthawkJobAgeMin: past updated_at returns clamped minutes", () => {
   assert.equal(nighthawkJobAgeMin(past, 60, now), 2);
 });
 
+test("nighthawk-backfill-repair: stale suppressed between early UTC band and 9:00 AM ET when early band logged skip", () => {
+  const job = jobDef({
+    key: "nighthawk-backfill-repair",
+    schedule_cron_utc: "0 13,14 * * 1-5",
+    stale_after_min: 36 * 60,
+    weekdays_only: true,
+  });
+  const now = new Date("2026-11-03T13:58:00.000Z");
+  const health = evaluateJob(
+    job,
+    {
+      id: 1,
+      job_key: "nighthawk-backfill-repair",
+      status: "skipped",
+      started_at: "2026-11-03T13:00:05.000Z",
+      duration_ms: 40,
+      message: "Outside repair window (9:00 AM ET) — use ?force=1 to override",
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /dual-band/i);
+});
+
+test("nighthawk-backfill-repair: still stale before early band when last run is prior session", () => {
+  const job = jobDef({
+    key: "nighthawk-backfill-repair",
+    schedule_cron_utc: "0 13,14 * * 1-5",
+    stale_after_min: 36 * 60,
+    weekdays_only: true,
+  });
+  const now = new Date("2026-11-03T13:58:00.000Z");
+  const health = evaluateJob(
+    job,
+    {
+      id: 1,
+      job_key: "nighthawk-backfill-repair",
+      status: "ok",
+      started_at: "2026-10-31T14:00:00.000Z",
+      duration_ms: 120,
+      message: "ok",
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "stale");
+});
+
 test("REGRESSION: a job WITH a fresh run is untouched by the never-run branch", () => {
   const health = evaluateJob(
     jobDef(),
