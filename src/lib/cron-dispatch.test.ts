@@ -22,6 +22,7 @@ const OPS_SELF_HEAL_CRONS = [
   "coaching-alerts",
   "bie-full-state-snapshot",
   "swing-active-refresh",
+  "nighthawk-backfill-repair",
 ];
 
 const dispatchSrc = readFileSync(join(ROOT, "src/lib/cron-dispatch.ts"), "utf8");

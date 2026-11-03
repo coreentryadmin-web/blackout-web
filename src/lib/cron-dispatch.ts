@@ -26,6 +26,7 @@ import { GET as bieFullStateSnapshotGet } from "@/app/api/cron/bie-full-state-sn
 import { GET as swingActiveRefreshGet } from "@/app/api/cron/swing-active-refresh/route";
 import { GET as swingDiscoveryGet } from "@/app/api/cron/swing-discovery/route";
 import { GET as nighthawkEditionGet } from "@/app/api/cron/nighthawk-edition/route";
+import { GET as nighthawkBackfillRepairGet } from "@/app/api/cron/nighthawk-backfill-repair/route";
 
 export type CronHandler = (req: NextRequest) => Promise<Response>;
 
@@ -73,6 +74,9 @@ export const CRON_DISPATCH: Record<string, { handler: CronHandler; force: boolea
   // Night Hawk evening edition — checkpoint-resume fire-and-forget; safe to re-nudge when stuck
   // during the edition window (ops-auto-fix #1572: stage_synthesis checkpoint with no publish).
   "nighthawk-playbook": { handler: nighthawkEditionGet, force: true },
+  // Legacy BACKFILL contract self-heal — idempotent republish; also invoked from morning-confirm
+  // when EventBridge has not yet provisioned the dedicated rule (ops #7355-class gaps).
+  "nighthawk-backfill-repair": { handler: nighthawkBackfillRepairGet, force: false },
 };
 
 export const DISPATCHABLE_CRONS = Object.keys(CRON_DISPATCH);

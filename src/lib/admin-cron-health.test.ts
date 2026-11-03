@@ -7,6 +7,7 @@ import {
   effectiveStaleMinutes,
   evaluateJob,
   expectedNighthawkEdition,
+  nighthawkBackfillRepairAwaitingMorningRun,
   nighthawkEditionCoversExpected,
   nighthawkJobAgeMin,
 } from "./admin-cron-health";
@@ -95,6 +96,17 @@ function jobDef(over: Partial<CronJobDefinition> = {}): CronJobDefinition {
     ...over,
   };
 }
+
+test("nighthawkBackfillRepairAwaitingMorningRun is true before 10:45 AM ET on trading days", () => {
+  assert.equal(
+    nighthawkBackfillRepairAwaitingMorningRun(new Date("2026-11-03T13:59:00.000Z")),
+    true
+  );
+  assert.equal(
+    nighthawkBackfillRepairAwaitingMorningRun(new Date("2026-11-03T16:00:00.000Z")),
+    false
+  );
+});
 
 test("a job that has NEVER logged a run reports stale, not unknown", () => {
   const health = evaluateJob(jobDef(), undefined, [], RTH_WEDNESDAY);

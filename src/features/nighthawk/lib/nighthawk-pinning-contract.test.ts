@@ -129,6 +129,7 @@ test("edition read path: EVERY serve branch passes through the pull overlay", ()
 test("morning-confirm cron: verdicts persist durably ALONGSIDE the Redis badge (which stays)", () => {
   const src = read("src/app/api/cron/nighthawk-morning-confirm/route.ts");
   assert.match(src, /persistNighthawkMorningVerdicts\(\{/);
+  assert.match(src, /dispatchCronWarm\("nighthawk-backfill-repair"\)/);
   // The Redis blob write survives — the UI badge layer reads it today.
   assert.match(src, /redis\.set\(REDIS_KEY\(editionFor\), JSON\.stringify\(result\), "EX", REDIS_TTL_S\)/);
   // Persistence outcome is reported in the cron payload (observable, not swallowed).

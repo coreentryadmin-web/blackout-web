@@ -127,6 +127,14 @@ describe("cron-schedule-window", () => {
     assert.equal(next?.toISOString(), "2026-08-10T20:30:00.000Z");
   });
 
+  it("nighthawk-backfill-repair: off-window gap before 13:00 UTC weekday fire", () => {
+    const cron = "0 13,14 * * 1-5";
+    const now = new Date("2026-11-03T12:30:00.000Z"); // Tue 7:30 AM ET (EST)
+    assert.equal(isInOffScheduleIdleGap(cron, now), true);
+    const next = nextExpectedCronFireUtc(cron, now);
+    assert.equal(next?.toISOString(), "2026-11-03T13:00:00.000Z");
+  });
+
   // BUG: a bare "N/M" minute/hour field (no leading range or "*") is valid cron/Quartz step
   // syntax meaning "start at N, repeat every M" — e.g. "5/15" = :05, :20, :35, :50. parseIntList's
   // `stepOnly` branch matched the field but discarded the start value (group 1) and stepped from

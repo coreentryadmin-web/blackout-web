@@ -31,6 +31,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
+import { dispatchCronWarm } from "@/lib/cron-dispatch";
 import { fetchIndexSnapshots, fetchStockSnapshots } from "@/lib/providers/polygon";
 import { resolveLiveIndexPrice } from "@/features/nighthawk/lib/morning-gap-source";
 import {
@@ -258,9 +259,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(payload);
     }
 
-    const edition = rowToNightHawkEdition(editionRow);
-    const plays: PlaybookPlay[] = edition.plays ?? [];
-    const editionFor = edition.edition_for ?? editionDateParam;
+    let edition = rowToNightHawkEdition(editionRow);
+    let plays: PlaybookPlay[] = edition.plays ?? [];
+    let editionFor = edition.edition_for ?? editionDateParam;
 
     // Session-match guard: verdicts are written under nh:play-status:${editionFor},
     // so confirming an edition for a DIFFERENT session than today pollutes that
@@ -278,6 +279,18 @@ export async function GET(req: NextRequest) {
       await logCronRun(CRON_KEY, started, payload);
       return NextResponse.json(payload);
     }
+
+    // Run the BACKFILL self-heal before verdicts (same handler as the dedicated 9:00 AM cron).
+    // EventBridge for `nighthawk-backfill-repair` is still missing on some fleets — this path
+    // logs cron_job_runs for that key and refreshes the edition row when repair mutates plays.
+    await dispatchCronWarm("nighthawk-backfill-repair");
+    editionRow =
+      (await fetchNighthawkEditionByDate(editionDateParam)) ??
+      (await fetchLatestNighthawkEdition()) ??
+      editionRow;
+    edition = rowToNightHawkEdition(editionRow);
+    plays = edition.plays ?? [];
+    editionFor = edition.edition_for ?? editionDateParam;
 
     if (!plays.length) {
       // Write an honest empty blob so the member-facing play-status route can say

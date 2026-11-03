@@ -207,6 +207,36 @@ export function effectiveStaleMinutes(
   return { effective: job.stale_after_min, multiplier: 1 };
 }
 
+const ET = "America/New_York";
+
+/** Minutes since midnight ET at `now` (0–1439). */
+function etMinutesSinceMidnight(now: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: ET,
+    hour: "numeric",
+    minute: "numeric",
+    weekday: "short",
+    hour12: false,
+  }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const weekday = get("weekday");
+  if (weekday === "Sat" || weekday === "Sun") return -1;
+  return (Number(get("hour")) % 24) * 60 + Number(get("minute"));
+}
+
+/**
+ * Before ~10:45 AM ET on a trading day, a missing `nighthawk-backfill-repair` row is expected:
+ * the dedicated EventBridge band may not have fired yet, and morning-confirm dispatches the same
+ * repair at 9:15 AM ET when the rule is still rolling out.
+ */
+export function nighthawkBackfillRepairAwaitingMorningRun(now: Date = new Date()): boolean {
+  const etDate = formatEtDate(now);
+  if (!isTradingDayEt(etDate)) return false;
+  const nowMins = etMinutesSinceMidnight(now);
+  if (nowMins < 0) return false;
+  return nowMins < 10 * 60 + 45;
+}
+
 /**
  * Exported for the unit test, and taking an injectable `now` for the same reason: every branch here
  * turns on where the clock is relative to the market session, so a test that used the real clock
@@ -551,6 +581,20 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
           expected_edition: expectedEdition,
           source: health.last_run_at ? "cron_log+nighthawk_job" : "nighthawk_job_only",
         },
+      };
+    }
+
+    if (
+      job.key === "nighthawk-backfill-repair" &&
+      nighthawkBackfillRepairAwaitingMorningRun() &&
+      (health.status === "stale" || health.status === "failed")
+    ) {
+      return {
+        ...health,
+        status: "unknown" as const,
+        market_hours_stale: false,
+        status_label:
+          "Not due yet — 9:00 AM ET repair window (morning-confirm dispatches repair as fallback)",
       };
     }
 
