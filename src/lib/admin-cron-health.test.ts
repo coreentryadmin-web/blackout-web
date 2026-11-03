@@ -168,6 +168,22 @@ test("a never-run market-hours job stays quiet overnight — it is not due yet",
   assert.equal(health.market_hours_stale, false);
 });
 
+test("nighthawk-backfill-repair: never-run between 13:00 and 14:00 UTC bands is not due yet (cron audit query)", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "nighthawk-backfill-repair",
+      schedule_cron_utc: "0 13,14 * * 1-5",
+      stale_after_min: 36 * 60,
+      weekdays_only: true,
+    }),
+    undefined,
+    [],
+    new Date("2026-11-03T13:59:00.000Z")
+  );
+  assert.equal(health.status, "unknown");
+  assert.match(health.status_label, /not due/i);
+});
+
 test("nighthawkJobAgeMin: future updated_at exceeds stuck threshold (clock skew)", () => {
   const now = Date.parse("2026-09-04T12:00:00Z");
   const future = new Date(now + 60_000).toISOString();

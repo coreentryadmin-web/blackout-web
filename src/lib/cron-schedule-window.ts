@@ -116,6 +116,15 @@ function dailyFireBounds(cronExpr: string, now: Date): { first: Date; last: Date
   return { first: fires[0]!, last: fires[fires.length - 1]! };
 }
 
+function isDualBandMorningUtcSchedule(cronExpr: string): boolean {
+  const [, hourField, , , dowField] = cronExpr.trim().split(/\s+/);
+  if (!hourField || !dowField) return false;
+  const weekdayBand = dowField === "1-5" || dowField.toUpperCase() === "MON-FRI";
+  if (!weekdayBand) return false;
+  const hours = parseIntList(hourField, 0, 23);
+  return hours.length === 2 && hours[0] === 13 && hours[1] === 14;
+}
+
 /**
  * True when `now` sits in a long idle gap where no EventBridge tick is scheduled.
  * Short intra-band gaps (hourly :20, every 30m) still page on a missed fire.
@@ -131,7 +140,17 @@ export function isInOffScheduleIdleGap(cronExpr: string, now = new Date()): bool
   }
   const gapMs = next.getTime() - last.getTime();
   const longGapMs = 2 * 60 * 60_000;
-  if (gapMs <= longGapMs) return false;
+  if (gapMs <= longGapMs) {
+    const t = now.getTime();
+    // Dual-band 13:00 + 14:00 UTC weekday crons (nighthawk-backfill-repair, morning-confirm,
+    // largo-morning-brief): the first band exists for EDT 9:00 AM ET coverage; in EST it often
+    // skips until the 14:00 band. Treat the between-band hour as schedule-idle for staleness so
+    // hourly cron-audit-query at :05 past 13:xx UTC does not false-P0 before the real band fires.
+    if (t > last.getTime() && t < next.getTime() && isDualBandMorningUtcSchedule(cronExpr)) {
+      return true;
+    }
+    return false;
+  }
   const t = now.getTime();
   return t > last.getTime() && t < next.getTime();
 }
