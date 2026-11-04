@@ -2510,7 +2510,14 @@ test("catalystsSection: short vol ratio renders as a sane percent from a 0–1 f
     arsenal: {
       scope: "single_name",
       earnings: null,
-      fundamentals: { days_to_cover: 3.4, short_volume_ratio: 0.6913, price_target: null, as_of: "2026-09-05" },
+      fundamentals: {
+        days_to_cover: 3.4,
+        short_volume_ratio: 0.6913,
+        price_target: null,
+        // Must be within FUNDAMENTALS_ANCIENT_CEILING_MS — a fixed 2026-09-05 stamp ages out and
+        // makes the whole section null, hiding the ratio-formatting assertion this test owns.
+        as_of: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      },
       related: null,
       news: null,
       macro: null,
