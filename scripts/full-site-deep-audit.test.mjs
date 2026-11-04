@@ -13,9 +13,10 @@ test("full-site-deep-audit uses side-constrained wallsFromStrikeTotals, not unco
   assert.equal(src.includes("function deriveWalls"), false);
 });
 
-test("full-site-deep-audit skips Polygon SPX oracle when SPX desk reports session not open", () => {
-  assert.match(src, /market_open !== true/);
-  assert.match(src, /skipped — session not open \(Polygon oracle is RTH-only\)/);
+test("full-site-deep-audit SPX oracle off-hours uses index session close before prev fallback", () => {
+  assert.match(src, /snapshot\/indices\?ticker\.any_of=I:SPX/);
+  assert.match(src, /session\?\.close/);
+  assert.match(src, /I:SPX\/prev/);
 });
 
 test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a stale $20", () => {

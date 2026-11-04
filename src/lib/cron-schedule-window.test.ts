@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   isInOffScheduleIdleGap,
-  isInSameDayDualBandGap,
+  isAwaitingSecondaryUtcBandFire,
   lastExpectedCronFireUtc,
   nextExpectedCronFireUtc,
 } from "./cron-schedule-window";
@@ -92,11 +92,17 @@ describe("cron-schedule-window", () => {
     assert.equal(next?.toISOString(), "2026-08-10T20:10:00.000Z");
   });
 
-  it("nighthawk-backfill-repair: between 13:00 and 14:00 UTC same day is dual-band gap (not stale) — cron audit 41649123458", () => {
+  it("nighthawk-backfill-repair: between 13:00 and 14:00 UTC bands awaiting in-window tick — ops 2026-11-03", () => {
     const cron = "0 13,14 * * 1-5";
-    const now = new Date("2026-11-03T13:59:00.000Z"); // Mon EST — before 14:00 in-window fire
-    assert.equal(isInOffScheduleIdleGap(cron, now), false);
-    assert.equal(isInSameDayDualBandGap(cron, now), true);
+    const now = new Date("2026-11-03T13:59:00.000Z"); // Mon ~8:59 AM ET (EST)
+    assert.equal(isAwaitingSecondaryUtcBandFire(cron, now), true);
+    assert.equal(isInOffScheduleIdleGap(cron, now), true);
+  });
+
+  it("nighthawk-backfill-repair: after 14:00 UTC band is no longer awaiting", () => {
+    const cron = "0 13,14 * * 1-5";
+    const now = new Date("2026-11-03T14:05:00.000Z");
+    assert.equal(isAwaitingSecondaryUtcBandFire(cron, now), false);
   });
 
   it("nighthawk-morning-confirm: off-window gap Mon before 13:15 UTC after Fri run — ops #1983", () => {
@@ -123,6 +129,16 @@ describe("cron-schedule-window", () => {
     const cron = "25 13,14 * * 1-5";
     const now = new Date("2026-08-21T13:25:00.000Z");
     assert.equal(isInOffScheduleIdleGap(cron, now), false);
+  });
+
+  it("nighthawk-backfill-repair: between 13:00 and 14:00 UTC bands is schedule-idle — cron audit query false positive", () => {
+    const cron = "0 13,14 * * 1-5";
+    const now = new Date("2026-11-03T13:59:00.000Z"); // Tue 8:59 AM ET (EST) — before the 14:00 band
+    assert.equal(isInOffScheduleIdleGap(cron, now), true);
+    const last = lastExpectedCronFireUtc(cron, now);
+    const next = nextExpectedCronFireUtc(cron, now);
+    assert.equal(last?.toISOString(), "2026-11-03T13:00:00.000Z");
+    assert.equal(next?.toISOString(), "2026-11-03T14:00:00.000Z");
   });
 
   it("nighthawk-outcomes: off-window gap Mon before 20:30 UTC after Fri run — ops #1983", () => {

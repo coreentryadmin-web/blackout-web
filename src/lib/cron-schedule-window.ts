@@ -116,6 +116,15 @@ function dailyFireBounds(cronExpr: string, now: Date): { first: Date; last: Date
   return { first: fires[0]!, last: fires[fires.length - 1]! };
 }
 
+function isDualBandMorningUtcSchedule(cronExpr: string): boolean {
+  const [, hourField, , , dowField] = cronExpr.trim().split(/\s+/);
+  if (!hourField || !dowField) return false;
+  const weekdayBand = dowField === "1-5" || dowField.toUpperCase() === "MON-FRI";
+  if (!weekdayBand) return false;
+  const hours = parseIntList(hourField, 0, 23);
+  return hours.length === 2 && hours[0] === 13 && hours[1] === 14;
+}
+
 /**
  * True when `now` sits in a long idle gap where no EventBridge tick is scheduled.
  * Short intra-band gaps (hourly :20, every 30m) still page on a missed fire.
@@ -131,7 +140,17 @@ export function isInOffScheduleIdleGap(cronExpr: string, now = new Date()): bool
   }
   const gapMs = next.getTime() - last.getTime();
   const longGapMs = 2 * 60 * 60_000;
-  if (gapMs <= longGapMs) return false;
+  if (gapMs <= longGapMs) {
+    const t = now.getTime();
+    // Dual-band 13:00 + 14:00 UTC weekday crons (nighthawk-backfill-repair, morning-confirm,
+    // largo-morning-brief): the first band exists for EDT 9:00 AM ET coverage; in EST it often
+    // skips until the 14:00 band. Treat the between-band hour as schedule-idle for staleness so
+    // hourly cron-audit-query at :05 past 13:xx UTC does not false-P0 before the real band fires.
+    if (t > last.getTime() && t < next.getTime() && isDualBandMorningUtcSchedule(cronExpr)) {
+      return true;
+    }
+    return false;
+  }
   const t = now.getTime();
   return t > last.getTime() && t < next.getTime();
 }
@@ -210,4 +229,33 @@ export function nextExpectedCronFireUtc(cronExpr: string, now = new Date()): Dat
   }
   const eligible = fires.filter((f) => f.getTime() > now.getTime());
   return eligible.length ? eligible[0]! : null;
+}
+
+/**
+ * Dual-band UTC schedules (e.g. `0 13,14 * * 1-5` for Night Hawk morning crons) fire once
+ * before and once after the US DST flip so exactly one tick lands in the 9:00–9:10 ET window.
+ * The earlier tick is expected to no-op (outside the route's inEtWindow guard). Between those
+ * two same-day fires, staleness must stay suppressed — otherwise the watchdog false-alarms every
+ * weekday morning (measured: cron-audit-query RED at 13:59 UTC while waiting for the 14:00 UTC
+ * in-window band).
+ */
+export function isAwaitingSecondaryUtcBandFire(cronExpr: string, now = new Date()): boolean {
+  const [minuteField, hourField, , , dowField] = cronExpr.trim().split(/\s+/);
+  if (!minuteField || !hourField || !dowField) return false;
+  const hours = parseIntList(hourField, 0, 23);
+  if (hours.length !== 2 || hours[1]! - hours[0]! !== 1) return false;
+
+  const fires = enumerateFiresOnUtcDay(
+    minuteField,
+    hourField,
+    dowField,
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate()
+  );
+  if (fires.length < 2) return false;
+  const t = now.getTime();
+  const first = fires[0]!.getTime();
+  const second = fires[1]!.getTime();
+  return t >= first && t < second;
 }

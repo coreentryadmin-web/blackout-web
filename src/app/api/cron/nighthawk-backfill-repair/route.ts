@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
 
   if (!inRepairWindow(force)) {
     const payload = {
-      ok: false,
+      ok: true,
       skipped: true,
       reason: "Outside repair window (9:00 AM ET) — use ?force=1 to override",
     };

@@ -447,11 +447,30 @@ async function auditPublicMarket() {
           gtLabel = "live";
         }
       } else {
-        const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
-        if (prevRes.ok) {
-          const prev = await prevRes.json();
-          oracle = prev?.results?.[0]?.c;
-          gtLabel = "prev-close";
+        const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
+        if (polyRes.ok) {
+          const poly = await polyRes.json();
+          const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
+          const sessionClose = row?.session?.close;
+          const snapVal = row?.value;
+          // Desk off-hours price tracks today's index level (incl. after the cash close), not
+          // yesterday's settle — comparing to /prev measured the daily % move and false-failed
+          // RTH deep audit at 1.518% vs 1.5% tol (run 41912133395 @ abc4f901).
+          if (typeof sessionClose === "number" && sessionClose > 0) {
+            oracle = sessionClose;
+            gtLabel = "session-close";
+          } else if (typeof snapVal === "number" && snapVal > 0) {
+            oracle = snapVal;
+            gtLabel = "snapshot";
+          }
+        }
+        if (oracle == null) {
+          const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
+          if (prevRes.ok) {
+            const prev = await prevRes.json();
+            oracle = prev?.results?.[0]?.c;
+            gtLabel = "prev-close";
+          }
         }
       }
       const verdict = spxOracleVerdict(deskSpx, oracle, rth);

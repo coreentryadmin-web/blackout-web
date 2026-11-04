@@ -9,6 +9,7 @@ import {
   expectedNighthawkEdition,
   nighthawkEditionCoversExpected,
   nighthawkJobAgeMin,
+  nighthawkBackfillRepairPreWindow,
 } from "./admin-cron-health";
 import type { CronJobDefinition } from "./cron-registry";
 
@@ -103,6 +104,46 @@ test("a job that has NEVER logged a run reports stale, not unknown", () => {
   assert.equal(health.last_run_at, null);
 });
 
+test("nighthawk-backfill-repair: never-run stays unknown between dual UTC bands before in-window tick", () => {
+  const now = new Date("2026-11-03T13:59:00.000Z");
+  const health = evaluateJob(
+    jobDef({
+      key: "nighthawk-backfill-repair",
+      schedule_cron_utc: "0 13,14 * * 1-5",
+      stale_after_min: 36 * 60,
+      weekdays_only: true,
+    }),
+    undefined,
+    [],
+    now
+  );
+  assert.equal(health.status, "unknown");
+  assert.match(health.status_label, /not due/i);
+});
+
+test("nighthawk-backfill-repair: skipped first band stays healthy before second band fires", () => {
+  const now = new Date("2026-11-03T13:59:00.000Z");
+  const health = evaluateJob(
+    jobDef({
+      key: "nighthawk-backfill-repair",
+      schedule_cron_utc: "0 13,14 * * 1-5",
+      stale_after_min: 36 * 60,
+      weekdays_only: true,
+    }),
+    {
+      job_key: "nighthawk-backfill-repair",
+      status: "skipped",
+      started_at: "2026-11-03T13:00:05.000Z",
+      message: "Outside repair window",
+      duration_ms: 10,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /awaiting in-window UTC band/i);
+});
+
 test("a never-run MARKET-HOURS job trips market_hours_stale during RTH", () => {
   // This is the exact shape of the live outage: a market-hours job with no schedule at all.
   const health = evaluateJob(
@@ -128,7 +169,7 @@ test("a never-run market-hours job stays quiet overnight — it is not due yet",
   assert.equal(health.market_hours_stale, false);
 });
 
-test("nighthawk-backfill-repair: never-run between dual UTC bands is unknown until in-window fire — cron audit 41649123458", () => {
+test("nighthawk-backfill-repair: never-run between 13:00 and 14:00 UTC bands is not due yet (cron audit query)", () => {
   const health = evaluateJob(
     jobDef({
       key: "nighthawk-backfill-repair",
@@ -142,6 +183,7 @@ test("nighthawk-backfill-repair: never-run between dual UTC bands is unknown unt
   );
   assert.equal(health.status, "unknown");
   assert.equal(health.market_hours_stale, false);
+  assert.match(health.status_label, /not due/i);
 });
 
 test("nighthawkJobAgeMin: future updated_at exceeds stuck threshold (clock skew)", () => {
@@ -293,5 +335,20 @@ test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan hea
     block,
     /zerodteWarmInFlight/,
     "long in-flight scans must not trip market_hours_stale before the overlap lock TTL"
+  );
+});
+
+test("nighthawkBackfillRepairPreWindow is true before 9:00 AM ET on a trading day (EST)", () => {
+  // Tue 2026-11-03 13:59 UTC = 8:59 AM ET after DST ends — matches scheduled query CI timing.
+  assert.equal(nighthawkBackfillRepairPreWindow(new Date("2026-11-03T13:59:00Z")), true);
+  assert.equal(nighthawkBackfillRepairPreWindow(new Date("2026-11-03T14:30:00Z")), false);
+});
+
+test("buildCronHealthSnapshot suppresses nighthawk-backfill-repair stale/failed before the ET window", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(src, /nighthawkBackfillRepairPreWindow/);
+  assert.match(
+    src,
+    /job\.key === "nighthawk-backfill-repair"[\s\S]*nighthawkBackfillRepairPreWindow\(\)[\s\S]*Awaiting 9:00 AM ET repair window/
   );
 });

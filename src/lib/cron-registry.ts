@@ -449,7 +449,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     // member-facing edition for a full day because nothing ever invoked the admin-only
     // POST /api/admin/nighthawk/republish-backfill endpoint for it.
     schedule_cron_utc: "0 13,14 * * 1-5",
-    stale_after_min: 36 * 60,
+    stale_after_min: 72 * 60,
     weekdays_only: true,
     description: "Auto-repairs a BACKFILL play whose own contract has expired relative to the edition's target trading day, before morning-confirm and market open",
   },

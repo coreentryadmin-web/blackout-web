@@ -14,11 +14,12 @@ import {
   nextTradingDayEt,
 } from "@/features/nighthawk/lib/session";
 import { isInEditionWindow } from "@/features/nighthawk/lib/edition-stale";
+import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
-import { isInOffScheduleIdleGap, isInSameDayDualBandGap } from "@/lib/cron-schedule-window";
+import { isInOffScheduleIdleGap, isAwaitingSecondaryUtcBandFire } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -86,6 +87,30 @@ function etMinuteOfDay(now = new Date()): number {
   const hour = Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
   const minute = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
   return hour * 60 + minute;
+}
+
+/**
+ * `nighthawk-backfill-repair` fires on dual UTC bands (13:00 + 14:00 UTC) for 9:00 AM ET in both
+ * DST regimes. In EST the 13:00 band lands at 8:00 AM ET — before the route's own 9:00 AM ET
+ * window — and logs an expected skip. Scheduled CI (`query` / cron-audit) often runs in that
+ * gap (~8:59 AM ET) and the watchdog used to read yesterday's `failed` or a never-run `stale`
+ * as a live P0. Suppress until the repair window actually opens on a trading day.
+ */
+export function nighthawkBackfillRepairPreWindow(now = new Date()): boolean {
+  const today = formatEtDate(now);
+  if (!isTradingDayEt(today)) return false;
+  const targetHour = positiveEnvInt("NIGHTHAWK_BACKFILL_REPAIR_HOUR_ET", 9);
+  const targetMinute = positiveEnvInt("NIGHTHAWK_BACKFILL_REPAIR_MINUTE_ET", 0);
+  const catchupMin = positiveEnvInt("NIGHTHAWK_BACKFILL_REPAIR_CATCHUP_MIN", 90);
+  if (
+    inEtWindow(
+      { targetHour, targetMinute, catchupMin: catchupMin, weekdaysOnly: true },
+      now
+    )
+  ) {
+    return false;
+  }
+  return etMinuteOfDay(now) < targetHour * 60 + targetMinute;
 }
 
 export type NighthawkEditionExpectation = {
@@ -251,9 +276,9 @@ export function evaluateJob(
     const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-    const dualBandGapNoRun =
-      Boolean(job.schedule_cron_utc) && isInSameDayDualBandGap(job.schedule_cron_utc!, now);
-    const notDueYet = offWindowNoRun || offScheduleNoRun || dualBandGapNoRun;
+    const awaitingDualBand =
+      Boolean(job.schedule_cron_utc) && isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now);
+    const notDueYet = offWindowNoRun || offScheduleNoRun || awaitingDualBand;
 
     return {
       key: job.key,
@@ -295,8 +320,10 @@ export function evaluateJob(
     offWindow && (last.status === "skipped" || last.status === "ok");
   const offScheduleGap = Boolean(job.schedule_cron_utc) &&
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
+  const awaitingDualBand =
+    Boolean(job.schedule_cron_utc) && isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now);
   const suppressStaleOffSchedule =
-    offScheduleGap && (last.status === "skipped" || last.status === "ok");
+    (offScheduleGap || awaitingDualBand) && (last.status === "skipped" || last.status === "ok");
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
@@ -309,7 +336,9 @@ export function evaluateJob(
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
   } else if (suppressStaleOffSchedule) {
     status = "healthy";
-    statusLabel = "Idle (outside cron schedule window)";
+    statusLabel = awaitingDualBand
+      ? "Idle (awaiting in-window UTC band)"
+      : "Idle (outside cron schedule window)";
   } else if (
     job.key === "flow-ingest" &&
     last.status === "skipped" &&
@@ -488,6 +517,19 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
         status_label:
           "Phase scan in flight (running claim held) — prior cron handshake not authoritative",
         meta: { ...(health.meta ?? {}), swing_discovery_in_flight: true },
+      };
+    }
+
+    if (
+      job.key === "nighthawk-backfill-repair" &&
+      nighthawkBackfillRepairPreWindow() &&
+      (health.status === "stale" || health.status === "failed")
+    ) {
+      return {
+        ...health,
+        status: "healthy" as const,
+        status_label: "Awaiting 9:00 AM ET repair window",
+        market_hours_stale: false,
       };
     }
 
