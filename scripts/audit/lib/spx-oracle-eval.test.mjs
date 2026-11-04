@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spxOracleVerdict } from "./spx-oracle-eval.mjs";
+import { spxOracleVerdict, spxPolygonGroundTruth } from "./spx-oracle-eval.mjs";
 
 test("spxOracleVerdict: off-hours allows sub-1.5% drift (RTH deep audit 2026-11-02 false P0)", () => {
   const desk = 7552.74;
@@ -20,4 +20,18 @@ test("spxOracleVerdict: RTH uses tighter 0.3% tolerance", () => {
 test("spxOracleVerdict: skip when inputs missing", () => {
   assert.equal(spxOracleVerdict(null, 100, true).verdict, "skip");
   assert.equal(spxOracleVerdict(100, 0, true).verdict, "skip");
+});
+
+test("spxPolygonGroundTruth: post-close uses session close not /prev (RTH deep audit 2026-11-04 false P0)", () => {
+  const desk = 7683.82;
+  const prevClose = 7568.92;
+  const sessionClose = 7686.23;
+  const gt = spxPolygonGroundTruth({
+    rth: false,
+    indexRow: { session: { close: sessionClose }, value: sessionClose },
+    prevClose,
+  });
+  assert.equal(gt.gtLabel, "session-close");
+  assert.equal(spxOracleVerdict(desk, gt.oracle, gt.rth).verdict, "pass");
+  assert.equal(spxOracleVerdict(desk, prevClose, false).verdict, "fail");
 });
