@@ -425,49 +425,49 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX — live-vs-live during RTH, prior-close off-hours (data-validator convention).
+  // Polygon oracle for SPX — live-vs-live only while Polygon reports market open. Off-hours /
+  // post-close the desk snapshot still carries today's session close while /prev is the prior
+  // session — that mis-compare false-failed RTH deep audit on any >1.5% day (2026-11-04).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     if (deskSpx > 0) {
-      let rth = false;
-      let oracle = null;
-      let gtLabel = "";
+      let marketOpen = false;
       const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
       if (statusRes.ok) {
         const status = await statusRes.json();
-        rth = status?.market === "open";
+        marketOpen = status?.market === "open";
       }
-      if (rth) {
+      if (!marketOpen) {
+        ok(
+          "oracle",
+          "SPX",
+          `skipped — Polygon market closed (desk ${deskSpx}; no live oracle compare)`
+        );
+      } else {
+        let oracle = null;
+        let gtLabel = "live";
         const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
         if (polyRes.ok) {
           const poly = await polyRes.json();
           const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
           oracle = row?.value ?? row?.session?.close;
-          gtLabel = "live";
         }
-      } else {
-        const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
-        if (prevRes.ok) {
-          const prev = await prevRes.json();
-          oracle = prev?.results?.[0]?.c;
-          gtLabel = "prev-close";
+        const verdict = spxOracleVerdict(deskSpx, oracle, true);
+        if (verdict.verdict === "fail") {
+          fail(
+            "oracle",
+            "SPX",
+            `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}% > ${verdict.tolPct}% tol)`,
+            "P0"
+          );
+        } else if (verdict.verdict === "pass") {
+          ok(
+            "oracle",
+            "SPX",
+            `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}%)`
+          );
         }
-      }
-      const verdict = spxOracleVerdict(deskSpx, oracle, rth);
-      if (verdict.verdict === "fail") {
-        fail(
-          "oracle",
-          "SPX",
-          `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}% > ${verdict.tolPct}% tol)`,
-          "P0"
-        );
-      } else if (verdict.verdict === "pass") {
-        ok(
-          "oracle",
-          "SPX",
-          `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}%)`
-        );
       }
     }
   }
