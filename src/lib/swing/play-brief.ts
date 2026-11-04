@@ -12,6 +12,7 @@ import { formatDealerDollars } from "@/lib/swing/format-nonzero";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { buildRichEnvelope, type RichSection } from "@/lib/bie/rich-narrative";
+import { shortVolumeRatioPercentLabel } from "@/lib/bie/ticker-fundamentals";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { playContractHeadline } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-deck/play-card-display";
@@ -1802,7 +1803,8 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       const parts: string[] = [];
       if (fund.days_to_cover != null) parts.push(`DTC ${fund.days_to_cover.toFixed(1)}d`);
       if (fund.short_volume_ratio != null) {
-        parts.push(`short vol ratio ${(fund.short_volume_ratio * 100).toFixed(0)}%`);
+        const pct = shortVolumeRatioPercentLabel(fund.short_volume_ratio);
+        if (pct) parts.push(`short vol ratio ${pct}`);
       }
       out.push({
         kind: "fact",

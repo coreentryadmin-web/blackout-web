@@ -65,6 +65,13 @@ export function normalizeShortVolumeRatio(raw: number): number | null {
   return fraction > 1 ? null : fraction;
 }
 
+/** Member-facing percent label (0–100%) from either fraction or percent-scale upstream. */
+export function shortVolumeRatioPercentLabel(raw: number): string | null {
+  const fraction = normalizeShortVolumeRatio(raw);
+  if (fraction == null) return null;
+  return `${(fraction * 100).toFixed(0)}%`;
+}
+
 /** Pure: pick the most-recent short-volume row's ratio + date (freshest by ISO date, not trusting sort). */
 export function summarizeShortVolume(
   rows: ShortVolumeRow[]

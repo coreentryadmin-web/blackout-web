@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   summarizeShortVolume,
   normalizeShortVolumeRatio,
+  shortVolumeRatioPercentLabel,
   normalizeShortInterest,
   assembleFundamentalsBundle,
 } from "./ticker-fundamentals";
@@ -12,6 +13,11 @@ test("normalizeShortVolumeRatio: percent-scale upstream values normalize to 0–
   assert.ok(Math.abs(normalizeShortVolumeRatio(69.13)! - 0.6913) < 1e-9);
   assert.equal(normalizeShortVolumeRatio(0.42), 0.42);
   assert.equal(normalizeShortVolumeRatio(0), null);
+});
+
+test("shortVolumeRatioPercentLabel: display uses normalized fraction (audit #12)", () => {
+  assert.equal(shortVolumeRatioPercentLabel(0.6913), "69%");
+  assert.equal(shortVolumeRatioPercentLabel(69.13), "69%");
 });
 
 test("summarizeShortVolume: percent-scale Polygon row normalizes before return", () => {

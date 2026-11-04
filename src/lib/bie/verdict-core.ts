@@ -19,6 +19,7 @@ import {
   type BieUnavailableSource,
   type BieLevel,
 } from "@/lib/bie/answer-envelope";
+import { shortVolumeRatioPercentLabel } from "@/lib/bie/ticker-fundamentals";
 
 /** Which engine legs a verdict question warrants — depth matches merit; don't fan out needlessly. */
 export type VerdictLegPlan = {
@@ -225,7 +226,10 @@ export function assembleVerdictEnvelope(inp: VerdictInputs): BieAnswerEnvelope {
     const f = inp.fundamentals;
     const bits: string[] = [];
     if (f.days_to_cover != null) bits.push(`days-to-cover ${fmt(f.days_to_cover, 1)}`);
-    if (f.short_volume_ratio != null) bits.push(`short-vol ${fmt(f.short_volume_ratio * 100, 0)}%`);
+    if (f.short_volume_ratio != null) {
+      const pct = shortVolumeRatioPercentLabel(f.short_volume_ratio);
+      if (pct) bits.push(`short-vol ${pct}`);
+    }
     if (f.price_target != null) bits.push(`analyst PT ${fmt(f.price_target)}`);
     sections.push({ title: "Short interest / fundamentals", body: bits.join(" · "), provenance: { source: "Polygon / Benzinga", asOf: f.as_of } });
     if (f.days_to_cover != null && f.days_to_cover >= 5) evidence.push({ kind: "inference", text: `High days-to-cover (${fmt(f.days_to_cover, 1)}) → squeeze fuel if it runs`, provenance: { source: "Polygon short interest", asOf: f.as_of } });
