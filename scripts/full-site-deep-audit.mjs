@@ -7,7 +7,10 @@
  */
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
-import { spxOracleVerdict } from "./audit/lib/spx-oracle-eval.mjs";
+import {
+  offHoursUsesSessionClose,
+  spxOracleVerdict,
+} from "./audit/lib/spx-oracle-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -425,7 +428,8 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX — live-vs-live during RTH, prior-close off-hours (data-validator convention).
+  // Polygon oracle for SPX — live-vs-live during RTH; off-hours session-close after 4 PM ET,
+  // prior /prev close overnight/pre-open (data-validator convention + post-close /prev lag fix).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
@@ -447,11 +451,24 @@ async function auditPublicMarket() {
           gtLabel = "live";
         }
       } else {
-        const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
-        if (prevRes.ok) {
-          const prev = await prevRes.json();
-          oracle = prev?.results?.[0]?.c;
-          gtLabel = "prev-close";
+        const ymd = todayEtYmd();
+        if (offHoursUsesSessionClose()) {
+          const dayRes = await fetch(
+            `${POLY_BASE}/v2/aggs/ticker/I:SPX/range/${ymd}/${ymd}?adjusted=true&apiKey=${POLY_KEY}`
+          );
+          if (dayRes.ok) {
+            const day = await dayRes.json();
+            oracle = day?.results?.[0]?.c;
+            gtLabel = "session-close";
+          }
+        }
+        if (oracle == null) {
+          const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
+          if (prevRes.ok) {
+            const prev = await prevRes.json();
+            oracle = prev?.results?.[0]?.c;
+            gtLabel = "prev-close";
+          }
         }
       }
       const verdict = spxOracleVerdict(deskSpx, oracle, rth);
