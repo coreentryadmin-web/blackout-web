@@ -5,9 +5,23 @@ import { spxOracleVerdict } from "./spx-oracle-eval.mjs";
 test("spxOracleVerdict: off-hours allows sub-1.5% drift (RTH deep audit 2026-11-02 false P0)", () => {
   const desk = 7552.74;
   const prevClose = 7541.4;
-  const v = spxOracleVerdict(desk, prevClose, false);
+  const v = spxOracleVerdict(desk, prevClose, { rth: false, groundTruth: "prev-close" });
   assert.equal(v.verdict, "pass");
   assert.ok(v.pct != null && v.pct < 1.5);
+});
+
+test("spxOracleVerdict: post-close session-close uses tight tol (2026-11-04 RTH deep audit)", () => {
+  const desk = 7683.82;
+  const sessionClose = 7686.23;
+  assert.equal(
+    spxOracleVerdict(desk, sessionClose, { rth: false, groundTruth: "session-close" }).verdict,
+    "pass"
+  );
+  const prevClose = 7568.92;
+  assert.equal(
+    spxOracleVerdict(desk, prevClose, { rth: false, groundTruth: "prev-close" }).verdict,
+    "fail"
+  );
 });
 
 test("spxOracleVerdict: RTH uses tighter 0.3% tolerance", () => {
