@@ -447,14 +447,27 @@ async function auditPublicMarket() {
           gtLabel = "live";
         }
       } else {
-        const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
-        if (prevRes.ok) {
-          const prev = await prevRes.json();
-          oracle = prev?.results?.[0]?.c;
-          gtLabel = "prev-close";
+        const today = todayEtYmd();
+        const dayRes = await fetch(
+          `${POLY_BASE}/v2/aggs/ticker/I:SPX/range/1/day/${today}/${today}?adjusted=true&apiKey=${POLY_KEY}`
+        );
+        if (dayRes.ok) {
+          const day = await dayRes.json();
+          oracle = day?.results?.[0]?.c;
+          gtLabel = "session-close";
+        }
+        if (!(oracle > 0)) {
+          const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
+          if (prevRes.ok) {
+            const prev = await prevRes.json();
+            oracle = prev?.results?.[0]?.c;
+            gtLabel = "prev-close";
+          }
         }
       }
-      const verdict = spxOracleVerdict(deskSpx, oracle, rth);
+      const groundTruth =
+        gtLabel === "live" ? "live" : gtLabel === "session-close" ? "session-close" : "prev-close";
+      const verdict = spxOracleVerdict(deskSpx, oracle, { rth, groundTruth });
       if (verdict.verdict === "fail") {
         fail(
           "oracle",
