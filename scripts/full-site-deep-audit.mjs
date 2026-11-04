@@ -8,6 +8,7 @@
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict } from "./audit/lib/spx-oracle-eval.mjs";
+import { resolvePolygonSpxOracleGroundTruth } from "./audit/lib/spx-oracle-ground-truth.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -425,35 +426,22 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX — live-vs-live during RTH, prior-close off-hours (data-validator convention).
+  // Polygon oracle for SPX — live during RTH; after today's cash close use today's settle (not /prev).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     if (deskSpx > 0) {
       let rth = false;
-      let oracle = null;
-      let gtLabel = "";
       const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
       if (statusRes.ok) {
         const status = await statusRes.json();
         rth = status?.market === "open";
       }
-      if (rth) {
-        const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
-        if (polyRes.ok) {
-          const poly = await polyRes.json();
-          const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
-          oracle = row?.value ?? row?.session?.close;
-          gtLabel = "live";
-        }
-      } else {
-        const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
-        if (prevRes.ok) {
-          const prev = await prevRes.json();
-          oracle = prev?.results?.[0]?.c;
-          gtLabel = "prev-close";
-        }
-      }
+      const { value: oracle, label: gtLabel } = await resolvePolygonSpxOracleGroundTruth({
+        polyBase: POLY_BASE,
+        polyKey: POLY_KEY,
+        rth,
+      });
       const verdict = spxOracleVerdict(deskSpx, oracle, rth);
       if (verdict.verdict === "fail") {
         fail(
