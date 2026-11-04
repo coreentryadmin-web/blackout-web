@@ -7,7 +7,7 @@
  */
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
-import { spxOracleVerdict } from "./audit/lib/spx-oracle-eval.mjs";
+import { spxOracleVerdict, pickOffHoursSpxOracleGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -447,12 +447,18 @@ async function auditPublicMarket() {
           gtLabel = "live";
         }
       } else {
-        const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
-        if (prevRes.ok) {
-          const prev = await prevRes.json();
-          oracle = prev?.results?.[0]?.c;
-          gtLabel = "prev-close";
+        const idxRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
+        let sessionClose = null;
+        if (idxRes.ok) {
+          const idx = await idxRes.json();
+          const row = (idx.results ?? []).find((r) => r.ticker === "I:SPX");
+          sessionClose = row?.session?.close ?? row?.session?.previous_close;
         }
+        const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
+        const prevClose = prevRes.ok ? (await prevRes.json())?.results?.[0]?.c : null;
+        const picked = pickOffHoursSpxOracleGroundTruth(sessionClose, prevClose);
+        oracle = picked.oracle;
+        gtLabel = picked.label;
       }
       const verdict = spxOracleVerdict(deskSpx, oracle, rth);
       if (verdict.verdict === "fail") {
