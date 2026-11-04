@@ -17,6 +17,14 @@ test("spxOracleVerdict: RTH uses tighter 0.3% tolerance", () => {
   assert.equal(spxOracleVerdict(desk, live - 5, true).verdict, "pass");
 });
 
+test("spxOracleVerdict: post-close grace live desk vs live Polygon (2026-11-04 CI P0)", () => {
+  const desk = 7683.82;
+  const live = 7686.23;
+  const v = spxOracleVerdict(desk, live, true);
+  assert.equal(v.verdict, "pass");
+  assert.ok((v.pct ?? 0) < 0.3);
+});
+
 test("spxOracleVerdict: skip when inputs missing", () => {
   assert.equal(spxOracleVerdict(null, 100, true).verdict, "skip");
   assert.equal(spxOracleVerdict(100, 0, true).verdict, "skip");
