@@ -1,3 +1,11 @@
+## WATCH LIST — 2026-11-04 RTH deep audit SPX oracle post-close grace (PR pending)
+
+**What was broken:** At 16:02 ET, `gha-rth-audit` still runs (grace through 16:15) but Polygon `marketstatus` is already closed, so full-site deep audit compared live desk SPX to **prev-close** and false-failed at 1.518% > 1.5% (CI `abc4f901`).
+
+**Fix:** Oracle RTH mode follows `inRthOpenWindow()`; live index snapshot + 0.3% tol through 16:15 ET.
+
+**Check:** Next weekday after 16:00 ET while audit still runs — GitHub `audit` job oracle line should show `Polygon live` PASS, not prev-close P0.
+
 ## WATCH LIST — 2026-11-02 Swing `thesisBreakCoaching` no longer names a nonexistent "next trim rail" on a TRIM-status position (PR #7388)
 
 **What was shipped:** Found during a live-check of #7380 itself (`GET /api/market/nighthawk/
