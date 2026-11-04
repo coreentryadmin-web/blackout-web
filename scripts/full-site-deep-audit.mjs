@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -425,20 +425,20 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX — live-vs-live during RTH, prior-close off-hours (data-validator convention).
+  // Polygon oracle for SPX — live-vs-live during ET RTH (9:00–16:15 on trading days).
+  // Do NOT key off Polygon marketstatus alone: it flips to "closed" at 16:00 ET while this
+  // audit's RTH window (and gha-rth-audit) still runs through 16:15 — prev-close vs a live desk
+  // spot false-fails on normal +1.5% session moves (measured 2026-11-04 16:02 ET).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     if (deskSpx > 0) {
-      let rth = false;
-      let oracle = null;
-      let gtLabel = "";
-      const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
-      if (statusRes.ok) {
-        const status = await statusRes.json();
-        rth = status?.market === "open";
-      }
-      if (rth) {
+      const rth = isTradingDayEt(todayEtYmd()) && inRthOpenWindow();
+      if (!rth) {
+        ok("oracle", "SPX", "off-hours — oracle skipped (by design)");
+      } else {
+        let oracle = null;
+        let gtLabel = "";
         const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
         if (polyRes.ok) {
           const poly = await polyRes.json();
@@ -446,28 +446,21 @@ async function auditPublicMarket() {
           oracle = row?.value ?? row?.session?.close;
           gtLabel = "live";
         }
-      } else {
-        const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
-        if (prevRes.ok) {
-          const prev = await prevRes.json();
-          oracle = prev?.results?.[0]?.c;
-          gtLabel = "prev-close";
+        const verdict = spxOracleVerdict(deskSpx, oracle, true);
+        if (verdict.verdict === "fail") {
+          fail(
+            "oracle",
+            "SPX",
+            `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}% > ${verdict.tolPct}% tol)`,
+            "P0"
+          );
+        } else if (verdict.verdict === "pass") {
+          ok(
+            "oracle",
+            "SPX",
+            `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}%)`
+          );
         }
-      }
-      const verdict = spxOracleVerdict(deskSpx, oracle, rth);
-      if (verdict.verdict === "fail") {
-        fail(
-          "oracle",
-          "SPX",
-          `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}% > ${verdict.tolPct}% tol)`,
-          "P0"
-        );
-      } else if (verdict.verdict === "pass") {
-        ok(
-          "oracle",
-          "SPX",
-          `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}%)`
-        );
       }
     }
   }
