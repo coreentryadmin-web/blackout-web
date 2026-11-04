@@ -5,9 +5,9 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
-import { spxOracleVerdict } from "./audit/lib/spx-oracle-eval.mjs";
+import { resolveOracleUsesLiveRth, spxOracleVerdict } from "./audit/lib/spx-oracle-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -430,19 +430,20 @@ async function auditPublicMarket() {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     if (deskSpx > 0) {
-      let rth = false;
+      let polygonMarketOpen = null;
       let oracle = null;
       let gtLabel = "";
       const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
       if (statusRes.ok) {
         const status = await statusRes.json();
-        rth = status?.market === "open";
+        polygonMarketOpen = status?.market === "open";
       }
+      const rth = resolveOracleUsesLiveRth(polygonMarketOpen, inRthOpenWindow());
       if (rth) {
         const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
         if (polyRes.ok) {
           const poly = await polyRes.json();
-          const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
+          const row = (poly.results ?? []).find((t) => t.ticker === "I:SPX");
           oracle = row?.value ?? row?.session?.close;
           gtLabel = "live";
         }
@@ -455,7 +456,9 @@ async function auditPublicMarket() {
         }
       }
       const verdict = spxOracleVerdict(deskSpx, oracle, rth);
-      if (verdict.verdict === "fail") {
+      if (rth && oracle == null) {
+        ok("oracle", "SPX", "live Polygon snapshot unavailable — skipped (no prev-close fallback during RTH)");
+      } else if (verdict.verdict === "fail") {
         fail(
           "oracle",
           "SPX",
