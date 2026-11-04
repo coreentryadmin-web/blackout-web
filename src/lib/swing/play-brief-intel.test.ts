@@ -2494,7 +2494,9 @@ test("macroTapeSection: missing per-series dates render the figures with no fals
 });
 
 test("catalystsSection: short vol ratio renders as a sane percent from a 0–1 fraction (audit #12)", () => {
-  const section = catalystsSection({
+  const readMs = Date.parse("2026-09-06T16:00:00.000Z");
+  const section = catalystsSection(
+    {
     ticker: "CRWD",
     zerodte_today: null,
     nighthawk_recent: null,
@@ -2517,7 +2519,9 @@ test("catalystsSection: short vol ratio renders as a sane percent from a 0–1 f
       breadth: null,
       unavailable_sources: [],
     },
-  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext,
+    { readMs } as SwingPlayBriefContext,
+  );
   assert.ok(section);
   assert.match(section!.body, /short vol ratio \*\*69%\*\*/);
   assert.doesNotMatch(section!.body, /6913%/);
