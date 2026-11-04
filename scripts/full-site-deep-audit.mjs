@@ -7,7 +7,7 @@
  */
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
-import { spxOracleVerdict } from "./audit/lib/spx-oracle-eval.mjs";
+import { spxOracleVerdict, resolveSpxOracleRth } from "./audit/lib/spx-oracle-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -430,14 +430,14 @@ async function auditPublicMarket() {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     if (deskSpx > 0) {
-      let rth = false;
-      let oracle = null;
-      let gtLabel = "";
+      let marketStatus = null;
       const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
       if (statusRes.ok) {
-        const status = await statusRes.json();
-        rth = status?.market === "open";
+        marketStatus = await statusRes.json();
       }
+      const rth = resolveSpxOracleRth(marketStatus);
+      let oracle = null;
+      let gtLabel = "";
       if (rth) {
         const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
         if (polyRes.ok) {
