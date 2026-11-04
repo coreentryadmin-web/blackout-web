@@ -425,19 +425,28 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX — live-vs-live during RTH, prior-close off-hours (data-validator convention).
+  // Polygon oracle for SPX — live-vs-live during RTH; off-hours prior_close vs Polygon prev (not price vs prev).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
-    const deskSpx = snap.json?.spx?.price;
+    let rth = false;
+    const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
+    if (statusRes.ok) {
+      const status = await statusRes.json();
+      rth = status?.market === "open";
+    }
+    let deskField = "price";
+    let deskSpx = snap.json?.spx?.price;
+    if (!rth) {
+      const deskRes = await getJson("/api/market/spx/desk");
+      const pdc = deskRes.json?.prior_close;
+      if (pdc > 0) {
+        deskSpx = pdc;
+        deskField = "prior_close";
+      }
+    }
     if (deskSpx > 0) {
-      let rth = false;
       let oracle = null;
       let gtLabel = "";
-      const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
-      if (statusRes.ok) {
-        const status = await statusRes.json();
-        rth = status?.market === "open";
-      }
       if (rth) {
         const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
         if (polyRes.ok) {
@@ -459,14 +468,14 @@ async function auditPublicMarket() {
         fail(
           "oracle",
           "SPX",
-          `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}% > ${verdict.tolPct}% tol)`,
+          `${deskField} ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}% > ${verdict.tolPct}% tol)`,
           "P0"
         );
       } else if (verdict.verdict === "pass") {
         ok(
           "oracle",
           "SPX",
-          `desk ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}%)`
+          `${deskField} ${deskSpx} vs Polygon ${gtLabel} ${oracle} (Δ ${verdict.pct?.toFixed(3)}%)`
         );
       }
     }
