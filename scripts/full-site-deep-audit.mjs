@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -425,20 +425,24 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX — live-vs-live during RTH, prior-close off-hours (data-validator convention).
+  // Polygon oracle for SPX — live-vs-live during RTH and the GHA post-close grace window
+  // (09:00–16:15 ET). After the 16:00 close Polygon marketstatus flips to "closed" while the
+  // desk still serves today's session spot; comparing that live level to I:SPX/prev (prior
+  // SESSION close) false-fails on any |day move| > 1.5% (measured RTH deep audit 2026-11-04).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     if (deskSpx > 0) {
-      let rth = false;
-      let oracle = null;
-      let gtLabel = "";
+      let polygonMarketOpen = false;
       const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
       if (statusRes.ok) {
         const status = await statusRes.json();
-        rth = status?.market === "open";
+        polygonMarketOpen = status?.market === "open";
       }
-      if (rth) {
+      const useLiveGroundTruth = polygonMarketOpen || inRthOpenWindow();
+      let oracle = null;
+      let gtLabel = "";
+      if (useLiveGroundTruth) {
         const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
         if (polyRes.ok) {
           const poly = await polyRes.json();
@@ -454,7 +458,7 @@ async function auditPublicMarket() {
           gtLabel = "prev-close";
         }
       }
-      const verdict = spxOracleVerdict(deskSpx, oracle, rth);
+      const verdict = spxOracleVerdict(deskSpx, oracle, useLiveGroundTruth);
       if (verdict.verdict === "fail") {
         fail(
           "oracle",

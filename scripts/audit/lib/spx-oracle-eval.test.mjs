@@ -17,6 +17,14 @@ test("spxOracleVerdict: RTH uses tighter 0.3% tolerance", () => {
   assert.equal(spxOracleVerdict(desk, live - 5, true).verdict, "pass");
 });
 
+test("spxOracleVerdict: post-close session move vs prior prev-close is not the off-hours oracle (2026-11-04 RTH deep audit)", () => {
+  const desk = 7683.82;
+  const priorDayPrevClose = 7568.92;
+  const liveSnapshot = 7686.23;
+  assert.equal(spxOracleVerdict(desk, priorDayPrevClose, false).verdict, "fail");
+  assert.equal(spxOracleVerdict(desk, liveSnapshot, true).verdict, "pass");
+});
+
 test("spxOracleVerdict: skip when inputs missing", () => {
   assert.equal(spxOracleVerdict(null, 100, true).verdict, "skip");
   assert.equal(spxOracleVerdict(100, 0, true).verdict, "skip");
