@@ -425,7 +425,7 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX — live-vs-live during RTH, prior-close off-hours (data-validator convention).
+  // Polygon oracle for SPX — live-vs-live during RTH, session-close off-hours (not /prev).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
@@ -447,11 +447,12 @@ async function auditPublicMarket() {
           gtLabel = "live";
         }
       } else {
-        const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
-        if (prevRes.ok) {
-          const prev = await prevRes.json();
-          oracle = prev?.results?.[0]?.c;
-          gtLabel = "prev-close";
+        const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
+        if (polyRes.ok) {
+          const poly = await polyRes.json();
+          const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
+          oracle = row?.session?.close ?? row?.value;
+          gtLabel = "session-close";
         }
       }
       const verdict = spxOracleVerdict(deskSpx, oracle, rth);

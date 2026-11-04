@@ -2,12 +2,24 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spxOracleVerdict } from "./spx-oracle-eval.mjs";
 
-test("spxOracleVerdict: off-hours allows sub-1.5% drift (RTH deep audit 2026-11-02 false P0)", () => {
+test("spxOracleVerdict: off-hours allows sub-1.5% drift vs session close", () => {
   const desk = 7552.74;
-  const prevClose = 7541.4;
-  const v = spxOracleVerdict(desk, prevClose, false);
+  const sessionClose = 7541.4;
+  const v = spxOracleVerdict(desk, sessionClose, false);
   assert.equal(v.verdict, "pass");
   assert.ok(v.pct != null && v.pct < 1.5);
+});
+
+test("spxOracleVerdict: off-hours desk vs prior-day close is not the oracle shape (large day move)", () => {
+  const desk = 7683.82;
+  const priorDayClose = 7568.92;
+  const v = spxOracleVerdict(desk, priorDayClose, false);
+  assert.equal(v.verdict, "fail");
+  assert.ok(v.pct != null && v.pct > 1.5);
+});
+
+test("spxOracleVerdict: off-hours session-close matches desk after a large up day", () => {
+  assert.equal(spxOracleVerdict(7683.82, 7686.23, false).verdict, "pass");
 });
 
 test("spxOracleVerdict: RTH uses tighter 0.3% tolerance", () => {

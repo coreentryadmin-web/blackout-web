@@ -1,6 +1,7 @@
 /**
- * SPX desk vs Polygon oracle — same RTH/off-hours convention as data-validator.mjs:
- * live index snapshot during RTH, prior daily close off-hours; percent tolerance not raw points.
+ * SPX desk vs Polygon oracle — RTH: live index snapshot; off-hours: last session close
+ * (desk carries the settled session level, not prior-day close — comparing to /prev false-fails
+ * after any |day move| > tolerance, e.g. RTH deep audit 2026-11-04 Δ 1.518% vs prev-close).
  */
 
 /** @returns {{ verdict: "pass" | "fail" | "skip"; pct?: number; tolPct?: number; rth?: boolean }} */
