@@ -21,3 +21,11 @@ test("spxOracleVerdict: skip when inputs missing", () => {
   assert.equal(spxOracleVerdict(null, 100, true).verdict, "skip");
   assert.equal(spxOracleVerdict(100, 0, true).verdict, "skip");
 });
+
+test("spxOracleVerdict: post-close grace compares session close not prior day prev (2026-11-04 RTH audit)", () => {
+  const desk = 7683.82;
+  const sessionClose = 7686.23;
+  const priorDayPrev = 7568.92;
+  assert.equal(spxOracleVerdict(desk, sessionClose, false).verdict, "pass");
+  assert.equal(spxOracleVerdict(desk, priorDayPrev, false).verdict, "fail");
+});

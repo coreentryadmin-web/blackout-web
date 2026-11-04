@@ -34,5 +34,7 @@ test("full-site-deep-audit SPX oracle follows data-validator RTH/off-hours groun
   assert.match(src, /spxOracleVerdict/);
   assert.match(src, /marketstatus\/now/);
   assert.match(src, /I:SPX\/prev/);
+  assert.match(src, /inRthOpenWindow/);
+  assert.match(src, /useIndexSnapshot = polygonMarketOpen \|\| etRthWindow/);
   assert.doesNotMatch(src, /if \(d > 5\) fail\("oracle", "SPX"/);
 });

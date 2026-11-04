@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -425,26 +425,31 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX — live-vs-live during RTH, prior-close off-hours (data-validator convention).
+  // Polygon oracle for SPX — live-vs-live during cash RTH; index snapshot during the
+  // 16:00–16:15 ET post-close grace (gha-rth-audit still "open"); prior daily close only
+  // when truly off that window (data-validator convention).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     if (deskSpx > 0) {
-      let rth = false;
-      let oracle = null;
-      let gtLabel = "";
+      let polygonMarketOpen = false;
       const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
       if (statusRes.ok) {
         const status = await statusRes.json();
-        rth = status?.market === "open";
+        polygonMarketOpen = status?.market === "open";
       }
-      if (rth) {
+      const etRthWindow = inRthOpenWindow();
+      const useIndexSnapshot = polygonMarketOpen || etRthWindow;
+
+      let oracle = null;
+      let gtLabel = "";
+      if (useIndexSnapshot) {
         const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
         if (polyRes.ok) {
           const poly = await polyRes.json();
           const row = (poly.results ?? []).find((r) => r.ticker === "I:SPX");
           oracle = row?.value ?? row?.session?.close;
-          gtLabel = "live";
+          gtLabel = polygonMarketOpen ? "live" : "session";
         }
       } else {
         const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
@@ -454,7 +459,7 @@ async function auditPublicMarket() {
           gtLabel = "prev-close";
         }
       }
-      const verdict = spxOracleVerdict(deskSpx, oracle, rth);
+      const verdict = spxOracleVerdict(deskSpx, oracle, polygonMarketOpen);
       if (verdict.verdict === "fail") {
         fail(
           "oracle",
