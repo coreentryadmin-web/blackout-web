@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -425,18 +425,14 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX — live-vs-live during RTH; session close when Polygon reports
-  // closed (post-bell desk still tracks today — not yesterday's /prev).
+  // Polygon oracle for SPX — live-vs-live during ET RTH (9:00–16:15 on trading days).
+  // Polygon marketstatus flips "closed" at 16:00 ET while gha-rth-audit still runs through
+  // 16:15; session-close + 1.5% tol in that gap false-fails on normal session moves (#7447).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     if (deskSpx > 0) {
-      let rth = false;
-      const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
-      if (statusRes.ok) {
-        const status = await statusRes.json();
-        rth = status?.market === "open";
-      }
+      const auditRth = isTradingDayEt(todayEtYmd()) && inRthOpenWindow();
       let indexRow = null;
       const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
       if (polyRes.ok) {
@@ -444,14 +440,14 @@ async function auditPublicMarket() {
         indexRow = (poly.results ?? []).find((r) => r.ticker === "I:SPX") ?? null;
       }
       let prevClose = null;
-      if (!rth) {
+      if (!auditRth) {
         const prevRes = await fetch(`${POLY_BASE}/v2/aggs/ticker/I:SPX/prev?apiKey=${POLY_KEY}`);
         if (prevRes.ok) {
           const prev = await prevRes.json();
           prevClose = prev?.results?.[0]?.c;
         }
       }
-      const { oracle, gtLabel, rth: rthMode } = spxPolygonGroundTruth({ rth, indexRow, prevClose });
+      const { oracle, gtLabel, rth: rthMode } = spxPolygonGroundTruth({ rth: auditRth, indexRow, prevClose });
       const verdict = spxOracleVerdict(deskSpx, oracle, rthMode);
       if (verdict.verdict === "fail") {
         fail(

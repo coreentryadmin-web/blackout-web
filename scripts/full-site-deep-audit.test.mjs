@@ -32,7 +32,8 @@ test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a 
 
 test("full-site-deep-audit SPX oracle follows data-validator RTH/off-hours ground truth", () => {
   assert.match(src, /spxOracleVerdict/);
-  assert.match(src, /marketstatus\/now/);
+  assert.match(src, /spxPolygonGroundTruth/);
+  assert.match(src, /inRthOpenWindow/);
   assert.match(src, /I:SPX\/prev/);
   assert.doesNotMatch(src, /if \(d > 5\) fail\("oracle", "SPX"/);
 });
