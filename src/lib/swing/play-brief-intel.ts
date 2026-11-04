@@ -45,6 +45,7 @@ import {
 import { technicalsBias } from "./play-brief-technicals";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
+import { normalizeShortVolumeRatio } from "@/lib/bie/ticker-fundamentals";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { nearestWallFromLevels, type NearestWall } from "@/lib/providers/gex-nearest-wall";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
@@ -1641,7 +1642,8 @@ export function catalystsSection(
     const f = arsenal.fundamentals;
     const parts: string[] = [];
     if (f.days_to_cover != null) parts.push(`short DTC **${f.days_to_cover.toFixed(1)}d**`);
-    if (f.short_volume_ratio != null) parts.push(`short vol ratio **${(f.short_volume_ratio * 100).toFixed(0)}%**`);
+    const shortVol = normalizeShortVolumeRatio(f.short_volume_ratio ?? NaN);
+    if (shortVol != null) parts.push(`short vol ratio **${(shortVol * 100).toFixed(0)}%**`);
     if (parts.length) {
       // Mirrors the headlines block's staleLead just below (#4076 comment 5747893411's secondary
       // point): short-interest is cadence-scaled to ~biweekly FINRA settlement, not the generic
