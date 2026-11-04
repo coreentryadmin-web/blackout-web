@@ -2494,6 +2494,8 @@ test("macroTapeSection: missing per-series dates render the figures with no fals
 });
 
 test("catalystsSection: short vol ratio renders as a sane percent from a 0–1 fraction (audit #12)", () => {
+  // Keep as_of inside FUNDAMENTALS_ANCIENT_CEILING_MS — this test is about ratio formatting, not omission.
+  const freshAsOf = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const section = catalystsSection({
     ticker: "CRWD",
     zerodte_today: null,
@@ -2510,7 +2512,7 @@ test("catalystsSection: short vol ratio renders as a sane percent from a 0–1 f
     arsenal: {
       scope: "single_name",
       earnings: null,
-      fundamentals: { days_to_cover: 3.4, short_volume_ratio: 0.6913, price_target: null, as_of: "2026-09-05" },
+      fundamentals: { days_to_cover: 3.4, short_volume_ratio: 0.6913, price_target: null, as_of: freshAsOf },
       related: null,
       news: null,
       macro: null,
