@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -425,19 +425,17 @@ async function auditPublicMarket() {
     else ok("public", path, "finite ✓");
   }
 
-  // Polygon oracle for SPX — live-vs-live during RTH, prior-close off-hours (data-validator convention).
+  // Polygon oracle for SPX — live-vs-live during ET cash RTH (same clock as gha-rth-audit),
+  // prior daily close off-hours. Do NOT key this on Polygon marketstatus alone: a failed or
+  // lagging status response during an open session compares live desk to prev-close with the
+  // 1.5% off-hours band and false-P0s on any normal up/down day (measured 2026-11-04 RTH audit).
   if (POLY_KEY && CRON) {
     const snap = await getJson("/api/market/platform/snapshot");
     const deskSpx = snap.json?.spx?.price;
     if (deskSpx > 0) {
-      let rth = false;
+      const rth = inRthOpenWindow();
       let oracle = null;
       let gtLabel = "";
-      const statusRes = await fetch(`${POLY_BASE}/v1/marketstatus/now?apiKey=${POLY_KEY}`);
-      if (statusRes.ok) {
-        const status = await statusRes.json();
-        rth = status?.market === "open";
-      }
       if (rth) {
         const polyRes = await fetch(`${POLY_BASE}/v3/snapshot/indices?ticker.any_of=I:SPX&apiKey=${POLY_KEY}`);
         if (polyRes.ok) {

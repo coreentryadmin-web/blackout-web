@@ -21,3 +21,11 @@ test("spxOracleVerdict: skip when inputs missing", () => {
   assert.equal(spxOracleVerdict(null, 100, true).verdict, "skip");
   assert.equal(spxOracleVerdict(100, 0, true).verdict, "skip");
 });
+
+test("spxOracleVerdict: live desk vs prev-close must use RTH=true (0.3%), not off-hours 1.5%", () => {
+  const desk = 7683.82;
+  const prevClose = 7568.92;
+  assert.equal(spxOracleVerdict(desk, prevClose, false).verdict, "fail");
+  assert.equal(spxOracleVerdict(desk, prevClose, true).verdict, "fail");
+  assert.equal(spxOracleVerdict(desk, desk + 20, true).verdict, "pass");
+});
