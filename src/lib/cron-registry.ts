@@ -16,6 +16,14 @@ export type CronJobDefinition = {
   schedule_cron_utc?: string;
   weekdays_only?: boolean;
   market_hours_only?: boolean;
+  /**
+   * When set with `market_hours_only`, health/off-window suppression follows
+   * `isSpxEngineCronWindow` (7:00–16:15 ET, trading day) — the same gate as
+   * spx-evaluate / data-integrity / spx-issues-sync routes — not cash RTH
+   * (9:30–16:00 ET). Prevents false "market closed" suppression while those
+   * crons are still due to fire.
+   */
+  spx_engine_cron_window?: boolean;
   description: string;
   /** True for crons that themselves produce a member-visible alert/signal/status badge when
    *  they run — NOT cache warmers (zerodte-warm, heatmap-warm) and NOT
@@ -46,6 +54,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 20,
     weekdays_only: true,
     market_hours_only: true,
+    spx_engine_cron_window: true,
     description: "SPX play + lotto evaluation tick",
     produces_member_alert: true,
   },
@@ -302,6 +311,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 20,
     weekdays_only: true,
     market_hours_only: true,
+    spx_engine_cron_window: true,
     description:
       "Cross-validate live numbers across every tool (desk vs heatmap vs quote, SPY/SPX tracking, max-pain scaling, desk internal math, GEX freshness) — auto-opens admin incidents on any discrepancy",
   },
@@ -314,6 +324,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 25,
     weekdays_only: true,
     market_hours_only: true,
+    spx_engine_cron_window: true,
     description:
       "Roll up api_telemetry_events upstream failures and rate limits into admin incidents — catches sustained UW/Polygon/Anthropic outages without watching the dashboard",
   },
@@ -326,6 +337,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 20,
     weekdays_only: true,
     market_hours_only: true,
+    spx_engine_cron_window: true,
     description:
       "Computes SPX play/engine health issues (Claude arbiter veto, gate blocks/warnings, play-engine heartbeat silent/stale) and syncs them into admin_incidents — previously this only ran as a side effect of a human loading /api/admin/spx/dashboard, so BIE's discovery layer (fetchDiscoveryIncidents) went silently stale on SPX engine health whenever nobody was viewing that page",
   },
@@ -338,6 +350,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 90,
     weekdays_only: true,
     market_hours_only: true,
+    spx_engine_cron_window: true,
     description:
       "Data-correctness auditor — independently re-derives Thermal GEX/VEX numbers (net/King/flip/walls) from the raw chain, asserts invariants/sanity/freshness, confirms SPX King + net-GEX sign against the UW oracle, and cross-checks getGexPositioning vs the SPX desk; FLAGs any wrong number to Discord",
   },
@@ -371,6 +384,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 30,
     weekdays_only: true,
     market_hours_only: true,
+    spx_engine_cron_window: true,
     description: "Snapshot all confluence signal weights + raw market values to spx_signal_observations; backfills 30-min outcomes for earlier rows",
   },
   {
@@ -413,6 +427,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 20,
     weekdays_only: true,
     market_hours_only: true,
+    spx_engine_cron_window: true,
     description:
       "Derives composite market regime (GEX/vol/trend/flow) from the SPX desk + HELIX flows and writes to market_regime + flow_anomalies tables — feeds FlowAnomalyBanner and Night Hawk morning confirm",
   },

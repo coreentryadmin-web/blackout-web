@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  cronMarketHoursInWindow,
   evaluateJob,
   expectedNighthawkEdition,
   nighthawkEditionCoversExpected,
@@ -77,6 +78,10 @@ test("Night Hawk health carries the next trading edition across a market holiday
 
 /** 2026-08-19 is a Wednesday. EDT is UTC-4, so 18:00Z is 14:00 ET — mid-session. */
 const RTH_WEDNESDAY = new Date("2026-08-19T18:00:00Z");
+/** Same Wednesday at 8:00 AM ET — premarket; SPX engine crons are in-window, cash-RTH jobs are not. */
+const PREMARKET_WEDNESDAY = new Date("2026-08-19T12:00:00Z");
+/** Same Wednesday at 4:10 PM ET — cash closed; SPX engine window runs to 4:15 PM ET. */
+const POST_CASH_WEDNESDAY = new Date("2026-08-19T20:10:00Z");
 /** Same Wednesday at 03:00 ET — the market is shut and a market-hours job is not due. */
 const OVERNIGHT_WEDNESDAY = new Date("2026-08-19T07:00:00Z");
 
@@ -110,6 +115,58 @@ test("a never-run MARKET-HOURS job trips market_hours_stale during RTH", () => {
   );
   assert.equal(health.status, "stale");
   assert.equal(health.market_hours_stale, true, "a dead market-hours job during RTH must trip the #90 flag");
+});
+
+test("cronMarketHoursInWindow: SPX engine jobs are in-window premarket (7:00+ ET)", () => {
+  const spx = jobDef({
+    key: "spx-evaluate",
+    market_hours_only: true,
+    spx_engine_cron_window: true,
+  });
+  const flow = jobDef({ key: "flow-ingest", market_hours_only: true });
+  assert.equal(cronMarketHoursInWindow(spx, PREMARKET_WEDNESDAY), true);
+  assert.equal(cronMarketHoursInWindow(flow, PREMARKET_WEDNESDAY), false);
+});
+
+test("cronMarketHoursInWindow: SPX engine jobs stay in-window for a few minutes after cash close", () => {
+  const spx = jobDef({
+    key: "spx-evaluate",
+    market_hours_only: true,
+    spx_engine_cron_window: true,
+  });
+  assert.equal(cronMarketHoursInWindow(spx, POST_CASH_WEDNESDAY), true);
+});
+
+test("a never-run SPX engine window job is stale in premarket (in-window), not unknown", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-issues-sync",
+      market_hours_only: true,
+      spx_engine_cron_window: true,
+      stale_after_min: 20,
+    }),
+    undefined,
+    [],
+    PREMARKET_WEDNESDAY
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true);
+});
+
+test("a never-run SPX engine window job is stale for a few minutes after cash close (engine window)", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-evaluate",
+      market_hours_only: true,
+      spx_engine_cron_window: true,
+      stale_after_min: 20,
+    }),
+    undefined,
+    [],
+    POST_CASH_WEDNESDAY
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true);
 });
 
 test("a never-run market-hours job stays quiet overnight — it is not due yet", () => {
