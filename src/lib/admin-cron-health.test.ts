@@ -169,6 +169,57 @@ test("a never-run market-hours job stays quiet overnight — it is not due yet",
   assert.equal(health.market_hours_stale, false);
 });
 
+/** Wed 2026-08-19 4:35 PM ET — after `isSpxEngineCronWindow` end (16:15) but still on the clock
+ *  before extended warm hours; last ok run was the final post-close tick. */
+const POST_SPX_ENGINE_WINDOW_WED = new Date("2026-08-19T20:35:00.000Z");
+
+test("spx-evaluate: after engine window ok run does not false-stale while cash RTH gate still true", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-evaluate",
+      market_hours_only: true,
+      weekdays_only: true,
+      stale_after_min: 20,
+    }),
+    {
+      id: 1,
+      job_key: "spx-evaluate",
+      status: "ok",
+      started_at: new Date(POST_SPX_ENGINE_WINDOW_WED.getTime() - 35 * 60_000).toISOString(),
+      duration_ms: 200,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    POST_SPX_ENGINE_WINDOW_WED
+  );
+  assert.equal(health.status, "healthy");
+  assert.equal(health.market_hours_stale, false);
+});
+
+test("spx-issues-sync: same off-window alignment as spx-evaluate route", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-issues-sync",
+      market_hours_only: true,
+      weekdays_only: true,
+      stale_after_min: 20,
+    }),
+    {
+      id: 1,
+      job_key: "spx-issues-sync",
+      status: "ok",
+      started_at: new Date(POST_SPX_ENGINE_WINDOW_WED.getTime() - 35 * 60_000).toISOString(),
+      duration_ms: 200,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    POST_SPX_ENGINE_WINDOW_WED
+  );
+  assert.equal(health.status, "healthy");
+});
+
 test("nighthawk-backfill-repair: never-run between 13:00 and 14:00 UTC bands is not due yet (cron audit query)", () => {
   const health = evaluateJob(
     jobDef({
