@@ -44,6 +44,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     path: "/api/cron/spx-evaluate",
     schedule_label: "~Every 5 min (7AM–4PM ET)",
     stale_after_min: 20,
+    schedule_cron_utc: "*/5 11-21 * * 1-5",
     weekdays_only: true,
     market_hours_only: true,
     description: "SPX play + lotto evaluation tick",
@@ -355,6 +356,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     path: "/api/cron/spx-issues-sync",
     schedule_label: "~Every 5 min (7AM–4PM ET)",
     stale_after_min: 20,
+    schedule_cron_utc: "2-59/5 11-21 * * 1-5",
     weekdays_only: true,
     market_hours_only: true,
     description:

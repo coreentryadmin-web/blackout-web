@@ -16,6 +16,7 @@ import {
 import { isInEditionWindow } from "@/features/nighthawk/lib/edition-stale";
 import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
@@ -57,6 +58,14 @@ async function isSwingDiscoveryScanInFlight(now = new Date()): Promise<boolean> 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
   return isEtCashRth(now);
+}
+
+/** When a `market_hours_only` job is actually due: SPX engine crons follow `isSpxEngineCronWindow` (7:00–16:15 ET weekdays), not cash RTH — the routes skip outside that window but still tick every 5m in premarket/post-close. */
+function marketHoursJobDue(job: CronJobDefinition, now: Date): boolean {
+  if (job.key === "spx-evaluate" || job.key === "spx-issues-sync") {
+    return isSpxEngineCronWindow(now);
+  }
+  return inMarketHoursEt(now);
 }
 
 /** Night Hawk playbook job age — clock-skewed future timestamps exceed stuck threshold. */
@@ -273,7 +282,8 @@ export function evaluateJob(
     // off-window or inside an off-schedule idle gap, so it is not DUE to have run. Suppressing there
     // matches the treatment a logged run gets below and keeps the board from crying wolf overnight,
     // which is the reason the off-window suppression exists at all.
-    const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
+    const offWindowNoRun =
+      Boolean(job.market_hours_only) && !marketHoursJobDue(job, now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
     const awaitingDualBand =
@@ -315,7 +325,7 @@ export function evaluateJob(
   // so age inevitably exceeds the threshold — flagging them STALE is a false alarm. While
   // off-window, suppress the stale flag as long as the last logged run was a legitimate skip
   // or success (a "failed" last run is still surfaced below regardless of window).
-  const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
+  const offWindow = Boolean(job.market_hours_only) && !marketHoursJobDue(job, now);
   const suppressStaleOffWindow =
     offWindow && (last.status === "skipped" || last.status === "ok");
   const offScheduleGap = Boolean(job.schedule_cron_utc) &&
@@ -358,8 +368,8 @@ export function evaluateJob(
     statusLabel = "Failures in last 24h";
   }
 
-  // Flag a market-hours warmer that is stale WHILE the market is open — the #90 silent-death case.
-  // `offWindow` is false here means we're in RTH, so a "stale" status is a genuine live-data outage.
+  // Flag a market-hours warmer that is stale WHILE its route is in the window where it should tick —
+  // the #90 silent-death case. For SPX engine crons that is `isSpxEngineCronWindow`, not cash RTH.
   const marketHoursStale = Boolean(job.market_hours_only) && !offWindow && status === "stale";
 
   return {
@@ -386,6 +396,7 @@ export function evaluateJob(
 }
 
 export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
+  const now = new Date();
   let lastRuns: Awaited<ReturnType<typeof fetchCronJobLastRuns>> = [];
   let recentRuns: Awaited<ReturnType<typeof fetchCronJobRunsLast24h>> = [];
   let latestNhJob: Awaited<ReturnType<typeof fetchLatestNighthawkJob>> = null;
@@ -423,7 +434,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   );
   const swingDiscoveryInFlight = await isSwingDiscoveryScanInFlight();
   const jobs = CRON_JOBS.map((job) => {
-    const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
+    const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? [], now);
 
     // zerodte-warm's cron_job_runs handshake (logCronRun) fires on the route's FAST
     // synchronous path — auth + cooldown/lock gate + the cheap earnings-cache warm — before
@@ -441,7 +452,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     // in-window.
     if (job.key === "zerodte-warm" && zeroDteScanHb.last_tick_at) {
       const hbAgeMin = zeroDteScanHb.age_ms != null ? Math.round(zeroDteScanHb.age_ms / 60_000) : null;
-      const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+      const offWindow = Boolean(job.market_hours_only) && !marketHoursJobDue(job, now);
       if (!offWindow && hbAgeMin != null && (zeroDteScanHb.stale || zeroDteScanHb.critical_stale)) {
         const IN_FLIGHT_GRACE_MIN = 18;
         if (
@@ -479,10 +490,10 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
 
     if (job.key === "spx-evaluate" && playHb.last_tick_at) {
       const hbAgeMin = playHb.age_ms != null ? Math.round(playHb.age_ms / 60_000) : null;
-      const { effective: staleThreshold } = effectiveStaleMinutes(job);
+      const { effective: staleThreshold } = effectiveStaleMinutes(job, now);
       // Off-window the engine correctly idles, so a high cron age is expected — don't let
       // the heartbeat block re-flag a healthy off-hours skip (FIX-1) as stale/warning.
-      const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+      const offWindow = Boolean(job.market_hours_only) && !marketHoursJobDue(job, now);
       const cronStale = !offWindow && health.age_min != null && health.age_min > staleThreshold;
 
       if (cronStale && hbAgeMin != null) {
@@ -678,7 +689,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   }
 
   return {
-    generated_at: new Date().toISOString(),
+    generated_at: now.toISOString(),
     cron_secret_configured: Boolean(process.env.CRON_SECRET?.trim()),
     db_configured: dbConfigured(),
     db_snapshot_error: dbSnapshotError,

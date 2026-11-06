@@ -271,6 +271,62 @@ test("NYSE holiday silence on gated warmers does not false-flag market_hours_sta
   assert.equal(health.market_hours_stale, false);
 });
 
+// SPX engine crons (spx-evaluate, spx-issues-sync) use isSpxEngineCronWindow (7:00–16:15 ET), not
+// cash RTH. Between 4:00 PM and 4:15 PM ET cash is closed but the engine window is still open — the
+// old health gate treated that as "off market" and suppressed staleness, so a missed tick could read
+// healthy while the watchdog listed the job (Cron audit query / ops-collect).
+test("spx-evaluate: stale last OK handshake still trips market_hours_stale post-cash, pre engine-window end", () => {
+  const now = new Date("2026-08-19T20:10:00.000Z"); // Wed 4:10 PM ET — past cash close, still in SPX engine window until 4:15
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-evaluate",
+      market_hours_only: true,
+      stale_after_min: 20,
+      schedule_cron_utc: "*/5 11-21 * * 1-5",
+      weekdays_only: true,
+    }),
+    {
+      id: 1,
+      job_key: "spx-evaluate",
+      status: "ok",
+      started_at: "2026-08-19T19:45:00.000Z", // 3:45 PM ET — 25+ minutes before `now`
+      duration_ms: 100,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true);
+});
+
+test("spx-issues-sync: same post-cash / in-engine-window staleness as spx-evaluate", () => {
+  const now = new Date("2026-08-19T20:10:00.000Z");
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-issues-sync",
+      market_hours_only: true,
+      stale_after_min: 20,
+      schedule_cron_utc: "2-59/5 11-21 * * 1-5",
+      weekdays_only: true,
+    }),
+    {
+      id: 2,
+      job_key: "spx-issues-sync",
+      status: "ok",
+      started_at: "2026-08-19T19:45:00.000Z",
+      duration_ms: 50,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true);
+});
+
 // BUG FIX (2026-09-08) — companion to the db.ts fix. buildCronHealthSnapshot's `runs_24h` aggregate
 // used to be built from `fetchCronJobRecentRuns(48)` (the last 48 cron_job_runs rows GLOBALLY, no
 // per-job or time bound), which starves any moderately-frequent job's 24h count once its faster
