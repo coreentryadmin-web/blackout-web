@@ -13,6 +13,7 @@ import {
   nighthawkBackfillRepairPreWindow,
 } from "./admin-cron-health";
 import type { CronJobDefinition } from "./cron-registry";
+import { CRON_JOBS } from "./cron-registry";
 
 function withDefaultNighthawkWindow(fn: () => void) {
   const prevHour = process.env.NIGHTHAWK_EDITION_HOUR_ET;
@@ -168,6 +169,29 @@ test("a never-run market-hours job stays quiet overnight — it is not due yet",
   );
   assert.equal(health.status, "unknown");
   assert.equal(health.market_hours_stale, false);
+});
+
+test("REGRESSION: spx-evaluate 16:00–16:15 ET is in engine window — stale if last ok too old (cron audit query)", () => {
+  const job = CRON_JOBS.find((j) => j.key === "spx-evaluate");
+  assert.ok(job);
+  const now = new Date("2026-11-04T21:10:00.000Z"); // Wed 4:10 PM ET — after cash close, still < 4:15 engine window
+  const lastOkAt = new Date(now.getTime() - 25 * 60_000).toISOString();
+  const health = evaluateJob(
+    job!,
+    {
+      id: 1,
+      job_key: "spx-evaluate",
+      status: "ok",
+      started_at: lastOkAt,
+      duration_ms: 100,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true);
 });
 
 test("spx-evaluate / spx-issues-sync: premarket (outside 7am–4:15pm engine window) suppresses stale cron handshake", () => {

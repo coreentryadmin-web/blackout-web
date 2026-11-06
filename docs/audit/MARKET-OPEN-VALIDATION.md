@@ -1,3 +1,11 @@
+## WATCH LIST — 2026-11-06 Cron `query` — SPX engine crons use `isSpxEngineCronWindow` in health (PR #7486)
+
+**What was broken:** `market_hours_only` off-window used cash RTH only; `spx-evaluate` / `spx-issues-sync` routes use **7:00–16:15 ET** (`isSpxEngineCronWindow`) → false **query** / watchdog failures (cron audit).
+
+**Fix:** `marketHoursCronOffWindow` keys those jobs to the engine window.
+
+**Check:** Weekday **before 7:00 AM ET** and **16:00–16:15 ET** — `node scripts/cron-audit-query.mjs` / scheduled **query** should not list `spx-evaluate` or `spx-issues-sync` from **healthy** skip/off-window handshakes alone.
+
 ## WATCH LIST — 2026-11-02 Swing `thesisBreakCoaching` no longer names a nonexistent "next trim rail" on a TRIM-status position (PR #7388)
 
 **What was shipped:** Found during a live-check of #7380 itself (`GET /api/market/nighthawk/
