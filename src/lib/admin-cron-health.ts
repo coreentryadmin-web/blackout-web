@@ -16,6 +16,7 @@ import {
 import { isInEditionWindow } from "@/features/nighthawk/lib/edition-stale";
 import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
@@ -57,6 +58,15 @@ async function isSwingDiscoveryScanInFlight(now = new Date()): Promise<boolean> 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
   return isEtCashRth(now);
+}
+
+/** SPX engine crons share isSpxEngineCronWindow with their routes — not cash RTH (9:30–16:00). */
+const SPX_ENGINE_CRON_KEYS = new Set(["spx-evaluate", "spx-issues-sync"]);
+
+function marketHoursActiveForCron(job: CronJobDefinition, now: Date): boolean {
+  if (SPX_ENGINE_CRON_KEYS.has(job.key)) return isSpxEngineCronWindow(now);
+  if (!job.market_hours_only) return true;
+  return inMarketHoursEt(now);
 }
 
 /** Night Hawk playbook job age — clock-skewed future timestamps exceed stuck threshold. */
@@ -273,7 +283,7 @@ export function evaluateJob(
     // off-window or inside an off-schedule idle gap, so it is not DUE to have run. Suppressing there
     // matches the treatment a logged run gets below and keeps the board from crying wolf overnight,
     // which is the reason the off-window suppression exists at all.
-    const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
+    const offWindowNoRun = Boolean(job.market_hours_only) && !marketHoursActiveForCron(job, now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
     const awaitingDualBand =
@@ -291,7 +301,7 @@ export function evaluateJob(
       status_label: notDueYet
         ? "No runs logged (not due — outside its window)"
         : "NEVER logged a run — job may not be scheduled at all",
-      market_hours_stale: Boolean(job.market_hours_only) && !offWindowNoRun,
+      market_hours_stale: Boolean(job.market_hours_only) && marketHoursActiveForCron(job, now),
       last_run_at: null,
       last_status: null,
       last_duration_ms: null,
@@ -315,7 +325,7 @@ export function evaluateJob(
   // so age inevitably exceeds the threshold — flagging them STALE is a false alarm. While
   // off-window, suppress the stale flag as long as the last logged run was a legitimate skip
   // or success (a "failed" last run is still surfaced below regardless of window).
-  const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
+  const offWindow = Boolean(job.market_hours_only) && !marketHoursActiveForCron(job, now);
   const suppressStaleOffWindow =
     offWindow && (last.status === "skipped" || last.status === "ok");
   const offScheduleGap = Boolean(job.schedule_cron_utc) &&
@@ -360,7 +370,8 @@ export function evaluateJob(
 
   // Flag a market-hours warmer that is stale WHILE the market is open — the #90 silent-death case.
   // `offWindow` is false here means we're in RTH, so a "stale" status is a genuine live-data outage.
-  const marketHoursStale = Boolean(job.market_hours_only) && !offWindow && status === "stale";
+  const marketHoursStale =
+    Boolean(job.market_hours_only) && marketHoursActiveForCron(job, now) && status === "stale";
 
   return {
     key: job.key,
@@ -482,7 +493,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       const { effective: staleThreshold } = effectiveStaleMinutes(job);
       // Off-window the engine correctly idles, so a high cron age is expected — don't let
       // the heartbeat block re-flag a healthy off-hours skip (FIX-1) as stale/warning.
-      const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+      const offWindow = !isSpxEngineCronWindow();
       const cronStale = !offWindow && health.age_min != null && health.age_min > staleThreshold;
 
       if (cronStale && hbAgeMin != null) {

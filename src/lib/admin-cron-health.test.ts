@@ -144,6 +144,55 @@ test("nighthawk-backfill-repair: skipped first band stays healthy before second 
   assert.match(health.status_label, /awaiting in-window UTC band/i);
 });
 
+test("spx-evaluate: 4:00–4:15 PM ET is in engine window — stale handshake trips market_hours_stale (not cash-RTH closed)", () => {
+  // Fri 2026-11-06 21:05 UTC = 4:05 PM ET (EST). Cash RTH ended 16:00; engine window runs to 16:15
+  // (isSpxEngineCronWindow) — same as spx-evaluate route + cron-audit-query measured false P0.
+  const now = new Date("2026-11-06T21:05:00.000Z");
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-evaluate",
+      market_hours_only: true,
+      stale_after_min: 20,
+      weekdays_only: true,
+    }),
+    {
+      job_key: "spx-evaluate",
+      status: "ok",
+      started_at: "2026-11-06T20:30:00.000Z",
+      duration_ms: 100,
+      message: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true);
+});
+
+test("spx-issues-sync: after 4:15 PM ET engine window — last skip is healthy (market closed)", () => {
+  const now = new Date("2026-11-06T21:20:00.000Z"); // 4:20 PM ET
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-issues-sync",
+      market_hours_only: true,
+      stale_after_min: 20,
+      weekdays_only: true,
+    }),
+    {
+      job_key: "spx-issues-sync",
+      status: "skipped",
+      started_at: "2026-11-06T21:17:00.000Z",
+      duration_ms: 5,
+      message: "Outside SPX engine evaluation window",
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /market closed/i);
+  assert.equal(health.market_hours_stale, false);
+});
+
 test("a never-run MARKET-HOURS job trips market_hours_stale during RTH", () => {
   // This is the exact shape of the live outage: a market-hours job with no schedule at all.
   const health = evaluateJob(
