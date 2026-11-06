@@ -214,6 +214,84 @@ test("NYSE holiday silence on gated warmers does not false-flag market_hours_sta
   assert.equal(health.market_hours_stale, false);
 });
 
+// SPX engine crons (spx-evaluate, spx-issues-sync) use `isSpxEngineCronWindow` in their routes
+// (7:00–16:15 ET). Cron health used `isEtCashRth` only (ends 16:00), so 16:00–16:15 treated
+// `market_hours_only` jobs as off-window and suppressed staleness — false green for real stalls.
+/** 2026-08-19 Wed, 16:05 PM ET (EDT) — cash RTH closed, still inside SPX engine cron window. */
+const POST_CLOSE_ENGINE_TAIL = new Date("2026-08-19T20:05:00.000Z");
+
+test("spx-evaluate: post-16:00 engine tail still evaluates staleness (not false idle-closed)", () => {
+  const staleAfter = 20;
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-evaluate",
+      market_hours_only: true,
+      stale_after_min: staleAfter,
+    }),
+    {
+      id: 1,
+      job_key: "spx-evaluate",
+      status: "ok",
+      // 30m before POST_CLOSE_ENGINE_TAIL — exceeds stale window while engine window still open
+      started_at: new Date(POST_CLOSE_ENGINE_TAIL.getTime() - 30 * 60_000).toISOString(),
+      duration_ms: 50,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    POST_CLOSE_ENGINE_TAIL
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true);
+});
+
+test("spx-issues-sync: post-16:00 engine tail aligns with spx-evaluate window helper", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-issues-sync",
+      market_hours_only: true,
+      stale_after_min: 20,
+    }),
+    {
+      id: 1,
+      job_key: "spx-issues-sync",
+      status: "ok",
+      started_at: new Date(POST_CLOSE_ENGINE_TAIL.getTime() - 30 * 60_000).toISOString(),
+      duration_ms: 40,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    POST_CLOSE_ENGINE_TAIL
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true);
+});
+
+test("REGRESSION: generic market_hours_only job still suppresses stale post-16:00 ET (not SPX engine keys)", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "flow-ingest",
+      market_hours_only: true,
+      stale_after_min: 20,
+    }),
+    {
+      id: 1,
+      job_key: "flow-ingest",
+      status: "skipped",
+      started_at: new Date(POST_CLOSE_ENGINE_TAIL.getTime() - 25 * 60_000).toISOString(),
+      duration_ms: 5,
+      message: "off-hours gate",
+      meta_json: null,
+    },
+    [],
+    POST_CLOSE_ENGINE_TAIL
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /market closed/i);
+  assert.equal(health.market_hours_stale, false);
+});
+
 // BUG FIX (2026-09-08) — companion to the db.ts fix. buildCronHealthSnapshot's `runs_24h` aggregate
 // used to be built from `fetchCronJobRecentRuns(48)` (the last 48 cron_job_runs rows GLOBALLY, no
 // per-job or time bound), which starves any moderately-frequent job's 24h count once its faster
