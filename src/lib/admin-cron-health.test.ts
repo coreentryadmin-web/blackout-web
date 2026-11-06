@@ -7,6 +7,7 @@ import {
   effectiveStaleMinutes,
   evaluateJob,
   expectedNighthawkEdition,
+  inCronMarketHoursWindow,
   nighthawkEditionCoversExpected,
   nighthawkJobAgeMin,
   nighthawkBackfillRepairPreWindow,
@@ -183,6 +184,44 @@ test("nighthawk-backfill-repair: never-run between 13:00 and 14:00 UTC bands is 
   );
   assert.equal(health.status, "unknown");
   assert.match(health.status_label, /not due/i);
+});
+
+/** Post-close SPX engine window: 2026-11-04 21:05Z = 16:05 ET (cash closed, engine through 16:15). */
+const POST_CLOSE_ENGINE_WINDOW = new Date("2026-11-04T21:05:00.000Z");
+
+test("spx-evaluate uses SPX engine window (not cash RTH) so post-close grace can surface stale handshake", () => {
+  const job = jobDef({
+    key: "spx-evaluate",
+    market_hours_only: true,
+    stale_after_min: 20,
+  });
+  assert.equal(inCronMarketHoursWindow(job, POST_CLOSE_ENGINE_WINDOW), true);
+  const health = evaluateJob(
+    job,
+    {
+      id: 1,
+      job_key: "spx-evaluate",
+      status: "ok",
+      started_at: "2026-11-04T20:25:00.000Z",
+      duration_ms: 100,
+      message: "ok",
+      meta_json: null,
+    },
+    [],
+    POST_CLOSE_ENGINE_WINDOW
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true);
+});
+
+test("flow-ingest stays off-window in pre-market (cash RTH gate unchanged)", () => {
+  const premarket = new Date("2026-11-04T13:30:00.000Z");
+  const job = jobDef({
+    key: "flow-ingest",
+    market_hours_only: true,
+    stale_after_min: 15,
+  });
+  assert.equal(inCronMarketHoursWindow(job, premarket), false);
 });
 
 test("nighthawkJobAgeMin: future updated_at exceeds stuck threshold (clock skew)", () => {

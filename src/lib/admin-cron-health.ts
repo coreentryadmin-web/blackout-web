@@ -16,6 +16,7 @@ import {
 import { isInEditionWindow } from "@/features/nighthawk/lib/edition-stale";
 import { inEtWindow } from "@/features/nighthawk/lib/et-window";
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
@@ -54,9 +55,21 @@ async function isSwingDiscoveryScanInFlight(now = new Date()): Promise<boolean> 
   return false;
 }
 
-/** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
-function inMarketHoursEt(now = new Date()): boolean {
+/** Cash-session RTH — flow-ingest, heatmap warmers, etc. */
+function inCashRthEt(now = new Date()): boolean {
   return isEtCashRth(now);
+}
+
+/**
+ * When a `market_hours_only` job should be considered "in window" for staleness.
+ * SPX engine crons (`spx-evaluate`, `spx-issues-sync`) follow `isSpxEngineCronWindow`
+ * (7:00–16:15 ET) — NOT cash RTH — or hourly `cron-audit-query` false-flags them stale
+ * every pre-market minute (7:00–9:30 ET) and during the post-close grace (16:00–16:15 ET).
+ */
+export function inCronMarketHoursWindow(job: CronJobDefinition, now = new Date()): boolean {
+  if (!job.market_hours_only) return true;
+  if (job.key === "spx-evaluate" || job.key === "spx-issues-sync") return isSpxEngineCronWindow(now);
+  return inCashRthEt(now);
 }
 
 /** Night Hawk playbook job age — clock-skewed future timestamps exceed stuck threshold. */
@@ -273,7 +286,7 @@ export function evaluateJob(
     // off-window or inside an off-schedule idle gap, so it is not DUE to have run. Suppressing there
     // matches the treatment a logged run gets below and keeps the board from crying wolf overnight,
     // which is the reason the off-window suppression exists at all.
-    const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
+    const offWindowNoRun = Boolean(job.market_hours_only) && !inCronMarketHoursWindow(job, now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
     const awaitingDualBand =
@@ -315,7 +328,7 @@ export function evaluateJob(
   // so age inevitably exceeds the threshold — flagging them STALE is a false alarm. While
   // off-window, suppress the stale flag as long as the last logged run was a legitimate skip
   // or success (a "failed" last run is still surfaced below regardless of window).
-  const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
+  const offWindow = Boolean(job.market_hours_only) && !inCronMarketHoursWindow(job, now);
   const suppressStaleOffWindow =
     offWindow && (last.status === "skipped" || last.status === "ok");
   const offScheduleGap = Boolean(job.schedule_cron_utc) &&
@@ -360,7 +373,8 @@ export function evaluateJob(
 
   // Flag a market-hours warmer that is stale WHILE the market is open — the #90 silent-death case.
   // `offWindow` is false here means we're in RTH, so a "stale" status is a genuine live-data outage.
-  const marketHoursStale = Boolean(job.market_hours_only) && !offWindow && status === "stale";
+  const marketHoursStale =
+    Boolean(job.market_hours_only) && inCronMarketHoursWindow(job, now) && status === "stale";
 
   return {
     key: job.key,
@@ -441,7 +455,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     // in-window.
     if (job.key === "zerodte-warm" && zeroDteScanHb.last_tick_at) {
       const hbAgeMin = zeroDteScanHb.age_ms != null ? Math.round(zeroDteScanHb.age_ms / 60_000) : null;
-      const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+      const offWindow = Boolean(job.market_hours_only) && !inCashRthEt();
       if (!offWindow && hbAgeMin != null && (zeroDteScanHb.stale || zeroDteScanHb.critical_stale)) {
         const IN_FLIGHT_GRACE_MIN = 18;
         if (
@@ -482,7 +496,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       const { effective: staleThreshold } = effectiveStaleMinutes(job);
       // Off-window the engine correctly idles, so a high cron age is expected — don't let
       // the heartbeat block re-flag a healthy off-hours skip (FIX-1) as stale/warning.
-      const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+      const offWindow = Boolean(job.market_hours_only) && !inCronMarketHoursWindow(job);
       const cronStale = !offWindow && health.age_min != null && health.age_min > staleThreshold;
 
       if (cronStale && hbAgeMin != null) {
