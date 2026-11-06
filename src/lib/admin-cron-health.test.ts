@@ -10,6 +10,7 @@ import {
   nighthawkEditionCoversExpected,
   nighthawkJobAgeMin,
   nighthawkBackfillRepairPreWindow,
+  marketHoursCronInSession,
 } from "./admin-cron-health";
 import type { CronJobDefinition } from "./cron-registry";
 
@@ -195,6 +196,18 @@ test("spx-evaluate / spx-issues-sync: premarket (outside 7am–4:15pm engine win
     assert.match(health.status_label, /market closed|Idle/i, key);
     assert.equal(health.market_hours_stale, false, key);
   }
+});
+
+test("marketHoursCronInSession: SPX engine crons are in-session premarket (7:45 ET) while cash RTH is still closed", () => {
+  const job = jobDef({ key: "spx-evaluate", market_hours_only: true });
+  const premarketEt = new Date("2026-08-19T11:45:00.000Z"); // Wed 7:45 AM EDT
+  assert.equal(marketHoursCronInSession(job, premarketEt), true);
+});
+
+test("marketHoursCronInSession: flow-ingest follows cash RTH only (premarket is off-window)", () => {
+  const job = jobDef({ key: "flow-ingest", market_hours_only: true });
+  const premarketEt = new Date("2026-08-19T11:45:00.000Z");
+  assert.equal(marketHoursCronInSession(job, premarketEt), false);
 });
 
 test("nighthawk-backfill-repair: never-run between 13:00 and 14:00 UTC bands is not due yet (cron audit query)", () => {
