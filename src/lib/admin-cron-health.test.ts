@@ -185,6 +185,31 @@ test("nighthawk-backfill-repair: never-run between 13:00 and 14:00 UTC bands is 
   assert.match(health.status_label, /not due/i);
 });
 
+/** Fri 16:10 ET — past 4:00 cash close, still inside isSpxEngineCronWindow (through 16:15). */
+const POST_CASH_SPX_ENGINE = new Date("2026-11-06T21:10:00.000Z");
+
+test("spx-evaluate + spx-issues-sync: post-4PM ET tail uses engine window, not isEtCashRth (cron-audit 2026-11-06)", () => {
+  const lastStart = new Date(POST_CASH_SPX_ENGINE.getTime() - 10 * 60_000).toISOString();
+  for (const key of ["spx-evaluate", "spx-issues-sync"] as const) {
+    const health = evaluateJob(
+      jobDef({ key, market_hours_only: true, stale_after_min: 20 }),
+      {
+        id: 1,
+        job_key: key,
+        status: "ok",
+        started_at: lastStart,
+        duration_ms: 2,
+        message: null,
+        meta_json: null,
+      },
+      [],
+      POST_CASH_SPX_ENGINE
+    );
+    assert.equal(health.status, "healthy", `${key} should suppress stale in 16:05–16:14 ET tail`);
+    assert.equal(health.market_hours_stale, false);
+  }
+});
+
 test("nighthawkJobAgeMin: future updated_at exceeds stuck threshold (clock skew)", () => {
   const now = Date.parse("2026-09-04T12:00:00Z");
   const future = new Date(now + 60_000).toISOString();
