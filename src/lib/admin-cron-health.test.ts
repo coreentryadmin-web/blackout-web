@@ -271,6 +271,58 @@ test("NYSE holiday silence on gated warmers does not false-flag market_hours_sta
   assert.equal(health.market_hours_stale, false);
 });
 
+/** Fri 2026-11-06 16:06 ET (post-cash close, still inside isSpxEngineCronWindow until 16:15). */
+const SPX_ENGINE_POST_CLOSE_TICK = new Date("2026-11-06T21:06:00.000Z");
+
+test("REGRESSION: spx-evaluate uses engine cron window for off-hours suppression, not cash RTH only (cron-audit 2026-11-06)", () => {
+  const job = jobDef({
+    key: "spx-evaluate",
+    market_hours_only: true,
+    weekdays_only: true,
+    stale_after_min: 20,
+  });
+  const health = evaluateJob(
+    job,
+    {
+      id: 1,
+      job_key: "spx-evaluate",
+      status: "ok",
+      started_at: new Date(SPX_ENGINE_POST_CLOSE_TICK.getTime() - 30 * 60_000).toISOString(),
+      duration_ms: 100,
+      message: "ok",
+      meta_json: null,
+    },
+    [],
+    SPX_ENGINE_POST_CLOSE_TICK
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true);
+});
+
+test("REGRESSION: generic market_hours_only job still suppresses staleness post-4pm ET (cash RTH gate)", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "uw-cache-refresh",
+      market_hours_only: true,
+      weekdays_only: true,
+      stale_after_min: 10,
+    }),
+    {
+      id: 1,
+      job_key: "uw-cache-refresh",
+      status: "ok",
+      started_at: new Date(SPX_ENGINE_POST_CLOSE_TICK.getTime() - 30 * 60_000).toISOString(),
+      duration_ms: 80,
+      message: "ok",
+      meta_json: null,
+    },
+    [],
+    SPX_ENGINE_POST_CLOSE_TICK
+  );
+  assert.equal(health.status, "healthy");
+  assert.equal(health.market_hours_stale, false);
+});
+
 // BUG FIX (2026-09-08) — companion to the db.ts fix. buildCronHealthSnapshot's `runs_24h` aggregate
 // used to be built from `fetchCronJobRecentRuns(48)` (the last 48 cron_job_runs rows GLOBALLY, no
 // per-job or time bound), which starves any moderately-frequent job's 24h count once its faster
