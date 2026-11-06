@@ -82,6 +82,8 @@ test("Night Hawk health carries the next trading edition across a market holiday
 const RTH_WEDNESDAY = new Date("2026-08-19T18:00:00Z");
 /** Same Wednesday at 03:00 ET — the market is shut and a market-hours job is not due. */
 const OVERNIGHT_WEDNESDAY = new Date("2026-08-19T07:00:00Z");
+/** 2026-08-19 20:10 UTC = 16:10 ET (EDT) — after 4:00 cash close, still inside SPX engine cron window (to 4:15). */
+const POST_CLOSE_SPX_ENGINE_WINDOW = new Date("2026-08-19T20:10:00Z");
 
 function jobDef(over: Partial<CronJobDefinition> = {}): CronJobDefinition {
   return {
@@ -126,6 +128,51 @@ test("a never-run market-hours job stays quiet overnight — it is not due yet",
   );
   assert.equal(health.status, "unknown");
   assert.equal(health.market_hours_stale, false);
+});
+
+test("REGRESSION: spx-evaluate never-run is in-scope during SPX engine post-close tail (not cash RTH)", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-evaluate",
+      market_hours_only: true,
+      stale_after_min: 20,
+    }),
+    undefined,
+    [],
+    POST_CLOSE_SPX_ENGINE_WINDOW
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true, "post-close tail is still engine schedule — must not suppress #90");
+});
+
+test("REGRESSION: generic market_hours job stays off-window after cash close (unchanged)", () => {
+  const health = evaluateJob(
+    jobDef({ market_hours_only: true }),
+    undefined,
+    [],
+    POST_CLOSE_SPX_ENGINE_WINDOW
+  );
+  assert.equal(health.status, "unknown");
+  assert.equal(health.market_hours_stale, false);
+});
+
+test("REGRESSION: spx-issues-sync old skip is not misread as off-window in post-close engine band (staleness surfaces)", () => {
+  const health = evaluateJob(
+    jobDef({ key: "spx-issues-sync", market_hours_only: true, stale_after_min: 20 }),
+    {
+      id: 1,
+      job_key: "spx-issues-sync",
+      status: "skipped",
+      started_at: new Date(POST_CLOSE_SPX_ENGINE_WINDOW.getTime() - 25 * 60_000).toISOString(),
+      duration_ms: 5,
+      message: "engine idle",
+      meta_json: null,
+    },
+    [],
+    POST_CLOSE_SPX_ENGINE_WINDOW
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.market_hours_stale, true);
 });
 
 test("nighthawkJobAgeMin: future updated_at exceeds stuck threshold (clock skew)", () => {
