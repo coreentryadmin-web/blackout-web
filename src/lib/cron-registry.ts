@@ -42,6 +42,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "SPX Engine",
     kind: "http",
     path: "/api/cron/spx-evaluate",
+    // Mirrors railway.spx-evaluate.toml — off-schedule idle-gap suppression for admin-cron-health.
+    schedule_cron_utc: "*/5 11-21 * * 1-5",
     schedule_label: "~Every 5 min (7AM–4PM ET)",
     stale_after_min: 20,
     weekdays_only: true,
@@ -347,6 +349,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "SPX Issues Sync",
     kind: "http",
     path: "/api/cron/spx-issues-sync",
+    // Mirrors railway.spx-issues-sync.toml — offset :02..:57 vs spx-evaluate.
+    schedule_cron_utc: "2-59/5 11-21 * * 1-5",
     schedule_label: "~Every 5 min (7AM–4PM ET)",
     stale_after_min: 20,
     weekdays_only: true,

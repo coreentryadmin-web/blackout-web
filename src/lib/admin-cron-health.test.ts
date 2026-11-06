@@ -82,6 +82,8 @@ test("Night Hawk health carries the next trading edition across a market holiday
 const RTH_WEDNESDAY = new Date("2026-08-19T18:00:00Z");
 /** Same Wednesday at 03:00 ET — the market is shut and a market-hours job is not due. */
 const OVERNIGHT_WEDNESDAY = new Date("2026-08-19T07:00:00Z");
+/** Same Wednesday at 8:00 AM ET (EDT) — SPX engine cron window (7:00–4:15 ET) but not cash RTH. */
+const PREMARKET_WEDNESDAY_EDT = new Date("2026-08-19T12:00:00Z");
 
 function jobDef(over: Partial<CronJobDefinition> = {}): CronJobDefinition {
   return {
@@ -113,6 +115,40 @@ test("a never-run MARKET-HOURS job trips market_hours_stale during RTH", () => {
   );
   assert.equal(health.status, "stale");
   assert.equal(health.market_hours_stale, true, "a dead market-hours job during RTH must trip the #90 flag");
+});
+
+test("spx-evaluate: never-run inside SPX engine window (premarket) is stale — not misclassified as off-window", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "spx-evaluate",
+      market_hours_only: true,
+      weekdays_only: true,
+      stale_after_min: 20,
+      schedule_cron_utc: "*/5 11-21 * * 1-5",
+    }),
+    undefined,
+    [],
+    PREMARKET_WEDNESDAY_EDT
+  );
+  assert.equal(health.status, "stale");
+  assert.match(health.status_label, /NEVER/i);
+  assert.equal(health.market_hours_stale, true);
+});
+
+test("helix-signal-outcomes: never-run pre-market stays unknown (cash RTH gate only)", () => {
+  const health = evaluateJob(
+    jobDef({
+      key: "helix-signal-outcomes",
+      market_hours_only: true,
+      stale_after_min: 45,
+    }),
+    undefined,
+    [],
+    PREMARKET_WEDNESDAY_EDT
+  );
+  assert.equal(health.status, "unknown");
+  assert.match(health.status_label, /not due/i);
+  assert.equal(health.market_hours_stale, false);
 });
 
 test("a never-run market-hours job stays quiet overnight — it is not due yet", () => {
