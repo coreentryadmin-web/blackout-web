@@ -169,6 +169,34 @@ test("a never-run market-hours job stays quiet overnight — it is not due yet",
   assert.equal(health.market_hours_stale, false);
 });
 
+test("spx-evaluate / spx-issues-sync: premarket (outside 7am–4:15pm engine window) suppresses stale cron handshake", () => {
+  // Cash RTH (isEtCashRth) is false at 6:30 AM ET, but the SPX engine crons are still off-window —
+  // same shape as their route guards (`isSpxEngineCronWindow`). Without this, a long skip streak
+  // between yesterday's last fire and today's 9:30 open reads as "stale" and fails cron-audit query.
+  const preSevenEt = new Date("2026-08-19T10:30:00.000Z"); // 6:30 AM EDT
+  const lastHandshake = "2026-08-19T09:00:00.000Z"; // 5:00 AM EDT — >20m before `now`, would be stale in-window
+  const row = {
+    id: 1,
+    job_key: "spx-evaluate",
+    status: "skipped" as const,
+    started_at: lastHandshake,
+    duration_ms: 12,
+    message: "Outside SPX engine evaluation window (7:00–16:15 ET weekdays)",
+    meta_json: null,
+  };
+  for (const key of ["spx-evaluate", "spx-issues-sync"] as const) {
+    const health = evaluateJob(
+      jobDef({ key, market_hours_only: true, stale_after_min: 20 }),
+      { ...row, job_key: key },
+      [],
+      preSevenEt
+    );
+    assert.equal(health.status, "healthy", key);
+    assert.match(health.status_label, /market closed|Idle/i, key);
+    assert.equal(health.market_hours_stale, false, key);
+  }
+});
+
 test("nighthawk-backfill-repair: never-run between 13:00 and 14:00 UTC bands is not due yet (cron audit query)", () => {
   const health = evaluateJob(
     jobDef({
