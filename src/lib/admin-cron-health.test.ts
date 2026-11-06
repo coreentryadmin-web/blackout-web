@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   effectiveStaleMinutes,
   evaluateJob,
+  inMarketHoursForCronJob,
   expectedNighthawkEdition,
   nighthawkEditionCoversExpected,
   nighthawkJobAgeMin,
@@ -363,6 +364,67 @@ test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan hea
     /zerodteWarmInFlight/,
     "long in-flight scans must not trip market_hours_stale before the overlap lock TTL"
   );
+});
+
+test("inMarketHoursForCronJob: spx-evaluate uses SPX engine window (7–16:15 ET), not cash RTH only", () => {
+  const spxEval: CronJobDefinition = {
+    key: "spx-evaluate",
+    name: "SPX Engine",
+    kind: "http",
+    path: "/api/cron/spx-evaluate",
+    schedule_label: "",
+    stale_after_min: 20,
+    weekdays_only: true,
+    market_hours_only: true,
+    description: "",
+  };
+  const premktWed = new Date("2026-11-04T12:30:00.000Z");
+  assert.equal(inMarketHoursForCronJob(spxEval, premktWed), true);
+  const flowIngest: CronJobDefinition = {
+    key: "flow-ingest",
+    name: "Flow",
+    kind: "http",
+    path: "/api/cron/flow-ingest",
+    schedule_label: "",
+    stale_after_min: 15,
+    weekdays_only: true,
+    market_hours_only: true,
+    description: "",
+  };
+  assert.equal(inMarketHoursForCronJob(flowIngest, premktWed), false);
+});
+
+test("evaluateJob: flow-ingest last ok after cash close but inside post-close grace is not market_hours_stale", () => {
+  const flow: CronJobDefinition = {
+    key: "flow-ingest",
+    name: "Flow",
+    kind: "http",
+    path: "/api/cron/flow-ingest",
+    schedule_label: "",
+    stale_after_min: 15,
+    weekdays_only: true,
+    market_hours_only: true,
+    description: "",
+  };
+  // Wed 16:10 ET — cash closed; 15:40 ET last handshake still reads ~30m ago vs a 15m threshold.
+  const postCloseWed = new Date("2026-11-04T21:10:00.000Z");
+  const lastStarted = new Date(postCloseWed.getTime() - 30 * 60_000).toISOString();
+  const health = evaluateJob(
+    flow,
+    {
+      id: 1,
+      job_key: "flow-ingest",
+      status: "ok",
+      started_at: lastStarted,
+      duration_ms: 100,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    postCloseWed
+  );
+  assert.equal(health.status, "healthy");
+  assert.equal(health.market_hours_stale, false);
 });
 
 test("nighthawkBackfillRepairPreWindow is true before 9:00 AM ET on a trading day (EST)", () => {
