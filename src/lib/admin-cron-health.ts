@@ -15,6 +15,7 @@ import {
 } from "@/features/nighthawk/lib/session";
 import { isInEditionWindow } from "@/features/nighthawk/lib/edition-stale";
 import { inEtWindow } from "@/features/nighthawk/lib/et-window";
+import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
@@ -54,9 +55,34 @@ async function isSwingDiscoveryScanInFlight(now = new Date()): Promise<boolean> 
   return false;
 }
 
-/** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
-function inMarketHoursEt(now = new Date()): boolean {
-  return isEtCashRth(now);
+/** Crons gated by `isSpxEngineCronWindow` (7:00–16:15 ET weekdays) vs `isEtCashRth` (9:30–close). */
+function isSpxEngineGatedCronKey(key: string): boolean {
+  return (
+    key === "spx-evaluate" ||
+    key === "spx-issues-sync" ||
+    key === "data-correctness" ||
+    key === "data-integrity" ||
+    key === "market-regime-detector" ||
+    key === "provider-health-reconcile" ||
+    key === "spx-signal-observe"
+  );
+}
+
+/**
+ * "In session" for `market_hours_only` staleness — must match each route's own skip gate.
+ * SPX engine crons use isSpxEngineCronWindow (premarket + post-close tail); everything else
+ * uses cash RTH only. Without this, 7:00–9:30 AM and 4:00–4:15 PM ET look "in RTH" to
+ * isEtCashRth=false while the cron is still firing real work — then a 25m cron handshake gap
+ * false-trips stale (measured: query CI 2026-11-06 on early-close Friday vs fresh engine HB).
+ */
+export function marketHoursCronInSession(job: CronJobDefinition, now = new Date()): boolean {
+  if (!job.market_hours_only) return true;
+  return isSpxEngineGatedCronKey(job.key) ? isSpxEngineCronWindow(now) : isEtCashRth(now);
+}
+
+/** True when a `market_hours_only` job is outside the session gate its route uses (RTH vs SPX engine window). */
+function marketHoursCronOffWindow(job: CronJobDefinition, now: Date): boolean {
+  return Boolean(job.market_hours_only) && !marketHoursCronInSession(job, now);
 }
 
 /** Night Hawk playbook job age — clock-skewed future timestamps exceed stuck threshold. */
@@ -273,7 +299,7 @@ export function evaluateJob(
     // off-window or inside an off-schedule idle gap, so it is not DUE to have run. Suppressing there
     // matches the treatment a logged run gets below and keeps the board from crying wolf overnight,
     // which is the reason the off-window suppression exists at all.
-    const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
+    const offWindowNoRun = marketHoursCronOffWindow(job, now);
     const offScheduleNoRun =
       Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
     const awaitingDualBand =
@@ -315,7 +341,7 @@ export function evaluateJob(
   // so age inevitably exceeds the threshold — flagging them STALE is a false alarm. While
   // off-window, suppress the stale flag as long as the last logged run was a legitimate skip
   // or success (a "failed" last run is still surfaced below regardless of window).
-  const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
+  const offWindow = marketHoursCronOffWindow(job, now);
   const suppressStaleOffWindow =
     offWindow && (last.status === "skipped" || last.status === "ok");
   const offScheduleGap = Boolean(job.schedule_cron_utc) &&
@@ -358,8 +384,7 @@ export function evaluateJob(
     statusLabel = "Failures in last 24h";
   }
 
-  // Flag a market-hours warmer that is stale WHILE the market is open — the #90 silent-death case.
-  // `offWindow` is false here means we're in RTH, so a "stale" status is a genuine live-data outage.
+  // Flag a market-hours warmer that is stale WHILE its session gate says work is due — the #90 silent-death case.
   const marketHoursStale = Boolean(job.market_hours_only) && !offWindow && status === "stale";
 
   return {
@@ -441,7 +466,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     // in-window.
     if (job.key === "zerodte-warm" && zeroDteScanHb.last_tick_at) {
       const hbAgeMin = zeroDteScanHb.age_ms != null ? Math.round(zeroDteScanHb.age_ms / 60_000) : null;
-      const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+      const offWindow = marketHoursCronOffWindow(job, new Date());
       if (!offWindow && hbAgeMin != null && (zeroDteScanHb.stale || zeroDteScanHb.critical_stale)) {
         const IN_FLIGHT_GRACE_MIN = 18;
         if (
@@ -477,26 +502,40 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       }
     }
 
-    if (job.key === "spx-evaluate" && playHb.last_tick_at) {
+    // SPX engine path: `cron_job_runs` age can desync from `recordPlayEngineTick` (e.g. early-close
+    // Fridays: last cron skip at 12:52 ET vs engine tick at 13:05 ET still within the engine
+    // window — handshake reads stale while HB is fresh). Trust a non-stale heartbeat over stale
+    // handshake for both `spx-evaluate` and `spx-issues-sync` (same engine window + HB semantics).
+    if ((job.key === "spx-evaluate" || job.key === "spx-issues-sync") && playHb.last_tick_at) {
+      const hbNow = new Date();
       const hbAgeMin = playHb.age_ms != null ? Math.round(playHb.age_ms / 60_000) : null;
-      const { effective: staleThreshold } = effectiveStaleMinutes(job);
+      const { effective: staleThreshold } = effectiveStaleMinutes(job, hbNow);
       // Off-window the engine correctly idles, so a high cron age is expected — don't let
       // the heartbeat block re-flag a healthy off-hours skip (FIX-1) as stale/warning.
-      const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+      const offWindow = marketHoursCronOffWindow(job, hbNow);
       const cronStale = !offWindow && health.age_min != null && health.age_min > staleThreshold;
 
       if (cronStale && hbAgeMin != null) {
-        const overrideStatus = playHb.stale ? ("stale" as const) : ("warning" as const);
+        if (!playHb.stale) {
+          return {
+            ...health,
+            status: "healthy" as const,
+            market_hours_stale: false,
+            status_label: `Engine tick ${hbAgeMin}m ago (cron handshake age not authoritative)`,
+            meta: {
+              ...(health.meta ?? {}),
+              play_engine_heartbeat: playHb,
+            },
+          };
+        }
+        const overrideStatus = playHb.critical_stale ? ("stale" as const) : ("warning" as const);
         return {
           ...health,
           status: overrideStatus,
-          // Keep the RTH-stale flag in sync with the heartbeat override: spx-evaluate is a
-          // market-hours job, and `cronStale` is only true in-window, so a stale verdict here
-          // is a genuine in-RTH outage.
           market_hours_stale: overrideStatus === "stale",
-          status_label: playHb.stale
-            ? `Cron stale · engine tick ${hbAgeMin}m ago (stale)`
-            : `Cron stale · engine tick ${hbAgeMin}m ago (heartbeat only)`,
+          status_label: playHb.critical_stale
+            ? `Cron stale · engine tick ${hbAgeMin}m ago (critical)`
+            : `Cron stale · engine tick ${hbAgeMin}m ago (heartbeat warning)`,
           meta: {
             ...(health.meta ?? {}),
             play_engine_heartbeat: playHb,
