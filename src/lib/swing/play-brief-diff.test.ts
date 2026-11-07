@@ -259,6 +259,41 @@ test("diffBriefSnapshots: a genuine OPEN HOLD->BUY upgrade is still narrated nor
   );
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-11-07, live repro TSLA:365P WATCH): a WATCH
+// candidate's raw `recommendation` is a live-management-only BUY/HOLD sentinel with no "not yet
+// buyable" value of its own (entry-verdict.ts's `wait`/`dont_buy` branches stamp "HOLD" for every
+// not-yet-buyable reason), but the brief's own rendered Entry/Trade-manager-read text for that
+// exact state says "WAIT" (swingActionDisplay's WATCH branch) — "HOLD" never once appears
+// anywhere else in that play's brief. Before `recommendationLabel` existed, the diff engine read
+// the raw field directly, so a WATCH play whose gates cleared (HOLD -> BUY) narrated "**Desk
+// action shifted** — **HOLD** → **BUY**", showing a label the member never saw.
+test("diffBriefSnapshots: a WATCH candidate's gates clearing narrates WAIT->BUY, not the raw HOLD->BUY sentinel", () => {
+  const prev = snapshotFromBrief(env(), play({ status: "WATCH", recommendation: "HOLD", pnlPct: 8 }));
+  const next = snapshotFromBrief(env(), play({ status: "WATCH", recommendation: "BUY", pnlPct: 8 }));
+  assert.equal(prev.recommendationLabel, "WAIT");
+  assert.equal(next.recommendationLabel, "BUY");
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(
+    lines.some((l) => l.includes("**Desk action shifted** — **WAIT** → **BUY**")),
+    `expected the WATCH-bucket label (WAIT), not the raw sentinel (HOLD), got: ${JSON.stringify(lines)}`,
+  );
+  assert.ok(
+    !lines.some((l) => l.includes("HOLD")),
+    `"HOLD" must never appear in a WATCH play's diff text — the member never saw it, got: ${JSON.stringify(lines)}`,
+  );
+});
+
+test("diffBriefSnapshots: recommendationLabel is a no-op for every non-WATCH status (OPEN/HOLD/TRIM/CLOSED/SKIP unaffected)", () => {
+  for (const status of ["OPEN", "HOLD", "TRIM", "SKIP"] as const) {
+    const snap = snapshotFromBrief(env(), play({ status, recommendation: "HOLD" }));
+    assert.equal(
+      snap.recommendationLabel,
+      "HOLD",
+      `status ${status} must keep showing the raw recommendation unchanged`,
+    );
+  }
+});
+
 test("envelopeWithDiffSection: prepends change section", () => {
   const out = envelopeWithDiffSection(env(), ["Spot moved"]);
   assert.equal(out.sections[0]?.title, "What changed");
