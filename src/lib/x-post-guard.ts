@@ -1,6 +1,4 @@
 import {
-  countOwnPostsTodayEt,
-  minutesSinceLastOwnPost,
   fetchUserTweets,
   X_ACCOUNT_USER_ID,
   type XTweet,
@@ -133,6 +131,3 @@ export async function checkPostGuard(
 
   return { allowed: true, postsToday, minutesSinceLast };
 }
-
-// Legacy export for tests
-export { countOwnPostsTodayEt, minutesSinceLastOwnPost };
