@@ -388,6 +388,18 @@ test("fmtOi still abbreviates large open-interest counts", () => {
   assert.equal(fmtOi(2_500_000), "2.5M");
 });
 
+test("fmtOi promotes a value that ROUNDS to 1000K into the next unit (M), never '1000.0K'", () => {
+  // Same unit-boundary rounding bug already fixed in fmt-money.ts's fmtPremium (K->M, M->B),
+  // thermal-discord-card.ts's fmtCompactHeatMoney, darkpool-discord-format.ts's fmtShares, and
+  // discord-context-enrichment.ts's formatAdvShareLabel — this formatter never got the same
+  // round-first-then-promote guard. `n >= 1_000_000` gates the M branch BEFORE rounding, so an
+  // open interest of 999_950-999_999 falls into the K branch and (n/1000).toFixed(1) rounds UP to
+  // "1000.0", rendering the nonsensical "1000.0K" instead of promoting to "1.0M".
+  assert.equal(fmtOi(999_949), "999.9K");
+  assert.equal(fmtOi(999_950), "1.0M");
+  assert.equal(fmtOi(999_999), "1.0M");
+});
+
 test("no NEW badge on prints the data cannot prove — 70% of the live tape", () => {
   // The index-feed shape: no open_interest at all. Must produce no badge rather than a fabricated one.
   const noOi = flow({ ticker: "SPX", premium: 5_000_000, fill_price: 12 } as Partial<FlowAlert> & Pick<FlowAlert, "ticker">);

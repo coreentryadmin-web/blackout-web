@@ -255,7 +255,17 @@ export function fmtFill(n: number | null | undefined): string {
 export function fmtOi(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n) || n < 0) return "—";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  if (n >= 1_000) {
+    const k = n / 1_000;
+    // A value that ROUNDS to 1000 of this unit belongs in the next unit up, not an overflowed
+    // four-digit label (e.g. 999_950 must read "1.0M", never "1000.0K") — the `n >= 1_000_000`
+    // gate above runs BEFORE rounding, so this branch alone decides whether the K label overflows.
+    // Same round-first-then-promote fix already applied to fmt-money.ts's fmtPremium (K->M, M->B),
+    // thermal-discord-card.ts's fmtCompactHeatMoney, darkpool-discord-format.ts's fmtShares, and
+    // discord-context-enrichment.ts's formatAdvShareLabel — this formatter never got it.
+    if (Math.round(k * 10) / 10 >= 1000) return `${(n / 1_000_000).toFixed(1)}M`;
+    return `${k.toFixed(1)}K`;
+  }
   return String(Math.round(n));
 }
 

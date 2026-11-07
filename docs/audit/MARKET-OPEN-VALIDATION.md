@@ -9522,3 +9522,27 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   via `logCronRun`/CloudWatch for `posted_eod: true` on the first tick at or after 4:15 PM ET
   instead — the route is inert end-to-end if the alert flag is off, in which case this fix is
   verified wiring-correct but cannot be confirmed as a live Discord post until the flag is on.
+
+## WATCH LIST — 2026-11-07 (HELIX open-interest `fmtOi` unit-boundary overflow, `fix/helix-fmtoi-unit-boundary`)
+
+- **`fmtOi()` (`src/features/helix/lib/helix-flow-format.ts`), the shared Open Interest formatter for
+  HELIX's live tape (`HelixFlowTable.tsx`) and the contract drilldown (`ContractDrilldownDrawer.tsx`),
+  rendered open interest in `[999_950, 999_999]` as the nonsensical `"1000.0K"` instead of promoting
+  to `"1.0M"`** — the K-vs-M branch decision ran on the raw value before rounding, so a value that
+  rounds UP to 1000 of the K unit never reached the M branch. Same unit-boundary rounding bug already
+  fixed independently in `fmt-money.ts`'s `fmtPremium`, `thermal-discord-card.ts`'s
+  `fmtCompactHeatMoney`, `darkpool-discord-format.ts`'s `fmtShares`, and
+  `discord-context-enrichment.ts`'s `formatAdvShareLabel` — `fmtOi` was simply never checked against
+  the same pattern. **Fixed:** added the same round-first-then-promote guard
+  (`Math.round(k * 10) / 10 >= 1000` before committing to the K branch). Full write-up:
+  `docs/audit/findings-staging/2026-11-07-helix-fmtoi-unit-boundary-overflow.md`.
+  **Could not confirm live from this sandbox** — this is a pure display-formatting fix with no
+  network/data dependency, verified entirely by unit test (`fmtOi(999_950) === "1.0M"`); there is no
+  additional live behavior to check beyond the existing regression test.
+  **Re-check once the market opens:** watch the HELIX live tape (`/flows`) and the contract drilldown
+  for any single-name/0DTE contract whose open interest happens to sit in the high hundreds of
+  thousands (SPY/QQQ/SPX 0DTE strikes are the most likely real-world candidates) and confirm the OI
+  cell reads a clean `"X.XM"` rather than a four-digit `"NNNN.NK"` label. This is a low-probability
+  real-world trigger (OI rarely lands in that exact 50-wide window on a single strike), so a clean
+  session with no sighting either way is not evidence the fix is wrong — the unit test is the
+  authoritative proof here.
