@@ -75,10 +75,16 @@ export function liveManageEdgePillars(args: {
   direction: "long" | "short";
 }): ManageEdgeLivePillars {
   const playDir = args.direction === "short" ? "SHORT" : "LONG";
+  const sign = args.direction === "short" ? -1 : 1;
   const nameReturn = pctReturnOverSessions(args.nameCloses, SWING_RETURN_LOOKBACK_SESSIONS);
   const spyReturn = pctReturnOverSessions(args.spyCloses, SWING_RETURN_LOOKBACK_SESSIONS);
+  // Apply direction-based signing: for SHORT, negative returns become positive (thesis working).
+  // This matches swingSignalsFromReads' canonical signing so live RS compares to commit RS correctly.
+  const signedNameReturn =
+    nameReturn != null && Number.isFinite(nameReturn) ? sign * nameReturn : nameReturn;
+  const signedSpyReturn = spyReturn != null && Number.isFinite(spyReturn) ? sign * spyReturn : spyReturn;
   return {
-    relStrength: relStrengthSignal({ nameReturnPct: nameReturn, spyReturnPct: spyReturn }),
+    relStrength: relStrengthSignal({ nameReturnPct: signedNameReturn, spyReturnPct: signedSpyReturn }),
     regime: regimeFromSpyTrend(args.spyCloses, playDir),
   };
 }

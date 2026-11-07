@@ -27,6 +27,11 @@ test("liveManageEdgePillars: uptrend name vs flat SPY → strong rel strength fo
   assert.ok((live.relStrength ?? 0) > 0.5);
 });
 
+test("liveManageEdgePillars: downtrend name vs flat SPY → strong rel strength for SHORT", () => {
+  const live = liveManageEdgePillars({ nameCloses: DESC, spyCloses: FLAT_SPY, direction: "short" });
+  assert.ok((live.relStrength ?? 0) > 0.5);
+});
+
 test("deriveManageEdgeReads: flow_decay when strong commit flow stalls", () => {
   const reads = deriveManageEdgeReads({
     archetype: "FLOW_ACCUMULATION",
