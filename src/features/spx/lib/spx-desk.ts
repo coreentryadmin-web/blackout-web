@@ -2535,6 +2535,7 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
     vixPriorDayForPulseLane(rthOpenNow),
   ]);
 
+  const pulseTimeoutMs = deskPulseMaxBlockMs() + 200;
   const raced = await Promise.race([
     (async () => {
       const snapsRaw = await fetchPulseLaneSnapshots();
@@ -2577,7 +2578,7 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
         market_label: marketStatusLabel(new Date(), null),
       } satisfies SpxDeskPulse;
     })(),
-    new Promise<SpxDeskPulse>((resolve) => setTimeout(() => resolve(empty), 400)),
+    new Promise<SpxDeskPulse>((resolve) => setTimeout(() => resolve(empty), pulseTimeoutMs)),
   ]);
 
   return roundPulseNumerics(raced);
