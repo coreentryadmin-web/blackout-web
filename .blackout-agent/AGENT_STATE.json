@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-07T17:10:16.387Z",
+  "updated_at": "2026-11-07T17:46:05.665Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-07T17:09:58.636Z"
+      "released_at": "2026-11-07T17:45:45.953Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-07T17:10:03.198Z",
-      "lease_until": "2026-11-07T17:11:03.198Z",
+      "claimed_at": "2026-11-07T17:45:50.584Z",
+      "lease_until": "2026-11-07T17:46:50.584Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-07T17:10:03.201Z"
+      "released_at": "2026-11-07T17:45:50.601Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "99a381c2bdd7489fa1bd92eb3b0c7667b50cbcf1",
+    "last_main_sha": "600b0402cdd5dd321a4fcb34d255f8cee5a02179",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-07T17:08:26Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42394810334",
-    "last_deploy_sha": "99a381c2bdd7489fa1bd92eb3b0c7667b50cbcf1"
+    "last_deploy_at": "2026-11-07T17:44:20Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42397774709",
+    "last_deploy_sha": "600b0402cdd5dd321a4fcb34d255f8cee5a02179"
   },
   "events": [
-    {
-      "at": "2026-10-26T16:18:16.431Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 9
-    },
-    {
-      "at": "2026-10-26T16:18:23.945Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 9
-    },
-    {
-      "at": "2026-10-26T18:13:46.240Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-26T18:13:52.716Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-26T18:14:00.632Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-26T18:36:47.258Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-26T18:36:54.163Z",
       "type": "context_sync",
@@ -1289,9 +1253,55 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-07T17:45:45.953Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T17:45:50.589Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-07T17:45:50.602Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T17:45:55.987Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-07T17:46:00.882Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-07T17:46:05.665Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
+    {
+      "number": 7517,
+      "title": "fix(nighthawk): legacy option marks cache fallback on provider failure",
+      "branch": "claude/nh-frwl68",
+      "author": "coreentryadmin-web",
+      "agent": "claude",
+      "draft": true,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-11-07T17:41:56Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
