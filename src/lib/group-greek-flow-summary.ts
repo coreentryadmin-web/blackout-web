@@ -83,7 +83,18 @@ export function summarizeGroupGreekFlow(
         : "neutral";
 
   const groupLabel = group.toUpperCase() === "MAG7" ? "Mag7" : group;
-  const deltaM = Math.abs(netDelta) >= 1_000_000 ? `${(netDelta / 1_000_000).toFixed(2)}M` : `${Math.round(netDelta / 1000)}K`;
+  const absDelta = Math.abs(netDelta);
+  // A value that ROUNDS to 1000 of the K unit belongs in the next unit up, not a four-digit
+  // overflowed label (e.g. 999_600 must read "1.00M", never "1000K") — the `absDelta >= 1_000_000`
+  // check alone runs BEFORE rounding, so without this second check the K branch can round past
+  // its own unit boundary. Same round-first-then-promote fix already applied to fmt-money.ts's
+  // fmtPremium, thermal-discord-card.ts's fmtCompactHeatMoney, darkpool-discord-format.ts's
+  // fmtShares, discord-context-enrichment.ts's formatAdvShareLabel, and helix-flow-format.ts's
+  // fmtOi — this formatter never got it.
+  const deltaM =
+    absDelta >= 1_000_000 || Math.round(absDelta / 1000) >= 1000
+      ? `${(netDelta / 1_000_000).toFixed(2)}M`
+      : `${Math.round(netDelta / 1000)}K`;
   // "dealer gamma ..." is only said when gamma was actually measured on this data source —
   // this endpoint never carries it, so the headline says "dealer delta flow" instead rather than
   // claiming a gamma read that was never made.
