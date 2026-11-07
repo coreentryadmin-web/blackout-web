@@ -399,19 +399,13 @@ async function auditPlayBriefs() {
         continue;
       }
 
-<<<<<<< HEAD
       const responseData = await res.json();
       if (!responseData) continue;
-=======
-      const envelope = await res.json();
-      if (!envelope) continue;
->>>>>>> db92d0b0a470388f07a47545e09401d4c7525be3
 
       results.total_plays += 1;
       const findings = [];
 
       // Run all contract audits
-<<<<<<< HEAD
       // Note: functions receive full responseData and extract envelope internally via responseData?.envelope
       findings.push(...auditC1Time(responseData));
       findings.push(...auditC2Freshness(responseData));
@@ -427,21 +421,6 @@ async function auditPlayBriefs() {
       if (findings.length > 0) {
         const playId = responseData?.playId || responseData?.envelope?.playId;
         results.plays_with_findings.push({ ticker, playId, findings });
-=======
-      findings.push(...auditC1Time(envelope));
-      findings.push(...auditC2Freshness(envelope));
-      findings.push(...auditC3Absence(envelope));
-      findings.push(...auditC4Identity(envelope));
-      findings.push(...auditC5Direction(envelope));
-      findings.push(...auditC6Confidence(envelope));
-      findings.push(...auditC7Evidence(envelope));
-      findings.push(...auditC8Provenance(envelope));
-      findings.push(...auditC9Precision(envelope));
-      findings.push(...auditC10HistoricalContext(envelope));
-
-      if (findings.length > 0) {
-        results.plays_with_findings.push({ ticker, playId: envelope.playId, findings });
->>>>>>> db92d0b0a470388f07a47545e09401d4c7525be3
         findings.forEach(f => {
           results.findings_by_code[f.code] = (results.findings_by_code[f.code] || 0) + 1;
         });
