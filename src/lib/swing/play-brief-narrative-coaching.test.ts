@@ -2051,6 +2051,46 @@ test("closedCoaching: MFE capture lesson", () => {
   assert.match(line!, /thesis break/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-07, live repro MRNA:68): a high MFE capture (>=75%)
+// used to unconditionally claim "Strong discipline ... replicate trim timing" regardless of
+// whether the scale-out ladder's own +100% trigger ever actually armed -- the same gap
+// lessonsSection's `mechanismConfirmed` gate (play-brief-intel.ts, 2026-11-01 PANW:67 fix) already
+// closed for the sibling "Lessons" section. Live repro MRNA:68 (capture ~100%, closedReason
+// "target", trimEnforcedBeforeClose:false) showed this section crediting trim discipline for the
+// SAME exit the Lessons section correctly refused to credit -- a direct self-contradiction in one
+// brief. These two tests pin both sides of the gate.
+test("closedCoaching: high MFE capture with a CONFIRMED ladder exit still gets the trim-discipline credit", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 105,
+      exitPnlPct: 100,
+      mfeCapturePct: 95,
+      closedReason: "target",
+      trimEnforcedBeforeClose: true,
+    }),
+  );
+  assert.match(line!, /\*\*Strong discipline\*\*/i);
+  assert.match(line!, /replicate trim timing/i);
+});
+
+test("closedCoaching: high MFE capture with an UNCONFIRMED ladder exit (trimEnforcedBeforeClose: false) does not claim trim discipline (live repro MRNA:68)", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 100,
+      exitPnlPct: 99.5,
+      mfeCapturePct: null,
+      closedReason: "target",
+      trimEnforcedBeforeClose: false,
+    }),
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line!, /Strong discipline/i);
+  assert.doesNotMatch(line!, /replicate trim timing/i);
+  assert.match(line!, /isn't confirmed to have fired/i);
+});
+
 test("closedCoaching: a round-trip past breakeven never renders a nonsensical negative MFE capture", () => {
   // Reproduces a live production case: INTC:35 peak +25.7%, exited -40.8% used to render
   // "only -158.9% MFE capture" (exitPnlPct / peak * 100), a percentage with no honest reading.
