@@ -120,6 +120,84 @@ test("endpointTemplate: collapses Unusual Whales per-ticker paths (the UW cardin
   assert.equal(endpointTemplate("/api/market/fda-calendar"), "/api/market/fda-calendar");
 });
 
+// Round 386/387: three more real UW per-entity paths (verified against src/lib/providers/
+// unusual-whales.ts's own uwGetSafe call sites) leaked the identical unbounded-cardinality
+// endpointStats row the test above already fixed for stock/darkpool/shorts/etfs/lit-flow/
+// seasonality/companies — `/api/earnings/{ticker}` (fetchUwTickerEarningsHistory,
+// fetchUwTickerNextEarnings), `/api/insider/{ticker}` (fetchUwInsiderTicker), and
+// `/api/institution/{name}/activity|holdings|ownership` (fetchUwInstitutionActivity/Holdings/
+// Ownership). The earnings/insider prefixes also carry FIXED, non-symbol sibling paths
+// (`/api/earnings/premarket`, `/api/earnings/afterhours`, `/api/insider/transactions`) that must
+// stay their OWN distinct stats rows rather than folding into the generic `:sym` bucket.
+test("endpointTemplate: collapses UW per-ticker earnings/insider/institution paths without swallowing their fixed siblings", () => {
+  // Per-ticker — must collapse.
+  assert.equal(endpointTemplate("/api/earnings/NVDA"), "/api/earnings/:sym");
+  assert.equal(endpointTemplate("/api/earnings/AAPL"), "/api/earnings/:sym");
+  assert.equal(endpointTemplate("/api/insider/TSLA"), "/api/insider/:sym");
+  // Fixed, non-symbol siblings under the same prefixes — must NOT collapse into `:sym`.
+  assert.equal(endpointTemplate("/api/earnings/premarket"), "/api/earnings/premarket");
+  assert.equal(endpointTemplate("/api/earnings/afterhours"), "/api/earnings/afterhours");
+  assert.equal(endpointTemplate("/api/insider/transactions"), "/api/insider/transactions");
+  // Institution names are free-text and `encodeURIComponent`-escaped by the real caller
+  // (fetchUwInstitutionActivity/Holdings) — escaped spaces/commas/periods must still collapse.
+  assert.equal(
+    endpointTemplate("/api/institution/Vanguard%20Group%2C%20Inc./activity"),
+    "/api/institution/:sym/activity"
+  );
+  assert.equal(
+    endpointTemplate("/api/institution/BlackRock%20Fund%20Advisors/holdings"),
+    "/api/institution/:sym/holdings"
+  );
+  // fetchUwInstitutionOwnership passes a plain ticker (sym()), not an encoded institution name —
+  // same suffix pattern, must collapse identically.
+  assert.equal(endpointTemplate("/api/institution/NVDA/ownership"), "/api/institution/:sym/ownership");
+  // Plural `/api/institutions/latest_filings` (fetchUwInstitutionsLatestFilings) is a different,
+  // fixed, market-wide route — must NOT be touched by the singular `/api/institution/` rule.
+  assert.equal(
+    endpointTemplate("/api/institutions/latest_filings"),
+    "/api/institutions/latest_filings"
+  );
+});
+
+test("endpointStats stays bounded for UW earnings/insider/institution paths — distinct-entity calls collapse to ONE templated key each", () => {
+  for (let i = 0; i < 300; i++) {
+    recordApiCall({
+      provider: "unusual_whales",
+      endpoint: `/api/earnings/SYM${i}`,
+      method: "GET",
+      status: 200,
+      ok: true,
+      latency_ms: 10,
+    });
+    recordApiCall({
+      provider: "unusual_whales",
+      endpoint: `/api/insider/SYM${i}`,
+      method: "GET",
+      status: 200,
+      ok: true,
+      latency_ms: 10,
+    });
+    recordApiCall({
+      provider: "unusual_whales",
+      endpoint: `/api/institution/Institution%20Name%20${i}/activity`,
+      method: "GET",
+      status: 200,
+      ok: true,
+      latency_ms: 10,
+    });
+  }
+  const uwEndpoints = getApiTelemetrySnapshot(10 * 60_000).by_provider.unusual_whales.endpoints;
+  const earningsKey = uwEndpoints.find((e) => e.endpoint === "/api/earnings/:sym");
+  const insiderKey = uwEndpoints.find((e) => e.endpoint === "/api/insider/:sym");
+  const institutionKey = uwEndpoints.find((e) => e.endpoint === "/api/institution/:sym/activity");
+  assert.ok(earningsKey, "expected the one templated earnings key");
+  assert.ok(insiderKey, "expected the one templated insider key");
+  assert.ok(institutionKey, "expected the one templated institution/activity key");
+  assert.equal(earningsKey!.call_count, 300, "all 300 earnings calls aggregate into one key");
+  assert.equal(insiderKey!.call_count, 300, "all 300 insider calls aggregate into one key");
+  assert.equal(institutionKey!.call_count, 300, "all 300 institution calls aggregate into one key");
+});
+
 test("endpointStats stays bounded for Unusual Whales — 600 distinct-ticker UW paths collapse to ONE templated key", () => {
   for (let i = 0; i < 600; i++) {
     recordApiCall({
