@@ -141,3 +141,41 @@ test("buildAdminUserFilterSql community clauses exclude premium-tier users, matc
   assert.match(tierCommunity.whereSql, /membership_kind = 'community'/);
   assert.match(tierCommunity.whereSql, /COALESCE\(tier, 'free'\) <> 'premium'/);
 });
+
+test(
+  "buildAdminUserFilterSql community clauses must also recognize tier='community' directly, " +
+    "not only membership_kind='community' — the admin Edit/Create User modal path",
+  () => {
+    // admin-user-access.ts's classifyAdminUserAccess documents this exact path: "Community can
+    // be signaled either by the Whop membershipKind (the normal webhook path, where `tier`
+    // metadata itself often stays 'free') or by `tier` directly (an admin manually setting
+    // tier=community via the Edit/Create User modal, which never touches membershipKind)" —
+    // and PATCH /api/admin/users/[id] confirms it: when "tier" is in the request body it writes
+    // ONLY metaUpdates.tier, never membership_kind, so a user an admin promotes straight to
+    // tier='community' lands in Postgres with membership_kind=null.
+    //
+    // classifyAdminUserAccess badges that row "Community" (tier === 'community' alone is
+    // sufficient there) — so the admin dashboard's unfiltered list and its "access=community"/
+    // "tier=community" filters must agree on which rows are community. Pre-fix, both clauses
+    // required membership_kind = 'community' and never referenced the tier column at all, so
+    // this exact row was invisible to both filters despite showing a "Community" badge in the
+    // default (unfiltered) list.
+    const accessCommunity = buildAdminUserFilterSql({ access: "community" });
+    assert.match(accessCommunity.whereSql, /tier = 'community'/);
+
+    const tierCommunity = buildAdminUserFilterSql({ tier: "community" });
+    assert.match(tierCommunity.whereSql, /tier = 'community'/);
+  }
+);
+
+test(
+  "computeAdminUserListStats must count a tier='community'-only row (membership_kind null) " +
+    "in the community bucket, matching classifyAdminUserAccess's badge",
+  () => {
+    const rows = [
+      { email: "admin-set-community@gmail.com", tier: "community", role: null, membership_kind: null },
+    ];
+    const stats = computeAdminUserListStats(rows, []);
+    assert.deepEqual(stats, { total: 1, premium: 0, admins: 0, community: 1, free: 0 });
+  }
+);
