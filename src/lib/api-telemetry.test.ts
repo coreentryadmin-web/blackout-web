@@ -79,6 +79,68 @@ test("endpointTemplate: collapses OCC / ticker / index / date and strips the que
   assert.equal(endpointTemplate("/v3/reference/tickers"), "/v3/reference/tickers");
 });
 
+// Regression: endpointTemplate()'s own doc comment claims it collapses "per-ticker / per-OCC
+// paths" into one bounded endpointStats entry "instead of leaking a permanent entry per symbol
+// (audit 03-BACKEND §3.1)" — but every Unusual Whales per-ticker path is shaped
+// `/api/<category>/<TICKER>/<rest>` (e.g. `/api/stock/NVDA/flow-alerts`, `/api/darkpool/AAPL`,
+// `/api/shorts/TSLA/ftds` — see src/lib/providers/unusual-whales.ts's uwGetSafe call sites),
+// which none of the existing regexes touch: they only cover Polygon's `/ticker/`, `/tickers/`,
+// `/indicators/.../`, bare/prefixed OCC and `I:` index shapes. So the UW provider — the biggest
+// per-symbol-fan-out caller in the codebase (every desk polls flow-alerts/greeks/darkpool/etc.
+// per watched ticker) — gets ZERO templating: a distinct, permanent endpointStats row per ticker
+// per UW endpoint, the exact unbounded-cardinality leak this function exists to prevent.
+test("endpointTemplate: collapses Unusual Whales per-ticker paths (the UW cardinality gap)", () => {
+  assert.equal(endpointTemplate("/api/stock/NVDA/flow-alerts"), "/api/stock/:sym/flow-alerts");
+  assert.equal(endpointTemplate("/api/stock/AAPL/flow-alerts"), "/api/stock/:sym/flow-alerts");
+  assert.equal(endpointTemplate("/api/stock/TSLA/max-pain"), "/api/stock/:sym/max-pain");
+  assert.equal(endpointTemplate("/api/darkpool/AAPL"), "/api/darkpool/:sym");
+  assert.equal(endpointTemplate("/api/shorts/TSLA/ftds"), "/api/shorts/:sym/ftds");
+  assert.equal(endpointTemplate("/api/etfs/SPY/in-outflow"), "/api/etfs/:sym/in-outflow");
+  assert.equal(endpointTemplate("/api/lit-flow/NVDA"), "/api/lit-flow/:sym");
+  assert.equal(
+    endpointTemplate("/api/seasonality/AAPL/monthly"),
+    "/api/seasonality/:sym/monthly"
+  );
+  assert.equal(
+    endpointTemplate("/api/companies/NVDA/earnings-estimates"),
+    "/api/companies/:sym/earnings-estimates"
+  );
+  assert.equal(
+    endpointTemplate("/api/stock/NVDA/spot-exposures/expiry-strike"),
+    "/api/stock/:sym/spot-exposures/expiry-strike"
+  );
+  assert.equal(
+    endpointTemplate("/api/market/technology/sector-tide"),
+    "/api/market/:sym/sector-tide"
+  );
+  assert.equal(endpointTemplate("/api/market/SPY/etf-tide"), "/api/market/:sym/etf-tide");
+  // Market-wide (no ticker segment) paths must NOT be touched by the new rule.
+  assert.equal(endpointTemplate("/api/market/market-tide"), "/api/market/market-tide");
+  assert.equal(endpointTemplate("/api/market/top-net-impact"), "/api/market/top-net-impact");
+  assert.equal(endpointTemplate("/api/market/fda-calendar"), "/api/market/fda-calendar");
+});
+
+test("endpointStats stays bounded for Unusual Whales — 600 distinct-ticker UW paths collapse to ONE templated key", () => {
+  for (let i = 0; i < 600; i++) {
+    recordApiCall({
+      provider: "unusual_whales",
+      endpoint: `/api/stock/SYM${i}/flow-alerts`,
+      method: "GET",
+      status: 200,
+      ok: true,
+      latency_ms: 10,
+    });
+  }
+  const uwEndpoints = getApiTelemetrySnapshot(10 * 60_000).by_provider.unusual_whales.endpoints;
+  const templated = uwEndpoints.find((e) => e.endpoint === "/api/stock/:sym/flow-alerts");
+  assert.ok(templated, "expected the one templated UW flow-alerts key");
+  assert.equal(templated!.call_count, 600, "all 600 calls aggregate into the one templated key");
+  assert.ok(
+    uwEndpoints.length < 10,
+    `unusual_whales endpoint cardinality should stay small, got ${uwEndpoints.length}`
+  );
+});
+
 test("endpointStats stays bounded — 600 distinct-ticker paths collapse to ONE templated key", () => {
   // Pre-fix, this loop would leave 600 permanent endpointStats rows (the leak).
   for (let i = 0; i < 600; i++) {
