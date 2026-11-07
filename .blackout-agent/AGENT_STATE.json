@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-07T18:11:28.163Z",
+  "updated_at": "2026-11-07T19:17:35.692Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-07T18:11:08.224Z"
+      "released_at": "2026-11-07T19:17:13.300Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-07T18:11:13.649Z",
-      "lease_until": "2026-11-07T18:12:13.649Z",
+      "claimed_at": "2026-11-07T19:17:18.685Z",
+      "lease_until": "2026-11-07T19:18:18.685Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-07T18:11:13.652Z"
+      "released_at": "2026-11-07T19:17:18.688Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "15f26ca1cd6291f0eb98c53f3376669d53a67aa2",
+    "last_main_sha": "e62f643faf885ef61982fcf9c156ece27e7d4958",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-07T17:54:57Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42397774709",
-    "last_deploy_sha": "600b0402cdd5dd321a4fcb34d255f8cee5a02179"
+    "last_deploy_at": "2026-11-07T19:16:38Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42405408098",
+    "last_deploy_sha": "e62f643faf885ef61982fcf9c156ece27e7d4958"
   },
   "events": [
-    {
-      "at": "2026-10-26T18:36:54.163Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-26T18:36:59.996Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-26T19:08:49.841Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-26T19:08:53.857Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-26T19:08:57.698Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-26T19:37:43.053Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
     {
       "at": "2026-10-26T19:37:50.407Z",
       "type": "context_sync",
@@ -1289,38 +1253,64 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-07T19:17:13.300Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T19:17:18.686Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-07T19:17:18.688Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T19:17:25.450Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-07T19:17:30.670Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-07T19:17:35.692Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 7520,
-      "title": "fix(admin): community filter/stats miss users whose tier is set directly to community",
-      "branch": "fix/admin-community-tier-filter",
+      "number": 7524,
+      "title": "docs(helix): correct stale \"no writer\" claim in HELIX-MAP.md §9.1/§9.7",
+      "branch": "fix/helix-map-signal-outcomes-writer-stale",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "IN_PROGRESS/pending",
-      "updated_at": "2026-11-07T18:02:20Z"
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-11-07T19:07:40Z"
     },
     {
-      "number": 7518,
-      "title": "Fix SPX desk pulse timeout race condition on cold start",
-      "branch": "claude/spx-slayer-rl2u2c",
+      "number": 7523,
+      "title": "fix(swing): apply direction-based signing in liveManageEdgePillars for SHORT positions",
+      "branch": "fix/swing-relstrength-sign-flip",
       "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-11-07T17:51:16Z"
-    },
-    {
-      "number": 7517,
-      "title": "fix(nighthawk): legacy option marks cache fallback on provider failure",
-      "branch": "claude/nh-frwl68",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
+      "agent": "agent",
       "draft": true,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-11-07T18:07:30Z"
+      "updated_at": "2026-11-07T19:01:36Z"
     },
     {
       "number": 5547,
