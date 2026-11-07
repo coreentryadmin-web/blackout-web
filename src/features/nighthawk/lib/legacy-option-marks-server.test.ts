@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { mock } from "node:test";
 
 // Bug (found 2026-09-16, live audit): sibling of the same-day fix to
 // /api/market/nighthawk/legacy-marks/route.ts. This module feeds the legacy-live-sync cron
@@ -23,4 +24,29 @@ test("legacy-option-marks-server.ts gates the WS-tick freshness check on LEGACY_
   assert.match(src, /getLiveOptionMarkSync\(occ, LEGACY_QUOTE_STALE_MS\)/);
   assert.match(src, /getLiveOptionMarkSync\(legacyOccForSnapshot\(occ\), LEGACY_QUOTE_STALE_MS\)/);
   assert.doesNotMatch(src, /getLiveOptionMarkSync\([^)]*ZERODTE_MARK_STALE_MS\)/);
+});
+
+// Bug (found 2026-11-07, live audit): when both WS and REST providers fail,
+// legacy marks were completely null even for OCCs with prior cached successful fetches.
+// The legacy-live-sync cron then skipped those positions, losing peak/trough tracking.
+// Regression: verify the cache fallback applies a stale-but-present mark when both sources fail.
+test("legacy-option-marks-server.ts implements cache fallback for null marks (WS+REST failure)", () => {
+  const src = readFileSync(
+    join(process.cwd(), "src/features/nighthawk/lib/legacy-option-marks-server.ts"),
+    "utf8"
+  );
+  // Verify import exists for cache operations from the correct module
+  assert.match(src, /import \{ sharedCacheGet, sharedCacheSet \} from "@\/lib\/shared-cache"/);
+  // Verify TTL constant is defined
+  assert.match(src, /const LEGACY_OPTION_MARK_CACHE_TTL_SEC/);
+  // Verify cache is set when fresh mark found (valid, finite, > 0)
+  assert.match(src, /if \(row\.mark != null && Number\.isFinite\(row\.mark\) && row\.mark > 0\)/);
+  assert.match(src, /await sharedCacheSet\(/);
+  assert.match(src, /LEGACY_OPTION_MARK_CACHE_TTL_SEC/);
+  // Verify cache fallback is checked when mark is null
+  assert.match(src, /else if \(row\.mark == null\)/);
+  assert.match(src, /const cached = await sharedCacheGet/);
+  // Verify cached mark is applied with stale:true
+  assert.match(src, /row\.mark = cached\.mark/);
+  assert.match(src, /row\.stale = true/);
 });

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-07T17:46:05.665Z",
+  "updated_at": "2026-11-07T18:11:28.163Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-07T17:45:45.953Z"
+      "released_at": "2026-11-07T18:11:08.224Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-07T17:45:50.584Z",
-      "lease_until": "2026-11-07T17:46:50.584Z",
+      "claimed_at": "2026-11-07T18:11:13.649Z",
+      "lease_until": "2026-11-07T18:12:13.649Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-07T17:45:50.601Z"
+      "released_at": "2026-11-07T18:11:13.652Z"
     }
   },
   "reviews": {
@@ -83,9 +83,9 @@
     }
   },
   "deploy": {
-    "last_main_sha": "600b0402cdd5dd321a4fcb34d255f8cee5a02179",
+    "last_main_sha": "15f26ca1cd6291f0eb98c53f3376669d53a67aa2",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-07T17:44:20Z",
+    "last_deploy_at": "2026-11-07T17:54:57Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42397774709",
     "last_deploy_sha": "600b0402cdd5dd321a4fcb34d255f8cee5a02179"
   },
@@ -1255,43 +1255,63 @@
       "open_pr_count": 4
     },
     {
-      "at": "2026-11-07T17:45:45.953Z",
+      "at": "2026-11-07T18:11:08.224Z",
       "type": "task_released",
       "task_id": "BO-TEST-0007",
       "owner": "claude"
     },
     {
-      "at": "2026-11-07T17:45:50.589Z",
+      "at": "2026-11-07T18:11:13.650Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 7
     },
     {
-      "at": "2026-11-07T17:45:50.602Z",
+      "at": "2026-11-07T18:11:13.652Z",
       "type": "task_released",
       "task_id": "BO-TEST-0009",
       "owner": "claude"
     },
     {
-      "at": "2026-11-07T17:45:55.987Z",
+      "at": "2026-11-07T18:11:18.564Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 7
     },
     {
-      "at": "2026-11-07T17:46:00.882Z",
+      "at": "2026-11-07T18:11:23.627Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 7
     },
     {
-      "at": "2026-11-07T17:46:05.665Z",
+      "at": "2026-11-07T18:11:28.163Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
+    {
+      "number": 7520,
+      "title": "fix(admin): community filter/stats miss users whose tier is set directly to community",
+      "branch": "fix/admin-community-tier-filter",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/pending",
+      "updated_at": "2026-11-07T18:02:20Z"
+    },
+    {
+      "number": 7518,
+      "title": "Fix SPX desk pulse timeout race condition on cold start",
+      "branch": "claude/spx-slayer-rl2u2c",
+      "author": "coreentryadmin-web",
+      "agent": "claude",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-11-07T17:51:16Z"
+    },
     {
       "number": 7517,
       "title": "fix(nighthawk): legacy option marks cache fallback on provider failure",
@@ -1300,7 +1320,7 @@
       "agent": "claude",
       "draft": true,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-11-07T17:41:56Z"
+      "updated_at": "2026-11-07T18:07:30Z"
     },
     {
       "number": 5547,
