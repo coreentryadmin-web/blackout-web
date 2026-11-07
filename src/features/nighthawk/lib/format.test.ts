@@ -181,3 +181,43 @@ test("flowByExpiryPremium: falls back to premium/total_premium when call/put pre
 test("flowByExpiryPremium: no matching field at all returns 0, not NaN", () => {
   assert.equal(flowByExpiryPremium({ expiry: "2026-09-14" }), 0);
 });
+
+test("spxContext: uses spx_desk fallback when daily bars are empty but desk snapshot has real data", () => {
+  const { spx_vix } = buildMarketRecap(
+    baseCtx({ spx_bars: [], vix_bars: [] }),
+    {
+      as_of: "2026-11-06T22:30:50.638Z",
+      market_open: false,
+      market_label: "Post-market",
+      price: 7410.17,
+      change_pct: 0.42,
+      vix: 24.6,
+      vwap: 7410.17,
+      above_vwap: true,
+      hod: 7408.08,
+      lod: 7406.81,
+      pdh: 7681.29,
+      pdl: 7350.35,
+      ema20: null,
+      ema50: null,
+      gamma_flip: null,
+      gamma_regime: null,
+    }
+  );
+  assert.ok(
+    spx_vix.includes("SPX 7410.17"),
+    `expected SPX price from desk fallback, got: ${spx_vix}`
+  );
+  assert.ok(
+    spx_vix.includes("+0.42%"),
+    `expected change_pct from desk fallback, got: ${spx_vix}`
+  );
+  assert.ok(
+    spx_vix.includes("H 7408 L 7407"),
+    `expected HOD/LOD from desk fallback, got: ${spx_vix}`
+  );
+  assert.ok(
+    spx_vix.includes("VIX 24.60"),
+    `expected VIX from desk fallback, got: ${spx_vix}`
+  );
+});
