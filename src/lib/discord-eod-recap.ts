@@ -13,7 +13,25 @@ import { buildHelixFlowDeepLink, buildHelixDarkpoolDeepLink } from "@/lib/helix-
 
 const APP_BASE = (process.env.NEXT_PUBLIC_SITE_URL || "https://blackouttrades.com").replace(/\/$/, "");
 
-/** ~4:05 PM ET window — dark pool cron (2m) and HELIX digest (15m) both land here. */
+/**
+ * ~4:05-4:15 PM ET window — dark pool cron (`*\/2` UTC minute, every 2min) and HELIX digest
+ * (`*\/15` UTC minute, every 15min — railway.helix-discord-digest.toml / cron-registry.ts) both
+ * land here.
+ *
+ * Upper bound is 15, not 14: the HELIX digest cron ticks at exact ET quarter-hours (:00/:15/:30/
+ * :45 — the UTC->ET offset is always a whole number of hours, so the minute component is
+ * identical in both zones). A bound of 14 excludes BOTH of its ticks nearest the 4 PM close —
+ * :00 (still inside isEtCashRth, since isEtCashRth's close boundary is inclusive, so that tick
+ * never reaches this window-check at all) and :15 (1 minute past the old 14-minute cutoff) — so
+ * the HELIX EOD recap branch in helix-discord-digest/route.ts could never execute: every real
+ * cron tick landed either before minute 4 (:00, swallowed by the RTH gate upstream) or after
+ * minute 14 (:15, where this function itself returned false and the route's outer
+ * `!isEtCashRth && !isDiscordEodRecapWindow` check skipped the whole request as "Outside cash
+ * RTH" before the EOD branch ever ran). The dark pool EOD recap was unaffected because its 2min
+ * cron already has ticks at :04/:06/.../:14, all inside the old window. Confirmed live via the
+ * deployed schedules: 15<=14 was a latent dead-window — isDiscordEodRecapWindow(16:00)===false
+ * and isDiscordEodRecapWindow(16:15)===false, the HELIX cron's only two candidate ticks.
+ */
 export function isDiscordEodRecapWindow(now = new Date()): boolean {
   if (isEtCashRth(now)) return false;
   const sessionDay = todayEt(now);
@@ -26,7 +44,7 @@ export function isDiscordEodRecapWindow(now = new Date()): boolean {
   }).formatToParts(now);
   const hour = Number(parts.find((p) => p.type === "hour")?.value ?? NaN);
   const minute = Number(parts.find((p) => p.type === "minute")?.value ?? NaN);
-  return hour === 16 && minute >= 4 && minute <= 14;
+  return hour === 16 && minute >= 4 && minute <= 15;
 }
 
 export function eodRecapDedupKey(channel: "helix" | "darkpool", sessionDate: string): string {

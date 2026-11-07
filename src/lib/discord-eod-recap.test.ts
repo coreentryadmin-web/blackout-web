@@ -34,6 +34,32 @@ test("isDiscordEodRecapWindow — false on NYSE holiday even in 4:04-4:14 ET ban
   assert.equal(isDiscordEodRecapWindow(new Date("2026-09-07T20:06:00.000Z")), false); // Labor Day 4:06 PM ET
 });
 
+// Regression: the HELIX Discord digest cron (railway.helix-discord-digest.toml / cron-registry.ts:
+// `*/15 11-21 * * 1-5`) ticks at exact ET quarter-hours — :00/:15/:30/:45 — because the ET<->UTC
+// offset is always a whole number of hours, so the minute component never shifts between zones.
+// With the old `minute <= 14` upper bound, BOTH of its ticks nearest the close missed the window:
+// :00 ET is still inside `isEtCashRth` (its close boundary is inclusive), so that tick is
+// swallowed by the RTH gate before this function is even relevant; :15 ET is one minute past the
+// old 14-minute cutoff. That left the HELIX EOD recap branch in helix-discord-digest/route.ts
+// structurally unreachable — no real cron tick could ever land inside the window, so
+// buildHelixEodRecapEmbed was fully built, tested and wired, but dead code in production. The
+// sibling dark-pool cron (`*/2`) was unaffected: its ticks at :04/:06/.../:14 already sat inside
+// the old window. Fixed by widening the upper bound to 15 so the HELIX cron's real :15 tick
+// qualifies; the :00 tick still correctly never triggers the EOD branch, because it is still RTH.
+test("isDiscordEodRecapWindow is true at the HELIX digest cron's real :15 tick (was false — dead window)", () => {
+  assert.equal(isDiscordEodRecapWindow(new Date("2026-08-04T20:15:00.000Z")), true); // 4:15 PM ET, EDT
+  assert.equal(isDiscordEodRecapWindow(new Date("2026-11-16T21:15:00.000Z")), true); // 4:15 PM ET, EST
+});
+
+test("isDiscordEodRecapWindow is still false at the HELIX digest cron's :00 tick (still cash RTH)", () => {
+  assert.equal(isDiscordEodRecapWindow(new Date("2026-08-04T20:00:00.000Z")), false); // 4:00 PM ET, EDT
+  assert.equal(isDiscordEodRecapWindow(new Date("2026-11-16T21:00:00.000Z")), false); // 4:00 PM ET, EST
+});
+
+test("isDiscordEodRecapWindow is false just past the widened upper bound (:16 ET)", () => {
+  assert.equal(isDiscordEodRecapWindow(new Date("2026-08-04T20:16:00.000Z")), false);
+});
+
 test("buildHelixEodRecapEmbed summarizes session leaders", () => {
   const emb = buildHelixEodRecapEmbed({
     sessionDate: "2026-08-04",

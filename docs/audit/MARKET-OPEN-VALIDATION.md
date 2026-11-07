@@ -9499,3 +9499,26 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   "lost relative strength" no longer fires for a SHORT whose underlying is declining in line with or
   faster than SPY (i.e. the thesis is genuinely working) — it should only fire when the SHORT is
   actually underperforming its own thesis (underlying flat/rising relative to SPY).
+
+## WATCH LIST — 2026-11-07 (HELIX EOD Discord recap was dead code — `isDiscordEodRecapWindow` dead-window fix, `fix/helix-eod-recap-never-fires`)
+
+- **`isDiscordEodRecapWindow`'s minute bound (`[4,14]`) never overlapped the HELIX digest cron's
+  real tick times (`:00/:15/:30/:45`), so the HELIX ~4 PM ET "session recap" Discord embed could
+  never post in production** — verified by calling the function directly at both of the cron's
+  candidate ticks (4:00 and 4:15 PM ET, both DST regimes) and getting `false` every time. The
+  sibling dark-pool EOD recap (2-minute cron) was unaffected. **Fixed:** widened the upper bound
+  to `15` so the HELIX cron's real `:15` tick qualifies; the `:00` tick still correctly never
+  triggers it (still inside cash RTH). Full write-up:
+  `docs/audit/findings-staging/2026-11-07-helix-eod-recap-dead-window.md`.
+  **Could not confirm live from this sandbox** — `HELIX_DISCORD_ALERTS`/`DISCORD_HELIX_WEBHOOK_URL`
+  gate the route inert unless both are set in production, and there is no way to observe a real
+  Discord post from here.
+  **Re-check once the market opens:** on the next trading day, confirm the `#helix` Discord channel
+  (or whichever channel `DISCORD_HELIX_WEBHOOK_URL` points at) actually receives a
+  "📋 HELIX · Session recap" embed shortly after 4:15 PM ET (the cron's first post-close tick,
+  not 4:05 — the dark-pool recap will still post first/separately around 4:04-4:14 PM ET via its
+  own 2-minute cron, so seeing the dark-pool recap land is not evidence this fix worked). If
+  `HELIX_DISCORD_ALERTS` is unset in production, check `GET /api/cron/helix-discord-digest` logs
+  via `logCronRun`/CloudWatch for `posted_eod: true` on the first tick at or after 4:15 PM ET
+  instead — the route is inert end-to-end if the alert flag is off, in which case this fix is
+  verified wiring-correct but cannot be confirmed as a live Discord post until the flag is on.
