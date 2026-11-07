@@ -109,8 +109,8 @@ NEVER FABRICATE
 | Variable | Default (post #198+) | Effect |
 |----------|----------------------|--------|
 | `SPX_GEX_HEATMAP_BAND_PCT` | **0.06** | ±6% SPX strikes (~±370 pts @ 6200) |
-| `GEX_HEATMAP_BAND_PCT` | 0.04 | Other tickers |
-| `OPTIONS_HEATMAP_PAGE_GUARD` | 40 | Chain pagination cap — watch truncation logs |
+| `GEX_HEATMAP_BAND_PCT` | **0.20** (raised from 0.04 — see `polygon-options-gex.ts`'s `DEFAULT_HEATMAP_BAND_PCT`; ±4%/±12% both missed real round-number walls on sparse/low-priced names like ASTS) | Other tickers |
+| `OPTIONS_HEATMAP_PAGE_GUARD` | **200** (raised from 40, which is now only the floor — see `resolveHeatmapPageGuard`) | Chain pagination cap — watch truncation logs |
 | `UW_WS_GEX_STRIKE_EXPIRY_TICKERS` | SPX | WS oracle tickers |
 | `CORRECTNESS_UW_ORACLE` | on in prod cron | Automated King/sign checks |
 
