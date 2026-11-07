@@ -2481,6 +2481,25 @@ export function composeSwingPlayBrief(
     ? runnerTrailingStopPremium(peakPremiumDollarForInvalidation)
     : play.exitPolicy?.stop_premium ?? null;
   const invalidationStopLabel = scaledAlready ? "Runner trailing stop" : "Premium stop";
+  // BUG FIX (Ask Largo standing mandate, 2026-11-07, live repros CAVA:2483/WMB:2357): this
+  // "Premium stop at $X" fallback only ever framed the stop as a FUTURE risk — the exact gap
+  // tradeManagerNarrativeSection's own "Break watch" bullet was fixed for on 2026-09-15/2026-10-26
+  // (`execBreached`, that file's own doc comment a few lines above its use) — but this call site,
+  // which feeds the Largo-contract C7 structured field `envelope.invalidation` (and
+  // `evidence_numbers`' "Invalidation: ..." line, built verbatim from it), never got the same
+  // fix. Live: CAVA (bid $0.36, stop $0.40) and WMB (bid $0.00/execBidZero, stop $0.32) both
+  // rendered a bare future-risk "Premium stop at $X" here while the SAME response's Trade manager
+  // read, from the SAME stop/bid pair, already said "stop already breached on the executable
+  // side — exit or cut size" — two structured/narrative views of one fact disagreeing. Mirrors
+  // that function's own `execMarkForBreach`/`execBreached` derivation (confirmed-$0.00 bid via
+  // `execBidZero` is at/through ANY positive stop by construction, same as there) so this field
+  // can't independently drift from the narrative about the single most action-driving fact in
+  // the brief.
+  const invalidationExecMark = play.execBidZero === true ? 0 : play.execMark;
+  const invalidationExecBreached =
+    invalidationStopPremium != null &&
+    invalidationExecMark != null &&
+    invalidationExecMark <= invalidationStopPremium;
   const invalidation =
     bucket === "closed"
       ? null
@@ -2491,7 +2510,9 @@ export function composeSwingPlayBrief(
           : resolveBreakInvalidation(ctx) ??
             (sourceFetchFailed || gateFramingMoot ? null : play.gateBlocks?.[0]?.reason) ??
             (bucket === "open" && invalidationStopPremium != null
-              ? `${invalidationStopLabel} at ${fmtUsd(invalidationStopPremium)}`
+              ? invalidationExecBreached
+                ? `${invalidationStopLabel} at ${fmtUsd(invalidationStopPremium)} — already breached on the executable side`
+                : `${invalidationStopLabel} at ${fmtUsd(invalidationStopPremium)}`
               : null);
 
   // BUG FIX continued (Ask Largo standing mandate, 2026-10-07): evidence/levels are now composed
