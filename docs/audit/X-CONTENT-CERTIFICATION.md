@@ -8,7 +8,11 @@
 
 ## EXECUTIVE SUMMARY
 
-**STATUS: BLOCKING ISSUE CONFIRMED — x-autopost DST defect**
+**STATUS AS WRITTEN (2026-08-23): BLOCKING ISSUE CONFIRMED — x-autopost DST defect.**
+**CORRECTED 2026-11-07: this defect is FIXED and has been since before it ever manifested live —
+see the "CORRECTION" note immediately under the P0 finding below for the verified current state
+and the PRs that closed it. Read that note, not the paragraph immediately below, for what is true
+on `main` today.**
 
 The live posting cron `x-autopost` is silently dark under EST (November 1 onward). The cron fires on UTC clock (`0 12,14,16,18,20,22,0 * * *`) but the gate checks ET wall-clock hour (`isPostWindow()` checks ET ∈ {8,10,12,14,16,18,20}). Under EDT this lands: 8,10,12,14,16,18,20 ET ✓. Under EST this lands: 7,9,11,13,15,17,19 ET ✗ (gate self-skips).
 
@@ -17,7 +21,7 @@ The live posting cron `x-autopost` is silently dark under EST (November 1 onward
 - EST: 0 in-window fires per week ✗
 - Silent failure: returns HTTP 200 on self-skip, no alert
 
-**Impact:** Starting 2026-11-01, the account posts zero times per week until 2026-03-09 (next EDT transition). This is P0 — the live newsroom pillar goes dark for 4 months.
+**Impact (AS ORIGINALLY WRITTEN — no longer current, see correction below):** Starting 2026-11-01, the account posts zero times per week until 2026-03-09 (next EDT transition). This is P0 — the live newsroom pillar goes dark for 4 months.
 
 ---
 
@@ -28,10 +32,10 @@ The live posting cron `x-autopost` is silently dark under EST (November 1 onward
 | Component | Location | Purpose | Status |
 |---|---|---|---|
 | **Content types taxonomy** | `src/lib/x-content-types.ts` | Defines post categories (desk_open, desk_flow, etc.) | LIVE |
-| **Type-by-hour schedule** | `src/lib/x-content-schedule.ts` | Clock-driven template selection; also defines `isPostWindow()` gate | LIVE + **DST BROKEN** |
+| **Type-by-hour schedule** | `src/lib/x-content-schedule.ts` | Clock-driven template selection; also defines `isPostWindow()` gate | LIVE + **DST FIXED (PR #3829)** |
 | **Content generation** | `src/lib/x-content.ts` | Snapshot capture + market context + copy generation | LIVE |
-| **Live auto-posting cron** | `src/app/api/cron/x-autopost/route.ts` | Publishes directly to X, no queue | LIVE + **DST BROKEN** |
-| **Cron registration** | `src/lib/cron-registry.ts` | `x-autopost` entry: UTC `0 12,14,16,18,20,22,0 * * *` | LIVE + **DST BROKEN** |
+| **Live auto-posting cron** | `src/app/api/cron/x-autopost/route.ts` | Publishes directly to X, no queue | LIVE + **DST FIXED (PR #3829)** |
+| **Cron registration** | `src/lib/cron-registry.ts` | `x-autopost` entry: UTC `0 12,14,16,18,20,22,0 * * *` | LIVE + **DST FIXED (PR #3829 — gate, not the cron's own UTC schedule, carries the DST awareness)** |
 | **X API client** | `src/lib/x-api.ts` | Post, thread, media upload, reply, quote methods | LIVE, reusable |
 | **Quality + rate guard** | `src/lib/x-post-guard.ts` | 7/day limit, 110 min spacing, broken-text patterns | LIVE, reusable |
 | **Rate budget** | `src/lib/x-rate-budget.ts` | Central rate-limit tracking for all posting pipelines | LIVE, shared |
@@ -174,12 +178,14 @@ TRIGGER → DETECT → CAPTURE → GENERATE → GUARD → PUBLISH → TRACK
 
 **Measurement & Issues:**
 
-1. **DST BROKEN** (P0)
+1. **DST BROKEN** (P0) — **FIXED 2026-09-04, PR #3829. See the P0 finding's own CORRECTION note
+   below** for verification against the current `isPostWindow()`/`isDST()` source.
    - EDT (summer): ET ∈ {8,10,12,14,16,18,20} matches UTC {12,14,16,18,20,22,0}
    - EST (winter): ET ∈ {7,9,11,13,15,17,19} does NOT match UTC {12,14,16,18,20,22,0}
-   - Result: 0 posts Nov 1 – Mar 9
+   - Result (as originally written — no longer current): 0 posts Nov 1 – Mar 9
 
-2. **Market holiday deadband**
+2. **Market holiday deadband** — **FIXED 2026-09-07, PR #4500** (`isPostWindow()` now calls
+   `isTradingDayEt()` on the weekday branch before checking the hour — see current source).
    - No check for market closures (Thanksgiving, Christmas, etc.)
    - Fires on calendar weekday even if market is closed
    - Risk: publishes "market intelligence" when no market happened
@@ -203,7 +209,8 @@ TRIGGER → DETECT → CAPTURE → GENERATE → GUARD → PUBLISH → TRACK
 2. **No queue** (cannot review, cannot backtrack, no audit trail)
 3. **Desk-card-only attachment** (if renderer breaks, visual proof breaks)
 4. **Direct publish** (no human gate, no undo)
-5. **ET-clock gate without DST shift** (known, unfixed, silent failure)
+5. **ET-clock gate without DST shift** — **FIXED, PR #3829 (2026-09-04); see the P0 finding's
+   CORRECTION note below.** (as originally written: known, unfixed, silent failure)
 
 ### Fragile Dependencies
 
@@ -369,8 +376,8 @@ The 2-hour schedule means worst-case 2 hours from market event to post.
 
 | Item | Component | Claim | Evidence | Validation | Status | Severity | Action | Blocker |
 |---|---|---|---|---|---|---|---|---|
-| 1 | x-autopost cron | Posts every 2 hours during market | UTC cron + ET gate | `cron-dst-audit.mjs`: 39 EDT, 0 EST, silent skip | **BROKEN** | **P0** | Fix EST off-by-1h, test both offsets, ESC + deploy | YES |
-| 1 | isPostWindow() | Checks ET hour ∈ {8,10,12,14,16,18,20} | src/lib/x-content-schedule.ts | EDT ✓, EST ✗ due to UTC 12h → EST 7h, EDT 8h | **BROKEN** | **P0** | Hourly fire + `isPostWindow` as single source of truth, DST-unaware | YES |
+| 1 | x-autopost cron | Posts every 2 hours during market | UTC cron + ET gate | `cron-dst-audit.mjs`: 39 EDT, 0 EST, silent skip (2026-08-23, pre-fix) | **FIXED (PR #3829, 2026-09-04)** | — | Done — verified against current `isPostWindow()`/`isDST()` on `main`, see P0 finding's CORRECTION note | NO |
+| 1 | isPostWindow() | Checks ET hour ∈ {8,10,12,14,16,18,20} | src/lib/x-content-schedule.ts | Now branches on `isDST(nowEt)` to pick the EDT or EST hour set — the "single source of truth" fix this row originally asked for | **FIXED (PR #3829, 2026-09-04)** | — | Done | NO |
 | 1 | x-api.ts | Provides post, thread, media upload | Source code review | Methods exist, used by x-autopost | **LIVE** | — | Reuse, do not fork | NO |
 | 1 | x-post-guard.ts | Enforces 7/day, 110 min spacing | Source + runtime guard | Guard fires before publish attempt | **LIVE** | — | Reuse, instrument to alert if limit hit | NO |
 | 1 | Dedup module | Suppresses repeat posts | src/lib/x-content-dedup.ts | Module exists | **LIVE** | — | Reuse, add to queue validation | NO |
@@ -384,7 +391,7 @@ The 2-hour schedule means worst-case 2 hours from market event to post.
 | 5 | Detection → capture → publish path | Full pipeline executes every step | Tail logs during cron run | Can trace one run live | **WORKS** | — | OK, but no persistent audit trail | NO |
 | 5 | Reason for selection | Why was THIS story chosen over others? | No `reason_selected` field | Only human memory | **MISSING** | **HIGH** | Add field to queue | YES |
 | 6 | Rate-budget enforcement | 7/day, 110 min spacing is actually applied | Guard code exists; no observability | No alert if limit is hit | **UNKNOWN** | **MEDIUM** | Instrument + alert on exhaustion | YES |
-| 6 | Market holiday deadband | No posts on market-closed days | `isPostWindow()` checks ET hour only | No holiday calendar check | **NOT ENFORCED** | **LOW** | Add `isTradingDayEt()` call | YES |
+| 6 | Market holiday deadband | No posts on market-closed days | `isPostWindow()` now calls `isTradingDayEt()` on the weekday branch before checking the hour (verified in current `src/lib/x-content-schedule.ts`) | Holiday calendar check is in place | **FIXED (PR #4500, 2026-09-07)** | — | Done | NO |
 | 7 | Single point of failure: no queue | Cannot review or undo a post | Post lands on X immediately | Only human control is "read first, then copy" | **HIGH RISK** | **P0** | Build queue | YES |
 | 7 | Capture failure mode | If desk-card renderer breaks, what publishes? | No fallback render | Would post with broken/missing image | **RISKY** | **MEDIUM** | Add fallback + pre-publish image validation | YES |
 | 8 | Time to publish | Measured wall-clock latency from event to post | No instrumentation | Claimed "live" without data | **NOT MEASURED** | **MEDIUM** | Add timing, measure, publish in findings | YES |
@@ -412,7 +419,36 @@ The 2-hour schedule means worst-case 2 hours from market event to post.
 
 **Fix:** Shift cron by +1 hour for EST half of year (`15 13,14`, `20 21`, etc.), OR rewrite gate as single source of truth checking both market-open AND DST-aware wall-clock time, OR use hourly fire + `isPostWindow` as gate (most robust).
 
-**Status:** UNFIXED. Awaiting authorization to touch x-autopost (brief forbids it; user authorized via coordinator but channel authenticity disputed in previous session).
+**Status (as originally written, 2026-08-23):** UNFIXED. Awaiting authorization to touch x-autopost (brief forbids it; user authorized via coordinator but channel authenticity disputed in previous session).
+
+**CORRECTION (2026-11-07, round 379 — docs-only sweep):** this was the "rewrite gate as single
+source of truth checking both market-open AND DST-aware wall-clock time" option named above, and
+it is the fix that actually shipped — well before today, 2026-11-07, i.e. before the very first
+EST window this finding warned would go dark (Nov 1). **Verified directly against current
+`src/lib/x-content-schedule.ts` on `main`, not trusted from a stale status line:**
+
+- `isPostWindow()` now computes `isDST(nowEt)` and selects the EDT hour set
+  `{8,10,12,14,16,18,20}` or the EST hour set `{7,9,11,13,15,17,19}` accordingly, instead of
+  testing a single fixed hour set against the wall-clock hour — exactly closing the EDT/EST
+  mismatch this finding describes. Landed in **PR #3829** ("Fix x-autopost DST silent-window
+  failure"), 2026-09-04 — three weeks after this doc was written, well before the first EST window
+  (Nov 1) this finding warned about.
+- The weekday branch also now calls `isTradingDayEt(todayEt(nowEt))` and returns `false` on a
+  closed-market day — this is the SEPARATE "Market holiday deadband" gap this doc lists as item 6
+  in the coverage matrix (then rated LOW/NOT ENFORCED) — closed by **PR #4500**
+  ("gate X marketing posts on isTradingDayEt for NYSE holidays"), 2026-09-07.
+- A third, related gap not originally named in this cert (the weekend branch's own `{10,14}` ET
+  hour array was EDT-only, so weekend posts went dark every winter the same way weekday posts
+  almost did) was independently found and fixed by **PR #7224** ("weekend desk posts never fire
+  during EST (Nov-Mar)"), 2026-11-01 — confirming this exact defect CLASS kept getting swept for,
+  not just patched once and forgotten.
+
+This section's **"Impact: Starting 2026-11-01, the account posts zero times per week..."** line
+above never came to pass — the gate was already DST-aware five weeks before that date. A reader
+relying on this doc's original status line alone, without checking `main`, would (as of today,
+2026-11-07, a week into the exact EST window this finding warned about) wrongly believe the
+account has been dark for a week. It has not. No source file was touched by this correction —
+`x-content-schedule.ts` was already fixed; only this doc's stale status was wrong.
 
 ---
 
@@ -445,6 +481,13 @@ The 2-hour schedule means worst-case 2 hours from market event to post.
 ---
 
 ## RECOMMENDATIONS — PRIORITY & SEQUENCE
+
+**CORRECTION (2026-11-07):** item 2 below ("Fix `x-autopost` DST defect OR await authorization")
+and the "BLOCKING on ... x-autopost DST decision" framing in NEXT STEPS further down are stale —
+the DST fix shipped (PR #3829, 2026-09-04) without needing this section's authorization gate to be
+resolved first. See the P0 finding's CORRECTION note above for the verified current state. The
+queue-related recommendations below (build order, items 1-7) are untouched by this correction and
+still describe genuinely unbuilt work as of this doc's last edit.
 
 ### Immediate Actions (This PR, P0)
 
@@ -726,7 +769,7 @@ if (Date.now() - pkg.attachment_1.capture_timestamp > 90 * 60 * 1000) {
 | 3 | Validate every label | ✗ BLOCKED | No `products_referenced` field; cannot trace signal source. |
 | 4 | Validate content types | ✓ PARTIAL | 8 types exist, no growth-by-type analysis. |
 | 5 | Test pipeline stages | ✓ PARTIAL | Can trace one run live; no persistent audit trail. |
-| 6 | Validate logic | ✓ PARTIAL | Trigger logic exists (broken under EST); rate budget exists (no alert). |
+| 6 | Validate logic | ✓ PARTIAL | Trigger logic exists (EST gate **fixed by PR #3829, 2026-09-04** — see CORRECTION above); rate budget exists (no alert). |
 | 7 | Audit architecture | ✓ COMPLETE | Single points of failure mapped; fragile dependencies identified. |
 | 8 | Performance certification | ✗ NOT MEASURED | No timing instrumentation; "live" claim unvalidated. |
 | 9 | Product & UX review | ✗ NOT DONE | Requires manual scroll of live account (network-isolated). |
@@ -743,11 +786,16 @@ if (Date.now() - pkg.attachment_1.capture_timestamp > 90 * 60 * 1000) {
 3. Chronology validator (refuses READY if detection ≥ event)
 4. Timing instrumentation in cron
 
-**These are P0 prerequisites** per mandate build order. DST fix is held per coordinator decision.
+**These are P0 prerequisites** per mandate build order. The DST fix referenced as "held per
+coordinator decision" below shipped independently (PR #3829, 2026-09-04) and is no longer a hold
+on anything — see the CORRECTION note under the Executive Summary and the P0 finding above.
 
 ---
 
 **CERTIFICATION COMPLETE**  
 Date: 2026-08-23  
 Status: PR #2761 (findings staged), awaiting queue build approval  
-Coordinator guidance: DST hold respected, queue work authorized.
+Coordinator guidance (as originally written — superseded): DST hold respected, queue work authorized.
+**CORRECTION (2026-11-07):** the DST fix shipped (PR #3829) — there is no live DST hold to respect
+any more. The queue-build work this doc describes (items 1-7 of the build order above) remains
+genuinely unbuilt as far as this correction verified; this note speaks only to the DST status.
