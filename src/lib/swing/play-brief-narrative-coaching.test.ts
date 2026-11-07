@@ -1154,18 +1154,24 @@ test("shortInterestCoaching: ancient DTC read is withheld, not presented as curr
 
 // BUG FIX (2026-09-21, Ask Largo standing mandate — #5351/#5353/#5355 follow-up): shortInterestCoaching
 // judged the DTC read's age off a bare `Date.now()` instead of `ctx.readMs`. This test proves the
-// threading without mocking global time: fund.as_of is a fixed 2025-06-01 date, ctx.readMs is set
+// threading without mocking global time: fund.as_of is a fixed past date, ctx.readMs is set
 // one day later (well under the 60-day FUNDAMENTALS_ANCIENT_CEILING_MS — genuinely fresh), while the
-// real wall clock at test-run time is well over a year later, past the ancient-DTC ceiling.
+// real wall clock at test-run time is independent (this test uses rolling relative dates to avoid staleness).
 test("shortInterestCoaching: uses ctx.readMs, not the real wall clock, to judge DTC-read freshness", () => {
-  const readMs = Date.parse("2025-06-02T00:00:00.000Z");
+  // Rolling relative dates so this test doesn't become stale: asOf is 5 days in the past,
+  // readMs is 1 day after that (4 days in the past). The 1-day delta is well under
+  // FUNDAMENTALS_ANCIENT_CEILING_MS, so the code should render (prove it uses readMs, not wall clock).
+  const baseDateMs = Date.now() - 5 * 24 * 60 * 60 * 1000;
+  const asOfDate = new Date(baseDateMs).toISOString().slice(0, 10);
+  const readMs = baseDateMs + 24 * 60 * 60 * 1000;
+
   const line = shortInterestCoaching(
     ctx({
       readMs,
       ecosystem: {
         ticker: "NRG",
         arsenal: {
-          fundamentals: { days_to_cover: 6.1, short_volume_ratio: 0.4, price_target: null, as_of: "2025-06-01" },
+          fundamentals: { days_to_cover: 6.1, short_volume_ratio: 0.4, price_target: null, as_of: asOfDate },
         },
       } as SwingPlayBriefContext["ecosystem"],
     }),
