@@ -30,4 +30,4 @@ Verified offline via:
 
 Verified live via `npm run healthcheck:legacy` post-deploy.
 
-| **Status** | Fixed in PR #7514 |
+| **Status** | Fixed in PR #7517 |

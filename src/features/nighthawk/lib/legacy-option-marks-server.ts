@@ -11,7 +11,7 @@ import {
   legacyOccForSnapshot,
   lookupLegacyOptionSnapshot,
 } from "@/features/nighthawk/lib/legacy-play-contract";
-import { sharedCacheGet, sharedCacheSet } from "@/lib/providers/calibration-cache";
+import { sharedCacheGet, sharedCacheSet } from "@/lib/swing/calibration-cache";
 
 export type LegacyServerOptionMark = {
   occ: string;
