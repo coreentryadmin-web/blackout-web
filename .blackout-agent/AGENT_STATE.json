@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-07T11:43:28.831Z",
+  "updated_at": "2026-11-07T12:47:05.729Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-07T11:42:19.362Z"
+      "released_at": "2026-11-07T12:46:30.751Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-07T11:42:36.273Z",
-      "lease_until": "2026-11-07T11:43:36.273Z",
+      "claimed_at": "2026-11-07T12:46:40.821Z",
+      "lease_until": "2026-11-07T12:47:40.821Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-07T11:42:36.282Z"
+      "released_at": "2026-11-07T12:46:40.826Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d4703eab27cbf064aa29ad31f081a9fcb0e63c84",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-11-07T11:39:39Z",
+    "last_main_sha": "5fd179cfba95333e171a4517c4060971f3457bcb",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-11-07T12:01:58Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42369103367",
     "last_deploy_sha": "d4703eab27cbf064aa29ad31f081a9fcb0e63c84"
   },
   "events": [
-    {
-      "at": "2026-10-26T07:16:24.457Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-26T07:16:27.853Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-10-26T07:30:08.566Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-26T07:30:13.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-26T07:30:18.733Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-26T11:10:10.222Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-26T11:10:14.492Z",
       "type": "context_sync",
@@ -1289,69 +1253,45 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 30
+    },
+    {
+      "at": "2026-11-07T12:46:30.751Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T12:46:40.824Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-11-07T12:46:40.826Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T12:46:49.255Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-11-07T12:46:57.638Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-11-07T12:47:05.729Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
     }
   ],
   "open_prs": [
-    {
-      "number": 7492,
-      "title": "fix(cron-health): SPX engine crons use engine window + TOML schedule",
-      "branch": "fix/spx-cron-health-engine-window",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-06T18:03:40Z"
-    },
-    {
-      "number": 7491,
-      "title": "fix(ops): align SPX engine cron health with engine window + schedules",
-      "branch": "fix/spx-cron-registry-schedule-utc",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-06T18:03:31Z"
-    },
-    {
-      "number": 7489,
-      "title": "fix(ops): align SPX engine cron health with engine evaluation window",
-      "branch": "fix/spx-engine-cron-health-window",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-06T18:01:32Z"
-    },
-    {
-      "number": 7488,
-      "title": "fix(cron-health): SPX engine crons use engine window, not cash RTH",
-      "branch": "fix/cron-query-spx-engine-health",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-06T18:01:07Z"
-    },
-    {
-      "number": 7487,
-      "title": "fix(cron-health): align spx-evaluate/ issues-sync window with engine cron (16:00-16:15 ET)",
-      "branch": "fix/cron-health-spx-engine-post-close-window",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-06T17:59:44Z"
-    },
-    {
-      "number": 7486,
-      "title": "fix(cron-health): SPX engine crons use engine window, not cash RTH",
-      "branch": "fix/cron-health-spx-engine-window",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-11-06T18:03:45Z"
-    },
     {
       "number": 7484,
       "title": "fix(audit): SPX oracle uses ET RTH window through 16:15 grace",
@@ -1360,237 +1300,117 @@
       "agent": "cursor",
       "draft": false,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T22:17:09Z"
+      "updated_at": "2026-11-07T12:44:07Z"
     },
     {
-      "number": 7483,
-      "title": "fix(test): catalystsSection short-vol test readMs anchor + normalize render",
-      "branch": "fix/catalysts-short-vol-readms-2026-11-04",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:30:03Z"
-    },
-    {
-      "number": 7480,
-      "title": "fix(test): catalyst short-vol ratio fixture uses recent fundamentals as_of",
-      "branch": "fix/swing-catalyst-short-vol-test-as-of",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:24:35Z"
-    },
-    {
-      "number": 7479,
-      "title": "test(swing): fix catalystsSection audit #12 fixture staleness",
-      "branch": "fix/catalysts-section-test-fresh-asof",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:24:34Z"
-    },
-    {
-      "number": 7478,
-      "title": "test: anchor catalystsSection short-vol readMs (verify date bomb)",
-      "branch": "fix/catalysts-section-test-readms-anchor",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:24:21Z"
-    },
-    {
-      "number": 7477,
-      "title": "fix(test): rolling fundamentals as_of in catalystsSection ratio test",
-      "branch": "fix/play-brief-catalysts-test",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:24:20Z"
-    },
-    {
-      "number": 7476,
-      "title": "fix(swing): normalize short vol ratio before Largo display",
-      "branch": "fix/short-volume-ratio-display",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:24:11Z"
-    },
-    {
-      "number": 7475,
-      "title": "fix(test): anchor catalystsSection short-vol readMs against ancient ceiling",
-      "branch": "fix/catalysts-short-vol-test-readms",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:24:05Z"
-    },
-    {
-      "number": 7474,
-      "title": "test(swing): anchor readMs on catalystsSection short-vol audit fixture",
-      "branch": "fix/play-brief-short-vol-test-readms-anchor",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:24:03Z"
-    },
-    {
-      "number": 7473,
-      "title": "test(swing): fix catalystsSection short-vol test date bomb",
-      "branch": "fix/play-brief-intel-short-vol-test-date",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:23:59Z"
-    },
-    {
-      "number": 7472,
-      "title": "test(swing): pin readMs on catalystsSection short-vol fixture",
-      "branch": "fix/play-brief-intel-test-flake",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:23:58Z"
-    },
-    {
-      "number": 7471,
-      "title": "fix(test): anchor catalystsSection short-vol readMs (verify date bomb)",
-      "branch": "fix/play-brief-intel-test-readMs",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:23:53Z"
-    },
-    {
-      "number": 7469,
-      "title": "test(swing): fix catalystsSection short-vol audit readMs flake",
-      "branch": "fix/play-brief-intel-short-vol-test-readms",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:23:50Z"
-    },
-    {
-      "number": 7467,
-      "title": "fix(test): rolling fundamentals as_of in catalysts short-vol audit #12",
-      "branch": "fix/hold-plan-capture-suppression-regression",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:23:47Z"
-    },
-    {
-      "number": 7466,
-      "title": "fix(test): rolling as_of for catalystsSection short vol ratio test",
-      "branch": "fix/play-brief-short-vol-test-as-of",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:23:43Z"
-    },
-    {
-      "number": 7463,
-      "title": "test(largo): keep catalysts short-vol fixture inside fundamentals freshness window",
-      "branch": "cursor/autopilot-work-loop-1d1f",
+      "number": 7412,
+      "title": "fix(cron-health): SPX pipeline crons use engine window vs cash RTH",
+      "branch": "cursor/blackout-worker-resumption-7815",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:23:35Z"
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-11-07T12:44:03Z"
     },
     {
-      "number": 7462,
-      "title": "fix(test): roll catalystsSection short-vol as_of past 60d ceiling",
-      "branch": "fix/play-brief-short-vol-test-date-bomb",
+      "number": 7406,
+      "title": "fix(audit): full-site SPX oracle uses today close off-hours",
+      "branch": "cursor/autopilot-work-loop-b7bf",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
       "draft": false,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:23:31Z"
+      "updated_at": "2026-11-07T12:43:55Z"
     },
     {
-      "number": 7461,
-      "title": "test(swing): fix catalysts short-vol regression after ancient fundamentals guard",
-      "branch": "fix/play-brief-intel-catalyst-test",
+      "number": 7405,
+      "title": "fix(audit): SPX oracle uses prev close off-hours like data-validator",
+      "branch": "cursor/blackout-cursor-work-loop-fb4c",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-11-07T12:43:53Z"
+    },
+    {
+      "number": 7404,
+      "title": "fix(audit): SPX oracle check uses RTH-aware percent tolerance",
+      "branch": "cursor/autopilot-state-recovery-loop-b3b3",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
       "draft": false,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-04T21:23:29Z"
+      "updated_at": "2026-11-07T12:43:49Z"
     },
     {
-      "number": 7459,
-      "title": "fix(audit): off-hours SPX oracle compares prior_close, not session price",
-      "branch": "fix/spx-oracle-off-hours-prior-close",
+      "number": 7402,
+      "title": "fix(audit): gate SPX Polygon oracle on market open",
+      "branch": "cursor/bc-200a9b63-5185-4916-bd36-6f4def2b45b9-dd80",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
       "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-11-04T21:06:53Z"
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-11-07T12:43:45Z"
     },
     {
-      "number": 7458,
-      "title": "fix(audit): SPX oracle session-close after bell (not lagging /prev)",
-      "branch": "fix/spx-oracle-session-close-oracle-2026-11-04",
+      "number": 7396,
+      "title": "fix(audit): align SPX Polygon oracle with off-hours desk close semantics",
+      "branch": "cursor/bc-568bdc7f-a57f-443a-933a-97775077a3ea-66f6",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-11-04T21:21:17Z"
+      "updated_at": "2026-11-07T12:43:58Z"
     },
     {
-      "number": 7457,
-      "title": "fix(audit): SPX oracle aligns with GHA RTH window through 16:15 ET",
-      "branch": "fix/rth-oracle-post-close-grace",
+      "number": 7395,
+      "title": "fix(audit): full-site deep audit SPX oracle off-hours ground truth",
+      "branch": "cursor/autopilot-work-loop-53a9",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
       "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-11-04T21:05:52Z"
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-11-02T22:33:04Z"
     },
     {
-      "number": 7456,
-      "title": "fix(audit): SPX oracle live-only while Polygon market open",
-      "branch": "fix/rth-oracle-post-close-skip",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
+      "number": 5547,
+      "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
+      "branch": "dependabot/npm_and_yarn/next-16.3.6",
+      "author": "dependabot[bot]",
+      "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-11-04T21:05:40Z"
+      "updated_at": "2026-11-02T11:27:02Z"
     },
     {
-      "number": 7455,
-      "title": "fix(audit): SPX oracle ET RTH fallback (no prev-close during session)",
-      "branch": "fix/full-site-oracle-rth-fallback",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
+      "number": 5546,
+      "title": "chore(deps): Bump @whop/sdk from 0.0.42 to 2.0.0",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-2.0.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-11-04T21:05:33Z"
+      "updated_at": "2026-11-02T11:26:59Z"
     },
     {
-      "number": 7454,
-      "title": "fix(audit): SPX oracle off-hours uses session close not /prev",
-      "branch": "fix/spx-oracle-session-close-off-hours",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
+      "number": 5545,
+      "title": "chore(deps-dev): Bump eslint-config-next from 15.5.19 to 16.3.6",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.6",
+      "author": "dependabot[bot]",
+      "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-11-04T21:05:28Z"
+      "updated_at": "2026-11-02T11:26:58Z"
+    },
+    {
+      "number": 4477,
+      "title": "Bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-10-13T05:41:41Z"
     }
   ],
   "pr_activity": {
