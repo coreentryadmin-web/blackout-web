@@ -523,7 +523,6 @@ async function publishRecapOnlyEdition(params: {
   funnel?: Partial<FunnelCounts>;
 }) {
   const { editionFor, ctx, reason, candidates, checkpointing, force, funnel } = params;
-  const recap = buildMarketRecap(ctx);
 
   // Best-effort enrich the recap with index context + desk/tape so the recap-only edition is still a
   // useful market read, not a bare headline. All optional — never let an enrichment failure block the
@@ -533,6 +532,8 @@ async function publishRecapOnlyEdition(params: {
     marketPlatform.spx.getSpxDeskSummary().catch(() => null),
     marketPlatform.flows.getFlowTapeSummary({ limit: 30 }).catch(() => null),
   ]);
+
+  const recap = buildMarketRecap(ctx, spxDesk);
 
   const recapEdition = {
     edition_for: editionFor,
@@ -1242,8 +1243,9 @@ export async function buildEveningEdition(opts?: {
       powerHour: spxPowerHour ?? null,
     };
 
-    // recap is deterministic from ctx — safe to rebuild on resume.
-    const recap = buildMarketRecap(ctx);
+    // recap is deterministic from ctx — safe to rebuild on resume. Pass spxDesk as fallback
+    // for when daily bars are unavailable but desk snapshot has real data.
+    const recap = buildMarketRecap(ctx, spxDesk);
 
     // STAGE 5 — Synthesis + critic (resume-aware: reuse checkpointed Claude output)
     type SynthesisCheckpoint = { plays: PlaybookPlay[]; critic_notes: string[]; claude: boolean };
