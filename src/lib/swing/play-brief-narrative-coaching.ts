@@ -1286,16 +1286,37 @@ export function macroTapeCoaching(ctx: SwingPlayBriefContext): string | null {
 // with no hint the "fill" side is computed off an aged bid/ask. `readMs` threaded in the same
 // optional, `ctx.readMs ?? Date.now()`-defaulted shape every other staleness-aware coaching
 // function in this file already uses.
+//
+// WRONG-DENOMINATOR FIX (Ask Largo standing mandate, 2026-11-07, live repro APP SWING:APP:2397
+// OPEN/TRIM, +465% runner): "slippage" is bid/ask friction relative to the current MARK — what a
+// member actually gives up crossing the spread right now. The number here was instead
+// `mid% - exec%`, where both percentages are ENTRY-denominated (`pnlPct`/`execPnlPct` are both
+// `(price - entry) / entry`), so the "gap" equals `(mark - execMark) / entry * 100`, not
+// `(mark - execMark) / mark * 100` — it divides the same dollar spread by the tiny original entry
+// price instead of by the current mark. The distortion scales with `mark / entry`, so it is worst
+// exactly on the best-performing runners: live, this bullet read "-25% slippage" on a position
+// whose REAL bid/ask friction ((98.00-93.60)/98.00) was ~4.5% — a 5.6x overstatement a member could
+// read as "I'm giving up a quarter of this position's value to the spread" when the real cost was
+// under a nickel on the dollar. Compute the real percentage directly off `mark`/`execMark` (both
+// already carried on `TerminalPlay` for exactly this purpose) instead of re-deriving it from two
+// already-divided-by-entry percentages; `mid%`/`exec%` stay in the sentence as context, they just
+// no longer feed the slippage arithmetic. Direction-safe: `exec` losing to `mid` (in the position's
+// own signed P&L terms, already direction-aware) is what decides the +/- sign, same as before —
+// only the MAGNITUDE's denominator changes.
 export function execSlippageCoaching(play: TerminalPlay, readMs?: number): string | null {
   const mid = fin(play.pnlPct);
   const exec = fin(play.execPnlPct);
   if (mid == null || exec == null) return null;
-  const gap = mid - exec;
-  if (Math.abs(gap) < 5) return null;
+  const mark = fin(play.mark);
+  const execMark = fin(play.execMark);
+  if (mark == null || mark <= 0 || execMark == null) return null;
+  const slippagePct = (Math.abs(mark - execMark) / mark) * 100;
+  if (slippagePct < 5) return null;
+  const execIsWorse = exec < mid;
   const staleCaveat = optionMarkStaleCaveat(play, readMs ?? Date.now());
   return (
     `**Executable P&L** — mid **${fmtPct(mid)}** vs fill **${fmtPct(exec)}** ` +
-    `(**${gap > 0 ? "-" : "+"}${Math.abs(gap).toFixed(0)}%** slippage). Size exits on the bid, not the mark.${staleCaveat}`
+    `(**${execIsWorse ? "-" : "+"}${slippagePct.toFixed(0)}%** slippage). Size exits on the bid, not the mark.${staleCaveat}`
   );
 }
 
