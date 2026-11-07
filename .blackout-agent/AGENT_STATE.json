@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-07T16:23:24.364Z",
+  "updated_at": "2026-11-07T17:23:11.490Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-07T16:22:58.073Z"
+      "released_at": "2026-11-07T17:22:52.009Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-07T16:23:04.374Z",
-      "lease_until": "2026-11-07T16:24:04.374Z",
+      "claimed_at": "2026-11-07T17:22:56.766Z",
+      "lease_until": "2026-11-07T17:23:56.766Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-07T16:23:04.379Z"
+      "released_at": "2026-11-07T17:22:56.770Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "46aeb97c6bfb7cc029e0f7bcdd82b1164b4a2755",
+    "last_main_sha": "99a381c2bdd7489fa1bd92eb3b0c7667b50cbcf1",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-07T16:17:40Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42390559667",
-    "last_deploy_sha": "46aeb97c6bfb7cc029e0f7bcdd82b1164b4a2755"
+    "last_deploy_at": "2026-11-07T17:08:26Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42394810334",
+    "last_deploy_sha": "99a381c2bdd7489fa1bd92eb3b0c7667b50cbcf1"
   },
   "events": [
-    {
-      "at": "2026-10-26T15:29:02.837Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T15:29:09.740Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T16:02:05.374Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T16:02:11.615Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T16:02:17.743Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T16:18:08.862Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 9
-    },
     {
       "at": "2026-10-26T16:18:16.431Z",
       "type": "context_sync",
@@ -1289,48 +1253,54 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
+    },
+    {
+      "at": "2026-11-07T17:22:52.009Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T17:22:56.769Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-07T17:22:56.770Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T17:23:01.955Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-07T17:23:06.869Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-07T17:23:11.490Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 7506,
-      "title": "fix(meridian): buildPrintClock hardcoded EDT -04:00, wrong by an hour under EST",
-      "branch": "fix/print-clock-dst-offset",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/pending",
-      "updated_at": "2026-11-07T16:17:11Z"
-    },
-    {
-      "number": 7505,
+      "number": 7513,
       "title": "chore: agent-state heartbeat sync",
-      "branch": "chore/agent-state-heartbeat-sync-1107b",
+      "branch": "chore/agent-state-heartbeat-sync-1107e",
       "author": "coreentryadmin-web",
       "agent": "human",
       "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-07T16:09:26Z"
-    },
-    {
-      "number": 7412,
-      "title": "fix(cron-health): SPX pipeline crons use engine window vs cash RTH",
-      "branch": "cursor/blackout-worker-resumption-7815",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-11-07T12:44:03Z"
-    },
-    {
-      "number": 7395,
-      "title": "fix(audit): full-site deep audit SPX oracle off-hours ground truth",
-      "branch": "cursor/autopilot-work-loop-53a9",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-11-07T12:59:04Z"
+      "verify": "IN_PROGRESS/pending",
+      "updated_at": "2026-11-07T17:17:58Z"
     },
     {
       "number": 5547,
