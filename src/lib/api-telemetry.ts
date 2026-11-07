@@ -64,6 +64,25 @@ export function endpointTemplate(endpoint: string): string {
   return path
     .replace(/O:[A-Z0-9]+/g, ":occ") // OCC option symbols (O:SPXW250101C05850000)
     .replace(/\b[A-Z]{1,6}\d{6}[CP]\d{8}\b/g, ":occ") // bare OCC (SPXW250101C05850000)
+    // Unusual Whales per-ticker paths — `/api/stock/{ticker}/...`, `/api/darkpool/{ticker}`,
+    // `/api/shorts/{ticker}/...`, `/api/etfs/{etf}/...`, `/api/lit-flow/{ticker}`,
+    // `/api/seasonality/{ticker}/...`, `/api/companies/{ticker}/...` (see the uwGetSafe call
+    // sites in src/lib/providers/unusual-whales.ts). None of the Polygon-shaped rules below
+    // (`/ticker/`, `/tickers/`, `/indicators/.../`) ever matched these, so every watched ticker
+    // leaked its own permanent endpointStats row for the busiest provider in the ring buffer —
+    // the exact cardinality leak this function's own header says it exists to prevent, just for
+    // a provider whose path shape this file never covered. `option-contract` is deliberately
+    // excluded: its id segment is already collapsed by the bare-OCC rule above when OCC-shaped,
+    // and re-matching it here would overwrite that more specific `:occ` token with a generic
+    // `:sym` one.
+    .replace(
+      /\/api\/(stock|darkpool|shorts|etfs|lit-flow|seasonality|companies)\/[^/?]+/g,
+      "/api/$1/:sym"
+    )
+    // `/api/market/{ticker-or-sector}/sector-tide|etf-tide` — the ONLY two per-symbol `/api/market/`
+    // routes; every other `/api/market/...` path (market-tide, top-net-impact, fda-calendar, …)
+    // takes no symbol segment and must stay untouched.
+    .replace(/\/api\/market\/[^/?]+\/(sector-tide|etf-tide)/g, "/api/market/:sym/$1")
     .replace(/(\/indicators\/(?:ema|sma|macd|rsi))\/[^/?]+/g, "$1/:sym") // /v1/indicators/ema/AAPL or /I:SPX
     .replace(/I:[A-Z0-9]+/g, ":idx") // index symbols (I:SPX, I:VIX)
     .replace(/\/tickers\/[^/]+/g, "/tickers/:sym") // PLURAL: /v3/reference/tickers/AAPL, /v2/snapshot/.../tickers/NVDA
