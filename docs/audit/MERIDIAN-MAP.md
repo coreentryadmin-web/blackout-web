@@ -207,7 +207,21 @@ classifies as CORRECT rather than drift. **Not verified here** — see §7.
 
 ## 6. WHAT PHASE 0 FOUND
 
-### 6.1 — P1. The BMO half of the reaction anchor has the exact defect the AMC half was fixed for
+### 6.1 — P1. The BMO half of the reaction anchor has the exact defect the AMC half was fixed for — FIXED
+
+**FIXED — #2663 (2026-08-22, the same day this map was merged).** The decision below (§6.1.1,
+"ship B" — anchor a BMO print's reaction at `prior_close_to_close`, not `session_open_to_close`)
+is now the shipped behavior, not an open recommendation. `reactionForPrint`
+(`meridian-reaction-core.ts`) computes `priorCloseYmd` for BOTH `amc` and `bmo` timings
+(`timing === "amc" ? reportYmd : timing === "bmo" ? prevSessionYmd(...) : null`) and reads
+`reaction_pct` from that prior close to the anchor close for either; `session_open_to_close` is
+now reached only for an `unknown`-timing (mid-session) print, exactly as §6.1.1 specified. The
+new `reaction_includes_prior_drift` field the decision called for also shipped and is covered by
+`meridian-reaction-core.test.ts` (asserted `true` for a BMO print with a real prior close, `false`
+for AMC, `null` when there is no prior bar to anchor to). Re-verified directly against `main` at
+`92a1b1e51` (2026-11-07). The narrative immediately below is kept as the record of what Phase 0
+found and why the fix reads the way it does; wherever it says "Fix not written" that no longer
+applies — see §6.4 for the current GREEN status.
 
 **43.6% of all settled prints are BMO, and every one of them is read `open→close`, which excludes
 the premarket gap that IS the reaction.**
@@ -271,10 +285,10 @@ never asked. The tests assert the AMC branch anchors to the next session; none a
 branch is measured correctly, because open→close was the assumed-correct baseline both branches
 were compared against.
 
-*Fix not written — Phase 0 gate. The read to replace it is settled in §6.1.1; see the note at
-the end of §6.*
+*Shipped — #2663. The read that replaced it is settled in §6.1.1 (decision: ship B); see §6.4 for
+the current GREEN status.*
 
-### 6.1.1 — which read replaces it (UNKNOWN #1, resolved by measurement)
+### 6.1.1 — which read replaces it (UNKNOWN #1, resolved by measurement, decision shipped)
 
 Establishing that `session_open_to_close` is wrong does not say what is right. Three candidates,
 measured on 90 settled BMO prints, `importance>=4`, 2026-01 → 2026-08, using **extended-hours
@@ -385,10 +399,19 @@ is present under its own name), but it is a boundary description that no longer 
 - **Cache-key collisions** — the Benzinga ticker cache key includes the print count, so two
   callers wanting different sample sizes cannot share an entry.
 - **Coverage counters** — the timeline publishes what it filtered and what it could not classify.
+- **BMO reaction anchoring (§6.1)** — `reactionForPrint` now reads a BMO print the same way as
+  AMC, from the last close before the print to the anchor session's close
+  (`prior_close_to_close`), per the §6.1.1 "ship B" decision; `session_open_to_close` is reached
+  only for an `unknown`-timing print. Shipped #2663, 2026-08-22; re-verified against `main` at
+  `92a1b1e51` (2026-11-07) — see §6.1.
 
 > **On the Phase 0 gate.** The charter says *"do not open a fix PR until Phase 0's deliverable is
-> merged"*, so §6.1 and §6.2 are documented here rather than fixed. Both are now
-> fully scoped — §6.1's open decision was the one thing blocking it, and §6.1.1 closes it.
+> merged"*, so §6.1 and §6.2 were originally documented here rather than fixed. §6.1's open
+> decision was the one thing blocking it, §6.1.1 closed it, and #2663 shipped it the same day this
+> map was merged. **§6.2 remains open** — the payload carries `reaction_basis`/`reaction_measure`/
+> `reaction_settled` but no component in `src/features/meridian/components/` reads any of the
+> three (re-checked 2026-11-07, same grep as §6.2 still turns up nothing outside the type
+> definition), so that one is still documented here rather than fixed.
 
 ---
 
@@ -398,7 +421,8 @@ is present under its own name), but it is a boundary description that no longer 
 the PR and in §6 still points somewhere.)*
 
 1. ~~Which read replaces `session_open_to_close` for a BMO print?~~ **RESOLVED — measured, see
-   §6.1.1.** `prior_close_to_close`, with the residual named in the payload rather than fixed.
+   §6.1.1, and SHIPPED (#2663, 2026-08-22; see §6.1/§6.4).** `prior_close_to_close`, with the
+   residual named on the value as `reaction_includes_prior_drift`.
 2. **`meridian-warm`'s deployed UTC schedule.** `blackout-infra` is not in this session, and
    `cron-dst-audit.mjs` refuses a verdict without the manifest — correctly. The 04:00–20:00 ET
    band is wide enough that drift is unlikely, but "unlikely" is not "checked".
