@@ -458,7 +458,12 @@ export async function runEngagementSweep(opts: {
       .filter((h) => {
         if (tweetAgeHours(h.created_at) > MAX_TWEET_AGE_HOURS) return false;
         if (!h.author_username) return false;
-        if (h.author_username.toLowerCase() === "blackouttrade") return false;
+        const uname = h.author_username.toLowerCase();
+        if (uname === "blackouttrade") return false;
+        // Same blocklist the curated-giants loop (`if (X_BLOCK_RT_USERNAMES.has(handle))
+        // continue;`) and discovery pass (`isNewDiscoveryAuthor`) both already enforce before
+        // this loop existed — see the root-cause note on the fix this commit ships.
+        if (X_BLOCK_RT_USERNAMES.has(uname)) return false;
         return isReplyableTweet(h.text);
       })
       .sort((a, b) => scoreSearchHit(b) - scoreSearchHit(a));
