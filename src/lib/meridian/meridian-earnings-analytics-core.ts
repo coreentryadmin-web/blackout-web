@@ -1,3 +1,5 @@
+import { etWallClockToIso } from "@/lib/meridian/meridian-viz-core";
+
 /**
  * Meridian earnings ANALYTICS core — pure, testable transforms over Benzinga structured earnings.
  *
@@ -398,9 +400,13 @@ export function buildPrintClock(
   const out: PrintClockEntry[] = [];
   for (const r of rows) {
     const session = classifyPrintSession(r.time);
-    // ET wall-clock -> epoch. -04:00 is ET daylight time; the app is US-market-only and every other
-    // Meridian surface already assumes ET, so this matches rather than inventing a second convention.
-    const stamp = r.time ? Date.parse(`${r.date}T${r.time}-04:00`) : NaN;
+    // ET wall-clock -> epoch, via the shared DST-aware converter. A hardcoded `-04:00` (EDT) is
+    // wrong for the ~4 EST months of the year — see `etWallClockToIso`'s own doc comment, which
+    // exists specifically because this exact shape of bug (a fixed UTC offset standing in for ET)
+    // has recurred in this repo before. Using it here keeps every Meridian surface on one real,
+    // tested ET->UTC conversion instead of each one re-deriving its own, sometimes wrong, offset.
+    const stampIso = r.time ? etWallClockToIso(r.date, r.time) : null;
+    const stamp = stampIso ? Date.parse(stampIso) : NaN;
     const minutesUntil = Number.isFinite(stamp) ? Math.round((stamp - nowMs) / 60000) : null;
     if (minutesUntil != null && (minutesUntil < -60 || minutesUntil > horizonHours * 60)) continue;
     out.push({

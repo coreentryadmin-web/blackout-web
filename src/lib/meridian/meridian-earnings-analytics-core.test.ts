@@ -263,6 +263,25 @@ test("buildPrintClock: a just-passed print stays briefly, a long-past one drops"
   assert.equal(clock[0]!.minutesUntil, -30);
 });
 
+// REGRESSION: `buildPrintClock` parsed the ET wall-clock print time with a HARDCODED `-04:00`
+// (EDT) offset. That is correct for ~8 months of the year but wrong by a full hour during EST
+// (roughly early Nov → mid-March) — the exact failure shape `etWallClockToIso`'s own doc comment
+// in meridian-viz-core.ts warns about ("a hardcoded -04:00 is wrong for the other ~4 [months]").
+// 2026-12-15 is deep in EST. A print stamped 16:30:00 ET on that date is 21:30:00Z, not 20:30:00Z.
+test("buildPrintClock: uses the real ET→UTC offset in EST months, not a hardcoded EDT -04:00", () => {
+  const printInstantUtc = Date.parse("2026-12-15T21:30:00.000Z"); // 16:30 ET under EST (-05:00)
+  const now = printInstantUtc - 10 * 60_000; // 10 real minutes before the print
+  const clock = buildPrintClock(
+    [row({ ticker: "WINTER", date: "2026-12-15", time: "16:30:00" })],
+    now
+  );
+  assert.equal(
+    clock[0]!.minutesUntil,
+    10,
+    "a hardcoded -04:00 offset miscounts this EST-season print by a full hour"
+  );
+});
+
 test("buildWeekPulse: beat rate counts only graded prints; medians never return NaN", () => {
   const p = buildWeekPulse([
     row({ ticker: "A", date: "2026-08-20", actual_eps: 1, eps_surprise_pct: 0.1, importance: 5 }),
