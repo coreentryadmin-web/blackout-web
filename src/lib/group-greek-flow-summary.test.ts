@@ -82,3 +82,29 @@ test("summarizeGroupGreekFlow bias is delta-only (supportive/opposing) when gamm
   ]);
   assert.equal(opposing?.bias, "opposing");
 });
+
+// Boundary-rounding regression: the same "K rounds up past 1000 and never promotes to M" bug
+// already fixed in fmtOi/fmtPremium/fmtCompactHeatMoney/fmtShares/formatAdvShareLabel. A net
+// delta of 999_600 is BELOW the 1_000_000 M-threshold check, but Math.round(999_600 / 1000) is
+// 1000 — displaying "1000K" (a malformed 4-digit K label) instead of promoting to "1.00M".
+test("summarizeGroupGreekFlow headline promotes to M instead of showing an overflowed 1000K label", () => {
+  const summary = summarizeGroupGreekFlow("mag7", [
+    realMag7Row({ dir_delta_flow: "999600" }),
+  ]);
+  assert.match(summary!.headline, /1\.00M/, `expected "1.00M" in headline, got: ${summary!.headline}`);
+  assert.doesNotMatch(summary!.headline, /1000K/);
+});
+
+test("summarizeGroupGreekFlow headline promotes a NEGATIVE boundary value to M, preserving sign", () => {
+  const summary = summarizeGroupGreekFlow("mag7", [
+    realMag7Row({ dir_delta_flow: "-999600" }),
+  ]);
+  assert.match(summary!.headline, /-1\.00M/, `expected "-1.00M" in headline, got: ${summary!.headline}`);
+  assert.doesNotMatch(summary!.headline, /-1000K/);
+});
+
+// A value comfortably below the boundary must still render in K, unaffected by the fix.
+test("summarizeGroupGreekFlow headline still renders a normal sub-boundary value in K", () => {
+  const summary = summarizeGroupGreekFlow("mag7", [realMag7Row()]); // dir_delta_flow ~308034.78
+  assert.match(summary!.headline, /308K/, `expected "308K" in headline, got: ${summary!.headline}`);
+});
