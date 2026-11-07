@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-07T16:08:56.684Z",
+  "updated_at": "2026-11-07T16:23:24.364Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-07T16:08:32.624Z"
+      "released_at": "2026-11-07T16:22:58.073Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-07T16:08:38.634Z",
-      "lease_until": "2026-11-07T16:09:38.634Z",
+      "claimed_at": "2026-11-07T16:23:04.374Z",
+      "lease_until": "2026-11-07T16:24:04.374Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-07T16:08:38.640Z"
+      "released_at": "2026-11-07T16:23:04.379Z"
     }
   },
   "reviews": {
@@ -83,11 +83,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "260ada35ca9be14ffcf4d1ab115cc69fc394b753",
+    "last_main_sha": "46aeb97c6bfb7cc029e0f7bcdd82b1164b4a2755",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-07T16:00:58Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42389139436",
-    "last_deploy_sha": "24ddddd7fb0e4b59fb5421ea9073fe52ec7345e7"
+    "last_deploy_at": "2026-11-07T16:17:40Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42390559667",
+    "last_deploy_sha": "46aeb97c6bfb7cc029e0f7bcdd82b1164b4a2755"
   },
   "events": [
     {
@@ -1255,52 +1255,62 @@
       "open_pr_count": 7
     },
     {
-      "at": "2026-11-07T16:08:32.624Z",
+      "at": "2026-11-07T16:22:58.073Z",
       "type": "task_released",
       "task_id": "BO-TEST-0007",
       "owner": "claude"
     },
     {
-      "at": "2026-11-07T16:08:38.638Z",
+      "at": "2026-11-07T16:23:04.377Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 7
+      "open_pr_count": 8
     },
     {
-      "at": "2026-11-07T16:08:38.640Z",
+      "at": "2026-11-07T16:23:04.379Z",
       "type": "task_released",
       "task_id": "BO-TEST-0009",
       "owner": "claude"
     },
     {
-      "at": "2026-11-07T16:08:44.629Z",
+      "at": "2026-11-07T16:23:11.082Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 7
+      "open_pr_count": 8
     },
     {
-      "at": "2026-11-07T16:08:50.643Z",
+      "at": "2026-11-07T16:23:18.031Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 7
+      "open_pr_count": 8
     },
     {
-      "at": "2026-11-07T16:08:56.683Z",
+      "at": "2026-11-07T16:23:24.364Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 7
+      "open_pr_count": 8
     }
   ],
   "open_prs": [
     {
-      "number": 7504,
-      "title": "fix(meridian): pickEarningsCalendarRow served an unrelated future print on a date mismatch",
-      "branch": "fix/meridian-pick-earnings-calendar-row-fallback",
+      "number": 7506,
+      "title": "fix(meridian): buildPrintClock hardcoded EDT -04:00, wrong by an hour under EST",
+      "branch": "fix/print-clock-dst-offset",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/pending",
-      "updated_at": "2026-11-07T16:03:43Z"
+      "updated_at": "2026-11-07T16:17:11Z"
+    },
+    {
+      "number": 7505,
+      "title": "chore: agent-state heartbeat sync",
+      "branch": "chore/agent-state-heartbeat-sync-1107b",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-11-07T16:09:26Z"
     },
     {
       "number": 7412,
