@@ -1796,7 +1796,19 @@ export function closedCoaching(play: TerminalPlay, spot?: number | null): string
       lines.push(`**Round-tripped past breakeven** — was up **${fmtPct(outcome.peakPct)}** at peak, closed at **${fmtPct(outcome.exitPnlPct)}**; ${advice}`);
     } else if (outcome?.kind === "capture") {
       const capture = outcome.capturePct;
-      if (capture >= 75) lines.push(`**Strong discipline** — captured **${fmtPct(capture)}** of peak; replicate trim timing.`);
+      // BUG FIX (Ask Largo standing mandate, 2026-11-07, live repro MRNA:68): "replicate trim
+      // timing" credits the scale-out ladder for a high capture, but `capture` is computed purely
+      // from exitPnlPct/peak (mfeCaptureOutcome) with no reference to whether the ladder's own
+      // +100% trigger ever actually armed — the same gap `lessonsSection`'s `mechanismConfirmed`
+      // gate (play-brief-intel.ts, 2026-11-01 PANW:67 fix) already closed for the sibling
+      // "Lessons" section. Without this gate, a manual/time-stop/thesis-break close that happened
+      // to land a high capture% reads as deliberate trim discipline here while the SAME brief's
+      // Lessons section (reading the same `trimEnforcedBeforeClose` fact) correctly says the
+      // mechanism isn't confirmed — a direct contradiction live-confirmed on MRNA:68 (capture
+      // ~100%, closedReason "target", trimEnforcedBeforeClose:false).
+      const mechanismConfirmed = play.trimEnforcedBeforeClose === true;
+      if (capture >= 75 && mechanismConfirmed) lines.push(`**Strong discipline** — captured **${fmtPct(capture)}** of peak; replicate trim timing.`);
+      else if (capture >= 75) lines.push(`Captured **${fmtPct(capture)}** of peak, but the scale-out ladder isn't confirmed to have fired — review how this actually exited before crediting trim discipline.`);
       else if (capture < 35 && play.peak > 20) lines.push(`**Gave back the move** — only **${fmtPct(capture)}** MFE capture; tighten at first trim rail next time.`);
       else lines.push(`MFE capture **${fmtPct(capture)}** — review runner vs trim policy.`);
     }
