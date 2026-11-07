@@ -2644,7 +2644,25 @@ export function lessonsSection(
       const capture = outcome.capturePct;
       lines.push(`MFE capture: **${fmtPct(capture)}** of peak move`);
       if (capture >= 75) {
-        if (!captureAlreadyNoted) {
+        // BUG FIX (Ask Largo standing mandate, 2026-11-07, live repro MRNA:68): this branch's own
+        // "Strong exit discipline ... replicate trim ladder timing" credit had no mechanism-
+        // confirmation gate of its own — it only ever avoided crediting an unconfirmed ladder exit
+        // by ACCIDENT, via `captureAlreadyNoted`'s string-match dedup against closedCoaching's
+        // (play-brief-narrative-coaching.ts) identical old unconditional phrasing. Once that
+        // sibling function's own capture>=75 branch was gated on `trimEnforcedBeforeClose` (same
+        // PR, same mandate) to STOP saying "replicate trim timing" when the mechanism isn't
+        // confirmed, `captureAlreadyNoted` correctly went false for those plays -- which then let
+        // THIS branch fire the identical over-confident credit on its own, live-confirmed on
+        // MRNA:68 (capture 100%, trimEnforcedBeforeClose:false): "Lessons" rendered "**Strong exit
+        // discipline** — banked most of the move; replicate trim ladder timing." immediately
+        // followed by this same function's OWN closedReason-based block saying "the scale-out
+        // ladder's own +100% trigger is not confirmed to have fired... before crediting the
+        // mechanism" -- a direct self-contradiction two lines apart, the exact bug class the
+        // 2026-11-01 PANW:67 fix closed for that sibling block but never reached this one. Gated
+        // the same way: only credit ladder discipline when the frozen `trimEnforcedBeforeClose`
+        // fact actually confirms it.
+        const mechanismConfirmed = play.trimEnforcedBeforeClose === true;
+        if (!captureAlreadyNoted && mechanismConfirmed) {
           lines.push("**Strong exit discipline** — banked most of the move; replicate trim ladder timing.");
         }
       } else if (capture < 35) {

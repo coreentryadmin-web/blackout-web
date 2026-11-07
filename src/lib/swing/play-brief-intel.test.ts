@@ -2122,6 +2122,50 @@ test("lessonsSection: omits the 'Strong exit discipline' capture verdict when Tr
   assert.match(suppressed!.body, /sector rotation leadership/i);
 });
 
+test("lessonsSection: capture>=75 'Strong exit discipline' credit requires a confirmed ladder exit on its own, not just captureAlreadyNoted (Ask Largo mandate, 2026-11-07, live repro MRNA:68)", () => {
+  // Live repro: MRNA:68, CLOSED/target, peak +187.2%, exit +187.2% (MFE capture 100%),
+  // trimEnforcedBeforeClose:false. "Lessons" independently credited "**Strong exit discipline**
+  // — banked most of the move; replicate trim ladder timing." while THIS SAME FUNCTION's own
+  // closedReason-based block, one line later, said the ladder's own +100% trigger "is not
+  // confirmed to have fired... before crediting the mechanism" — a direct self-contradiction two
+  // lines apart, in the same section. Root cause: `captureAlreadyNoted` (the dedup flag this
+  // branch relied on) is a string-match against closedCoaching's (play-brief-narrative-
+  // coaching.ts) capture>=75 phrasing — once that sibling branch was gated on
+  // `trimEnforcedBeforeClose` (same PR, same mandate) to stop saying "replicate trim timing" for
+  // an unconfirmed exit, the dedup flag correctly went false, which then let THIS branch fire the
+  // same over-confident credit with no gate of its own — the exact bug class the 2026-11-01
+  // PANW:67 fix closed for the sibling closedReason-based block in this file, but never reached
+  // this one.
+  const unconfirmed = fixturePlay({
+    status: "CLOSED",
+    peak: 187.2,
+    exitPnlPct: 187.2,
+    mfeCapturePct: 100,
+    closedReason: "target",
+    archetype: "PULLBACK_CONTINUATION",
+    trimEnforcedBeforeClose: false,
+  });
+  const section = lessonsSection(unconfirmed, false, false, false, false);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /strong exit discipline/i);
+  assert.match(section!.body, /MFE capture/i);
+  assert.match(section!.body, /not confirmed to have fired/i);
+
+  // A genuinely confirmed ladder exit still gets the credit — unchanged behavior.
+  const confirmed = fixturePlay({
+    status: "CLOSED",
+    peak: 187.2,
+    exitPnlPct: 187.2,
+    mfeCapturePct: 100,
+    closedReason: "target",
+    archetype: "PULLBACK_CONTINUATION",
+    trimEnforcedBeforeClose: true,
+  });
+  const confirmedSection = lessonsSection(confirmed, false, false, false, false);
+  assert.ok(confirmedSection);
+  assert.match(confirmedSection!.body, /strong exit discipline/i);
+});
+
 test("lessonsSection: omits the bare 'Exit: **{reason}**' restatement when Trade manager read already stated the same reason, but keeps it for thesis/stopped whose Trade-manager phrasing is a paraphrase, not a duplicate", () => {
   // Live repro (2026-10-18, Ask Largo × Night Hawk Swings mandate, real production play-briefs):
   // BE/MSFT (closedReason=target) and PYPL (closedReason=flat) all rendered BOTH "Trade manager
