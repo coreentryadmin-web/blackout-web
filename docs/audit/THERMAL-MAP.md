@@ -518,7 +518,7 @@ gets made deliberately.
 `concentration`, so "relabel" is the established convention on two of three surfaces and "null" on
 the third.)*
 
-### 9.5 [P3, Largo boundary] `route-registry.ts` points Largo at the wrong path for the Thermal matrix
+### 9.5 [P3, Largo boundary] `route-registry.ts` points Largo at the wrong path for the Thermal matrix — **FIXED**
 
 ```
 { path: "/api/market/heatmap",     …, description: "GEX/VEX/DEX/CHARM heatmap matrix (Thermal)." }
@@ -536,23 +536,32 @@ Severity is P3, not P2, because of §9.6's mechanism: `callInternalApiRead` send
 so both paths are 401 to it anyway. What is actually broken here is the manifest the model reasons
 from, not a read it can perform.
 
-### 9.6 [P3, governance] `/api/market/gex-heatmap/explain` is classed `read` although it is an LLM cost route — and `call_internal_api` sends no credential
+**FIXED — #2753 (2026-08-23).** `/api/market/heatmap`'s description now reads *"Sector performance
+and market movers."* and `/api/market/gex-heatmap`'s now reads *"GEX heatmap surface for a ticker
+(dealer positioning matrix)."* — re-verified directly against `route-registry.ts` on `main` at
+`098d84a08` (2026-11-07): the two entries no longer collide, and the BIE knowledge-base chunk built
+from them now tells the model the Thermal matrix lives where it actually does.
 
-Two facts that only make sense together.
+### 9.6 [P3, governance] `/api/market/gex-heatmap/explain` is classed `read` although it is an LLM cost route — **FIXED** — and `call_internal_api` sends no credential (still open)
 
-**The classification is wrong.** The registry's safety model says cost/LLM routes are listed
-`class:"mutation"` so they are "documented AND denied" — `largo/query`, `spx/commentary`,
+Two facts that only made sense together when this was written; the first is now fixed, the second
+is unchanged.
+
+**The classification was wrong — now fixed.** The registry's safety model says cost/LLM routes are
+listed `class:"mutation"` so they are "documented AND denied" — `largo/query`, `spx/commentary`,
 `nighthawk/hunt` and `nighthawk/play-explain` all are. Thermal's `explain` route calls `anthropicText`
-and is registered `class:"read"`, described as *"Deterministic GEX-heatmap narrative."* By the
-registry's own stated rule it belongs on the denied side, and its description asserts the opposite
-of what it does.
+but was registered `class:"read"`, described as *"Deterministic GEX-heatmap narrative."* By the
+registry's own stated rule it belonged on the denied side, and its description asserted the opposite
+of what it did. **FIXED — #2753 (2026-08-23):** re-verified against `route-registry.ts` on `main` at
+`098d84a08` (2026-11-07) — the entry is now `class: "mutation"`, described *"LLM-powered narrative
+summary of GEX heatmap — cached per ticker (~180s), calls Claude on miss."*
 
-**But nothing can currently reach it that way.** `callInternalApiRead` fetches with
+**But nothing can currently reach it that way — still true, unmeasured since.** `callInternalApiRead` fetches with
 `headers: { "x-bie-internal-read": "1", accept: "application/json" }` and **no cron bearer and no
 session cookie** — and `x-bie-internal-read` is honoured by no route in the codebase (grep: one
 occurrence, the sender). Every `/api/market/*` route behind `authorizeMarketDeskApi` /
-`authorizePremiumDeskApi`, `explain` included, therefore answers 401. The misclassification is
-latent, not live.
+`authorizePremiumDeskApi`, `explain` included, therefore answers 401. Even with the classification
+now corrected, `call_internal_api` still cannot reach the route either way.
 
 Which raises the larger question this pass did not answer: **is `call_internal_api` able to read the
 market family at all?** If not, the "universal read-access tool" is 401-ing on the whole area while
