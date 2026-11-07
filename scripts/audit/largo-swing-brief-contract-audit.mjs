@@ -103,7 +103,7 @@ function auditC3Absence(responseData) {
   const unavail = envelope?.unavailableSources;
 
   // unavailableSources is a list of {source, reason, what_is_missing?, retryable?} objects
-  // BieUnavailableSource requires source + reason (per answer-envelope.ts:107-112)
+  // BieUnavailableSource requires source + reason (per answer-envelope.ts:126-131)
   if (unavail && Array.isArray(unavail)) {
     unavail.forEach((item, i) => {
       if (!item.source || typeof item.source !== "string") {
@@ -205,7 +205,7 @@ function auditC6Confidence(responseData) {
     findings.push({ code: "C6-missing-confidence", severity: "AMBER", detail: "envelope.confidence not present (may not be calibrated yet)" });
   } else {
     // BieConfidence has level + why (not score + basis)
-    // Level must be one of: "high" | "moderate" | "low" | "insufficient"
+    // Level must be one of: "high" | "moderate" | "low" | "insufficient" (per answer-envelope.ts:22)
     if (!conf.level || typeof conf.level !== "string") {
       findings.push({ code: "C6-invalid-confidence-level", severity: "RED", detail: `confidence.level invalid: ${conf.level}` });
     } else if (!["high", "moderate", "low", "insufficient"].includes(conf.level)) {
@@ -235,7 +235,7 @@ function auditC6Confidence(responseData) {
 /**
  * CONTRACT AUDIT: C7 EVIDENCE
  * evidence: BieEvidence[] — { kind: "fact"|"calc"|"inference"|"scenario"; text: string; provenance?: {...} }
- * Specific numbers/facts, not restatements
+ * Specific numbers/facts, not restatements (per answer-envelope.ts:58-63)
  */
 function auditC7Evidence(responseData) {
   const findings = [];
