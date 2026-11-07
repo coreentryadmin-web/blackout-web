@@ -819,7 +819,14 @@ export async function fetchBenzingaAnalystRatings(ticker: string, limit = 15) {
 }
 
 // ---------------------------------------------------------------------------
-// Benzinga CATALYSTS (free on plan — confirmed-working channels, space-delimited lowercase).
+// Benzinga CATALYSTS (space-delimited lowercase channels).
+//   ⚠️ ENTITLEMENT REGRESSED (2026-11-07): /benzinga/v2/news now 403s "You are not entitled to
+//   this data" on EVERY channel combo re-tested, including the ones this comment used to call
+//   "confirmed-working" — corroborated by a live production swing/play-brief 403 the same day,
+//   and isolated to Benzinga specifically (sibling Polygon/Massive endpoints 200 on the same
+//   key). Account/billing issue, not a code bug — see
+//   docs/audit/findings-staging/2026-11-07-benzinga-entitlement-lost.md. Do not trust "entitled
+//   on the current plan" below without re-testing first.
 //   These channels are entitled on the current plan and return data via
 //   /benzinga/v2/news?channels.any_of=… but were previously unused. Benzinga news has no
 //   rate limit, but we still CACHE per-ticker so 500 concurrent edition builds / users share
@@ -944,6 +951,9 @@ export async function fetchBenzingaAfterHoursMovers(
 
 // ---------------------------------------------------------------------------
 // Benzinga analyst price target (corrected channel).
+//   ⚠️ 2026-11-07: the "ONLY working source" below has itself since 403'd NOT ENTITLED —
+//   see docs/audit/findings-staging/2026-11-07-benzinga-entitlement-lost.md. Both paths
+//   (structured ratings AND the /benzinga/v2/news channel this parses) are currently down.
 //   The plan is NEWS-only — the structured /benzinga/v1/ratings + consensus-ratings
 //   endpoints 403 (NOT ENTITLED) and the `analyst-ratings` channel returns []. The ONLY
 //   working source is the `price target` channel on /benzinga/v2/news, where PTs appear
