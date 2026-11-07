@@ -179,6 +179,31 @@ test("pickEarningsCalendarRow selects event date", () => {
   assert.equal(row?.previous_eps, 1.04);
 });
 
+test(
+  "pickEarningsCalendarRow returns null — NOT an unrelated future row — when nothing matches " +
+    "the requested event date (real repro: Benzinga shifted the confirmed date by a day after " +
+    "a member's page already carried the old one; same bug SHAPE as the already-fixed " +
+    "parseNextEarningsFromBenzinga/pickUpcomingEarningsRow 'no fabricated fallback' discipline " +
+    "elsewhere in this file family — see #7100)",
+  () => {
+    // `loadBenzingaTickerEarnings` fetches with `sort: "date.desc"`, so in production `rows[0]`
+    // is the MOST FUTURE row in the fetched window, not the row nearest the requested
+    // `eventDate`. Here the caller asked for the 2026-08-26 print; Benzinga's own calendar has
+    // since moved to 2026-08-25 for that same quarter, plus a later, unrelated projected print.
+    const rows = [
+      bz({ ticker: "NVDA", date: "2026-11-25", estimated_eps: 1.1, fiscal_period: "Q4" }),
+      bz({ ticker: "NVDA", date: "2026-08-25", estimated_eps: 2.07, previous_eps: 1.04 }),
+    ];
+    const row = pickEarningsCalendarRow(rows, "2026-08-26");
+    assert.equal(
+      row,
+      null,
+      "no row carries the requested date — the function must report absence, not substitute " +
+        "an unrelated future print's estimates for it"
+    );
+  }
+);
+
 test("computeEarningsYoY from estimate vs prior", () => {
   const yoy = computeEarningsYoY(bz({ ticker: "NVDA", date: "2026-08-26", estimated_eps: 1.2, previous_eps: 1.0 }));
   assert.equal(yoy?.eps_yoy_pct, 20);
