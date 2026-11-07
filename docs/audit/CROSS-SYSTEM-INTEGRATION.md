@@ -3,6 +3,15 @@
 **Date:** 2026-08-23 · **Scope:** All four trading systems (Night Hawk, Swings, Bangers, Legacy)  
 **Status:** FRAMEWORK DEFINED — detailed validation pending  
 
+> **Note (2026-11-07):** this document was written as a speculative validation *framework* (open
+> questions, illustrative example payloads) rather than from direct source inspection — several of
+> its "stated as fact" specifics (Redis key names, cron job names/intervals in §5) turned out not
+> to match `main` at all. Those two subsections are corrected in place below with real values
+> verified against current source. The rest of the document (illustrative API route/schema
+> examples in §2, the open ⚠️/⏳ questions throughout) was written as hypothetical/not-yet-verified
+> from the start and is NOT re-verified here — do not treat any unmarked bullet in this file as a
+> confirmed fact about `main` without checking it against source first.
+
 ---
 
 ## EXECUTIVE SUMMARY
@@ -282,16 +291,25 @@ BlackOut's four trading systems (Night Hawk, Swings, Bangers, Legacy) operate in
 
 ### Redis (Caching)
 
-**Shared keys:**
-- `nighthawk:board:snapshot:v1` (0DTE board)
-- `swing:board:snapshot:v1` (Swings board)
-- `banger:board:snapshot:v1` (Bangers board, if exposed)
-- `zerodte:marks:*` (1s-tick live marks, 0DTE)
-- Various other caches (accumulation reads, cortex decisions, etc.)
+**Shared keys — CORRECTED 2026-11-07, verified against `main` (none of the four keys below
+existed under the names this section originally gave; repo-wide `grep` for each literal string
+turned up zero call sites):**
+- `zerodte:board:snapshot:v1` (0DTE board — `BOARD_SNAPSHOT_KEY`, `zerodte-service.ts`), not
+  `nighthawk:board:snapshot:v1` as previously stated
+- `swing:serving:latest:v1` (Swings — `SWING_SERVING_CACHE_KEY`, `swing/serving-lane.ts`), not
+  `swing:board:snapshot:v1`
+- `banger:watch:v1:<sessionDate>` (Bangers — `CACHE_KEY`, `banger/watch-cache.ts`), not
+  `banger:board:snapshot:v1`
+- A dedicated `zerodte:marks:*` 1s-tick key was NOT found anywhere in `src/` either — 0DTE live
+  marks are refreshed through a different mechanism than a single enumerable Redis key pattern;
+  this line is removed rather than guessed, per `zerodte/*`'s exclusion from this pass
+- Various other caches genuinely exist (accumulation reads, cortex decisions, swing calibration —
+  e.g. `swing:calibration:archetype_track_record:v1`, etc.) — this section was never an exhaustive
+  key inventory and still isn't one
 
 **Staleness:**
-- Board cache: 600s TTL (refreshed per cron)
-- Marks cache: 1s TTL (ticked live)
+- Board cache: TTL varies per key/system — do not assume a single shared "600s" figure without
+  reading the specific cache-set call site
 - **Question:** If Redis is unavailable, do systems gracefully degrade or does the desk go dark?
 
 ### Polygon API
@@ -307,13 +325,21 @@ BlackOut's four trading systems (Night Hawk, Swings, Bangers, Legacy) operate in
 
 ### Cron Concurrency
 
-**Daily cron schedule:**
-- `nighthawk-morning-confirm` (RTH −15 min): Promote legacy theses
-- `swing-discovery` (RTH): Screen multi-day candidates
-- `banger-discovery` (RTH): Screen whole-market movers
-- `nighthawk-live-sync` (RTH, every 5 min): Refresh 0DTE marks + scale-out
-- `swing-live-sync` (RTH, every 10 min): Refresh Swings marks
-- `banger-live-sync` (RTH, every 10 min): Refresh Bangers marks
+**Daily cron schedule — CORRECTED 2026-11-07, verified against `src/lib/cron-registry.ts` on
+`main` (three of the six job names below did not exist under those names, and two of the three
+that did exist had the wrong interval):**
+- `nighthawk-morning-confirm` — 9:15 AM ET weekdays (`schedule_cron_utc: "15 13,14 * * 1-5"`):
+  promote legacy theses — this one was already accurate (RTH −15 min ≈ 9:15 ET)
+- `swing-discovery` — **phase-anchored (post-close first; wide-band fire, route decides), not
+  "RTH"** as previously stated
+- `banger-discovery` — **4:15 PM ET weekdays, i.e. post-close, not "RTH"** as previously stated
+- `zerodte-warm` ("0DTE Command Warm") — ~every 5 min during market hours: refreshes the 0DTE
+  board/marks. There is no `nighthawk-live-sync` job; the previous bullet named a job that does
+  not exist in the registry
+- `swing-active-refresh` ("Night Hawk Swing Refresh") — every 15 min during market hours, not
+  every 10 min; there is no `swing-live-sync` job
+- `banger-live-sync` — ~every 5 min during market hours (`schedule_cron_utc: "*/5 11-21 * * 1-5"`),
+  not every 10 min as previously stated
 - **Question:** Are cron jobs sequenced to avoid concurrent DB/Polygon peaks?
 
 **COHERENCE CHECKS:**
