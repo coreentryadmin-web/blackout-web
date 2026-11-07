@@ -90,7 +90,7 @@ reported so the choice is auditable.
 
 ## Invariants (why it is trustworthy)
 
-Unit-tested in `gex-depth.test.ts` (25 tests):
+Unit-tested in `gex-depth.test.ts` (45 tests):
 
 - `bsGamma` **is** the finite-difference derivative of `bsDelta` — not merely a plausible curve.
 - A net-long-gamma book **must** sell above and buy below; net-short must invert; flipping the
@@ -167,7 +167,12 @@ unavailable until the next fresh build: **absent is honest, stale is not.**
 
 1. **Vol axis → the shock engine.** Adding a σ dimension to the same grid turns this into
    "SPX −2%, VIX +5 → dealers must sell $X", of which today's ladder is the σ-unchanged row.
-2. **Matrix rail.** A compact version pinned beside the matrix, sharing its strike rows.
-3. **On the price chart.** Rotated onto the price axis of the desk chart — a forward-looking volume
+2. **On the price chart.** Rotated onto the price axis of the desk chart — a forward-looking volume
    profile. Probably the most-used placement eventually.
-4. **Night Hawk context.** Annotate a play's target with the forced flow between here and there.
+3. **Night Hawk context.** Annotate a play's target with the forced flow between here and there.
+
+**Shipped since this list was written:** a "matrix rail" — a compact forced-flow rail pinned
+beside the matrix, row-aligned to each listed strike via `depthBandForPrice`'s exact-containment
+band lookup (#2092), with its wall marker later fixed to show the wall's real price instead of
+the nearest rung (`wallMarkerRowIndex`, #3001). This item was originally numbered 2 in this list;
+it is removed from the open follow-ups above rather than left to describe already-shipped work.
