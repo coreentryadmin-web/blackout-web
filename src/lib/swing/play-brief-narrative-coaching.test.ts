@@ -3505,7 +3505,7 @@ test("dataHonestyCoaching: uses ctx.readMs, not the real wall clock, to judge Ve
 });
 
 test("execSlippageCoaching: flags wide mid vs fill gap", () => {
-  const line = execSlippageCoaching(play({ pnlPct: 50, execPnlPct: 30 }));
+  const line = execSlippageCoaching(play({ pnlPct: 50, execPnlPct: 30, mark: 10, execMark: 9 }));
   assert.match(line!, /slippage/i);
 });
 
@@ -3515,16 +3515,58 @@ test("execSlippageCoaching: flags wide mid vs fill gap", () => {
 test("execSlippageCoaching: appends the stale-quote caveat when the mark/quote snapshot is aged", () => {
   const readMs = Date.parse("2026-09-05T21:00:00.000Z");
   const stale = execSlippageCoaching(
-    play({ status: "OPEN", pnlPct: 50, execPnlPct: 30, markAsOf: "2026-09-05T20:00:00.000Z", markIsSync: false }),
+    play({
+      status: "OPEN",
+      pnlPct: 50,
+      execPnlPct: 30,
+      mark: 10,
+      execMark: 9,
+      markAsOf: "2026-09-05T20:00:00.000Z",
+      markIsSync: false,
+    }),
     readMs,
   );
   assert.match(stale!, /stale — same quote Mark flagged above/, `got: ${stale}`);
 
   const fresh = execSlippageCoaching(
-    play({ status: "OPEN", pnlPct: 50, execPnlPct: 30, markAsOf: "2026-09-05T20:58:00.000Z", markIsSync: false }),
+    play({
+      status: "OPEN",
+      pnlPct: 50,
+      execPnlPct: 30,
+      mark: 10,
+      execMark: 9,
+      markAsOf: "2026-09-05T20:58:00.000Z",
+      markIsSync: false,
+    }),
     readMs,
   );
   assert.doesNotMatch(fresh!, /stale/, `a fresh quote must not carry a staleness caveat, got: ${fresh}`);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-07, live repro APP SWING:APP:2397 OPEN/TRIM): the
+// formula used to divide the mark/execMark dollar gap by ENTRY premium (via the already-entry-
+// denominated pnlPct/execPnlPct), not by the current MARK — so it overstated real bid/ask friction
+// by a factor of roughly mark/entry, worst on exactly the best runners. Live numbers: entry $17.34,
+// mark $98.00, execMark (bid) $93.60 — real slippage (98.00-93.60)/98.00 = 4.49%, well under the
+// 5-point firing threshold and therefore correctly SILENT; the old formula instead computed
+// (98.00-93.60)/17.34 = 25.4 percentage points and fired a confident, wrong "-25% slippage".
+test("execSlippageCoaching: a wide ENTRY-denominated gap on a big winner does not fire when the real mark-relative spread is tight (live APP repro)", () => {
+  const line = execSlippageCoaching(play({ pnlPct: 465.2, execPnlPct: 439.8, mark: 98.0, execMark: 93.6 }));
+  assert.equal(line, null, "a ~4.5% real spread must not read as a ~25% slippage warning");
+});
+
+test("execSlippageCoaching: slippage magnitude is computed against mark, not entry, and keeps the correct direction", () => {
+  // entry $17.34, mark $98.00 (mid% = +465.2%), execMark $90.00 (exec% = +419.0%) — a genuinely
+  // wide real spread this time: (98.00-90.00)/98.00 = 8.16% -> rounds to 8%, not the ~46pp the old
+  // entry-denominated formula would have reported for the identical quotes.
+  const line = execSlippageCoaching(play({ pnlPct: 465.2, execPnlPct: 419.0, mark: 98.0, execMark: 90.0 }));
+  assert.match(line!, /\*\*-8%\*\* slippage/, `got: ${line}`);
+  assert.doesNotMatch(line!, /-46%/);
+});
+
+test("execSlippageCoaching: honest absence — no mark/execMark means no fabricated slippage number", () => {
+  const line = execSlippageCoaching(play({ pnlPct: 50, execPnlPct: 30 }));
+  assert.equal(line, null, "without real mark/execMark quotes there is no basis to compute real slippage");
 });
 
 test("ivRankCoaching: fires when play carries ivRank", () => {
