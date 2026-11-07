@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-07T13:49:39.375Z",
+  "updated_at": "2026-11-07T15:46:40.821Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-07T13:49:17.156Z"
+      "released_at": "2026-11-07T15:46:16.745Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-07T13:49:22.846Z",
-      "lease_until": "2026-11-07T13:50:22.846Z",
+      "claimed_at": "2026-11-07T15:46:23.669Z",
+      "lease_until": "2026-11-07T15:47:23.669Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-07T13:49:22.856Z"
+      "released_at": "2026-11-07T15:46:23.674Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7f7438425803bbc2a110b55c6e57e0fc8ffb7fca",
+    "last_main_sha": "d2ab82a8c66276f9bae4365924cf7b08eb3cc52d",
     "last_deploy_status": "success",
-    "last_deploy_at": "2026-11-07T12:01:58Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42369103367",
-    "last_deploy_sha": "d4703eab27cbf064aa29ad31f081a9fcb0e63c84"
+    "last_deploy_at": "2026-11-07T14:30:37Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42379987186",
+    "last_deploy_sha": "ed715cde94e472c8727190b87164c315df380e87"
   },
   "events": [
-    {
-      "at": "2026-10-26T13:15:15.306Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T13:15:21.890Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T13:54:14.660Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-26T13:54:19.771Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-26T13:54:24.755Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-26T14:04:05.808Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-10-26T14:04:10.701Z",
       "type": "context_sync",
@@ -1289,9 +1253,55 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-07T15:46:16.745Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T15:46:23.673Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-07T15:46:23.674Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T15:46:29.694Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-07T15:46:35.338Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-07T15:46:40.821Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
+    {
+      "number": 7500,
+      "title": "fix(telemetry): collapse Unusual Whales per-ticker paths in endpointTemplate",
+      "branch": "fix/uw-api-telemetry-endpoint-cardinality",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/pending",
+      "updated_at": "2026-11-07T15:35:14Z"
+    },
     {
       "number": 7412,
       "title": "fix(cron-health): SPX pipeline crons use engine window vs cash RTH",
