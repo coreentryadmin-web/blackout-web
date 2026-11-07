@@ -25,7 +25,7 @@ type CachedLegacyMark = {
   mark: number;
   bid: number | null;
   ask: number | null;
-  asof: number;
+  asof: string | null;
 };
 
 /** Cache TTL for legacy option marks fallback: 60 minutes (3600 seconds).
@@ -69,16 +69,13 @@ export async function fetchLegacyOptionMarksServer(
     // If fresh mark found, cache it for fallback (same approach as Swing's last_mark).
     // When both WS and REST fail (mark == null), fall back to cached mark with stale:true.
     if (row.mark != null && Number.isFinite(row.mark) && row.mark > 0) {
-      await sharedCacheSet(
-        `legacy:option:mark:${occ}`,
-        {
-          mark: row.mark,
-          bid: row.bid,
-          ask: row.ask,
-          asof: row.asof,
-        } as CachedLegacyMark,
-        LEGACY_OPTION_MARK_CACHE_TTL_SEC,
-      );
+      const toCache: CachedLegacyMark = {
+        mark: row.mark,
+        bid: row.bid,
+        ask: row.ask,
+        asof: row.asof,
+      };
+      await sharedCacheSet(`legacy:option:mark:${occ}`, toCache, LEGACY_OPTION_MARK_CACHE_TTL_SEC);
     } else if (row.mark == null) {
       // No fresh mark — try cached fallback
       const cached = await sharedCacheGet<CachedLegacyMark>(`legacy:option:mark:${occ}`);
