@@ -854,7 +854,7 @@ export async function buildEveningEdition(opts?: {
         await alertRecapOnlyIfAnomalous(editionFor, funnel, reason, {
           flowFetchFailed: ctx.flow_fetch_failed,
         });
-        await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: 0, checkpointing, force: Boolean(opts?.force) });
+        await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: 0, checkpointing, force: Boolean(opts?.force), funnel });
         return {
           ok: true,
           edition_for: editionFor,
@@ -1854,6 +1854,7 @@ export async function buildEveningEdition(opts?: {
           candidates: funnel.candidates ?? 0,
           checkpointing,
           force: Boolean(opts?.force),
+          funnel,
         });
         // This is NOT a benign collapse — a mid-build exception forced a recap-only. Alert ops.
         await notifyOpsDiscord({
