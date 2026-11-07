@@ -1620,6 +1620,110 @@ test("composeSwingPlayBrief: top-level Invalidation line cites the live runner t
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-07, live repros CAVA positionId 2483 / WMB
+// positionId 2357): the premium-stop fallback test above proves the plain, not-yet-breached case.
+// This is its sibling for a bid that has ALREADY fallen to or through the stop -- the top-level
+// `envelope.invalidation` field (and `evidence_numbers`' "Invalidation: ..." line, built verbatim
+// from it) used to still render the bare future-risk "Premium stop at $X" while the SAME
+// response's Trade manager read, from the identical bid/stop pair, already said "stop already
+// breached on the executable side -- exit or cut size" (tradeManagerNarrativeSection's own
+// execBreached check, play-brief-narrative.ts). Live CAVA: mid $0.53, bid $0.36, stop $0.40.
+test("composeSwingPlayBrief: top-level Invalidation line discloses an already-breached premium stop, not just the future-risk framing", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      direction: "LONG",
+      entry: 0.17,
+      mark: 0.53,
+      execMark: 0.36,
+      exitPolicy: { stop_premium: 0.4, target_premium: 0.6, trim_levels: [] },
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    ecosystemFetchFailed: true,
+    vectorFetchFailed: true,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    "Premium stop at $0.40 — already breached on the executable side",
+    "a bid at/through the stop must disclose the breach, not just the forward-looking stop level",
+  );
+});
+
+// Sibling of the above for a CONFIRMED $0.00 bid (no buyer at any price) -- `execMark` is null
+// for both "no quote at all" and "a genuine zero bid" (executableFill's own doc comment), so this
+// must key off `execBidZero`, not a bare `execMark != null` check, same discipline the 2026-10-25
+// EXPE fix already applies to `tradeManagerNarrativeSection`'s own breach bullet. Live WMB:
+// bid $0.00 (execBidZero: true), stop $0.32 -- a confirmed worthless bid is at/through ANY
+// positive stop by construction.
+test("composeSwingPlayBrief: top-level Invalidation line treats a confirmed $0.00 bid as an already-breached stop", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      direction: "LONG",
+      entry: 0.5,
+      mark: 1.3,
+      execMark: null,
+      execBidZero: true,
+      exitPolicy: { stop_premium: 0.32, target_premium: 1, trim_levels: [] },
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    ecosystemFetchFailed: true,
+    vectorFetchFailed: true,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    "Premium stop at $0.32 — already breached on the executable side",
+    "a confirmed $0.00 bid is at/through any positive stop and must disclose the breach",
+  );
+});
+
+// Negative control: a bid that has NOT reached the stop must keep the plain, not-yet-fired
+// wording -- proves the fix is conditional, not a blanket suffix on every premium-stop fallback.
+test("composeSwingPlayBrief: top-level Invalidation line stays plain when the bid has not reached the premium stop", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      direction: "LONG",
+      entry: 0.17,
+      mark: 0.53,
+      execMark: 0.45,
+      exitPolicy: { stop_premium: 0.4, target_premium: 0.6, trim_levels: [] },
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    ecosystemFetchFailed: true,
+    vectorFetchFailed: true,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    "Premium stop at $0.40",
+    "a bid still above the stop must not be reported as already breached",
+  );
+});
+
 // FIXTURE FIX (Ask Largo standing mandate, 2026-10-18): this test's own title says "when the play
 // is genuinely still enterable", but its fixture used the base `fixturePlay()` defaults
 // (setupState FORMING / entryStatus PRE_TRIGGER) — NOT genuinely still enterable at all;
