@@ -9499,6 +9499,15 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   "lost relative strength" no longer fires for a SHORT whose underlying is declining in line with or
   faster than SPY (i.e. the thesis is genuinely working) — it should only fire when the SHORT is
   actually underperforming its own thesis (underlying flat/rising relative to SPY).
+  **Addendum, same day, ~23:30 UTC:** a separate, more serious finding (PR #7545, "Polygon/Massive
+  real-time snapshot entitlement also lost") surfaced after this entry was written — `GET
+  /v3/snapshot` and the movers endpoints are 403'ing platform-wide on the same Massive.com billing
+  event as the earlier Benzinga news loss, and Swing is explicitly named in its blast radius. **If
+  marks are still stale/unavailable Monday, check #7545's entitlement status FIRST** before reading
+  that as evidence the #7523 deploy failed — a live-trading-day snapshot outage would mask whether
+  `rel_strength_lost` recomputes correctly just as effectively as the weekend freeze did, for an
+  unrelated reason. Only treat the #7523 re-check above as conclusive once real-time snapshots are
+  confirmed restored (or the relevant data is flowing through some other live path).
 
 ## WATCH LIST — 2026-11-07 (HELIX EOD Discord recap was dead code — `isDiscordEodRecapWindow` dead-window fix, `fix/helix-eod-recap-never-fires`)
 
