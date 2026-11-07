@@ -350,8 +350,29 @@ consistent with the dense flow-tape row-per-print layout.
 (35 lines) → `Heatmap` → `GexHeatmap.tsx` (4530 lines — by far the largest single file in the
 product, larger than the next 3 Thermal components combined). 11 component files total, `dp*Rail`/
 `Matrix`/`Strip` composition, e.g. `ThermalTripleDesk` (537), `ThermalCompactMatrix` (396),
-`ThermalCompareStrip` (213), `ThermalGridSectorPicker` (169), `ThermalRegimeStrip` (159),
-`ThermalFreshnessBar` (91), `ThermalIntensityRail` (70).
+~~`ThermalCompareStrip` (213)~~, `ThermalGridSectorPicker` (169), `ThermalRegimeStrip` (159),
+~~`ThermalFreshnessBar` (91)~~, `ThermalIntensityRail` (70).
+
+**CORRECTED 2026-11-07 — two of the seven named components above no longer exist, and the file
+count is stale.** `ThermalCompareStrip.tsx` was removed as orphaned dead code 2026-10-12 (#5917 —
+zero live call sites since 2026-07-28, per that PR's own title and `src/repo-hygiene.test.ts`'s
+removed-files list). `ThermalFreshnessBar.tsx` was removed earlier, 2026-09-04 (#3624, "remove six
+orphaned SPX/Thermal/marketing modules") — `repo-hygiene.test.ts`'s own comment explains it was
+*superseded*, not merely abandoned: `ThermalTripleDesk.tsx` grew its own inline
+`ThermalMatrixFreshnessChip` (a strict subset — Matrix chip only — of what the fuller original
+showed), and nothing ever pointed back at the original. Re-counted current inventory
+(`src/features/thermal/components/*.tsx`, excl. `*.test.ts`): **13 files**, not 11 —
+`GexHeatmap.tsx` (4649), `ThermalTripleDesk.tsx` (557), `ThermalCompactMatrix.tsx` (396),
+`GreeksDistributionPanel.tsx` (182), `ThetaDistributionPanel.tsx` (178),
+`ThermalGridSectorPicker.tsx` (169), `ThermalSessionTimeline.tsx` (149),
+`ThermalSavedDesksMenu.tsx` (148), `ThermalRegimeStrip.tsx` (195), `ThermalIntensityRail.tsx` (70),
+`ThermalSkeleton.tsx` (62), `Heatmap.tsx` (40), `ThermalPageShell.tsx` (37). Five of these
+(`GreeksDistributionPanel`, `ThetaDistributionPanel`, `ThermalSessionTimeline`,
+`ThermalSavedDesksMenu`, `ThermalSkeleton`) postdate this section's original 2026-08-23 pass and
+were never added to the inventory. Line counts for components that do still exist have also
+drifted since the original pass (e.g. `ThermalTripleDesk` 537→557, `ThermalRegimeStrip` 159→195) —
+ordinary code churn, not corrected individually above; the point of this note is the two removed
+files, which a reader following this doc into the source tree today would not find.
 
 **`RE-VERIFIED 2026-08-23 (correct UA)`** (`heatmap-desktop`, 1440×900) — layout/structure below is
 unchanged from the original wrong-UA shot (Thermal's page structure is not `useIosNativeShell()`-
