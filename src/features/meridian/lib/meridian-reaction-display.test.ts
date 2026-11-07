@@ -60,6 +60,47 @@ test("nothing measured means nothing to qualify", () => {
   );
 });
 
+test("reaction_pct null but session_change_pct present (AMC gap-anchor bar missing) is flagged, never rendered as a clean reaction", () => {
+  // The exact shape the real `reactionForPrint` (meridian-reaction-core.ts) produces for an AMC
+  // print whose report-date bar fell outside the fetched window: the anchor session resolved
+  // (session_change_pct, reaction_basis), but the gap-inclusive reaction itself did not
+  // (reaction_pct null, reaction_settled null — not `false`, since `reactionForPrint` only sets
+  // `reaction_settled` when `reaction_pct` exists). Every render site displays
+  // `reaction_pct ?? session_change_pct`, so this value WILL be shown; it must not be shown as a
+  // clean, unqualified reaction.
+  const q = reactionQualifier({
+    reaction_pct: null,
+    session_change_pct: 1,
+    reaction_basis: "amc_next_session",
+    reaction_settled: null,
+  });
+  assert.notEqual(q, null, "a substituted, non-reaction value must carry a caveat");
+  assert.equal(q?.provisional, true);
+  assert.match(q!.title, /could not be measured|open-to-close/i);
+
+  // Same shape, BMO basis — the other spans-closed-market timing hits the identical gap.
+  const qBmo = reactionQualifier({
+    reaction_pct: null,
+    session_change_pct: -2.4,
+    reaction_basis: "bmo_session",
+    reaction_settled: null,
+  });
+  assert.notEqual(qBmo, null);
+
+  // settledReactions must exclude it too — it is exactly the "launders an unknown into a
+  // statistic" case this function's own header exists to prevent.
+  const kept = settledReactions([
+    {
+      reaction_pct: null,
+      session_change_pct: 1,
+      reaction_basis: "amc_next_session" as const,
+      reaction_settled: null,
+    },
+    { ...base },
+  ]);
+  assert.deepEqual(kept.map((p) => p.reaction_pct), [-4.2]);
+});
+
 test("settledReactions pools only what may honestly be pooled", () => {
   const prints = [
     { ...base },

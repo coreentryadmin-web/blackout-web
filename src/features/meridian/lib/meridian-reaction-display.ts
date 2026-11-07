@@ -71,6 +71,34 @@ export function reactionQualifier(print: ReactionFields): ReactionQualifier | nu
     };
   }
 
+  // `reaction_pct` itself was never computed — for a BMO/AMC print the gap-inclusive reaction
+  // needs the bar BEFORE the print (the report date's own close for AMC, the prior session's
+  // close for BMO) as its anchor, and that bar can be missing even when the anchor session's own
+  // bar resolved fine (a fetch-window edge, a data gap, a print right at the start of the
+  // retained window). `reactionForPrint` (meridian-reaction-core.ts) still stamps
+  // `reaction_basis`/`session_change_pct` in that case — it measured THE ANCHOR SESSION, just
+  // not the gap — so this cannot be caught by the two checks above. Every render site falls back
+  // to `session_change_pct` via `reaction_pct ?? session_change_pct`, which would silently
+  // substitute the anchor session's bare open-to-close for the reaction — for a BMO/AMC print
+  // the overnight gap IS the reaction, and dropping it is exactly the defect
+  // `loadMeridianEarningsPrintHistory`'s own header warns about ("reaction_pct, not
+  // session_change_pct: ... Averaging it produced a headline... that disagreed in sign with the
+  // market on ~a third of post-close prints"), reached here through a missing bar instead of a
+  // stale field. Reproduced directly off the real `reactionForPrint`: an AMC print whose report
+  // date has no bar in the fetched window, but whose next session does, returns
+  // `{ reaction_pct: null, session_change_pct: 1, reaction_basis: "amc_next_session",
+  // reaction_settled: null }` — every field this function already checks says "measured", and
+  // the value about to render is not the reaction at all.
+  if (print.reaction_pct == null) {
+    return {
+      mark: "~",
+      kind: "assumed",
+      title:
+        "The reaction across the report's own gap could not be measured — the number shown is this session's plain open-to-close, not the report's reaction, and may be missing part or all of the real move.",
+      provisional: true,
+    };
+  }
+
   return null;
 }
 
