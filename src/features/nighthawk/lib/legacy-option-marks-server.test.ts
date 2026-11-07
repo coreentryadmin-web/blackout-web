@@ -35,14 +35,17 @@ test("legacy-option-marks-server.ts implements cache fallback for null marks (WS
     join(process.cwd(), "src/features/nighthawk/lib/legacy-option-marks-server.ts"),
     "utf8"
   );
-  // Verify import exists for cache operations
-  assert.match(src, /import \{ sharedCacheGet, sharedCacheSet \} from "@\/lib\/swing\/calibration-cache"/);
+  // Verify import exists for cache operations from the correct module
+  assert.match(src, /import \{ sharedCacheGet, sharedCacheSet \} from "@\/lib\/shared-cache"/);
+  // Verify TTL constant is defined
+  assert.match(src, /const LEGACY_OPTION_MARK_CACHE_TTL_SEC/);
   // Verify cache is set when fresh mark found (valid, finite, > 0)
   assert.match(src, /if \(row\.mark != null && Number\.isFinite\(row\.mark\) && row\.mark > 0\)/);
-  assert.match(src, /await sharedCacheSet\(`legacy:option:mark:\${occ}`/);
+  assert.match(src, /await sharedCacheSet\(/);
+  assert.match(src, /LEGACY_OPTION_MARK_CACHE_TTL_SEC/);
   // Verify cache fallback is checked when mark is null
   assert.match(src, /else if \(row\.mark == null\)/);
-  assert.match(src, /const cached = await sharedCacheGet\(`legacy:option:mark:\${occ}`\)/);
+  assert.match(src, /const cached = await sharedCacheGet/);
   // Verify cached mark is applied with stale:true
   assert.match(src, /row\.mark = cached\.mark/);
   assert.match(src, /row\.stale = true/);

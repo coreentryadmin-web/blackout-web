@@ -11,7 +11,7 @@ import {
   legacyOccForSnapshot,
   lookupLegacyOptionSnapshot,
 } from "@/features/nighthawk/lib/legacy-play-contract";
-import { sharedCacheGet, sharedCacheSet } from "@/lib/swing/calibration-cache";
+import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 
 export type LegacyServerOptionMark = {
   occ: string;
@@ -20,6 +20,18 @@ export type LegacyServerOptionMark = {
   ask: number | null;
   stale: boolean;
 };
+
+type CachedLegacyMark = {
+  mark: number;
+  bid: number | null;
+  ask: number | null;
+  asof: number;
+};
+
+/** Cache TTL for legacy option marks fallback: 60 minutes (3600 seconds).
+ *  Long enough to survive a brief provider outage without losing real position marks.
+ */
+const LEGACY_OPTION_MARK_CACHE_TTL_SEC = 60 * 60;
 
 /** Fetch live option marks for up to 24 OCCs. Missing/stale marks are omitted from the map. */
 export async function fetchLegacyOptionMarksServer(
@@ -57,15 +69,19 @@ export async function fetchLegacyOptionMarksServer(
     // If fresh mark found, cache it for fallback (same approach as Swing's last_mark).
     // When both WS and REST fail (mark == null), fall back to cached mark with stale:true.
     if (row.mark != null && Number.isFinite(row.mark) && row.mark > 0) {
-      await sharedCacheSet(`legacy:option:mark:${occ}`, {
-        mark: row.mark,
-        bid: row.bid,
-        ask: row.ask,
-        asof: row.asof,
-      });
+      await sharedCacheSet(
+        `legacy:option:mark:${occ}`,
+        {
+          mark: row.mark,
+          bid: row.bid,
+          ask: row.ask,
+          asof: row.asof,
+        } as CachedLegacyMark,
+        LEGACY_OPTION_MARK_CACHE_TTL_SEC,
+      );
     } else if (row.mark == null) {
       // No fresh mark — try cached fallback
-      const cached = await sharedCacheGet(`legacy:option:mark:${occ}`);
+      const cached = await sharedCacheGet<CachedLegacyMark>(`legacy:option:mark:${occ}`);
       if (cached && typeof cached === "object" && "mark" in cached) {
         row.mark = cached.mark;
         row.bid = cached.bid;
