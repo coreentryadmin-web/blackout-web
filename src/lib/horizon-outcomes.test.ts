@@ -161,6 +161,33 @@ test("mapZeroDteOutcome: a live-only exit (thesis_break) that ISN'T a WS-11 reco
   assert.equal(out.pnl_pct, -12);
 });
 
+test("mapZeroDteOutcome: a real live-managed exit with NO executable grade AND no mechanical mid grade yet is still reported — not silently dropped as ungraded", () => {
+  // This is the normal shape right after a 0DTE position closes on a live-only exit
+  // (thesis-break/ratchet-floor/flat-timeout): the exit engine stamps `entry_context.exit`
+  // immediately, but the MECHANICAL bar-walk grade (`plan_outcome`/`plan_pnl_pct`, the mid
+  // columns) and any WS-10/WS-11 `entry_context.executable` reconstruction are populated by a
+  // separate grading pass that can genuinely lag (or, for a live-only reason the bar-walk
+  // can't reproduce, never gets reconciled into officialPlanPnlPct at all — see
+  // officialOverridingRealExit's own guard above). record.ts's `managedGradeView`/
+  // `asManagedPnlPct` (the actual member-facing headline) already handles this: its
+  // `hasRealTerminalExit` branch grades straight off `entry_context.exit` with no dependency
+  // on the mid columns or an executable blob at all.
+  const row = zeroDteRow({
+    plan_outcome: null, // mechanical mid grade not populated yet
+    plan_pnl_pct: null,
+    entry_context: {
+      // No `executable` key at all — no WS-10/WS-11 grade exists for this row.
+      exit: {
+        reason: "thesis_break:gex_walls",
+        pnl_pct: -9.5,
+      },
+    },
+  });
+  const out = mapZeroDteOutcome(row);
+  assert.equal(out.label, "loss");
+  assert.equal(out.pnl_pct, -9.5);
+});
+
 test("mapZeroDteOutcome: ungradeable / ungraded row maps to a null label and null pnl", () => {
   const out = mapZeroDteOutcome(zeroDteRow({ plan_outcome: "ungradeable", plan_pnl_pct: null }));
   assert.equal(out.label, null);

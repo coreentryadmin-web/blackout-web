@@ -56,7 +56,7 @@ import {
   type ZeroDteSetupLogRow,
   type SwingPositionRow,
 } from "@/lib/db";
-import { asManagedPnlPct, isGradedZeroDteRow } from "@/lib/zerodte/record";
+import { asManagedPnlPct } from "@/lib/zerodte/record";
 import { isSwingWin } from "@/lib/swing/record";
 import type { Horizon } from "@/lib/horizons";
 
@@ -88,11 +88,25 @@ export interface UnifiedHorizonOutcome {
  *  -12% on a real thesis-break exit could still read its executable/mechanical plan_pnl_pct here —
  *  the opposite sign, on the same row, from what `/api/market/zerodte/record` and the Track Record
  *  UI report as that play's result. `get_horizon_outcomes` is grouped with the Track Record tools
- *  in Largo's system prompt ("graded win/loss across lanes"), so it must report the same number. */
+ *  in Largo's system prompt ("graded win/loss across lanes"), so it must report the same number.
+ *
+ *  BUG FIX (round 389): "graded" used to be gated on `isGradedZeroDteRow(row)` — which tests the
+ *  MECHANICAL/OFFICIAL lane (`officialPlanOutcome`/`officialPlanPnlPct`, ultimately falling back to
+ *  the `plan_outcome`/`plan_pnl_pct` mid columns when no override/reconstruction/executable grade
+ *  exists) — while the VALUE came from `asManagedPnlPct` (a different precedence entirely, keyed on
+ *  `managedGradeView`). Right after a position closes on a real live-only exit, the exit engine
+ *  stamps `entry_context.exit` immediately, but the mid columns and any WS-10/WS-11
+ *  `entry_context.executable` reconstruction are populated by a separate grading pass that can lag
+ *  (or, for a live-only reason the bar-walk can't reproduce, never gets reconciled into
+ *  `officialPlanPnlPct` at all). In that window `isGradedZeroDteRow` reads false (mid columns null,
+ *  no executable blob) even though `asManagedPnlPct` already has a real, well-defined number via its
+ *  own `hasRealTerminalExit` branch — so the row was silently reported as ungraded (null label, null
+ *  pnl) and dropped from the unified feed entirely, despite being a genuinely closed, gradable
+ *  position. Gate "graded" on the SAME function whose value is actually used, so the two can never
+ *  drift apart again. */
 export function mapZeroDteOutcome(row: ZeroDteSetupLogRow): UnifiedHorizonOutcome {
-  const graded = isGradedZeroDteRow(row);
-  const pnl = graded ? asManagedPnlPct(row) : null;
-  const label: UnifiedHorizonOutcomeLabel = !graded || pnl == null ? null : pnl === 0 ? "breakeven" : pnl > 0 ? "win" : "loss";
+  const pnl = asManagedPnlPct(row);
+  const label: UnifiedHorizonOutcomeLabel = pnl == null ? null : pnl === 0 ? "breakeven" : pnl > 0 ? "win" : "loss";
   return {
     lane: "ZERO_DTE",
     source_id: `${row.session_date}:${row.ticker}`,
