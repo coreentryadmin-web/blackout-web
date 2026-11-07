@@ -441,7 +441,7 @@ Verified 2026-08-22 against the deployed EventBridge manifest
 | `vector-full-state-snapshot` | `2-59/5 11-21 * * 1-5` | `isEtCashRth()` | 390 / 390 | **OK both offsets** |
 | `vector-dark-pool-warm` | `3-59/10 11-21 * * 1-5` | `isEtCashRth()` | 195 / 195 | **OK both offsets** |
 | `vector-bead-record` | — | `isEtCashRth()` | — | **Unscheduled, deliberately** |
-| `vector-alerts` | — | *(no ET gate in route)* | — | **Unscheduled and unexplained** |
+| `vector-alerts` | — | *(no ET gate in route)* | — | **Unscheduled, deliberately — see below** |
 
 The 11–21 UTC band brackets 09:30–16:00 ET in **both** offsets, so none of Vector's four deployed
 crons has DST exposure. This is the first time Vector's crons have been checked against the
@@ -451,25 +451,35 @@ deployed manifest rather than the registry mirror.
 primary 5s cadence is the in-process leader, which does run. The route's `railway.*.toml` still
 declares `* 11-21 * * 1-5`, which is dead config — Railway does not exist any more.
 
-**`vector-alerts` is a real gap, and it is this lane's.** `cron-schedule-coverage.mjs` lists it
-under *"UNSCHEDULED AND UNEXPLAINED — a feature may be silently dark"*. What is actually true,
-measured:
+**CORRECTION (2026-11-07): `vector-alerts` is no longer "unexplained" — this section itself went
+stale within the same day it was written.** The paragraphs below originally said
+`cron-schedule-coverage.mjs` listed it under *"UNSCHEDULED AND UNEXPLAINED — a feature may be
+silently dark"* and that the fix was to add it to `INTENTIONALLY_UNSCHEDULED` or deploy it. **That
+fix already shipped, in #2651, merged 2026-08-22 17:39 PT — thirteen minutes *before* this file's
+own next revision (#2658, 17:52 PT) that touched sections 6 and 10 but never came back to this
+one.** `scripts/audit/cron-schedule-coverage.mjs`'s `INTENTIONALLY_UNSCHEDULED` map now carries a
+`vector-alerts` entry (verified in source, not re-run — this repo's clone has no `blackout-infra`
+checkout beside it, which is exactly what the script's own `SCHEDULE` check requires and refuses to
+fake), so the coverage audit no longer flags it as unexplained. #2651 also rewrote the
+`VectorPageShell.persistRules` in-code comment this section used to quote as a live promise
+(*"The mirrored copy is what `/api/cron/vector-alerts` reads to fire push alerts to a closed tab"*)
+— the comment now states plainly that the cron is dormant on two counts and that it used to claim a
+closed-tab guarantee it does not keep. The underlying facts below are otherwise unchanged and still
+worth knowing — only the "still open, unexplained" framing was stale:
 
 - it has **no deployed EventBridge rule**, so it never fires on a timer;
 - **`VECTOR_ALERTS_PUSH` is not present** in `blackout-production/app/env` (98 keys, checked by
-  name), so the route would return `{ok: true, inert: true}` even if it did fire;
+  name, as of 2026-08-22 — not re-verified this pass), so the route would return
+  `{ok: true, inert: true}` even if it did fire;
 - VAPID *is* fully configured and `GEX_ALERTS_PUSH = 1`, so the platform push channel itself is
   live and in use by another product — Vector's is the one that is not;
-- meanwhile `VectorPageShell.persistRules` **does** mirror every member's rules to the DB, and its
-  in-code comment states *"The mirrored copy is what `/api/cron/vector-alerts` reads to fire push
-  alerts to a closed tab."*
+- meanwhile `VectorPageShell.persistRules` **does** mirror every member's rules to the DB, so
+  turning the feature on is still a config/product decision, not a rebuild.
 
-So the feature is built end to end, the member's rules really are being written to Postgres, and
-the delivery half is off in two independent places. **The UI does not lie about it** — the panel's
-tooltip promises only *"while this tab is in the background"* — which is why this is a P3
-(dormant-feature / stale-comment / unexplained-absence) and not a P1 broken promise. Correct fix is
-one of: list it in `INTENTIONALLY_UNSCHEDULED` with the flag as the reason, or deploy + enable it
-deliberately. Leaving it unlisted is exactly what that tool's own message warns about.
+**The UI does not lie about it** — the panel's tooltip promises only *"while this tab is in the
+background"*, which is why this is a P3 (dormant-feature / product-decision) and not a P1 broken
+promise. Nothing left to fix here in this repo; turning it on (setting `VECTOR_ALERTS_PUSH` +
+deploying an EventBridge rule) is an infra/product call, tracked as such, not a doc or code defect.
 
 ---
 
@@ -540,7 +550,9 @@ Required by the charter. A single wall-rail bead on SPX, 5s bucket, function nam
 2. **Every number, against Polygon, on a live tape.** Nothing in this file is a correctness claim
    about a served value — the market was closed. Walls, flip, expected move, max pain, magnet,
    ladder, universe rows.
-3. **`vector-alerts`**: list as intentional, or deploy and enable. §7.
+3. ~~**`vector-alerts`**: list as intentional, or deploy and enable.~~ — **DONE (listed), #2651.**
+   Deploying + enabling it (`VECTOR_ALERTS_PUSH` + an EventBridge rule) remains an open
+   infra/product decision, not a doc or code item. §7.
 4. **The rail, watched accumulating.** A rail that starts from one bead, stalls, or back-fills
    wrongly is only visible on a moving tape. Also: what happens when the leader lock changes hands
    mid-session, given the backup cron is not deployed.
