@@ -520,6 +520,27 @@ export function mergePulseIntoDesk(
   };
 }
 
+/**
+ * After mergeDeskLayers applies the sticky VIX substitution (via stickyStructureLevel in
+ * mergePulseIntoDesk), the data_quality object may still report VIX as missing because it was
+ * computed earlier from raw snaps before the merge. Repair it by checking the actual final vix
+ * value in the merged desk and removing "VIX" from missing if it's no longer null/invalid.
+ */
+export function repairDataQualityAfterMerge(merged: SpxDeskPayload): SpxDeskPayload {
+  const vixIsNowLive = merged.vix != null && merged.vix > 0;
+  if (vixIsNowLive && merged.data_quality?.missing.includes("VIX")) {
+    // Remove "VIX" from missing because the sticky cache provided a real value
+    return {
+      ...merged,
+      data_quality: {
+        ...merged.data_quality,
+        missing: merged.data_quality.missing.filter((m) => m !== "VIX"),
+      },
+    };
+  }
+  return merged;
+}
+
 /** Merge desk + flow + pulse lanes (shared by server loader and client hooks). */
 export function mergeDeskLayers(
   desk: SpxDeskPayload,
@@ -540,7 +561,8 @@ export function mergeDeskLayers(
       };
     }
   }
-  return merged;
+  // After all merges, repair data_quality to account for sticky VIX substitution
+  return repairDataQualityAfterMerge(merged);
 }
 
 const signalDeskStub = (): SpxDeskPayload => ({
