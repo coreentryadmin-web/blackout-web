@@ -50,3 +50,19 @@ test("legacy-option-marks-server.ts implements cache fallback for null marks (WS
   assert.match(src, /row\.mark = cached\.mark/);
   assert.match(src, /row\.stale = true/);
 });
+
+// Bug (found 2026-11-07, live audit, same pass as the cache-fallback finding above): the
+// `/api/market/nighthawk/legacy-marks` route (the one the Command Deck UI actually polls every
+// 2.5s) was never updated to delegate here, so it kept its own inline WS+REST copy with no cache
+// fallback and no `asof` in this function's output map — a member-facing position's mark went
+// fully null (not even stale-but-present) on a provider outage. Fixed by adding `asof` to
+// LegacyServerOptionMark and the final `out.set(...)` call, then pointing the route at this
+// function instead of a second implementation (see legacy-marks/route.test.ts).
+test("legacy-option-marks-server.ts carries asof through to the returned map (route needs it for markAsOf)", () => {
+  const src = readFileSync(
+    join(process.cwd(), "src/features/nighthawk/lib/legacy-option-marks-server.ts"),
+    "utf8"
+  );
+  assert.match(src, /export type LegacyServerOptionMark = \{[\s\S]*?asof: string \| null;[\s\S]*?\}/);
+  assert.match(src, /out\.set\(occ, \{ occ, mark: row\.mark, bid: row\.bid, ask: row\.ask, asof: row\.asof, stale: row\.stale \}\)/);
+});

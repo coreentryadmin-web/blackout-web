@@ -18,6 +18,7 @@ export type LegacyServerOptionMark = {
   mark: number | null;
   bid: number | null;
   ask: number | null;
+  asof: string | null;
   stale: boolean;
 };
 
@@ -90,7 +91,7 @@ export async function fetchLegacyOptionMarksServer(
 
     if (!opts?.includeStale && row.stale) continue;
     if (row.mark == null || !Number.isFinite(row.mark) || row.mark <= 0) continue;
-    out.set(occ, { occ, mark: row.mark, bid: row.bid, ask: row.ask, stale: row.stale });
+    out.set(occ, { occ, mark: row.mark, bid: row.bid, ask: row.ask, asof: row.asof, stale: row.stale });
   }
   return out;
 }
