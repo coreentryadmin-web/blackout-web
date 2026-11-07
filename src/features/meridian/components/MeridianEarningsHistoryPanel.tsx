@@ -9,6 +9,7 @@
  * unanswerable. With that fixed, both are the centrepiece here.
  */
 
+import { resolveBeatRateCohortCounts } from "@/features/meridian/lib/meridian-beat-rate-display";
 import { settledReactions } from "@/features/meridian/lib/meridian-reaction-display";
 import { printHistoryToAnalyticsRows } from "@/lib/meridian/meridian-earnings-analytics-core";
 import type {
@@ -47,7 +48,14 @@ export function MeridianEarningsHistoryPanel({
   const excluded = prints.filter((p) => (p.reaction_pct ?? p.session_change_pct) != null).length -
     pooled.filter((p) => (p.reaction_pct ?? p.session_change_pct) != null).length;
   const rates = enrichment.beat_rates;
-  const graded = prints.filter((p) => p.beat != null).length;
+  // BUG FIX (2026-11-07): used to be one shared `prints.filter(p => p.beat != null).length`
+  // (the EPS cohort alone) passed as `n` to all three bars below. EPS/Revenue/Combined are
+  // each graded on their OWN, independently-sized cohort (`dualBeatRateFromPrints`'s own doc
+  // comment: denominators differ by 3+ prints on 3.1% of names) — sharing one count silently
+  // hid a real, non-null Revenue/Combined rate behind "—" whenever EPS had zero graded prints
+  // but Revenue didn't (RateBar gates on `n === 0`, not just `rate == null`). See
+  // meridian-beat-rate-display.ts for the full account.
+  const cohorts = resolveBeatRateCohortCounts(rates);
 
   return (
     <section className="mh" aria-label={`${ticker} earnings history`}>
@@ -70,13 +78,18 @@ export function MeridianEarningsHistoryPanel({
           <div className="mr-panel">
             <span className="mr-panel-title">Beat rates</span>
             <div className="mh-rates">
-              <RateBar label="EPS" rate={rates.eps_beat_rate} n={graded} />
-              <RateBar label="Revenue" rate={rates.revenue_beat_rate} n={graded} />
-              <RateBar label="Combined" rate={rates.combined_beat_rate} n={graded} />
+              <RateBar label="EPS" rate={rates.eps_beat_rate} n={cohorts.eps} />
+              <RateBar label="Revenue" rate={rates.revenue_beat_rate} n={cohorts.revenue} />
+              <RateBar label="Combined" rate={rates.combined_beat_rate} n={cohorts.combined} />
             </div>
             {/* Four quarters is a track record, not a distribution — say the n out loud rather
-                than letting three bars imply a statistical base they do not have. */}
-            <p className="mv-note">over {graded} graded print{graded === 1 ? "" : "s"}</p>
+                than letting three bars imply a statistical base they do not have.
+                `captionPrints` (distinct prints with >=1 gradeable measure), never the pooled
+                `combined` reading count above — a name graded on both measures would otherwise
+                print "over 16 graded prints" for an 8-print history. */}
+            <p className="mv-note">
+              over {cohorts.captionPrints} graded print{cohorts.captionPrints === 1 ? "" : "s"}
+            </p>
           </div>
         )}
 
