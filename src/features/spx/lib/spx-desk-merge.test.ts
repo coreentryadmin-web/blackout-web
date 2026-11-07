@@ -477,6 +477,32 @@ describe("mergePulseIntoDesk off-hours hod/lod sticky-ratchet correction", () =>
     assert.equal(merged.hod, 7440.43);
     assert.equal(merged.lod, 7294.18);
   });
+
+  it("removes VIX from data_quality.missing when sticky cache provides live value", () => {
+    // Scenario: raw snaps have null/missing VIX, but sticky cache carries a fresh value
+    const deskWithMissingVix = deskStub({
+      vix: null,
+      data_quality: {
+        vix_term_partial: true,
+        missing: ["VIX"],
+      },
+    });
+
+    const pulseWithStickyVix = pulseStub({
+      vix: 24.6,
+    });
+
+    const result = mergePulseIntoDesk(deskWithMissingVix, pulseWithStickyVix);
+
+    // After merge, vix should be live (from pulse sticky)
+    assert.equal(result.vix, 24.6, "vix should be populated from pulse");
+
+    // data_quality should no longer report VIX as missing
+    assert(
+      !result.data_quality?.missing.includes("VIX"),
+      'data_quality.missing should not contain "VIX" when vix field is live'
+    );
+  });
 });
 
 describe("mergeFlowIntoDesk gamma flip truth", () => {
