@@ -267,8 +267,8 @@ issues.
 ## 3. Helix — `/flows`
 
 **Coordinates:** `src/app/(site)/flows/page.tsx` (`requireTier("premium")`, no per-tool gate) →
-`HelixPageShell` → `FlowFeed` (`src/features/helix/components/FlowFeed.tsx`, 1224 lines — the
-largest single component on the platform). 24 component files. Full pipeline/timestamp/data-model
+`HelixPageShell` → `FlowFeed` (`src/features/helix/components/FlowFeed.tsx`, 1441 lines). 35
+component files. Full pipeline/timestamp/data-model
 detail already lives in `docs/audit/HELIX-MAP.md` (Helix lane's own Phase-0 map) — this section
 only covers what's relevant to cross-product UX; defer to that file for data correctness.
 
@@ -298,7 +298,7 @@ PAGE /flows (RE-VERIFIED, correct desktop UA)
 **Correction:** the original entry described a card-based tape with STACK/WHALE badges on desktop —
 that was the mobile `HelixMobileFlowTape` card layout (§ below) rendered under the wrong UA at a
 1440px viewport, not the real desktop component. The real desktop tape is `HelixFlowTable.tsx`
-(541 lines, cited in the coordinates above but not previously distinguished from the mobile
+(595 lines, cited in the coordinates above but not previously distinguished from the mobile
 component in this section) — a genuine data table with a sortable TIME column, no STACK/WHALE
 badge chips visible in this shot (badges may be a mobile-only affordance, or a column this table
 expresses differently — not yet confirmed either way, flagged as an open question rather than
@@ -313,7 +313,7 @@ PAGE /flows (mobile)
 └─ LIST CARD × N — ticker+side+STACK/WHALE badges, strike/exp/DTE, $ premium, Δ%+age (same fields as desktop's tape cards, one per row, full width)
 ```
 
-`HelixMobileFlowTape.tsx` (303 lines) is confirmed a dedicated mobile component, not a responsive
+`HelixMobileFlowTape.tsx` (326 lines) is confirmed a dedicated mobile component, not a responsive
 collapse of the desktop table — the card layout is visually distinct from `HelixFlowTable.tsx`,
 though the fields shown (badges, strike/expiry/DTE, premium, Δ%+age) match 1:1 with what desktop's
 tape cards show, so no field drift found this pass.
@@ -453,9 +453,26 @@ real observations:
 ## 5. Vector — `/vector`
 
 **Coordinates:** `src/app/(site)/vector/page.tsx` (`requireDeskTool`, reads `searchParams.ticker`/
-`.compare`) → `VectorPageClient` → `VectorPageShell.tsx` (936 lines). 32 component files — largest
-product by component count. `VectorChart.tsx` is 4978 lines, the single largest file on the
-platform. Also embeds into `/dashboard` via `SpxVectorEmbed`.
+`.compare`) → `VectorPageClient` → `VectorPageShell.tsx` (1086 lines). 40 component files.
+`VectorChart.tsx` is 5826 lines, the single largest component file on the platform (confirmed
+against every product's `components/` directory this pass — see the correction below). Also
+embeds into `/dashboard` via `SpxVectorEmbed`.
+
+**CORRECTION, 2026-11-07 — two superlative claims in this doc directly contradicted each other,
+and the "largest product by component count" half was also wrong.** This section originally said
+Vector's 32 component files made it "largest product by component count," while §3 (Helix)
+separately said `FlowFeed.tsx` (then 1224 lines) was "the largest single component on the
+platform" — two claims that cannot both be true in the same document, and a straight `wc -l`
+across every product's `components/` directory confirms `VectorChart.tsx` (5826 lines) is the
+real largest, well ahead of Helix's `FlowFeed.tsx` (1441 lines) or anything else; §3's "largest
+single component" clause has been removed as false. The component-COUNT claim was separately
+wrong on its own terms, not just stale: `find src/features/<product>/components -name "*.tsx" |
+wc -l` today gives Night Hawk **49**, Helix **35**, Vector **40**, SPX Slayer 21, Largo 24,
+Meridian 18, Thermal 14 — Vector is not, and per this doc's own 2026-08-23 commit-pinned numbers
+(Helix was already stated as 24 then) may never have been, the platform's largest-by-count
+product; Night Hawk's `components/` alone (not counting its separate `command-deck/` directory,
+17 more files) already exceeds Vector's count. Both line-count figures in this section and §3 were
+also stale (code has moved since 2026-08-23) and are corrected above/below to current `main`.
 
 **`RE-VERIFIED 2026-08-23 (correct UA)`** (`vector-desktop`, 1440×900) — structure below CONFIRMED
 unchanged with the correct desktop UA (toolbar, 0DTE matrix, composite chart, LIVE HELIX rail all
@@ -1064,7 +1081,7 @@ Cross-product patterns, not yet P0–P3 classified pending more coverage:
    with no panel feeling like it needed to be cut. Worth using as the density baseline other
    products are compared against, rather than inventing a new density target from scratch.
 5. **Chart footer legend overlap (finding #3 above), FIXED — a genuine "fix once at the system
-   level" case** (brief item 14): the bug lived in `VectorChart.tsx` (4978 lines, embedded on both
+   level" case** (brief item 14): the bug lived in `VectorChart.tsx` (5826 lines, embedded on both
    `/vector` and `/dashboard` via `SpxVectorEmbed`), so the one fix (bounded width + opaque
    background on the overlay labels) protects both surfaces without needing two patches.
 
