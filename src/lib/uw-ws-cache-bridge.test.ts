@@ -2,6 +2,12 @@ import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { todayEt } from "./et-date";
 
+// Controllable per-ticker `aggregateOptionTradesToStrikeRows` output for the
+// skipped_ws over-claim regression below — declared ahead of the mock.module() call that
+// closes over it (the closure only runs lazily, at test-call time, so textual placement
+// relative to the mock.module() registration doesn't matter, only relative to first use).
+const optionTradesAgg: Record<string, unknown[]> = { SPX: [], SPY: [] };
+
 // Relative specifiers (not the "@/..." alias) when mocking — tsx's alias rewrite only applies
 // to statically-parsed top-level `import ... from` statements, not to mock.module()'s own
 // specifier string. Confirmed convention elsewhere in this repo (flow-gex-enrichment.test.ts).
@@ -11,7 +17,7 @@ import { todayEt } from "./et-date";
 mock.module("./providers/unusual-whales", {
   namedExports: {
     aggregateFlowPerStrikeRows: (rows: unknown) => rows,
-    aggregateOptionTradesToStrikeRows: () => [],
+    aggregateOptionTradesToStrikeRows: (_rows: unknown, ticker: string) => optionTradesAgg[ticker] ?? [],
     // Faithful copies of the real unusual-whales.ts implementations (not stubs) — the module
     // under test now imports these two for real reshaping logic, so a stub here would hide the
     // exact bug this file's new tests exist to pin.
@@ -63,8 +69,12 @@ mock.module("./providers/uw-shared-cache", {
   },
 });
 
-type WsFreshState = { offLit: boolean };
-const fresh: WsFreshState = { offLit: false };
+type WsFreshState = { offLit: boolean; netFlow: boolean; optionTrades: boolean };
+const fresh: WsFreshState = { offLit: false, netFlow: false, optionTrades: false };
+
+// Controllable per-ticker `getNetPremTicksForTicker` output for the skipped_ws
+// over-claim regression below — same reasoning as `optionTradesAgg` above.
+const netFlowTicks: Record<string, unknown[]> = { SPX: [], SPY: [], QQQ: [], IWM: [] };
 
 mock.module("./ws/uw-socket", {
   namedExports: {
@@ -75,8 +85,15 @@ mock.module("./ws/uw-socket", {
     darkPoolRecentRing: { rows: [], updatedAt: 0, total_received: 0 },
     darkPoolStore: { data: { prints: [{ ticker: "SPX", premium: 500_000 }] }, updatedAt: Date.now() },
     optionTradesStore: { rows: [], updatedAt: 0, total_received: 0 },
-    getNetPremTicksForTicker: () => [],
-    isUwChannelFresh: (channel: string) => (channel === "off_lit_trades" ? fresh.offLit : false),
+    getNetPremTicksForTicker: (ticker: string) => netFlowTicks[ticker] ?? [],
+    isUwChannelFresh: (channel: string) =>
+      channel === "off_lit_trades"
+        ? fresh.offLit
+        : channel === "net_flow"
+          ? fresh.netFlow
+          : channel === "option_trades"
+            ? fresh.optionTrades
+            : false,
   },
 });
 
@@ -106,6 +123,101 @@ test("seedUwCacheFromWsStores reports nothing seeded when off_lit_trades is stal
   const result = await seedUwCacheFromWsStores(null as unknown as Parameters<typeof seedUwCacheFromWsStores>[0]);
   assert.equal(result.seeded, 0);
   assert.deepEqual(result.skipped_ws, []);
+});
+
+// BUG: net_flow/option_trades over-claimed `skipped_ws` coverage — the mirror image of the
+// off_lit_trades undercounting bug the test above and its sibling (lines 85-101) already pin.
+// Both blocks gated entry on `isUwChannelFresh(channel, ...)` alone (net_flow) or that plus a
+// market-wide `rows.length > 0` check (option_trades), then pushed the channel name onto
+// `skipped_ws` UNCONDITIONALLY after their per-ticker loop — even when every ticker in the loop
+// produced zero rows and nothing was actually written to Redis. `ws_seeded`/`ws_skipped` on
+// GET /api/cron/uw-cache-refresh is exactly the metric the off_lit_trades fix's own comment says
+// "ops uses to tell whether the WS bridge is actually covering this channel" — reporting a
+// channel as WS-covered while it seeded nothing (e.g. the join just reconnected and the
+// per-ticker stores haven't accumulated any ticks yet, or every row belongs to a ticker outside
+// the SPX/SPY/QQQ/IWM set this function actually writes) misleads that exact metric the same way
+// the already-fixed off_lit_trades bug did, just in the opposite direction (over-claiming
+// instead of under-claiming).
+test("seedUwCacheFromWsStores does not claim net_flow coverage when the channel is fresh but no ticker produced any ticks", async () => {
+  const { seedUwCacheFromWsStores } = await mod();
+  fresh.offLit = false;
+  fresh.netFlow = true;
+  fresh.optionTrades = false;
+  netFlowTicks.SPX = [];
+  netFlowTicks.SPY = [];
+  netFlowTicks.QQQ = [];
+  netFlowTicks.IWM = [];
+
+  const result = await seedUwCacheFromWsStores(null as unknown as Parameters<typeof seedUwCacheFromWsStores>[0]);
+
+  assert.equal(result.seeded, 0, "nothing was actually written to Redis");
+  assert.deepEqual(
+    result.skipped_ws,
+    [],
+    "net_flow must not be reported WS-covered when zero tickers actually produced ticks"
+  );
+});
+
+test("seedUwCacheFromWsStores does claim net_flow coverage once at least one ticker produced ticks", async () => {
+  const { seedUwCacheFromWsStores } = await mod();
+  fresh.offLit = false;
+  fresh.netFlow = true;
+  fresh.optionTrades = false;
+  netFlowTicks.SPX = [{ t: Date.now(), call: 1, put: 1, net: 0 }];
+  netFlowTicks.SPY = [];
+  netFlowTicks.QQQ = [];
+  netFlowTicks.IWM = [];
+
+  const result = await seedUwCacheFromWsStores(null as unknown as Parameters<typeof seedUwCacheFromWsStores>[0]);
+
+  assert.equal(result.seeded, 1);
+  assert.deepEqual(result.skipped_ws, ["net_flow"]);
+});
+
+test("seedUwCacheFromWsStores does not claim option_trades coverage when the channel is fresh with rows but neither SPX nor SPY aggregated anything", async () => {
+  const { seedUwCacheFromWsStores } = await mod();
+  const { optionTradesStore } = await import("./ws/uw-socket");
+  fresh.offLit = false;
+  fresh.netFlow = false;
+  fresh.optionTrades = true;
+  netFlowTicks.SPX = [];
+  netFlowTicks.SPY = [];
+  netFlowTicks.QQQ = [];
+  netFlowTicks.IWM = [];
+  // Market-wide gate passes (some rows exist — e.g. a ticker outside SPX/SPY), but neither
+  // per-ticker aggregation this function actually writes produces anything.
+  (optionTradesStore as { rows: unknown[]; updatedAt: number }).rows = [{ underlying: "AAPL" }];
+  optionTradesAgg.SPX = [];
+  optionTradesAgg.SPY = [];
+
+  const result = await seedUwCacheFromWsStores(null as unknown as Parameters<typeof seedUwCacheFromWsStores>[0]);
+
+  assert.equal(result.seeded, 0);
+  assert.deepEqual(
+    result.skipped_ws,
+    [],
+    "option_trades must not be reported WS-covered when neither SPX nor SPY actually aggregated any rows"
+  );
+});
+
+test("seedUwCacheFromWsStores does claim option_trades coverage once a ticker actually aggregates rows", async () => {
+  const { seedUwCacheFromWsStores } = await mod();
+  const { optionTradesStore } = await import("./ws/uw-socket");
+  fresh.offLit = false;
+  fresh.netFlow = false;
+  fresh.optionTrades = true;
+  netFlowTicks.SPX = [];
+  netFlowTicks.SPY = [];
+  netFlowTicks.QQQ = [];
+  netFlowTicks.IWM = [];
+  (optionTradesStore as { rows: unknown[]; updatedAt: number }).rows = [{ underlying: "SPX" }];
+  optionTradesAgg.SPX = [{ strike: 6000 }];
+  optionTradesAgg.SPY = [];
+
+  const result = await seedUwCacheFromWsStores(null as unknown as Parameters<typeof seedUwCacheFromWsStores>[0]);
+
+  assert.equal(result.seeded, 1);
+  assert.deepEqual(result.skipped_ws, ["option_trades"]);
 });
 
 // BUG FIX: shouldSkipUwCacheRefreshTask("dark_pool_ticker","SPX") used to reuse the ring-based

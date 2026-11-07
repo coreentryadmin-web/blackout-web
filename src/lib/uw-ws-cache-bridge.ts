@@ -67,25 +67,39 @@ export async function seedUwCacheFromWsStores(
   }
   if (offLitSeeded) skipped_ws.push("off_lit_trades");
 
+  // Same "did anything actually get seeded" tracking as the off_lit_trades block above
+  // (`offLitSeeded`) — entry only requires the CHANNEL to be fresh, not that any of the
+  // specific tickers this loop writes actually produced data (e.g. the socket just
+  // reconnected and per-ticker stores haven't accumulated ticks yet). Pushing the channel
+  // name onto `skipped_ws` unconditionally after the loop over-claimed WS coverage on the
+  // exact ops metric (`ws_seeded`/`ws_skipped`) the off_lit_trades fix's own comment names.
+  let netFlowSeeded = false;
   if (isUwChannelFresh("net_flow", 120_000)) {
     for (const ticker of ["SPX", "SPY", "QQQ", "IWM"] as const) {
       const ticks: NetPremTick[] = getNetPremTicksForTicker(ticker);
       if (!ticks.length) continue;
       await uwCacheSet(redis, UW_KEYS.netPremTicks(ticker), UW_CACHE_TTL.netPremTicks, ticks);
       seeded += 1;
+      netFlowSeeded = true;
     }
-    skipped_ws.push("net_flow");
   }
+  if (netFlowSeeded) skipped_ws.push("net_flow");
 
+  // Same reasoning as net_flow above: the market-wide `optionTradesStore.rows.length > 0`
+  // gate only proves SOME ticker's rows exist, not that SPX or SPY specifically aggregated
+  // anything (e.g. the join env var widens to other tickers, or all current rows belong to
+  // a ticker this loop doesn't write).
+  let optionTradesSeeded = false;
   if (isUwChannelFresh("option_trades", 120_000) && optionTradesStore.rows.length > 0) {
     for (const ticker of ["SPX", "SPY"] as const) {
       const rows = aggregateOptionTradesToStrikeRows(optionTradesStore.rows, ticker);
       if (!rows.length) continue;
       await uwCacheSet(redis, UW_KEYS.flowPerStrike(ticker), UW_CACHE_TTL.flowPerStrike, aggregateFlowPerStrikeRows(rows));
       seeded += 1;
+      optionTradesSeeded = true;
     }
-    skipped_ws.push("option_trades");
   }
+  if (optionTradesSeeded) skipped_ws.push("option_trades");
 
   return { seeded, skipped_ws };
 }
