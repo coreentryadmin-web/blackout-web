@@ -9546,3 +9546,31 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   real-world trigger (OI rarely lands in that exact 50-wide window on a single strike), so a clean
   session with no sighting either way is not evidence the fix is wrong — the unit test is the
   authoritative proof here.
+
+## WATCH LIST — 2026-11-07 (unified cross-lane outcomes feed silently dropped live-managed 0DTE exits, `fix/horizon-outcomes-graded-gate`)
+
+- **`mapZeroDteOutcome` (`src/lib/horizon-outcomes.ts`), the row mapper behind
+  `fetchUnifiedHorizonOutcomes`/`get_horizon_outcomes` (Largo's cross-lane outcomes tool), gated
+  whether a 0DTE row was "graded" on `isGradedZeroDteRow` (the MECHANICAL/OFFICIAL lane, which
+  falls back to the mid `plan_outcome`/`plan_pnl_pct` columns absent an override/reconstruction)
+  while reading the reported P&L from `asManagedPnlPct` (a different precedence entirely, keyed on
+  `managedGradeView`).** Right after a position closes on a real live-only exit (thesis-break /
+  ratchet-floor / flat-timeout), the exit engine stamps `entry_context.exit` immediately, but the
+  mid columns (populated by a separate mechanical bar-walk grading pass) can still be null — so the
+  row read as "ungraded" (`isGradedZeroDteRow` false) and was silently dropped from the unified
+  feed with `label: null, pnl_pct: null`, even though `asManagedPnlPct` already had a real, signed
+  number. **Fixed:** gate "graded" on the exact same `asManagedPnlPct(row)` call whose value is
+  reported, so the two can never drift apart again. Full write-up:
+  `docs/audit/findings-staging/2026-11-07-horizon-outcomes-graded-gate-mismatch.md`.
+  **Could not confirm live from this sandbox** — proven entirely by a fixture-row unit test
+  (RED→GREEN: 14/15 → 15/15 pass); `fetchUnifiedHorizonOutcomes` needs a live Postgres read this
+  sandbox cannot reach, and there is no production caller yet exposed through a UI surface to
+  visually confirm against (the module's own header frames it as a reporting/dashboard read layer,
+  not a member-facing page).
+  **Re-check once the market opens:** once any 0DTE position closes live on a non-bar-walk-
+  reproducible exit reason (thesis-break/ratchet-floor/flat-timeout, visible in
+  `GET /api/market/zerodte/record`'s `entry_context.exit.reason`) ahead of its mechanical mid-grade
+  being computed, call whichever route/tool exercises `get_horizon_outcomes` (or
+  `fetchUnifiedHorizonOutcomes` directly in a REPL against prod) for that session date and confirm
+  the row now appears with a non-null `label`/`pnl_pct` matching the real exit's sign, rather than
+  being absent from the result set entirely.
