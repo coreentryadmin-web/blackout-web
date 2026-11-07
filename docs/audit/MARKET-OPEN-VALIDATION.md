@@ -1,3 +1,63 @@
+## LIVE INCIDENT — 2026-11-07 Polygon API 403s breaking swing-discovery/banger-discovery/nighthawk-outcomes/gex-eod-snapshot since Friday evening — NOT YET FIXED (needs AWS/Secrets Manager access this session doesn't have)
+
+**What was found:** Standing 5-ENGINE LIVE MONITOR + Ask Largo cycle (Saturday, market closed)
+pulled `GET /api/admin/cron-health` (admin session) and found FOUR crons failing on the identical
+root cause, continuously, since Friday evening — this is not a weekend artifact:
+- `swing-discovery` — `runs_24h {ok:0, failed:21, skipped:4}`, `last_message: "Polygon
+  /v2/aggs/grouped/locale/us/market/stocks/2026-11-06 → 403"`, `last_run_at: Fri Nov 06 2026
+  23:33:07 UTC` (18:33 ET Friday — this cron is `weekdays_only:true`, so this was a genuine
+  weekday failure, not a weekend gap).
+- `banger-discovery` — same `403` on the same grouped-daily endpoint, `runs_24h {ok:0, failed:3,
+  skipped:1}`, last run Fri 21:18 UTC.
+- `nighthawk-outcomes` — `"1 grade write(s) failed: MGNI@2026-11-06: Polygon
+  /v2/aggs/ticker/MGNI/range/1/day/2026-11-06/2026-11-06 → 403"` (per-ticker daily-aggs endpoint,
+  same family) — also tripped a second ticker (`BLLN`) in the same run's
+  `rejection_counterfactuals` sub-step.
+- `gex-eod-snapshot` — `"No EOD snapshots captured for any watchlist ticker"` (0/11 tickers),
+  timing/shape consistent with the same outage window, last run Fri 21:10 UTC.
+
+This directly explains why every swing play-brief pulled this cycle reports "Swing scan: 2026-11-06
+09:15 ET (prior session — today's discovery not yet run)" — the brief's own freshness/absence
+framing (Largo C2/C3) is honest about the symptom, but the underlying cause is a live credential/
+access break, not benign weekend quiet.
+
+**Independently confirmed this is a PRODUCTION-SPECIFIC credential/config issue, not a Polygon-wide
+outage:** this sandbox's own `POLYGON_API_KEY` hit the EXACT SAME endpoint
+(`https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/2026-11-06`) and got a clean `200`
+with 12,573 real results, at the same time production kept getting `403`. So production's deployed
+`POLYGON_API_KEY` (or whatever base/tier it's configured against — `blackout-production/app/env` in
+Secrets Manager) is the thing that's broken, not Polygon's service or this key family in general.
+
+**Could not fix from this session** — no AWS credentials available this session (confirmed via
+`sts.get_caller_identity()` → `InvalidClientTokenId`, consistent with this session's recurring
+"AWS creds absent" state), so the production secret can't be inspected or rotated from here. Routed
+to the nighthawk lane (owns 2 of the 4 affected crons) in case that session has AWS access this
+cycle; if not, this needs the operator's attention before Monday's open specifically because three
+of the four affected crons (`swing-discovery`, `banger-discovery`, `gex-eod-snapshot`) are
+weekday-only and won't attempt to run again until Monday — if the credential is still broken then,
+Monday's swing/banger discovery and EOD GEX snapshot will silently fail again exactly like Friday
+did.
+
+**Secondary, likely-related observation (not elevated to its own incident, logged here for the same
+investigation):** all 3 open native-swing positions (the entire current native open book — PLTR,
+GOOG, MRVL) show option marks frozen within the same single minute (11:15-11:16 ET Friday) — one
+shared pipeline event, not three independent per-ticker illiquidity coincidences. `swing-active-
+refresh`'s own cron-health reports `"healthy"`, `runs_24h {ok:12, failed:0, skipped:3}` across that
+same window — i.e. the cron route kept reporting success while the per-position option-mark sync
+silently stopped advancing, consistent with the same Polygon access break reaching the option-quote
+path too but being swallowed by a fail-soft per-source catch that never bubbles into the cron's own
+pass/fail counter. Worth the owning lane checking separately: a cron reporting "ok" here does not
+prove the thing it's supposed to refresh actually refreshed.
+
+**Specific thing to check at/before Monday's open:** re-pull `GET /api/admin/cron-health` and check
+whether `swing-discovery`/`banger-discovery`/`nighthawk-outcomes`/`gex-eod-snapshot` show a FRESH
+`last_run_at` with `last_status: "ok"` once Monday's first scheduled fire happens (rough windows:
+swing-discovery is phase-anchored post-close; banger-discovery/gex-eod-snapshot ~4:10-4:15 PM ET).
+If any still show the Friday `403` as their most recent attempt, or a NEW `403` from Monday, the
+production Polygon credential is still broken and needs Secrets Manager attention
+(`blackout-production/app/env`'s `POLYGON_API_KEY`) before it silently costs another full trading
+day of swing/banger discovery and EOD GEX history.
+
 ## WATCH LIST — 2026-11-02 Swing `thesisBreakCoaching` no longer names a nonexistent "next trim rail" on a TRIM-status position (PR #7388)
 
 **What was shipped:** Found during a live-check of #7380 itself (`GET /api/market/nighthawk/
