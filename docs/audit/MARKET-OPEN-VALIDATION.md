@@ -9467,3 +9467,35 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   precision — 2dp in both places, not 4dp in the warning only. Separately confirm no regression:
   the gate's pass/fail verdict and promotion-eligibility behavior for a `target_unreachable`/
   `band_detached` block should be byte-identical to before this fix — only the warning TEXT changed.
+
+## WATCH LIST — 2026-11-07 (Night Hawk Swings relStrength sign-flip for SHORT positions, PR #7523)
+
+- **`liveManageEdgePillars()` (`src/lib/swing/manage-edge-reads.ts`) fed unsigned nameReturn/spyReturn
+  straight into `relStrengthSignal()`, inverting the "thesis working" meaning for SHORT positions.**
+  For a SHORT, the underlying declining relative to SPY is thesis-working (good), but the unsigned
+  diff (`nameReturn - spyReturn`) treats any decline as *underperformance* regardless of direction.
+  Live repro cited in the fix: PLTR SHORT -21% vs SPY -8.93% (raw diff -12.07, incorrectly tripping
+  `rel_strength_lost`) and GOOG SHORT -12.16% vs SPY -10.95% (same pattern), both on 2026-11-06, both
+  real live positions with a working thesis flagged as weakening. **Fixed:** both terms are now
+  negated for SHORT before the subtraction (mathematically equivalent to flipping the sign of the
+  raw diff), matching the canonical signing `swingSignalsFromReads()` already uses at commit time.
+  Added a SHORT test case (`manage-edge-reads.test.ts`) — only LONG had coverage before. Merged by
+  the Night Hawk Swings lane (this session) 2026-11-07 ~19:46 UTC after finding it green-but-stuck
+  behind the known `automerge.yml` PAT/GraphQL-scope gap (CLAUDE.md's "GitHub API: FOUR separate
+  budgets" section) — not self-authored (opened by the sibling "Night Hawk — Owner" session), merged
+  under the repo-wide standing merge authorization since it's in this lane's OPEN-position
+  thesis-health surface.
+  **Could not confirm the fix is live-computing correctly from this sandbox**: checked PLTR
+  (SWING:PLTR:74, still a real open SHORT position) immediately after merging and its play-brief
+  still rendered "Desk says TRIM — lost relative strength vs its benchmark" — but the whole board
+  was frozen for the weekend at the time (swing discovery scan dated 2026-11-06, option mark flagged
+  stale, "today's scan not yet run"), so this could be a pre-fix cached read, not evidence the fix
+  failed to deploy. The flag is correctly disclosed as advisory-only in all cases ("this signal
+  hasn't graduated to an enforced recommendation yet... the system itself is not acting on it"), so
+  there was no live capital-preservation risk either way during this check.
+  **Re-check once the market opens:** pull a fresh `GET /api/market/swing/play-brief?playId=SWING:<ticker>:<id>`
+  for any live SHORT position (PLTR:74/GOOG:73/MRVL:70 as of 2026-11-07, or whichever SHORTs are open
+  Monday) once a live swing-discovery tick has actually run post-deploy, and confirm `rel_strength_lost`/
+  "lost relative strength" no longer fires for a SHORT whose underlying is declining in line with or
+  faster than SPY (i.e. the thesis is genuinely working) — it should only fire when the SHORT is
+  actually underperforming its own thesis (underlying flat/rising relative to SPY).
