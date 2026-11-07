@@ -220,12 +220,30 @@ export function mergeStreetEstimates(
   return [...fromBenzinga, ...tail].slice(0, 6);
 }
 
+/**
+ * BUG FIX (standing audit sweep): the `?? rows[0]` fallback handed back an UNRELATED row
+ * whenever nothing matched `eventDate` exactly — e.g. Benzinga shifting a confirmed report
+ * date by a day after a member's page already carried the old one (the same "estimate vs
+ * reality drifts by a day" class this codebase repeatedly hits around earnings timing; see
+ * `parseNextEarningsFromBenzinga`'s own header for the sibling bug this file already fixed
+ * once). `rows` here is sorted `date.desc` by its one real caller
+ * (`loadBenzingaTickerEarnings`), so `rows[0]` is the MOST FUTURE row in the fetched window —
+ * on a no-match it substituted a later, unrelated projected print's EPS/revenue estimates for
+ * the one the caller actually asked about, with the mismatch invisible to the reader (the
+ * returned row still carries ITS OWN `date`, but every consumer — `loadMeridianEarningsEnrichment`
+ * and everything built on `earnings_calendar`/`earnings_yoy`/`post_print` — was keyed off the
+ * REQUESTED `eventDate`, not the row's own date, so a member viewing one event's detail page
+ * could see another quarter's numbers presented as this one's). Same honest-absence discipline
+ * this module's sibling `pickUpcomingEarningsRow` (meridian-ticker-lookup-core.ts, #7100) and
+ * `parseNextEarningsFromBenzinga` above already apply: no exact match is a real "we don't have
+ * this event's row" answer, not a cue to guess.
+ */
 export function pickEarningsCalendarRow(
   rows: BenzingaStructuredEarnings[],
   eventDate: string | null | undefined
 ): MeridianEarningsCalendarRow | null {
   if (!eventDate) return null;
-  const match = rows.find((r) => r.date === eventDate) ?? rows[0] ?? null;
+  const match = rows.find((r) => r.date === eventDate) ?? null;
   return match ? benzingaToCalendarRow(match) : null;
 }
 
