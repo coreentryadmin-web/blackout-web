@@ -85,16 +85,27 @@ export function buildAdminUserFilterSql(filters: AdminUserListFilters): {
   } else if (access === "premium") {
     clauses.push(`tier = 'premium' AND COALESCE(role, '') <> 'admin'`);
   } else if (access === "community") {
-    // Matches classifyAdminUserAccess's priority order: a premium-tier user with
-    // membership_kind='community' is classified "premium" there (tier wins), so this
-    // filter must exclude tier='premium' too, or it disagrees with the row's own badge.
-    clauses.push(`membership_kind = 'community' AND COALESCE(tier, 'free') <> 'premium'`);
+    // Matches classifyAdminUserAccess's priority order AND its two signaling paths: a
+    // premium-tier user with membership_kind='community' is classified "premium" there (tier
+    // wins), so this filter must exclude tier='premium' too, or it disagrees with the row's own
+    // badge — but classifyAdminUserAccess also treats tier='community' alone (no
+    // membership_kind set) as community, the path the admin Edit/Create User modal writes
+    // (PATCH /api/admin/users/[id] sets ONLY `tier`, never `membership_kind`). A clause that
+    // checked membership_kind='community' alone made that admin-set-community row invisible to
+    // this filter and to the stats community bucket below, despite its own badge reading
+    // "Community" — see docs/audit/findings-staging for the full repro.
+    clauses.push(
+      `(tier = 'community' OR membership_kind = 'community') AND COALESCE(tier, 'free') <> 'premium'`
+    );
   } else if (access === "free") {
     clauses.push(
       `tier = 'free' AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium') AND COALESCE(role, '') <> 'admin'`
     );
   } else if (tier === "community") {
-    clauses.push(`membership_kind = 'community' AND COALESCE(tier, 'free') <> 'premium'`);
+    // Same dual-signal fix as access === "community" above.
+    clauses.push(
+      `(tier = 'community' OR membership_kind = 'community') AND COALESCE(tier, 'free') <> 'premium'`
+    );
   } else if (tier === "premium") {
     clauses.push(`tier = 'premium'`);
   } else if (tier === "free") {
@@ -199,7 +210,15 @@ export function computeAdminUserListStats(
     }
 
     if (row.tier === "premium") premium++;
-    if (row.membership_kind === "community" && (row.tier ?? "free") !== "premium") community++;
+    // Same dual-signal check as buildAdminUserFilterSql's access/tier==="community" clauses:
+    // tier='community' directly (admin Edit/Create User modal, membership_kind left null) OR
+    // membership_kind='community' (the Whop webhook path) — either one, excluding tier='premium'.
+    if (
+      (row.tier === "community" || row.membership_kind === "community") &&
+      (row.tier ?? "free") !== "premium"
+    ) {
+      community++;
+    }
     if (row.tier === "free" && !["community", "premium"].includes(row.membership_kind ?? "free")) {
       free++;
     }
