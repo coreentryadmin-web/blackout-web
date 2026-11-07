@@ -4,6 +4,32 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-11-07 (12:11 UTC / Sat 07:11 ET) — [SEO] Lane resumed after ~5.75-day gap (org weekly spend limit), shipped fixes validated
+
+**Gap, honestly reported, not glossed over.** 42 scheduled-trigger notifications (lane heartbeat,
+RTH wakes, daily growth cycles) queued unprocessed from Mon 2026-11-02 06:22 UTC through Sat
+2026-11-07 12:10 UTC. Root cause confirmed by the coordinator's own poke (notification 12 of 12):
+"your last turn (2026-11-07 ~06:16 UTC) ended with status FAILED — You've hit your weekly limit ·
+resets 11am (UTC)." That reset window has now passed. Not attempting to retroactively reconstruct
+or backfill those 42 missed cycles — a CLS reading, gamma-snapshot poll, or PR-sweep result from
+hours-to-days ago is unverifiable now and reporting one would be fabrication, which this lane's
+standing discipline forbids. Resuming cleanly from the current state instead.
+
+Verified repo/container state fresh (no restart recovery needed — repo, `node_modules`, Node 20
+at `/opt/node20/bin/node`, and `CF_API_TOKEN`/`CF_ZONE_ID` were all intact; resynced to
+`origin/main` at `d4703eab2`). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage
+CLS — **0.0004, GOOD** (68/68 routed, 0 fail, empty shifts). Fetched `/api/og` with a Googlebot
+UA: `200`, `content-type: image/png`, valid 1200x630 PNG — crawlable, confirmed on production.
+`robots.txt` still serves `Allow: /api/og`. `/api/health` → `200` (no undetected outage during the
+gap). **Step 2 — PR sweep:** 41 open agent PRs fleet-wide (21 CONFLICTED, 19 CI-FAILED, 1
+CI-RUNNING), all other-lane — a large jam of near-duplicate SPX-oracle/cron-health RTH-window
+fixes, apparently several attempts at the same underlying fix colliding with each other. Not this
+lane's PRs, not conflicted on `docs/audit/FINDINGS.md`, and not a green-draft jam — noted as an
+unusually large pile-up worth the coordinator's attention, but not acted on. **Step 3 —
+opportunity scan:** `gsc-opportunities-report.mjs` still blocked, no AWS creds
+(`UnrecognizedClientException`) — honest `SKIP`, exit 0, nothing fabricated, consistent with every
+prior run. Standing cadence resumes from here.
+
 ## 2026-11-02 (00:18 UTC / Sun 20:18 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Resynced to `origin/main` (`9c28e2d36`, other-lane lib fix). **Step 1:** purged Cloudflare edge
