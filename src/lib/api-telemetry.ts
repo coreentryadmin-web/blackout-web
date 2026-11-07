@@ -79,6 +79,36 @@ export function endpointTemplate(endpoint: string): string {
       /\/api\/(stock|darkpool|shorts|etfs|lit-flow|seasonality|companies)\/[^/?]+/g,
       "/api/$1/:sym"
     )
+    // `/api/earnings/{ticker}` (fetchUwTickerEarningsHistory / fetchUwTickerNextEarnings) and
+    // `/api/insider/{ticker}` (fetchUwInsiderTicker) leaked the identical per-symbol
+    // endpointStats row the block above fixes for stock/darkpool/etc — this file's original UW
+    // coverage simply stopped one function short of the full `unusual-whales.ts` call-site list
+    // (found by round 386, verified against source by round 387). `/api/earnings/premarket` and
+    // `/api/earnings/afterhours` (fetchUwEarningsPremarket/fetchUwEarningsAfterhours) and
+    // `/api/insider/transactions` (fetchUwInsiderTransactions) are FIXED, non-symbol siblings
+    // under the same prefixes — the negative lookaheads keep those as their own distinct,
+    // low-cardinality stats rows instead of folding them into the generic `:sym` bucket, the
+    // same discipline the market-tide/top-net-impact exclusion above already applies.
+    .replace(
+      /\/api\/earnings\/(?!premarket(?:\/|$)|afterhours(?:\/|$))[^/?]+/g,
+      "/api/earnings/:sym"
+    )
+    .replace(/\/api\/insider\/(?!transactions(?:\/|$))[^/?]+/g, "/api/insider/:sym")
+    // `/api/institution/{name}/activity|holdings|ownership` (fetchUwInstitutionActivity /
+    // fetchUwInstitutionHoldings / fetchUwInstitutionOwnership) — institution names are
+    // free-text, `encodeURIComponent`-escaped (fetchUwInstitutionActivity/Holdings) or run
+    // through the ticker `sym()` helper (fetchUwInstitutionOwnership, despite taking an
+    // institution name per its own JSDoc — a separate pre-existing naming inconsistency, not
+    // fixed here). Either way the encoded segment can never itself contain a literal `/` or `?`
+    // (encodeURIComponent percent-encodes both: `encodeURIComponent("BlackRock/Fund A?")` ->
+    // `"BlackRock%2FFund%20A%3F"` — verified before writing this pattern), so the plain
+    // `[^/?]+` segment match used everywhere else in this function is safe here too; no plural
+    // `/api/institutions/latest_filings` (fetchUwInstitutionsLatestFilings) collision, since that
+    // uses the distinct plural prefix this pattern does not match.
+    .replace(
+      /\/api\/institution\/[^/?]+\/(activity|holdings|ownership)/g,
+      "/api/institution/:sym/$1"
+    )
     // `/api/market/{ticker-or-sector}/sector-tide|etf-tide` — the ONLY two per-symbol `/api/market/`
     // routes; every other `/api/market/...` path (market-tide, top-net-impact, fda-calendar, …)
     // takes no symbol segment and must stay untouched.
