@@ -1,11 +1,26 @@
 /**
  * BENZINGA NEWS / CATALYSTS READER (task #60 leg — data arsenal).
  *
- * ⚠️ TRUTH CORRECTION (2026-07-13, re-verified live): **Benzinga IS available on the Polygon key.**
- * `GET {POLYGON_API_BASE}/benzinga/v2/news?...&apiKey=KEY` returns 200 for channels=fda|guidance|m&a
- * and for ticker=NVDA&channels=earnings. There is NO separate Benzinga key — ride the Polygon key +
- * POLYGON_API_BASE, exactly like the other polygon-* readers. The old CLAUDE.md note
- * ("BENZINGA_API_KEY is missing → news won't fetch") is **STALE**; do not rely on a separate key.
+ * ⚠️ ENTITLEMENT REGRESSED (2026-11-07) — the claim below that this endpoint "returns 200" is NO
+ * LONGER TRUE. `GET {POLYGON_API_BASE}/benzinga/v2/news?...&apiKey=KEY` now 403s with
+ * `{"error":"You are not entitled to this data. Please upgrade your plan at
+ * https://massive.com/pricing"}` on EVERY variant re-tested (bare ticker query, ticker+channels,
+ * and the exact two combos this comment used to cite as verified: channels=fda|guidance|m&a and
+ * ticker=NVDA&channels=earnings) — confirmed on `api.massive.com` directly, and corroborated by a
+ * real production `swing/play-brief` response surfacing `"ticker news MSTR unavailable: Polygon
+ * /benzinga/v2/news → 403"` the same day. Sibling Polygon/Massive endpoints (grouped-daily,
+ * `/v3/reference/tickers`) returned 200 on the SAME key in the same check, so this is a
+ * Benzinga-specific entitlement loss on the plan, not a dead/revoked key or a transient blip. This
+ * is an account/billing issue, not a code bug — there is no code fix; see
+ * `docs/audit/findings-staging/2026-11-07-benzinga-entitlement-lost.md`. Do not re-trust the
+ * 2026-07-13 "re-verified live" claim immediately below without re-testing first.
+ *
+ * ORIGINAL NOTE (2026-07-13, now stale per the correction above): **Benzinga IS available on the
+ * Polygon key.** `GET {POLYGON_API_BASE}/benzinga/v2/news?...&apiKey=KEY` returns 200 for
+ * channels=fda|guidance|m&a and for ticker=NVDA&channels=earnings. There is NO separate Benzinga
+ * key — ride the Polygon key + POLYGON_API_BASE, exactly like the other polygon-* readers. The old
+ * CLAUDE.md note ("BENZINGA_API_KEY is missing → news won't fetch") is **STALE**; do not rely on a
+ * separate key.
  *
  * Governed, cached, fail-open readers for corporate news + catalysts:
  *   - fetchTickerNews(ticker)          — recent Benzinga news for one ticker (ticker-filtered)
