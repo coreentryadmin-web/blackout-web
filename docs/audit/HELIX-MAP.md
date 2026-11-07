@@ -722,6 +722,23 @@ Raised for the coordinator with the evidence above rather than taken. The same r
 `darkpool-discord`, `largo-morning-brief`, `meridian-warm`, `thermal-discord`, `welcome-sequence`
 and `zerodte-grade` as unscheduled-and-unexplained — other lanes' surfaces, reported not touched.
 
+**CORRECTED 2026-09-03 — `helix-signal-outcomes` is deployed and firing; the "dark"/"no writer"
+half of this entry above no longer holds.** `docs/audit/FINDINGS.md`'s 2026-09-03 `[FINDING, P4
+stale-docs, Helix]` entry re-checked this exact claim directly against the deployed side (live AWS
+creds that session): `events.list_rules` found `blackout-production-helix-signal-outcomes`, state
+**ENABLED**, schedule `cron(*/15 11-21 ? * MON-FRI *)` (every 15 min, RTH), correctly targeting the
+`hit-cron` Lambda with `{"key":"helix-signal-outcomes","path":"/api/cron/helix-signal-outcomes"}` —
+and live CloudWatch Logs on `/aws/lambda/blackout-production-hit-cron` (exact-phrase filter) showed
+**9/9 successful `-> 200` invocations, 17:30–19:31 UTC**, correctly stopping at RTH close. That fix
+was applied to CLAUDE.md's own stale bullet in the same pass (per that FINDINGS.md entry's own
+"Blast radius: one doc file") — it was **not** back-applied here, so this map kept describing
+`helix-signal-outcomes` as absent from the deployed manifest for two months after the gap closed.
+The paragraphs above (and §9.7 below) describing it as dark/un-runnable are historically accurate
+for 2026-08-23 and should be read that way, not as current state. The ledger-based re-run this
+correction unblocks — re-grading §9.7's score-vs-follow-through question against the now-live
+`helix_signal_outcomes` table instead of the Polygon-minute-bar proxy — is a natural follow-up that,
+per that same FINDINGS.md entry, had **not yet been done** as of 2026-09-03 either; still open.
+
 **9.2 — Two UTC-anchored DTE derivations at ingest (C1 class) — FIXED, and the impact assessment was confirmed by measurement.** `parseUwFlowAlert`
 (`unusual-whales.ts:270`) computes `dte` from `new Date(expiry) − Date.now()` in UTC and derives
 `route` from it; `dteFromExpiry` (`flow-persist.ts:42`) does the same for the premium-floor decision.
@@ -848,12 +865,17 @@ only by the sweep (+25) and 0DTE (+15) flags. Whether that is intended compressi
 retune it on intuition: the ledger in §9 is the only instrument that could say whether score
 correlates with follow-through, and that measurement has not been run.
 
-**IT HAS NOW BEEN RUN — by a different route, because the one the map named is un-runnable.** The
-signal ledger has no writer (§9.1: `helix-signal-outcomes` is registered but absent from the
-deployed cron manifest), so `scripts/audit/helix-score-signal.mjs` grades each print's own
-underlying forward on REAL Polygon minute bars instead. 5000-row tape, **748 prints graded**
-(only 27.4% carry a real `event_at` and a readable direction — the §9.0 denominator again), direction
-from option type × aggressor side.
+**IT HAS NOW BEEN RUN — by a different route, because the one the map named was un-runnable AT THE
+TIME.** The signal ledger had no writer as of 2026-08-23 (§9.1: `helix-signal-outcomes` was
+registered but absent from the deployed cron manifest), so `scripts/audit/helix-score-signal.mjs`
+grades each print's own underlying forward on REAL Polygon minute bars instead. 5000-row tape,
+**748 prints graded** (only 27.4% carry a real `event_at` and a readable direction — the §9.0
+denominator again), direction from option type × aggressor side. **CORRECTED 2026-09-03 — see §9.1's
+own correction note:** the ledger's writer is deployed and confirmed firing now, so the Polygon-bar
+proxy below is no longer the only instrument available; a direct re-run against the live
+`helix_signal_outcomes` table is the natural follow-up and, per the FINDINGS.md entry that
+established this, was still **not done** as of that writing. The proxy methodology and the table
+below are unaffected by this correction and remain valid as reported.
 
 | score bucket | n | +15min | +30min | +60min |
 |---|---|---|---|---|
