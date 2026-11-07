@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-07T16:08:56.684Z",
+  "updated_at": "2026-11-07T16:38:43.434Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-07T16:08:32.624Z"
+      "released_at": "2026-11-07T16:38:18.993Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-07T16:08:38.634Z",
-      "lease_until": "2026-11-07T16:09:38.634Z",
+      "claimed_at": "2026-11-07T16:38:25.035Z",
+      "lease_until": "2026-11-07T16:39:25.035Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-07T16:08:38.640Z"
+      "released_at": "2026-11-07T16:38:25.042Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "260ada35ca9be14ffcf4d1ab115cc69fc394b753",
+    "last_main_sha": "4e623cda9a53f01f02efdfbc8a2fd463e8cdfe0e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-07T16:00:58Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42389139436",
-    "last_deploy_sha": "24ddddd7fb0e4b59fb5421ea9073fe52ec7345e7"
+    "last_deploy_at": "2026-11-07T16:37:40Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42392242595",
+    "last_deploy_sha": "4e623cda9a53f01f02efdfbc8a2fd463e8cdfe0e"
   },
   "events": [
-    {
-      "at": "2026-10-26T15:29:02.837Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T15:29:09.740Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T16:02:05.374Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T16:02:11.615Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T16:02:17.743Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-26T16:18:08.862Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 9
-    },
     {
       "at": "2026-10-26T16:18:16.431Z",
       "type": "context_sync",
@@ -1289,18 +1253,54 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-07T16:38:18.994Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T16:38:25.041Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-07T16:38:25.042Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-07T16:38:31.573Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-07T16:38:37.573Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-07T16:38:43.434Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 7504,
-      "title": "fix(meridian): pickEarningsCalendarRow served an unrelated future print on a date mismatch",
-      "branch": "fix/meridian-pick-earnings-calendar-row-fallback",
+      "number": 7509,
+      "title": "chore: agent-state heartbeat sync",
+      "branch": "chore/agent-state-heartbeat-sync-1107c",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "human",
       "draft": false,
       "verify": "IN_PROGRESS/pending",
-      "updated_at": "2026-11-07T16:03:43Z"
+      "updated_at": "2026-11-07T16:31:28Z"
     },
     {
       "number": 7412,
