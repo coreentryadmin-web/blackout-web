@@ -4,6 +4,7 @@
  */
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { gateFramingMootReason } from "./entry-enterability";
 import { roundFloats } from "@/lib/round-floats";
@@ -12,6 +13,39 @@ import { fmtPriceLevel } from "@/lib/fmt-money";
 export type BriefSnapshot = {
   headline: string;
   recommendation: string | null;
+  /**
+   * Member-facing display verb for `recommendation`, resolved the SAME way every other render
+   * site in this codebase already resolves it (`swingActionDisplay`/`swingVerdictVerb`,
+   * play-card-lifecycle.ts/play-brief.ts) — used ONLY by the two render sites below
+   * (`synthesizePnlAndUpgrade`, the plain "Desk action shifted" fallback). `recommendation`
+   * itself stays untouched and is still what `recommendationShiftKind`/`RECOMMENDATION_RANK`
+   * read, since that raw BUY/HOLD/TRIM/SELL vocabulary is what the upgrade/downgrade
+   * classification is actually keyed on.
+   *
+   * GAP FOUND (Ask Largo standing mandate, 2026-11-07): for a WATCH candidate,
+   * `entry-verdict.ts`'s `swingEntryVerdict` stamps the raw two-value `recommendation` field
+   * "HOLD" for every not-yet-buyable reason (still forming, gates blocking, past its entry
+   * window, etc. — see its own `wait`/`dont_buy` branches), while the member-facing label the
+   * REST of the brief shows for that exact state is "WAIT" (or EXPIRED/EXTENDED/STILL BUY,
+   * depending on which not-yet-buyable sub-state applies) via `swingActionDisplay`'s WATCH
+   * branch — "HOLD" never once appears anywhere else in a WATCH play's rendered brief. Before
+   * this field existed, `diffBriefSnapshots` read the raw `recommendation` value directly for
+   * display text, so a WATCH candidate whose gates clear (HOLD -> BUY) rendered "**Desk action
+   * shifted** — **HOLD** -> **BUY**" — a label ("HOLD") the member never saw anywhere else for
+   * that ticker, which previously said "WAIT" everywhere (live-confirmed TSLA:365P WATCH).
+   * This is the SAME bug class already fixed for `watchEntrySection`/`actionNarrative`/
+   * `degradedReadLine` (2026-09-07, BO-P2-LARGO-0907) and the Legacy-product sibling
+   * `overlayLegacyQuotes` (2026-11-01) — this file's own CLOSED-transition case was fixed
+   * 2026-11-02 (`nextIsGenuinelyClosed`, below) but that fix deliberately scoped out WATCH; this
+   * closes that remaining gap. Scoped to WATCH only — every other status (OPEN/HOLD/TRIM/
+   * CLOSED/SKIP) is unaffected: `swingActionDisplay`/`swingVerdictVerb` already agree with the
+   * raw `recommendation` value for those, so resolving through them would be a no-op there, but
+   * CLOSED's own display leak (the deliberately-unfixed gap noted above) is intentionally left
+   * alone by keying this off `play.status === "WATCH"` rather than reusing the full
+   * `swingVerdictVerb` chain (whose CLOSED/SKIP branches would otherwise change that path's
+   * behavior as an unreviewed side effect of this fix).
+   */
+  recommendationLabel: string | null;
   /** LONG/SHORT — used both to tell an "adverse" spot move (toward the put wall for a LONG,
    *  toward the call wall for a SHORT) from a favorable one, AND diffed directly below.
    *  BUG FIXED 2026-09-18 (Ask Largo round 20): this field used to be documented "not itself
@@ -253,7 +287,7 @@ function synthesizeThesisAndPrice(
  *  the two facts tracking together is the point, not two adjacent unconnected bullets. */
 function synthesizePnlAndUpgrade(prev: BriefSnapshot, next: BriefSnapshot): string {
   const pnlFact = narratePnlShift(prev.pnlPct!, next.pnlPct!);
-  return `${pnlFact}, and the **desk upgraded** — **${prev.recommendation}** → **${next.recommendation}** — tracking together`;
+  return `${pnlFact}, and the **desk upgraded** — **${prev.recommendationLabel}** → **${next.recommendationLabel}** — tracking together`;
 }
 
 /**
@@ -285,6 +319,14 @@ export function extrasFromBriefResponse(response: {
   };
 }
 
+/** See `BriefSnapshot.recommendationLabel`'s own doc comment for why this exists and why it is
+ *  scoped to WATCH only. */
+function recommendationDisplayLabel(play: TerminalPlay | null): string | null {
+  if (play == null) return null;
+  if (play.status !== "WATCH") return play.recommendation ?? null;
+  return swingActionDisplay(play)?.label ?? play.recommendation ?? null;
+}
+
 /** Build a comparable snapshot from API response + live play overlay. */
 export function snapshotFromBrief(
   envelope: BieAnswerEnvelope,
@@ -302,6 +344,7 @@ export function snapshotFromBrief(
   return {
     headline: envelope.headline,
     recommendation: play?.recommendation ?? null,
+    recommendationLabel: recommendationDisplayLabel(play),
     direction: play?.direction ?? null,
     thesisHealth:
       play?.thesisHealth && !thesisHealthUncalibrated(play.thesisHealth)
@@ -390,7 +433,7 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
   // ---- independent bullets — same content/order as before synthesis existed, skipping only
   // what a synthesis rule above already narrated as part of a connected line. ----
   if (!recommendationConsumed && recommendationChanged) {
-    lines.push(`**Desk action shifted** — **${prev.recommendation}** → **${next.recommendation}**`);
+    lines.push(`**Desk action shifted** — **${prev.recommendationLabel}** → **${next.recommendationLabel}**`);
   }
   if (!thesisConsumed && thesisMoved) {
     lines.push(narrateThesisShift(prev.thesisHealth!, next.thesisHealth!));
@@ -675,13 +718,19 @@ export function loadPersistedBriefSnapshot(key: string): BriefSnapshot | null {
     // throw the way an unconditional `.join()`/`.includes()` on a missing array would. Guarded
     // here anyway for type-schema honesty, matching this function's own established discipline for
     // every other field added to BriefSnapshot since this guard was written.
+    //
+    // `recommendationLabel` (added 2026-11-07) is the same shape as `gateFramingMoot` — a plain
+    // `string | null` with no unconditional-method crash risk, read from BOTH `prev` and `next`
+    // by the two display sites (unlike `gateFramingMoot`, which is next-only) — guarded on both
+    // sides for the same type-schema-honesty reason.
     if (
       !parsed ||
       typeof parsed !== "object" ||
       typeof parsed.headline !== "string" ||
       !Array.isArray(parsed.sectionTitles) ||
       !Array.isArray(parsed.gateBlocks) ||
-      (parsed.gateFramingMoot !== null && typeof parsed.gateFramingMoot !== "string")
+      (parsed.gateFramingMoot !== null && typeof parsed.gateFramingMoot !== "string") ||
+      (parsed.recommendationLabel !== null && typeof parsed.recommendationLabel !== "string")
     ) {
       return null;
     }
