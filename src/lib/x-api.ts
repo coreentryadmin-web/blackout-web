@@ -1,5 +1,4 @@
 import * as crypto from "node:crypto";
-import { minutesSinceIso } from "@/lib/ws/timestamp-freshness";
 
 const X_TWEET_URL = "https://api.x.com/2/tweets";
 const X_MEDIA_UPLOAD_URL =
@@ -483,29 +482,6 @@ export async function fetchMentions(maxResults = 10): Promise<XMention[]> {
       };
     })
     .filter((m): m is XMention => m !== null);
-}
-
-/** Original tweets posted by @BlackOutTrade today (ET calendar day). */
-export async function countOwnPostsTodayEt(): Promise<number> {
-  const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 20);
-  const todayEt = new Date().toLocaleDateString("en-CA", {
-    timeZone: "America/New_York",
-  });
-  return tweets.filter((t) => {
-    if (!t.created_at) return false;
-    const d = new Date(t.created_at).toLocaleDateString("en-CA", {
-      timeZone: "America/New_York",
-    });
-    return d === todayEt;
-  }).length;
-}
-
-/** Minutes since the most recent original tweet from @BlackOutTrade. */
-export async function minutesSinceLastOwnPost(): Promise<number | null> {
-  const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 5);
-  const latest = tweets.find((t) => t.created_at)?.created_at;
-  if (!latest) return null;
-  return minutesSinceIso(latest);
 }
 
 export interface XAccountMetrics {

@@ -26,10 +26,16 @@ test("ageHoursFromIso: future skew beyond tolerance returns stale sentinel", () 
 });
 
 test("x automation uses shared ISO age guards", () => {
+  // x-api.ts dropped out of this ratchet 2026-11-07: its only "time since" logic
+  // (minutesSinceLastOwnPost, built on minutesSinceIso) was dead code with zero callers
+  // anywhere in the repo since #7387 moved the live posting-cadence age check to
+  // x-post-guard.ts's own minutesSinceLastProductPost (which still uses minutesSinceIso
+  // and is still covered below). x-api.ts now does no ISO-age arithmetic of its own, so
+  // there is nothing left for this guard to protect there — re-add an assertion on
+  // x-api.ts if it grows a new age computation that should use the shared helper instead
+  // of reimplementing date math inline.
   const engage = readFileSync("src/lib/x-engage-engine.ts", "utf8");
-  const api = readFileSync("src/lib/x-api.ts", "utf8");
   const guard = readFileSync("src/lib/x-post-guard.ts", "utf8");
   assert.match(engage, /ageHoursFromIso/);
-  assert.match(api, /minutesSinceIso/);
   assert.match(guard, /minutesSinceIso/);
 });
