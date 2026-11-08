@@ -113,6 +113,18 @@ export function endpointTemplate(endpoint: string): string {
     // routes; every other `/api/market/...` path (market-tide, top-net-impact, fda-calendar, …)
     // takes no symbol segment and must stay untouched.
     .replace(/\/api\/market\/[^/?]+\/(sector-tide|etf-tide)/g, "/api/market/:sym/$1")
+    // `/api/group-flow/{group}/greek-flow` (fetchUwGroupGreekFlow, unusual-whales.ts) — the SAME
+    // unbounded-cardinality gap the earnings/insider/institution fix above closed, missed for
+    // this prefix because this file's original UW coverage never reached it. `group` is not a
+    // small fixed enum the way it reads from the "mag7"/"semis" examples in largo/tool-defs.ts's
+    // own tool schema — that schema types it as a free-text `string` (`description: "Flow group
+    // e.g. mag7, semis"`), and Largo's `get_group_greek_flow` tool (run-tool.ts) forwards
+    // whatever group name the AI/operator supplies straight into this path with no allowlist.
+    // Every distinct group name a Largo conversation ever asks about therefore minted its own
+    // permanent `endpointStats` row forever — exactly the "per-symbol path leaks a permanent
+    // entry" defect this function's own header exists to prevent, just for a prefix the earlier
+    // UW sweep stopped one function short of.
+    .replace(/\/api\/group-flow\/[^/?]+\/(greek-flow)/g, "/api/group-flow/:sym/$1")
     .replace(/(\/indicators\/(?:ema|sma|macd|rsi))\/[^/?]+/g, "$1/:sym") // /v1/indicators/ema/AAPL or /I:SPX
     .replace(/I:[A-Z0-9]+/g, ":idx") // index symbols (I:SPX, I:VIX)
     .replace(/\/tickers\/[^/]+/g, "/tickers/:sym") // PLURAL: /v3/reference/tickers/AAPL, /v2/snapshot/.../tickers/NVDA
