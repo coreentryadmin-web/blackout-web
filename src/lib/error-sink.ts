@@ -274,36 +274,72 @@ export type AuthFailureSummary = {
 };
 
 /**
+ * Pure: shape a (true total count, sampled-rows) pair into the summary object.
+ *
+ * Split out from `countAuthFailures` so the one invariant that actually matters here —
+ * `total_24h` must be the REAL count, not however many rows the recent-messages sample
+ * happened to carry — is unit-testable without a live Postgres connection. `rows` is only
+ * ever a bounded sample (see `countAuthFailures`'s own `LIMIT 200`) used for the `by_mode`
+ * breakdown and `recent_messages` preview; `totalCount` must come from a real `COUNT(*)`,
+ * never from `rows.length`.
+ */
+export function shapeAuthFailureSummary(
+  totalCount: number,
+  rows: Array<{ scope: string | null; message: string }>
+): AuthFailureSummary {
+  const by_mode: Record<string, number> = {};
+  for (const r of rows) {
+    const mode = r.scope ?? "unknown";
+    by_mode[mode] = (by_mode[mode] ?? 0) + 1;
+  }
+  return {
+    total_24h: totalCount,
+    by_mode,
+    recent_messages: [...new Set(rows.map((r) => r.message))].slice(0, 5),
+  };
+}
+
+/**
  * BIE Stage 3: "security warnings / auth failure monitoring." Dedicated (not the
  * generic top-8 `countRecentErrorEvents` grouping, which could drop a real but
  * low-volume auth-failure signal if other error sources dominate the window).
  * Reads only what AuthFailureObserver.tsx's beacon has already written under
  * source: "auth_failure" — zero new access, same fail-open-to-zero pattern as
  * every other probe on this report.
+ *
+ * THE BUG THIS FIXES: `total_24h` used to be `rows.length` off the SAME `LIMIT 200` query
+ * used for the `recent_messages`/`by_mode` sample — so any window with MORE than 200 real
+ * auth failures silently plateaued at exactly 200 forever, no matter how much larger the
+ * real count actually was. That is precisely the window this number exists to catch: a
+ * credential-stuffing/brute-force spike is exactly the scenario that pushes a 24h count
+ * past 200, and reporting a flat "200" instead of the real magnitude understates severity
+ * on the admin BIE report's "security warnings" panel exactly when it matters most. Fixed
+ * by running a real `COUNT(*)` for the total alongside the existing bounded sample query —
+ * the sample still only feeds `by_mode`/`recent_messages`, which are explicitly a preview,
+ * never the headline number.
  */
 export async function countAuthFailures(sinceHours = 24): Promise<AuthFailureSummary> {
   const { dbConfigured, dbQuery } = await import("@/lib/db");
   if (!dbConfigured()) return { total_24h: 0, by_mode: {}, recent_messages: [] };
   const hours = Math.min(Math.max(1, Math.round(sinceHours)), 168);
   try {
-    const { rows } = await dbQuery<{ scope: string | null; message: string; created_at: Date }>(
-      `SELECT scope, message, created_at
-         FROM error_events
-        WHERE source = 'auth_failure' AND created_at > NOW() - ($1 || ' hours')::interval
-        ORDER BY id DESC
-        LIMIT 200`,
-      [String(hours)]
-    );
-    const by_mode: Record<string, number> = {};
-    for (const r of rows) {
-      const mode = r.scope ?? "unknown";
-      by_mode[mode] = (by_mode[mode] ?? 0) + 1;
-    }
-    return {
-      total_24h: rows.length,
-      by_mode,
-      recent_messages: [...new Set(rows.map((r) => r.message))].slice(0, 5),
-    };
+    const [{ rows: countRows }, { rows }] = await Promise.all([
+      dbQuery<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM error_events
+          WHERE source = 'auth_failure' AND created_at > NOW() - ($1 || ' hours')::interval`,
+        [String(hours)]
+      ),
+      dbQuery<{ scope: string | null; message: string; created_at: Date }>(
+        `SELECT scope, message, created_at
+           FROM error_events
+          WHERE source = 'auth_failure' AND created_at > NOW() - ($1 || ' hours')::interval
+          ORDER BY id DESC
+          LIMIT 200`,
+        [String(hours)]
+      ),
+    ]);
+    return shapeAuthFailureSummary(Number(countRows[0]?.count ?? 0), rows);
   } catch {
     return { total_24h: 0, by_mode: {}, recent_messages: [] };
   }
