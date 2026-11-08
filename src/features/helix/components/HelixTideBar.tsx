@@ -4,13 +4,7 @@ import useSWR from "swr";
 import { clsx } from "clsx";
 import { fetchSpxState, type SpxState } from "@/lib/api";
 import { tideSplit, netPremiumSense } from "@/features/helix/lib/helix-tide-split";
-
-function fmtMoney(n: number): string {
-  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(0)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
-}
+import { fmtMoney } from "@/features/helix/lib/helix-tide-money-format";
 
 /**
  * Compact market tide indicator for the HELIX page header. Reads from the shared
