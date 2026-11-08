@@ -61,7 +61,11 @@ import {
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
-import { ownContractExpiry, printAlreadyLandedThresholdMs } from "./play-brief-narrative-coaching";
+import {
+  laneRankCoaching,
+  ownContractExpiry,
+  printAlreadyLandedThresholdMs,
+} from "./play-brief-narrative-coaching";
 import { formatDealerDollars } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason, gateFramingMootReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
@@ -3904,8 +3908,21 @@ export function buildIntelSections(
 
   if (opts?.collapseIntel === false) return out;
 
+  // BUG FIX (Ask Largo standing mandate, 2026-11-08, live repro SWING:MRVL:70): `laneRankCoaching`
+  // deliberately returns null (stays silent) for a comfortably-good-but-not-top-3 position —
+  // well above the lane median but ranked below #3 — while `laneRankSection` above still renders
+  // the real rank/score/median/leader for that same position. `collapseRedundantIntelSections`
+  // used to drop "Lane rank" purely off the static NARRATIVE_COVERED_TITLES membership and claim
+  // it was "folded into Trade manager read" regardless, which was false for that band. Recompute
+  // the SAME predicate the narrative generator uses (not a string-match against `narrative.body`,
+  // which would drift the moment any of laneRankCoaching's four branches got reworded — see this
+  // file's other `*AlreadyNoted` comments for why that trap keeps recurring) so the collapse
+  // decision for this one title tracks reality instead of a static list.
+  const laneRankFolded = laneRankCoaching(play, ctx.laneRows) != null;
+
   return collapseRedundantIntelSections(out, {
     hasNarrative: Boolean(narrative),
     bucket,
+    laneRankFolded,
   });
 }
