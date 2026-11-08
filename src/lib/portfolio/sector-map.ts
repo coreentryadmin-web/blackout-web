@@ -268,6 +268,41 @@ const SECTORS: Record<string, string[]> = {
   // ("an unmapped name is NEVER falsely merged into a shared thesis") — if LHX/NN later prove to
   // genuinely belong, that is a separate, independently-evidenced fix, not an extension of this one.
   "defense-space-systems": ["KTOS", "RDW"],
+  // Added 2026-11-08 (Ask Largo standing mandate, Night Hawk Swings lane, live finding): a real
+  // committed book held VXX LONG, UVIX LONG, UVXY LONG and SPXS LONG concurrently (positionId 2479
+  // for VXX among them) with NONE of the four mapped anywhere in this file or in theme-cluster.ts's
+  // `ETF_PROXY_THEMES` — each resolved to an isolated `NAME:<ticker>` own-cluster, so
+  // `checkPortfolioOverlap`/`bookContextSection` gave zero concentration flag for what is
+  // functionally ONE "long volatility / risk-off" bet stacked four times over, the fifth live
+  // instance of this exact gap shape this file and theme-cluster.ts have already fixed four times
+  // (SOXS/SQQQ/LABD in `ETF_PROXY_THEMES`; ALAB/CRDO/KLAC/SMCX/MULL/AVGX/MTSI/CRWV/NBIS/DRAM here).
+  // Measured, not guessed, same evidence bar as the LABD precedent above (96 real trading days,
+  // avg |r| comparison): real Polygon daily bars, 151 trading days (2026-04-02..2026-11-08).
+  // VXX/UVIX/UVXY pairwise r=0.997-0.998 — expected, since UVIX/UVXY are 1.5-2x-levered VIX-futures
+  // funds tracking the exact same short-term VIX-futures complex VXX tracks directly, literally the
+  // same underlying basket at different leverage, the same relationship SOXL/SOXS or TQQQ/SQQQ
+  // already have within `semis`. SPXS (Direxion Daily S&P 500 Bear 3x — a 3x INVERSE equity-index
+  // fund, a different primal driver: equity-index direction, not VIX term structure) was measured
+  // rather than assumed either way, per this fix's own instructions: r=0.803-0.805 against each of
+  // VXX/UVIX/UVXY — more than double the LABD precedent's ~0.61 avg bar for inclusion — confirming
+  // SPXS's "equities crash" bet and the VIX-futures ETPs' "vol spikes" bet are the SAME real risk
+  // driver (vol spikes and equity-index routs are the same event), so SPXS joins this bucket rather
+  // than getting its own standalone pair the way corning/roblox/solar/etc. do above. Two real
+  // candidates found unmapped in the SAME live book were measured and deliberately left OUT: NUGT
+  // (Direxion Daily Gold Miners Bull 2X — gold-mining-equity exposure) showed r=-0.392 vs VXX and
+  // r=-0.521 vs SPXS, and SCO (ProShares UltraShort Bloomberg Crude Oil, 2x inverse crude) showed
+  // r=-0.244 vs VXX and r=-0.371 vs SPXS — both weak, inconsistent-sign correlations confirming gold
+  // and crude-oil exposure are genuinely different risk drivers from equity-index/volatility stress,
+  // not this bucket's thesis. Left unmapped (their own `NAME:` cluster) rather than folded in on a
+  // symbol-only "all leveraged/inverse ETFs must correlate" guess — the same "never a false merge"
+  // discipline the biotech bucket's own WGS/GRAL/RGEN/ABSI exclusions above already document. No
+  // `effectiveDirection`/`INVERSE_LEVERAGE_ETFS` entry needed for any of these four: unlike SOXS (a
+  // -3x fund sharing a bucket with its own +3x bullish sibling SOXL, where "LONG SOXS" and "LONG
+  // SOXL" are OPPOSITE economic bets requiring a flip), every ticker here already represents the
+  // SAME real-world direction when held LONG — a LONG VXX/UVIX/UVXY bet (vol rises) and a LONG SPXS
+  // bet (equities fall) are both "risk-off" bets that move together, so the raw `direction` field
+  // already compares correctly with no adjustment.
+  volatility: ["VXX", "UVIX", "UVXY", "SPXS"],
 };
 
 // Inverted once at module load: TICKER → sector.

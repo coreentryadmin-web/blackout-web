@@ -431,3 +431,40 @@ test("KTOS and RDW (small-cap tactical/space-systems makers) cluster together as
   assert.equal(resolveTheme("LHX"), "NAME:LHX");
   assert.equal(resolveTheme("NN"), "NAME:NN");
 });
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-11-08, live finding): a
+// real committed book held VXX LONG, UVIX LONG, UVXY LONG and SPXS LONG concurrently (real
+// positionIds, VXX among them positionId 2479) with NONE of the four mapped anywhere in this
+// file or in sector-map.ts, so each resolved to an isolated `NAME:<ticker>` own-cluster and
+// `checkPortfolioOverlap` saw zero concentration for what is functionally ONE "long volatility
+// / risk-off" bet stacked four times. Measured, not guessed, same evidence bar as the LABD
+// precedent above: real Polygon daily bars, 151 trading days (2026-04-02..2026-11-08).
+// VXX/UVIX/UVXY pairwise r=0.997-0.998 (expected — UVIX/UVXY are 1.5-2x-levered VIX-futures
+// funds tracking the exact same short-term VIX-futures complex VXX tracks directly). SPXS
+// (Direxion Daily S&P 500 Bear 3x — a different primal driver, equity-index direction rather
+// than VIX term structure) was measured rather than assumed: r=0.803-0.805 against each of
+// VXX/UVIX/UVXY, more than double the LABD precedent's ~0.61 avg bar, confirming it belongs in
+// the SAME bucket. Two real candidates found unmapped in the same live book (NUGT — gold
+// miners, SCO — inverse crude oil) were measured and deliberately left OUT: NUGT r=-0.392 vs
+// VXX / r=-0.521 vs SPXS; SCO r=-0.244 vs VXX / r=-0.371 vs SPXS — both weak, inconsistent-sign,
+// confirming gold/crude exposure is a different risk driver, not this bucket's thesis.
+test("VXX, UVIX, UVXY and SPXS (volatility/risk-off ETPs) cluster together as a volatility theme, not each in its own isolated cluster", () => {
+  assert.equal(resolveTheme("VXX"), "volatility");
+  assert.equal(resolveTheme("UVIX"), "volatility");
+  assert.equal(resolveTheme("UVXY"), "volatility");
+  assert.equal(resolveTheme("SPXS"), "volatility");
+  assert.equal(sameThesis("VXX", "UVIX"), true);
+  assert.equal(sameThesis("VXX", "UVXY"), true);
+  assert.equal(sameThesis("VXX", "SPXS"), true);
+  assert.equal(sameThesis("UVIX", "SPXS"), true);
+  // No effectiveDirection flip needed — unlike SOXS (an inverse fund sharing a bucket with its
+  // own bullish sibling SOXL), none of these four has an opposite-leverage sibling IN this
+  // bucket, and a LONG position in any of them is already the SAME real-world "risk-off" bet.
+  assert.equal(isInverseLeverageEtf("VXX"), false);
+  assert.equal(isInverseLeverageEtf("SPXS"), false);
+  // Measured and deliberately excluded — different risk driver, not a false merge.
+  assert.equal(sameThesis("VXX", "NUGT"), false);
+  assert.equal(sameThesis("VXX", "SCO"), false);
+  assert.equal(resolveTheme("NUGT"), "NAME:NUGT");
+  assert.equal(resolveTheme("SCO"), "NAME:SCO");
+});
