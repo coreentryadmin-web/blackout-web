@@ -1,15 +1,27 @@
 #!/usr/bin/env node
 /**
- * Is SPX Slayer's entry-time `confidence` calibrated against realized outcomes? And if not, does
+ * Is SPX Slayer's entry-time `rawScore` calibrated against realized outcomes? And if not, does
  * ANY entry-time score (grade, |score|) carry signal instead?
  *
- * WHY. `spx-signals.ts:706` computes `confidence = clamp(|score|*1.15 + factors.length*3, 0, 96)`
+ * WHY. `spx-signals.ts:706` computes `rawScore = clamp(|score|*1.15 + factors.length*3, 0, 96)`
  * — a formula over a magnitude and a COUNT, fitted to no outcome data. #2646 omitted it at the
  * Largo boundary on that basis. This script asks the next question: what does it actually predict?
  *
  * FIRST RUN, 2026-08-23, 51 closed plays over 54 days of production: **every single one reported
  * confidence 96** — the clamp ceiling, 51/51, zero variance. It is not a weak predictor; it is a
  * CONSTANT rendered to members as a per-play "{n}% conviction". See `docs/spx/SLAYER-MAP.md` §7.2.
+ *
+ * STALE FIELD NAME FIX (2026-11-08): PR #2791 renamed the field from `confidence` to `rawScore`
+ * on the live API response (the exact labeling fix the finding above recommended — stop implying
+ * a calibrated percentage) but this script was never updated to follow, so every run since that
+ * rename silently read `r.confidence` (undefined on every row) instead of `r.rawScore`. The
+ * degenerate-output code path correctly handles "all rows have the same value" but has no code
+ * path for "the field doesn't exist at all" — so a run against the real, renamed field read
+ * `confidence_information: {n:0, uninformative:true, constant:null}`, which looks identical to
+ * "no plays closed this window" rather than "the field moved." Confirmed live before this fix:
+ * 51 real closed plays over 131.94 days, `rawScore` still saturates to the same 96 constant it did
+ * on the original 2026-08-23 measurement — the underlying finding still holds, this was purely a
+ * tooling regression from an unrelated rename.
  *
  * That is why `correlate()` refuses to return a number for a constant predictor: the naive
  * point-biserial is 0/0 → NaN, and NaN reads as "no signal found" when the real finding is
@@ -51,11 +63,11 @@ if (rows.length < 2) {
   process.exit(0);
 }
 
-const info = informationCheck(rows.map((r) => r.confidence));
+const info = informationCheck(rows.map((r) => r.rawScore));
 const wins = rows.map((r) => (isWin(r) ? 1 : 0));
 
 const predictors = {
-  confidence: rows.map((r) => Number(r.confidence)),
+  rawScore: rows.map((r) => Number(r.rawScore)),
   grade_rank: rows.map((r) => GRADE_RANK[String(r.grade).toUpperCase()] ?? 0),
   abs_score: rows.map((r) => Math.abs(Number(r.score) || 0)),
 };
@@ -64,7 +76,7 @@ const correlations = Object.fromEntries(
 );
 
 const calib = bucketCalibration(rows, {
-  value: (r) => Number(r.confidence),
+  value: (r) => Number(r.rawScore),
   isWin,
   buckets: [[0, 79], [80, 89], [90, 95], [96, 100]],
 });
@@ -73,7 +85,7 @@ const result = {
   closed_plays: rows.length,
   window_days: stats?.days_of_data ?? null,
   overall_win_rate: stats?.overall?.win_rate ?? null,
-  confidence_information: info,
+  raw_score_information: info,
   correlations,
   calibration_buckets: calib,
 };
@@ -83,14 +95,14 @@ if (asJson) {
   process.exit(0);
 }
 
-console.log(`SPX confidence calibration — ${rows.length} closed plays over ${result.window_days ?? "?"} days\n`);
+console.log(`SPX rawScore calibration — ${rows.length} closed plays over ${result.window_days ?? "?"} days\n`);
 
 if (info.uninformative) {
-  console.log(`⚠ CONFIDENCE CARRIES NO INFORMATION: every one of the ${info.n} plays reports ${info.constant}.`);
-  console.log(`  Not "weakly predictive" — a CONSTANT, rendered to members as a per-play "{n}% conviction".`);
+  console.log(`⚠ rawScore CARRIES NO INFORMATION: every one of the ${info.n} plays reports ${info.constant}.`);
+  console.log(`  Not "weakly predictive" — a CONSTANT, rendered to members as a per-play "{n} Score".`);
   console.log(`  Any correlation against it is 0/0; this run reports a degenerate verdict, not a number.\n`);
 } else {
-  console.log(`confidence takes ${info.distinct_values} distinct values across ${info.n} plays.\n`);
+  console.log(`rawScore takes ${info.distinct_values} distinct values across ${info.n} plays.\n`);
 }
 
 console.log("bucket        n   wins   win%");
