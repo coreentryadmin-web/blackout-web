@@ -59,7 +59,17 @@ function fmtPrem(n: number): string {
   if (!Number.isFinite(n)) return "$—";
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+  if (abs >= 1_000) {
+    const k = abs / 1_000;
+    // BUG FIX (round 399): same unit-boundary defect as the sibling fmtPremShort in
+    // meridian-earnings-intel-core.ts — a net-premium/net-GEX value of e.g. $999,600
+    // took the K branch (< 1_000_000) and then rounded UP past its own threshold to
+    // "1000K" instead of promoting to "$1.0M". This file can't be unit-tested directly
+    // (`import "server-only"`, per CLAUDE.md lesson #2/#3) — the identical guard is
+    // proven RED→GREEN on the testable twin in meridian-earnings-intel-core.test.ts.
+    if (Math.round(k) >= 1000) return `$${(n / 1_000_000).toFixed(1)}M`;
+    return `$${(n / 1_000).toFixed(0)}K`;
+  }
   return `$${n.toFixed(0)}`;
 }
 
