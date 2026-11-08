@@ -31,6 +31,7 @@ import {
   ruleLabel,
 } from "@/features/helix/lib/helix-flow-format";
 import { contractSizeRounded } from "@/features/helix/lib/helix-contract-size";
+import { fmtNotional } from "@/features/helix/lib/helix-contract-notional-format";
 import {
   aggressorRead,
   estNotional,
@@ -92,15 +93,6 @@ export async function runGenerationGuardedLoad<T>(
   } finally {
     if (generation === currentGeneration()) handlers.onSettle();
   }
-}
-
-/** Compact notional ($6.0M / $430K) — same thresholds as fmtPremium but without the sign path. */
-function fmtNotional(n: number | null): string {
-  if (n == null || !Number.isFinite(n) || n <= 0) return "—";
-  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${Math.round(n)}`;
 }
 
 function ChartTooltip({
