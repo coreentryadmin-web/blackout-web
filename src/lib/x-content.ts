@@ -182,6 +182,10 @@ export async function generateTweetContent(
   const perfHint = await performanceHint();
   let draftBody = "";
   let extraHint = perfHint;
+  // Tracks the most recently COMPOSED (and dedup-CHECKED) candidate across the retry loop, so
+  // the give-up fallback below can reuse it instead of recomposing from scratch. See that
+  // fallback's own comment for why this matters.
+  let lastComposed: Awaited<ReturnType<typeof composeHumanTweet>> | null = null;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -207,6 +211,7 @@ export async function generateTweetContent(
       spxPrice: data.spxPrice,
       regime: data.regime,
     });
+    lastComposed = composed;
 
     const dup = await isTooSimilarToRecentPosts(composed.body);
     if (!dup.similar) {
@@ -219,16 +224,20 @@ export async function generateTweetContent(
     extraHint = perfHint + dedupRewriteHint(dup.matched);
   }
 
-  if (draftBody) {
-    const composed = await composeHumanTweet(draftBody, {
-      postType,
-      spxPrice: data.spxPrice,
-      regime: data.regime,
-    });
+  // Give up after 3 too-similar attempts (or an AI error mid-retry) and post the last AI draft
+  // anyway rather than falling all the way back to the generic template. MUST reuse `lastComposed`
+  // here, not call `composeHumanTweet()` again: `enhanceTweetDraft` inside it is a real,
+  // temperature=0.75 LLM call, so recomposing is non-deterministic — a second call on the exact
+  // same `draftBody` can (and does) produce a DIFFERENT body than the one `isTooSimilarToRecentPosts`
+  // just checked a few lines up. The old code called `composeHumanTweet` a 4th time here, which
+  // both wasted an AI call on output that was immediately discarded (the loop's own 3rd-attempt
+  // `composed` was thrown away) AND shipped a brand-new, NEVER dedup-checked tweet body in exactly
+  // the scenario this function exists to guard against — repeated near-duplicate content.
+  if (lastComposed) {
     return {
-      content: attachFooter(composed.body, footer),
-      draftBody: composed.draftBody,
-      enhanced: composed.enhanced,
+      content: attachFooter(lastComposed.body, footer),
+      draftBody: lastComposed.draftBody,
+      enhanced: lastComposed.enhanced,
     };
   }
 
