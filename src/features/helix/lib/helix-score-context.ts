@@ -40,9 +40,23 @@ function tierFromAbsoluteScore(score: number): HelixScoreTier {
 /**
  * Session percentile for one print's score. Uses mid-rank for ties so equal scores
  * share a band instead of jumping a full rank.
+ *
+ * BUG FIX: `minSamples` is accepted so a caller (e.g. `helixScoreContextForPrint` below) can gate
+ * calibration on its OWN sample floor rather than the module default — it used to be hard-coded to
+ * `HELIX_SCORE_CALIBRATION_MIN_SAMPLES` here, which silently clamped every caller's floor UP to 8:
+ * a caller passing `minSamples=5` with 6-7 real samples (>= its own floor, < the hard-coded one)
+ * still got `null` back from THIS function, so `helixScoreContextForPrint`'s outer
+ * `percentile == null` check tripped first and the explicit, lower floor it was given was never
+ * actually honored. A floor passed ABOVE the default already worked (the outer
+ * `sample.length < minSamples` check in the caller caught it), which is why this went unnoticed —
+ * only the "ask for a LOWER bar than the default" direction was dead.
  */
-export function helixScorePercentile(score: number, distribution: readonly number[]): number | null {
-  if (!(score > 0) || distribution.length < HELIX_SCORE_CALIBRATION_MIN_SAMPLES) return null;
+export function helixScorePercentile(
+  score: number,
+  distribution: readonly number[],
+  minSamples: number = HELIX_SCORE_CALIBRATION_MIN_SAMPLES
+): number | null {
+  if (!(score > 0) || distribution.length < minSamples) return null;
   const below = distribution.filter((s) => s < score).length;
   const equal = distribution.filter((s) => s === score).length;
   return Math.round(((below + equal * 0.5) / distribution.length) * 100);
@@ -54,7 +68,7 @@ export function helixScoreContextForPrint(
   minSamples = HELIX_SCORE_CALIBRATION_MIN_SAMPLES
 ): HelixScoreContext {
   const sample = distribution.filter((s) => s > 0);
-  const percentile = helixScorePercentile(score, sample);
+  const percentile = helixScorePercentile(score, sample, minSamples);
   if (percentile == null || sample.length < minSamples) {
     return {
       tier: tierFromAbsoluteScore(score),
