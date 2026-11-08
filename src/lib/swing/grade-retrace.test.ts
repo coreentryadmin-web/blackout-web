@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { swingArchetypeFromRow, swingBarWindow, swingRowToGradeInput, swingSubLaneFromRow } from "./grade-retrace";
+import {
+  barFetchErrorMessage,
+  swingArchetypeFromRow,
+  swingBarWindow,
+  swingRowToGradeInput,
+  swingSubLaneFromRow,
+} from "./grade-retrace";
 import type { SwingPositionRow } from "../db";
 import { gradeSwingPosition } from "./grade";
 
@@ -116,4 +122,25 @@ test("swingBarWindow: falls back to session_date when committed_at/closed_at are
 test("swingBarWindow: returns null when neither timestamp nor session_date is usable", () => {
   const w = swingBarWindow(baseRow({ committed_at: null, closed_at: null, session_date: "" as unknown as string }));
   assert.equal(w, null);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-08): `multi-truth-grade/route.ts` used to catch a
+// failed forward-bar fetch with a bare `.catch(() => [])`, making a rate-limited/circuit-open
+// Polygon failure indistinguishable from a genuinely empty result — both read as
+// `barsFetched: 0` / `path.reason: "no_forward_bars"`, a confident absence claim for what was
+// really a self-inflicted 429 (live repro: a batch of 10 concurrent `fetchStockDailyBars` calls
+// alone trips the shared circuit breaker; 3 real `GET /api/admin/swing/multi-truth-grade?days=90`
+// calls each showed only 4.7% PATH-gradeable despite every bar window having real, fetchable
+// data). `barFetchErrorMessage` is the small, pure half of the fix the route now threads through
+// as `barsFetchError` instead of swallowing — these tests pin its two input shapes.
+test("barFetchErrorMessage: a real Error carries its own message through", () => {
+  assert.equal(
+    barFetchErrorMessage(new Error("Polygon /v2/aggs/ticker/MSTR/range/1/day/2026-11-03/2026-11-06 → 429 (rate limited)")),
+    "Polygon /v2/aggs/ticker/MSTR/range/1/day/2026-11-03/2026-11-06 → 429 (rate limited)",
+  );
+});
+
+test("barFetchErrorMessage: a non-Error throw is stringified rather than dropped", () => {
+  assert.equal(barFetchErrorMessage("circuit open"), "circuit open");
+  assert.equal(barFetchErrorMessage(null), "null");
 });
