@@ -392,3 +392,31 @@ test("buildCronHealthSnapshot suppresses nighthawk-backfill-repair stale/failed 
     /job\.key === "nighthawk-backfill-repair"[\s\S]*nighthawkBackfillRepairPreWindow\(\)[\s\S]*Awaiting 9:00 AM ET repair window/
   );
 });
+
+test("weekday scheduled post-close crons: stale/failed suppressed Saturday (cron-audit query)", () => {
+  const now = new Date("2026-11-08T13:10:00.000Z");
+  const cases: Array<{ key: string; schedule_cron_utc: string }> = [
+    { key: "nighthawk-outcomes", schedule_cron_utc: "30 20,21 * * 1-5" },
+    { key: "gex-eod-snapshot", schedule_cron_utc: "10 20,21 * * 1-5" },
+    { key: "banger-discovery", schedule_cron_utc: "15 20,21 * * 1-5" },
+  ];
+  for (const { key, schedule_cron_utc } of cases) {
+    const health = evaluateJob(
+      jobDef({ key, weekdays_only: true, schedule_cron_utc, stale_after_min: 60 }),
+      {
+        id: 1,
+        job_key: key,
+        status: "failed",
+        started_at: "2026-11-07T21:15:00.000Z",
+        duration_ms: 10,
+        message: "probe",
+        meta_json: null,
+      },
+      [],
+      now
+    );
+    assert.equal(health.status, "healthy", key);
+    assert.match(health.status_label, /non-trading day/i);
+    assert.equal(health.market_hours_stale, false);
+  }
+});
