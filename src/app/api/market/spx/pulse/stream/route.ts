@@ -7,7 +7,7 @@ import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
 import { roundFloats } from "@/lib/round-floats";
-import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
+import { NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 import { clusterIndexSpotChangePct } from "@/lib/ws/socket-cluster-health";
 
 export const runtime = "nodejs";
@@ -211,8 +211,19 @@ export async function GET(req: NextRequest) {
 
   return new NextResponse(stream, {
     headers: {
+      // BUG FIX (round 409, DISCOVERY-lane): `NO_STORE_STREAM_HEADERS` was imported by #1224
+      // ("close remaining CDN gaps") but never actually spread into this response — the import
+      // sat unused while the headers object below kept its pre-#1224 literal `Cache-Control:
+      // no-cache` with no `CDN-Cache-Control`/`Cloudflare-CDN-Cache-Control`. Every sibling SSE
+      // stream route (flows/stream, vector/stream, gex-matrix-deltas, admin/apis/stream,
+      // stocks/spot-stream) spreads `...NO_STORE_STREAM_HEADERS` here; this route was the one
+      // holdout that imported the constant and then didn't use it, so a Cloudflare cache rule
+      // with `override_origin` could edge-cache this auth-gated SPX pulse SSE response the same
+      // way #1224/#1221 fixed for the JSON routes it touched. `no-store-headers.guard.test.ts`
+      // only asserts the file IMPORTS the shared constant, not that it's applied — so this
+      // regressed silently past that guard. See route.test.ts.
+      ...NO_STORE_STREAM_HEADERS,
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
       Connection: "keep-alive",
     },
   });
