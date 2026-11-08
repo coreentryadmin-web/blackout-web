@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 /** Minimal prod HTTP smoke for GitHub Actions (no secrets except optional CRON). */
+import { spxDeskSmokeVerdict } from "./lib/gha-http-smoke-desk-eval.mjs";
+
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
 
@@ -82,9 +84,17 @@ if (CRON) {
   // gating works), and only FAIL on the statuses that actually indicate a broken deploy — 404 (route
   // gone), 5xx (crash), or a network error surfaced as a non-numeric/0 status. The 401/403 case logs a
   // WARN so the drift stays visible and someone can reconcile CRON_SECRET to restore the true-200 check.
-  if (status === 200 && body?.price > 0) {
-    console.log(`  ✓ /api/market/spx/desk → SPX ${body.price} (cron auth ok)`);
-  } else if (status === 401 || status === 403) {
+  // Off-hours (weekends, pre/post cash): a 200 with cron auth but price:0/degraded shell is still a
+  // healthy deploy — only fail missing spot during cash RTH when members must see a live level.
+  const deskVerdict = spxDeskSmokeVerdict(status, body);
+  if (deskVerdict === "pass_live") {
+    const spot = body.price > 0 ? body.price : body.prior_close;
+    console.log(`  ✓ /api/market/spx/desk → SPX ${spot} (cron auth ok)`);
+  } else if (deskVerdict === "pass_offhours") {
+    console.warn(
+      `  ⚠ /api/market/spx/desk → 200 off-hours without grounded spot (price=${body?.price ?? "—"}) — deploy smoke pass; spot check applies during cash RTH only`
+    );
+  } else if (deskVerdict === "warn_auth_drift") {
     console.warn(
       `  ⚠ /api/market/spx/desk → ${status} (route up + gated; CI CRON_SECRET does not match the deployed value — reconcile it to re-enable the authenticated price check)`
     );
