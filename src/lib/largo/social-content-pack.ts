@@ -9,6 +9,7 @@ import {
   type SocialContentArchetype,
   type SocialContentPlayRow,
 } from "@/lib/largo/social-content-core";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { zerodteRecordForLargo } from "@/lib/largo/product-reads";
 import { roundFloats } from "@/lib/round-floats";
 import { zeroDtePlaysForLargo } from "@/lib/platform/zerodte-service";
@@ -20,6 +21,13 @@ export type SocialContentPack = {
   available: boolean;
   archetype: SocialContentArchetype;
   as_of: string;
+  /** ET session date (YYYY-MM-DD) `as_of` resolves to — the Largo C1 session anchor
+   *  (contract/session-anchor.test.ts). `as_of` alone is a bare UTC instant whose calendar date
+   *  is already tomorrow for the last ~4h of RTH; this is the field a consumer (a model drafting
+   *  a social post about "today's" plays) should resolve "today" from. Null only in the
+   *  defensive case where `as_of` itself failed to parse, which should never happen since both
+   *  are derived from the same instant below. */
+  session_date: string | null;
   ticker_focus: string | null;
   winners: SocialContentPlayRow[];
   losers: SocialContentPlayRow[];
@@ -166,10 +174,14 @@ export async function buildSocialContentPack(
         }
       : null;
 
+  // Anchored to the SAME instant as `as_of` so the two can never describe different moments
+  // (e.g. straddling a calendar-day flip between two independent `Date.now()` calls).
+  const nowMs = Date.now();
   return roundFloats({
     available: plays.length > 0 || spx != null || record7d != null || tickerDesk != null,
     archetype,
-    as_of: new Date().toISOString(),
+    as_of: new Date(nowMs).toISOString(),
+    session_date: etSessionDate(nowMs),
     ticker_focus: focus,
     winners,
     losers,
