@@ -239,29 +239,70 @@ export function classifyErrorSpike(
   return "none";
 }
 
+export type RecentErrorEventsSummary = {
+  total: number;
+  groups: Array<{ source: string; scope: string | null; count: number }>;
+};
+
+/**
+ * Pure: shape a (true total count, bounded top-groups sample) pair into the summary object.
+ *
+ * Split out from `countRecentErrorEvents` so the one invariant that actually matters here --
+ * `total` must be the REAL count of matching rows, not however many the top-groups breakdown
+ * happened to carry -- is unit-testable without a live Postgres connection. `groupRows` is only
+ * ever a bounded `LIMIT 8` sample used for the top-sources preview; `totalCount` must come from
+ * a real `COUNT(*)`, never from summing that sample.
+ */
+export function shapeRecentErrorEventsSummary(
+  totalCount: number,
+  groupRows: Array<{ source: string; scope: string | null; count: string | number }>
+): RecentErrorEventsSummary {
+  const groups = groupRows.map((r) => ({ source: r.source, scope: r.scope, count: Number(r.count) }));
+  return { total: totalCount, groups };
+}
+
 /**
  * Count error_events in the last `sinceMinutes`, with a small top-groups breakdown for alerts.
- * Cache-reader-safe: a single bounded aggregate read, never a row dump. Returns zeros on any miss.
+ * Cache-reader-safe: two bounded aggregate reads (a real COUNT(*) plus a top-8 breakdown), never
+ * a row dump. Returns zeros on any miss.
+ *
+ * THE BUG THIS FIXES: `total` used to be `groups.reduce((sum, g) => sum + g.count, 0)` --
+ * summing only the top 8 `(source, scope)` groups from a
+ * `GROUP BY source, scope ORDER BY COUNT(*) DESC LIMIT 8` query. Any window with MORE than 8
+ * distinct (source, scope) combinations silently dropped every group past the 8th from the
+ * total -- e.g. 20 sources erroring 10 times each is 200 real errors, but only the top 8 groups'
+ * counts (<=80) ever reached `total`. `total` feeds directly into `classifyErrorSpike` on the
+ * cron-staleness-watchdog's error-rate alert (`cron-staleness-watchdog/route.ts`), so a
+ * genuinely severe but WIDE error spike (many distinct failing sources, not one dominant one)
+ * could silently under-report its severity, or miss the warn/crit threshold entirely -- exactly
+ * the "diverse failure, not one hot source" shape a spike detector exists to catch. Same bug
+ * class, same fix shape, as `countAuthFailures`'s `shapeAuthFailureSummary` split above: run a
+ * real, unbounded `COUNT(*)` for the total alongside the existing bounded top-8 breakdown query,
+ * which now only ever feeds `groups`.
  */
-export async function countRecentErrorEvents(
-  sinceMinutes = 15
-): Promise<{ total: number; groups: Array<{ source: string; scope: string | null; count: number }> }> {
+export async function countRecentErrorEvents(sinceMinutes = 15): Promise<RecentErrorEventsSummary> {
   const { dbConfigured, dbQuery } = await import("@/lib/db");
   if (!dbConfigured()) return { total: 0, groups: [] };
   const mins = Math.min(Math.max(1, Math.round(sinceMinutes)), 1440);
   try {
-    const { rows } = await dbQuery<{ source: string; scope: string | null; count: string }>(
-      `SELECT source, scope, COUNT(*)::text AS count
-         FROM error_events
-        WHERE created_at > NOW() - ($1 || ' minutes')::interval
-        GROUP BY source, scope
-        ORDER BY COUNT(*) DESC
-        LIMIT 8`,
-      [String(mins)]
-    );
-    const groups = rows.map((r) => ({ source: r.source, scope: r.scope, count: Number(r.count) }));
-    const total = groups.reduce((sum, g) => sum + g.count, 0);
-    return { total, groups };
+    const [{ rows: countRows }, { rows: groupRows }] = await Promise.all([
+      dbQuery<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM error_events
+          WHERE created_at > NOW() - ($1 || ' minutes')::interval`,
+        [String(mins)]
+      ),
+      dbQuery<{ source: string; scope: string | null; count: string }>(
+        `SELECT source, scope, COUNT(*)::text AS count
+           FROM error_events
+          WHERE created_at > NOW() - ($1 || ' minutes')::interval
+          GROUP BY source, scope
+          ORDER BY COUNT(*) DESC
+          LIMIT 8`,
+        [String(mins)]
+      ),
+    ]);
+    return shapeRecentErrorEventsSummary(Number(countRows[0]?.count ?? 0), groupRows);
   } catch {
     return { total: 0, groups: [] };
   }
