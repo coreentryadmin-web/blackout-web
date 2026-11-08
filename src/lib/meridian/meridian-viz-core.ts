@@ -53,8 +53,13 @@ export type Domain = { min: number; max: number };
  * `pctAlong` clamps, so the wall silently pins to the rail's end and reads as "the wall is
  * exactly at the boundary", which is a specific false claim rather than a missing one.
  *
- * Returns null when fewer than two distinct finite values exist: a rail needs an extent, and a
- * fabricated one (value ± 1%) would invent a scale the data never supported.
+ * Returns null only when there is no finite value at all — a rail needs at least one anchor.
+ * A single distinct finite value (every input identical, or only one survives after nulls are
+ * dropped) still gets a small symmetric window centred on it (±1% of its own magnitude, or ±1
+ * for a value of 0) rather than null: several call sites (e.g. `meridian-viz.tsx`'s spot/band
+ * rails) always pass a domain through `pctAlong`, and a null here would silently blank the rail
+ * for a security with only one marker instead of drawing it centred, which is a worse UX than a
+ * synthetic window a caller can choose to treat specially.
  */
 export function priceDomain(values: Array<number | null | undefined>, padPct = 0.06): Domain | null {
   const finite = values.map(num).filter((v): v is number => v !== null);
