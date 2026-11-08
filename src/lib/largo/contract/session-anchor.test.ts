@@ -137,7 +137,6 @@ const KNOWN_GAPS: Record<string, string> = {
   "src/lib/platform/index.ts": "coordinator",
   "src/lib/platform/zerodte-service.ts": "coordinator (0DTE)",
   "src/lib/platform/zerodte-sim-board.ts": "coordinator (0DTE)",
-  "src/lib/providers/polygon-news.ts": "coordinator",
   "src/lib/swing/discovery.ts": "coordinator (swings)",
   "src/lib/swing/dossier.ts": "coordinator (swings)",
   "src/lib/thermal-discord-extras.ts": "thermal lane",

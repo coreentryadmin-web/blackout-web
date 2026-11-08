@@ -7,6 +7,7 @@ import {
   fetchMarketCatalysts,
   type NewsItem,
 } from "./polygon-news";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 // Fixture mirrors the live /benzinga/v2/news payload shape (scratchpad/polygon-arsenal.log):
 // results[].{ benzinga_id|id, title, published, url, channels, tickers }
@@ -70,6 +71,14 @@ test("buildNewsResult: computes newest from the freshest publishedAt + asOf pres
   assert.equal(r.newest, "2026-07-13T15:30:00Z");
   assert.equal(typeof r.asOf, "string");
   assert.equal(r.unavailable, undefined); // success → no unavailable
+  // Largo C1 session anchor (contract/session-anchor.test.ts): session_date must be derived from
+  // the exact same instant as asOf, so the ET calendar date of asOf and session_date always agree
+  // — never two independently-taken `Date.now()` calls that could straddle a calendar-day flip.
+  assert.match(r.session_date ?? "", /^\d{4}-\d{2}-\d{2}$/);
+  // Must be the ET (not UTC) calendar date of the SAME instant asOf carries — this is the whole
+  // point of the anchor: after ~20:00 ET the UTC date is already tomorrow, so a naive
+  // `r.asOf.slice(0, 10)` would be wrong for roughly a third of every trading day.
+  assert.equal(r.session_date, etSessionDate(Date.parse(r.asOf)));
 });
 
 test("buildNewsResult: empty items → newest null, no unavailable unless set", () => {
@@ -77,6 +86,7 @@ test("buildNewsResult: empty items → newest null, no unavailable unless set", 
   assert.deepEqual(clean.items, []);
   assert.equal(clean.newest, null);
   assert.equal(clean.unavailable, undefined);
+  assert.match(clean.session_date ?? "", /^\d{4}-\d{2}-\d{2}$/);
 
   const failed = buildNewsResult([], "ticker news NVDA unavailable: 500");
   assert.equal(failed.unavailable, "ticker news NVDA unavailable: 500");
