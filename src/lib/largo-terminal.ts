@@ -782,8 +782,16 @@ async function prepareLargoTurn(
     const meridian = await meridianTimelineForLargo(14).catch(() => null);
     if (meridian?.available) {
       toolsUsed.push("meridian_timeline_prefetch");
+      // BUG FIX (2026-11-08, Ask Largo standing mandate): `calendar_entitled: false` means the
+      // underlying Benzinga earnings-calendar fetch was itself refused/errored (e.g. the live
+      // 2026-11-07 entitlement 403) — `upcoming_7d` can then be missing real earnings rows for a
+      // reason that has nothing to do with the week being quiet.
+      const entitlementCaveat =
+        meridian.calendar_entitled === false
+          ? " A false `calendar_entitled` means the earnings-calendar fetch itself failed — missing earnings rows here are NOT evidence the week is quiet."
+          : "";
       socialContentBlock +=
-        `\n\n## Meridian timeline (prefetched — cite for catalyst/earnings posts)\n${JSON.stringify(meridian, null, 0).slice(0, 4000)}\n`;
+        `\n\n## Meridian timeline (prefetched — cite for catalyst/earnings posts)${entitlementCaveat}\n${JSON.stringify(meridian, null, 0).slice(0, 4000)}\n`;
     }
   }
 

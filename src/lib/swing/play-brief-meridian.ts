@@ -30,6 +30,22 @@ export type SwingMeridianCatalystSlice = {
    * (absence) distinction a flat `items.length === 0` cannot make on its own.
    */
   window_truncated?: boolean;
+  /**
+   * Forwarded from `loadMeridianTimelineResponse`'s `earnings_calendar_entitled` (itself
+   * `bundle.entitled && boardRes.entitled` off the real Benzinga `/benzinga/v1/earnings` fetch —
+   * see `meridian-timeline-server.ts`). BUG FIX (2026-11-08, Ask Largo standing mandate — the same
+   * "absence mislabeled as fabricated certainty" bug class as PR #7586's `earnings_error`, a
+   * DIFFERENT sibling code path feeding this SAME "Meridian catalysts" section): this signal was
+   * already computed correctly upstream but silently dropped here, so `meridianCatalystSection`
+   * (play-brief-intel.ts) had no way to tell "the entitlement check ran and genuinely found
+   * nothing" apart from "the calendar fetch itself was refused (not entitled) or errored" — both
+   * collapsed to the same empty `items` array. False (not merely absent/undefined) means the
+   * fetch ran but was refused/errored; true or undefined means it is safe to trust an empty
+   * `items` as a genuinely quiet calendar (undefined only on `meridianUnavailableSlice()`'s own
+   * `unavailable: true` sentinel, which `meridianCatalystSection` already short-circuits on before
+   * ever reaching this field).
+   */
+  calendar_entitled?: boolean;
 };
 
 /** Index/proxy names that use market-wide Meridian catalyst slices — no per-name earnings peer cohort. */
@@ -109,5 +125,6 @@ export async function fetchMeridianForTicker(ticker: string): Promise<SwingMerid
     items: shaped.items,
     total_matched: shaped.total_matched,
     window_truncated: payload.earnings_window_truncated === true,
+    calendar_entitled: payload.earnings_calendar_entitled,
   };
 }
