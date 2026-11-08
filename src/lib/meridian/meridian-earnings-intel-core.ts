@@ -10,7 +10,25 @@ import { expiryCoversPrint } from "@/lib/meridian/meridian-em-scope";
 function fmtPremShort(n: number): string {
   if (!Number.isFinite(n)) return "—";
   const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  // BUG FIX (round 419): this function had no B tier at all — `abs >= 1_000_000` printed
+  // EVERY value past $1M as "$X.XM", so a dark-pool aggregate (`total_premium`/`call_premium`/
+  // `put_premium` on `shapeMeridianDarkPool`, routinely in the hundreds of millions to low
+  // billions for a heavily-traded mega-cap around earnings — e.g. NVDA/AAPL/TSLA dark-pool
+  // session volume) at or past $1B rendered as a nonsensical 4+ digit "$1500.0M" instead of
+  // "$1.5B". Same round-first-then-promote boundary bug this file's own K->M fix (round 399,
+  // below) already names in ~6 sibling formatters across the repo — that fix closed the K->M
+  // seam here but never added the M->B tier at all, so a round-up-past-1000 at the M unit
+  // (e.g. 999_950_000) had nowhere to promote TO either. Mirrors fmtCompactMoney's B tier in
+  // meridian-earnings-analytics-core.ts exactly (round-to-the-unit's-own-precision FIRST, then
+  // check whether THAT rounded value crossed the next threshold).
+  if (abs >= 1_000_000_000) {
+    return `$${(n / 1_000_000_000).toFixed(1)}B`;
+  }
+  if (abs >= 1_000_000) {
+    const m = Math.round((abs / 1_000_000) * 10) / 10;
+    if (m >= 1000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+    return `$${(n / 1_000_000).toFixed(1)}M`;
+  }
   if (abs >= 1_000) {
     const k = abs / 1_000;
     // BUG FIX (round 399): the unit (K) was picked from the UNROUNDED value, then the
