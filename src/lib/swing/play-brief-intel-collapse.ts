@@ -19,16 +19,33 @@ import type { RichSection } from "@/lib/bie/rich-narrative";
  * `flowNarrative` + `flowIntelSection`). "Desk context" stays excluded — `crossDeskCoaching`
  * does not cover outcome history, and remapping the stale title would silently delete it.
  *
- * "Lane rank" is in this set, but unlike every other title here it is NOT unconditionally
- * covered — `laneRankCoaching` (play-brief-narrative-coaching.ts) deliberately returns `null`
- * (stays silent) for a comfortably-good-but-not-top-3 position: well above the lane median
- * (`deltaFromMedian >= 10`) but ranked below #3 (e.g. rank 5). That silence is a deliberate
- * editorial choice (not every real, honest rank/score fact earns a bullet), but
- * `laneRankSection` (play-brief-intel.ts) still renders the real rank/score/median/leader for
- * that same position — so dropping "Lane rank" here and claiming it was "folded into Trade
- * manager read" would be false for that one band. See `collapseRedundantIntelSections`'s own
- * `laneRankFolded` opt, which the caller derives from the SAME `laneRankCoaching` predicate
- * rather than trusting this static list for this one title.
+ * Three titles in this set are NOT unconditionally covered — unlike every other title here,
+ * dropping them off static membership alone can falsely claim a fold that never happened in the
+ * narrative. Each has its own `collapseRedundantIntelSections` opt, computed by the caller from
+ * the SAME real predicate the narrative generator uses, rather than trusting this static list:
+ *
+ * - "Lane rank" (`laneRankFolded`): `laneRankCoaching` (play-brief-narrative-coaching.ts)
+ *   deliberately returns `null` (stays silent) for a comfortably-good-but-not-top-3 position:
+ *   well above the lane median (`deltaFromMedian >= 10`) but ranked below #3 (e.g. rank 5). That
+ *   silence is a deliberate editorial choice (not every real, honest rank/score fact earns a
+ *   bullet), but `laneRankSection` (play-brief-intel.ts) still renders the real rank/score/
+ *   median/leader for that same position.
+ *
+ * - "Wall dynamics" (`wallDynamicsFolded`): `wallDynamicsSection` renders real content whenever
+ *   there is at least 1 wall event (after a staleness gate exempted only for a CLOSED bucket —
+ *   though CLOSED never reaches the filter below in the first place, see its own early return),
+ *   but the narrative's `wallDynamicsCoaching` requires BOTH a fresh snapshot AND at least 2
+ *   events — so a single real wall event renders the section with nothing in the narrative to
+ *   fold into.
+ *
+ * - "Vector desk" (`vectorDeskFolded`): `vectorDeskSection` renders real content for a
+ *   stale-but-not-closed read too (its "Last snapshot ... may lag spot" branch, gated only on
+ *   `vec.play` existing at all), but the narrative's `vectorPlayCoaching` returns `null` on ANY
+ *   stale snapshot, no exception — same false-fold shape.
+ *
+ * `undefined`/`false` is the SAFE default for all three: the section is kept (never dropped) and
+ * the "folded into Trade manager read" note never claims coverage it can't prove — a caller that
+ * forgets to pass one of these loses the collapse for that one section, never gains a false claim.
  */
 const NARRATIVE_COVERED_TITLES = new Set([
   "Lane rank",
@@ -61,6 +78,18 @@ export function collapseRedundantIntelSections(
      * false claim.
      */
     laneRankFolded?: boolean;
+    /**
+     * Whether `wallDynamicsCoaching(vec, sessionDate, readMs)` actually produced a bullet — see
+     * the top-of-file doc comment on `NARRATIVE_COVERED_TITLES`'s "Wall dynamics" entry. Same
+     * safe-default shape as `laneRankFolded`.
+     */
+    wallDynamicsFolded?: boolean;
+    /**
+     * Whether `vectorPlayCoaching(vec, play, sessionDate, conflictAlreadyNoted, readMs)` actually
+     * produced a bullet — see the top-of-file doc comment on `NARRATIVE_COVERED_TITLES`'s
+     * "Vector desk" entry. Same safe-default shape as `laneRankFolded`.
+     */
+    vectorDeskFolded?: boolean;
   },
 ): RichSection[] {
   if (!opts.hasNarrative) return sections;
@@ -72,9 +101,12 @@ export function collapseRedundantIntelSections(
 
   const filtered = sections.filter((s) => {
     if (!NARRATIVE_COVERED_TITLES.has(s.title)) return true;
-    // "Lane rank" is the one conditionally-covered title in the set — see the doc comment above.
-    // Keep it (don't drop) unless the caller proves laneRankCoaching actually fired.
+    // "Lane rank", "Wall dynamics" and "Vector desk" are the three conditionally-covered titles
+    // in the set — see the doc comment above. Keep each (don't drop) unless the caller proves
+    // its real narrative predicate actually fired.
     if (s.title === "Lane rank") return opts.laneRankFolded !== true;
+    if (s.title === "Wall dynamics") return opts.wallDynamicsFolded !== true;
+    if (s.title === "Vector desk") return opts.vectorDeskFolded !== true;
     return false;
   });
 

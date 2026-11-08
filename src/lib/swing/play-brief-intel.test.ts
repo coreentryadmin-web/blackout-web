@@ -9700,6 +9700,84 @@ test("buildIntelSections: a thrown section is reported via onFailure, not silent
   assert.doesNotThrow(() => buildIntelSections(ctx, "watch"));
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-08): sibling of the "Lane rank" integration gap —
+// `collapseRedundantIntelSections` used to drop "Wall dynamics" purely off static
+// NARRATIVE_COVERED_TITLES membership whenever a narrative was present, regardless of whether
+// `wallDynamicsCoaching` (play-brief-narrative-coaching.ts) actually produced a bullet for this
+// play. That function requires BOTH a fresh Vector snapshot AND `events.length >= 2`, while
+// `wallDynamicsSection` (this file) renders real content off just `events.length >= 1`. Exactly
+// one real wall event on a fresh snapshot is the live-reachable mismatch: it renders a real
+// section but the narrative never mentions it.
+test("buildIntelSections: 'Wall dynamics' survives the collapse (not falsely folded) for exactly 1 real wall event — wallDynamicsCoaching needs >=2", () => {
+  const play = fixturePlay({ status: "OPEN", direction: "LONG" });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-11-08T14:00:00.000Z",
+    sessionDate: "2026-11-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({
+      dataAgeMs: 1_000, // fresh — well under the staleness threshold
+      wallEvents: [{ kind: "call_wall_building", strike: 105, message: "Call wall building at 105" }],
+    }),
+  };
+
+  // Default opts — collapseIntel defaults to true (the real composeSwingPlayBrief path when
+  // expandIntel is not set), so the collapse filter actually runs.
+  const sections = buildIntelSections(ctx, "open");
+  const narrative = sections.find((s) => s.title === "Trade manager read");
+  assert.ok(narrative, "Trade manager read renders");
+  assert.ok(
+    sections.some((s) => s.title === "Wall dynamics"),
+    "Wall dynamics must survive — wallDynamicsCoaching stays silent below 2 events, so there is nothing to fold into",
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-08): same shape for "Vector desk" —
+// `vectorPlayCoaching` returns null on ANY stale Vector snapshot (no bucket exemption), while
+// `vectorDeskSection` still renders real content (grade/conviction off the prior snapshot) for a
+// stale-but-not-closed read. Note: a CLOSED bucket is NOT a useful case to test this against —
+// `collapseRedundantIntelSections` bypasses its whole filter for bucket === "closed" (see its own
+// early return + the "closed bucket keeps GEX/flow sections" test in
+// play-brief-intel-collapse.test.ts), so "Vector desk" already survives on a CLOSED brief
+// regardless of this fix. The live-reachable mismatch is OPEN/WATCH + a stale snapshot.
+test("buildIntelSections: 'Vector desk' survives the collapse (not falsely folded) for a stale Vector snapshot on an OPEN bucket — vectorPlayCoaching is silent on any staleness", () => {
+  const play = fixturePlay({ status: "OPEN", direction: "LONG" });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-11-08T14:00:00.000Z",
+    sessionDate: "2026-11-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({
+      freshness: "stale",
+      play: {
+        bias: "long",
+        headline: "Ride momentum",
+        grade: "B",
+        conviction: "medium",
+        invalidation: "below 95",
+      },
+    } as Partial<VectorFullState>),
+  };
+
+  const sections = buildIntelSections(ctx, "open");
+  const narrative = sections.find((s) => s.title === "Trade manager read");
+  assert.ok(narrative, "Trade manager read renders");
+  const vdesk = sections.find((s) => s.title === "Vector desk");
+  assert.ok(
+    vdesk,
+    "Vector desk must survive — vectorPlayCoaching stays silent on a stale snapshot, so there is nothing to fold into",
+  );
+  assert.match(vdesk!.body, /Last snapshot/i);
+});
+
 // BUG FOUND (2026-09-21, Ask Largo standing mandate — 4th instance of the #5362/#4261 duplication
 // class, live repro pattern: any OPEN play with a HOLD recommendation and a calibrated thesis
 // health below 45). actionNarrative's HOLD branch (play-brief-narrative.ts, feeds "Trade manager

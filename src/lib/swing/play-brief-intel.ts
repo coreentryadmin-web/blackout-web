@@ -65,6 +65,8 @@ import {
   laneRankCoaching,
   ownContractExpiry,
   printAlreadyLandedThresholdMs,
+  wallDynamicsCoaching,
+  vectorPlayCoaching,
 } from "./play-brief-narrative-coaching";
 import { formatDealerDollars } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
@@ -3920,9 +3922,41 @@ export function buildIntelSections(
   // decision for this one title tracks reality instead of a static list.
   const laneRankFolded = laneRankCoaching(play, ctx.laneRows) != null;
 
+  // BUG FIX (Ask Largo standing mandate, 2026-11-08, sibling follow-up to the "Lane rank" fix
+  // above — #7580 disclosed both of these as the same mismatch shape, not yet fixed):
+  //
+  // "Wall dynamics": `wallDynamicsSection` renders real content whenever `events.length >= 1`
+  // (and, for a CLOSED brief, regardless of staleness at all — but CLOSED never reaches the
+  // collapse filter below in the first place, see `collapseRedundantIntelSections`'s own
+  // bucket === "closed" early return). `wallDynamicsCoaching` requires BOTH a fresh snapshot AND
+  // `events.length >= 2`. So a WATCH/OPEN brief with exactly one real wall event renders this
+  // section while the narrative never mentions it — the static list alone would drop it anyway
+  // and falsely claim it was folded in.
+  //
+  // "Vector desk": `vectorDeskSection` renders real content for a stale-but-not-closed read (the
+  // "Last snapshot ... may lag spot" branch) whenever `vec.play` exists at all. `vectorPlayCoaching`
+  // returns null on ANY stale snapshot, no exception. Same false-fold shape.
+  //
+  // Recompute each real predicate here (not a string-match against narrative.body, which would
+  // drift the moment either coaching function's prose changes) exactly like `laneRankFolded`
+  // above, rather than trusting NARRATIVE_COVERED_TITLES's static membership for these titles.
+  const wallDynamicsFolded = wallDynamicsCoaching(vec, ctx.sessionDate, ctx.readMs ?? undefined) != null;
+  // `conflictAlreadyNoted` (vectorPlayCoaching's 4th param) is, in the real narrative composer,
+  // `vectorConflictAlreadyNoted` — derived from tallying cross-desk evidence weight against
+  // `crossDeskCoaching`'s own output, which isn't cheaply reconstructable from this function's
+  // scope without a much larger plumbing change. Passing `true` here is the same safe-default
+  // philosophy `laneRankFolded`'s own doc comment establishes: it only makes `vectorPlayCoaching`
+  // MORE likely to return null (suppressing the headline clause), which biases this flag toward
+  // `false` — "don't claim folded" — never toward a false positive fold claim. This literal `true`
+  // is local to this fold-check only; the real narrative composition is untouched.
+  const vectorDeskFolded =
+    vectorPlayCoaching(vec, play, ctx.sessionDate, true, ctx.readMs ?? undefined) != null;
+
   return collapseRedundantIntelSections(out, {
     hasNarrative: Boolean(narrative),
     bucket,
     laneRankFolded,
+    wallDynamicsFolded,
+    vectorDeskFolded,
   });
 }
