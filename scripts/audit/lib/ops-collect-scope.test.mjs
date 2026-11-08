@@ -6,10 +6,20 @@ import {
   spxOpsItems,
   shouldRetryWatchdogFetch,
   watchdogHttpPriority,
+  shouldEmitWatchdogHttpActionItem,
   shouldPageNighthawkZeroPlays,
   isOriginHealthOk,
   originHealthFailurePriority,
 } from "./ops-collect-scope.mjs";
+
+describe("shouldEmitWatchdogHttpActionItem", () => {
+  it("suppresses auth-failure watchdog noise", () => {
+    assert.equal(shouldEmitWatchdogHttpActionItem(401), false);
+    assert.equal(shouldEmitWatchdogHttpActionItem(403), false);
+    assert.equal(shouldEmitWatchdogHttpActionItem(502), true);
+    assert.equal(shouldEmitWatchdogHttpActionItem(500), true);
+  });
+});
 
 describe("watchdogHttpPriority", () => {
   it("downgrades auth gaps and transient origin errors to P2", () => {
