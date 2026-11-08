@@ -1,6 +1,7 @@
 "use client";
 
 import type { PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
+import { fmtPremium } from "@/lib/fmt-money";
 
 export function LargoPreEarningsPackCard({ card }: { card: PreEarningsPackCard }) {
   return (
@@ -52,7 +53,7 @@ export function LargoPreEarningsPackCard({ card }: { card: PreEarningsPackCard }
           <p className="largo-struct-summary">{card.flow.summary}</p>
           <p className="largo-struct-meta">
             Bias {card.flow.bias}
-            {card.flow.net_premium != null ? ` · Net ${formatPrem(card.flow.net_premium)}` : ""}
+            {card.flow.net_premium != null ? ` · Net ${fmtPremium(card.flow.net_premium)}` : ""}
           </p>
         </section>
 
@@ -89,11 +90,4 @@ export function LargoPreEarningsPackCard({ card }: { card: PreEarningsPackCard }
       )}
     </div>
   );
-}
-
-function formatPrem(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
 }

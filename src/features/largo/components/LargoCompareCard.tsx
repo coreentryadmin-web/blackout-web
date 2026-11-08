@@ -6,6 +6,7 @@ import {
   isHelixThermalCompareCard,
   isPeerTickerCompareCard,
 } from "@/lib/largo/compare-card-types";
+import { fmtPremium } from "@/lib/fmt-money";
 
 const BIAS_CLASS: Record<string, string> = {
   bullish: "largo-compare-bull",
@@ -101,7 +102,7 @@ function PeerTickerCompareView({
               </span>
               <p className="largo-compare-summary">{row.flow.summary}</p>
               {row.flow.net_premium != null && (
-                <p className="largo-compare-meta">Net {formatPrem(row.flow.net_premium)}</p>
+                <p className="largo-compare-meta">Net {fmtPremium(row.flow.net_premium)}</p>
               )}
             </span>
             <span role="cell">
@@ -138,16 +139,9 @@ function CompareSide({
       <div className={clsx("largo-compare-bias", BIAS_CLASS[side.bias] ?? "")}>{side.bias}</div>
       <p className="largo-compare-summary">{side.summary}</p>
       {showNetPremium && side.net_premium != null && (
-        <p className="largo-compare-meta">Net premium {formatPrem(side.net_premium)}</p>
+        <p className="largo-compare-meta">Net premium {fmtPremium(side.net_premium)}</p>
       )}
       {showFlip && side.flip != null && <p className="largo-compare-meta">Flip {side.flip}</p>}
     </div>
   );
-}
-
-function formatPrem(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
 }
