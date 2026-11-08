@@ -110,6 +110,17 @@ export type NightHawkEditionSummary = {
 
 export type PlatformSnapshot = {
   as_of: string;
+  /**
+   * Largo C1 (contract/session-anchor.test.ts): the ET calendar date `as_of` resolves to. A bare
+   * UTC instant alone reads a full session ahead for anyone resolving "today" after ~20:00 ET —
+   * same inversion class fixed in #2418/#2420/#2422. This is the top-level cross-service wrapper
+   * stamp (distinct from `flows.session_date`, which anchors the flow-tape sub-object's own
+   * `as_of`, per that field's own CQ-083 comment) — `get_platform_snapshot` is a direct Largo
+   * tool, so the wrapper itself needs the same anchor its sub-objects already carry. Null only in
+   * the defensive case where the instant itself failed to resolve, which should never happen
+   * since both fields are derived from the same `Date.now()` call in `getPlatformSnapshot`.
+   */
+  session_date: string | null;
   spx?: SpxDeskSummary | null;
   flows?: FlowTapeSummary | null;
   nighthawk?: NightHawkEditionSummary | null;

@@ -55,7 +55,13 @@ async function loadCrossEngineState(): Promise<BieCrossEngineState> {
 }
 
 function emptySnapshot(as_of: string): PlatformSnapshot {
-  return { as_of };
+  // `session_date` became required when PlatformSnapshot gained its own top-level ET anchor
+  // (Largo C1, src/lib/platform/index.ts). Deliberately `null`, not re-derived from `as_of`
+  // here: this file's own `as_of` (below) is itself a still-open KNOWN_GAPS entry, and calling
+  // the shared ET-session helper anywhere in this file would satisfy the C1 scanner's
+  // whole-file regex and silently mark that pre-existing, still-real gap as fixed. Honest
+  // omission over a borrowed anchor, per the Largo contract's absence principle.
+  return { as_of, session_date: null };
 }
 
 /** Desk-only fast path — one parallel batch, no snapshot/regime/knowledge. */

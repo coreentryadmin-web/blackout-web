@@ -132,7 +132,6 @@ const KNOWN_GAPS: Record<string, string> = {
   "src/lib/nighthawk/cortex/compose.ts": "coordinator (Night Hawk)",
   "src/lib/nighthawk/cortex/sources/opening-harvest.ts": "coordinator (Night Hawk)",
   "src/lib/nighthawk/cortex/sources/wall-trend.ts": "coordinator (Night Hawk)",
-  "src/lib/platform/index.ts": "coordinator",
   "src/lib/platform/zerodte-service.ts": "coordinator (0DTE)",
   "src/lib/platform/zerodte-sim-board.ts": "coordinator (0DTE)",
   "src/lib/swing/discovery.ts": "coordinator (swings)",
