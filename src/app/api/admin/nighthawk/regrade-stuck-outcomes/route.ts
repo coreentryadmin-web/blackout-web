@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       } else if (body.mode !== undefined && body.mode !== "stuck") {
         return NextResponse.json(
           { ok: false, error: `Unknown mode — expected "stuck" or "legacy_methodology"` },
-          { status: 400 }
+          { status: 400, headers: NO_STORE_HEADERS }
         );
       }
       dryRun = body.dry_run === true;
@@ -71,7 +71,10 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch {
-    return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid JSON body" },
+      { status: 400, headers: NO_STORE_HEADERS }
+    );
   }
 
   try {
@@ -104,7 +107,14 @@ export async function POST(req: NextRequest) {
           ),
         },
       });
-      return NextResponse.json(summary, { headers: { "Cache-Control": "no-store" } });
+      // Root cause (round 410 sweep): this route imported NO_STORE_HEADERS but never
+      // applied it — a bare `Cache-Control: no-store` literal is missing the CDN-scoped
+      // CDN-Cache-Control/Cloudflare-CDN-Cache-Control headers that are the actually
+      // load-bearing ones (see the doc comment on NO_STORE_HEADERS in
+      // src/lib/no-store-headers.ts). Same defect, same fix, as the 2026-11-01 audit's
+      // admin/gex/health etc. correction — this sibling route was named but left
+      // unfixed at the time.
+      return NextResponse.json(summary, { headers: NO_STORE_HEADERS });
     }
 
     const result = await regradeStuckNighthawkOutcomes({ dryRun, limit, searchWindowDays });
@@ -136,12 +146,12 @@ export async function POST(req: NextRequest) {
         outcomes: result.rows.map((r) => `${r.ticker}@${r.edition_for}:${r.outcome}`),
       },
     });
-    return NextResponse.json(summary, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(summary, { headers: NO_STORE_HEADERS });
   } catch (error) {
     recordAdminRouteError("admin/nighthawk/regrade-stuck-outcomes", error);
     return NextResponse.json(
       { ok: false, error: "Outcome regrade failed" },
-      { status: 502 }
+      { status: 502, headers: NO_STORE_HEADERS }
     );
   }
 }

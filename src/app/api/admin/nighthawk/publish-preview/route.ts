@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     if (!normalized) {
       return NextResponse.json(
         { error: "Invalid edition_for; expected YYYY-MM-DD" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
     editionFor = normalized;
@@ -30,13 +30,27 @@ export async function GET(request: NextRequest) {
   try {
     const preview = await getNighthawkPublishPreview(editionFor);
     if (!preview) {
-      return NextResponse.json({ error: "No edition found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "No edition found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
+    // Root cause (round 410 sweep): this route imported NO_STORE_HEADERS but never
+    // applied it — a bare `Cache-Control: no-store` literal is missing the CDN-scoped
+    // CDN-Cache-Control/Cloudflare-CDN-Cache-Control headers that are the actually
+    // load-bearing ones (see the doc comment on NO_STORE_HEADERS in
+    // src/lib/no-store-headers.ts), so a Cloudflare cache rule with override_origin
+    // could still edge-cache this admin-only payload. Same defect, same fix, as the
+    // 2026-11-01 audit's admin/gex/health etc. correction — this sibling route was
+    // named but left unfixed at the time.
     return NextResponse.json(preview, {
-      headers: { "Cache-Control": "no-store" },
+      headers: NO_STORE_HEADERS,
     });
   } catch (error) {
     recordAdminRouteError("admin/nighthawk/publish-preview", error);
-    return NextResponse.json({ error: "Failed to load publish preview" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Failed to load publish preview" },
+      { status: 502, headers: NO_STORE_HEADERS }
+    );
   }
 }
