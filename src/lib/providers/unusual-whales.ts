@@ -1112,6 +1112,57 @@ export function emptyDarkPoolSnapshot(): DarkPoolSnapshot {
   };
 }
 
+/**
+ * Does today's print count/premium total risk being a silent undercount of the real session?
+ *
+ * `fetchUwDarkPool`/`fetchUwDarkPoolMarketWide` both ask UW for at most `requestedLimit` rows
+ * (default 20, capped 100) and then filter down to today's session — the same "total capped at
+ * sample-query LIMIT" shape already fixed this cycle in `error-sink.ts`'s `countAuthFailures`
+ * (#7574), `admin-gex-health.ts`'s `summarizeRegimeEvents` (#7575), and
+ * `discord-eod-recap.ts`'s HELIX/dark-pool EOD headlines (#7576) — just one layer deeper here:
+ * the cap is on an EXTERNAL provider's own page size, not one of our own `LIMIT`-bounded queries,
+ * so there is no cheap unbounded `COUNT(*)` to fall back on the way #7575 did.
+ *
+ * `fetchUwDarkPoolRecent`'s own name, and the UW API convention every other "recent" fetcher in
+ * this file follows (`fetchRecentFlows`, `/api/darkpool/recent`), is newest-trade-first. So when
+ * the raw response is exactly `requestedLimit` rows long, the real tape may hold MORE than what
+ * was fetched — and whether that unfetched remainder falls inside TODAY's own total (making it a
+ * real undercount) or entirely before today (making the capped sample already complete) is
+ * decidable from the OLDEST row actually returned: if it is still from `today`, the cutoff landed
+ * mid-session and there is real, unseen premium from earlier today; if it is from a prior day,
+ * every today-row necessarily sorted before it and the full day is already captured.
+ *
+ * A request that returned FEWER rows than asked for proves there was nothing more to fetch —
+ * never flagged as truncated regardless of date. A returned row with no parseable execution
+ * timestamp is treated as the worst case (assume truncated) rather than silently assumed safe —
+ * absence of a trustworthy boundary is not evidence the sample is complete, same principle as
+ * this file's other `uwGetSafe`-null-vs-empty distinction a few lines up.
+ */
+export function darkPoolSampleMayBeTruncated(
+  rawRows: ReadonlyArray<{ executed_at?: unknown; date?: unknown }>,
+  requestedLimit: number,
+  today: string
+): boolean {
+  if (rawRows.length < requestedLimit) return false;
+  const oldest = rawRows[rawRows.length - 1];
+  const execAt = String(oldest?.executed_at ?? oldest?.date ?? "");
+  if (!execAt) return true;
+  return execAtEtYmd(execAt) === today;
+}
+
+/**
+ * `${count} print(s) | $${totalM}M` — appends a `+` to BOTH figures when
+ * `darkPoolSampleMayBeTruncated` found the sample may not cover the whole session, so the
+ * headline reads as the honest lower bound it is rather than a definite day total. Shared by
+ * `fetchUwDarkPool`/`fetchUwDarkPoolMarketWide` so the two cannot drift into different wording
+ * for the identical condition.
+ */
+export function darkPoolDetailLine(printCount: number, totalPremium: number, truncated: boolean): string {
+  if (!printCount) return "No prints today";
+  const plus = truncated ? "+" : "";
+  return `${printCount}${plus} print(s) | $${(totalPremium / 1_000_000).toFixed(2)}M${plus}`;
+}
+
 /** GET /api/darkpool/{ticker} — large institutional prints */
 export async function fetchUwDarkPool(
   ticker = "SPX",
@@ -1147,6 +1198,7 @@ export async function fetchUwDarkPool(
     if (!rows.length) return emptyDarkPoolSnapshot();
 
     const today = todayEt();
+    const truncated = darkPoolSampleMayBeTruncated(rows, Number(params.limit), today);
     const prints: DarkPoolPrint[] = [];
     let callPrem = 0;
     let putPrem = 0;
@@ -1193,7 +1245,7 @@ export async function fetchUwDarkPool(
       put_premium: putPrem,
       bias,
       pcr: callPrem > 0 ? Math.round((putPrem / callPrem) * 100) / 100 : null,
-      detail: prints.length ? `${prints.length} print(s) | $${(total / 1_000_000).toFixed(2)}M` : "No prints today",
+      detail: darkPoolDetailLine(prints.length, total, truncated),
     };
   }, signal);
 }
@@ -1213,6 +1265,10 @@ export async function fetchUwDarkPoolMarketWide(
   const rows = await fetchUwDarkPoolRecent(limit);
   const minPremium = opts?.min_premium ?? 0;
   const today = todayEt();
+  // Same sample-truncation disclosure as fetchUwDarkPool above, over the RAW rows (before the
+  // today/min-premium filter below) — the question is whether the UW page cap itself cut off
+  // mid-session, not whether this caller's own premium floor happened to drop a row.
+  const truncated = darkPoolSampleMayBeTruncated(rows, limit, today);
   const prints: DarkPoolPrint[] = [];
   let callPrem = 0;
   let putPrem = 0;
@@ -1244,7 +1300,7 @@ export async function fetchUwDarkPoolMarketWide(
     put_premium: putPrem,
     bias,
     pcr: callPrem > 0 ? Math.round((putPrem / callPrem) * 100) / 100 : null,
-    detail: prints.length ? `${prints.length} print(s) | $${(total / 1_000_000).toFixed(2)}M` : "No prints today",
+    detail: darkPoolDetailLine(prints.length, total, truncated),
   };
 }
 
