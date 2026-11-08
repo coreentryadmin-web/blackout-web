@@ -7,6 +7,7 @@ import { fmtPremium } from "@/lib/fmt-money";
 import type { LargoSlashCommand } from "@/lib/largo/slash-commands";
 import { submoduleItemsForDesk } from "@/lib/largo/slash-submodules";
 import { deskScopeConfig } from "@/lib/largo/desk-scope";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 export type { SlashPrompt, SlashPromptsPayload } from "@/lib/largo/slash-prompt-utils";
 import type { SlashPrompt, SlashPromptsPayload } from "@/lib/largo/slash-prompt-utils";
 import { skewChipText, sessionSkewChip } from "@/lib/largo/slash-prompt-utils";
@@ -429,6 +430,9 @@ export async function buildSlashPromptsForDesk(
   desk: string,
   cmd?: LargoSlashCommand | null
 ): Promise<SlashPromptsPayload> {
+  // One frozen instant for the whole payload — `session_date` anchors the SAME moment `as_of`
+  // stamps, not a second `Date.now()` call that could tick past a session boundary between them.
+  const nowMs = Date.now();
   const command = cmd?.command ?? desk;
   const label = cmd?.label ?? desk;
   const href = cmd?.href ?? null;
@@ -438,7 +442,8 @@ export async function buildSlashPromptsForDesk(
       desk,
       label,
       command,
-      as_of: new Date().toISOString(),
+      as_of: new Date(nowMs).toISOString(),
+      session_date: etSessionDate(nowMs),
       href: null,
       prompts: promptCommandAsSlashPrompt(cmd),
       modules: [],
@@ -489,7 +494,8 @@ export async function buildSlashPromptsForDesk(
     desk,
     label,
     command,
-    as_of: new Date().toISOString(),
+    as_of: new Date(nowMs).toISOString(),
+    session_date: etSessionDate(nowMs),
     href,
     prompts,
     modules,
