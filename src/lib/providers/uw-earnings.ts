@@ -20,6 +20,20 @@ export type NextEarnings = {
   report_time: EarningsReportTime | null;
   /** True when UW marks the date confirmed (vs estimated); null when the flag is absent. */
   is_confirmed: boolean | null;
+  /**
+   * BUG FIX (2026-11-08, Ask Largo standing mandate, live repro CAVA): set ONLY when a real
+   * upstream fetch for this ticker's next-earnings date FAILED (the Benzinga structured calendar
+   * and/or the UW REST fallback) — never set on a genuine "nothing scheduled" read. Before this
+   * field existed, `loadNextEarningsFromBenzinga` discarded `loadBenzingaTickerEarnings`'s own
+   * carried-not-swallowed `error` (e.g. the live Benzinga entitlement 403 — see CLAUDE.md's
+   * "ENTITLEMENT REGRESSED 2026-11-07" note) and `fetchNextEarningsDate` collapsed every miss to a
+   * bare `null`, so `assembleEcosystemArsenal` (ecosystem-context.ts) had no way to tell "the
+   * calendar genuinely has nothing on file" apart from "the calendar could not be read" and
+   * fabricated the former (`retryable: false`) for both. Mirrors `NewsResult.unavailable`
+   * (polygon-news.ts) — absence vs failure must stay distinguishable all the way to the consumer,
+   * never collapsed into one confident-sounding `null`.
+   */
+  error?: string | null;
 };
 
 function firstString(row: Record<string, unknown>, keys: string[]): string | null {
@@ -107,6 +121,16 @@ export async function fetchNextEarningsDate(ticker: string): Promise<NextEarning
 
     const row = await fetchUwTickerNextEarnings(sym).catch(() => null);
     const parsed = parseNextEarnings(sym, (row as Record<string, unknown> | null) ?? null, todayEtYmd());
-    return parsed.earnings_date ? parsed : null;
+    if (parsed.earnings_date) return parsed;
+
+    // Neither source produced a future date. If Benzinga's OWN read failed (`bz.error` set — e.g.
+    // the live Benzinga entitlement 403), that is the honest reason for the whole miss: the UW
+    // REST fallback above has no error channel of its own (`fetchUwTickerNextEarnings` rides
+    // `uwGetSafe`, which never distinguishes "the fetch failed" from "nothing found" — the same
+    // fail-open design this codebase uses for every UW read), so it cannot prove there really is
+    // nothing scheduled, only that it didn't find anything either. Surface the one concrete
+    // failure we DO have instead of collapsing both "genuinely nothing" and "could not look" into
+    // the same confident, retry-proof `null`.
+    return bz?.error ? { ...parsed, error: bz.error } : null;
   });
 }
