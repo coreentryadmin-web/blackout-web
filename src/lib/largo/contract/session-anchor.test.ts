@@ -109,7 +109,6 @@ const KNOWN_GAPS: Record<string, string> = {
   "src/app/api/cron/swing-active-refresh/route.ts": "coordinator (swings)",
   "src/app/api/health/route.ts": "coordinator",
   "src/app/api/market/health/route.ts": "coordinator",
-  "src/app/api/market/heatmap/route.ts": "coordinator",
   "src/app/api/market/largo/context/route.ts": "coordinator",
   "src/app/api/market/lotto/today/route.ts": "coordinator (0DTE)",
   "src/app/api/market/spx/power-hour/route.ts": "coordinator (SPX lane)",
