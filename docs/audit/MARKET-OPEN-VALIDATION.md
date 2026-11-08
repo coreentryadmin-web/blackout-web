@@ -9508,6 +9508,19 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   `rel_strength_lost` recomputes correctly just as effectively as the weekend freeze did, for an
   unrelated reason. Only treat the #7523 re-check above as conclusive once real-time snapshots are
   confirmed restored (or the relevant data is flowing through some other live path).
+  **Pre-open confirmation, 2026-11-08 (Sunday, this is the check the addendum above asked for):
+  still down.** `GET /v3/snapshot?ticker.any_of=SPY` → `NOT_AUTHORIZED` on the live sandbox key,
+  while the `/v3/reference/tickers` control call on the identical key returns 200 — same signature
+  as #7545, confirmed not yet recovered over the weekend (unlike the sibling grouped-daily/aggs
+  entitlement, which CLAUDE.md separately confirms DID recover by 2026-11-08). Direct board
+  evidence: `GET /api/market/nighthawk/horizons?view=swings` carries 86 `markAsOf` timestamps across
+  every committed Swing position, all clustered in one 5-minute window, **2026-11-06T16:15:38Z to
+  16:20:50Z** — i.e. marks froze mid-session Friday (~4h45m before that day's close), not merely
+  "stale since the weekend." **Monday re-check:** before trusting any Swing mark/P&L number or the
+  #7523 rel-strength fix, re-run the same `/v3/snapshot` control call — if it's still 403ing, every
+  Swing mark on the board is still the frozen 2026-11-06T16:15–16:20Z snapshot regardless of what
+  `markAsOf`-adjacent UI chrome implies, and that's an entitlement outage to escalate to the
+  operator (not an app bug to fix here).
 
 ## WATCH LIST — 2026-11-07 (HELIX EOD Discord recap was dead code — `isDiscordEodRecapWindow` dead-window fix, `fix/helix-eod-recap-never-fires`)
 
