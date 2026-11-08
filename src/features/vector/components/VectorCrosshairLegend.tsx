@@ -3,6 +3,7 @@
 import { forwardRef, memo } from "react";
 import type { VectorDarkPoolLevel, VectorWallLevel } from "@/lib/api";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
+import { fmtGex } from "@/features/vector/lib/vector-crosshair-format";
 
 export type VectorCrosshairState = {
   time: string;
@@ -17,14 +18,6 @@ export type VectorCrosshairState = {
 };
 
 function fmtStrike(n: number): string {
-  return Math.round(n).toLocaleString("en-US");
-}
-
-function fmtGex(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (abs >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (abs >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
   return Math.round(n).toLocaleString("en-US");
 }
 
