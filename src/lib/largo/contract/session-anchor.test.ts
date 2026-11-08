@@ -95,7 +95,8 @@ const KNOWN_GAPS: Record<string, string> = {
   // cleanly past these additions.
   //
   // Triage for whoever picks these up — they are not equally urgent:
-  //   - `/api/market/largo/context` and `/api/admin/bie-report` assemble MODEL-facing payloads.
+  //   - `/api/admin/bie-report` assembles a MODEL-facing payload (`/api/market/largo/context`,
+  //     the other entry originally flagged here, was fixed — see its removal below).
   //   - `lotto/today`, `spx/power-hour` and `cron/spx-evaluate` use
   //     `as_of: merged.polled_at ?? new Date().toISOString()`, which FABRICATES the anchor rather
   //     than omitting it — strictly worse, and the same shape as the fabricated `as_of` fixed in
@@ -110,7 +111,6 @@ const KNOWN_GAPS: Record<string, string> = {
   "src/app/api/health/route.ts": "coordinator",
   "src/app/api/market/health/route.ts": "coordinator",
   "src/app/api/market/heatmap/route.ts": "coordinator",
-  "src/app/api/market/largo/context/route.ts": "coordinator",
   "src/app/api/market/lotto/today/route.ts": "coordinator (0DTE)",
   "src/app/api/market/spx/power-hour/route.ts": "coordinator (SPX lane)",
   "src/app/api/worker/boot/route.ts": "coordinator",

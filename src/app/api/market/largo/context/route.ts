@@ -5,6 +5,7 @@ import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { canonicalTicker } from "@/lib/largo/core/entities";
 import { validateFlowTape } from "@/lib/largo/core/flow-validation";
 import { roundFloats } from "@/lib/round-floats";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 export const dynamic = "force-dynamic";
 
@@ -85,10 +86,18 @@ export async function GET(req: NextRequest) {
     (p) => String(p.ticker ?? "").toUpperCase() === ticker
   );
 
+  const nowMs = Date.now();
+
   return NextResponse.json(
     roundFloats({
       ticker,
-      as_of: new Date().toISOString(),
+      as_of: new Date(nowMs).toISOString(),
+      // ET calendar date of the SAME instant as_of carries. After ~20:00 ET the UTC calendar
+      // date in as_of is already tomorrow, so a client resolving "today's session" purely from
+      // as_of's own date reads a full session ahead for the last ~4 hours of RTH — the same
+      // inversion class fixed in #2418/#2420/#2422 and the other Largo C1 known-gap fixes this
+      // session. Additive: as_of is unchanged, this is a new field anchored off the identical ms.
+      session_date: etSessionDate(nowMs),
       // null, never 0 — "could not read" and "is zero" are different claims.
       spot: num(vector?.spot),
       regime: vector?.regime?.posture ?? null,
