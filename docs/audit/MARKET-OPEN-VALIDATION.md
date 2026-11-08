@@ -9583,3 +9583,32 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   `fetchUnifiedHorizonOutcomes` directly in a REPL against prod) for that session date and confirm
   the row now appears with a non-null `label`/`pnl_pct` matching the real exit's sign, rather than
   being absent from the result set entirely.
+
+## WATCH LIST — 2026-11-08 (HELIX / Dark Pool Discord EOD recap headline silently capped at the sample-query LIMIT, `fix/helix-eod-recap-limit-truncation`)
+
+- **`buildHelixEodRecapEmbed`/`buildDarkpoolEodRecapEmbed` (`src/lib/discord-eod-recap.ts`)
+  rendered their "N qualifying prints/blocks · $X total premium/notional" headline from
+  `session.length`/`session.reduce(...)` over an array that was itself a row-count-capped fetch
+  (400 rows for HELIX via `fetchRecentFlows`, effectively 100 for Dark Pool via
+  `fetchUwDarkPoolRecent`'s own internal clamp) sized for the narrow 15-min live digest, reused
+  for the FULL ~6-7h session at the ~4:04-4:15 PM ET EOD recap tick.** On a genuinely busy session
+  this silently undercounts both the headline count and the premium/notional total — exactly the
+  "total capped at sample-query LIMIT" shape already fixed twice elsewhere this session
+  (`error-sink.ts`'s `countAuthFailures`, `admin-gex-health.ts`'s `summarizeRegimeEvents`).
+  **Fixed:** both embeds now take an optional `truncated` flag; each caller sets it to `true`
+  exactly when its own fetch returned the full amount of its known cap, and the embed renders the
+  headline with an honest "+" suffix (`**412+** qualifying prints`) instead of a false-precise
+  undercount. Default/non-truncated behavior is byte-identical to before. Full write-up:
+  `docs/audit/findings-staging/2026-11-08-discord-eod-recap-limit-truncation.md`.
+  **Could not confirm live from this sandbox** — proven by a fixture-based regression test
+  (RED→GREEN, both new embed tests fail against the pre-fix source and pass with the fix); posting
+  to the real Discord webhooks needs `HELIX_DISCORD_ALERTS`/`DARKPOOL_DISCORD_ALERTS` configured
+  and a live cron tick, neither reachable from this sandbox.
+  **Re-check once the market opens:** on a session with meaningfully heavy whale/dark-pool flow,
+  check the ~4:04-4:15 PM ET `#helix`/`#darkpool` Discord EOD recap posts (cron run logs:
+  `posted_eod: true` on `helix-discord-digest`/`darkpool-discord`). A normal/quiet session's
+  headline should read exactly as before (no "+"). Only a genuinely high-flow session where the
+  underlying fetch actually hit its cap should show the new "+" suffix — if one never appears
+  across several real busy sessions, that's consistent with the cap rarely binding in practice
+  (not evidence the fix is wrong, same caveat as this file's other low-probability-trigger
+  entries), but a "+" appearing confirms the fix is live and catching a real undercount case.
