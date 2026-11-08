@@ -92,4 +92,26 @@ describe("fmtShiftPercentForStrike", () => {
     assert.equal(fmtShiftPercentForStrike(1_550_000, 550_000), "+55%");
     assert.equal(fmtShiftPercentForStrike(2_130_000, 1_130_000), "+113%");
   });
+
+  // BUG THIS FIXES: plain `Math.round(pct)` ties toward +Infinity
+  // (`Math.round(-2.5) === -2` but `Math.round(2.5) === 3`), so a melting strike sitting exactly
+  // on a whole-percent tie rounded to a SMALLER magnitude than the identical-magnitude building
+  // strike's mirror value — the same sign-biased rounding asymmetry already fixed in
+  // `fmt-money.ts`'s `fmtPct` (2026-10-26) and `round-floats.ts`, just missed in this sibling
+  // Thermal-desk formatter. Rounding `Math.abs(pct)` and reapplying `Math.sign(pct)` makes both
+  // signs tie the same direction (away from zero), so equal-magnitude opposite shifts render as
+  // equal-magnitude opposite labels.
+  it("rounds ties by MAGNITUDE, then reapplies sign — equal-magnitude opposite shifts match", () => {
+    // baseline 1,000,000 -> current 1,025,000 (delta +25,000): pct = +2.5, a real tie.
+    assert.equal(fmtShiftPercentForStrike(1_025_000, 25_000), "+3%");
+    // Mirror: baseline -1,000,000 -> current -1,025,000 (delta -25,000): pct = -2.5.
+    // Before the fix this rendered "−2%" (wrong — a smaller magnitude than the +3% mirror above)
+    // because `Math.round(-2.5)` is -2, not -3.
+    assert.equal(fmtShiftPercentForStrike(-1_025_000, -25_000), "−3%");
+  });
+
+  it("a magnitude that rounds to exactly 0 reads \"0%\", never a misleading signed zero", () => {
+    // baseline -1,000,000 -> current -1,003,000 (delta -3,000): pct = -0.3, rounds to 0.
+    assert.equal(fmtShiftPercentForStrike(-1_003_000, -3_000), "0%");
+  });
 });
