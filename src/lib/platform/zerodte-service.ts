@@ -836,6 +836,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
         summarizeGovernorForBoard(ledgerRows, recorded, {
           etMinutes: nowEtMinutes,
           shortGammaOpen: countShortGammaOpen(ledgerRows),
+          isTradingDay: tradingDay,
         })
       )
       .catch((): ZeroDteGovernorSummary | null => null),
