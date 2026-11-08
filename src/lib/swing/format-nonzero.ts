@@ -42,10 +42,23 @@ export function formatFixedNonZero(value: number, decimals: number): string {
  * `formatDealerDollars` picks M/B/T by magnitude so a member reads "-217.5B", never "-217513.8M".
  * Reuses `formatFixedNonZero` at whichever scale is chosen so the existing false-zero-widening
  * behavior (a real, small net GEX must never collapse to "0.0") still applies at every scale.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-11-08, round-400 class — fixed ~10 times elsewhere in
+ * this repo the same day, see format-nonzero.test.ts): the unit was picked off the UNROUNDED
+ * `raw` magnitude, then the quotient was rounded to 1 decimal INSIDE that chosen unit. A value
+ * just under a threshold rounds UP to "1000" in the lower unit and never promotes — e.g.
+ * 999,960,000 is < 1e9 so it took the M branch, then (999_960_000/1e6).toFixed(1) rounds to
+ * "1000.0", rendering "1000.0M" instead of the "1.0B" it actually rounded into. Same shape at the
+ * B→T boundary. Fix: after computing the rounded-to-1dp quotient at a candidate scale, check
+ * whether it reached 1000 and, if so, promote to the next unit instead.
  */
 export function formatDealerDollars(raw: number): string {
   const abs = Math.abs(raw);
   if (abs >= 1e12) return `${formatFixedNonZero(raw / 1e12, 1)}T`;
-  if (abs >= 1e9) return `${formatFixedNonZero(raw / 1e9, 1)}B`;
+  if (abs >= 1e9) {
+    if (Math.round(abs / 1e9) >= 1000) return `${formatFixedNonZero(raw / 1e12, 1)}T`;
+    return `${formatFixedNonZero(raw / 1e9, 1)}B`;
+  }
+  if (Math.round(abs / 1e6) >= 1000) return `${formatFixedNonZero(raw / 1e9, 1)}B`;
   return `${formatFixedNonZero(raw / 1e6, 1)}M`;
 }
