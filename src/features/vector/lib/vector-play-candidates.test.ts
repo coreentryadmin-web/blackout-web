@@ -219,6 +219,39 @@ test("HELIX whale print surfaces as a scored candidate with reason", () => {
   assert.ok(picks.some((p) => p.strike === strike && p.reasons?.some((r) => /HELIX/i.test(r))));
 });
 
+test("HELIX whale print >= $1B is labeled in B, not an overflowed four-digit M", () => {
+  // Regression pin: the "HELIX whale print $...M at this strike" reason bullet formatted the
+  // premium with a bare `(flowAt / 1_000_000).toFixed(1)}M` — no billions tier at all, so a
+  // $1.5B single print rendered "HELIX whale print $1500.0M at this strike" instead of
+  // promoting to "$1.5B", the same unit-boundary bug already fixed in fmt-money.ts's
+  // fmtPremium, thermal-compact-matrix.ts's fmtCompactHeatMoney, DarkPoolPanel.tsx's
+  // fmtShares, and discord-context-enrichment.ts's formatAdvShareLabel.
+  const strike = 572.5;
+  const expiry = ymdPlus(5);
+  const chain: EditionChainData = {
+    spot: 576,
+    rows: [row(strike, { expiry, callAsk: 6, callBid: 5.5 })],
+  };
+  const picks = rankVectorPlayCandidates(
+    {
+      play: basePlay("long", 70),
+      spot: 576,
+      platformInputs: {
+        sessionFlows: [
+          { option_type: "CALL", premium: 1_500_000_000, strike, expiry, ask_pct: 85 },
+        ],
+      },
+    },
+    chain
+  );
+  const whaleReason = picks
+    .find((p) => p.strike === strike)
+    ?.reasons?.find((r) => /HELIX whale print/i.test(r));
+  assert.ok(whaleReason, "expected a HELIX whale print reason bullet");
+  assert.match(whaleReason!, /\$1\.5B/, `expected "$1.5B", got: ${whaleReason}`);
+  assert.doesNotMatch(whaleReason!, /1500\.0M/, `must not overflow into "1500.0M": ${whaleReason}`);
+});
+
 test("a SOLD call whale print does not surface as a bullish HELIX candidate", () => {
   // Regression pin: a call print with ask_pct <= 40 (hit the bid — sold) is bearish, not a "buy
   // this call" signal, even at whale size. Previously option_type alone drove the candidate.
