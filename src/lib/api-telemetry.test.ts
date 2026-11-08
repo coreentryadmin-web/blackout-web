@@ -198,6 +198,42 @@ test("endpointStats stays bounded for UW earnings/insider/institution paths — 
   assert.equal(institutionKey!.call_count, 300, "all 300 institution calls aggregate into one key");
 });
 
+// Regression: `/api/group-flow/{group}/greek-flow` (fetchUwGroupGreekFlow) was missed by the
+// round 386/387 UW sweep above. Unlike every other per-entity segment that function covers,
+// `group` is not drawn from a small fixed set the way "mag7"/"semis" in largo/tool-defs.ts's own
+// example suggests — that tool schema types it as a free-text `string` with no enum, and Largo's
+// `get_group_greek_flow` tool forwards whatever the AI/operator asks about straight into this
+// path. Before this fix, every distinct group name minted its own permanent, never-evicted
+// `endpointStats` row (bar the global MAX_ENDPOINT_STATS=500 LRU backstop) — the exact
+// unbounded-cardinality defect this file's own header says endpointTemplate() exists to prevent.
+test("endpointTemplate: collapses UW per-group greek-flow paths (the group-flow cardinality gap)", () => {
+  // Per-group — must collapse, with or without a trailing expiry date segment.
+  assert.equal(endpointTemplate("/api/group-flow/mag7/greek-flow"), "/api/group-flow/:sym/greek-flow");
+  assert.equal(endpointTemplate("/api/group-flow/semis/greek-flow"), "/api/group-flow/:sym/greek-flow");
+  assert.equal(
+    endpointTemplate("/api/group-flow/mag7/greek-flow/2024-01-01"),
+    "/api/group-flow/:sym/greek-flow/:date"
+  );
+});
+
+test("endpointStats stays bounded for UW group-flow paths — distinct-group calls collapse to ONE templated key", () => {
+  for (let i = 0; i < 300; i++) {
+    recordApiCall({
+      provider: "unusual_whales",
+      endpoint: `/api/group-flow/group${i}/greek-flow`,
+      method: "GET",
+      status: 200,
+      ok: true,
+      latency_ms: 10,
+    });
+  }
+  const groupFlowKey = getApiTelemetrySnapshot(10 * 60_000).by_provider.unusual_whales.endpoints.find(
+    (e) => e.endpoint === "/api/group-flow/:sym/greek-flow"
+  );
+  assert.ok(groupFlowKey, "expected the one templated group-flow key");
+  assert.equal(groupFlowKey!.call_count, 300, "all 300 group-flow calls aggregate into one key");
+});
+
 test("endpointStats stays bounded for Unusual Whales — 600 distinct-ticker UW paths collapse to ONE templated key", () => {
   for (let i = 0; i < 600; i++) {
     recordApiCall({
