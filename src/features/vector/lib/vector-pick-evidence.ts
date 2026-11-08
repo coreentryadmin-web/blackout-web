@@ -149,7 +149,12 @@ export function buildVectorPickEvidence(input: VectorPickEvidenceInput): VectorP
     const prem = f.premium ?? 0;
     flowItems.push({
       label: "Print at strike",
-      value: `$${prem >= 1_000_000 ? `${(prem / 1_000_000).toFixed(1)}M` : `${Math.round(prem / 1000)}K`}`,
+      // `fmtPremium` (already imported below for the GEX-at-strike value) rounds the quotient
+      // FIRST and promotes to the next unit when that rounded value overflows it — the inline
+      // formula this replaced picked K vs M off the RAW premium, then separately rounded the K
+      // quotient, so a premium just under $1M (e.g. 999_600) rounded to "1000K" instead of
+      // promoting to "$1.0M". See this file's own regression test for the live reproduction.
+      value: fmtPremium(prem),
       detail: f.expiry ? `exp ${f.expiry.slice(5).replace("-", "/")}` : undefined,
     });
   }

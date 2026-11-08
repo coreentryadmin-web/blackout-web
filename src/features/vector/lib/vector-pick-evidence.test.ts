@@ -147,6 +147,52 @@ test("buildVectorPickEvidence: a SOLD call at the strike is bearish flow, not co
   assert.ok(confirmingFlow?.items.some((i) => i.label === "Print at strike" && i.value.includes("2.6M")));
 });
 
+test("buildVectorPickEvidence: 'Print at strike' promotes a near-$1M print to M, never an overflowed 4-digit K", () => {
+  // ROOT CAUSE: the "Print at strike" value chose its display unit (K vs M) by comparing the
+  // RAW premium against the 1_000_000 threshold, then separately rounded the quotient for the K
+  // branch (`Math.round(prem / 1000)`) — so a premium whose raw value sits just under $1M but
+  // whose rounded K-quotient reaches 1000 fell through to the K branch and overflowed past its
+  // own unit ("$1000K" instead of "$1.0M"). Same unit-boundary class already fixed in
+  // fmt-money.ts's fmtPremium (which this file already imports and uses for the GEX-at-strike
+  // value a few lines below, but NOT for this one) — `fmtPremium` rounds first, THEN decides
+  // whether the rounded quotient still fits its chosen unit, promoting to the next unit when it
+  // doesn't. Reusing it here instead of the file's own second, divergent inline formula is the
+  // fix (one correct implementation, not two that can disagree at the exact same boundary).
+  const sections = buildVectorPickEvidence({
+    side: "call",
+    strike: 575,
+    expiry: "2026-08-28",
+    dte: 2,
+    premium: 12.5,
+    role: "flow-whale",
+    targetStrike: 575,
+    spot: 576,
+    callWall: 580,
+    putWall: 570,
+    magnetStrike: 575,
+    gammaFlip: 572,
+    regimePosture: "long",
+    technicals: null,
+    platformInputs: {
+      sessionFlows: [
+        { option_type: "call", premium: 999_600, strike: 575, expiry: "2026-08-28", ask_pct: 85 },
+      ],
+      darkPoolLevels: null,
+    },
+    confluenceZones: null,
+    playStarred: [],
+  });
+
+  const flow = sections.find((s) => s.id === "flow");
+  const printItem = flow?.items.find((i) => i.label === "Print at strike");
+  assert.ok(printItem, "a near-$1M bought-call print at the strike must still render as evidence");
+  assert.equal(printItem!.value, "$1.0M");
+  assert.ok(
+    !printItem!.value.includes("1000K"),
+    `premium just under $1M must promote to the M unit, got "${printItem!.value}"`
+  );
+});
+
 test("buildVectorPickEvidence: omits gex/catalyst when not provided", () => {
   const sections = buildVectorPickEvidence({
     side: "put",
