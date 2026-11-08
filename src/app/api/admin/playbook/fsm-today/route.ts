@@ -15,16 +15,29 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   if (!dbConfigured()) {
-    return NextResponse.json({ available: false, reason: "database not configured" });
+    return NextResponse.json(
+      { available: false, reason: "database not configured" },
+      { headers: NO_STORE_HEADERS }
+    );
   }
 
   const sessionParsed = parseAdminSessionDate(req.nextUrl.searchParams.get("session"), todayEt());
   if (!sessionParsed.ok) {
-    return NextResponse.json({ error: sessionParsed.error }, { status: 400 });
+    return NextResponse.json(
+      { error: sessionParsed.error },
+      { status: 400, headers: NO_STORE_HEADERS }
+    );
   }
 
   try {
     const instances = await loadPlaybookInstanceStates(sessionParsed.value);
+    // Root cause (round 410 sweep): this route imported NO_STORE_HEADERS but never
+    // applied it — a bare `Cache-Control: no-store` literal is missing the CDN-scoped
+    // CDN-Cache-Control/Cloudflare-CDN-Cache-Control headers that are the actually
+    // load-bearing ones (see the doc comment on NO_STORE_HEADERS in
+    // src/lib/no-store-headers.ts). Same defect, same fix, as the 2026-11-01 audit's
+    // admin/gex/health etc. correction — this sibling route was named but left
+    // unfixed at the time.
     return NextResponse.json(
       {
         available: true,
@@ -33,10 +46,13 @@ export async function GET(req: NextRequest) {
         instance_count: instances.length,
         instances,
       },
-      { headers: { "Cache-Control": "no-store" } }
+      { headers: NO_STORE_HEADERS }
     );
   } catch (error) {
     recordAdminRouteError("admin/playbook/fsm-today", error);
-    return NextResponse.json({ error: "Failed to load playbook FSM rows" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Failed to load playbook FSM rows" },
+      { status: 502, headers: NO_STORE_HEADERS }
+    );
   }
 }

@@ -48,16 +48,29 @@ export async function GET(request: NextRequest) {
     // nearest 1%. That is precisely the defect fixed on the Vector expected-move route (#1867),
     // where a blanket 2dp turned a 0.004 fraction into a literal 0. Percent-scale fields
     // (avg_return_pct, *_pct) are genuine percentages and 2dp is right for them.
+    //
+    // Root cause (round 410 sweep): this route imported NO_STORE_HEADERS but never
+    // applied it — a bare `Cache-Control: no-store` literal is missing the CDN-scoped
+    // CDN-Cache-Control/Cloudflare-CDN-Cache-Control headers that are the actually
+    // load-bearing ones (see the doc comment on NO_STORE_HEADERS in
+    // src/lib/no-store-headers.ts), so a Cloudflare cache rule with override_origin
+    // could still edge-cache this admin-only payload. Same defect, same fix, as the
+    // 2026-11-01 audit's admin/gex/health, admin/helix/health, admin/cron-health and
+    // admin/options-socket correction — this sibling route was named but left unfixed
+    // at the time (docs/audit/findings-staging/2026-11-01-admin-health-routes-missing-cdn-nostore-headers.md).
     return NextResponse.json(
       roundFloats(
         { ...metrics, debrief_report: debriefReport, banger_scale_out: bangerScaleOut },
         2,
         { profitable_rate: 4, loss_rate: 4, open_rate: 4, profitable_rate_edge: 4, loss_rate_edge: 4 }
       ),
-      { headers: { "Cache-Control": "no-store" } }
+      { headers: NO_STORE_HEADERS }
     );
   } catch (error) {
     recordAdminRouteError("admin/nighthawk/analytics", error);
-    return NextResponse.json({ error: "Failed to load Night Hawk analytics" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Failed to load Night Hawk analytics" },
+      { status: 502, headers: NO_STORE_HEADERS }
+    );
   }
 }
