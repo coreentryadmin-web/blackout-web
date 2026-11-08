@@ -9612,3 +9612,33 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   across several real busy sessions, that's consistent with the cap rarely binding in practice
   (not evidence the fix is wrong, same caveat as this file's other low-probability-trigger
   entries), but a "+" appearing confirms the fix is live and catching a real undercount case.
+
+## WATCH LIST — 2026-11-08 (Swing 5-truth-grader retrace silently fails ~95% of rows to a self-inflicted Polygon 429 burst, `fix/swing-multi-truth-grade-retrace-burst-429`)
+
+- **`GET /api/admin/swing/multi-truth-grade` (`src/app/api/admin/swing/multi-truth-grade/route.ts`)
+  batched 10 concurrent distinct-ticker `fetchStockDailyBars` calls with no inter-batch delay and
+  swallowed any failure with a bare `.catch(() => [])`.** Live-reproduced directly: that
+  batch-of-10 burst alone, with no other load, trips 5+ consecutive Polygon 429s and opens
+  `polygon-rate-limiter.ts`'s shared circuit breaker — confirmed via 3 independent real production
+  calls to `GET /api/admin/swing/multi-truth-grade?days=90`, each returning only 3/64 (4.7%)
+  PATH-gradeable, matching the repo's own existing `swing-multi-truth-grade-retrace.mjs` audit
+  script's identical number, even though every bar window has real, fetchable Polygon data
+  (confirmed directly: `MSTR 2026-11-03..06` returns 4 real bars with no batching involved).
+  Because the failure collapsed to an empty array, it was byte-for-byte indistinguishable from
+  Polygon genuinely having no data — `multiTruthGrade.path.reason: "no_forward_bars"` read as a
+  confident absence claim when the real cause was a self-inflicted rate-limit trip. **Fixed:**
+  lowered `BAR_FETCH_BATCH_SIZE` 10→4 with a 400ms inter-batch pause (a conservative mitigation,
+  not a guaranteed fix under heavy contention), and — the real correctness fix — threaded the
+  actual fetch error through as a new `barsFetchError` field instead of collapsing it into the
+  same shape a genuine absence would produce (`barFetchErrorMessage`, pure, unit-tested). Full
+  write-up: `docs/audit/findings-staging/2026-11-08-swing-multi-truth-grade-retrace-burst-429.md`.
+  Admin-only, read-only diagnostic surface — no member-facing or live-trading-path impact either
+  way, so there is no urgency here, only a correctness/observability improvement.
+  **Re-check once the market opens (RTH, real Polygon load/contention differs from this weekend
+  sandbox run):** re-run `scripts/audit/swing-multi-truth-grade-retrace.mjs --days=90` against
+  production. A materially higher PATH/THESIS-gradeable rate than the pre-fix 4.7% baseline would
+  confirm the batching mitigation helps under real conditions; if the rate is still low, check
+  whether the new script output reports a non-zero `barFetchErrors` count — that distinguishes
+  "still rate-limited, but now honestly disclosed" (fix 1 working as intended, fix 2 needs more
+  tuning) from a different, unrelated cause (worth a fresh look). Either way, a caller should never
+  again see a 429 storm misread as "no data."
