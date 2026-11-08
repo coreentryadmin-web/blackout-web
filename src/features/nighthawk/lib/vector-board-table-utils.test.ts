@@ -121,6 +121,34 @@ test("vectorBoardCalendarBuckets aggregates session tone", () => {
   assert.equal(buckets.find((b) => b.session_date === "2026-08-27")?.tone, "up");
 });
 
+test("vectorBoardCalendarBuckets excludes rows with no usable premium from the blended average", () => {
+  // BUG FIX (round 407): a day with one real +100% pick and one row carrying NO premium at
+  // all (a freshly-surfaced live leader before its first price prints, or a closed pick that
+  // never got a fill — both ship `premium_pct_from_entry: null` per VectorPickLogBoard.types.ts)
+  // used to average +50% (dividing the real +100% by n=2, the undated row counting toward the
+  // divisor while contributing 0 to the numerator) instead of the honest +100%. Same dilution
+  // shape as the already-fixed Legacy sibling (legacyBoardCalendarBuckets, 2026-09-15 VNCE
+  // incident) and the scorecard (vectorBoardScorecard's netPremiumPct, which already divides by
+  // the premium-bearing count, not the row count).
+  const realWinner = leaderToTableRow(leader({ premium_pct_from_entry: 100, peak_premium_pct: 100 }));
+  const noPremiumYet = leaderToTableRow(
+    leader({
+      id: 2,
+      ticker: "NVDA",
+      session_date: realWinner.sessionDate,
+      is_winner: false,
+      premium_pct_from_entry: null,
+      peak_premium_pct: null,
+      action_status: "still_buy",
+    })
+  );
+  const buckets = vectorBoardCalendarBuckets([realWinner, noPremiumYet]);
+  const bucket = buckets.find((b) => b.session_date === realWinner.sessionDate);
+  assert.ok(bucket);
+  assert.equal(bucket!.n, 2); // both rows still counted as part of the day
+  assert.equal(bucket!.net_premium_pct, 100); // but the average is NOT diluted by the undated row
+});
+
 test("vectorBoardMeter mirrors X Ads budget bar for peak and winner floor", () => {
   const peakRow = leaderToTableRow(leader({ premium_pct_from_entry: 40, peak_premium_pct: 50 }));
   const peakMeter = vectorBoardMeter(peakRow);

@@ -274,18 +274,33 @@ export function buildVectorBoardRows(input: {
 }
 
 export function vectorBoardCalendarBuckets(rows: VectorBoardTableRow[]): VectorBoardCalendarBucket[] {
-  const map = new Map<string, { sum: number; n: number; winners: number; closed: number }>();
+  // `premiumN` tracks only the rows that actually contributed to `sum` — a row whose
+  // premiumPct is null/non-finite (a freshly-added live pick with no price yet, or a
+  // closed row that never got a fill) must not silently drag the day's blended average
+  // toward zero by counting in the denominator while contributing nothing to the
+  // numerator. BUG FIX (round 407): this used to divide by `n` (every row that day,
+  // premium or not), the exact dilution defect already found and fixed for the Legacy
+  // sibling tile (legacyBoardCalendarBuckets, 2026-09-15 VNCE incident — "Averaging a
+  // null premium in as 0 silently dilutes a real winner/loser toward zero") and for the
+  // scorecard (vectorBoardScorecard's `netPremiumPct`, which already divides by `pctN`,
+  // not `rows.length`). A day with one real pick at +100% and one undated live pick with
+  // no premium yet read "Net premium +50%" instead of the honest +100% — the n=2 row
+  // existed, contributed 0 to `sum`, and still counted toward the divisor.
+  const map = new Map<string, { sum: number; n: number; premiumN: number; winners: number; closed: number }>();
   for (const row of rows) {
-    const cur = map.get(row.sessionDate) ?? { sum: 0, n: 0, winners: 0, closed: 0 };
+    const cur = map.get(row.sessionDate) ?? { sum: 0, n: 0, premiumN: 0, winners: 0, closed: 0 };
     cur.n += 1;
-    if (row.premiumPct != null && Number.isFinite(row.premiumPct)) cur.sum += row.premiumPct;
+    if (row.premiumPct != null && Number.isFinite(row.premiumPct)) {
+      cur.sum += row.premiumPct;
+      cur.premiumN += 1;
+    }
     if (row.status === "winner") cur.winners += 1;
     if (row.kind === "closed") cur.closed += 1;
     map.set(row.sessionDate, cur);
   }
   return Array.from(map.entries())
     .map(([session_date, v]) => {
-      const avg = v.n > 0 ? v.sum / v.n : 0;
+      const avg = v.premiumN > 0 ? v.sum / v.premiumN : 0;
       const tone: VectorBoardCalendarBucket["tone"] =
         avg > 0 ? "up" : avg < 0 ? "down" : "flat";
       return {
