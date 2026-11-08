@@ -108,6 +108,86 @@ test("collapseRedundantIntelSections: still drops 'Lane rank' and claims the fol
   assert.match(narrative!.body, /folded into Trade manager read/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-08): sibling of the "Lane rank" fix above, for
+// the other two conditionally-covered titles disclosed but not yet fixed by #7580.
+test("collapseRedundantIntelSections: keeps 'Wall dynamics' and omits the fold-in claim when wallDynamicsFolded is false (wallDynamicsCoaching stayed silent, e.g. only 1 real event)", () => {
+  const sections = [
+    section("Trade manager read"),
+    section("GEX posture"),
+    section("Wall dynamics"),
+    section("Why this setup"),
+  ];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    wallDynamicsFolded: false,
+  });
+  assert.ok(
+    out.some((s) => s.title === "Wall dynamics"),
+    "Wall dynamics must survive — the narrative never mentioned it for this play",
+  );
+  assert.ok(!out.some((s) => s.title === "GEX posture"));
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /for 1 section folded/i, "only GEX posture was actually dropped");
+});
+
+test("collapseRedundantIntelSections: omitting wallDynamicsFolded entirely defaults to the SAFE outcome (keep, no false claim) — same as explicit false", () => {
+  const sections = [section("Trade manager read"), section("Wall dynamics"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(out.some((s) => s.title === "Wall dynamics"), "a caller that forgets to pass wallDynamicsFolded must never lose this section");
+});
+
+test("collapseRedundantIntelSections: still drops 'Wall dynamics' and claims the fold-in note when wallDynamicsFolded is true (wallDynamicsCoaching actually fired)", () => {
+  const sections = [section("Trade manager read"), section("Wall dynamics"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    wallDynamicsFolded: true,
+  });
+  assert.ok(!out.some((s) => s.title === "Wall dynamics"), "wallDynamicsCoaching really did fold this in — collapse it as usual");
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /folded into Trade manager read/i);
+});
+
+test("collapseRedundantIntelSections: keeps 'Vector desk' and omits the fold-in claim when vectorDeskFolded is false (vectorPlayCoaching stayed silent, e.g. stale snapshot)", () => {
+  const sections = [
+    section("Trade manager read"),
+    section("GEX posture"),
+    section("Vector desk"),
+    section("Why this setup"),
+  ];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    vectorDeskFolded: false,
+  });
+  assert.ok(
+    out.some((s) => s.title === "Vector desk"),
+    "Vector desk must survive — the narrative never mentioned it for this play",
+  );
+  assert.ok(!out.some((s) => s.title === "GEX posture"));
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /for 1 section folded/i, "only GEX posture was actually dropped");
+});
+
+test("collapseRedundantIntelSections: omitting vectorDeskFolded entirely defaults to the SAFE outcome (keep, no false claim) — same as explicit false", () => {
+  const sections = [section("Trade manager read"), section("Vector desk"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(out.some((s) => s.title === "Vector desk"), "a caller that forgets to pass vectorDeskFolded must never lose this section");
+});
+
+test("collapseRedundantIntelSections: still drops 'Vector desk' and claims the fold-in note when vectorDeskFolded is true (vectorPlayCoaching actually fired)", () => {
+  const sections = [section("Trade manager read"), section("Vector desk"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    vectorDeskFolded: true,
+  });
+  assert.ok(!out.some((s) => s.title === "Vector desk"), "vectorPlayCoaching really did fire — collapse it as usual");
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /folded into Trade manager read/i);
+});
+
 test("collapseRedundantIntelSections: closed bucket keeps GEX/flow sections — post-mortem does not cover them", () => {
   const sections = [
     section("Trade manager read"),
