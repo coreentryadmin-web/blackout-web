@@ -13,6 +13,7 @@ import type { ChainStrikeRow, EditionChainData } from "@/features/nighthawk/lib/
 import { GROUNDING_MIN_OI, tieredMinOi } from "@/features/nighthawk/lib/grounding";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { fmtPremium } from "@/lib/fmt-money";
 import type { PlayPlatformFlowPrint, PlayPlatformInputs } from "./vector-play-platform";
 import { flowDirection } from "@/features/helix/lib/helix-flow-aggression";
 import type { VectorContractPick } from "./vector-contract-picks";
@@ -463,7 +464,10 @@ function rankPick(
   const flowDir = largestFlowPremium(flows, spec.direction);
   if (spec.role === "flow-whale" && flowAt >= FLOW_WHALE) {
     score += 18;
-    reasons.push(`HELIX whale print $${(flowAt / 1_000_000).toFixed(1)}M at this strike`);
+    // fmtPremium (not a bare `(flowAt / 1_000_000).toFixed(1)}M`) — the raw divide-by-1e6
+    // had no billions tier at all, so a >=$1B single print overflowed into a four-digit
+    // "$1500.0M" instead of promoting to "$1.5B". See regression test for the live repro.
+    reasons.push(`HELIX whale print ${fmtPremium(flowAt)} at this strike`);
     if (flowAt >= FLOW_MEGA) {
       score += 8;
       reasons.push("Mega-whale flow ($2M+) — highest-conviction HELIX anchor");
