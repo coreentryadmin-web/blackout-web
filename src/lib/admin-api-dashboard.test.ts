@@ -177,3 +177,60 @@ test("admin-api-dashboard matchTelemetry: never cross-matches a different HTTP m
   const matched = matchTelemetry(catalogEp, "polygon", [wrongMethod]);
   assert.equal(matched, null);
 });
+
+test("admin-api-dashboard matchTelemetry: a never-called catalog row must NOT fall back to a sibling's bare prefix (#7273 follow-up)", () => {
+  // PR #7273 fixed the PRIMARY fuzzy match for siblings that each have their own telemetry
+  // (see the "sibling catalog rows" test above). It explicitly left the final fallback — hit
+  // only when THIS row has literally zero stats of its own — as a bare
+  // `s.endpoint.startsWith(prefix)`, deferring it as "a separate, lower-severity question".
+  // That fallback reintroduces the exact same bug one branch later: "nope" has never been
+  // called this window, but its sibling "max-pain" has, and both share the "/api/stock/"
+  // literal prefix. Pre-fix this resolved to max-pain's stat (wrong provider/endpoint/status
+  // rendered under the "nope" dashboard tile); it must instead report no match (idle).
+  const nopeCatalog: CatalogEndpoint = {
+    endpoint: "/api/stock/{ticker}/nope",
+    method: "GET",
+    description: "NOPE",
+    used_by: ["desk flow"],
+  };
+  const maxPainStat = stat({
+    endpoint: "/api/stock/NVDA/max-pain",
+    method: "GET",
+    last_at: "2026-10-30T12:00:00.000Z",
+    last_status: 200,
+  });
+
+  const matched = matchTelemetry(nopeCatalog, "unusual_whales", [maxPainStat]);
+  assert.equal(
+    matched,
+    null,
+    "a catalog row with zero stats of its own must never fall back to a sibling's telemetry"
+  );
+});
+
+test("admin-api-dashboard matchTelemetry: a never-called catalog row still matches its own stat with an unexpected extra trailing segment", () => {
+  // The fallback's whole reason to exist: a real recorded call whose segment count doesn't
+  // line up 1:1 with the catalog template (e.g. an extra path segment the catalog entry
+  // hasn't been updated to declare), which the primary exact/fuzzy match (equal-length-only)
+  // can never catch by construction. It must still resolve to THIS row's own endpoint, not
+  // merely any same-prefix sibling.
+  const nopeCatalog: CatalogEndpoint = {
+    endpoint: "/api/stock/{ticker}/nope",
+    method: "GET",
+    description: "NOPE",
+    used_by: ["desk flow"],
+  };
+  const nopeStatExtraSegment = stat({
+    endpoint: "/api/stock/TSLA/nope/v2",
+    method: "GET",
+    last_at: "2026-10-30T12:00:00.000Z",
+  });
+  const maxPainStat = stat({
+    endpoint: "/api/stock/NVDA/max-pain",
+    method: "GET",
+    last_at: "2026-10-30T11:00:00.000Z",
+  });
+
+  const matched = matchTelemetry(nopeCatalog, "unusual_whales", [maxPainStat, nopeStatExtraSegment]);
+  assert.equal(matched, nopeStatExtraSegment);
+});

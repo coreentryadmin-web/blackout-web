@@ -45,6 +45,40 @@ function endpointSegmentsMatch(catalogEndpoint: string, candidateEndpoint: strin
   return true;
 }
 
+/**
+ * Looser cousin of `endpointSegmentsMatch`, for the never-called-endpoint fallback below.
+ * Walks the catalog's segments positionally against the candidate's (placeholder = wildcard,
+ * same as above) but, unlike `endpointSegmentsMatch`, tolerates the CANDIDATE having extra
+ * trailing segments the catalog template doesn't declare (e.g. a recorded path that grew a
+ * segment the catalog entry hasn't been updated to list). It still requires every one of the
+ * catalog's own literal segments to agree positionally, so it canNOT be satisfied by a sibling
+ * row that only shares a leading prefix — see the bug this replaces, below.
+ *
+ * Root cause this replaces: PR #7273 fixed the PRIMARY fuzzy match (`endpointSegmentsMatch`
+ * above) but left the final fallback as a bare `s.endpoint.startsWith(prefix)` — the exact same
+ * unbounded-prefix bug the whole function was rewritten to avoid, just one branch down, for the
+ * one case the primary match can't cover by definition: a catalog endpoint with literally ZERO
+ * stats of its own recorded yet. `prefix` is only the text BEFORE the first "{placeholder}", so
+ * for the ~11 UW "/api/stock/{ticker}/..." rows (and the Polygon minute/day aggs-bars rows) that
+ * all share that same leading text, a catalog row that has never once been called (e.g. "nope")
+ * still matched ANY sibling row that HAS been called (e.g. "max-pain") purely because
+ * "/api/stock/NVDA/max-pain".startsWith("/api/stock/") is true — misattributing a stale/failing
+ * sibling's status, latency and last_at to this row's dashboard tile, or masking a genuinely
+ * failing row behind a healthy sibling's green status. Confirmed live-shape with the real
+ * catalog: a session scoped with zero "nope" telemetry but live "max-pain" telemetry.
+ */
+function endpointPrefixSegmentsMatch(catalogEndpoint: string, candidateEndpoint: string): boolean {
+  const catalogParts = catalogEndpoint.split("/");
+  const candidateParts = candidateEndpoint.split("/");
+  if (candidateParts.length < catalogParts.length) return false; // candidate can't be shorter
+  for (let i = 0; i < catalogParts.length; i++) {
+    const seg = catalogParts[i];
+    if (seg.startsWith("{") && seg.endsWith("}")) continue; // wildcard position
+    if (seg !== candidateParts[i]) return false;
+  }
+  return true;
+}
+
 export function matchTelemetry(
   catalogEp: CatalogEndpoint,
   _provider: ApiProviderId,
@@ -90,11 +124,14 @@ export function matchTelemetry(
   // match (idle) than to attribute an unrelated endpoint's traffic to this row.
   if (!hasAnchor) return null;
 
+  // Reached only when this catalog row has literally ZERO stats satisfying the exact/fuzzy
+  // check above (every real call this provider has made this window is for a DIFFERENT
+  // endpoint). `endpointPrefixSegmentsMatch` — not a bare `startsWith(prefix)` — so a sibling
+  // row sharing only the leading literal text (e.g. "max-pain" vs this row's "nope") still
+  // cannot be mistaken for this row's own telemetry; see that function's doc comment.
   return (
     stats.find(
-      (s) =>
-        s.method === catalogEp.method &&
-        (s.endpoint === catalogEp.endpoint || s.endpoint.startsWith(prefix))
+      (s) => s.method === catalogEp.method && endpointPrefixSegmentsMatch(catalogEp.endpoint, s.endpoint)
     ) ?? null
   );
 }
