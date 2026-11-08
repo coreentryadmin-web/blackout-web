@@ -8,7 +8,8 @@ import {
   sessionSkewChip,
   type SlashPrompt,
 } from "./slash-prompt-utils";
-import { slashDefaultQuestion } from "./slash-prompts";
+import { buildSlashPromptsForDesk, slashDefaultQuestion } from "./slash-prompts";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 const SAMPLE: SlashPrompt[] = [
   { id: "a", label: "NVDA tape leader", question: "Summarize HELIX on NVDA", live: "+$42M net", rank: 10 },
@@ -40,6 +41,37 @@ describe("slashDefaultQuestion", () => {
       SAMPLE
     );
     assert.match(q, /NVDA/i);
+  });
+});
+
+describe("buildSlashPromptsForDesk — ET session anchor (Largo contract C1)", () => {
+  // `as_of` is a UTC ISO instant; after ~20:00 ET its calendar date is already tomorrow, so a
+  // model resolving "today's session" from `as_of` alone is a full day ahead (the defect class
+  // fixed in #2418/#2420/#2422). This payload is the slash-command chip menu served to Largo's
+  // `/helix`, `/thermal`, etc. — it stamped `as_of` with no anchor at all until this fix.
+  it("stamps session_date alongside as_of, anchored to the SAME instant, for a plain prompt command", async () => {
+    const payload = await buildSlashPromptsForDesk("track-record", {
+      id: "tr-ask",
+      command: "track-record",
+      label: "Track record",
+      description: "",
+      kind: "prompt",
+      question: "Summarize the public track record.",
+      aliases: [],
+      rank: 10,
+    });
+    assert.ok(payload.session_date, "session_date must be present, not omitted");
+    assert.match(payload.session_date!, /^\d{4}-\d{2}-\d{2}$/);
+    // Independently re-derive the ET session date from the SAME as_of instant this call
+    // returned — proves session_date isn't a stale/second `Date.now()` call that could drift
+    // across a session boundary from the one `as_of` stamped.
+    assert.equal(payload.session_date, etSessionDate(Date.parse(payload.as_of)));
+  });
+
+  it("stamps session_date on the default (non-prompt) desk branch too", async () => {
+    const payload = await buildSlashPromptsForDesk("unknown-desk-xyz");
+    assert.ok(payload.session_date);
+    assert.equal(payload.session_date, etSessionDate(Date.parse(payload.as_of)));
   });
 });
 

@@ -85,7 +85,6 @@ const KNOWN_GAPS: Record<string, string> = {
   "src/lib/bie/platform-context.ts": "coordinator",
   "src/lib/bie/full-platform-snapshot.ts": "coordinator — cross-product snapshot; anchor with the rest of the integration layer",
   "src/lib/bie/spx-desk-brief.ts": "coordinator (SPX lane)",
-  "src/lib/largo/slash-prompts.ts": "coordinator",
   // ── Exposed 2026-08-21 when ROOTS was WIDENED from ["src/lib/largo","src/lib/bie"] to ["src"].
   // 40 sites that were never scanned, listed here so `main` stays green and the ratchet keeps its
   // shrink-only shape rather than red-lining five lanes at once — the same "not a big bang" choice

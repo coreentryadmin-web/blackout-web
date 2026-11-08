@@ -21,6 +21,8 @@ export type SlashPromptsPayload = {
   label: string;
   command: string;
   as_of: string;
+  /** ET calendar date `as_of` falls on — see `@/lib/largo/temporal/bar-session-date`. */
+  session_date: string | null;
   prompts: SlashPrompt[];
   /** Stable submodule catalog for Modules tab. */
   modules: SlashSubmoduleItem[];
