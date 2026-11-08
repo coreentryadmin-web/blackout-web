@@ -24,22 +24,7 @@ import {
   MeridianTargetRail,
   MeridianTrajectory,
 } from "./meridian-viz";
-
-function fmtMoney(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `$${(n / 1e6).toFixed(0)}M`;
-  return `$${n.toFixed(0)}`;
-}
-function fmtEps(n: number): string {
-  return n.toFixed(2);
-}
-function period(row: { fiscal_period?: string | null; fiscal_year?: number | null; report_date?: string | null }): string {
-  if (row.fiscal_period) {
-    return row.fiscal_year ? `${row.fiscal_period} '${String(row.fiscal_year).slice(-2)}` : row.fiscal_period;
-  }
-  return row.report_date?.slice(2) ?? "—";
-}
+import { fmtMoney, fmtEps, period } from "@/features/meridian/lib/meridian-earnings-estimates-format";
 
 type Props = {
   ticker: string;
