@@ -51,14 +51,26 @@ export function formatFixedNonZero(value: number, decimals: number): string {
  * "1000.0", rendering "1000.0M" instead of the "1.0B" it actually rounded into. Same shape at the
  * B→T boundary. Fix: after computing the rounded-to-1dp quotient at a candidate scale, check
  * whether it reached 1000 and, if so, promote to the next unit instead.
+ *
+ * BUG FIX (2026-11-08, same day, found while reviewing #7561 before merge — the fix above shipped
+ * with a precision mismatch): the promotion guard rounded the quotient to the nearest INTEGER
+ * (`Math.round(abs / 1e9)`) to decide whether to promote, but the rendered value is rounded to 1
+ * DECIMAL place (`formatFixedNonZero(..., 1)`). Those two roundings disagree over the quotient
+ * range [999.5, 999.95): integer rounding sends 999.6 to 1000 and promotes, while 1-decimal
+ * rounding renders that same quotient as "999.6", which never reached 1000 and should NOT
+ * promote. Concretely, `formatDealerDollars(999_600_000)` rendered "1.0B" when the correct output
+ * (matching the formatter's own 1dp precision, and matching the already-correct sibling fix in
+ * `vector-crosshair-format.ts`'s `fmtGex`, #7559) is "999.6M". Fix: round the quotient to 1
+ * decimal (matching `formatFixedNonZero`'s own precision) before comparing against 1000, instead
+ * of rounding to a whole integer.
  */
 export function formatDealerDollars(raw: number): string {
   const abs = Math.abs(raw);
   if (abs >= 1e12) return `${formatFixedNonZero(raw / 1e12, 1)}T`;
   if (abs >= 1e9) {
-    if (Math.round(abs / 1e9) >= 1000) return `${formatFixedNonZero(raw / 1e12, 1)}T`;
+    if (Math.round((abs / 1e9) * 10) / 10 >= 1000) return `${formatFixedNonZero(raw / 1e12, 1)}T`;
     return `${formatFixedNonZero(raw / 1e9, 1)}B`;
   }
-  if (Math.round(abs / 1e6) >= 1000) return `${formatFixedNonZero(raw / 1e9, 1)}B`;
+  if (Math.round((abs / 1e6) * 10) / 10 >= 1000) return `${formatFixedNonZero(raw / 1e9, 1)}B`;
   return `${formatFixedNonZero(raw / 1e6, 1)}M`;
 }

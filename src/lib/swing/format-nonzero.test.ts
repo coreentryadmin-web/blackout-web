@@ -84,3 +84,27 @@ test("formatDealerDollars: a value that ROUNDS to 1000B promotes to T instead of
   assert.equal(formatDealerDollars(-999_960_000_000), "-1.0T");
   assert.equal(formatDealerDollars(999_400_000_000), "999.4B");
 });
+
+// BUG FIX (2026-11-08, same day — found while reviewing the fix above before merge, PR #7561
+// comment). The promotion guard above shipped checking `Math.round(abs / 1e9) >= 1000` —
+// rounding to the nearest INTEGER — but the rendered value is rounded to 1 DECIMAL place via
+// `formatFixedNonZero(..., 1)`. Those disagree over the quotient range [999.5, 999.95): integer
+// rounding sends 999.6 to 1000 (promotes), while 1dp rounding renders that same quotient as
+// "999.6" (never reached 1000, must stay in the lower unit). Confirmed the shipped code rendered
+// `formatDealerDollars(999_600_000)` as the wrong "1.0B" instead of "999.6M". Same shape at the
+// B→T boundary. The already-correct sibling fix in `vector-crosshair-format.ts`'s `fmtGex`
+// (#7559) rounds at the formatter's own precision before comparing — mirrored here.
+test("formatDealerDollars: a quotient in [999.5, 999.95) must NOT promote — only a value that rounds to 1000.0 at 1dp precision promotes", () => {
+  assert.equal(formatDealerDollars(999_500_000), "999.5M");
+  assert.equal(formatDealerDollars(999_600_000), "999.6M");
+  assert.equal(formatDealerDollars(999_940_000), "999.9M");
+  // 999.95 is the real 1dp rounding boundary — this one correctly promotes.
+  assert.equal(formatDealerDollars(999_950_000), "1.0B");
+});
+
+test("formatDealerDollars: the same [999.5, 999.95) non-promotion band at the B->T boundary", () => {
+  assert.equal(formatDealerDollars(999_500_000_000), "999.5B");
+  assert.equal(formatDealerDollars(999_600_000_000), "999.6B");
+  assert.equal(formatDealerDollars(999_940_000_000), "999.9B");
+  assert.equal(formatDealerDollars(999_950_000_000), "1.0T");
+});
