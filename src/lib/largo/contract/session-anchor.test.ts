@@ -131,7 +131,6 @@ const KNOWN_GAPS: Record<string, string> = {
   "src/features/spx/lib/spx-slayer-badge-map.ts": "coordinator (SPX lane)",
   "src/lib/admin-playbook-promotion.ts": "coordinator",
   "src/lib/market-health.ts": "coordinator",
-  "src/lib/meridian/meridian-snapshot.ts": "meridian lane",
   "src/lib/nighthawk/cortex/compose.ts": "coordinator (Night Hawk)",
   "src/lib/nighthawk/cortex/sources/opening-harvest.ts": "coordinator (Night Hawk)",
   "src/lib/nighthawk/cortex/sources/wall-trend.ts": "coordinator (Night Hawk)",

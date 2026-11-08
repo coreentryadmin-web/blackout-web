@@ -15,6 +15,7 @@ import {
 } from "@/lib/meridian/meridian-event-brief";
 import { loadMeridianEarningsEventDetail } from "@/lib/meridian/meridian-earnings-event-load";
 import { readMeridianBoardTickers } from "@/lib/meridian/meridian-board-tickers";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import type {
   MeridianEventDetail,
   MeridianTimelinePayload,
@@ -73,8 +74,14 @@ export async function loadMeridianTimelineResponse(
     fda: fdaRows,
   });
 
+  // Largo C1 (contract/session-anchor.test.ts): `as_of` alone is a UTC instant, and after ~20:00
+  // ET the UTC calendar date is already tomorrow — a model (or any consumer) resolving "today's"
+  // session off this stamp alone reads a full session ahead for the last four hours of RTH.
+  // Anchored to the SAME instant as `as_of` so the two can never describe different moments.
+  const nowMs = Date.now();
   return roundFloats({
-    as_of: new Date().toISOString(),
+    as_of: new Date(nowMs).toISOString(),
+    session_date: etSessionDate(nowMs),
     days_ahead: daysAhead,
     enrich_pending: options.skipEnrich === true,
     items,
