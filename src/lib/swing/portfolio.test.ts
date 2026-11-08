@@ -167,3 +167,27 @@ test("SOXL (the bull sibling, not inverse) is unaffected — still compares on r
   assert.equal(o.sameThemeSameDirection.length, 1, "SOXL LONG is a genuinely bullish semis bet, same as MRVL LONG");
   assert.equal(o.sameThemeOpposedDirection.length, 0);
 });
+
+// GAP FOUND (Ask Largo standing mandate, Night Hawk Swings lane, 2026-11-08) — live repro: the
+// real committed swing book held VXX LONG (positionId 2479), UVIX LONG, UVXY LONG and SPXS LONG
+// SIMULTANEOUSLY, functionally one "long volatility / risk-off" bet stacked four times, with
+// `checkPortfolioOverlap` reporting `hasOverlap:false` for every one of them before the fix
+// (none of the four tickers had a theme entry anywhere). Fixed by adding all four to a new
+// `volatility` theme bucket (sector-map.ts) — see that file's own comment for the measured
+// correlation evidence (VXX/UVIX/UVXY pairwise r>0.99, SPXS r~0.80 vs each).
+test("a real VXX LONG is concentration against an already-held UVIX/UVXY/SPXS LONG book (2026-11-08 live finding)", () => {
+  const o = checkPortfolioOverlap(long("VXX"), [long("UVIX"), long("UVXY"), long("SPXS")]);
+  assert.equal(o.theme, "volatility");
+  assert.equal(o.hasOverlap, true);
+  assert.equal(
+    o.sameThemeSameDirection.length,
+    3,
+    "all three existing LONG volatility/risk-off positions should flag as concentration against a LONG VXX candidate",
+  );
+  assert.equal(o.sameThemeOpposedDirection.length, 0);
+});
+
+test("NUGT and SCO (measured, deliberately excluded) do not false-merge into the volatility theme", () => {
+  const o = checkPortfolioOverlap(long("VXX"), [long("NUGT"), long("SCO")]);
+  assert.equal(o.hasOverlap, false, "NUGT/SCO are a different risk driver (gold miners / inverse crude), not volatility");
+});
