@@ -319,6 +319,18 @@ test("formatters: null renders as an em-dash, never as a fabricated zero", () =>
   // and pinned here so nobody "fixes" the formatter to chase a half-cent that never existed.
   assert.equal(fmtCompactMoney(81615000000), "$81.61B");
 
+  // K->M / M->B / B->T unit-boundary rounding (round396): `abs >= <unit>` ran BEFORE rounding
+  // to that unit's own display precision, so a value just under a threshold that rounds UP to
+  // 1000 of the smaller unit overflowed into a four-digit label instead of being promoted.
+  assert.equal(fmtCompactMoney(999_550), "$1.0M", "999_550 must promote to M, never '$1000K'");
+  assert.equal(fmtCompactMoney(999_950_000), "$1.00B", "must promote to B, never '$1000.0M'");
+  assert.equal(fmtCompactMoney(999_995_000_000), "$1.00T", "must promote to T, never '$1000.00B'");
+  // Negative mirror — the magnitude check must round |v|, not re-derive the unit from the
+  // signed value, which would misclassify the negative case differently from the positive one.
+  assert.equal(fmtCompactMoney(-999_550), "$-1.0M");
+  // Just below the rounding boundary must still render in its own native unit.
+  assert.equal(fmtCompactMoney(999_449), "$999K");
+
   assert.equal(fmtCountdown(null), "time TBD");
   assert.equal(fmtCountdown(60), "in 1h 0m");
   assert.equal(fmtCountdown(-30), "30m ago");
