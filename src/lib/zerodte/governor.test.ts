@@ -952,6 +952,31 @@ test("summarizeGovernorForBoard: pre-market board payload never shows a reduced 
   assert.equal(s.effective_max_concurrent, s.max_concurrent);
 });
 
+test("summarizeGovernorForBoard: a weekend/holiday never shows a wall-clock 'lunch chop' label (live repro, Sunday 2026-11-08 ~13:10 ET)", () => {
+  // timeOfDaySizingFactor has no trading-day concept of its own — it reads ONLY the ET minute,
+  // so 13:10 ET satisfies the lunch-chop window (12:30-13:30) whether or not the market is
+  // actually open. Live-confirmed: a Sunday board fetch served `time_of_day_label: "lunch chop —
+  // fade-prone, size down"`, which ZeroDteBoard.tsx renders unconditionally whenever truthy —
+  // a member opening a dead weekend board saw live intraday risk-sizing guidance for a session
+  // that wasn't open. `isTradingDay: false` must suppress the label/factor exactly like the
+  // pre-market case above, regardless of etMinutes.
+  const s = summarizeGovernorForBoard([], [], { etMinutes: 13 * 60 + 10, isTradingDay: false });
+  assert.equal(s.time_of_day_label, null);
+  assert.equal(s.time_of_day_sizing_factor, 1);
+  assert.equal(s.effective_max_concurrent, s.max_concurrent);
+});
+
+test("summarizeGovernorForBoard: lunch chop still fires on a real trading day at the same ET minute (no over-correction)", () => {
+  const s = summarizeGovernorForBoard([], [], { etMinutes: 13 * 60 + 10, isTradingDay: true });
+  assert.match(s.time_of_day_label ?? "", /lunch chop/i);
+  assert.ok(s.effective_max_concurrent < s.max_concurrent);
+});
+
+test("summarizeGovernorForBoard: omitting isTradingDay keeps the pre-existing weekday-shaped default (no silent behavior change for callers that predate this param)", () => {
+  const s = summarizeGovernorForBoard([], [], { etMinutes: 13 * 60 + 10 });
+  assert.match(s.time_of_day_label ?? "", /lunch chop/i);
+});
+
 test("summarizeGovernorForBoard: surfaces premium + TOD sizing fields", () => {
   const s = summarizeGovernorForBoard(
     [row({ ticker: "NVDA", status: "OPEN", entry_premium: 50_000 })],

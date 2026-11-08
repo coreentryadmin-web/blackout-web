@@ -979,6 +979,7 @@ export function summarizeGovernorForBoard(
   opts?: {
     etMinutes?: number;
     shortGammaOpen?: number;
+    isTradingDay?: boolean;
   }
 ): ZeroDteGovernorSummary {
   const snap = deriveGovernorFromLedger(rows);
@@ -988,8 +989,23 @@ export function summarizeGovernorForBoard(
   const wouldHalt = governorLossHaltReason(snap);
   const premiumAtRisk = aggregatePremiumAtRisk(rows);
   const shortGammaOpen = opts?.shortGammaOpen ?? 0;
-  const todSizing =
-    opts?.etMinutes != null ? timeOfDaySizingFactor(opts.etMinutes) : timeOfDaySizingFactor(12 * 60);
+  // BUG FIX (2026-11-08, Ask Largo 5-engine live monitor): timeOfDaySizingFactor reads ONLY
+  // the wall-clock ET minute, with no trading-day gate — unlike sessionHeat() (board.ts), which
+  // the same caller (buildZeroDteBoardPayload) already gates on `isTradingDayEt`. On a weekend/
+  // holiday, ET lunch hours (12:30-13:30) still satisfy the "lunch chop" window, so the board
+  // served `time_of_day_label: "lunch chop — fade-prone, size down"` (live-confirmed, Sunday
+  // 2026-11-08 ~13:10 ET) — ZeroDteBoard.tsx's `GovPill label="Window"` renders it unconditionally
+  // whenever truthy, with no trading-day check of its own, so a member opening a dead weekend
+  // board sees live intraday risk-sizing guidance for a session that isn't open. Default to
+  // `true` when the caller omits it (every test below predates this param and asserts
+  // weekday-shaped behavior) so this is additive, not a silent behavior change for existing
+  // callers that never pass it.
+  const isTradingDay = opts?.isTradingDay ?? true;
+  const todSizing = isTradingDay
+    ? opts?.etMinutes != null
+      ? timeOfDaySizingFactor(opts.etMinutes)
+      : timeOfDaySizingFactor(12 * 60)
+    : { factor: 1, label: null, effective_max_concurrent: GOVERNOR_MAX_CONCURRENT_PLANS };
 
   return {
     open_plans: snap.open_plans,
