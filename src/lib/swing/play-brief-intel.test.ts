@@ -6893,6 +6893,122 @@ test("meridianCatalystSection: genuinely complete empty read still states 'quiet
   assert.doesNotMatch(section!.body, /truncated/i);
 });
 
+// BUG FIX (2026-11-08, Ask Largo standing mandate): a SIBLING absence violation to the
+// window_truncated fix directly above, same bug class but a DIFFERENT upstream failure mode and a
+// DIFFERENT code path than PR #7586's `earnings_error` fix (pre-earnings-pack.ts) — both feed the
+// same "Meridian catalysts" swing play-brief section. `loadMeridianTimelineResponse` already
+// computes `earnings_calendar_entitled` correctly off the real Benzinga fetch's `entitled` result,
+// but `fetchMeridianForTicker` (play-brief-meridian.ts) silently dropped it before this fix, so a
+// refused/errored calendar fetch (live, 2026-11-07: the Benzinga entitlement 403) rendered the
+// identical confident "calendar is quiet, not missing" claim as a genuinely clean empty read.
+// Live repro: the SAME play-brief response's envelope.unavailableSources (a different,
+// already-correct code path) simultaneously disclosed
+// "next earnings date unavailable: benzinga_ticker_earnings:not_entitled" for the same ticker.
+test("meridianCatalystSection: refused/errored calendar fetch discloses 'cannot confirm', not a false 'quiet, not missing' claim (live Benzinga 403)", () => {
+  const section = meridianCatalystSection({
+    play: fixturePlay({ ticker: "MRNA" }),
+    asOf: "2026-11-07 09:00 ET",
+    sessionDate: "2026-11-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-11-07 09:00 ET",
+      items: [],
+      total_matched: 0,
+      calendar_entitled: false,
+    },
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.doesNotMatch(
+    section!.body,
+    /quiet, not missing/,
+    "a refused/errored calendar fetch must never render the confident 'quiet, not missing' claim",
+  );
+  assert.match(section!.body, /cannot confirm/i);
+  assert.match(section!.body, /not entitled|provider error/i);
+});
+
+// Companion no-regression test: the SAME empty-items shape, but calendar_entitled is true (the
+// real production value on a healthy read) — the original "quiet, not missing" wording must
+// still render unchanged.
+test("meridianCatalystSection: entitled, genuinely empty read still states 'quiet, not missing' (no regression)", () => {
+  const section = meridianCatalystSection({
+    play: fixturePlay({ ticker: "MRNA" }),
+    asOf: "2026-11-07 09:00 ET",
+    sessionDate: "2026-11-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-11-07 09:00 ET",
+      items: [],
+      total_matched: 0,
+      calendar_entitled: true,
+    },
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /quiet, not missing/);
+  assert.doesNotMatch(section!.body, /cannot confirm/i);
+});
+
+// Companion no-regression test: every pre-existing fixture in this file omits `calendar_entitled`
+// entirely (undefined, not `false`) — the strict `=== false` check must treat that identically to
+// `true`, never fire on an absent field, or every other test/fixture in this file predating this
+// fix would start failing.
+test("meridianCatalystSection: calendar_entitled omitted (undefined) still states 'quiet, not missing' (no regression)", () => {
+  const section = meridianCatalystSection({
+    play: fixturePlay({ ticker: "MRNA" }),
+    asOf: "2026-11-07 09:00 ET",
+    sessionDate: "2026-11-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-11-07 09:00 ET",
+      items: [],
+      total_matched: 0,
+    },
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /quiet, not missing/);
+  assert.doesNotMatch(section!.body, /cannot confirm/i);
+});
+
+// Priority check: a refused/errored fetch (calendar_entitled: false) takes precedence over a
+// truncation disclosure when both flags happen to be set — the entitlement failure is the more
+// fundamental one (the pagination loop that produces window_truncated never even started on a
+// refused/errored fetch; see the in-code comment above these tests for why they are mutually
+// exclusive in real production data, this test only pins the deliberate ordering).
+test("meridianCatalystSection: calendar_entitled false takes precedence over window_truncated when both are set", () => {
+  const section = meridianCatalystSection({
+    play: fixturePlay({ ticker: "MRNA" }),
+    asOf: "2026-11-07 09:00 ET",
+    sessionDate: "2026-11-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: {
+      as_of: "2026-11-07 09:00 ET",
+      items: [],
+      total_matched: 0,
+      calendar_entitled: false,
+      window_truncated: true,
+    },
+    ecosystem: null,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /not entitled|provider error/i);
+  assert.doesNotMatch(section!.body, /hit its page cap/i);
+});
+
 test("meridianCatalystSection: stale as_of (>120s, Largo C2) prefixes a Last snapshot caveat instead of reading as current", () => {
   // Real production shape: withServerCache's stale-while-revalidate path can keep serving the
   // same stored payload — and its true, un-bumped as_of — for up to 10 minutes under a degraded

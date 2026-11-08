@@ -2850,11 +2850,34 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
     // did not exist before this fix (see `fetchBenzingaStructuredEarnings`'s own `truncated`
     // field, threaded up through `loadBenzingaEarningsBundle`/`loadMeridianEarningsTimeline`/
     // `loadMeridianTimelineResponse`/`fetchMeridianForTicker`).
-    const quietBody = slice?.window_truncated
-      ? "Meridian's market-wide earnings calendar fetch was truncated this read (hit its page " +
-        "cap before finishing) — cannot confirm this ticker has no catalyst in the **14-day** " +
-        "window, not evidence the calendar is quiet."
-      : "No catalysts in the **14-day** Meridian window on this read — calendar is quiet, not missing.";
+    //
+    // BUG FIX (2026-11-08, Ask Largo standing mandate): a SIBLING absence violation to the one
+    // directly above, same bug class as PR #7586's `earnings_error` fix on
+    // `pre-earnings-pack.ts` — a different code path feeding this SAME section. When the
+    // market-wide Benzinga earnings-calendar fetch itself is refused (live, 2026-11-07: the
+    // Benzinga entitlement 403 — see CLAUDE.md's "ENTITLEMENT REGRESSED" note) or errors outright,
+    // `earnings_calendar_entitled` comes back `false` and `items` is empty for every ticker, not
+    // just this one — yet this branch used to render the identical confident "calendar is quiet,
+    // not missing" claim it renders for a genuinely clean read. Live repro: the SAME play-brief
+    // response's `envelope.unavailableSources` (a completely different, already-correct code
+    // path — the BIE arsenal's `earnings` leg) simultaneously discloses
+    // `"reason": "next earnings date unavailable: benzinga_ticker_earnings:not_entitled"` for the
+    // identical ticker in the identical brief — two sections of one response disagreeing about
+    // whether the calendar check even ran. Checked AHEAD of `window_truncated` below: a refused/
+    // errored fetch is the more fundamental failure (the pagination loop that produces
+    // `window_truncated` never even started), and in practice the two are mutually exclusive —
+    // `fetchBenzingaStructuredEarnings` returns `rows: [], truncated: false` on a 403/error, it
+    // never reaches its own pagination cap.
+    const quietBody =
+      slice?.calendar_entitled === false
+        ? "Meridian's earnings-calendar fetch itself failed this read (not entitled / provider " +
+          "error) — cannot confirm this ticker has no catalyst in the **14-day** window, not " +
+          "evidence the calendar is quiet."
+        : slice?.window_truncated
+          ? "Meridian's market-wide earnings calendar fetch was truncated this read (hit its page " +
+            "cap before finishing) — cannot confirm this ticker has no catalyst in the **14-day** " +
+            "window, not evidence the calendar is quiet."
+          : "No catalysts in the **14-day** Meridian window on this read — calendar is quiet, not missing.";
     return {
       title: "Meridian catalysts",
       body: closedPrefix + staleLead + quietBody,
