@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 /** Minimal prod HTTP smoke for GitHub Actions (no secrets except optional CRON). */
+import { classifySpxDeskCronProbe } from "./lib/gha-http-smoke-spx-desk.mjs";
+
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
 
@@ -82,9 +84,17 @@ if (CRON) {
   // gating works), and only FAIL on the statuses that actually indicate a broken deploy — 404 (route
   // gone), 5xx (crash), or a network error surfaced as a non-numeric/0 status. The 401/403 case logs a
   // WARN so the drift stays visible and someone can reconcile CRON_SECRET to restore the true-200 check.
-  if (status === 200 && body?.price > 0) {
+  const verdict = classifySpxDeskCronProbe({ status, body });
+  if (verdict.kind === "live_price") {
     console.log(`  ✓ /api/market/spx/desk → SPX ${body.price} (cron auth ok)`);
-  } else if (status === 401 || status === 403) {
+  } else if (verdict.kind === "reachable_off_hours") {
+    const avail = body.available;
+    console.warn(
+      `  ⚠ /api/market/spx/desk → 200 (cron auth ok; desk reachable without live SPX price` +
+        `${avail === false ? ", available:false" : ""}` +
+        `${!body?.price ? ", price:0" : ""} — expected off-hours / cold cache)`
+    );
+  } else if (verdict.kind === "secret_drift") {
     console.warn(
       `  ⚠ /api/market/spx/desk → ${status} (route up + gated; CI CRON_SECRET does not match the deployed value — reconcile it to re-enable the authenticated price check)`
     );
