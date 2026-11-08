@@ -258,7 +258,11 @@ function spxContext(ctx: MarketWideContext, spxDesk?: SpxDeskSummary | null): st
     return `SPX ${spxDesk.price.toFixed(2)} (${spxDesk.change_pct ? (spxDesk.change_pct >= 0 ? "+" : "") + spxDesk.change_pct.toFixed(2) : "?"}%) · H ${spxDesk.hod?.toFixed(0) ?? "?"} L ${spxDesk.lod?.toFixed(0) ?? "?"} · VIX ${spxDesk.vix?.toFixed(2) ?? "?"} (?)`;
   }
 
-  if (!spx) return "SPX data unavailable.";
+  // No trailing period — same convention tideSummary() above already established (see its own
+  // comment): buildMarketRecap's summary template appends its own period (`${spx}.`), and a
+  // period baked in here doubled up into "...SPX data unavailable.. Macro: ..." whenever both
+  // spx_bars and the spxDesk fallback were unavailable.
+  if (!spx) return "SPX data unavailable";
   const chg = prev?.c ? ((spx.c - prev.c) / prev.c) * 100 : 0;
   const vixChg =
     vix && ctx.vix_bars.at(-2)?.c
