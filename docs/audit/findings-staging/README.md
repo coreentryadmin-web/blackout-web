@@ -29,15 +29,24 @@ now the **only** thing that writes to `FINDINGS.md`; lanes never edit it directl
   replaces, and doing it again reopens the collision.
 - One entry per file. Do not reuse a filename (the date-prefixed name already makes collisions
   between two different findings on the same day distinguishable — add a longer slug if needed).
-- **Never use a bare `## ` line for a sub-section inside your write-up** (`## Root cause`,
-  `## Evidence`, `## Fix`, etc.) — `findings-fold-staging.mjs` reserves top-level `## ` for the
-  ONE entry-boundary heading each staged file must have exactly one of, and rejects (leaves
-  unfolded, silently) any file with more than one. Use `### ` for sub-sections instead — same
-  visual structure, one level deeper, folds cleanly. Measured 2026-09-16: 312 of 334 staged files
-  (93%) were stuck unfolded for this exact reason, some 12+ days old — see
-  `2026-09-16-findings-staging-fold-backlog-334-files.md` (once folded, `FINDINGS.md` itself) for
-  the full account. If a single write-up genuinely covers several DISTINCT findings, split it into
-  separate files instead — one entry per file, per the rule above, not several `## `-headed
-  findings crammed into one.
+- **Give your finding an actual title heading** — `# Title` or `## Title`, either works — and
+  **prefer `### ` (not a bare `# `/`## ` line) for a sub-section** inside the write-up (`### Root
+  cause`, `### Evidence`, `### Fix`, etc.). `findings-fold-staging.mjs` reserves the top-level
+  heading for the ONE entry-boundary title each staged file should have exactly one of. **This was
+  a silent, un-recoverable trap twice** (312 of 334 files stuck 2026-09-16; 98 of 115 stuck again
+  2026-11-08, both times for the identical mistake, despite this same README warning existing
+  after the first one) — so the fold script no longer just rejects a file that gets this wrong:
+  since a staged file documents exactly one finding, the file's FIRST real `#`/`##` line is always
+  the title (normalized to `## `, whichever hash count it used) and every one after it is
+  automatically demoted to `### ` and folded in, rather than left stuck in staging indefinitely.
+  The one shape this still can't rescue: a title that exists only as a table cell value (e.g. a
+  `| **Title** | ... |` row) with no heading line at all before the first real sub-section — that
+  still gets left in staging, because guessing the first sub-section is the title would silently
+  lose the real one. Writing a plain `## Title` yourself remains the tidiest convention (it matches
+  the folded result exactly and needs no correction), but a `# `/`## ` slip on sub-sections no
+  longer silently loses the finding. If a single write-up genuinely covers several DISTINCT
+  findings, still split it into separate files — one entry per file, per the rule above — the
+  auto-demote does not try to detect that case, it only assumes (correctly, per the one-file-per-
+  finding rule) that it's never true.
 - Routine GREEN pass logs are unchanged by this — they still go straight into
   `docs/audit/RUN-LOG.md`, never staged here.
