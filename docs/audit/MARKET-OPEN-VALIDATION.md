@@ -9679,3 +9679,27 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   by a different code path, so this check is specifically about the WATCH lane. If a PUT is still
   positive after a confirmed post-deploy discovery tick, the fix did not actually take effect in
   production and needs a fresh look (not just a stale-snapshot read).
+
+## WATCH LIST — 2026-11-08 (Swing Ask Largo "Catalysts & news" conflated a failed news fetch with genuine zero-news, PR #7630) — ALREADY LIVE-CONFIRMED
+
+- **`catalystsSection()` (`src/lib/swing/play-brief-intel.ts`) silently rendered nothing on a
+  FAILED news fetch**, indistinguishable from a genuine "no news" result, even though
+  `envelope.unavailableSources` carried the real failure reason for the same ticker in the same
+  response (Largo C3 absence-honesty violation) — opened by a sibling swing-lane session, merged by
+  this session after an independent diff review (small, 3 files, RED→GREEN test proof, 2282/2282
+  swing regression, tsc clean). See PR #7630 and
+  `docs/audit/findings-staging/2026-11-08-swing-catalysts-news-fetch-failure-disclosure.md` for the
+  full root-cause/evidence write-up — this entry was missing from that PR and is added here per the
+  standing policy that every fix gets a market-open-validation entry.
+- **Deployed and already LIVE-CONFIRMED this session, not just pending for Monday**:
+  `ecr-push-production.yml` run 42523128123 completed `success` at 2026-11-08T21:26:47Z (merge sha
+  `a88f1ea`). A live play-brief pull ~50 minutes later (`GET
+  /api/market/swing/play-brief?playId=SWING:MGNI&ticker=MGNI&status=WATCH`, 22:16 UTC) shows the new
+  disclosure text live in production: `"Catalysts & news"` section reads `"Ticker news fetch failed
+  on this read — not evidence of no news."` instead of rendering nothing, for a ticker whose real
+  news fetch is currently failing under the known, ongoing Benzinga/Polygon entitlement outage
+  documented elsewhere in this repo's CLAUDE.md.
+- **Nothing further to re-check Monday specifically for this fix** — unlike the WATCH-lane delta
+  fix above (blocked on the weekend discovery-cron gap), this fix's code path runs live on every
+  play-brief request regardless of cron cadence, and is already proven working end-to-end. Listed
+  here for the audit record, not as an open Monday checklist item.
