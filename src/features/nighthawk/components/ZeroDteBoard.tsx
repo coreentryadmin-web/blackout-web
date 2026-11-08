@@ -16,6 +16,7 @@ import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
 import { DiscoveryFunnelStrip, GovPill, MarketStateStrip } from "./zerodte-board-strips";
+import { fmtMoney } from "./zerodte-board-format";
 import { ThesisRankCard } from "./ThesisRankCard";
 import { buildIntelNote, type IntelAction } from "@/lib/zerodte/intel";
 import { capConvictionDisplay } from "@/lib/zerodte/conviction";
@@ -184,14 +185,6 @@ const fetcher = (url: string) =>
   fetch(url, { cache: "no-store", credentials: "same-origin" }).then((r) => r.json()) as Promise<BoardResponse>;
 
 // ── formatting helpers ────────────────────────────────────────────────────────────
-
-function fmtMoney(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
-}
 
 function fmtNum(n: number | null | undefined, digits = 2): string {
   if (n == null || !Number.isFinite(n)) return "—";
