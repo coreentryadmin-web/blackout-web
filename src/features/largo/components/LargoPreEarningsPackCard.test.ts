@@ -81,3 +81,67 @@ test("net_premium comfortably inside the M tier renders as M", () => {
 
   assert.match(html, /\$38\.2M/);
 });
+
+/**
+ * REGRESSION (2026-11-08, Ask Largo standing mandate): boardExposure() (pre-earnings-pack.ts)
+ * used to never read the 0DTE board's own `upstream_ok` flag, so a degraded board
+ * (buildMinimalBoardFallback(), upstream_ok:false, empty ledger/setups) and a genuinely clean
+ * "not committed, not a setup candidate" board both rendered this exact same
+ * {on_board:false, status:null, headline:null} shape here — "Not committed" with full
+ * confidence either way. The fix adds `board_error` to `PreEarningsExposure`; this card must
+ * render an honest "could not check" state when it's set, instead of the confident label.
+ */
+test("REGRESSION: a degraded 0DTE board (board_error set) renders an honest 'could not check' state, never 'Not committed'", () => {
+  const card = baseCard({
+    zerodte: {
+      on_board: false,
+      status: null,
+      direction: null,
+      pnl_pct: null,
+      headline: null,
+      board_error: "0DTE board unavailable this build — could not check",
+    },
+  });
+  const html = render(card);
+
+  assert.match(html, /could not check/i);
+  assert.doesNotMatch(
+    html,
+    /Not committed/,
+    "a degraded board must never render the same confident label a genuine absence gets"
+  );
+});
+
+test("a genuinely clean 0DTE absence (board_error null) still renders 'Not committed' — no regression", () => {
+  const card = baseCard({
+    zerodte: {
+      on_board: false,
+      status: null,
+      direction: null,
+      pnl_pct: null,
+      headline: null,
+      board_error: null,
+    },
+  });
+  const html = render(card);
+
+  assert.match(html, /Not committed/);
+});
+
+test("a real on-board hit still renders 'On the board' with its status/PnL — no regression", () => {
+  const card = baseCard({
+    zerodte: {
+      on_board: true,
+      status: "OPEN",
+      direction: "long",
+      pnl_pct: 12.5,
+      headline: "long · OPEN",
+      board_error: null,
+    },
+  });
+  const html = render(card);
+
+  assert.match(html, /On the board/);
+  assert.match(html, /OPEN/);
+  assert.match(html, /12\.5%/);
+});

@@ -60,16 +60,23 @@ export function LargoPreEarningsPackCard({ card }: { card: PreEarningsPackCard }
         <section className="largo-earn-section">
           <div className="largo-struct-label">0DTE exposure</div>
           {card.zerodte ? (
-            <>
-              <p className="largo-struct-summary">
-                {card.zerodte.on_board ? "On the board" : "Not committed"}
-                {card.zerodte.status ? ` · ${card.zerodte.status}` : ""}
-              </p>
-              <p className="largo-struct-meta">
-                {card.zerodte.headline ?? "—"}
-                {card.zerodte.pnl_pct != null ? ` · P&amp;L ${card.zerodte.pnl_pct.toFixed(1)}%` : ""}
-              </p>
-            </>
+            card.zerodte.board_error ? (
+              // The 0DTE board itself was degraded this build (upstream_ok:false) — honestly
+              // disclose "could not check" rather than render the same "Not committed" copy a
+              // genuinely-clean, healthy read gets below. Collapsing these two was the bug.
+              <p className="largo-struct-summary">0DTE board unavailable — could not check</p>
+            ) : (
+              <>
+                <p className="largo-struct-summary">
+                  {card.zerodte.on_board ? "On the board" : "Not committed"}
+                  {card.zerodte.status ? ` · ${card.zerodte.status}` : ""}
+                </p>
+                <p className="largo-struct-meta">
+                  {card.zerodte.headline ?? "—"}
+                  {card.zerodte.pnl_pct != null ? ` · P&amp;L ${card.zerodte.pnl_pct.toFixed(1)}%` : ""}
+                </p>
+              </>
+            )
           ) : (
             <p className="largo-struct-summary">No 0DTE board read</p>
           )}

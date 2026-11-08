@@ -100,9 +100,31 @@ mock.module("../platform", {
   },
 });
 
+// Mutable per-test board fixture — mirrors the real `ZeroDteBoardPayload` shape just enough to
+// exercise boardExposure()'s ledger/setups search + upstream_ok check. Defaults to the
+// "getZeroDteBoardPayload() itself couldn't even be read" leg (null) that the pre-existing tests
+// above rely on; `board_error`-focused tests below override it per-case.
+type FakeBoard = {
+  upstream_ok: boolean;
+  ledger: Array<{
+    ticker: string;
+    status?: string | null;
+    direction?: string | null;
+    live_pnl_pct?: number | null;
+    plan_pnl_pct?: number | null;
+  }>;
+  setups: Array<{
+    ticker: string;
+    direction: string;
+    score: number;
+    gate?: { verdict?: string } | null;
+  }>;
+};
+let fakeBoard: FakeBoard | null = null;
+
 mock.module("../platform/zerodte-service", {
   namedExports: {
-    getZeroDteBoardPayload: async () => null,
+    getZeroDteBoardPayload: async () => fakeBoard,
   },
 });
 
@@ -183,4 +205,89 @@ test("preEarningsPackForLargo: a real resolved earnings date reports earnings_er
   assert.equal(card?.days_until, 32);
   assert.equal(card?.report_time, "afterhours");
   assert.equal(card?.is_confirmed, true);
+});
+
+// --- boardExposure() / card.zerodte: "WHICH EMPTY IS THIS?" (2026-11-08) ---
+//
+// getZeroDteBoardPayload() never throws — on an outage it resolves to a structurally valid
+// but degraded board (buildMinimalBoardFallback() in zerodte-service.ts: upstream_ok:false,
+// empty ledger/setups). Before this fix, boardExposure() only ever searched board.ledger/
+// board.setups for the ticker and never read board.upstream_ok, so a degraded board and a
+// genuinely-clean "not committed, not a setup candidate" board rendered byte-identically.
+// Reset benzinga/earnings fixtures to the clean-absence shape every test below so only the
+// zerodte leg is under test.
+function resetNonBoardFixtures(): void {
+  benzingaTickerOutcome = { rows: [], entitled: true, error: null };
+  nextEarningsOutcome = null;
+  parsedNextOutcome = null;
+}
+
+test("boardExposure: healthy board, ticker genuinely absent — confident on_board:false, board_error null (no regression)", async () => {
+  resetNonBoardFixtures();
+  fakeBoard = { upstream_ok: true, ledger: [], setups: [] };
+  const { preEarningsPackForLargo } = await mod();
+  const card = await preEarningsPackForLargo("CAVA");
+  assert.ok(card?.zerodte, "expected a zerodte exposure object, not null, once the board resolved");
+  assert.equal(card?.zerodte?.on_board, false);
+  assert.equal(card?.zerodte?.status, null);
+  assert.equal(card?.zerodte?.headline, null);
+  assert.equal(
+    card?.zerodte?.board_error,
+    null,
+    "a genuinely clean, healthy absence must not report a board error"
+  );
+});
+
+// RED→GREEN pin: pre-fix, boardExposure() never reads board.upstream_ok at all, so this
+// degraded fallback (empty ledger/setups, upstream_ok:false) reports the exact same
+// {on_board:false, status:null, board_error:undefined} shape as the healthy-absence test
+// above — a confidently-wrong "Not committed" with no disclosure that the board itself
+// could not be checked this build.
+test("boardExposure: degraded board (upstream_ok:false) reports board_error instead of a confident on_board:false", async () => {
+  resetNonBoardFixtures();
+  fakeBoard = { upstream_ok: false, ledger: [], setups: [] };
+  const { preEarningsPackForLargo } = await mod();
+  const card = await preEarningsPackForLargo("CAVA");
+  assert.ok(card?.zerodte, "expected a zerodte exposure object even on a degraded board");
+  assert.ok(
+    card?.zerodte?.board_error,
+    "a degraded (upstream_ok:false) board must disclose that it could not be checked"
+  );
+  assert.equal(
+    card?.zerodte?.on_board,
+    false,
+    "on_board stays false — this field alone must never be read as a confident finding once board_error is set"
+  );
+});
+
+test("boardExposure: ticker found on the committed ledger of a degraded board still reports the real find (no regression)", async () => {
+  resetNonBoardFixtures();
+  // Even on a build where upstream_ok went false, a real match in the arrays IS real signal —
+  // the fix only changes what happens on a MISS, never suppresses a genuine hit.
+  fakeBoard = {
+    upstream_ok: false,
+    ledger: [{ ticker: "CAVA", status: "OPEN", direction: "long", live_pnl_pct: 12.5 }],
+    setups: [],
+  };
+  const { preEarningsPackForLargo } = await mod();
+  const card = await preEarningsPackForLargo("CAVA");
+  assert.equal(card?.zerodte?.on_board, true);
+  assert.equal(card?.zerodte?.status, "OPEN");
+  assert.equal(card?.zerodte?.pnl_pct, 12.5);
+  assert.equal(card?.zerodte?.board_error, null, "a real ledger hit is not a board error");
+});
+
+test("boardExposure: ticker found as a setup candidate on a healthy board still reports the real find (no regression)", async () => {
+  resetNonBoardFixtures();
+  fakeBoard = {
+    upstream_ok: true,
+    ledger: [],
+    setups: [{ ticker: "CAVA", direction: "short", score: 71, gate: { verdict: "CLEAR" } }],
+  };
+  const { preEarningsPackForLargo } = await mod();
+  const card = await preEarningsPackForLargo("CAVA");
+  assert.equal(card?.zerodte?.on_board, false);
+  assert.equal(card?.zerodte?.status, "WATCH");
+  assert.equal(card?.zerodte?.direction, "short");
+  assert.equal(card?.zerodte?.board_error, null);
 });
