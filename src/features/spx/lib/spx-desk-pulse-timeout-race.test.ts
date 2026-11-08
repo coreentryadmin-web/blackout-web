@@ -56,4 +56,20 @@ describe("spx-desk-pulse: timeout race condition fix", () => {
       "buildSpxDeskPulseMinimal must use dynamic pulseTimeoutMs calculated from deskPulseMaxBlockMs() + 200"
     );
   });
+
+  test("buildSpxDeskPulseMinimal awaits prior-day bars off-hours before racing pulse snapshots", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+    const start = src.indexOf("export async function buildSpxDeskPulseMinimal");
+    const end = src.indexOf("export async function buildSpxDeskFlow", start);
+    assert.ok(start >= 0 && end > start);
+    const block = src.slice(start, end);
+    assert.match(
+      block,
+      /if \(!rthOpenNow\)[\s\S]*fetchPriorDayCached\(rthOpenNow\)/,
+      "off-hours minimal pulse must block on prior-close fetch when the non-blocking lane returns null pdc"
+    );
+    assert.match(block, /priorAnchor\.pdc/, "minimal pulse price must anchor to the resolved prior day");
+  });
 });

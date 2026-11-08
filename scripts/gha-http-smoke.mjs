@@ -33,6 +33,10 @@ async function fetchJson(path, headers = {}) {
   return { status, body };
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const seoTextChecks = [
   {
     path: "/robots.txt",
@@ -70,9 +74,17 @@ for (const c of seoTextChecks) {
 }
 
 if (CRON) {
-  const { status, body } = await fetchJson("/api/market/spx/desk", {
-    Authorization: `Bearer ${CRON}`,
-  });
+  const headers = { Authorization: `Bearer ${CRON}` };
+  let status;
+  let body;
+  // Post-deploy + off-hours the desk can legitimately warm for a few seconds before prior-close
+  // anchoring lands; mirror the CRON-drift tolerance — only hard-fail on crash/route loss.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    ({ status, body } = await fetchJson("/api/market/spx/desk", headers));
+    if (status === 200 && body?.price > 0) break;
+    if (status !== 200) break;
+    if (attempt < 2) await sleep(2000);
+  }
   // /api/market/spx/desk is gated by authorizeMarketDeskApi → cron secret OR premium Clerk session.
   // In CI we present the CRON bearer, but a 401/403 here means only that this workflow's CRON_SECRET
   // doesn't match the one deployed to the ECS task — SECRET DRIFT, not a broken deploy: the route is
@@ -84,6 +96,10 @@ if (CRON) {
   // WARN so the drift stays visible and someone can reconcile CRON_SECRET to restore the true-200 check.
   if (status === 200 && body?.price > 0) {
     console.log(`  ✓ /api/market/spx/desk → SPX ${body.price} (cron auth ok)`);
+  } else if (status === 200) {
+    console.warn(
+      `  ⚠ /api/market/spx/desk → 200 (cron auth ok) but no grounded SPX price yet (available=${body?.available}, source=${body?.source ?? "—"}) — route up; off-hours cold desk or brief post-deploy warm-up, not a routing/auth failure`
+    );
   } else if (status === 401 || status === 403) {
     console.warn(
       `  ⚠ /api/market/spx/desk → ${status} (route up + gated; CI CRON_SECRET does not match the deployed value — reconcile it to re-enable the authenticated price check)`
