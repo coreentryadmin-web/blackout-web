@@ -96,6 +96,45 @@ function jobDef(over: Partial<CronJobDefinition> = {}): CronJobDefinition {
   };
 }
 
+test("REGRESSION: SPX engine crons use isSpxEngineCronWindow for market_hours_only (not cash RTH only)", () => {
+  const now = new Date("2025-11-05T13:05:00.000Z");
+  const lastStarted = new Date("2025-11-05T12:55:00.000Z").toISOString();
+
+  const spxOk = evaluateJob(
+    jobDef({ key: "spx-issues-sync", market_hours_only: true, stale_after_min: 20 }),
+    {
+      id: 1,
+      job_key: "spx-issues-sync",
+      status: "ok",
+      started_at: lastStarted,
+      duration_ms: 120,
+      message: "ok",
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(spxOk.status, "healthy");
+  assert.equal(spxOk.market_hours_stale, false);
+
+  const genericSkip = evaluateJob(
+    jobDef({ key: "flow-ingest", market_hours_only: true, stale_after_min: 20 }),
+    {
+      id: 2,
+      job_key: "flow-ingest",
+      status: "skipped",
+      started_at: lastStarted,
+      duration_ms: 5,
+      message: "Skipped — off-hours",
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(genericSkip.status, "healthy");
+  assert.equal(genericSkip.market_hours_stale, false);
+});
+
 test("a job that has NEVER logged a run reports stale, not unknown", () => {
   const health = evaluateJob(jobDef(), undefined, [], RTH_WEDNESDAY);
   assert.equal(health.status, "stale");
