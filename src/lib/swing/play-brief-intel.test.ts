@@ -9894,6 +9894,198 @@ test("buildIntelSections: 'Vector desk' survives the collapse (not falsely folde
   assert.match(vdesk!.body, /Last snapshot/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-08): sibling of the "Lane rank"/"Wall dynamics"/
+// "Vector desk" fixes above, for the four remaining titles disclosed but not yet fixed by
+// #7580/#7587 — "Levels on chart", "Flow & positioning", "Macro tape", "Hold plan".
+test("buildIntelSections: 'Levels on chart' survives the collapse (not falsely folded) when a real GEX king strike exists — the narrative's capped focal-levels loop may never reach it", () => {
+  const play = fixturePlay({ status: "OPEN", direction: "LONG" });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-11-08T14:00:00.000Z",
+    sessionDate: "2026-11-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    // wallEvents alone (as the sibling "Wall dynamics" test above) is enough to make
+    // "Trade manager read" render non-null via collectCoachingBullets, so the collapse filter
+    // actually runs — the ladder king is the fact under test here.
+    vector: fixtureVec({
+      dataAgeMs: 1_000,
+      freshness: "live",
+      wallEvents: [{ kind: "call_wall_building", strike: 105, message: "Call wall building at 105" }],
+      ladder: { rows: [{ strike: 102, isKing: true }] },
+    } as Partial<VectorFullState>),
+  };
+  const sections = buildIntelSections(ctx, "open");
+  const narrative = sections.find((s) => s.title === "Trade manager read");
+  assert.ok(narrative, "Trade manager read renders");
+  assert.ok(
+    sections.some((s) => s.title === "Levels on chart"),
+    "Levels on chart must survive — a real GEX king strike exists and the narrative's MAX_BULLETS-capped focal loop cannot be cheaply proven to have reached it",
+  );
+});
+
+// Live-reachable by construction, not probabilistic: a committed 0DTE iron condor's `direction`
+// column is nominal provenance only (delta-neutral structure), so BOTH crossDeskCoaching and
+// counterThesisLine explicitly zero out their directional comparison whenever `is_condor` is
+// true — no narrative function anywhere can ever narrate flowIntelSection's "sold iron condor"
+// line for this case.
+test("buildIntelSections: 'Flow & positioning' survives the collapse (not falsely folded) for a sold 0DTE condor — no narrative function ever covers that line", () => {
+  const play = fixturePlay({ status: "OPEN", direction: "LONG" });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-11-08T14:00:00.000Z",
+    sessionDate: "2026-11-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    vector: null,
+    ecosystem: {
+      ticker: "NVDA",
+      zerodte_today: {
+        session_date: "2026-11-08",
+        direction: "long",
+        score: 70,
+        conviction: "high",
+        status: "OPEN",
+        first_flagged_at: "2026-11-08T13:00:00.000Z",
+        is_condor: true,
+      },
+      nighthawk_recent: null,
+      recent_audit_entries: [],
+      // A real, non-empty 6h tape — so flowNarrative's own HELIX-tape bullet fires (narrative
+      // renders non-null for a reason independent of the condor line), proving the fix isn't just
+      // riding on `hasNarrative` being false.
+      recent_flow: { window_hours: 6, print_count: 5, call_premium: 500_000, put_premium: 100_000, unknown_premium: 0 },
+      recent_anomalies: [],
+      flow_full_state: null,
+      spx_play: null,
+      spx_full_state: null,
+      vector_full_state: null,
+      gex_positioning: null,
+      flow_feed_fresh: true,
+      arsenal: null,
+    } as EcosystemContext,
+  };
+  const sections = buildIntelSections(ctx, "open");
+  const narrative = sections.find((s) => s.title === "Trade manager read");
+  assert.ok(narrative, "Trade manager read renders (via the real HELIX tape, independent of the condor line)");
+  assert.ok(
+    sections.some((s) => s.title === "Flow & positioning"),
+    "Flow & positioning must survive — the sold-condor line has no narrative counterpart by construction",
+  );
+});
+
+test("buildIntelSections: 'Macro tape' survives the collapse (not falsely folded) when only CPI is present — macroTapeCoaching never reads `cpi` at all", () => {
+  const play = fixturePlay({ status: "OPEN", direction: "LONG" });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-11-08T14:00:00.000Z",
+    sessionDate: "2026-11-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    vector: null,
+    ecosystem: {
+      ticker: "NVDA",
+      zerodte_today: null,
+      nighthawk_recent: null,
+      recent_audit_entries: [],
+      // A real, non-empty 6h tape makes "Trade manager read" render non-null for a reason
+      // independent of the macro-tape fact under test.
+      recent_flow: { window_hours: 6, print_count: 5, call_premium: 500_000, put_premium: 100_000, unknown_premium: 0 },
+      recent_anomalies: [],
+      flow_full_state: null,
+      spx_play: null,
+      spx_full_state: null,
+      vector_full_state: null,
+      gex_positioning: null,
+      flow_feed_fresh: true,
+      arsenal: {
+        scope: "single",
+        earnings: null,
+        fundamentals: null,
+        related: null,
+        news: null,
+        macro: { yield_10_year: null, curve_10y_1y_spread: null, cpi: 334.1, as_of: "2026-08-01", cpi_as_of: "2026-08-01" },
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as EcosystemContext,
+  };
+  const sections = buildIntelSections(ctx, "open");
+  const narrative = sections.find((s) => s.title === "Trade manager read");
+  assert.ok(narrative, "Trade manager read renders");
+  assert.ok(
+    sections.some((s) => s.title === "Macro tape"),
+    "Macro tape must survive — macroTapeCoaching has no cpi-reading branch at all, so a bare CPI print never reaches the narrative",
+  );
+});
+
+test("buildIntelSections: 'Hold plan' survives the collapse (not falsely folded) for a healthy, stable thesis — thesisPillarCoaching stays silent when nothing faded or moved", () => {
+  const play = fixturePlay({
+    status: "OPEN",
+    direction: "LONG",
+    thesisHealth: {
+      health: 70,
+      entryIndex: 70,
+      currentIndex: 70,
+      delta: 0,
+      rung: "HEALTHY",
+      rungLabel: "Healthy",
+      pillars: [
+        {
+          id: "structure",
+          label: "Persistence",
+          weight: 0.28,
+          commitScore: 0.5,
+          currentScore: 0.5,
+          commitLabel: "triggered",
+          currentLabel: "triggered",
+          status: "intact",
+          contributionPts: 14,
+          deltaPts: 0,
+        },
+      ],
+      moves: ["All swing pillars unchanged since commit."],
+      committedAtEt: null,
+      computedAtEt: "10:00 ET",
+      advisory: null,
+      thesisBreakLevel: "intact",
+    },
+  });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-11-08T14:00:00.000Z",
+    sessionDate: "2026-11-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    // wallEvents alone (as the "Wall dynamics"/"Levels on chart" tests above) makes "Trade
+    // manager read" render non-null for a reason independent of the thesis-health fact under test.
+    vector: fixtureVec({
+      dataAgeMs: 1_000,
+      freshness: "live",
+      wallEvents: [{ kind: "call_wall_building", strike: 105, message: "Call wall building at 105" }],
+    } as Partial<VectorFullState>),
+  };
+  const sections = buildIntelSections(ctx, "open");
+  const narrative = sections.find((s) => s.title === "Trade manager read");
+  assert.ok(narrative, "Trade manager read renders");
+  const hold = sections.find((s) => s.title === "Hold plan");
+  assert.ok(
+    hold,
+    "Hold plan must survive — thesisPillarCoaching stays silent for a healthy, unchanged-since-commit position, so there is nothing to fold the bare health% line into",
+  );
+  assert.match(hold!.body, /Thesis health \*\*70%\*\*/);
+});
+
 // BUG FOUND (2026-09-21, Ask Largo standing mandate — 4th instance of the #5362/#4261 duplication
 // class, live repro pattern: any OPEN play with a HOLD recommendation and a calibrated thesis
 // health below 45). actionNarrative's HOLD branch (play-brief-narrative.ts, feeds "Trade manager

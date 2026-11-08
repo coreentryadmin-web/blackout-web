@@ -608,7 +608,11 @@ function narrateFlip(level: FocalLevel, play: TerminalPlay, spot: number): strin
   return `**Gamma flip ${fmtPriceLevel(level.price)}** (${fmtPct(level.distancePct)} from spot) — regime line. ${longBreak}`;
 }
 
-function flowNarrative(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
+// Exported (Ask Largo standing mandate, 2026-11-08) so play-brief-intel.ts's
+// `collapseRedundantIntelSections` call can recompute the real "did this actually narrate"
+// predicate for "Flow & positioning" directly — see `flowIntelFolded` there and the
+// `NARRATIVE_COVERED_TITLES` doc comment (play-brief-intel-collapse.ts) for why.
+export function flowNarrative(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
   const flow = trustedHelixFlow(ctx.ecosystem);
   if (!flow || flow.print_count === 0) return null;
 

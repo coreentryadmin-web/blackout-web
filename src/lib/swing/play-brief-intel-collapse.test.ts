@@ -14,21 +14,19 @@ test("collapseRedundantIntelSections: no-op without narrative", () => {
 });
 
 test("collapseRedundantIntelSections: drops covered titles when narrative leads", () => {
-  const sections = [
-    section("Trade manager read"),
-    section("GEX posture"),
-    section("Levels on chart"),
-    section("Why this setup"),
-    section("Hold plan"),
-  ];
+  const sections = [section("Trade manager read"), section("GEX posture"), section("Why this setup")];
   const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
   assert.ok(!out.some((s) => s.title === "GEX posture"));
-  assert.ok(!out.some((s) => s.title === "Levels on chart"));
-  assert.ok(!out.some((s) => s.title === "Hold plan"));
   assert.ok(out.some((s) => s.title === "Why this setup"));
   const narrative = out.find((s) => s.title === "Trade manager read");
   assert.match(narrative!.body, /folded into Trade manager read/i);
 });
+
+// "Levels on chart" and "Hold plan" moved out of the generic unconditional-drop test above (Ask
+// Largo standing mandate, 2026-11-08) — both are now conditionally-covered titles, same shape as
+// "Lane rank"/"Wall dynamics"/"Vector desk" below. See their own dedicated test blocks further
+// down this file, and `NARRATIVE_COVERED_TITLES`'s doc comment (play-brief-intel-collapse.ts) for
+// why each one's coverage can't be assumed from static title membership alone.
 
 test("collapseRedundantIntelSections: NEVER drops 'Book context' — no narrative bullet covers it since #4116", () => {
   const sections = [section("Trade manager read"), section("Book context"), section("Why this setup")];
@@ -48,7 +46,14 @@ test("collapseRedundantIntelSections: keeps Desk context when narrative leads (N
     section("Desk context"),
     section("Flow & positioning"),
   ];
-  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  // "Flow & positioning" is now a conditionally-covered title (2026-11-08) — pass
+  // flowIntelFolded: true explicitly to prove flowNarrative actually fired for this test's data,
+  // same shape every other conditionally-covered title's "unconditional drop" test uses.
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    flowIntelFolded: true,
+  });
   assert.ok(out.some((s) => s.title === "Desk context"), "NH outcome history is not in Trade manager read");
   assert.ok(!out.some((s) => s.title === "Flow & positioning"));
 });
@@ -184,6 +189,156 @@ test("collapseRedundantIntelSections: still drops 'Vector desk' and claims the f
     vectorDeskFolded: true,
   });
   assert.ok(!out.some((s) => s.title === "Vector desk"), "vectorPlayCoaching really did fire — collapse it as usual");
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /folded into Trade manager read/i);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-08): sibling of the "Lane rank"/"Wall dynamics"/
+// "Vector desk" fixes above, for the four remaining conditionally-covered titles disclosed but
+// not yet fixed by #7580/#7587.
+test("collapseRedundantIntelSections: keeps 'Levels on chart' and omits the fold-in claim when levelsOnChartFolded is false (king/max-pain/dark-pool content unproven covered)", () => {
+  const sections = [
+    section("Trade manager read"),
+    section("GEX posture"),
+    section("Levels on chart"),
+    section("Why this setup"),
+  ];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    levelsOnChartFolded: false,
+  });
+  assert.ok(
+    out.some((s) => s.title === "Levels on chart"),
+    "Levels on chart must survive — the narrative's focal-levels loop may have starved out before reaching it",
+  );
+  assert.ok(!out.some((s) => s.title === "GEX posture"));
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /for 1 section folded/i, "only GEX posture was actually dropped");
+});
+
+test("collapseRedundantIntelSections: omitting levelsOnChartFolded entirely defaults to the SAFE outcome (keep, no false claim) — same as explicit false", () => {
+  const sections = [section("Trade manager read"), section("Levels on chart"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(out.some((s) => s.title === "Levels on chart"), "a caller that forgets to pass levelsOnChartFolded must never lose this section");
+});
+
+test("collapseRedundantIntelSections: still drops 'Levels on chart' and claims the fold-in note when levelsOnChartFolded is true (no king/max-pain/dark-pool data to starve)", () => {
+  const sections = [section("Trade manager read"), section("Levels on chart"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    levelsOnChartFolded: true,
+  });
+  assert.ok(!out.some((s) => s.title === "Levels on chart"), "nothing at-risk existed for this ticker — collapse it as usual");
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /folded into Trade manager read/i);
+});
+
+test("collapseRedundantIntelSections: keeps 'Flow & positioning' and omits the fold-in claim when flowIntelFolded is false (e.g. a sold 0DTE condor, or anomalies stranded behind a quiet 6h tape)", () => {
+  const sections = [
+    section("Trade manager read"),
+    section("GEX posture"),
+    section("Flow & positioning"),
+    section("Why this setup"),
+  ];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    flowIntelFolded: false,
+  });
+  assert.ok(out.some((s) => s.title === "Flow & positioning"), "Flow & positioning must survive — nothing in the narrative covers it for this play");
+  assert.ok(!out.some((s) => s.title === "GEX posture"));
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /for 1 section folded/i, "only GEX posture was actually dropped");
+});
+
+test("collapseRedundantIntelSections: omitting flowIntelFolded entirely defaults to the SAFE outcome (keep, no false claim) — same as explicit false", () => {
+  const sections = [section("Trade manager read"), section("Flow & positioning"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(out.some((s) => s.title === "Flow & positioning"), "a caller that forgets to pass flowIntelFolded must never lose this section");
+});
+
+test("collapseRedundantIntelSections: still drops 'Flow & positioning' and claims the fold-in note when flowIntelFolded is true (flowNarrative actually fired, no condor/stranded-anomaly gap)", () => {
+  const sections = [section("Trade manager read"), section("Flow & positioning"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    flowIntelFolded: true,
+  });
+  assert.ok(!out.some((s) => s.title === "Flow & positioning"), "flowNarrative really did fire — collapse it as usual");
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /folded into Trade manager read/i);
+});
+
+test("collapseRedundantIntelSections: keeps 'Macro tape' and omits the fold-in claim when macroTapeFolded is false (e.g. a bare CPI print macroTapeCoaching never reads)", () => {
+  const sections = [
+    section("Trade manager read"),
+    section("GEX posture"),
+    section("Macro tape"),
+    section("Why this setup"),
+  ];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    macroTapeFolded: false,
+  });
+  assert.ok(out.some((s) => s.title === "Macro tape"), "Macro tape must survive — macroTapeCoaching stayed silent for this play");
+  assert.ok(!out.some((s) => s.title === "GEX posture"));
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /for 1 section folded/i, "only GEX posture was actually dropped");
+});
+
+test("collapseRedundantIntelSections: omitting macroTapeFolded entirely defaults to the SAFE outcome (keep, no false claim) — same as explicit false", () => {
+  const sections = [section("Trade manager read"), section("Macro tape"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(out.some((s) => s.title === "Macro tape"), "a caller that forgets to pass macroTapeFolded must never lose this section");
+});
+
+test("collapseRedundantIntelSections: still drops 'Macro tape' and claims the fold-in note when macroTapeFolded is true (macroTapeCoaching actually fired)", () => {
+  const sections = [section("Trade manager read"), section("Macro tape"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    macroTapeFolded: true,
+  });
+  assert.ok(!out.some((s) => s.title === "Macro tape"), "macroTapeCoaching really did fire — collapse it as usual");
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /folded into Trade manager read/i);
+});
+
+test("collapseRedundantIntelSections: keeps 'Hold plan' and omits the fold-in claim when holdPlanFolded is false (e.g. a healthy, stable thesis thesisPillarCoaching stays silent on)", () => {
+  const sections = [
+    section("Trade manager read"),
+    section("GEX posture"),
+    section("Hold plan"),
+    section("Why this setup"),
+  ];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    holdPlanFolded: false,
+  });
+  assert.ok(out.some((s) => s.title === "Hold plan"), "Hold plan must survive — nothing in the narrative covers it for this play");
+  assert.ok(!out.some((s) => s.title === "GEX posture"));
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /for 1 section folded/i, "only GEX posture was actually dropped");
+});
+
+test("collapseRedundantIntelSections: omitting holdPlanFolded entirely defaults to the SAFE outcome (keep, no false claim) — same as explicit false", () => {
+  const sections = [section("Trade manager read"), section("Hold plan"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(out.some((s) => s.title === "Hold plan"), "a caller that forgets to pass holdPlanFolded must never lose this section");
+});
+
+test("collapseRedundantIntelSections: still drops 'Hold plan' and claims the fold-in note when holdPlanFolded is true (thesisPillarCoaching actually fired, no runner-fraction gap)", () => {
+  const sections = [section("Trade manager read"), section("Hold plan"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    holdPlanFolded: true,
+  });
+  assert.ok(!out.some((s) => s.title === "Hold plan"), "thesisPillarCoaching really did fire — collapse it as usual");
   const narrative = out.find((s) => s.title === "Trade manager read");
   assert.match(narrative!.body, /folded into Trade manager read/i);
 });
