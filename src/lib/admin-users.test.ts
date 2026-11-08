@@ -84,7 +84,7 @@ test("shouldUseDbAdminUserList when tier, role, or access filter set", () => {
 
 test("buildAdminUserFilterSql maps tier and role filters", () => {
   const premium = buildAdminUserFilterSql({ tier: "premium" });
-  assert.match(premium.whereSql, /tier = 'premium'/);
+  assert.match(premium.whereSql, /tier IN \('premium', 'pro', 'elite'\)/);
 
   const community = buildAdminUserFilterSql({ tier: "community" });
   assert.match(community.whereSql, /membership_kind = 'community'/);
@@ -97,12 +97,40 @@ test("buildAdminUserFilterSql maps tier and role filters", () => {
   assert.match(combined.whereSql, /<> 'admin'/);
 
   const accessPremium = buildAdminUserFilterSql({ access: "premium" });
-  assert.match(accessPremium.whereSql, /tier = 'premium'/);
+  assert.match(accessPremium.whereSql, /tier IN \('premium', 'pro', 'elite'\)/);
   assert.match(accessPremium.whereSql, /<> 'admin'/);
 
   const accessFree = buildAdminUserFilterSql({ access: "free" });
   assert.match(accessFree.whereSql, /tier = 'free'/);
   assert.match(accessFree.whereSql, /NOT IN \('community', 'premium'\)/);
+});
+
+// Regression (round 394, DISCOVERY-lane). `parseTier` (lib/tiers.ts) has "always coerced"
+// the legacy pre-rename tier aliases "pro"/"elite" to "premium" for every consumer that grants
+// real behavior off a user's tier — tier-cache.ts's `resolveUserTier` (real desk access),
+// `classifyAdminUserAccess` (this same admin dashboard's own row badge), and
+// `isPaidTierForReconcileDowngradeCheck` (membership.ts's Whop reconcile cron). Pre-fix,
+// `buildAdminUserFilterSql` compared the RAW literal "tier = 'premium'" only, so a row whose
+// `tier` column still carries "pro" or "elite" (e.g. a legacy Postgres mirror row never resynced
+// since `upsertAdminUserRow`'s callers started normalizing with `parseTier` on write) was badged
+// "Premium" in the unfiltered admin list yet INVISIBLE to the "access=premium"/"tier=premium"
+// filters — the exact "badge disagrees with filter" shape the community dual-signal fix above
+// (#7520) already fixed once, one alias layer earlier.
+test("buildAdminUserFilterSql premium clauses also match legacy 'pro'/'elite' tier aliases, matching classifyAdminUserAccess/parseTier", () => {
+  const accessPremium = buildAdminUserFilterSql({ access: "premium" });
+  assert.match(accessPremium.whereSql, /tier IN \('premium', 'pro', 'elite'\)/);
+
+  const tierPremium = buildAdminUserFilterSql({ tier: "premium" });
+  assert.match(tierPremium.whereSql, /tier IN \('premium', 'pro', 'elite'\)/);
+
+  // The community clauses must exclude the SAME alias set, not just literal 'premium' — a
+  // tier='pro' row with membership_kind='community' is "premium" per classifyAdminUserAccess's
+  // priority order (tier wins), so it must not also match the community filter.
+  const accessCommunity = buildAdminUserFilterSql({ access: "community" });
+  assert.match(accessCommunity.whereSql, /COALESCE\(tier, 'free'\) NOT IN \('premium', 'pro', 'elite'\)/);
+
+  const tierCommunity = buildAdminUserFilterSql({ tier: "community" });
+  assert.match(tierCommunity.whereSql, /COALESCE\(tier, 'free'\) NOT IN \('premium', 'pro', 'elite'\)/);
 });
 
 test("computeAdminUserListStats excludes internal audit/test-harness accounts from every bucket", () => {
@@ -135,11 +163,11 @@ test("buildAdminUserFilterSql community clauses exclude premium-tier users, matc
   // premium+community stat buckets double-count that user (sum exceeds total).
   const accessCommunity = buildAdminUserFilterSql({ access: "community" });
   assert.match(accessCommunity.whereSql, /membership_kind = 'community'/);
-  assert.match(accessCommunity.whereSql, /COALESCE\(tier, 'free'\) <> 'premium'/);
+  assert.match(accessCommunity.whereSql, /COALESCE\(tier, 'free'\) NOT IN \('premium', 'pro', 'elite'\)/);
 
   const tierCommunity = buildAdminUserFilterSql({ tier: "community" });
   assert.match(tierCommunity.whereSql, /membership_kind = 'community'/);
-  assert.match(tierCommunity.whereSql, /COALESCE\(tier, 'free'\) <> 'premium'/);
+  assert.match(tierCommunity.whereSql, /COALESCE\(tier, 'free'\) NOT IN \('premium', 'pro', 'elite'\)/);
 });
 
 test(
@@ -177,5 +205,35 @@ test(
     ];
     const stats = computeAdminUserListStats(rows, []);
     assert.deepEqual(stats, { total: 1, premium: 0, admins: 0, community: 1, free: 0 });
+  }
+);
+
+// Regression (round 394, DISCOVERY-lane) — see buildAdminUserFilterSql's matching fix above for
+// the full root-cause writeup. A row whose `tier` column still carries a legacy "pro"/"elite"
+// alias (pre-dating the `parseTier`-on-write normalization every current write path applies) is
+// badged "Premium" by classifyAdminUserAccess (which normalizes); this stats bucket must agree.
+test(
+  "computeAdminUserListStats counts a legacy tier='pro'/'elite' row as Premium, matching classifyAdminUserAccess/parseTier",
+  () => {
+    const rows = [
+      { email: "legacy.pro@gmail.com", tier: "pro", role: null, membership_kind: null },
+      { email: "legacy.elite@gmail.com", tier: "elite", role: null, membership_kind: null },
+    ];
+    const stats = computeAdminUserListStats(rows, []);
+    assert.deepEqual(stats, { total: 2, premium: 2, admins: 0, community: 0, free: 0 });
+  }
+);
+
+// A legacy-aliased tier that ALSO carries membership_kind='community' must still resolve to
+// Premium, not double-count into Community — tier wins over membership_kind in
+// classifyAdminUserAccess's own priority order, alias or not.
+test(
+  "computeAdminUserListStats: a legacy 'pro'/'elite' tier with membership_kind='community' still counts as Premium, not Community",
+  () => {
+    const rows = [
+      { email: "legacy.pro.community@gmail.com", tier: "pro", role: null, membership_kind: "community" },
+    ];
+    const stats = computeAdminUserListStats(rows, []);
+    assert.deepEqual(stats, { total: 1, premium: 1, admins: 0, community: 0, free: 0 });
   }
 );

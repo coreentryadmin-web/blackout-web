@@ -1,7 +1,24 @@
 import { dbQuery, dbConfigured } from "@/lib/db";
 import { adminEmailAllowlist } from "@/lib/admin-emails";
 import { isInternalAuditEmail } from "@/lib/internal-audit-email";
-import type { Tier } from "@/lib/tiers";
+import { parseTier, type Tier } from "@/lib/tiers";
+
+/**
+ * SQL alternation matching every raw `tier` value `parseTier` (lib/tiers.ts) normalizes to
+ * "premium" — the literal "premium" plus its legacy pre-rename aliases "pro"/"elite". Every
+ * OTHER consumer of `publicMetadata.tier`/the Postgres mirror column normalizes through
+ * `parseTier` before comparing (tier-cache.ts's `resolveUserTier` for real desk access,
+ * `classifyAdminUserAccess` for this same dashboard's own row badge, `membership.ts`'s
+ * `isPaidTierForReconcileDowngradeCheck` for the Whop reconcile cron) — this directory's own
+ * filter/stats SQL compared the raw literal only, so a row whose `tier` column still carries a
+ * legacy alias (e.g. never resynced since before `upsertAdminUserRow`'s callers started
+ * normalizing with `parseTier` on write) was badged "Premium" in the unfiltered list yet
+ * invisible to "show premium" and uncounted in the Premium stat tile — the exact "badge
+ * disagrees with filter/stats" shape `buildAdminUserFilterSql`'s community clauses were already
+ * fixed for (see the comment below), one alias layer earlier, same as `membership.ts`'s own
+ * fix for `isPaidTierForReconcileDowngradeCheck` names it.
+ */
+const PREMIUM_TIER_SQL_VALUES = "'premium', 'pro', 'elite'";
 
 export type AdminUserRole = "admin" | "member";
 
@@ -83,7 +100,10 @@ export function buildAdminUserFilterSql(filters: AdminUserListFilters): {
       clauses.push(`role = 'admin'`);
     }
   } else if (access === "premium") {
-    clauses.push(`tier = 'premium' AND COALESCE(role, '') <> 'admin'`);
+    // IN (not `= 'premium'`) so a row still carrying a legacy "pro"/"elite" alias (see
+    // PREMIUM_TIER_SQL_VALUES above) matches too — real desk access and classifyAdminUserAccess's
+    // own badge are both already granted off the normalized value, not the literal string.
+    clauses.push(`tier IN (${PREMIUM_TIER_SQL_VALUES}) AND COALESCE(role, '') <> 'admin'`);
   } else if (access === "community") {
     // Matches classifyAdminUserAccess's priority order AND its two signaling paths: a
     // premium-tier user with membership_kind='community' is classified "premium" there (tier
@@ -93,9 +113,12 @@ export function buildAdminUserFilterSql(filters: AdminUserListFilters): {
     // (PATCH /api/admin/users/[id] sets ONLY `tier`, never `membership_kind`). A clause that
     // checked membership_kind='community' alone made that admin-set-community row invisible to
     // this filter and to the stats community bucket below, despite its own badge reading
-    // "Community" — see docs/audit/findings-staging for the full repro.
+    // "Community" — see docs/audit/findings-staging for the full repro. The premium exclusion
+    // below is NOT IN the same alias set as the premium clause above, for the identical reason:
+    // a legacy-aliased tier='pro'/'elite' row is "premium" per classifyAdminUserAccess (tier
+    // wins over membership_kind), so it must be excluded here too, not just literal 'premium'.
     clauses.push(
-      `(tier = 'community' OR membership_kind = 'community') AND COALESCE(tier, 'free') <> 'premium'`
+      `(tier = 'community' OR membership_kind = 'community') AND COALESCE(tier, 'free') NOT IN (${PREMIUM_TIER_SQL_VALUES})`
     );
   } else if (access === "free") {
     clauses.push(
@@ -104,10 +127,10 @@ export function buildAdminUserFilterSql(filters: AdminUserListFilters): {
   } else if (tier === "community") {
     // Same dual-signal fix as access === "community" above.
     clauses.push(
-      `(tier = 'community' OR membership_kind = 'community') AND COALESCE(tier, 'free') <> 'premium'`
+      `(tier = 'community' OR membership_kind = 'community') AND COALESCE(tier, 'free') NOT IN (${PREMIUM_TIER_SQL_VALUES})`
     );
   } else if (tier === "premium") {
-    clauses.push(`tier = 'premium'`);
+    clauses.push(`tier IN (${PREMIUM_TIER_SQL_VALUES})`);
   } else if (tier === "free") {
     clauses.push(
       `tier = 'free' AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium')`
@@ -209,13 +232,21 @@ export function computeAdminUserListStats(
       continue;
     }
 
-    if (row.tier === "premium") premium++;
+    // Normalized through parseTier (not a raw literal compare) so a row still carrying a legacy
+    // "pro"/"elite" tier alias counts as Premium here too — matching classifyAdminUserAccess's
+    // own badge (which already normalizes) and buildAdminUserFilterSql's PREMIUM_TIER_SQL_VALUES
+    // fix above. Pre-fix this bucket silently dropped such a row (not double-counted elsewhere,
+    // just missing — its own badge read "Premium" while every stat tile undercounted it).
+    const normalizedTier = parseTier(row.tier);
+    if (normalizedTier === "premium") premium++;
     // Same dual-signal check as buildAdminUserFilterSql's access/tier==="community" clauses:
     // tier='community' directly (admin Edit/Create User modal, membership_kind left null) OR
-    // membership_kind='community' (the Whop webhook path) — either one, excluding tier='premium'.
+    // membership_kind='community' (the Whop webhook path) — either one, excluding a tier that
+    // normalizes to premium (literal 'premium' OR a legacy 'pro'/'elite' alias — tier wins over
+    // membership_kind in classifyAdminUserAccess's priority order either way).
     if (
       (row.tier === "community" || row.membership_kind === "community") &&
-      (row.tier ?? "free") !== "premium"
+      normalizedTier !== "premium"
     ) {
       community++;
     }
