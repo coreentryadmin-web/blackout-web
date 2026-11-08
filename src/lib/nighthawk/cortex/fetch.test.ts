@@ -401,6 +401,56 @@ describe("fetch: assembler (injected deps)", () => {
     assert.ok(input.errors["catalyst-news"]);
   });
 
+  // BUG FOUND (Ask Largo standing mandate, 2026-11-08): fetchNextEarningsDate
+  // (uw-earnings.ts) never rejects on a failed calendar read anymore — it FULFILLS
+  // with `{ ...parsed, error: bz.error }` instead (days_until stays null), precisely
+  // so "the calendar genuinely has nothing scheduled" can be told apart from "the
+  // calendar could not be read" (e.g. the live Benzinga entitlement 403). Because
+  // the promise always fulfills for this failure mode, earningsRes.status was never
+  // "rejected" and the error class was dropped on the floor before mapNewsSlice ever
+  // saw it — identical to a genuine clean "no earnings today" read. The earnings-day
+  // oppose veto (catalyst-news.ts's EARNINGS_TODAY_OPPOSE_WEIGHT) would then silently
+  // not fire on a real earnings day, with zero disclosure anywhere in the verdict.
+  test("earnings-calendar fetch failure (fulfilled-with-error) surfaces as an error, not a confident absence", async () => {
+    const input = await fetchCortexInputs("NVDA", "long", {
+      now: NOW,
+      deps: deps({
+        fetchNextEarningsDate: async () => ({
+          ticker: "NVDA",
+          earnings_date: null,
+          days_until: null,
+          report_time: null,
+          is_confirmed: null,
+          error: "Benzinga /benzinga/v2/news → 403 not entitled",
+        }),
+      }),
+    });
+    // earningsToday still reads null — identical to a genuine clean miss, by design
+    // (mapNewsSlice must not fabricate the oppose signal the other way). The honest
+    // "we could not check" signal lives in input.errors, not in the news slice.
+    assert.equal(input.news?.earningsToday, null);
+    assert.ok(input.errors["catalyst-news"]);
+  });
+
+  // Regression guard: a GENUINE clean "nothing scheduled" read (no `.error`) must
+  // keep behaving exactly as before — no fabricated error, no fabricated oppose.
+  test("genuine clean 'no earnings today' (no error) leaves catalyst-news error-free", async () => {
+    const input = await fetchCortexInputs("NVDA", "long", {
+      now: NOW,
+      deps: deps({
+        fetchNextEarningsDate: async () => ({
+          ticker: "NVDA",
+          earnings_date: null,
+          days_until: null,
+          report_time: null,
+          is_confirmed: null,
+        }),
+      }),
+    });
+    assert.equal(input.news?.earningsToday, null);
+    assert.equal(input.errors["catalyst-news"], undefined);
+  });
+
   test("withSourceTimeout resolves fast reads untouched", async () => {
     assert.equal(await withSourceTimeout(Promise.resolve(7), 50), 7);
     await assert.rejects(withSourceTimeout(new Promise(() => {}), 10), /CortexSourceTimeout|exceeded/);

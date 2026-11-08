@@ -453,6 +453,16 @@ export async function fetchCortexInputs(
   // Earnings feed catalyst-news too, but its news leg may still answer — only note
   // the error class if nothing else already did.
   if (earningsRes.status === "rejected") note(["catalyst-news"], earningsRes.reason);
+  // fetchNextEarningsDate (uw-earnings.ts) never rejects on a failed calendar read —
+  // it FULFILLS with `.error` set instead (the live Benzinga-entitlement-403 fix),
+  // specifically so a genuine "nothing scheduled" can be told apart from "the
+  // calendar could not be read". withSourceTimeout only races the promise and never
+  // inspects a fulfilled value, so without this check that distinction is lost right
+  // here — mapNewsSlice below reads only days_until/report_time and would otherwise
+  // render an identical earningsToday: null for both cases, silently skipping the
+  // earnings-day oppose veto with no disclosure anywhere in the Cortex verdict.
+  // Mirrors the news?.unavailable check two lines up.
+  if (earnings?.error) note(["catalyst-news"], { name: earnings.error } as Error);
 
   const sectors = sectorRes.status === "fulfilled" ? sectorRes.value : null;
   if (sectorRes.status === "rejected") note(["sector-heat"], sectorRes.reason);
