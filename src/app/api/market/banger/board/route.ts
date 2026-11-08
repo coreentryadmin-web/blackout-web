@@ -16,6 +16,7 @@ import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 export const dynamic = "force-dynamic";
 
@@ -85,11 +86,21 @@ export async function GET(req: NextRequest) {
       fetchBangerOpenBookRowsSettled(),
       fetchBangerClosedBoardRows(60),
     ]);
+    const nowMs = Date.now();
     return NextResponse.json(
       roundFloats({
         available: true,
         enabled: true,
-        as_of: new Date().toISOString(),
+        as_of: new Date(nowMs).toISOString(),
+        // `as_of` alone is a bare UTC instant, and every row on this board is keyed by an ET
+        // `session_date` (see `toBoardPlay` above). Between ~20:00 ET and midnight the UTC
+        // calendar date is already TOMORROW, so a consumer resolving "today" purely from
+        // `as_of` reads a session ahead of the one these positions actually belong to — the
+        // same inversion class fixed in #2418/#2420/#2422 and this session's Largo C1 sweep.
+        // `bangerBoardForLargo` (the direct Largo-tool path for this same data, in
+        // product-reads.ts) already stamps this; this route — the member-facing UI/HTTP path
+        // used by BangerBoard.tsx, play-brief-resolve.ts and banger-lane-merge.ts — did not.
+        session_date: etSessionDate(nowMs),
         exit_rule_note: bangerScaleOutNote(),
         open: open.map(toBoardPlay),
         closed: closed.map(toBoardPlay),

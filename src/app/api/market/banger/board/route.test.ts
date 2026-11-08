@@ -94,4 +94,19 @@ describe("/api/market/banger/board open/closed are independently paged", () => {
     for (const row of body.open) assert.equal(row.status, "OPEN");
     for (const row of body.closed) assert.equal(row.status, "STOPPED");
   });
+
+  // Regression (Largo C1 session-anchor known gap, src/lib/largo/contract/session-anchor.test.ts):
+  // this route used to stamp only a bare UTC `as_of` instant with no ET session anchor beside it,
+  // even though every row it returns is itself keyed by an ET `session_date` (see `toBoardPlay`).
+  // After ~20:00 ET the UTC calendar date is already tomorrow, so a consumer resolving "today"
+  // from `as_of` alone reads a session ahead of the one these positions belong to — the same
+  // inversion class fixed in #2418/#2420/#2422. `bangerBoardForLargo` (the direct Largo-tool path
+  // for this same underlying data) already carried this anchor; this member-facing HTTP route did
+  // not.
+  test("the response carries an ET session_date anchor beside the UTC as_of stamp", async () => {
+    const res = await GET(new NextRequest("http://localhost/api/market/banger/board"));
+    const body = await res.json();
+    assert.equal(typeof body.as_of, "string");
+    assert.match(body.session_date, /^\d{4}-\d{2}-\d{2}$/, "session_date must be a YYYY-MM-DD ET calendar date");
+  });
 });
