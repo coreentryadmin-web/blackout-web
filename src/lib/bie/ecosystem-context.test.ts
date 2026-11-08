@@ -1213,7 +1213,11 @@ test("assembleEcosystemArsenal: every unavailable_sources entry carries what_is_
     assert.equal(typeof entry.retryable, "boolean", `${entry.source} is missing retryable`);
   }
   const bySource = Object.fromEntries(ars.unavailable_sources.map((u) => [u.source, u]));
-  // Structural absences (a provider graph genuinely has nothing for this ticker) — retry is futile.
+  // Structural absences (a provider graph genuinely has nothing for this ticker) — retry is
+  // futile. `earnings: null` here (not an object carrying `.error`) is specifically the CLEAN
+  // absence case — no upcoming print on file, no fetch failure — per the 2026-11-08 fix below,
+  // which is what makes `retryable: false` correct for it. A failed calendar fetch is a DIFFERENT
+  // input shape (a non-null object with `.error` set) and is covered by its own test below.
   assert.equal(bySource["earnings"]?.retryable, false);
   assert.equal(bySource["fundamentals/short-interest"]?.retryable, false);
   assert.equal(bySource["peers"]?.retryable, false);
@@ -1236,6 +1240,45 @@ test("assembleEcosystemArsenal: every unavailable_sources entry carries what_is_
   for (const entry of indexArs.unavailable_sources) {
     assert.ok(typeof entry.what_is_missing === "string" && entry.what_is_missing.length > 0);
   }
+});
+
+// BUG FIX (2026-11-08, Ask Largo standing mandate, live repro CAVA): a FAILED earnings-calendar
+// fetch (Benzinga 403 and/or UW REST fallback both coming up empty) used to collapse to the exact
+// same `reads.earnings === null` shape as a genuine "nothing scheduled" read, so this leg always
+// emitted `{reason: "no upcoming date", retryable: false}` regardless of WHY it was empty — a
+// confident, non-retryable claim fabricated in place of an honest "we don't know, try again",
+// the same absence-principle violation this repo's news leg (`NewsResult.unavailable`) already
+// avoids. `loadNextEarningsFromBenzinga`/`fetchNextEarningsDate` now thread the real fetch error
+// through as `NextEarnings.error` instead of discarding it — this proves the assembler branches on
+// it correctly. RED pre-fix: this assertion fails because the old code had no `.error` branch at
+// all and always pushed the "no upcoming date"/retryable:false entry; GREEN post-fix.
+test("assembleEcosystemArsenal: a FAILED earnings-calendar fetch is retryable:true with the real cause, not the generic 'no upcoming date'", () => {
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: {
+      ticker: "CAVA",
+      earnings_date: null,
+      days_until: null,
+      report_time: null,
+      is_confirmed: null,
+      error: "benzinga_ticker_earnings:not_entitled",
+    } as NextEarnings,
+    fundamentals: null,
+    related: null,
+    news: null,
+    macro: null,
+    breadth: null,
+  });
+  assert.equal(ars.earnings, null, "still no earnings data to show — the read failed");
+  const entry = ars.unavailable_sources.find((u) => u.source === "earnings");
+  assert.ok(entry, "earnings must still surface in unavailable_sources");
+  assert.equal(entry?.retryable, true, "a failed fetch is retryable — unlike a genuine clean absence");
+  assert.notEqual(entry?.reason, "no upcoming date", "must not fabricate the structural/clean-absence reason for a fetch failure");
+  assert.match(
+    entry?.reason ?? "",
+    /benzinga_ticker_earnings:not_entitled/,
+    `reason must name the real cause, got: ${entry?.reason}`,
+  );
 });
 
 test("assembleEcosystemArsenal: an empty-but-successful news read is 'no recent news' (count 0), not unavailable", () => {

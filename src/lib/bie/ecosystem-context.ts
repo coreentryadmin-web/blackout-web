@@ -437,14 +437,31 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           report_time: reads.earnings.report_time,
           is_confirmed: reads.earnings.is_confirmed,
         }
-      : (unavailable.push({
-          source: "earnings",
-          reason: "no upcoming date",
-          what_is_missing: "a scheduled earnings date for this ticker",
-          // Structural: the earnings calendar simply has no confirmed print on file for this
-          // name right now — retrying the same read a moment later returns the same nothing.
-          retryable: false,
-        }), null)
+      // BUG FIX (2026-11-08, Ask Largo standing mandate, live repro CAVA): `reads.earnings.error`
+      // (threaded from `loadNextEarningsFromBenzinga`/`fetchNextEarningsDate`, e.g. the live
+      // Benzinga entitlement 403) means the calendar read FAILED, not that this ticker genuinely
+      // has nothing scheduled — the two used to collapse to the identical "no upcoming date" /
+      // retryable:false entry below, fabricating a confident, non-retryable reason for what was
+      // really an honest "we don't know, try again". Mirrors the sibling "news" leg's
+      // unavailable/retryable split a few branches down in this same function.
+      : reads.earnings?.error
+        ? (unavailable.push({
+            source: "earnings",
+            reason: `next earnings date unavailable: ${reads.earnings.error}`,
+            what_is_missing: "a scheduled earnings date for this ticker",
+            // Transient: this is a live calendar fetch (Benzinga structured earnings and/or the
+            // UW REST fallback) that failed this pass — a retry on the next composer read can
+            // succeed once the upstream recovers.
+            retryable: true,
+          }), null)
+        : (unavailable.push({
+            source: "earnings",
+            reason: "no upcoming date",
+            what_is_missing: "a scheduled earnings date for this ticker",
+            // Structural: the earnings calendar simply has no confirmed print on file for this
+            // name right now — retrying the same read a moment later returns the same nothing.
+            retryable: false,
+          }), null)
     : null;
 
   const fundamentals: EcosystemArsenalFundamentals | null = single

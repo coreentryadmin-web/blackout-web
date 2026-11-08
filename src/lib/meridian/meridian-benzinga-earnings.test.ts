@@ -145,3 +145,60 @@ test("loadBenzingaEarningsBundle: a window fetch with no truncated field at all 
   const bundle = await loadBenzingaEarningsBundle("2026-11-01", 21);
   assert.equal(bundle.window_truncated, false);
 });
+
+// BUG FIX (2026-11-08, Ask Largo standing mandate, live repro CAVA): `loadNextEarningsFromBenzinga`
+// used to call `parseNextEarningsFromBenzinga(sym, res.rows, today)` and return whatever came back
+// — discarding `res.error` entirely, even though `loadBenzingaTickerEarnings` (above) already
+// carries the real provider failure (e.g. the live Benzinga entitlement 403) rather than
+// swallowing it. A failed fetch (empty `rows`, `error` set) and a genuinely clean "nothing
+// scheduled" read (empty `rows`, `error: null`) both parsed to the identical bare `null`, so
+// every downstream consumer (`fetchNextEarningsDate` → `assembleEcosystemArsenal`'s earnings leg)
+// had no way to tell them apart and fabricated a confident, non-retryable "no upcoming date" for
+// both. These three tests pin the RED→GREEN proof: pre-fix, the second test fails because the old
+// code returned bare `null` with no `.error` field at all.
+test("loadNextEarningsFromBenzinga: a genuinely clean read (no rows, no error) returns null — no regression", async () => {
+  structuredEarningsOutcome = { kind: "resolve", value: { rows: [], entitled: true, error: null } };
+  const { loadNextEarningsFromBenzinga } = await mod();
+  const next = await loadNextEarningsFromBenzinga("CAVA");
+  assert.equal(next, null, "a genuine clean absence must still resolve to plain null");
+});
+
+test("loadNextEarningsFromBenzinga: a FAILED fetch (e.g. the live Benzinga entitlement 403) carries the real error instead of a bare null", async () => {
+  // Mirrors the live 403 shape: fetchBenzingaPartnerPage's "not entitled" branch returns
+  // {rows: [], entitled: false, error: "not_entitled"}, which loadBenzingaTickerEarnings's own
+  // THROW-on-error discipline turns into a caught, carried `benzinga_ticker_earnings:not_entitled`.
+  structuredEarningsOutcome = { kind: "resolve", value: { rows: [], entitled: false, error: "not_entitled" } };
+  const { loadNextEarningsFromBenzinga } = await mod();
+  const next = await loadNextEarningsFromBenzinga("CAVA");
+  assert.ok(next, "a failed fetch must NOT collapse to bare null — the caller needs the error signal");
+  assert.equal(next?.earnings_date, null, "still no real date to show — the read failed");
+  assert.match(
+    next?.error ?? "",
+    /not_entitled/,
+    `expected the real failure to be carried through, got: ${next?.error}`,
+  );
+});
+
+test("loadNextEarningsFromBenzinga: a real future row still parses correctly (no regression)", async () => {
+  structuredEarningsOutcome = {
+    kind: "resolve",
+    value: {
+      rows: [
+        {
+          ticker: "CAVA",
+          date: "2026-12-10",
+          time: "16:05:00",
+          date_status: "confirmed",
+          actual_eps: null,
+          actual_revenue: null,
+        },
+      ],
+      entitled: true,
+      error: null,
+    },
+  };
+  const { loadNextEarningsFromBenzinga } = await mod();
+  const next = await loadNextEarningsFromBenzinga("CAVA");
+  assert.equal(next?.earnings_date, "2026-12-10");
+  assert.equal(next?.error, undefined, "a real result carries no spurious error");
+});

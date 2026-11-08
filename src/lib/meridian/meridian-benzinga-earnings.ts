@@ -268,7 +268,27 @@ export async function loadNextEarningsFromBenzinga(ticker: string): Promise<Next
   // This only reads the NEXT (future) row, so it needs no past-print depth — 2 keeps the window
   // tight while the row cap still covers Benzinga's projected tail.
   const res = await loadBenzingaTickerEarnings(sym, null, 2);
-  return parseNextEarningsFromBenzinga(sym, res.rows, today);
+  const parsed = parseNextEarningsFromBenzinga(sym, res.rows, today);
+  if (parsed) return parsed;
+  // BUG FIX (2026-11-08, Ask Largo standing mandate, live repro CAVA): a null parse here is NOT
+  // necessarily "no earnings scheduled" — `res.error` (carried, not swallowed, by
+  // `loadBenzingaTickerEarnings` above since the 2026-08-18 fix) means the calendar fetch itself
+  // FAILED (e.g. the live Benzinga entitlement 403 — CLAUDE.md's "ENTITLEMENT REGRESSED
+  // 2026-11-07" note), so `res.rows` is empty because we never got to look, not because the
+  // calendar genuinely has nothing on file. This used to be discarded here, so every caller saw
+  // the exact same bare `null` for both a real empty calendar and a failed read — carry the real
+  // cause forward instead, same discipline as the sibling "news" leg's `NewsResult.unavailable`.
+  if (res.error) {
+    return {
+      ticker: sym,
+      earnings_date: null,
+      days_until: null,
+      report_time: null,
+      is_confirmed: null,
+      error: res.error,
+    };
+  }
+  return null;
 }
 
 /** Per-ticker estimate revision timeline (cached snapshot diff). */
