@@ -7,6 +7,7 @@ import * as spx from "@/features/spx/lib/spx-service";
 import * as flows from "./flow-service";
 import * as nighthawk from "./nighthawk-service";
 import * as zerodte from "./zerodte-service";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 export type { PlatformServiceId, PlatformSnapshot, SpxDeskSummary, FlowTapeSummary, NightHawkEditionSummary } from "./types";
 export type { ZeroDteBoardPayload } from "./zerodte-service";
@@ -31,8 +32,13 @@ export async function getPlatformSnapshot(opts?: {
   fullEdition?: boolean;
 }): Promise<PlatformSnapshot> {
   const include = new Set<PlatformServiceId>(opts?.include ?? ["spx", "flows", "nighthawk"]);
-  const as_of = new Date().toISOString();
-  const snapshot: PlatformSnapshot = { as_of };
+  // Anchored to the SAME instant as `as_of` so the two can never describe different moments —
+  // Largo C1 (contract/session-anchor.test.ts). `get_platform_snapshot` is a direct Largo tool;
+  // see the `session_date` doc comment on PlatformSnapshot for why the wrapper stamp itself
+  // (not just the `flows` sub-object, which already carried its own anchor) needed this.
+  const nowMs = Date.now();
+  const as_of = new Date(nowMs).toISOString();
+  const snapshot: PlatformSnapshot = { as_of, session_date: etSessionDate(nowMs) };
 
   const jobs: Promise<void>[] = [];
 
