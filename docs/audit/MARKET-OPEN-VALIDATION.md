@@ -9655,3 +9655,27 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   "still rate-limited, but now honestly disclosed" (fix 1 working as intended, fix 2 needs more
   tuning) from a different, unrelated cause (worth a fresh look). Either way, a caller should never
   again see a 429 storm misread as "no data."
+
+## WATCH LIST — 2026-11-08 (Swing WATCH-stage PUT plays showed a positive delta, `fix/horizon-plays-watch-put-delta-sign`, PR #7604)
+
+- **`src/lib/horizon-plays.ts`'s `produceHorizonPlays` leaked `ChainContract`'s internal unsigned
+  delta magnitude straight into the board-facing `contract.delta` field for WATCH-stage plays** —
+  live-caught via the 5-engine monitor: a real production SHORT/PUT WATCH candidate (TSLA, 365P)
+  rendered `contract.delta: 0.61` (positive, same sign as a call) while every committed PUT on the
+  same board correctly showed negative delta. Root cause and fix: see PR #7604 and
+  `docs/audit/findings-staging/2026-11-08-swing-watch-put-delta-positive-sign.md`.
+  **Deployed, confirmed via `ecr-push-production.yml` run 42498625217 (completed success,
+  2026-11-08 ~16:38 UTC), but NOT yet visible on the live board** — checked immediately after
+  deploy: `GET /api/market/nighthawk/horizons?view=swings` still shows TSLA/NVDA/AVGO/GOOG/AAPL
+  PUT WATCH candidates with positive delta (0.58–0.61), byte-identical to the pre-fix numbers.
+  This is expected, not a failed deploy: the WATCH lane is read from `discoverSwingFromPersisted`
+  (a persisted snapshot from the last swing-discovery cron tick), not recomputed live per request —
+  `produceHorizonPlays` only runs again inside the NEXT discovery scan, and no swing-discovery cron
+  fires over the weekend, so the board is still serving Friday's pre-fix-computed snapshot.
+  **Re-check once the market opens Monday:** after the first swing-discovery tick of the new
+  session day has run (check `GET /api/admin/cron-health` for `swing-discovery`'s `last_run_at`
+  moving past the deploy timestamp above), re-pull `GET /api/market/nighthawk/horizons?view=swings`
+  and confirm every WATCH-lane PUT contract shows a negative delta — any committed PUT already did,
+  by a different code path, so this check is specifically about the WATCH lane. If a PUT is still
+  positive after a confirmed post-deploy discovery tick, the fix did not actually take effect in
+  production and needs a fresh look (not just a stale-snapshot read).
