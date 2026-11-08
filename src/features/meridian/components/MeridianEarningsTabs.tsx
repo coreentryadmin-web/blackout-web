@@ -22,6 +22,7 @@ import { MeridianEarningsEstimatesPanel } from "./MeridianEarningsEstimatesPanel
 import { MeridianEarningsPositioningPanel } from "./MeridianEarningsPositioningPanel";
 import { MeridianEarningsHistoryPanel } from "./MeridianEarningsHistoryPanel";
 import { MeridianPeerCohortPanel } from "./MeridianPeerCohortPanel";
+import { fmtCompactRevenueOrDash as fmtRev } from "@/features/meridian/lib/meridian-revenue-format";
 
 export type EarningsTab = "summary" | "report" | "estimates" | "positioning" | "history";
 
@@ -34,14 +35,6 @@ export const EARNINGS_TABS: Array<{ id: EarningsTab; label: string }> = [
   { id: "positioning", label: "Positioning" },
   { id: "history", label: "History" },
 ];
-
-function fmtRev(n: number | null): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `$${(n / 1e6).toFixed(0)}M`;
-  return `$${n.toFixed(0)}`;
-}
 
 function fmtSurprisePct(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
