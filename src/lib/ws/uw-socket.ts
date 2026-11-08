@@ -805,6 +805,42 @@ function pushDarkPoolRawRows(rows: Record<string, unknown>[]) {
   darkPoolRecentRing.total_received += fresh.length;
 }
 
+/**
+ * Session accumulator for ticker-scoped ("SPX") `off_lit_trades` raw rows — see the BUG FIX
+ * comment on the `off_lit_trades` subscribe handler below for what this fixes and why.
+ */
+const SPX_DARK_POOL_ACCUM_MAX = 2000;
+let spxDarkPoolAccumRows: Record<string, unknown>[] = [];
+
+function rawRowTicker(row: Record<string, unknown>): string {
+  return String(row.ticker ?? row.symbol ?? row.underlying ?? "").toUpperCase();
+}
+
+/**
+ * Pure reducer: merge a frame's raw dark-pool rows into a session-long accumulator, deduped by
+ * the SAME key `pushDarkPoolRawRows` uses for the market-wide ring (`darkPoolRawDedupKey`), and
+ * capped to `max` rows (oldest dropped first once the cap is hit — mirrors every other WS ring in
+ * this file, e.g. `DARK_POOL_RING_MAX`/`OPTION_TRADES_RING_MAX`). Exported so the accumulation
+ * behavior — unlike the single-frame overwrite it replaces — has a test that pins it directly.
+ */
+export function mergeDarkPoolAccumRows(
+  existing: Record<string, unknown>[],
+  freshRows: Record<string, unknown>[],
+  max = SPX_DARK_POOL_ACCUM_MAX
+): Record<string, unknown>[] {
+  if (!freshRows.length) return existing;
+  const seen = new Set(existing.map(darkPoolRawDedupKey));
+  const toAdd = freshRows.filter((row) => {
+    const key = darkPoolRawDedupKey(row);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (!toAdd.length) return existing;
+  const merged = [...existing, ...toAdd];
+  return merged.length > max ? merged.slice(merged.length - max) : merged;
+}
+
 export const intervalFlowStore: {
   rows: Record<string, unknown>[];
   updatedAt: number;
@@ -1499,10 +1535,38 @@ export function initUwSocket() {
     // off_lit_trades is a MARKET-WIDE channel (no `:TICKER` join suffix, see
     // joinWiresForChannel) — scope the snapshot stamped onto the "SPX" cache key to actual
     // SPX prints, else another ticker's frame silently overwrites SPX's own dark-pool read.
-    const normalized = normalizeDarkPoolWsPayload(payload, "SPX");
-    if (normalized) {
+    // `normalizedThisFrame` is used ONLY as the "did this frame actually carry a genuine,
+    // today-dated SPX print" gate below — unchanged from before this fix.
+    const normalizedThisFrame = normalizeDarkPoolWsPayload(payload, "SPX");
+    if (normalizedThisFrame) {
       recordUwDelivery("off_lit_trades");
-      darkPoolStore.data = normalized;
+      // BUG FIX: this used to be `darkPoolStore.data = normalizedThisFrame` — a flat
+      // per-frame overwrite. `normalizeDarkPoolWsPayload` builds a full `DarkPoolSnapshot`
+      // (total_premium/call_premium/put_premium/bias/pcr/detail) — the SAME shape the
+      // REST-path day-aggregate functions (fetchUwDarkPool/fetchUwDarkPoolMarketWide)
+      // produce — and every downstream reader treats it as a running SESSION total, not a
+      // single tick: `resolveDarkPool()` (spx-desk.ts) prefers this store over the REST
+      // aggregate whenever it's fresh, `uw-ws-cache-bridge.ts` seeds the `dark_pool:SPX`
+      // Redis cache from it and SKIPS the REST refresh entirely while the WS channel is
+      // fresh (`darkPoolTickerWsFresh`), and `uw-lit-dark-ratio.ts` sums `total_premium`
+      // straight into a lit-vs-dark share. But a genuine ticker=SPX dark-pool print is a
+      // RARE event on this market-wide, mostly-other-tickers channel (see this function's
+      // own module comment below on normalizeDarkPoolWsPayload — "the index itself never
+      // actually dark-pool-prints under the ticker SPX the way single-name equities do").
+      // So the very next SPX print frame silently REPLACED the prior one's total_premium/
+      // bias instead of adding to it — a second $3M SPX print at 2pm made an earlier $5M
+      // print at 10am vanish from the day's total, not because it stopped being true, but
+      // because nothing ever accumulated it. Dark-pool prints are executed trades already
+      // on the tape; a session's set cannot shrink (the same invariant `fetchUwDarkPool`'s
+      // own comment states for its REST path). Accumulate the raw SPX-ticker rows across
+      // the whole session (`mergeDarkPoolAccumRows`, same dedup key as the market-wide
+      // ring) and re-normalize from the FULL accumulated set every frame —
+      // `normalizeDarkPoolWsPayload`'s own today-ET + premium>0 filters still drop
+      // anything stale, so a day rollover or a malformed row still can't leak in.
+      const spxRawRows = extractDarkPoolRawRows(payload).filter((row) => rawRowTicker(row) === "SPX");
+      spxDarkPoolAccumRows = mergeDarkPoolAccumRows(spxDarkPoolAccumRows, spxRawRows);
+      const accumulated = normalizeDarkPoolWsPayload(spxDarkPoolAccumRows, "SPX");
+      darkPoolStore.data = accumulated ?? normalizedThisFrame;
       darkPoolStore.updatedAt = Date.now();
     }
     // Community #blackout-darkpool — fire-and-forget on ingest worker only.
