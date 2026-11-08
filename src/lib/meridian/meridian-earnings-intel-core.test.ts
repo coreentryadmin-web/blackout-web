@@ -160,6 +160,28 @@ test("shapeMeridianDarkPool: premium that rounds up to 1000K promotes to the M u
   assert.notEqual(shaped.total_premium_label, "$1000K");
 });
 
+test("shapeMeridianDarkPool: billion-scale premium promotes to the B unit, not '$1500.0M'", () => {
+  // BUG FIX (round 419): fmtPremShort had no B tier at all — every value past $1M printed as
+  // "$X.XM" regardless of magnitude, so a heavily-traded mega-cap's aggregate dark-pool session
+  // premium (routinely into the billions around earnings) rendered as a nonsensical 4+ digit
+  // "$1500.0M" instead of "$1.5B". Round 399's K->M fix (the test above) only closed the lower
+  // seam and never added a B tier, so there was nowhere for a round-up-past-1000M value to
+  // promote to either.
+  const shaped = shapeMeridianDarkPool({
+    prints: [{ strike: 450, premium: 1_500_000_000, side: "buy", executed_at: "2026-11-08T14:30:00" }],
+    total_premium: 1_500_000_000,
+    call_premium: 1_500_000_000,
+    put_premium: 0,
+    bias: "bullish",
+    pcr: null,
+    detail: "1 print(s) | $1.50B",
+  });
+  assert.equal(shaped.total_premium_label, "$1.5B");
+  assert.equal(shaped.call_premium_label, "$1.5B");
+  assert.equal(shaped.top_prints[0].premium_label, "$1.5B");
+  assert.notEqual(shaped.total_premium_label, "$1500.0M");
+});
+
 test("coerceMeridianWallLevels preserves gamma truth and orders display band when inverted", () => {
   const tgt = coerceMeridianWallLevels({ call_wall: 150, put_wall: 152.5, spot: 151.01 });
   assert.equal(tgt.gamma_call_wall, 150);
