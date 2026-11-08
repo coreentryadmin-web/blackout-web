@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 /** Minimal prod HTTP smoke for GitHub Actions (no secrets except optional CRON). */
+import { spxDeskSmokeVerdict } from "./audit/lib/gha-http-smoke-spx-desk-eval.mjs";
+
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
 
@@ -82,11 +84,21 @@ if (CRON) {
   // gating works), and only FAIL on the statuses that actually indicate a broken deploy — 404 (route
   // gone), 5xx (crash), or a network error surfaced as a non-numeric/0 status. The 401/403 case logs a
   // WARN so the drift stays visible and someone can reconcile CRON_SECRET to restore the true-200 check.
-  if (status === 200 && body?.price > 0) {
-    console.log(`  ✓ /api/market/spx/desk → SPX ${body.price} (cron auth ok)`);
-  } else if (status === 401 || status === 403) {
+  // Off-hours/weekends the desk may return 200 with price:0 and available:false — still a healthy deploy.
+  const deskVerdict = spxDeskSmokeVerdict(status, body);
+  if (deskVerdict.ok && deskVerdict.kind === "live_price") {
+    console.log(`  ✓ /api/market/spx/desk → SPX ${deskVerdict.price} (cron auth ok)`);
+  } else if (deskVerdict.ok && deskVerdict.kind === "warn_cron_drift") {
     console.warn(
       `  ⚠ /api/market/spx/desk → ${status} (route up + gated; CI CRON_SECRET does not match the deployed value — reconcile it to re-enable the authenticated price check)`
+    );
+  } else if (deskVerdict.ok && deskVerdict.kind === "desk_shell") {
+    const spot =
+      typeof body?.price === "number" && body.price > 0
+        ? body.price
+        : body?.prior_close ?? body?.price ?? "n/a";
+    console.log(
+      `  ✓ /api/market/spx/desk → 200 (desk shell; available=${deskVerdict.available}; spot/ref=${spot})`
     );
   } else {
     failures.push(`spx/desk → ${status}`);
