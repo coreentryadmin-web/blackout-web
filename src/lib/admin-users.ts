@@ -121,8 +121,18 @@ export function buildAdminUserFilterSql(filters: AdminUserListFilters): {
       `(tier = 'community' OR membership_kind = 'community') AND COALESCE(tier, 'free') NOT IN (${PREMIUM_TIER_SQL_VALUES})`
     );
   } else if (access === "free") {
+    // COALESCE(tier, 'free') NOT IN (...) — not `tier = 'free'` — for the same reason the
+    // premium/community clauses above don't compare the raw literal either: `parseTier`
+    // (lib/tiers.ts) normalizes ANY unrecognized tier value (NULL, an empty string, an old
+    // typo'd value never resynced since before writes started normalizing) to "free", and
+    // `classifyAdminUserAccess` badges such a row "Free" accordingly. A literal `tier = 'free'`
+    // comparison is NULL/false for exactly those rows in SQL, so they were badged "Free" in the
+    // unfiltered list yet invisible to "show free" and silently missing from every stat tile
+    // (not double-counted elsewhere — just dropped), the identical "badge disagrees with
+    // filter/stats" shape this file's premium/community fixes above already describe, one
+    // level down: here the row has no alias at all, just nothing recognized.
     clauses.push(
-      `tier = 'free' AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium') AND COALESCE(role, '') <> 'admin'`
+      `COALESCE(tier, 'free') NOT IN (${PREMIUM_TIER_SQL_VALUES}, 'community') AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium') AND COALESCE(role, '') <> 'admin'`
     );
   } else if (tier === "community") {
     // Same dual-signal fix as access === "community" above.
@@ -132,8 +142,9 @@ export function buildAdminUserFilterSql(filters: AdminUserListFilters): {
   } else if (tier === "premium") {
     clauses.push(`tier IN (${PREMIUM_TIER_SQL_VALUES})`);
   } else if (tier === "free") {
+    // Same NOT-IN widening as access === "free" above — see that branch's comment.
     clauses.push(
-      `tier = 'free' AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium')`
+      `COALESCE(tier, 'free') NOT IN (${PREMIUM_TIER_SQL_VALUES}, 'community') AND COALESCE(membership_kind, 'free') NOT IN ('community', 'premium')`
     );
   }
 
@@ -244,13 +255,27 @@ export function computeAdminUserListStats(
     // membership_kind='community' (the Whop webhook path) — either one, excluding a tier that
     // normalizes to premium (literal 'premium' OR a legacy 'pro'/'elite' alias — tier wins over
     // membership_kind in classifyAdminUserAccess's priority order either way).
-    if (
+    const isCommunity =
       (row.tier === "community" || row.membership_kind === "community") &&
-      normalizedTier !== "premium"
-    ) {
+      normalizedTier !== "premium";
+    if (isCommunity) {
       community++;
     }
-    if (row.tier === "free" && !["community", "premium"].includes(row.membership_kind ?? "free")) {
+    // BUG FOUND (round 405, DISCOVERY-lane): this used to compare the raw literal
+    // (`row.tier === "free"`), which is the exact same "raw literal instead of normalized
+    // value" defect this file's premium/community buckets above were already fixed for — just
+    // one bucket over. `parseTier` normalizes ANY value this stats row can carry (a legacy
+    // alias, an unresynced typo, or — the common real case, since `tier` is nullable here per
+    // `AdminUserStatsRow` — a bare NULL) to "free", and `classifyAdminUserAccess` badges such a
+    // row "Free" accordingly. A row with `tier: null` therefore reproducibly counted toward
+    // `total` but toward NONE of premium/community/free (verified live: a single such row
+    // produces `{total:1, premium:0, admins:0, community:0, free:0}` while its own
+    // `classifyAdminUserAccess` badge reads "Free") — silently vanishing from every stat tile,
+    // not double-counted elsewhere. Fixed the same way the premium bucket was: derive the free
+    // bucket from `normalizedTier`/`isCommunity` (parseTier's exhaustive 3-way partition,
+    // identical to the one buildAdminUserFilterSql's matching SQL fix above now applies) instead
+    // of re-deriving a second, looser literal comparison.
+    if (normalizedTier !== "premium" && !isCommunity) {
       free++;
     }
   }

@@ -93,7 +93,7 @@ test("buildAdminUserFilterSql maps tier and role filters", () => {
   assert.match(admin.whereSql, /role = 'admin'/);
 
   const combined = buildAdminUserFilterSql({ tier: "free", role: "member" });
-  assert.match(combined.whereSql, /tier = 'free'/);
+  assert.match(combined.whereSql, /COALESCE\(tier, 'free'\) NOT IN \('premium', 'pro', 'elite', 'community'\)/);
   assert.match(combined.whereSql, /<> 'admin'/);
 
   const accessPremium = buildAdminUserFilterSql({ access: "premium" });
@@ -101,7 +101,7 @@ test("buildAdminUserFilterSql maps tier and role filters", () => {
   assert.match(accessPremium.whereSql, /<> 'admin'/);
 
   const accessFree = buildAdminUserFilterSql({ access: "free" });
-  assert.match(accessFree.whereSql, /tier = 'free'/);
+  assert.match(accessFree.whereSql, /COALESCE\(tier, 'free'\) NOT IN \('premium', 'pro', 'elite', 'community'\)/);
   assert.match(accessFree.whereSql, /NOT IN \('community', 'premium'\)/);
 });
 
@@ -235,5 +235,55 @@ test(
     ];
     const stats = computeAdminUserListStats(rows, []);
     assert.deepEqual(stats, { total: 1, premium: 1, admins: 0, community: 0, free: 0 });
+  }
+);
+
+// Regression (round 405, DISCOVERY-lane). `AdminUserStatsRow.tier` is typed `string | null`, and
+// `classifyAdminUserAccess`/`parseTier` both normalize a null (or any other unrecognized) tier
+// value to "free" — the row's own badge in the unfiltered admin list reads "Free". Pre-fix, the
+// free bucket here compared the raw literal (`row.tier === "free"`), which is false for a null
+// tier, so the row counted toward `total` but toward NONE of premium/community/free — silently
+// vanishing from every stat tile despite being badged "Free", not merely a `tier: 'free'` row
+// that happened to also look like something else. Same bug shape, one bucket over, as the
+// legacy 'pro'/'elite' premium-bucket fix and the tier='community'-only community-bucket fix
+// above — just reached via a null tier rather than a legacy alias string.
+test(
+  "computeAdminUserListStats counts a null-tier row as Free, matching classifyAdminUserAccess/parseTier (not silently dropped from every bucket)",
+  () => {
+    const rows = [
+      { email: "legacy.null.tier@gmail.com", tier: null, role: null, membership_kind: null },
+    ];
+    const stats = computeAdminUserListStats(rows, []);
+    assert.deepEqual(stats, { total: 1, premium: 0, admins: 0, community: 0, free: 1 });
+  }
+);
+
+// Same null-tier gap, but with a membership_kind='community' signal present — must still land
+// in Community (the dual-signal check already handled this via membership_kind, independent of
+// the literal tier comparison), not accidentally double-count into the now-fixed Free bucket.
+test(
+  "computeAdminUserListStats: a null-tier row with membership_kind='community' still counts as Community, not Free",
+  () => {
+    const rows = [
+      { email: "legacy.null.tier.community@gmail.com", tier: null, role: null, membership_kind: "community" },
+    ];
+    const stats = computeAdminUserListStats(rows, []);
+    assert.deepEqual(stats, { total: 1, premium: 0, admins: 0, community: 1, free: 0 });
+  }
+);
+
+// Same literal-vs-normalized gap in the SQL filter layer: pre-fix, `tier = 'free'` is NULL/false
+// in Postgres for a row whose tier column is actually NULL, so "show free" and the Free stat
+// tile disagreed with the row's own "Free" badge in the unfiltered list — the SQL-side sibling
+// of the two stats-bucket regressions above.
+test(
+  "buildAdminUserFilterSql free clauses match a NULL tier column too (COALESCE, not a raw literal comparison)",
+  () => {
+    const accessFree = buildAdminUserFilterSql({ access: "free" });
+    assert.match(accessFree.whereSql, /COALESCE\(tier, 'free'\) NOT IN \('premium', 'pro', 'elite', 'community'\)/);
+    assert.doesNotMatch(accessFree.whereSql, /^tier = 'free'/);
+
+    const tierFree = buildAdminUserFilterSql({ tier: "free" });
+    assert.match(tierFree.whereSql, /COALESCE\(tier, 'free'\) NOT IN \('premium', 'pro', 'elite', 'community'\)/);
   }
 );
