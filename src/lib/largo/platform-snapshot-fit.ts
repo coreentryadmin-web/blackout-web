@@ -2,6 +2,21 @@
 // Cross-product platform state exceeds 16k cap. Reduce flow limit and active session
 // count for Largo; product consumers (UI, Night Hawk, etc.) use full data directly.
 //
+// `raw.flows` IS NOT A BARE ARRAY — it is the `FlowTapeSummary` OBJECT
+// (`{as_of, session_date, count, total_premium, top_tickers, recent, strike_stacks, ...}`)
+// `getPlatformSnapshot()` (`src/lib/platform/index.ts`) actually assigns via
+// `snapshot.flows = await flows.getFlowTapeSummary(...)` — see `PlatformSnapshot.flows:
+// FlowTapeSummary | null` in `src/lib/platform/types.ts`. The old `Array.isArray(raw.flows)`
+// guard below only ever matched a bare array, which `raw.flows` never is in production — so
+// every real call to the Largo tool `get_platform_snapshot` silently dropped the ENTIRE flow
+// tape (not truncated: `"flows" in fitted` was `false`, with no signal anything was omitted),
+// while `get_flow_tape`'s own sibling fitter (`flow-tape-fit.ts`) correctly unwraps this exact
+// same shape. Confirmed live by feeding a real `FlowTapeSummary`-shaped fixture through the
+// pre-fix code (`platform-snapshot-fit.test.ts`): `fitted` came back with only `nighthawk`/`spx`
+// keys. Now handles BOTH the real object shape (caps `.recent`, keeps the aggregate/skew/
+// session-anchor fields beside it) and a bare array (kept for any caller that passes one
+// directly) instead of silently matching neither.
+//
 // `raw.spx` is `summarizeSpxDesk`'s full output — the SAME enrichment-tail-heavy shape
 // `get_spx_structure` needed `fitSpxStructureForModel` to trim (spx-structure-fit.ts:
 // unified_tape, news_headlines, macro_events, sector_heat, oi_changes, greek_exposure,
@@ -51,8 +66,17 @@ export function fitPlatformSnapshotForModel(
   if (raw.nighthawk) fitted.nighthawk = raw.nighthawk;
   if (raw.largo) fitted.largo = raw.largo;
 
-  // Reduce flows to top-N items
-  if (raw.flows && Array.isArray(raw.flows)) {
+  // Reduce flows to top-N items. Real shape (FlowTapeSummary): cap `.recent`, keep the
+  // aggregate/skew/session-anchor fields that sit beside it. Bare-array shape (legacy/test
+  // callers): cap directly. Check the object shape FIRST — a `FlowTapeSummary` is itself an
+  // object, not an array, so `Array.isArray` alone would never reach it.
+  if (raw.flows && Array.isArray(raw.flows.recent)) {
+    const { recent, ...flowMeta } = raw.flows as { recent: unknown[]; [k: string]: unknown };
+    const kept = recent.slice(0, flowLimitForModel);
+    fitted.flows = { ...flowMeta, recent: kept };
+    fitted.flows_shown = kept.length;
+    fitted.flows_truncated = recent.length > kept.length;
+  } else if (raw.flows && Array.isArray(raw.flows)) {
     fitted.flows = raw.flows.slice(0, flowLimitForModel);
     fitted.flows_shown = fitted.flows.length;
     fitted.flows_truncated = raw.flows.length > flowLimitForModel;
