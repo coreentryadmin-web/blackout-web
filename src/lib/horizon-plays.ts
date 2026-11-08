@@ -382,7 +382,21 @@ export function produceHorizonPlays(
         horizon: pick.horizon,
         score,
         status: score >= spec.scoreFloor ? "COMMIT" : "WATCH",
-        contract: pick.contract,
+        // BUG FIX (2026-11-08, Ask Largo standing mandate): `pick.contract` carries `delta` as an
+        // ABSOLUTE MAGNITUDE by ChainContract's own documented convention ("calls positive, puts'
+        // magnitude" — horizon-fanout.ts) because the ranker's band-matching needs sign-agnostic
+        // comparison. That convention is correct INSIDE the ranker but was leaking straight through
+        // to this play's own `contract` field, which is what the member/Largo-facing board actually
+        // renders — so a WATCH-stage PUT showed a POSITIVE delta (e.g. +0.61) exactly like a call,
+        // the opposite of standard options convention (puts are -1..0) and the opposite of what a
+        // COMMITTED position shows (live-plays.ts's `contractFromRow` re-signs via a live quote once
+        // a position is persisted — but a WATCH play never goes through that path, since it was never
+        // committed). Re-sign here, at the one choke point every WATCH (and freshly-produced,
+        // pre-persistence COMMIT) play's contract passes through, rather than patching every renderer.
+        contract:
+          pick.contract.right === "P" && pick.contract.delta != null
+            ? { ...pick.contract, delta: -Math.abs(pick.contract.delta) }
+            : pick.contract,
         scoreFloor: spec.scoreFloor,
         reason: pick.reason,
       });
