@@ -55,6 +55,33 @@ test("LONG picks calls, SHORT picks puts", () => {
   assert.equal(shortSet.ZERO_DTE[0].contract.right, "P");
 });
 
+// BUG FIX (2026-11-08): a PUT play's exposed `contract.delta` must be negative, matching standard
+// options convention and what a COMMITTED position shows once live-plays.ts re-signs it. Before this
+// fix, `pick.contract.delta` — stored as an absolute magnitude per ChainContract's own documented
+// convention — leaked straight through to WATCH-stage plays unsigned, so a real production SHORT/PUT
+// WATCH candidate (TSLA, confirmed live) rendered a POSITIVE delta (+0.61) exactly like a call. A
+// SWING score of 90 clears every lane's floor (COMMIT, not WATCH) here, but the contract shape this
+// test checks is exactly what a WATCH play of the same direction would also carry — the fix applies
+// unconditionally to every play, not only COMMIT ones.
+test("SHORT/PUT plays carry a NEGATIVE delta, not the ranker's internal absolute magnitude", () => {
+  const shortSet = produceHorizonPlays([fullChainCandidate("GGG", "SHORT", 90)]);
+  const longSet = produceHorizonPlays([fullChainCandidate("HHH", "LONG", 90)]);
+  for (const horizon of ["ZERO_DTE", "SWING", "LEAPS"] as const) {
+    const putPlay = shortSet[horizon][0];
+    assert.equal(putPlay.contract.right, "P");
+    assert.ok(
+      (putPlay.contract.delta as number) < 0,
+      `${horizon} PUT delta must be negative, got ${putPlay.contract.delta}`
+    );
+    const callPlay = longSet[horizon][0];
+    assert.equal(callPlay.contract.right, "C");
+    assert.ok(
+      (callPlay.contract.delta as number) > 0,
+      `${horizon} CALL delta must stay positive, got ${callPlay.contract.delta}`
+    );
+  }
+});
+
 test("a candidate with only a swing-window expiry appears only in Swing", () => {
   const cand: HorizonCandidate = {
     ticker: "FFF",
