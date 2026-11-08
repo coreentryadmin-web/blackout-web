@@ -72,3 +72,25 @@ export function swingBarWindow(row: SwingPositionRow): { from: string; to: strin
   to.setUTCDate(to.getUTCDate() + 1);
   return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
 }
+
+/**
+ * Normalize whatever a failed forward-bar fetch throws into a safe, loggable string.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-11-08): `multi-truth-grade/route.ts` used to catch a
+ * failed `fetchStockDailyBars` call with a bare `.catch(() => [])`, collapsing a rate-limited/
+ * circuit-open Polygon fetch failure into the exact same empty array a GENUINE "no bars for this
+ * window" result would produce — `multiTruthGrade.path.reason: "no_forward_bars"` then reads as a
+ * confident absence claim with no hint the real cause was a self-inflicted 429, violating this
+ * repo's own absence-honesty principle (LARGO-PRODUCT-CONTRACT.md). Live repro: a batch of 10
+ * concurrent distinct-ticker `fetchStockDailyBars` calls — this route's own un-mitigated
+ * concurrency — is enough on its own to trip 5+ consecutive Polygon 429s and open
+ * `polygon-rate-limiter.ts`'s shared circuit breaker; three fresh real calls to
+ * `GET /api/admin/swing/multi-truth-grade?days=90` each showed only 3/64 (4.7%) PATH-gradeable,
+ * even though every underlying bar window has real, fetchable Polygon data (verified directly:
+ * MSTR 2026-11-03..06 returns 4 real bars with no batching involved). This helper is the small,
+ * pure piece of the fix: route.ts now carries the real error through as `barsFetchError` instead
+ * of swallowing it, so a caller can tell "no data to grade" apart from "the fetch failed — retry."
+ */
+export function barFetchErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

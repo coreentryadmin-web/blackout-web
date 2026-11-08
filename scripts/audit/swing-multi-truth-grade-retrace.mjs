@@ -47,10 +47,18 @@ async function main() {
 
   let pathGradeable = 0;
   let thesisGradeable = 0;
+  // BUG FIX (Ask Largo standing mandate, 2026-11-08): the route this script calls used to collapse
+  // a rate-limited/circuit-open Polygon fetch into the SAME `barsFetched: 0` shape a genuinely
+  // empty result produces — this script's own "ungradeable" bucket below could not tell the two
+  // apart, so a burst of 429s from this route's own concurrency silently read as "no data for 95%
+  // of positions" instead of "the fetch failed, retry." Now that the route surfaces `barsFetchError`
+  // distinctly (non-null only on a real fetch failure), count and report it separately.
+  let barFetchErrors = 0;
   const thesisOutcomes = { CONFIRMED: 0, INVALIDATED: 0, OPEN: 0, ungradeable: 0 };
   const divergences = [];
 
   for (const row of rows) {
+    if (row.barsFetchError) barFetchErrors++;
     const g = row.multiTruthGrade;
     if (!g) continue;
     if (g.path?.gradeable) pathGradeable++;
@@ -78,6 +86,8 @@ async function main() {
     pathGradeableRate: pct(pathGradeable, total),
     thesisGradeableRate: pct(thesisGradeable, total),
     thesisOutcomes,
+    barFetchErrors,
+    barFetchErrorRate: pct(barFetchErrors, total),
     divergenceCount: divergences.length,
     divergences,
   };
@@ -89,6 +99,9 @@ async function main() {
     console.log(`  PATH gradeable:   ${pathGradeable}/${total} (${summary.pathGradeableRate})`);
     console.log(`  THESIS gradeable: ${thesisGradeable}/${total} (${summary.thesisGradeableRate})`);
     console.log(`  THESIS outcomes:  CONFIRMED=${thesisOutcomes.CONFIRMED} INVALIDATED=${thesisOutcomes.INVALIDATED} OPEN=${thesisOutcomes.OPEN} ungradeable=${thesisOutcomes.ungradeable}`);
+    if (barFetchErrors > 0) {
+      console.log(`  ⚠ Bar fetch FAILED (not genuinely absent) on ${barFetchErrors}/${total} rows (${summary.barFetchErrorRate}) — the ungradeable count above is inflated by this; retry rather than reading it as real absence.`);
+    }
     console.log(`  Divergences (THESIS vs markfreeze P&L sign): ${divergences.length}`);
     for (const d of divergences.slice(0, 20)) {
       console.log(`    ${d.ticker} #${d.positionId}: ${d.kind} (markfreeze P&L ${d.pnl}%)`);
