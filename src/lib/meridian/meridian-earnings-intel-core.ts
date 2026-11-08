@@ -11,7 +11,17 @@ function fmtPremShort(n: number): string {
   if (!Number.isFinite(n)) return "—";
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+  if (abs >= 1_000) {
+    const k = abs / 1_000;
+    // BUG FIX (round 399): the unit (K) was picked from the UNROUNDED value, then the
+    // chosen unit's own rounding could carry it past its own threshold — a dark-pool
+    // print/premium of $999,600 is < 1_000_000 so it took the K branch, then
+    // (999600/1000).toFixed(0) rounds UP to "1000", rendering "$1000K" and never
+    // promoting to the M tier it had actually crossed into. Mirrors the same
+    // overflow-into-next-unit guard already shipped in fmt-money.ts's fmtPremium.
+    if (Math.round(k) >= 1000) return `$${(n / 1_000_000).toFixed(1)}M`;
+    return `$${(n / 1_000).toFixed(0)}K`;
+  }
   return `$${n.toFixed(0)}`;
 }
 

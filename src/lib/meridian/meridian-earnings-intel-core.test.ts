@@ -138,6 +138,28 @@ test("shapeMeridianDarkPool: aggregate premium without tape rows", () => {
   assert.match(String(shaped.detail), /tape unavailable/i);
 });
 
+test("shapeMeridianDarkPool: premium that rounds up to 1000K promotes to the M unit, not '$1000K'", () => {
+  // BUG FIX (round 399): fmtPremShort picked its unit (K vs M) off the UNROUNDED
+  // value, then rounded to 0 decimals inside the K branch — so a total/call/put
+  // premium just under $1M that rounds UP to 1000 of the K unit (e.g. 999_600 ->
+  // 999.6 -> toFixed(0) "1000") rendered the nonsensical "$1000K" instead of
+  // promoting to "$1.0M". Every premium_label on this shape went through the same
+  // defective helper, so the regression covers total/call/put in one snapshot.
+  const shaped = shapeMeridianDarkPool({
+    prints: [{ strike: 100, premium: 999_600, side: "buy", executed_at: "2026-11-08T14:30:00" }],
+    total_premium: 999_600,
+    call_premium: 999_600,
+    put_premium: 0,
+    bias: "bullish",
+    pcr: null,
+    detail: "1 print(s) | $999.60K",
+  });
+  assert.equal(shaped.total_premium_label, "$1.0M");
+  assert.equal(shaped.call_premium_label, "$1.0M");
+  assert.equal(shaped.top_prints[0].premium_label, "$1.0M");
+  assert.notEqual(shaped.total_premium_label, "$1000K");
+});
+
 test("coerceMeridianWallLevels preserves gamma truth and orders display band when inverted", () => {
   const tgt = coerceMeridianWallLevels({ call_wall: 150, put_wall: 152.5, spot: 151.01 });
   assert.equal(tgt.gamma_call_wall, 150);
