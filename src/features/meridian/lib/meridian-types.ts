@@ -884,6 +884,10 @@ export type MeridianTickerLookup = {
 
 export type MeridianTimelinePayload = {
   as_of: string;
+  /** ET session date (YYYY-MM-DD) `as_of` resolves to — the Largo C1 session anchor. `as_of`
+   *  alone is a UTC instant whose calendar date is already tomorrow for the last ~4h of RTH;
+   *  this is the field a consumer should resolve "today" from, never `as_of`'s own date. */
+  session_date: string | null;
   days_ahead: number;
   items: MeridianTimelineItem[];
   stats: MeridianTimelineStats;
