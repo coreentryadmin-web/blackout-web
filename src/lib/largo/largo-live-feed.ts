@@ -494,6 +494,63 @@ export function formatLargoLiveFeed(rawFeed: LargoLiveFeed, ticker: string): str
     lines.push("");
   }
 
+  // BUG FIX (round 433): `captureLargoLiveFeed` pre-populates `spx_confluence`, `lotto_live`
+  // and `power_hour` specifically "so Largo sees it ... without the tool-call round-trip" (see
+  // that function's own comments) — but this renderer, the ONLY consumer that turns the
+  // captured feed into something the model actually reads during generation, never read any of
+  // the three. Every pre-fetch (getLargoSpxLiveDesk, computeSpxConfluence, loadLottoRecord) was
+  // therefore spent for nothing: the model never saw the result and still had to call
+  // get_spx_confluence/get_lotto_state itself — the exact round-trip the pre-population exists
+  // to avoid. Rendered here, beside the SPX desk block, since both are gated on the same
+  // `needsSpxDesk || scopeTicker === "SPX"` condition in captureLargoLiveFeed.
+  const confluence = asObj(feed.spx_confluence);
+  if (confluence && !confluence.error) {
+    lines.push("### SPX confluence (pre-computed — call get_spx_confluence for the full factor breakdown)");
+    lines.push(
+      [
+        confluence.action != null ? `Action: ${confluence.action}` : null,
+        confluence.bias != null ? `bias ${confluence.bias}` : null,
+        confluence.score != null ? `score ${confluence.score}` : null,
+        confluence.grade != null ? `grade ${confluence.grade}` : null,
+        confluence.direction != null ? `direction ${confluence.direction}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    );
+    if (confluence.agreeing != null || confluence.conflicts != null) {
+      lines.push(
+        `Factors: ${confluence.agreeing ?? "—"} agreeing vs ${confluence.conflicts ?? "—"} conflicting` +
+          (confluence.weighted_conflicts != null ? ` (weighted ${confluence.weighted_conflicts})` : "")
+      );
+    }
+    lines.push("");
+  }
+
+  const lotto = asObj(feed.lotto_live);
+  if (lotto && lotto.available !== false && !lotto.error) {
+    lines.push("### SPX lotto (live — call get_lotto_state for full detail)");
+    lines.push(
+      [
+        lotto.phase != null ? `phase ${lotto.phase}` : null,
+        lotto.direction != null ? `direction ${lotto.direction}` : null,
+        lotto.contract_label != null ? `contract ${lotto.contract_label}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    );
+    if (lotto.headline) lines.push(String(lotto.headline));
+    if (lotto.status_message) lines.push(String(lotto.status_message));
+    lines.push("");
+  }
+
+  const powerHour = asObj(feed.power_hour);
+  if (powerHour?.active) {
+    lines.push(
+      `### Power hour ACTIVE — ${powerHour.minutes_remaining} minutes remaining in the regular session.`
+    );
+    lines.push("");
+  }
+
   // GEX dealer regime — from getGexPositioning (same cache as Heatmaps, zero extra API calls).
   // Gives Largo named regime context on every SPX desk question. Placed outside the spx block
   // so it renders even when spx_structure is stale/missing (e.g. after-hours).
