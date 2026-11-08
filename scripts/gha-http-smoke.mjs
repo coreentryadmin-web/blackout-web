@@ -82,8 +82,15 @@ if (CRON) {
   // gating works), and only FAIL on the statuses that actually indicate a broken deploy — 404 (route
   // gone), 5xx (crash), or a network error surfaced as a non-numeric/0 status. The 401/403 case logs a
   // WARN so the drift stays visible and someone can reconcile CRON_SECRET to restore the true-200 check.
-  if (status === 200 && body?.price > 0) {
-    console.log(`  ✓ /api/market/spx/desk → SPX ${body.price} (cron auth ok)`);
+  const deskGrounded =
+    status === 200 &&
+    !body?.error &&
+    (body?.price > 0 ||
+      (typeof body?.prior_close === "number" && body.prior_close > 0));
+  if (deskGrounded) {
+    const spot =
+      body?.price > 0 ? body.price : `(off-hours prior ${body.prior_close})`;
+    console.log(`  ✓ /api/market/spx/desk → SPX ${spot} (cron auth ok)`);
   } else if (status === 401 || status === 403) {
     console.warn(
       `  ⚠ /api/market/spx/desk → ${status} (route up + gated; CI CRON_SECRET does not match the deployed value — reconcile it to re-enable the authenticated price check)`
