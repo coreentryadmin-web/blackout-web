@@ -104,9 +104,29 @@ export function passesHelixDiscordFilters(flow: HelixDiscordFlowInput, now = new
 
 export function moneyShort(n: number): string {
   if (!Number.isFinite(n)) return "—";
+  // BUG FIX: this function had no "B" tier at all — any value >= $1B (e.g. a session-wide
+  // dark-pool/HELIX premium total, which this exact helper feeds via
+  // discord-eod-recap.ts/darkpool-discord-format.ts and routinely crosses $1B given a $500K+
+  // per-print floor over up to 400 qualifying prints a session) rendered as an overflowed
+  // 4+ digit "M" label (e.g. "$1234.57M") instead of "$1.23B" — not the already-fixed K->M
+  // boundary-rounding defect (#6727, which only promotes a value whose K-quotient rounds to
+  // 1000), but a wholesale missing scale one tier up, affecting the ENTIRE billion-dollar range,
+  // not just a sliver near a boundary. Every sibling money formatter in the repo (fmt-money.ts,
+  // helix-contract-notional-format.ts, helix-tide-money-format.ts, meridian-revenue-format.ts,
+  // vector-crosshair-format.ts, gex-heatmap-money-format.ts, swing/format-nonzero.ts) already
+  // has a B tier; this one — reachable from live Discord embeds — did not.
+  if (Math.abs(n) >= 1e9) {
+    const v = n / 1e9;
+    return `$${v >= 10 ? v.toFixed(1) : v.toFixed(2)}B`;
+  }
   if (Math.abs(n) >= 1e6) {
     const v = n / 1e6;
-    return `$${v >= 10 ? v.toFixed(1) : v.toFixed(2)}M`;
+    const vStr = v >= 10 ? v.toFixed(1) : v.toFixed(2);
+    // Same round-first-then-promote guard as the K->M case below, one tier up: a value whose
+    // M-quotient rounds to >=1000 belongs in the new B tier above, not an overflowed four-digit
+    // M label (e.g. 999_950_000 must read "$1.00B", never "$1000.0M").
+    if (Math.abs(Number(vStr)) >= 1000) return `$${(n / 1e9).toFixed(2)}B`;
+    return `$${vStr}M`;
   }
   if (Math.abs(n) >= 1e3) {
     // A value that ROUNDS to 1000 of this unit belongs in the next unit up, not an overflowed
