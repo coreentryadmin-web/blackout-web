@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom";
 import { gammaShareByExpiry } from "@/features/thermal/lib/gex-heatmap/per-expiry-levels";
 import { recomputeLevels } from "@/features/thermal/lib/gex-heatmap/recompute-levels";
+import { fmtMoney, fmtMoneySigned } from "@/features/thermal/lib/gex-heatmap-money-format";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { clsx } from "clsx";
@@ -400,23 +401,6 @@ async function fetchGexHeatmap(url: string): Promise<GexHeatmapResponse> {
   });
   if (!res.ok) throw new Error(`GEX heatmap → ${res.status}`);
   return res.json();
-}
-
-/** Compact signed dollar value: $22.1K / -$45.2M / $1.2B. */
-function fmtMoney(n: number): string {
-  const abs = Math.abs(n);
-  const sign = n < 0 ? "-" : "";
-  if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
-  if (abs < 1) return "·";
-  return `${sign}$${abs.toFixed(0)}`;
-}
-
-/** Always-signed compact dollar value: +$22.1K / -$45.2M. Used where sign is meaning. */
-function fmtMoneySigned(n: number): string {
-  if (n === 0) return "·";
-  return n > 0 ? `+${fmtMoney(n)}` : fmtMoney(n);
 }
 
 /**
