@@ -37,7 +37,11 @@
 //      durable error_events sink via captureError/recordAdminRouteError elsewhere).
 import { heatmapPresetTickers } from "@/lib/heatmap-allowlist";
 import { peekGexHeatmapCache, type GexHeatmapCachePeek } from "@/lib/providers/polygon-options-gex";
-import { fetchGexRegimeEvents, type GexRegimeEventRow } from "@/lib/providers/gex-regime-events";
+import {
+  fetchGexRegimeEvents,
+  countGexRegimeEventsSince,
+  type GexRegimeEventRow,
+} from "@/lib/providers/gex-regime-events";
 import { buildCronHealthSnapshot, type CronJobHealth } from "@/lib/admin-cron-health";
 import { fetchRecentErrorEvents } from "@/lib/error-sink";
 import { dbConfigured } from "@/lib/db";
@@ -94,9 +98,22 @@ export type GexHealthSnapshot = {
   errors: string[];
 };
 
-/** Summarize regime-event rows (already most-recent-first) into per-ticker/per-type counts
- *  over the trailing `windowMs`. Pure — no I/O, easy to unit test independent of the fetch. */
+/**
+ * Summarize regime-event rows (already most-recent-first) into per-ticker/per-type counts over
+ * the trailing `windowMs`. Pure — no I/O, easy to unit test independent of the fetch.
+ *
+ * `totalCount` must be a REAL, unbounded count (countGexRegimeEventsSince), never
+ * `rows.length` — `rows` is only ever the REGIME_EVENT_FETCH_LIMIT-bounded sample
+ * (fetchGexRegimeEvents), and across ~11 heatmap-preset tickers a busy day can log more real
+ * transitions than that cap in 24h. Deriving the headline "Regime events (24h)" total from the
+ * sample's own length would then silently plateau at the cap no matter how much larger the real
+ * count is — exactly the "total capped at the sample LIMIT" bug error-sink.ts's
+ * countAuthFailures had (fixed 2026-11-08). by_ticker/by_type stay sample-derived — they are an
+ * explicitly bounded breakdown/preview, not a field named or consumed as a total, so there is no
+ * equivalent bug there.
+ */
 export function summarizeRegimeEvents(
+  totalCount: number,
   rows: GexRegimeEventRow[],
   windowMs: number
 ): GexRegimeEventSummary {
@@ -115,7 +132,7 @@ export function summarizeRegimeEvents(
 
   return {
     window_hours: Math.round(windowMs / 3_600_000),
-    total: inWindow.length,
+    total: totalCount,
     by_ticker: Array.from(byTicker.entries())
       .map(([ticker, count]) => ({ ticker, count }))
       .sort((a, b) => b.count - a.count),
@@ -153,11 +170,20 @@ export async function fetchGexHealthSnapshot(): Promise<GexHealthSnapshot> {
     })
   );
 
-  // Leg 2 — durable regime-transition history (task #136). One shared fetch feeds both the
-  // panel's summary counts and its raw recent-rows table — no second query.
+  // Leg 2 — durable regime-transition history (task #136). The bounded sample feeds the
+  // panel's by_ticker/by_type breakdown and raw recent-rows table; the headline "total" comes
+  // from a SEPARATE real, unbounded COUNT(*) (countGexRegimeEventsSince) run over the same
+  // window — see summarizeRegimeEvents' doc comment for why `rows.length` of the bounded
+  // sample must never stand in for that total.
   let regimeRows: GexRegimeEventRow[] = [];
+  let regimeEventsTotal = 0;
   try {
-    regimeRows = await fetchGexRegimeEvents({ limit: REGIME_EVENT_FETCH_LIMIT });
+    const [rows, totalSince] = await Promise.all([
+      fetchGexRegimeEvents({ limit: REGIME_EVENT_FETCH_LIMIT }),
+      countGexRegimeEventsSince(REGIME_EVENT_SUMMARY_WINDOW_MS),
+    ]);
+    regimeRows = rows;
+    regimeEventsTotal = totalSince;
   } catch (e) {
     errors.push(`regime events: ${e instanceof Error ? e.message : "failed"}`);
   }
@@ -199,7 +225,7 @@ export async function fetchGexHealthSnapshot(): Promise<GexHealthSnapshot> {
     db_configured: dbConfigured(),
     tickers,
     regime_events: {
-      summary: summarizeRegimeEvents(regimeRows, REGIME_EVENT_SUMMARY_WINDOW_MS),
+      summary: summarizeRegimeEvents(regimeEventsTotal, regimeRows, REGIME_EVENT_SUMMARY_WINDOW_MS),
       recent: regimeRows.slice(0, REGIME_EVENT_TABLE_LIMIT),
     },
     cron: cronJobs,

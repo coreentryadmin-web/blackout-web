@@ -67,6 +67,11 @@ mock.module("../db", {
           ...row,
         }));
     },
+    // The REAL, unbounded count companion to fetchGexRegimeEventRows' own LIMIT-bounded
+    // sample (see db.ts's own doc comment) — this single-process in-memory `state.inserted`
+    // never exceeds a test's own small fixture size, so "all of it" IS the real count here;
+    // windowMs is unused by this stub (every inserted row shares the same fixed observed_at).
+    countGexRegimeEventsSince: async (_windowMs: number) => state.inserted.length,
   },
 });
 mock.module("./spx-session", {
@@ -281,6 +286,26 @@ test("fetchGexRegimeEvents: delegates to the db layer and scopes by ticker", asy
   const scoped = await fetchGexRegimeEvents({ ticker: "qqq", limit: 10 });
   assert.equal(scoped.length, 1);
   assert.equal(scoped[0]!.ticker, "QQQ");
+});
+
+test("countGexRegimeEventsSince: db not configured — returns 0 without calling the DB layer", async () => {
+  const { countGexRegimeEventsSince } = await mod();
+  resetState();
+  state.dbConfigured = false;
+
+  const total = await countGexRegimeEventsSince(24 * 60 * 60_000);
+  assert.equal(total, 0);
+});
+
+test("countGexRegimeEventsSince: delegates to the db layer's real count", async () => {
+  const { persistGexRegimeEvents, countGexRegimeEventsSince } = await mod();
+  resetState();
+
+  await persistGexRegimeEvents("SPY", [flipCrossedEvent()]);
+  await persistGexRegimeEvents("QQQ", [flipCrossedEvent({ level: 380 })]);
+
+  const total = await countGexRegimeEventsSince(24 * 60 * 60_000);
+  assert.equal(total, 2);
 });
 
 test("gexRegimeEventsForLargo: no history for the queried ticker — available:false with a clear note", async () => {
