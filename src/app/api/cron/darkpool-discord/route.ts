@@ -139,6 +139,13 @@ async function runDarkpoolDiscordTick({
     const eodClaimed = await claimDiscordEodRecap("darkpool", sessionDate, bypassDedup);
     if (eodClaimed) {
       const { fetchUwDarkPoolRecent } = await import("@/lib/providers/unusual-whales");
+      // `fetchUwDarkPoolRecent` internally clamps its own `limit` param to 100
+      // (`Math.min(limit, 100)` — see unusual-whales.ts), so the `200` requested here never
+      // actually raises the real cap; a busy full-session recap can easily see more than 100
+      // genuine dark-pool blocks print, which would otherwise silently truncate this embed's
+      // "N blocks"/"total notional" headline to the cap's worth — same "total capped at
+      // sample-query LIMIT" shape as the sibling HELIX EOD recap fix in this same file.
+      const DARKPOOL_EOD_FETCH_EFFECTIVE_CAP = 100;
       const rawRows = await fetchUwDarkPoolRecent(200);
       const sessionPrints: DarkPoolDiscordPrint[] = (Array.isArray(rawRows) ? rawRows : [])
         .map(normalizeDarkPoolDiscordPrint)
@@ -147,6 +154,7 @@ async function runDarkpoolDiscordTick({
         prints: sessionPrints,
         sessionDate,
         now,
+        truncated: Array.isArray(rawRows) && rawRows.length >= DARKPOOL_EOD_FETCH_EFFECTIVE_CAP,
       });
       postedEod = await postDiscordWebhook(webhook, { embeds: [eodEmbed] }, "darkpool-eod-recap");
     }

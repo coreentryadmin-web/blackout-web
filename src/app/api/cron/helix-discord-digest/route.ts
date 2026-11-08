@@ -314,9 +314,21 @@ export async function GET(req: NextRequest) {
         // buildHelixEodRecapEmbed) ever sees those rows — same bug shape the dark-pool cron's
         // EOD branch already avoids by doing its own dedicated full-session fetch instead of
         // reusing the live-scan window. Fetch a session-wide window just for the recap.
+        //
+        // That window fetch is STILL `limit`-capped (necessarily — an unbounded query per cron
+        // tick is its own risk), and this cap was sized for the narrow 15-min live-digest slice,
+        // not a full ~6-7h RTH session: on a busy day, more than SESSION_RECAP_FETCH_LIMIT whale
+        // prints can clear the $500k/≤30DTE filter across the WHOLE session, silently truncating
+        // the embed's "N qualifying prints"/"total premium" headline to the cap's worth rather
+        // than the session's real total — the exact "total capped at sample-query LIMIT" shape
+        // this session's audit already fixed twice elsewhere (error-sink.ts, admin-gex-health.ts).
+        // `sessionRows.length === SESSION_RECAP_FETCH_LIMIT` is a cheap, reliable truncation
+        // signal (it only trips when the DB genuinely had at least that many matching rows), so
+        // the embed renders an honest "N+"/"$X+" instead of a false-precise undercount.
+        const SESSION_RECAP_FETCH_LIMIT = 400;
         const sessionSinceHours = Math.ceil(hoursSinceSessionOpenEt(sessionDate, now)) + 1;
         const sessionRows = await fetchRecentFlows({
-          limit: 400,
+          limit: SESSION_RECAP_FETCH_LIMIT,
           min_premium: HELIX_DISCORD_MIN_PREMIUM,
           max_dte: HELIX_DISCORD_MAX_DTE,
           since_hours: sessionSinceHours,
@@ -329,6 +341,7 @@ export async function GET(req: NextRequest) {
           flows: sessionFlows,
           sessionDate,
           now,
+          truncated: sessionRows.length >= SESSION_RECAP_FETCH_LIMIT,
         });
         postedEod = await postDiscordWebhook(webhook, { embeds: [eodEmbed] }, "helix-eod-recap");
       }

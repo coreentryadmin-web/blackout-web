@@ -68,6 +68,29 @@ test("buildHelixEodRecapEmbed summarizes session leaders", () => {
   });
   assert.match(emb.title, /Session recap/);
   assert.match(emb.description ?? "", /TSLA/);
+  // Default (no `truncated`) must stay exact — no "+" when the caller's fetch was known-complete.
+  assert.match(emb.description ?? "", /\*\*2\*\* qualifying prints/);
+});
+
+// Regression: "total capped at sample-query LIMIT" — the same bug shape this session's audit
+// already fixed in error-sink.ts's countAuthFailures and admin-gex-health.ts's
+// summarizeRegimeEvents. The caller (helix-discord-digest/route.ts) fetches the WHOLE session's
+// qualifying flow with a fixed row LIMIT sized for the narrow 15-min live digest, then reused for
+// the full ~6-7h EOD recap. On a busy session that cap can be hit well before every real
+// qualifying print is captured, so `session.length`/`totalPrem` would silently understate the
+// session's true total — exactly when the session was busiest. Without `truncated: true`, the
+// embed used to present that undercount as an exact figure ("**2** qualifying prints"); it must
+// now render an honest "+" so nobody mistakes a capped sample for a real session total.
+test("buildHelixEodRecapEmbed marks the headline count/premium as a lower bound when the caller's fetch was truncated", () => {
+  const emb = buildHelixEodRecapEmbed({
+    sessionDate: "2026-08-04",
+    flows: [helixBase, { ...helixBase, ticker: "TSLA", premium: 1_200_000 }],
+    now: new Date("2026-08-04T20:06:00.000Z"),
+    truncated: true,
+  });
+  assert.match(emb.description ?? "", /\*\*2\+\*\* qualifying prints/);
+  assert.match(emb.description ?? "", /\*\*\$2\.10M\+\*\* total premium/); // moneyShort output + "+" suffix
+  assert.doesNotMatch(emb.description ?? "", /\*\*2\*\* qualifying prints/);
 });
 
 test("filterDarkpoolSessionPrints keeps RTH prints", () => {
@@ -169,6 +192,24 @@ test("buildDarkpoolEodRecapEmbed includes buy/sell counts", () => {
     now: new Date("2026-08-04T20:06:00.000Z"),
   });
   assert.match(emb.description ?? "", /buy \/ 1 sell/);
+});
+
+// Same "total capped at sample-query LIMIT" shape as the HELIX EOD recap fix above, for the
+// dark-pool recap's own capped provider fetch (darkpool-discord/route.ts: fetchUwDarkPoolRecent
+// internally clamps to 100 regardless of what's requested).
+test("buildDarkpoolEodRecapEmbed marks the headline count/notional as a lower bound when truncated", () => {
+  const emb = buildDarkpoolEodRecapEmbed({
+    sessionDate: "2026-08-04",
+    prints: [
+      { ticker: "NVDA", premium: 6_000_000, side: "buy", executed_at: "2026-08-04T15:00:00.000Z" },
+      { ticker: "AAPL", premium: 7_000_000, side: "sell", executed_at: "2026-08-04T16:00:00.000Z" },
+    ],
+    now: new Date("2026-08-04T20:06:00.000Z"),
+    truncated: true,
+  });
+  assert.match(emb.description ?? "", /\*\*2\+\*\* blocks/);
+  assert.match(emb.description ?? "", /\*\*\$13\.0M\+\*\* notional/);
+  assert.doesNotMatch(emb.description ?? "", /\*\*2\*\* blocks/);
 });
 
 // Regression for #3960 (CLQ-037/044): sharedCacheSetNx now THROWS on a Redis command error

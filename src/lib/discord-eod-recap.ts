@@ -135,6 +135,23 @@ export function buildHelixEodRecapEmbed(input: {
   flows: readonly HelixDiscordFlowInput[];
   sessionDate: string;
   now?: Date;
+  /**
+   * True when `flows` is itself a LIMIT-capped fetch that returned exactly its cap (i.e. the
+   * caller's DB query hit its row ceiling for the whole session, not just for the narrow
+   * 15/30-min live-digest window the same ceiling was originally sized for). See the caller's
+   * own comment (helix-discord-digest/route.ts) and the regression test below for the concrete
+   * shape: on a busy session, more whale prints can clear the $500k/≤30DTE filter over a full
+   * ~6-7h RTH session than the 400-row cap sized for a 15-minute slice ever allows through, so
+   * `session.length`/`totalPrem` below silently UNDERCOUNT rather than reporting the session's
+   * true total — exactly the "total capped at sample-query LIMIT" shape this file's sibling
+   * fixes (error-sink.ts's countAuthFailures, admin-gex-health.ts's summarizeRegimeEvents)
+   * already closed for their own dashboards. Reproducing the EXACT qualifying count here would
+   * require re-deriving `fill_price` in raw SQL (a nontrivial JSON-payload cast the row fetch
+   * itself needs several CASE branches for — see db.ts's `fetchRecentFlows`), so rather than
+   * duplicate that logic and risk it drifting out of sync, an honest "+" suffix is used instead:
+   * never silently present a certainly-incomplete sample as an exact total.
+   */
+  truncated?: boolean;
 }): DiscordEmbed {
   const now = input.now ?? new Date();
   const et = now.toLocaleString("en-US", {
@@ -148,6 +165,7 @@ export function buildHelixEodRecapEmbed(input: {
   const session = filterHelixSessionFlows(input.flows, input.sessionDate, now);
   const ranked = [...session].sort((a, b) => Number(b.premium) - Number(a.premium)).slice(0, 5);
   const totalPrem = session.reduce((s, f) => s + Number(f.premium), 0);
+  const plus = input.truncated ? "+" : "";
 
   if (!ranked.length) {
     return {
@@ -193,7 +211,7 @@ export function buildHelixEodRecapEmbed(input: {
   return {
     title: "📋 HELIX · Session recap",
     description:
-      `**${session.length}** qualifying prints · **${moneyShort(totalPrem)}** total premium\n\n` +
+      `**${session.length}${plus}** qualifying prints · **${moneyShort(totalPrem)}${plus}** total premium\n\n` +
       `${body}\n\n[Open HELIX desk](${APP_BASE}/flows)`,
     color: 0x22d3ee,
     footer: { text: `BlackOut HELIX · ${et} ET · ${input.sessionDate}` },
@@ -206,6 +224,10 @@ export function buildDarkpoolEodRecapEmbed(input: {
   prints: readonly DarkPoolDiscordPrint[];
   sessionDate: string;
   now?: Date;
+  /** Same meaning as `buildHelixEodRecapEmbed`'s own `truncated` — true when `prints` is a
+   *  capped provider fetch (see the caller's own known cap) that returned exactly its cap, so
+   *  the session's real block count/notional may exceed what is shown here. */
+  truncated?: boolean;
 }): DiscordEmbed {
   const now = input.now ?? new Date();
   const et = now.toLocaleString("en-US", {
@@ -221,6 +243,7 @@ export function buildDarkpoolEodRecapEmbed(input: {
   const total = session.reduce((s, p) => s + p.premium, 0);
   const buys = session.filter((p) => p.side === "buy").length;
   const sells = session.filter((p) => p.side === "sell").length;
+  const plus = input.truncated ? "+" : "";
 
   if (!ranked.length) {
     return {
@@ -249,7 +272,7 @@ export function buildDarkpoolEodRecapEmbed(input: {
   return {
     title: "📋 Dark Pool · Session recap",
     description:
-      `**${session.length}** blocks · **${moneyShort(total)}** notional · ${buys} buy / ${sells} sell\n\n` +
+      `**${session.length}${plus}** blocks · **${moneyShort(total)}${plus}** notional · ${buys} buy / ${sells} sell\n\n` +
       `${body}\n\n[Open HELIX desk](${APP_BASE}/flows)`,
     color: 0x6366f1,
     footer: { text: `BlackOut Dark Pool · ${et} ET · ${input.sessionDate}` },
