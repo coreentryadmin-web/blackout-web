@@ -41,6 +41,7 @@
 import { polygonTrackedFetch } from "./polygon-rate-limiter";
 import { polygonConfigured } from "./config";
 import { serverCache, TTL } from "@/lib/server-cache";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
@@ -73,6 +74,14 @@ export type NewsResult = {
   items: NewsItem[];
   /** When this read was performed (ISO). */
   asOf: string;
+  /**
+   * Largo C1 (contract/session-anchor.test.ts): the ET calendar date `asOf` resolves to. A bare
+   * UTC instant alone reads a full session ahead for anyone resolving "today" after ~20:00 ET —
+   * same inversion class fixed in #2418/#2420/#2422. Null only for the defensive case where
+   * `asOf` itself failed to parse, which should never happen since both are derived from the same
+   * instant in `buildNewsResult`.
+   */
+  session_date: string | null;
   /** Freshest item's publishedAt, or null when there are no items — a real freshness anchor. */
   newest: string | null;
   /** Set ONLY on error/timeout/unconfigured (fail-open). Absent on a successful read, even an empty one. */
@@ -113,13 +122,20 @@ export function normalizeNewsArticles(raw: unknown): NewsItem[] {
   return items;
 }
 
-/** Pure: assemble a NewsResult (computes asOf + the freshest publishedAt anchor). */
+/** Pure: assemble a NewsResult (computes asOf + its ET session_date anchor + the freshest publishedAt). */
 export function buildNewsResult(items: NewsItem[], unavailable?: string): NewsResult {
   let newest: string | null = null;
   for (const it of items) {
     if (it.publishedAt && (newest == null || it.publishedAt > newest)) newest = it.publishedAt;
   }
-  const result: NewsResult = { items, asOf: new Date().toISOString(), newest };
+  // Anchored to the SAME instant as `asOf` so the two can never describe different moments.
+  const nowMs = Date.now();
+  const result: NewsResult = {
+    items,
+    asOf: new Date(nowMs).toISOString(),
+    session_date: etSessionDate(nowMs),
+    newest,
+  };
   if (unavailable) result.unavailable = unavailable;
   return result;
 }
