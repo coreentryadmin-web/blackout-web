@@ -19,7 +19,7 @@ import type { RichSection } from "@/lib/bie/rich-narrative";
  * `flowNarrative` + `flowIntelSection`). "Desk context" stays excluded — `crossDeskCoaching`
  * does not cover outcome history, and remapping the stale title would silently delete it.
  *
- * Three titles in this set are NOT unconditionally covered — unlike every other title here,
+ * Seven titles in this set are NOT unconditionally covered — unlike every other title here,
  * dropping them off static membership alone can falsely claim a fold that never happened in the
  * narrative. Each has its own `collapseRedundantIntelSections` opt, computed by the caller from
  * the SAME real predicate the narrative generator uses, rather than trusting this static list:
@@ -43,7 +43,44 @@ import type { RichSection } from "@/lib/bie/rich-narrative";
  *   `vec.play` existing at all), but the narrative's `vectorPlayCoaching` returns `null` on ANY
  *   stale snapshot, no exception — same false-fold shape.
  *
- * `undefined`/`false` is the SAFE default for all three: the section is kept (never dropped) and
+ * - "Levels on chart" (`levelsOnChartFolded`): `chartLevelsSection` renders GEX king strike / max
+ *   pain / up to 3 dark-pool levels with NO cap at all, but the narrative's only counterpart
+ *   (`tradeManagerNarrativeSection`'s focal-levels loop, via `narrateKing`/`narrateMaxPain`/
+ *   `narrateDarkPool`) is itself subject to that function's own `MAX_BULLETS` cap, bypassing it
+ *   only when a given level happens to be the one `resolveInvalidationFocalLevel` names for the
+ *   reserved "Break watch" bullet. The caller cannot cheaply reconstruct "was the cap already full
+ *   by the time this loop got here" without replaying the whole upstream bullet-accumulation
+ *   order, so this one is intentionally approximate: it is "folded" only when NONE of the three
+ *   at-risk facts (king/max-pain/dark-pool) exist for this ticker at all — see
+ *   `levelsOnChartHasUnfoldableContent` (play-brief-intel.ts) for the exact mirrored predicate.
+ *   Biased the same safe-default direction as the others: this UNDER-folds (keeps the section
+ *   slightly more often than strictly necessary when the cap genuinely had room) but can never
+ *   falsely claim a fold that actually starved.
+ *
+ * - "Flow & positioning" (`flowIntelFolded`): two independent gaps. (1) `flowIntelSection`'s
+ *   0DTE-condor line ("sold iron condor") has NO narrative counterpart by construction — both
+ *   `crossDeskCoaching` and `counterThesisLine` explicitly zero out their 0DTE comparison whenever
+ *   `is_condor === true` (a delta-neutral structure has no directional "aligned"/"conflict" fact).
+ *   (2) `flowNarrative` early-returns `null` whenever the 6h HELIX tape has zero prints, BEFORE it
+ *   ever reaches its own anomalies/notable-prints blocks — but `flowIntelSection`'s own "Flow
+ *   anomalies"/"Notable prints" blocks gate only on `flow_feed_fresh`, independent of the 6h print
+ *   count, so a ticker with real 24h-anomaly or 48h-notable-print content and a quiet 6h tape
+ *   renders real content in the section with zero narrative counterpart.
+ *
+ * - "Macro tape" (`macroTapeFolded`): `macroTapeSection` renders whenever any of
+ *   `yield_10_year`/`curve_10y_1y_spread`/`cpi` is present, OR `arsenal.breadth` is truthy — but
+ *   `macroTapeCoaching` never reads `cpi` at all, and its breadth trigger requires `breadth?.tone`
+ *   specifically rather than bare object presence.
+ *
+ * - "Hold plan" (`holdPlanFolded`, `bucket === "open"` only): the bare "Thesis health X% (rung)"
+ *   bullet renders unconditionally whenever `play.thesisHealth` is present and calibrated, but
+ *   `thesisPillarCoaching` (the only narrative function that narrates a thesis-health %/rung at
+ *   all) returns `null` for a healthy, stable position (no faded pillar, no real moves). A second,
+ *   narrower asymmetry on the same title: the Runner-fraction line triggers on
+ *   `ep.runner_fraction != null` alone, while the narrative's own runner-fraction clause is
+ *   suppressed whenever the position is a full flatten (manageAction EXIT/STOP_OUT).
+ *
+ * `undefined`/`false` is the SAFE default for all seven: the section is kept (never dropped) and
  * the "folded into Trade manager read" note never claims coverage it can't prove — a caller that
  * forgets to pass one of these loses the collapse for that one section, never gains a false claim.
  */
@@ -90,6 +127,32 @@ export function collapseRedundantIntelSections(
      * "Vector desk" entry. Same safe-default shape as `laneRankFolded`.
      */
     vectorDeskFolded?: boolean;
+    /**
+     * Whether the king/max-pain/dark-pool facts `chartLevelsSection` would render are PROVEN to
+     * have survived `tradeManagerNarrativeSection`'s `MAX_BULLETS` cap — see the top-of-file doc
+     * comment on `NARRATIVE_COVERED_TITLES`'s "Levels on chart" entry for the approximation this
+     * is allowed to make. Same safe-default shape as `laneRankFolded`.
+     */
+    levelsOnChartFolded?: boolean;
+    /**
+     * Whether `flowNarrative(ctx, play)` actually produced a bullet AND neither of the two
+     * disclosed gaps (a sold-condor line, or real anomaly/notable-print content stranded behind a
+     * quiet 6h tape) applies — see the top-of-file doc comment on `NARRATIVE_COVERED_TITLES`'s
+     * "Flow & positioning" entry. Same safe-default shape as `laneRankFolded`.
+     */
+    flowIntelFolded?: boolean;
+    /**
+     * Whether `macroTapeCoaching(ctx)` actually produced a bullet — see the top-of-file doc
+     * comment on `NARRATIVE_COVERED_TITLES`'s "Macro tape" entry. Same safe-default shape as
+     * `laneRankFolded`.
+     */
+    macroTapeFolded?: boolean;
+    /**
+     * Whether both the thesis-health bullet AND the runner-fraction line `holdPlanSection` can
+     * render are proven covered by the narrative — see the top-of-file doc comment on
+     * `NARRATIVE_COVERED_TITLES`'s "Hold plan" entry. Same safe-default shape as `laneRankFolded`.
+     */
+    holdPlanFolded?: boolean;
   },
 ): RichSection[] {
   if (!opts.hasNarrative) return sections;
@@ -101,12 +164,15 @@ export function collapseRedundantIntelSections(
 
   const filtered = sections.filter((s) => {
     if (!NARRATIVE_COVERED_TITLES.has(s.title)) return true;
-    // "Lane rank", "Wall dynamics" and "Vector desk" are the three conditionally-covered titles
-    // in the set — see the doc comment above. Keep each (don't drop) unless the caller proves
-    // its real narrative predicate actually fired.
+    // These seven are the conditionally-covered titles in the set — see the doc comment above.
+    // Keep each (don't drop) unless the caller proves its real narrative predicate actually fired.
     if (s.title === "Lane rank") return opts.laneRankFolded !== true;
     if (s.title === "Wall dynamics") return opts.wallDynamicsFolded !== true;
     if (s.title === "Vector desk") return opts.vectorDeskFolded !== true;
+    if (s.title === "Levels on chart") return opts.levelsOnChartFolded !== true;
+    if (s.title === "Flow & positioning") return opts.flowIntelFolded !== true;
+    if (s.title === "Macro tape") return opts.macroTapeFolded !== true;
+    if (s.title === "Hold plan") return opts.holdPlanFolded !== true;
     return false;
   });
 

@@ -41,6 +41,7 @@ import {
   tradeManagerNarrativeSection,
   collectFocalLevels,
   resolveInvalidationFocalLevel,
+  flowNarrative,
 } from "./play-brief-narrative";
 import { technicalsBias } from "./play-brief-technicals";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
@@ -67,6 +68,8 @@ import {
   printAlreadyLandedThresholdMs,
   wallDynamicsCoaching,
   vectorPlayCoaching,
+  macroTapeCoaching,
+  thesisPillarCoaching,
 } from "./play-brief-narrative-coaching";
 import { formatDealerDollars } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
@@ -1425,6 +1428,44 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
     if (sessionNote) lines.splice(1, 0, sessionNote);
   }
   return { title: "Levels on chart", body: lines.join("\n\n") };
+}
+
+/**
+ * Whether `chartLevelsSection` would render real GEX king-strike / max-pain / dark-pool content
+ * for this ctx (Ask Largo standing mandate, 2026-11-08) — the three facts whose ONLY narrative
+ * counterpart (`tradeManagerNarrativeSection`'s focal-levels loop, play-brief-narrative.ts) is
+ * itself subject to that function's own `MAX_BULLETS` cap, bypassing it only when the specific
+ * level happens to be the one `resolveInvalidationFocalLevel` names for the reserved "Break
+ * watch" bullet (confirmed live, see that function's own doc comment, ticker TPR). Exactly
+ * reconstructing "was the cap already full by the time the loop reached this level" would mean
+ * replaying the whole upstream bullet-accumulation order (action/rollLine/
+ * collectCoachingBullets' ~13 candidates/dealer-posture) — real duplicated logic that would drift
+ * the moment any of those upstream functions changed its own bullet count. Instead this mirrors
+ * `chartLevelsSection`'s own existence/staleness gates for exactly these three facts (same file,
+ * so the two can't silently drift apart) and intentionally stops there: if any of the three DATA
+ * facts exist at all, treat the fold as unproven rather than assume the cap had room. Same
+ * safe-default direction as `vectorDeskFolded`'s own doc comment establishes: this under-folds
+ * (the section stays visible slightly more often than strictly necessary when the cap genuinely
+ * had room) but can never falsely claim a fold that actually starved.
+ */
+function levelsOnChartHasUnfoldableContent(ctx: SwingPlayBriefContext): boolean {
+  const vec = vectorOf(ctx);
+  const gex = ctx.ecosystem?.gex_positioning;
+  const readMs = ctx.readMs ?? Date.now();
+  const vectorStaleForLevels = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  const gexStaleForLevels = gexMatrixStale(gex, readMs);
+
+  const vecKingForLevels = vectorStaleForLevels ? undefined : vec?.ladder?.rows?.find((r) => r.isKing)?.strike;
+  const king = vecKingForLevels ?? gex?.gex_king_strike ?? null;
+  const kingFromStaleGex = vecKingForLevels == null && gex?.gex_king_strike != null && gexStaleForLevels;
+  const kingPresent = king != null && !kingFromStaleGex;
+
+  const maxPainPresent = vec?.maxPain != null && !vectorStaleForLevels;
+
+  const dp = vec?.darkPoolLevels ?? [];
+  const darkPoolPresent = dp.length > 0 && !vectorStaleForLevels && !darkPoolStale(vec);
+
+  return kingPresent || maxPainPresent || darkPoolPresent;
 }
 
 /** HELIX flow, anomalies, tape prints near GEX nodes. */
@@ -3975,11 +4016,70 @@ export function buildIntelSections(
   const vectorDeskFolded =
     vectorPlayCoaching(vec, play, ctx.sessionDate, true, ctx.readMs ?? undefined) != null;
 
+  // BUG FIX (Ask Largo standing mandate, 2026-11-08, batch sibling fix to laneRankFolded/
+  // wallDynamicsFolded/vectorDeskFolded above — four more titles in the same mismatch shape,
+  // disclosed but not yet fixed as of #7580/#7587): see `NARRATIVE_COVERED_TITLES`'s doc comment
+  // (play-brief-intel-collapse.ts) for the full account of each gap.
+  //
+  // "Levels on chart": approximate by design — see `levelsOnChartHasUnfoldableContent`'s own doc
+  // comment above for why an exact predicate isn't cheaply reconstructable here.
+  const levelsOnChartFolded = !levelsOnChartHasUnfoldableContent(ctx);
+
+  // "Flow & positioning": two independent gaps, both biased toward `false` (keep section).
+  // (1) A sold 0DTE iron condor has NO narrative counterpart by construction — crossDeskCoaching
+  // and counterThesisLine both explicitly zero out their 0DTE comparison whenever is_condor is
+  // true (a delta-neutral structure has no directional "aligned"/"conflict" fact to narrate).
+  // (2) `flowNarrative` early-returns null whenever the 6h HELIX tape has zero prints, BEFORE it
+  // ever reaches its own anomalies/notable-prints blocks — but flowIntelSection's own "Flow
+  // anomalies"/"Notable prints" blocks gate only on flow_feed_fresh, independent of the 6h print
+  // count, so real 24h-anomaly or 48h-notable-print content can render with a quiet 6h tape and
+  // zero narrative counterpart.
+  const zForFlowFold = zerodteLiveForSession(ecosystem?.zerodte_today, ctx.sessionDate);
+  const condorNeverNarrated = zForFlowFold?.is_condor === true;
+  const flow6hForFlowFold = trustedHelixFlow(ecosystem);
+  const helixFreshForFlowFold = ecosystem?.flow_feed_fresh !== false;
+  const flowNarrativeGateBlocked = !flow6hForFlowFold || flow6hForFlowFold.print_count === 0;
+  const flowAnomalyOrPrintGapExists =
+    flowNarrativeGateBlocked &&
+    helixFreshForFlowFold &&
+    ((ecosystem?.recent_anomalies?.length ?? 0) > 0 ||
+      (ecosystem?.flow_full_state?.recent?.length ?? 0) > 0);
+  const flowIntelFolded =
+    !condorNeverNarrated && !flowAnomalyOrPrintGapExists && flowNarrative(ctx, play) != null;
+
+  // "Macro tape": macroTapeCoaching never reads `cpi` at all, and its breadth trigger requires
+  // `breadth?.tone` specifically rather than macroTapeSection's bare `arsenal.breadth` object-
+  // presence check. Call the real function directly rather than re-deriving its condition.
+  const macroTapeFolded = macroTapeCoaching(ctx) != null;
+
+  // "Hold plan" (bucket === "open" only): the bare "Thesis health X% (rung)" bullet renders
+  // unconditionally whenever play.thesisHealth is present and calibrated, but thesisPillarCoaching
+  // (the only narrative function that narrates a thesis-health %/rung at all) returns null for a
+  // healthy, stable position (no faded pillar, no real moves). A second, narrower asymmetry on
+  // the same title: the Runner-fraction line triggers on `ep.runner_fraction != null` alone,
+  // while the narrative's own runner-fraction clause (manageLifecycleCoaching) is suppressed
+  // whenever the position is a full flatten (manageAction EXIT/STOP_OUT) — mirrored here via the
+  // same `isFullFlatten` predicate that function uses.
+  const thesisHealthPresentForHoldPlan =
+    play.thesisHealth != null && !thesisHealthUncalibrated(play.thesisHealth);
+  const thesisHealthCoveredForHoldPlan =
+    !thesisHealthPresentForHoldPlan || thesisPillarCoaching(play) != null;
+  const isFullFlattenForHoldPlan = play.manageAction === "EXIT" || play.manageAction === "STOP_OUT";
+  const runnerFractionPresentForHoldPlan = play.exitPolicy?.runner_fraction != null;
+  const runnerFractionCoveredForHoldPlan =
+    !runnerFractionPresentForHoldPlan ||
+    (!isFullFlattenForHoldPlan && (play.exitPolicy?.runner_fraction ?? 0) > 0);
+  const holdPlanFolded = thesisHealthCoveredForHoldPlan && runnerFractionCoveredForHoldPlan;
+
   return collapseRedundantIntelSections(out, {
     hasNarrative: Boolean(narrative),
     bucket,
     laneRankFolded,
     wallDynamicsFolded,
     vectorDeskFolded,
+    levelsOnChartFolded,
+    flowIntelFolded,
+    macroTapeFolded,
+    holdPlanFolded,
   });
 }
