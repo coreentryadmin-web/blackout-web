@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { HorizonPlay } from "@/lib/horizon-plays";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import { computeLaneRank } from "./play-brief-lane-rank";
 import {
   catalystCoaching,
   closedCoaching,
@@ -4189,4 +4190,43 @@ test("laneRankCoaching: below-median leader line keeps 'confirm before adding si
   assert.ok(line);
   assert.match(line, /confirm before adding size/);
   assert.doesNotMatch(line, /structurally blocked/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-08, live repro SWING:MRVL:70, OPEN/SHORT): a
+// position that is comfortably good (well above the lane median) but NOT top-3 by rank falls
+// through every branch of laneRankCoaching and returns null — none of rank===1, deltaFromMedian
+// < -15, or (rank<=3 && deltaFromMedian>=10) matches rank 5 with a POSITIVE delta. That null is
+// the root cause `collapseRedundantIntelSections` (play-brief-intel-collapse.ts) failed to
+// respect: it used to drop the real "Lane rank" section (rank/score/median/leader) for every play
+// whenever ANY narrative bullet existed, regardless of whether THIS function actually said
+// anything about lane rank for this specific play — so the brief's "folded into Trade manager
+// read" disclosure was false for exactly this band. This test proves the root cause in isolation
+// (laneRankCoaching genuinely returns null here, by design — its thresholds are untouched by the
+// fix); the collapse-side regression tests in play-brief-intel-collapse.test.ts prove the actual
+// fix (the collapse decision now matches this predicate instead of a static title list).
+test("laneRankCoaching: stays silent for a comfortably-good-but-not-top-3 position (rank 5, +15.1 vs median) — root cause of the false 'folded into Trade manager read' claim", () => {
+  const lanes = [
+    laneRow({ ticker: "A", score: 95, status: "WATCH" }),
+    laneRow({ ticker: "B", score: 90, status: "WATCH" }),
+    laneRow({ ticker: "C", score: 85, status: "WATCH" }),
+    laneRow({ ticker: "D", score: 80, status: "WATCH" }),
+    laneRow({ ticker: "MRVL", score: 75, status: "WATCH" }),
+    laneRow({ ticker: "E", score: 44.8, status: "WATCH" }),
+    laneRow({ ticker: "F", score: 40, status: "WATCH" }),
+    laneRow({ ticker: "G", score: 30, status: "WATCH" }),
+    laneRow({ ticker: "H", score: 20, status: "WATCH" }),
+    laneRow({ ticker: "I", score: 10, status: "WATCH" }),
+  ];
+  const subject = play({ ticker: "MRVL", score: 75, status: "WATCH" });
+  // Pin down the exact (rank, deltaFromMedian) this fixture produces, so a future change to the
+  // lane-rank math can't silently drift this test away from the band it's meant to cover.
+  const snap = computeLaneRank(subject, lanes);
+  assert.equal(snap?.rank, 5, "fixture must place the subject at rank 5 (not top-3)");
+  assert.equal(snap?.deltaFromMedian, 15.1, "fixture must be well above median (>= 10)");
+  const line = laneRankCoaching(subject, lanes);
+  assert.equal(
+    line,
+    null,
+    "a comfortably-good, rank-5 position must stay silent here — this IS the deliberate editorial choice, not a bug to fix in this function",
+  );
 });
