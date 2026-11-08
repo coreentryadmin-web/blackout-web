@@ -313,3 +313,22 @@ test("moneyShort promotes a value that rounds to 1000 of a unit into the next un
   assert.equal(moneyShort(500_000), "$500K");
   assert.equal(moneyShort(1_000_000), "$1.00M");
 });
+
+test("moneyShort has a B tier — a billion-dollar session total renders as $X.XXB, never an overflowed M label", () => {
+  // Before the fix, moneyShort had NO branch past "M" at all: any value >= $1B rendered as a
+  // 4+ digit M label (e.g. "$1234.57M"), which is the exact figure a HELIX session recap or
+  // dark-pool burst/digest embed produces routinely (discord-eod-recap.ts/
+  // darkpool-discord-format.ts both feed this helper a SUM of many $500K+ qualifying prints).
+  assert.equal(moneyShort(1_234_567_890), "$1.23B");
+  assert.equal(moneyShort(5_000_000_000), "$5.00B");
+  assert.equal(moneyShort(15_000_000_000), "$15.0B");
+  assert.equal(moneyShort(-1_500_000_000), "$-1.50B");
+});
+
+test("moneyShort promotes an M-quotient that rounds to 1000 into the new B tier, never an overflowed 4-digit M label", () => {
+  // Same round-first-then-promote guard as the already-fixed K->M boundary case, one tier up:
+  // 999_950_000 / 1e6 = 999.95, which rounds to "1000.0" at the M branch's own 1-decimal
+  // display precision — that must promote to B, not render the literal "$1000.0M".
+  assert.equal(moneyShort(999_950_000), "$1.00B");
+  assert.equal(moneyShort(999_000_000), "$999.0M");
+});
