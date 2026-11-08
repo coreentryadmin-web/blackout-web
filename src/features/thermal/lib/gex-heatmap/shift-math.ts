@@ -21,15 +21,28 @@ export function shiftPercentForStrike(
   return (delta / Math.abs(baseline)) * 100;
 }
 
-/** "+55%" / "−12%" / "—" — whole-percent intraday shift (profile + matrix DR% parity). */
+/**
+ * "+55%" / "−12%" / "—" — whole-percent intraday shift (profile + matrix DR% parity).
+ *
+ * BUG THIS FIXES: plain `Math.round(pct)` ties toward +Infinity (`Math.round(-2.5) === -2` but
+ * `Math.round(2.5) === 3`), a sign-biased asymmetry — a melting strike sitting exactly on a
+ * whole-percent tie (e.g. -2.5%) rounded to a SMALLER magnitude ("−2%") than the identical
+ * magnitude building the other way ("+3%" for +2.5%) would render. Same bug class already fixed
+ * in `fmt-money.ts`'s `fmtPct` (2026-10-26) and `round-floats.ts`; this sibling Thermal-desk
+ * formatter was missed in both passes. Rounding `Math.abs(pct)` first and reapplying
+ * `Math.sign(pct)` makes both signs tie the same direction (away from zero), matching how humans
+ * round signed percentages. Sign is read off the ROUNDED value, not the raw one, so a magnitude
+ * that rounds to exactly 0 (e.g. -0.3%) reads "0%", never a misleading signed "−0%".
+ */
 export function fmtShiftPercentForStrike(
   currentValue: number,
   delta: number | null | undefined,
 ): string {
   const pct = shiftPercentForStrike(currentValue, delta);
   if (pct == null || !Number.isFinite(pct)) return "—";
-  const sign = pct > 0 ? "+" : pct < 0 ? "−" : "";
-  return `${sign}${Math.abs(Math.round(pct))}%`;
+  const rounded = Math.sign(pct) * Math.round(Math.abs(pct));
+  const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
+  return `${sign}${Math.abs(rounded)}%`;
 }
 
 /**
