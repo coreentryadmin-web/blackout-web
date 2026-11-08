@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 /** Minimal prod HTTP smoke for GitHub Actions (no secrets except optional CRON). */
+import { spxDeskCronSmokeVerdict } from "./lib/gha-http-smoke-desk-eval.mjs";
+
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
 
@@ -73,24 +75,20 @@ if (CRON) {
   const { status, body } = await fetchJson("/api/market/spx/desk", {
     Authorization: `Bearer ${CRON}`,
   });
-  // /api/market/spx/desk is gated by authorizeMarketDeskApi → cron secret OR premium Clerk session.
-  // In CI we present the CRON bearer, but a 401/403 here means only that this workflow's CRON_SECRET
-  // doesn't match the one deployed to the ECS task — SECRET DRIFT, not a broken deploy: the route is
-  // up and correctly rejecting a credential it doesn't recognise. Failing the whole deploy-smoke on
-  // that is a false alarm (it was red across every push while the app itself was healthy). So we PASS
-  // on an authenticated 200 (secret matches → live SPX price) AND on a clean gated 401/403 (route up,
-  // gating works), and only FAIL on the statuses that actually indicate a broken deploy — 404 (route
-  // gone), 5xx (crash), or a network error surfaced as a non-numeric/0 status. The 401/403 case logs a
-  // WARN so the drift stays visible and someone can reconcile CRON_SECRET to restore the true-200 check.
-  if (status === 200 && body?.price > 0) {
-    console.log(`  ✓ /api/market/spx/desk → SPX ${body.price} (cron auth ok)`);
-  } else if (status === 401 || status === 403) {
+  const verdict = spxDeskCronSmokeVerdict(status, body);
+  if (verdict.outcome === "pass") {
+    console.log(`  ✓ /api/market/spx/desk → ${verdict.detail} (cron auth ok)`);
+  } else if (verdict.outcome === "warn" && verdict.code === "cron_secret_drift") {
     console.warn(
-      `  ⚠ /api/market/spx/desk → ${status} (route up + gated; CI CRON_SECRET does not match the deployed value — reconcile it to re-enable the authenticated price check)`
+      `  ⚠ /api/market/spx/desk → ${verdict.detail} (route up + gated; CI CRON_SECRET does not match the deployed value — reconcile it to restore the authenticated price check)`
+    );
+  } else if (verdict.outcome === "warn" && verdict.code === "off_hours_no_spot") {
+    console.warn(
+      `  ⚠ /api/market/spx/desk → 200 (${verdict.detail}; route up + auth ok but no grounded spot/prior_close — typical off-hours/weekend; RTH deploys should still show price>0 or prior_close)`
     );
   } else {
-    failures.push(`spx/desk → ${status}`);
-    console.log(`  ✗ /api/market/spx/desk → ${status}`);
+    failures.push(`spx/desk → ${verdict.detail}`);
+    console.log(`  ✗ /api/market/spx/desk → ${verdict.detail}`);
   }
 }
 
