@@ -840,7 +840,9 @@ async function prepareLargoTurn(
         `Rows with \`reaction_assumed: true\` are ASSUMED, not measured — say so if you cite one. ` +
         `\`as_of_session\`/\`as_of_weekday\` are the ET session this card was built on — use them as "today" rather than inferring one, and use each row's \`report_weekday\` rather than deriving it. ` +
         `A non-null \`history_error\` means the history could not be READ; an empty history under ` +
-        `it is not evidence the company has no prints.\n` +
+        `it is not evidence the company has no prints. A non-null \`earnings_error\` means the ` +
+        `next-earnings lookup itself failed — \`earnings_date\`/\`days_until\`/\`report_time\`/` +
+        `\`is_confirmed\` being null then means "we could not look", not "nothing scheduled".\n` +
         `${JSON.stringify(preEarningsPack, null, 0).slice(0, 5000)}\n`
       : "") +
     socialContentBlock;

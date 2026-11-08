@@ -39,6 +39,18 @@ export type PreEarningsPackCard = {
   days_until: number | null;
   report_time: "premarket" | "afterhours" | "unknown" | null;
   is_confirmed: boolean | null;
+  /**
+   * Non-null when the next-earnings LOOKUP itself failed — the primary Benzinga calendar fetch
+   * feeding `earnings_date`'s derivation, or (when that one came back clean but empty) the
+   * independent `loadNextEarningsFromBenzinga` read. A null `earnings_date`/`days_until`/
+   * `report_time`/`is_confirmed` with no error means the company genuinely has nothing scheduled;
+   * the same nulls WITH an error mean we could not look. Collapsing those two into identical nulls
+   * is exactly how "we don't know" gets reported as "there is nothing" — same discipline
+   * `history_error` below applies to print history, and the sibling fix in
+   * `loadNextEarningsFromBenzinga` (meridian-benzinga-earnings.ts) that first carried this error
+   * instead of discarding it.
+   */
+  earnings_error: string | null;
   expected_move_pct: number | null;
   positioning: {
     available: boolean;
@@ -95,7 +107,8 @@ function historySummary(rows: PreEarningsHistoryRow[]): string | null {
 }
 
 async function boardExposure(ticker: string): Promise<PreEarningsExposure | null> {
-  const { getZeroDteBoardPayload } = await import("@/lib/platform/zerodte-service");
+  // Relative specifier — see the Promise.all above for why (tsx + mock.module()/dynamic import()).
+  const { getZeroDteBoardPayload } = await import("../platform/zerodte-service");
   const board = await getZeroDteBoardPayload().catch(() => null);
   if (!board) return null;
   const ledger = board.ledger?.find((r) => r.ticker.toUpperCase() === ticker.toUpperCase());
@@ -132,8 +145,12 @@ export async function preEarningsPackForLargo(
   const today = todayEtYmd();
   const [{ getGexPositioning }, { marketPlatform }, benzingaRes, nextEarnings, zerodte] =
     await Promise.all([
-      import("@/lib/providers/gex-positioning"),
-      import("@/lib/platform"),
+      // Relative specifiers, not "@/...": tsx does not rewrite path aliases for a dynamic
+      // import() call (only statically-parsed top-level imports), so a test file's
+      // mock.module() could never intercept these otherwise — same fix already applied to
+      // ecosystem-context.ts's own dynamic import of spx-desk-convergence.
+      import("../providers/gex-positioning"),
+      import("../platform"),
       // 6 — the number of history rows this card shows. The loader sizes its window from it.
       loadBenzingaTickerEarnings(t, earningsDate ?? null, 6),
       loadNextEarningsFromBenzinga(t).catch(() => null),
@@ -144,6 +161,12 @@ export async function preEarningsPackForLargo(
   const next = parsedNext ?? nextEarnings;
   const resolvedDate =
     earningsDate?.slice(0, 10) ?? next?.earnings_date ?? null;
+  // BUG FIX (2026-11-08, Ask Largo standing mandate): the primary fetch (benzingaRes, which also
+  // derives `resolvedDate`/history) is checked first; `next?.error` (from the independent
+  // loadNextEarningsFromBenzinga call) only matters when the primary fetch itself came back clean.
+  // Previously neither was ever read here, so a failed calendar fetch and a genuinely empty one
+  // rendered identically — see `earnings_error`'s doc comment on PreEarningsPackCard above.
+  const earningsError = benzingaRes.error ?? next?.error ?? null;
 
   const [historyRes, expected_move_pct, pos, flowRes] = await Promise.all([
     loadMeridianEarningsPrintHistory(t, 6, resolvedDate),
@@ -193,6 +216,7 @@ export async function preEarningsPackForLargo(
     days_until: next?.days_until ?? null,
     report_time: next?.report_time ?? null,
     is_confirmed: next?.is_confirmed ?? null,
+    earnings_error: earningsError,
     expected_move_pct: alreadyPrinted ? null : expected_move_pct,
     positioning: {
       available: pos != null,
