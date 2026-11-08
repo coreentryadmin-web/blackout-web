@@ -14,6 +14,8 @@ import {
   fetchUwNope,
   emptyDarkPoolSnapshot,
   darkPoolBias,
+  darkPoolSampleMayBeTruncated,
+  darkPoolDetailLine,
   fetchUwFlow0dte,
   isDegenerateFlowAggregate,
   fetchUwMacroIndicators,
@@ -482,6 +484,87 @@ test("darkPoolBias: zero typed (call+put) premium is 'neutral', never a fabricat
   assert.equal(darkPoolBias(300_000, 700_000, 1_000_000), "bearish"); // 70% put >= 65% threshold
   assert.equal(darkPoolBias(520_000, 480_000, 1_000_000), "mixed");   // within 15% of even, genuinely measured
   assert.equal(darkPoolBias(0, 0, 0), "neutral");                     // pre-existing total<=0 branch, unaffected
+});
+
+test("darkPoolSampleMayBeTruncated: a raw fetch shorter than the requested limit is never truncated", () => {
+  // UW answered with fewer rows than we asked for — there is nothing more to fetch, regardless
+  // of what date those rows carry.
+  const rows = [{ executed_at: "2026-09-10T15:00:00Z" }, { executed_at: "2026-09-10T14:00:00Z" }];
+  assert.equal(darkPoolSampleMayBeTruncated(rows, 20, "2026-09-10"), false);
+  assert.equal(darkPoolSampleMayBeTruncated([], 20, "2026-09-10"), false);
+});
+
+test("darkPoolSampleMayBeTruncated: hitting the page cap with the OLDEST row still from today means real premium was missed", () => {
+  // THE LIVE BUG: a ticker whose today's dark-pool activity exceeds `requestedLimit` rows. UW
+  // returns newest-first, so hitting exactly the cap with the tail still dated today proves
+  // there is more, earlier-today, unfetched activity the caller's total/count silently drops.
+  const rows = [
+    { executed_at: "2026-09-10T15:30:00Z" },
+    { executed_at: "2026-09-10T15:00:00Z" },
+    { executed_at: "2026-09-10T14:45:00Z" }, // oldest of the 3 — STILL today
+  ];
+  assert.equal(darkPoolSampleMayBeTruncated(rows, 3, "2026-09-10"), true);
+});
+
+test("darkPoolSampleMayBeTruncated: hitting the page cap with the OLDEST row from a PRIOR day means today is fully captured", () => {
+  // Newest-first sort means every today-row sorts before any prior-day row — so once the tail of
+  // a full-cap response has already rolled into yesterday, nothing from today was left out.
+  const rows = [
+    { executed_at: "2026-09-10T09:35:00Z" },
+    { executed_at: "2026-09-10T09:31:00Z" },
+    { executed_at: "2026-09-09T20:00:00Z" }, // oldest — a prior session day
+  ];
+  assert.equal(darkPoolSampleMayBeTruncated(rows, 3, "2026-09-10"), false);
+});
+
+test("darkPoolSampleMayBeTruncated: a full-cap response with no trustworthy oldest timestamp assumes the worst, not the best", () => {
+  const rows = [
+    { executed_at: "2026-09-10T15:30:00Z" },
+    { executed_at: "2026-09-10T15:00:00Z" },
+    { executed_at: "" }, // unparseable — same "absence is not evidence of completeness" principle
+  ];
+  assert.equal(darkPoolSampleMayBeTruncated(rows, 3, "2026-09-10"), true);
+});
+
+test("darkPoolDetailLine: marks BOTH the count and the dollar total as a lower bound ('+') when truncated", () => {
+  assert.equal(darkPoolDetailLine(20, 3_700_000, false), "20 print(s) | $3.70M");
+  assert.equal(
+    darkPoolDetailLine(20, 3_700_000, true),
+    "20+ print(s) | $3.70M+",
+    "a truncated sample must never read as a definite day total"
+  );
+  assert.equal(darkPoolDetailLine(0, 0, false), "No prints today");
+  assert.equal(darkPoolDetailLine(0, 0, true), "No prints today", "zero rows can never be truncated — tested separately");
+});
+
+test("fetchUwDarkPool / fetchUwDarkPoolMarketWide both route their headline through the shared truncation-aware formatter", () => {
+  // Source guard (same style as the neighboring null-vs-empty test): the live bug was each
+  // function inlining its own `${prints.length} print(s) | $...M` template straight off the
+  // sample array — a regression that reintroduces that inline template, even if semantically
+  // equivalent, must fail here rather than silently losing the truncation disclosure.
+  const src = readFileSync(join(process.cwd(), "src/lib/providers/unusual-whales.ts"), "utf8");
+  const darkPoolBody = /export async function fetchUwDarkPool\(([\s\S]*?)\n}/.exec(src)?.[0] ?? "";
+  const marketWideBody = /export async function fetchUwDarkPoolMarketWide\(([\s\S]*?)\n}/.exec(src)?.[0] ?? "";
+  assert.ok(darkPoolBody, "fetchUwDarkPool must exist");
+  assert.ok(marketWideBody, "fetchUwDarkPoolMarketWide must exist");
+
+  for (const [name, body] of [
+    ["fetchUwDarkPool", darkPoolBody],
+    ["fetchUwDarkPoolMarketWide", marketWideBody],
+  ] as const) {
+    assert.ok(
+      body.includes("darkPoolSampleMayBeTruncated("),
+      `${name} must check darkPoolSampleMayBeTruncated over its raw rows before building the snapshot`
+    );
+    assert.ok(
+      body.includes("darkPoolDetailLine("),
+      `${name} must build its \`detail\` via the shared formatter, not an inline template`
+    );
+    assert.ok(
+      !/`\$\{prints\.length\} print\(s\)/.test(body),
+      `${name} must not reintroduce the old untruncation-aware inline detail template`
+    );
+  }
 });
 
 test("fetchUwDarkPool returns null when the upstream never answered — it does not claim 'none today'", () => {
