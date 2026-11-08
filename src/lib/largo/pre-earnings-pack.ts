@@ -30,6 +30,21 @@ export type PreEarningsExposure = {
   direction: string | null;
   pnl_pct: number | null;
   headline: string | null;
+  /**
+   * Non-null when the 0DTE board itself could not be checked — `getZeroDteBoardPayload()` never
+   * throws (it falls back to `buildMinimalBoardFallback()`, zerodte-service.ts, with
+   * `upstream_ok: false` and empty `ledger`/`setups` arrays when the real board can't be read or
+   * built in time), so an outage here never surfaces as a thrown error, only as a structurally
+   * valid but degraded payload. Without this field, a degraded board and a genuinely-clean "this
+   * ticker is not committed and not a setup candidate" read were BYTE-IDENTICAL
+   * (`{on_board:false, status:null, direction:null, pnl_pct:null, headline:null}`) — same
+   * "WHICH EMPTY IS THIS?" class of bug already fixed on the sibling Largo tool
+   * `zeroDtePlaysForLargo` (zerodte-service.ts) by checking `board.upstream_ok !== false`.
+   * `on_board`/`status`/etc. stay at their confident-absence values even when this is set, so a
+   * caller that only reads the legacy fields unchanged still sees the same shape as before — this
+   * field is the thing to check before trusting them.
+   */
+  board_error: string | null;
 };
 
 export type PreEarningsPackCard = {
@@ -119,6 +134,7 @@ async function boardExposure(ticker: string): Promise<PreEarningsExposure | null
       direction: ledger.direction ?? null,
       pnl_pct: ledger.live_pnl_pct ?? ledger.plan_pnl_pct ?? null,
       headline: `${ledger.direction} · ${ledger.status ?? "OPEN"}`,
+      board_error: null,
     };
   }
   const setup = board.setups?.find((s) => s.ticker.toUpperCase() === ticker.toUpperCase());
@@ -129,9 +145,29 @@ async function boardExposure(ticker: string): Promise<PreEarningsExposure | null
       direction: setup.direction,
       pnl_pct: null,
       headline: `${setup.direction} setup · score ${setup.score}`,
+      board_error: null,
     };
   }
-  return { on_board: false, status: null, direction: null, pnl_pct: null, headline: null };
+  // BUG FIX (2026-11-08, Ask Largo standing mandate): `getZeroDteBoardPayload()` never throws —
+  // it falls back to a structurally-valid, empty `upstream_ok:false` board when the real one
+  // can't be read or built in time (`buildMinimalBoardFallback()`, zerodte-service.ts). With no
+  // ledger/setups match found, a degraded board and a genuinely-clean "not committed, not a
+  // setup candidate" board rendered byte-identically — this ticker is (trivially) absent from
+  // the degraded board's EMPTY arrays too, so the fall-through used to report a confident
+  // `on_board:false` either way. Mirrors the same `upstream_ok !== false` check the sibling
+  // Largo tool `zeroDtePlaysForLargo` already uses (zerodte-service.ts) for the identical
+  // "WHICH EMPTY IS THIS?" question.
+  if (board.upstream_ok === false) {
+    return {
+      on_board: false,
+      status: null,
+      direction: null,
+      pnl_pct: null,
+      headline: null,
+      board_error: "0DTE board unavailable this build — could not check",
+    };
+  }
+  return { on_board: false, status: null, direction: null, pnl_pct: null, headline: null, board_error: null };
 }
 
 /** Bundle pre-earnings desk pack for Largo / Meridian prefetch. */
