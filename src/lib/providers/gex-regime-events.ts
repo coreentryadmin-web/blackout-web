@@ -46,6 +46,7 @@ import {
   setMeta,
   insertGexRegimeEvent,
   fetchGexRegimeEventRows,
+  countGexRegimeEventsSince as countGexRegimeEventsSinceRows,
   tryAdvisoryLock,
   releaseAdvisoryLock,
 } from "@/lib/db";
@@ -260,6 +261,18 @@ export async function fetchGexRegimeEvents(opts?: {
 }): Promise<GexRegimeEventRow[]> {
   if (!dbConfigured()) return [];
   return fetchGexRegimeEventRows(opts);
+}
+
+/**
+ * True, unbounded count of regime-transition rows (all tickers) observed within the trailing
+ * `windowMs` — the exact-count companion to fetchGexRegimeEvents' own LIMIT-bounded sample.
+ * admin-gex-health.ts's "Regime events (24h)" headline needs this: deriving that number from
+ * `rows.length` of a capped sample silently plateaus at the cap, understating a real spike on a
+ * volatile day — see countGexRegimeEventsSince's doc comment in db.ts for the full root cause.
+ */
+export async function countGexRegimeEventsSince(windowMs: number): Promise<number> {
+  if (!dbConfigured()) return 0;
+  return countGexRegimeEventsSinceRows(windowMs);
 }
 
 /**

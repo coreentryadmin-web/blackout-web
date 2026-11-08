@@ -771,6 +771,23 @@ test("the old row-capped fetchCronJobRecentRuns is gone, not left as dead code b
   );
 });
 
+// BUG FIX (2026-11-08, same root cause/shape as error-sink.ts's countAuthFailures fix): the
+// Thermal admin health panel's "Regime events (24h)" headline (admin-gex-health.ts's
+// `summarizeRegimeEvents`) used to derive its total from `rows.length` of
+// fetchGexRegimeEventRows' own `ORDER BY observed_at DESC LIMIT 200`-bounded sample — a count
+// that can never exceed 200 no matter how many real transitions actually fired in the window
+// across the ~11 heatmap-preset tickers. `countGexRegimeEventsSince` is the real, unbounded
+// COUNT(*) sibling admin-gex-health.ts now reads that headline from instead.
+test("countGexRegimeEventsSince runs a real, unbounded COUNT(*) — never a LIMIT-capped sample", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function countGexRegimeEventsSince");
+  assert.ok(start > 0, "countGexRegimeEventsSince exists");
+  const nextExport = src.indexOf("\nexport async function", start + 1);
+  const body = src.slice(start, nextExport > 0 ? nextExport : undefined);
+  assert.match(body, /COUNT\(\*\)/, "must run a real COUNT(*) aggregate");
+  assert.doesNotMatch(body, /LIMIT \$?\d/, "must not cap the count by an arbitrary row limit");
+});
+
 test("every raw pool.connect() checked-out client in db.ts is wrapped in guardCheckedOutClient", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
   const uncoveredConnects: string[] = [];

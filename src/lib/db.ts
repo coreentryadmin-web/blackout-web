@@ -5299,6 +5299,26 @@ export async function fetchGexRegimeEventRows(opts?: { ticker?: string; limit?: 
 }
 
 /**
+ * True, unbounded count of gex_regime_events rows observed within the trailing `windowMs` —
+ * the exact-count sibling of fetchGexRegimeEventRows' own `ORDER BY observed_at DESC LIMIT`
+ * sample. admin-gex-health.ts's "Regime events (24h)" headline on the Thermal health panel
+ * used to derive that number from `rows.length` of the 200-row-capped sample, which can never
+ * exceed 200 no matter how many real transitions fired across the ~11 heatmap-preset tickers
+ * in the window — the same "total silently plateaus at the sample LIMIT" bug class as
+ * error-sink.ts's countAuthFailures. This is a separate, cheap aggregate query (COUNT(*) over
+ * the same indexed `observed_at` column) so the headline is a real total, not a sample length.
+ */
+export async function countGexRegimeEventsSince(windowMs: number): Promise<number> {
+  await ensureSchema();
+  const res = await dbQuery<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM gex_regime_events
+      WHERE observed_at > NOW() - ($1 || ' milliseconds')::interval`,
+    [String(Math.max(0, Math.round(windowMs)))]
+  );
+  return Number(res.rows[0]?.count ?? 0);
+}
+
+/**
  * Persists one HELIX flow-anomaly near-miss/rejection row (task #131,
  * src/lib/platform/flow-anomaly-near-misses.ts's persistFlowAnomalyNearMisses).
  * Same "always insert, caller already decided whether/how to throttle" idiom as

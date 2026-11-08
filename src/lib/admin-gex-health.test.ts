@@ -85,6 +85,10 @@ const PRESET_TICKERS = ["SPY", "SPX", "QQQ"];
 
 let peekImpl: (ticker: string) => Promise<GexHeatmapCachePeek> = async (ticker) => tickerPeek(ticker);
 let regimeEventsImpl: () => Promise<GexRegimeEventRow[]> = async () => [regimeRow()];
+// Defaults to matching the single stubbed regimeRow() above — tests that need to prove the
+// "total" is wired to the REAL count rather than the sample's own length override this to a
+// larger number than regimeEventsImpl's row count.
+let regimeEventsCountImpl: () => Promise<number> = async () => 1;
 let cronSnapshotImpl: () => Promise<{ jobs: CronJobHealth[] }> = async () => ({
   jobs: [cronJob(), cronJob({ key: "gex-alerts", name: "GEX Regime Alerts" }), cronJob({ key: "grid-warm", name: "BlackOut Grid Warm" })],
 });
@@ -108,6 +112,7 @@ mock.module("./providers/polygon-options-gex", {
 mock.module("./providers/gex-regime-events", {
   namedExports: {
     fetchGexRegimeEvents: async () => regimeEventsImpl(),
+    countGexRegimeEventsSince: async () => regimeEventsCountImpl(),
   },
 });
 mock.module("./admin-cron-health", {
@@ -136,6 +141,7 @@ before(async () => {
 function resetMocks() {
   peekImpl = async (ticker) => tickerPeek(ticker);
   regimeEventsImpl = async () => [regimeRow()];
+  regimeEventsCountImpl = async () => 1;
   cronSnapshotImpl = async () => ({
     jobs: [cronJob(), cronJob({ key: "gex-alerts", name: "GEX Regime Alerts" }), cronJob({ key: "grid-warm", name: "BlackOut Grid Warm" })],
   });
@@ -165,6 +171,21 @@ test("fetchGexHealthSnapshot: happy path wires all four legs through, no errors"
   );
   assert.equal(snap.recent_errors.length, 1);
   assert.deepEqual(snap.errors, []);
+});
+
+test("fetchGexHealthSnapshot: regime_events.summary.total is the REAL count, not the bounded sample's rows.length", async () => {
+  resetMocks();
+  // Simulates the exact live scenario this guards against: a busy day logs far more real
+  // regime transitions in the window (450) than the REGIME_EVENT_FETCH_LIMIT-bounded sample
+  // ever returns (here, just the single stubbed regimeRow()). Pre-fix, `summary.total` was
+  // derived from `rows.length` and would read 1 here — silently plateauing at the sample
+  // size no matter how large the real count is.
+  regimeEventsCountImpl = async () => 450;
+
+  const snap = await fetchGexHealthSnapshot();
+
+  assert.equal(snap.regime_events.recent.length, 1, "sample-bounded recent list is unaffected");
+  assert.equal(snap.regime_events.summary.total, 450, "headline total must be the real count");
 });
 
 test("fetchGexHealthSnapshot: one ticker's peek throwing degrades only that row, never the others", async () => {
@@ -258,11 +279,13 @@ test("summarizeRegimeEvents: buckets by ticker and type within the window, exclu
     regimeRow({ id: 1, ticker: "SPY", event_type: "flip_crossed", observed_at: iso(60_000) }),
     regimeRow({ id: 2, ticker: "SPY", event_type: "wall_broken", observed_at: iso(120_000) }),
     regimeRow({ id: 3, ticker: "QQQ", event_type: "flip_crossed", observed_at: iso(180_000) }),
-    // Outside the 1-hour window used below — must be excluded from both totals.
+    // Outside the 1-hour window used below — must be excluded from the by_ticker/by_type
+    // breakdown (those stay sample-derived), but `total` now comes from the caller-supplied
+    // real count below, independent of how many of these sample rows fall in-window.
     regimeRow({ id: 4, ticker: "SPY", event_type: "flip_crossed", observed_at: iso(2 * 60 * 60_000) }),
   ];
 
-  const summary = summarizeRegimeEvents(rows, 60 * 60_000);
+  const summary = summarizeRegimeEvents(3, rows, 60 * 60_000);
 
   assert.equal(summary.window_hours, 1);
   assert.equal(summary.total, 3);
@@ -276,8 +299,27 @@ test("summarizeRegimeEvents: buckets by ticker and type within the window, exclu
   assert.equal(wallBroken?.count, 1);
 });
 
+test("summarizeRegimeEvents: total reflects the real caller-supplied count, never the sample's rows.length", async () => {
+  const now = Date.now();
+  const iso = (msAgo: number) => new Date(now - msAgo).toISOString();
+  // Only 2 sample rows survive the window — a stand-in for the REGIME_EVENT_FETCH_LIMIT-bounded
+  // sample on a day where far more than that really fired. `total` must reflect the real count
+  // passed in (450), not `rows.filter(inWindow).length` (2) — the exact bug this regression
+  // test would have caught pre-fix (the old signature took no totalCount and returned
+  // inWindow.length === 2 here).
+  const rows: GexRegimeEventRow[] = [
+    regimeRow({ id: 1, ticker: "SPY", event_type: "flip_crossed", observed_at: iso(60_000) }),
+    regimeRow({ id: 2, ticker: "QQQ", event_type: "wall_broken", observed_at: iso(90_000) }),
+  ];
+
+  const summary = summarizeRegimeEvents(450, rows, 60 * 60_000);
+
+  assert.equal(summary.total, 450);
+  assert.notEqual(summary.total, rows.length);
+});
+
 test("summarizeRegimeEvents: empty input yields a zeroed summary, never throws", async () => {
-  const summary = summarizeRegimeEvents([], 24 * 60 * 60_000);
+  const summary = summarizeRegimeEvents(0, [], 24 * 60 * 60_000);
   assert.equal(summary.total, 0);
   assert.deepEqual(summary.by_ticker, []);
   assert.deepEqual(summary.by_type, []);
