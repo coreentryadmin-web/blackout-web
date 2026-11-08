@@ -564,14 +564,35 @@ export function fmtSurprisePct(v: number | null | undefined, digits = 1): string
   return `${sign}${pct.toFixed(digits)}%`;
 }
 
-/** Compact money for revenue magnitudes. Null → em-dash. */
+/**
+ * Compact money for revenue magnitudes. Null → em-dash.
+ *
+ * Each `abs >= <unit>` check runs BEFORE the value is rounded to that unit's own display
+ * precision, so a value just under a threshold that ROUNDS UP to 1000 of the smaller unit
+ * fell through to the wrong branch and overflowed into a four-digit label instead of being
+ * promoted — e.g. 999_550 (abs < 1e6) took the K branch and printed "$1000K" instead of
+ * "$1.0M"; 999_950_000 (abs < 1e9) took the M branch and printed "$1000.0M" instead of
+ * "$1.00B". Same round-first-then-promote fix already applied to fmt-money.ts's fmtPremium,
+ * thermal-discord-card.ts's fmtCompactHeatMoney, darkpool-discord-format.ts's fmtShares,
+ * discord-context-enrichment.ts's formatAdvShareLabel, helix-flow-format.ts's fmtOi, and
+ * group-greek-flow-summary.ts's own deltaM formatter — this one never got it.
+ */
 export function fmtCompactMoney(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return "—";
   const abs = Math.abs(v);
   if (abs >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
-  if (abs >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
-  if (abs >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
+  if (abs >= 1e9) {
+    if (Math.round((abs / 1e9) * 100) / 100 >= 1000) return `$${(v / 1e12).toFixed(2)}T`;
+    return `$${(v / 1e9).toFixed(2)}B`;
+  }
+  if (abs >= 1e6) {
+    if (Math.round((abs / 1e6) * 10) / 10 >= 1000) return `$${(v / 1e9).toFixed(2)}B`;
+    return `$${(v / 1e6).toFixed(1)}M`;
+  }
+  if (abs >= 1e3) {
+    if (Math.round(abs / 1e3) >= 1000) return `$${(v / 1e6).toFixed(1)}M`;
+    return `$${(v / 1e3).toFixed(0)}K`;
+  }
   return `$${v.toFixed(0)}`;
 }
 
