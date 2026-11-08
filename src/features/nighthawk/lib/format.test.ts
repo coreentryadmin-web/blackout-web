@@ -182,6 +182,23 @@ test("flowByExpiryPremium: no matching field at all returns 0, not NaN", () => {
   assert.equal(flowByExpiryPremium({ expiry: "2026-09-14" }), 0);
 });
 
+// Regression (correctness audit, 2026-11-08): spxContext()'s fully-unavailable branch
+// (`if (!spx) return "SPX data unavailable.";`) baked its own trailing period into the string,
+// same root cause tideSummary() above was already fixed for — buildMarketRecap's summary
+// template unconditionally appends ANOTHER period (`${spx}.`), producing a double period
+// ("...SPX data unavailable.. Macro: ...") any time spx_bars is empty AND no spxDesk fallback
+// is available. The other two spxContext branches (spxDesk fallback, and the real-bars path)
+// never had this problem — neither ends with a bare `.`.
+test("recap summary never double-periods when SPX data is fully unavailable (no bars, no desk fallback)", () => {
+  const { summary, spx_vix } = buildMarketRecap(baseCtx({ spx_bars: [], vix_bars: [] }));
+  assert.equal(spx_vix, "SPX data unavailable");
+  assert.ok(!summary.includes(".."), `expected no double period, got: ${summary}`);
+  assert.ok(
+    summary.includes("SPX data unavailable. Macro:") || summary.includes("SPX data unavailable. Leaders:"),
+    `expected exactly one period after "SPX data unavailable", got: ${summary}`
+  );
+});
+
 test("spxContext: uses spx_desk fallback when daily bars are empty but desk snapshot has real data", () => {
   const { spx_vix } = buildMarketRecap(
     baseCtx({ spx_bars: [], vix_bars: [] }),
