@@ -78,6 +78,26 @@ test("priceDomain: no finite values → null (never a fabricated scale)", () => 
   assert.equal(priceDomain([null, undefined, NaN]), null);
 });
 
+test("priceDomain: a single distinct finite value still gets a centred window, not null", () => {
+  // Every input identical (e.g. one spot price repeated as low/high/spot) must NOT return null —
+  // the docstring previously claimed otherwise, which would have been a false description of a
+  // behavior several call sites (meridian-viz.tsx's spot/band rails) depend on: they always run
+  // the result through pctAlong, and a null here silently blanks the rail for a security with
+  // only one marker instead of drawing it centred.
+  const d = priceDomain([100, 100, 100]);
+  assert.ok(d, "a single distinct value must produce a real window, not null");
+  assert.ok(d!.min < 100 && d!.max > 100, "the value sits strictly inside its own synthetic window");
+  assert.equal(pctAlong(100, d), 0.5, "the single value is centred in its window");
+
+  // Same guarantee holds after nulls/undefined are filtered down to one surviving value.
+  const afterFilter = priceDomain([null, 50, undefined]);
+  assert.ok(afterFilter, "one value surviving null-filtering must still produce a window");
+
+  // A value of exactly 0 falls back to a fixed ±1 window (magnitude-derived eps would be 0).
+  const zero = priceDomain([0, 0]);
+  assert.ok(zero && zero.min < 0 && zero.max > 0, "zero gets a real ±1-based window, not a null or degenerate domain");
+});
+
 test("pctAlong: null in, null out; midpoint is 0.5", () => {
   const d = priceDomain([0, 100], 0);
   assert.equal(pctAlong(50, d), 0.5);
