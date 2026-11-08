@@ -60,3 +60,27 @@ test("formatDealerDollars: switches to T at $1T and above", () => {
   assert.equal(formatDealerDollars(-3_211_296_657_497.84), "-3.2T");
   assert.equal(formatDealerDollars(1_000_000_000_000), "1.0T");
 });
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-08): the unit (M/B/T) is picked off the UNROUNDED
+// `raw` magnitude, then `formatFixedNonZero` rounds the quotient INSIDE that chosen unit — the
+// same round-off-before-rounding boundary bug just fixed 10 times elsewhere this session
+// (fmt-money.ts's fmtPremium, several Meridian/Thermal/Darkpool/Helix formatters, Vector's
+// crosshair legend, GEX heatmap money formatting — see #7558/#7559/#7560 the same day). A raw
+// value just under a unit threshold rounds UP to "1000" inside the lower unit and never promotes:
+// 999,960,000 is < 1e9 so it takes the M branch, then (999_960_000/1e6).toFixed(1) rounds to
+// "1000.0" — rendering "1000.0M" instead of promoting to the B tier it actually rounded into
+// ("1.0B"). Same shape at the B→T boundary. Live call sites: every Net GEX/VEX/DEX/CHARM line in
+// the swing play-brief (play-brief-intel.ts's gexPostureSection, play-brief.ts's
+// tradeManagerNarrativeSection, play-brief-narrative.ts's dealerPostureLine).
+test("formatDealerDollars: a value that ROUNDS to 1000M promotes to B instead of overflowing", () => {
+  assert.equal(formatDealerDollars(999_960_000), "1.0B");
+  assert.equal(formatDealerDollars(-999_960_000), "-1.0B");
+  // Just under the rounding boundary: must NOT promote.
+  assert.equal(formatDealerDollars(999_400_000), "999.4M");
+});
+
+test("formatDealerDollars: a value that ROUNDS to 1000B promotes to T instead of overflowing", () => {
+  assert.equal(formatDealerDollars(999_960_000_000), "1.0T");
+  assert.equal(formatDealerDollars(-999_960_000_000), "-1.0T");
+  assert.equal(formatDealerDollars(999_400_000_000), "999.4B");
+});
