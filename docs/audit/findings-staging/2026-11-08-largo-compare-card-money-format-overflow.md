@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Two duplicated `formatPrem` copies in the Largo compare/pre-earnings cards overflowed to "$1000K" instead of promoting to "$1.0M"
+## Two duplicated `formatPrem` copies in the Largo compare/pre-earnings cards overflowed to "$1000K" instead of promoting to "$1.0M"
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Severity** | P3 — cosmetic money-format defect (same class as the ~27 instances already fixed this session), member-visible but not a correctness/data issue |
 | **Status** | FIXED |
 
-## Root cause
+### Root cause
 
 Both files carried their own private copy of the same K/M-tier compact-money formatter:
 
@@ -42,7 +42,7 @@ A ticker heading into earnings (or being compared against a peer) with roughly $
 flow premium — an entirely ordinary magnitude for a single name — would have rendered the
 nonsensical `"$1000K"` on either card.
 
-## Evidence (RED → GREEN)
+### Evidence (RED → GREEN)
 
 New tests `src/features/largo/components/LargoPreEarningsPackCard.test.ts` and
 `src/features/largo/components/LargoCompareCard.test.ts` render each component with
@@ -63,14 +63,14 @@ git stash pop   (post-fix)
 
 Also ran `tsc --noEmit` on the full project (clean) after the fix.
 
-## Blast radius
+### Blast radius
 
 Exactly these two files, three render call sites (one in `LargoPreEarningsPackCard.tsx`, two in
 `LargoCompareCard.tsx` — the HELIX/Thermal side and the peer-ticker row both called the local
 `formatPrem` in that file). No other file imports or re-implements either local helper — confirmed
 via `grep -rn "function formatPrem"` across `src/`, which returned only these two definitions.
 
-## Fix rationale
+### Fix rationale
 
 Deleted both private `formatPrem` copies and replaced every call site with the already-fixed,
 already-unit-tested shared `fmtPremium` from `src/lib/fmt-money.ts` (which also adds a correct
