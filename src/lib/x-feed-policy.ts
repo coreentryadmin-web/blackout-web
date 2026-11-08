@@ -31,13 +31,21 @@ export function isTimelinePostAllowed(text: string): boolean {
   // the trusted Whop footer (always its own last line, always self-tagging "@BlackOutTrade") is
   // appended AFTER this check used to stop looking. A first-line-only scan let an @mention of
   // another account hide on line 2+ of the body and reach the timeline uncaught, even though the
-  // policy above and the prompt both say "NEVER @tag other accounts." Checking every line still
-  // allows the footer's own self-tag (the `!line.includes("@BlackOutTrade")` guard below), so a
-  // normal desk post is unaffected.
+  // policy above and the prompt both say "NEVER @tag other accounts."
+  //
+  // BUG FIX (found during the standing audit sweep): the self-tag exemption used to be a whole-LINE
+  // check (`!line.includes("@BlackOutTrade")`), not a per-MENTION one. That let any OTHER account's
+  // mention hide on the same line as the trusted footer's self-tag — e.g. "@BlackOutTrade and
+  // @someone else" — because the line-level `includes` short-circuited the whole line as exempt the
+  // moment it saw "@BlackOutTrade" anywhere in it, never separately inspecting "@someone". A cold
+  // @tag riding alongside the footer on one line reached the timeline uncaught, the exact spam
+  // pattern this function exists to reject. Fixed by extracting every individual @mention on the
+  // line and checking EACH one against the self-tag, instead of exempting the whole line.
   for (const raw of lines) {
     const line = raw.trim();
-    if (/(?:^|\s)@\w{2,}/.test(line) && !line.includes("@BlackOutTrade")) {
-      return false;
+    const mentions = line.match(/(?:^|\s)@\w{2,}/g) ?? [];
+    for (const m of mentions) {
+      if (m.trim() !== "@BlackOutTrade") return false;
     }
   }
   return true;
