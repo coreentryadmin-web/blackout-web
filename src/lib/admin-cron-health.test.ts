@@ -355,6 +355,12 @@ test("buildCronHealthSnapshot can override swing-discovery failed handshakes whe
   assert.match(src, /isSwingDiscoveryScanInFlight/);
 });
 
+test("buildCronHealthSnapshot: spx-evaluate failed handshake can yield to fresh engine heartbeat", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(src, /handshakeUnreliable/);
+  assert.match(src, /health\.status === "failed"/);
+});
+
 test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan heartbeat, not just cron_job_runs", () => {
   const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
   assert.match(
@@ -391,6 +397,34 @@ test("buildCronHealthSnapshot suppresses nighthawk-backfill-repair stale/failed 
     src,
     /job\.key === "nighthawk-backfill-repair"[\s\S]*nighthawkBackfillRepairPreWindow\(\)[\s\S]*Awaiting 9:00 AM ET repair window/
   );
+});
+
+test("weekday scheduled post-close crons: Friday failed suppressed Monday before fire (cron-audit query 2026-11-09)", () => {
+  const now = new Date("2026-11-09T15:55:00.000Z"); // Mon 10:55 AM ET — query run 42649315653
+  const cases: Array<{ key: string; schedule_cron_utc: string }> = [
+    { key: "nighthawk-outcomes", schedule_cron_utc: "30 20,21 * * 1-5" },
+    { key: "gex-eod-snapshot", schedule_cron_utc: "10 20,21 * * 1-5" },
+    { key: "banger-discovery", schedule_cron_utc: "15 20,21 * * 1-5" },
+  ];
+  for (const { key, schedule_cron_utc } of cases) {
+    const health = evaluateJob(
+      jobDef({ key, weekdays_only: true, schedule_cron_utc, stale_after_min: 60 }),
+      {
+        id: 1,
+        job_key: key,
+        status: "failed",
+        started_at: "2026-11-07T21:15:00.000Z",
+        duration_ms: 10,
+        message: "Polygon grouped-daily → 403",
+        meta_json: null,
+      },
+      [],
+      now
+    );
+    assert.equal(health.status, "healthy", key);
+    assert.match(health.status_label, /outside cron schedule window/i, key);
+    assert.equal(health.market_hours_stale, false);
+  }
 });
 
 test("weekday scheduled post-close crons: stale/failed suppressed Saturday (cron-audit query)", () => {

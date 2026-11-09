@@ -350,21 +350,26 @@ export function evaluateJob(
     Boolean(job.schedule_cron_utc) && isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now);
   const suppressStaleOffSchedule =
     (offScheduleGap || awaitingDualBand) && (last.status === "skipped" || last.status === "ok");
+  const suppressFailedOffSchedule =
+    offScheduleGap && last.status === "failed" && isTradingDayEt(formatEtDate(now));
+  const suppressOffScheduleHandshake = suppressStaleOffSchedule || suppressFailedOffSchedule;
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
 
-  if (last.status === "failed") {
-    status = "failed";
-    statusLabel = "Last run failed";
-  } else if (suppressStaleOffWindow) {
+  if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
-  } else if (suppressStaleOffSchedule) {
+  } else if (suppressOffScheduleHandshake) {
     status = "healthy";
-    statusLabel = awaitingDualBand
-      ? "Idle (awaiting in-window UTC band)"
-      : "Idle (outside cron schedule window)";
+    statusLabel = suppressFailedOffSchedule
+      ? "Idle (outside cron schedule window — prior failure not due yet)"
+      : awaitingDualBand
+        ? "Idle (awaiting in-window UTC band)"
+        : "Idle (outside cron schedule window)";
+  } else if (last.status === "failed") {
+    status = "failed";
+    statusLabel = "Last run failed";
   } else if (
     job.key === "flow-ingest" &&
     last.status === "skipped" &&
@@ -529,8 +534,10 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       // the heartbeat block re-flag a healthy off-hours skip (FIX-1) as stale/warning.
       const offWindow = marketHoursCronOffWindow(job, hbNow);
       const cronStale = !offWindow && health.age_min != null && health.age_min > staleThreshold;
+      const handshakeUnreliable =
+        health.status === "failed" || cronStale || health.status === "stale";
 
-      if (cronStale && hbAgeMin != null) {
+      if (handshakeUnreliable && hbAgeMin != null) {
         if (!playHb.stale) {
           return {
             ...health,
