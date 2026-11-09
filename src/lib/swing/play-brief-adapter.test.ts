@@ -543,3 +543,37 @@ test("adaptSwingBriefToLargo: falls back to cached/null when no per-source age i
   assert.equal(largoRead.age_seconds, null);
   assert.equal(largoRead.freshness, "cached");
 });
+
+// BUG FIX (Largo C2, 2026-11-09, Ask Largo/5-engine standing mandate — live repro TSLA/MGNI WATCH):
+// worstKnownSwingDataAgeMs never considered ctx.scanAsOf, the swing-discovery-scan timestamp
+// dataFreshnessSection already uses (gated by the identical isStaleCheckExempt predicate) as its
+// own most-prominent staleness disclosure. For a live WATCH play (no live option-mark age) whose
+// Vector/GEX are ALSO genuinely unavailable this cycle — exactly the sibling case above — the
+// top-level freshness/age_seconds fields read "cached"/null even while envelope.evidence[0] in the
+// SAME response disclosed a multi-day-stale discovery scan.
+test("adaptSwingBriefToLargo: surfaces the discovery-scan age as age_seconds/freshness when it is the only known staleness source this cycle (Largo C2)", () => {
+  const readMs = Date.parse("2026-11-09T07:48:00.000Z");
+  const ctx = fixtureCtx({
+    readMs,
+    sessionDate: "2026-11-09",
+    scanAsOf: "2026-11-06T14:15:15.469Z", // ~2.7 days before readMs, matching the live repro.
+    scanSessionDay: "2026-11-06",
+  });
+  const brief = composeSwingPlayBrief(ctx);
+  // Sanity: the brief's own prose must have actually disclosed the stale scan — otherwise this
+  // test would pass for the wrong reason (no genuine known-stale source in play at all).
+  const freshnessSection = brief.envelope.sections.find((s) => s.title === "Data freshness");
+  assert.ok(freshnessSection, "expected a Data freshness section disclosing the stale scan");
+  assert.match(freshnessSection!.body, /Swing scan: \*\*.*\*\*/);
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.ok, true);
+  if (!largoRead.ok) return;
+  const expectedAgeSec = Math.round((readMs - Date.parse("2026-11-06T14:15:15.469Z")) / 1000);
+  assert.equal(
+    largoRead.age_seconds,
+    expectedAgeSec,
+    "age_seconds must reflect the real scan age, not the hardcoded cached/null constant",
+  );
+  assert.equal(largoRead.freshness, "stale", "a multi-day-old scan age must bucket as stale, not cached");
+});
