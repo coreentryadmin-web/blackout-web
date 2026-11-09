@@ -30,7 +30,7 @@
 
 import { explodeChainRows, type PlayDirection, type ChainContract } from "../horizon-fanout";
 import type { SwingPositionRow } from "../db";
-import type { SwingManageVerdict } from "./manage";
+import type { SwingManageRung, SwingManageVerdict } from "./manage";
 import { decideRollAction, type ParentGradeFreeze, type RollChildSpec } from "./roll";
 import type { ManageSyncReads, ManageSyncRollPlan } from "./manage-sync";
 import { rankSwingContracts } from "./contract-ranker";
@@ -173,6 +173,7 @@ export function gradeParentFromMark(
   row: SwingPositionRow,
   mark: number | null | undefined,
   markSource?: ParentMarkSource,
+  closingRung?: SwingManageRung,
 ): ParentGradeFreeze | null {
   const entry = row.entry_premium;
   if (!isFin(entry) || entry <= 0 || !isFin(mark) || mark < 0) return null;
@@ -196,6 +197,16 @@ export function gradeParentFromMark(
         mark_observed_at: markSource.observedAt,
         mark_age_ms: markSource.ageMs,
       } : {}),
+      // BUG FIX (Ask Largo standing mandate, 2026-11-09, live repro MRNA#65): `evaluateSwingManagement`
+      // computes one of four genuinely distinct gating rungs when a position force-closes
+      // (structural_stop/thesis_stop/premium_stop/expiry_risk — manage.ts), but that fact was never
+      // persisted past `decideRollAction`'s transient reason string — `closedReasonFromRow`
+      // (closed-plays.ts) then had to GUESS the mechanism purely from the sign of realized_pnl_pct,
+      // collapsing all four into "stopped" (negative) or "target" (positive) regardless of which gate
+      // actually fired. Persisting the real rung here (additive — never replaces the sign-derived
+      // fallback for rows graded before this field existed) lets closedReasonFromRow report the real
+      // mechanism instead of a guess.
+      ...(closingRung ? { closing_rung: closingRung } : {}),
       note: "parent leg frozen at roll time from the live mark; the EOD multi-truth grader never re-litigates a frozen leg (graded_at IS NULL guard)",
     },
     grade_methodology: "swing.roll.markfreeze.v1",
@@ -253,7 +264,7 @@ export async function buildSwingRollPlan(
     console.info(`[swing-roll] defer ${row.ticker} #${row.id}: no live mark (or only a stale latched last_mark) to freeze the parent grade`);
     return null;
   }
-  const parentGrade = gradeParentFromMark(row, resolvedMark.mark, resolvedMark.source);
+  const parentGrade = gradeParentFromMark(row, resolvedMark.mark, resolvedMark.source, verdict.rung);
   if (!parentGrade) {
     console.info(`[swing-roll] defer ${row.ticker} #${row.id}: no live mark to freeze the parent grade`);
     return null;

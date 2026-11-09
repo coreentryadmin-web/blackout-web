@@ -111,7 +111,35 @@ export function trimEnforcedBeforeCloseFromScaleOutGrade(
   return typeof v === "boolean" ? v : null;
 }
 
+/** The real gating rung that closed the position (manage.ts's `SwingManageRung`, the subset
+ *  `GATING_RUNGS` restricts to), read back from `grade_json.closing_rung` (roll-plan.ts's
+ *  `gradeParentFromMark`). Honest-null for any row graded before that field existed, or any row
+ *  closed via a path that never threaded it through — `closedReasonFromRow` below falls back to
+ *  the sign-based guess for exactly those rows, so this is strictly additive, never a regression. */
+function closingRungFromGradeJson(gradeJson: Record<string, unknown> | null | undefined): string | null {
+  const v = gradeJson?.closing_rung;
+  return typeof v === "string" ? v : null;
+}
+
+/** Map a real, persisted gating rung to the closedReason label the play-brief narrative already
+ *  has dedicated coaching for ("thesis", "stopped") or can safely fall back to a generic "Exit
+ *  reason: <label>" line for (anything else) — never a false claim about which mechanism fired. */
+function closedReasonFromRung(rung: string): string {
+  if (rung === "thesis_stop") return "thesis";
+  if (rung === "structural_stop") return "stopped";
+  return rung; // premium_stop / expiry_risk — no dedicated branch yet; renders as an honest generic label
+}
+
 function closedReasonFromRow(row: SwingPositionRow): string | null {
+  // BUG FIX (Ask Largo standing mandate, 2026-11-09, live repro MRNA#65): a sign-only guess collapses
+  // four genuinely distinct gating mechanisms (structural_stop/thesis_stop/premium_stop/expiry_risk)
+  // into just "target" (P&L > 0) or "stopped" (P&L < 0) — and a GATING rung can fire regardless of
+  // the P&L sign at the moment it fires (a thesis break can happen while still slightly green), so
+  // the guess can be wrong in BOTH directions, not just mislabel which kind of stop it was. When the
+  // real rung was persisted at grade time, report it instead of guessing.
+  const rung = closingRungFromGradeJson(row.grade_json);
+  if (rung) return closedReasonFromRung(rung);
+
   const pnl = fin(row.realized_pnl_pct);
   if (pnl == null) return null;
   // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro PYPL#24): a position that closed at
