@@ -355,8 +355,20 @@ export function evaluateJob(
   let statusLabel = "OK";
 
   if (last.status === "failed") {
-    status = "failed";
-    statusLabel = "Last run failed";
+    const scheduleFailureIdle =
+      Boolean(job.schedule_cron_utc) &&
+      (isInOffScheduleIdleGap(job.schedule_cron_utc!, now) ||
+        isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now));
+    // Post-close jobs can land with Friday's failed handshake while Monday's first fire is still
+    // hours away (cron-audit query 2026-11-09). Downgrade to warning so watchdog/query stay honest
+    // in-window without P0'ing the whole deploy on an overdue-but-not-yet-due failure.
+    if (scheduleFailureIdle && isTradingDayEt(formatEtDate(now))) {
+      status = "warning";
+      statusLabel = "Last run failed (outside schedule window — awaiting next fire)";
+    } else {
+      status = "failed";
+      statusLabel = "Last run failed";
+    }
   } else if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";

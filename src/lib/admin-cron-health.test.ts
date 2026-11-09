@@ -393,6 +393,33 @@ test("buildCronHealthSnapshot suppresses nighthawk-backfill-repair stale/failed 
   );
 });
 
+test("weekday scheduled post-close crons: Friday failed downgraded Monday morning before fire (cron-audit query)", () => {
+  const now = new Date("2026-11-09T15:55:00.000Z"); // Mon ~10:55 AM ET
+  for (const { key, schedule_cron_utc } of [
+    { key: "nighthawk-outcomes", schedule_cron_utc: "30 20,21 * * 1-5" },
+    { key: "gex-eod-snapshot", schedule_cron_utc: "10 20,21 * * 1-5" },
+    { key: "banger-discovery", schedule_cron_utc: "15 20,21 * * 1-5" },
+  ]) {
+    const health = evaluateJob(
+      jobDef({ key, weekdays_only: true, schedule_cron_utc, stale_after_min: 60 }),
+      {
+        id: 1,
+        job_key: key,
+        status: "failed",
+        started_at: "2026-11-07T21:15:00.000Z",
+        duration_ms: 10,
+        message: "Polygon grouped-daily 403",
+        meta_json: null,
+      },
+      [],
+      now
+    );
+    assert.equal(health.status, "warning", key);
+    assert.match(health.status_label, /awaiting next fire/i);
+    assert.equal(health.market_hours_stale, false);
+  }
+});
+
 test("weekday scheduled post-close crons: stale/failed suppressed Saturday (cron-audit query)", () => {
   const now = new Date("2026-11-08T13:10:00.000Z");
   const cases: Array<{ key: string; schedule_cron_utc: string }> = [

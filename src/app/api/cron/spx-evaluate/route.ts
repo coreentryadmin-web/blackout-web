@@ -8,6 +8,7 @@ import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guard
 import { logCronRun } from "@/lib/cron-run";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { warnIfPlayTimingMisconfigured } from "@/features/spx/lib/spx-play-config";
+import { ServerCacheTimeoutError } from "@/lib/server-cache";
 
 // Validate timing config on every cold start so ECS logs surface misconfiguration.
 warnIfPlayTimingMisconfigured();
@@ -87,6 +88,16 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[spx-evaluate]", detail);
+    if (error instanceof ServerCacheTimeoutError) {
+      const payload = {
+        ok: true,
+        skipped: true,
+        reason: "desk_cache_timeout",
+        detail,
+      };
+      await logCronRun("spx-evaluate", started, payload);
+      return NextResponse.json(payload);
+    }
     await logCronRun("spx-evaluate", started, { ok: false, error: detail });
     return NextResponse.json({ ok: false, error: "Evaluation failed" }, { status: 500 });
   }
