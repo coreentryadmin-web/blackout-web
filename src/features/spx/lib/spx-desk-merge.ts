@@ -17,7 +17,10 @@ export function recalcGexWallDistances(walls: GexWall[], spot: number): GexWall[
     // Recompute kind alongside distance so a price crossing flips support/resistance
     // (matches topGexWalls: strike <= spot is support, strike > spot is resistance).
     kind: w.strike > spot ? "resistance" : "support",
-    distance_pts: Math.round((w.strike - spot) * 100) / 100,
+    // Math.round ties toward +Infinity on a signed value (Math.round(-262.5) === -262 but
+    // Math.round(262.5) === 263), so round the magnitude then reapply sign — the same fix
+    // already applied to this exact bug class at topGexWalls and 7 other sites (see PR #7680).
+    distance_pts: (Math.sign(w.strike - spot) * Math.round(Math.abs(w.strike - spot) * 100)) / 100,
   }));
 }
 

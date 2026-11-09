@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it, beforeEach } from "node:test";
-import { mergeFlowIntoDesk, mergePulseIntoDesk, resetSpxDeskMergeCache } from "./spx-desk-merge";
+import { mergeFlowIntoDesk, mergePulseIntoDesk, recalcGexWallDistances, resetSpxDeskMergeCache } from "./spx-desk-merge";
 import type { SpxDeskFlow, SpxDeskPayload, SpxDeskPulse } from "@/features/spx/lib/spx-desk";
+import type { GexWall } from "@/lib/providers/gamma-desk";
 
 
 function deskStub(overrides: Partial<SpxDeskPayload> = {}): SpxDeskPayload {
@@ -524,5 +525,38 @@ describe("mergeFlowIntoDesk gamma flip truth", () => {
       flowStub({ gamma_flip: 7430, above_gamma_flip: false, gamma_regime: "short" })
     );
     assert.equal(merged.gamma_flip, 7430);
+  });
+});
+
+describe("recalcGexWallDistances", () => {
+  function wallStub(overrides: Partial<GexWall> = {}): GexWall {
+    return { strike: 7545, net_gex: 1, kind: "resistance", distance_pts: 0, ...overrides };
+  }
+
+  it("rounds a mirror-image tie above spot away from zero", () => {
+    // spot = 7542.375, above = 7545 -> (7545 - 7542.375) * 100 = 262.5 (an exact tie)
+    const [wall] = recalcGexWallDistances([wallStub({ strike: 7545 })], 7542.375);
+    assert.equal(wall.distance_pts, 2.63);
+  });
+
+  it("rounds the mirror-image tie below spot to the SAME magnitude, not toward zero", () => {
+    // below = 7539.75 -> (7539.75 - 7542.375) * 100 = -262.5 (the mirror tie)
+    const [wall] = recalcGexWallDistances([wallStub({ strike: 7539.75 })], 7542.375);
+    assert.equal(wall.distance_pts, -2.63);
+  });
+
+  it("still returns plain 0, never -0, when strike equals spot", () => {
+    const [wall] = recalcGexWallDistances([wallStub({ strike: 7542.375 })], 7542.375);
+    assert.equal(wall.distance_pts, 0);
+    assert.equal(Object.is(wall.distance_pts, -0), false);
+  });
+
+  it("flips kind (support/resistance) alongside the recomputed distance", () => {
+    const [above, below] = recalcGexWallDistances(
+      [wallStub({ strike: 7545, kind: "support" }), wallStub({ strike: 7539.75, kind: "resistance" })],
+      7542.375
+    );
+    assert.equal(above.kind, "resistance");
+    assert.equal(below.kind, "support");
   });
 });
