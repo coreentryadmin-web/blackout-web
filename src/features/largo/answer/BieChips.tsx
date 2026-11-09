@@ -69,14 +69,27 @@ export function SourceStamp({ provenance }: { provenance?: BieProvenance | null 
   const rel = relativeTime(provenance.asOf);
   const freshness = provenance.freshness;
   return (
-    <span className="bie-source" role="note">
-      <span className="bie-source-label">{provenance.source}</span>
-      {freshness ? (
-        <span className={clsx("bie-fresh", freshnessToneClass(freshness))}>
-          {FRESHNESS_LABEL[freshness]}
+    <span className="bie-source-wrap">
+      <span className="bie-source" role="note">
+        <span className="bie-source-label">{provenance.source}</span>
+        {freshness ? (
+          <span className={clsx("bie-fresh", freshnessToneClass(freshness))}>
+            {FRESHNESS_LABEL[freshness]}
+          </span>
+        ) : null}
+        {rel ? <span className="bie-source-time">{rel}</span> : null}
+      </span>
+      {/* BUG FIX (Ask Largo standing mandate, 2026-11-09): `market_session_note` reaches every
+          GEX/Vector-sourced level and evidence item's provenance (the "compute is fresh but the
+          market is CLOSED" disclosure, additive to — never a substitute for — freshness/asOf
+          above), but this, the only shared renderer of BieProvenance, never read it. Rendered
+          on its own line, never crammed into the nowrap source row above — it is a full
+          sentence, not a short chip label. */}
+      {provenance.market_session_note ? (
+        <span className="bie-source-note" role="note">
+          {provenance.market_session_note}
         </span>
       ) : null}
-      {rel ? <span className="bie-source-time">{rel}</span> : null}
     </span>
   );
 }

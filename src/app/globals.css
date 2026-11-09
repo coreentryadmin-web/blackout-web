@@ -6914,6 +6914,12 @@ html.product-shell .nav-mega {
   }
 
   /* ── Source stamp (provenance) ── */
+  .bie-source-wrap {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+  }
   .bie-source {
     display: inline-flex;
     align-items: center;
@@ -6956,6 +6962,13 @@ html.product-shell .nav-mega {
   .bie-fresh-unknown {
     color: #9fb3c8;
     border-color: rgba(159, 179, 200, 0.3);
+  }
+  .bie-source-note {
+    font-size: 9.5px;
+    line-height: 1.35;
+    color: rgba(251, 191, 36, 0.75);
+    white-space: normal;
+    max-width: 260px;
   }
 
   /* ── Unavailable chip ── */
