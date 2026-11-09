@@ -10755,3 +10755,38 @@ and `/play` are actually serving a real price again
   "Stock". Before this fix, essentially every such row would have shown "Stock" regardless of
   whether a real option mark was live, so this should flip visibly across the whole Legacy list
   the first time it's checked live post-deploy.
+
+## WATCH LIST — 2026-11-09 (VectorCompareDesk self-sustaining render/effect loop on `onReplayTimeline`, `fix/vector-array-mutation-sweep`) — re-check Vector Compare's CPU/jank during live RTH with 2+ panes open
+
+- **What was broken**: `VectorCompareDesk.tsx` built each compare pane's `onReplayTimeline` prop
+  as a fresh INLINE closure every render (`(timeline) => handleReplayTimeline(seed.ticker,
+  timeline)`). Neither `VectorChart` nor `VectorComparePane` is memoized, so this churning
+  reference reached `VectorChart`'s own `useEffect` (which deliberately lists `onReplayTimeline`
+  in its deps, for a genuine prop swap) and re-fired it on EVERY `VectorCompareDesk` render, not
+  just on a real new bar. That effect's call chain ends in `setUnionTimeline(mergeReplayTimelines(...))`,
+  and `mergeReplayTimelines` always returns a brand-new array (no reference caching) — so
+  `setUnionTimeline` never bails on content equality, triggering another `VectorCompareDesk`
+  render, which recreates the inline callback again. This closed a self-sustaining render/effect
+  loop with no terminating condition tied to real data, reachable in ANY Compare session with 1+
+  panes, independent of whether live ticks were even flowing — a continuous CPU/jank drain, never
+  a thrown error (React's "Maximum update depth exceeded" guard only catches a synchronous
+  setState-during-render loop, not an effect-driven one like this), so it would have read as
+  general sluggishness rather than an obvious crash.
+- **Fix**: cache one stable function per ticker (`getReplayTimelineHandler`, backed by
+  `replayTimelineHandlersRef`) instead of a fresh closure every render, reading the latest
+  `handleReplayTimeline` through a ref (`handleReplayTimelineRef`) so the cached function never
+  goes stale even though `handleReplayTimeline` itself still legitimately churns when `seeds`
+  changes. Pruned on ticker departure via the same `pruneStaleTickerMapEntries` helper already
+  used for `timelinesRef`/`metaByTicker`/`playByTicker`. RED confirmed via `git stash` isolating
+  the source change (5/5 new assertions fail pre-fix), GREEN post-fix (5/5 pass, plus all 117
+  tests across every sibling suite that source-scans `VectorCompareDesk.tsx` or the
+  `vector-compare*` libs); `npx tsc --noEmit` clean.
+- **Specific thing to check once live**: open `/vector`'s Compare view with 2+ panes during RTH
+  (and separately, with the market closed / replay data static, to isolate from live-tick churn
+  entirely) and watch the tab's CPU usage (DevTools Performance/Task Manager) over ~30-60s of idle
+  observation — it should stay flat/low, not climb or show continuous re-render activity. Also
+  confirm the linked-replay scrubber's range/step-count still updates correctly when a pane's bars
+  genuinely advance (the fix should not have broken the real-data case, only removed the spurious
+  one). No live pre-fix capture was possible — forcing and measuring a real-browser infinite
+  render loop isn't practical from this sandbox (no DOM/React-renderer test infra here), so this
+  is a passive live-session check, not a forced repro.
