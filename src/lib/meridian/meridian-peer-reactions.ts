@@ -17,29 +17,39 @@ import "server-only";
  * fan-out; the per-ticker `serverCache` TTL is long (6h) because a name's historical print
  * record does not change intraday — only a NEW print (at most a few times a year per name) can
  * move it.
+ *
+ * FIX (2026-11-09, see `peer-reaction-cache-wrap.ts`'s header for the full account): the
+ * per-peer failure fallback used to be computed INSIDE the cached loader, which silently
+ * cached a transient fetch failure as "no data" for the full 6h TTL. `loadWithFailureIsolatedCache`
+ * moves that catch outside the cache boundary so a real failure is never cached as a fact.
  */
 
 import { serverCache } from "@/lib/server-cache";
 import { loadMeridianEarningsPrintHistory } from "@/lib/meridian/meridian-earnings-history";
 import { summarizePeerReaction, type PeerReactionSummary } from "@/lib/meridian/meridian-sector-core";
+import { loadWithFailureIsolatedCache } from "@/lib/meridian/peer-reaction-cache-wrap";
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const PRINTS_PER_PEER = 4;
 
 async function loadOnePeerReaction(ticker: string): Promise<PeerReactionSummary> {
   const sym = ticker.trim().toUpperCase();
-  return serverCache(`meridian:peer-reaction:v1:${sym}`, CACHE_TTL_MS, async () => {
-    try {
+  return loadWithFailureIsolatedCache(
+    serverCache,
+    `meridian:peer-reaction:v1:${sym}`,
+    CACHE_TTL_MS,
+    async () => {
       const { print_history } = await loadMeridianEarningsPrintHistory(sym, PRINTS_PER_PEER);
       return summarizePeerReaction(sym, print_history);
-    } catch (error) {
+    },
+    (error) => {
       // A single peer's history fetch failing (rate limit, no calendar entry, transient
       // provider error) must not fail the whole cohort — the panel just shows that one peer as
-      // "no data" the same way it already does for a missing implied move.
+      // "no data" for THIS request only (never cached — see peer-reaction-cache-wrap.ts).
       console.error(`[meridian-peer-reactions] ${sym}`, error);
       return summarizePeerReaction(sym, []);
     }
-  });
+  );
 }
 
 /**

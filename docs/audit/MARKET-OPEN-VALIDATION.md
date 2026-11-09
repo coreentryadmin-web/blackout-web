@@ -10251,6 +10251,32 @@ and `/play` are actually serving a real price again
   `NOW()`/`Date.now()`, which is sub-second-granular in practice) — before this fix every one of
   these fields silently rounded down to the whole second on read.
 
+## WATCH LIST — 2026-11-09 (Meridian peer-reaction fetch failure cached as "no data" for 6h, `fix/array-mutation-cache-sweep`) — re-check once a live transient-failure case is observable
+
+- **What was broken**: `loadOnePeerReaction` (`src/lib/meridian/meridian-peer-reactions.ts`,
+  backing `GET /api/market/meridian/peer-reactions`) caught a per-ticker fetch failure INSIDE
+  the `serverCache(...)`-wrapped loader instead of outside it, so a transient upstream failure
+  (rate limit, timeout, no calendar entry) for one peer ticker got written into the cache as a
+  normal "no data" result for the full 6-hour TTL — `server-cache.ts`'s own failure-tracking
+  (`failureCount`/`degradedKeys`, which exists to retry past exactly this kind of blip) never
+  saw the failure at all, because nothing ever rejected.
+- **Fix**: extracted the cache-wrapping logic into a new pure helper,
+  `loadWithFailureIsolatedCache` (`src/lib/meridian/peer-reaction-cache-wrap.ts`), which moves
+  the try/catch outside the cached call so a real failure propagates through `serverCache` (and
+  is never cached) while still degrading gracefully to "no data" for that one request. RED→GREEN
+  proof via temporarily reverting the helper to the original buggy shape (fallback got cached;
+  a retry that should have succeeded instead replayed the stale fallback), then restoring the
+  fix. `tsc --noEmit` clean.
+- **Specific thing to check once live**: the next time CloudWatch logs show a real upstream
+  blip (a Polygon/Benzinga 403/429/timeout) during a Sector Peers panel load for some ticker's
+  cohort, confirm that peer's reaction data recovers on the NEXT panel view/request within the
+  same 6h window instead of staying frozen as "no data" — before this fix it would have stayed
+  frozen for the full TTL regardless of whether the next request's upstream call would have
+  succeeded. No live incident has exercised this path yet during this sweep; this is a
+  forward-looking check for whenever one next occurs (correlate against
+  `src/lib/providers/polygon.ts`/Benzinga entitlement-loss log lines, which this file already
+  tracks as a recurring live failure mode).
+
 ## WATCH LIST — 2026-11-09 (data-integrity-verifier `redis_ttl` check couldn't detect a no-expiry Redis key, `fix/redis-ttl-noexpiry-detection`) — re-check once a live correctness scorecard run is readable
 
 - **What was broken**: `src/lib/correctness/data-integrity-verifier.ts`'s `redis_ttl` check
@@ -10275,6 +10301,7 @@ and `/play` are actually serving a real price again
   changes NOTHING about production Redis behavior, only what the correctness scorecard can now
   observe — a `flag` on this metric going forward would be a genuinely new, real finding (a
   no-expiry `gex-heatmap:SPX` key), not a regression from this change.
+>>>>>>> origin/main
 
 ## WATCH LIST — 2026-11-09 (data-integrity-verifier.ts reported "consistency-only" for an empty `nighthawk_editions` table, `fix/data-integrity-pg-editions-empty-skip`) — re-check the next DATALAYER correctness scorecard/report
 
