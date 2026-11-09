@@ -772,6 +772,31 @@ async function resolvePulseFeedStalled(now = Date.now()): Promise<boolean | null
 }
 
 /**
+ * SPY proxy for I:SPX's last price when the I:SPX-specific Polygon endpoints are themselves
+ * entitlement-blocked (confirmed live 2026-11-09, Ask Largo/5-engine standing mandate):
+ * `GET /v2/aggs/ticker/I:SPX/prev` and `/range/1/day/...` both return 403 NOT_AUTHORIZED while
+ * the equivalent SPY aggs stay healthy on the same key — an additional scope of the known
+ * real-time-snapshot entitlement loss (CLAUDE.md), not previously documented for the historical
+ * aggs family. Mirrors the identical, already-proven fallback `polygon-options-gex.ts`'s
+ * `resolveSpotSnapshotLastResort` uses for the GEX heatmap's own spot resolution under the exact
+ * same condition ("I:SPX prev is often plan-gated; SPY prev × 10 tracks within ~0.4%", data-
+ * integrity C4) — this desk's own price chain never had the equivalent fallback, so it fell all
+ * the way through to the empty shell (price:0, available:false) instead. Price-only, same scope
+ * as that precedent: never fabricates pdh/pdl/change_pct, which a single SPY close cannot supply
+ * honestly.
+ */
+async function spxPriceFromSpyProxy(): Promise<number | null> {
+  try {
+    const { fetchPreviousDayBar } = await import("@/lib/providers/polygon-largo");
+    const bar = await fetchPreviousDayBar("SPY", { next: { revalidate: 3600 } });
+    if (!bar || !(bar.c > 0)) return null;
+    return bar.c * 10;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Prior-day OHLC for pulse — serve stale immediately; refresh in background. Never block cold.
  *
  * `rthOpen` must reflect the CALLER's own already-computed `isSpxRthActive()` (never
@@ -1591,8 +1616,18 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     label !== "RTH OPEN"
       ? latestSessionAndItsOwnPrior(dailyBarsVix, today).prior
       : priorDayFromDailyBars(dailyBarsVix, today);
+  // BUG FIX (Ask Largo standing mandate, 2026-11-09): when spxSnap/lastPulseForSignals/
+  // priorFromBars.pdc are ALL unavailable (the I:SPX entitlement-block scenario — see
+  // spxPriceFromSpyProxy's own doc comment), this used to fall straight to 0 and return the
+  // empty shell, even though a real, usably-accurate price is recoverable via the same SPY-proxy
+  // pattern gex-heatmap already uses successfully for the identical condition. Only attempted
+  // when genuinely needed — never spends the extra fetch when a live/sticky price already exists.
   const price =
-    spxSnap?.price ?? lastPulseForSignals?.price ?? priorFromBars.pdc ?? 0;
+    spxSnap?.price ??
+    lastPulseForSignals?.price ??
+    priorFromBars.pdc ??
+    (await spxPriceFromSpyProxy()) ??
+    0;
   if (!(price > 0)) return empty;
   // Gap #11: liveness of the SPX index tick backing `price`. A frozen WS feed (TCP half-open)
   // shows a non-zero-but-stale price; surface its age + stall so the UI never labels it live.
