@@ -9729,3 +9729,28 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   structural-stop framing), not just the P&L sign. The chain-composite (multi-leg rolled) mapper is
   NOT covered by this fix (disclosed follow-up) — a rolled position's closed reason still uses the
   old sign-based guess, so don't expect `closing_rung` on those rows yet.
+
+## WATCH LIST — 2026-11-09 (Swing PUT `contract_delta` wrong-signed at 3 remaining pin/read sites, PR #7650) — merged, re-check live on open
+
+- **Every CLOSED SHORT/PUT swing position (all 12 in the 90-day window) showed a POSITIVE
+  `contract.delta`** — `contract_delta` is pinned at commit/roll as `ChainContract.delta`'s
+  absolute magnitude (calls positive, puts' magnitude — the ranker's own band-matching
+  convention), and only the 2026-11-08 `produceHorizonPlays` fix (#7604) re-signed it, at exactly
+  one chokepoint (WATCH candidates / freshly-produced COMMIT candidates). Three other read/pin
+  sites never got the same treatment: `closed-plays.ts`'s `contractBundleFromRow` (every CLOSED
+  position's contract — permanently wrong, no live-quote fallback to mask it), `live-plays.ts`'s
+  `contractFromRow` no-live-quote fallback, and `roll-plan.ts`'s `buildRollChild` (every NEW
+  roll-child leg, even post-#7604, since rolls never route through `produceHorizonPlays`).
+  Downstream this is rendered as meaningful: `play-brief.ts`'s Greeks line and `PlayTerminal.tsx`'s
+  red/neutral coloring both treat the sign as real.
+- **Fix** (reviewed and found already merged by the time this session checked back — CI was green,
+  `verify`/CodeQL success, before `merged_by: coreentryadmin-web` landed at 02:28:03Z): re-signs at
+  all 3 sites, matching the exact re-sign `produceHorizonPlays` already does. `closed-plays.ts`'s
+  fix is a pure read-time correction — it fixes every already-closed historical row too, no DB
+  backfill needed. Full regression 2308/2308, tsc clean.
+- **Re-check once the market opens**: pull `GET /api/market/swing/record?days=90` and confirm every
+  CLOSED SHORT/PUT position's `contract.delta` is now negative (it was positive for all 12 before
+  this fix — a full re-verify, not a sample). Also check any currently-OPEN SHORT/PUT position
+  whose live quote drops out mid-session (`liveStatus`/`markAsOf` staleness) still shows negative
+  delta via the now-fixed fallback, and that any position that rolls today gets a negative
+  `contract_delta` on its new child leg from the moment it's created.
