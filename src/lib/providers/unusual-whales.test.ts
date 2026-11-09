@@ -21,6 +21,7 @@ import {
   fetchUwMacroIndicators,
   fetchUwGreekExposureExpiry,
   pickUwNextEarningsRow,
+  uwEarningsAnchorYmd,
   fetchUwTickerFlowAlertsResult,
   fetchUwSpotExposuresByStrikeResult,
 } from "./unusual-whales";
@@ -881,4 +882,35 @@ test("pickUwNextEarningsRow: a genuine EPS of 0 still counts as reported, not mi
 test("pickUwNextEarningsRow: no qualifying row returns null", () => {
   const rows = [{ symbol: "Y", report_date: "2026-01-01", actual_eps: 1.0 }];
   assert.equal(pickUwNextEarningsRow(rows, "2026-08-20"), null);
+});
+
+// ── uwEarningsAnchorYmd: `fetchUwTickerNextEarnings` used to anchor "today" via
+// `new Date().toISOString().slice(0, 10)` — the UTC calendar date. From ~8pm ET to midnight ET
+// every day, UTC has already rolled to tomorrow while New York is still on today's date, so a
+// same-day earnings row compared against the UTC "today" reads as already past and
+// `pickUwNextEarningsRow` would wrongly skip it. `uwEarningsAnchorYmd` must anchor to the real
+// ET calendar date instead, matching every other `today`/`now` anchor already used elsewhere in
+// this file.
+
+test("uwEarningsAnchorYmd: anchors to the ET calendar date, not UTC's, across the evening boundary", () => {
+  // 2026-01-15T02:30:00Z = 2026-01-14 21:30 ET (EST, UTC-5) — still Jan 14 in New York, but UTC
+  // has already rolled over to Jan 15.
+  const instant = new Date("2026-01-15T02:30:00Z");
+  assert.equal(
+    instant.toISOString().slice(0, 10),
+    "2026-01-15",
+    "sanity: the UTC date is already tomorrow at this instant"
+  );
+  assert.equal(
+    uwEarningsAnchorYmd(instant),
+    "2026-01-14",
+    "must anchor to the real ET calendar date (today), not UTC's (tomorrow)"
+  );
+});
+
+test("uwEarningsAnchorYmd: agrees with the UTC date during the day (no DST/boundary edge)", () => {
+  // Midday ET and UTC agree on the calendar date — this anchor must not introduce a spurious
+  // shift when there is no real boundary to cross.
+  const instant = new Date("2026-06-10T15:00:00Z"); // 11:00 ET (EDT, UTC-4)
+  assert.equal(uwEarningsAnchorYmd(instant), "2026-06-10");
 });

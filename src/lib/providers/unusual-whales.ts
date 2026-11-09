@@ -2748,6 +2748,24 @@ export function pickUwNextEarningsRow(
   );
 }
 
+/**
+ * PURE: the calendar-date anchor `fetchUwTickerNextEarnings` filters "upcoming" rows against.
+ *
+ * BUG THIS FIXES: the call site used `new Date().toISOString().slice(0, 10)` — the UTC calendar
+ * date, not ET's. UTC is 4-5 hours ahead of America/New_York, so from roughly 8pm ET (7pm during
+ * EST) to midnight ET every single day, the UTC date has already rolled over to tomorrow while
+ * it is still today in New York. A same-day earnings row (report_date === today's real ET date)
+ * then compared as `d(ET-today) >= todayYmd(UTC-tomorrow)` → false, so `pickUwNextEarningsRow`
+ * wrongly treated TODAY's own report as already in the past and skipped straight to the next
+ * scheduled print — reporting the wrong `earnings_date`/`days_until` for the rest of the evening,
+ * every evening. Every other `today`/`now` anchor in this same file already uses `todayEt()`
+ * (see e.g. lines 624/1200/1267/1363) — this one call site was the outlier, not a deliberate
+ * choice.
+ */
+export function uwEarningsAnchorYmd(now: Date = new Date()): string {
+  return todayEt(now);
+}
+
 // Next expected earnings date.
 // NOTE: the old path `/api/stock/{ticker}/earnings-dates` is not a real UW route — it 404s
 // ("Route not found") for every ticker, so this silently returned null everywhere. UW exposes
@@ -2757,7 +2775,7 @@ export function pickUwNextEarningsRow(
 export async function fetchUwTickerNextEarnings(ticker: string) {
   const data = await uwGetSafe<unknown>(`/api/earnings/${safeTicker(ticker)}`, {});
   const rows = extractRows(data as Record<string, unknown>);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = uwEarningsAnchorYmd();
   return pickUwNextEarningsRow(rows, today);
 }
 
