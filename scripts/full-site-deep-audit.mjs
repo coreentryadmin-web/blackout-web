@@ -5,9 +5,14 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
+import {
+  deskPriorClose,
+  deskSpotNumber,
+  spxDeskSpotAuditVerdict,
+} from "./audit/lib/spx-desk-audit-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -190,15 +195,36 @@ async function auditSpxDesk() {
   const bad = scanFinite(d).slice(0, 5);
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
-  const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  const rthOpen = inRthOpenWindow();
+  const spotVerdict = spxDeskSpotAuditVerdict(d, rthOpen);
+  if (spotVerdict === "fail") {
+    fail("spx-desk", "SPOT", `spot missing or invalid: ${d.price ?? d.spx_price}`, "P0");
+  } else if (spotVerdict === "ok_live") {
+    ok("spx-desk", "spot", String(deskSpotNumber(d)));
+  } else {
+    ok(
+      "spx-desk",
+      "spot-off-hours",
+      deskPriorClose(d) != null
+        ? `prior_close ${deskPriorClose(d)} (cash market closed)`
+        : "available:false (cash market closed)"
+    );
+  }
 
+  const liveSpot = deskSpotNumber(d);
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;
-  if (finite(low) && finite(high) && finite(spot) && (spot < low - 0.01 || spot > high + 0.01)) {
-    fail("spx-desk", "RANGE", `spot ${spot} outside [${low}, ${high}]`, "P0");
-  } else if (finite(low) && finite(high)) ok("spx-desk", "range", `spot ∈ [${low}, ${high}]`);
+  if (
+    spotVerdict === "ok_live" &&
+    liveSpot != null &&
+    finite(low) &&
+    finite(high) &&
+    (liveSpot < low - 0.01 || liveSpot > high + 0.01)
+  ) {
+    fail("spx-desk", "RANGE", `spot ${liveSpot} outside [${low}, ${high}]`, "P0");
+  } else if (spotVerdict === "ok_live" && finite(low) && finite(high)) {
+    ok("spx-desk", "range", `spot ∈ [${low}, ${high}]`);
+  }
 
   const iv = d.uw_iv_rank ?? d.iv_rank;
   if (iv != null && (!finite(iv) || iv < 0 || iv > 100)) fail("spx-desk", "IV-RANK", `iv_rank=${iv}`, "P1");
@@ -210,8 +236,9 @@ async function auditSpxDesk() {
   // change% vs price/prior if available
   const prev = d.prior_close ?? d.prev_close;
   const chg = d.change_pct;
-  if (finite(spot) && finite(prev) && prev > 0 && finite(chg)) {
-    const derived = ((spot - prev) / prev) * 100;
+  const spotForChg = liveSpot ?? deskPriorClose(d);
+  if (finite(spotForChg) && finite(prev) && prev > 0 && finite(chg)) {
+    const derived = ((spotForChg - prev) / prev) * 100;
     if (Math.abs(derived - chg) > 0.15) fail("spx-desk", "CHANGE-PCT", `reported ${chg.toFixed(2)}% vs derived ${derived.toFixed(2)}%`, "P1");
     else ok("spx-desk", "change-pct", `${chg.toFixed(2)}%`);
   }

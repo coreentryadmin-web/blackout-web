@@ -42,6 +42,9 @@ const { label: etLabel, mins: etMins } = etNow;
 const rthOpen = inRthOpenWindow();
 const afterOpen930 = etMins >= 9 * 60 + 30;
 
+/** Phase-anchored / post-close crons: stale handshake off the 09:00–16:15 ET audit window is noise. */
+const WATCHDOG_OFF_HOURS_SUPPRESS = new Set(["swing-discovery"]);
+
 const PG_RTH_MAX_ATTEMPTS = Math.max(1, Number(process.env.RTH_PG_CHECK_ATTEMPTS ?? 3) || 3);
 const PG_RTH_RETRY_MS = Number(process.env.RTH_PG_RETRY_MS ?? 2500);
 
@@ -209,8 +212,18 @@ async function cronHttpChecks() {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+        const problemKeys = json.problem_keys ?? [];
+        const blockingKeys = rthOpen
+          ? problemKeys
+          : problemKeys.filter((k) => !WATCHDOG_OFF_HOURS_SUPPRESS.has(k));
+        if (blockingKeys.length > 0) {
+          failures.push(`${label}: ${blockingKeys.join(", ")}`);
+          console.log(`  ✗ ${label} → stale: ${blockingKeys.join(", ")}`);
+        } else if (problemKeys.length > 0) {
+          console.warn(
+            `  ⚠ ${label} → off-hours watchdog noise (${problemKeys.join(", ")}) — not failing audit`
+          );
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
