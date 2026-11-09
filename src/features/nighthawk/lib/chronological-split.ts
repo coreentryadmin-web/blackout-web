@@ -118,7 +118,17 @@ export function expandingWindowFolds<T>(
   let foldNum = 1;
 
   while (trainDateCount < distinctDates.length && folds.length < maxFolds) {
-    const trainEndDate = distinctDates[trainDateCount - 1]!;
+    // BUG FIX (round 438): `minTrainDates: 0` (nothing forbids it — "start folding from an empty
+    // train window" is a legitimate request) left `trainDateCount === 0` on fold 1, and indexing
+    // `distinctDates[-1]` silently returns `undefined`, not a real date string. `chronologicalSplit`
+    // above already guards the identical computation (`trainDateCount > 0 ? distinctDates[...] :
+    // ""`); this sibling never got the same guard. The empty-train sentinel must be `""`, not
+    // `undefined` — every real YYYY-MM-DD date string compares `> ""` (so `holdout` below still
+    // finds its rows) and `<= ""` is false for every real date (so `train` stays correctly empty),
+    // whereas `undefined` poisons BOTH comparisons to `false` (a relational compare against
+    // `undefined` goes through `ToNumber` -> `NaN`, and `NaN` is never `<`, `<=`, `>` or `>=`
+    // anything) — which silently emptied `holdout` too, not just `train`.
+    const trainEndDate = trainDateCount > 0 ? distinctDates[trainDateCount - 1]! : "";
     const holdoutEndDateIndex = Math.min(distinctDates.length, trainDateCount + holdoutDatesPerFold) - 1;
     const holdoutEndDate = distinctDates[holdoutEndDateIndex]!;
 
