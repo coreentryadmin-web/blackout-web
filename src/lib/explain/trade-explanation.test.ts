@@ -80,6 +80,30 @@ test("factorsFromComponents falls back to raw keys when no label map given", () 
   assert.deepEqual(factors.map((f) => [f.label, f.points]).sort(), [["momentum", 30], ["trendStack", 25]].sort());
 });
 
+test("fmtPts (via headline/lines) rounds exact-half ties symmetrically by magnitude, not by raw-value sign", () => {
+  // Math.round() ties toward +Infinity, so a raw-value sign check (`n >= 0 ? "+" : ""`)
+  // combined with `Math.round(n * 10) / 10` understates — or outright drops — the sign and
+  // magnitude of a negative factor sitting exactly on a rounding tie relative to its positive
+  // mirror image. -0.25 should render "-0.3" (same magnitude as +0.25 → "+0.3"), not "-0.2".
+  const positive = buildTradeExplanation({ verdict: "COMMIT", factors: [{ label: "A", points: 0.25 }] });
+  const negative = buildTradeExplanation({ verdict: "WATCH", factors: [{ label: "A", points: -0.25 }] });
+  assert.match(positive.headline, /A \+0\.3$/);
+  assert.match(negative.headline, /A -0\.3$/);
+
+  // -0.05 is an even sharper case: Math.round(-0.05 * 10) / 10 === -0, which `n >= 0 ? "+" : ""`
+  // (false for -0.05) combined with String(-0) === "0" renders as the bare string "0" — a
+  // negative factor reading as an indistinguishable flat zero instead of "-0.1".
+  const tinyNegative = buildTradeExplanation({ verdict: "WATCH", factors: [{ label: "B", points: -0.05 }] });
+  assert.match(tinyNegative.headline, /B -0\.1$/);
+});
+
+test("fmtR (EV line) rounds exact-half ties symmetrically by magnitude, not by raw-value sign", () => {
+  const positive = buildTradeExplanation({ verdict: "COMMIT", factors: [{ label: "A", points: 1 }], evR: 0.005 });
+  const negative = buildTradeExplanation({ verdict: "WATCH", factors: [{ label: "A", points: 1 }], evR: -0.005 });
+  assert.match(positive.headline, /EV \+0\.01R$/);
+  assert.match(negative.headline, /EV -0\.01R$/);
+});
+
 test("end-to-end from a real flow-quality shape", () => {
   const e = buildTradeExplanation({
     verdict: "COMMIT",

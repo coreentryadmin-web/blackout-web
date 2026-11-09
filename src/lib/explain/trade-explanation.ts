@@ -69,8 +69,27 @@ export interface TradeExplanation {
   lines: string[];
 }
 
-const fmtPts = (n: number): string => `${n >= 0 ? "+" : ""}${Math.round(n * 10) / 10}`;
-const fmtR = (n: number): string => `${n >= 0 ? "+" : ""}${Math.round(n * 100) / 100}R`;
+// ROUND BY MAGNITUDE, THEN REAPPLY SIGN — `Math.round()` ties toward +Infinity
+// (`Math.round(-0.5) === -0` but `Math.round(0.5) === 1`), so a raw-value sign check
+// (`n >= 0 ? "+" : ""`) combined with `Math.round(n * scale) / scale` on the signed value
+// itself understates — or, at the sharpest tie (e.g. -0.05 at this scale), outright drops —
+// the sign and magnitude of a negative factor/EV sitting exactly on a rounding tie relative
+// to its positive mirror image (-0.25 rendered "-0.2" while +0.25 rendered "+0.3"; -0.05
+// rendered the bare string "0" — String(-0) === "0" — reading as an indistinguishable flat
+// zero instead of "-0.1"). Same bug class already fixed at `fmt-money.ts`'s `fmtPct`,
+// `round-floats.ts`, `thermal/lib/gex-heatmap/shift-math.ts`'s `fmtShiftPercentForStrike`,
+// and nighthawk's own `format.ts`/`trade-excursion-graphic.ts` — this was an independent,
+// un-migrated paste of the same formatter shape none of those earlier fixes touched.
+const roundTiesAwayFromZero = (n: number, scale: number): number =>
+  (Math.sign(n) * Math.round(Math.abs(n) * scale)) / scale;
+const fmtPts = (n: number): string => {
+  const rounded = roundTiesAwayFromZero(n, 10);
+  return `${rounded > 0 ? "+" : ""}${rounded}`;
+};
+const fmtR = (n: number): string => {
+  const rounded = roundTiesAwayFromZero(n, 100);
+  return `${rounded > 0 ? "+" : ""}${rounded}R`;
+};
 
 /** Compose the captured evidence into one canonical, ranked, renderable explanation. */
 export function buildTradeExplanation(input: TradeExplanationInput): TradeExplanation {
