@@ -7,8 +7,21 @@ import type { DarkPoolSnapshot } from "@/lib/providers/unusual-whales";
 import { num } from "@/lib/meridian/meridian-viz-core";
 import { expiryCoversPrint } from "@/lib/meridian/meridian-em-scope";
 
-function fmtPremShort(n: number): string {
-  if (!Number.isFinite(n)) return "—";
+/**
+ * Exported (round 484) so `meridian-earnings-intel.ts`'s own `fmtPrem` can delegate here instead
+ * of carrying a second, independently-maintained copy of this exact magnitude ladder — see that
+ * file's own `fmtPrem` for the bug this closes: it had copy-pasted this logic BEFORE the B/T tiers
+ * below existed (its own in-file comment cites only the round-399 K->M fix) and was never updated
+ * when round 419/439 added them here, so it silently re-acquired the "every value past $1M prints
+ * as $X.XM" defect for its own callers (`net_gex`/`net_premium` — dealer gamma exposure for a
+ * single mega-cap ticker like NVDA/AAPL routinely prints in the billions, the exact magnitude this
+ * fix targets) even though the IDENTICAL bug had already been found and fixed on this sibling.
+ * `naLabel` preserves `fmtPrem`'s own `"$—"` fallback (this function's own default stays `"—"`,
+ * unchanged for its existing dark-pool callers) — the two never agreed on that one cosmetic detail,
+ * and delegating must not silently change either caller's long-established non-finite rendering.
+ */
+export function fmtPremShort(n: number, naLabel = "—"): string {
+  if (!Number.isFinite(n)) return naLabel;
   const abs = Math.abs(n);
   // BUG FIX (round 419): this function had no B tier at all — `abs >= 1_000_000` printed
   // EVERY value past $1M as "$X.XM", so a dark-pool aggregate (`total_premium`/`call_premium`/
