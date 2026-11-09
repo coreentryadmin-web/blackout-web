@@ -25,6 +25,16 @@ export function computeTapeSkew(tape: SpxTapeItem[] | undefined): {
 
 export function fmtTapePremium(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
+  // Round BEFORE promoting: anything that rounds up to 1000K (n in [999,500, 999,999]) must read
+  // as "$1.0M", not "$1000K" — the same round-first-then-promote boundary bug already fixed
+  // across this repo's other money formatters (fmt-money.ts, zerodte-board-format.ts, etc).
+  // `flowCallPrem`/`flowPutPrem` on SpxMatrixTapeStrip are SPX 0DTE call/put flow AGGREGATES
+  // (sums across prints), which routinely sit in the high hundred-thousands — this boundary is
+  // hit in real production data, not a theoretical edge case.
+  if (n >= 1_000) {
+    const k = Math.round(n / 1_000);
+    if (k >= 1000) return `$${(n / 1_000_000).toFixed(1)}M`;
+    return `$${k}K`;
+  }
   return `$${Math.round(n)}`;
 }

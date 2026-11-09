@@ -10086,3 +10086,25 @@ and `/play` are actually serving a real price again
   is hitting some third price-resolution path this fix didn't reach — trace which cache path
   actually served that specific request (`GET /api/market/spx/desk` vs `/api/market/spx/merged` vs
   `/api/market/spx/pulse` directly) before assuming the fix itself is wrong.
+
+## WATCH LIST — 2026-11-09 (Night Hawk Command Deck's `hasProxyR` disclosure fired on a play's mere board presence, not contribution, `fix/cockpit-proxyr-horizon-tracking`, PR #7726) — re-check once a real board carries a non-contributing SWING/LEAPS/LEGACY WATCH row alongside working 0DTE positions
+
+- **What was broken**: `sessionTape()` (`src/features/nighthawk/command-deck/cockpit.ts`) added
+  every play's horizon to its tracking Set unconditionally, before the `pnlPct == null` skip that
+  excludes WATCH/SKIP rows from the R sum. A SWING/LEAPS/LEGACY candidate merely sitting on the
+  board in WATCH (never entered, no P&L) flipped `hasProxyR` to `true` and planted the "* R-unit
+  includes Swing/LEAPS/Legacy plays" disclosure next to a Session P&L figure that was in fact
+  100% 0DTE-derived — contradicting the field's own doc comment ("Horizons that contributed to
+  this tape").
+- **Fix**: moved `horizons.add(p.horizon)` inside the CLOSED/WORKING branches, after the `pnlPct`
+  skip, so a horizon only counts once a play from it actually fed `realizedR`/`openR`. Two new
+  regression tests added; RED→GREEN via `git stash` on `cockpit.ts` alone (2/12 fail pre-fix,
+  12/12 pass post-fix); `tsc --noEmit` clean.
+- **Specific thing to check once live**: pull a real Night Hawk Command Deck session that has at
+  least one SWING/LEAPS/LEGACY candidate sitting in WATCH or SKIP alongside working/closed 0DTE
+  positions, and confirm the "* R-unit includes Swing/LEAPS/Legacy plays" disclosure next to
+  Session P&L no longer appears unless a SWING/LEAPS/LEGACY play has ACTUALLY been entered (has a
+  real `pnlPct`) and fed the realized/open R sum. If the disclosure still fires on a pure-WATCH
+  swing candidate after this deploy, the fix didn't reach the code path actually serving that
+  board — check whether `CommandDeck.tsx`'s compact render variant reads a different `sessionTape`
+  call site than the one fixed here.

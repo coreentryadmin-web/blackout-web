@@ -105,6 +105,19 @@ export interface SessionTape {
  * still uses 50% for consistency and comparability, but hasProxyR flags when the board includes
  * plays whose actual risk model differs, so a label can be rendered (members should understand the
  * −50% is a reference, not the break that actually closed a swing position).
+ *
+ * BUG FIX: `horizons` used to be populated unconditionally — `horizons.add(p.horizon)` ran for
+ * EVERY play in the input array, before the `pnlPct == null` skip-check that excludes WATCH/SKIP/
+ * un-marked rows from the sum. `CommandDeck.tsx`'s `plays` is the FULL board (every horizon, every
+ * status), and a Night Hawk board routinely carries SWING WATCH candidates alongside 0DTE working
+ * positions — so `hasProxyR` (and the `*` disclosure it drives next to the Session P&L figure,
+ * "R-unit includes Swing/LEAPS/Legacy plays…") fired as soon as ANY swing/LEAPS/legacy play
+ * existed ANYWHERE on the board, even when every one of them was a non-contributing WATCH/SKIP row
+ * that added nothing to realizedR/openR — i.e. a purely 0DTE-derived P&L figure got mislabeled as
+ * mixing in a swing-model proxy. This directly contradicted this very field's own doc comment
+ * above ("Horizons that CONTRIBUTED to this tape") — the field tracked existence, not
+ * contribution. Fixed by moving `horizons.add` inside the CLOSED/WORKING branches, so a horizon is
+ * only counted once a play from it actually fed `realizedR` or `openR`.
  */
 export function sessionTape(plays: readonly TerminalPlay[]): SessionTape {
   let realizedR = 0;
@@ -113,17 +126,19 @@ export function sessionTape(plays: readonly TerminalPlay[]): SessionTape {
   let openCount = 0;
   const horizons = new Set<TerminalPlay["horizon"]>();
   for (const p of plays) {
-    horizons.add(p.horizon);
     if (p.pnlPct == null) continue; // no P&L to tape — pre-entry / un-priced
     const r = p.pnlPct / R_STOP_ABS_PCT;
     if (p.status === "CLOSED") {
       realizedR += r;
       realizedCount += 1;
+      horizons.add(p.horizon); // only a horizon that ACTUALLY fed the sum counts as "contributed"
     } else if (WORKING.has(p.status)) {
       openR += r;
       openCount += 1;
+      horizons.add(p.horizon);
     }
-    // WATCH / SKIP are not entered — excluded even if a would-be mark exists.
+    // WATCH / SKIP are not entered — excluded even if a would-be mark exists, and must not mark
+    // their horizon as having contributed either (see BUG FIX comment on `hasProxyR` below).
   }
   const hasProxyR = horizons.has("SWING") || horizons.has("LEAPS") || horizons.has("LEGACY");
   return {
