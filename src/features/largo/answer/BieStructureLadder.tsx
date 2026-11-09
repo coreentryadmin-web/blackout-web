@@ -62,6 +62,7 @@ function LadderRow({ rung, maxAbsDistPct }: { rung: StructureLadderRung; maxAbsD
       </div>
       <span className="bie-ladder-row-meta">
         <span className="bie-ladder-row-label">{rung.label}</span>
+        {rung.meta ? <span className="bie-ladder-row-extra">{rung.meta}</span> : null}
         <span className="bie-ladder-row-dist">{fmtDist(rung.distancePct)}</span>
         <span className={clsx("bie-ladder-role-chip", `bie-ladder-role-${rung.role}`)}>
           {ROLE_LABEL[rung.role]}
@@ -220,6 +221,17 @@ export function BieStructureLadder({ ladder }: { ladder: StructureLadder | null 
             : ""}{" "}
           (Wilson 95% LB {ladder.archetypeTrackRecord.wilsonLbPct.toFixed(0)}%, n=
           {ladder.archetypeTrackRecord.n})
+        </p>
+      ) : null}
+
+      {ladder.subLaneTrackRecord ? (
+        <p className="bie-ladder-track-record bie-ladder-track-record-sublane">
+          <strong>{ladder.subLaneTrackRecord.subLaneLabel}</strong> sub-lane
+          {ladder.subLaneTrackRecord.winRatePct != null
+            ? ` — ${ladder.subLaneTrackRecord.winRatePct.toFixed(0)}% win rate`
+            : ""}{" "}
+          (Wilson 95% LB {ladder.subLaneTrackRecord.wilsonLbPct.toFixed(0)}%, n=
+          {ladder.subLaneTrackRecord.n})
         </p>
       ) : null}
 
