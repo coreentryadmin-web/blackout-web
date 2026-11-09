@@ -5,9 +5,10 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
+import { spxDeskSpotAuditVerdict } from "./audit/lib/deep-audit-spx-spot-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -46,6 +47,7 @@ function isRetryableFetchError(err) {
 }
 
 const GET_JSON_MAX_ATTEMPTS = Math.max(1, Number(process.env.AUDIT_FETCH_ATTEMPTS ?? 4) || 4);
+const sessionOpen = () => inRthOpenWindow();
 
 async function getJson(path, opts = {}) {
   let lastErr = null;
@@ -191,8 +193,15 @@ async function auditSpxDesk() {
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  const spotVerdict = spxDeskSpotAuditVerdict({
+    spot,
+    priorClose: d.prior_close ?? d.prev_close,
+    sessionOpen: sessionOpen(),
+  });
+  if (!spotVerdict.ok) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
+  else if (spotVerdict.kind === "off_hours_prior_close") {
+    ok("spx-desk", "spot", `off-hours prior_close=${spotVerdict.ref} (live spot=${spot ?? 0})`);
+  } else ok("spx-desk", "spot", String(spot));
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;
@@ -229,6 +238,7 @@ async function auditPlatformSnapshot() {
   const flows = snap.flows;
   const nh = snap.nighthawk;
   if (spx?.price > 0) ok("snapshot", "spx", `SPX ${spx.price} VIX ${spx.vix ?? "—"}`);
+  else if (!sessionOpen()) ok("snapshot", "spx", "off-hours — snapshot SPX price not required");
   else fail("snapshot", "SPX", "missing SPX price in snapshot");
 
   // Desk vs snapshot
@@ -301,6 +311,10 @@ async function auditHeatmapMatrix() {
     if (status !== 200 || !(hm?.spot > 0)) {
       if (!tradingDay && ticker !== "SPX") {
         ok("heatmap", ticker, "empty on market holiday (expected)");
+        continue;
+      }
+      if (!sessionOpen()) {
+        ok("heatmap", ticker, "off-hours — matrix warm not required");
         continue;
       }
       fail("heatmap", ticker, "unavailable or empty");
@@ -417,6 +431,10 @@ async function auditPublicMarket() {
       continue;
     }
     if (status !== 200) {
+      if (!sessionOpen() && status >= 500 && path.includes("indices")) {
+        ok("public", path, `HTTP ${status} (off-hours — transient ok)`);
+        continue;
+      }
       fail("public", path, `HTTP ${status}`);
       continue;
     }

@@ -209,8 +209,19 @@ async function cronHttpChecks() {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+        const allKeys = [...(json.problem_keys ?? [])];
+        const rthStale = new Set(json.rth_stale_keys ?? []);
+        // Post-close / off-hours: only fail on market-hours stale (live-data emergency), not
+        // phase-anchored jobs like swing-discovery waiting for the evening POST_CLOSE window.
+        const blocking = rthOpen ? allKeys : allKeys.filter((k) => rthStale.has(k));
+        if (blocking.length) {
+          failures.push(`${label}: ${blocking.join(", ")}`);
+          console.log(`  ✗ ${label} → stale: ${blocking.join(", ")}`);
+        } else {
+          console.log(
+            `  ⚠ ${label} → off-hours: ignored non-RTH stale (${allKeys.join(", ") || "—"})`
+          );
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
