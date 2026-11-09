@@ -363,7 +363,11 @@ async function buildRollChild(
       right: pick.right,
       strike: pick.strike,
     }),
-    contract_delta: isFin(pick.delta) ? pick.delta : null,
+    // BUG FIX (2026-11-09, five-engine-largo-cycle audit, sibling of the 2026-11-08 produceHorizonPlays
+    // fix): pick.delta (from rankSwingContracts/ChainContract) is the ranker's ABSOLUTE MAGNITUDE
+    // convention (calls positive, puts' magnitude), never re-signed by this roll pipeline — pin the
+    // true signed delta for the new roll-child leg so it's never wrong to begin with.
+    contract_delta: isFin(pick.delta) ? (pick.right === "P" ? -Math.abs(pick.delta) : pick.delta) : null,
     entry_underlying_px: underlyingPx,
     thesis_invalidation_px: row.thesis_invalidation_px,
     target_underlying_px: row.target_underlying_px,

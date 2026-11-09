@@ -155,7 +155,12 @@ function contractFromRow(row: SwingPositionRow, quote?: SwingLiveQuote | null): 
     // LIVE delta wins over row.contract_delta: the latter is PINNED AT COMMIT (the delta the ranker
     // selected on), so serving it as the position's delta today ages silently. Fall back to the pinned
     // value only when there is no live quote at all — a commit-pinned delta beats no delta.
-    delta: quote?.delta ?? row.contract_delta,
+    //
+    // BUG FIX (2026-11-09, five-engine-largo-cycle audit, sibling of the 2026-11-08 produceHorizonPlays
+    // fix): row.contract_delta is pinned as ChainContract.delta's ABSOLUTE MAGNITUDE (calls positive,
+    // puts' magnitude — contract-ranker.ts's own convention), never re-signed. quote?.delta is already
+    // a genuine signed live read and needs no correction — only the fallback operand does.
+    delta: quote?.delta ?? (right === "P" && row.contract_delta != null ? -Math.abs(row.contract_delta) : row.contract_delta),
     // ChainContract types openInterest as a plain `number` (the 0DTE fan-out does arithmetic on it), so
     // it cannot carry "unknown"; 0 is the floor that fan-out already reads as "no OI", and no swing
     // surface renders OI, so an absent quote never displays a confident zero to a member. When the

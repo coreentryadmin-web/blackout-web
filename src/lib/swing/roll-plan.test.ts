@@ -239,6 +239,29 @@ test("ROLL: grades the parent + builds a gated, further-out child leg", async ()
   assert.equal((child.entry_context as Record<string, unknown>).roll_seq, 1);
 });
 
+// BUG FIX (2026-11-09, five-engine-largo-cycle audit, sibling of the 2026-11-08 produceHorizonPlays
+// fix — src/lib/horizon-plays.test.ts's own "SHORT/PUT plays carry a NEGATIVE delta" test).
+// rankSwingContracts/explodeChainRows store `pick.delta` as the ranker's ABSOLUTE MAGNITUDE
+// convention (contract-ranker.ts/horizon-fanout.ts, calls positive, puts' magnitude) — pinning it
+// verbatim into a new roll-child leg's contract_delta leaves every PUT roll wrong-signed from the
+// moment it's created, not merely raced like a live quote gap.
+test("ROLL (2026-11-09 audit): a SHORT/PUT roll child's contract_delta is pinned negative, not the ranker's absolute magnitude", async () => {
+  const plan = await buildSwingRollPlan(
+    parentRow({ direction: "short", contract_type: "put", contract_delta: -0.4 }),
+    verdict(),
+    reads(),
+    deps(),
+  );
+  assert.ok(plan?.childSpec, "a ROLL carries a child spec");
+  const child = plan!.childSpec!;
+  assert.equal(child.contract_type, "put");
+  assert.equal(
+    child.contract_delta,
+    -0.4,
+    "a PUT roll child's delta must be negative, matching standard options convention",
+  );
+});
+
 // Ask Largo standing mandate (#4076): the roll child's entry_context must carry the parent's
 // discovery-provenance signal_kinds forward, or computeSwingThesisHealth's flow_corroboration
 // pillar permanently falls back to its "no signals" default for the rest of that position's life
