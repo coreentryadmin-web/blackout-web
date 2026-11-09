@@ -10009,6 +10009,32 @@ Ask Largo a real play question
   speculative" note now renders right under the verdict line — it did not render in Concrete mode
   before this fix, even though switching to Deep dive for the same question already showed it.
 
+## WATCH LIST — 2026-11-09 (Ask Largo "Concrete" mode dropped `envelope.systemReads`,
+`fix/largo-concrete-systemreads`) — re-check once the next session asks Ask Largo a
+cross-desk-consensus question
+
+- **`LargoConcreteAnswer.tsx` never read `envelope.systemReads`.** This is the cross-product
+  agreement object (`system-reads-extract.ts`) built from tool results the turn already fetched —
+  what each system (Helix, Thermal, Vector, etc.) independently thinks about the instrument, plus
+  an agreement tally — populated whenever >=2 systems were consulted, independently of whether any
+  canonical section/level prose was written. `LargoDeskRead.tsx` (Deep dive) and `BieAnswer.tsx`
+  (the not-rich-enough/no-envelope fallback, fixed earlier the same day in PR #7717) both already
+  render it via `BieSystemReadsPanel`; Concrete — the DEFAULT `answerMode` — was the one remaining
+  renderer that silently dropped the cross-desk consensus read.
+- **Fix**: `LargoConcreteAnswer.tsx` now renders `<BieSystemReadsPanel systemReads={envelope.systemReads} />`
+  right after the `unavailableSources` chips and before the answer body, reusing the same shared
+  component `BieAnswer.tsx`'s own fix uses (the component is already null-safe, so no extra guard
+  needed at the call site). New regression tests added to the existing
+  `src/features/largo/answer/LargoConcreteAnswer.test.ts` — RED→GREEN confirmed via `git stash` on
+  just the fixed file; `tsc --noEmit` clean. This PR is additive to PR #7719 (same file,
+  `envelope.gexShifts` gap) and does not touch its change.
+- **Re-check once the market opens**: in Ask Largo, stay on the default Concrete mode (no toggle)
+  and ask a question likely to pull >=2 systems' reads on the same ticker (e.g. "what do Helix and
+  Thermal each think about SPY right now?" or a broad "give me the full cross-desk read on
+  [ticker]"). Confirm a "System reads" strip listing each system's stance/basis now renders in the
+  answer — it did not render in Concrete mode before this fix, even though switching to Deep dive
+  for the same question already showed it.
+
 ## WATCH LIST — 2026-11-09 (Ask Largo "Concrete" mode dropped `envelope.gexShifts`,
 `fix/largo-concrete-gexshifts`) — re-check once the next session asks Ask Largo a question that
 triggers `get_gex_matrix_changes`

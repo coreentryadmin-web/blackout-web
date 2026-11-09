@@ -9,6 +9,7 @@ import { splitAnswerCaveats } from "@/features/largo/answer/answer-caveats";
 import { splitHeadline } from "@/features/largo/answer/headline";
 import { parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
 import { UnavailableChip } from "@/features/largo/answer/BieChips";
+import { BieSystemReadsPanel } from "@/features/largo/answer/BieSystemReadsPanel";
 import { BieGexShiftsPanel } from "@/features/largo/answer/BieGexShiftsPanel";
 
 // Accepts an ISO instant OR a Largo C1 ET stamp ("YYYY-MM-DD HH:mm ET" — e.g. swing play-briefs'
@@ -87,6 +88,19 @@ export function LargoConcreteAnswer({
   // confident-looking read with no indication part of the evidence never arrived.
   const unavailableSources = envelope?.unavailableSources ?? [];
 
+  // BUG FIX (Ask Largo standing mandate, 2026-11-09): `envelope.systemReads` is built in
+  // `system-reads-extract.ts` from cross-product tool results the turn already fetched (what
+  // Helix/Thermal/Vector/etc. each independently think about this instrument), populated whenever
+  // the turn consulted >=2 systems — entirely independent of whether any canonical section/level
+  // prose was written. `LargoDeskRead.tsx` (Deep dive) and, as of the same-day fix on
+  // `BieAnswer.tsx`, the not-rich-enough/no-envelope fallback renderer both render it via
+  // `BieSystemReadsPanel`. Concrete — the DEFAULT `answerMode` in `LargoAnswerMessage.tsx` — was
+  // the one remaining renderer that never read this field at all: a turn that cross-checked
+  // multiple desks and genuinely found agreement or disagreement lost that structured,
+  // already-computed consensus for the overwhelming majority of real chat answers. Same shape as
+  // the `gexShifts`/`unavailableSources` gaps fixed in this file earlier the same day.
+  const systemReads = envelope?.systemReads;
+
   // BUG FIX (Ask Largo standing mandate, 2026-11-09): `envelope.gexShifts` is lifted STRUCTURALLY
   // off the turn's own `get_gex_matrix_changes` tool result (see `gex-shift-extract.ts`'s own
   // header) — never parsed back out of prose. `LargoDeskRead.tsx` (Deep dive) and, as of the fix
@@ -129,6 +143,7 @@ export function LargoConcreteAnswer({
         </div>
       ) : null}
 
+      <BieSystemReadsPanel systemReads={systemReads} />
       {gexShifts.length > 0 ? <BieGexShiftsPanel shifts={gexShifts} /> : null}
 
       <LargoMessageBody
