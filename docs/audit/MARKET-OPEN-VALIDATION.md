@@ -9754,3 +9754,30 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   whose live quote drops out mid-session (`liveStatus`/`markAsOf` staleness) still shows negative
   delta via the now-fixed fallback, and that any position that rolls today gets a negative
   `contract_delta` on its new child leg from the moment it's created.
+
+## WATCH LIST — 2026-11-09 (Largo's live `get_swing_play_brief` chat tool never applied the Largo contract adapter, PR #7686) — merged, re-check with a real live chat query
+
+- **`swingPlayBriefForLargo` (`src/lib/largo/swing-play-brief-read.ts`) — the function Largo's
+  live chat `get_swing_play_brief` tool dispatches to for every answer about a Swing position —
+  never called `adaptSwingBriefToLargo`**, unlike the Command Deck HTTP route (`route.ts`), which
+  already did. Two consequences for every live chat answer prior to this fix: (1) C2 — no
+  freshness classification (`live`/`delayed`/`cached`/`snapshot`/`stale` + `age_seconds`) reached
+  the model, just a bare unclassified `dataAgeMs` millisecond integer under a non-contract key;
+  (2) C9 — `distancePct` got the generic 2dp round instead of the narrative's own 1dp
+  (`fmtPct()`), a double-round risk at half-unit boundaries. A 2026-10-20 fix (PR #6284) had
+  wrongly assumed this file "inherits the fix automatically" by calling the HTTP route — it never
+  did, at any revision. Caught by this session's adversarial-verify pass under the standing Ask
+  Largo mandate; reviewed and found already merged by the time this session checked back (CI green
+  — `verify`/CodeQL success — before `merged_by: coreentryadmin-web` at 03:26:45Z).
+- **Fix**: mirrors the HTTP route's adapter-call + field-merge + precision-override pattern
+  exactly — additive, native brief fields untouched. 9/9 new file tests, 47/47 consumer suites
+  (`run-tool.test.ts`/`product-adapters.test.ts`/`play-brief-adapter.test.ts`), tsc clean.
+- **This is the ONE fix this session that the HTTP-route-based audit toolkit (`fetchAuditJson`
+  against `/api/market/swing/play-brief`) used all session could never have caught** — every
+  play-brief deep-audit this session went through the HTTP route, which already had the adapter
+  wired, so the live-chat tool path's gap was invisible to that method the whole time. **Re-check
+  via an ACTUAL live Largo chat query** (not the HTTP route) once the market opens — ask Largo
+  about a real open swing position and confirm the response carries `freshness`/`age_seconds`/
+  `direction`/`evidence_numbers`/`source`/`cohort` fields, and that any `distancePct` value in the
+  response matches the narrative text's own 1dp figure rather than disagreeing at a half-unit
+  boundary.
