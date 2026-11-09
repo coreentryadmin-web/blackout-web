@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Minimal prod HTTP smoke for GitHub Actions (no secrets except optional CRON). */
 import { evaluateSpxDeskSmoke } from "./lib/gha-desk-smoke-eval.mjs";
+import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
@@ -72,9 +73,21 @@ for (const c of seoTextChecks) {
 }
 
 if (CRON) {
-  const { status, body } = await fetchJson("/api/market/spx/desk", {
-    Authorization: `Bearer ${CRON}`,
-  });
+  // Desk build can 502 on a draining ECS task right after merge deploy even when /api/ready is green.
+  const deskUrl = `${BASE}/api/market/spx/desk`;
+  const deskRes = await fetchRetry(
+    deskUrl,
+    { headers: { Authorization: `Bearer ${CRON}` } },
+    { retries: 4, baseDelayMs: 2000, timeoutMs: 90_000 }
+  );
+  const deskText = await deskRes.text();
+  let body;
+  try {
+    body = JSON.parse(deskText);
+  } catch {
+    body = deskText.slice(0, 120);
+  }
+  const status = deskRes.status;
   const verdict = evaluateSpxDeskSmoke({ status, body });
   if (verdict.outcome === "ok") {
     console.log(`  ✓ /api/market/spx/desk → ${verdict.message}`);
