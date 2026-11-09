@@ -6964,7 +6964,6 @@ html.product-shell .nav-mega {
     border-color: rgba(159, 179, 200, 0.3);
   }
   .bie-source-note {
-    font-family: var(--font-sans, inherit);
     font-size: 9.5px;
     line-height: 1.35;
     color: rgba(251, 191, 36, 0.75);
