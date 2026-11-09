@@ -209,8 +209,17 @@ async function cronHttpChecks() {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+        const problemKeys = json.problem_keys ?? [];
+        const rthKeys = json.rth_stale_keys ?? [];
+        if (!rthOpen && rthKeys.length === 0) {
+          console.log(
+            `  ⚠ ${label} → off-hours: ${problemKeys.join(", ")} (non-RTH stale — not elevated)`
+          );
+        } else {
+          const elevate = rthOpen ? problemKeys : rthKeys;
+          failures.push(`${label}: ${elevate.join(", ")}`);
+          console.log(`  ✗ ${label} → stale: ${elevate.join(", ")}`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
