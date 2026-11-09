@@ -34,5 +34,15 @@ test("full-site-deep-audit SPX oracle follows data-validator RTH/off-hours groun
   assert.match(src, /spxOracleVerdict/);
   assert.match(src, /marketstatus\/now/);
   assert.match(src, /I:SPX\/prev/);
-  assert.doesNotMatch(src, /if \(d > 5\) fail\("oracle", "SPX"/);
+  assert.doesNotMatch(src, /if \(d > 5\) fail\("oracle", "SPOT"/);
+});
+
+test("full-site-deep-audit SPX desk spot uses shared deploy-smoke evaluator", () => {
+  assert.match(src, /evaluateSpxDeskSmoke/);
+  assert.doesNotMatch(src, /if \(!\(spot > 0\)\) fail\("spx-desk", "SPOT"/);
+});
+
+test("full-site-deep-audit cron watchdog fails only on RTH stale during session", () => {
+  assert.match(src, /evaluateCronWatchdogAudit/);
+  assert.match(src, /STALE-RTH-/);
 });
