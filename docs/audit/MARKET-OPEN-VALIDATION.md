@@ -10694,3 +10694,37 @@ and `/play` are actually serving a real price again
   label. No live reproduction was possible pre-fix — real `gross_premium`/`recent_premium_30m`
   values this large are rare by construction, so this is a passive next-occurrence check, not a
   forced repro.
+
+## WATCH LIST — 2026-11-09 (VectorChart `onRegimeChange` stale-closure in Compare mode, `fix/vectorcompare-callback-refmirror`) — re-check Vector Compare during live RTH with 2+ panes open
+
+- **What was broken**: `VectorChart.tsx`'s live SSE tick handler called `onRegimeChange` directly
+  from its closure inside `emitRegime`, instead of through a ref mirror like every sibling
+  callback that same long-lived handler reads (the identical bug class #7814/#7815 fixed for
+  `onFreshness`/`onSpotChange`/`onProximityChange`/`onMagnetChange`/`onConfluenceChange`/
+  `onWallIntegrityChange`). Reachable specifically in Vector Compare mode: `VectorComparePane`'s
+  own `handleRegime` closes over its pane's `spot` state (which updates every live tick), so it
+  gets a new identity on every tick, and that churn propagates through `VectorPageShell.handleRegime`
+  into `VectorChart`'s `onRegimeChange` prop unconditionally. Since `connectLive` (which builds the
+  SSE tick handler) is only ever invoked once at mount, the handler kept calling the FIRST
+  `emitRegime`/`handleRegime` chain forever, which meant every live regime-flip event wrote the
+  pane's **mount-time** spot (frozen at the initial seed close) into `VectorCompareDesk`'s
+  `metaByTicker[ticker].spot`, never the live spot — a real correctness gap in state that is not
+  currently read by any rendered UI (the compare footer only reads `.regime.posture`), but is
+  exported for future consumers under the `VectorComparePaneMeta` type.
+- **Fix**: added `onRegimeChangeRef`, mirrored every render (no dep array) inside the SAME bare
+  `useEffect` block that already re-syncs `onFreshnessRef`/`onSpotChangeRef`. `emitRegime` now
+  reads `onRegimeChangeRef.current` and no longer lists `onRegimeChange` in its own `useCallback`
+  deps. No other emit callback touched (`onProximityChange`/`onMagnetChange`/`onConfluenceChange`/
+  `onWallIntegrityChange` are wired to stable `useState` setters at both real call sites, so they
+  never churn in practice). RED confirmed via `git stash` isolating the source change (4/4 new
+  assertions fail pre-fix), GREEN post-fix (4/4 pass, plus all 19 tests across every sibling
+  `VectorChart-*.test.ts` file); `npx tsc --noEmit` clean.
+- **Specific thing to check once live**: open `/vector`'s Compare view with 2+ panes during RTH
+  and watch for a real gamma-posture flip (long γ ↔ short γ ↔ transition) on any pane — the
+  posture chip itself was never wrong (confirmed: `setRegime`/`setRegime` are stable setters
+  called with the fresh argument regardless of closure staleness), so there is nothing externally
+  visible to compare pre/post-fix today. The validation is forward-looking: this closes the gap
+  before anything reads `metaByTicker[ticker].spot`, so if a future feature consumes that field
+  (e.g. a compare-summary spot column), confirm it reflects the LIVE spot at the moment of the
+  regime flip, not a value frozen at page load. No live pre-fix capture was possible — the
+  divergence only shows up in state nothing renders yet, not in a reproducible visual symptom.

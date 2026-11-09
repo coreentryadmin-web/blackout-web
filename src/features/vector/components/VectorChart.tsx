@@ -1457,9 +1457,26 @@ export function VectorChart({
   // value without needing a reconnect.
   const onFreshnessRef = useRef(onFreshness);
   const onSpotChangeRef = useRef(onSpotChange);
+  // BUG FIX (round 508 audit): `onRegimeChange` had the IDENTICAL stale-closure gap `onFreshness`/
+  // `onSpotChange` were fixed for above, but escaped that pass because its single churning call
+  // site is one level removed from VectorChart itself. In Compare mode, VectorComparePane's
+  // `handleRegime` depends on its OWN `spot` state ([pushMeta, spot]), so it gets a new identity on
+  // every live tick; VectorPageShell's `handleRegime` wraps it 1:1 ([onCompareRegimeChange]), so
+  // THAT churns too, and it is passed into VectorChart as `onRegimeChange` unconditionally (unlike
+  // onFreshness/onSpotChange, which are gated `liveSession ? cb : undefined` at the call site).
+  // `emitRegime` (below) used to read `onRegimeChange` directly from the closure and was listed in
+  // `connectLive`'s dependency array — but `connectLive` is only ever invoked from the `[]`-dep
+  // mount effect, the replay-exit path, and the error-retry path, never re-invoked just because its
+  // OWN deps changed. So the live SSE tick handler kept calling the FIRST `emitRegime` captured at
+  // mount forever, which closed over the FIRST `handleRegime` (ComparePane's) forever, which closed
+  // over `spot` AS IT WAS AT MOUNT — every regime-change emit pushed `pushMeta(freshRegime,
+  // staleMountTimeSpot)` into VectorCompareDesk's `metaByTicker`, never the live spot. Mirrored via
+  // a ref, same discipline as every sibling callback this tick handler reads.
+  const onRegimeChangeRef = useRef(onRegimeChange);
   useEffect(() => {
     onFreshnessRef.current = onFreshness;
     onSpotChangeRef.current = onSpotChange;
+    onRegimeChangeRef.current = onRegimeChange;
   });
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const volumeAvgSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -3555,7 +3572,8 @@ export function VectorChart({
   // re-scope with the walls actually drawn on the chart. (User-requested coherence —
   // the terminal must adapt to the DTE selection, not narrate a different scope.)
   const emitRegime = useCallback(() => {
-    if (!onRegimeChange) return;
+    const cb = onRegimeChangeRef.current;
+    if (!cb) return;
     const walls = liveGexWalls();
     const regime = deriveVectorRegime({
       spot: spotRef.current,
@@ -3565,8 +3583,8 @@ export function VectorChart({
     });
     if (regime.read === lastRegimeReadRef.current) return;
     lastRegimeReadRef.current = regime.read;
-    onRegimeChange(regime);
-  }, [onRegimeChange, liveGexWalls, liveGammaFlip]);
+    cb(regime);
+  }, [liveGexWalls, liveGammaFlip]);
 
   // Emit the nearest-wall proximity callout (dynamic desk-terminal pulse). Uses the
   // HORIZON-SCOPED walls + flip so "spot testing the 190 put wall" refers to the wall

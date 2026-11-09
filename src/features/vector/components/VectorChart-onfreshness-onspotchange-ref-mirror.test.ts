@@ -64,12 +64,17 @@ test("VectorChart: both refs are kept in lockstep with the latest props every re
   // `useEffect` with NO dependency array, so it re-runs — and re-syncs the ref — on every single
   // render, never going stale by even one commit. A dep array here would reintroduce exactly the
   // one-render-behind race this fix exists to close.
+  //
+  // Round 508 added `onRegimeChangeRef` to this SAME bare-useEffect block (same discipline, same
+  // reasoning — see VectorChart-onregimechange-ref-mirror.test.ts) rather than a separate effect,
+  // so the pattern here now allows (but doesn't require) that extra assignment line between the
+  // two original ones.
   const block = source.match(
-    /useEffect\(\(\) => \{\s*onFreshnessRef\.current = onFreshness;\s*onSpotChangeRef\.current = onSpotChange;\s*\}\);/
+    /useEffect\(\(\) => \{\s*onFreshnessRef\.current = onFreshness;\s*onSpotChangeRef\.current = onSpotChange;\s*(?:onRegimeChangeRef\.current = onRegimeChange;\s*)?\}\);/
   );
   assert.ok(
     block,
-    "expected a bare `useEffect(() => { onFreshnessRef.current = onFreshness; onSpotChangeRef.current = onSpotChange; });` " +
+    "expected a bare `useEffect(() => { onFreshnessRef.current = onFreshness; onSpotChangeRef.current = onSpotChange; ... });` " +
       "with NO dependency array"
   );
 });
