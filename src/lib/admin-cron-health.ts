@@ -348,23 +348,28 @@ export function evaluateJob(
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
   const awaitingDualBand =
     Boolean(job.schedule_cron_utc) && isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now);
+  // Include `failed` — a prior-window failure must not page cron-audit while sitting in the
+  // long idle gap before today's next fire (measured: Monday 10:55 ET, post-close crons).
   const suppressStaleOffSchedule =
-    (offScheduleGap || awaitingDualBand) && (last.status === "skipped" || last.status === "ok");
+    (offScheduleGap || awaitingDualBand) &&
+    (last.status === "skipped" || last.status === "ok" || last.status === "failed");
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
 
-  if (last.status === "failed") {
-    status = "failed";
-    statusLabel = "Last run failed";
-  } else if (suppressStaleOffWindow) {
+  if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
   } else if (suppressStaleOffSchedule) {
     status = "healthy";
     statusLabel = awaitingDualBand
       ? "Idle (awaiting in-window UTC band)"
-      : "Idle (outside cron schedule window)";
+      : last.status === "failed"
+        ? "Idle (outside cron schedule window — prior window failed)"
+        : "Idle (outside cron schedule window)";
+  } else if (last.status === "failed") {
+    status = "failed";
+    statusLabel = "Last run failed";
   } else if (
     job.key === "flow-ingest" &&
     last.status === "skipped" &&
@@ -396,7 +401,12 @@ export function evaluateJob(
     Boolean(job.schedule_cron_utc) &&
     !isTradingDayEt(formatEtDate(now)) &&
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-  if (nonTradingScheduledIdle && (status === "stale" || status === "failed")) {
+  if (
+    nonTradingScheduledIdle &&
+    (status === "stale" ||
+      status === "failed" ||
+      (status === "healthy" && last.status === "failed"))
+  ) {
     status = "healthy";
     statusLabel = "Idle (non-trading day — outside weekday schedule)";
     marketHoursStale = false;
