@@ -10543,3 +10543,40 @@ and `/play` are actually serving a real price again
   No live state captured pre-fix to diff against — this needed an admin session actually watching
   the tab's network traffic over multiple poll cycles, not something safely reproducible from
   this sandbox.
+
+## WATCH LIST — 2026-11-09 (`fetchChainBand`/`fetchPolygonAtmChainAllExpiries` pagination read a FAILED mid-chain re-fetch as "chain complete", `fix/chain-band-pagination-fetch-failure`) — re-check after the next transient Polygon blip mid-pagination on a wide/strikeHints-widened band or an all-expiries ATM chain pull
+
+- **What was broken**: `fetchChainBand` and `fetchPolygonAtmChainAllExpiries`
+  (`src/lib/providers/polygon-options-gex.ts`) each derived their only truncation signal from the
+  FINAL page object after their pagination loop exits (`page?.next_url`) — the same null-collapse
+  bug class already fixed this session in `fetchHeatmapBandLoHi`/`fetchHeatmapBandUnfiltered`/
+  `fetchPolygonOiByExpiry` (PR #7805) and `fetchPolygonIvTermStructure` (PR #7804). Both loops
+  only ever re-fetch a page once a PRIOR page's own `next_url` has already proven more data
+  exists (the real end is caught by `!page.next_url`, which breaks BEFORE any re-fetch), so a
+  `null` result from that re-fetch can only mean the known-good next page failed to load, never a
+  legitimate end. Once that happens `page` itself goes `null`, and `page?.next_url` reads
+  `undefined` exactly as a clean, complete fetch would. `fetchChainBand`'s existing
+  `warnChainTruncated` call never fired on a genuine mid-band failure; `fetchPolygonAtmChainAllExpiries`
+  had NO truncation signal at all (not even a broken one), so Night Hawk's `resolveTickerChainRows`
+  (its sole caller, in `option-chain-prompt.ts`) had no way to learn a partial, all-expiries chain
+  had been silently returned.
+- **Fix**: both loops now capture a re-fetch into a local `next` before assigning it to `page`,
+  set an explicit `midPaginationFetchFailed` flag the moment `next` comes back `null`, and OR
+  that flag into the truncation decision feeding `warnChainTruncated` instead of deriving
+  truncation solely from the final page. This is observability-only — neither function's return
+  type or callers' contract changed; a wider fix that surfaces truncation to the TYPE (not just a
+  log line) was deliberately left out as a larger, separate change (see the companion staged
+  finding for the follow-up scope). RED confirmed against the real pre-fix source (78/79 pass, 1
+  fail — the new test), GREEN post-fix (79/79 pass); `npx tsc --noEmit` (Node 20) clean; full
+  `npm test` launched in background.
+- **Specific thing to check once live**: hard to trigger deliberately (needs a genuine transient
+  Polygon failure landing exactly mid-pagination on a wide `fetchChainBand` band or an
+  all-expiries ATM pull), so the realistic validation is passive: next time a
+  `[polygon-gex] fetchChainBand(...)` or `[polygon-gex] fetchPolygonAtmChainAllExpiries(...)`
+  truncation warning appears in CloudWatch without a correspondingly huge page count, confirm it
+  corresponds to a real upstream blip (not guard exhaustion, which logs a different "hit N-page
+  guard" message with a large `pages` value) and that the affected read (the intraday-adjusted
+  GEX gamma coefficients, a Largo options-chain tool answer, or a Night Hawk ATM chain/expiry
+  discovery) was genuinely partial for that one call rather than silently presenting as complete.
+  No live state captured pre-fix to diff against — there is no safe way to force a
+  mid-pagination Polygon failure against production from this sandbox.
