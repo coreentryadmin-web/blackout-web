@@ -10476,3 +10476,38 @@ and `/play` are actually serving a real price again
   that window — it should recover to a real, non-empty matrix on the very next ordinary rebuild
   cycle (the Redis matrix TTL, ~90s) once the upstream call starts succeeding again, rather than
   staying pinned empty for up to 10 minutes. No live state captured pre-fix to diff against — ACEEU/RWTN themselves (the tickers that motivated the original 600s cache) should be unaffected either way, since a genuinely dead ticker's fetches are confirmed-empty, not failed.
+
+## WATCH LIST — 2026-11-09 (`fetchPolygonIvTermStructure` could cache a mid-pagination fetch failure as a complete IV term structure for 5 minutes, `fix/iv-term-cache-fetch-failure`) — re-check after the next Polygon/Massive blip mid-chain for a wide-expiry name (SPX/SPY/QQQ)
+
+- **What was broken**: `src/lib/providers/polygon-options-gex.ts`'s `fetchPolygonIvTermStructure`
+  paginates the full options-chain snapshot via `polygonFetchUrl`, which collapses any non-2xx
+  response or thrown network error on a LATER page into the identical `null` the loop's own exit
+  condition uses to mean "no more pages." Once a mid-pagination fetch fails, `page` itself becomes
+  `null`, so the existing `page?.next_url` truncation check (`warnChainTruncated`) never fires —
+  `null?.next_url` is `undefined`, always falsy — and the partial `byExpiry` map built only from
+  whatever pages DID succeed was written into `ivTermCache` for the full 5-minute TTL exactly as
+  if it were the complete, confirmed term structure. Far-dated expiries silently went missing from
+  every consumer (SPX shadow-vol-divergence skew reading in `spx-signal-log.ts`, Largo's
+  `get_iv_term_structure` tool) with no warning anywhere distinguishing "the chain legitimately
+  ends here" from "a page genuinely failed partway through." Same bug class as the two entries
+  immediately above (GEX-heatmap chain-less negative cache, `fetchPolygonMacroBackdrop`'s
+  one-sided fetch failure) — a failed fetch must never be indistinguishable from a confirmed
+  result, especially right before it feeds a multi-minute cache write.
+- **Fix**: capture the later-page re-fetch into a local `next` before assigning it to `page`, flag
+  `midPaginationFetchFailed = true` when `next == null`, log a console.warn naming the ticker when
+  that happens, and gate the `ivTermCache.set` write on `!midPaginationFetchFailed` in addition to
+  the existing `data.length` check. A genuinely complete chain (loop exits via `break` on a falsy
+  `next_url`, never via a failed re-fetch) caches exactly as before. New regression test in
+  `polygon-options-gex.test.ts` (source-pattern assertion, same style as the sibling page-guard
+  test immediately above it — pagination over a live network isn't practically unit-testable
+  without heavy mocking): RED confirmed via `git stash` isolation (77/78 pass pre-fix, the new test
+  itself failing), GREEN post-fix (78/78 pass); `tsc --noEmit` clean.
+- **Specific thing to check once live**: this is hard to trigger deliberately (needs a genuine
+  Polygon/Massive failure landing specifically on page 2+ of a wide-expiry chain pull), so the
+  realistic validation is passive: watch for a `[polygon-gex] fetchPolygonIvTermStructure(...)
+  pagination fetch failed mid-chain` warning in CloudWatch Logs, and if one fires for SPX/SPY/QQQ
+  (names with enough expiries to paginate at all), confirm the NEXT call for that ticker — made
+  immediately after, since nothing was cached — picks up the full term structure rather than
+  reusing a truncated one for up to 5 more minutes. No live state captured pre-fix to diff
+  against — there is no way to force a mid-pagination failure safely against production from this
+  sandbox.
