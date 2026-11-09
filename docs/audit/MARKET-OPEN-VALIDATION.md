@@ -10226,3 +10226,27 @@ and `/play` are actually serving a real price again
   field now computes real expected-fire bounds instead of reading as permanently idle — if this
   parser is consulted by a live staleness alarm, this fix should make a previously-silent gap
   visible (or close one that was wrongly firing as idle).
+
+## WATCH LIST — 2026-11-09 (`new Date(String(r.col)).toISOString()` zeroed milliseconds on 32 db.ts row mappers, `fix/db-iso-timestamp-coercion`) — re-check once a live timestamped payload is readable
+
+- **What was broken**: 32 row mappers in `src/lib/db.ts` (e.g. `mapPlayOutcomeRow`'s
+  `opened_at`/`closed_at`, `fetchOpenSpxPlay`, `mapSwingPositionRow`, `mapSwingAccumRow`,
+  `mapNighthawkJobRow`, and more) normalized a `TIMESTAMPTZ` column with
+  `new Date(String(r.col)).toISOString()` instead of the already-existing `isoTimestampString`
+  helper. `String(dateObj)` runs `Date.prototype.toString()`, which has no sub-second field, so
+  every one of these timestamps was silently served with milliseconds zeroed (`.000`) even when
+  the row actually carried real sub-second precision — a well-formed ISO string that is simply
+  wrong, not malformed, so nothing upstream (type checks, schema validators) could catch it.
+- **Fix**: migrated all 32 call sites to `isoTimestampString(r.col)` (reads the `Date` object
+  directly, no lossy intermediate `.toString()`), same helper already used by the sibling
+  mappers this bug class was first fixed for. New regression test in `db-iso-timestamp.test.ts`
+  pins the exact loss (`.654` → `.000` pre-fix) plus a source-scan ratchet so the pattern can't
+  silently reappear. RED→GREEN confirmed via `git stash` isolation; `tsc --noEmit` clean; full
+  `db.test.ts`/`db-iso-timestamp.test.ts`/`db-swing-ledger.test.ts`/`banger/positions-db.test.ts`
+  pass.
+- **Specific thing to check once live**: pull any one of the affected endpoints (e.g.
+  `GET /api/track-record/plays`, a swing position/snapshot read, a Night Hawk job/edition read)
+  and confirm a fresh `opened_at`/`closed_at`/`updated_at`/etc. timestamp now carries real
+  non-`.000` milliseconds when the underlying write did (most crons/inserts stamp
+  `NOW()`/`Date.now()`, which is sub-second-granular in practice) — before this fix every one of
+  these fields silently rounded down to the whole second on read.

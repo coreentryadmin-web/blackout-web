@@ -98,3 +98,37 @@ test("no db.ts row mapper still coerces an instant column with a bare String()",
   // DATE columns have their own documented funnel; neither may fall back to String().
   assert.doesNotMatch(src, /session_date:\s*String\(r\.session_date\)/, "DATE columns use isoDateString");
 });
+
+// BUG FIX (round 488): the guard above only ever matched a BARE `String(r.col)` coercion. It never
+// matched `new Date(String(r.col)).toISOString()` — a SECOND, distinct way to run
+// `Date.prototype.toString()` on a pg TIMESTAMPTZ Date that was never caught by that regex because
+// the coercion is nested inside `new Date(...)` before being re-stringified to ISO. This shape still
+// produces a well-formed ISO string (so it reads as "already fixed" on casual inspection) but the
+// VALUE is wrong: `Date.prototype.toString()` has no sub-second field (see the SECOND RESOLUTION test
+// above), so re-parsing it and calling `.toISOString()` always yields `.000` milliseconds regardless
+// of what the row actually carried. Found live in 32 db.ts row mappers on 2026-11-09 (e.g.
+// `mapPlayOutcomeRow`'s `opened_at`/`closed_at`, feeding `/api/track-record/plays`,
+// `fetchOpenSpxPlay`, `mapSwingPositionRow`, `mapSwingAccumRow`, `mapNighthawkJobRow`, and more) —
+// none were ever migrated to `isoTimestampString`, which operates on the Date object DIRECTLY
+// (`value.toISOString()`) and therefore never loses the millisecond component.
+test("REGRESSION: new Date(String(d)).toISOString() silently zeroes milliseconds", () => {
+  const withMs = new Date("2026-11-09T14:22:37.654Z");
+  // This is exactly what every one of the 32 fixed call sites used to compute.
+  const legacyRoundTrip = new Date(String(withMs)).toISOString();
+  assert.equal(legacyRoundTrip, "2026-11-09T14:22:37.000Z", "pre-fix: milliseconds silently dropped");
+  assert.notEqual(legacyRoundTrip, withMs.toISOString(), "pre-fix: the served value disagrees with the real one");
+  // isoTimestampString reads the Date object directly — no intermediate toString() — so it is immune.
+  assert.equal(isoTimestampString(withMs), "2026-11-09T14:22:37.654Z", "post-fix: full precision preserved");
+});
+
+test("no db.ts row mapper still round-trips an instant column through new Date(String(...))", () => {
+  // The ratchet for the round-488 fix: `new Date(String(r.col)).toISOString()` (bare OR
+  // null-guarded) must never reappear anywhere in db.ts — every call site must go through
+  // isoTimestampString, which reads the Date object directly instead of its lossy toString().
+  const src = readFileSync("src/lib/db.ts", "utf8");
+  assert.doesNotMatch(
+    src,
+    /new Date\(String\(r\.\w+\)\)\.toISOString\(\)/,
+    "an instant column must be normalized via isoTimestampString(r.col), never new Date(String(r.col)).toISOString()"
+  );
+});
