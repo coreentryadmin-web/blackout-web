@@ -16,10 +16,12 @@ export const PIN_CONDOR_LATE_CUTOFF_ET_MINUTES = 15 * 60 + 30;
 /**
  * Is the PIN lane inside its own window at `nowEtMinutes`?
  *
- * WHY THIS IS EXPORTED: `discoverPinSetups` returns a bare `EnrichedZeroDteSetup[]`, so "ran and
- * found no qualifying pins" and "was outside its own window" are the SAME empty array. A caller
- * recording lane provenance must be able to tell them apart — reporting the 8am zero as a market
- * read would fabricate a "no pins qualified" verdict nobody measured.
+ * WHY THIS IS EXPORTED: `discoverPinSetups`'s outcome carries an empty `setups: []` for BOTH "ran
+ * and found no qualifying pins" and "was outside its own window" alike (its own `status` field only
+ * distinguishes a genuine fetch failure — see pin-discovery.ts's 2026-11-09 disclosure fix — not
+ * off-hours). A caller recording lane provenance must be able to tell the window case apart from a
+ * real market read — reporting the 8am zero as a market read would fabricate a "no pins qualified"
+ * verdict nobody measured.
  */
 export function pinWindowStatus(nowEtMinutes: number): "open" | "off_hours" {
   if (nowEtMinutes < PIN_RTH_OPEN_ET_MINUTES) return "off_hours";

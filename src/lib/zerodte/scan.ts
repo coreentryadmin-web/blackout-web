@@ -557,19 +557,24 @@ export async function scanZeroDteBoard(flags?: {
     try {
       const { hour, minute } = etNowParts();
       const { discoverPinSetups } = await import("./pin-discovery");
-      const pinSetups = await discoverPinSetups({
+      const pinOutcome = await discoverPinSetups({
         today,
         nowEtMinutes: hour * 60 + minute,
         excludeTickers: excludes,
         includeTickers,
       });
-      // discoverPinSetups returns a bare array, so "ran and found nothing" and "was outside its own
-      // window" are the same [] — pinWindowStatus separates them. Reporting a zero as `ok` at 8am
-      // would be a fabricated market read, which is the exact confusion this field exists to end.
+      const pinSetups = pinOutcome.setups;
+      // discoverPinSetups's outcome carries its own fetch-failure signal (2026-11-09 — 90%+ of the
+      // evaluated universe's own GEX/chain fetches THREW this pass, never "ran and found nothing");
+      // check that FIRST. Otherwise "ran and found nothing" and "was outside its own window" are
+      // both a genuine [] — pinWindowStatus separates them. Reporting a zero as `ok` at 8am would be
+      // a fabricated market read, which is the exact confusion this field exists to end.
       discoveryHealth.PIN =
-        pinWindowStatus(hour * 60 + minute) === "off_hours"
-          ? { status: "off_hours", setups: 0 }
-          : { status: "ok", setups: pinSetups.length };
+        pinOutcome.status === "skip_fetch_failed"
+          ? { status: "failed", setups: 0, reason: pinOutcome.reason ?? "fetch_failed" }
+          : pinWindowStatus(hour * 60 + minute) === "off_hours"
+            ? { status: "off_hours", setups: 0 }
+            : { status: "ok", setups: pinSetups.length };
       if (pinSetups.length > 0) {
         mergePinOrigins(setups, pinSetups);
         // Prefer true 0DTE over 1DTE when scores tie — the board is a 0DTE product.
@@ -615,7 +620,9 @@ export async function scanZeroDteBoard(flags?: {
       discoveryHealth.MOMENTUM =
         momentumOutcome.status === "skip_off_hours"
           ? { status: "off_hours", setups: 0 }
-          : { status: "ok", setups: momentumOutcome.setups.length };
+          : momentumOutcome.status === "skip_fetch_failed"
+            ? { status: "failed", setups: 0, reason: momentumOutcome.reason ?? "fetch_failed" }
+            : { status: "ok", setups: momentumOutcome.setups.length };
       if (momentumOutcome.setups.length > 0) {
         mergeDiscoveryOrigins(setups, momentumOutcome.setups);
         // Prefer true 0DTE over 1DTE, then score — same tie-break every other origin merge uses.

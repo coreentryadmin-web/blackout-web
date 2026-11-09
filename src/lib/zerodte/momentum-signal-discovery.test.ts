@@ -6,6 +6,7 @@ import {
   momentumScanUniverse,
   todayExpiryChainRows,
   rateByRvol,
+  MOMENTUM_FETCH_FAILURE_RATE_THRESHOLD,
   type MomentumDiscoveryDeps,
 } from "./momentum-signal-discovery.ts";
 import type { RelativeVolumeShadowRead } from "./relative-volume-source.ts";
@@ -272,7 +273,36 @@ test("discoverMomentumSetups: a ticker with no same-day-expiry contract produces
   assert.deepEqual(outcome.setups, []);
 });
 
-test("discoverMomentumSetups: a resolveChain throw is swallowed -- best-effort, one bad ticker never sinks the pass", async () => {
+test("discoverMomentumSetups: a resolveChain throw never crashes the pass -- the ticker is just absent, no setup fabricated", async () => {
+  // UPDATED 2026-11-09 alongside the fetch-failure disclosure fix (see this file's header note):
+  // this used to run against a ONE-ticker universe and assert `status: "ok"`. With only one name
+  // evaluated, a single throw IS 100% of the universe failing -- exactly the case the fix exists
+  // to flag, not silently report as a clean zero. Widened to a three-ticker universe (only AAPL's
+  // chain fetch throws; MSFT/NVDA resolve cleanly to a genuine NO_TRADE) so the real point of this
+  // test -- a per-ticker IO failure never crashes the pass or fabricates a setup -- is
+  // distinguishable from "the whole universe's own fetch failed" (1/3 = 33% is well under the 90%
+  // threshold, so status stays "ok").
+  const { deps } = makeDeps({
+    resolveChain: (async (ticker: string) => {
+      if (ticker === "AAPL") throw new Error("boom");
+      return { spot: 111.2, rows: [{ ...cheapTodayRow(), expiry: "2026-07-10" }] }; // no same-day row -> genuine NO_TRADE
+    }) as MomentumDiscoveryDeps["resolveChain"],
+  });
+  const outcome = await discoverMomentumSetups({
+    today: TODAY,
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    includeTickers: new Set(["AAPL", "MSFT", "NVDA"]),
+    deps,
+  });
+  assert.equal(outcome.status, "ok");
+  assert.deepEqual(outcome.setups, []);
+});
+
+test("discoverMomentumSetups: a resolveChain throw for the UNIVERSE'S ONLY ticker IS a 100% fetch failure -- skip_fetch_failed, never a fabricated ok", async () => {
+  // The companion case the widened test above deliberately no longer covers: with exactly one
+  // ticker in the universe, that ticker's own throw is indistinguishable from a universe-wide
+  // outage -- and per this fix, it must be reported as one, not silently as "ok, nothing found".
   const { deps } = makeDeps({
     resolveChain: (async () => {
       throw new Error("boom");
@@ -285,7 +315,7 @@ test("discoverMomentumSetups: a resolveChain throw is swallowed -- best-effort, 
     includeTickers: new Set(["AAPL"]),
     deps,
   });
-  assert.equal(outcome.status, "ok");
+  assert.equal(outcome.status, "skip_fetch_failed");
   assert.deepEqual(outcome.setups, []);
 });
 
@@ -337,4 +367,129 @@ test("discoverMomentumSetups: omitting includeTickers falls back to the real 0DT
   assert.equal(outcome.status, "ok");
   assert.equal(calls.fetchMinuteBars, 10);
   assert.equal(outcome.setups.length, 10);
+});
+
+// ── FETCH-FAILURE-VS-GENUINE-EMPTY (found 2026-11-09, live production audit — the MOMENTUM half
+// of the gap breakout-discovery.ts's `skip_fetch_failed` fixed for BREAKOUT the same day, #7786).
+//
+// `discoverMomentumSetups` used to wrap its per-ticker IO calls (`fetchMinuteBars`,
+// `computeRvolShadow`, `resolveChain`) in bare `.catch(() => [] / null)` calls, which collapsed a
+// THROWN upstream error onto the IDENTICAL "this name has no setup" outcome a genuinely quiet,
+// fully-fetched ticker produces. These tests are the RED→GREEN proof that a near-universal fetch
+// failure across the evaluated universe is now reported as `skip_fetch_failed`, distinct from a
+// genuine empty `ok`, while a LONE flaky ticker among many never trips it.
+
+test("discoverMomentumSetups: every evaluated ticker's minute-bar fetch THROWS -> skip_fetch_failed, never ok", async () => {
+  const { deps } = makeDeps({
+    fetchMinuteBars: (async () => {
+      throw new Error("Polygon /v2/aggs/ticker/.../range/1/minute -> 403 (entitlement)");
+    }) as MomentumDiscoveryDeps["fetchMinuteBars"],
+  });
+  const outcome = await discoverMomentumSetups({
+    today: TODAY,
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    includeTickers: new Set(["AAPL", "MSFT", "NVDA"]),
+    deps,
+  });
+  assert.equal(outcome.status, "skip_fetch_failed");
+  assert.notEqual(outcome.status, "ok"); // the exact conflation this fix removes
+  assert.deepEqual(outcome.setups, []);
+  assert.deepEqual(outcome.watches, []);
+  assert.match(String(outcome.reason), /403/);
+});
+
+test("discoverMomentumSetups: a non-Error minute-bar rejection still produces skip_fetch_failed (never throws out of the function)", async () => {
+  const { deps } = makeDeps({
+    fetchMinuteBars: (async () => {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      throw "rate limited";
+    }) as MomentumDiscoveryDeps["fetchMinuteBars"],
+  });
+  const outcome = await discoverMomentumSetups({
+    today: TODAY,
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    includeTickers: new Set(["AAPL", "MSFT", "NVDA"]),
+    deps,
+  });
+  assert.equal(outcome.status, "skip_fetch_failed");
+  assert.equal(outcome.reason, "rate limited");
+});
+
+test("discoverMomentumSetups: bars resolve (no throw) flat/quiet across the universe -> ok + empty, never skip_fetch_failed", async () => {
+  const { deps } = makeDeps({
+    fetchMinuteBars: (async () => flatBars()) as MomentumDiscoveryDeps["fetchMinuteBars"],
+  });
+  const outcome = await discoverMomentumSetups({
+    today: TODAY,
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    includeTickers: new Set(["AAPL", "MSFT", "NVDA"]),
+    deps,
+  });
+  assert.equal(outcome.status, "ok"); // NOT skip_fetch_failed -- nothing threw, the market was just flat
+  assert.equal(outcome.reason, undefined);
+  assert.deepEqual(outcome.setups, []);
+  assert.deepEqual(outcome.watches, []);
+});
+
+test("discoverMomentumSetups: a lone flaky ticker among the real ten-name universe does not trip skip_fetch_failed", async () => {
+  let calls = 0;
+  const { deps } = makeDeps({
+    fetchMinuteBars: (async () => {
+      calls++;
+      if (calls === 1) throw new Error("one flaky read");
+      return flatBars(); // every other name resolves cleanly -- just finds nothing
+    }) as MomentumDiscoveryDeps["fetchMinuteBars"],
+  });
+  const outcome = await discoverMomentumSetups({
+    today: TODAY,
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    deps, // omitted includeTickers -- the real 10-name default universe
+  });
+  assert.equal(calls, 10, "sanity: all ten universe names were evaluated");
+  assert.equal(outcome.status, "ok", "1/10 (10%) is well under the 90% threshold -- must not cry wolf");
+  assert.deepEqual(outcome.setups, []);
+});
+
+test("MOMENTUM_FETCH_FAILURE_RATE_THRESHOLD is 0.9 (a HIGH bar -- a lone flaky name must never trip it)", () => {
+  assert.equal(MOMENTUM_FETCH_FAILURE_RATE_THRESHOLD, 0.9);
+});
+
+test("discoverMomentumSetups: bars/RVOL succeed (real ENTRY) but the chain fetch THROWS for every entry candidate -> skip_fetch_failed", async () => {
+  const { deps } = makeDeps({
+    resolveChain: (async () => {
+      throw new Error("chain fetch 503");
+    }) as MomentumDiscoveryDeps["resolveChain"],
+  });
+  const outcome = await discoverMomentumSetups({
+    today: TODAY,
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    includeTickers: new Set(["AAPL", "MSFT", "NVDA"]),
+    deps,
+  });
+  assert.equal(outcome.status, "skip_fetch_failed");
+  assert.deepEqual(outcome.setups, []);
+  assert.match(String(outcome.reason), /503/);
+});
+
+test("discoverMomentumSetups: computeRvolShadow THROWS (bars fine) for every evaluated name -> skip_fetch_failed too (the second classification-phase catch site)", async () => {
+  const { deps } = makeDeps({
+    computeRvolShadow: (async () => {
+      throw new Error("relative-volume upstream 500");
+    }) as MomentumDiscoveryDeps["computeRvolShadow"],
+  });
+  const outcome = await discoverMomentumSetups({
+    today: TODAY,
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    includeTickers: new Set(["AAPL", "MSFT", "NVDA"]),
+    deps,
+  });
+  assert.equal(outcome.status, "skip_fetch_failed");
+  assert.deepEqual(outcome.setups, []);
+  assert.match(String(outcome.reason), /500/);
 });

@@ -43,6 +43,20 @@
 // dropped): `watches` on the outcome carries every real WATCH-state read this pass, logged via
 // console.info every cycle so they are observable in ops logs today; a dedicated watch-list
 // surface on the member-facing board is a follow-up, not built in this pass.
+//
+// FETCH-FAILURE-VS-GENUINE-EMPTY DISCLOSURE (found 2026-11-09, live production audit, the MOMENTUM
+// half of the gap breakout-discovery.ts's `skip_fetch_failed` fixed for BREAKOUT the same day —
+// #7786; see pin-discovery.ts's identical note for the PIN half). The three per-ticker IO calls
+// below (`fetchMinuteBars`, `computeRvolShadow`, and the chain-fetch `resolveChain`) used to be
+// wrapped in bare `.catch(() => [])`/`.catch(() => null)` calls, which collapsed a THROWN upstream
+// error onto the IDENTICAL "this name has no setup" outcome a genuinely quiet, fully-fetched ticker
+// produces. A universe-wide outage (every ticker's bars/RVOL fetch throwing) drove every
+// classification to NO_SETUP exactly the way a genuinely flat, do-nothing market would — both ended
+// at `setups: []`, and scan.ts reported `discovery_health.MOMENTUM: {status:"ok", setups:0}` either
+// way. We now track whether each per-ticker fetch actually threw (never whether it merely found
+// nothing), and when 90%+ of the universe's own fetches threw, report a `skip_fetch_failed` outcome
+// instead of a genuine `ok` zero — a lone flaky name among the 10-name universe never trips this,
+// only a real, near-universal outage does.
 
 import { fetchAggBars } from "@/lib/providers/polygon-largo";
 import { polygonSpotTicker, type EnrichedZeroDteSetup } from "./board";
@@ -72,12 +86,24 @@ export function momentumScanUniverse(includeTickers?: Set<string> | null): strin
 
 /** Outcome of a momentum discovery pass. `setups` is ALWAYS present (possibly empty — a
  *  genuinely quiet universe this cycle is a real, honest zero, not an absence). `watches` is
- *  real, diagnostic-only developing-setup state (see this file's header). */
+ *  real, diagnostic-only developing-setup state (see this file's header). `skip_fetch_failed`
+ *  (2026-11-09, see the file-header disclosure note) means 90%+ of the universe's own per-ticker
+ *  fetches THREW this pass — `setups`/`watches` are both `[]` and NOT a market read. */
 export type MomentumDiscoveryOutcome = {
-  status: "ok" | "skip_off_hours";
+  status: "ok" | "skip_off_hours" | "skip_fetch_failed";
   setups: EnrichedZeroDteSetup[];
   watches: EarlyEntryWatchAlert[];
+  /** Present only when status === "skip_fetch_failed" — the last thrown fetch's own error message
+   *  (free text, diagnostics only — same convention as breakout-discovery.ts's `reason`). */
+  reason?: string;
 };
+
+/** See momentum-signal-discovery.ts's file-header "FETCH-FAILURE-VS-GENUINE-EMPTY DISCLOSURE"
+ *  note (same constant/threshold as pin-discovery.ts's `PIN_FETCH_FAILURE_RATE_THRESHOLD`, kept as
+ *  its own copy rather than a shared import so each origin's threshold can be tuned independently
+ *  if evidence ever warrants it). A HIGH bar deliberately — this must separate a real, near-
+ *  universal upstream outage from ordinary per-name flakiness. */
+export const MOMENTUM_FETCH_FAILURE_RATE_THRESHOLD = 0.9;
 
 /** Injectable IO seam — real providers by default; tests substitute hermetic fakes. */
 export type MomentumDiscoveryDeps = {
@@ -169,7 +195,10 @@ function actionabilityRank(state: SetupClassification["state"]): number {
  * Discover MOMENTUM-origin setups for the live board. Best-effort per ticker throughout: a
  * failed fetch for one name never sinks the pass — it is simply absent from `setups` this cycle,
  * same discipline as breakout-discovery.ts / pin-discovery.ts degrading to a flow-only board on
- * any throw.
+ * any throw. Returns a discriminated {@link MomentumDiscoveryOutcome}: `ok` (setups/watches may
+ * be empty — a genuinely quiet universe this cycle is a real, honest zero), `skip_off_hours`, or
+ * `skip_fetch_failed` (90%+ of the universe's own fetches THREW this pass — see the file-header
+ * disclosure note, added 2026-11-09).
  */
 export async function discoverMomentumSetups(opts: {
   today: string;
@@ -194,15 +223,46 @@ export async function discoverMomentumSetups(opts: {
   const universe = momentumScanUniverse(opts.includeTickers).filter((t) => !excludeTickers.has(t.toUpperCase()));
   const minutesRemaining = minutesRemainingInSession(nowEtMinutes);
 
-  type BestClassification = { ticker: string; rated: RatedBar[]; best: SetupClassification | null };
+  // `threw`/`errorMessage` track whether EITHER per-ticker IO call actually THREW this pass (never
+  // whether it merely found nothing) — see the file-header disclosure note. Aggregated below,
+  // together with the chain-fetch phase's own throws, to decide ok vs skip_fetch_failed.
+  type BestClassification = {
+    ticker: string;
+    rated: RatedBar[];
+    best: SetupClassification | null;
+    threw: boolean;
+    errorMessage?: string;
+  };
   const classified: BestClassification[] = await Promise.all(
     universe.map(async (ticker): Promise<BestClassification> => {
+      let threw = false;
+      let errorMessage: string | undefined;
       try {
         const sym = polygonSpotTicker(ticker);
-        const [rawBars, rvolShadow] = await Promise.all([
-          fetchMinuteBars(sym, today, today).catch(() => []),
-          computeRvolShadow(ticker, nowMs).catch(() => null),
+        // 2026-11-09: was `Promise.all([fetchMinuteBars(...).catch(() => []), computeRvolShadow(...)
+        // .catch(() => null)])`, which collapsed a THROWN fetch onto the identical "no setup today"
+        // outcome a genuinely flat, fully-fetched ticker produces. `allSettled` keeps the same
+        // concurrency while letting us tell "it threw" apart from "it resolved empty".
+        const [barsResult, rvolResult] = await Promise.allSettled([
+          fetchMinuteBars(sym, today, today),
+          computeRvolShadow(ticker, nowMs),
         ]);
+        let rawBars: unknown[] = [];
+        if (barsResult.status === "fulfilled") {
+          rawBars = barsResult.value;
+        } else {
+          threw = true;
+          errorMessage = barsResult.reason instanceof Error ? barsResult.reason.message : String(barsResult.reason);
+          console.warn(`[zerodte-momentum] ${ticker} minute-bar fetch THREW -- treating as a fetch failure, not "no setup":`, barsResult.reason);
+        }
+        let rvolShadow: Awaited<ReturnType<MomentumDiscoveryDeps["computeRvolShadow"]>> = null;
+        if (rvolResult.status === "fulfilled") {
+          rvolShadow = rvolResult.value;
+        } else {
+          threw = true;
+          errorMessage = rvolResult.reason instanceof Error ? rvolResult.reason.message : String(rvolResult.reason);
+          console.warn(`[zerodte-momentum] ${ticker} RVOL shadow fetch THREW -- treating as a fetch failure, not "no setup":`, rvolResult.reason);
+        }
         const bars = toPressureBars(rawBars);
         const rated = rateByRvol(bars, rvolShadow?.avg_daily_volume ?? null);
         const longClassification = classifySetup({ rated, direction: "long" });
@@ -211,10 +271,10 @@ export async function discoverMomentumSetups(opts: {
           actionabilityRank(longClassification.state) >= actionabilityRank(shortClassification.state)
             ? longClassification
             : shortClassification;
-        return { ticker, rated, best: best.state === "NO_SETUP" ? null : best };
+        return { ticker, rated, best: best.state === "NO_SETUP" ? null : best, threw, errorMessage };
       } catch (err) {
         console.warn(`[zerodte-momentum] classification failed for ${ticker} -- SKIP this ticker:`, err);
-        return { ticker, rated: [], best: null };
+        return { ticker, rated: [], best: null, threw, errorMessage };
       }
     })
   );
@@ -232,11 +292,27 @@ export async function discoverMomentumSetups(opts: {
   }
 
   const setups: EnrichedZeroDteSetup[] = [];
+  // Chain-fetch throws are tallied into the SAME fetch-failure aggregate as the classification
+  // phase above (see the file-header disclosure note) — denominator stays `universe.length`, never
+  // `entryCandidates.length`, since a ticker that already threw during classification never
+  // reaches here (its `best` is null, so it can never be an entry candidate) and so is never
+  // double-counted.
+  let chainFetchFailures = 0;
+  let chainErrorMessage: string | undefined;
   await Promise.all(
     entryCandidates.map(async ({ ticker, rated, best }) => {
       const classification = best!;
       try {
-        const chainResult = await resolveChain(ticker).catch(() => null);
+        // 2026-11-09: was `resolveChain(ticker).catch(() => null)` — same disclosure fix as the
+        // classification phase above, so a thrown chain fetch is counted, not silently swallowed.
+        let chainResult: Awaited<ReturnType<MomentumDiscoveryDeps["resolveChain"]>> = null;
+        try {
+          chainResult = await resolveChain(ticker);
+        } catch (err) {
+          chainFetchFailures++;
+          chainErrorMessage = err instanceof Error ? err.message : String(err);
+          console.warn(`[zerodte-momentum] ${ticker} chain fetch THREW -- treating as a fetch failure, not "no trade":`, err);
+        }
         if (!chainResult || !(chainResult.spot > 0) || chainResult.rows.length === 0) return;
         const chainRows = todayExpiryChainRows(chainResult.rows, today);
         if (chainRows.length === 0) return; // no true same-day 0DTE listed for this name today
@@ -265,6 +341,21 @@ export async function discoverMomentumSetups(opts: {
       }
     })
   );
+
+  const classificationFailures = classified.filter((c) => c.threw).length;
+  const totalFetchFailures = classificationFailures + chainFetchFailures;
+  const fetchFailureRate = universe.length > 0 ? totalFetchFailures / universe.length : 0;
+  if (fetchFailureRate >= MOMENTUM_FETCH_FAILURE_RATE_THRESHOLD) {
+    const reason =
+      chainErrorMessage ??
+      classified.find((c) => c.threw)?.errorMessage ??
+      `${totalFetchFailures}/${universe.length} per-ticker fetches threw`;
+    console.warn(
+      `[zerodte-momentum] ${totalFetchFailures}/${universe.length} evaluated name(s)' own fetch THREW -- ` +
+        `SKIP_FETCH_FAILED (not "no momentum today")`
+    );
+    return { status: "skip_fetch_failed", setups: [], watches: [], reason };
+  }
 
   console.info(
     `[zerodte-momentum] universe=${universe.length} entry_candidates=${entryCandidates.length} ` +
