@@ -6,7 +6,11 @@ import {
   loadMeridianEarningsTimeline,
   loadMeridianFdaTimeline,
 } from "@/lib/meridian/meridian-timeline-server";
-import { buildMeridianTimeline, parseMeridianEventId } from "@/features/meridian/lib/meridian-timeline";
+import {
+  buildMeridianTimeline,
+  buildTimelineStats,
+  parseMeridianEventId,
+} from "@/features/meridian/lib/meridian-timeline";
 import { roundFloats } from "@/lib/round-floats";
 import {
   buildMeridianMacroBrief,
@@ -16,29 +20,12 @@ import {
 import { loadMeridianEarningsEventDetail } from "@/lib/meridian/meridian-earnings-event-load";
 import { readMeridianBoardTickers } from "@/lib/meridian/meridian-board-tickers";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
-import type {
-  MeridianEventDetail,
-  MeridianTimelinePayload,
-  MeridianTimelineStats,
-} from "@/features/meridian/lib/meridian-types";
+import type { MeridianEventDetail, MeridianTimelinePayload } from "@/features/meridian/lib/meridian-types";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { prefetchSpxDeskEnrichment } from "@/features/spx/lib/spx-desk";
 
 export const MERIDIAN_TIMELINE_TTL_MS = 120_000;
 export const MERIDIAN_EVENT_TTL_MS = 120_000;
-
-function buildTimelineStats(items: MeridianTimelinePayload["items"]): MeridianTimelineStats {
-  return {
-    total: items.length,
-    macro: items.filter((i) => i.kind === "macro").length,
-    earnings: items.filter((i) => i.kind === "earnings").length,
-    fda: items.filter((i) => i.kind === "fda").length,
-    opex: items.filter((i) => i.kind === "opex").length,
-    high_impact: items.filter((i) => i.impact === "high").length,
-    next_24h: items.filter((i) => i.days_until <= 1).length,
-    earnings_mega_cap: items.filter((i) => i.kind === "earnings" && (i.importance ?? 0) >= 4).length,
-  };
-}
 
 const DEFAULT_WARM_DAYS = 21;
 
