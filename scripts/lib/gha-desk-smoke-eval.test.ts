@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   evaluateSpxDeskSmoke,
   isApproxUsCashRth,
+  shouldRetrySpxDeskProbe,
 } from "./gha-desk-smoke-eval.mjs";
 
 /** 2026-11-08 is a Saturday — deploy-smoke failed with cron-authed 200 + price 0 */
@@ -45,4 +46,19 @@ test("evaluateSpxDeskSmoke: cron secret drift is warn", () => {
 
 test("isApproxUsCashRth: Saturday is false", () => {
   assert.equal(isApproxUsCashRth(SATURDAY_MIDDAY_ET), false);
+});
+
+test("evaluateSpxDeskSmoke: 502 is fail", () => {
+  const v = evaluateSpxDeskSmoke(
+    { status: 502, body: { available: false, error: "Desk build failed" } },
+    SATURDAY_MIDDAY_ET
+  );
+  assert.equal(v.outcome, "fail");
+  assert.match(v.message, /502/);
+});
+
+test("shouldRetrySpxDeskProbe: 502 retries until attempts exhausted", () => {
+  assert.equal(shouldRetrySpxDeskProbe(502, 0, 5), true);
+  assert.equal(shouldRetrySpxDeskProbe(502, 4, 5), false);
+  assert.equal(shouldRetrySpxDeskProbe(404, 0, 5), false);
 });

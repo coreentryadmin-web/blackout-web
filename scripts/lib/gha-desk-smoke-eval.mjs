@@ -68,3 +68,8 @@ export function evaluateSpxDeskSmoke(probe, now = new Date()) {
 
   return { outcome: "fail", message: `unexpected HTTP ${status}` };
 }
+
+/** Post-deploy smoke: one cold replica can 502 while building the desk cache — retry before failing. */
+export function shouldRetrySpxDeskProbe(status, attempt, maxAttempts) {
+  return status >= 500 && status < 600 && attempt < maxAttempts - 1;
+}
