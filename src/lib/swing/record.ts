@@ -55,16 +55,24 @@ export interface SwingLegRowLike {
 }
 
 const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
-// Round by MAGNITUDE then reapply sign — plain `Math.round(n*100)/100` ties toward +Infinity
-// (`Math.round(-12.5) === -12` but `Math.round(12.5) === 13`), so a losing (negative) P&L sitting
-// exactly on a tie rounds to a SMALLER magnitude than the identical-size winning mirror would —
-// the same sign-biased asymmetry already found and fixed across this codebase this session
-// (underlying-excursion.ts's signedExcursionPct, fmt-money.ts's fmtPct, debrief.ts's round2,
-// gamma-desk.ts's distance_pts, and others). Every value this helper rounds here is bidirectional
-// (realizedPnlPct/worstLegPnlPct/sumPnlPct/compoundedReturnPct) and worstLegPnlPct is this file's
-// own "explicit preserved-loss witness" (see the file header) plus the exact-0 test `breakevens`
-// relies on below — a tie-biased understatement of a real loss's magnitude isn't cosmetic here.
-const round2 = (n: number): number => (Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100;
+// Round by MAGNITUDE then reapply sign, at an arbitrary decimal precision — plain
+// `Math.round(n*factor)/factor` ties toward +Infinity (`Math.round(-12.5) === -12` but
+// `Math.round(12.5) === 13`), so a losing (negative) value sitting exactly on a tie rounds to a
+// SMALLER magnitude than the identical-size winning mirror would — the same sign-biased asymmetry
+// already found and fixed across this codebase this session (underlying-excursion.ts's
+// signedExcursionPct, fmt-money.ts's fmtPct, debrief.ts's round2, gamma-desk.ts's distance_pts,
+// and others). Parameterized by `dp` so the ONE lane-wide aggregate in this file that rounds to
+// 1dp (buildSwingRecordSummary's avg_compounded_return_pct, below) shares this exact algorithm
+// instead of hand-rolling a second, easy-to-drift copy of it.
+const roundSignSafe = (n: number, dp: number): number => {
+  const factor = 10 ** dp;
+  return (Math.sign(n) * Math.round(Math.abs(n) * factor)) / factor;
+};
+// Every value round2 rounds in this file is bidirectional (realizedPnlPct/worstLegPnlPct/
+// sumPnlPct/compoundedReturnPct) and worstLegPnlPct is this file's own "explicit preserved-loss
+// witness" (see the file header) plus the exact-0 test `breakevens` relies on below — a
+// tie-biased understatement of a real loss's magnitude isn't cosmetic here.
+const round2 = (n: number): number => roundSignSafe(n, 2);
 
 export interface SwingLegGrade {
   positionId: number;
@@ -329,9 +337,19 @@ export function buildSwingRecordSummary(
   const compounded = resolved
     .map((r) => r.composite.compoundedReturnPct)
     .filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+  // BUG FIX (Ask Largo standing mandate, 2026-11-09): this lane-wide aggregate is bidirectional
+  // (a losing lane genuinely serves a negative avg_compounded_return_pct — confirmed live,
+  // -6.2 over a 90-day/66-chain window the day this was fixed) but used a plain
+  // `Math.round(x*10)/10`, independently of round2 above and carrying the SAME tie-toward-
+  // +Infinity sign bias that round2 exists to fix. `round2`/`worstLegPnlPct`/`sumPnlPct`/
+  // `compoundedReturnPct` upstream in buildSwingRecord were already fixed earlier today
+  // (PR #7706) — this function's OWN separate rounding of the cross-chain average was never
+  // touched by that fix because it doesn't call round2 at all (it rounds to 1dp, not 2dp, and
+  // lives in a different function). Reuses the same `roundSignSafe` algorithm round2 is now
+  // defined in terms of, at dp=1, rather than hand-rolling a second near-duplicate formula.
   const avgCompounded =
     compounded.length > 0
-      ? Math.round((compounded.reduce((a, b) => a + b, 0) / compounded.length) * 10) / 10
+      ? roundSignSafe(compounded.reduce((a, b) => a + b, 0) / compounded.length, 1)
       : null;
   return {
     methodology: SWING_RECORD_METHODOLOGY,

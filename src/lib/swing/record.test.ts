@@ -284,6 +284,55 @@ test("buildSwingRecordSummary: methodology text documents that a 0% leg counts a
   assert.match(summary.methodology, /0% .*(counts as a LOSS|breakeven)/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-09): `avg_compounded_return_pct` is a bidirectional
+// lane-wide aggregate (confirmed live negative — -6.2 over a real 90-day/66-chain window the day
+// this was found) computed with its OWN plain `Math.round(x*10)/10`, entirely separate from
+// round2 above — round2's earlier same-day fix (PR #7706) only touched buildSwingRecord's
+// per-chain fields (realizedPnlPct/worstLegPnlPct/sumPnlPct/compoundedReturnPct), never this
+// function's independent cross-chain average. Plain Math.round ties toward +Infinity
+// (`Math.round(-62.5) === -62`), so a losing lane's average sitting exactly on a 1dp tie
+// understates the loss's magnitude the same way the earlier round2 bug did.
+//
+// Two single-leg resolved chains with compoundedReturnPct -5.00 and -7.50 (both already exact at
+// round2's 2dp, so round2 itself introduces no further rounding) sum to exactly -12.50 over 2
+// chains -> a true average of -6.25, landing exactly on a 1dp tie: sign-biased rounding gives
+// -6.2 (the bug), sign-safe rounding gives -6.3 (the fix) — the exact -6.25 -> -6.2/-6.3 pair
+// named in the live investigation of this bug.
+test("buildSwingRecordSummary: avg_compounded_return_pct at an exact 1dp tie rounds by MAGNITUDE, not toward 0", () => {
+  const chainA = buildSwingRecord([leg({ id: 200, realized_pnl_pct: -5 })]);
+  const chainB = buildSwingRecord([leg({ id: 201, realized_pnl_pct: -7.5 })]);
+  // Sanity-check the inputs this test's math depends on, so a future change to buildSwingRecord's
+  // own rounding can't silently invalidate the tie this test is built on without this test noticing.
+  assert.equal(chainA.composite.compoundedReturnPct, -5);
+  assert.equal(chainB.composite.compoundedReturnPct, -7.5);
+
+  const summary = buildSwingRecordSummary([chainA, chainB], {
+    since: "2026-08-10",
+    through: "2026-11-09",
+    days: 90,
+  });
+
+  // Pre-fix this was -6.2 (Math.round(-62.5)/10 === -62/10) — a smaller magnitude than the true
+  // -6.25 average, understating the lane's loss. Post-fix it is -6.3, the sign-safe result.
+  assert.equal(summary.avg_compounded_return_pct, -6.3);
+
+  // Mirror-image check: the identical-magnitude WINNING pair must round to the identical magnitude
+  // the losing pair does (the whole point of sign-safe rounding — no asymmetry between the two).
+  const winA = buildSwingRecord([leg({ id: 202, realized_pnl_pct: 5 })]);
+  const winB = buildSwingRecord([leg({ id: 203, realized_pnl_pct: 7.5 })]);
+  const winSummary = buildSwingRecordSummary([winA, winB], {
+    since: "2026-08-10",
+    through: "2026-11-09",
+    days: 90,
+  });
+  assert.equal(winSummary.avg_compounded_return_pct, 6.3);
+  assert.equal(
+    Math.abs(summary.avg_compounded_return_pct!),
+    Math.abs(winSummary.avg_compounded_return_pct!),
+    "a losing lane average must round to the SAME magnitude as its winning mirror image",
+  );
+});
+
 // Live defect (2026-09-16, Ask Largo standing mandate): the /record route only seeded chain roots
 // from GRADED rows, so a fresh, never-graded OPEN/HOLD/TRIM position (no prior roll history) never
 // entered the chain population — summary.opens (records.length - resolved.length) then structurally
