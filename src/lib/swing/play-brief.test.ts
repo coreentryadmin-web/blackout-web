@@ -6975,6 +6975,13 @@ test("composeSwingPlayBrief: Exec P&L line carries the same stale-quote caveat a
     sessionDate: "2026-09-10",
     scanAsOf: null,
     scanSessionDay: null,
+    // SEVERITY-TIERING FIX (2026-11-09): without an explicit `readMs`, staleness was being judged
+    // against the real wall clock (composeSwingPlayBrief's own `ctx.readMs ?? Date.now()`
+    // fallback), not the ~1-hour gap this fixture's own comment states — harmless before this fix
+    // (the old caveat text didn't vary with magnitude), but the new severely-stale tier makes the
+    // gap matter. Anchor `readMs` to `asOf` so this test actually exercises the mild (1h) tier it
+    // was written to test, not whatever "now" happens to be when the suite runs.
+    readMs: Date.parse("2026-09-10T21:00:00.000Z"),
     laneRows: [],
     meridian: null,
     ecosystem: null,
@@ -7015,6 +7022,8 @@ test("composeSwingPlayBrief: plain P&L line carries the same stale-quote caveat 
     sessionDate: "2026-09-10",
     scanAsOf: null,
     scanSessionDay: null,
+    // SEVERITY-TIERING FIX (2026-11-09) — see the identical comment on the sibling test above.
+    readMs: Date.parse("2026-09-10T21:00:00.000Z"),
     laneRows: [],
     meridian: null,
     ecosystem: null,
@@ -7057,6 +7066,8 @@ test("composeSwingPlayBrief: Peak/Trough lines carry the same stale-quote caveat
     sessionDate: "2026-09-10",
     scanAsOf: null,
     scanSessionDay: null,
+    // SEVERITY-TIERING FIX (2026-11-09) — see the identical comment on the sibling tests above.
+    readMs: Date.parse("2026-09-10T21:00:00.000Z"),
     laneRows: [],
     meridian: null,
     ecosystem: null,
