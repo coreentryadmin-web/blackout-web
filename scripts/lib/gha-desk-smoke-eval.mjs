@@ -15,6 +15,11 @@ export function etMinutesAmericaNewYork(now = new Date()) {
   return hour * 60 + minute;
 }
 
+/** Gateway errors during ECS rollout often clear within a few seconds — retry before failing smoke. */
+export function shouldRetrySpxDeskProbe(status) {
+  return status === 502 || status === 503 || status === 504;
+}
+
 /** Weekday cash RTH (9:30–4:00 ET) — good enough for deploy smoke; early-close/holiday skew is acceptable. */
 export function isApproxUsCashRth(now = new Date()) {
   const weekday = new Intl.DateTimeFormat("en-US", {
