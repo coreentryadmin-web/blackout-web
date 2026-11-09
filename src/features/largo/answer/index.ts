@@ -7,6 +7,8 @@ export { BieSectionCard } from "./BieSectionCard";
 export { BieEvidencePanel } from "./BieEvidencePanel";
 export { BieKeyLevelsTable } from "./BieKeyLevelsTable";
 export { BieScenarioCards } from "./BieScenarioCards";
+export { BieGexShiftsPanel } from "./BieGexShiftsPanel";
+export { BieSystemReadsPanel } from "./BieSystemReadsPanel";
 export {
   BiasPill,
   ConfidenceBadge,
