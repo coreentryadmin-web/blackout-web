@@ -36,7 +36,11 @@ export async function GET(req: NextRequest) {
       headers: NO_STORE_HEADERS,
     });
   } catch (error) {
-    console.error("[market/spx/play]", error);
+    console.error(
+      "[market/spx/play]",
+      error instanceof ServerCacheTimeoutError ? "(cache/fallback chain timeout)" : "(eval pipeline threw)",
+      error
+    );
     // Return 200+degraded so a transient Massive blip (R-16) gives the client a "scanning"
     // state instead of a 502 network error that clears the play panel entirely.
     //
@@ -68,15 +72,34 @@ export async function GET(req: NextRequest) {
     // OLD "Desk warming" text this block fixed in 2026-10-16, because the fix only lived here as
     // inline literals with nothing forcing the other call site to match. Centralizing the message
     // means both call sites can no longer drift from each other.
-    const deskPeek =
-      error instanceof ServerCacheTimeoutError ? await peekMergedSpxDesk().catch(() => null) : null;
-    const extras =
-      error instanceof ServerCacheTimeoutError
-        ? {
-            ...degradedPlayCatchingUpMessage(),
-            ...(deskPeek ? { session_phase: currentSessionPhase(deskPeek.merged) } : {}),
-          }
-        : undefined;
+    //
+    // BUG FIX (2026-11-09, Ask Largo/5-engine standing mandate, live repro 2026-11-09T15:35:46-48Z
+    // during RTH): every fix above gated the honest override on `error instanceof
+    // ServerCacheTimeoutError` specifically. That class is thrown ONLY when withServerCache's own
+    // maxBlockMs/fallback race is exhausted with nothing usable to serve (server-cache.ts) — it is
+    // NOT what reaches this catch block when getSpxPlayState()'s eval chain throws a REAL error
+    // fast (most plausibly a provider fetch inside evaluateSpxPlayState() -> loadMergedSpxDesk()/
+    // buildSpxDesk() rejecting on a 403 "not entitled" response — see CLAUDE.md's 2026-11-07/08
+    // notes on the ongoing Polygon/Massive real-time-snapshot entitlement outage). A fetch that
+    // rejects in well under playMemberReadMaxBlockMs() (800ms default) wins withServerCache's
+    // internal Promise.race before ServerCacheTimeoutError's own timeout path ever engages, so the
+    // raw error propagates here unwrapped and `instanceof ServerCacheTimeoutError` is false — this
+    // route fell straight through to degradedPlayPayload()'s bare defaults, the exact same false
+    // "desk is cold/closed" claim the three fixes above already removed, just reachable through a
+    // gap in error TYPE rather than error TIMING. Confirmed live: this route returned the bare
+    // "Desk warming"/session_phase:"closed" defaults while a parallel GET /api/market/spx/desk
+    // call at the same instant reported market_open:true/"RTH OPEN"/price:7352.9. Reaching this
+    // catch block always means the same thing regardless of why — "nothing was computed on this
+    // path" — never "the desk/session is closed," so apply the honest override unconditionally
+    // (matching spx-service.ts's spxPlayReadDegraded(), which already does this unconditionally
+    // for its own distinct lock-contention trigger) instead of gating it on one named error
+    // subclass. The ServerCacheTimeoutError check above is now diagnostic-only (CloudWatch
+    // triage), not a gate on correctness.
+    const deskPeek = await peekMergedSpxDesk().catch(() => null);
+    const extras = {
+      ...degradedPlayCatchingUpMessage(),
+      ...(deskPeek ? { session_phase: currentSessionPhase(deskPeek.merged) } : {}),
+    };
     return NextResponse.json(roundFloats(degradedPlayPayload(extras)), {
       headers: NO_STORE_HEADERS,
     });
