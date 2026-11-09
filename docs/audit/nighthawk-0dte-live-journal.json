@@ -431,7 +431,7 @@
     }
   ],
   "_pruned_note": "Pruned 2026-11-09T13:16Z: dropped all per-check timestamped entries older than ~2 trading days (last was 2026-10-26) per journal retention rule in the mandate. Session was dark Nov 2-7 (prompt-too-long backlog, now resolved by mandate-extraction PR #7099) and idle again through Nov 8 (no firings logged). This entry re-baselines the lane after the gap.",
-  "updated_at": "2026-11-09T14:40:30Z",
+  "updated_at": "2026-11-09T20:46:30Z",
   "2026-11-09T13:16Z_rebaseline_check": {
     "trigger": "15-min-offset lane, trigger 1 of 4 (:00 offset), pre-open",
     "action": "Fresh container: installed Node 20 + npm ci, ran zerodte-e2e-healthcheck.mjs --json against prod to re-baseline after the Nov 2-8 gap (journal was stale since 2026-10-26T20:46Z).",
@@ -444,5 +444,12 @@
     "action": "Re-ran zerodte-e2e-healthcheck.mjs now that market=RTH (previous run this morning was off-hours/PRE_MARKET). Also re-confirmed GET /v3/snapshot?ticker.any_of=SPY directly.",
     "result": "overall RED. Stage D (LIVE MARKS+P&L) is RED (mark=null, stale=true) -- NOT a new 0DTE defect: /v3/snapshot still returns the identical NOT_AUTHORIZED/\"not entitled... upgrade your plan\" body (same request signature as PR #7752 and the Sunday/Monday pre-open checks). This is the first direct RTH-hours confirmation that the known platform-wide Massive.com real-time entitlement outage is actually degrading 0DTE live marks, not just Swing as previously documented. Stages B/C (0 FLOW setups, 0 committed plays) are plausible for 10min post-open (heat=OPENING_DRIVE) on their own, but would also be gated by this same snapshot loss if discovery needs live quotes -- not yet separately isolated.",
     "status": "REPORT-AND-HOLD -- live-trading-path issue outside this lane's control (upstream entitlement, not app code). No PR opened for this entry (already filed/escalated via PR #7752 + prior findings); logging here only to record that degradation is now empirically observed during RTH, not merely predicted. Will re-check once the operator confirms the Massive.com entitlement is renewed."
+  },
+  "2026-11-09T20:46Z_session_closed_summary": {
+    "trigger": "15-min-offset lane, trigger 4 of 4 (:45 offset), near close (21:00 UTC)",
+    "summary": "Full RTH session 2026-11-09 (14:30-21:00 UTC): board stayed empty the entire day -- 0 FLOW setups, 0 committed plays, every ~20-25min re-check (roughly a dozen across the session) showed the identical state. Root cause confirmed and stable throughout: the known platform-wide Massive.com real-time snapshot entitlement outage (/v3/snapshot NOT_AUTHORIZED, same as PR #7752) never recovered -- re-confirmed with a direct curl at least 10 times across the day, always 403. Stage D (LIVE MARKS+P&L) was RED all session for this reason; the 0-discovery/0-commit state in Stages B/C is the expected downstream consequence of fail-closed gates unable to read live quotes, not a separate miscalibration.",
+    "grading_record_health": "Stage G stayed GREEN all day: wins 126+losses 63+be 2=191 == graded 191, WR 66% over 19 sessions -- the grading/record pipeline itself is unaffected by the live-snapshot outage (it reads historical data).",
+    "open_findings_review": "No new findings opened this session. All 5 pre-existing journal open_findings remain as previously recorded (4 merged/fixed, 1 accepted self-correcting pattern).",
+    "status": "REPORT-AND-HOLD, unresolved at session close -- live-trading-path issue outside this lane and outside code: needs operator action on Massive.com to renew the real-time entitlement. No PR needed beyond the already-merged #7752 documentation confirmation. Next session should re-check /v3/snapshot first thing pre-open before assuming any board activity is meaningful."
   }
 }

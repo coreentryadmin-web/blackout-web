@@ -10822,6 +10822,27 @@ and `/play` are actually serving a real price again
   render loop isn't practical from this sandbox (no DOM/React-renderer test infra here), so this
   is a passive live-session check, not a forced repro.
 
+## WATCH LIST — 2026-11-09 (Largo mini-panel SPX Slayer direction tone, `fix/tone-source-mismatch`) — re-check `/api/market/largo/mini-panel` on a live short SPX Slayer play
+
+- **What was broken**: `fetchMiniPanelPayload()`'s SPX Slayer "Action" row (`/spx-slayer /play`,
+  `/spx-slayer /gates`) and default "Play" row colored their tone with
+  `(p?.action ?? "").toLowerCase().includes("short") ? "bear" : "bull"`. `action` is
+  `SpxPlayAction` (`"SCANNING"|"WATCHING"|"BUY"|"HOLD"|"TRIM"|"SELL"`) — none of those values
+  ever contains "short", so the check always fell through to "bull". Every short/bearish SPX
+  Slayer play rendered a green "bull" tone on both rows; the text value itself was always
+  correct, only the color was wrong.
+- **Fix**: read the play's actual `direction` field (`SpxPlayDirection | null`) via a new
+  `spxDirectionTone()` helper instead of pattern-matching `action` text; `null`/unknown direction
+  now renders untoned instead of a fabricated bullish lean. RED confirmed via `git stash`
+  (4/4 new tests fail — the exported function didn't exist pre-fix), GREEN post-fix (4/4 pass,
+  plus 17/17 across the surrounding mini-panel/desk-scope test files); `npx tsc --noEmit` clean.
+- **Specific thing to check once live**: `LargoDeskMiniPanel` is currently unmounted
+  (`mini-panel-orphaned.test.ts`), so there is no rendered UI surface to eyeball yet — but if/when
+  it is re-mounted, or via a direct `GET /api/market/largo/mini-panel?desk=spx-slayer&submodule=play`
+  call during RTH while SPX Slayer is holding a SHORT play, confirm the "Action"/"Play" row now
+  renders `bear` (red) tone, not `bull` (green). No live pre-fix repro was captured — a short SPX
+  Slayer play wasn't open at the time of the fix — so this is a passive next-occurrence check.
+
 ## WATCH LIST — 2026-11-09 (Legacy board "Target path" meter colored a live premium return by the stock's sign, `fix/vector-compare-sweep`) — re-check the Legacy desk's board table during live RTH
 
 - **What was broken**: `legacyBoardMeter()` (`legacy-board-table-utils.ts`), which feeds the
@@ -10880,3 +10901,31 @@ and `/play` are actually serving a real price again
   column, which is already ET-anchored) rather than reading one day ahead. No live pre-fix repro
   was possible from this sandbox (no real multi-timezone browser session here), so this is a
   passive next-occurrence check.
+
+## WATCH LIST — 2026-11-09 (Helix DarkPoolPanel's ticker-filtered date column rendered in the viewer's local timezone, not ET, `fix/darkpool-panel-fmtdate-et`) — re-check the filtered dark-pool tape on a non-ET browser during/after a late RTH session
+
+- **What was broken**: `DarkPoolPanel.tsx`'s `fmtDate()` (the absolute date/time shown in the
+  ticker-filtered dark-pool tape's date column) built its output from `Date.prototype.getMonth()`/
+  `getDate()`/`getHours()`/`getMinutes()` — the viewer's BROWSER-local timezone, not ET. Every
+  other absolute timestamp on this same desk (the sibling Options Flow tape's `fmtFullTimestamp`)
+  is explicitly anchored to `America/New_York`. Because ET trails UTC by 4-5h while most non-US
+  timezones run ahead of UTC, a late-session print (near the 16:00 ET close, ~20:00-21:00 UTC)
+  would often render under the WRONG CALENDAR DATE for a member outside the Americas — not just a
+  different hour. Reproduced directly in this sandbox too: its default TZ is UTC, so the bug was
+  live-observable here, not merely theoretical for overseas members.
+- **Fix**: rewrote `fmtDate` to format via `Intl.DateTimeFormat` anchored to
+  `timeZone: "America/New_York"`, the same approach (and hourCycle-"24" midnight normalization)
+  `fmtFullTimestamp` already uses. Output shape (`MM/DD HH:MM`, no year) is unchanged — only the
+  timezone anchoring changed. `fmtDate` is now exported for direct unit testing. RED→GREEN
+  confirmed via `git stash` isolating the source change (test picks a timestamp that crosses the
+  UTC/ET calendar-date boundary: `2026-01-16T03:15:00Z` → `"01/15 22:15"` ET, not `"01/16 03:15"`);
+  `npx tsc --noEmit` and `eslint` both clean.
+- **Specific thing to check once live**: on the Helix desk, filter the dark-pool tape to a single
+  ticker (`showDate` turns on) late in an RTH session (ideally near the 16:00 ET close) from a
+  browser set to a non-US timezone (DevTools lets you override `Intl.DateTimeFormat`'s resolved
+  timezone, or just check from a device actually in another zone) and confirm the printed date
+  now matches the ET session date shown elsewhere on the desk (the Flow tape, the Largo
+  "ET"-labeled timestamps), not the viewer's own local date. This is a per-viewer-timezone defect,
+  so a same-timezone (ET) spot-check from this sandbox cannot by itself prove the fix — the real
+  confirmation needs a non-ET viewpoint, which is why it is listed here rather than closed purely
+  on the unit test.
