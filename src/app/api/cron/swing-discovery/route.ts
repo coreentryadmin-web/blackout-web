@@ -73,6 +73,7 @@ import {
   BREAKOUT_INTRADAY_REFRESH_LIMIT,
 } from "@/lib/zerodte/breakout-discovery";
 import { fetchStockMinuteBars } from "@/lib/providers/polygon";
+import { runPolygonPool } from "@/lib/providers/polygon-rate-limiter";
 import { fetchPolygonTickerDetails } from "@/lib/providers/polygon-largo";
 import { fetchTickerNews, DEFAULT_CATALYST_CHANNELS } from "@/lib/providers/polygon-news";
 import {
@@ -150,8 +151,26 @@ function buildDiscoveryDeps(
             const pre = screenBreakoutMovers(results, 40);
             const tickers = pre.map((m) => m.ticker).slice(0, BREAKOUT_INTRADAY_REFRESH_LIMIT);
             const refreshed = new Map<string, import("@/lib/providers/polygon").DailyMarketBar>();
-            await Promise.all(
-              tickers.map(async (t) => {
+            // BUG FIX (2026-11-09, live 5-engine audit — swing-discovery 0/30 runs_24h over the
+            // trailing 24h, GET /api/admin/cron-health): this fired up to BREAKOUT_INTRADAY_REFRESH_LIMIT
+            // (40) concurrent `fetchStockMinuteBars` calls via a bare `Promise.all`, with no local
+            // concurrency bound of its own — relying entirely on the SHARED, cluster-wide reactive
+            // circuit breaker (polygon-rate-limiter.ts) to self-regulate. That breaker opens after
+            // CIRCUIT_429_THRESHOLD (5) CONSECUTIVE 429s from ANY caller and then rejects EVERY
+            // Polygon caller process-wide for CIRCUIT_PAUSE_MS (60s) — so a single 40-wide burst from
+            // this one dependency, landing on top of whatever else (Vector/0DTE/other desks) is
+            // already in flight against the same limiter, is a large enough spike to plausibly trip
+            // it on its own. `runPolygonPool` is this repo's own established fix for exactly this
+            // fan-out shape — see its doc comment in polygon-rate-limiter.ts, which already traces
+            // two prior incidents with the identical "one batch job's unbounded Promise.all starves
+            // concurrent live traffic admission" root cause (vector-dark-pool-warm 2026-09-02,
+            // vector-universe 2026-09-04) — so this reuses the SAME helper vector-universe.ts and
+            // heatmap-warm/route.ts already call, rather than inventing a new pattern. Default
+            // concurrency (POOL_MAX_CONCURRENCY=8, env-overridable) matches this same file's own
+            // enrichConcurrency=8 for the Tier-1 candidate-enrichment fan-out below, so both of this
+            // route's Polygon bursts are now bounded the same way.
+            await runPolygonPool(
+              tickers.map((t) => async () => {
                 const bars = await fetchStockMinuteBars(t, to, to).catch(() => []);
                 const minuteBars: import("@/lib/zerodte/breakout-intraday-breadth").MinuteBarLike[] = [];
                 for (const b of bars) {
@@ -436,8 +455,13 @@ export async function GET(req: NextRequest) {
       if (px != null && Number.isFinite(px) && px > 0) spotsByTicker[d.ticker.toUpperCase()] = px;
     }
     const watchTickers = [...new Set(result.watchCandidates.map((w) => w.ticker.toUpperCase()))].slice(0, 40);
-    await Promise.all(
-      watchTickers.map(async (ticker) => {
+    // BUG FIX (2026-11-09, live 5-engine audit — see the matching comment on
+    // `fetchIntradayStructureBars` above for the full root-cause writeup): this same unbounded-
+    // `Promise.all`-over-up-to-40-tickers shape, now bounded via the same `runPolygonPool` helper.
+    // This block runs on EVERY scan (not phase-gated), so it is this route's most frequent Polygon
+    // burst — unlike the minute-bar refresh above, which only fires on MIDDAY/POWER_HOUR/PRE_OPEN.
+    await runPolygonPool(
+      watchTickers.map((ticker) => async () => {
         try {
           const trade = await fetchStockLastTrade(ticker);
           const p = spotFromLastTradeResult(trade);
