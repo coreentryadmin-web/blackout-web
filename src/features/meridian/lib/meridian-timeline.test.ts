@@ -1,13 +1,30 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import type { MeridianTimelineItem } from "./meridian-types";
 import {
   buildMeridianTimeline,
+  buildTimelineStats,
   daysUntilEt,
   parseMeridianEventId,
   priorOpexDates,
   thirdFridayYmd,
   upcomingOpexDates,
 } from "./meridian-timeline";
+
+function stubItem(overrides: Partial<MeridianTimelineItem>): MeridianTimelineItem {
+  return {
+    id: "stub:1",
+    kind: "macro",
+    title: "stub",
+    subtitle: null,
+    date: "2026-08-16",
+    time: null,
+    impact: "low",
+    days_until: 0,
+    ticker: null,
+    ...overrides,
+  };
+}
 
 test("daysUntilEt: same day is 0, tomorrow is 1", () => {
   assert.equal(daysUntilEt("2026-08-16", "2026-08-16"), 0);
@@ -123,4 +140,52 @@ test("parseMeridianEventId still accepts every well-formed id", () => {
   assert.equal(parseMeridianEventId("macro:2026-08-12:CPI:CORE")?.slug, "CPI:CORE");
   assert.equal(parseMeridianEventId("opex:2026-08-21")?.date, "2026-08-21");
   assert.equal(parseMeridianEventId("fda:MRNA:2026-08-15")?.date, "2026-08-15");
+});
+
+test("buildTimelineStats: next_24h counts ONLY today's items, not tomorrow's", () => {
+  // Rendered as the "Next 24h" stat card (MeridianDesk.tsx) and described platform-wide as
+  // "Meridian prints in the next 24 hours" (view-catalog.ts). `days_until` is an ET CALENDAR-DAY
+  // distance (daysUntilEt), so an item with days_until === 1 ("tomorrow") can be up to just under
+  // 48 hours away from now — nowhere near "the next 24 hours". The bug counted it anyway via
+  // `days_until <= 1`.
+  const items = [
+    stubItem({ id: "today-1", days_until: 0 }),
+    stubItem({ id: "today-2", days_until: 0, kind: "earnings" }),
+    stubItem({ id: "tomorrow", days_until: 1 }),
+    stubItem({ id: "next-week", days_until: 7 }),
+  ];
+  const stats = buildTimelineStats(items);
+  assert.equal(stats.total, 4);
+  assert.equal(stats.next_24h, 2, "only the two days_until===0 items are genuinely within 24h");
+});
+
+test("buildTimelineStats: an empty timeline reports all-zero stats, not a crash", () => {
+  const stats = buildTimelineStats([]);
+  assert.deepEqual(stats, {
+    total: 0,
+    macro: 0,
+    earnings: 0,
+    fda: 0,
+    opex: 0,
+    high_impact: 0,
+    next_24h: 0,
+    earnings_mega_cap: 0,
+  });
+});
+
+test("buildTimelineStats: other counters are unaffected by the next_24h fix", () => {
+  const items = [
+    stubItem({ id: "m", kind: "macro", impact: "high", days_until: 0 }),
+    stubItem({ id: "e1", kind: "earnings", importance: 4, days_until: 2 }),
+    stubItem({ id: "e2", kind: "earnings", importance: 2, days_until: 3 }),
+    stubItem({ id: "f", kind: "fda", impact: "high", days_until: 1 }),
+    stubItem({ id: "o", kind: "opex", impact: "high", days_until: 10 }),
+  ];
+  const stats = buildTimelineStats(items);
+  assert.equal(stats.macro, 1);
+  assert.equal(stats.earnings, 2);
+  assert.equal(stats.fda, 1);
+  assert.equal(stats.opex, 1);
+  assert.equal(stats.high_impact, 3);
+  assert.equal(stats.earnings_mega_cap, 1);
 });
