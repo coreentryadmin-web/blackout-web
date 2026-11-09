@@ -18,6 +18,7 @@ import { LargoAnswerCaveats } from "@/features/largo/answer/LargoAnswerCaveats";
 import { splitAnswerCaveats } from "@/features/largo/answer/answer-caveats";
 import { largoAnswerToEnvelope } from "@/features/largo/answer/answer-format";
 import { proseSections } from "@/features/largo/answer/section-policy";
+import { BieFollowupChips } from "@/features/largo/answer/BieFollowupChips";
 import { BieScenarioCards } from "@/features/largo/answer/BieScenarioCards";
 import { BieStructureLadder } from "@/features/largo/answer/BieStructureLadder";
 
@@ -126,6 +127,19 @@ export function LargoAnswerMessage({
                 `BieStructureLadder`'s own header for what the widget shows. */}
             <BieStructureLadder ladder={envelope.structureLadder} />
             <BieScenarioCards scenarios={envelope.scenarios} />
+            {/* BUG FIX (Ask Largo standing mandate, 2026-11-09): `envelope.followups` — the
+                situational, answer-specific "ask next" suggestions a BIE answer builder derives
+                from the exact read it just gave (e.g. swing play-brief's `followupsFor()`: "Should
+                I trim more?" for a TAKE_PARTIAL play, "Why is this at its stop?" for a STOP_OUT
+                one) — reached this envelope but this "Deep dive" rendering branch never rendered
+                it, same gap as `structureLadder`/`scenarios` immediately above. `BieAnswer.tsx`
+                (the fallback for a not-rich-enough envelope and the no-envelope markdown-shim path
+                below) already renders them via `BieFollowupChips`. The separate `followups` PROP
+                rendered below as `followupRow` is a DIFFERENT, independently-computed list
+                (`largo-terminal.ts`'s `contextualFollowupsFromAnswer`/`generateLargoFollowups`,
+                which never reads `envelope.followups`) — showing it is not a substitute for the
+                envelope's own, more specific suggestions. */}
+            <BieFollowupChips followups={envelope.followups} onFollowup={onFollowup} />
             <LargoAnswerCaveats caveats={caveats} />
           </>
         );

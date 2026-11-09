@@ -129,3 +129,47 @@ test("LargoAnswerMessage Deep dive, not-rich-enough envelope still renders desk 
   assert.match(html, /largo-actions-bar/);
   assert.match(html, /Add AAPL to watchlist/);
 });
+
+/**
+ * BUG FIX (Ask Largo standing mandate, 2026-11-09): `envelope.followups` — the situational,
+ * answer-specific "ask next" suggestions a BIE answer builder derives from the exact read it just
+ * gave (e.g. swing play-brief's `followupsFor()`: "Should I trim more?" for a TAKE_PARTIAL play) —
+ * reached the same `richEnough` envelope the Structure Ladder test above exercises, and
+ * `BieAnswer.tsx` already renders them via its own "Ask next" chip row, but `LargoAnswerMessage`'s
+ * "Deep dive" branch rendered `<LargoDeskRead>` (which never reads `envelope.followups` either)
+ * and dropped them — the same shape of gap as the Structure Ladder bug just above, on a different
+ * field. The separate `followups` PROP (not passed here, matching a real turn where the caller's
+ * own independently-computed chip list is empty/absent) is NOT a substitute: it is computed by
+ * `largo-terminal.ts`'s `contextualFollowupsFromAnswer`/`generateLargoFollowups`, which never
+ * reads `envelope.followups`, so the envelope's own situational suggestions must be rendered on
+ * their own merit, not assumed to be duplicated elsewhere.
+ */
+test("LargoAnswerMessage Deep dive mode renders envelope.followups when the envelope carries them", () => {
+  const envelope = richEnvelope();
+  envelope.followups = ["Should I trim more?", "Why exit the runner now?"];
+  const html = renderToStaticMarkup(
+    React.createElement(LargoAnswerMessage, {
+      content: "AAPL long setup still intact",
+      envelope,
+      answerMode: "deep",
+      onFollowup: () => {},
+    }),
+  );
+  // Confirms this test actually exercised the LargoDeskRead ("Deep dive") branch.
+  assert.match(html, /largo-read/);
+  assert.match(html, /Should I trim more\?/);
+  assert.match(html, /Why exit the runner now\?/);
+});
+
+test("LargoAnswerMessage Deep dive mode without onFollowup renders nothing for envelope.followups (no dead click target)", () => {
+  const envelope = richEnvelope();
+  envelope.followups = ["Should I trim more?"];
+  const html = renderToStaticMarkup(
+    React.createElement(LargoAnswerMessage, {
+      content: "AAPL long setup still intact",
+      envelope,
+      answerMode: "deep",
+    }),
+  );
+  assert.doesNotMatch(html, /Should I trim more\?/);
+});
