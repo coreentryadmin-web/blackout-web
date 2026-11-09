@@ -4565,13 +4565,27 @@ async function fetchChainBand(
   // Follow next_url to completion; the guard is a runaway-loop backstop, NOT the expected stop
   // condition (that's !next_url). The old bare `guard < 8` silently truncated a strikeHints-widened
   // band — deep ITM/OTM legs pushed past ~2k contracts — and only WARNED, understating OI/walls.
+  // Same null-collapse bug class fixed elsewhere in this file (fetchHeatmapBandLoHi/Unfiltered,
+  // fetchPolygonOiByExpiry, fetchPolygonIvTermStructure): polygonFetchUrl returns null on BOTH a
+  // failed re-fetch (non-2xx/thrown network error) AND would otherwise be "no more pages" — but a
+  // re-fetch only happens below once a prior page's own next_url has already proven more data
+  // exists (the real end breaks BEFORE re-fetching), so a null result here can only mean that
+  // known-good next page failed to load, never a legitimate end of chain. The bare `page?.next_url`
+  // check this used to rely on alone collapsed that failure into the exact same falsy signal a
+  // clean, complete fetch produces (page itself goes null either way), so a transient Polygon
+  // hiccup mid-band silently returned a PARTIAL chain with the truncation warning never firing —
+  // understating OI/walls for every fetchChainBand caller (the Largo options-chain tools,
+  // fetchFrontExpiryGammaCoeffs's intraday-adjusted GEX coefficients) with no signal at all.
+  let midPaginationFetchFailed = false;
   while (page && guard < CHAIN_BAND_PAGE_GUARD) {
     out.push(...(page.results ?? []));
     if (!page.next_url) break;
-    page = await polygonFetchUrl(page.next_url);
+    const next = await polygonFetchUrl(page.next_url);
+    if (next == null) midPaginationFetchFailed = true;
+    page = next;
     guard += 1;
   }
-  if (page?.next_url) warnChainTruncated("fetchChainBand", underlying, guard);
+  if (midPaginationFetchFailed || page?.next_url) warnChainTruncated("fetchChainBand", underlying, guard);
 
   return out;
 }
@@ -4758,11 +4772,26 @@ export async function fetchPolygonAtmChainAllExpiries(
   const out: ChainContract[] = [];
   let page = await polygonFetchUrl(`/v3/snapshot/options/${optionsRoot}?${params}`);
   let guard = 0;
+  // Same null-collapse bug class fixed elsewhere in this file (fetchChainBand immediately above,
+  // fetchHeatmapBandLoHi/Unfiltered, fetchPolygonOiByExpiry) — a failed re-fetch of a KNOWN next
+  // page must not be allowed to masquerade as a clean end of chain. Unlike those, this function
+  // previously carried NO truncation signal at all (not even a broken one), so Night Hawk's
+  // resolveTickerChainRows (the sole caller) had no way to ever learn a partial, all-expiries
+  // chain had been silently returned — every downstream expiry-discovery/chain-data read from it
+  // just looked complete. This only restores observability (a console.warn via the same shared
+  // helper every sibling pagination loop in this file already uses); it does not change this
+  // function's return type or its callers' contract.
+  let midPaginationFetchFailed = false;
   while (page && guard < CHAIN_BAND_PAGE_GUARD) {
     out.push(...(page.results ?? []));
     if (!page.next_url) break;
-    page = await polygonFetchUrl(page.next_url);
+    const next = await polygonFetchUrl(page.next_url);
+    if (next == null) midPaginationFetchFailed = true;
+    page = next;
     guard += 1;
+  }
+  if (midPaginationFetchFailed || page?.next_url) {
+    warnChainTruncated("fetchPolygonAtmChainAllExpiries", optionsRoot, guard);
   }
   return out;
 }
