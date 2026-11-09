@@ -10008,3 +10008,26 @@ Ask Largo a real play question
   board (e.g. a random mid-cap with no open 0DTE play). Confirm a short "not on board /
   speculative" note now renders right under the verdict line — it did not render in Concrete mode
   before this fix, even though switching to Deep dive for the same question already showed it.
+
+## WATCH LIST — 2026-11-09 (Ask Largo "Concrete" mode dropped `envelope.gexShifts`,
+`fix/largo-concrete-gexshifts`) — re-check once the next session asks Ask Largo a question that
+triggers `get_gex_matrix_changes`
+
+- **`LargoConcreteAnswer.tsx` never read `envelope.gexShifts`.** This field is lifted
+  structurally off the turn's own `get_gex_matrix_changes` tool result (`gex-shift-extract.ts`),
+  never parsed back out of prose. `LargoDeskRead.tsx` (Deep dive) and `BieAnswer.tsx` (the
+  not-rich-enough/no-envelope fallback, fixed earlier the same day in PR #7717) both already
+  render it via `BieGexShiftsPanel`; Concrete — the DEFAULT `answerMode` — was the one remaining
+  renderer that silently dropped the strike-level GEX-change table.
+- **Fix**: `LargoConcreteAnswer.tsx` now renders `<BieGexShiftsPanel shifts={envelope.gexShifts} />`
+  right after the `unavailableSources` chips and before the answer body, reusing the same shared
+  component `BieAnswer.tsx`'s own fix uses. New regression tests added to the existing
+  `src/features/largo/answer/LargoConcreteAnswer.test.ts` — RED→GREEN confirmed via `git stash` on
+  just the fixed file; `tsc --noEmit` clean.
+- **Re-check once the market opens**: in Ask Largo, stay on the default Concrete mode (no toggle)
+  and ask a question that would call `get_gex_matrix_changes` (e.g. "how has SPX gamma shifted
+  since open?" / "what strikes gained the most gamma today?"). Confirm a "GEX shift" strip with
+  per-strike change/direction rows now renders in the answer — it did not render in Concrete mode
+  before this fix, even though switching to Deep dive for the same question already showed it.
+  Note `envelope.systemReads` has the same gap in Concrete mode and is intentionally NOT fixed by
+  this PR — still open for a follow-up pass.

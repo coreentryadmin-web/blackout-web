@@ -51,3 +51,45 @@ test("LargoConcreteAnswer renders nothing extra when unavailableSources is absen
   assert.doesNotMatch(html, /largo-concrete-unavailable/);
   assert.doesNotMatch(html, /Unavailable/);
 });
+
+/**
+ * BUG FIX (Ask Largo standing mandate, 2026-11-09): `envelope.gexShifts` is lifted structurally
+ * off the turn's own `get_gex_matrix_changes` tool result (`gex-shift-extract.ts`). `LargoDeskRead`
+ * (Deep dive) and `BieAnswer` (the not-rich-enough/no-envelope fallback) both already render it via
+ * `BieGexShiftsPanel` — but `LargoConcreteAnswer`, the DEFAULT `answerMode`, never read the field,
+ * so a real, already-fetched strike-level GEX-change table silently vanished from the overwhelming
+ * majority of real chat answers.
+ */
+function envelopeWithGexShifts(): BieAnswerEnvelope {
+  return makeEnvelope({
+    headline: "SPX gamma walls holding near 5900.",
+    bias: "neutral",
+    sections: [{ title: "Read", body: "SPX gamma walls holding near 5900. Dealer positioning is stable." }],
+    evidence: [],
+    gexShifts: [{ strike: 5900, change: 125_000_000, direction: "stronger" }],
+  });
+}
+
+test("LargoConcreteAnswer surfaces gexShifts", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(LargoConcreteAnswer, {
+      content: "SPX gamma walls holding near 5900. Dealer positioning is stable.",
+      envelope: envelopeWithGexShifts(),
+    }),
+  );
+  assert.match(html, /GEX shift/);
+  assert.match(html, /5,900|5900/);
+  assert.match(html, /stronger/);
+});
+
+test("LargoConcreteAnswer renders nothing extra when gexShifts is absent", () => {
+  const envelope = envelopeWithGexShifts();
+  envelope.gexShifts = undefined;
+  const html = renderToStaticMarkup(
+    React.createElement(LargoConcreteAnswer, {
+      content: "SPX gamma walls holding near 5900. Dealer positioning is stable.",
+      envelope,
+    }),
+  );
+  assert.doesNotMatch(html, /GEX shift/);
+});
