@@ -1,4 +1,4 @@
-import { before, describe, test, mock } from "node:test";
+import { before, afterEach, describe, test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
 import { readFileSync } from "node:fs";
@@ -141,38 +141,47 @@ const REAL_THETA = -0.0087;
 const REAL_VEGA = 0.0054;
 const REAL_IV = 0.1823;
 
+// Mutable per-test override hook (reset in an `after` below each describe block that uses it) —
+// lets the upstream_ok/asOf-honesty tests further down inject a fresh or stale `scanAsOf`/
+// `scanSessionDay` without disturbing the fixed PENNY/TROUGH fixture the roundFloats tests above
+// depend on byte-for-byte.
+let swingLaneOverride: Record<string, unknown> = {};
+function defaultSwingLaneFixture() {
+  return {
+    swingFloat: RAW_SWING_FLOAT,
+    sections: [],
+    committedCount: 2,
+    watchCount: 3,
+    scanAsOf: "2026-09-04T17:00:00.000Z",
+    scanSessionDay: "2026-09-04",
+    committed: [
+      {
+        ticker: "PENNY",
+        entryPremium: PENNY_ENTRY,
+        peakPremium: PENNY_MARK,
+        livePnlPct: PENNY_LIVE_PNL_PCT,
+        contract: {
+          mid: PENNY_MARK,
+          gamma: REAL_GAMMA,
+          theta: REAL_THETA,
+          vega: REAL_VEGA,
+          iv: REAL_IV,
+        },
+      },
+      {
+        ticker: "TROUGH",
+        entryPremium: 0.45,
+        peakPremium: TROUGH_MARK,
+        troughPremium: TROUGH_RAW,
+        contract: { mid: TROUGH_MARK },
+      },
+    ],
+  };
+}
+
 mock.module("../../../../../lib/swing/serving-lane", {
   namedExports: {
-    getSwingServingLane: async () => ({
-      swingFloat: RAW_SWING_FLOAT,
-      sections: [],
-      committedCount: 2,
-      watchCount: 3,
-      scanAsOf: "2026-09-04T17:00:00.000Z",
-      scanSessionDay: "2026-09-04",
-      committed: [
-        {
-          ticker: "PENNY",
-          entryPremium: PENNY_ENTRY,
-          peakPremium: PENNY_MARK,
-          livePnlPct: PENNY_LIVE_PNL_PCT,
-          contract: {
-            mid: PENNY_MARK,
-            gamma: REAL_GAMMA,
-            theta: REAL_THETA,
-            vega: REAL_VEGA,
-            iv: REAL_IV,
-          },
-        },
-        {
-          ticker: "TROUGH",
-          entryPremium: 0.45,
-          peakPremium: TROUGH_MARK,
-          troughPremium: TROUGH_RAW,
-          contract: { mid: TROUGH_MARK },
-        },
-      ],
-    }),
+    getSwingServingLane: async () => ({ ...defaultSwingLaneFixture(), ...swingLaneOverride }),
     // Route also reads the persisted snapshot / discover seam — stub so the mock module shape matches
     // the live import list (missing named exports → TypeError → degraded {available:false} body).
     discoverSwingFromPersisted: async () => null,
@@ -287,6 +296,102 @@ describe("/api/market/nighthawk/horizons roundFloats at the boundary", () => {
       play.troughPremium <= play.contract.mid,
       `trough ${play.troughPremium} must never read above mid ${play.contract.mid} — a trough is the LEAST mark ever observed`,
     );
+  });
+});
+
+// BUG FIX (2026-11-09, Ask Largo x Night Hawk Swings standing mandate): on the SWING/LEAPS scoped
+// fast path, `payload` (the live 0DTE board payload) is deliberately never fetched — so
+// `upstream_ok` used to default unconditionally to `true` and `board.asOf` was stamped from
+// REQUEST time, regardless of whether the swing discovery scan this board's only real data
+// (`swingLane`) actually came from today. Live repro: `board.asOf` read fresh (request time)
+// while `board.lanes.SWING.scanAsOf` was ~75h stale, with `upstream_ok:true` throughout — hiding
+// a real, live staleness incident from the Swing Command engine-status badge
+// (`deriveEngineStatus`, deck-engine-status.ts), which treats `upstreamOk===false` as the ONLY
+// non-session-timing path to an "Offline" verdict.
+//
+// `mostRecentTradingDayEt` (the real, unmocked helper from `@/features/nighthawk/lib/session`) is
+// used directly here to compute "today's real trading day" for the FRESH fixture, so this test
+// needs no date mocking of its own and stays correct regardless of what day it actually runs —
+// only the STALE fixture needs a fixed, clearly-in-the-past session day, chosen far enough back
+// (2024-01-02, a real past Friday) that it can never coincide with "today" however long this test
+// file goes unmodified.
+describe("/api/market/nighthawk/horizons swing/leaps fast path — upstream_ok/asOf honesty", () => {
+  let GET: (req: NextRequest) => Promise<Response>;
+  let mostRecentTradingDayEt: (now?: Date) => string;
+
+  before(async () => {
+    ({ GET } = await import("./route"));
+    ({ mostRecentTradingDayEt } = await import("../../../../../features/nighthawk/lib/session"));
+  });
+
+  afterEach(() => {
+    swingLaneOverride = {};
+  });
+
+  test("fresh swing scan (today's own trading session): upstream_ok stays true, board.asOf reflects the real scanAsOf", async () => {
+    const todaysTradingDay = mostRecentTradingDayEt();
+    const freshScanAsOf = `${todaysTradingDay}T15:00:00.000Z`;
+    swingLaneOverride = { scanAsOf: freshScanAsOf, scanSessionDay: todaysTradingDay };
+
+    const res = await GET(new NextRequest("http://localhost/api/market/nighthawk/horizons?view=swings"));
+    const body = await res.json();
+
+    assert.equal(body.upstream_ok, true, "a same-session scan must not fabricate OR hide health — it is genuinely fresh");
+    assert.equal(body.board.asOf, freshScanAsOf, "board.asOf must reflect the real swing scan timestamp, not request time");
+  });
+
+  test("stale swing scan (a prior trading session, not today's): upstream_ok flips false, board.asOf reflects the real stale scanAsOf", async () => {
+    const staleScanAsOf = "2024-01-02T15:00:00.000Z"; // a real past Friday — never "today"
+    swingLaneOverride = { scanAsOf: staleScanAsOf, scanSessionDay: "2024-01-02" };
+
+    const res = await GET(new NextRequest("http://localhost/api/market/nighthawk/horizons?view=swings"));
+    const body = await res.json();
+
+    assert.equal(
+      body.upstream_ok,
+      false,
+      "a scan anchored to a prior trading session must surface as degraded, not fabricate upstream_ok:true",
+    );
+    assert.equal(
+      body.board.asOf,
+      staleScanAsOf,
+      "board.asOf must disclose the real stale scan time instead of a fresh-looking request timestamp",
+    );
+  });
+
+  // NOTE on LEAPS: this route's own `isSwingLeapsFastPath` check still covers `horizon === "LEAPS"`
+  // defensively (mirroring the pre-existing, already-dead `|| horizon === "LEAPS"` branch that was
+  // here before this fix), but `?view=leaps` has been UNREACHABLE via the live query-param
+  // contract since 2026-08-04 (LEAPS was removed from `NIGHTHAWK_VIEWS`/`KNOWN_NIGHTHAWK_VIEW_TOKENS`
+  // — nighthawk-view.ts's own header comment: "the LEAPS horizon lane has no live signal adapter
+  // feeding it yet"). `?view=leaps` 400s ("Invalid view") today, same as any other unknown token —
+  // confirmed while writing this test. So there is no live request shape left that exercises the
+  // LEAPS half of this fix; it stays correct-by-construction for whenever LEAPS is revived, per
+  // nighthawk-view.ts's own documented revival path, without a reachable-today test for it.
+
+  test("a lane that has never scanned (no scanAsOf at all) does not fabricate upstream_ok:true", async () => {
+    swingLaneOverride = { scanAsOf: null, scanSessionDay: null };
+
+    const res = await GET(new NextRequest("http://localhost/api/market/nighthawk/horizons?view=swings"));
+    const body = await res.json();
+
+    assert.equal(
+      body.upstream_ok,
+      false,
+      "no known scan timestamp means freshness is genuinely unknown — must fail closed, not default to true",
+    );
+  });
+
+  // Unaffected-path guard: the all-lanes view (no ?view=) takes the 0DTE payload branch, which
+  // this fix must leave completely untouched regardless of what the swing lane's scan looks like.
+  test("the unscoped (0DTE payload) view is unaffected by swing scan staleness", async () => {
+    const staleScanAsOf = "2024-01-02T15:00:00.000Z";
+    swingLaneOverride = { scanAsOf: staleScanAsOf, scanSessionDay: "2024-01-02" };
+
+    const res = await GET(new NextRequest("http://localhost/api/market/nighthawk/horizons"));
+    const body = await res.json();
+
+    assert.equal(body.upstream_ok, true, "the 0DTE path's own upstream_ok (from the mocked payload) must be untouched");
   });
 });
 
