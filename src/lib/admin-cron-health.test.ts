@@ -282,6 +282,35 @@ test("evaluateJob: clock-skewed future started_at does not read as fresh", () =>
 /** Labor Day 2026-09-07 — weekday NYSE holiday. Warmers gate via shouldRunCacheWarmer. */
 const LABOR_DAY_MIDDAY = new Date("2026-09-07T16:00:00Z"); // 12:00 ET Monday holiday
 
+test("effectiveStaleMinutes: swing-discovery uses phase weekly ceiling, not 36h registry", () => {
+  const job = jobDef({ key: "swing-discovery", stale_after_min: 36 * 60, weekdays_only: true });
+  const { effective } = effectiveStaleMinutes(job);
+  assert.ok(effective > 36 * 60);
+});
+
+test("swing-discovery: last ok after Friday post-close still healthy Monday evening pre-fix gap", () => {
+  const now = new Date("2026-11-09T23:12:00.000Z"); // Mon 6:12 PM ET — RTH deep audit off-hours row
+  const health = evaluateJob(
+    jobDef({
+      key: "swing-discovery",
+      stale_after_min: 36 * 60,
+      weekdays_only: true,
+    }),
+    {
+      id: 1,
+      job_key: "swing-discovery",
+      status: "ok",
+      started_at: "2026-11-07T21:30:00.000Z",
+      duration_ms: 120_000,
+      message: "POST_CLOSE",
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "healthy");
+});
+
 test("effectiveStaleMinutes: NYSE holiday uses relaxed multiplier for market_hours_only jobs", () => {
   const job = jobDef({ market_hours_only: true, stale_after_min: 15 });
   const { multiplier, effective } = effectiveStaleMinutes(job, LABOR_DAY_MIDDAY);

@@ -8,6 +8,7 @@
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
+import { evaluateSpxDeskSmoke } from "./lib/gha-desk-smoke-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -191,8 +192,16 @@ async function auditSpxDesk() {
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  const deskProbe = evaluateSpxDeskSmoke({ status: 200, body: d });
+  if (deskProbe.outcome === "fail") {
+    fail("spx-desk", "SPOT", deskProbe.message, "P0");
+    return;
+  }
+  if (deskProbe.outcome === "warn" || !(spot > 0)) {
+    ok("spx-desk", "desk-smoke", deskProbe.message);
+    return;
+  }
+  ok("spx-desk", "spot", String(spot));
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;

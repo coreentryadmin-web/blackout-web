@@ -21,6 +21,7 @@ import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap, isAwaitingSecondaryUtcBandFire } from "@/lib/cron-schedule-window";
+import { swingDiscoveryHandshakeStaleMin } from "@/lib/swing/discovery-cron-health";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -249,6 +250,9 @@ export function effectiveStaleMinutes(
 ): { effective: number; multiplier: number } {
   const etDate = formatEtDate(now);
   const tradingDay = isTradingDayEt(etDate);
+  if (job.key === "swing-discovery") {
+    return { effective: swingDiscoveryHandshakeStaleMin(), multiplier: 1 };
+  }
   if (job.weekdays_only && !tradingDay) {
     return { effective: job.stale_after_min * 2.5, multiplier: 2.5 };
   }
