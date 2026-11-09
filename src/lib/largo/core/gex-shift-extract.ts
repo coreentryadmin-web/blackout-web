@@ -105,7 +105,20 @@ export function formatGexChange(n: number): string {
   const sign = n < 0 ? "−" : "+";
   const a = Math.abs(n);
   if (a >= 1e9) return `${sign}$${(a / 1e9).toFixed(1)}B`;
-  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(1)}M`;
-  if (a >= 1e3) return `${sign}$${(a / 1e3).toFixed(0)}K`;
+  if (a >= 1e6) {
+    // Round FIRST, then re-check the B threshold — otherwise e.g. 999_950_000 takes this
+    // branch (< 1e9) and (999_950_000/1e6).toFixed(1) rounds UP to "1000.0", rendering the
+    // nonsensical "+$1000.0M" instead of promoting to "+$1.0B". Same trap as fmt-money.ts.
+    const m = a / 1e6;
+    if (Math.round(m * 10) / 10 >= 1000) return `${sign}$${(a / 1e9).toFixed(1)}B`;
+    return `${sign}$${m.toFixed(1)}M`;
+  }
+  if (a >= 1e3) {
+    // Same trap one tier down: 999_500 takes this branch (< 1e6) and
+    // (999_500/1e3).toFixed(0) rounds UP to "1000", rendering "+$1000K" instead of "+$1.0M".
+    const k = a / 1e3;
+    if (Math.round(k) >= 1000) return `${sign}$${(a / 1e6).toFixed(1)}M`;
+    return `${sign}$${k.toFixed(0)}K`;
+  }
   return `${sign}$${a.toFixed(0)}`;
 }
