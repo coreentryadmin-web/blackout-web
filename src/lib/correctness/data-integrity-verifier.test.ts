@@ -154,11 +154,21 @@ test("classifyRedisTtlProbe: null (Redis unreachable) is always skipped, never f
   }
 });
 
-test("classifyRedisTtlProbe: a bounded positive TTL within the expected window passes", async () => {
+// BUG FIX (round 522, 2026-11-09): classifyRedisTtlProbe's "pass" branch used to return a plain
+// {outcome,detail,actual} with no `independentlyConfirmed` field at all. types.ts's
+// rollUpMetricStatus — the shared rollup every verifier in this directory funnels its checks
+// through — only promotes a METRIC to "pass" when at least one of its checks carries
+// `independentlyConfirmed: true`; without it a clean "pass"-outcome check silently demotes to
+// "consistency-only" at the metric level (and gets listed as a DATALAYER coverage gap by
+// collectCoverageGaps() in run-correctness.ts), even though the per-check detail line still read
+// "[pass]". Same mislabeled-outcome class already fixed for largo-verifier.ts and
+// nighthawk-verifier.ts elsewhere in this directory — this test pins the fix at its source.
+test("classifyRedisTtlProbe: a bounded positive TTL within the expected window passes AND carries independentlyConfirmed:true (so the metric-level rollup doesn't silently demote it)", async () => {
   const { classifyRedisTtlProbe } = await mod();
   const verdict = classifyRedisTtlProbe(30, true);
   assert.equal(verdict.outcome, "pass");
   assert.equal(verdict.actual, 30);
+  assert.equal(verdict.independentlyConfirmed, true, "a pass-outcome check must set independentlyConfirmed or rollUpMetricStatus demotes it to consistency-only");
 });
 
 test("classifyRedisTtlProbe: a positive TTL far outside the expected window flags", async () => {
@@ -208,6 +218,40 @@ test("verifyDataIntegrity: an EMPTY nighthawk_editions table is reported skipped
     assert.equal(check.outcome, "skipped");
   } finally {
     // Restore the ageMin-tests' baseline so this test's state can't leak into a re-run / future test.
+    dbConfiguredValue = false;
+    dbQueryHandler = async () => ({ rows: [] });
+  }
+});
+
+// BUG FIX (round 522, 2026-11-09): a genuinely healthy pg_nh_outcomes check (clean vocabulary,
+// outcome: "pass") used to roll up to metric status "consistency-only" instead of "pass", because
+// none of its CheckResults set `independentlyConfirmed` — see the module-doc BUG FIX note atop
+// data-integrity-verifier.ts for the full mechanism. This exercises the real end-to-end path
+// (verifyDataIntegrity -> groupMetrics -> rollUpMetricStatus), not just the per-check outcome
+// string, so a regression in the wiring (not just the classifier) would still be caught.
+test("verifyDataIntegrity: a clean nighthawk_play_outcomes vocabulary check rolls up to metric status 'pass' with independentlyConfirmed:true, not silently demoted to consistency-only", async () => {
+  dbConfiguredValue = true;
+  dbQueryHandler = async (sql: string) => {
+    if (sql.includes("nighthawk_play_outcomes")) return { rows: [{ total: "5", bad_outcome: "0" }] };
+    // Every other probe in this test has nothing canned — dbProbe's own try/catch degrades these
+    // to "skipped", which is irrelevant to the metric under test (they group under different
+    // metric names entirely).
+    throw new Error("no canned response for this probe in this test");
+  };
+  try {
+    const { verifyDataIntegrity } = await mod();
+    const score = await verifyDataIntegrity(false);
+    const outcomes = score.metrics.find((m) => m.metric === "pg_nh_outcomes");
+    assert.ok(outcomes, "expected a pg_nh_outcomes metric on the DATALAYER scorecard");
+    assert.equal(outcomes!.checks[0]?.outcome, "pass", "sanity: the underlying check outcome itself is 'pass'");
+    assert.equal(
+      outcomes!.status,
+      "pass",
+      `a clean (bad=0) outcome-vocabulary check must roll up to metric status "pass", got "${outcomes!.status}" ` +
+        `— a "pass"-outcome CheckResult with no independentlyConfirmed silently demotes to consistency-only`
+    );
+    assert.equal(outcomes!.independentlyConfirmed, true);
+  } finally {
     dbConfiguredValue = false;
     dbQueryHandler = async () => ({ rows: [] });
   }
