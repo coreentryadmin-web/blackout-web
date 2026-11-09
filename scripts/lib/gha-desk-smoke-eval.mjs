@@ -43,8 +43,15 @@ export function evaluateSpxDeskSmoke(probe, now = new Date()) {
     };
   }
 
-  if (status === 200 && Number.isFinite(price) && price > 0) {
-    return { outcome: "ok", message: `SPX ${price} (cron auth ok)` };
+  const prior =
+    record && "prior_close" in record ? Number(record.prior_close) : NaN;
+  const groundedSpot =
+    (Number.isFinite(price) && price > 0) ||
+    (Number.isFinite(prior) && prior > 0);
+
+  if (status === 200 && groundedSpot) {
+    const spot = Number.isFinite(price) && price > 0 ? price : prior;
+    return { outcome: "ok", message: `SPX ${spot} (cron auth ok)` };
   }
 
   if (status === 200) {

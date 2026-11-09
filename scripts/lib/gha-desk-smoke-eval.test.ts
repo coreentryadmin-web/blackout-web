@@ -21,6 +21,21 @@ test("evaluateSpxDeskSmoke: live price during RTH is ok", () => {
   assert.match(v.message, /5900/);
 });
 
+test("evaluateSpxDeskSmoke: off-hours prior_close counts as grounded spot", () => {
+  const v = evaluateSpxDeskSmoke(
+    { status: 200, body: { price: 0, prior_close: 7352.9, available: true } },
+    SATURDAY_MIDDAY_ET
+  );
+  assert.equal(v.outcome, "ok");
+  assert.match(v.message, /7352/);
+});
+
+test("evaluateSpxDeskSmoke: 502 remains fail (retries handled by caller)", () => {
+  const v = evaluateSpxDeskSmoke({ status: 502, body: { error: "Desk build failed" } });
+  assert.equal(v.outcome, "fail");
+  assert.match(v.message, /502/);
+});
+
 test("evaluateSpxDeskSmoke: weekend 200 price 0 warns instead of failing deploy", () => {
   const v = evaluateSpxDeskSmoke(
     { status: 200, body: { price: 0, available: true } },
