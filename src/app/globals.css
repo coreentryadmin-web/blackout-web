@@ -7346,6 +7346,11 @@ html.product-shell .nav-mega {
     font-size: 10px;
     color: #9fb3c8;
   }
+  .bie-ladder-row-extra {
+    font-size: 10px;
+    color: #8ba0b6;
+    white-space: nowrap;
+  }
   .bie-ladder-role-chip {
     display: inline-flex;
     align-items: center;
@@ -7441,6 +7446,9 @@ html.product-shell .nav-mega {
   .bie-ladder-track-record strong,
   .bie-ladder-stop strong {
     color: #e2e8f0;
+  }
+  .bie-ladder-track-record-sublane {
+    margin-top: 0.3rem;
   }
   .bie-ladder-gatekeeper {
     font-family: var(--font-mono, monospace);
