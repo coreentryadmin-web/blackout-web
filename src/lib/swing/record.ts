@@ -55,7 +55,16 @@ export interface SwingLegRowLike {
 }
 
 const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
-const round2 = (n: number): number => Math.round(n * 100) / 100;
+// Round by MAGNITUDE then reapply sign — plain `Math.round(n*100)/100` ties toward +Infinity
+// (`Math.round(-12.5) === -12` but `Math.round(12.5) === 13`), so a losing (negative) P&L sitting
+// exactly on a tie rounds to a SMALLER magnitude than the identical-size winning mirror would —
+// the same sign-biased asymmetry already found and fixed across this codebase this session
+// (underlying-excursion.ts's signedExcursionPct, fmt-money.ts's fmtPct, debrief.ts's round2,
+// gamma-desk.ts's distance_pts, and others). Every value this helper rounds here is bidirectional
+// (realizedPnlPct/worstLegPnlPct/sumPnlPct/compoundedReturnPct) and worstLegPnlPct is this file's
+// own "explicit preserved-loss witness" (see the file header) plus the exact-0 test `breakevens`
+// relies on below — a tie-biased understatement of a real loss's magnitude isn't cosmetic here.
+const round2 = (n: number): number => (Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100;
 
 export interface SwingLegGrade {
   positionId: number;
