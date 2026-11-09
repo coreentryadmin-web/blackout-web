@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-09T13:18:27.146Z",
+  "updated_at": "2026-11-09T14:47:49.353Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-09T13:18:07.217Z"
+      "released_at": "2026-11-09T14:47:30.353Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-09T13:18:12.204Z",
-      "lease_until": "2026-11-09T13:19:12.204Z",
+      "claimed_at": "2026-11-09T14:47:35.199Z",
+      "lease_until": "2026-11-09T14:48:35.199Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-09T13:18:12.208Z"
+      "released_at": "2026-11-09T14:47:35.208Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "31ff9dc7777b174d7a3e737a6f20174af7665910",
+    "last_main_sha": "4f46c544e948505dc8e744eb05fd6369dc607a11",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-09T13:16:41Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42624054020",
-    "last_deploy_sha": "31ff9dc7777b174d7a3e737a6f20174af7665910"
+    "last_deploy_at": "2026-11-09T14:46:11Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42637908575",
+    "last_deploy_sha": "4f46c544e948505dc8e744eb05fd6369dc607a11"
   },
   "events": [
-    {
-      "at": "2026-10-31T22:58:14.515Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-10-31T22:58:19.113Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-01T00:50:11.237Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-11-01T00:50:17.269Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-11-01T00:50:23.154Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-11-01T01:38:24.890Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-11-01T01:38:30.013Z",
       "type": "context_sync",
@@ -1286,6 +1250,42 @@
     },
     {
       "at": "2026-11-09T13:18:27.146Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T14:47:30.353Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T14:47:35.201Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T14:47:35.208Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T14:47:40.069Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T14:47:44.726Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T14:47:49.353Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
