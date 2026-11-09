@@ -10183,3 +10183,28 @@ and `/play` are actually serving a real price again
   discovery `$-volume` stat is near or above $1B (a high-$-volume mid/large-cap breakout day —
   the screen's own ranking makes this the common case, not the exception), confirm the card reads
   `$X.XB`, never a four-plus-digit `$XXXX.XM` label.
+
+## WATCH LIST — 2026-11-09 (Swing "Lane rank" `deltaFromMedian` sign-bias rounding tie, `commit.ts` + `play-brief-lane-rank.ts`) — re-check once a WATCH/OPEN/CLOSED play's score sits exactly on a .x5 tie below its lane median
+
+- **What was broken**: both `commit.ts`'s `laneRankAtCommitFor` (stamped at commit time into
+  `entry_context.lane_rank_at_commit`) and `play-brief-lane-rank.ts`'s `computeLaneRank` (live
+  WATCH/OPEN brief) independently rounded `deltaFromMedian` with plain
+  `Math.round((score - medianScore) * 10) / 10`, which ties toward `+Infinity`
+  (`Math.round(-67.5) === -67`, not `-68`) — a play scoring exactly on a `.x5` tie BELOW its lane
+  median understated its delta's magnitude versus the identical-magnitude case above the median.
+  Same bug class fixed earlier the same day in `fmt-money.ts`'s `fmtPct`, `record.ts`'s `round2`
+  (PR #7706), and `play-brief-intel.ts`'s Industry-read line (PR #7730). Not purely cosmetic:
+  `laneRankCoaching` gates narrative branches directly on the rounded value (`< -15`, `>= 10`),
+  so a tie adjacent to one of those thresholds could flip which sentence fires.
+- **Fix**: round `deltaFromMedian` by magnitude then reapply sign (`(Math.sign(n) *
+  Math.round(Math.abs(n) * 10)) / 10`, same formula `fmtPct` uses) at both call sites.
+  `medianScore` itself is untouched — it's a median of non-negative evidence scores, never
+  negative, so the sign-bias formula is a no-op there. New regression tests in `commit.test.ts`
+  and `play-brief-lane-rank.test.ts` using an exact IEEE754-tie fixture (median 60.0, scores
+  53.25/66.75 → raw deltas ∓6.75, `*10` exactly ∓67.5); RED→GREEN confirmed via `git stash`
+  isolation on just the two source files (pre-fix: `-6.7`/`+6.8`, asymmetric; post-fix:
+  `-6.8`/`+6.8`, symmetric). Full `src/lib/swing/*.test.ts` suite + `tsc --noEmit` clean.
+- **Specific thing to check once live**: next time a WATCH/OPEN/CLOSED play's "Lane rank"
+  section shows a `deltaFromMedian` whose raw value (score minus lane median) lands near a
+  `.x5`-at-one-decimal boundary, confirm the displayed "+X/-X vs median" magnitude matches the
+  equivalent opposite-sign case rather than reading 0.1pt smaller on the negative side.

@@ -289,6 +289,35 @@ test("computeLaneRank: deltaFromMedian is rounded, not a raw float subtraction a
   assert.equal(snap!.deltaFromMedian, 11.8, "must round to 1dp, not leak 11.800000000000004 into the narrative");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-09): same sign-bias rounding tie fixed the same
+// day in fmt-money.ts's fmtPct, record.ts's round2, and this file's own commit-time sibling
+// `laneRankAtCommitFor` in commit.ts. Plain `Math.round(n*10)/10` ties toward +Infinity, so a
+// NEGATIVE deltaFromMedian landing exactly on a .x5 tie understated its magnitude versus the
+// identical positive-magnitude case. Odd peer count isolates the median to a single exact
+// element (60.0); 53.25/66.75 are chosen so `(score - 60) * 10` is an EXACT IEEE754 half-integer
+// (-67.5 / 67.5) — not merely a decimal literal that looks like a tie but drifts a few ULPs off
+// it after subtraction (verified empirically; most two-decimal candidates do drift).
+test("computeLaneRank: deltaFromMedian rounds by magnitude at a sign-tie boundary, not biased toward +Infinity", () => {
+  const below = computeLaneRank(play({ ticker: "WYNN", score: 53.25, status: "WATCH" }), [
+    row("MGM", 66.75, "WATCH"),
+    row("LVS", 60.0, "WATCH"),
+    row("WYNN", 53.25, "WATCH"),
+  ]);
+  assert.ok(below);
+  assert.equal(below!.medianScore, 60.0);
+  // Old biased rounding gave -6.7 here (Math.round(-67.5) === -67); correct magnitude is -6.8,
+  // matching the mirror-image +6.75 case below exactly.
+  assert.equal(below!.deltaFromMedian, -6.8, "a below-median tie must round to the SAME magnitude as the equivalent above-median tie");
+
+  const above = computeLaneRank(play({ ticker: "MGM", score: 66.75, status: "WATCH" }), [
+    row("MGM", 66.75, "WATCH"),
+    row("LVS", 60.0, "WATCH"),
+    row("WYNN", 53.25, "WATCH"),
+  ]);
+  assert.ok(above);
+  assert.equal(above!.deltaFromMedian, 6.8);
+});
+
 test("computeLaneRank: median for an EVEN peer count averages the two middle scores, not just the lower one", () => {
   // Live repro 2026-09-14 (TSM brief, WATCH lane, exactly 2 peers): pre-fix code read
   // scores[floor(2/2)] = scores[1] off the descending-sorted array, which is the LOWER of the two
