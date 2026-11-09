@@ -4,6 +4,15 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-11-09 (13:33 UTC / Mon 08:33 ET) — [SEO] RTH wake fired pre-market, treated as normal work
+
+Checked the clock myself per the trigger's own instructions: 08:33 ET, before the 09:30 ET open —
+market not yet open, so this was not a genuine RTH window. Did normal SEO/search work instead of
+the gamma-snapshot/live-page checks. Purged Cloudflare edge HTML, re-measured CLS — **0.0001,
+GOOD** (69/69 routed, 0 fail, empty shifts). Fetched `/api/og`: `200`, `content-type: image/png`.
+PR sweep: 1 open agent PR fleet-wide (CI-RUNNING, other-lane market-open-validation docs). Nothing
+for this lane to chase. No PR opened.
+
 ## 2026-11-09 (12:23 UTC / Mon 08:23 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Resynced to `origin/main` (`80e90f73d`, other-lane agent-state chore). **Step 1:** purged
