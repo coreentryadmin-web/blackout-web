@@ -66,5 +66,17 @@ export function evaluateSpxDeskSmoke(probe, now = new Date()) {
     };
   }
 
+  if (status === 502 || status === 503 || status === 504) {
+    return {
+      outcome: "fail",
+      message: `HTTP ${status} (desk build/upstream blip — deploy smoke may retry)`,
+    };
+  }
+
   return { outcome: "fail", message: `unexpected HTTP ${status}` };
+}
+
+/** Transient statuses worth retrying after ECS rollouts (cold buildSpxDesk timeouts). */
+export function shouldRetrySpxDeskProbe(status) {
+  return status === 502 || status === 503 || status === 504;
 }
