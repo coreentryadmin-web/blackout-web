@@ -103,3 +103,64 @@ test("assembleFundamentalsBundle: as_of prefers ratios → signals → SI → sh
   });
   assert.equal(bare.as_of, null);
 });
+
+// BUG FIX (2026-11-09, Ask Largo standing mandate -- sibling of the 2026-11-08 earnings-leg fix,
+// PR #7584 / commit 7df37da25): assembleFundamentalsBundle must thread shortInterestError/
+// shortVolumeError through additively -- omitting them (the pre-existing call shape) must still
+// produce `null`, not `undefined`, so a consumer's `=== null` / truthiness check behaves the same
+// whether or not the caller passes the new fields.
+test("assembleFundamentalsBundle: short_interest_error/short_volume_error default to null when omitted (no regression)", () => {
+  const bundle = assembleFundamentalsBundle("nvda", {
+    ratios: null,
+    signals: null,
+    priceTarget: null,
+    shortInterest: null,
+    shortVolume: { short_volume_ratio: null, short_volume_date: null },
+  });
+  assert.equal(bundle.short_interest_error, null);
+  assert.equal(bundle.short_volume_error, null);
+});
+
+test("assembleFundamentalsBundle: a FAILED short-interest fetch carries the real error through, independent of short-volume", () => {
+  const bundle = assembleFundamentalsBundle("tsla", {
+    ratios: null,
+    signals: null,
+    priceTarget: null,
+    shortInterest: null,
+    shortVolume: { short_volume_ratio: 0.42, short_volume_date: "2026-11-07" },
+    shortInterestError: "Polygon /stocks/v1/short-interest → 403",
+  });
+  assert.equal(bundle.short_interest_error, "Polygon /stocks/v1/short-interest → 403");
+  assert.equal(bundle.short_volume_error, null, "the sibling short-volume leg succeeded and must carry no spurious error");
+  // The short-volume leg still succeeded, so the bundle still carries real data -- only the
+  // short-interest leg's own slice is missing, and now for a NAMED reason.
+  assert.equal(bundle.short_volume_ratio, 0.42);
+});
+
+test("assembleFundamentalsBundle: a FAILED short-volume fetch carries the real error through, independent of short-interest", () => {
+  const bundle = assembleFundamentalsBundle("mstr", {
+    ratios: null,
+    signals: null,
+    priceTarget: null,
+    shortInterest: { settlement_date: "2026-10-31", short_interest: 1, avg_daily_volume: 2, days_to_cover: 3 },
+    shortVolume: { short_volume_ratio: null, short_volume_date: null },
+    shortVolumeError: "Polygon /stocks/v1/short-volume → 429 (rate limited)",
+  });
+  assert.equal(bundle.short_volume_error, "Polygon /stocks/v1/short-volume → 429 (rate limited)");
+  assert.equal(bundle.short_interest_error, null);
+  assert.equal(bundle.short_interest?.days_to_cover, 3);
+});
+
+test("assembleFundamentalsBundle: BOTH legs failing together carry both real errors independently", () => {
+  const bundle = assembleFundamentalsBundle("mstr", {
+    ratios: null,
+    signals: null,
+    priceTarget: null,
+    shortInterest: null,
+    shortVolume: { short_volume_ratio: null, short_volume_date: null },
+    shortInterestError: "Polygon /stocks/v1/short-interest → 403",
+    shortVolumeError: "Polygon /stocks/v1/short-volume → 403",
+  });
+  assert.equal(bundle.short_interest_error, "Polygon /stocks/v1/short-interest → 403");
+  assert.equal(bundle.short_volume_error, "Polygon /stocks/v1/short-volume → 403");
+});

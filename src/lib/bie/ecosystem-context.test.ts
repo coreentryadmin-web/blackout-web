@@ -1281,6 +1281,131 @@ test("assembleEcosystemArsenal: a FAILED earnings-calendar fetch is retryable:tr
   );
 });
 
+// BUG FIX (2026-11-09, Ask Largo standing mandate, live repro TSLA/MSTR): the THIRD sibling leg in
+// this same function (earnings fixed 2026-11-08/PR #7584, news already correct) — collapsed a
+// FAILED short-interest/short-volume fetch (Polygon 403/timeout/rate-limit — e.g. the live,
+// currently-open real-time entitlement outage) to the identical empty-bundle shape as a genuine
+// "this provider has no short-interest series for the name," so this leg always emitted the
+// confident {reason: "no data for ticker", retryable: false} entry regardless of WHY the bundle
+// came up empty. `fetchShortInterestResult`/`fetchShortVolumeResult` (polygon.ts) now thread the
+// real fetch error through `TickerFundamentalsBundle.short_interest_error`/`.short_volume_error`
+// instead of being swallowed — these four tests prove the assembler branches on them correctly.
+// RED pre-fix: all four fail because the old code had no `.short_interest_error`/`.short_volume_error`
+// branch at all and always pushed the "no data for ticker"/retryable:false entry; GREEN post-fix.
+
+test("assembleEcosystemArsenal: a genuine empty-but-successful fundamentals bundle stays retryable:false 'no data for ticker' (unchanged)", () => {
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: {
+      ticker: "ZZZZ",
+      as_of: null,
+      ratios: null,
+      signals: null,
+      price_target: null,
+      short_interest: null,
+      short_volume_ratio: null,
+      short_volume_date: null,
+      short_interest_error: null,
+      short_volume_error: null,
+    } as TickerFundamentalsBundle,
+    related: null,
+    news: null,
+    macro: null,
+    breadth: null,
+  });
+  assert.equal(ars.fundamentals, null, "no usable short-interest/short-volume data to show");
+  const entry = ars.unavailable_sources.find((u) => u.source === "fundamentals/short-interest");
+  assert.ok(entry, "fundamentals/short-interest must surface in unavailable_sources");
+  assert.equal(entry?.retryable, false, "a genuine clean absence must stay non-retryable");
+  assert.equal(entry?.reason, "no data for ticker");
+});
+
+test("assembleEcosystemArsenal: a FAILED short-interest fetch is retryable:true with the real cause, not the generic 'no data for ticker'", () => {
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: {
+      ticker: "TSLA",
+      as_of: null,
+      ratios: null,
+      signals: null,
+      price_target: null,
+      short_interest: null,
+      short_volume_ratio: null,
+      short_volume_date: null,
+      short_interest_error: "not_entitled",
+      short_volume_error: null,
+    } as TickerFundamentalsBundle,
+    related: null,
+    news: null,
+    macro: null,
+    breadth: null,
+  });
+  assert.equal(ars.fundamentals, null, "still no data to show — the read failed");
+  const entry = ars.unavailable_sources.find((u) => u.source === "fundamentals/short-interest");
+  assert.ok(entry, "fundamentals/short-interest must still surface in unavailable_sources");
+  assert.equal(entry?.retryable, true, "a failed fetch is retryable — unlike a genuine clean absence");
+  assert.notEqual(entry?.reason, "no data for ticker", "must not fabricate the structural/clean-absence reason for a fetch failure");
+  assert.match(entry?.reason ?? "", /not_entitled/, `reason must name the real cause, got: ${entry?.reason}`);
+});
+
+test("assembleEcosystemArsenal: a FAILED short-volume fetch is retryable:true with the real cause", () => {
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: {
+      ticker: "MSTR",
+      as_of: null,
+      ratios: null,
+      signals: null,
+      price_target: null,
+      short_interest: null,
+      short_volume_ratio: null,
+      short_volume_date: null,
+      short_interest_error: null,
+      short_volume_error: "timeout",
+    } as TickerFundamentalsBundle,
+    related: null,
+    news: null,
+    macro: null,
+    breadth: null,
+  });
+  const entry = ars.unavailable_sources.find((u) => u.source === "fundamentals/short-interest");
+  assert.ok(entry);
+  assert.equal(entry?.retryable, true);
+  assert.notEqual(entry?.reason, "no data for ticker");
+  assert.match(entry?.reason ?? "", /timeout/, `reason must name the real cause, got: ${entry?.reason}`);
+});
+
+test("assembleEcosystemArsenal: BOTH short-interest and short-volume failing together is still retryable:true, not the structural reason", () => {
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: {
+      ticker: "MSTR",
+      as_of: null,
+      ratios: null,
+      signals: null,
+      price_target: null,
+      short_interest: null,
+      short_volume_ratio: null,
+      short_volume_date: null,
+      short_interest_error: "not_entitled",
+      short_volume_error: "not_entitled",
+    } as TickerFundamentalsBundle,
+    related: null,
+    news: null,
+    macro: null,
+    breadth: null,
+  });
+  const entry = ars.unavailable_sources.find((u) => u.source === "fundamentals/short-interest");
+  assert.ok(entry);
+  assert.equal(entry?.retryable, true);
+  assert.notEqual(entry?.reason, "no data for ticker");
+  assert.match(entry?.reason ?? "", /not_entitled/);
+});
+
 test("assembleEcosystemArsenal: an empty-but-successful news read is 'no recent news' (count 0), not unavailable", () => {
   const ars = assembleEcosystemArsenal({
     scope: "single_name",
