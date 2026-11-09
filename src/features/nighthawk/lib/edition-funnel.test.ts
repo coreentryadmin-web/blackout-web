@@ -232,3 +232,65 @@ test("zeroCandidatesRecapReason names all 7 discovery lanes' counts, not just 4"
   assert.match(reason, /movers 0/);
   assert.match(reason, /breakout 1/);
 });
+
+// --- Audit finding (2026-11-09, narrower follow-up to #7745): reason text never disclosed a
+// lane's own fetch failure, even though #7745 already computed and alerted ops on exactly those
+// flags. These cover `zeroCandidatesRecapReason`'s new optional `failures` parameter — the
+// MEMBER/LARGO-FACING string, not the internal ops alert #7745 already fixed.
+
+const ZERO_COUNTS = {
+  flows: 0,
+  oi: 0,
+  unusual: 0,
+  catalyst: 0,
+  predictions: 0,
+  movers: 0,
+  breakout: 0,
+};
+
+test("zeroCandidatesRecapReason is byte-identical to the no-failures case when every lane genuinely returned zero", () => {
+  const withoutFailuresArg = zeroCandidatesRecapReason(ZERO_COUNTS);
+  const withAllFalseFlags = zeroCandidatesRecapReason(ZERO_COUNTS, ALL_LANES_OK);
+  const withNullFlags = zeroCandidatesRecapReason(ZERO_COUNTS, null);
+  assert.equal(
+    withoutFailuresArg,
+    "No candidates from any source (flows 0, OI 0, unusual 0, catalyst 0, predictions 0, movers 0, breakout 0)."
+  );
+  assert.equal(withAllFalseFlags, withoutFailuresArg);
+  assert.equal(withNullFlags, withoutFailuresArg);
+  assert.doesNotMatch(withoutFailuresArg, /could not be fetched/);
+});
+
+test("zeroCandidatesRecapReason appends a disclosure clause naming the one lane that failed", () => {
+  const reason = zeroCandidatesRecapReason(
+    { ...ZERO_COUNTS, movers: 0 },
+    { ...ALL_LANES_OK, movers_fetch_failed: true }
+  );
+  assert.match(reason, /^No candidates from any source \(flows 0, OI 0, unusual 0, catalyst 0, predictions 0, movers 0, breakout 0\)\./);
+  assert.match(reason, /Note: movers data could not be fetched \(upstream provider error\)/);
+  assert.match(reason, /this count reflects a fetch failure, not a confirmed absence\./);
+  // Singular wording only — must not also carry the plural "these counts"/"absences" phrasing.
+  assert.doesNotMatch(reason, /these counts reflect fetch failures/);
+  assert.doesNotMatch(reason, /absences/);
+});
+
+test("zeroCandidatesRecapReason names every failed lane when multiple fail, with plural wording", () => {
+  const reason = zeroCandidatesRecapReason(ZERO_COUNTS, {
+    ...ALL_LANES_OK,
+    catalyst_fetch_failed: true,
+    movers_fetch_failed: true,
+  });
+  assert.match(reason, /Note: catalyst, movers data could not be fetched \(upstream provider error\)/);
+  assert.match(reason, /these counts reflect fetch failures, not confirmed absences\./);
+});
+
+test("zeroCandidatesRecapReason uses the OI/unusual display names, not the raw oi_change/unusual_trades flag names", () => {
+  const reason = zeroCandidatesRecapReason(ZERO_COUNTS, {
+    ...ALL_LANES_OK,
+    oi_change_fetch_failed: true,
+    unusual_trades_fetch_failed: true,
+  });
+  assert.match(reason, /Note: OI, unusual data could not be fetched/);
+  assert.doesNotMatch(reason, /oi_change/);
+  assert.doesNotMatch(reason, /unusual_trades/);
+});

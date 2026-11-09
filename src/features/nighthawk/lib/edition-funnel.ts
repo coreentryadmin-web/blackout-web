@@ -142,24 +142,75 @@ export function failedDiscoveryLaneNames(flags: DiscoveryLaneFetchFailures | und
     .map(([name]) => name);
 }
 
+/** Display name for each lane, matching the wording `zeroCandidatesRecapReason`'s own count
+ *  enumeration already uses (e.g. the `oi_change` flag names the lane "OI" there, not
+ *  "oi_change") — kept as its own small table so the disclosure clause and the count line never
+ *  describe the same lane two different ways. */
+const LANE_DISPLAY_NAMES: Record<string, string> = {
+  flow: "flows",
+  oi_change: "OI",
+  unusual_trades: "unusual",
+  catalyst: "catalyst",
+  predictions: "predictions",
+  movers: "movers",
+  breakout: "breakout",
+};
+
+/** Builds the (possibly empty) fetch-failure disclosure clause appended to
+ *  `zeroCandidatesRecapReason`'s output. Audit finding (2026-11-09, narrower follow-up to the
+ *  6-of-7-lanes-unmonitored fix above): the 7-lane count line this function's sibling renders
+ *  names each lane's raw count, but a lane whose fetch genuinely THREW and one that legitimately
+ *  found zero rows both render as the same "<lane> 0" — there was no way, reading the reason text
+ *  alone (the string a member or Largo's `get_nighthawk_edition` tool actually sees), to tell a
+ *  real provider outage apart from an honestly quiet lane. Returns "" when no lane failed, so
+ *  callers that omit `failures` (or pass all-false flags) get byte-identical output to before
+ *  this clause existed. */
+function fetchFailureDisclosureClause(failures: DiscoveryLaneFetchFailures | undefined | null): string {
+  const failedLanes = failedDiscoveryLaneNames(failures);
+  if (failedLanes.length === 0) return "";
+  const displayNames = failedLanes.map((lane) => LANE_DISPLAY_NAMES[lane] ?? lane);
+  const plural = displayNames.length > 1;
+  return (
+    `Note: ${displayNames.join(", ")} data could not be fetched (upstream provider error) — ` +
+    `${plural ? "these counts reflect fetch failures" : "this count reflects a fetch failure"}, ` +
+    `${plural ? "not confirmed absences" : "not a confirmed absence"}.`
+  );
+}
+
 /** The zero-candidates recap-only reason, naming all 7 discovery lanes' real counts. Audit
  *  finding (2026-11-09): the previous reason string named only 4 of the 7 lanes (flows, OI,
  *  unusual, movers) — catalyst/predictions/breakout counts never appeared, so even a human
- *  reading the stored `recap_only_reason` could not tell whether those three lanes ran at all. */
-export function zeroCandidatesRecapReason(counts: {
-  flows: number;
-  oi: number;
-  unusual: number;
-  catalyst: number;
-  predictions: number;
-  movers: number;
-  breakout: number;
-}): string {
-  return (
+ *  reading the stored `recap_only_reason` could not tell whether those three lanes ran at all.
+ *
+ *  `failures` is optional (and defaults to no disclosure) so every existing caller keeps working
+ *  unchanged; when supplied, any lane whose count is 0 BECAUSE its own fetch threw gets an
+ *  explicit disclosure clause appended — see `fetchFailureDisclosureClause` above. This is the
+ *  narrower, still-open half of the audit finding this module's header comment on
+ *  `DiscoveryLaneFetchFailures` describes: the flags were already computed and already reached
+ *  the internal ops-only Discord alert (`alertRecapOnlyIfAnomalous`), but never reached THIS
+ *  member/Largo-facing string — a member or Largo reading a recap-only night could not tell
+ *  "the market was genuinely dead" apart from "a feed was down and we never actually checked",
+ *  a direct violation of `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s absence-must-be-disclosed
+ *  principle. */
+export function zeroCandidatesRecapReason(
+  counts: {
+    flows: number;
+    oi: number;
+    unusual: number;
+    catalyst: number;
+    predictions: number;
+    movers: number;
+    breakout: number;
+  },
+  failures?: DiscoveryLaneFetchFailures | null
+): string {
+  const base = (
     `No candidates from any source (flows ${counts.flows}, OI ${counts.oi}, ` +
     `unusual ${counts.unusual}, catalyst ${counts.catalyst}, predictions ${counts.predictions}, ` +
     `movers ${counts.movers}, breakout ${counts.breakout}).`
   );
+  const disclosure = fetchFailureDisclosureClause(failures);
+  return disclosure ? `${base} ${disclosure}` : base;
 }
 
 export function funnelFromMeta(meta: Record<string, unknown> | null | undefined): EditionFunnelCounts | null {
