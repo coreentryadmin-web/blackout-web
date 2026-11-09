@@ -438,7 +438,20 @@ export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCa
         `GEX king $${pos.gex_king_strike} · ${pos.negative_gamma ? "negative γ" : "positive γ"} · regime ${pos.gamma_regime}${pos.gamma_flip != null ? ` · flip $${pos.gamma_flip}` : ""}`
       );
     }
-    if (pos.net_vex != null) lines.push(`Net VEX: ${pos.net_vex >= 0 ? "+" : ""}${Math.round(pos.net_vex)}`);
+    if (pos.net_vex != null) {
+      // ROUNDS BY MAGNITUDE, THEN REAPPLIES SIGN — plain `Math.round(n)` combined with a
+      // raw-value sign check ties toward +Infinity (`Math.round(-2.5) === -2` but
+      // `Math.round(2.5) === 3`), so a negative net VEX sitting exactly on a whole-unit tie
+      // rendered a SMALLER magnitude ("Net VEX: -2") than the mirror-image positive value
+      // ("Net VEX: +3") would for the identical distance from zero — understating a dealer
+      // short-vanna read right where a trader is reading the dossier text Largo cites. Same
+      // bug class already fixed in `fmt-money.ts`'s `fmtPct`, `round-floats.ts`,
+      // `thermal/lib/gex-heatmap/shift-math.ts`'s `fmtShiftPercentForStrike`, and this file's
+      // own command-deck siblings (`PlayTerminal.tsx`/`ZeroDteCommandPanel.tsx` `signPct`) —
+      // this was an independent, un-migrated paste of the same formatter shape.
+      const roundedVex = Math.sign(pos.net_vex) * Math.round(Math.abs(pos.net_vex));
+      lines.push(`Net VEX: ${roundedVex > 0 ? "+" : ""}${roundedVex}`);
+    }
     if (pos.max_pain != null) lines.push(`Max pain: $${pos.max_pain}`);
     if (pos.wall_summary !== "n/a") lines.push(`GEX walls: ${pos.wall_summary}`);
   }
