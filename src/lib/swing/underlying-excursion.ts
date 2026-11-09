@@ -44,7 +44,19 @@ export function signedExcursionPct(args: {
   const fin = (n: number | null | undefined): n is number => n != null && Number.isFinite(n);
   const hi = Math.max(...[args.priorMfePx, spot, entry].filter(fin)); // favorable extreme (highest price)
   const lo = Math.min(...[args.priorMaePx, spot, entry].filter(fin)); // adverse extreme (lowest price)
-  const pct = (px: number) => Math.round(((px - entry) / entry) * 100 * 1e4) / 1e4; // round — no unrounded floats
+  // Round by MAGNITUDE then reapply sign — plain `Math.round(n*1e4)/1e4` ties toward +Infinity
+  // (`Math.round(-7812.5) === -7812` but `Math.round(7812.5) === 7813`), so an adverse (negative)
+  // excursion sitting exactly on a tie rounds to a SMALLER magnitude than the mirror-image
+  // favorable excursion would for the identical distance from entry — the same sign-biased
+  // asymmetry already found and fixed across this codebase (fmt-money.ts's fmtPct, round-floats.ts,
+  // debrief.ts's round2, gamma-desk.ts's distance_pts, and others). This function's own persisted
+  // output (running_mfe/running_mae) is compared against named thresholds elsewhere
+  // (feature-store.ts's studyIvKillsGoodSetups: running_mae vs -3%), so the bias isn't purely
+  // cosmetic — it can tip a borderline position's classification at the exact boundary.
+  const pct = (px: number) => {
+    const raw = ((px - entry) / entry) * 100 * 1e4;
+    return (Math.sign(raw) * Math.round(Math.abs(raw))) / 1e4;
+  };
   // SHORT profits when price FALLS, so its favorable/adverse extremes are the mirror of a LONG's.
   return args.direction === "short"
     ? { mfePct: -pct(lo), maePct: -pct(hi) }
