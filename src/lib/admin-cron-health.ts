@@ -20,7 +20,12 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
-import { isInOffScheduleIdleGap, isAwaitingSecondaryUtcBandFire } from "@/lib/cron-schedule-window";
+import {
+  isInOffScheduleIdleGap,
+  isAwaitingSecondaryUtcBandFire,
+  isBeforeTodaysScheduledCronFires,
+  longIdleSinceLastHandshake,
+} from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -399,6 +404,25 @@ export function evaluateJob(
   if (nonTradingScheduledIdle && (status === "stale" || status === "failed")) {
     status = "healthy";
     statusLabel = "Idle (non-trading day — outside weekday schedule)";
+    marketHoursStale = false;
+  }
+
+  // Weekday post-close crons (outcomes, GEX EOD, banger-discovery): on the first trading day back,
+  // cron-audit-query must not P0 on Friday's stale/failed handshake while waiting for Monday's
+  // evening UTC band — Saturday suppression above does not cover Monday 09:00–16:30 ET (ops #1983
+  // verify, measured: query RED 2026-11-09 10:55 ET with all three jobs + healthy public stack).
+  // Do not suppress same-day failures after today's first scheduled fire (measured gap <48h).
+  const awaitingWeekdayPostCloseFire =
+    job.weekdays_only &&
+    Boolean(job.schedule_cron_utc) &&
+    isTradingDayEt(formatEtDate(now)) &&
+    isBeforeTodaysScheduledCronFires(job.schedule_cron_utc!, now) &&
+    isInOffScheduleIdleGap(job.schedule_cron_utc!, now) &&
+    last?.started_at &&
+    longIdleSinceLastHandshake(last.started_at, now);
+  if (awaitingWeekdayPostCloseFire && (status === "stale" || status === "failed")) {
+    status = "healthy";
+    statusLabel = "Idle (awaiting today's post-close fire; prior session handshake)";
     marketHoursStale = false;
   }
 

@@ -3,7 +3,9 @@ import { describe, it } from "node:test";
 import {
   isInOffScheduleIdleGap,
   isAwaitingSecondaryUtcBandFire,
+  isBeforeTodaysScheduledCronFires,
   lastExpectedCronFireUtc,
+  longIdleSinceLastHandshake,
   nextExpectedCronFireUtc,
 } from "./cron-schedule-window";
 
@@ -206,5 +208,20 @@ describe("cron-schedule-window", () => {
     const cron = "0 9 * * TUE-THU";
     const wednesday = new Date("2026-11-04T10:00:00.000Z"); // Wednesday
     assert.equal(lastExpectedCronFireUtc(cron, wednesday)?.toISOString(), "2026-11-04T09:00:00.000Z");
+  });
+
+  it("isBeforeTodaysScheduledCronFires: Monday morning before post-close band", () => {
+    const cron = "30 20,21 * * 1-5";
+    const now = new Date("2026-11-09T15:55:00.000Z");
+    assert.equal(isBeforeTodaysScheduledCronFires(cron, now), true);
+    const after = new Date("2026-11-09T21:00:00.000Z");
+    assert.equal(isBeforeTodaysScheduledCronFires(cron, after), false);
+  });
+
+  it("longIdleSinceLastHandshake: Friday→Monday gap is long; Monday→Tuesday is not", () => {
+    const monday = new Date("2026-11-09T15:55:00.000Z");
+    assert.equal(longIdleSinceLastHandshake("2026-11-07T21:15:00.000Z", monday), true);
+    const tuesday = new Date("2026-11-10T15:55:00.000Z");
+    assert.equal(longIdleSinceLastHandshake("2026-11-09T21:30:00.000Z", tuesday), false);
   });
 });

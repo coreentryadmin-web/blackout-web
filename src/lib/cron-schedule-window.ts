@@ -124,7 +124,7 @@ function enumerateFiresOnUtcDay(
   return fires.sort((a, b) => a.getTime() - b.getTime());
 }
 
-function dailyFireBounds(cronExpr: string, now: Date): { first: Date; last: Date } | null {
+export function dailyFireBounds(cronExpr: string, now: Date): { first: Date; last: Date } | null {
   const [minuteField, hourField, , , dowField] = cronExpr.trim().split(/\s+/);
   if (!minuteField || !hourField || !dowField) return null;
   const fires = enumerateFiresOnUtcDay(
@@ -137,6 +137,25 @@ function dailyFireBounds(cronExpr: string, now: Date): { first: Date; last: Date
   );
   if (!fires.length) return null;
   return { first: fires[0]!, last: fires[fires.length - 1]! };
+}
+
+/** True when `now` is earlier on this UTC day than the first scheduled EventBridge fire. */
+export function isBeforeTodaysScheduledCronFires(cronExpr: string, now = new Date()): boolean {
+  const bounds = dailyFireBounds(cronExpr, now);
+  if (!bounds) return false;
+  return now.getTime() < bounds.first.getTime();
+}
+
+/**
+ * Long handshake gap — Friday post-close → Monday pre-open is ~65h; the day after a single
+ * post-close fire is usually <48h. Used to suppress stale/failed on post-close jobs before
+ * today's tick without hiding yesterday's same-session failure.
+ */
+export function longIdleSinceLastHandshake(lastStartedAtIso: string, now = new Date()): boolean {
+  const lastMs = Date.parse(lastStartedAtIso);
+  if (!Number.isFinite(lastMs)) return false;
+  // Friday post-close → Monday late morning is ~43h UTC; same-day failure → next evening is <36h.
+  return now.getTime() - lastMs >= 36 * 60 * 60_000;
 }
 
 function isDualBandMorningUtcSchedule(cronExpr: string): boolean {
