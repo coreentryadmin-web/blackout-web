@@ -355,6 +355,44 @@ describe("mergePulseIntoDesk off-hours derived-field fallback", () => {
   });
 });
 
+// BUG FIX (found live 2026-11-09, Ask Largo/5-engine standing mandate, live repro RTH ~12:01-
+// 12:03 ET): same "field never reassigned, inherited from base forever" shape as the `available`
+// fix immediately above — `source` itself is NEVER reassigned by this function, so a cold-cache/
+// outage fallback shell (deskShellFromPulse/emptyDeskPayload, source:"none") could legitimately
+// combine with the `available` fix above to read `available:true, source:"none"` with almost
+// every scoring field null, and nothing on the payload disclosed that combination as degraded.
+// `GET /api/market/spx/desk` served exactly this live: available:true, source:"none",
+// price:7352.9, with vwap/gamma_flip/gex_walls/max_pain/flow_0dte_net/tide_bias/dark_pool/tick/
+// trin/add all null/empty. Fix: `degraded` is recomputed honestly from THIS merge's own `base`
+// on every call (never inherited), so a consumer can tell "a real price with no real desk build
+// behind it" apart from "a genuinely healthy desk" without the `available`/price check above
+// having to erase a real, correct price to do it.
+describe("mergePulseIntoDesk degraded-shell disclosure", () => {
+  beforeEach(() => {
+    resetSpxDeskMergeCache();
+  });
+
+  it("discloses degraded:true when base is the empty bootstrap shell (source:\"none\") even though pulse carries a real, available price", () => {
+    const base = deskStub({ available: false, source: "none" });
+    const pulse = pulseStub({ available: true, price: 7352.9 });
+    const merged = mergePulseIntoDesk(base, pulse);
+    // The exact live-reproduced combination this bug let through silently: a real price and
+    // available:true next to source:"none" — now it must also carry degraded:true.
+    assert.equal(merged.available, true);
+    assert.equal(merged.source, "none");
+    assert.equal(merged.price, 7352.9);
+    assert.equal(merged.degraded, true);
+  });
+
+  it("keeps degraded false when base was already a real desk build (no regression on the healthy path)", () => {
+    const base = deskStub({ available: true, source: "polygon+uw-flow" });
+    const pulse = pulseStub({ available: true });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.source, "polygon+uw-flow");
+    assert.equal(merged.degraded, false);
+  });
+});
+
 // BUG FIX (2026-10-31, Ask Largo/5-engine standing mandate, live repro — Saturday, market
 // closed): stickyStructureLevel's non-hod/lod branch (`pulseVal ?? baseVal ??
 // lastGoodStructure[key] ?? null`) serves a cross-request "last-known-good" VWAP forever once

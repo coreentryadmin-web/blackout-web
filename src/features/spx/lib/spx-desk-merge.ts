@@ -405,6 +405,16 @@ export function mergePulseIntoDesk(
     // evaluateSpxPlayCore's closed-market branch emitting assessed:false/score:0/factors:[]/
     // direction:null/grade:"D" even with real underlying data sitting in pulse the whole time.
     available: pulse.available || base.available,
+    // BUG FIX (found live 2026-11-09, Ask Largo/5-engine standing mandate): `source` itself is
+    // NEVER reassigned by this function (see the `...base` spread above) — it stays "none"
+    // forever on the deskShellFromPulse/emptyDeskPayload fallback shell even once `available`
+    // above is correctly flipped true by real pulse data. That let a cold-cache/outage shell
+    // read `available:true, source:"none"` with almost every scoring field null and nothing on
+    // the payload disclosing it. Recompute `degraded` honestly from THIS merge's own `base`
+    // (never trust an inherited value) — see `SpxDeskPayload.degraded`'s own doc comment
+    // (spx-desk.ts) for the full live-repro evidence and why `available` itself is deliberately
+    // left alone rather than being made to carry this signal too.
+    degraded: base.source === "none",
     price,
     // Fall back to the desk's own spx_change_pct when pulse could not anchor its own (common
     // off-hours/pre-open, when pulse has no trusted prior-close basis) — mirrors the vix
