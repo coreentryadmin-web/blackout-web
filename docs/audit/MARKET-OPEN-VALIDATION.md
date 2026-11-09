@@ -10031,3 +10031,32 @@ triggers `get_gex_matrix_changes`
   before this fix, even though switching to Deep dive for the same question already showed it.
   Note `envelope.systemReads` has the same gap in Concrete mode and is intentionally NOT fixed by
   this PR — still open for a follow-up pass.
+
+## WATCH LIST — 2026-11-09 (SPX desk pulse lane missing SPY-proxy fallback, `fix/spx-pulse-
+offhours-spy-proxy`, PR #7721) — re-check once this deploy completes that `/api/market/spx/desk`
+and `/play` are actually serving a real price again
+
+- **Live P1, found by this cycle's Ask Largo/5-engine Workflow**: `buildSpxDesk()` got a SPY-proxy
+  last resort earlier today (commits `25e7baa54`/`e1275f9f4`) for when I:SPX's own Polygon/Massive
+  endpoints are entitlement-blocked — but `GET /api/market/spx/desk`/`/play` kept serving the full
+  empty shell (`price:0, available:false`) for 5+ hours and 13+ deploy cycles afterward, because
+  the route is often actually served through `spx-desk-loader.ts`'s pulse-lane fallback
+  (`deskShellFromPulse(await loadSpxDeskPulse())`), not `buildSpxDesk()`'s own result — and that
+  pulse lane (`buildSpxDeskPulse()`'s off-hours branch, `buildSpxDeskPulseMinimal()`'s cold-replica
+  race branch) never got the equivalent SPY-proxy fallback. Three independent adversarial-verify
+  agents unanimously confirmed the live defect (0/3 refuted), one reproducing it moments before
+  this fix and catching a live 502 from the same route.
+- **Fix**: added the identical `spxPriceFromSpyProxy()` last resort to both pulse builders, lazily
+  evaluated only once every faster, I:SPX-anchored source has failed. RED→GREEN via `git stash`:
+  3/18 tests failed pre-fix in `spx-desk-offhours-spot.test.ts`, 18/18 pass post-fix; full
+  `src/features/spx/lib/*` suite 959/959 pass; `tsc --noEmit` clean.
+- **Re-check once this deploy completes** (`ecr-push-production.yml` for commit `00c459a90`):
+  poll `GET /api/market/spx/desk` and `/play` a few times, a few minutes apart, and confirm
+  `available:true` with a real nonzero `price` (not the empty shell) — especially if I:SPX's
+  real-time/historical-aggs entitlement is still blocked at that time (check
+  `GET /v2/aggs/ticker/I:SPX/prev` on the production key: 403 means the condition this fix targets
+  is still live). If it still serves the empty shell after this deploy has had time to roll out
+  and stabilize (allow the same ~25-30min the deploy pipeline itself takes), that means production
+  is hitting some third price-resolution path this fix didn't reach — trace which cache path
+  actually served that specific request (`GET /api/market/spx/desk` vs `/api/market/spx/merged` vs
+  `/api/market/spx/pulse` directly) before assuming the fix itself is wrong.
