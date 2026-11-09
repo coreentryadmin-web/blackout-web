@@ -10128,3 +10128,27 @@ and `/play` are actually serving a real price again
   (summed signed premium across the live 0DTE flow tape) is sitting anywhere near +/-$1,000,000,
   open the SPX play terminal's HOLD/structure panel and confirm the "0DTE flow net" line reads
   `$X.XM` (never `$1000K`/`$999K`-adjacent values) at that boundary.
+
+## WATCH LIST — 2026-11-09 (SPX Slayer matrix "CALL/PUT skew" badge used the naive option-type-only rule the confluence tape factor already replaced, `fix/spx-tape-skew-aggressor-aware`) — re-check once a real session has a block of aggressively bought/sold calls or puts
+
+- **What was broken**: `computeTapeSkew` (`src/features/spx/lib/spx-tape-display.ts`), which
+  drives `SpxMatrixTapeStrip.tsx`'s "CALL skew / PUT skew / Tape balanced" badge, bucketed the
+  top-8 flow prints by raw option TYPE alone (every call premium → bullish, every put → bearish),
+  never reading `ask_pct` (the aggressor share already threaded onto `SpxTapeItem` for this exact
+  purpose). `spx-tape-direction.ts` documents measuring a 16.8% sign-flip rate for this exact rule
+  on the real 168h SPX tape (993 8-print windows) against the aggressor-aware rule
+  `spx-signals.ts`'s real confluence tape factor already uses — so a member could see this badge
+  say "CALL skew" (bullish/green) on a tape the desk's own confluence panel, scoring the identical
+  prints, called bearish.
+- **Fix**: `computeTapeSkew` now calls the shared `spxTapeSkew` (the same aggressor-aware
+  bought/sold × call/put table `spx-signals.ts`/`spx-lotto-catalyst.ts` already use) instead of
+  re-deriving its own type-only count. New regression test in `spx-tape-display.test.ts`
+  reproduces the sign-flip directly (two SOLD calls, `ask_pct` 20/15, $300K total); RED→GREEN
+  confirmed via `git stash` (pre-fix: `bull=300000`/would badge "call"; post-fix: `bull=0`,
+  `bear=300000`, badge "put"). Sibling suites (`spx-tape-direction.test.ts`, `spx-signals.test.ts`)
+  unaffected; `tsc --noEmit` clean.
+- **Specific thing to check once live**: during RTH, when the SPX Slayer matrix strip shows a
+  non-neutral "CALL skew"/"PUT skew" badge, cross-check it against the desk's own confluence
+  panel's tape-factor direction read for the same window — they should now always agree on
+  direction (both derived from the same `spxTapeSkew` call), never visibly contradict each other
+  on a block of aggressively one-sided bought-or-sold prints.
