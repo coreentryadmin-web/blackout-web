@@ -8,6 +8,14 @@ import { LEGACY_COMMIT_GATE_EXEMPT } from "./entry-gate-constants";
 import { isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 
+/** Round-by-magnitude-then-reapply-sign — see the BUG FIX comment at its one call site below
+ *  (`computeLaneRank`'s `deltaFromMedian`) for why plain `Math.round` is wrong for a bidirectional
+ *  quantity. Same formula as fmt-money.ts's `fmtPct` and commit.ts's `laneRankAtCommitFor`. */
+function deltaFromMedianRounded(a: number, b: number): number {
+  const raw = a - b;
+  return (Math.sign(raw) * Math.round(Math.abs(raw) * 10)) / 10;
+}
+
 export type LaneRankSnapshot = {
   rank: number;
   total: number;
@@ -229,7 +237,19 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
     // Rounded here, not at each narrative call site — a raw float subtraction (e.g. 57.2 - 45.4)
     // produces IEEE754 artifacts like 11.800000000000004 that read straight into the "vs median"
     // narrative line unrounded (live repro: AMZN brief showed "+11.799999999999997 vs median").
-    deltaFromMedian: Math.round((playScore - medianScore) * 10) / 10,
+    //
+    // SIGN-BIAS ROUNDING TIE (Ask Largo standing mandate, 2026-11-09, same bug class fixed the
+    // same day in fmt-money.ts's fmtPct, record.ts's round2, this file's own commit-time sibling
+    // `laneRankAtCommitFor` in commit.ts, and play-brief-intel.ts's Industry-read line): plain
+    // `Math.round(n*10)/10` ties toward +Infinity (`Math.round(-69.5) === -69`, not -70), so a
+    // play scoring exactly on a .x5 tie BELOW the lane median understates its deltaFromMedian's
+    // magnitude versus the identical-magnitude case above the median (playScore=53.05,
+    // medianScore=60.0 → -6.95 raw → old rounding gave -6.9, the mirror +6.95 case gave +7.0).
+    // This value is both rendered verbatim ("+X vs median") AND gates `laneRankCoaching`'s
+    // narrative branches below (`deltaFromMedian < -15`, `>= 10`) — a tie landing exactly adjacent
+    // to one of those thresholds could flip which sentence fires. Round by MAGNITUDE then reapply
+    // sign, same formula as fmtPct.
+    deltaFromMedian: deltaFromMedianRounded(playScore, medianScore),
     selfInvalidated: play.setupState === "INVALIDATED",
     selfReducing: REDUCE_MANAGE_ACTIONS.has(play.manageAction ?? ""),
     topLegacyExemptOnly,

@@ -320,12 +320,25 @@ function laneRankAtCommitFor(cand: SwingCommitCandidate, ordered: SwingCommitCan
       ? (scores[Math.floor(n / 2)] ?? cand.score)
       : ((scores[n / 2 - 1] ?? cand.score) + (scores[n / 2] ?? cand.score)) / 2;
   const medianScore = Math.round(rawMedian * 10) / 10;
+  // Sign-bias rounding tie (Ask Largo standing mandate, 2026-11-09, same bug class fixed the same
+  // day in fmt-money.ts's fmtPct, record.ts's round2, play-brief-lane-rank.ts's sibling
+  // `computeLaneRank`, and play-brief-intel.ts's Industry-read line): plain `Math.round(n*10)/10`
+  // ties toward +Infinity (`Math.round(-69.5) === -69`, not -70), so a candidate scoring exactly
+  // on a .x5 tie BELOW the median gets its deltaFromMedian understated in magnitude versus the
+  // identical-magnitude case above the median — e.g. cand.score=53.05, medianScore=60.0 (diff
+  // -6.95) rounds to -6.9 here, while the mirror-image +6.95 case rounds to +7.0. This value is
+  // stamped into `entry_context.lane_rank_at_commit` and read back verbatim by
+  // play-brief-lane-rank.ts's laneRankCoaching, whose own narrative branches gate directly on it
+  // (`deltaFromMedian < -15`, `>= 10`) — a tie landing exactly adjacent to one of those thresholds
+  // can flip which sentence fires. Round by MAGNITUDE then reapply sign, same formula as fmtPct.
+  const rawDelta = cand.score - medianScore;
+  const deltaFromMedian = (Math.sign(rawDelta) * Math.round(Math.abs(rawDelta) * 10)) / 10;
   return {
     rank: idx + 1,
     total: n,
     score: cand.score,
     medianScore,
-    deltaFromMedian: Math.round((cand.score - medianScore) * 10) / 10,
+    deltaFromMedian,
   };
 }
 

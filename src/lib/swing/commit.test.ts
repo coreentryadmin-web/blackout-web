@@ -644,6 +644,37 @@ test("computeSwingCommitPlan: pins lane_rank_at_commit with hand-computed rank/m
   });
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-09): same sign-bias rounding tie fixed the same
+// day in fmt-money.ts's fmtPct, record.ts's round2, and this file's own play-brief-time sibling
+// `computeLaneRank` in play-brief-lane-rank.ts. Plain `Math.round(n*10)/10` ties toward
+// +Infinity, so a candidate scoring exactly on a .x5 tie BELOW the median understated its
+// deltaFromMedian magnitude versus the identical-magnitude case above the median. 53.25/66.75
+// around a median of 60.0 are chosen so `(score - 60) * 10` is an EXACT IEEE754 half-integer
+// (-67.5 / 67.5) — verified empirically; most two-decimal candidates drift a few ULPs off the
+// tie after subtraction and silently stop reproducing the bug.
+test("computeSwingCommitPlan: lane_rank_at_commit's deltaFromMedian rounds by magnitude at a sign-tie boundary, not biased toward +Infinity", () => {
+  const candidates = [
+    candidate({ ticker: "MGM", score: 66.75 }),
+    candidate({ ticker: "LVS", score: 60.0 }),
+    candidate({ ticker: "WYNN", score: 53.25 }),
+  ];
+  const plan = computeSwingCommitPlan({ candidates, report: graduatedReport(), book: [], budget: PRODUCTION_PORTFOLIO_BUDGET });
+  const byTicker = Object.fromEntries(plan.decisions.map((d) => [d.ticker, d]));
+
+  // Old biased rounding gave -6.7 for WYNN (Math.round(-67.5) === -67); correct magnitude is
+  // -6.8, matching MGM's mirror-image +6.75 case (Math.round(67.5) === 68, unaffected either way
+  // since a positive tie already rounds away from zero).
+  assert.equal(
+    ((byTicker.WYNN!.insert!.entry_context as Record<string, unknown>).lane_rank_at_commit as { deltaFromMedian: number }).deltaFromMedian,
+    -6.8,
+    "a below-median tie must round to the SAME magnitude as the equivalent above-median tie",
+  );
+  assert.equal(
+    ((byTicker.MGM!.insert!.entry_context as Record<string, unknown>).lane_rank_at_commit as { deltaFromMedian: number }).deltaFromMedian,
+    6.8,
+  );
+});
+
 test("computeSwingCommitPlan: lane_rank_at_commit is null (never a fabricated '#1 of 1') for a single-candidate batch", () => {
   const plan = computeSwingCommitPlan({
     candidates: [candidate({ ticker: "NVDA", score: 85 })],
