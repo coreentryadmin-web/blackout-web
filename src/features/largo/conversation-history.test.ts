@@ -18,6 +18,25 @@ test("conversationTitle collapses whitespace and truncates long questions", () =
   assert.ok(out.endsWith("…"), "truncated title should end with an ellipsis");
 });
 
+test("conversationTitle strips trailing punctuation before the ellipsis (round 436 regression)", () => {
+  // 69 chars; the old `clean.slice(0, 59)` cut lands immediately after the comma in
+  // "...right now,", so the old code appended "…" straight onto it, producing the
+  // doubled-punctuation artifact truncate-text.ts's own header documents ("flow, …").
+  const q = "Why is the gamma flip holding as resistance here right now, exactly";
+  const out = conversationTitle(q);
+  assert.ok(out.length <= 60, `title should be <=60 chars, got ${out.length}`);
+  assert.ok(out.endsWith("…"), "truncated title should end with an ellipsis");
+  assert.ok(
+    !/[\s,;:.–—-]…$/.test(out),
+    `title must not leave trailing punctuation dangling right before the ellipsis, got ${JSON.stringify(out)}`
+  );
+  assert.equal(
+    out,
+    "Why is the gamma flip holding as resistance here right…",
+    "should back up to the word boundary and drop the dangling comma, not cut mid-clause onto it"
+  );
+});
+
 test("upsertConversation inserts newest-first and dedupes by id", () => {
   let list: LargoConversation[] = [];
   list = upsertConversation(list, { id: "a", title: "SPX?", updatedAt: 100 });
