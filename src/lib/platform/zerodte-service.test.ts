@@ -864,6 +864,120 @@ test("setups[].condor put_width_pct/call_width_pct keep their calibration-bucket
   );
 });
 
+// fix/cortex-weight-narrative-precision (2026-11-09): compose.ts bakes a Cortex evidence item's
+// decayed weight at 3dp into BOTH the structured EvidenceItem.weight field AND its own
+// pre-formatted narrative sentence ("+0.478 [opening-harvest] ..."), so the two agree exactly by
+// construction at composition time. This route's own roundFloats(..., 2, ZERODTE_BOARD_WIRE_DP)
+// call used to have no override for the "weight" key, so the flat 2dp default silently re-rounded
+// the STRUCTURED field to 0.48 while the already-baked narrative sentence beside it kept 0.478 —
+// live-confirmed on GET /api/market/zerodte/record (same bug, see the sibling route test) and,
+// via mapLedgerRow's `cortex: r.entry_context.cortex` passthrough, on this board route's
+// ledger[].cortex too. Covers both shapes that carry EvidenceItem[]: a fresh find's
+// setups[].cortex.verdict.supports[] and a committed row's ledger[].cortex.supports[]
+// (entry_context.cortex, flattened — cortex-gate.ts's cortexEntryContextFor).
+test("ledger[].cortex.supports[].weight and setups[].cortex.verdict.supports[].weight keep real 3dp precision instead of collapsing to 2dp (Ask Largo audit, 2026-11-09)", async () => {
+  const REAL_WEIGHT = 0.478; // a real decayed opening-harvest weight at compose.ts's own 3dp
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        ticker: "META",
+        entry_context: {
+          cortex: {
+            abstained: false,
+            decision: "PASS",
+            as_of: "2026-11-05T14:35:00.000Z",
+            score: 0.48,
+            conviction: "B",
+            vetoes: [],
+            supports: [
+              {
+                source: "opening-harvest",
+                stance: "supports",
+                weight: REAL_WEIGHT,
+                halfLifeSec: 1800,
+                asOf: "2026-11-05T14:30:00.000Z",
+                detail: "opening harvest: gap up 2.3 pts",
+              },
+            ],
+            opposes: [],
+            absent: [],
+            narrative: [
+              "CORTEX META long: net score +0.48, conviction B.",
+              `+${REAL_WEIGHT} [opening-harvest] opening harvest: gap up 2.3 pts`,
+            ],
+            gex_walls_veto_relieved: false,
+          },
+        },
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [
+    freshFind("NVDA", {
+      cortex: {
+        decision: "PASS",
+        abstained: false,
+        verdict: {
+          ticker: "NVDA",
+          direction: "long",
+          asOf: "2026-11-05T14:35:00.000Z",
+          vetoes: [],
+          score: REAL_WEIGHT,
+          supports: [
+            {
+              source: "vex-charm",
+              stance: "supports",
+              weight: REAL_WEIGHT,
+              halfLifeSec: 1800,
+              asOf: "2026-11-05T14:30:00.000Z",
+              detail: "vex/charm tilt",
+            },
+          ],
+          opposes: [],
+          absent: [],
+          contested: false,
+          conviction: "B",
+          narrative: [
+            "CORTEX NVDA long: net score +0.478, conviction B.",
+            `+${REAL_WEIGHT} [vex-charm] vex/charm tilt`,
+          ],
+        },
+      },
+    }),
+  ];
+
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+
+  // `cortex` is served as an opaque `Record<string, unknown> | null` (ZeroDteBoardLedgerRow's own
+  // doc comment: "validated structurally client-side") — cast through `unknown` to read the shape
+  // this test itself injected, same idiom as the Largo casts above.
+  const metaLedger = board.ledger.find((r) => r.ticker === "META") as unknown as {
+    cortex: { supports: Array<{ weight: number }>; narrative: string[] };
+  };
+  const nvdaSetup = board.setups.find((s) => s.ticker === "NVDA") as unknown as {
+    cortex: { verdict: { supports: Array<{ weight: number }>; narrative: string[] } };
+  };
+
+  // The regression: must NOT collapse to the flat-2dp 0.48 while the narrative line beside it
+  // (passed through verbatim, as a string, by the same roundFloats call) still reads 0.478.
+  assert.notEqual(
+    metaLedger.cortex.supports[0]!.weight,
+    0.48,
+    "ledger[].cortex.supports[].weight rounded to 2dp, disagreeing with its own narrative line"
+  );
+  assert.equal(metaLedger.cortex.supports[0]!.weight, REAL_WEIGHT);
+  assert.equal(metaLedger.cortex.narrative[1], `+${REAL_WEIGHT} [opening-harvest] opening harvest: gap up 2.3 pts`);
+
+  assert.notEqual(
+    nvdaSetup.cortex.verdict.supports[0]!.weight,
+    0.48,
+    "setups[].cortex.verdict.supports[].weight rounded to 2dp, disagreeing with its own narrative line"
+  );
+  assert.equal(nvdaSetup.cortex.verdict.supports[0]!.weight, REAL_WEIGHT);
+  assert.equal(nvdaSetup.cortex.verdict.narrative[1], `+${REAL_WEIGHT} [vex-charm] vex/charm tilt`);
+});
+
 // Terminal v2 — assert mapLedgerRow emits the additive terminal fields (the source of the
 // RTH-real render), resolved from the row's OWN frozen policy/live-marks store, not fabricated.
 test("mapLedgerRow emits the Terminal v2 additive fields (exit ladder, greeks, book, executable, origin)", () => {

@@ -12,6 +12,7 @@ import { buildZeroDteRecord } from "@/lib/zerodte/record";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import { roundFloats, reconcileTrancheFractions } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { CORTEX_WIRE_KEY_DP } from "@/lib/nighthawk/cortex/compose";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -49,8 +50,16 @@ export async function GET(req: NextRequest) {
     const rows = await fetchZeroDteSetupLogRange(since, Math.min(MAX_ROWS, days * 20));
     const record = buildZeroDteRecord(rows, { since, through, days });
     // Numbers are rounded at the data layer (record.ts); roundFloats is the same
-    // response-boundary backstop every other market endpoint ships with.
-    const rounded = roundFloats(record);
+    // response-boundary backstop every other market endpoint ships with. CORTEX_WIRE_KEY_DP
+    // (compose.ts) keeps `entry_context.cortex.supports[]/opposes[]/vetoes[].weight` at its
+    // own 3dp precision — the SAME precision compose.ts already bakes into that item's own
+    // `narrative` sentence — instead of the flat 2dp default silently rounding the structured
+    // field to a different number than its own narrative text already committed to
+    // (live-confirmed mismatch, e.g. `{"weight": 0.48, ...}` beside
+    // `"+0.478 [opening-harvest] ..."` — see docs/audit/findings-staging/
+    // 2026-11-09-cortex-weight-narrative-precision.md). Same fix, same shared constant, as the
+    // sibling board route's ZERODTE_BOARD_WIRE_DP (zerodte-service.ts).
+    const rounded = roundFloats(record, 2, CORTEX_WIRE_KEY_DP);
     // A WS-11 reconstructed TRIM-SCALE play's `entry_context.executable.tranches[]` audit
     // trail just had each leg's `fraction` rounded INDEPENDENTLY by roundFloats() above — a
     // fully-fired ⅓/⅓/⅓ play now displays 0.33/0.33/0.33, which sums to 0.99, not 1.00

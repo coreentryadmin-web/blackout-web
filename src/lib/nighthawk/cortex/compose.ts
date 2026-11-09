@@ -16,6 +16,7 @@
 //      alongside — a vetoed play keeps its score for the calibration ledger, but
 //      the gate stack blocks on vetoes.length > 0 regardless of score (§2 wiring).
 
+import type { RoundFloatsKeyDp } from "@/lib/round-floats";
 import type {
   CortexConviction,
   CortexInputs,
@@ -118,6 +119,39 @@ function round(v: number, dp: number): number {
   return Math.round(v * f) / f;
 }
 
+/**
+ * Decimal places the decayed/capped weight is rounded to below, BEFORE it is baked
+ * into both the structured `EvidenceItem.weight` field and the pre-formatted
+ * narrative string (`+${s.weight} [...]`, same section) for the SAME item — the two
+ * are built from one already-rounded value, by construction, so they can never
+ * disagree here inside the composer.
+ *
+ * Exported (not a bare literal) so every wire-boundary `roundFloats()` call that
+ * serves a payload carrying this evidence can import the SAME dp via
+ * `CORTEX_WIRE_KEY_DP` below instead of re-guessing one. Without that, a generic
+ * `roundFloats(payload)` downstream (default dp=2) force-rounds the structured
+ * `weight` field to 2dp while the narrative text beside it keeps this module's 3dp
+ * value — the field and its own sentence then disagree at the wire boundary even
+ * though they were computed identically here. Live-confirmed on
+ * `GET /api/market/zerodte/record`, e.g. a `supports[]` item reading
+ * `{"weight": 0.48, ...}` next to its own narrative line
+ * `"+0.478 [opening-harvest] ..."` — see
+ * docs/audit/findings-staging/2026-11-09-cortex-weight-narrative-precision.md.
+ */
+export const CORTEX_WEIGHT_DP = 3;
+
+/**
+ * keyDp override (round-floats.ts) for any `roundFloats()` call on a payload that
+ * carries Cortex evidence (`EvidenceItem[].weight`, under `supports`/`opposes`/
+ * `vetoes` — on a fresh find's `setup.cortex.verdict` or a committed row's
+ * `entry_context.cortex`/`ledger[].entry_context.cortex`). Two wire boundaries need
+ * this today: the 0DTE board (`zerodte-service.ts`'s `ZERODTE_BOARD_WIRE_DP`, which
+ * spreads this in) and the 0DTE multi-day record (`zerodte/record/route.ts`). One
+ * shared export, imported at both call sites, is what keeps them from independently
+ * picking a dp and drifting apart again the way this fix exists to correct.
+ */
+export const CORTEX_WIRE_KEY_DP: RoundFloatsKeyDp = { weight: CORTEX_WEIGHT_DP };
+
 /** Signed score rendering for the narrative header ("+1.85" / "-0.6" / "0"). */
 function fmtSigned(v: number): string {
   if (v > 0) return `+${v}`;
@@ -175,7 +209,7 @@ export function composeCortexEvidence(input: CortexInputs): CortexVerdict {
         pushAbsentOnce(`${source}: evidence stale (older than ${ABSENT_AFTER_HALF_LIVES} half-lives) — self-silenced`);
         continue;
       }
-      const effective = round(item.weight * cortexDecayFactor(ageSec, item.halfLifeSec), 3);
+      const effective = round(item.weight * cortexDecayFactor(ageSec, item.halfLifeSec), CORTEX_WEIGHT_DP);
       const decayed: EvidenceItem = { ...item, weight: effective };
       if (item.stance === "veto") vetoes.push(decayed);
       else if (item.stance === "supports") supports.push(decayed);
