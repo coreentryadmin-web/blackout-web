@@ -1993,6 +1993,24 @@ async function evaluateSpxPlayCore(
   // Bounded at ±3 — a soft prior, not an override. Only applies when the edition is fresh
   // (< 20h old) and shows a clear directional A-grade cluster.
   if (nhBonus && nhBonus.bonus !== 0) {
+    // BUG FIX (2026-11-09): `confluence.score` at this point is already the CLAMPED output of
+    // computeSpxConfluence (clamp(sum(factors[].weight), -100, 100)) — there is no unclamped raw
+    // sum carried on the SpxConfluence object anywhere. Feeding `confluence.score + nhBonus.bonus`
+    // into reclassifyConfluenceScore (which clamps AGAIN internally) is a DOUBLE clamp: it is only
+    // equivalent to the correct single `clamp(rawSum + bonus)` when the pre-bonus raw sum was
+    // already inside [-100, 100]. On a saturated setup (summing the max same-direction factor
+    // weights comfortably exceeds ±100 — see spx-signals.test.ts's own golden fixture, raw sum
+    // 154) with an OPPOSING bonus (always exactly ±3, bounded by getNhConfluenceBonus's own
+    // contract), the double clamp understates how extreme the true clamp(rawSum + bonus) is by up
+    // to the overshoot amount, capped at the bonus's own ±3 range — e.g. rawSum=-105 (clamped to
+    // confluence.score=-100) with bonus=+3: double-clamped = clamp(-100+3) = -97, but the correct
+    // single clamp is clamp(-105+3) = clamp(-102) = -100. Recompute the true pre-bonus raw
+    // (unclamped) sum directly from `confluence.factors` instead of reusing the already-clamped
+    // score — this restores the single-clamp invariant `score === clamp(sum(factors[].weight),
+    // -100, 100)` that computeSpxConfluence's own return already satisfies in isolation, extended
+    // correctly through this mutation site. See spx-play-engine.test.ts's regression test for the
+    // concrete before/after.
+    const rawPreBonusSum = confluence.factors.reduce((sum, f) => sum + f.weight, 0);
     confluence.factors.push({
       label: "Night Hawk prior",
       weight: nhBonus.bonus,
@@ -2013,7 +2031,7 @@ async function evaluateSpxPlayCore(
     // action/bias, so a bonus that flips action across a boundary left members looking at a
     // target/invalidation still built for the pre-bonus action while grade/direction had already
     // moved on. Now included in `reclass` and reassigned alongside the rest.
-    const reclass = reclassifyConfluenceScore(desk, confluence.score + nhBonus.bonus, confluence.factors);
+    const reclass = reclassifyConfluenceScore(desk, rawPreBonusSum + nhBonus.bonus, confluence.factors);
     confluence.score = reclass.score;
     confluence.rawScore = reclass.rawScore;
     confluence.bias = reclass.bias;

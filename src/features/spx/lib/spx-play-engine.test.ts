@@ -793,3 +793,59 @@ test("getNhConfluenceBonus: staleness check uses isZeroDteMarkStale, not a raw a
     "must route through the shared future-timestamp-guarded staleness predicate"
   );
 });
+
+// BUG FIX (2026-11-09): the Night Hawk "morning prior" mutation site (just below the
+// getNhConfluenceBonus staleness-check test above, in the same `if (nhBonus && nhBonus.bonus !==
+// 0)` block) fed `confluence.score + nhBonus.bonus` into reclassifyConfluenceScore. But
+// `confluence.score` at that point is ALREADY the clamped output of computeSpxConfluence
+// (`score = clamp(score, -100, 100)`, spx-signals.ts ~line 915) — there is no unclamped raw sum
+// carried anywhere on the SpxConfluence object. reclassifyConfluenceScore clamps AGAIN internally
+// (`clamped = clamp(score, -100, 100)`, spx-signals.ts ~line 240), so this was a DOUBLE clamp:
+// only equivalent to the mathematically correct single `clamp(rawSum + bonus)` when the pre-bonus
+// raw sum was already inside [-100, 100]. On a saturated setup (summing the max same-direction
+// factor weights comfortably exceeds ±100 — see spx-signals.test.ts's own golden fixture, raw sum
+// 154) with an OPPOSING bonus (always exactly ±3 per getNhConfluenceBonus's own contract above),
+// the double clamp understated how extreme the true clamped score should be by up to the
+// overshoot amount. Concrete example (pinned behaviorally in spx-signals.test.ts's sibling test
+// "reclassifyConfluenceScore mutation path: a saturated raw sum + opposing NH bonus..."): raw
+// sum -105 (clamped internally to confluence.score=-100) with bonus=+3 — double-clamped
+// clamp(-100+3)=-97, but the correct single-clamp clamp(-105+3)=clamp(-102)=-100.
+//
+// This mutation site reads a fresh Night Hawk edition from the DB (getNhConfluenceBonus, tested
+// above as a source-text guard for the same reason) and runs deep inside evaluateSpxPlayCore —
+// not independently exercisable here without the heavy DB/provider mocking this suite's own
+// header explicitly avoids (see file header: DATABASE_URL/DATABASE_PUBLIC_URL unset so
+// spx-play-store runs in-memory; forcing dbConfigured() to true to reach this branch would break
+// that premise for every other test in this file, since dbConfigured is shared by spx-play-store,
+// playbook-fsm-sync, and other DB-gated call sites on the same path). Same source-text-regression
+// idiom as the getNhConfluenceBonus test immediately above.
+test("evaluateSpxPlayCore NH-bonus mutation site recomputes the raw pre-bonus factor sum from confluence.factors, not the already-clamped confluence.score", () => {
+  const src = readFileSync(fileURLToPath(new URL("./spx-play-engine.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("if (nhBonus && nhBonus.bonus !== 0) {");
+  assert.ok(start > 0, "NH-bonus mutation block exists");
+  const end = src.indexOf("\n  const confirmations = evaluatePlayConfirmations", start);
+  assert.ok(end > start, "NH-bonus mutation block ends before confirmations are evaluated");
+  const body = src.slice(start, end);
+
+  // Must NOT reuse the already-clamped confluence.score as the base for the bonus — that is
+  // exactly the double-clamp bug (see spx-signals.ts's reclassifyConfluenceScore, which clamps
+  // internally on whatever it is given).
+  assert.doesNotMatch(
+    body,
+    /reclassifyConfluenceScore\(\s*desk\s*,\s*confluence\.score\s*\+\s*nhBonus\.bonus/,
+    "must not pass the already-clamped confluence.score + bonus into reclassifyConfluenceScore — that double-clamps on a saturated setup"
+  );
+
+  // Must instead recompute the raw (unclamped) pre-bonus sum directly from confluence.factors,
+  // and pass THAT (plus the bonus) into reclassifyConfluenceScore, so only one clamp ever runs.
+  assert.match(
+    body,
+    /confluence\.factors\.reduce\(\s*\(\s*sum\s*,\s*f\s*\)\s*=>\s*sum\s*\+\s*f\.weight\s*,\s*0\s*\)/,
+    "must recompute the raw pre-bonus sum via confluence.factors.reduce(...)"
+  );
+  assert.match(
+    body,
+    /reclassifyConfluenceScore\(\s*desk\s*,\s*rawPreBonusSum\s*\+\s*nhBonus\.bonus\s*,\s*confluence\.factors\s*\)/,
+    "must pass the recomputed raw sum + bonus into reclassifyConfluenceScore, not the clamped score"
+  );
+});
