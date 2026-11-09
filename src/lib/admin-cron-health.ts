@@ -340,7 +340,7 @@ export function evaluateJob(
   // intentionally skip off-window. Once the market is closed they CANNOT log a fresh run,
   // so age inevitably exceeds the threshold — flagging them STALE is a false alarm. While
   // off-window, suppress the stale flag as long as the last logged run was a legitimate skip
-  // or success (a "failed" last run is still surfaced below regardless of window).
+  // or success; "failed" still surfaces unless an off-schedule idle gap applies (ops #1983).
   const offWindow = marketHoursCronOffWindow(job, now);
   const suppressStaleOffWindow =
     offWindow && (last.status === "skipped" || last.status === "ok");
@@ -348,13 +348,16 @@ export function evaluateJob(
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
   const awaitingDualBand =
     Boolean(job.schedule_cron_utc) && isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now);
+  // ops #1983: a Friday failed handshake must not P0 cron-audit-query on Monday morning
+  // before this job's next EventBridge tick — same idle gap that suppresses staleness.
   const suppressStaleOffSchedule =
-    (offScheduleGap || awaitingDualBand) && (last.status === "skipped" || last.status === "ok");
+    (offScheduleGap || awaitingDualBand) &&
+    (last.status === "skipped" || last.status === "ok" || last.status === "failed");
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
 
-  if (last.status === "failed") {
+  if (last.status === "failed" && !suppressStaleOffSchedule) {
     status = "failed";
     statusLabel = "Last run failed";
   } else if (suppressStaleOffWindow) {
@@ -362,9 +365,15 @@ export function evaluateJob(
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
   } else if (suppressStaleOffSchedule) {
     status = "healthy";
-    statusLabel = awaitingDualBand
-      ? "Idle (awaiting in-window UTC band)"
-      : "Idle (outside cron schedule window)";
+    if (last.status === "failed") {
+      statusLabel = awaitingDualBand
+        ? "Idle (prior run failed; awaiting in-window UTC band)"
+        : "Idle (prior run failed; awaiting next scheduled fire)";
+    } else if (awaitingDualBand) {
+      statusLabel = "Idle (awaiting in-window UTC band)";
+    } else {
+      statusLabel = "Idle (outside cron schedule window)";
+    }
   } else if (
     job.key === "flow-ingest" &&
     last.status === "skipped" &&
