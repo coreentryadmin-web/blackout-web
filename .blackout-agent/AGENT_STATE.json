@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-09T08:33:09.779Z",
+  "updated_at": "2026-11-09T10:40:51.049Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-09T08:32:51.509Z"
+      "released_at": "2026-11-09T10:40:29.579Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-09T08:32:56.018Z",
-      "lease_until": "2026-11-09T08:33:56.018Z",
+      "claimed_at": "2026-11-09T10:40:35.105Z",
+      "lease_until": "2026-11-09T10:41:35.105Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-09T08:32:56.022Z"
+      "released_at": "2026-11-09T10:40:35.109Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "e5f9aa5e3ea40b07ee4ad6a1a0927c40ef697e17",
+    "last_main_sha": "b3cfea0073c597c61135449def82aabd006f28e6",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-09T08:31:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42586559005",
-    "last_deploy_sha": "e5f9aa5e3ea40b07ee4ad6a1a0927c40ef697e17"
+    "last_deploy_at": "2026-11-09T10:39:02Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42602393195",
+    "last_deploy_sha": "b3cfea0073c597c61135449def82aabd006f28e6"
   },
   "events": [
-    {
-      "at": "2026-10-31T15:38:29.103Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 10
-    },
-    {
-      "at": "2026-10-31T15:38:37.537Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 10
-    },
-    {
-      "at": "2026-10-31T16:38:13.236Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-31T16:38:19.466Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-31T16:38:25.225Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-31T16:40:48.248Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-31T16:40:54.072Z",
       "type": "context_sync",
@@ -1289,9 +1253,55 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T10:40:29.579Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T10:40:35.107Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T10:40:35.109Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T10:40:40.146Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T10:40:45.846Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T10:40:51.049Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
+    {
+      "number": 7737,
+      "title": "fix(vector): GEX heatmap strike-axis cap was inert on dense near-spot bands",
+      "branch": "fix/heatmap-strike-cap-overflow",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/pending",
+      "updated_at": "2026-11-09T10:28:05Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
