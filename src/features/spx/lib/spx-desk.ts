@@ -788,7 +788,19 @@ async function resolvePulseFeedStalled(now = Date.now()): Promise<boolean | null
 async function spxPriceFromSpyProxy(): Promise<number | null> {
   try {
     const { fetchPreviousDayBar } = await import("@/lib/providers/polygon-largo");
-    const bar = await fetchPreviousDayBar("SPY", { next: { revalidate: 3600 } });
+    // BUG FIX (Ask Largo/5-engine standing mandate, 2026-11-09, live repro): must NOT use
+    // `next: { revalidate }` here, unlike polygon-options-gex.ts's sibling fetchSpotFromPrevBar
+    // (whose own comment explains ITS revalidate is deliberate, to avoid forcing the homepage's
+    // ISR route fully dynamic). This function is only ever reached from force-dynamic API routes
+    // (spx/desk, spx/pulse — already `export const dynamic = "force-dynamic"`), so there is no
+    // ISR to protect, and Next's fetch Data Cache caches a failed/non-2xx response (e.g. a
+    // transient upstream 429) for the FULL revalidate window regardless of status — confirmed
+    // live 2026-11-09: /desk and /pulse kept serving the pre-fix empty shell intermittently for
+    // over 50 minutes after this fallback was deployed, flickering between available:true and
+    // the empty shell across polls, consistent with a per-ECS-replica cached failure response
+    // from this call rather than a code path that never runs. `cache: "no-store"` makes every
+    // call fresh, so a transient upstream failure never blocks recovery once it clears.
+    const bar = await fetchPreviousDayBar("SPY", { cache: "no-store" });
     if (!bar || !(bar.c > 0)) return null;
     return bar.c * 10;
   } catch {

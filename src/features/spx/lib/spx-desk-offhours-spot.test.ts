@@ -43,8 +43,13 @@ test("buildSpxDesk: price chain has a SPY-proxy last resort before falling to 0 
   const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
   assert.match(
     src,
-    /async function spxPriceFromSpyProxy\(\): Promise<number \| null> \{\s*\n\s*try \{\s*\n\s*const \{ fetchPreviousDayBar \} = await import\("@\/lib\/providers\/polygon-largo"\);\s*\n\s*const bar = await fetchPreviousDayBar\("SPY", \{ next: \{ revalidate: 3600 \} \}\);\s*\n\s*if \(!bar \|\| !\(bar\.c > 0\)\) return null;\s*\n\s*return bar\.c \* 10;/,
+    /async function spxPriceFromSpyProxy\(\): Promise<number \| null> \{\s*\n\s*try \{\s*\n\s*const \{ fetchPreviousDayBar \} = await import\("@\/lib\/providers\/polygon-largo"\);[\s\S]*?const bar = await fetchPreviousDayBar\("SPY", \{ cache: "no-store" \}\);\s*\n\s*if \(!bar \|\| !\(bar\.c > 0\)\) return null;\s*\n\s*return bar\.c \* 10;/,
     "spxPriceFromSpyProxy must fetch SPY's previous-day close and scale it ×10, mirroring polygon-options-gex.ts's proven resolveSpotSnapshotLastResort pattern for the identical I:SPX condition"
+  );
+  assert.doesNotMatch(
+    src,
+    /fetchPreviousDayBar\("SPY", \{ next: \{ revalidate/,
+    "spxPriceFromSpyProxy must NOT cache via next.revalidate — Next's fetch cache caches a failed/non-2xx upstream response for the full revalidate window, and this fallback is only reached from already force-dynamic routes with nothing to gain from ISR"
   );
   const buildIdx = src.indexOf("export async function buildSpxDesk(");
   const nextFnIdx = src.indexOf("\nexport async function buildSpxDeskPulse(");
