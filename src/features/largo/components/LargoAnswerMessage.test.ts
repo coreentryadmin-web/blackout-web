@@ -1,0 +1,86 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { LargoAnswerMessage } from "./LargoAnswerMessage";
+import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
+import type { StructureLadder } from "@/lib/swing/play-brief-ladder";
+
+(globalThis as unknown as { React: typeof React }).React = React;
+
+/**
+ * BUG FIX (Ask Largo standing mandate, 2026-11-09): `envelope.structureLadder` reaches the HTTP
+ * envelope (swing play-brief composers populate it for every OPEN/WATCH position — see
+ * `play-brief-ladder.ts`'s own header) and `BieAnswer.tsx` already renders it via
+ * `<BieStructureLadder>` — but `LargoAnswerMessage`'s "Deep dive" rendering branch (taken whenever
+ * the envelope clears its own `richEnough` bar, which every swing play-brief envelope with
+ * sections/levels does) rendered `<LargoDeskRead>` instead and never rendered the ladder at all.
+ * `LargoDeskRead`'s own "ladder" block is a DIFFERENT, generic ladder built from `envelope.levels`
+ * (`ladderFromLevels`) with no reward:risk, cross-desk agreement, or archetype/sub-lane track
+ * record — it does not carry the same information and is not a substitute. A member only ever saw
+ * the real Structure Ladder by staying on "Concrete" mode or by asking a question whose envelope
+ * happened to miss the `richEnough` bar; switching to Deep dive silently dropped the widget.
+ */
+
+function ladder(): StructureLadder {
+  return {
+    spot: 150,
+    direction: "LONG",
+    stop: 140,
+    stopIsCommitted: true,
+    atr: 2,
+    positionState: "open",
+    rungs: [
+      {
+        kind: "call_wall",
+        label: "Call wall",
+        price: 160,
+        distancePct: 6.7,
+        role: "resistance",
+        target: { rewardRisk: 1.8, horizon: "swing", gatekeeper: false },
+      },
+    ],
+    asOf: "2026-11-09 10:00 ET",
+  };
+}
+
+function richEnvelope(): BieAnswerEnvelope {
+  return {
+    version: 1,
+    headline: "AAPL long setup still intact",
+    bias: "bullish",
+    sections: [{ title: "Interpretation", body: "Spot is holding above the gamma flip." }],
+    evidence: [],
+    levels: [],
+    asOf: new Date("2026-11-09T12:00:00Z").toISOString(),
+    markdown: "AAPL long setup still intact",
+    structureLadder: ladder(),
+  };
+}
+
+test("LargoAnswerMessage Deep dive mode renders the Structure Ladder when the envelope carries one", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(LargoAnswerMessage, {
+      content: "AAPL long setup still intact",
+      envelope: richEnvelope(),
+      answerMode: "deep",
+    }),
+  );
+  // Confirms this test actually exercised the LargoDeskRead ("Deep dive") branch, not some other
+  // fallback — otherwise a refactor that stops using LargoDeskRead could still pass vacuously.
+  assert.match(html, /largo-read/);
+  assert.match(html, /Structure ladder/);
+  assert.match(html, /Call wall/);
+});
+
+test("LargoAnswerMessage Concrete mode (unaffected) still renders through LargoConcreteAnswer", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(LargoAnswerMessage, {
+      content: "AAPL long setup still intact",
+      envelope: richEnvelope(),
+      answerMode: "concrete",
+    }),
+  );
+  assert.doesNotMatch(html, /largo-read-head/);
+});

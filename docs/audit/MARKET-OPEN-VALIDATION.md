@@ -9830,6 +9830,28 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   a 2dp rounding tie, which should be rare, so no row's `direction_hit` should flip (it was never
   touched by this fix).
 
+## WATCH LIST — 2026-11-09 (Ask Largo × Night Hawk Swings "Deep dive" mode dropped the Structure Ladder, `fix/bie-structure-ladder-deep-dive`) — re-check once the next session opens a real swing answer
+
+- **`LargoAnswerMessage.tsx`'s Deep-dive (`answerMode="deep"`) render branch** rendered
+  `<LargoDeskRead>` for any envelope clearing its own `richEnough` bar (true for every real swing
+  play-brief answer) and never read `envelope.structureLadder` — the rich per-level reward:risk /
+  cross-desk gamma-regime / archetype-track-record ladder `BieAnswer.tsx` already renders via
+  `<BieStructureLadder>`. A member on Concrete mode, or whose question happened to miss the
+  `richEnough` bar, saw it fine; switching to Deep dive silently dropped it, even for the exact same
+  underlying envelope.
+- **Fix**: added `<BieStructureLadder ladder={envelope.structureLadder} />` to that branch, in the
+  same relative position `BieAnswer.tsx` already uses (after the desk read / action bar, before
+  scenario cards). `LargoDeskRead`'s own generic `"ladder"` block (built from `envelope.levels`,
+  serves every non-swing Largo product) is untouched. New regression test
+  (`LargoAnswerMessage.test.ts`) renders the real, unmocked component tree via
+  `react-dom/server`'s `renderToStaticMarkup` — RED→GREEN confirmed via `git stash` on just the
+  fixed file; related `src/features/largo/components/*.test.ts` + `src/features/largo/answer/*.test.ts`
+  (123 tests) green, `tsc --noEmit` clean.
+- **Re-check once the market opens**: open Ask Largo on an existing OPEN/WATCH swing position,
+  switch to Deep dive mode, and confirm the Structure Ladder (rung list, reward:risk, "Dealer regime
+  aligned/differs" badge if present) now renders — it did not render in Deep dive mode before this
+  fix, while Concrete mode already showed it correctly.
+
 ## WATCH LIST — 2026-11-09 (Ask Largo `laneRowsFetchFailed` disclosure wrongly suppressed for dead-WATCH plays, `fix/largo-lane-rank-fetch-failed-dead-watch`) — re-check once a real lane-rows outage recurs
 
 - **`collectBriefUnavailableSources` in `src/lib/swing/play-brief-absence.ts`** gated the "Lane
