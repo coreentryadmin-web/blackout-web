@@ -14,7 +14,9 @@ export type PlaybookPlay = {
   target: string;
   stop: string;
   options_play: string;
-  /** Per-share option entry premium (must be ≤ $20). */
+  /** Per-share option entry premium (must be ≤ $35 — see MAX_OPTION_PREMIUM_PER_SHARE in
+   *  constants.ts, raised from $20 via PR-N15; keep this figure in lockstep with that
+   *  constant, enforced by types.test.ts). */
   entry_premium?: number;
   /** entry_premium × 100 — cost for one contract. */
   entry_cost_per_contract?: number;
