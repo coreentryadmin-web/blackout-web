@@ -9852,6 +9852,59 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   aligned/differs" badge if present) now renders — it did not render in Deep dive mode before this
   fix, while Concrete mode already showed it correctly.
 
+## WATCH LIST — 2026-11-09 (Ask Largo `laneRowsFetchFailed` disclosure wrongly suppressed for dead-WATCH plays, `fix/largo-lane-rank-fetch-failed-dead-watch`) — re-check once a real lane-rows outage recurs
+
+- **`collectBriefUnavailableSources` in `src/lib/swing/play-brief-absence.ts`** gated the "Lane
+  rank" fetch-failure disclosure chip on `!isNotLive` (CLOSED or dead-WATCH), copying the
+  CLOSED-play exemption pattern without re-checking it against `laneRankSection`'s own rendering
+  gate — which only truly goes moot for CLOSED (`computeLaneRank`'s `bucketFor()` short-circuits
+  only on `status === "CLOSED"`). A dead-but-not-CLOSED WATCH play (entry window expired,
+  `deadPlayReason()` non-null) still renders a real Lane Rank section off real `laneRows` data, so
+  a genuine fetch failure there was indistinguishable from a legitimately thin peer pool — live
+  repro confirmed on `SWING:MSTR` (a dead-WATCH candidate) still rendering a full populated
+  "#13 of 14 on WATCH lane" section, proving the section is reachable for this bucket.
+- **Fix**: narrowed the gate from `!isNotLive` to `!isClosed` — the one condition that actually
+  matches `computeLaneRank`'s own short-circuit. Two new regression tests added to
+  `play-brief-absence.test.ts` (dead-WATCH chip now surfaces; CLOSED still correctly suppresses
+  it); full file 123/123 pass, broader swing suite 581/581 pass, `tsc --noEmit` clean.
+- **Re-check once a real lane-rows outage recurs** (the swing serving-lane read genuinely fails,
+  e.g. a timeout on `getSwingServingLane()`): pull a live play-brief for a dead-WATCH candidate
+  during that window and confirm `unavailableSources` now carries the "Lane rank" chip (it
+  previously would have silently vanished, indistinguishable from a thin-peer-pool WATCH
+  candidate), and that `swingPlayBriefConfidence()`'s reported level reflects the outage rather
+  than reading artificially healthy.
+
+## WATCH LIST — 2026-11-09 (Legacy live marks — provider-entitlement outage corroborated live, no code change) — re-check #7545/Massive.com entitlement status
+
+- **Not a code fix** — this entry records fresh corroborating evidence for the already-open,
+  code-unfixable incident CLAUDE.md documents under "⚠️ ENTITLEMENT REGRESSED 2026-11-07" /
+  "UNLIKE grouped-daily/aggs ... the real-time `/v3/snapshot` family has NOT recovered". Logged
+  here (not as a staged finding) because it is a data-completeness confirmation, not a defect in
+  this repo's code.
+- **Live repro, 2026-11-09**: identified 8 real, currently-open Legacy plays across 4 real trading
+  sessions (2026-11-03 CVNA/ABT/SYK/AMD/INTU, 11-04 TLN, 11-05 DASH, 11-06 MGNI — all morning-confirmed
+  via `/api/nighthawk/play-status`, none pulled, none expired) and queried
+  `GET /api/market/nighthawk/legacy-marks?occs=...` for all 8 at once with `includeStale: true`:
+  **0/8 returned a mark** (`{"available": false, "marks": []}`), meaning no WS/REST fetch has
+  populated even the 60-minute Redis fallback cache for any of them in over an hour. Corroborated
+  by two independent live signals: `GET /api/market/quote?ticker=SPY` (a maximally liquid, unrelated
+  ticker) also returns `{"available": false}`; `GET /api/market/nighthawk/horizons?view=swings`
+  carries 86 `markAsOf` timestamps, every one frozen in a 5-minute window on
+  `2026-11-06T16:15:38Z`–`16:20:50Z`, unchanged 3 days later. Direct live re-check of
+  `GET /v3/snapshot` on this sandbox's own Polygon key: still `403 NOT_AUTHORIZED` as of this
+  check, while the `/v3/reference/tickers` control call on the same key returns `200` — confirming
+  the entitlement loss is still live, not a market-closed artifact (403/NOT_AUTHORIZED is
+  categorically different from "no data, market shut", and the staleness clock started mid-RTH
+  Friday 11:15 AM ET, not at a market boundary).
+- **Legacy's own code (`legacy-option-mark-row.ts`, `legacy-option-marks-server.ts`, the
+  legacy-marks route) is correct** — WS-first/REST-fallback/cache-fallback/backstop-quote guards
+  from several prior fix rounds all check out; there is simply no live upstream data source
+  feeding any of them right now.
+- **Re-check at next market open**: once the Massive.com entitlement is confirmed renewed (check
+  #7545's status first, per the prior 2026-11-07 entry's own note), re-run the exact same 8-OCC
+  query and confirm all 8 now return a real mark, and that `/horizons?view=swings`'s `markAsOf`
+  values have started advancing again past the frozen `2026-11-06T16:20:50Z` ceiling.
+
 ## WATCH LIST — 2026-11-09 (Swing's shared underlying-excursion calculator `signedExcursionPct` had the sign-bias rounding tie bug, `fix/swing-underlying-excursion-sign-bias`, PR #7701) — re-check once real positions' excursion figures update next session
 
 - **`signedExcursionPct` in `src/lib/swing/underlying-excursion.ts`** — the shared,
