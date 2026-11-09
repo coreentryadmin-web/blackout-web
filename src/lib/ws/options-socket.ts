@@ -952,74 +952,39 @@ const WATCHDOG_STALL_MS = Math.max(
 );
 
 let reconcileTimer: ReturnType<typeof setInterval> | null = null;
-let reconcileRunning = false;
-/** The desired OCC set computed on the last successful reconcile. */
-let lastDesired = new Set<string>();
 
 /**
- * Read DISTINCT open-position contracts and reconcile WS subscriptions:
- * subscribe newly-held OCCs, unsubscribe ones no user holds. Set-diff against the
- * previous desired set keeps the active subscription = currently-held contracts
- * with no manual signaling. Safe under failure: a DB error leaves the prior set
- * intact (no churn) and is swallowed — the snapshot fallback is unaffected.
+ * BUG FIX (2026-11-09, five-engine-largo-cycle audit): this used to be the generic, cross-desk
+ * feeder of the subscription pool — `SELECT DISTINCT ticker, expiry, option_type, strike FROM
+ * user_positions WHERE status = 'open'`. `user_positions` was DROPPED in
+ * `src/lib/migrations/006_drop_user_positions.sql` (2026-07-06, "absorb 0DTE Command from Grid;
+ * remove Night's Watch") and never recreated — so this query has thrown `42P01` (relation does
+ * not exist) on every single tick since, every ~30s, for 4+ months. It was never a fatal error
+ * only because `dbQuery`'s own non-transient-error path reports it via `captureError` and this
+ * function's try/catch swallowed it as a console.warn — a permanent, silent background failure,
+ * not a real reconcile that occasionally missed. The prior `lastDesired` set-diff state stayed
+ * the empty `Set()` it was initialized to since 2026-07-06: this function has contributed exactly
+ * ZERO contracts to the WS subscription pool in that entire window.
+ *
+ * 0DTE is the only live consumer of `subscribeContracts`/`unsubscribeContracts` today — it
+ * self-subscribes its own held contracts directly via `reconcileWsSubscriptions`
+ * (`src/lib/zerodte/live-marks.ts`), bypassing this function entirely. Legacy/Vector only ever
+ * READ the WS mark store (`getLiveOptionMarkSync`/`getLiveOptionMark`), never subscribe for their
+ * own held/published contracts — so whatever WS coverage they see today is coincidental overlap
+ * with 0DTE's own (much narrower, same-day-expiry) subscription set, not anything this function
+ * ever provided.
+ *
+ * Minimal fix: stop running a query guaranteed to fail against a table that no longer exists.
+ * `runReconcileTick`'s other work (leadership, `pool.watchdog`) is untouched — only the dead
+ * DB-querying body is removed. Rebuilding a real, non-DB desired-set (e.g. Legacy's published
+ * picks, Vector's held picks, Swing's open positions pushing into an in-memory registry, mirroring
+ * how 0DTE already does it) is a larger, separate follow-up — disclosed, not attempted here.
  */
 export async function reconcileOptionSubscriptions(): Promise<void> {
-  if (!optionsWsEnabled()) return;
-  if (reconcileRunning) return;
-  reconcileRunning = true;
-  try {
-    const { dbConfigured, dbQuery } = await import("@/lib/db");
-    if (!dbConfigured()) return;
-
-    const res = await dbQuery<{
-      ticker: string;
-      expiry: unknown;
-      option_type: string;
-      strike: string | number;
-    }>(
-      `SELECT DISTINCT ticker, expiry, option_type, strike
-         FROM user_positions
-        WHERE status = 'open'`
-    );
-
-    const desired = new Set<string>();
-    for (const row of res.rows) {
-      const ymd =
-        row.expiry instanceof Date
-          ? `${row.expiry.getFullYear()}-${String(row.expiry.getMonth() + 1).padStart(2, "0")}-${String(
-              row.expiry.getDate()
-            ).padStart(2, "0")}`
-          : String(row.expiry).slice(0, 10);
-      const occ = buildOcc(
-        String(row.ticker),
-        ymd,
-        row.option_type === "put" ? "put" : "call",
-        Number(row.strike)
-      );
-      if (occ) desired.add(occ);
-    }
-
-    const toAdd: string[] = [];
-    const toRemove: string[] = [];
-    for (const occ of Array.from(desired)) if (!lastDesired.has(occ)) toAdd.push(occ);
-    for (const occ of Array.from(lastDesired)) if (!desired.has(occ)) toRemove.push(occ);
-
-    if (toAdd.length) subscribeContracts(toAdd);
-    if (toRemove.length) unsubscribeContracts(toRemove);
-    lastDesired = desired;
-
-    if (toAdd.length || toRemove.length) {
-      console.log(
-        `[options-socket] reconciled — +${toAdd.length} -${toRemove.length} (${desired.size} held contracts)`
-      );
-    }
-  } catch (err) {
-    // Reconcile failure must NEVER break valuation — prior subscriptions persist,
-    // and getLiveOptionMark simply ages out to the snapshot fallback.
-    console.warn(`[options-socket] reconcile failed (non-fatal): ${optionsWsError(err)}`);
-  } finally {
-    reconcileRunning = false;
-  }
+  // No-op: see the doc comment above for why there is currently no live, working desired-set
+  // source for this generic reconciler to read — matching the ALREADY-broken effective behavior
+  // exactly, just without the permanent 30s DB failure.
+  return;
 }
 
 let optionsSocketInitialized = false;
