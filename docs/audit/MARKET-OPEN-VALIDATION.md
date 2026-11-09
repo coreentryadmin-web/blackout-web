@@ -10301,7 +10301,6 @@ and `/play` are actually serving a real price again
   changes NOTHING about production Redis behavior, only what the correctness scorecard can now
   observe — a `flag` on this metric going forward would be a genuinely new, real finding (a
   no-expiry `gex-heatmap:SPX` key), not a regression from this change.
->>>>>>> origin/main
 
 ## WATCH LIST — 2026-11-09 (data-integrity-verifier.ts reported "consistency-only" for an empty `nighthawk_editions` table, `fix/data-integrity-pg-editions-empty-skip`) — re-check the next DATALAYER correctness scorecard/report
 
