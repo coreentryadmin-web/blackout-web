@@ -208,9 +208,26 @@ async function cronHttpChecks() {
       } else if (label === "data-integrity" && (json.discrepancies ?? json.issues?.length ?? 0) > 0) {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
-      } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+      } else if (label === "cron-watchdog") {
+        const problemKeys = Array.isArray(json.problem_keys) ? json.problem_keys : [];
+        const rthStaleKeys = Array.isArray(json.rth_stale_keys) ? json.rth_stale_keys : [];
+        const spike = json.error_spike ?? "none";
+        if (rthOpen && problemKeys.length > 0) {
+          failures.push(`${label}: ${problemKeys.join(", ")}`);
+          console.log(`  ✗ ${label} → problems: ${problemKeys.join(", ")}`);
+        } else if (!rthOpen && rthStaleKeys.length > 0) {
+          failures.push(`${label}: RTH-stale ${rthStaleKeys.join(", ")}`);
+          console.log(`  ✗ ${label} → RTH-stale: ${rthStaleKeys.join(", ")}`);
+        } else if (spike === "critical") {
+          failures.push(`${label}: error_spike=${spike}`);
+          console.log(`  ✗ ${label} → critical error spike (${json.error_count ?? "?"} events)`);
+        } else if (problemKeys.length > 0) {
+          console.log(
+            `  ⚠ ${label} → off-hours problems (non-blocking): ${problemKeys.join(", ")}`
+          );
+        } else {
+          console.log(`  ✓ ${label} → ok`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
@@ -264,7 +281,15 @@ run("Public HTTP smoke", "node", ["scripts/gha-http-smoke.mjs"]);
 run("Sentry smoke", "node", ["scripts/gha-sentry-smoke.mjs"]);
 
 if (!smokeOnly) {
-  run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
+  // Full-site numeric audit expects live SPX/heatmap quotes — off-hours (after the 16:15 ET
+  // window) routinely returns spot=0 / empty matrices and false-P0s the scheduled 4:30 PM ET run
+  // when EventBridge fires after cash close (measured: Mon 18:12 ET post-close red on SPX spot).
+  if (rthOpen || force) {
+    run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
+  } else {
+    console.log("\n── Full-site deep audit ──");
+    console.log("  ⚠ Skipped (off RTH window — use --force to run anyway)");
+  }
   await cronHttpChecks();
   await postgresRthChecks();
 }
