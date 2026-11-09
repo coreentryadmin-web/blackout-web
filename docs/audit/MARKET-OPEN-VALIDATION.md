@@ -9781,3 +9781,26 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   `direction`/`evidence_numbers`/`source`/`cohort` fields, and that any `distancePct` value in the
   response matches the narrative text's own 1dp figure rather than disagreeing at a half-unit
   boundary.
+
+## WATCH LIST — 2026-11-09 (Night Hawk Debrief module's `round2` helper had the sign-bias rounding tie bug, `fix/debrief-round2-sign-bias`) — re-check once real overnight plays grade next session
+
+- **`round2` in `src/features/nighthawk/lib/debrief.ts`** (the sole percentage-rounding primitive
+  behind `pctOf`, feeding `mfe_pct`/`mae_pct`/`target_distance_pct`/`stop_distance_pct` in
+  `computeExcursion` and the `movePct`/`gapPct` thesis-factor numbers) used plain
+  `Math.round(n*100)/100`, which ties toward `+Infinity` — an adverse (negative) excursion could
+  display a smaller magnitude than an identical-sized favorable one, and `mae_vs_stop_ratio`/
+  `mfe_vs_target_ratio` (compared against the named `LUCKY_WIN_MAE_STOP_FRACTION`/
+  `WRONG_DIRECTION_MFE_TARGET_FRACTION` thresholds in `classifyFailureMode`) inherited the same
+  asymmetry. Fixed to round by magnitude then reapply sign, matching the 11 prior sibling fixes
+  of this exact bug class elsewhere in the codebase.
+- **Fix**: one-line change to `round2`'s definition; no call-site changes needed (every
+  sign-prefix ternary in the file already read off the rounded value). New regression test added
+  to `debrief.test.ts` (RED→GREEN confirmed); full `debrief.test.ts`/`debrief-aggregate.test.ts`/
+  `debrief-persist.test.ts` suites green, tsc clean.
+- **Re-check once the next session's overnight plays grade**: pull a real graded play's debrief
+  (via `debriefPlay`/the aggregate-debrief API/whatever surface exposes it) and confirm
+  `excursion.mfe_pct`/`excursion.mae_pct` for a play with a symmetric-looking daily range no
+  longer disagree in magnitude by a hundredth of a percent, and that no play's `failure_mode` tag
+  changed between the pre-fix and post-fix computation for the same historical row (the fix should
+  only change borderline cases sitting exactly on a 2dp tie, which should be rare in real data —
+  confirm it did not retag anything that wasn't actually on that boundary).

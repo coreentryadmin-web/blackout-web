@@ -506,6 +506,48 @@ test("MFE/MAE math is exact from the actual fill price, both directions", () => 
   assert.equal(short.mae_vs_stop_ratio, 0.6);
 });
 
+test("MFE/MAE magnitudes match for a perfectly symmetric excursion (sign-bias rounding tie)", () => {
+  // entry 32 (open at the band edge, no gap), high 33 / low 31 — a plain, plausible
+  // daily range that is a $1 move EACH WAY from the identical fill price. The two
+  // percentages must be equal in magnitude: round2's old plain `Math.round(n*100)/100`
+  // ties toward +Infinity, so pctOf(32, +1) raw-rounded 3.125 up to 3.13 while
+  // pctOf(32, -1) raw-rounded -3.125 only down to -3.12 — a losing excursion silently
+  // read as smaller than the mirror-image favorable one for the exact same $1 move.
+  const symRow = row({
+    entry_range_low: 30,
+    entry_range_high: 32,
+    target: 40,
+    stop: 20,
+    next_day_open: 32,
+    next_day_close: 32,
+    session_high: 33,
+    session_low: 31,
+  });
+  const sym = computeExcursion(symRow, computeFill(symRow))!;
+  assert.equal(sym.entry, 32);
+  assert.equal(sym.mfe_pct, 3.13);
+  assert.equal(sym.mae_pct, -3.13); // magnitude must equal mfe_pct's 3.13, not 3.12
+  assert.equal(Math.abs(sym.mfe_pct!), Math.abs(sym.mae_pct!));
+
+  // Mirrored SHORT: identical $1-each-way excursion from the same $32 fill price.
+  const symShort = row({
+    direction: "SHORT",
+    entry_range_low: 32,
+    entry_range_high: 34,
+    target: 24,
+    stop: 44,
+    next_day_open: 32,
+    next_day_close: 32,
+    session_high: 33,
+    session_low: 31,
+  });
+  const symS = computeExcursion(symShort, computeFill(symShort))!;
+  assert.equal(symS.entry, 32);
+  assert.equal(symS.mfe_pct, 3.13); // (32-31)/32, favorable for SHORT
+  assert.equal(symS.mae_pct, -3.13); // (32-33)/32, adverse for SHORT
+  assert.equal(Math.abs(symS.mfe_pct!), Math.abs(symS.mae_pct!));
+});
+
 test("excursion is null when no fill existed", () => {
   assert.equal(computeExcursion(DELL_0708, computeFill(DELL_0708)), null);
 });

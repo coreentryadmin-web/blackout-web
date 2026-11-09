@@ -181,7 +181,20 @@ export type PlayDebrief = {
 
 // ── Small helpers ───────────────────────────────────────────────────────────────────
 
-const round2 = (n: number): number => Math.round(n * 100) / 100;
+// Rounds by MAGNITUDE then reapplies sign — plain `Math.round(n*100)/100` ties toward
+// +Infinity (`Math.round(-12.5) === -12`, `Math.round(12.5) === 13`), a direction-biased
+// asymmetry: a NEGATIVE value sitting exactly on this 2dp tie boundary rounds to a
+// SMALLER magnitude than the IDENTICAL positive magnitude would. Concretely reachable
+// here: a $32 fill with a perfectly symmetric ±$1 session excursion (entry 32, high 33,
+// low 31 — an ordinary, plausible daily range) computed MFE +3.13% but MAE -3.12% for
+// the exact same $1 move, because `pctOf(32, 1)` raw-rounds 3.125 up to 3.13 while
+// `pctOf(32, -1)` raw-rounds -3.125 only down to -3.12. `fill.mfe_pct`/`mae_pct` feed the
+// debrief's `lucky_win`/`wrong_direction` ratio thresholds directly (LUCKY_WIN_MAE_STOP_
+// FRACTION, WRONG_DIRECTION_MFE_TARGET_FRACTION), so an asymmetric magnitude here can
+// tip a borderline play into the wrong failure-mode tag, not just mis-render a label.
+// Same fix already shipped for this exact bug class in fmt-money.ts's `fmtPct` and
+// PlayTerminal.tsx/ZeroDteCommandPanel.tsx's shared `Math.sign(n) * Math.round(Math.abs(n))`.
+const round2 = (n: number): number => (Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100;
 
 function pctOf(base: number, move: number): number {
   return round2((move / base) * 100);
