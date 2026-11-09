@@ -1,3 +1,37 @@
+## WATCH LIST — 2026-11-09 VectorChart's live SSE tick handler mirrors five more regime/wall callbacks through refs (`onRegimeChange`/`onProximityChange`/`onMagnetChange`/`onConfluenceChange`/`onWallIntegrityChange`), same shape as the already-fixed `onFreshness`/`onSpotChange` gap (PR pending at time of writing — see commit for the merged SHA)
+
+**What was shipped:** DISCOVERY round 507's fresh pass on `VectorChart`'s ref-mirror lens (picking
+up where round 506 left off, which had already fixed `onFreshness`/`onSpotChange` in a sibling PR)
+found the SAME root cause reaching five more callbacks: `connectLive`'s long-lived SSE `onmessage`
+handler (mount-only `[]`-dep effect, never re-invoked just because its own deps change) calls
+`emitRegime()`/`emitProximity()`/`emitMagnet()`/`emitConfluence()`/`emitWallIntegrity()` directly,
+and each of those five `useCallback`s used to close over its own raw prop
+(`onRegimeChange`/`onProximityChange`/`onMagnetChange`/`onConfluenceChange`/`onWallIntegrityChange`)
+instead of reading it through a ref. Confirmed reachable in production, not just theoretical:
+`VectorComparePane.tsx`'s `handleRegime` (used in Compare mode) depends on its own `spot` state, so
+its identity churns on every live tick — before this fix, the handler's stale `emitRegime` closure
+kept calling the mount-time-frozen `onRegimeChange`, which called `pushMeta(regime, spot)` with
+`spot` frozen at whatever it was when the chart first mounted while `regime` (passed as a plain
+argument, not closed over) kept updating live — silently drifting the two fields of one
+`VectorComparePaneMeta` object meant to describe the same instant apart from each other. Fixed with
+`onRegimeChangeRef`/`onProximityChangeRef`/`onMagnetChangeRef`/`onConfluenceChangeRef`/
+`onWallIntegrityChangeRef`, synced every render via one dependency-less `useEffect` (same pattern as
+every sibling ref mirror in the file), each emit* function reading `.current` and dropping the raw
+prop from its own dependency array (matching `emitPlay`'s existing `onPlayChangeRef` pattern). RED→
+GREEN confirmed via `git stash` (3/3 new assertions fail without the fix, pass with it);
+`npx tsc --noEmit` clean; full `src/features/vector/components/*.test.ts` suite 102/102 green.
+
+**Specific thing to check next cycle:** like the sibling `onFreshness`/`onSpotChange` fix, this is a
+timing-dependent staleness bug with no single live repro-and-confirm moment — the clearest path to
+reproducing it pre-fix was Compare mode (`/vector` with 2+ panes) left open through several live
+ticks. The currently-displayed symptom is subtle (the compare footer's long-γ/short-γ chip only
+reads `meta.regime.posture`, which stayed correct even with the bug, since `regime` is passed as a
+plain argument rather than closed over — only the unused-today `meta.spot` field was wrong), so
+there is no visible regression to chase down; the useful check is forward-looking only: if a future
+feature starts reading `VectorComparePaneMeta.spot` (grep `metaByTicker\[.*\]\.spot` or
+`meta\.spot` in `VectorCompareDesk.tsx`/`VectorComparePane.tsx`), confirm it reflects the live spot
+of the SAME tick as `meta.regime`, not a value frozen at chart mount.
+
 ## LIVE INCIDENT — 2026-11-07 Polygon API 403s breaking swing-discovery/banger-discovery/nighthawk-outcomes/gex-eod-snapshot since Friday evening — NOT YET FIXED (needs AWS/Secrets Manager access this session doesn't have)
 
 **What was found:** Standing 5-ENGINE LIVE MONITOR + Ask Largo cycle (Saturday, market closed)

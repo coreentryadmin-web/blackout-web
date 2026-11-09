@@ -1695,6 +1695,32 @@ export function VectorChart({
   const wallProximityStateRef = useRef<WallProximity | null>(null);
   const lastMagnetRef = useRef<string>("");
   const lastWallIntegrityRef = useRef<string>("");
+  // onRegimeChange/onProximityChange/onMagnetChange/onConfluenceChange/onWallIntegrityChange are
+  // all read inside the live SSE tick handler (connectLive's onmessage — a []-dep mount effect
+  // that is never re-invoked just because its own deps change, same shape documented on
+  // onFreshnessRef/onSpotChangeRef above), via emitRegime/emitProximity/emitMagnet/emitConfluence/
+  // emitWallIntegrity. Those five emit* functions used to close over the raw props directly, so the
+  // already-running handler kept calling whatever callback identity existed when connectLive was
+  // first invoked, forever — unlike onPlayChange/onAlertsFired/onTechnicalsChange/
+  // onExpectedMoveChange/onPriceScaleRender/onCompareCrosshair/onCompareVisibleRange, which already
+  // mirror through a ref for exactly this reason. Reachable in production, not just theoretical:
+  // VectorComparePane's handleRegime (Compare mode) depends on its own `spot` state, so its
+  // identity churns on every live tick, which propagates all the way down to `onRegimeChange` here
+  // — without this mirror, the compare pane's per-ticker meta froze `spot` at whatever the chart
+  // read at mount while `regime` (passed as a plain argument, not a closed-over value) kept
+  // updating live, silently drifting the two fields of one object meant to describe them together.
+  const onRegimeChangeRef = useRef(onRegimeChange);
+  const onProximityChangeRef = useRef(onProximityChange);
+  const onMagnetChangeRef = useRef(onMagnetChange);
+  const onConfluenceChangeRef = useRef(onConfluenceChange);
+  const onWallIntegrityChangeRef = useRef(onWallIntegrityChange);
+  useEffect(() => {
+    onRegimeChangeRef.current = onRegimeChange;
+    onProximityChangeRef.current = onProximityChange;
+    onMagnetChangeRef.current = onMagnetChange;
+    onConfluenceChangeRef.current = onConfluenceChange;
+    onWallIntegrityChangeRef.current = onWallIntegrityChange;
+  });
   const lensRef = useRef<VectorWallLens>("gex");
   // Timestamp of the last wheel event on the chart — during the cooldown window the
   // autoscaleInfoProvider skips wall/bead extension and reassertPriceAutoScale is
@@ -3531,7 +3557,7 @@ export function VectorChart({
   // re-scope with the walls actually drawn on the chart. (User-requested coherence —
   // the terminal must adapt to the DTE selection, not narrate a different scope.)
   const emitRegime = useCallback(() => {
-    if (!onRegimeChange) return;
+    if (!onRegimeChangeRef.current) return;
     const walls = liveGexWalls();
     const regime = deriveVectorRegime({
       spot: spotRef.current,
@@ -3541,8 +3567,8 @@ export function VectorChart({
     });
     if (regime.read === lastRegimeReadRef.current) return;
     lastRegimeReadRef.current = regime.read;
-    onRegimeChange(regime);
-  }, [onRegimeChange, liveGexWalls, liveGammaFlip]);
+    onRegimeChangeRef.current(regime);
+  }, [liveGexWalls, liveGammaFlip]);
 
   // Emit the nearest-wall proximity callout (dynamic desk-terminal pulse). Uses the
   // HORIZON-SCOPED walls + flip so "spot testing the 190 put wall" refers to the wall
@@ -3556,12 +3582,12 @@ export function VectorChart({
       prev: wallProximityStateRef.current,
     });
     wallProximityStateRef.current = prox;
-    if (!onProximityChange) return;
+    if (!onProximityChangeRef.current) return;
     const key = prox ? `${prox.side}:${prox.strike}:${prox.nearness}` : "none";
     if (key === lastProximityRef.current) return;
     lastProximityRef.current = key;
-    onProximityChange(prox);
-  }, [onProximityChange, liveGexWalls, liveGammaFlip]);
+    onProximityChangeRef.current(prox);
+  }, [liveGexWalls, liveGammaFlip]);
 
   // Emit the gamma magnet (dealer-hedging center of mass) up to the desk terminal.
   // Regime posture drives the honest wording (pin in long gamma, pivot in short),
@@ -3569,7 +3595,7 @@ export function VectorChart({
   // (liveGexWalls/liveGammaFlip) — the magnet's center of mass re-computes over the
   // walls the member's DTE selection surfaces. Deduped by the level+pull+posture key.
   const emitMagnet = useCallback(() => {
-    if (!onMagnetChange) return;
+    if (!onMagnetChangeRef.current) return;
     const walls = liveGexWalls();
     const regime = deriveVectorRegime({
       spot: spotRef.current,
@@ -3581,8 +3607,8 @@ export function VectorChart({
     const key = magnet ? `${magnet.strike}:${magnet.pull}:${magnet.posture}` : "none";
     if (key === lastMagnetRef.current) return;
     lastMagnetRef.current = key;
-    onMagnetChange(magnet);
-  }, [onMagnetChange, liveGexWalls, liveGammaFlip]);
+    onMagnetChangeRef.current(magnet);
+  }, [liveGexWalls, liveGammaFlip]);
 
   // Emit ranked CONFLUENCE zones (CTO#7) — stacks every level the chart already tracks (horizon-
   // scoped walls, flip, max pain, session HOD/LOD, auto-fib golden pocket, prior-day H/L) through
@@ -3619,15 +3645,15 @@ export function VectorChart({
   }, [liveGexWalls, liveGammaFlip]);
 
   const emitConfluence = useCallback(() => {
-    if (!onConfluenceChange) return;
+    if (!onConfluenceChangeRef.current) return;
     const spot = spotRef.current;
     if (!(spot && spot > 0)) return;
     const callouts = confluenceCallouts(confluenceZones(gatherConfluenceLevels(spot), spot).slice(0, 3), spot);
     const key = callouts.join("|") || "none";
     if (key === lastConfluenceRef.current) return;
     lastConfluenceRef.current = key;
-    onConfluenceChange(callouts.length ? callouts : null);
-  }, [onConfluenceChange, gatherConfluenceLevels]);
+    onConfluenceChangeRef.current(callouts.length ? callouts : null);
+  }, [gatherConfluenceLevels]);
 
   // Repaint the strongest-confluence-zone band on the price pane. Reads the enabled set + the SAME
   // gathered levels as the terminal, so the band and the ranked callout always describe one zone.
@@ -3656,13 +3682,13 @@ export function VectorChart({
   // persistence is best-effort — strength + isolation still score it honestly, and a
   // strike the rail did track still gets full persistence credit. Deduped by tier+score.
   const emitWallIntegrity = useCallback(() => {
-    if (!onWallIntegrityChange) return;
+    if (!onWallIntegrityChangeRef.current) return;
     const integ = scoreTopWalls(liveGexWalls(), wallHistoryRef.current);
     const key = `${integ.call?.strike ?? "-"}:${integ.call?.tier ?? "-"}:${integ.call?.score ?? "-"}|${integ.put?.strike ?? "-"}:${integ.put?.tier ?? "-"}:${integ.put?.score ?? "-"}`;
     if (key === lastWallIntegrityRef.current) return;
     lastWallIntegrityRef.current = key;
-    onWallIntegrityChange(integ);
-  }, [onWallIntegrityChange, liveGexWalls]);
+    onWallIntegrityChangeRef.current(integ);
+  }, [liveGexWalls]);
 
   // Emit the fused Vector PLAY (buildVectorPlay) — the single concrete trade idea a member sees in
   // the Pulse rail's "Suggested Play" card. Re-derives regime/magnet/proximity/confluence/wall-
