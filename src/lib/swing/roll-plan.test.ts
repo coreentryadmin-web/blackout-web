@@ -98,6 +98,24 @@ test("gradeParentFromMark: basis + provenance fields depend on markSource — a 
   assert.equal(latched!.grade_json.mark_age_ms, 42 * 60_000);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-09, live repro MRNA#65): the real gating rung that
+// triggered the close (structural_stop/thesis_stop/premium_stop/expiry_risk) was computed by
+// evaluateSwingManagement but never persisted past a transient reason string — closedReasonFromRow
+// (closed-plays.ts) had to guess the mechanism purely from the sign of realized_pnl_pct. Stamping it
+// into grade_json here (additive, optional — omitted when the caller doesn't supply one) is what lets
+// that guess be replaced with the real fact.
+test("gradeParentFromMark: stamps the real closing rung into grade_json when supplied, omits the key entirely when not", () => {
+  const withRung = gradeParentFromMark(parentRow({ entry_premium: 5 }), 6, undefined, "thesis_stop");
+  assert.equal(withRung!.grade_json.closing_rung, "thesis_stop");
+
+  const withoutRung = gradeParentFromMark(parentRow({ entry_premium: 5 }), 6);
+  assert.equal(
+    "closing_rung" in withoutRung!.grade_json,
+    false,
+    "no closing_rung key at all when the caller supplies none — never a fabricated/undefined placeholder",
+  );
+});
+
 test("resolveParentGradeMark: prefers the live read; falls back to a FRESH latched last_mark; rejects a STALE or untimestamped one", () => {
   const now = Date.parse("2026-09-09T15:00:00.000Z");
 
@@ -203,6 +221,11 @@ test("ROLL: grades the parent + builds a gated, further-out child leg", async ()
   const plan = await buildSwingRollPlan(parentRow(), verdict(), reads(), deps());
   assert.ok(plan, "a plan is returned");
   assert.equal(plan!.parentGrade.realized_pnl_pct, 20, "(6-5)/5*100");
+  assert.equal(
+    plan!.parentGrade.grade_json.closing_rung,
+    "expiry_risk",
+    "the verdict's real gating rung is threaded through to the parent's frozen grade, even on a ROLL (the parent is closing here too)",
+  );
   assert.ok(plan!.childSpec, "a ROLL carries a child spec");
   const child = plan!.childSpec!;
   assert.equal(child.commit_key, swingRollCommitKey("2026-07-25", "NVDA", "STANDARD", "long", 1, "BREAKOUT"), "child key carries the roll generation");
@@ -284,6 +307,11 @@ test("CLOSE: a gating rung with NO valid-thesis roll grades + closes the parent,
   assert.ok(plan, "a CLOSE plan is returned");
   assert.equal(plan!.childSpec, undefined, "a CLOSE opens no child");
   assert.ok(plan!.parentGrade, "the parent is still graded + closed");
+  assert.equal(
+    plan!.parentGrade.grade_json.closing_rung,
+    "thesis_stop",
+    "the real gating rung is persisted, not just logged transiently — closedReasonFromRow reads this",
+  );
 });
 
 // ─── DEFER (null) cases ──────────────────────────────────────────────────────────
