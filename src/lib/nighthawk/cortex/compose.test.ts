@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
+import { roundFloats } from "@/lib/round-floats";
 import {
   composeCortexEvidence,
   cortexDecayFactor,
@@ -10,6 +11,8 @@ import {
   SOURCE_SUPPORT_CAPS,
   FAMILY_SUPPORT_CAPS,
   CONTESTED_MIN_MAGNITUDE,
+  CORTEX_WEIGHT_DP,
+  CORTEX_WIRE_KEY_DP,
 } from "./compose";
 import { QQQ_SHORT_2026_07_13, SPY_LONG_2026_07_13 } from "./fixtures-2026-07-13";
 import { baseInputs, TEST_NOW } from "./test-helpers";
@@ -264,5 +267,64 @@ describe("compose: conviction banding", () => {
 
   test("invalid now throws (never a silent Date.now rescue)", () => {
     assert.throws(() => composeCortexEvidence(baseInputs({ now: "not-a-clock" })), TypeError);
+  });
+});
+
+// ── fix/cortex-weight-narrative-precision (2026-11-09) ─────────────────────────────
+//
+// Live-confirmed bug: GET /api/market/zerodte/record served a supports[] item's `weight`
+// field at 2dp (e.g. 0.48) while that SAME item's own narrative sentence — baked from the
+// identical rounded value at composition time, right here in compose.ts — still read 3dp
+// (e.g. "+0.478 [opening-harvest] ..."). The two must never disagree: every wire-boundary
+// roundFloats() call downstream of this module has to use CORTEX_WEIGHT_DP (via
+// CORTEX_WIRE_KEY_DP), not re-guess a dp, or the flat 2dp default silently re-rounds only
+// the structured field after the narrative string has already committed to 3dp.
+describe("compose: structured weight vs narrative precision agree (the wire-boundary bug this guards)", () => {
+  test("every support/oppose/veto's narrative line embeds its OWN weight verbatim (compose.ts's internal invariant)", () => {
+    for (const fixture of [QQQ_SHORT_2026_07_13, SPY_LONG_2026_07_13]) {
+      const v = composeCortexEvidence(fixture);
+      for (const item of [...v.vetoes, ...v.supports, ...v.opposes]) {
+        const sign = item.stance === "opposes" ? "-" : "+";
+        const expectedLine =
+          item.stance === "veto"
+            ? `VETO [${item.source}] ${item.detail}`
+            : `${sign}${Math.abs(item.weight)} [${item.source}] ${item.detail}`;
+        assert.ok(
+          v.narrative.includes(expectedLine),
+          `narrative missing exact-weight line for ${item.source}: expected "${expectedLine}", got ${JSON.stringify(v.narrative)}`
+        );
+      }
+    }
+  });
+
+  test("CORTEX_WEIGHT_DP is 3 — the exact precision compose.ts's round() call bakes into both weight and narrative", () => {
+    assert.equal(CORTEX_WEIGHT_DP, 3);
+  });
+
+  test("CORTEX_WIRE_KEY_DP is the roundFloats keyDp override for the 'weight' key, at CORTEX_WEIGHT_DP", () => {
+    assert.deepEqual(CORTEX_WIRE_KEY_DP, { weight: CORTEX_WEIGHT_DP });
+  });
+
+  test("REPRO: roundFloats' flat 2dp default collapses a real decayed weight to a value that disagrees with its own narrative text", () => {
+    const REAL_WEIGHT = 0.478; // mirrors the live opening-harvest repro (META, 2026-11-05)
+    const item = { source: "opening-harvest", weight: REAL_WEIGHT };
+    const narrativeLine = `+${REAL_WEIGHT} [opening-harvest] opening harvest: gap up 2.3 pts`;
+
+    // RED condition (the actual bug, pre-fix): a bare roundFloats(payload) call with no keyDp
+    // override rounds the structured field to 2dp while the narrative string (plain text,
+    // untouched by roundFloats) keeps its 3dp value baked in.
+    const flatRounded = roundFloats(item);
+    assert.equal(flatRounded.weight, 0.48);
+    assert.notEqual(
+      `+${flatRounded.weight} [opening-harvest] opening harvest: gap up 2.3 pts`,
+      narrativeLine,
+      "sanity: the flat-2dp field must actually disagree with the narrative text for this to be a real repro"
+    );
+
+    // GREEN condition (the fix): the SAME call with CORTEX_WIRE_KEY_DP preserves full precision,
+    // so the structured field and the narrative text agree exactly.
+    const wireRounded = roundFloats(item, 2, CORTEX_WIRE_KEY_DP);
+    assert.equal(wireRounded.weight, REAL_WEIGHT);
+    assert.equal(`+${wireRounded.weight} [opening-harvest] opening harvest: gap up 2.3 pts`, narrativeLine);
   });
 });

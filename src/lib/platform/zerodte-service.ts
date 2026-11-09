@@ -31,6 +31,7 @@ import { buildIntelNote } from "@/lib/zerodte/intel";
 import { allocateBoard, openPositionsFromLedger } from "@/lib/portfolio/board-allocation";
 import type { AllocationDecision } from "@/lib/portfolio/allocation";
 import { cortexSummaryFor } from "@/lib/zerodte/cortex-gate";
+import { CORTEX_WIRE_KEY_DP } from "@/lib/nighthawk/cortex/compose";
 import { tierForSkip } from "@/lib/zerodte/tiers";
 import {
   clampPnlToPeak,
@@ -780,7 +781,7 @@ async function registerSetupQuotes(
  * second pass is kept as a harmless, idempotent belt-and-suspenders guard for any future reader
  * of this constant that doesn't go through `getZeroDteBoardPayload()`.
  *
- * Two field families need it:
+ * Three field families need it:
  *  - Option greeks (`delta`/`theta`/`iv`/`gamma`/`vega`) — `setups[].plan.greeks` (plan.ts's
  *    buildContractPlan, never rounded upstream) and `ledger[].greeks` (straight off the raw 1s
  *    live-mark store) are both genuinely unrounded before this call; SPY 0DTE gamma is routinely
@@ -795,6 +796,21 @@ async function registerSetupQuotes(
  *    ability to tell which calibrated geometry was actually served. Live-confirmed 2026-10-26:
  *    SPXW's served `call_width_pct` was 0.01 on the wire while the value re-derived from the
  *    disclosed `condor_basis_price` was 0.00825 (the 92% bucket, not whatever 0.01 implies).
+ *  - Cortex evidence `weight` (`CORTEX_WIRE_KEY_DP`, nighthawk/cortex/compose.ts) — `setups[].
+ *    cortex.verdict.supports`/`opposes`/`vetoes` (a fresh find) and `ledger[].entry_context.
+ *    cortex.supports`/`opposes`/`vetoes` (a committed row) both carry each item's decayed weight
+ *    at compose.ts's own 3dp precision, which it ALSO bakes verbatim into that item's pre-
+ *    formatted `narrative` line — the flat 2dp default here rounded the structured field to a
+ *    different value than its own narrative sentence already committed to (e.g. served
+ *    `{"weight": 0.48, ...}` beside `"+0.478 [opening-harvest] ..."`). Importing the module's own
+ *    exported dp, rather than hand-picking one here, is what keeps the two from drifting apart
+ *    again. BLAST RADIUS NOTE: `roundFloats`'s `keyDp` matches by bare key name, not by path
+ *    (same as the pre-existing `delta` entry above also touching `thesis_health.delta`, an
+ *    unrelated field on `ledger[]` rows) — this also raises `ledger[].thesis_health.pillars[].
+ *    weight` (a normalized 0-1 pillar weight, thesis-health.ts) from 2dp to 3dp. That field is
+ *    computed, and sums to 1, on the UNROUNDED weights before this display-only rounding pass
+ *    ever runs, so the extra digit is strictly more precision on an unrelated field, never a
+ *    behavior change — not worth a second, narrower override.
  */
 export const ZERODTE_BOARD_WIRE_DP: RoundFloatsKeyDp = {
   delta: 4,
@@ -804,6 +820,7 @@ export const ZERODTE_BOARD_WIRE_DP: RoundFloatsKeyDp = {
   vega: 6,
   put_width_pct: 4,
   call_width_pct: 4,
+  ...CORTEX_WIRE_KEY_DP,
 };
 
 /** Uncached board assembly — the exact pipeline the member route used before extraction. */
