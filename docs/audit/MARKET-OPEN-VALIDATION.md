@@ -1,3 +1,33 @@
+## WATCH LIST — 2026-11-09 0DTE `breakout-discovery.ts`'s intraday minute-bar refresh fan-out now bounded via `runPolygonPool` (`fix/zerodte-breakout-discovery-unbounded-polygon-fanout`) — re-check for a shared Polygon circuit-breaker trip next RTH session with `BREAKOUT_INTRADAY_REFRESH` active
+
+- **What was broken**: `discoverBreakoutSetups`'s Wave-C1 intraday breadth refresh (gated by
+  `BREAKOUT_INTRADAY_REFRESH`, confirmed live/enabled in production per
+  `docs/audit/NIGHTHAWK-MAP.md` §11) fired up to `BREAKOUT_INTRADAY_REFRESH_LIMIT` (40) concurrent
+  `fetchStockMinuteBars` calls via a bare `Promise.all`, with no local concurrency bound — relying
+  entirely on the shared, cluster-wide Polygon circuit breaker (`polygon-rate-limiter.ts`) to
+  self-regulate. That breaker, once tripped by ANY caller (5 consecutive 429s), rejects EVERY
+  Polygon caller process-wide for 60s. This is the same bug class PR #7832 fixed the same day in
+  swing-discovery's duplicate copy of this exact logic — that PR's own write-up explicitly flagged
+  this file as an unfixed follow-up, and this fix closes it.
+- **Fix**: the fan-out now routes through `runPolygonPool()` (default concurrency 8), the same
+  established helper already used by `vector-universe.ts`, `polygon-options-gex.ts`,
+  `heatmap-warm/route.ts`, and `swing-discovery/route.ts` (PR #7832). No change to the function's
+  discriminated return shape or its one caller (`scan.ts`); the already-bounded chain-build fan-out
+  (8-wide batches) elsewhere in the same file was verified correctly bounded already and left
+  untouched. RED→GREEN confirmed via plain file-copy backup/restore (not `git stash`): pre-fix, a
+  new behavioral test observed 20/20 concurrent calls for 20 queued tickers (unbounded); post-fix,
+  the same test observes `maxInFlight <= 8`. Full relevant suites green on Node 20.20.2; `npx tsc
+  --noEmit` clean.
+- **Specific thing to check once live, next RTH session with `BREAKOUT_INTRADAY_REFRESH` active**:
+  watch `GET /api/admin/cron-health` / live CloudWatch logs for `[polygon] Circuit open — rate
+  limited` events correlated with the 0DTE board's BREAKOUT discovery lane (MIDDAY/POWER_HOUR/
+  PRE_OPEN scan phases). If this fan-out was a genuine contributor to breaker trips (as confirmed
+  for swing-discovery's identical pre-fix logic — 0/30 runs_24h before #7832), the trip rate during
+  those phases should visibly drop post-deploy; also spot-check `GET /api/market/zerodte/board`'s
+  BREAKOUT-origin setup count isn't silently starved (a healthy, non-zero count with `status: "ok"`
+  in the discovery-health diagnostics, not `data_unavailable`/`skip_fetch_failed` from an unrelated
+  cause).
+
 ## WATCH LIST — 2026-11-09 (Ask Largo swing play-brief's option-mark stale-quote caveat — 4 remaining call sites now severity-tiered, `fix/swing-largo-option-mark-stale-caveat-remaining-sites`) — re-check a severely-stale committed swing position's full brief once live
 
 - **What was broken**: PR #7795 (merged earlier the same day) gave `optionMarkStaleCaveat()` a

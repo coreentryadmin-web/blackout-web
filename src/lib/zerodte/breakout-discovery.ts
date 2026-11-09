@@ -53,6 +53,7 @@ import {
   type MinuteBarLike,
 } from "./breakout-intraday-breadth";
 import { fetchStockMinuteBars } from "@/lib/providers/polygon";
+import { runPolygonPool } from "@/lib/providers/polygon-rate-limiter";
 
 function envFlag(name: string): boolean {
   const raw = process.env[name]?.trim().toLowerCase();
@@ -331,8 +332,23 @@ export async function discoverBreakoutSetups(opts: {
       ...new Set([...preLong, ...preShort].map((m) => m.ticker.toUpperCase())),
     ].slice(0, BREAKOUT_INTRADAY_REFRESH_LIMIT);
     const refreshed = new Map<string, DailyMarketBar>();
-    await Promise.all(
-      tickers.map(async (t) => {
+    // BUG FIX (2026-11-09, task #95 — sibling of PR #7832's swing-discovery fix, same root-cause
+    // shape flagged in that PR's "what was NOT changed" section): this fired up to
+    // BREAKOUT_INTRADAY_REFRESH_LIMIT (40) concurrent `minuteFetch` (fetchStockMinuteBars) calls via
+    // a bare `Promise.all`, with NO local concurrency bound of its own — relying entirely on the
+    // SHARED, cluster-wide reactive circuit breaker (polygon-rate-limiter.ts) to self-regulate. That
+    // breaker opens after CIRCUIT_429_THRESHOLD (5) CONSECUTIVE 429s from ANY caller and then
+    // rejects EVERY Polygon caller process-wide for CIRCUIT_PAUSE_MS (60s) — so a single 40-wide
+    // burst from this call site, landing on top of whatever else (Vector/0DTE/other desks) is
+    // already in flight against the same limiter, is a large enough spike to plausibly trip it on
+    // its own, exactly as it did for swing-discovery's duplicate copy of this same logic (0/30
+    // runs_24h, GET /api/admin/cron-health). `runPolygonPool` is this repo's own established fix for
+    // exactly this fan-out shape (its doc comment in polygon-rate-limiter.ts traces two prior
+    // incidents with the identical root cause: vector-dark-pool-warm 2026-09-02, vector-universe
+    // 2026-09-04) — already used by vector-universe.ts/polygon-options-gex.ts/heatmap-warm/route.ts/
+    // swing-discovery/route.ts. Default concurrency (POOL_MAX_CONCURRENCY=8, env-overridable).
+    await runPolygonPool(
+      tickers.map((t) => async () => {
         const bars = await minuteFetch(t, today, today).catch(() => []);
         const minuteBars: MinuteBarLike[] = [];
         for (const b of bars) {
