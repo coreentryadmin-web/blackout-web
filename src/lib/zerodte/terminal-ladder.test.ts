@@ -9,6 +9,7 @@ import {
   timeStopClock,
   hasScaledOut,
   runnerTrailingStopPremium,
+  blendedTrimPnlPct,
   RTH_OPEN_ET_MINUTES,
   type TerminalPolicyInput,
 } from "./terminal-ladder.ts";
@@ -93,6 +94,41 @@ test("runnerTrailingStopPremium: peakPremium × SCALE_OUT_RULES.trail_from_peak 
   assert.equal(runnerTrailingStopPremium(null), null);
   assert.equal(runnerTrailingStopPremium(0), null);
   assert.equal(runnerTrailingStopPremium(Number.NaN), null);
+});
+
+// BUG FIX (Ask Largo standing mandate — live-audit confirmed finding, 2026-11-09, live repro
+// SWING:APP/positionId 2397): the Command Deck's verdict-band headline showed the raw, unblended
+// open-runner-only P&L for a TRIM-status SWING position, even once a tranche had already banked —
+// see ZeroDteCommandPanel.tsx's own doc comment at this function's call site for the full write-up.
+test("blendedTrimPnlPct: blends a fired tranche's trigger_pct with the open runner's live P&L (live repro APP: entry $17.34, mark $98.00)", () => {
+  const fired = [{ trigger_pct: 100, fraction: 0.5, premium: 34.68, fired: true }];
+  // raw runner-only P&L = (98.00 / 17.34 − 1) × 100, rounded to 465.2 (livePnlPct's own rounding).
+  assert.equal(blendedTrimPnlPct(465.2, fired), 282.6, "0.5×100 + 0.5×465.2 = 282.6");
+});
+
+test("blendedTrimPnlPct: nothing fired yet → null (the runner-only figure IS the whole position, never blend it)", () => {
+  const unfired = [{ trigger_pct: 100, fraction: 0.5, premium: 34.68, fired: false }];
+  assert.equal(blendedTrimPnlPct(42.6, unfired), null);
+});
+
+test("blendedTrimPnlPct: no trim levels / absent runner P&L → null (never a fabricated number)", () => {
+  assert.equal(blendedTrimPnlPct(42.6, null), null);
+  assert.equal(blendedTrimPnlPct(42.6, undefined), null);
+  assert.equal(blendedTrimPnlPct(42.6, []), null);
+  assert.equal(blendedTrimPnlPct(null, [{ trigger_pct: 100, fraction: 0.5, premium: 1, fired: true }]), null);
+  assert.equal(blendedTrimPnlPct(Number.NaN, [{ trigger_pct: 100, fraction: 0.5, premium: 1, fired: true }]), null);
+});
+
+test("blendedTrimPnlPct: multi-tranche ladder sums every fired rung's banked fraction before blending the remaining runner", () => {
+  // Mirrors this file's own TRIM_SCALE fixture: ⅓@+25%, ⅓@+50%, both fired, runner at +80%.
+  const multi = [
+    { trigger_pct: 25, fraction: 1 / 3, premium: 2.5, fired: true },
+    { trigger_pct: 50, fraction: 1 / 3, premium: 3.0, fired: true },
+  ];
+  // (1/3)*25 + (1/3)*50 + (1/3)*80 = 8.333... + 16.666... + 26.666... = 51.666...
+  const blended = blendedTrimPnlPct(80, multi);
+  assert.ok(blended != null);
+  assert.ok(Math.abs(blended - 51.6667) < 0.001);
 });
 
 test("clock: minutes remaining + label + elapsed fraction to 15:50", () => {
