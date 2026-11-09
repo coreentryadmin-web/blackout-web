@@ -55,6 +55,10 @@ function minutesToCashClose(now = new Date()): number | null {
 function minutesUntilNoEntry(now = new Date()): number | null {
   if (!isTradingDayEt(formatEtDate(now)) || isPastNoEntryCutoff(now)) return null;
   const etMins = etMinutes(now);
+  // Mirrors minutesToCashClose's own pre-open guard — isPastNoEntryCutoff only checks the
+  // AFTERNOON cutoff (~3:30pm ET), so without this, a pre-market read (e.g. 6am ET) on an
+  // ordinary trading day fell through to the live countdown math below with no session open.
+  if (etMins < CASH_OPEN_ET_MINS) return null;
   const earlyClose = getEarlyCloseMinutes(now);
   const cutoffMins =
     earlyClose != null ? earlyClose - 30 : etClock(15, 30);
@@ -65,6 +69,8 @@ function minutesUntilNoEntry(now = new Date()): number | null {
 function minutesUntilForceExit(now = new Date()): number | null {
   if (!isTradingDayEt(formatEtDate(now)) || isPastForceExitCutoff(now)) return null;
   const etMins = etMinutes(now);
+  // Same pre-open guard as minutesUntilNoEntry/minutesToCashClose — see their comments.
+  if (etMins < CASH_OPEN_ET_MINS) return null;
   const earlyClose = getEarlyCloseMinutes(now);
   const cutoffMins = earlyClose != null ? earlyClose - 10 : etClock(15, 45);
   if (etMins >= cutoffMins) return null;
