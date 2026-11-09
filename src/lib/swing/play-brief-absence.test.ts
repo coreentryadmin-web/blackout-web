@@ -1998,6 +1998,196 @@ test("collectBriefUnavailableSources: uncalibrated thesis health surfaces in env
   );
 });
 
+// BUG FIX (2026-11-09, Ask Largo x Night Hawk Swings standing mandate, live MRVL positionId 70
+// repro): the test above covers only the ALL-pillars-uncalibrated case (#4318) — persistence/
+// entry_geometry/flow_corroboration all simultaneously generic defaults. It never covers the
+// PARTIAL case #5367 introduced on the narrative side (play-brief.ts's thesisHealthSection, via
+// calibratedThesisPillars()): a position where only ONE pillar (here, regime) is a generic
+// default and the other four are real, live-derived reads. Before the fix, this exact shape
+// produced the same "setup/entry/signal inputs unavailable" text as the all-missing case above —
+// doubly wrong, since it named three inputs that were actually PRESENT and never named the one
+// (regime) that was actually missing.
+test("collectBriefUnavailableSources: PARTIAL thesis-health calibration names only the real missing pillar, not the generic setup/entry/signal guess (live MRVL positionId 70 repro)", () => {
+  const h = {
+    health: 68,
+    entryIndex: 72,
+    currentIndex: 68,
+    delta: -4,
+    rung: "MINOR",
+    rungLabel: "Minor drift",
+    pillars: [
+      {
+        id: "structure",
+        label: "Persistence",
+        weight: 0.28,
+        commitScore: 0.9,
+        currentScore: 0.9,
+        commitLabel: "triggered",
+        currentLabel: "triggered",
+        status: "intact",
+        contributionPts: 25,
+        deltaPts: 0,
+      },
+      {
+        id: "momentum",
+        label: "Entry geometry",
+        weight: 0.22,
+        commitScore: 1,
+        currentScore: 1,
+        commitLabel: "at trigger",
+        currentLabel: "at trigger",
+        status: "intact",
+        contributionPts: 22,
+        deltaPts: 0,
+      },
+      {
+        id: "flow",
+        label: "Signal stack",
+        weight: 0.2,
+        commitScore: 0.8,
+        currentScore: 0.8,
+        commitLabel: "FLOW+VECTOR",
+        currentLabel: "FLOW+VECTOR",
+        status: "intact",
+        contributionPts: 16,
+        deltaPts: 0,
+      },
+      // The one honestly-missing pillar — regimeScore()'s own "unread" default (regime input null,
+      // no "Regime" factor present). Matches the live MRVL repro exactly.
+      {
+        id: "market",
+        label: "Regime fit",
+        weight: 0.15,
+        commitScore: 0.45,
+        currentScore: 0.45,
+        commitLabel: "unread",
+        currentLabel: "unread",
+        status: "intact",
+        contributionPts: 7,
+        deltaPts: 0,
+      },
+      {
+        id: "volatility",
+        label: "Theta budget",
+        weight: 0.15,
+        commitScore: 0.85,
+        currentScore: 0.85,
+        commitLabel: "45DTE runway",
+        currentLabel: "45DTE runway",
+        status: "intact",
+        contributionPts: 13,
+        deltaPts: 0,
+      },
+    ],
+    moves: [],
+    committedAtEt: null,
+    computedAtEt: "10:00 ET",
+    advisory: "Hold while pillars hold — scale-out ladder governs profit-taking.",
+    thesisBreakLevel: "intact",
+  };
+  const ctx = {
+    play: { status: "OPEN", thesisHealth: h },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const entry = sources.find((s) => s.source === "thesis health");
+  assert.ok(entry, "thesis health must still surface in unavailableSources — the aggregate % is genuinely withheld");
+  // Must name the REAL missing pillar (regime fit) — not the generic three-input guess, and not
+  // any of the four pillars that are actually present and calibrated.
+  assert.equal(entry!.reason, "regime fit input unavailable for this committed position");
+  assert.equal(entry!.what_is_missing, "the regime fit input the thesis-health score is calibrated on");
+  for (const wrongWord of ["setup", "entry/signal", "persistence", "theta"]) {
+    assert.ok(
+      !entry!.reason.toLowerCase().includes(wrongWord) && !entry!.what_is_missing.toLowerCase().includes(wrongWord),
+      `reason/what_is_missing must not name a pillar that IS present (found "${wrongWord}")`,
+    );
+  }
+});
+
+test("collectBriefUnavailableSources: fully-calibrated thesis health never surfaces in unavailableSources", () => {
+  const h = {
+    health: 78,
+    entryIndex: 80,
+    currentIndex: 78,
+    delta: -2,
+    rung: "MINOR",
+    rungLabel: "Minor drift",
+    pillars: [
+      {
+        id: "structure",
+        label: "Persistence",
+        weight: 0.28,
+        commitScore: 0.9,
+        currentScore: 0.9,
+        commitLabel: "triggered",
+        currentLabel: "triggered",
+        status: "intact",
+        contributionPts: 25,
+        deltaPts: 0,
+      },
+      {
+        id: "momentum",
+        label: "Entry geometry",
+        weight: 0.22,
+        commitScore: 1,
+        currentScore: 1,
+        commitLabel: "at trigger",
+        currentLabel: "at trigger",
+        status: "intact",
+        contributionPts: 22,
+        deltaPts: 0,
+      },
+      {
+        id: "flow",
+        label: "Signal stack",
+        weight: 0.2,
+        commitScore: 0.8,
+        currentScore: 0.8,
+        commitLabel: "FLOW+VECTOR",
+        currentLabel: "FLOW+VECTOR",
+        status: "intact",
+        contributionPts: 16,
+        deltaPts: 0,
+      },
+      {
+        id: "market",
+        label: "Regime fit",
+        weight: 0.15,
+        commitScore: 0.75,
+        currentScore: 0.75,
+        commitLabel: "momentum long",
+        currentLabel: "momentum long",
+        status: "intact",
+        contributionPts: 11,
+        deltaPts: 0,
+      },
+      {
+        id: "volatility",
+        label: "Theta budget",
+        weight: 0.15,
+        commitScore: 0.85,
+        currentScore: 0.85,
+        commitLabel: "45DTE runway",
+        currentLabel: "45DTE runway",
+        status: "intact",
+        contributionPts: 13,
+        deltaPts: 0,
+      },
+    ],
+    moves: ["All swing pillars unchanged since commit."],
+    committedAtEt: null,
+    computedAtEt: "10:00 ET",
+    advisory: "Hold while pillars hold — scale-out ladder governs profit-taking.",
+    thesisBreakLevel: "intact",
+  };
+  const ctx = {
+    play: { status: "OPEN", thesisHealth: h },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(!sources.some((s) => s.source === "thesis health"));
+});
+
 test("ageSecondsLabel: null/undefined returns null (optional-suffix callers omit the parenthetical entirely)", () => {
   assert.equal(ageSecondsLabel(null), null);
   assert.equal(ageSecondsLabel(undefined), null);

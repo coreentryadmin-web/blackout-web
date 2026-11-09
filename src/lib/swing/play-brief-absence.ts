@@ -18,7 +18,7 @@ import type { GammaFlipReason } from "@/lib/providers/gex-cross-validation-core"
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
-import { thesisHealthUncalibrated } from "./thesis-health";
+import { thesisHealthUncalibrated, uncalibratedThesisPillars } from "./thesis-health";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason } from "./entry-enterability";
 import { SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC } from "./calibration-cache";
@@ -1557,15 +1557,43 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   }
   // Committed positions compute thesis health without setup/entry/signal inputs — the aggregate
   // % collapses to a generic default. Surface that honestly (Largo C3/C6) rather than showing 46%.
+  //
+  // BUG FIX (2026-11-09, Ask Largo x Night Hawk Swings standing mandate, live MRVL positionId 70
+  // repro): this used to push the SAME fixed "setup/entry/signal inputs unavailable" text any
+  // time `thesisHealthUncalibrated()` was true, regardless of which pillar(s) actually tripped
+  // it — correct for the original all-or-nothing case (#4318: setup/entry/signal structurally
+  // null for every committed position at the time) this check was built for, but wrong since
+  // #5367 (2026-09-21) taught the NARRATIVE side (`play-brief.ts`'s `thesisHealthSection`, via
+  // `calibratedThesisPillars()`) to render genuinely-calibrated pillars individually instead of
+  // hiding the whole breakdown. Live MRVL evidence: the narrative correctly showed real,
+  // calibrated Persistence/Entry geometry/Signal stack/Theta budget pillars and withheld only the
+  // aggregate % + the one actually-missing Regime-fit pillar — but this structured entry still
+  // named "setup/entry/signal" (the three inputs that WERE present), never mentioning regime (the
+  // one that wasn't), and fed that wrong claim into `confidence.why` too. Fixed by reusing
+  // `uncalibratedThesisPillars()` — the exact complement of the narrative side's own
+  // `calibratedThesisPillars()` — to name the REAL missing pillar(s). When every pillar is
+  // missing at once (the original #4318 shape, or a Banger-origin row's all-or-nothing carve-out —
+  // see `uncalibratedThesisPillars`'s own doc comment), keep the original generic text unchanged
+  // rather than literally spelling out all five labels, which would read as noise for a case this
+  // text already describes accurately.
   if (
     ctx.play &&
     ["OPEN", "HOLD", "TRIM"].includes(String(ctx.play.status ?? "").toUpperCase()) &&
+    ctx.play.thesisHealth &&
     thesisHealthUncalibrated(ctx.play.thesisHealth)
   ) {
+    const missing = uncalibratedThesisPillars(ctx.play.thesisHealth);
+    const allMissing = missing.length === 0 || missing.length === ctx.play.thesisHealth.pillars.length;
+    const names = missing.map((p) => p.label.toLowerCase()).join(", ");
+    const plural = missing.length === 1 ? "" : "s";
     out.push({
       source: "thesis health",
-      reason: "setup/entry/signal inputs unavailable for committed positions",
-      what_is_missing: "the setup/entry/signal inputs the thesis-health score is calibrated on",
+      reason: allMissing
+        ? "setup/entry/signal inputs unavailable for committed positions"
+        : `${names} input${plural} unavailable for this committed position`,
+      what_is_missing: allMissing
+        ? "the setup/entry/signal inputs the thesis-health score is calibrated on"
+        : `the ${names} input${plural} the thesis-health score is calibrated on`,
       // Structural for a committed position, not a stale read — these inputs are never captured
       // once a candidate is promoted to a position, so a retry cannot surface them.
       retryable: false,
