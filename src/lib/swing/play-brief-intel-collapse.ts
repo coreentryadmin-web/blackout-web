@@ -80,7 +80,15 @@ import type { RichSection } from "@/lib/bie/rich-narrative";
  *   `ep.runner_fraction != null` alone, while the narrative's own runner-fraction clause is
  *   suppressed whenever the position is a full flatten (manageAction EXIT/STOP_OUT).
  *
- * `undefined`/`false` is the SAFE default for all seven: the section is kept (never dropped) and
+ * - "GEX posture" (`gexPostureFolded`): `gexPostureSection` (play-brief-intel.ts) renders Net
+ *   VEX/DEX/CHARM dollar figures whenever the matrix isn't stale, but the narrative's only
+ *   counterpart (`dealerPostureLine`, play-brief-narrative.ts) deliberately keeps VEX/DEX/CHARM as
+ *   qualitative regime-read TEXT only — never their dollar amounts (unlike net_gex, whose own
+ *   dollar figure WAS added to the narrative). `net_vex` is a non-nullable field on
+ *   `gex_positioning` (always assigned from `vex.total` whenever the matrix exists at all), so
+ *   this section almost always carries real content with no narrative counterpart.
+ *
+ * `undefined`/`false` is the SAFE default for all eight: the section is kept (never dropped) and
  * the "folded into Trade manager read" note never claims coverage it can't prove — a caller that
  * forgets to pass one of these loses the collapse for that one section, never gains a false claim.
  */
@@ -153,6 +161,13 @@ export function collapseRedundantIntelSections(
      * `NARRATIVE_COVERED_TITLES`'s "Hold plan" entry. Same safe-default shape as `laneRankFolded`.
      */
     holdPlanFolded?: boolean;
+    /**
+     * Whether `dealerPostureLine(...)` actually carried the VEX/DEX/CHARM dollar content
+     * `gexPostureSection` renders — see the top-of-file doc comment on
+     * `NARRATIVE_COVERED_TITLES`'s "GEX posture" entry. Same safe-default shape as
+     * `laneRankFolded`.
+     */
+    gexPostureFolded?: boolean;
   },
 ): RichSection[] {
   if (!opts.hasNarrative) return sections;
@@ -173,6 +188,7 @@ export function collapseRedundantIntelSections(
     if (s.title === "Flow & positioning") return opts.flowIntelFolded !== true;
     if (s.title === "Macro tape") return opts.macroTapeFolded !== true;
     if (s.title === "Hold plan") return opts.holdPlanFolded !== true;
+    if (s.title === "GEX posture") return opts.gexPostureFolded !== true;
     return false;
   });
 
