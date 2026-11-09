@@ -36,3 +36,8 @@ test("full-site-deep-audit SPX oracle follows data-validator RTH/off-hours groun
   assert.match(src, /I:SPX\/prev/);
   assert.doesNotMatch(src, /if \(d > 5\) fail\("oracle", "SPX"/);
 });
+
+test("full-site-deep-audit SPX desk spot uses deploy-smoke RTH/off-hours verdict (no P0 price=0 after close)", () => {
+  assert.match(src, /evaluateSpxDeskSmoke/);
+  assert.match(src, /deskVerdict\.outcome === "fail"/);
+});
