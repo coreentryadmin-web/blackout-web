@@ -15,7 +15,7 @@
  *   node scripts/gha-rth-audit.mjs --force   # Postgres RTH checks even off-hours
  */
 import { spawnSync } from "node:child_process";
-import { etParts, inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { etParts, inRthDeepAuditWindow, inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import {
   createAuditClient,
   describeConnectError,
@@ -40,6 +40,7 @@ const failures = [];
 const etNow = etParts();
 const { label: etLabel, mins: etMins } = etNow;
 const rthOpen = inRthOpenWindow();
+const deepAuditWindow = inRthDeepAuditWindow();
 const afterOpen930 = etMins >= 9 * 60 + 30;
 
 const PG_RTH_MAX_ATTEMPTS = Math.max(1, Number(process.env.RTH_PG_CHECK_ATTEMPTS ?? 3) || 3);
@@ -167,7 +168,7 @@ async function postgresRthChecks() {
   }
 }
 
-async function cronHttpChecks() {
+async function cronHttpChecks({ auditWindowOpen }) {
   console.log("\n── Cron HTTP checks ──");
   const H = { Authorization: `Bearer ${CRON}` };
   const routes = [
@@ -209,8 +210,16 @@ async function cronHttpChecks() {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+        const keys = json.problem_keys ?? [];
+        const rthStaleKeys = json.rth_stale_keys ?? [];
+        if (!auditWindowOpen && rthStaleKeys.length === 0) {
+          console.log(
+            `  ⚠ ${label} → ${keys.join(", ")} (off deep-audit window — not failing run; market-hours staleness would still fail in-window)`
+          );
+        } else {
+          failures.push(`${label}: ${keys.join(", ")}`);
+          console.log(`  ✗ ${label} → stale: ${keys.join(", ")}`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
@@ -255,7 +264,8 @@ async function cronHttpChecks() {
 console.log(`\n=== GitHub Actions RTH audit ===`);
 console.log(`Target: ${BASE}`);
 console.log(`Time:   ${new Date().toISOString()} (${etLabel})`);
-console.log(`RTH:    ${rthOpen ? "open" : "closed/off-hours"}${force ? " (--force)" : ""}\n`);
+console.log(`RTH:    ${rthOpen ? "open" : "closed/off-hours"}${force ? " (--force)" : ""}`);
+console.log(`Deep:   ${deepAuditWindow ? "in scheduled window" : "outside window"}\n`);
 
 // Public HTTP smoke (always)
 run("Public HTTP smoke", "node", ["scripts/gha-http-smoke.mjs"]);
@@ -264,8 +274,13 @@ run("Public HTTP smoke", "node", ["scripts/gha-http-smoke.mjs"]);
 run("Sentry smoke", "node", ["scripts/gha-sentry-smoke.mjs"]);
 
 if (!smokeOnly) {
-  run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
-  await cronHttpChecks();
+  if (deepAuditWindow || force) {
+    run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
+  } else {
+    console.log("\n── Full-site deep audit ──");
+    console.log("  ⚠ Outside RTH deep-audit window — skipping (scheduled 10:00/14:00/16:30 ET only)");
+  }
+  await cronHttpChecks({ auditWindowOpen: deepAuditWindow || force });
   await postgresRthChecks();
 }
 

@@ -68,6 +68,13 @@ export function inRthOpenWindow(now = new Date()) {
   return mins >= 9 * 60 && mins <= 16 * 60 + 15;
 }
 
+/** Weekday window for scheduled `rth-deep-audit.yml` (10:00 / 14:00 / 16:30 ET) — wider than cash RTH. */
+export function inRthDeepAuditWindow(now = new Date()) {
+  const { weekday, mins } = etParts(now);
+  if (weekday === "Sat" || weekday === "Sun") return false;
+  return mins >= 9 * 60 && mins <= 16 * 60 + 45;
+}
+
 export function isWeekdayEt(now = new Date()) {
   const { weekday } = etParts(now);
   return weekday !== "Sat" && weekday !== "Sun";
