@@ -49,6 +49,30 @@ function biasTone(bias: string | null | undefined): MiniPanelRow["tone"] {
   return "neutral";
 }
 
+/**
+ * SPX Slayer's live "Action"/"Play" rows must color by the play's own DIRECTION
+ * ("long"/"short"/null), never by substring-matching `action`.
+ *
+ * BUG FIX (round 511): both call sites below used to read
+ * `(p?.action ?? "").toLowerCase().includes("short") ? "bear" : "bull"`. `action` is
+ * `SpxPlayAction` (`spx-signals.ts`): `"SCANNING" | "WATCHING" | "BUY" | "HOLD" | "TRIM" |
+ * "SELL"` — none of those six literals contains the substring "short" (or "long"), so the
+ * check was dead code that ALWAYS fell through to the `"bull"` branch, regardless of whether
+ * the live play was actually long or short. A short/bearish SPX Slayer play rendered a green
+ * "bull" tone on its own Action and Play rows in this live Largo mini-panel (the value text —
+ * "SELL"/"HOLD"/etc — was always correct; only the color was wrong, and wrong unconditionally
+ * in the bearish direction). The real direction lives on a SEPARATE field, `play.direction`
+ * (`SpxPlayDirection | null`), which the narrowed local `p` type here didn't even carry.
+ * `null`/unknown direction (e.g. SCANNING with no play yet) now renders untoned rather than
+ * fabricating a bullish lean, matching how `biasTone` et al. refuse a verdict they have no
+ * evidence for.
+ */
+export function spxDirectionTone(direction: string | null | undefined): MiniPanelRow["tone"] {
+  if (direction === "short") return "bear";
+  if (direction === "long") return "bull";
+  return undefined;
+}
+
 export async function fetchMiniPanelPayload(input: {
   desk: string;
   ticker?: string;
@@ -104,6 +128,7 @@ export async function fetchMiniPanelPayload(input: {
           action?: string;
           grade?: string;
           spot?: number;
+          direction?: string | null;
         } | null;
         const desk = structure as {
           price?: number;
@@ -122,7 +147,7 @@ export async function fetchMiniPanelPayload(input: {
             {
               label: "Action",
               value: p?.action ?? "—",
-              tone: (p?.action ?? "").toLowerCase().includes("short") ? "bear" : "bull",
+              tone: spxDirectionTone(p?.direction),
             },
             { label: "Grade", value: p?.grade ?? "—" },
             { label: "Spot", value: p?.spot != null ? String(Math.round(p.spot)) : gex?.spot != null ? String(Math.round(gex.spot)) : "—" },
@@ -236,7 +261,7 @@ export async function fetchMiniPanelPayload(input: {
             {
               label: "Play",
               value: [p?.phase, p?.action, p?.grade].filter(Boolean).join(" · ") || "—",
-              tone: (p?.action ?? "").toLowerCase().includes("short") ? "bear" : "bull",
+              tone: spxDirectionTone(p?.direction),
             },
           ];
         }
