@@ -86,3 +86,20 @@ test("change formatting is signed and compact", () => {
   assert.equal(formatGexChange(-4200), "−$4K");
   assert.equal(formatGexChange(0), "+$0");
 });
+
+test("change formatting rounds FIRST then promotes the unit, never prints 1000 of a smaller unit", () => {
+  // 999_500 is < 1e6 so the OLD code took the K branch unconditionally, then
+  // (999_500/1e3).toFixed(0) rounded UP to "1000" — rendering "+$1000K" instead of
+  // promoting to "+$1.0M". Mirrors fmt-money.ts's own K/M-boundary regression test.
+  assert.equal(formatGexChange(999_500), "+$1.0M");
+  assert.equal(formatGexChange(-999_500), "−$1.0M");
+  // Just under the boundary must still render as K.
+  assert.equal(formatGexChange(999_400), "+$999K");
+  // 999_950_000 is < 1e9 so the OLD code took the M branch unconditionally, then
+  // (999_950_000/1e6).toFixed(1) rounded UP to "1000.0" — rendering "+$1000.0M" instead of
+  // promoting to "+$1.0B".
+  assert.equal(formatGexChange(999_950_000), "+$1.0B");
+  assert.equal(formatGexChange(-999_950_000), "−$1.0B");
+  // Just under that boundary must still render as M.
+  assert.equal(formatGexChange(999_940_000), "+$999.9M");
+});

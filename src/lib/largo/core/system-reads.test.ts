@@ -27,6 +27,20 @@ test("HELIX: puts drive the bearish side and the basis is checkable", () => {
   assert.match(r.basis, /net −\$30\.0M of \+\$40\.0M gross · 150 prints/);
 });
 
+test("HELIX basis string's money() rounds FIRST then promotes the unit (shares the gex-shift-extract.ts bug)", () => {
+  // 999_500 is < 1e6 so the OLD local money() took the K branch unconditionally, then
+  // (999_500/1e3).toFixed(0) rounded UP to "1000" — rendering "net +$1000K" instead of
+  // promoting to "net +$1.0M". Byte-identical duplicate of formatGexChange's own bug.
+  const net = helixFlowRead({ netPremium: 999_500, grossPremium: 1_000_000, printCount: 50 });
+  assert.match(net.basis, /net \+\$1\.0M of \+\$1\.0M gross/);
+
+  // 999_950_000 is < 1e9 so the OLD money() took the M branch unconditionally, then
+  // (999_950_000/1e6).toFixed(1) rounded UP to "1000.0" — rendering "+$1000.0M" instead of
+  // promoting to "+$1.0B".
+  const gross = helixFlowRead({ netPremium: 999_950_000, grossPremium: 999_950_000, printCount: 50 });
+  assert.match(gross.basis, /net \+\$1\.0B of \+\$1\.0B gross/);
+});
+
 test("a thin sample is NO READ, not neutral — and says why", () => {
   const r = helixFlowRead({ netPremium: 5e6, grossPremium: 5e6, printCount: 3 });
   assert.equal(r.stance, "no-read");
