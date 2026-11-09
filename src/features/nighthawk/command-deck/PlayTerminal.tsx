@@ -68,7 +68,18 @@ function fmtGreek(k: string, v: number | null): string {
 }
 
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
-const signPct = (n: number | null | undefined): string => (n != null ? `${n > 0 ? "+" : ""}${Math.round(n)}%` : "—");
+// ROUNDS BY MAGNITUDE, THEN REAPPLIES SIGN — plain `Math.round(n)` ties toward +Infinity
+// (`Math.round(-2.5) === -2` but `Math.round(2.5) === 3`), a sign-biased asymmetry: a losing
+// position's Peak/Trough chip (TradeOutcomePanel) or scorecard-hint average sitting exactly on a
+// half-percent tie rendered a SMALLER magnitude than the identical-distance gain. Same bug class
+// already fixed in `fmt-money.ts`'s `fmtPct` (2026-10-26), `round-floats.ts`, and
+// `thermal/lib/gex-heatmap/shift-math.ts`'s `fmtShiftPercentForStrike` — this was an independent,
+// un-migrated paste of the same formatter in the Night Hawk command deck.
+export const signPct = (n: number | null | undefined): string => {
+  if (n == null) return "—";
+  const rounded = Math.sign(n) * Math.round(Math.abs(n));
+  return `${rounded > 0 ? "+" : ""}${rounded}%`;
+};
 
 function formatScorecardHint(s: { avg: number; n: number; scope?: "conviction_bucket" | "play" }): string {
   const n = Number.isFinite(s.n) ? s.n : 0;
