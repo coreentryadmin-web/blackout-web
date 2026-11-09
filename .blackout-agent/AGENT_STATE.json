@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-09T10:40:51.049Z",
+  "updated_at": "2026-11-09T12:17:38.469Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-09T10:40:29.579Z"
+      "released_at": "2026-11-09T12:17:17.522Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-09T10:40:35.105Z",
-      "lease_until": "2026-11-09T10:41:35.105Z",
+      "claimed_at": "2026-11-09T12:17:22.994Z",
+      "lease_until": "2026-11-09T12:18:22.994Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-09T10:40:35.109Z"
+      "released_at": "2026-11-09T12:17:23.002Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b3cfea0073c597c61135449def82aabd006f28e6",
+    "last_main_sha": "bc26778004cc39c3bf00078ffea016ccf9af9864",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-09T10:39:02Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42602393195",
-    "last_deploy_sha": "b3cfea0073c597c61135449def82aabd006f28e6"
+    "last_deploy_at": "2026-11-09T12:16:40Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42615656831",
+    "last_deploy_sha": "bc26778004cc39c3bf00078ffea016ccf9af9864"
   },
   "events": [
-    {
-      "at": "2026-10-31T16:40:54.072Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-31T16:40:59.627Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-31T17:11:04.720Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-31T17:11:11.313Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-31T17:11:17.062Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-31T17:37:32.815Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
     {
       "at": "2026-10-31T17:37:38.869Z",
       "type": "context_sync",
@@ -1289,18 +1253,54 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T12:17:17.522Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T12:17:23.001Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T12:17:23.002Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T12:17:27.851Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T12:17:33.425Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T12:17:38.469Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 7737,
-      "title": "fix(vector): GEX heatmap strike-axis cap was inert on dense near-spot bands",
-      "branch": "fix/heatmap-strike-cap-overflow",
+      "number": 7747,
+      "title": "fix(meridian): earnings-intel fmtPrem had no billion/trillion tier for net_gex/net_premium",
+      "branch": "fix/meridian-earnings-intel-fmtprem-billion-tier",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/pending",
-      "updated_at": "2026-11-09T10:28:05Z"
+      "updated_at": "2026-11-09T12:09:42Z"
     },
     {
       "number": 5547,
