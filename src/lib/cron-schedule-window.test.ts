@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  isInOffScheduleIdleGap,
   isAwaitingSecondaryUtcBandFire,
+  isBeforeTodaysFirstScheduledFire,
+  isInOffScheduleIdleGap,
+  isPriorSessionCronFailureSuppressed,
   lastExpectedCronFireUtc,
   nextExpectedCronFireUtc,
 } from "./cron-schedule-window";
@@ -162,6 +164,20 @@ describe("cron-schedule-window", () => {
   // surfaced live — but the bare "N/M" form is still real cron syntax this same function already
   // claims to parse (the sibling `starStep`/`stepMatch` branches), so it must not silently return
   // the wrong set the moment a schedule actually uses a non-zero start.
+  it("prior-session failed: suppressed Monday morning before post-close fire", () => {
+    const cron = "15 20,21 * * 1-5";
+    const now = new Date("2026-11-09T15:55:00.000Z");
+    assert.equal(isBeforeTodaysFirstScheduledFire(cron, now), true);
+    assert.equal(
+      isPriorSessionCronFailureSuppressed(cron, "2026-11-06T21:30:00.000Z", now),
+      true
+    );
+    assert.equal(
+      isPriorSessionCronFailureSuppressed(cron, "2026-11-09T21:30:00.000Z", now),
+      false
+    );
+  });
+
   it("bare N/M step field honors the start value, not the field's bare minimum", () => {
     const cron = "5/15 10 * * *";
     const now = new Date("2026-07-30T10:10:00.000Z");

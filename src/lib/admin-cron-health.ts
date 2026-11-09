@@ -20,7 +20,11 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
-import { isInOffScheduleIdleGap, isAwaitingSecondaryUtcBandFire } from "@/lib/cron-schedule-window";
+import {
+  isAwaitingSecondaryUtcBandFire,
+  isInOffScheduleIdleGap,
+  isPriorSessionCronFailureSuppressed,
+} from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -355,8 +359,16 @@ export function evaluateJob(
   let statusLabel = "OK";
 
   if (last.status === "failed") {
-    status = "failed";
-    statusLabel = "Last run failed";
+    if (
+      Boolean(job.schedule_cron_utc) &&
+      isPriorSessionCronFailureSuppressed(job.schedule_cron_utc, last.started_at, now)
+    ) {
+      status = "healthy";
+      statusLabel = "Idle (prior session failed; awaiting today's scheduled fire)";
+    } else {
+      status = "failed";
+      statusLabel = "Last run failed";
+    }
   } else if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";

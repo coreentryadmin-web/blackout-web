@@ -124,7 +124,7 @@ function enumerateFiresOnUtcDay(
   return fires.sort((a, b) => a.getTime() - b.getTime());
 }
 
-function dailyFireBounds(cronExpr: string, now: Date): { first: Date; last: Date } | null {
+export function dailyFireBounds(cronExpr: string, now: Date): { first: Date; last: Date } | null {
   const [minuteField, hourField, , , dowField] = cronExpr.trim().split(/\s+/);
   if (!minuteField || !hourField || !dowField) return null;
   const fires = enumerateFiresOnUtcDay(
@@ -234,6 +234,31 @@ export function nextExpectedCronFireUtc(cronExpr: string, now = new Date()): Dat
  * weekday morning (measured: cron-audit-query RED at 13:59 UTC while waiting for the 14:00 UTC
  * in-window band).
  */
+/** True when `now` is still before the first UTC fire on today's calendar (per cron expr). */
+export function isBeforeTodaysFirstScheduledFire(cronExpr: string, now = new Date()): boolean {
+  const bounds = dailyFireBounds(cronExpr, now);
+  if (!bounds) return false;
+  return now.getTime() < bounds.first.getTime();
+}
+
+/**
+ * Daily post-close crons (nighthawk-outcomes, gex-eod-snapshot, banger-discovery): a FAILED
+ * handshake from the prior session must not page every morning until today's fire — the next tick
+ * is the retry (measured: query CI 2026-11-09 named all three while still before 4:10–4:30 PM ET).
+ */
+export function isPriorSessionCronFailureSuppressed(
+  cronExpr: string,
+  lastStartedAt: string | null | undefined,
+  now = new Date()
+): boolean {
+  if (!lastStartedAt || !isBeforeTodaysFirstScheduledFire(cronExpr, now)) return false;
+  const bounds = dailyFireBounds(cronExpr, now);
+  if (!bounds) return false;
+  const lastMs = Date.parse(lastStartedAt);
+  if (!Number.isFinite(lastMs)) return false;
+  return lastMs < bounds.first.getTime();
+}
+
 export function isAwaitingSecondaryUtcBandFire(cronExpr: string, now = new Date()): boolean {
   const [minuteField, hourField, , , dowField] = cronExpr.trim().split(/\s+/);
   if (!minuteField || !hourField || !dowField) return false;
