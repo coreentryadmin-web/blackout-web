@@ -209,8 +209,19 @@ async function cronHttpChecks() {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+        const rthStaleKeys = json.rth_stale_keys ?? [];
+        const problemKeys = json.problem_keys ?? [];
+        if (rthOpen && rthStaleKeys.length > 0) {
+          failures.push(`${label}: RTH stale ${rthStaleKeys.join(", ")}`);
+          console.log(`  ✗ ${label} → RTH stale: ${rthStaleKeys.join(", ")}`);
+        } else if (rthOpen && (json.problems ?? 0) > 0) {
+          failures.push(`${label}: ${problemKeys.join(", ")}`);
+          console.log(`  ✗ ${label} → stale: ${problemKeys.join(", ")}`);
+        } else {
+          console.warn(
+            `  ⚠ ${label} → off-hours problems (${problemKeys.join(", ") || "—"}) — not failing audit outside cash RTH`
+          );
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }

@@ -191,8 +191,14 @@ async function auditSpxDesk() {
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  const spotVerdict = spxDeskSpotSeverity({
+    spot,
+    available: d.available,
+    inCashRthSession: inRthOpenWindow(),
+  });
+  if (spotVerdict.severity === "P0") fail("spx-desk", "SPOT", spotVerdict.detail, "P0");
+  else if (spotVerdict.severity === "skip") ok("spx-desk", "spot", spotVerdict.detail);
+  else ok("spx-desk", "spot", spotVerdict.detail);
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;
