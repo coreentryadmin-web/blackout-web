@@ -470,6 +470,19 @@ export function postPrintSurpriseLean(
   if (eps == null && rev == null) return { lean: "unknown", headline: "Print landed — surprise pending", score: 0 };
   const epsBeat = eps != null ? eps >= 0 : null;
   const revBeat = rev != null ? rev >= 0 : null;
+  // THE DEFECT (found auditing this file's own revenue-only-print history — `buildEarningsWeekRows`
+  // a few lines up already documents the same real population: a row can print with
+  // `actual_revenue` set and `actual_eps` still null, e.g. EPS withheld/pending, so
+  // `eps_surprise_pct` has nothing to compute from and `epsBeat` is null — neither a beat nor a
+  // miss, just absent evidence).
+  //
+  // The two branches below only ever ask "does revenue AGREE with (or stay silent on) the EPS
+  // verdict" — EPS is treated as the sole primary signal and revenue only as a secondary check.
+  // There was no mirror branch for "EPS is absent, revenue alone has a verdict", so a clean
+  // revenue beat (or miss) with NO eps data at all fell through both guards into the catch-all
+  // "inline" / "Mixed print vs street" — a false claim that the two axes disagreed, when there
+  // was only ever one axis of evidence to begin with. `epsBeat === null` is exactly the absence
+  // this module's own standing rule (top of file) says must never be read as a real reading.
   if (epsBeat === true && (revBeat === true || revBeat === null)) {
     return {
       lean: "beat",
@@ -481,6 +494,23 @@ export function postPrintSurpriseLean(
     return {
       lean: "miss",
       headline: `Miss · EPS ${eps != null ? `${eps}%` : "—"}${rev != null ? ` · Rev ${rev}%` : ""}`,
+      score: -2,
+    };
+  }
+  // Mirror of the two branches above: EPS itself is absent (a revenue-only print), so revenue is
+  // the ONLY evidence available and decides the verdict outright rather than being graded
+  // against a nonexistent EPS read.
+  if (epsBeat == null && revBeat === true) {
+    return {
+      lean: "beat",
+      headline: `Beat · EPS —${rev != null ? ` · Rev ${rev >= 0 ? "+" : ""}${rev}%` : ""}`,
+      score: 2,
+    };
+  }
+  if (epsBeat == null && revBeat === false) {
+    return {
+      lean: "miss",
+      headline: `Miss · EPS —${rev != null ? ` · Rev ${rev}%` : ""}`,
       score: -2,
     };
   }
