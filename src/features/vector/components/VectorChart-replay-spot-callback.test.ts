@@ -24,9 +24,14 @@ test("guard: onSpotChange must not fire during replay — it feeds the 0DTE matr
   const tickBlock = src.match(/spotRef\.current = curSpot;[\s\S]{0,1200}?gexHeatmapPrimitiveRef\.current\?\.setSpot\(curSpot\);\s*\}/);
   assert.ok(tickBlock, "expected the SSE tick handler's spot-update block to exist");
   // Both the callback and the heatmap marker must be inside the SAME `if (!inReplay)` gate.
+  // NOTE (round 506): the callback itself now reads through `onSpotChangeRef.current` (DISCOVERY
+  // round 506's stale-closure fix) rather than the bare `onSpotChange` closure — see
+  // VectorChart-onfreshness-onspotchange-ref-mirror.test.ts for that fix's own guard. This
+  // assertion is unaffected: it only cares that the call (whichever form it takes) stays inside
+  // the same `!inReplay` gate as the heatmap marker.
   assert.match(
     tickBlock![0],
-    /if \(!inReplay\) \{[\s\S]*onSpotChange\?\.\(curSpot\);[\s\S]*gexHeatmapPrimitiveRef\.current\?\.setSpot\(curSpot\);[\s\S]*\}/,
-    "onSpotChange and the heatmap spot marker must be gated together behind !inReplay"
+    /if \(!inReplay\) \{[\s\S]*onSpotChangeRef\.current\?\.\(curSpot\);[\s\S]*gexHeatmapPrimitiveRef\.current\?\.setSpot\(curSpot\);[\s\S]*\}/,
+    "onSpotChange (via onSpotChangeRef) and the heatmap spot marker must be gated together behind !inReplay"
   );
 });
