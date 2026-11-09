@@ -1,7 +1,7 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-11-09T18:25:00Z",
+  "last_updated": "2026-11-09T20:35:00Z",
   "notes": "MID-SESSION 2026-10-15 (through 12:48 ET): choppy RTH session continuing from the down-open logged earlier. TSLA:57 oscillated all session (-14.7% -> -28.7% trough -> recovered to -4.9% -> drifted back to -12.1%) entirely on option decay/IV, never on fresh underlying deterioration beyond the original -2.4% adverse excursion -- thesis strength steady at 73% HOLD throughout, never approached the $6.38 stop. Two fresh native-range commits appeared mid-session: GOOGL:58 and GOOG:59 (both HOLD, -6.7%/-2.2% as of this tick) -- distinct position IDs from the GOOGL:54/GOOG:55 pair that stopped out 2026-10-14, so this is a new, independent setup on the same tickers, not a data artifact. WATCH board churned normally through the session (NET/META/CIFR/NKE/BE/GME/CLS/AMD cycling FORMING<->TRIGGERED<->EXTENDED as expected intraday noise). Ask Largo spot-check on CLS (WATCH, WAIT stance) found 5 simultaneous unavailableSources (HELIX flow, GEX positioning, Vector desk, Meridian catalysts, Night Hawk Legacy) -- cross-checked against AMD's play-brief in the same tick, which had fresh GEX/Vector data, ruling out a pipeline-wide outage: CLS specifically has thin/cold data coverage, honestly disclosed via the unavailableSources array exactly as the Largo contract intends (UnavailableChip will render), not a bug. No new bugs or enhancement ideas found this session so far beyond what's already tracked; continuing ~15-min cadence.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
@@ -902,6 +902,12 @@
     "ts": "2026-11-09T18:25:00Z",
     "what": "Merged PR #7809 (sibling session): GET /api/market/nighthawk/horizons?view=swings fabricated upstream_ok:true and board.asOf:requestTime on its fast path (payload always null there), so the Swing Command engine-status badge could never show Offline no matter how stale the real discovery scan was -- live repro showed the SAME ongoing Polygon-outage 75h gap this journal already tracks. Fixed by deriving upstream_ok from scanSessionDay === mostRecentTradingDayEt() (same pattern GET /api/market/regime already uses) and overriding board.asOf to the real swingLane.scanAsOf.",
     "review_note": "Verified green CI (verify success, mergeable_state clean) before merging under CARVE-OUT.",
+    "status": "MERGED"
+  },
+  "swing_option_mark_severity_tiering_remaining_sites_pr7821_merged_2026_11_09": {
+    "ts": "2026-11-09T20:35:00Z",
+    "what": "Merged PR #7821 (sibling session), extending #7795/#7798's severity-tiering fix to the 4 remaining direct callers of optionMarkIsStale() that PR missed: play-brief.ts's Position 'Mark:' line, collectOptionMarkStalenessAbsence (unavailableSources/evidence chip), watchForSection's rail cushion lines, and dataFreshnessSection. Live repro (LABD, same ongoing Polygon outage) showed the SAME staleness fact reading as a bare '_(stale)_' on these lines while the already-tiered narrative-coaching lines called it 'severely stale ... UNCONFIRMED' a few lines later -- a self-contradicting document. Carefully preserved the collectOptionMarkStalenessAbsence reason string's exact prefix so dataHonestyCoaching()'s startsWith() parse in a third file wasn't silently broken.",
+    "review_note": "Verified green CI (verify+CodeQL success, mergeable_state clean) before merging under CARVE-OUT.",
     "status": "MERGED"
   }
 }
