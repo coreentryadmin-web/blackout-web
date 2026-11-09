@@ -1,7 +1,7 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-11-09T13:59:24Z",
+  "last_updated": "2026-11-09T15:40:00Z",
   "notes": "MID-SESSION 2026-10-15 (through 12:48 ET): choppy RTH session continuing from the down-open logged earlier. TSLA:57 oscillated all session (-14.7% -> -28.7% trough -> recovered to -4.9% -> drifted back to -12.1%) entirely on option decay/IV, never on fresh underlying deterioration beyond the original -2.4% adverse excursion -- thesis strength steady at 73% HOLD throughout, never approached the $6.38 stop. Two fresh native-range commits appeared mid-session: GOOGL:58 and GOOG:59 (both HOLD, -6.7%/-2.2% as of this tick) -- distinct position IDs from the GOOGL:54/GOOG:55 pair that stopped out 2026-10-14, so this is a new, independent setup on the same tickers, not a data artifact. WATCH board churned normally through the session (NET/META/CIFR/NKE/BE/GME/CLS/AMD cycling FORMING<->TRIGGERED<->EXTENDED as expected intraday noise). Ask Largo spot-check on CLS (WATCH, WAIT stance) found 5 simultaneous unavailableSources (HELIX flow, GEX positioning, Vector desk, Meridian catalysts, Night Hawk Legacy) -- cross-checked against AMD's play-brief in the same tick, which had fresh GEX/Vector data, ruling out a pipeline-wide outage: CLS specifically has thin/cold data coverage, honestly disclosed via the unavailableSources array exactly as the Largo contract intends (UnavailableChip will render), not a bug. No new bugs or enhancement ideas found this session so far beyond what's already tracked; continuing ~15-min cadence.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
@@ -885,5 +885,11 @@
     "blast_radius_note": "Not cosmetic -- laneRankCoaching gates narrative branches directly on the rounded deltaFromMedian (<-15, >=10), so a tie adjacent to a threshold could flip which sentence fires. Two independent duplicated-logic call sites, both fixed in one PR.",
     "sweep_closed_out": "Found during a routine grep sweep for other unfixed instances of the sign-bias rounding tie class after verifying play-brief-intel.ts Industry-read line (#7730) was already fixed by a sibling session.",
     "status": "MERGED"
+  },
+  "swing_labd_executable_breach_surfacing_idea_raised_4076_2026_11_09": {
+    "ts": "2026-11-09T15:40:00Z",
+    "what": "Live repro LABD #2484 (LONG 8C Banger position, mark frozen since the known ongoing Polygon snapshot entitlement outage): play-brief's Management headline says 'Recommended: HOLD' while Trade manager read, 4 bullets later, already correctly says 'stop already breached on the executable side -- bid $0.00 is at/through your premium stop $0.18 right now -> exit or cut size.' Not a bug -- both facts are honestly computed and worded -- but the most urgent, actionable fact in the brief isn't elevated to where a skimming reader sees it first.",
+    "why_raised_not_built": "Touches live trade-management recommendation surfacing; right fix shape is a judgment call (caveat on Recommended line vs promote the bullet vs leave as intentional). Escalated per CARVE-OUT's ambiguous/live-trading-path rule.",
+    "status": "RAISED_ON_4076_AWAITING_RESPONSE"
   }
 }
