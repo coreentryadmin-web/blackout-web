@@ -83,6 +83,14 @@ export type SwingPlayBriefContext = {
    */
   rollHistory?: SwingRollHistory | null;
   /**
+   * BUG FIX (2026-11-09, Ask Largo standing mandate): same C3 distinction as
+   * `archetypeTrackRecordFetchFailed` above, extended to this sibling source — `rollHistory`
+   * above used to collapse a genuine `withBriefSourceTimeout` rejection (real outage) into the
+   * identical `null` a legitimately-never-rolled position produces. `true` only when the fetch
+   * itself rejected; a resolved `null` ("never rolled" / no `positionId`) still reports `false`.
+   */
+  rollHistoryFetchFailed?: boolean;
+  /**
    * Ticker-scoped historical context (Largo C10) — "has the desk traded THIS ticker before, and
    * how did it go" — distinct from `archetypeTrackRecord` above, which is scoped to the
    * ARCHETYPE dimension, not the ticker (see play-brief-ticker-history.ts's file header for the
@@ -90,6 +98,13 @@ export type SwingPlayBriefContext = {
    * to cite; `undefined` only in fixtures predating this field (treated identically to `null`).
    */
   tickerTrackRecord?: SwingTickerTrackRecord | null;
+  /**
+   * BUG FIX (2026-11-09, Ask Largo standing mandate): same C3 distinction as
+   * `rollHistoryFetchFailed` above, for the ticker-track-record read — `true` only when the fetch
+   * itself rejected (real outage); a resolved `null` ("no prior trade on this ticker") still
+   * reports `false`.
+   */
+  tickerTrackRecordFetchFailed?: boolean;
   /**
    * Single canonical "now" (epoch ms) for every Vector/GEX staleness check this brief's compose
    * performs — stamped ONCE by `composeSwingPlayBrief` before any section is built. Optional so

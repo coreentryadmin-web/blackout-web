@@ -30,8 +30,8 @@ import { loadTickerTrackRecord } from "./play-brief-ticker-history";
  * call against an 8s budget so a single slow source degrades to "unavailable" for THIS section
  * instead of hanging the whole brief. This helper REJECTS on timeout (rather than degrading to
  * null itself) so callers that need to distinguish "genuinely no data" from "upstream stalled"
- * (the ecosystem/vector `*FetchFailed` flags below) still can — the archetype-track-record read
- * has no such distinction to make, so it wraps its own call in `.catch(() => null)`.
+ * (the `*FetchFailed` flags below — ecosystem/vector/archetypeTrackRecord/rollHistory/
+ * tickerTrackRecord) can tell a real outage from an honest absence (Largo contract C3).
  */
 
 /**
@@ -280,6 +280,8 @@ export async function loadSwingPlayBriefContext(
   let ecosystemFetchFailed = false;
   let vectorFetchFailed = false;
   let archetypeTrackRecordFetchFailed = false;
+  let rollHistoryFetchFailed = false;
+  let tickerTrackRecordFetchFailed = false;
   const positionId = positionIdFromPlayId(play.id);
   const [
     meridian,
@@ -326,8 +328,16 @@ export async function loadSwingPlayBriefContext(
       return null;
     }),
     // Best-effort like the read above — a DB hiccup degrades to "no roll history cited" rather
-    // than failing the whole brief; loadRollHistory already wraps its own try/catch.
-    withBriefSourceTimeout(loadRollHistory(positionId, ticker)).catch(() => null),
+    // than failing the whole brief; loadRollHistory already wraps its own try/catch. BUG FIX
+    // (2026-11-09, Ask Largo standing mandate): this used to be a bare `.catch(() => null)` with
+    // no companion *FetchFailed flag, the exact C3 collapse archetypeTrackRecordFetchFailed above
+    // was already fixed for — a genuine withBriefSourceTimeout rejection (real outage) read
+    // identically to "this play was never rolled" (honest absence).
+    withBriefSourceTimeout(loadRollHistory(positionId, ticker)).catch((err) => {
+      console.warn(`[swing-play-brief] roll history fetch failed for ${ticker}:`, err);
+      rollHistoryFetchFailed = true;
+      return null;
+    }),
     // Ask Largo C10 (historical context, TICKER-scoped) — see play-brief-ticker-history.ts's
     // header for why this is a plain, best-effort live read rather than a cron-distilled cache
     // like archetypeTrackRecord above. Self-excludes the reviewed play's own chain (resolved via
@@ -336,6 +346,8 @@ export async function loadSwingPlayBriefContext(
     // (`exitAt`, null for a still-open play) so a chain that resolved AT OR AFTER this play can
     // never be cited as "traded before this play" — see play-brief-ticker-history.ts's TEMPORAL
     // ORDERING note for the live future-leak this closes.
+    // BUG FIX (2026-11-09, Ask Largo standing mandate): same C3 collapse as rollHistory above —
+    // a genuine timeout rejection must not read the same as "no prior trade on this ticker."
     withBriefSourceTimeout(
       resolveRootPositionId(positionId, ticker).then((rootId) =>
         loadTickerTrackRecord(
@@ -344,7 +356,11 @@ export async function loadSwingPlayBriefContext(
           play.exitAt ? (Date.parse(play.exitAt) || null) : null,
         ),
       ),
-    ).catch(() => null),
+    ).catch((err) => {
+      console.warn(`[swing-play-brief] ticker track-record fetch failed for ${ticker}:`, err);
+      tickerTrackRecordFetchFailed = true;
+      return null;
+    }),
   ]);
 
   const nowMs = Date.now();
@@ -368,6 +384,8 @@ export async function loadSwingPlayBriefContext(
     archetypeTrackRecord,
     archetypeTrackRecordFetchFailed,
     rollHistory,
+    rollHistoryFetchFailed,
     tickerTrackRecord,
+    tickerTrackRecordFetchFailed,
   };
 }
