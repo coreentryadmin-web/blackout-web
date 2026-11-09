@@ -306,6 +306,64 @@ test("persist → discoverSwingFromPersisted round-trips and GATES to persistenc
 // `observedByKey`, and the play vanished from the ENTIRE board with no trace. See
 // `tickerDirectionKey`'s doc comment (accumulation-store.ts) for the fix.
 
+// BUG FIX (2026-11-09, Ask Largo/5-engine standing mandate, live repro): `p.contract.delta` is
+// persisted as the ranker's ABSOLUTE MAGNITUDE convention (calls positive, puts' magnitude), the
+// same convention `closed-plays.ts`/`live-plays.ts`/`roll-plan.ts` were all fixed (2026-11-08/09)
+// to re-sign at their own read site. `discoverSwingFromPersisted` was the one remaining passthrough
+// that spread a persisted play straight through with no contract override — live repro: TSLA 365P
+// SHORT served `contract.delta: 0.61` (positive on a PUT) while every already-fixed sibling surface
+// correctly serves negative deltas for the identical right:"P" shape.
+test("discoverSwingFromPersisted re-signs a PUT contract's delta negative (persisted snapshot predates the fix)", async () => {
+  const d = buildSwingDossier(dossier("TSLA"));
+  const arch = d.archetype.archetype;
+  await persistSwingServingSnapshot({
+    asOf: "2026-11-06T14:15:15.469Z",
+    sessionDay: "2026-11-06",
+    dossiers: [d],
+    plays: [
+      play({
+        ticker: "TSLA",
+        direction: "SHORT",
+        status: "WATCH",
+        archetype: arch,
+        contract: { ...contract, right: "P", delta: 0.61 },
+      }),
+    ],
+    watch: [watchCand({ ticker: "TSLA", direction: "SHORT", archetype: arch })],
+  });
+
+  const result = await discoverSwingFromPersisted();
+  assert.ok(result, "the persisted scan is read back");
+  const tsla = result!.plays.find((p) => p.ticker === "TSLA");
+  assert.ok(tsla, "TSLA surfaces");
+  assert.equal(tsla!.contract!.right, "P");
+  assert.equal(tsla!.contract!.delta, -0.61, "a PUT contract's delta must be re-signed negative, never the persisted positive magnitude");
+});
+
+test("discoverSwingFromPersisted leaves a CALL contract's delta untouched (already correctly signed positive)", async () => {
+  const d = buildSwingDossier(dossier("NVDA"));
+  const arch = d.archetype.archetype;
+  await persistSwingServingSnapshot({
+    asOf: "2026-11-06T14:15:15.469Z",
+    sessionDay: "2026-11-06",
+    dossiers: [d],
+    plays: [
+      play({
+        ticker: "NVDA",
+        direction: "LONG",
+        status: "WATCH",
+        archetype: arch,
+        contract: { ...contract, right: "C", delta: 0.55 },
+      }),
+    ],
+    watch: [watchCand({ ticker: "NVDA", direction: "LONG", archetype: arch })],
+  });
+
+  const result = await discoverSwingFromPersisted();
+  const nvda = result!.plays.find((p) => p.ticker === "NVDA");
+  assert.equal(nvda!.contract!.delta, 0.55);
+});
+
 test("ARCHETYPE DRIFT: a persistence-cleared candidate whose fresh-scan archetype no longer matches its watch-candidate archetype still surfaces (falls back to ticker+direction)", async () => {
   const d = buildSwingDossier(dossier("NVDA"));
   await persistSwingServingSnapshot({
