@@ -350,13 +350,34 @@ export function evaluateJob(
     Boolean(job.schedule_cron_utc) && isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now);
   const suppressStaleOffSchedule =
     (offScheduleGap || awaitingDualBand) && (last.status === "skipped" || last.status === "ok");
+  const nonTradingScheduledIdle =
+    job.weekdays_only &&
+    Boolean(job.schedule_cron_utc) &&
+    !isTradingDayEt(formatEtDate(now)) &&
+    isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
 
   if (last.status === "failed") {
-    status = "failed";
-    statusLabel = "Last run failed";
+    // Post-close weekday jobs (nighthawk-outcomes, gex-eod-snapshot, banger-discovery, …): a
+    // Friday "failed" handshake must not P0 cron-audit-query all Monday pre-close — same shape
+    // as suppressStaleOffSchedule for ok/skipped (ops #1983 weekend fix; query CI 2026-11-09).
+    if (nonTradingScheduledIdle) {
+      status = "healthy";
+      statusLabel = "Idle (non-trading day — outside weekday schedule)";
+    } else if (
+      (offScheduleGap || awaitingDualBand) &&
+      Boolean(job.schedule_cron_utc)
+    ) {
+      status = "healthy";
+      statusLabel = awaitingDualBand
+        ? "Idle (awaiting in-window UTC band)"
+        : "Idle (outside cron schedule window)";
+    } else {
+      status = "failed";
+      statusLabel = "Last run failed";
+    }
   } else if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
@@ -387,16 +408,8 @@ export function evaluateJob(
   // Flag a market-hours warmer that is stale WHILE its session gate says work is due — the #90 silent-death case.
   let marketHoursStale = Boolean(job.market_hours_only) && !offWindow && status === "stale";
 
-  // Weekday-only EventBridge crons (nighthawk-outcomes, gex-eod-snapshot, banger-discovery, …): between
-  // Friday's post-close fire and Monday's next tick, scheduled cron-audit-query must not P0 on stale
-  // or Friday failed handshakes — same suppression shape as off-schedule idle gaps on trading days
-  // (ops #1983). First meaningful run is Monday; banger-discovery registry note: "weekend does not alert."
-  const nonTradingScheduledIdle =
-    job.weekdays_only &&
-    Boolean(job.schedule_cron_utc) &&
-    !isTradingDayEt(formatEtDate(now)) &&
-    isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-  if (nonTradingScheduledIdle && (status === "stale" || status === "failed")) {
+  // Weekday-only EventBridge crons: weekend stale suppression (failed handled above).
+  if (nonTradingScheduledIdle && status === "stale") {
     status = "healthy";
     statusLabel = "Idle (non-trading day — outside weekday schedule)";
     marketHoursStale = false;
