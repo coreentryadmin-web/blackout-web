@@ -476,14 +476,38 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           price_target: null,
           as_of: reads.fundamentals.as_of ?? null,
         }
-      : (unavailable.push({
-          source: "fundamentals/short-interest",
-          reason: "no data for ticker",
-          what_is_missing: "a short-interest days-to-cover or short-volume-ratio record",
-          // Structural: this provider simply carries no short-interest series for the name
-          // (common for thinly-shorted or newly-listed tickers) — a retry won't manufacture one.
-          retryable: false,
-        }), null)
+      // BUG FIX (2026-11-09, Ask Largo standing mandate, live repro TSLA/MSTR): this leg sits
+      // between the already-fixed "earnings" leg above and the already-correct "news" leg below
+      // in this same function, and was missed by both — `reads.fundamentals.short_interest_error`/
+      // `.short_volume_error` (threaded from `fetchShortInterestResult`/`fetchShortVolumeResult`,
+      // e.g. the live, currently-open real-time Polygon/Massive entitlement 403 — CLAUDE.md's
+      // "ENTITLEMENT REGRESSED 2026-11-07" note) mean one or both of the underlying short-interest/
+      // short-volume fetches FAILED this pass, not that the provider genuinely carries no
+      // short-interest series for this ticker. TSLA and MSTR — two of the most heavily-shorted,
+      // most liquid US equities — both showed the old confident "no data for ticker" /
+      // retryable:false entry live, which is implausible as a real structural absence for either
+      // name. Mirrors the earnings leg's retryable split above and the news leg's
+      // NewsResult.unavailable pattern below.
+      : (reads.fundamentals?.short_interest_error || reads.fundamentals?.short_volume_error)
+        ? (unavailable.push({
+            source: "fundamentals/short-interest",
+            reason: `short-interest/short-volume unavailable: ${
+              reads.fundamentals.short_interest_error ?? reads.fundamentals.short_volume_error
+            }`,
+            what_is_missing: "a short-interest days-to-cover or short-volume-ratio record",
+            // Transient: this is a live fetch (Polygon short-interest and/or short-volume) that
+            // failed this pass — a retry on the next composer read can succeed once the upstream
+            // recovers.
+            retryable: true,
+          }), null)
+        : (unavailable.push({
+            source: "fundamentals/short-interest",
+            reason: "no data for ticker",
+            what_is_missing: "a short-interest days-to-cover or short-volume-ratio record",
+            // Structural: this provider simply carries no short-interest series for the name
+            // (common for thinly-shorted or newly-listed tickers) — a retry won't manufacture one.
+            retryable: false,
+          }), null)
     : null;
 
   const related: string[] | null = single

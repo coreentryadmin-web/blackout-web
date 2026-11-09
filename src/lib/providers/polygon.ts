@@ -1290,19 +1290,52 @@ export function shapeShortInterestRow(row: Record<string, unknown>, sym: string)
   };
 }
 
-export async function fetchShortInterest(ticker: string, signal?: AbortSignal): Promise<ShortInterestRow | null> {
+/** Shared inner fetch -- the ONLY place that calls `polygonGet` for short-interest, so the two
+ *  public wrappers below (`fetchShortInterest` / `fetchShortInterestResult`) can't drift apart.
+ *  Throws on any upstream failure (network, entitlement, abort); each wrapper decides whether to
+ *  swallow that (fetchShortInterest's pre-existing "never throw" contract) or surface it
+ *  (fetchShortInterestResult, added below). */
+async function fetchShortInterestRow(ticker: string, signal?: AbortSignal): Promise<ShortInterestRow | null> {
   const sym = ticker.toUpperCase();
+  const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+    "/stocks/v1/short-interest",
+    { ticker: sym, limit: "1", sort: "settlement_date.desc" },
+    signal
+  );
+  const row = data.results?.[0];
+  return row ? shapeShortInterestRow(row, sym) : null;
+}
+
+export async function fetchShortInterest(ticker: string, signal?: AbortSignal): Promise<ShortInterestRow | null> {
   try {
-    const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
-      "/stocks/v1/short-interest",
-      { ticker: sym, limit: "1", sort: "settlement_date.desc" },
-      signal
-    );
-    const row = data.results?.[0];
-    if (!row) return null;
-    return shapeShortInterestRow(row, sym);
+    return await fetchShortInterestRow(ticker, signal);
   } catch {
     return null;
+  }
+}
+
+/**
+ * BUG FIX (2026-11-09, Ask Largo standing mandate -- sibling of the earnings-leg fix, PR #7584 /
+ * commit 7df37da25): `fetchShortInterest`'s own contract is "never throw, resolve null on any
+ * miss" -- exactly right for its pre-existing callers (`dossier.ts`, `run-tool.ts`), which only
+ * ever want the row or nothing. But that collapses two different facts into the identical `null`
+ * -- "the provider genuinely carries no short-interest series for this ticker" and "the fetch
+ * itself failed" (a 403 not-entitled, a timeout, a rate limit -- see CLAUDE.md's live,
+ * currently-open "ENTITLEMENT REGRESSED 2026-11-07" note on the real-time Polygon/Massive
+ * entitlement) -- and `ecosystem-context.ts`'s fundamentals/short-interest leg took that collapse
+ * as confident proof of permanent structural absence (`retryable: false`) regardless of which one
+ * actually happened. This sibling surfaces the real outcome instead, mirroring
+ * `fetchNextEarningsDate`'s `NextEarnings.error` / `NewsResult.unavailable`. `fetchShortInterest`
+ * itself is UNCHANGED -- same function, same behavior, its existing callers are unaffected.
+ */
+export async function fetchShortInterestResult(
+  ticker: string,
+  signal?: AbortSignal
+): Promise<{ row: ShortInterestRow | null; error: string | null }> {
+  try {
+    return { row: await fetchShortInterestRow(ticker, signal), error: null };
+  } catch (e) {
+    return { row: null, error: String(e instanceof Error ? e.message : e).slice(0, 200) };
   }
 }
 
@@ -1739,21 +1772,55 @@ export function computeFundamentalSignals(
   };
 }
 
-export async function fetchShortVolume(ticker: string, limit = 5) {
+export type ShortVolumeRow = {
+  date: string;
+  short_volume: number;
+  total_volume: number;
+  short_volume_ratio: number;
+};
+
+/** Shared inner fetch -- the ONLY place that calls `polygonGet` for short-volume, so the two
+ *  public wrappers below (`fetchShortVolume` / `fetchShortVolumeResult`) can't drift apart.
+ *  Throws on any upstream failure; each wrapper decides whether to swallow it
+ *  (fetchShortVolume's pre-existing "never throw" contract) or surface it
+ *  (fetchShortVolumeResult, added below). */
+async function fetchShortVolumeRows(ticker: string, limit = 5): Promise<ShortVolumeRow[]> {
   const sym = ticker.toUpperCase();
+  const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+    "/stocks/v1/short-volume",
+    { ticker: sym, limit: String(limit), sort: "date.desc" }
+  );
+  return (data.results ?? []).map((row) => ({
+    date: String(row.date ?? ""),
+    short_volume: Number(row.short_volume ?? 0),
+    total_volume: Number(row.total_volume ?? 0),
+    short_volume_ratio: Number(row.short_volume_ratio ?? 0),
+  }));
+}
+
+export async function fetchShortVolume(ticker: string, limit = 5): Promise<ShortVolumeRow[]> {
   try {
-    const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
-      "/stocks/v1/short-volume",
-      { ticker: sym, limit: String(limit), sort: "date.desc" }
-    );
-    return (data.results ?? []).map((row) => ({
-      date: String(row.date ?? ""),
-      short_volume: Number(row.short_volume ?? 0),
-      total_volume: Number(row.total_volume ?? 0),
-      short_volume_ratio: Number(row.short_volume_ratio ?? 0),
-    }));
+    return await fetchShortVolumeRows(ticker, limit);
   } catch {
     return [];
+  }
+}
+
+/**
+ * BUG FIX (2026-11-09, Ask Largo standing mandate -- sibling of the earnings-leg fix, PR #7584 /
+ * commit 7df37da25, and of `fetchShortInterestResult` immediately above). Same rationale: a failed
+ * short-volume fetch (403/timeout/rate-limit) resolved the identical empty `[]` as a genuine
+ * "no recent short-volume rows for this ticker," so `ecosystem-context.ts`'s fundamentals leg
+ * could not tell the two apart either. `fetchShortVolume` itself is UNCHANGED.
+ */
+export async function fetchShortVolumeResult(
+  ticker: string,
+  limit = 5
+): Promise<{ rows: ShortVolumeRow[]; error: string | null }> {
+  try {
+    return { rows: await fetchShortVolumeRows(ticker, limit), error: null };
+  } catch (e) {
+    return { rows: [], error: String(e instanceof Error ? e.message : e).slice(0, 200) };
   }
 }
 

@@ -27,7 +27,8 @@ import {
   computeFundamentalSignals,
   fetchBenzingaPriceTarget,
   fetchShortInterest,
-  fetchShortVolume,
+  fetchShortInterestResult,
+  fetchShortVolumeResult,
   type PolygonFinancialRatios,
   type FundamentalSignals,
   type BenzingaPriceTarget,
@@ -54,6 +55,20 @@ export type TickerFundamentalsBundle = {
   /** Latest daily short-volume ratio (0–1) for the most recent session, or null. */
   short_volume_ratio: number | null;
   short_volume_date: string | null;
+  /**
+   * BUG FIX (2026-11-09, Ask Largo standing mandate -- sibling of the earnings-leg fix, PR #7584
+   * / commit 7df37da25): non-null ONLY when the live short-interest fetch itself FAILED this pass
+   * (a 403/timeout/rate-limit -- e.g. the documented, currently-open real-time Polygon/Massive
+   * entitlement outage, CLAUDE.md's "ENTITLEMENT REGRESSED 2026-11-07" note) -- never set on a
+   * genuine "no series for this ticker" miss. Before this field existed, `fetchShortInterest`'s
+   * catch-and-return-null contract made a failed fetch indistinguishable from a real absence, and
+   * `ecosystem-context.ts`'s fundamentals/short-interest leg took that collapse as confident proof
+   * of permanent structural absence. Threaded additively: `short_interest` above is UNCHANGED
+   * (still null on either a clean miss or a failure) -- this is purely a second, honest channel.
+   */
+  short_interest_error: string | null;
+  /** Same shape/rationale as `short_interest_error`, for the sibling short-volume-ratio fetch. */
+  short_volume_error: string | null;
 };
 
 type ShortVolumeRow = { date: string; short_volume: number; total_volume: number; short_volume_ratio: number };
@@ -111,6 +126,9 @@ export function assembleFundamentalsBundle(
     priceTarget: BenzingaPriceTarget | null;
     shortInterest: ShortInterestSlice | null;
     shortVolume: { short_volume_ratio: number | null; short_volume_date: string | null };
+    /** Threaded additively -- see `TickerFundamentalsBundle.short_interest_error`'s own doc. */
+    shortInterestError?: string | null;
+    shortVolumeError?: string | null;
   }
 ): TickerFundamentalsBundle {
   const as_of =
@@ -128,6 +146,8 @@ export function assembleFundamentalsBundle(
     short_interest: parts.shortInterest,
     short_volume_ratio: parts.shortVolume.short_volume_ratio,
     short_volume_date: parts.shortVolume.short_volume_date,
+    short_interest_error: parts.shortInterestError ?? null,
+    short_volume_error: parts.shortVolumeError ?? null,
   };
 }
 
@@ -143,23 +163,36 @@ export async function fetchTickerFundamentalsBundle(
   if (!polygonConfigured()) return null;
   const sym = ticker.toUpperCase();
   return serverCache<TickerFundamentalsBundle>(`bie:ticker-fundamentals:v2:${sym}`, TTL.REFERENCE, async () => {
-    const [ratios, income, balance, cashFlow, priceTarget, shortInterestRaw, shortVolumeRows] =
+    // BUG FIX (2026-11-09, Ask Largo standing mandate): short-interest/short-volume now go through
+    // the `*Result` wrappers (fetchShortInterest/fetchShortVolume are UNCHANGED for their other
+    // callers) so a FAILED fetch carries its real error forward instead of being swallowed into the
+    // same bare miss as a genuine "nothing on file" read -- see TickerFundamentalsBundle's
+    // short_interest_error/short_volume_error doc for the full rationale.
+    const [ratios, income, balance, cashFlow, priceTarget, shortInterestResult, shortVolumeResult] =
       await Promise.all([
         fetchPolygonFinancialRatios(sym).catch(() => null),
         fetchPolygonIncomeStatements(sym, 6).catch(() => []),
         fetchPolygonBalanceSheets(sym, 6).catch(() => []),
         fetchPolygonCashFlowStatements(sym, 6).catch(() => []),
         fetchBenzingaPriceTarget(sym).catch(() => null),
-        fetchShortInterest(sym).catch(() => null),
-        fetchShortVolume(sym, 5).catch(() => []),
+        fetchShortInterestResult(sym).catch((e: unknown) => ({
+          row: null,
+          error: String(e instanceof Error ? e.message : e).slice(0, 200),
+        })),
+        fetchShortVolumeResult(sym, 5).catch((e: unknown) => ({
+          rows: [],
+          error: String(e instanceof Error ? e.message : e).slice(0, 200),
+        })),
       ]);
     const signals = computeFundamentalSignals(income, balance, cashFlow);
     return assembleFundamentalsBundle(sym, {
       ratios,
       signals,
       priceTarget,
-      shortInterest: normalizeShortInterest(shortInterestRaw),
-      shortVolume: summarizeShortVolume(shortVolumeRows),
+      shortInterest: normalizeShortInterest(shortInterestResult.row),
+      shortVolume: summarizeShortVolume(shortVolumeResult.rows),
+      shortInterestError: shortInterestResult.error,
+      shortVolumeError: shortVolumeResult.error,
     });
   });
 }
