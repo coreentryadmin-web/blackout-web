@@ -37,6 +37,7 @@ import {
   legacyPrimaryPnlPct,
   legacyPrimaryTroughPct,
 } from "@/features/nighthawk/lib/legacy-primary-pnl";
+import { blendedTrimPnlPct } from "@/lib/zerodte/terminal-ladder";
 import { formatReturnPct } from "./play-card-display";
 import { signColorClass } from "@/lib/zerodte/terminal-edge";
 import { ConfidenceBadge } from "./ConfidenceBadge";
@@ -288,7 +289,27 @@ export function TradeExcursionGraphic({
   // (ZeroDteCommandPanel.tsx's "Trade outcome" section computes `closedRealizedPct(play)` a few
   // lines above where this component renders) — the two could disagree on a closed position's
   // headline P&L number. Routing through the one canonical function keeps them in sync.
-  const currentPct = closed ? closedRealizedPct(play) : legacyPrimaryPnlPct(play);
+  //
+  // BUG FIX (Ask Largo standing mandate — live-audit confirmed finding, 2026-11-09): a sibling
+  // instance of the SAME within-panel-contradiction class the comment above already fixed for
+  // CLOSED rows, left open for a still-OPEN SWING TRIM row. ZeroDteCommandPanel.tsx's verdict-band
+  // headline (#7834) was fixed to show the BLENDED whole-position P&L (`blendedTrimPnlPct`) once a
+  // trim tranche has banked, but this component mounts in the SAME panel for the SAME play
+  // (`hasEntry && !isCandidate` renders `TradeExcursionGraphic` right below the verdict band) and
+  // still read `legacyPrimaryPnlPct(play)` — the raw, unblended return on the open runner leg
+  // only. Live repro carried over from #7834 (SWING:APP/positionId 2397, entry $17.34, mark
+  // $98.00, one tranche fired at the +100%/50% rung): the verdict band now shows the correct
+  // blended +282.6% while this "Current" stat, two inches below it in the same card, showed the
+  // raw +465.2% — the exact contradiction #6619 fixed for the CLOSED case, reopened here for the
+  // OPEN-TRIM case. Scoped to `play.horizon === "SWING"` only, mirroring #7834's own scoping
+  // rationale exactly (a 0DTE TRIM row's `pnlPct` comes from a different, unaudited server-side
+  // path) — `blendedTrimPnlPct` is additionally a no-op (null) whenever nothing has fired yet, so
+  // a fully-OPEN/HOLD SWING position is provably unaffected.
+  const currentPct = closed
+    ? closedRealizedPct(play)
+    : play.horizon === "SWING"
+      ? blendedTrimPnlPct(play.pnlPct, play.exitPolicy?.trim_levels) ?? legacyPrimaryPnlPct(play)
+      : legacyPrimaryPnlPct(play);
   const worst = legacyPrimaryTroughPct(play);
   const best = legacyPrimaryPeakPct(play);
   const layout = entryCenteredExcursionLayout(worst, best, currentPct, { closed });
