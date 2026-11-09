@@ -16,6 +16,7 @@ import {
 } from "@/features/nighthawk/lib/nighthawk-view";
 import { horizonBoardFromZeroDtePayload } from "@/lib/zerodte/horizon-board-from-payload";
 import { getSwingServingLane, discoverSwingFromPersisted, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
+import { mostRecentTradingDayEt } from "@/features/nighthawk/lib/session";
 import { fetchBangerOpenBookRowsSettled } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { readBangerWatchSnapshot } from "@/lib/banger/watch-cache";
@@ -78,11 +79,27 @@ export async function GET(req: NextRequest) {
 
     // Scoped Swing/LEAPS views never need the live 0DTE board rebuild — skip the heavy payload
     // when the response will zero that lane anyway (P2-5 latency fix).
+    //
+    // BUG FIX (2026-11-09, Ask Largo x Night Hawk Swings standing mandate, live repro — board.asOf
+    // 2026-11-09T17:08:18.714Z vs the SAME response's board.lanes.SWING.scanAsOf
+    // 2026-11-06T14:15:15.469Z, a real ~75h gap live during the still-open Polygon real-time-
+    // snapshot entitlement outage this repo's CLAUDE.md tracks). `payload` stays null on this
+    // fast path by design (see the comment above) — but `upstream_ok` below used to default
+    // unconditionally to `true` whenever `payload` is null, and `board.asOf` was stamped from
+    // REQUEST time rather than from any real data this board actually carries. Together, a
+    // member/Largo caller reading `?view=swings` could never tell "the swing discovery scan is
+    // genuinely current" from "the swing discovery scan hasn't landed in days" — both rendered
+    // identically as `upstream_ok:true` + a fresh-looking `board.asOf`, exactly the "degraded
+    // board painted as calm" failure mode the 0DTE path's own `upstream_ok && committedKnown`
+    // computation (zerodte-service.ts) exists to prevent, but which nothing on THIS path guarded
+    // against. `isSwingLeapsFastPath` is captured here (before `board` is reassigned by the
+    // 0DTE branch below) so the fix further down can know which path actually ran without
+    // re-deriving it from `payload`'s nullness.
+    const isSwingLeapsFastPath = horizon === "SWING" || horizon === "LEAPS";
     let payload: Awaited<ReturnType<typeof getZeroDteBoardPayload>> | null = null;
-    let board =
-      horizon === "SWING" || horizon === "LEAPS"
-        ? assembleHorizonBoard(makePlaySet({}), new Date().toISOString())
-        : null;
+    let board = isSwingLeapsFastPath
+      ? assembleHorizonBoard(makePlaySet({}), new Date().toISOString())
+      : null;
 
     if (!board) {
       payload = await getZeroDteBoardPayload();
@@ -121,6 +138,36 @@ export async function GET(req: NextRequest) {
     // board whose SWING lane carried 14 committed plays). withLane re-derives from all three lanes.
     board = withLane(board, "SWING", swingLane);
     board = scopeBoardToHorizon(board, horizon);
+
+    // Derive the real signal the scoped fast path never had (see the BUG FIX comment at the
+    // fast-path branch above). `scanSessionDay` — stamped by the swing-discovery cron, not
+    // re-derived here from a raw timestamp — is the exact field `dataFreshnessSection`
+    // (play-brief-intel.ts) already uses for the identical "is this scan current" question in
+    // the per-play brief. `mostRecentTradingDayEt` is the same helper `GET /api/market/regime`
+    // already ships this precise pattern with (task #173: "stale whenever captured_at's ET
+    // calendar date isn't the current/most-recently-completed trading session... an
+    // unparseable/missing timestamp fails CLOSED rather than silently claiming freshness") —
+    // chosen over a raw scanAsOf-age cutoff specifically because a trading-day comparison,
+    // unlike a fixed-hours bound, is correct across an ordinary weekend/holiday close (Saturday's
+    // "most recent trading day" is Friday, matching Friday's own last scan — no false "stale")
+    // while still catching THIS incident (today is a trading day and has no scan of its own yet,
+    // regardless of how many wall-clock hours that represents). Scoped to the SWING/LEAPS fast
+    // path only — the 0DTE branch's existing `upstream_ok && committedKnown` computation
+    // (zerodte-service.ts) is untouched.
+    let swingUpstreamOk: boolean | null = null;
+    if (isSwingLeapsFastPath) {
+      swingUpstreamOk =
+        swingLane.scanSessionDay != null && swingLane.scanSessionDay === mostRecentTradingDayEt();
+      // `board.asOf` must reflect the data this board actually carries (the swing scan), not the
+      // instant this request happened to run — request time was tautologically always "fresh"
+      // regardless of real staleness (SwingCockpitStrip already renders the real `scanAsOf`
+      // separately, so the two could disagree within the SAME response). Only overridden when a
+      // real scan timestamp exists; with none (a lane that has never scanned), the request-time
+      // stamp from the fast-path assembly above is the least-wrong fallback available.
+      if (swingLane.scanAsOf) {
+        board = { ...board, asOf: swingLane.scanAsOf };
+      }
+    }
     // roundFloats at the boundary: the 0DTE lane is already rounded inside zerodte-service,
     // but the SWING lane is spliced in raw from getSwingServingLane() and the board totals are
     // re-derived here (scopeBoardToHorizon) without rounding — so raw provider floats (e.g.
@@ -164,7 +211,7 @@ export async function GET(req: NextRequest) {
       roundFloats(
         {
           board,
-          upstream_ok: payload?.upstream_ok ?? true,
+          upstream_ok: payload?.upstream_ok ?? swingUpstreamOk ?? true,
           session: payload?.session ?? null,
         },
         2,
