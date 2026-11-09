@@ -10763,3 +10763,24 @@ and `/play` are actually serving a real price again
   one). No live pre-fix capture was possible — forcing and measuring a real-browser infinite
   render loop isn't practical from this sandbox (no DOM/React-renderer test infra here), so this
   is a passive live-session check, not a forced repro.
+
+## WATCH LIST — 2026-11-09 (Largo mini-panel SPX Slayer direction tone, `fix/tone-source-mismatch`) — re-check `/api/market/largo/mini-panel` on a live short SPX Slayer play
+
+- **What was broken**: `fetchMiniPanelPayload()`'s SPX Slayer "Action" row (`/spx-slayer /play`,
+  `/spx-slayer /gates`) and default "Play" row colored their tone with
+  `(p?.action ?? "").toLowerCase().includes("short") ? "bear" : "bull"`. `action` is
+  `SpxPlayAction` (`"SCANNING"|"WATCHING"|"BUY"|"HOLD"|"TRIM"|"SELL"`) — none of those values
+  ever contains "short", so the check always fell through to "bull". Every short/bearish SPX
+  Slayer play rendered a green "bull" tone on both rows; the text value itself was always
+  correct, only the color was wrong.
+- **Fix**: read the play's actual `direction` field (`SpxPlayDirection | null`) via a new
+  `spxDirectionTone()` helper instead of pattern-matching `action` text; `null`/unknown direction
+  now renders untoned instead of a fabricated bullish lean. RED confirmed via `git stash`
+  (4/4 new tests fail — the exported function didn't exist pre-fix), GREEN post-fix (4/4 pass,
+  plus 17/17 across the surrounding mini-panel/desk-scope test files); `npx tsc --noEmit` clean.
+- **Specific thing to check once live**: `LargoDeskMiniPanel` is currently unmounted
+  (`mini-panel-orphaned.test.ts`), so there is no rendered UI surface to eyeball yet — but if/when
+  it is re-mounted, or via a direct `GET /api/market/largo/mini-panel?desk=spx-slayer&submodule=play`
+  call during RTH while SPX Slayer is holding a SHORT play, confirm the "Action"/"Play" row now
+  renders `bear` (red) tone, not `bull` (green). No live pre-fix repro was captured — a short SPX
+  Slayer play wasn't open at the time of the fix — so this is a passive next-occurrence check.
