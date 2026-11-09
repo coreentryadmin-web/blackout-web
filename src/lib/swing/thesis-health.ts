@@ -45,22 +45,26 @@ const PILLAR_ID_MAP: Record<SwingThesisPillarId, ThesisPillarId> = {
 };
 
 /** Default pillar labels when commit-time inputs (setupState/entryStatus/signalKinds) are not wired.
- *  Each pillar can have MORE THAN ONE generic-default label — `regime` has two, independently
- *  reachable: `regimeScore()`'s own "unread" fallback (regime input null AND no factors[0] — the
- *  native "nothing to read" case) and the Banger-ledger stamped-constant sentinel
- *  (BANGER_LEDGER_REGIME_LABEL — see the file-level comment below `thesisHealthUncalibrated`). A
- *  single-string map can only ever hold one of the two, so this is an array per pillar id, and
- *  every consumer below checks membership, not strict equality. Live gap found 2026-09-22 (AAPL
- *  position 40): before this array shape, the Banger sentinel occupied `regime`'s one slot and
- *  "unread" was never recognized by either function — even in the code predating that sentinel's
- *  addition, since the original hardcoded check only ever matched the Banger string. A native
- *  position with no regime data at all rendered "**Regime fit** — unread (Δ +0.0 pts)" as if
- *  calibrated, right next to the aggregate-withheld note — the identical C6 violation class. */
+ *  Each pillar can have MORE THAN ONE generic-default label — `regime` has THREE, independently
+ *  reachable: `regimeScore()`'s own "unread" fallback (regime input null AND no factor labeled
+ *  `SWING_PILLAR_LABELS.REGIME` — the native "nothing to read" case), the Banger-ledger
+ *  stamped-constant sentinel (BANGER_LEDGER_REGIME_LABEL — see the file-level comment below
+ *  `thesisHealthUncalibrated`), and the bare `SWING_PILLAR_LABELS.REGIME` ("Regime") literal
+ *  itself (regime input null, but a real "Regime" factor DOES exist in `factors[]` — see
+ *  `regimeScore()`'s own doc comment for the full #6931 lineage this third case closes). A
+ *  single-string map can only ever hold one of the two (now three), so this is an array per
+ *  pillar id, and every consumer below checks membership, not strict equality. Live gap found
+ *  2026-09-22 (AAPL position 40): before this array shape, the Banger sentinel occupied
+ *  `regime`'s one slot and "unread" was never recognized by either function — even in the code
+ *  predating that sentinel's addition, since the original hardcoded check only ever matched the
+ *  Banger string. A native position with no regime data at all rendered "**Regime fit** — unread
+ *  (Δ +0.0 pts)" as if calibrated, right next to the aggregate-withheld note — the identical C6
+ *  violation class. */
 const UNCALIBRATED_PILLAR_LABELS: Partial<Record<SwingThesisPillarId, string[]>> = {
   persistence: ["unknown"],
   entry_geometry: ["n/a"],
   flow_corroboration: ["no signals"],
-  regime: [BANGER_LEDGER_REGIME_LABEL, "unread"],
+  regime: [BANGER_LEDGER_REGIME_LABEL, "unread", SWING_PILLAR_LABELS.REGIME],
 };
 
 /**
@@ -270,8 +274,17 @@ function signalScore(kinds: string[] | null | undefined): { commit: number; curr
 // `swing-pillars.ts` stamps on it, imported rather than a second hardcoded "Regime" literal that
 // could drift from it) instead of trusting array position. If no such factor exists, this falls
 // through to the honest "unread" sentinel exactly as before — `UNCALIBRATED_PILLAR_LABELS["regime"]`
-// already recognizes "unread" and withholds this pillar from the calibrated blend, so the fix never
-// needs its own new sentinel, only a correct lookup.
+// already recognizes "unread" and withholds this pillar from the calibrated blend.
+//
+// CORRECTION (2026-11-09, same mandate — THIRD variant of this same C6 pattern, live repro MRVL
+// positionId 70): the paragraph above was itself wrong about needing "only a correct lookup" — when
+// a real "Regime" factor DOES exist (the common case whenever the REGIME pillar scored any points
+// at commit), `top.label` IS the bare string "Regime" (`SWING_PILLAR_LABELS.REGIME` itself) — just
+// the category name, with zero descriptive content, not a real per-position read. That value was
+// never added to `UNCALIBRATED_PILLAR_LABELS["regime"]` alongside "unread"/the Banger sentinel, so
+// it slipped through both `thesisHealthUncalibrated()` and `calibratedThesisPillars()` as if
+// calibrated. Fixed by adding `SWING_PILLAR_LABELS.REGIME` to that array too — see its own doc
+// comment above.
 function regimeScore(regime: string | null | undefined, factors: DeckFactor[] | undefined): { commit: number; current: number; label: string } {
   const top = factors?.find((f) => f.label === SWING_PILLAR_LABELS.REGIME);
   const base = regime ? 0.75 : 0.45;
