@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /** Minimal prod HTTP smoke for GitHub Actions (no secrets except optional CRON). */
-import { evaluateSpxDeskSmoke } from "./lib/gha-desk-smoke-eval.mjs";
+import {
+  evaluateSpxDeskSmoke,
+  shouldRetrySpxDeskSmokeFetch,
+} from "./lib/gha-desk-smoke-eval.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
@@ -72,9 +75,19 @@ for (const c of seoTextChecks) {
 }
 
 if (CRON) {
-  const { status, body } = await fetchJson("/api/market/spx/desk", {
-    Authorization: `Bearer ${CRON}`,
-  });
+  const deskHeaders = { Authorization: `Bearer ${CRON}` };
+  const DESK_RETRIES = 3;
+  let status = 0;
+  let body = null;
+  for (let attempt = 0; attempt < DESK_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+    const probe = await fetchJson("/api/market/spx/desk", deskHeaders);
+    status = probe.status;
+    body = probe.body;
+    if (status === 200 || !shouldRetrySpxDeskSmokeFetch(status)) break;
+  }
   const verdict = evaluateSpxDeskSmoke({ status, body });
   if (verdict.outcome === "ok") {
     console.log(`  ✓ /api/market/spx/desk → ${verdict.message}`);

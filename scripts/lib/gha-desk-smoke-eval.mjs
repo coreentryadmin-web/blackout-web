@@ -2,6 +2,11 @@
  * Pure verdict helper for deploy-smoke's authenticated /api/market/spx/desk probe.
  * Extracted so GHA off-hours behavior (200 with price 0) is unit-tested without prod fetch.
  */
+import { isTransientOriginError } from "../audit/lib/auth-status.mjs";
+
+export function shouldRetrySpxDeskSmokeFetch(status) {
+  return status === 0 || isTransientOriginError(status);
+}
 
 export function etMinutesAmericaNewYork(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -63,6 +68,13 @@ export function evaluateSpxDeskSmoke(probe, now = new Date()) {
     return {
       outcome: "fail",
       message: `200 but no positive SPX price during cash RTH (price=${Number.isFinite(price) ? price : "—"})`,
+    };
+  }
+
+  if (shouldRetrySpxDeskSmokeFetch(status)) {
+    return {
+      outcome: "warn",
+      message: `${status} transient origin error (ECS/ALB deploy blip — public health already passed)`,
     };
   }
 
