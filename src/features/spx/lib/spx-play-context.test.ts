@@ -79,6 +79,55 @@ test("buildSpxPlayDeskContext: ordinary trading day at the same ET time still co
   assert.ok((ctx.minutes_to_close ?? 0) > 0);
 });
 
+// BUG FIX (2026-11-09): minutesUntilNoEntry/minutesUntilForceExit had no pre-open guard —
+// unlike their sibling minutesToCashClose (which has its own explicit
+// `if (etMins < CASH_OPEN_ET_MINS) return null;`), these two only checked
+// isTradingDayEt(...) (weekday+holiday) and isPastNoEntryCutoff/isPastForceExitCutoff (pure
+// AFTERNOON-cutoff checks, ~3:30pm/3:45pm ET). On an ordinary trading-day PRE-MARKET read
+// (e.g. 6am ET), isTradingDayEt is true and isPast*Cutoff is false (nowhere near the
+// afternoon cutoff yet), so both happily computed and returned a live "minutes until"
+// countdown even though no session has opened. Confirmed live 2026-11-09T10:48:49Z:
+// GET /api/market/spx/play returned headline:"Session closed", session_phase:"closed",
+// gates.blocks:["Session closed"], yet desk_context:{"minutes_to_close":null,
+// "minutes_to_no_entry":579,"minutes_to_force_exit":594,...} — ticking down 1-for-1 with
+// wall-clock time on a repeat poll a minute later (578/593).
+//
+// This is the same bug CLASS already fixed once for NYSE holidays (see the
+// "NYSE holiday on a weekday nulls every countdown" test above, and FINDINGS.md's
+// "SPX Slayer desk_context countdowns ignored NYSE holidays" entry) — that fix's own
+// documented "Blast radius" explicitly left isPastNoEntryCutoff/isPastForceExitCutoff
+// untouched as "pure time-of-day cutoffs", which is exactly why this separate pre-open gap
+// (never covered by that fix) survived.
+test("buildSpxPlayDeskContext: pre-open ET time on an ordinary trading day nulls the no-entry/force-exit countdowns too", () => {
+  const ordinaryTuesdayAt0600Et = new Date("2026-09-08T10:00:00.000Z"); // 06:00 ET (EDT, UTC-4) — before 9:30am cash open
+  const ctx = buildSpxPlayDeskContext(
+    baseDesk(),
+    { score: 55, grade: "B", factors: [], direction: "long" },
+    { session_entries_today: 0, session_losses_today: 0 },
+    ordinaryTuesdayAt0600Et
+  );
+  assert.equal(ctx.minutes_to_close, null, "minutes_to_close already nulls pre-open (had its own guard)");
+  assert.equal(ctx.minutes_to_no_entry, null, "minutes_to_no_entry must null pre-open, same as minutes_to_close");
+  assert.equal(ctx.minutes_to_force_exit, null, "minutes_to_force_exit must null pre-open, same as minutes_to_close");
+});
+
+// Companion control: the SAME pre-open guard must not swallow the legitimate post-open,
+// pre-afternoon-cutoff case — a mid-RTH read (reusing the existing 14:21 ET Tuesday fixture
+// above) must still return real, live countdowns for all three fields.
+test("buildSpxPlayDeskContext: post-open, pre-cutoff ET time still returns live no-entry/force-exit countdowns", () => {
+  const ordinaryTuesdayAt1421Et = new Date("2026-09-08T18:21:00.000Z");
+  const ctx = buildSpxPlayDeskContext(
+    baseDesk(),
+    { score: 55, grade: "B", factors: [], direction: "long" },
+    { session_entries_today: 0, session_losses_today: 0 },
+    ordinaryTuesdayAt1421Et
+  );
+  assert.notEqual(ctx.minutes_to_no_entry, null);
+  assert.ok((ctx.minutes_to_no_entry ?? 0) > 0);
+  assert.notEqual(ctx.minutes_to_force_exit, null);
+  assert.ok((ctx.minutes_to_force_exit ?? 0) > 0);
+});
+
 // BUG FIX (2026-10-26): spx-play-engine.ts's closed-market branch (evaluateSpxPlayCore,
 // `!desk.market_open && !premarket`) hand-built `gates: {blocks:["Session closed"],
 // warnings:[]}` and never called evaluatePlayGates — the only place that applies the
