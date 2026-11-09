@@ -3,7 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { PlayHistoryTable, commitScoreFor } from "./PlayHistoryTable";
+import { PlayHistoryTable, commitScoreFor, humanizeOutcome } from "./PlayHistoryTable";
 import type { ZeroDteRecordPlay } from "@/lib/zerodte/record";
 
 (globalThis as unknown as { React: typeof React }).React = React;
@@ -72,6 +72,43 @@ test("humanizes the raw engine outcome codes rather than printing them verbatim"
   const html = renderTable();
   assert.match(html, /doubled/);
   assert.match(html, /stopped/);
+});
+
+// REGRESSION (live P3, 2026-11-09): record.ts's managedOutcomeLabel() collapsed the engine-exit
+// vocabulary to a coarse set that includes the bare code "flat_scratch" (no modifier suffix, and
+// unlike "thesis_break" it never carries a variable ":<source>" suffix either), but OUTCOME_LABEL
+// had no entry for it and no startsWith() fallback — so it fell through to `return raw` and
+// rendered the literal snake_case string. Confirmed live: a real MSFT 2026-10-29 play row carried
+// `"managed_outcome": "flat_scratch"`. RED (pre-fix): humanizeOutcome("flat_scratch") === "flat_scratch".
+// GREEN (post-fix): "flat scratch".
+test("REGRESSION: humanizeOutcome renders the bare 'flat_scratch' code humanized, not raw snake_case", () => {
+  assert.equal(humanizeOutcome("flat_scratch"), "flat scratch");
+  assert.notEqual(humanizeOutcome("flat_scratch"), "flat_scratch");
+});
+
+test("REGRESSION: a play row with managed_outcome 'flat_scratch' renders 'flat scratch' in the table, not the raw code", () => {
+  const html = renderTable([
+    {
+      ...PLAYS[0],
+      ticker: "MSFT",
+      session_date: "2026-10-29",
+      plan_outcome: "flat_scratch",
+      managed_outcome: "flat_scratch",
+      managed_pnl_pct: 0.1,
+    },
+  ]);
+  assert.match(html, /flat scratch/);
+  assert.doesNotMatch(html, /flat_scratch/, "the raw snake_case code must never reach the rendered HTML");
+});
+
+// The bare code "ratchet" (no ratchet_*_floor modifier suffix) is also stamped directly by
+// record.ts's managedOutcomeLabel() for a defensive-floor exit. It happens to already read as a
+// plain English word via the `return raw` fallthrough, so this is not a visible bug the way
+// "flat_scratch" was — but it is now an explicit, documented identity entry (matching the
+// doubled/stopped pattern already in this map) rather than an accidental fallthrough, so it can't
+// silently regress if the raw code ever grows a suffix of its own.
+test("humanizeOutcome renders the bare 'ratchet' code correctly (already-legible fallthrough, now explicit)", () => {
+  assert.equal(humanizeOutcome("ratchet"), "ratchet");
 });
 
 test("empty plays array renders the empty state, not an empty table", () => {

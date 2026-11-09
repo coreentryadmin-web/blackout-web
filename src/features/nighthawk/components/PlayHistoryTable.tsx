@@ -35,8 +35,11 @@ function fmtSignedPct(v: number | null | undefined): string {
  *  duplicated rather than imported since that map is a private module-level const, not an
  *  export; both are stamping the same raw engine-exit vocabulary from record.ts. */
 const OUTCOME_LABEL: Record<string, string> = {
+  // Bare codes record.ts's managedOutcomeLabel() stamps directly (no modifier suffix) once the
+  // engine-exit vocabulary collapsed to a coarse set — see the FIXED note below for `flat_scratch`.
   doubled: "doubled",
   stopped: "stopped",
+  ratchet: "ratchet",
   time_stop: "time stop",
   ratchet_breakeven_floor: "breakeven floor",
   ratchet_early_profit_floor: "early profit floor",
@@ -48,9 +51,16 @@ const OUTCOME_LABEL: Record<string, string> = {
   trim_scale_second: "2nd trim",
   trim_scale_runner_target: "runner target",
   flat_theta_bleed: "flat scratch",
+  // FIXED (live P3, 2026-11-09) — same gap, same fix, as NighthawkAnalyticsPanel.tsx's identical
+  // (explicitly duplicated, not shared) OUTCOME_BUCKET_LABEL map: record.ts's managedOutcomeLabel()
+  // stamps the bare coarse code `flat_scratch` for every "flat" managed_outcome, and this map had
+  // no entry and no startsWith() fallback for it (unlike `thesis_break`, which always carries a
+  // variable suffix), so it rendered the literal snake_case string instead of "flat scratch".
+  // Confirmed live: a real MSFT 2026-10-29 play row carried `"managed_outcome": "flat_scratch"`.
+  flat_scratch: "flat scratch",
 };
 
-function humanizeOutcome(raw: string | null): string {
+export function humanizeOutcome(raw: string | null): string {
   if (raw == null) return EM_DASH;
   if (OUTCOME_LABEL[raw]) return OUTCOME_LABEL[raw];
   if (raw.startsWith("thesis_break")) return "thesis break";

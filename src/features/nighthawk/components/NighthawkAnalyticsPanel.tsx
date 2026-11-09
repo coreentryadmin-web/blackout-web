@@ -35,8 +35,11 @@ import { PlayHistoryTable, type HistoryWindowDays } from "./PlayHistoryTable";
 // target/stop/open/ambiguous/pending/unfilled) — not reusable here (Cursor review, PR #2989:
 // the two label sets don't overlap despite the "outcome" name in both).
 const OUTCOME_BUCKET_LABEL: Record<string, string> = {
+  // Bare codes record.ts's managedOutcomeLabel() stamps directly (no modifier suffix) once the
+  // engine-exit vocabulary collapsed to a coarse set — see the FIXED note below for `flat_scratch`.
   doubled: "doubled",
   stopped: "stopped",
+  ratchet: "ratchet",
   time_stop: "time stop",
   ratchet_breakeven_floor: "breakeven floor",
   ratchet_early_profit_floor: "early profit floor",
@@ -48,10 +51,20 @@ const OUTCOME_BUCKET_LABEL: Record<string, string> = {
   trim_scale_second: "2nd trim",
   trim_scale_runner_target: "runner target",
   flat_theta_bleed: "flat scratch",
+  // FIXED (live P3, 2026-11-09): record.ts's managedOutcomeLabel() has stamped the bare coarse
+  // code `flat_scratch` (no `flat_theta_bleed` prefix) for every `by_outcome` "flat" bucket since
+  // its outcome vocabulary collapsed to {ratchet, thesis_break, flat_scratch, doubled, stopped}
+  // (see record.ts's managedOutcomeLabel `case "flat": return "flat_scratch"`). This map was never
+  // updated to match, and unlike `thesis_break` (which has a startsWith() fallback below because
+  // it always carries a variable `:<source>` suffix), there was no fallback for the exact string
+  // "flat_scratch" either — so it fell straight through to `return raw` and rendered the literal
+  // snake_case string in the live UI instead of "flat scratch". Confirmed live:
+  // GET /api/market/zerodte/record?days=14 returned `by_outcome: [...,{"label":"flat_scratch",...}]`.
+  flat_scratch: "flat scratch",
   ungraded: "ungraded",
 };
 
-function humanizeOutcomeLabel(raw: string): string {
+export function humanizeOutcomeLabel(raw: string): string {
   if (OUTCOME_BUCKET_LABEL[raw]) return OUTCOME_BUCKET_LABEL[raw];
   // thesis_break:<source> carries a variable suffix (gex-walls, oppose_cluster, ...) —
   // strip it rather than hardcoding every source.
