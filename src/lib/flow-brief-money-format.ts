@@ -33,10 +33,30 @@ export function moneyShort(n: number): string {
   return `$${Math.round(n)}`;
 }
 
+/**
+ * BUG FIX (round 489): this was missing the sub-1,000 "raw count" tier every sibling
+ * share-count formatter in this repo has (e.g. `darkpool-discord-format.ts`'s `fmtShares`,
+ * which this module's own header says `moneyShort` "mirrors pattern-for-pattern" — the
+ * pattern it was meant to mirror but didn't). Any `n < 1000` fell straight into the K
+ * branch and got rounded to the nearest WHOLE THOUSAND, not formatted as a thousands unit:
+ *   sharesShort(25)  -> Math.round(25 / 1000)  = Math.round(0.025) = 0  -> "0K"
+ *   sharesShort(500) -> Math.round(500 / 1000) = Math.round(0.5)   = 1  -> "1K"
+ * Reachable in production, not just a theoretical boundary: this function's one real call
+ * site (`flow-brief/route.ts`'s dark-pool block line) only gates on PREMIUM (`>= $15M`),
+ * never on share count, and `share_size` is an independent upstream field — a $15M+ block
+ * in an ultra-high-priced name (e.g. BRK.A, ~$600K+/share) is tens of shares, not thousands.
+ * A real 25-share BRK.A block would render "~0K shares" in a member-facing flow-brief
+ * sentence, understating the actual print by three orders of magnitude while looking like
+ * a plausible, honest number. Fix: add the same `< 1,000` raw-count tier `moneyShort` (this
+ * file) and `fmtShares` (darkpool-discord-format.ts) already have.
+ */
 export function sharesShort(n: number): string {
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  const kRounded = Math.round(n / 1_000);
-  if (Math.abs(kRounded) >= 1_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  return `${kRounded}K`;
+  if (abs >= 1_000) {
+    const kRounded = Math.round(n / 1_000);
+    if (Math.abs(kRounded) >= 1_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    return `${kRounded}K`;
+  }
+  return `${Math.round(n)}`;
 }
