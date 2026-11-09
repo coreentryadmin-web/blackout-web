@@ -355,8 +355,17 @@ export function evaluateJob(
   let statusLabel = "OK";
 
   if (last.status === "failed") {
-    status = "failed";
-    statusLabel = "Last run failed";
+    // Between scheduled fires (e.g. Monday morning before the post-close band), a Friday failed
+    // handshake must not fail cron-audit-query all day — same ops #1983 shape as stale suppression.
+    if (offScheduleGap || awaitingDualBand) {
+      status = "healthy";
+      statusLabel = awaitingDualBand
+        ? "Idle (awaiting in-window UTC band; last run failed)"
+        : "Idle (outside cron schedule window; last run failed)";
+    } else {
+      status = "failed";
+      statusLabel = "Last run failed";
+    }
   } else if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
@@ -529,6 +538,25 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       // the heartbeat block re-flag a healthy off-hours skip (FIX-1) as stale/warning.
       const offWindow = marketHoursCronOffWindow(job, hbNow);
       const cronStale = !offWindow && health.age_min != null && health.age_min > staleThreshold;
+
+      if (
+        health.status === "failed" &&
+        !offWindow &&
+        hbAgeMin != null &&
+        !playHb.stale &&
+        !playHb.critical_stale
+      ) {
+        return {
+          ...health,
+          status: "healthy" as const,
+          market_hours_stale: false,
+          status_label: `Engine tick ${hbAgeMin}m ago (cron handshake failed; heartbeat authoritative)`,
+          meta: {
+            ...(health.meta ?? {}),
+            play_engine_heartbeat: playHb,
+          },
+        };
+      }
 
       if (cronStale && hbAgeMin != null) {
         if (!playHb.stale) {
