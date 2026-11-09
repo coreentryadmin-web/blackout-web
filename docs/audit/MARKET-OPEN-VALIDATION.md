@@ -10381,3 +10381,34 @@ and `/play` are actually serving a real price again
   refreshes with real data on the NEXT dossier build rather than staying frozen on "no data" for
   up to an hour after recovery. No live state captured pre-fix to diff against — there is no way
   to force a correlated 5-way failure safely against production from this sandbox.
+
+## WATCH LIST — 2026-11-09 (`fetchPolygonMacroBackdrop` cached a one-sided fetch failure as a confirmed-empty macro leg, `fix/polygon-macro-partial-fetch-failure-cached`) — re-check after the next Polygon/Massive blip on either `/fed/v1/treasury-yields` or `/fed/v1/inflation`
+
+- **What was broken**: `src/lib/providers/polygon-macro.ts`'s `fetchPolygonMacroBackdrop` fetched
+  Treasury yields + CPI under one `Promise.all`, each leg guarded by its own
+  `.catch(() => ({ results: [] }))`. `macroGet` throws on any non-2xx response (429/5xx) or a
+  network-level exception, so that `.catch` collapsed a genuine fetch FAILURE into the identical
+  shape a leg that legitimately has nothing to report (e.g. CPI not yet printed this period)
+  produces. The only cache-write guard checked whether BOTH legs came back empty, so a one-sided
+  outage (e.g. `/fed/v1/inflation` 500s while `/fed/v1/treasury-yields` succeeds) built a backdrop
+  with the failed leg falsely nulled and cached it for the full 1-hour `TTL.REFERENCE` window —
+  every consumer (BIE's `ecosystem-context.ts` + `verdict.ts`) saw a confidently-null macro reading
+  for up to an hour that was never actually confirmed empty, just never successfully checked.
+- **Fix**: track per-leg fetch-failed flags set only inside each leg's own `.catch`, and refuse to
+  cache (throw, same mechanism as the pre-existing both-empty guard) when either flag is true,
+  regardless of the other leg's state. A leg that genuinely succeeds with zero rows is untouched —
+  still builds and caches a partial backdrop with that leg nulled, exactly as originally intended.
+  New test file `polygon-macro-fetch-failure.test.ts` (6 cases, mocking `polygonTrackedFetch` +
+  bypassing the real cache): RED confirmed via `git stash` isolation (2/6 fail pre-fix — the two
+  genuine one-sided-failure cases returned a falsely-confident non-null backdrop instead of
+  `null`), GREEN post-fix (6/6 pass); existing `polygon-macro.test.ts` pure-function tests still
+  8/8 pass; `tsc --noEmit` clean.
+- **Specific thing to check once live**: this is hard to trigger deliberately (needs a genuine
+  Polygon/Massive failure on one of these two specific endpoints), so the realistic validation is
+  passive: watch for a `[polygon-macro]`-adjacent warning or a Polygon/Massive entitlement
+  incident touching `/fed/v1/*` (per this repo's CLAUDE.md environment notes — correlated upstream
+  entitlement losses do recur), and if one occurs, confirm that once the failing endpoint
+  recovers, the NEXT `fetchPolygonMacroBackdrop` call picks up real data for that leg immediately
+  rather than the macro backdrop staying pinned with that leg nulled for up to the remainder of
+  an hour-long window after recovery. No live state captured pre-fix to diff against — there is
+  no way to force a one-sided `/fed/v1/*` failure safely against production from this sandbox.
