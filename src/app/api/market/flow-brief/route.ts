@@ -13,6 +13,7 @@ import { composeQuietFlowBrief } from "@/lib/bie/flow-tape-brief";
 import { getCachedBiePlatformContext } from "@/lib/bie/platform-cache";
 import { checkNumbersGrounded, extractNumbersFromText } from "@/lib/grounding-guard";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { moneyShort, sharesShort } from "@/lib/flow-brief-money-format";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,10 @@ function normalizeDark(raw: unknown): NormalizedBlock | null {
 }
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
+// Money/share-count values below are formatted via moneyShort()/sharesShort()
+// (src/lib/flow-brief-money-format.ts) — see that module's header comment for the
+// "round-first-then-promote" defect this replaced and why it was pulled into a
+// separate pure module (testability without the route's server-only imports).
 function buildPrompt(alerts: FlowAlert[], darkPrints: NormalizedBlock[]): string {
   if (!alerts.length) return "";
 
@@ -58,7 +63,7 @@ function buildPrompt(alerts: FlowAlert[], darkPrints: NormalizedBlock[]): string
     .filter((a) => a.premium >= MASSIVE_FLOW)
     .slice(0, 5)
     .map((a) =>
-      `${a.ticker} ${a.option_type} $${a.strike} exp:${a.expiry} ${a.route} $${(a.premium / 1e6).toFixed(1)}M`
+      `${a.ticker} ${a.option_type} $${a.strike} exp:${a.expiry} ${a.route} ${moneyShort(a.premium)}`
     );
 
   // Highlight massive dark pool blocks ($15M+) — institutional block trades
@@ -66,14 +71,14 @@ function buildPrompt(alerts: FlowAlert[], darkPrints: NormalizedBlock[]): string
     .filter((d) => d.premium >= MASSIVE_BLOCK)
     .slice(0, 4)
     .map((d) =>
-      `${d.ticker} ${d.side.toUpperCase()} $${(d.premium / 1e6).toFixed(1)}M block${d.share_size ? ` (${(d.share_size / 1000).toFixed(0)}K shares)` : ""}`
+      `${d.ticker} ${d.side.toUpperCase()} ${moneyShort(d.premium)} block${d.share_size ? ` (${sharesShort(d.share_size)} shares)` : ""}`
     );
 
   // Top flow alerts for context
   const topAlerts = alerts
     .slice(0, 10)
     .map((a) =>
-      `${a.ticker} ${a.option_type} $${a.strike} ${a.expiry} ${a.route} $${(a.premium / 1000).toFixed(0)}K score:${a.score}`
+      `${a.ticker} ${a.option_type} $${a.strike} ${a.expiry} ${a.route} ${moneyShort(a.premium)} score:${a.score}`
     )
     .join("\n");
 
@@ -81,7 +86,7 @@ function buildPrompt(alerts: FlowAlert[], darkPrints: NormalizedBlock[]): string
 
 Flow stats:
 - ${alerts.length} alerts · ${callPct}% call premium · ${100 - callPct}% put premium
-- Total: $${(total / 1e6).toFixed(1)}M · Call: $${(callPrem / 1e6).toFixed(1)}M · Put: $${(putPrem / 1e6).toFixed(1)}M
+- Total: ${moneyShort(total)} · Call: ${moneyShort(callPrem)} · Put: ${moneyShort(putPrem)}
 - Whale prints (>$1M): ${whalePrints}`;
 
   if (massiveFlows.length > 0) {
