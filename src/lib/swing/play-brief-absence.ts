@@ -1087,6 +1087,26 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     const flipAbsence = collectGexFlipAbsence(gex, readMs);
     if (flipAbsence) out.push(flipAbsence);
   }
+  // BUG FIX (Ask Largo standing mandate, 2026-11-08, live repro MSTR:72/GOOG:71 CLOSED): the
+  // 2026-10-26 fix above un-gated `collectGexFlipAbsence` from `!isNotLive` so a CLOSED play's
+  // "Since it closed" prose (play-brief-intel.ts's watchForSection fallback) would always have a
+  // matching chip — but that fix only covers the narrower "gex object present, flip null"
+  // sub-case. The prose fallback renders the IDENTICAL "No gamma flip / GEX wall read available
+  // for this name since the play closed." sentence for the entirely-separate, more common
+  // sub-case where `gex_positioning` itself is `null` (cold matrix) — exactly the condition the
+  // `!isNotLive`-gated cold-matrix chip above exists for, which still skips CLOSED/dead-WATCH.
+  // Confirmed live: both MSTR#72 and GOOG#71 CLOSED briefs render that exact prose sentence with
+  // zero matching entry in `unavailableSources` — a Largo C3 prose-vs-chip contradiction. Mirror
+  // the 2026-10-26 fix's reasoning for this sibling case: "is the matrix present at all" is, like
+  // "is there a structural reason for no flip", independent of whether the play is still live.
+  if (isNotLive && !ctx.ecosystemFetchFailed && ctx.ecosystem && !ctx.ecosystem.gex_positioning) {
+    out.push({
+      source: "GEX positioning",
+      reason: "cold matrix / no positioning read",
+      what_is_missing: "a warm GEX positioning read for this ticker",
+      retryable: true,
+    });
+  }
   // GAP FOUND (Ask Largo standing mandate, live repro AMD:51, 2026-10-12, PR #4076 comment
   // 6116699649): `laneRankSection` silently renders nothing whenever `computeLaneRank` finds
   // fewer than 2 peers — indistinguishable from "the underlying getSwingServingLane() read
