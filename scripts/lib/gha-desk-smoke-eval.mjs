@@ -26,12 +26,24 @@ export function isApproxUsCashRth(now = new Date()) {
   return mins >= 9 * 60 + 30 && mins <= 16 * 60;
 }
 
+/** Post-rollout blips — ALB may hit draining tasks or desk build may 502 once before settling. */
+export function isTransientDeployProbeStatus(status) {
+  return status === 502 || status === 503 || status === 504 || status === 429;
+}
+
 /**
  * @param {{ status: number, body: unknown }} probe
- * @returns {{ outcome: "ok" | "warn" | "fail", message: string }}
+ * @returns {{ outcome: "ok" | "warn" | "fail" | "retry", message: string }}
  */
 export function evaluateSpxDeskSmoke(probe, now = new Date()) {
   const { status, body } = probe;
+
+  if (isTransientDeployProbeStatus(status)) {
+    return {
+      outcome: "retry",
+      message: `HTTP ${status} (transient — retry during deploy rollout)`,
+    };
+  }
   const record = body && typeof body === "object" ? body : null;
   const price = record && "price" in record ? Number(record.price) : NaN;
 

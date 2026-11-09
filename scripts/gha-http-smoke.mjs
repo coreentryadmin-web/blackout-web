@@ -5,6 +5,10 @@ import { evaluateSpxDeskSmoke } from "./lib/gha-desk-smoke-eval.mjs";
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 const publicChecks = [
   { path: "/api/health", expect: 200, test: (b) => b.ok === true },
   { path: "/api/ready", expect: 200, test: (b) => b.ok === true },
@@ -72,10 +76,19 @@ for (const c of seoTextChecks) {
 }
 
 if (CRON) {
-  const { status, body } = await fetchJson("/api/market/spx/desk", {
-    Authorization: `Bearer ${CRON}`,
-  });
-  const verdict = evaluateSpxDeskSmoke({ status, body });
+  const headers = { Authorization: `Bearer ${CRON}` };
+  const SPX_DESK_RETRIES = Number(process.env.GHA_SMOKE_SPX_DESK_RETRIES ?? 8);
+  const SPX_DESK_RETRY_MS = Number(process.env.GHA_SMOKE_SPX_DESK_RETRY_MS ?? 5000);
+  let verdict = { outcome: "fail", message: "no probe" };
+  for (let attempt = 1; attempt <= SPX_DESK_RETRIES; attempt++) {
+    const { status, body } = await fetchJson("/api/market/spx/desk", headers);
+    verdict = evaluateSpxDeskSmoke({ status, body });
+    if (verdict.outcome !== "retry") break;
+    if (attempt < SPX_DESK_RETRIES) {
+      console.log(`  … /api/market/spx/desk → ${verdict.message} (retry ${attempt}/${SPX_DESK_RETRIES})`);
+      await sleep(SPX_DESK_RETRY_MS);
+    }
+  }
   if (verdict.outcome === "ok") {
     console.log(`  ✓ /api/market/spx/desk → ${verdict.message}`);
   } else if (verdict.outcome === "warn") {
