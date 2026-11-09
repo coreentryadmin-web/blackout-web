@@ -213,7 +213,28 @@ export type ReconstructHeatmapOptions = {
   spotBandPct?: number;
 };
 
-/** Select strike axis: always include near-spot band, then heaviest |GEX| rows up to cap. */
+/**
+ * Select strike axis: always include near-spot band (heaviest |GEX| first), then fill any
+ * remaining room with the next-heaviest |GEX| rows outside the band — never exceeding `maxStrikes`.
+ *
+ * BUG FIX (round 479): the near-spot band loop used to add every strike inside `spotBandPct` of
+ * spot with NO cap check, so on a tight-increment chain (SPX weeklies run $5, sometimes finer,
+ * near the money) a 4% band around spot can itself contain more than `maxStrikes` strikes —
+ * confirmed live-shaped: spot 7500, $2 strike spacing, 4% band (±300) yields 301 candidate
+ * strikes, all of which this loop added regardless of the 80-strike cap the caller
+ * (`vector-gex-heatmap-server.ts`) passes specifically to keep `reconstructGexHeatmapGrid`'s own
+ * documented promise ("the grid stays bounded on a wide chain"). The second loop below can only
+ * ever SHRINK toward the cap by breaking early — it can never remove strikes the first loop
+ * already over-added — so the cap was silently inert on exactly the dense chains it exists to
+ * bound. Blast radius: `reconstructGexHeatmapGrid`'s `strikes`/`cells` axes (the Vector GEX
+ * heatmap payload cached + served to the client) could carry 3-4x the intended row count on a
+ * tight-strike underlying, bloating the cached payload and the client-side render without any
+ * correctness benefit (the extra rows are still band-membership, just unnecessarily many of them).
+ *
+ * Fix: cap the band loop the same way the fallback loop already does. `ranked` is sorted by |GEX|
+ * descending, so capping this loop still keeps "near-spot band, heaviest-first" — it only stops
+ * adding once the strike axis is full, the same discipline the second loop uses for off-band fill.
+ */
 export function selectHeatmapStrikes(
   peakAbsByStrike: ReadonlyMap<number, number>,
   maxStrikes: number,
@@ -226,6 +247,7 @@ export function selectHeatmapStrikes(
 
   if (spot != null && spot > 0 && spotBandPct > 0) {
     for (const [strike] of ranked) {
+      if (selected.size >= maxStrikes) break;
       if (Math.abs(strike - spot) / spot <= spotBandPct) selected.add(strike);
     }
   }
