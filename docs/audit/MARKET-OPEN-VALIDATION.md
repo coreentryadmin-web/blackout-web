@@ -10548,3 +10548,24 @@ and `/play` are actually serving a real price again
   discovery) was genuinely partial for that one call rather than silently presenting as complete.
   No live state captured pre-fix to diff against — there is no safe way to force a
   mid-pagination Polygon failure against production from this sandbox.
+
+## WATCH LIST — 2026-11-09 (0DTE Command board `fmtMoney` had no B tier, `fix/zerodte-board-money-billion-tier`) — re-check next time any ticker's session flow aggregate approaches $1B
+
+- **What was broken**: `zerodte-board-format.ts`'s `fmtMoney` (the formatter behind
+  `ZeroDteBoard.tsx`'s flow strips, `s.gross_premium`/`s.recent_premium_30m`) had no billions
+  tier at all — any value `>= $1,000,000` fell straight into the M branch, so a genuine >=$1B
+  session aggregate would have rendered as a four-digit `"$1250.0M"` instead of `"$1.3B"`, and a
+  value rounding up into the billions at M's own 1dp precision (`$999,950,000`) would have hit
+  the identical round-first-then-promote overflow this file's existing K→M guard was already
+  fixed for, one unit higher (`"$1000.0M"` instead of `"$1.0B"`).
+- **Fix**: added a B branch ahead of the M branch with the same round-first-then-promote guard
+  shape the file's own K→M branch already uses. K branch, sub-$1,000 branch, null/NaN handling,
+  and the sign-inside-the-glyph convention for negatives are unchanged.
+- **Specific thing to check once live**: this is an extreme-tail case for a single ticker's
+  per-session flow aggregate (sibling 0DTE gates treat `>= $5M` as already a strong signal), so
+  it may not fire organically for a while. Next time the 0DTE Command board's flow strip shows a
+  ticker's "gross" or "last 30m" figure anywhere near or above $1B (a single mega-cap or SPX/SPY
+  session on an extreme catalyst day), confirm it renders as `"$X.XB"`, never a 4+-digit `"$XXXX.XM"`
+  label. No live reproduction was possible pre-fix — real `gross_premium`/`recent_premium_30m`
+  values this large are rare by construction, so this is a passive next-occurrence check, not a
+  forced repro.

@@ -28,11 +28,31 @@
  * K→M guard. Deliberately keeps every other branch (including the pre-existing sign-inside-the-
  * glyph placement for a negative `n`, e.g. "$-1.2M") byte-identical to the original so this fixes
  * only the one unit-boundary defect, not a second, unrelated formatting convention.
+ *
+ * SECOND INSTANCE OF THE SAME CLASS (round 504): this function also had NO B tier at all, so
+ * `abs >= 1_000_000` unconditionally returned the M-unit string with no overflow check one unit
+ * higher — the exact "no B tier" shape `meridian-earnings-intel-core.ts` (round 419) was already
+ * fixed for. A genuine >=$1B value (e.g. a whole-market 0DTE flow aggregate on an extreme session)
+ * rendered as the four-digit, wrong-unit `"$1250.0M"` instead of promoting to `"$1.3B"`, and a
+ * value that only ROUNDS up into the billions at M's own 1dp precision (999_950_000) hit the
+ * identical round-first-then-promote overflow this file's own K→M fix above already describes —
+ * just one unit higher ("$1000.0M" instead of "$1.0B"). Fixed with the same round-first-then-
+ * promote guard shape as the K→M branch, mirroring `fmt-money.ts#fmtPremium`'s B-before-M
+ * ordering and keeping the M/K branches' existing conventions (sign inside the glyph, 1dp for M,
+ * whole-number K) untouched.
  */
 export function fmtMoney(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) {
+    const m = Math.round((abs / 1_000_000) * 10) / 10;
+    // A value that rounds to 1000 of this unit belongs in the next unit up, not an overflowed
+    // four-digit label (e.g. 999_950_000 must read "$1.0B", never "$1000.0M"). Compared by
+    // magnitude (abs), same as the K→M guard below, since `n` may be negative.
+    if (m >= 1000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+    return `$${(n / 1_000_000).toFixed(1)}M`;
+  }
   if (abs >= 1_000) {
     const k = Math.round(n / 1_000);
     // A value that rounds to 1000 of this unit belongs in the next unit up, not an overflowed
