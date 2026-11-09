@@ -22,6 +22,7 @@ import {
   fetchUwGreekExposureExpiry,
   pickUwNextEarningsRow,
   fetchUwTickerFlowAlertsResult,
+  fetchUwSpotExposuresByStrikeResult,
 } from "./unusual-whales";
 import { shapeMeridianDarkPool } from "../meridian/meridian-earnings-intel-core";
 import { UW_REST_SECTIONS } from "../uw-docs-catalog";
@@ -781,6 +782,63 @@ test("fetchUwTickerFlowAlertsResult: the pre-fix collapse — both cases above p
   const body = /export async function fetchUwTickerFlowAlertsResult\(([\s\S]*?)\n}/.exec(src)?.[0] ?? "";
   assert.ok(body, "fetchUwTickerFlowAlertsResult must exist");
   assert.match(body, /failed:\s*data == null/, "failed must be derived from data == null, not from the post-extractRows alerts array");
+});
+
+// ── fetchUwSpotExposuresByStrikeResult: same "did it answer" distinction, applied to the UW
+// spot-exposures/strike fallback polygon-options-gex.ts's chain-less negative cache depends on
+// (audit finding, 2026-11-09). The plain `fetchUwSpotExposuresByStrike` collapses a 403/circuit-
+// open/exhausted-retries `null` and a genuinely-answered-empty page to the identical `[]`, which
+// is exactly the ambiguity `markNoChainTicker` must not inherit — see polygon-options-gex.ts's
+// NO_CHAIN_NEGATIVE_TTL_SEC doc comment.
+
+test("fetchUwSpotExposuresByStrikeResult: failed:true when the upstream never answered (403) — not silently 'no exposures'", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  process.env.UW_API_KEY = "test-uw-key";
+
+  mock.method(globalThis, "fetch", async () =>
+    new Response("forbidden", { status: 403 })
+  );
+
+  try {
+    const result = await fetchUwSpotExposuresByStrikeResult("GEXFAILTEST", 500);
+    assert.deepEqual(result.rows, [], "no rows can be parsed from a failed call");
+    assert.equal(result.failed, true, "a 403 must be reported as a failure, not a confirmed-empty root");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+  }
+});
+
+test("fetchUwSpotExposuresByStrikeResult: failed:false when UW genuinely answered with zero exposures", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  process.env.UW_API_KEY = "test-uw-key";
+
+  mock.method(globalThis, "fetch", async () =>
+    new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })
+  );
+
+  try {
+    const result = await fetchUwSpotExposuresByStrikeResult("GEXQUIETTEST", 500);
+    assert.deepEqual(result.rows, [], "genuinely zero exposures");
+    assert.equal(result.failed, false, "a real 200 answer of zero rows is NOT a failure");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+  }
+});
+
+test("fetchUwSpotExposuresByStrikeResult: the pre-fix collapse — derives failed from data == null, not from the post-extractRows rows array", () => {
+  // Source guard mirroring fetchUwTickerFlowAlertsResult's own: proves `failed` comes from the
+  // real distinguishing signal rather than being re-derived off the already-collapsed `rows`
+  // array (e.g. `rows.length === 0`), which would make a failure and a quiet root
+  // indistinguishable again.
+  const src = readFileSync(join(process.cwd(), "src/lib/providers/unusual-whales.ts"), "utf8");
+  const body = /export async function fetchUwSpotExposuresByStrikeResult\(([\s\S]*?)\n}/.exec(src)?.[0] ?? "";
+  assert.ok(body, "fetchUwSpotExposuresByStrikeResult must exist");
+  assert.match(body, /failed:\s*data == null/, "failed must be derived from data == null");
 });
 
 // ── pickUwNextEarningsRow: `/api/earnings/{ticker}` carries BOTH past prints and the future

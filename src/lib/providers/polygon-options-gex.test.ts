@@ -316,8 +316,43 @@ test("chain-less root (0 Polygon contracts + empty UW fallback) is negative-cach
   // actually come up empty for this build — never marked speculatively before the UW attempt.
   assert.match(
     src,
-    /if \(uwMatrix\) return uwMatrix;[\s\S]{0,600}markNoChainTicker\(root, now\);/,
-    "markNoChainTicker must run only after the UW fallback also returned null"
+    /if \(uwResult\.heatmap\) return uwResult\.heatmap;[\s\S]{0,1500}markNoChainTicker\(root, now\);/,
+    "markNoChainTicker must run only after the UW fallback also resolved"
+  );
+});
+
+// 2026-11-09 audit finding: the test above proves markNoChainTicker runs only AFTER both upstream
+// attempts resolve, but NOT that a transient failure (403/429/timeout/circuit-breaker-open) on
+// EITHER upstream is excluded from "confirmed chain-less" — `polygonFetchUrl` and the old
+// `fetchUwSpotExposuresByStrike` both returned the identical empty-looking result for "genuinely
+// no chain" and "never got an answer", so a single rate-limited poll during a busy session could
+// pin a perfectly normal, liquid ticker chain-less for a full 10 minutes. Fixed by threading a
+// `fetchFailed`/`failed` signal (same shape as `fetchUwTickerFlowAlertsResult`'s `failed` flag,
+// #7788) through `fetchHeatmapBandLoHi`/`fetchHeatmapBandUnfiltered`/`fetchHeatmapBand` and
+// `buildGexHeatmapFromUwStrikeExposures`, and gating the mark on both being false.
+test("markNoChainTicker is gated on BOTH upstreams being CONFIRMED empty, not merely empty — a transient fetch failure on either side must not be negative-cached", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(
+    src,
+    /if \(!chainResult\.fetchFailed && !uwResult\.fetchFailed\) \{\s*\n\s*markNoChainTicker\(root, now\);/,
+    "markNoChainTicker must be gated on neither upstream having merely failed to answer"
+  );
+  // The decisive signal for the Polygon side: fetchHeatmapBandUnfiltered's own request must be
+  // the one that can veto the mark (shouldEscalateToFullChain always runs when the banded pull
+  // comes back with 0 strikes, so this is the real full-chain check).
+  assert.match(
+    src,
+    /async function fetchHeatmapBandUnfiltered\(underlying: string\): Promise<\{ contracts: ChainContract\[\]; truncated: boolean; fetchFailed: boolean \}>/,
+    "fetchHeatmapBandUnfiltered must report whether its own request got an answer"
+  );
+  // The decisive signal for the UW side.
+  assert.match(
+    src,
+    /const \{ rows, failed \} = await fetchUwSpotExposuresByStrikeResult\(root, 500\);/,
+    "buildGexHeatmapFromUwStrikeExposures must use the Result variant that reports fetch failure"
   );
 });
 
