@@ -38,6 +38,1349 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## ZeroDteCommandPanel's own local `signPct` had the same sign-bias rounding tie as fmtPct/shift-math/PlayTerminal — negative Trough/Realized/Peak stats silently understated by 1pt at .5 boundaries
+
+> **kind:** `FINDING`
+
+### Summary
+`JavaScript.Math.round()` always rounds a `.5` tie toward `+Infinity`
+(`Math.round(-2.5) === -2` but `Math.round(2.5) === 3`). Any formatter that applies a bare
+`Math.round(n)` to a value that can be negative, while deciding the `+`/`-` sign prefix with a
+separate comparison, silently rounds a negative reading's MAGNITUDE down at the `.5` boundary —
+i.e. a real `-2.5%` loss prints as `-2%`, one point smaller in magnitude than it actually is,
+while the same-magnitude positive reading (`2.5%`) correctly rounds away from zero to `3%`.
+
+`ZeroDteCommandPanel.tsx` (`src/features/nighthawk/command-deck/`) defines its own local
+`signPct` helper with exactly this shape:
+
+```ts
+const signPct = (n: number | null | undefined): string =>
+  n != null ? `${n > 0 ? "+" : ""}${Math.round(n)}%` : "—";
+```
+
+It formats three real, often-negative fields on the Night Hawk command-deck panel:
+- `play.trough` — the mechanical worst-excursion read, always `<= 0`, rendered with the
+  `nh-deck-neg` class ("Trough" row).
+- `realizedPct` — the as-managed realized P&L for a CLOSED position, negative for a losing trade
+  ("Realized" row).
+- `play.peak` — usually positive but not guaranteed to be.
+
+This is now a SEVENTH confirmed instance of the identical bug class, previously found and fixed
+independently in `fmt-money.ts`'s `fmtPct`, `round-floats.ts`,
+`thermal/lib/gex-heatmap/shift-math.ts`, and (most recently, a different file with the SAME
+duplicate-named `signPct` helper) `PlayTerminal.tsx`'s own formatter — a sibling file in the same
+`command-deck/` directory that the `PlayTerminal.tsx` fix did not reach, because the two
+`signPct` definitions are independent, un-shared, locally-scoped functions rather than one
+exported helper.
+
+### Evidence
+RED repro (pre-fix), rendering `ZeroDteCommandPanel` with `trough: -2.5`:
+```
+Trough rendered: -2%   (expected -3%)
+```
+`Math.round(-2.5)` evaluates to `-2` in V8, confirmed directly in the Node REPL and via the
+regression test added in this PR
+(`src/features/nighthawk/command-deck/ZeroDteCommandPanel.test.ts`, new `describe` block
+"signPct does not understate negative magnitudes at the .5 rounding boundary"):
+- `trough: -2.5` must render `-3%`, not `-2%` — FAILS pre-fix, PASSES post-fix.
+- `peak: 2.5` (positive boundary, should be unaffected) still renders `+3%` both before and
+  after the fix, proving the fix changes only the negative-magnitude case.
+
+Post-fix: 9/9 tests in `ZeroDteCommandPanel.test.ts` pass; full `src/features/nighthawk/
+command-deck/*.test.ts` suite (417 tests across 14 suites, 492 individual assertions) passes
+with no regressions. `npx tsc --noEmit` clean.
+
+### Fix
+`Math.sign(n) * Math.round(Math.abs(n))` instead of a bare `Math.round(n)` — rounds the
+magnitude correctly regardless of sign (ties always round away from zero), leaves exact integers
+and positive values byte-identical to before, and matches the exact fix pattern already applied
+at every prior instance of this bug class (`fmtPct`, `round-floats.ts`, `shift-math.ts`,
+`PlayTerminal.tsx`'s `signPct`).
+
+### Blast radius
+One file, one local helper, three call sites inside it (`realizedPct`/`play.peak`/`play.trough`,
+lines 235/242/393/399 pre-fix). Deliberately NOT touching `PlayTerminal.tsx`'s own `signPct`
+(already fixed in a separate, concurrently-open PR, #7674) or any shared formatter — this is a
+second, independent local duplicate of the same shape, not a shared-helper regression.
+
+### Why this wasn't caught by the prior five fix-passes
+Every prior fix targeted a shared, IMPORTED helper (`fmtPct`, `round5`-style modules) or a single
+`.tsx` file's own inline formatter. `signPct` here is a second, differently-located, inline
+function with the identical name and bug as `PlayTerminal.tsx`'s own — grepping for the function
+NAME would have missed this as "already fixed"; only grepping for the bare-`Math.round`-plus-
+sign-ternary SHAPE across the whole `src/` tree surfaces it. Confirms the standing lead from the
+prior round: local, non-shared formatters defined inline inside `.tsx` component files are
+exactly the instances that survive a central-helper fix.
+
+| **Status** | FIXED — this PR. |
+
+## `trade-explanation.ts`'s own local `fmtPts`/`fmtR` had the same sign-bias rounding tie as `fmtPct`/`shift-math` — a negative factor at an exact rounding tie could render as a bare "0", indistinguishable from an actual zero-value factor
+
+> **kind:** `FINDING`
+
+### Summary
+`Math.round()` always rounds a `.5` tie toward `+Infinity` (`Math.round(-0.5) === -0` but
+`Math.round(0.5) === 1`). Any formatter that applies a bare `Math.round(n * scale) / scale` to a
+value that can be negative, while deciding the `+`/`-` sign prefix with a separate `n >= 0`
+comparison on the RAW input, silently rounds a negative reading's magnitude toward zero at the
+tie boundary while the identical-magnitude positive reading rounds away from zero.
+
+`src/lib/explain/trade-explanation.ts` — the composed, canonical "why did this trade exist"
+explanation module (point-weighted factors + EV, rendered into `headline`/`lines` for the
+Night Hawk command-deck's trade-explanation surface via `buildTradeExplanation`, consumed by
+`src/features/nighthawk/command-deck/adapters.ts`) — defined two local formatters with exactly
+this shape:
+
+```ts
+const fmtPts = (n: number): string => `${n >= 0 ? "+" : ""}${Math.round(n * 10) / 10}`;
+const fmtR = (n: number): string => `${n >= 0 ? "+" : ""}${Math.round(n * 100) / 100}R`;
+```
+
+`fmtPts` formats every point-weighted factor's contribution in both the one-line `headline`
+(`"COMMIT — Flow Quality +18, Sweep Persistence +12"`) and the multi-line `lines` render;
+`fmtR` formats the calibrated expected-value-in-R line (`"Expected Value +0.62R"`). Both take a
+raw signed `number` directly from caller-supplied `ExplanationFactor.points` / `TradeExplanationInput.evR`
+— values the module's own header says come from real scoring components (flow-quality, horizon
+scorers, the Allocation Engine), so a negative, non-integer factor or EV reaching an exact `.05`/
+`.005` tie is a real, reachable input shape, not a contrived one.
+
+This is the same bug class already fixed at `fmt-money.ts`'s `fmtPct`, `round-floats.ts`,
+`thermal/lib/gex-heatmap/shift-math.ts`'s `fmtShiftPercentForStrike`, and nighthawk's own
+`format.ts` / `trade-excursion-graphic.ts` / `debrief.ts` — an independent, un-migrated paste of
+the same formatter shape that none of those earlier fixes touched, because `trade-explanation.ts`
+defines its own local `fmtPts`/`fmtR` rather than importing any of the already-fixed helpers.
+
+### Evidence
+RED repro (pre-fix), calling the module-private formatters' logic directly and via the real
+`buildTradeExplanation` entry point:
+```
+fmtPts(0.25)   -> "+0.3"   fmtPts(-0.25)  -> "-0.2"   (should be "-0.3", same magnitude)
+fmtR(0.005)    -> "+0.01R" fmtR(-0.005)   -> "0R"      (should be "-0.01R")
+fmtPts(-0.05)  -> "0"                                   (should be "-0.1")
+```
+The `-0.05` case is sharper than mere understatement: `Math.round(-0.05 * 10) / 10` evaluates to
+`-0`, and `` `${-0}` `` stringifies to the bare digit `"0"` — so a real negative factor renders
+with no sign at all, visually identical to an actual zero-contribution factor in the rendered
+`headline`/`lines` a trader reads to understand why a trade was taken.
+
+Confirmed in a Node REPL and via two new regression tests in
+`src/lib/explain/trade-explanation.test.ts`, both exercised through the real
+`buildTradeExplanation` → `headline` path (not a reimplementation):
+- `fmtPts` tie test: `+0.25` factor renders `"A +0.3"`, `-0.25` renders `"A -0.2"` pre-fix (FAILS
+  — expected `"A -0.3"`), `"A -0.3"` post-fix (PASSES); `-0.05` renders the bare `"B"` with no
+  signed value pre-fix (FAILS — expected `"B -0.1"`), `"B -0.1"` post-fix (PASSES).
+- `fmtR` tie test: `evR=0.005` renders `"EV +0.01R"` both before and after (proving the fix only
+  changes the negative case); `evR=-0.005` renders `"EV 0R"` pre-fix (FAILS — expected
+  `"EV -0.01R"`), `"EV -0.01R"` post-fix (PASSES).
+
+Post-fix: 10/10 tests in `trade-explanation.test.ts` pass (8 pre-existing tests unaffected,
+2 new sign-bias tests). `npx tsc --noEmit` clean.
+
+### Fix
+`Math.sign(n) * Math.round(Math.abs(n) * scale) / scale` instead of
+`Math.round(n * scale) / scale` on the raw signed value — rounds the magnitude correctly
+regardless of sign (ties always round away from zero), leaves already-tie-free values (every
+existing test fixture: `18`, `12`, `9`, `-14`, `10`, `0.62`) byte-identical to before, and matches
+the exact fix pattern already applied at every prior instance of this bug class. The sign-prefix
+comparison changed from `n >= 0` (on the raw input) to `rounded > 0` (on the rounded output,
+`> 0` not `>= 0`) so an exact zero or a magnitude that rounds down to zero never prints a
+misleading `"+0"` — the same convention `fmtPct`, `fmtShiftPercentForStrike`, and the already-fixed
+Night Hawk `signPct`/`formatReturnPct`/`formatExcursionPct` helpers use. Extracted the shared
+`roundTiesAwayFromZero(n, scale)` helper so `fmtPts`/`fmtR` can't drift apart again within this
+one file.
+
+### Blast radius
+One file, two local helpers (`fmtPts`, `fmtR`), both used only inside `buildTradeExplanation`
+(grep-confirmed — no other file imports or redefines them). `buildTradeExplanation` itself is
+currently consumed by its own test file only; `factorsFromFlowQuality` (a different, unaffected
+export from the same module) is the one piece `src/features/nighthawk/command-deck/adapters.ts`
+currently imports. This means the fix has no live production render to validate against yet —
+the module is shipped, fully tested, and designed as the eventual canonical trade-explanation
+surface per its own header, but `buildTradeExplanation`'s headline/lines output is not yet wired
+into a live UI or API response. Fixing it now, with the same evidence bar as every other finding,
+means whichever surface wires it in next inherits correct tie-rounding rather than a fourth
+independent place this bug class has to be re-discovered.
+
+### Why this wasn't caught by the prior fix passes
+Every prior fix in this bug class targeted either a shared canonical helper (`fmt-money.ts`'s
+`fmtPct`, `round-floats.ts`) or a UI/response-envelope formatter already wired into a live render
+path, so each fix's own "where else does this bug live" grep tended to follow live call sites
+outward from an already-known defect. `trade-explanation.ts` is a pure, fully-unit-tested module
+with no live caller of its signed-value formatters yet, so it never surfaced in a live-repro-first
+sweep — it took the explicit instruction (this round's lead) to grep the bare
+`Math.round(\w+ \* 10+) / 10+` SHAPE across the whole non-excluded `src/` tree, independent of
+whether a call site is currently wired live, to find it.
+
+| **Status** | FIXED — this PR. |
+
+## Thermal Discord's own local `fmtShiftPct` had the same sign-bias rounding tie as fmtPct/shift-math's own `fmtShiftPercentForStrike` — melting put/call walls understated by 1pt at .5 boundaries in the live shift-leaders Discord line
+
+> **kind:** `FINDING`
+
+### Summary
+`JavaScript.Math.round()` always rounds a `.5` tie toward `+Infinity`
+(`Math.round(-2.5) === -2` but `Math.round(2.5) === 3`). Any formatter that applies a bare
+`Math.round(n)` to a value that can be negative, while deciding the `+`/`-` sign prefix with a
+separate `>= 0` comparison, silently rounds a negative reading's MAGNITUDE down at the `.5`
+boundary — a real `-2.5%` melt prints as `-2%`, one point smaller in magnitude than it actually
+is, while the identical-magnitude positive reading (`+2.5%` build) correctly rounds away from
+zero to `+3%`.
+
+`src/lib/thermal-discord-extras.ts` defines its own local `fmtShiftPct` helper with exactly this
+shape:
+
+```ts
+function fmtShiftPct(pct: number | null): string {
+  if (pct == null || !Number.isFinite(pct)) return "—";
+  return `${pct >= 0 ? "+" : ""}${Math.round(pct)}%`;
+}
+```
+
+This formats the build/melt % shown for every strike in the Thermal Discord bot's live
+"shift leaders" sub-line (`buildThermalShiftLeadersLine`, posted via
+`buildThermalDiscordEmbedWithExtras` — a real, production Discord-posting path, not a dead or
+admin-only surface), fed by `wallStrengthShift`'s signed `pct` (negative for every melting wall,
+call or put side).
+
+The sibling Thermal-desk file `src/features/thermal/lib/gex-heatmap/shift-math.ts` already fixed
+the IDENTICAL bug in its own `fmtShiftPercentForStrike`, and that fix's own doc comment says so
+explicitly: *"Same bug class already fixed in `fmt-money.ts`'s `fmtPct` (2026-10-26) and
+`round-floats.ts`; **this sibling Thermal-desk formatter was missed in both passes**."* That
+comment was written about the two UI consumers (`GexMatrixShiftBadge`, `GexShiftLeadersStrip`,
+both of which use `.toFixed(0)`, which V8 already rounds symmetrically and so were never
+affected) — but `thermal-discord-extras.ts`'s own `fmtShiftPct` is a THIRD, independent, still-
+broken consumer of the same `wallStrengthShift`/`shiftPercentForStrike` family that neither of the
+prior two fix-passes reached, because it is a locally-defined, un-shared duplicate rather than an
+import of the already-fixed `fmtShiftPercentForStrike`.
+
+### Evidence
+RED repro (pre-fix), calling `fmtShiftPct` directly and via the real
+`buildThermalShiftLeadersLine` entry point:
+```
+fmtShiftPct(-2.5)                                        -> "-2%"   (expected "-3%")
+buildThermalShiftLeadersLine(melting put wall, pct=-2.5)  -> "_melt 95 (-2%)_"   (expected "-3%")
+```
+confirmed directly in the Node REPL (`Math.round(-2.5) === -2`, `Math.round(2.5) === 3`) and via
+the regression tests added in this PR (`src/lib/thermal-discord-extras.test.ts`):
+- `fmtShiftPct(2.5)` (positive boundary) renders `+3%` both before and after the fix — proving
+  the fix changes only the negative-magnitude case, not the already-correct positive one.
+- `fmtShiftPct(-2.5)` renders `-2%` pre-fix (FAILS), `-3%` post-fix (PASSES).
+- A mirror-magnitude integration test through the real `buildThermalShiftLeadersLine` (a
+  `+2.5%`-tie building call wall next to a `-2.5%`-tie melting put wall, same magnitude) renders
+  `+3%`/`-2%` pre-fix — the two equal-magnitude opposite shifts visibly disagree — and `+3%`/`-3%`
+  post-fix.
+- A near-zero negative value (`-0.3`, rounds to magnitude 0) still renders the honest `0%`, never
+  a misleading signed `-0%` — same guard the `shift-math.ts` fix already established, mirrored
+  here.
+
+Post-fix: 7/7 tests in `thermal-discord-extras.test.ts` pass (3 pre-existing build/melt-labeling
+tests unaffected, 4 new sign-bias tests). `npx tsc --noEmit` clean. Sibling suites
+(`thermal-discord-breach-state.test.ts`, `thermal-discord-breach-lock-concurrency.test.ts`) pass
+unchanged.
+
+### Fix
+`Math.sign(pct) * Math.round(Math.abs(pct))` instead of a bare `Math.round(pct)` — rounds the
+magnitude correctly regardless of sign (ties always round away from zero), leaves exact integers
+and positive values byte-identical to before, and matches the exact fix pattern already applied
+at every prior instance of this bug class (`fmtPct`, `round-floats.ts`, `shift-math.ts`'s own
+`fmtShiftPercentForStrike`, and several Night Hawk command-deck `signPct`/`formatReturnPct`
+instances). The sign-prefix comparison changed from `pct >= 0` (on the raw input) to
+`rounded > 0` (on the rounded output, `> 0` not `>= 0`) so an exact zero or a magnitude that
+rounds down to zero never prints a misleading `+0%`/`-0%` — the same convention
+`fmtShiftPercentForStrike` and the already-fixed `ZeroDteCommandPanel.tsx`/`PlayTerminal.tsx`
+`signPct` helpers use.
+
+Also exported `fmtShiftPct` (was module-private) so it can be unit-tested directly, matching the
+export convention `shift-math.ts` already uses for its own `fmtShiftPercentForStrike`.
+
+### Blast radius
+One file, one local helper, one call site (`buildThermalShiftLeadersLine`'s per-strike shift
+line), one live production surface: the Thermal Discord bot's "full" embed shift-leaders
+sub-line (`buildThermalDiscordEmbedWithExtras`, posted via `thermal-discord-run.ts`'s cron). No
+other caller of `fmtShiftPct` exists (grep-confirmed). Deliberately NOT touching
+`shift-math.ts`'s `fmtShiftPercentForStrike` (already fixed), `GexMatrixShiftBadge.tsx` /
+`GexShiftLeadersStrip.tsx` (both use `.toFixed(0)`, never affected by this bug), or any other
+file — this is the one remaining un-fixed consumer the prior fix's own comment named but did not
+reach.
+
+### Why this wasn't caught by the prior fix passes
+The prior fix (`shift-math.ts`'s `fmtShiftPercentForStrike`) targeted the shared, canonical
+helper and the two UI components that already imported a (different, `.toFixed`-based) local
+formatter. `thermal-discord-extras.ts`'s `fmtShiftPct` is a third, differently-located, inline
+function that happens to consume the same underlying `wallStrengthShift` data but was never
+imported from or compared against the fixed helper — grepping for "already using
+`fmtShiftPercentForStrike`" would have missed this as "already fixed"; only grepping for the
+bare-`Math.round`-plus-sign-ternary SHAPE across the whole `src/` tree (continuing the standing
+lead from prior rounds: local, non-shared formatters defined inline inside files not yet read
+line-by-line survive a central-helper fix) surfaces it.
+
+| **Status** | FIXED — this PR. |
+
+## Swing play-brief's rollHistory and tickerTrackRecord collapse a real upstream timeout into the same null as honest absence
+> **kind:** `FINDING`
+
+### Status
+
+**Status.** FIXED.
+
+### Root cause
+
+`src/lib/swing/play-brief-context.ts`'s `loadSwingPlayBriefContext` races several best-effort
+reads against an 8s budget via `withBriefSourceTimeout`, which REJECTS on timeout specifically so
+a caller can distinguish a real upstream stall from honest absence. `ecosystemFetchFailed`/
+`vectorFetchFailed` (original) and `archetypeTrackRecordFetchFailed` (added 2026-10-21 for a live
+EWY repro) already make that distinction for their own sources — each sets a companion boolean
+flag inside its `.catch((err) => { ...; xFetchFailed = true; return null; })` handler.
+
+`loadRollHistory` (line 330) and the `tickerTrackRecord` read (lines 339-347) used the
+byte-identical `withBriefSourceTimeout(...).catch(() => null)` shape WITHOUT any companion flag —
+confirmed by grep, no `rollHistoryFetchFailed`/`tickerTrackRecordFetchFailed` existed anywhere in
+the codebase. A genuine upstream stall on either read (this file's own header cites a measured
+2026-09-09 incident with ALB p99 90-104s) therefore read identically to "this play was never
+rolled" or "no prior trades on this ticker" — the exact C3 hazard
+`docs/audit/LARGO-PRODUCT-CONTRACT.md` calls out: "No data and no signal are different claims. A
+consumer that cannot tell them apart will report absence as a finding... even when every test
+passes."
+
+The file's own top-of-file comment was stale on this point — it stated only ecosystem/vector carry
+the `*FetchFailed` distinction and that "the archetype-track-record read has no such distinction to
+make," contradicted by `archetypeTrackRecordFetchFailed` added later in the same file, which was
+never extended to these two siblings using the identical pattern.
+
+### Evidence (RED → GREEN)
+
+Added to `src/lib/swing/play-brief-absence.test.ts`, mirroring the existing
+`archetypeTrackRecordFetchFailed` test pair exactly:
+
+- `collectBriefUnavailableSources: a genuine roll-history fetch failure (timeout) surfaces in
+  envelope, distinct from a legitimate 'never rolled' absence` and its `tickerTrackRecord` sibling —
+  RED without the new disclosure blocks in `play-brief-absence.ts` (no entry ever produced);
+  GREEN with them.
+- `collectBriefUnavailableSources: rollHistory/tickerTrackRecord null WITHOUT a fetch failure does
+  not fabricate an absence entry` — regression guard preserving Largo C6 (omission, not
+  fabrication) for the legitimate-absence case.
+
+Post-fix: 121/121 tests in `play-brief-absence.test.ts` pass. `npx tsc --noEmit` clean.
+
+### Blast radius
+
+`rollHistoryFetchFailed`/`tickerTrackRecordFetchFailed` are new optional fields on
+`SwingPlayBriefContext` (`play-brief-types.ts`) — additive, no existing field removed or
+retyped. `collectBriefUnavailableSources` (`play-brief-absence.ts`) is the only consumer that
+needed a new branch; every other reader of `SwingPlayBriefContext` is unaffected since the fields
+are optional and `undefined` on any fixture predating them reads as "unknown," matching the
+existing convention for `archetypeTrackRecordFetchFailed`.
+
+### Fix rationale
+
+Copied the already-reviewed, already-shipped `archetypeTrackRecordFetchFailed` pattern verbatim
+for its two remaining siblings — same `console.warn` + flag-set shape in `play-brief-context.ts`,
+same optional-boolean doc-comment convention in `play-brief-types.ts`, same disclosure-block shape
+in `play-brief-absence.ts` (source name / "fetch failed" / `what_is_missing` / `retryable: true`).
+Also corrected the top-of-file comment in `play-brief-context.ts` that had gone stale claiming
+archetype-track-record was uniquely exempt from this distinction.
+
+## SPX desk's recalcGexWallDistances had the same sign-bias rounding tie as topGexWalls
+> **kind:** `FINDING`
+
+### Status
+
+**Status.** FIXED.
+
+### Root cause
+
+`src/features/spx/lib/spx-desk-merge.ts`'s `recalcGexWallDistances` recomputed each `GexWall`'s
+`distance_pts` with:
+
+```ts
+distance_pts: Math.round((w.strike - spot) * 100) / 100,
+```
+
+`Math.round()` on a signed value ties toward `+Infinity` (`Math.round(-262.5) === -262` but
+`Math.round(262.5) === 263`), so a strike sitting exactly on a half-cent tie below spot rounds to
+a smaller magnitude than the mirror-image strike the same distance above spot.
+
+This is an independently copy-pasted duplicate of the identical buggy line in
+`src/lib/providers/gamma-desk.ts`'s `topGexWalls`, fixed in PR #7680 (the ninth confirmed instance
+of this sign-bias rounding-tie bug class in this codebase, after `fmt-money.ts`'s `fmtPct`,
+`round-floats.ts`, `shift-math.ts`, `PlayTerminal.tsx`'s `signPct`, `ZeroDteCommandPanel.tsx`'s own
+`signPct`, `format.ts`'s Net VEX line, and `gamma-desk.ts`'s `topGexWalls` itself). #7680's own PR
+description explicitly flagged this SPX-side sibling as out of scope for that PR and left it as a
+lead — this finding picks that lead up.
+
+`recalcGexWallDistances` is the SPX desk's live-merge path: it re-derives `gex_walls` (and the
+`kind` support/resistance flip) every time a fresh spot price is merged into the desk payload
+(`mergeFlowIntoDesk`/`mergePulseIntoDesk`, lines 294 and 506), so the biased `distance_pts` is
+served over `GET /api/market/spx/desk` to every SPX Slayer member and to Largo's SPX read.
+
+### Evidence (RED → GREEN)
+
+Added to `src/features/spx/lib/spx-desk-merge.test.ts`, using the same tie-triggering fixture
+shape as #7680 (`spot = 7542.375`, `above = 7545` → tie at `+262.5`, `below = 7539.75` → mirror
+tie at `-262.5`):
+
+Pre-fix (RED, reproduced by stashing the fix): 1 of 4 new subtests failed —
+`recalcGexWallDistances` returned `distance_pts: -2.62` for the below-spot tie instead of the
+symmetric `-2.63` the above-spot tie already got correctly.
+
+Post-fix (GREEN): all 30 tests in `spx-desk-merge.test.ts` pass (26 pre-existing + 4 new).
+`npx tsc --noEmit` clean.
+
+### Blast radius
+
+Both call sites of `recalcGexWallDistances` live inside this one file (`mergeFlowIntoDesk` line
+294, `mergePulseIntoDesk` line 506) — no other module re-implements or re-exports this function.
+Checked via repo-wide grep for `recalcGexWallDistances` and for the bare-`Math.round` +
+strike-minus-spot shape; no further undiscovered duplicates found.
+
+### Fix rationale
+
+Same fix as all eight prior siblings: round the magnitude, then reapply sign
+(`Math.sign(w.strike - spot) * Math.round(Math.abs(w.strike - spot) * 100) / 100`). Verified
+`strike === spot` still returns plain `0`, never `-0` (`Math.sign(0) === 0`), matching the existing
+behavior and PR #7680's own verification of the same edge case. The `kind` (support/resistance)
+flip logic on the same line is untouched — only the `distance_pts` expression changed.
+
+## SPX desk route 502 on ServerCacheTimeoutError
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+| **Surface** | `GET /api/market/spx/desk`, deploy-smoke |
+| **Symptom** | Post-merge `deploy-smoke` failed with `✗ /api/market/spx/desk → unexpected HTTP 502` (run 42550161810, commit `0dee31c5c`) |
+| **Root cause** | `loadSpxDesk()` threw `ServerCacheTimeoutError` on cold ECS replica; route caught all errors as 502. Sibling `/api/market/spx/play` already degrades to 200 on the same error. |
+| **Fix** | On `ServerCacheTimeoutError`, return stale peek if grounded, else `deskShellFromPulse(buildSpxDeskPulseMinimal())` as 200. |
+| **Verify** | Post-deploy `validate:gha-smoke`; cold replica desk should not 502. |
+
+## `formatReturnPct` (play-card-display.ts) had the same sign-bias rounding tie as fmtPct/shift-math/signPct — Peak/Trough/P&L/stock-move stats silently understated by 1pt at .5 boundaries
+
+> **kind:** `FINDING`
+
+### Summary
+`JavaScript.Math.round()` always rounds a `.5` tie toward `+Infinity`
+(`Math.round(-2.5) === -2` but `Math.round(2.5) === 3`). Any formatter that applies a bare
+`Math.round(n)` to a value that can be negative, while deciding the `+`/`-` sign prefix with a
+separate comparison, silently rounds a negative reading's MAGNITUDE down at the `.5` boundary —
+a real `-2.5%` loss prints as `-2%`, one point smaller in magnitude than it actually is, while
+the same-magnitude positive reading (`2.5%`) correctly rounds away from zero to `+3%`.
+
+`formatReturnPct` (`src/features/nighthawk/command-deck/play-card-display.ts`) had exactly this
+shape:
+
+```ts
+export function formatReturnPct(n: number | null): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `${n > 0 ? "+" : ""}${Math.round(n)}%`;
+}
+```
+
+This is a shared, EXPORTED formatter (unlike the prior fixes to inline `signPct` helpers), used
+across the whole Night Hawk command deck for several real, often-negative fields:
+- `CommandDeck.tsx` — Peak Return (`p.peak`, CLOSED rows), Since-flag track % (`p.trackPct`,
+  WATCH/SKIP rows), stock-move % (`p.stockMovePct`), and live P&L % (`p.pnlPct`).
+- `PlayLifecycleCard.tsx` — the lifecycle card's return number.
+- `TerminalPremiumPanels.tsx` — `summary.currentPct` and `summary.peakPct`.
+
+This is a TENTH confirmed instance of the identical bug class, previously found and fixed
+independently in `fmt-money.ts`'s `fmtPct`, `round-floats.ts`, `thermal/lib/gex-heatmap/
+shift-math.ts`'s `fmtShiftPercentForStrike`, and two local `signPct` duplicates in this very
+`command-deck/` directory (`PlayTerminal.tsx`, `ZeroDteCommandPanel.tsx`, #7674/#7676) —
+`formatReturnPct` is a THIRD, separately-named, exported formatter in the same directory that
+none of those fixes reached, because it is neither of the two `signPct` names a name-grep for
+"already fixed" would have found.
+
+### Evidence
+RED repro (pre-fix), added to `play-card-display.test.ts`:
+```ts
+it("formatReturnPct: a tie above zero and the mirror tie below zero round to the SAME magnitude", () => {
+  assert.equal(formatReturnPct(2.5), "+3%", "positive tie rounds away from zero");
+  assert.equal(formatReturnPct(-2.5), "-3%", "mirror-image tie must round to the same magnitude");
+});
+```
+`Math.round(-2.5)` evaluates to `-2` in V8 (confirmed directly in the Node REPL: `node -e
+"console.log(Math.round(-2.5), Math.round(2.5))"` → `-2 3`). Test run pre-fix: `9 tests, 1 fail`
+(the new test — `formatReturnPct(-2.5)` returned `"-2%"`, not the expected `"-3%"`). Post-fix:
+`9 tests, 0 fail`.
+
+### Fix
+`Math.sign(n) * Math.round(Math.abs(n))` instead of a bare `Math.round(n)` — rounds the
+magnitude correctly regardless of sign (ties always round away from zero), leaves exact integers
+and positive values byte-identical to before (including the two pre-existing
+`formatReturnPct(87) === "+87%"` / `formatReturnPct(-12) === "-12%"` assertions, still green),
+and matches the exact fix pattern already applied at every prior instance of this bug class.
+
+### Fix rationale
+Matching the already-established, reviewed fix shape for this exact bug class (rather than
+inventing a new one) keeps every "round a signed delta/points/percent value for display" call
+site in this codebase consistent.
+
+### Blast radius
+One shared helper, four real consumer sites across three files (`CommandDeck.tsx` ×4 fields,
+`PlayLifecycleCard.tsx`, `TerminalPremiumPanels.tsx` ×2) — every one of them renders a value that
+can legitimately be negative on a real losing/declining position, so every one was silently
+understating a negative magnitude by up to 1 point exactly at the `.5` boundary. No other
+exported formatter in `play-card-display.ts` shares this shape (`playQualityPct`,
+`tierStarCount` both clamp to non-negative ranges before rounding, so the sign-bias tie cannot
+occur there).
+
+### Why this wasn't caught by the prior nine fix-passes
+Every prior fix in this bug class targeted a shared, IMPORTED helper (`fmtPct`,
+`fmtShiftPercentForStrike`) or an inline, locally-scoped `signPct` function living directly
+inside a `.tsx` component. `formatReturnPct` is a third shape: an EXPORTED, differently-named
+pure function in a sibling `.ts` file one directory over from the two already-fixed `signPct`
+instances — close enough that a human skim of "the command-deck formatters" could plausibly
+assume it was covered by the `signPct` sweep, but a literal grep for the function name `signPct`
+would never surface it. Confirms the standing lead from the prior rounds: this bug class needs a
+SHAPE grep (bare `Math.round(n)` paired with a separate sign-ternary) across the whole `src/`
+tree, not a name grep for known-buggy helper names.
+
+| **Status** | FIXED — this PR. |
+
+## Night Hawk dossier-text "Net VEX" line was a seventh un-migrated copy of the signed-value sign-bias rounding bug — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+| **Severity** | P3 (display-only; feeds the live member/Largo-facing dossier text) |
+| **Area** | `src/features/nighthawk/lib/format.ts` (`formatTickerDossierText`) |
+
+### Root cause
+
+Plain `Math.round(n)` ties toward `+Infinity` (`Math.round(-2.5) === -2` but
+`Math.round(2.5) === 3`). Any formatter that rounds the raw signed value and then separately
+checks the RAW value's sign for the `+`/`-` prefix inherits this asymmetry: a NEGATIVE value
+sitting exactly on a whole-unit tie rounds to a SMALLER magnitude than the IDENTICAL positive
+magnitude would.
+
+`formatTickerDossierText`'s "Net VEX" line had its own, independent copy of this exact shape:
+
+```ts
+if (pos.net_vex != null) lines.push(`Net VEX: ${pos.net_vex >= 0 ? "+" : ""}${Math.round(pos.net_vex)}`);
+```
+
+`pos.net_vex` is a real net vanna-exposure figure (`PositioningSummary.net_vex`, sourced from
+`gex-positioning.ts`/`polygon-options-gex.ts`'s GEX bundle). `formatTickerDossierText` builds the
+per-ticker dossier TEXT block that is fed both into the Night Hawk overnight edition builder
+(`edition-builder.ts`) and directly into Largo's play-explainer tool (`play-explainer.ts`) — i.e.
+this string is what a member or Largo actually reads, not an internal intermediate value. A net
+VEX of, say, -2.5 (in whatever display unit the upstream bundle already scaled it to) rendered
+`"Net VEX: -2"` pre-fix instead of the correct `"Net VEX: -3"` — understating a short-vanna read
+by exactly the same one-unit gap the six prior instances of this bug class produced, right where
+a trader or Largo is reading the dealer-positioning narrative.
+
+This is the SEVENTH confirmed instance of this bug class in this codebase, following
+`fmt-money.ts`'s `fmtPct` (4 original sites), `round-floats.ts`, `thermal/lib/gex-heatmap/
+shift-math.ts`'s `fmtShiftPercentForStrike`, and this feature's own command-deck siblings
+(`PlayTerminal.tsx` / `ZeroDteCommandPanel.tsx`, both named `signPct` but independently pasted,
+not a shared helper) — confirming grepping by function NAME misses instances; the bare-`Math.round`
++ raw-sign-ternary SHAPE is what has to be searched for.
+
+### Evidence (RED → GREEN)
+
+New test file `src/features/nighthawk/lib/format-net-vex.test.ts`, driving the real, exported
+`formatTickerDossierText` through a minimal `TickerDossier`/`ScoredCandidate`/`PositioningSummary`
+fixture (no fields faked beyond what the function actually reads).
+
+Pre-fix (RED), reproduced by stashing the fix and running the new test against the unchanged
+source:
+
+```
+not ok 1 - Net VEX: equal-magnitude positive/negative ties render the SAME magnitude
+  Expected values to be strictly equal:
+  'Net VEX: -2' !== 'Net VEX: -3'
+```
+
+(`netVexLine(2.5)` → `"Net VEX: +3"`, `netVexLine(-2.5)` → `"Net VEX: -2"` — a 1-unit magnitude
+gap on an identical distance from zero. The zero/null test also failed pre-fix for a related
+reason: the raw-sign check rendered a stray `"Net VEX: +0"` for an exact-zero input, which the
+fix's rounded-value sign check (`roundedVex > 0`, matching every prior sibling fix) also
+corrects.)
+
+Post-fix (GREEN): all 3 new tests pass (ties, ordinary non-tie values, zero/null), plus the
+pre-existing `format.test.ts` suite (15 tests) still passes unchanged — 18/18.
+`npx tsc --noEmit` clean.
+
+### Blast radius
+
+`formatTickerDossierText`'s "Net VEX" line has exactly one call site inside the function itself
+(no duplicate copy elsewhere) — checked via repo-wide grep for `net_vex` and for the bare-
+`Math.round` + sign-ternary shape; the only other `net_vex`-adjacent formatting is
+`scorer.ts`'s `scoreVexAlignment` (a pure numeric comparison, `positioning.net_vex > 0`, never
+formats or rounds the value, so it is not affected). The fixed string reaches two real
+consumers: `edition-builder.ts` (the overnight Night Hawk edition prompt, line ~1723) and
+`play-explainer.ts` (Largo's play-explainer tool, line ~131) — both inherit the corrected
+magnitude automatically since they call the same function.
+
+### Fix rationale
+
+Same fix as all six prior siblings: round by magnitude, then reapply sign
+(`Math.sign(n) * Math.round(Math.abs(n))`), and read the `+`/`-` prefix off the ROUNDED value
+(`roundedVex > 0`) rather than the raw input — matching `fmtShiftPercentForStrike`'s own
+documented rationale that a raw-value sign check can also mislabel an exact-zero-after-rounding
+case. Kept local to this one call site (not refactored into a shared helper or an import from
+`fmt-money.ts`) because the surrounding line already composes several independently-formatted
+fragments inline, matching the minimal, in-place diff shape every prior sibling fix in this bug
+class used. Output format (bare integer, no decimals, `+`/`-` prefix, omitted entirely when
+`pos.net_vex` is null) is otherwise unchanged.
+
+## Night Hawk Debrief module's shared `round2` helper was the 12th confirmed instance of the signed-value sign-bias rounding bug — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+| **Severity** | P3 (display/classification; feeds the per-play post-mortem excursion numbers and the lucky-win/wrong-direction taxonomy thresholds) |
+| **Area** | `src/features/nighthawk/lib/debrief.ts` (`round2`, used by every `pctOf`-derived percentage in the module) |
+
+### Root cause
+
+Plain `Math.round(n * 100) / 100` ties toward `+Infinity` (`Math.round(-12.5) === -12` but
+`Math.round(12.5) === 13`, the same asymmetry already documented and fixed in `fmt-money.ts`'s
+`fmtPct`). Any rounding helper built this way inherits a direction-biased asymmetry: a NEGATIVE
+value sitting exactly on a 2dp tie boundary rounds to a SMALLER magnitude than the IDENTICAL
+positive magnitude would.
+
+`debrief.ts` defined its own local copy of this shape:
+
+```ts
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+function pctOf(base: number, move: number): number {
+  return round2((move / base) * 100);
+}
+```
+
+`pctOf` is the ONLY percentage-rounding primitive in the whole module — it computes
+`mfe_pct`/`mae_pct`/`target_distance_pct`/`stop_distance_pct` in `computeExcursion`, the
+close-to-close `movePct` in the "direction" thesis factor, and the overnight-gap `gapPct` in the
+"catalyst" thesis factor in `buildThesisScorecard`. Every one of those values is a magnitude that
+can legitimately be negative (an adverse excursion, a down move, a gap against the play), so
+every one of them inherited the asymmetry.
+
+Concretely reachable with an entirely ordinary daily range: a $32 fill price with session high
+$33 / low $31 — a perfectly symmetric $1 move EACH WAY from the identical entry — computed
+`mfe_pct: 3.13` but `mae_pct: -3.12` for the exact same $1 distance, because `pctOf(32, 1)`
+raw-rounds `3.125` UP to `3.13` while `pctOf(32, -1)` raw-rounds `-3.125` only DOWN to `-3.12`.
+This is not merely a cosmetic one-hundredth-of-a-percent label: `mfe_vs_target_ratio` and
+`mae_vs_stop_ratio` are derived directly from these two numbers and are compared against the
+module's own named classification thresholds (`LUCKY_WIN_MAE_STOP_FRACTION = 0.75`,
+`WRONG_DIRECTION_MFE_TARGET_FRACTION = 0.25` in `classifyFailureMode`) — a borderline play sitting
+exactly on one of those thresholds could tip into the wrong failure-mode tag (e.g. `lucky_win`
+vs `clean_win`, or `wrong_direction` vs `stopped_normal`) purely because the adverse side of its
+own excursion was asymmetrically shrunk relative to the favorable side.
+
+This is the **12th confirmed instance** of this bug class in this codebase, following
+`fmt-money.ts`'s `fmtPct`, `round-floats.ts`, `thermal/lib/gex-heatmap/shift-math.ts`'s
+`fmtShiftPercentForStrike` (and its sibling `fmtShiftPct` in `thermal-discord-extras.ts`,
+PR #7690), this same feature's command-deck siblings (`PlayTerminal.tsx` /
+`ZeroDteCommandPanel.tsx`'s shared `signPct` shape), `format.ts`'s "Net VEX" line, and
+`formatReturnPct` (PR #7687) — confirming once more that grepping by function NAME misses
+instances; the bare-`Math.round` + raw-multiply-then-divide SHAPE is what has to be searched for,
+and it had survived here specifically because `round2`/`pctOf` are local, unexported helpers that
+none of the prior sweeps' call-site greps for `fmtPct`/`signPct`/`Math.round(` with a `+`/`-`
+ternary nearby happened to walk into (this file's sign-prefix ternaries read off the already
+-rounded `pctOf` output, e.g. `movePct >= 0 ? "+" : ""`, which is the CORRECT half of the fix — the
+bug was entirely upstream, inside `round2` itself, not in how the sign prefix was chosen).
+
+### Evidence (RED → GREEN)
+
+Extended `src/features/nighthawk/lib/debrief.test.ts` with a new test exercising the real,
+exported `computeExcursion`/`computeFill` through a minimal fixture row — no fields faked beyond
+what the functions actually read — both LONG and SHORT, both built with the module's existing
+`row()` fixture helper:
+
+```ts
+test("MFE/MAE magnitudes match for a perfectly symmetric excursion (sign-bias rounding tie)", () => {
+  const symRow = row({ entry_range_high: 32, next_day_open: 32, session_high: 33, session_low: 31, ... });
+  const sym = computeExcursion(symRow, computeFill(symRow))!;
+  assert.equal(sym.mfe_pct, 3.13);
+  assert.equal(sym.mae_pct, -3.13); // magnitude must equal mfe_pct's 3.13, not 3.12
+  ...
+});
+```
+
+Pre-fix (RED), reproduced by reverting only the `round2` line and re-running the new test against
+the otherwise-unchanged source:
+
+```
+not ok 28 - MFE/MAE magnitudes match for a perfectly symmetric excursion (sign-bias rounding tie)
+  Expected values to be strictly equal:
+  -3.12 !== -3.13
+```
+
+Post-fix (GREEN): all 37 tests in `debrief.test.ts` pass (the new test plus every pre-existing
+one, including the real-history AMD/DELL fixtures), plus the sibling `debrief-aggregate.test.ts`
++ `debrief-persist.test.ts` (49 tests) still pass unchanged. `npx tsc --noEmit` clean.
+
+### Blast radius
+
+`round2`/`pctOf` are the sole percentage-rounding path for this entire module — every consumer of
+`computeExcursion` (`mfe_pct`, `mae_pct`, `target_distance_pct`, `stop_distance_pct`, and the two
+ratios derived from them) and every consumer of `buildThesisScorecard`'s `movePct`/`gapPct`
+inherits the fix automatically, with no other call site to touch (checked via grep: `round2`/
+`pctOf` have no duplicate copies elsewhere in the module or in `debrief-aggregate.ts`/
+`debrief-persist.ts`, which only consume the already-computed `PlayDebrief` output, never
+re-round anything themselves). `debriefRealizedReturnPct` is unaffected — it intentionally returns
+the raw, unrounded close-vs-entry percentage (callers round it separately with the module's own
+`round2`, which is now fixed at that call site too).
+
+### Fix rationale
+
+Same fix as every prior sibling in this bug class: round by magnitude, then reapply sign
+(`Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100`). Kept local to `debrief.ts`'s own
+`round2` (not refactored into an import from `fmt-money.ts` or elsewhere) because the module is
+explicitly documented as pure/I/O-free at runtime and already defines its own small rounding
+helper rather than depending on another feature's formatter — matching the minimal, in-place diff
+shape every prior sibling fix in this bug class used. Output format, precision (2dp), and every
+other call site's behavior are otherwise unchanged; the sign-prefix ternaries throughout the file
+(`movePct >= 0 ? "+" : ""`, etc.) were already correctly reading off the rounded value and needed
+no change.
+
+## Meridian's SPX earnings card could show the wrong call/put wall — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Meridian earnings desk — SPX/SPXW cross-product card |
+| **File** | `src/lib/meridian/meridian-cross-product-for-earnings-core.ts` |
+| **Severity** | P3 — member-visible but not trading-decision logic; a display-level mislabel |
+
+### Root cause
+
+`shapeMeridianSpxDeskRead` renders `MeridianEarningsIntelPanel.tsx`'s SPX inline card line
+`Walls {put_wall} – {call_wall}` straight off the SPX desk's `gex_walls` ladder
+(`SpxDeskSummary.gex_walls`, built by `topGexWalls` in `src/lib/providers/gamma-desk.ts`).
+
+That ladder is explicitly documented as sorted **strike descending for display**, with `kind`
+derived purely **geometrically** (`strike > spot → "resistance"`, else `"support"`) — `gamma-desk.ts`'s
+own doc comment warns consumers to derive the call/put wall from net_gex **sign/magnitude**, not
+from `kind` alone: *"The component derives the 'call/put wall' label from net_gex SIGN... geometry
+≠ sign."*
+
+The local `topGexWalls` helper in `meridian-cross-product-for-earnings-core.ts` ignored that
+warning. It walked the ladder and took the **first** row of each kind:
+
+```ts
+if (row.kind === "resistance" && call == null) call = strike;
+if (row.kind === "support" && put == null) put = strike;
+```
+
+Because the array is strike-descending, "first resistance encountered" is the **highest strike
+overall** — the FARTHEST resistance in the ladder — while "first support encountered" is the
+highest strike among supports — the NEAREST support to spot. That asymmetry is the bug: one side
+picks the farthest wall of its kind, the other picks the nearest.
+
+The real-world ladder this feeds from is built by `topGexWalls` (gamma-desk.ts) as: one guaranteed
+anchor per side (the strike with the single largest-magnitude net_gex, picked by SIGN, which can
+sit anywhere relative to spot) **plus** several smaller proximity-fill strikes walked outward from
+spot on each side, up to `limit` (default 6) total. Whenever the true dominant call wall sits close
+to spot and a weaker proximity-fill strike extends farther out above it, the old loop reported that
+farther, weaker decoy as "the call wall" — understating how close dealers are actually defending,
+and showing a wider, incoherent `Walls X – Y` band than the real dealer-defended range.
+
+### Evidence (RED → GREEN)
+
+Added a test with a ladder shaped exactly like production's (strike-descending, two resistance
+rows and two support rows per side — a far weak decoy plus a near dominant wall on each side):
+
+```ts
+gex_walls: [
+  { strike: 6550, net_gex: 0.5, kind: "resistance", distance_pts: 100 },  // far, weak decoy
+  { strike: 6500, net_gex: 5,   kind: "resistance", distance_pts: 50 },   // near, dominant — the real call wall
+  { strike: 6400, net_gex: -3,  kind: "support",    distance_pts: -50 },  // near, dominant — the real put wall
+  { strike: 6350, net_gex: -0.4, kind: "support",   distance_pts: -100 }, // far, weak decoy
+],
+```
+
+RED (pre-fix): `read.call_wall === 6550` (expected `6500`) — `AssertionError: 6550 !== 6500`.
+GREEN (post-fix): `read.call_wall === 6500`, `read.put_wall === 6400`.
+
+The pre-existing single-wall-per-side test (one resistance, one support) could never have caught
+this — with only one candidate on each side, "first in array order" and "largest |net_gex|"
+always agree. The bug only surfaces once the ladder carries more than one wall per side, which the
+real `topGexWalls` ladder (limit=6, proximity-filled) routinely does.
+
+### Fix
+
+Changed the local `topGexWalls` helper to track the largest-magnitude net_gex on each side
+(largest positive for the call wall, most negative for the put wall) instead of array position —
+the same definition `gamma-desk.ts`'s own `topGexWalls` anchor selection and
+`meridian-event-expiry-core.ts`'s `scopeStructureToExpiry` already use. Array order no longer
+matters; `net_gex` (already present on every `GexWall` row) decides.
+
+### Blast radius
+
+`topGexWalls` (the local helper) has exactly one call site, `shapeMeridianSpxDeskRead`, which has
+exactly one call site, `loadMeridianEarningsIntel` → `intel.spx` → `MeridianEarningsIntelPanel.tsx`'s
+SPX/SPXW inline card (`Walls {put_wall} – {call_wall}`, `call_wall`/`put_wall` fields generally).
+No other file reimplements this exact "first row of kind X in a strike-sorted ladder" pattern
+against `gex_walls` without an additional distance/filter constraint, except
+`src/lib/bie/spx-invalidation.ts` (out of scope — `src/lib/bie/**` is excluded from this sweep) and
+several `.find(...)` call sites elsewhere in `src/features/spx/lib/**` that all carry an additional
+proximity/price filter alongside the `kind` check, which bounds how far the mis-pick could land —
+those are display helpers for the SPX desk itself, a separate decision-adjacent surface this sweep
+does not touch; flagged here as a lead for a future round, not fixed in this PR.
+
+### Fix rationale
+
+Fixing by net_gex magnitude (rather than, say, re-sorting the array by distance-from-spot) matches
+the canonical definition used everywhere else a "call wall"/"put wall" is selected from a GEX
+ladder in this codebase, so Meridian's SPX card now agrees with the SPX desk's own definition of
+its walls instead of silently reimplementing a third, weaker one. Nothing about the ladder's own
+construction, sort order, or the SPX desk's rendering of it was touched — only this one
+display-shaping consumer.
+
+## Meridian `postPrintSurpriseLean` mislabels a clean revenue-only beat/miss as "Mixed print vs street" — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 (member-facing) |
+| **Lane** | Meridian (Night Hawk — Earnings Intel) |
+| **File** | `src/lib/meridian/meridian-benzinga-earnings-core.ts` — `postPrintSurpriseLean` |
+| **PR** | fix/meridian-post-print-revenue-only-lean |
+
+### Root cause
+
+`postPrintSurpriseLean` derives a post-print "beat / miss / inline" verdict from two
+independent surprise axes, `eps_surprise_pct` and `revenue_surprise_pct`. Both are
+nullable, and the function's existing header comment already documents a real, standing
+reason EPS specifically can be null on an otherwise-printed row: Benzinga sometimes
+reports a quarter with `actual_revenue` populated and `actual_eps` still null (EPS
+withheld/pending). `cal.is_printed` is true for exactly this row
+(`benzingaToCalendarRow`: `actual_eps != null || actual_revenue != null`), and this exact
+population already forced a fix one function away in the same file
+(`buildEarningsWeekRows`'s `is_printed` check, and the sibling fix noted in that
+function's own comment).
+
+The pre-fix logic had exactly two branches:
+
+```ts
+if (epsBeat === true && (revBeat === true || revBeat === null)) return beat...
+if (epsBeat === false && (revBeat === false || revBeat === null)) return miss...
+return { lean: "inline", headline: "Mixed print vs street", score: 0 };
+```
+
+Both branches treat EPS as the sole primary signal and only ever ask "does revenue AGREE
+with (or stay silent on) the EPS verdict". Neither branch — nor anything else in the
+function — asks the mirror question: "EPS is absent, does revenue alone have a verdict?"
+So a row with `eps_surprise_pct: null, revenue_surprise_pct: 5.2` (a clean, unambiguous
+revenue beat, nothing contradicting it) falls straight through both guards into the
+catch-all and is reported as `"Mixed print vs street"` — a specific, false claim that two
+measured signals disagreed, when in reality there was only ever one axis of evidence and
+it was favorable.
+
+### Evidence
+
+Added a RED test (`meridian-benzinga-earnings-core.test.ts`) reproducing the exact
+scenario the file's own standing "EPS withheld" population describes:
+
+```ts
+postPrintSurpriseLean({ is_printed: true, eps_surprise_pct: null, revenue_surprise_pct: 5.2 })
+// before fix: { lean: "inline", headline: "Mixed print vs street", score: 0 }
+// after fix:  { lean: "beat",   headline: "Beat · EPS — · Rev +5.2%", score: 2 }
+
+postPrintSurpriseLean({ is_printed: true, eps_surprise_pct: null, revenue_surprise_pct: -4.1 })
+// before fix: { lean: "inline", headline: "Mixed print vs street", score: 0 }
+// after fix:  { lean: "miss",   headline: "Miss · EPS — · Rev -4.1%", score: -2 }
+```
+
+Confirmed RED pre-fix (`git stash` reproduces the failure), GREEN post-fix. A genuine
+disagreement case (both axes present, opposite signs, e.g. EPS +3% / Rev -2%) is kept as
+a regression assertion in the same test and still correctly reports `"inline"` — the fix
+adds the missing branch without weakening the real contradiction case.
+
+### Blast radius
+
+`postPrintSurpriseLean`'s output (`lean`/`headline`/`score`) feeds:
+- `meridian-earnings-enrich.ts`'s `post_print` field on `MeridianEarningsEnrichment`
+  (gated — only set when `headline` is non-null, so this fix changes what that headline
+  *says*, not whether the field is populated).
+- `meridian-earnings-report-core.ts`'s advisory read: `score` feeds the report's bullish/
+  bearish tilt, `lean` decides `hasFreshPrint` (`lean === "beat" || lean === "miss"`) which
+  gates the report's "beat/miss just landed" framing — a revenue-only beat previously
+  never counted as a fresh beat/miss print there at all.
+- `MeridianEarningsTabs.tsx`'s rendered badge: `icon={lean === "miss" ? "▼" : "▲"}` and the
+  `headline` text shown verbatim to members on the Earnings Intel panel.
+- `meridian-earnings-intel.ts` line 265, which checks
+  `enrichment.post_print.lean !== "unknown"` as part of a larger availability gate.
+
+Every one of these previously received a neutral "mixed signals" read for a revenue-only
+print that had, in fact, cleanly beaten or missed on its one reported axis.
+
+### Fix rationale
+
+Added the two mirror branches (`epsBeat == null && revBeat === true` → beat,
+`epsBeat == null && revBeat === false` → miss), using the exact same score (±2) and
+headline template shape (`Beat · EPS — · Rev ±N%` / `Miss · EPS — · Rev N%`) the existing
+branches already use for the "other axis absent" case, so the output shape is unchanged
+and callers needed no changes. The true-disagreement case (`epsBeat === true` and
+`revBeat === false`, or vice versa) is untouched and still falls through to `"inline"` —
+this fix only closes the absent-EPS gap, it does not relax the real contradiction check.
+
+Left unchanged: the symmetric case (`revBeat == null && epsBeat` has a verdict) was
+already handled correctly by the two pre-existing branches' `|| revBeat === null` clause —
+only the EPS-absent direction was missing a mirror.
+
+## Largo's live get_swing_play_brief tool never applied adaptSwingBriefToLargo — contract fields and distancePct precision missing from every chat answer
+> **kind:** `FINDING`
+
+### Status
+
+**Status.** FIXED.
+
+### Root cause
+
+Two related gaps in `src/lib/largo/swing-play-brief-read.ts`'s `swingPlayBriefForLargo` — the
+function `src/lib/largo/run-tool.ts`'s `get_swing_play_brief` tool case dispatches to for every
+live Largo chat answer about a Swing position:
+
+**C2 — missing contract fields.** `composeSwingPlayBrief`'s real per-source staleness
+(`dataAgeMs`) is only bucketed into the Largo contract's required freshness enum
+(`live`/`delayed`/`cached`/`snapshot`/`stale`) + `age_seconds`, and only produces normalized
+`direction`/`evidence_numbers`/`source`/`cohort`, inside `adaptSwingBriefToLargo`
+(`src/lib/swing/play-brief-adapter.ts`). That adapter has exactly one caller repo-wide before this
+fix: `src/app/api/market/swing/play-brief/route.ts` (the Command Deck UI's HTTP route).
+`swingPlayBriefForLargo`'s success path returned `roundFloats({ available: true, ...brief })`
+verbatim — it never imported or called the adapter, since the tool's creation (PR #4829,
+2026-09-11) through two later touches. A live Largo chat answer therefore received the raw
+`dataAgeMs` millisecond integer (or `null`) under a non-contract key, with no freshness
+classification and no documented way for the model to interpret it — `tool-defs.ts`'s tool
+description only points at the brief's own narrative "data freshness" prose.
+
+**C9 — distancePct double-rounds.** Every `StructureLadder` rung's `distancePct` is narrated in
+the brief's own markdown via `fmtPct()` (1dp default), so the HTTP route rounds the wire value to
+the SAME 1dp precision (`roundFloats(payload, 2, { distancePct: 1 })`) specifically to avoid a
+double-round disagreeing with the narrative at a half-unit boundary (the 2026-10-08 FINDINGS.md
+fix). `swingPlayBriefForLargo`'s `roundFloats` call passed no `dp`/`keyDp` at all, so `distancePct`
+got the generic 2dp default instead — the one further rounding pass the Largo-tool path goes
+through (`roundResultForReading`, 4dp for values >=1) is strictly coarser and can't correct it.
+
+Both gaps were independently confirmed by an adversarial-verify pass (Ask Largo standing mandate,
+code-level contract-conformance probe) that traced every call site and ruled out duplicate/already-
+fixed status: a 2026-10-20 fix (PR #6284) assumed `swing-play-brief-read.ts` "calls the HTTP
+route... so it inherits the fix automatically" — factually wrong at every revision of the file,
+which has never made an HTTP call or imported the adapter.
+
+### Evidence (RED → GREEN)
+
+Added to `src/lib/largo/swing-play-brief-read.test.ts` (mocking `play-brief-adapter`'s
+`adaptSwingBriefToLargo` alongside the pre-existing `play-brief-context`/`play-brief` mocks, with a
+default `ok:true` stub so every pre-existing test keeps passing unmodified):
+
+- `calls adaptSwingBriefToLargo with the composed brief and merges its Largo contract fields onto
+  the response` — RED (pre-fix): the adapter mock was never invoked at all, and none of
+  `as_of`/`freshness`/`age_seconds`/`direction`/`evidence_numbers`/`source`/`cohort` appeared on the
+  response. GREEN post-fix.
+- `falls back to the honest unavailable shape when adaptSwingBriefToLargo itself reports ok:false`
+  — new coverage for a path that didn't exist pre-fix.
+- `distancePct gets the narrative's 1dp precision, not the generic 2dp default` — RED (pre-fix):
+  `2.625` rounded to `2.63` (2dp); GREEN (post-fix): rounds to `2.6` (1dp), matching the HTTP
+  route's own override.
+
+Post-fix: 9/9 tests in `swing-play-brief-read.test.ts` (6 pre-existing + 3 new). Consumer suites
+re-run clean: `run-tool.test.ts`, `product-adapters.test.ts`, `play-brief-adapter.test.ts` —
+47/47 pass. `npx tsc --noEmit` clean.
+
+### Blast radius
+
+`swingPlayBriefForLargo` has exactly one production caller, `run-tool.ts`'s `get_swing_play_brief`
+tool case. `product-adapters.ts`'s `swingContribution` (feeds `get_cross_product_read`) reads this
+function's output but only off `envelope.bias`/`playId`/`engine`/`available`/`note` — none of the
+newly-added top-level fields — so it is unaffected either way; confirmed via its own 47-test suite
+staying green.
+
+### Fix rationale
+
+Mirrored `route.ts`'s existing adapter-call + field-merge + precision-override pattern exactly,
+rather than inventing a second shape, so both paths describe the same instant through identical
+logic — the file's own header comment already states this as the design intent ("calls the EXACT
+SAME resolve -> compose pipeline the route uses... never a second, drifting copy"); this fix
+extends that same discipline to the adapter step, which had drifted out of step with it. Kept
+additive — the native `...brief` spread is untouched, only new top-level keys are added, per the
+Largo contract's "ADDITIVE, never flatten" rule. The `ok:false` branch falls back to the same
+`unavailable` shape every other failure path in this file already uses.
+
+## StructureLadder.subLaneTrackRecord and StructureLadderRung.meta reach the HTTP response but BieStructureLadder.tsx never rendered either
+> **kind:** `FINDING`
+
+### Status
+
+**Status.** FIXED.
+
+### Root cause
+
+Two real, computed fields on `StructureLadder` (`src/lib/swing/play-brief-ladder.ts`) reached
+`envelope.structureLadder` in the swing play-brief HTTP response but were never read by
+`BieStructureLadder.tsx`, the component's only renderer:
+
+**`subLaneTrackRecord`** — `subLaneTrackRecordFor()` computes the exact sibling of
+`archetypeTrackRecord` for the independently-graduated SUB-LANE dimension
+(`graduatedSubLaneEntry`, TACTICAL/STANDARD), with the identical shape
+(`subLaneLabel`/`winRatePct`/`wilsonLbPct`/`n`) and the identical doc-comment intent ("Same
+gate/shape as archetypeTrackRecord above"). It is spread onto the returned `StructureLadder`
+object identically to its sibling and unit-tested at the compute layer
+(`play-brief-ladder.test.ts`), but `BieStructureLadder.tsx` renders `ladder.archetypeTrackRecord`
+in full and jumps straight to `ladder.riskTheOtherSide` — `ladder.subLaneTrackRecord` was never
+referenced anywhere in `src`. The moment a sub-lane bucket graduates in production, a member sees
+the archetype's historical win rate but silently never the sub-lane's.
+
+**`rung.meta`** — `collectFocalLevels()` (`play-brief-narrative.ts`) builds a human-readable
+dark-pool context string (`"${pct}% of DP volume · ${premium}"`) for dark-pool focal levels;
+`buildStructureLadder()` forwards it onto `StructureLadderRung.meta` unchanged. `LadderRow` (the
+rung renderer) reads `price`/`distancePct`/`role`/`label`/`target.*` but never `rung.meta` — the
+one grep hit for "meta" in the file is an unrelated CSS class name on a wrapper span, not the data
+field.
+
+### Evidence (RED → GREEN)
+
+New test file `src/features/largo/answer/BieStructureLadder.test.ts` (no prior test file existed
+for this component), using the repo's existing `renderToStaticMarkup` component-test pattern
+(`LargoCompareCard.test.ts`):
+
+- `subLaneTrackRecord` renders when present (RED: absent from output; GREEN: present) — plus a
+  "renders both together" case and an "absent → no sub-lane block" regression guard.
+- `rung.meta` renders when present (RED: absent from output; GREEN: present) — plus a "no meta →
+  no empty placeholder" regression guard.
+
+Pre-fix (RED, confirmed by stashing just the component file): 3 of 5 new tests fail. Post-fix
+(GREEN): 5/5. `npx tsc --noEmit` clean.
+
+### Blast radius
+
+Both fields are additive renders inside `BieStructureLadder.tsx`'s existing JSX — no existing
+block, prop, or CSS rule was changed. Added two small CSS rules (`src/app/globals.css`):
+`.bie-ladder-row-extra` (secondary metadata text, matching the row's existing `.bie-ladder-row-dist`
+sizing) and `.bie-ladder-track-record-sublane` (a small top margin so the archetype and sub-lane
+blocks don't collide when both graduate simultaneously).
+
+### Fix rationale
+
+Mirrored the sibling `archetypeTrackRecord` block's exact structure for `subLaneTrackRecord`, and
+inserted `rung.meta`'s render inside the existing `bie-ladder-row-meta` wrapper, between the label
+and the distance chip — the natural reading order for "what is this level, any extra context,
+how far, what kind."
+
+## BieProvenance.market_session_note reaches every GEX/Vector level and evidence item but SourceStamp never rendered it
+> **kind:** `FINDING`
+
+### Status
+
+**Status.** FIXED.
+
+### Root cause
+
+`BieProvenance` (`src/lib/bie/answer-envelope.ts`) carries `market_session_note` — the "compute is
+fresh but the market is CLOSED" disclosure, added specifically so a snapshot-based read (GEX
+matrix, Vector full-state) that genuinely computes a fresh number off a closed market's last tape
+doesn't read as unqualified "live." `src/lib/swing/play-brief.ts`'s `levelsFromContext()` and
+`evidenceFromContext()` populate it on nearly every GEX/Vector-derived `BieLevel`/`BieEvidence`
+provenance object (call wall, put wall, gamma flip, spot, confluence zones, dark pool, gamma
+magnet, GEX king, max pain, and several evidence facts) — a real computation
+(`gexMarketSessionNote`/`vec?.market_session_note`), not a placeholder. It flows unchanged through
+`composeSwingPlayBrief` to `envelope.levels`/`envelope.evidence` and the API route's `roundFloats`
+(which only rounds numeric leaves, never drops string fields) to the JSON response.
+
+`SourceStamp` (`src/features/largo/answer/BieChips.tsx`) is the ONLY renderer of `BieProvenance`,
+shared by `BieKeyLevelsTable.tsx`, `BieEvidencePanel.tsx`, and `BieSectionCard.tsx` — all three pass
+it `provenance` and nothing else. It destructured only `provenance.source`,
+`provenance.freshness`, and `provenance.asOf`; `provenance.market_session_note` was never read
+anywhere in the component. The disclosure, despite reaching the wire and having a dedicated,
+already-shared UI surface, never reached a member's screen: a snapshot computed off a closed
+market's last tape showed only a plain "Live" freshness badge with no caveat — exactly the
+misleading-presentation failure mode this field exists to prevent.
+
+### Evidence (RED → GREEN)
+
+New test file `src/features/largo/answer/BieChips.test.ts` (no prior test file existed for this
+component), using the repo's existing `renderToStaticMarkup` component-test pattern:
+
+- `market_session_note` renders when present, additive to the existing freshness/source output —
+  RED (confirmed by stashing just `BieChips.tsx`): note text absent from render; GREEN: present
+  alongside the unchanged freshness badge.
+- Two regression guards: absent / explicitly-`null` `market_session_note` renders nothing extra
+  (no empty caveat line, preserving the Largo C6 omission-not-fabrication contract).
+
+Pre-fix: 1 of 3 new tests fail. Post-fix: 3/3. `npx tsc --noEmit` clean.
+
+### Blast radius
+
+`SourceStamp` is shared by three consumers (`BieKeyLevelsTable`, `BieEvidencePanel`,
+`BieSectionCard`) — all three benefit automatically since none of them pass or read
+`market_session_note` themselves; they only forward `provenance` to `SourceStamp` unchanged.
+Wrapped the existing inline source row in a new `bie-source-wrap` column container so the note
+(a full sentence, not a short chip label) renders on its own line below the existing nowrap
+source/freshness/time row, rather than cramming it into that row. No existing CSS selector
+targeted `.bie-source` as a direct child of anything, so the new wrapper introduces no breakage.
+
+### Fix rationale
+
+Additive only — the existing freshness/asOf rendering is completely untouched; the note is a new
+sibling line, never a replacement, matching the field's own doc comment ("ADDITIVE, orthogonal to
+freshness"). Styled in the same amber/warning tone as `.bie-fresh-stale` since it is a caveat, not
+a routine freshness label.
+
+## bookContextSection never synthesized net exposure when both concentration and internal conflict fire at once
+> **kind:** `FINDING`
+
+### Status
+
+**Status.** FIXED.
+
+### Root cause
+
+`bookContextSection` (`src/lib/swing/play-brief-intel.ts`) can emit both a "Concentration" paragraph
+(same-theme, same-direction book overlap) and an "Internal conflict" paragraph (same-theme,
+opposed-direction overlap) for the same candidate — a real, reachable combination: `checkPortfolioOverlap`
+(`portfolio.ts`) runs one pass over the book and classifies every matching row into `sameDir` or
+`opposedDir`, so a theme with one same-direction peer and one opposed-direction peer populates both
+lists in the same call. The two paragraphs were independently `lines.push()`'d and joined with
+`lines.join("\n\n")` with no cross-reference — no ranking of which risk matters more for this entry
+decision and no statement of the net theme exposure once both are weighed together, unlike
+`renderCrossDeskConflict` (`play-brief-narrative-coaching.ts`), which explicitly ranks multiple
+conflicting inputs about one candidate, names the most load-bearing one, and gives one resolution
+for the structurally identical "several independent signals about one candidate" shape.
+
+### Evidence (RED → GREEN)
+
+Added to `src/lib/swing/play-brief-intel.test.ts`:
+
+- `states net theme exposure and names the more decisive risk when BOTH concentration and internal
+  conflict fire at once` (1-vs-1 split → "roughly balanced") and a second case with a 2-vs-1 split
+  → "leans same-direction" naming concentration as more decisive — RED (pre-fix): no "Net theme
+  exposure" text anywhere in the output; GREEN (post-fix): present.
+- `does NOT add a net-exposure line when only one category fires` — regression guard against
+  fabricating a comparison that has nothing real to compare.
+
+Pre-fix: 2 of 4 new tests fail. Post-fix: 369/369 in `play-brief-intel.test.ts` (365 pre-existing +
+4 new). Full `play-brief.test.ts` + `play-brief-adapter.test.ts` suites re-run clean (213/213,
+unaffected). `npx tsc --noEmit` clean.
+
+### Blast radius
+
+The new line is appended only inside `bookContextSection`'s own `lines` array, only when both
+`overlap.sameThemeSameDirection.length > 0` AND `overlap.sameThemeOpposedDirection.length > 0` —
+every existing single-category call site (the overwhelming majority) is byte-identical to before.
+
+### Fix rationale
+
+Ranked by the real position COUNT on each side — the same quantity each paragraph above already
+reports to the member, so the synthesis line adds a comparison between two numbers already shown,
+never a new unverified claim. Three outcomes (leans same-direction / leans opposed / roughly
+balanced) rather than a forced binary, each naming which existing paragraph is "the more decisive
+risk" without silently discounting the other — matching the Largo contract's "disagreement is
+represented, never reconciled" principle, which an adversarial-verify pass confirmed applies to
+cross-PRODUCT disagreement (Vector vs Helix), not to synthesizing two findings about the SAME book
+within one section, so adding this comparison does not violate it.
+
+## `topGexWalls`'s `distance_pts` had the same sign-bias rounding tie as fmtPct/shift-math/signPct — 9th confirmed instance
+
+> **kind:** `FINDING`
+
+### Summary
+`gamma-desk.ts`'s `topGexWalls` builds each `GexWall`'s `distance_pts` (how far a GEX wall's
+strike sits from spot, in points) with:
+
+```ts
+distance_pts: Math.round((lv.strike - spot) * 100) / 100,
+```
+
+`Math.round()` ties toward `+Infinity`: `Math.round(-262.5) === -262` but `Math.round(262.5) ===
+263`. So a strike sitting exactly on a half-cent tie BELOW spot rounds to a *smaller* magnitude
+(`-2.62`) than the mirror-image strike the same distance ABOVE spot (`+2.63`) — the identical
+sign-biased asymmetry already found and fixed eight times in this codebase: `fmt-money.ts`'s
+`fmtPct`, `round-floats.ts`, `shift-math.ts`'s `fmtShiftPercentForStrike`, `PlayTerminal.tsx`'s
+`signPct`, `ZeroDteCommandPanel.tsx`'s own separate `signPct` (#7676), and `format.ts`'s Net VEX
+line (#7678).
+
+`distance_pts` is not merely an internal float — it is served straight into Largo's Night Hawk
+positioning text with an explicit sign ternary (`src/features/nighthawk/lib/positioning.ts`:
+`` `${role} $${w.strike} (${w.distance_pts >= 0 ? "+" : ""}${w.distance_pts}pts)` ``) and into
+`largo-live-feed.ts`'s wall narration — both human-read "pts from spot" numbers a trader or Ask
+Largo reads literally.
+
+### Evidence
+RED (before the fix), added to `src/lib/providers/gamma-desk.test.ts`:
+```
+spot = 7542.375
+above = 7545     // 7545 - 7542.375 = 2.625 -> *100 = 262.5 (a tie)
+below = 7539.75  // 7539.75 - 7542.375 = -2.625 -> *100 = -262.5 (the mirror tie)
+```
+Pre-fix: `distance_pts` for `above` = `2.63` (rounds away from zero, correct), for `below` =
+`-2.62` (rounds TOWARD zero — wrong; should be `-2.63` to match the mirrored positive case).
+Test run pre-fix: `16 tests, 1 fail` (`mirror-image ties must round to the same magnitude
+regardless of sign` — `2.62 !== 2.63`). Post-fix: `16 tests, 0 fail`.
+
+### Fix
+Round by magnitude, then reapply sign — the exact pattern already established by the eight prior
+fixes (`Math.sign(x) * Math.round(Math.abs(x) * factor) / factor`):
+```ts
+distance_pts: (Math.sign(lv.strike - spot) * Math.round(Math.abs(lv.strike - spot) * 100)) / 100,
+```
+Verified `strike === spot` still returns plain `0` (not `-0`): `Math.sign(0) === 0`, so the
+product is `0`, never `-0` — no new display artifact introduced.
+
+### Fix rationale
+Matching the already-established, reviewed fix shape for this exact bug class (rather than
+inventing a new one) keeps every "round a signed delta/points/percent value for display" call
+site in this codebase consistent, and makes the next pattern-sweep's grep for
+`Math.sign(.*) \* Math.round(Math.abs` find this one too.
+
+### Blast radius
+`topGexWalls` (`src/lib/providers/gamma-desk.ts`) is the SHARED, canonical wall-ladder builder
+consumed by:
+- `src/features/nighthawk/lib/positioning.ts` — Largo's Night Hawk positioning text (the
+  motivating consumer: displays `distance_pts` with an explicit `+`/`-` sign).
+- `src/lib/largo/largo-live-feed.ts` — wall narration ("Nearest wall: ... pts away").
+- `src/app/api/market/gex-positioning/route.ts` — serves `distance_pts` over the API.
+- `src/lib/meridian/meridian-cross-product-for-earnings-core.ts`.
+
+**Not fixed here (correctly, per this round's hard exclusion list):**
+`src/features/spx/lib/spx-desk-merge.ts`'s `recalcGexWallDistances` carries an independently
+copy-pasted instance of the IDENTICAL buggy line (`distance_pts: Math.round((w.strike - spot) *
+100) / 100`) — same bug, separate file, SPX trading-domain decision logic, out of scope for this
+PR under the standing exclusion list. Flagging it here as a lead for the SPX lane rather than
+touching it.
+
+### Evidence detail
+- RED: 1/16 fail pre-fix in `gamma-desk.test.ts`. GREEN: 16/16 post-fix.
+- Consumer tests re-run clean post-fix: `gamma-desk.test.ts`, `positioning.test.ts`,
+  `gex-positioning.test.ts`, `meridian-cross-product-for-earnings-core.test.ts` — 37/37 pass.
+- `npx tsc --noEmit` clean.
+
+| **Status** | FIXED — this PR. |
+
+## Night Hawk trade-excursion graphic: `formatExcursionPct` understated negative excursions on rounding ties — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — display-only magnitude understatement on a rounding tie |
+| **Area** | Night Hawk command-deck, trade-excursion graphic (worst/peak/current journey panel) |
+| **File** | `src/features/nighthawk/command-deck/trade-excursion-graphic.ts` |
+
+### Root cause
+
+`formatExcursionPct` rounded with a plain `Math.round()` call and reapplied the sign from
+the raw, unrounded value:
+
+```ts
+const rounded = Math.abs(n) >= 10 ? Math.round(n) : Math.round(n * 10) / 10;
+return `${rounded > 0 ? "+" : ""}${rounded}%`;
+```
+
+`Math.round()` resolves an exact `.5` tie toward **positive infinity**, not away from zero:
+`Math.round(10.5) === 11` but `Math.round(-10.5) === -10`. Because this function rounds the
+signed value directly (rather than rounding the magnitude and reapplying the sign), a negative
+excursion sitting exactly on a rounding tie renders with a **smaller magnitude** than its
+positive mirror image would for the identical distance from zero:
+
+- `formatExcursionPct(10.5)` → `"+11%"` (magnitude 11)
+- `formatExcursionPct(-10.5)` → `"-10%"` (magnitude 10) — same distance from zero, understated by 1pp
+
+The same asymmetry exists in the sub-10% branch (`Math.round(n * 10) / 10`):
+
+- `formatExcursionPct(0.25)` → `"+0.3%"`
+- `formatExcursionPct(-0.25)` → `"-0.2%"` — understated
+
+This is the exact bug class already named and fixed in several sibling files (`fmt-money.ts`'s
+`fmtPct`, `round-floats.ts`, `thermal/lib/gex-heatmap/shift-math.ts`'s
+`fmtShiftPercentForStrike`, and this same feature's own dossier-text formatter,
+`format.ts`'s `roundedVex`, which already carries the fix and an in-code note referencing
+the pattern) — an independent, un-migrated paste of the same formatter shape that none of
+those earlier fixes touched, because each site has its own local arithmetic expression
+rather than a shared helper.
+
+### Why it wasn't caught earlier
+
+`formatExcursionPct` is a small, local, unnamed-shape arithmetic expression (not a
+commonly-grepped function name like `fmtPct`/`signPct`), and its existing test coverage
+(`trade-excursion-graphic.test.ts`) only exercised non-tie values (`14.2`, `-50.4`), which
+round identically under both the correct and buggy formulas and could never have surfaced
+the asymmetry.
+
+### Evidence
+
+Live repro (sandbox Node 20, pre-fix):
+
+```
+> formatExcursionPct(10.5)   -> "+11%"
+> formatExcursionPct(-10.5)  -> "-10%"   // should be "-11%"
+> formatExcursionPct(0.25)   -> "+0.3%"
+> formatExcursionPct(-0.25)  -> "-0.2%"  // should be "-0.3%"
+```
+
+New regression test (`trade-excursion-graphic.test.ts`, "rounds exact-half ties
+symmetrically by magnitude") fails RED against the pre-fix code with:
+
+```
+Expected values to be strictly equal:
+'-10%' !== '-11%'
+```
+
+and passes GREEN post-fix. Full `trade-excursion-graphic.test.ts` suite: 5/5 pass post-fix.
+Broader command-deck suite (`npx tsx --experimental-test-module-mocks --test
+src/features/nighthawk/command-deck/*.test.ts`): 497/497 pass. `tsc --noEmit`: clean.
+
+### Blast radius
+
+`formatExcursionPct` is called from three live render sites in
+`src/features/nighthawk/command-deck/TerminalPremiumPanels.tsx` (lines 311, 322, 350) — the
+best-excursion label, the current/close-excursion label, and each per-marker label on the
+trade-excursion journey graphic. All three inherit the fix with no call-site change needed.
+No other file reimplements this exact expression; this is the only remaining un-migrated
+instance found this round (the other two candidates named for this round,
+`src/features/nighthawk/lib/format.ts`'s `roundedVex` and this same file, were checked —
+`roundedVex` already carries the fix from a prior PR).
+
+### Fix rationale
+
+Mirrors the exact pattern already shipped at the sibling sites: round the **magnitude**
+(`Math.abs(n)`) and reapply the sign via `Math.sign(n)`, rather than rounding the signed
+value and reading the sign off the rounded (or raw) result. This makes `formatExcursionPct`
+symmetric for any pair of mirror-image inputs, including exact ties, at both the sub-10%
+(one-decimal) and ≥10% (whole-number) scales. Deliberately left unchanged: the ≥10%/±10%
+scale-switch itself (that's a display-precision choice, not a bug) and every other function
+in this file (`tradeJourneyLayout`, `pctToEntryCenteredPos`, `entryCenteredExcursionLayout`),
+none of which round a signed percentage the same way.
+
+## Deploy smoke flakes on post-deploy SPX desk 502
+> **kind:** `FINDING`
+
+**Status.** FIXED — merged as #7677 (`shouldRetrySpxDeskProbe`, confirmed present in
+`scripts/lib/gha-desk-smoke-eval.mjs`).
+
+### Symptom
+
+`Deploy smoke` failed on `main` twice overnight (runs 42548713697, 42550161810) with:
+
+```
+✗ /api/market/spx/desk → unexpected HTTP 502
+```
+
+`/api/health` and `/api/ready` were green in the same job — the route exists but `buildSpxDesk()` failed once during ECS rollout (cold cache / timeout).
+
+### Fix
+
+Retry the authenticated desk probe on `502/503/504` (default 4 attempts, 15s apart) before failing deploy smoke.
+
+### Evidence
+
+- GHA logs: desk 502 while other probes 200.
+- Unit test: `shouldRetrySpxDeskProbe`.
+
+<!-- "Deploy smoke false-red on weekend SPX desk 200 + price 0" removed here (2026-11-09) — an
+     exact duplicate of the entry already recorded further down this file (re-folded from a stale
+     staging file); see that entry for the real content, root cause and evidence. -->
+
 ## Cron audit query P0 Saturday on post-close weekday crons
 
 > **kind:** `FINDING`
