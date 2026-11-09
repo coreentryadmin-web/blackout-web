@@ -19,6 +19,21 @@
 // exceeds BREAKOUT_MAX_BAR_AGE_MS (or no bar exposes a timestamp at all), return `data_unavailable`
 // — failing CLOSED — instead of an empty candidate list. This can only ever REMOVE stale-driven
 // candidates, never add any.
+//
+// FETCH-FAILURE-VS-GENUINE-EMPTY DISCLOSURE (found 2026-11-09, live production audit): the grouped-
+// daily fetch used to be wrapped in a bare `.catch(() => null)`, which collapsed a THROWN upstream
+// error (network failure, rate limit, or a provider-side 4xx/5xx — confirmed live: Massive.com's
+// `/v2/aggs/grouped/...` 403s with "Attempted to request today's data before end of day" on every
+// same-day RTH call under the current plan) onto the exact same `skip_empty_market` outcome as a
+// response that genuinely came back with zero rows. From outside, an upstream outage and a quiet
+// market were indistinguishable — the same absence-vs-failure conflation the Largo product
+// contract's absence principle forbids (docs/audit/LARGO-PRODUCT-CONTRACT.md). We now catch the
+// throw BEFORE collapsing to `null` and report it as its own `skip_fetch_failed` outcome (with the
+// upstream error message as `reason`), so a reader can tell "the market had nothing" from "we never
+// got to look". This is a disclosure fix only — it does not and cannot repair the underlying
+// provider-side same-day entitlement restriction, which is a plan-tier/billing matter for the
+// operator, not something fixable from this codebase (same category as the already-documented
+// Benzinga/real-time-snapshot entitlement losses in CLAUDE.md).
 
 import { fetchDailyMarketSummary, type DailyMarketBar } from "@/lib/providers/polygon";
 import { ZERODTE_MAX_DTE } from "@/lib/horizons";
@@ -169,16 +184,21 @@ export function assessGroupedBarFreshness(
 
 /** Discriminated result of a breakout discovery pass. `setups` is ALWAYS present (possibly empty).
  *  `status` lets callers distinguish "fresh data, genuinely no breakouts" (`ok`, empty setups) from
- *  "we could not trust the snapshot" (`data_unavailable`) — the WS-19 fail-closed distinction. */
+ *  "we could not trust the snapshot" (`data_unavailable`) from "we never got a snapshot to trust"
+ *  (`skip_fetch_failed`) — the WS-19 fail-closed distinction, extended 2026-11-09 so a thrown fetch
+ *  is never conflated with a genuinely empty one (see the file-header note above). */
 export type BreakoutDiscoveryOutcome = {
   status:
     | "ok" // fresh snapshot screened normally (setups may be empty = genuinely no breakouts today)
     | "skip_off_hours" // outside the RTH commit window
-    | "skip_empty_market" // grouped-daily returned zero bars / a provider miss (no live snapshot)
+    | "skip_empty_market" // grouped-daily call SUCCEEDED but genuinely returned zero bars
+    | "skip_fetch_failed" // the grouped-daily call ITSELF threw (network/429/4xx/5xx) — never "no breakouts"
     | "data_unavailable"; // WS-19: snapshot present but STALE or unverifiable → fail closed
   setups: EnrichedZeroDteSetup[];
-  /** Present only when status === "data_unavailable" — why we failed closed. */
-  reason?: "stale_snapshot" | "missing_bar_timestamp";
+  /** Present when status === "data_unavailable" (why we failed closed, a fixed category) or
+   *  status === "skip_fetch_failed" (the upstream fetch's own error message — free text, for
+   *  diagnostics only; never parsed as structured data). */
+  reason?: "stale_snapshot" | "missing_bar_timestamp" | string;
 };
 
 /** Injectable IO seam -- real providers by default; tests substitute hermetic fakes. */
@@ -222,10 +242,13 @@ const DEFAULT_DEPS: BreakoutDiscoveryDeps = {
 /**
  * Discover BREAKOUT-origin setups for the live board. Returns a discriminated {@link
  * BreakoutDiscoveryOutcome}: `ok` (fresh data — `setups` may be empty when nothing qualified),
- * a `skip_*` (off-hours / no live snapshot), or `data_unavailable` (WS-19 fail-closed: a stale or
- * unverifiable snapshot). The source NEVER fabricates candidates from stale data, and a stale
- * snapshot is NEVER reported as a genuine empty. Best-effort throughout: any thrown failure degrades
- * to a `skip_empty_market` outcome and the flow board is untouched.
+ * a `skip_*` (off-hours / no live snapshot / the fetch itself threw), or `data_unavailable` (WS-19
+ * fail-closed: a stale or unverifiable snapshot). The source NEVER fabricates candidates from stale
+ * data, a stale snapshot is NEVER reported as a genuine empty, and (2026-11-09) a THROWN grouped-
+ * daily fetch is NEVER reported as a genuine empty either — it gets its own `skip_fetch_failed`
+ * outcome instead of silently degrading to `skip_empty_market`. Best-effort throughout: any OTHER
+ * thrown failure in this function (outside the grouped-daily fetch itself) still propagates up to
+ * scan.ts's own best-effort guard, which degrades the board to flow-only.
  */
 export async function discoverBreakoutSetups(opts: {
   today: string;
@@ -256,7 +279,24 @@ export async function discoverBreakoutSetups(opts: {
   }
 
   // TODAY's grouped-daily = the LIVE incomplete session bar during RTH (never a prior-day bar).
-  const summary = await fetchSummary(today).catch(() => null);
+  //
+  // 2026-11-09 fix: this used to be `await fetchSummary(today).catch(() => null)`, which collapsed
+  // a THROWN fetch (polygonGet throws on any non-2xx, including the confirmed-live same-day 403
+  // "Attempted to request today's data before end of day") onto the IDENTICAL `summary == null` ->
+  // `results.length === 0` path a genuinely-empty 200 response takes. Both outcomes reported the
+  // same `skip_empty_market` status with zero way to tell "the market had nothing" from "we never
+  // got to look" (an upstream outage/rate-limit/entitlement loss). We now catch the throw ourselves,
+  // BEFORE it can be confused with a real empty result, and report it as its own distinct outcome.
+  let summary: { results?: DailyMarketBar[] } | undefined;
+  try {
+    summary = await fetchSummary(today);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[zerodte-breakout] grouped-daily fetch THREW -- SKIP_FETCH_FAILED (not "no breakouts today"): ${message}`
+    );
+    return { status: "skip_fetch_failed", setups: [], reason: message };
+  }
   const results = summary?.results ?? [];
   if (results.length === 0) {
     console.info("[zerodte-breakout] no live intraday breadth snapshot (empty grouped-daily) -- SKIP");

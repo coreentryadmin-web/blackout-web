@@ -4,6 +4,18 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-11-09 (16:34 UTC / Mon 11:34 ET) — [SEO] RTH wake: live surface validated GOOD, known data gap unchanged
+
+Still within RTH (11:34 ET, confirmed trading day last cycle). Resynced to `origin/main`
+(`bcf189fd2`, other-lane nighthawk fix). Purged Cloudflare edge HTML (homepage +
+`/tools/gamma-snapshot`), re-measured live homepage CLS — **0, GOOD** (69/69 routed, 0 fail,
+empty shifts). `gex-snapshot` still shows the same honest degraded state (`spot:0`, no
+options-chain data) tracked by another lane's in-flight PR — `calculation_id`/`asof` have
+advanced since the 15:34 UTC check, confirming the refresh loop remains live; not re-polling
+twice again since genuine refresh was already established this session. PR sweep: 3 open agent
+PRs fleet-wide (2 CI-RUNNING, 1 MERGE-STATE-UNKNOWN), all other-lane (spx/meridian). Nothing for
+this lane to act on.
+
 ## 2026-11-09 (15:34 UTC / Mon 10:34 ET) — [SEO] RTH wake: live surface validated GOOD, known data gap not re-reported
 
 Checked clock myself: 10:34 ET Monday, confirmed genuine trading day (not a holiday) — RTH window
