@@ -10152,3 +10152,23 @@ and `/play` are actually serving a real price again
   panel's tape-factor direction read for the same window — they should now always agree on
   direction (both derived from the same `spxTapeSkew` call), never visibly contradict each other
   on a block of aggressively one-sided bought-or-sold prints.
+
+## WATCH LIST — 2026-11-09 (Night Hawk "Bangers" tab's "$-volume" discovery stat had no billions tier / no round-first-then-promote guard, `fix/banger-board-dollar-vol-billions-tier`) — re-check once a committed banger position's discovery `$-volume` is near or above $1B
+
+- **What was broken**: `DiscoveryRationale` (`src/features/nighthawk/components/BangerBoard.tsx`),
+  the "Why it was picked" stat strip on every Bangers-tab position card, hand-rolled
+  `` `$${(discovery.dollar_vol / 1_000_000).toFixed(1)}M` `` for its `$-volume` figure — no
+  billions tier, and no round-first-then-promote guard at the M boundary. `screenBangerMovers`
+  (`src/lib/banger/discovery.ts`) ranks qualifying candidates by raw dollar-volume DESCENDING with
+  a `$5`-`$400` price band and no upper volume cap, so this card's own highest-ranked candidates
+  are exactly the ones most likely to carry a multi-billion-dollar `dollar_vol`.
+- **Fix**: delegate to the repo's shared `fmtPremium` (`src/lib/fmt-money.ts`) instead of a sixth
+  narrower copy of the same K/M/B math. New regression tests in the new `BangerBoard.test.ts`
+  (`DiscoveryRationale` now exported for this); RED→GREEN confirmed via a targeted revert of the
+  formatting line (pre-fix: `"$2500.0M"` for a $2.5B figure, literal overflowed `"$1000.0M"` for
+  a value that rounds to exactly 1000.0 of the M unit; post-fix: `"$2.5B"` / `"$1.0B"`). Sibling
+  `fmt-money.test.ts` unaffected; `tsc --noEmit` clean.
+- **Specific thing to check once live**: next time a Bangers-tab open or closed position's
+  discovery `$-volume` stat is near or above $1B (a high-$-volume mid/large-cap breakout day —
+  the screen's own ranking makes this the common case, not the exception), confirm the card reads
+  `$X.XB`, never a four-plus-digit `$XXXX.XM` label.
