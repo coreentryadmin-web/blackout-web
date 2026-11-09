@@ -3774,6 +3774,28 @@ export function worstKnownSwingDataAgeMs(ctx: SwingPlayBriefContext): number | n
     if (gexAgeMs != null && gexAgeMs >= 0) ages.push(gexAgeMs);
   }
 
+  // BUG FOUND (Ask Largo standing mandate, 2026-11-09, live repro TSLA/MGNI WATCH): this function
+  // never considered `ctx.scanAsOf` — the swing-discovery-scan timestamp `dataFreshnessSection`
+  // (above in this same file) already uses, gated by the identical `isStaleCheckExempt` predicate,
+  // as its own most-prominent staleness disclosure (the "Swing scan: ..." evidence line). For a
+  // WATCH play (no live option-mark age — deliberately excluded above) whose Vector/GEX reads are
+  // ALSO genuinely unavailable this cycle, `ages` stayed empty and this function returned null,
+  // so `adaptSwingBriefToLargo`'s top-level C2 `freshness`/`age_seconds` fields fell back to their
+  // honest-omission default of `"cached"`/`null` — even while `envelope.evidence[0]` in the SAME
+  // response disclosed a multi-day-stale discovery scan. Live repro: TSLA (WATCH, entry window
+  // still open) returned top-level `freshness:"cached", age_seconds:null` alongside
+  // `evidence[0]: {text:"Swing discovery scan as of 2026-11-06 09:15 ET.", provenance:
+  // {freshness:"stale"}}`, read ~2.7 days later. Gated by the SAME `isStaleCheckExempt` predicate
+  // the prose line uses, so a CLOSED/dead-WATCH play (for which "today's scan" is not a live-
+  // staleness claim at all, per that predicate's own header) never gains a fabricated age.
+  if (!isSwingPlayStaleCheckExempt(play) && ctx.scanAsOf) {
+    const scanMs = Date.parse(ctx.scanAsOf);
+    if (Number.isFinite(scanMs)) {
+      const scanAgeMs = readMs - scanMs;
+      if (scanAgeMs >= 0) ages.push(scanAgeMs);
+    }
+  }
+
   return ages.length ? Math.max(...ages) : null;
 }
 
