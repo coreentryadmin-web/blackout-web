@@ -27,8 +27,23 @@ test("plain ticker/keyword text is preserved verbatim (downstream filters unaffe
   assert.equal(sanitizeFeedText("NVDA beats earnings"), "NVDA beats earnings");
 });
 
-test("coerces non-string input via String()", () => {
+test("coerces primitive non-string input via String()", () => {
   assert.equal(sanitizeFeedText(42), "42");
+  assert.equal(sanitizeFeedText(true), "true");
+});
+
+test("a plain object never stringifies to the literal '[object Object]'", () => {
+  // Several callers (e.g. largo-live-feed.ts's `o.teaser` line, run-tool.ts) pass this function's
+  // `unknown` input straight through with no type guard, trusting it to be total/safe — a
+  // malformed feed row whose title/teaser arrived as a nested object instead of a string must
+  // blank to "", not render the coerced type name as if it were real headline text.
+  assert.equal(sanitizeFeedText({ title: "x" }), "");
+  assert.equal(sanitizeFeedText({}), "");
+});
+
+test("an array never stringifies to a comma-joined list", () => {
+  assert.equal(sanitizeFeedText([1, 2, 3]), "");
+  assert.equal(sanitizeFeedText(["a", "b"]), "");
 });
 
 test("decodes named HTML entities (news titles commonly include these)", () => {
