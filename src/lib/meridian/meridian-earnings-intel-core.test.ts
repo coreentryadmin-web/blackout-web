@@ -8,6 +8,7 @@ import {
   beatRateWithCohort,
   coerceMeridianWallLevels,
   flowWindowHours,
+  fmtPremShort,
   moveArrow,
   resolveIntelExpectedMove,
   resolveVectorDeskMove,
@@ -204,6 +205,40 @@ test("shapeMeridianDarkPool: trillion-scale premium promotes to the T unit, not 
   assert.equal(shaped.call_premium_label, "$1.50T");
   assert.equal(shaped.top_prints[0].premium_label, "$1.50T");
   assert.notEqual(shaped.total_premium_label, "$1500.0B");
+});
+
+// BUG FIX (round 484): `meridian-earnings-intel.ts`'s own `fmtPrem` — used ONLY for `net_gex`/
+// `net_premium`, a single ticker's dealer gamma exposure / net options premium, which routinely
+// prints in the billions for a heavily-traded mega-cap (NVDA/AAPL/TSLA/SPY) around earnings — was
+// a second, hand-copied version of this exact ladder forked BEFORE the B/T tiers above existed. It
+// never picked up the round-419/439 fixes, so it silently re-acquired the identical "every value
+// past $1M renders as `$X.XM`" defect those rounds already fixed once here: a real net_gex of
+// $1,500,000,000 rendered as the nonsensical 4+ digit "$1500.0M" instead of "$1.5B". Fixed by
+// deleting the second copy and having `fmtPrem` delegate to this function (now exported) with its
+// own `"$—"` non-finite fallback passed as `naLabel` — one shared ladder, so the two callers can no
+// longer drift apart the way they just did. `fmtPremShort` can be exercised directly now that it
+// is exported (previously only reachable through `shapeMeridianDarkPool`'s shaped output above),
+// which is what actually proves `fmtPrem`'s delegate is correct: `meridian-earnings-intel.ts`
+// itself is `server-only` and can't be imported into a test (CLAUDE.md lesson #14).
+test("fmtPremShort: billion-scale net_gex/net_premium promotes to the B unit, not '$1500.0M'", () => {
+  assert.equal(fmtPremShort(1_500_000_000, "$—"), "$1.5B");
+  assert.notEqual(fmtPremShort(1_500_000_000, "$—"), "$1500.0M");
+});
+
+test("fmtPremShort: trillion-scale value promotes to the T unit, not '$1500.0B'", () => {
+  assert.equal(fmtPremShort(1_500_000_000_000, "$—"), "$1.50T");
+  assert.notEqual(fmtPremShort(1_500_000_000_000, "$—"), "$1500.0B");
+});
+
+test("fmtPremShort: naLabel defaults to the bare dash, and a custom one (fmtPrem's '$—') is honored", () => {
+  assert.equal(fmtPremShort(Number.NaN), "—");
+  assert.equal(fmtPremShort(Number.NaN, "$—"), "$—");
+  assert.equal(fmtPremShort(Number.POSITIVE_INFINITY, "$—"), "$—");
+});
+
+test("fmtPremShort: sub-threshold values are unaffected by the naLabel param (no cosmetic drift)", () => {
+  assert.equal(fmtPremShort(999_600, "$—"), "$1.0M");
+  assert.equal(fmtPremShort(500, "$—"), "$500");
 });
 
 test("coerceMeridianWallLevels preserves gamma truth and orders display band when inverted", () => {

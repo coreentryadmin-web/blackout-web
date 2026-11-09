@@ -22,6 +22,7 @@ import {
   buildErPlayRead,
   buildExpectedMoveBand,
   coerceMeridianWallLevels,
+  fmtPremShort,
   flowWindowHours,
   resolveIntelExpectedMove,
   resolveVectorDeskMove,
@@ -55,22 +56,24 @@ export type MeridianEarningsIntelPrefetch = {
   windowHours?: number;
 };
 
+/**
+ * BUG FIX (round 484): this used to be a second, hand-maintained copy of
+ * `meridian-earnings-intel-core.ts`'s `fmtPremShort` — forked before that sibling's round-419/439
+ * fixes added the B (billion) and T (trillion) tiers, and never updated when they landed there.
+ * Left as its own copy, it silently re-acquired the exact "every value past $1M renders as the
+ * unbounded `$X.XM`" defect those rounds already fixed once: `net_gex`/`net_premium` (the only two
+ * call sites below) are dealer gamma exposure / net options premium for a SINGLE ticker, and for a
+ * heavily-traded mega-cap (NVDA/AAPL/TSLA/SPY) around earnings that routinely prints in the low
+ * billions — e.g. a real net_gex of $1,500,000,000 rendered as the nonsensical 4+ digit "$1500.0M"
+ * instead of "$1.5B", the same shape `fmtPremShort`'s own test file already names for dark-pool
+ * premium. This file can't be unit-tested directly (`import "server-only"`, CLAUDE.md lesson #14),
+ * so the fix is to delegate to the already-exported, already-tested `fmtPremShort` instead of
+ * reimplementing the ladder a second time — one shared implementation can't drift out of sync with
+ * itself. `"$—"` is passed as `naLabel` to keep this function's own long-established non-finite
+ * fallback (`fmtPremShort`'s own default, used by its dark-pool callers, is the bare "—").
+ */
 function fmtPrem(n: number): string {
-  if (!Number.isFinite(n)) return "$—";
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) {
-    const k = abs / 1_000;
-    // BUG FIX (round 399): same unit-boundary defect as the sibling fmtPremShort in
-    // meridian-earnings-intel-core.ts — a net-premium/net-GEX value of e.g. $999,600
-    // took the K branch (< 1_000_000) and then rounded UP past its own threshold to
-    // "1000K" instead of promoting to "$1.0M". This file can't be unit-tested directly
-    // (`import "server-only"`, per CLAUDE.md lesson #2/#3) — the identical guard is
-    // proven RED→GREEN on the testable twin in meridian-earnings-intel-core.test.ts.
-    if (Math.round(k) >= 1000) return `$${(n / 1_000_000).toFixed(1)}M`;
-    return `$${(n / 1_000).toFixed(0)}K`;
-  }
-  return `$${n.toFixed(0)}`;
+  return fmtPremShort(n, "$—");
 }
 
 /** Full earnings intelligence layer for Meridian event detail. */
