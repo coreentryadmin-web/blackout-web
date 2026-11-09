@@ -1393,8 +1393,26 @@ export function fmtPct(n: number | null): string {
   // 6.1749999999999998..., so a bare toFixed(2) prints "6.17" instead of
   // "6.18"). Same bug class already fixed in fmt-money.ts's fmtPct; this
   // older duplicate (SPX desk's dayChange display) was missed.
-  const rounded = Math.round(n * 100) / 100;
-  const sign = rounded >= 0 ? "+" : "";
+  //
+  // SIGN-BIAS ROUNDING TIE (found 2026-11-09, same bug class as fmt-money.ts's
+  // fmtPct / Night Hawk's debrief.ts/signPct / vector-technicals.ts's round2):
+  // a plain `Math.round(n * 100) / 100` rounds a .5-at-2dp tie toward +Infinity
+  // (`Math.round(-0.5) === -0`, not -1), so a genuinely negative input at the
+  // sharpest tie (e.g. -0.005) rounded to -0 — and `-0 >= 0` is `true` in JS, so
+  // the old `sign` check flipped it to a bare "+0.00%", displaying the wrong
+  // direction for a real negative day-change reading. A nearby (non-tie) value
+  // like -0.015 also understated its magnitude by one cent ("-0.01%" instead of
+  // "-0.02%") for the same reason — the tie rounds toward zero on the negative
+  // side while the mirror positive value rounds away from it. Fixed by rounding
+  // the MAGNITUDE and reapplying the sign (`Math.sign(n) * Math.round(Math.abs(n)
+  // * 100) / 100`, ties always away from zero) and reading the +/- prefix from
+  // the ROUNDED output with a strict `> 0` (not `>= 0`), matching fmt-money.ts's
+  // fmtPct exactly — `rounded` can be `-0` or `0` for a tie that disappears at
+  // this precision, and `(-0).toFixed(2)` is `"0.00"` with no stray minus, so a
+  // magnitude that rounds down to exactly zero now correctly prints "0.00%",
+  // never a misleading signed one.
+  const rounded = (Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100;
+  const sign = rounded > 0 ? "+" : "";
   return `${sign}${rounded.toFixed(2)}%`;
 }
 

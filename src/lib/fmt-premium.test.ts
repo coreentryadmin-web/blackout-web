@@ -70,3 +70,32 @@ test("finite values still format normally after the guard", () => {
 test("rounds the float boundary correctly instead of truncating via a raw toFixed", () => {
   assert.equal(fmtPct(6.175), "+6.18%");
 });
+
+// ---------------------------------------------------------------------------
+// SIGN-BIAS ROUNDING TIE (2026-11-09) — api.ts's fmtPct rounded the raw signed
+// input with a plain Math.round(n * 100) / 100 (Math.round(-0.5) === -0, not -1)
+// and decided the +/- prefix with `rounded >= 0`. At the sharpest negative tie
+// that flips a real negative reading to a bare "+0.00%" (`-0 >= 0` is `true` in
+// JS), and at a nearby non-tie value it understates the magnitude by one cent.
+// Same bug class already fixed at fmt-money.ts's fmtPct / vector-technicals.ts's
+// round2 / debrief.ts / trade-explanation.ts — this was an independent,
+// un-migrated duplicate feeding the SPX desk's dayChange display.
+// ---------------------------------------------------------------------------
+test("sign-bias rounding tie: a negative tie must not flip to a plus sign", () => {
+  // Pre-fix this returned "+0.00%" — a real negative day-change reading
+  // displaying with the wrong (bullish) sign.
+  assert.equal(fmtPct(-0.005), "-0.01%");
+  // Mirror positive tie already rounded correctly; confirm it stays byte-identical.
+  assert.equal(fmtPct(0.005), "+0.01%");
+});
+
+test("sign-bias rounding tie: a nearby non-tie negative value must not understate its magnitude", () => {
+  // Pre-fix this returned "-0.01%" (rounded toward zero); the mirror +0.015
+  // already rounded away from zero to "+0.02%".
+  assert.equal(fmtPct(-0.015), "-0.02%");
+  assert.equal(fmtPct(0.015), "+0.02%");
+});
+
+test("sign-bias rounding tie: a magnitude that rounds down to exactly zero prints with no sign", () => {
+  assert.equal(fmtPct(0), "0.00%");
+});
