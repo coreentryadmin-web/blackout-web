@@ -10952,3 +10952,26 @@ and `/play` are actually serving a real price again
   user whose `createdAt`/`lastSignInAt`/`lastActiveAt` falls in the few hours around ET midnight.
   No live pre-fix repro was captured from this sandbox (no real admin browser session with a
   non-UTC/non-ET timezone to compare against), so this is a passive next-occurrence check.
+
+## WATCH LIST — 2026-11-09 (swing-discovery had ZERO successful runs in 24h — two unbounded 40-ticker Polygon fan-outs tripping the shared circuit breaker, `fix/swing-discovery-unbounded-polygon-fanout` / PR #7832) — re-check live cron health once markets are open
+
+- **What was broken**: `GET /api/admin/cron-health` showed `swing-discovery` at
+  `runs_24h:{ok:0,failed:30,skipped:21}` — a real, live production outage, not a cosmetic
+  finding. Two genuinely unbounded `Promise.all` fan-outs in
+  `src/app/api/cron/swing-discovery/route.ts` (up to 40 concurrent Polygon REST calls each — the
+  intraday-structure minute-bar refresh and the post-scan watch-ticker last-trade refresh) relied
+  entirely on the shared `polygon-rate-limiter.ts` circuit breaker to self-regulate instead of
+  bounding their own concurrency. A burst from either one was a plausible, sufficient trigger for
+  the observed cluster-wide 429 circuit trip (which then also hit `spx-evaluate`/`spx-issues-sync`
+  in the same window, since there is exactly one shared breaker).
+- **Fix**: routed both fan-outs through the already-established, already-tested `runPolygonPool()`
+  helper (same primitive `vector-universe.ts`/`polygon-options-gex.ts`/`heatmap-warm/route.ts`
+  already use for this exact problem shape), bounding concurrency to 8 instead of an unbounded 40.
+  No change to the shared breaker itself, swing's candidate-selection/scoring logic, or any other
+  route. RED→GREEN via `git stash` isolation; full `npm test` (Node 20): 18718 pass / 0 fail.
+- **Specific thing to check once RTH resumes**: pull `GET /api/admin/cron-health` and confirm
+  `swing-discovery`'s `runs_24h` shows real `ok` entries again (not stuck at 0) across the
+  `PRE_OPEN`/`MIDDAY`/`POWER_HOUR` phases, and that no `[polygon] Circuit open` message reappears
+  in its `last_message` for a sustained window. Also worth a quick cross-check that
+  `spx-evaluate`/`spx-issues-sync` (which showed the same breaker-open symptom, sibling lane's
+  scope) have recovered too, since they share the identical root-cause breaker.
