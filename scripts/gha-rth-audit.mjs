@@ -25,6 +25,10 @@ import {
   resolveAuditDbUrl,
 } from "./pg-audit.mjs";
 import { isCronRunHealthyStatus, probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
+import {
+  cronWatchdogVerdict,
+  shouldRunFullSiteDeepAudit,
+} from "./lib/gha-rth-audit-offhours-eval.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
 const force = process.argv.includes("--force");
@@ -209,8 +213,24 @@ async function cronHttpChecks() {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+        const { failKeys, warnKeys } = cronWatchdogVerdict({
+          rthOpen,
+          force,
+          problemKeys: json.problem_keys ?? [],
+          rthStaleKeys: json.rth_stale_keys ?? [],
+        });
+        if (failKeys.length) {
+          failures.push(`${label}: ${failKeys.join(", ")}`);
+          console.log(`  ✗ ${label} → stale: ${failKeys.join(", ")}`);
+        }
+        if (warnKeys.length) {
+          console.log(
+            `  ⚠ ${label} → off-hours/non-RTH problems (not gating): ${warnKeys.join(", ")}`
+          );
+        }
+        if (!failKeys.length && !warnKeys.length) {
+          console.log(`  ✓ ${label} → ok`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
@@ -264,7 +284,14 @@ run("Public HTTP smoke", "node", ["scripts/gha-http-smoke.mjs"]);
 run("Sentry smoke", "node", ["scripts/gha-sentry-smoke.mjs"]);
 
 if (!smokeOnly) {
-  run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
+  if (shouldRunFullSiteDeepAudit({ rthOpen, force, smokeOnly })) {
+    run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
+  } else {
+    console.log("\n── Full-site deep audit ──");
+    console.log(
+      "  ⚠ Off-hours — skipping deep numeric audit (desk spot/heatmaps require RTH; use --force)"
+    );
+  }
   await cronHttpChecks();
   await postgresRthChecks();
 }
