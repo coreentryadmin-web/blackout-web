@@ -10580,3 +10580,34 @@ and `/play` are actually serving a real price again
   discovery) was genuinely partial for that one call rather than silently presenting as complete.
   No live state captured pre-fix to diff against — there is no safe way to force a
   mid-pagination Polygon failure against production from this sandbox.
+
+## WATCH LIST — 2026-11-09 (SpxCommentaryRail one-tick stale-closure pinned-bias persist race, `fix/spx-commentary-pinned-persist-race`) — re-check during live RTH once the desk is open
+
+- **What was broken**: `SpxCommentaryRail.tsx`'s play-lifecycle effect (`[play, live]` deps)
+  persisted the closure-captured `pinned` **state** variable to sessionStorage instead of a ref
+  mirror. If that effect fired in the SAME React commit as the brain-tick effect's
+  (`[desk, live]` deps) `setPinned(nextPinned)` call for a freshly-changed bias — both effects run
+  in one flush, and `play`'s own SWR revalidation is independent of the `desk` poll, so nothing
+  prevents the two deps changing together — the play-lifecycle effect's `persist(pinned, ...)`
+  call read the PRE-update bias (setState doesn't retroactively rewrite an already-created
+  sibling closure within the same commit) and overwrote the correct, freshly-pinned bias the
+  brain-tick effect had just written moments earlier in sessionStorage with the stale one. Narrow
+  and self-correcting on the next ~2s poll, but reachable in real live trading sessions whenever
+  a play armed/fired/closed lands in the same tick as a genuine bias change.
+- **Fix**: added `pinnedRef`, a ref mirror of `pinned` kept in lockstep with every `setPinned`
+  call (hydration seed + brain-tick effect), mirroring the file's own pre-existing `shiftsRef`
+  discipline. Both `persist()` call sites now read `pinnedRef.current` instead of the stale
+  `pinned` state closure. No rendered-UI behavior change — only the sessionStorage write path.
+  RED confirmed via `git stash` isolating the source change (4/4 new assertions fail pre-fix),
+  GREEN post-fix (4/4 pass); `npx tsc --noEmit` clean; sibling `spx-commentary.test.ts` (10/10)
+  unaffected.
+- **Specific thing to check once live**: during RTH with the SPX desk open and a live play
+  armed/firing/closing, watch `sessionStorage`'s `FEED_CACHE_KEY` entry (DevTools Application tab,
+  or reload the `/spx`-adjacent desk page right after a play transition lands near a bias
+  change) and confirm the pinned bias card shown after a reload always matches the MOST RECENT
+  bias the rail displayed live, never a one-tick-old one. This specific race is too narrow to
+  force deliberately from this sandbox (needs a genuine same-commit collision between a desk poll
+  bias change and a play lifecycle event), so there is no pre-fix live capture to diff against —
+  the realistic validation is passive: the fix should make this class of staleness structurally
+  impossible going forward, so nothing abnormal is expected, but it is worth one direct look
+  during a live session with real play activity.

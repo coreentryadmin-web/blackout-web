@@ -152,6 +152,16 @@ export function SpxCommentaryRail({
   const hydratedRef = useRef(false);
   // Mirror of `shifts` so persist() calls from other effects never write a stale closure.
   const shiftsRef = useRef<FeedItem[]>([]);
+  // Mirror of `pinned`, same reason as shiftsRef above. Without this, the play-lifecycle
+  // effect below (its own [play, live] deps) reads the closure-captured `pinned` STATE
+  // variable when it calls persist() — and if its run lands in the SAME commit as the
+  // brain-tick effect's setPinned(nextPinned) just above it, that closure is still the
+  // PRE-update value (a setState call doesn't retroactively update an already-created
+  // closure in the same effect flush), so the play-lifecycle effect would persist the
+  // stale bias over the fresh one the brain-tick effect just wrote moments earlier in the
+  // same pass. Narrow (both effects must fire in the same tick) and self-correcting on the
+  // next ~2s poll, but a real, reachable staleness in what's cached — not hypothetical.
+  const pinnedRef = useRef<PinnedBias | null>(null);
 
   // useSpxPlay shares its SWR key with SpxTradeAlerts, so this adds no polling — it just
   // observes the same payload for armed/fired/closed lifecycle lines.
@@ -175,6 +185,7 @@ export function SpxCommentaryRail({
     const cached = readSessionCache<PersistedRail>(FEED_CACHE_KEY, FEED_CACHE_MAX_AGE_MS);
     if (cached) {
       if (cached.pinned) {
+        pinnedRef.current = cached.pinned;
         setPinned(cached.pinned);
         // Seed the bias clock so hydration doesn't immediately re-voice an unchanged bias…
         lastBiasAtRef.current = cached.pinned.at;
@@ -257,10 +268,13 @@ export function SpxCommentaryRail({
     }
 
     if (nextPinned || newItems.length) {
-      if (nextPinned) setPinned(nextPinned);
+      if (nextPinned) {
+        pinnedRef.current = nextPinned;
+        setPinned(nextPinned);
+      }
       setFeed((cur) => {
         const next = newItems.length ? [...newItems, ...cur].slice(0, MAX_FEED_ITEMS) : cur;
-        persist(nextPinned ?? pinned, next);
+        persist(nextPinned ?? pinnedRef.current, next);
         return next;
       });
     }
@@ -291,7 +305,9 @@ export function SpxCommentaryRail({
         })),
         ...cur,
       ].slice(0, MAX_FEED_ITEMS);
-      persist(pinned, next);
+      // Read the ref mirror, NOT the closure-captured `pinned` state variable — see the
+      // pinnedRef declaration above for why the latter can be one commit stale here.
+      persist(pinnedRef.current, next);
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
