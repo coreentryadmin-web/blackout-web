@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ZeroDteCommandPanel } from "./ZeroDteCommandPanel.tsx";
 import type { TerminalPlay } from "./types.ts";
 import type { ThesisHealthPayload } from "@/lib/zerodte/thesis-health";
+import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 
 (globalThis as unknown as { React: typeof React }).React = React;
 
@@ -197,5 +198,103 @@ describe("ZeroDteCommandPanel — signPct does not understate negative magnitude
     const peak = html.match(/Peak<\/span><span class="v nh-deck-pos">([^<]*)</);
     assert.ok(peak, "expected a Peak stat");
     assert.equal(peak![1], "+3%", "positive .5 boundary must round away from zero, same as before the fix");
+  });
+});
+
+// BUG FIX (Ask Largo standing mandate — live-audit confirmed finding, 2026-11-09, live repro
+// SWING:APP/positionId 2397): the verdict-band headline P&L for an OPEN/TRIM SWING position with
+// an already-banked trim tranche showed the raw, unblended live P&L on the still-open runner leg
+// only, with zero qualifier — even though Ask Largo's own play-brief for the identical position
+// already computes and discloses the correct BLENDED figure (play-brief.ts's `blendedPnlPct`, now
+// `blendedTrimPnlPct` in terminal-ladder.ts). Fixture mirrors the live APP repro exactly: entry
+// $17.34, mark $98.00 → raw runner-only P&L +465.2%, one tranche fired at the SWING_SCALE_OUT_POLICY
+// ladder's +100%/50% rung → blended = 0.5×100 + 0.5×465.2 = +282.6%, matching the real play-brief's
+// own disclosed "Blended P&L (realized trim + open runner): +282.6%" for this exact position.
+describe("ZeroDteCommandPanel — verdict band shows the BLENDED P&L for an OPEN SWING position with an already-banked trim, not the raw open-runner-only figure", () => {
+  const trimLadder: TerminalExitLadder = {
+    policy: "trim_scale",
+    hard_stop_pct: -60,
+    target_pct: 100,
+    trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 34.68, fired: true }],
+    runner_fraction: 0.5,
+    stop_premium: 6.94,
+    target_premium: 34.68,
+    time_stop_et: "16:00",
+  };
+  const swingTrim: TerminalPlay = {
+    ...base,
+    id: "SWING:APP:2397",
+    ticker: "APP",
+    horizon: "SWING",
+    status: "TRIM",
+    exitModel: "SCALE_OUT",
+    entry: 17.34,
+    mark: 98.0,
+    pnlPct: 465.2, // raw open-runner-only P&L — live-plays.ts's livePnlPct(17.34, 98.00)
+    exitPolicy: trimLadder,
+  };
+
+  it("shows the blended +282.6%, not the raw open-runner-only +465.2%", () => {
+    const html = render(swingTrim);
+    const band = html.match(/nh-deck-verdict-band__pnl[^"]*">([^<]*)</);
+    assert.ok(band, "expected a P&L stat in the verdict band");
+    assert.equal(
+      band![1],
+      "+282.6%",
+      "verdict band must show the blended whole-position P&L (50% banked @ +100% + 50% of the open runner's +465.2%), matching Ask Largo's own play-brief for the identical position",
+    );
+  });
+
+  it("a fully-OPEN SWING position with NO banked trim (all trim_levels unfired) is unaffected — still shows the raw figure", () => {
+    const swingOpenNoTrim: TerminalPlay = {
+      ...swingTrim,
+      status: "OPEN",
+      pnlPct: 42.6,
+      exitPolicy: { ...trimLadder, trim_levels: [{ ...trimLadder.trim_levels[0]!, fired: false }] },
+    };
+    const html = render(swingOpenNoTrim);
+    const band = html.match(/nh-deck-verdict-band__pnl[^"]*">([^<]*)</);
+    assert.ok(band, "expected a P&L stat in the verdict band");
+    assert.equal(
+      band![1],
+      "+42.6%",
+      "nothing has fired yet — the runner-only figure IS the whole position; must not be blended",
+    );
+  });
+
+  it("a SWING position with NO exit policy at all is unaffected — still shows the raw figure", () => {
+    const html = render({ ...swingTrim, exitPolicy: undefined });
+    const band = html.match(/nh-deck-verdict-band__pnl[^"]*">([^<]*)</);
+    assert.ok(band, "expected a P&L stat in the verdict band");
+    assert.equal(band![1], "+465.2%", "no exit policy to blend against — must fall back to the raw figure");
+  });
+
+  it("a CLOSED SWING position (even with a fired trim tranche) is unaffected — still uses closedRealizedPct, never this new blend path", () => {
+    const swingClosed: TerminalPlay = {
+      ...swingTrim,
+      status: "CLOSED",
+      closedReason: "time_stop",
+      exitPnlPct: 282.6,
+    };
+    const html = render(swingClosed);
+    const band = html.match(/nh-deck-verdict-band__pnl[^"]*">([^<]*)</);
+    assert.ok(band, "expected a P&L stat in the verdict band");
+    assert.equal(
+      band![1],
+      "+282.6%",
+      "CLOSED must keep using closedRealizedPct's own exitPnlPct-first precedence, unchanged by this fix",
+    );
+  });
+
+  it("a ZERO_DTE TRIM row is unaffected (fix is scoped to SWING only) — still shows the raw figure even with a fired trim tranche", () => {
+    const zeroDteTrim: TerminalPlay = { ...swingTrim, horizon: "ZERO_DTE", id: "0DTE:APP" };
+    const html = render(zeroDteTrim);
+    const band = html.match(/nh-deck-verdict-band__pnl[^"]*">([^<]*)</);
+    assert.ok(band, "expected a P&L stat in the verdict band");
+    assert.equal(
+      band![1],
+      "+465.2%",
+      "this fix is deliberately scoped to SWING only — a 0DTE TRIM row's pnlPct comes from a different server-side path not touched here",
+    );
   });
 });

@@ -10930,6 +10930,38 @@ and `/play` are actually serving a real price again
   confirmation needs a non-ET viewpoint, which is why it is listed here rather than closed purely
   on the unit test.
 
+## WATCH LIST — 2026-11-09 (Command Deck verdict-band badge showed raw open-runner P&L for a TRIM swing position instead of Ask Largo's own blended figure, `fix/swing-trim-pnl-blend-command-deck`) — re-check the live committed SWING book during RTH
+
+- **What was broken**: the Command Deck's headline verdict-band P&L badge
+  (`ZeroDteCommandPanel.tsx`, shared by `ZERO_DTE` and `SWING`) showed the raw, unblended live
+  P&L on the still-open runner leg for any SWING position that had already banked a partial
+  trim (`liveStatus:'TRIM'`), with zero qualifier — even though Ask Largo's own play-brief for
+  the identical position already computes and discloses the correct blended figure. Live repro:
+  SWING positionId 2397 (APP, entry $17.34, mark $98.00) showed the badge at the raw +465.2%
+  while the play-brief disclosed the correct blended +282.6% (50% banked @ +100% + 50% of the
+  open runner). 8/40 live committed SWING positions shared this exact TRIM state at audit time
+  (HLF/2473, WEN/2467, MOS/2431, U/2409, APP/2397, REPL/2383, U/2363, APP/2355).
+- **Fix**: extracted the blend arithmetic already used by `play-brief.ts`'s `blendedPnlPct` into
+  a new shared pure function, `blendedTrimPnlPct` (`terminal-ladder.ts`), and wired it into
+  `ZeroDteCommandPanel.tsx`'s own `pnlPct` derivation for SWING TRIM rows only — parallel to the
+  `isClosed` special-case this same line already carried since 2026-10-24. A fully-OPEN/HOLD
+  position with no banked trim, a CLOSED position, and a ZERO_DTE TRIM row are all deliberately
+  left untouched (see the finding/PR for the full scope rationale). RED→GREEN confirmed via
+  plain file-copy backup/restore of the two touched source files (not `git stash`): the new
+  TRIM-blend assertion fails pre-fix (`+465.2%` instead of `+282.6%`) while four sibling
+  OPEN/CLOSED/no-exit-policy/ZERO_DTE-scope assertions in the same new test block all pass
+  pre-fix, proving the fix is additive. 14/14 in `ZeroDteCommandPanel.test.ts`, 18/18 in
+  `terminal-ladder.test.ts`, 2355/2355 across `nighthawk/**`+`lib/swing/**`+`lib/zerodte/**`
+  together; `npx tsc --noEmit` clean.
+- **Specific thing to check once live**: open the Command Deck during RTH, find any committed
+  SWING position whose status is `TRIM` (a tranche has already banked), and confirm the
+  verdict-band headline badge now matches that same position's Ask Largo play-brief "Blended
+  P&L (realized trim + open runner)" line — not the play-brief's separate, still-correctly-raw
+  "P&L: ... (open runner only — trim already banked, see below)" line, and not the pre-fix raw
+  figure. As of the 5-engine audit that found this, 8 live positions (listed above) were in
+  exactly this state — if any are still open at the next RTH open, they are the fastest
+  confirmation; if all have since closed, the next position to reach its own +100% trim rung is.
+
 ## WATCH LIST — 2026-11-09 (Admin Users table account dates rendered in viewer-local timezone, not ET, `fix/et-timezone-display-bug`) — re-check `/admin` Users table from outside America/New_York
 
 - **What was broken**: `UserManagement.tsx`'s account-date formatter (feeding the Users table's

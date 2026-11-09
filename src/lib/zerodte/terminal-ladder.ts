@@ -133,6 +133,59 @@ export function runnerTrailingStopPremium(peakPremium: number | null | undefined
   return round2(peakPremium * SCALE_OUT_RULES.trail_from_peak);
 }
 
+// BUG FIX (Ask Largo standing mandate — live-audit confirmed finding, 2026-11-09, live repro
+// SWING:APP/positionId 2397): `runnerPnlPct` ((mark/entry − 1) × 100, `livePnlPct` in
+// live-plays.ts) is the UNREALIZED return on the OPEN RUNNER LEG ONLY — identical in shape to the
+// `play.pnlPct` this file's own `blendedPnlPct` precedent (play-brief.ts, Ask Largo's swing
+// play-brief, 2026-09-11) already corrects for. That brief shows BOTH the raw runner-only line AND
+// a separately-labeled "Blended P&L (realized trim + open runner)" line once any tranche has
+// fired — but the Command Deck's own headline verdict-band badge (ZeroDteCommandPanel.tsx, shared
+// by ZERO_DTE and SWING — PlayTerminal.tsx's own `commandSinglePanel` comment) had no equivalent:
+// it showed the SAME raw runner-only figure as the sole, unqualified headline number, with zero
+// indication a trim had already banked. Live repro: SWING positionId 2397 (APP), entry $17.34,
+// mark $98.00, one tranche fired at the ladder's +100%/50% rung — the badge showed the raw
+// +465.2% while Largo's own play-brief for the IDENTICAL position disclosed the correct blended
+// +282.6% (50% banked @ +100% + 50% of the runner's +465.2%). 8/40 live committed SWING
+// positions shared this exact TRIM state at audit time (HLF/2473, WEN/2467, MOS/2431, U/2409,
+// APP/2397, REPL/2383, U/2363, APP/2355), each independently reproducible.
+//
+// Added here, in this dependency-free leaf, rather than inside play-brief.ts itself, so the
+// Command Deck panel (which does not import anything from src/lib/swing/) can use the identical
+// arithmetic without a new cross-feature import. play-brief.ts's OWN `blendedPnlPct` is
+// deliberately left as its own, separate copy rather than refactored to delegate here: that
+// function's null-vs-throw boundary is load-bearing for a DIFFERENT reason — a malformed
+// `exitPolicy.trim_levels` (present but not actually an array) is meant to THROW there, so
+// `composeSwingPlayBrief`'s own error boundary can catch it and omit just the "Position" section
+// rather than silently rendering a partial result (see that test file's "a throwing top-level
+// section... does not take down the whole brief" case). This function intentionally does the
+// opposite — never throws, always degrades to null — because a React render path has no
+// equivalent per-section error boundary to catch it; forcing the two to share one implementation
+// would have had to pick one of those two correct-for-its-own-caller behaviors and silently break
+// the other caller's test. Both copies compute the exact same formula; verified byte-identical on
+// the shared live repro fixture (play-brief.test.ts's own blended-P&L assertions and this file's
+// sibling test both pin +282.6% for the same entry/mark/trim-ladder inputs).
+//
+// Returns null (never a fabricated number) when: the runner P&L itself is absent/non-finite, no
+// trim levels are supplied, or — the common case — NOTHING has fired yet, because the runner-only
+// figure already IS the whole position in that case; a caller should fall back to the raw figure.
+/**
+ * Blend a fired trim ladder's already-banked tranches (at their frozen `trigger_pct`, the exact
+ * mechanical level `buildTerminalExitLadder` arms `fired` against — never a reconstructed fill
+ * price) with the still-open runner leg's own raw P&L into one whole-position figure.
+ */
+export function blendedTrimPnlPct(
+  runnerPnlPct: number | null | undefined,
+  trimLevels: readonly Pick<TerminalExitTranche, "fired" | "fraction" | "trigger_pct">[] | null | undefined,
+): number | null {
+  if (runnerPnlPct == null || !Number.isFinite(runnerPnlPct)) return null;
+  if (!trimLevels || trimLevels.length === 0) return null;
+  const firedFraction = trimLevels.reduce((sum, t) => sum + (t.fired ? t.fraction : 0), 0);
+  if (firedFraction <= 0) return null; // nothing banked yet — the runner-only figure IS the whole position
+  const bankedPnl = trimLevels.reduce((sum, t) => sum + (t.fired ? t.fraction * t.trigger_pct : 0), 0);
+  const runnerFraction = Math.max(0, 1 - firedFraction);
+  return bankedPnl + runnerFraction * runnerPnlPct;
+}
+
 // ── Time-stop clock (item 4) ────────────────────────────────────────────────────────────
 /** RTH open in ET minutes-since-midnight — the session-decay bar's left edge (09:30). */
 export const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;

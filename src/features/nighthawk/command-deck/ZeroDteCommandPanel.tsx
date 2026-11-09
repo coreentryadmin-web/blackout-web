@@ -22,6 +22,7 @@ import { CondorPanel, TimeStopClock } from "./play-terminal-shared";
 import { ThesisHealthPanel } from "./ThesisHealthPanel";
 import { SwingThesisHealthPanel } from "./SwingThesisHealthPanel";
 import { closedCapturePct, closedRealizedPct } from "./play-card-lifecycle";
+import { blendedTrimPnlPct } from "@/lib/zerodte/terminal-ladder";
 
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
 // `Math.round()` always rounds a .5 tie toward +Infinity (`Math.round(-2.5) === -2` but
@@ -84,7 +85,34 @@ export function ZeroDteCommandPanel({
   // disagrees with the Trade-outcome number. Same bug class already fixed at the TerminalPlay
   // render layer in TerminalPremiumPanels.tsx's TradeExcursionGraphic and PlayTerminal.tsx's
   // PnlPanel/LegacyPnlPanel.
-  const pnlPct = isClosed ? realizedPct : play.pnlPct;
+  // BUG FIX (Ask Largo standing mandate — live-audit confirmed finding, 2026-11-09, live repro
+  // SWING:APP/positionId 2397): this headline derivation already special-cased CLOSED (above) but
+  // had no equivalent for a still-OPEN TRIM row — `play.pnlPct` for TRIM is the raw, unblended
+  // return on the open runner leg ONLY (`livePnlPct`, live-plays.ts), computed identically
+  // regardless of whether a tranche has already banked. Ask Largo's own swing play-brief
+  // (play-brief.ts's `blendedPnlPct`) already computes and discloses the correct BLENDED figure
+  // for the identical position — this badge showed the raw one with zero qualifier: live repro
+  // APP (entry $17.34, mark $98.00, one tranche fired at the +100%/50% rung) showed the raw
+  // +465.2% here while the play-brief showed the correct blended +282.6% for the SAME position.
+  // 8/40 live committed SWING positions shared this exact TRIM state at audit time.
+  //
+  // `blendedTrimPnlPct` (terminal-ladder.ts, imported below) is the SAME arithmetic as
+  // play-brief.ts's `blendedPnlPct`, extracted to this shared leaf rather than imported from
+  // play-brief.ts directly — see that new function's own doc comment for why the two stay two
+  // separate (behaviorally equivalent on well-formed input, deliberately different on malformed
+  // input) copies instead of one call site delegating to the other.
+  //
+  // Scoped to SWING only (`play.horizon === "SWING"`), not blindly to every TRIM row: a 0DTE
+  // TRIM row's own `pnlPct` is sourced from the board's `live_pnl_pct` through a DIFFERENT
+  // server-side path (`reconcileLedgerLivePnlPct`, marks-math.ts) this fix does not touch or
+  // re-verify — re-blending it here on top of whatever that path already does risks a double-
+  // blend this audit never measured. `blendedTrimPnlPct` itself is additionally a no-op (returns
+  // null, falling back to the raw figure below) whenever nothing has actually fired yet, so a
+  // fully-OPEN/HOLD swing position with no banked trim is provably unaffected — same for
+  // WATCH/SKIP, whose `pnlPct` is already null.
+  const swingTrimBlendedPct =
+    play.horizon === "SWING" ? blendedTrimPnlPct(play.pnlPct, play.exitPolicy?.trim_levels) : null;
+  const pnlPct = isClosed ? realizedPct : swingTrimBlendedPct ?? play.pnlPct;
   const markFlash = useFlash(play.mark ?? pnlPct ?? null);
   const premium = isZeroDtePremiumTerminal(play);
   const isCandidate = play.status === "WATCH" || play.status === "SKIP";
