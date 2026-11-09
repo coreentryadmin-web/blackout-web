@@ -34,6 +34,14 @@ test("laneStatusFromBreakoutOutcome maps every known outcome status", () => {
   assert.equal(laneStatusFromBreakoutOutcome("skip_off_hours"), "off_hours");
   assert.equal(laneStatusFromBreakoutOutcome("skip_empty_market"), "empty_market");
   assert.equal(laneStatusFromBreakoutOutcome("data_unavailable"), "data_unavailable");
+  assert.equal(laneStatusFromBreakoutOutcome("skip_fetch_failed"), "failed");
+});
+
+test("laneStatusFromBreakoutOutcome: skip_fetch_failed is distinct from empty_market (2026-11-09 fix)", () => {
+  // The whole point of the fix this guards: a thrown upstream fetch (network/429/4xx/5xx — e.g. the
+  // confirmed-live same-day grouped-daily 403) must never read the same as a genuinely quiet market.
+  const mapped = laneStatusFromBreakoutOutcome("skip_fetch_failed");
+  assert.notEqual(mapped, laneStatusFromBreakoutOutcome("skip_empty_market"));
 });
 
 test("laneStatusFromBreakoutOutcome sends an UNKNOWN status to failed, not through", () => {

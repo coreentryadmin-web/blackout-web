@@ -19,7 +19,7 @@ import type { RichSection } from "@/lib/bie/rich-narrative";
  * `flowNarrative` + `flowIntelSection`). "Desk context" stays excluded — `crossDeskCoaching`
  * does not cover outcome history, and remapping the stale title would silently delete it.
  *
- * Seven titles in this set are NOT unconditionally covered — unlike every other title here,
+ * Eight titles in this set are NOT unconditionally covered — unlike every other title here,
  * dropping them off static membership alone can falsely claim a fold that never happened in the
  * narrative. Each has its own `collapseRedundantIntelSections` opt, computed by the caller from
  * the SAME real predicate the narrative generator uses, rather than trusting this static list:
@@ -179,7 +179,7 @@ export function collapseRedundantIntelSections(
 
   const filtered = sections.filter((s) => {
     if (!NARRATIVE_COVERED_TITLES.has(s.title)) return true;
-    // These seven are the conditionally-covered titles in the set — see the doc comment above.
+    // These eight are the conditionally-covered titles in the set — see the doc comment above.
     // Keep each (don't drop) unless the caller proves its real narrative predicate actually fired.
     if (s.title === "Lane rank") return opts.laneRankFolded !== true;
     if (s.title === "Wall dynamics") return opts.wallDynamicsFolded !== true;

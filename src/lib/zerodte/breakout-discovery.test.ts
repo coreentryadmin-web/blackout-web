@@ -119,6 +119,58 @@ test("discoverBreakoutSetups: stale grouped snapshot fails closed (data_unavaila
   assert.equal(calls.resolveChain, 0);
 });
 
+// ── Scenario 1b: the grouped-daily FETCH ITSELF throws → skip_fetch_failed, DISTINCT from a
+// genuinely empty market (found 2026-11-09, live production audit: Massive.com's grouped-daily
+// 403s "Attempted to request today's data before end of day" on every same-day RTH call under the
+// current plan). Before this fix, `fetchSummary(today).catch(() => null)` collapsed this exact
+// case onto the identical `skip_empty_market` outcome a genuinely-empty 200 response takes — this
+// test is the RED→GREEN proof that the two are no longer indistinguishable. ──────────────────────
+
+test("discoverBreakoutSetups: grouped-daily fetch THROWS (e.g. a provider 403) → skip_fetch_failed, never skip_empty_market", async () => {
+  const now = Date.parse("2026-07-24T15:00:00Z");
+  const { deps, calls } = makeDeps();
+  const out = await discoverBreakoutSetups({
+    today: "2026-07-24",
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    nowMs: now,
+    deps: {
+      ...deps,
+      fetchSummary: (async () => {
+        throw new Error("Polygon /v2/aggs/grouped/locale/us/market/stocks/2026-07-24 → 403");
+      }) as never,
+    },
+  });
+  assert.equal(out.status, "skip_fetch_failed");
+  assert.notEqual(out.status, "skip_empty_market"); // the exact conflation this fix removes
+  assert.match(String(out.reason), /403/);
+  assert.equal(out.setups.length, 0);
+  // Fail-closed on a thrown fetch means we never screened anything (there is nothing to screen).
+  assert.equal(calls.screen, 0);
+  assert.equal(calls.resolveChain, 0);
+});
+
+test("discoverBreakoutSetups: grouped-daily fetch rejecting with a non-Error value still produces a skip_fetch_failed outcome (never throws out of the function)", async () => {
+  const now = Date.parse("2026-07-24T15:00:00Z");
+  const { deps } = makeDeps();
+  const out = await discoverBreakoutSetups({
+    today: "2026-07-24",
+    nowEtMinutes: RTH_NOW_ET_MINUTES,
+    excludeTickers: new Set(),
+    nowMs: now,
+    deps: {
+      ...deps,
+      fetchSummary: (async () => {
+        // Deliberately a non-Error reject (some providers/libraries reject with a bare string).
+        throw "rate limited";
+      }) as never,
+    },
+  });
+  assert.equal(out.status, "skip_fetch_failed");
+  assert.equal(out.reason, "rate limited");
+  assert.equal(out.setups.length, 0);
+});
+
 // ── Scenario 2: FRESH but empty market → normal empty (distinct from stale) ──────────
 
 test("discoverBreakoutSetups: fresh snapshot with zero qualifying movers → ok + empty (not data_unavailable)", async () => {
