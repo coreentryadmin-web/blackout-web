@@ -58,7 +58,32 @@ production Polygon credential is still broken and needs Secrets Manager attentio
 (`blackout-production/app/env`'s `POLYGON_API_KEY`) before it silently costs another full trading
 day of swing/banger discovery and EOD GEX history.
 
-## WATCH LIST — 2026-11-02 Swing `thesisBreakCoaching` no longer names a nonexistent "next trim rail" on a TRIM-status position (PR #7388)
+## WATCH LIST — 2026-11-09 VectorChart's SSE tick handler mirrors `onFreshness`/`onSpotChange` through refs, matching every sibling callback it already reads this way (PR pending at time of writing — see commit for the merged SHA)
+
+**What was shipped:** DISCOVERY round 506's ref-mirror lens found that `VectorChart`'s live SSE
+`onmessage` handler (built once inside `connectLive`, a `useCallback` only re-invoked at mount,
+on replay-exit, and on error-retry — never merely because its own deps changed) read
+`onFreshness`/`onSpotChange` directly from its closure, unlike the seven sibling callbacks the
+SAME handler reads (`onPlayChange`, `onAlertsFired`, `onTechnicalsChange`, `onExpectedMoveChange`,
+`onPriceScaleRender`, `onCompareCrosshair`, `onCompareVisibleRange`), which all already mirror
+through a ref for exactly this reason. Both callers (`VectorPageShell.tsx`) pass
+`liveSession ? theRealCallback : undefined` for both props, so the VALUE flips with
+`liveSession` without remounting `VectorChart` (keyed only on `ticker`) — meaning the
+already-running handler could keep calling a STALE pre-flip callback (continuing to push "live"
+spot/freshness updates into the parent) after the caller intended to stop. Fixed with
+`onFreshnessRef`/`onSpotChangeRef`, synced every render exactly like the sibling refs, with both
+call sites inside the handler reading `.current`. RED→GREEN confirmed via `git stash` on the
+component change (6/6 new/updated assertions fail without the fix, pass with it);
+`npx tsc --noEmit` clean; full `src/features/vector/components/*.test.ts` suite 104/104 green.
+
+**Specific thing to check next cycle:** this is a timing-dependent staleness bug (requires
+`liveSession` to flip false mid-mount — e.g. a member idle on `/vector` or the SPX Slayer embed
+through a session-close boundary — without a ticker switch), so it has no single live
+repro-and-confirm moment the way a data-shape bug does. Once this deploys, the useful live check
+is negative evidence over time: watch for any report of the 0DTE matrix rail (`VectorOdteMatrixRail`,
+which treats `liveSpot` as its primary spot source) or the freshness chip continuing to show
+"live" movement on `/vector` or the embedded chart well after a session has closed, with no
+ticker switch in between — that symptom should no longer reproduce once the fix is live.
 
 **What was shipped:** Found during a live-check of #7380 itself (`GET /api/market/nighthawk/
 horizons?view=swings` + `GET /api/market/swing/record` against production). `thesisBreakCoaching()`

@@ -1437,6 +1437,30 @@ export function VectorChart({
   useEffect(() => {
     onPriceScaleRenderRef.current = onPriceScaleRender;
   });
+  // BUG FIX (round 506 audit): onFreshness/onSpotChange are read inside the SSE `onmessage`
+  // handler defined once inside `connectLive` (a useCallback invoked only from the mount
+  // effect, exitReplay, and the error-retry path — never re-invoked merely because its OWN
+  // deps changed, since nothing watches `connectLive`'s identity). Every OTHER callback read
+  // from that same long-lived handler (onPlayChangeRef, onAlertsFiredRef, onTechnicalsChangeRef,
+  // onExpectedMoveChangeRef, onPriceScaleRenderRef, onCompareCrosshairRef,
+  // onCompareVisibleRangeRef — see their own comments above/below) already mirrors the latest
+  // prop through a ref for exactly this reason. onFreshness/onSpotChange were the two that
+  // escaped that treatment and were closed over directly instead — reachable because both
+  // callers (VectorPageShell) pass `liveSession ? theRealCallback : undefined`, so the VALUE
+  // (not just a re-created function with the same behavior) flips based on `liveSession`. If
+  // the SSE connection was established while `liveSession` was true and `liveSession` later
+  // flips false WITHOUT the component remounting (ticker unchanged, so the `key={activeTicker}`
+  // at the call site doesn't force a fresh mount), the already-running handler keeps calling
+  // the STALE pre-flip callback (continuing to push "live" spot/freshness updates into the
+  // parent) instead of seeing the now-`undefined` value the parent intended. Mirrored via refs,
+  // same discipline as every sibling callback here, so the handler always reads the CURRENT
+  // value without needing a reconnect.
+  const onFreshnessRef = useRef(onFreshness);
+  const onSpotChangeRef = useRef(onSpotChange);
+  useEffect(() => {
+    onFreshnessRef.current = onFreshness;
+    onSpotChangeRef.current = onSpotChange;
+  });
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const volumeAvgSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   // Always-on technicals narration (VWAP/EMA/RSI/MACD/pocket/structure) → terminal, computed on
@@ -4311,7 +4335,7 @@ export function VectorChart({
       }
 
       if (snap.t) {
-        onFreshness?.(snap.t);
+        onFreshnessRef.current?.(snap.t);
       }
       if (snap.gexAsOf != null) {
         setGexAsOf(snap.gexAsOf);
@@ -4382,7 +4406,7 @@ export function VectorChart({
         // the chart it sits next to. spotRef.current above stays unconditional (other live-view
         // consumers still need it); only the callback and the heatmap marker are gated.
         if (!inReplay) {
-          onSpotChange?.(curSpot);
+          onSpotChangeRef.current?.(curSpot);
           gexHeatmapPrimitiveRef.current?.setSpot(curSpot);
         }
         if (
@@ -4487,7 +4511,7 @@ export function VectorChart({
         evaluateAlertsNow(); // spot/walls/flip just advanced — check the member's alert rules
       }
     });
-  }, [sessionYmd, refreshTrails, refreshOverlays, onFreshness, ticker, liveGexWalls, liveGammaFlip, emitRegime, emitProximity, emitMagnet, emitConfluence, paintConfluenceBand, emitWallIntegrity, emitPlay, evaluateAlertsNow, paintOverlays]);
+  }, [sessionYmd, refreshTrails, refreshOverlays, ticker, liveGexWalls, liveGammaFlip, emitRegime, emitProximity, emitMagnet, emitConfluence, paintConfluenceBand, emitWallIntegrity, emitPlay, evaluateAlertsNow, paintOverlays]);
 
   useEffect(() => {
     const container = containerRef.current;
