@@ -4,6 +4,19 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-11-09 (15:34 UTC / Mon 10:34 ET) — [SEO] RTH wake: live surface validated GOOD, known data gap not re-reported
+
+Checked clock myself: 10:34 ET Monday, confirmed genuine trading day (not a holiday) — RTH window
+is real this cycle. Purged Cloudflare edge HTML (homepage + `/tools/gamma-snapshot`), re-measured
+live homepage CLS — **0.0001, GOOD** (69/69 routed, 0 fail, empty shifts). Polled
+`/api/public/gex-snapshot?ticker=SPX` twice ~30s apart: `calculation_id` and `asof` both advanced
+(`SPX:1794238455473` → `SPX:1794238485066`) — the 5s-class refresh loop is genuinely running, not
+frozen. `spot:0`, no options-chain data, `read: "No options-chain data for this ticker — dealer
+gamma profile unavailable."` — an honest degraded state, not a stale or wrong number, and matches
+an other-lane PR already open today (#7760, Largo grounding) tracking a known Polygon
+entitlement gap. Not re-reporting as a new SEO finding. PR sweep: 2 open agent PRs, both
+CI-RUNNING, both other-lane (correctness). Nothing for this lane to act on.
+
 ## 2026-11-09 (14:07 UTC / Mon 09:07 ET) — [SEO] Daily growth cycle: quiet day, no new opportunity, no PR action
 
 Opportunity scan still `SKIP` (no AWS creds). Live surface already re-verified clean this
