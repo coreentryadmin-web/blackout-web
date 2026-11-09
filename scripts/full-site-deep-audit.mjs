@@ -5,9 +5,10 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
+import { spxDeskSpotAuditVerdict } from "./audit/lib/spx-desk-spot-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -190,9 +191,22 @@ async function auditSpxDesk() {
   const bad = scanFinite(d).slice(0, 5);
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
-  const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  const cashRthOpen = Boolean(d.market_open) || inRthOpenWindow();
+  const spotVerdict = spxDeskSpotAuditVerdict(d, cashRthOpen);
+  if (spotVerdict.outcome === "fail") {
+    fail("spx-desk", "SPOT", `spot missing or invalid: ${spotVerdict.spot}`, "P0");
+    return;
+  }
+  if (spotVerdict.outcome === "skip_empty_off_hours") {
+    ok("spx-desk", "spot-off-hours", "honest empty desk (market closed)");
+    return;
+  }
+  const spot = spotVerdict.spot;
+  if (spotVerdict.outcome === "ok_off_hours") {
+    ok("spx-desk", "spot", `prior_close ${spot} (off-hours)`);
+  } else {
+    ok("spx-desk", "spot", String(spot));
+  }
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;

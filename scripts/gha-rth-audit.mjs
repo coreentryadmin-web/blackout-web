@@ -209,8 +209,20 @@ async function cronHttpChecks() {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+        const problemKeys = json.problem_keys ?? [];
+        const rthStaleKeys = json.rth_stale_keys ?? [];
+        // Post-close / off-hours scheduled runs must not fail on phase-scheduled crons
+        // (e.g. swing-discovery) that are stale only on handshake age — same shape as
+        // skipping Postgres writer checks when `!inRthOpenWindow()`.
+        if (!inRthOpenWindow() && rthStaleKeys.length === 0) {
+          console.log(
+            `  ⚠ ${label} → off-hours stale (not failing run): ${problemKeys.join(", ")}`
+          );
+        } else {
+          const failKeys = rthStaleKeys.length > 0 ? rthStaleKeys : problemKeys;
+          failures.push(`${label}: ${failKeys.join(", ")}`);
+          console.log(`  ✗ ${label} → stale: ${failKeys.join(", ")}`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
