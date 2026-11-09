@@ -431,3 +431,40 @@ test("buildSpxDeskPulseMinimal: race branch has a SPY-proxy last resort before f
     "must not regress back to the old chain with no SPY-proxy fallback — that is the exact bug this test guards against"
   );
 });
+
+// BUG FIX (2026-11-09, live repro, Ask Largo/5-engine standing mandate): buildSpxDeskPulse() has
+// a THIRD price-resolution branch — the one that actually runs when `rthOpen || premarketPlan`
+// is true, i.e. the entire 7:00-9:30 ET premarket-planning window and the regular session. It
+// already fetches `prior.pdc` in the same `Promise.all` as `fetchPulseLaneSnapshots()`, but used
+// to discard it and `return empty` the instant `spxSnap?.price` was falsy — never trying
+// `prior.pdc` or `spxPriceFromSpyProxy()`, unlike the off-hours branch and
+// buildSpxDeskPulseMinimal(), both fixed earlier the same day. Confirmed live: GET
+// /api/market/spx/desk served available:false/price:0 on 3+ consecutive premarket polls (fresh
+// `as_of` each time — not a frozen cache) because loadSpxDesk()'s own cache-build fallback
+// (spx-desk-loader.ts's `fallback: async () => deskShellFromPulse(await loadSpxDeskPulse())`)
+// routes through THIS function, not buildSpxDesk()'s own already-fixed `price` chain — during
+// premarket, `fetchPulseLaneSnapshots()` has no fresh WS tick for I:SPX and its REST fallback
+// hits the documented real-time-snapshot entitlement 403, so `spxSnap?.price` is reliably 0.
+test("buildSpxDeskPulse: RTH/premarket branch has a prior.pdc + SPY-proxy fallback before returning empty (2026-11-09 fix)", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  const fnIdx = src.indexOf("export async function buildSpxDeskPulse(");
+  const minimalIdx = src.indexOf("export async function buildSpxDeskPulseMinimal");
+  assert.ok(fnIdx >= 0 && minimalIdx > fnIdx, "could not locate buildSpxDeskPulse's own body");
+  const fnBody = src.slice(fnIdx, minimalIdx);
+  // Scope strictly to the RTH/premarket branch — i.e. AFTER the off-hours `if (!rthOpen &&
+  // !premarketPlan) { ... }` block has already returned, not the off-hours branch's own
+  // (separately tested) spy-proxy fallback a few lines above it in source.
+  const rthBranchIdx = fnBody.indexOf("const today = todayEtYmd();");
+  assert.ok(rthBranchIdx >= 0, "could not locate the RTH/premarket branch inside buildSpxDeskPulse");
+  const rthBranch = fnBody.slice(rthBranchIdx);
+  assert.match(
+    rthBranch,
+    /const spxSnap = snaps\[SPX\];\s*\n\s*const vixSnap = snaps\[VIX\];[\s\S]*?const price =\s*\n\s*spxSnap\?\.price \?\? lastPulseForSignals\?\.price \?\? prior\.pdc \?\? \(await spxPriceFromSpyProxy\(\)\) \?\? 0;\s*\n\s*if \(!\(price > 0\)\) return empty;/,
+    "the RTH/premarket branch's price chain must fall back to lastPulseForSignals, then the already-fetched prior.pdc, then the SPY-proxy estimate before giving up and returning empty — mirroring buildSpxDesk()'s and buildSpxDeskPulseMinimal()'s own chains"
+  );
+  assert.doesNotMatch(
+    rthBranch,
+    /const spxSnap = snaps\[SPX\];\s*\n\s*const vixSnap = snaps\[VIX\];\s*\n\s*if \(!spxSnap\?\.price\) return empty;/,
+    "must not regress back to returning empty the instant spxSnap?.price is falsy, discarding the already-fetched prior.pdc — that is the exact live bug this test guards against"
+  );
+});
