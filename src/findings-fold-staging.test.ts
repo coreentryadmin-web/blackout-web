@@ -23,8 +23,8 @@ function setup() {
   return { dir, findings, staging };
 }
 
-function run(staging: string, findings: string) {
-  return execFileSync("node", ["scripts/audit/findings-fold-staging.mjs"], {
+function run(staging: string, findings: string, extraArgs: string[] = []) {
+  return execFileSync("node", ["scripts/audit/findings-fold-staging.mjs", ...extraArgs], {
     env: { ...process.env, FINDINGS_STAGING_DIR: staging, FINDINGS_STAGING_TARGET: findings },
     encoding: "utf8",
   });
@@ -298,4 +298,97 @@ test("a clean staging directory is a no-op", () => {
   rmSync(dir, { recursive: true, force: true });
   assert.match(out, /No staged findings to fold/);
   assert.equal(after, before, "FINDINGS.md must be byte-identical when nothing is staged");
+});
+
+/**
+ * Regression coverage for the "--dry-run silently performs a real, destructive fold" bug
+ * (found 2026-11-09): the script never read `process.argv` at all, so `--dry-run` — the universal
+ * CLI convention for "preview only, write nothing" — was silently ignored and the script ran its
+ * REAL fold: a sibling agent sanity-checking a newly-staged file with `--dry-run` instead deleted
+ * every OTHER concurrent lane's staged finding files and appended them all into FINDINGS.md
+ * (caught via `git status` and reverted before anything was pushed). Any unrecognized flag had the
+ * identical failure mode, not just `--dry-run` specifically.
+ */
+test("--dry-run previews what would be folded and writes NOTHING", () => {
+  const { dir, findings, staging } = setup();
+  writeFileSync(
+    join(staging, "2026-11-09-dry-run-check.md"),
+    "> **kind:** `FINDING`\n\n## A dry-run preview finding\n\nbody.\n"
+  );
+  const before = readFileSync(findings, "utf8");
+  const out = run(staging, findings, ["--dry-run"]);
+  const after = readFileSync(findings, "utf8");
+  const remaining = readdirSync(staging);
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.match(out, /dry run/i, "dry-run output must say what it would do");
+  assert.match(out, /2026-11-09-dry-run-check\.md/, "dry-run output must name the file it would fold");
+  assert.equal(after, before, "FINDINGS.md must be byte-identical after a dry run");
+  assert.deepEqual(remaining, ["2026-11-09-dry-run-check.md"], "the staged file must survive a dry run");
+});
+
+test("--dry-run still reports a malformed staged file, same as a real run, without deleting it", () => {
+  const { dir, findings, staging } = setup();
+  writeFileSync(join(staging, "2026-08-23-malformed.md"), "not a proper finding heading at all\n");
+  const before = readFileSync(findings, "utf8");
+  let out = "";
+  try {
+    run(staging, findings, ["--dry-run"]);
+  } catch (e) {
+    const err = e as { stdout?: string; stderr?: string };
+    out = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+  }
+  const after = readFileSync(findings, "utf8");
+  const remaining = readdirSync(staging);
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.match(out, /2026-08-23-malformed\.md/, "a dry run must still name the malformed file");
+  assert.equal(after, before, "FINDINGS.md must stay untouched during a dry run");
+  assert.deepEqual(remaining, ["2026-08-23-malformed.md"], "a dry run must never delete a staged file, malformed or not");
+});
+
+test("an unrecognized flag is rejected loudly (non-zero exit) instead of silently running the real fold", () => {
+  const { dir, findings, staging } = setup();
+  writeFileSync(
+    join(staging, "2026-11-09-bogus-flag-check.md"),
+    "> **kind:** `FINDING`\n\n## A finding that must survive an unrecognized flag\n\nbody.\n"
+  );
+  const before = readFileSync(findings, "utf8");
+  let out = "";
+  let threw = false;
+  try {
+    run(staging, findings, ["--bogus-flag-xyz"]);
+  } catch (e) {
+    threw = true;
+    const err = e as { stdout?: string; stderr?: string };
+    out = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+  }
+  const after = readFileSync(findings, "utf8");
+  const remaining = readdirSync(staging);
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.ok(threw, "an unrecognized flag must exit non-zero, not run quietly");
+  assert.match(out, /unrecognized flag/i, "the error must name the flag it rejected");
+  assert.equal(after, before, "FINDINGS.md must be untouched when a flag is rejected");
+  assert.deepEqual(
+    remaining,
+    ["2026-11-09-bogus-flag-check.md"],
+    "the staged file must survive — the real fold must never have run"
+  );
+});
+
+test("with no flags at all, the real fold is unaffected by the new flag parsing", () => {
+  const { dir, findings, staging } = setup();
+  writeFileSync(
+    join(staging, "2026-11-09-real-fold-still-works.md"),
+    "> **kind:** `FINDING`\n\n## A finding folded by a plain, flagless run\n\nbody.\n"
+  );
+  const out = run(staging, findings);
+  const after = readFileSync(findings, "utf8");
+  const remaining = readdirSync(staging);
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.match(out, /Folded 1 staged finding/);
+  assert.match(after, /## A finding folded by a plain, flagless run/);
+  assert.deepEqual(remaining, [], "the staged file must be deleted after a real, flagless fold");
 });

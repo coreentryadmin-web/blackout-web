@@ -10867,6 +10867,34 @@ and `/play` are actually serving a real price again
   (needs that specific sign-disagreement live at the moment of inspection), so this is a passive
   next-occurrence check.
 
+## WATCH LIST — 2026-11-09 (Helix DarkPoolPanel's ticker-filtered date column rendered in the viewer's local timezone, not ET, `fix/darkpool-panel-fmtdate-et`) — re-check the filtered dark-pool tape on a non-ET browser during/after a late RTH session
+
+- **What was broken**: `DarkPoolPanel.tsx`'s `fmtDate()` (the absolute date/time shown in the
+  ticker-filtered dark-pool tape's date column) built its output from `Date.prototype.getMonth()`/
+  `getDate()`/`getHours()`/`getMinutes()` — the viewer's BROWSER-local timezone, not ET. Every
+  other absolute timestamp on this same desk (the sibling Options Flow tape's `fmtFullTimestamp`)
+  is explicitly anchored to `America/New_York`. Because ET trails UTC by 4-5h while most non-US
+  timezones run ahead of UTC, a late-session print (near the 16:00 ET close, ~20:00-21:00 UTC)
+  would often render under the WRONG CALENDAR DATE for a member outside the Americas — not just a
+  different hour. Reproduced directly in this sandbox too: its default TZ is UTC, so the bug was
+  live-observable here, not merely theoretical for overseas members.
+- **Fix**: rewrote `fmtDate` to format via `Intl.DateTimeFormat` anchored to
+  `timeZone: "America/New_York"`, the same approach (and hourCycle-"24" midnight normalization)
+  `fmtFullTimestamp` already uses. Output shape (`MM/DD HH:MM`, no year) is unchanged — only the
+  timezone anchoring changed. `fmtDate` is now exported for direct unit testing. RED→GREEN
+  confirmed via `git stash` isolating the source change (test picks a timestamp that crosses the
+  UTC/ET calendar-date boundary: `2026-01-16T03:15:00Z` → `"01/15 22:15"` ET, not `"01/16 03:15"`);
+  `npx tsc --noEmit` and `eslint` both clean.
+- **Specific thing to check once live**: on the Helix desk, filter the dark-pool tape to a single
+  ticker (`showDate` turns on) late in an RTH session (ideally near the 16:00 ET close) from a
+  browser set to a non-US timezone (DevTools lets you override `Intl.DateTimeFormat`'s resolved
+  timezone, or just check from a device actually in another zone) and confirm the printed date
+  now matches the ET session date shown elsewhere on the desk (the Flow tape, the Largo
+  "ET"-labeled timestamps), not the viewer's own local date. This is a per-viewer-timezone defect,
+  so a same-timezone (ET) spot-check from this sandbox cannot by itself prove the fix — the real
+  confirmation needs a non-ET viewpoint, which is why it is listed here rather than closed purely
+  on the unit test.
+
 ## WATCH LIST — 2026-11-09 (Admin Users table account dates rendered in viewer-local timezone, not ET, `fix/et-timezone-display-bug`) — re-check `/admin` Users table from outside America/New_York
 
 - **What was broken**: `UserManagement.tsx`'s account-date formatter (feeding the Users table's
