@@ -35,6 +35,30 @@ test("isSwingWin mirrors pnl>0", () => {
   assert.equal(isSwingWin(null), false);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-09): `round2` used plain `Math.round(n*100)/100`,
+// which ties toward +Infinity (`Math.round(-12.5) === -12` but `Math.round(12.5) === 13`). A
+// losing leg's realized_pnl_pct sitting exactly on a 2dp tie rounded to a SMALLER magnitude than
+// the identical-size winning mirror would — and worstLegPnlPct (this file's own "explicit
+// preserved-loss witness") inherited the same asymmetry. -0.125/+0.125 are exact binary fractions
+// (-1/8, 1/8) so *100 lands exactly on a ±12.5 tie, not merely close to one.
+test("round2's sign-bias tie: a losing leg at an exact 2dp tie rounds to the SAME magnitude as its winning mirror", () => {
+  const lossLeg = leg({ id: 20, realized_pnl_pct: -0.125 });
+  const lossRec = buildSwingRecord([lossLeg]);
+  // Pre-fix this was -0.12 (a SMALLER magnitude than the +0.125 mirror's 0.13) — the bug.
+  assert.equal(lossRec.legs[0]!.realizedPnlPct, -0.13);
+  assert.equal(lossRec.composite.worstLegPnlPct, -0.13);
+  assert.equal(lossRec.composite.sumPnlPct, -0.13);
+  assert.equal(lossRec.composite.compoundedReturnPct, -0.13);
+
+  const winLeg = leg({ id: 21, realized_pnl_pct: 0.125 });
+  const winRec = buildSwingRecord([winLeg]);
+  assert.equal(winRec.legs[0]!.realizedPnlPct, 0.13);
+  assert.equal(winRec.composite.worstLegPnlPct, 0.13);
+
+  // The whole point: equal-magnitude mirror-image moves must round to equal magnitudes.
+  assert.equal(Math.abs(lossRec.composite.worstLegPnlPct!), Math.abs(winRec.composite.worstLegPnlPct!));
+});
+
 // ── THE invariant: a roll composite PRESERVES a parent loss, never nets it away ───
 test("roll chain composite preserves a parent loss — a winning child does NOT net it away", () => {
   const root = 10;
