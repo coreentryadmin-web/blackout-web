@@ -2,7 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { summarizeTechnicals, technicalsCallouts, technicalsCalloutLines, type TechnicalsBar } from "./vector-technicals";
+import {
+  summarizeTechnicals,
+  technicalsCallouts,
+  technicalsCalloutLines,
+  type TechnicalsBar,
+  type TechnicalsSummary,
+} from "./vector-technicals";
 
 // RTH-anchored base (09:30 ET) — vwapSeries (used by summarizeTechnicals) is RTH-only (2026-08-05
 // audit fix: it must not anchor on pre/post-market prints), so fixture bars need to fall inside
@@ -147,6 +153,50 @@ test("technicalsCalloutLines: structure direction maps to bull/bear", () => {
     const structLine = lines.find((l) => l.text.startsWith("Structure"));
     assert.equal(structLine?.tone, s.structure.direction === "up" ? "bull" : "bear");
   }
+});
+
+// ---------------------------------------------------------------------------
+// MACD histogram sign-bias rounding tie (2026-11-09) — round2() used to round the RAW signed
+// histogram and decide the +/- prefix separately from the raw input, same bug class already
+// fixed at fmt-money.ts's fmtPct / Night Hawk's debrief.ts/trade-excursion-graphic.ts.
+// ---------------------------------------------------------------------------
+
+const MACD_BASE: TechnicalsSummary = {
+  spot: null,
+  vwap: null,
+  vwapDeltaPct: null,
+  ema9: null,
+  ema21: null,
+  ema50: null,
+  emaStack: null,
+  rsi: null,
+  rsiZone: null,
+  macd: 1,
+  macdSignal: 1.01,
+  macdHist: null,
+  macdState: "bearish",
+  goldenPocket: null,
+  structure: null,
+};
+
+test("technicalsCalloutLines: MACD histogram exact negative tie keeps its sign and rounds away from zero", () => {
+  const s: TechnicalsSummary = { ...MACD_BASE, macdHist: -0.005 };
+  const lines = technicalsCalloutLines(s);
+  const macdLine = lines.find((l) => l.text.startsWith("MACD bearish"));
+  assert.ok(macdLine, "MACD line present");
+  assert.ok(
+    macdLine!.text.includes("hist -0.01"),
+    `-0.005 is a tie and must round AWAY from zero to -0.01, keeping its sign: got "${macdLine!.text}"`
+  );
+});
+
+test("technicalsCalloutLines: MACD histogram negative/positive ties of equal magnitude render symmetrically", () => {
+  const neg = technicalsCalloutLines({ ...MACD_BASE, macdHist: -0.015, macdState: "bearish" });
+  const pos = technicalsCalloutLines({ ...MACD_BASE, macdHist: 0.015, macdState: "bullish" });
+  const negText = neg.find((l) => l.text.startsWith("MACD bearish"))!.text;
+  const posText = pos.find((l) => l.text.startsWith("MACD bullish"))!.text;
+  assert.ok(negText.includes("hist -0.02"), `expected "-0.02" magnitude, got: ${negText}`);
+  assert.ok(posText.includes("hist +0.02"), `expected "+0.02" magnitude, got: ${posText}`);
 });
 
 test("technicalsCalloutLines: empty bars → empty array", () => {

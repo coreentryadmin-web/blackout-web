@@ -133,7 +133,16 @@ export function summarizeTechnicals(
 }
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-const round2 = (n: number) => Math.round(n * 100) / 100;
+// `Math.round()` always rounds a .5 tie toward +Infinity (`Math.round(-0.5) === -0`, not -1), so
+// rounding a RAW signed value and deciding its +/- prefix separately (`n >= 0 ? "+" : ""`) lets a
+// negative tie's magnitude round TOWARD zero while the same-magnitude positive tie rounds away
+// from it — and at the sharpest tie (e.g. -0.005 at this 2dp scale) the sign is dropped entirely
+// (`${-0}` stringifies to the bare digit "0"). Same bug class already fixed at fmt-money.ts's
+// `fmtPct`, nighthawk's `debrief.ts`/`trade-excursion-graphic.ts`, and `trade-explanation.ts`
+// (#7695) — this module's own `round2` was an independent, un-migrated paste of the same shape.
+// Rounding the MAGNITUDE and reapplying the sign (ties always away from zero) fixes it while
+// leaving every already-tie-free value (prices, EMAs, VWAP — all positive here) byte-identical.
+const round2 = (n: number) => (Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100;
 
 /** Tone taxonomy reused from the rest of the Vector Pulse rail (`vp-t-bull/bear/warn/muted` in
  *  globals.css) so a colored technicals line looks like every other colored intel-card line. */
@@ -182,7 +191,11 @@ export function technicalsCalloutLines(s: TechnicalsSummary): TechnicalsLine[] {
 
   if (s.macd != null && s.macdState != null) {
     const rel = s.macdState === "bullish" ? "above" : "below";
-    const hist = s.macdHist != null ? ` · hist ${s.macdHist >= 0 ? "+" : ""}${round2(s.macdHist)}` : "";
+    // Sign prefix decided from the ROUNDED histogram, not the raw input, so a magnitude that
+    // rounds down to exactly zero (or `-0`) never prints a misleading "+0" / loses its minus —
+    // the same convention `fmtPct` and the Night Hawk `signPct`/`formatExcursionPct` fixes use.
+    const roundedHist = s.macdHist != null ? round2(s.macdHist) : null;
+    const hist = roundedHist != null ? ` · hist ${roundedHist > 0 ? "+" : ""}${roundedHist}` : "";
     lines.push({
       text: `MACD ${s.macdState} — line ${rel} signal${hist}`,
       tone: s.macdState === "bullish" ? "bull" : "bear",
