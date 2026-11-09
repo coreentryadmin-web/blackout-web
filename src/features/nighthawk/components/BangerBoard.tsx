@@ -24,6 +24,7 @@ import useSWR from "swr";
 import { Badge, EmptyState, Panel, Skeleton } from "@/components/ui";
 import { computeScaleOutTriggerInfo } from "@/lib/zerodte/scale-out";
 import { etDateTimeShort } from "@/lib/et-clock";
+import { fmtPremium } from "@/lib/fmt-money";
 
 type BangerPlay = {
   id: number;
@@ -116,11 +117,26 @@ function fmtTimestamp(iso: string | null): string {
 }
 
 /** The 3-4 point discovery rationale members can actually parse at a glance — labeled, not a raw dump. */
-function DiscoveryRationale({ discovery }: { discovery: BangerPlay["discovery"] }) {
+// Exported for direct unit testing of the dollar-volume formatting fix below.
+export function DiscoveryRationale({ discovery }: { discovery: BangerPlay["discovery"] }) {
   const items: Array<{ label: string; value: string }> = [];
   if (discovery.gain != null) items.push({ label: "Day gain", value: fmtPct(discovery.gain, { signed: true }) });
   if (discovery.dollar_vol != null) {
-    items.push({ label: "$-volume", value: `$${(discovery.dollar_vol / 1_000_000).toFixed(1)}M` });
+    // BUG FIX (round 483): this used to hand-roll `$${(v / 1_000_000).toFixed(1)}M` with no
+    // billions tier and no round-first-then-promote guard at the M boundary — the exact bug
+    // class already fixed ~18+ times elsewhere in this repo (fmt-money.ts's own `fmtPremium`,
+    // zerodte-board-format.ts, helix-flow-format.ts, spx-pulse.ts, etc — see FINDINGS.md). `vol`
+    // is live share volume and this screen (screenBangerMovers, DEFAULT_BANGER_SCREEN_CONFIG)
+    // explicitly allows close prices up to $400 with no upper volume cap, ranked by dollar-volume
+    // DESCENDING — so the candidates this card is MOST LIKELY to show are exactly the highest
+    // $-volume names that cleared the day's gain/close-strength bar (e.g. a $300 stock trading
+    // 10M+ shares on a breakout day easily clears $3B). A dollar_vol of 2_500_000_000 rendered
+    // the un-promoted, wrong-unit "$2500.0M" instead of "$2.5B", and a dollar_vol that rounds to
+    // exactly 1000.0 of the M unit (e.g. 999_950_000) rendered the literal overflowed "$1000.0M"
+    // rather than promoting to "$1.0B" — the identical boundary defect this repo's shared
+    // `fmtPremium` (src/lib/fmt-money.ts) was written specifically to eliminate. Fix: delegate to
+    // that single source of truth instead of maintaining a sixth, narrower copy of the same math.
+    items.push({ label: "$-volume", value: fmtPremium(discovery.dollar_vol) });
   }
   if (discovery.vol != null) items.push({ label: "Volume", value: discovery.vol.toLocaleString() });
   if (discovery.close_strength != null) {
