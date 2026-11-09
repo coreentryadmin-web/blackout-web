@@ -36,3 +36,15 @@ test("full-site-deep-audit SPX oracle follows data-validator RTH/off-hours groun
   assert.match(src, /I:SPX\/prev/);
   assert.doesNotMatch(src, /if \(d > 5\) fail\("oracle", "SPX"/);
 });
+
+test("full-site-deep-audit SPX desk spot: honest unavailable / off-RTH window are not P0", () => {
+  assert.match(src, /inRthOpenWindow/);
+  assert.match(src, /d\.available === false/);
+  assert.match(src, /spot-off-hours/);
+});
+
+test("gha-rth-audit cron-watchdog: off-hours defers to rth_stale_keys only", () => {
+  const ghaSrc = readFileSync(join(here, "gha-rth-audit.mjs"), "utf8");
+  assert.match(ghaSrc, /rth_stale_keys/);
+  assert.match(ghaSrc, /off-hours problems \(not failing\)/);
+});

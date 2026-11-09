@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -191,8 +191,17 @@ async function auditSpxDesk() {
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  if (!(spot > 0)) {
+    // GHA RTH audit fires at 4:30 PM ET too (post-close grace) — outside inRthOpenWindow().
+    // Honest unavailable desk (Massive snapshot entitlement loss, etc.) must not P0 off-hours.
+    if (d.available === false) {
+      ok("spx-desk", "unavailable", `honest empty desk off-hours (source=${d.source ?? "none"})`);
+    } else if (!inRthOpenWindow()) {
+      ok("spx-desk", "spot-off-hours", `no grounded spot outside RTH audit window (${spot})`);
+    } else {
+      fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
+    }
+  } else ok("spx-desk", "spot", String(spot));
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;

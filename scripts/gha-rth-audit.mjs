@@ -209,8 +209,21 @@ async function cronHttpChecks() {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+        const problemKeys = json.problem_keys ?? [];
+        const rthStaleKeys = json.rth_stale_keys ?? [];
+        // Post-close scheduled slot (4:30 PM ET) is outside inRthOpenWindow — only RTH-stale
+        // jobs should fail the audit then; generic staleness is warn-only (measured 2026-11-09).
+        if (!rthOpen && rthStaleKeys.length === 0) {
+          console.log(
+            `  ⚠ ${label} → off-hours problems (not failing): ${problemKeys.join(", ") || "(none)"}`
+          );
+        } else if (rthStaleKeys.length > 0) {
+          failures.push(`${label}: RTH stale ${rthStaleKeys.join(", ")}`);
+          console.log(`  ✗ ${label} → RTH stale: ${rthStaleKeys.join(", ")}`);
+        } else {
+          failures.push(`${label}: ${problemKeys.join(", ")}`);
+          console.log(`  ✗ ${label} → stale: ${problemKeys.join(", ")}`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
