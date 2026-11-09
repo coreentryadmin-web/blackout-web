@@ -688,7 +688,24 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
         reason: gap ? `${p.reason} · ${gap}` : p.reason,
       };
     });
-  const plays = [...clearedPlays, ...observedPlays];
+  // BUG FIX (2026-11-09, Ask Largo/5-engine standing mandate, live repro): `p.contract.delta` is
+  // persisted (`produceHorizonPlays`'s own ranker/`ChainContract` convention) as the ABSOLUTE
+  // MAGNITUDE — calls positive, puts' magnitude, never re-signed at write time — the same
+  // convention `closed-plays.ts`'s `contractBundleFromRow`, `live-plays.ts`'s quote fallback, and
+  // `roll-plan.ts`'s roll-child pin were all fixed (2026-11-08/09) to re-sign at their own read
+  // site. This persisted-snapshot passthrough was the one remaining site that spread `p` straight
+  // through with no contract override, so a PUT WATCH candidate served a positive delta — live
+  // repro: TSLA 365P SHORT served `contract.delta: 0.61` while every already-fixed sibling surface
+  // (closedDeck, committed live quotes) correctly serves negative deltas for the identical
+  // right:"P" shape. Re-signing here closes the gap architecturally: it applies on every read
+  // regardless of how stale the persisted snapshot is, instead of only self-healing on the next
+  // discovery scan.
+  const resignContract = (c: ChainContract): ChainContract =>
+    c.right === "P" && c.delta != null ? { ...c, delta: -Math.abs(c.delta) } : c;
+  const plays = [...clearedPlays, ...observedPlays].map((p) => ({
+    ...p,
+    contract: resignContract(p.contract),
+  }));
   // Contracts from plays (best first) so entry-state can stamp when a WATCH contract is attached.
   const contractsByTicker = new Map<string, ChainContract>();
   for (const p of plays) {
