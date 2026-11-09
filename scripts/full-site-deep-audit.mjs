@@ -5,7 +5,8 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
+import { watchdogProblemKeysForAudit } from "./audit/lib/watchdog-audit-keys.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -110,7 +111,7 @@ async function auditCrons() {
   ]);
 
   if (wd.status === 200) {
-    const keys = wd.json.problem_keys ?? [];
+    const keys = watchdogProblemKeysForAudit(wd.json);
     if (keys.length) for (const k of keys) fail("crons", `STALE-${k}`, `Cron watchdog flagged stale/missing: ${k}`);
     else ok("crons", "watchdog", `${wd.json.checked ?? "?"} jobs OK`);
   }
@@ -191,12 +192,16 @@ async function auditSpxDesk() {
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  const rth = inRthOpenWindow();
+  const spotLive = spot > 0;
+  if (!spotLive) {
+    if (!rth) ok("spx-desk", "spot", `off-hours — spot ${spot ?? 0} (live spot not required)`);
+    else fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
+  } else ok("spx-desk", "spot", String(spot));
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;
-  if (finite(low) && finite(high) && finite(spot) && (spot < low - 0.01 || spot > high + 0.01)) {
+  if (spotLive && finite(low) && finite(high) && finite(spot) && (spot < low - 0.01 || spot > high + 0.01)) {
     fail("spx-desk", "RANGE", `spot ${spot} outside [${low}, ${high}]`, "P0");
   } else if (finite(low) && finite(high)) ok("spx-desk", "range", `spot ∈ [${low}, ${high}]`);
 
@@ -229,6 +234,7 @@ async function auditPlatformSnapshot() {
   const flows = snap.flows;
   const nh = snap.nighthawk;
   if (spx?.price > 0) ok("snapshot", "spx", `SPX ${spx.price} VIX ${spx.vix ?? "—"}`);
+  else if (!inRthOpenWindow()) ok("snapshot", "spx", "off-hours — snapshot SPX spot absent (expected)");
   else fail("snapshot", "SPX", "missing SPX price in snapshot");
 
   // Desk vs snapshot

@@ -36,3 +36,10 @@ test("full-site-deep-audit SPX oracle follows data-validator RTH/off-hours groun
   assert.match(src, /I:SPX\/prev/);
   assert.doesNotMatch(src, /if \(d > 5\) fail\("oracle", "SPX"/);
 });
+
+test("full-site-deep-audit SPX desk/snapshot honor RTH for live spot", () => {
+  assert.match(src, /inRthOpenWindow/);
+  assert.match(src, /off-hours — spot/);
+  assert.match(src, /off-hours — snapshot SPX spot absent/);
+  assert.match(src, /watchdogProblemKeysForAudit/);
+});

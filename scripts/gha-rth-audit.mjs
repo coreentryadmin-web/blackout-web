@@ -16,6 +16,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { etParts, inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { watchdogProblemKeysForAudit } from "./audit/lib/watchdog-audit-keys.mjs";
 import {
   createAuditClient,
   describeConnectError,
@@ -208,9 +209,19 @@ async function cronHttpChecks() {
       } else if (label === "data-integrity" && (json.discrepancies ?? json.issues?.length ?? 0) > 0) {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
-      } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+      } else if (label === "cron-watchdog") {
+        const keys = watchdogProblemKeysForAudit(json);
+        if (keys.length > 0) {
+          failures.push(`${label}: ${keys.join(", ")}`);
+          console.log(`  ✗ ${label} → stale: ${keys.join(", ")}`);
+        } else {
+          if ((json.problems ?? 0) > 0 && !inRthOpenWindow()) {
+            console.log(
+              `  ⚠ ${label} → ${json.problems} off-hours problem(s) ignored (only rth_stale_keys fail outside RTH)`
+            );
+          }
+          console.log(`  ✓ ${label} → ok`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
